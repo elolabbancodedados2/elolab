@@ -746,6 +746,9 @@ export default function Exames() {
                               <X className="h-3.5 w-3.5" />
                             </Button>
                           )}
+                          <Button variant="ghost" size="icon" className="text-destructive/60 hover:text-destructive" title="Excluir permanentemente" onClick={() => handleDeleteExame(exame.id)}>
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
                         </div>
                       </TableCell>
                     </TableRow>
