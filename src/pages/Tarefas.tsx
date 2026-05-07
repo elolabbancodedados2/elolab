@@ -276,13 +276,15 @@ export default function Tarefas() {
 
   const deleteTarefa = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from('tarefas').delete().eq('id', id);
+      const { data, error } = await supabase.from('tarefas').delete().eq('id', id).select('id');
       if (error) throw error;
+      if (!data || data.length === 0) throw new Error('Sem permissão para excluir esta tarefa.');
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tarefas'] });
       toast.success('Tarefa removida');
     },
+    onError: (e: any) => toast.error(e?.message || 'Erro ao remover tarefa'),
   });
 
   // Enrich tarefas with profile names (since we removed the join)
