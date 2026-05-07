@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef } from 'react';
 import {
   Plus, Search, Eye, FileText, Loader2, PlusCircle, X, Printer,
-  AlertTriangle, Upload, ShieldCheck, Clock, Calendar, Tag, Building2, DollarSign,
+  AlertTriangle, Upload, ShieldCheck, Clock, Calendar, Tag, Building2, DollarSign, Trash2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
