@@ -213,8 +213,9 @@ function SalasManager() {
   };
 
   const handleDelete = async (id: string) => {
-    const { error } = await supabase.from('salas').delete().eq('id', id);
+    const { data, error } = await supabase.from('salas').delete().eq('id', id).select('id');
     if (error) { toast.error(error.message); return; }
+    if (!data || data.length === 0) { toast.error('Sem permissão para excluir esta sala.'); return; }
     queryClient.invalidateQueries({ queryKey: ['salas-config'] });
     toast.success('Sala removida!');
   };
