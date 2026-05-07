@@ -159,8 +159,9 @@ function TabelaExamesConvenio({ convenioId }: { convenioId: string }) {
   const handleDeleteExame = async () => {
     if (!deleteExameId) return;
     try {
-      const { error } = await supabase.from('precos_exames_convenio').delete().eq('id', deleteExameId);
+      const { data, error } = await supabase.from('precos_exames_convenio').delete().eq('id', deleteExameId).select('id');
       if (error) throw error;
+      if (!data || data.length === 0) { toast.error('Sem permissão para excluir.'); return; }
       toast.success('Exame removido da tabela.');
       queryClient.invalidateQueries({ queryKey: ['precos-exames-convenio', convenioId] });
     } catch (err: any) {
@@ -404,8 +405,9 @@ function Convenios() {
     if (!selectedId) return;
     setIsDeleting(true);
     try {
-      const { error } = await supabase.from('convenios').delete().eq('id', selectedId);
+      const { data, error } = await supabase.from('convenios').delete().eq('id', selectedId).select('id');
       if (error) throw error;
+      if (!data || data.length === 0) { toast.error('Sem permissão ou convênio já removido.'); return; }
       toast.success('Convênio excluído!');
       queryClient.invalidateQueries({ queryKey: ['convenios'] });
     } catch (error: any) {
