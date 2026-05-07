@@ -194,9 +194,9 @@ export default function Templates() {
 
     setIsSaving(true);
     try {
-      const { error } = await supabase.from(table).delete().eq('id', id);
+      const { data, error } = await supabase.from(table).delete().eq('id', id).select('id');
       if (error) throw error;
-
+      if (!data || data.length === 0) { toast.error('Sem permissão para excluir este template.'); return; }
       queryClient.invalidateQueries({ queryKey: [table] });
       toast.success('Template excluído');
     } catch (error) {
