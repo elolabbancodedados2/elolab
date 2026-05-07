@@ -159,8 +159,9 @@ export default function TiposConsulta() {
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
-    const { error } = await supabase.from('tipos_consulta').delete().eq('id', deleteTarget.id);
+    const { data, error } = await supabase.from('tipos_consulta').delete().eq('id', deleteTarget.id).select('id');
     if (error) { toast.error('Erro ao excluir: ' + error.message); return; }
+    if (!data || data.length === 0) { toast.error('Sem permissão para excluir.'); return; }
     queryClient.invalidateQueries({ queryKey: ['tipos_consulta'] });
     toast.success('Tipo excluído!');
     setDeleteTarget(null);

@@ -584,8 +584,12 @@ export default function Medicos() {
     if (!selectedId) return;
     setIsDeleting(true);
     try {
-      const { error } = await supabase.from('medicos').delete().eq('id', selectedId);
+      const { data, error } = await supabase.from('medicos').delete().eq('id', selectedId).select('id');
       if (error) throw error;
+      if (!data || data.length === 0) {
+        toast.error('Sem permissão para excluir ou médico já removido.');
+        return;
+      }
       toast.success('Médico excluído com sucesso!');
       queryClient.invalidateQueries({ queryKey: ['medicos'] });
     } catch (error: any) {

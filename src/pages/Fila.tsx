@@ -351,8 +351,12 @@ export default function Fila() {
   };
 
   const handleRemover = async (id: string) => {
-    await supabase.from('fila_atendimento').delete().eq('id', id);
+    const { data, error } = await supabase.from('fila_atendimento').delete().eq('id', id).select('id');
     setRemoveId(null);
+    if (error || !data || data.length === 0) {
+      toast.error('Não foi possível remover da fila (sem permissão).');
+      return;
+    }
     refresh();
     toast.info('Paciente removido da fila');
   };

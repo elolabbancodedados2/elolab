@@ -294,8 +294,12 @@ export default function Estoque() {
     try {
       // Delete movements first
       await supabase.from('movimentacoes_estoque').delete().eq('item_id', deleteId);
-      const { error } = await supabase.from('estoque').delete().eq('id', deleteId);
+      const { data, error } = await supabase.from('estoque').delete().eq('id', deleteId).select('id');
       if (error) throw error;
+      if (!data || data.length === 0) {
+        toast.error('Sem permissão para excluir ou produto já removido.');
+        return;
+      }
       toast.success('Produto excluído!');
       queryClient.invalidateQueries({ queryKey: ['estoque'] });
       setIsDeleteOpen(false);

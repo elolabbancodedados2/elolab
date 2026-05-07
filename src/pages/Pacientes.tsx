@@ -499,8 +499,12 @@ export default function Pacientes() {
     if (!selectedPacienteId) return;
     setIsDeleting(true);
     try {
-      const { error } = await supabase.from('pacientes').delete().eq('id', selectedPacienteId);
+      const { data, error } = await supabase.from('pacientes').delete().eq('id', selectedPacienteId).select('id');
       if (error) throw error;
+      if (!data || data.length === 0) {
+        toast.error('Não foi possível excluir: sem permissão ou o paciente já foi removido.');
+        return;
+      }
       toast.success('Paciente excluído com sucesso');
       refetch();
     } catch (error) {

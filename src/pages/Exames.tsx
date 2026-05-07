@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef } from 'react';
 import {
   Plus, Search, Eye, FileText, Loader2, PlusCircle, X, Printer,
-  AlertTriangle, Upload, ShieldCheck, Clock, Calendar, Tag, Building2, DollarSign,
+  AlertTriangle, Upload, ShieldCheck, Clock, Calendar, Tag, Building2, DollarSign, Trash2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -567,6 +567,26 @@ export default function Exames() {
     }
   };
 
+  const handleDeleteExame = async (id: string) => {
+    if (!confirm('Excluir este exame permanentemente? Esta ação não pode ser desfeita.')) return;
+    try {
+      const { data, error } = await supabase
+        .from('exames')
+        .delete()
+        .eq('id', id)
+        .select('id');
+      if (error) throw error;
+      if (!data || data.length === 0) {
+        toast.error('Não foi possível excluir: você não tem permissão ou o exame já foi removido.');
+        return;
+      }
+      toast.success('Exame excluído!');
+      queryClient.invalidateQueries({ queryKey: ['exames'] });
+    } catch (error: any) {
+      toast.error(error.message || 'Erro ao excluir exame');
+    }
+  };
+
   // Pipeline step for visual indicator
   const getExameStep = (status: StatusExame): number => {
     const steps: Record<StatusExame, number> = {
@@ -726,6 +746,9 @@ export default function Exames() {
                               <X className="h-3.5 w-3.5" />
                             </Button>
                           )}
+                          <Button variant="ghost" size="icon" className="text-destructive/60 hover:text-destructive" title="Excluir permanentemente" onClick={() => handleDeleteExame(exame.id)}>
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
                         </div>
                       </TableCell>
                     </TableRow>

@@ -540,13 +540,15 @@ function PrecosConvenio() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from('precos_exames_convenio').delete().eq('id', id);
+      const { data, error } = await supabase.from('precos_exames_convenio').delete().eq('id', id).select('id');
       if (error) throw error;
+      if (!data || data.length === 0) throw new Error('Sem permissão para excluir.');
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['precos-exames'] });
       toast.success('Removido');
     },
+    onError: (e: any) => toast.error(e?.message || 'Erro ao remover'),
   });
 
   const filtered = precos?.filter((p: any) => {

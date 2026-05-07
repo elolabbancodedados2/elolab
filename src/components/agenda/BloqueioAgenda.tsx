@@ -100,9 +100,11 @@ export function BloqueioAgenda({ medicoIdFilter }: BloqueioAgendaProps) {
   };
 
   const handleDelete = async (id: string) => {
-    const { error } = await supabase.from('bloqueios_agenda' as any).delete().eq('id', id);
+    const { data, error } = await (supabase.from('bloqueios_agenda' as any).delete().eq('id', id).select('id') as any);
     if (error) {
       toast.error('Erro ao remover bloqueio');
+    } else if (!data || data.length === 0) {
+      toast.error('Sem permissão para remover este bloqueio.');
     } else {
       toast.success('Bloqueio removido');
       queryClient.invalidateQueries({ queryKey: ['bloqueios_agenda'] });

@@ -346,8 +346,9 @@ export default function PainelTV() {
       if (fileName) {
         await supabase.storage.from('tv-panel-media').remove([fileName]);
       }
-      const { error } = await supabase.from('tv_panel_media').delete().eq('id', media.id);
+      const { data, error } = await supabase.from('tv_panel_media').delete().eq('id', media.id).select('id');
       if (error) throw error;
+      if (!data || data.length === 0) { toast.error('Sem permissão para remover esta mídia.'); return; }
       toast.success('Mídia removida');
       loadMedia();
     } catch (error: any) {
