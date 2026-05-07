@@ -567,6 +567,26 @@ export default function Exames() {
     }
   };
 
+  const handleDeleteExame = async (id: string) => {
+    if (!confirm('Excluir este exame permanentemente? Esta ação não pode ser desfeita.')) return;
+    try {
+      const { data, error } = await supabase
+        .from('exames')
+        .delete()
+        .eq('id', id)
+        .select('id');
+      if (error) throw error;
+      if (!data || data.length === 0) {
+        toast.error('Não foi possível excluir: você não tem permissão ou o exame já foi removido.');
+        return;
+      }
+      toast.success('Exame excluído!');
+      queryClient.invalidateQueries({ queryKey: ['exames'] });
+    } catch (error: any) {
+      toast.error(error.message || 'Erro ao excluir exame');
+    }
+  };
+
   // Pipeline step for visual indicator
   const getExameStep = (status: StatusExame): number => {
     const steps: Record<StatusExame, number> = {
