@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { checkRateLimit } from '@/lib/rateLimiter';
+import { checkRateLimit, resetRateLimit, getRemainingAttempts } from '@/lib/rateLimiter';
 import { AuthSwitch } from '@/components/ui/auth-switch';
 import logoIcon from '@/assets/logo-elolab-icon.png';
 import authHero from '@/assets/auth-hero.webp';
@@ -101,19 +101,31 @@ export default function Auth() {
   };
 
   const onLogin = async (data: LoginForm) => {
-    const { allowed, retryAfterMs } = checkRateLimit('login', 'auth');
+    const rateKey = `login:${data.email.toLowerCase()}`;
+    const { allowed, retryAfterMs } = checkRateLimit(rateKey, 'auth');
     if (!allowed) {
-      toast.error(`Muitas tentativas. Tente em ${Math.ceil(retryAfterMs / 1000)}s.`);
+      const minutes = Math.ceil(retryAfterMs / 60000);
+      toast.error(`Muitas tentativas para este email. Tente novamente em ${minutes} min.`);
       return;
     }
     setIsLoading(true);
     try {
       const { error } = await signIn(data.email, data.password);
       if (error) {
-        if (error.message.includes('Invalid login credentials')) toast.error('Email ou senha incorretos');
-        else if (error.message.includes('Email not confirmed')) toast.error('Confirme seu email antes de fazer login');
-        else toast.error(error.message || 'Erro ao fazer login');
+        const remaining = getRemainingAttempts(rateKey, 'auth');
+        if (error.message.includes('Invalid login credentials')) {
+          toast.error(
+            remaining > 0
+              ? `Email ou senha incorretos. ${remaining} tentativa${remaining === 1 ? '' : 's'} restante${remaining === 1 ? '' : 's'}.`
+              : 'Email ou senha incorretos.'
+          );
+        } else if (error.message.includes('Email not confirmed')) {
+          toast.error('Confirme seu email antes de fazer login');
+        } else {
+          toast.error(error.message || 'Erro ao fazer login');
+        }
       } else {
+        resetRateLimit(rateKey);
         toast.success('Login realizado!');
         navigate('/dashboard');
       }
@@ -156,9 +168,11 @@ export default function Auth() {
   };
 
   const onSignup = async (data: SignupForm) => {
-    const { allowed, retryAfterMs } = checkRateLimit('signup', 'auth');
+    const rateKey = `signup:${data.email.toLowerCase()}`;
+    const { allowed, retryAfterMs } = checkRateLimit(rateKey, 'auth');
     if (!allowed) {
-      toast.error(`Muitas tentativas. Tente em ${Math.ceil(retryAfterMs / 1000)}s.`);
+      const minutes = Math.ceil(retryAfterMs / 60000);
+      toast.error(`Muitas tentativas. Tente novamente em ${minutes} min.`);
       return;
     }
     setIsLoading(true);

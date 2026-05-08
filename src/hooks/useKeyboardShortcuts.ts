@@ -11,10 +11,11 @@ interface ShortcutConfig {
   category: string;
 }
 
-export function useKeyboardShortcuts() {
+// Exportado para uso em UIs de visualização (KeyboardShortcutsDialog)
+// sem precisar registrar listeners duplicados.
+export function useShortcutsList(): ShortcutConfig[] {
   const navigate = useNavigate();
-
-  const shortcuts: ShortcutConfig[] = useMemo(() => [
+  return useMemo(() => [
     { key: 'h', alt: true, action: () => navigate('/dashboard'), description: 'Ir para Dashboard', category: 'Navegação' },
     { key: 'p', alt: true, action: () => navigate('/pacientes'), description: 'Ir para Pacientes', category: 'Navegação' },
     { key: 'a', alt: true, action: () => navigate('/agenda'), description: 'Ir para Agenda', category: 'Navegação' },
@@ -27,6 +28,10 @@ export function useKeyboardShortcuts() {
     { key: '$', alt: true, action: () => navigate('/financeiro'), description: 'Ir para Financeiro', category: 'Navegação' },
     { key: 's', alt: true, action: () => navigate('/configuracoes'), description: 'Ir para Configurações', category: 'Navegação' },
   ], [navigate]);
+}
+
+export function useKeyboardShortcuts() {
+  const shortcuts = useShortcutsList();
 
   const handleKeyDown = useCallback((event: KeyboardEvent) => {
     // Don't trigger shortcuts when typing in inputs

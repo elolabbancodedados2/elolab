@@ -16,6 +16,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { cn } from '@/lib/utils';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
+import { KeyboardShortcutsDialog } from '@/components/KeyboardShortcutsDialog';
 import { useRealtimeNotifications, type AppNotification } from '@/hooks/useRealtimeNotifications';
 import { GlobalSearch } from '@/components/GlobalSearch';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -73,6 +74,8 @@ export function Navbar({ onMenuClick }: NavbarProps) {
   };
 
   return (
+    <>
+    <KeyboardShortcutsDialog />
     <header className="sticky top-0 z-30 flex h-14 items-center border-b border-border/25 bg-background/75 backdrop-blur-2xl px-3 md:px-5">
       {/* Left: Hamburger */}
       <Button variant="ghost" size="icon" className="md:hidden h-9 w-9 rounded-xl" onClick={onMenuClick}>
@@ -301,5 +304,6 @@ export function Navbar({ onMenuClick }: NavbarProps) {
         </DropdownMenu>
       </div>
     </header>
+    </>
   );
 }

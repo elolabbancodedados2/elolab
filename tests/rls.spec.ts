@@ -55,7 +55,8 @@ test.describe('RLS Security Tests', () => {
       }
     );
 
-    // Should not allow deletion
-    expect([200, 401, 403, 404, 406]).toContain(response.status());
+    // Should not allow deletion (400 = Supabase rejeita DELETE não autorizado;
+    // 401/403 = rejeição explícita; 200/404/406 = nenhuma linha afetada)
+    expect([200, 400, 401, 403, 404, 406]).toContain(response.status());
   });
 });
