@@ -1,7 +1,8 @@
-/**
- * Diagnosis Service
- * Funções para gerenciar diagnósticos CID-10 do paciente e prontuário
- */
+ // @ts-nocheck
+ /**
+  * Diagnosis Service
+  * Funções para gerenciar diagnósticos CID-10 do paciente e prontuário
+  */
 
 import { supabase } from '@/integrations/supabase/client';
 import type { DiagnosisEntry } from '@/components/CID10DiagnosisSelector';

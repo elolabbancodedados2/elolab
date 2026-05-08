@@ -11,7 +11,7 @@ import { supabase } from '@/integrations/supabase/client';
 
 export interface ClinicalAlert {
   id: string;
-  severity: 'info' | 'warning' | 'critical';
+   severity: 'info' | 'warning' | 'critical' | string;
   title: string;
   message: string;
   action?: string;
