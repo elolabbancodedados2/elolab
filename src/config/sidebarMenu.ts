@@ -65,6 +65,7 @@ export const menuGroups: MenuGroup[] = [
       { label: 'Agenda', icon: CalendarRange, href: '/agenda' },
       { label: 'Chat Interno', icon: MessageCircle, href: '/chat' },
       { label: 'Tarefas', icon: ListChecks, href: '/tarefas', roles: ['admin', 'recepcao', 'enfermagem', 'financeiro'] },
+      { label: 'Segurança da Conta', icon: Shield, href: '/seguranca' },
     ],
   },
   {
@@ -144,6 +145,7 @@ export const menuGroups: MenuGroup[] = [
       { label: 'Analytics', icon: ActivitySquare, href: '/analytics' },
       { label: 'Automações', icon: Sparkles, href: '/automacoes' },
       { label: 'Configurações', icon: Settings2, href: '/configuracoes' },
+      { label: 'Direitos LGPD', icon: ScrollText, href: '/lgpd-pacientes' },
     ],
   },
   {

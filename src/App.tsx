@@ -70,6 +70,11 @@ const NotFound = lazy(() => import("@/pages/NotFound"));
 const PoliticaPrivacidade = lazy(() => import("@/pages/PoliticaPrivacidade"));
 const PoliticaCookies = lazy(() => import("@/pages/PoliticaCookies"));
 const TermosUso = lazy(() => import("@/pages/TermosUso"));
+const Seguranca = lazy(() => import("@/pages/Seguranca"));
+const LgpdPacientes = lazy(() => import("@/pages/LgpdPacientes"));
+const VitaisGraficos = lazy(() => import("@/pages/VitaisGraficos"));
+const AnalisePreditiva = lazy(() => import("@/pages/AnalisePreditiva"));
+import { useNotificationScheduler } from "@/hooks/useNotificationScheduler";
 import { CookieConsent } from "@/components/CookieConsent";
 
 const queryClient = new QueryClient({
@@ -82,6 +87,15 @@ const queryClient = new QueryClient({
     },
   },
 });
+
+/**
+ * App initializer: starts notification scheduler after auth is ready.
+ * Renders nothing — children are passed through.
+ */
+function AppInitializer({ children }: { children: React.ReactNode }) {
+  useNotificationScheduler();
+  return <>{children}</>;
+}
 
 function RouteFallback() {
   return (
@@ -134,6 +148,7 @@ function App() {
             <Sonner />
             <BrowserRouter>
               <SupabaseAuthProvider>
+                <AppInitializer>
                 <NotificationBanner />
                 <Suspense fallback={<RouteFallback />}>
                   <Routes>
@@ -220,6 +235,10 @@ function App() {
                           <Route path="/planos" element={<SupabaseProtectedRoute allowedRoles={['admin']}><Planos /></SupabaseProtectedRoute>} />
                           <Route path="/documentacao" element={<SupabaseProtectedRoute allowedRoles={['admin']}><Documentacao /></SupabaseProtectedRoute>} />
                           <Route path="/painel-admin" element={<SupabaseProtectedRoute allowedRoles={['admin']}><PainelAdmin /></SupabaseProtectedRoute>} />
+                          <Route path="/seguranca" element={<SupabaseProtectedRoute><Seguranca /></SupabaseProtectedRoute>} />
+                          <Route path="/lgpd-pacientes" element={<SupabaseProtectedRoute allowedRoles={['admin']}><LgpdPacientes /></SupabaseProtectedRoute>} />
+                          <Route path="/vitais-graficos" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico', 'enfermagem']}><VitaisGraficos /></SupabaseProtectedRoute>} />
+                          <Route path="/analise-preditiva" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao']}><AnalisePreditiva /></SupabaseProtectedRoute>} />
                         </Route>
 
                         <Route path="*" element={<NotFound />} />
@@ -229,6 +248,7 @@ function App() {
                 </Suspense>
                 <InstallPWA />
                 <CookieConsent />
+                </AppInitializer>
               </SupabaseAuthProvider>
             </BrowserRouter>
           </TooltipProvider>

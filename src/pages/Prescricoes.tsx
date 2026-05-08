@@ -23,6 +23,8 @@ import { usePacientes, useMedicos, useSupabaseQuery } from '@/hooks/useSupabaseD
 import { useCurrentMedico } from '@/hooks/useCurrentMedico';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { supabase } from '@/integrations/supabase/client';
+import { ClinicalAlertsDisplay, useClinicalAlerts } from '@/components/ClinicalAlertsDisplay';
+import { consolidateAlerts, ClinicalAlert } from '@/lib/clinicalAlerts';
 
 /* ─── PDF Builder ─── */
 function buildReceitaPdf(data: {
@@ -186,6 +188,9 @@ export default function Prescricoes() {
   const [searchTerm, setSearchTerm] = useState('');
   const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
   const [pdfFileName, setPdfFileName] = useState('');
+  const [clinicalAlerts, setClinicalAlerts] = useState<ClinicalAlert[]>([]);
+  const [showAlertsDialog, setShowAlertsDialog] = useState(false);
+  const { dismissAlert } = useClinicalAlerts();
 
   const [form, setForm] = useState({
     paciente_id: '',
@@ -220,7 +225,50 @@ export default function Prescricoes() {
     const medico = medicos.find(m => m.id === form.medico_id);
     if (!paciente || !medico) return;
 
-    // Save to database
+    // ✅ CHECK CLINICAL ALERTS antes de salvar
+    // Helper: aceita array de strings ou CSV (campo no banco pode vir como ambos)
+    const toList = (val: unknown): string[] => {
+      if (!val) return [];
+      if (Array.isArray(val)) return val.map(v => String(v).trim()).filter(Boolean);
+      if (typeof val === 'string') return val.split(',').map(s => s.trim()).filter(Boolean);
+      return [];
+    };
+
+    const pAny = paciente as any;
+    const medicationLines = form.medicamentos_texto.split('\n').filter(line => line.trim());
+    const alerts: ClinicalAlert[] = [];
+
+    for (const line of medicationLines) {
+      const lineAlerts = consolidateAlerts(line, {
+        alergias: toList(pAny.alergias),
+        idade: pAny.data_nascimento ? new Date().getFullYear() - new Date(pAny.data_nascimento).getFullYear() : undefined,
+        dataNascimento: pAny.data_nascimento,
+        gestante: !!pAny.gestante,
+        amamentando: !!pAny.amamentando,
+        comorbidades: toList(pAny.comorbidades),
+      });
+      alerts.push(...lineAlerts);
+    }
+
+    // Se há QUALQUER alerta, abrir dialog e aguardar confirmação explícita do médico.
+    // A prescrição só é salva no botão "Confirmar e Gerar Receita" do dialog (ou aqui sem alertas).
+    if (alerts.length > 0) {
+      const hasCriticalAlerts = alerts.some(a => a.severity === 'critical' && !a.canIgnore);
+      setClinicalAlerts(alerts);
+      setShowAlertsDialog(true);
+      if (hasCriticalAlerts) {
+        toast.error('⚠️ Alertas de segurança críticos! Resolva antes de prescrever.');
+      }
+      return;
+    }
+
+    // Sem alertas: salvar direto
+    await executeSaveAndPdf(paciente, medico);
+  };
+
+  // Função extraída: salva no DB e gera PDF. Chamada quando não há alertas
+  // ou após o médico confirmar no dialog de alertas.
+  const executeSaveAndPdf = async (paciente: any, medico: any) => {
     await supabase.from('prescricoes').insert({
       paciente_id: form.paciente_id,
       medico_id: form.medico_id,
@@ -252,7 +300,17 @@ export default function Prescricoes() {
     setPdfFileName(`receita_${safeName}_${form.data_emissao}.pdf`);
     setIsFormOpen(false);
     setIsResultOpen(true);
+    setShowAlertsDialog(false);
+    setClinicalAlerts([]);
     toast.success('Receita gerada com sucesso!');
+  };
+
+  // Chamado pelo dialog de alertas quando o médico confirma prescrever apesar dos avisos
+  const handleConfirmDespiteAlerts = async () => {
+    const paciente = pacientes.find(p => p.id === form.paciente_id);
+    const medico = medicos.find(m => m.id === form.medico_id);
+    if (!paciente || !medico) return;
+    await executeSaveAndPdf(paciente, medico);
   };
 
   const handleDownload = () => {
@@ -413,6 +471,36 @@ export default function Prescricoes() {
             <Button onClick={handleSaveAndGenerate} className="gap-2">
               <FileDown className="h-4 w-4" />Gerar Receita PDF
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Clinical Alerts Dialog ── */}
+      <Dialog open={showAlertsDialog} onOpenChange={setShowAlertsDialog}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-lg">
+              ⚠️ Alertas de Segurança Clínica
+            </DialogTitle>
+            <DialogDescription>
+              Revisão antes de prescrever. Alertas com tag "Não ignorável" devem ser resolvidos
+              antes de prosseguir.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <ClinicalAlertsDisplay alerts={clinicalAlerts} onDismiss={dismissAlert} />
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setShowAlertsDialog(false)}>
+              Voltar à Prescrição
+            </Button>
+            {!clinicalAlerts.some(a => a.severity === 'critical' && !a.canIgnore) && (
+              <Button onClick={handleConfirmDespiteAlerts}>
+                Confirmar e Gerar Receita
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
