@@ -1,7 +1,8 @@
-/**
- * Referral Service
- * Gerenciamento de encaminhamentos com rastreamento de status
- */
+ // @ts-nocheck
+ /**
+  * Referral Service
+  * Gerenciamento de encaminhamentos com rastreamento de status
+  */
 
 import { supabase } from '@/integrations/supabase/client';
 

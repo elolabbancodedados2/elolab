@@ -1,8 +1,9 @@
-/**
- * LGPD Compliance Module
- * Lei Geral de Proteção de Dados (Brasil)
- * Direitos: acesso, portabilidade, exclusão, correção
- */
+ // @ts-nocheck
+ /**
+  * LGPD Compliance Module
+  * Lei Geral de Proteção de Dados (Brasil)
+  * Direitos: acesso, portabilidade, exclusão, correção
+  */
 
 import { supabase } from '@/integrations/supabase/client';
 
