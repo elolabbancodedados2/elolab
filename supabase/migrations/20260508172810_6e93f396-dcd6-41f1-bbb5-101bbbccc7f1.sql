@@ -1,0 +1,13 @@
+GRANT EXECUTE ON FUNCTION public.has_any_role(uuid) TO authenticated, anon;
+GRANT EXECUTE ON FUNCTION public.has_role(uuid, app_role) TO authenticated, anon;
+GRANT EXECUTE ON FUNCTION public.is_admin(uuid) TO authenticated, anon;
+GRANT EXECUTE ON FUNCTION public.is_medico(uuid) TO authenticated, anon;
+GRANT EXECUTE ON FUNCTION public.is_enfermagem(uuid) TO authenticated, anon;
+GRANT EXECUTE ON FUNCTION public.is_recepcao(uuid) TO authenticated, anon;
+GRANT EXECUTE ON FUNCTION public.is_financeiro(uuid) TO authenticated, anon;
+GRANT EXECUTE ON FUNCTION public.is_same_clinica(uuid) TO authenticated, anon;
+GRANT EXECUTE ON FUNCTION public.user_in_same_clinica(uuid) TO authenticated, anon;
+GRANT EXECUTE ON FUNCTION public.get_my_clinica_id() TO authenticated, anon;
+GRANT EXECUTE ON FUNCTION public.can_access_clinical(uuid) TO authenticated, anon;
+GRANT EXECUTE ON FUNCTION public.can_access_financial(uuid) TO authenticated, anon;
+GRANT EXECUTE ON FUNCTION public.can_manage_data(uuid) TO authenticated, anon;

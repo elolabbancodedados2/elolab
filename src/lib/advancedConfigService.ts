@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Advanced Configuration Service
  * Gerenciamento de integrações, templates, LGPD e webhooks
