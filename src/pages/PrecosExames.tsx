@@ -540,11 +540,12 @@ function PrecosConvenio() {
   const { data: precos, isLoading } = useQuery({
     queryKey: ['precos-exames', profile?.clinica_id],
     queryFn: async () => {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('precos_exames_convenio')
         .select('*, convenios(nome, codigo)')
         .eq('clinica_id', profile?.clinica_id)
         .order('tipo_exame');
+      if (error) throw error;
       return data || [];
     },
     enabled: !!profile?.clinica_id,
