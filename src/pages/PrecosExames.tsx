@@ -295,13 +295,14 @@ function PrecosInternos() {
   });
 
   const saveAll = async (list: any[]) => {
-    if (!user?.id) return;
-    await supabase.from('configuracoes_clinica').upsert({
+    if (!user?.id) throw new Error('Usuário não identificado');
+    const { error } = await supabase.from('configuracoes_clinica').upsert({
       chave: 'precos_exames_internos',
       user_id: user.id,
       valor: list as any,
       updated_at: new Date().toISOString(),
     }, { onConflict: 'user_id,chave' });
+    if (error) throw error;
     queryClient.invalidateQueries({ queryKey: ['precos-exames-internos'] });
   };
 
@@ -311,17 +312,25 @@ function PrecosInternos() {
     const list = [...precos];
     if (editIdx !== null) list[editIdx] = entry;
     else list.push(entry);
-    await saveAll(list);
-    toast.success(editIdx !== null ? 'Atualizado!' : 'Cadastrado!');
-    setShowForm(false);
-    setEditIdx(null);
-    setForm({ nome: '', codigo_tuss: '', descricao: '', valor: '', custo: '' });
+    try {
+      await saveAll(list);
+      toast.success(editIdx !== null ? 'Atualizado!' : 'Cadastrado!');
+      setShowForm(false);
+      setEditIdx(null);
+      setForm({ nome: '', codigo_tuss: '', descricao: '', valor: '', custo: '' });
+    } catch (error: any) {
+      toast.error(error?.message || 'Erro ao salvar exame');
+    }
   };
 
   const handleDelete = async (idx: number) => {
     const list = precos.filter((_: any, i: number) => i !== idx);
-    await saveAll(list);
-    toast.success('Removido!');
+    try {
+      await saveAll(list);
+      toast.success('Removido!');
+    } catch (error: any) {
+      toast.error(error?.message || 'Erro ao remover exame');
+    }
   };
 
   const openEdit = (idx: number) => {
@@ -369,10 +378,11 @@ function PrecosInternos() {
               ) : filtered.length === 0 ? (
                 <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Nenhum exame cadastrado. Clique "Novo Exame" para começar.</TableCell></TableRow>
               ) : (
-                filtered.map((p: any, idx: number) => {
+                filtered.map((p: any) => {
+                  const originalIdx = precos.indexOf(p);
                   const margem = p.custo > 0 ? ((p.valor - p.custo) / p.valor * 100) : 100;
                   return (
-                    <TableRow key={idx}>
+                    <TableRow key={`${p.nome}-${p.codigo_tuss || 'sem-tuss'}-${originalIdx}`}>
                       <TableCell className="font-medium">{p.nome}</TableCell>
                       <TableCell className="font-mono text-xs">{p.codigo_tuss || '—'}</TableCell>
                       <TableCell className="text-muted-foreground text-sm max-w-[200px] truncate">{p.descricao || '—'}</TableCell>
@@ -385,8 +395,8 @@ function PrecosInternos() {
                       </TableCell>
                       <TableCell>
                         <div className="flex gap-1">
-                          <Button size="icon" variant="ghost" onClick={() => openEdit(idx)}><Edit className="h-3 w-3" /></Button>
-                          <Button size="icon" variant="ghost" className="text-destructive" onClick={() => handleDelete(idx)}><Trash2 className="h-3 w-3" /></Button>
+                          <Button size="icon" variant="ghost" onClick={() => openEdit(originalIdx)}><Edit className="h-3 w-3" /></Button>
+                          <Button size="icon" variant="ghost" className="text-destructive" onClick={() => handleDelete(originalIdx)}><Trash2 className="h-3 w-3" /></Button>
                         </div>
                       </TableCell>
                     </TableRow>
