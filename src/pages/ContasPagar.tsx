@@ -430,11 +430,15 @@ export default function ContasPagar() {
                 <Calendar className="h-4 w-4" /> Datas e Competência
               </h4>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Data de Emissão</Label>
-                  <Input type="date" value={formData.data_emissao}
-                    onChange={e => setFormData({ ...formData, data_emissao: e.target.value })} />
-                </div>
+                 <div className="space-y-1.5">
+                   <Label className="text-xs">Data de Emissão / Empréstimo</Label>
+                   <div className="grid grid-cols-2 gap-2">
+                     <Input type="date" value={formData.data_emissao}
+                       onChange={e => setFormData({ ...formData, data_emissao: e.target.value })} />
+                     <Input type="date" value={formData.data_emprestimo}
+                       onChange={e => setFormData({ ...formData, data_emprestimo: e.target.value })} />
+                   </div>
+                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs">Vencimento *</Label>
                   <Input type="date" value={formData.data_vencimento}
