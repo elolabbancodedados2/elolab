@@ -319,10 +319,10 @@ export type Database = {
           data_inicio: string | null
           dias: number | null
           id: string
-          medico_id: string
+          medico_id: string | null
           motivo: string | null
           observacoes: string | null
-          paciente_id: string
+          paciente_id: string | null
           tipo: string | null
           updated_at: string | null
         }
@@ -335,10 +335,10 @@ export type Database = {
           data_inicio?: string | null
           dias?: number | null
           id?: string
-          medico_id: string
+          medico_id?: string | null
           motivo?: string | null
           observacoes?: string | null
-          paciente_id: string
+          paciente_id?: string | null
           tipo?: string | null
           updated_at?: string | null
         }
@@ -351,10 +351,10 @@ export type Database = {
           data_inicio?: string | null
           dias?: number | null
           id?: string
-          medico_id?: string
+          medico_id?: string | null
           motivo?: string | null
           observacoes?: string | null
-          paciente_id?: string
+          paciente_id?: string | null
           tipo?: string | null
           updated_at?: string | null
         }
@@ -1202,7 +1202,7 @@ export type Database = {
           id: string
           informacoes_adicionais: string | null
           medico_destino_id: string | null
-          medico_origem_id: string
+          medico_origem_id: string | null
           motivo: string
           paciente_id: string
           prontuario_id: string | null
@@ -1226,7 +1226,7 @@ export type Database = {
           id?: string
           informacoes_adicionais?: string | null
           medico_destino_id?: string | null
-          medico_origem_id: string
+          medico_origem_id?: string | null
           motivo: string
           paciente_id: string
           prontuario_id?: string | null
@@ -1250,7 +1250,7 @@ export type Database = {
           id?: string
           informacoes_adicionais?: string | null
           medico_destino_id?: string | null
-          medico_origem_id?: string
+          medico_origem_id?: string | null
           motivo?: string
           paciente_id?: string
           prontuario_id?: string | null
@@ -1398,7 +1398,7 @@ export type Database = {
           laboratorio_id: string | null
           medico_solicitante_id: string | null
           observacoes: string | null
-          paciente_id: string
+          paciente_id: string | null
           preco_custo: number | null
           preco_venda: number | null
           resultado: string | null
@@ -1420,7 +1420,7 @@ export type Database = {
           laboratorio_id?: string | null
           medico_solicitante_id?: string | null
           observacoes?: string | null
-          paciente_id: string
+          paciente_id?: string | null
           preco_custo?: number | null
           preco_venda?: number | null
           resultado?: string | null
@@ -1442,7 +1442,7 @@ export type Database = {
           laboratorio_id?: string | null
           medico_solicitante_id?: string | null
           observacoes?: string | null
-          paciente_id?: string
+          paciente_id?: string | null
           preco_custo?: number | null
           preco_venda?: number | null
           resultado?: string | null
@@ -2726,9 +2726,9 @@ export type Database = {
           duracao: string | null
           id: string
           medicamento: string
-          medico_id: string
+          medico_id: string | null
           observacoes: string | null
-          paciente_id: string
+          paciente_id: string | null
           posologia: string | null
           prontuario_id: string | null
           quantidade: string | null
@@ -2743,9 +2743,9 @@ export type Database = {
           duracao?: string | null
           id?: string
           medicamento: string
-          medico_id: string
+          medico_id?: string | null
           observacoes?: string | null
-          paciente_id: string
+          paciente_id?: string | null
           posologia?: string | null
           prontuario_id?: string | null
           quantidade?: string | null
@@ -2760,9 +2760,9 @@ export type Database = {
           duracao?: string | null
           id?: string
           medicamento?: string
-          medico_id?: string
+          medico_id?: string | null
           observacoes?: string | null
-          paciente_id?: string
+          paciente_id?: string | null
           posologia?: string | null
           prontuario_id?: string | null
           quantidade?: string | null
@@ -2874,7 +2874,7 @@ export type Database = {
           historia_social: string | null
           id: string
           medicamentos_em_uso: string | null
-          medico_id: string
+          medico_id: string | null
           observacoes_internas: string | null
           orientacoes_paciente: string | null
           paciente_id: string
@@ -2907,7 +2907,7 @@ export type Database = {
           historia_social?: string | null
           id?: string
           medicamentos_em_uso?: string | null
-          medico_id: string
+          medico_id?: string | null
           observacoes_internas?: string | null
           orientacoes_paciente?: string | null
           paciente_id: string
@@ -2940,7 +2940,7 @@ export type Database = {
           historia_social?: string | null
           id?: string
           medicamentos_em_uso?: string | null
-          medico_id?: string
+          medico_id?: string | null
           observacoes_internas?: string | null
           orientacoes_paciente?: string | null
           paciente_id?: string
@@ -3232,10 +3232,10 @@ export type Database = {
           data_retorno_prevista: string
           id: string
           lembrete_enviado: boolean | null
-          medico_id: string
+          medico_id: string | null
           motivo: string | null
           observacoes: string | null
-          paciente_id: string
+          paciente_id: string | null
           prontuario_id: string | null
           status: string | null
           tipo_retorno: string | null
@@ -3249,10 +3249,10 @@ export type Database = {
           data_retorno_prevista: string
           id?: string
           lembrete_enviado?: boolean | null
-          medico_id: string
+          medico_id?: string | null
           motivo?: string | null
           observacoes?: string | null
-          paciente_id: string
+          paciente_id?: string | null
           prontuario_id?: string | null
           status?: string | null
           tipo_retorno?: string | null
@@ -3266,10 +3266,10 @@ export type Database = {
           data_retorno_prevista?: string
           id?: string
           lembrete_enviado?: boolean | null
-          medico_id?: string
+          medico_id?: string | null
           motivo?: string | null
           observacoes?: string | null
-          paciente_id?: string
+          paciente_id?: string | null
           prontuario_id?: string | null
           status?: string | null
           tipo_retorno?: string | null
