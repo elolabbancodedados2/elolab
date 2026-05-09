@@ -286,7 +286,7 @@ function PrecosInternos() {
   const [form, setForm] = useState({ nome: '', codigo_tuss: '', descricao: '', valor: '', custo: '' });
 
   const { data: precos = [], isLoading } = useQuery({
-    queryKey: ['precos-exames-internos', user?.id],
+    queryKey: ['precos-exames-internos', user?.id, profile?.clinica_id],
     queryFn: async () => {
       if (!user?.id) return [];
       let query = supabase
@@ -505,7 +505,8 @@ function PrecosInternos() {
           </div>
           <DialogFooter className="gap-2 sm:gap-0">
             <Button variant="outline" onClick={() => setShowForm(false)}>Cancelar</Button>
-            <Button onClick={handleSave} disabled={!form.nome || !form.valor} className="gap-2">
+            <Button onClick={handleSave} disabled={!form.nome || !form.valor || isSaving} className="gap-2">
+              {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
               {editIdx !== null ? 'Salvar Alterações' : 'Cadastrar Exame'}
             </Button>
           </DialogFooter>
