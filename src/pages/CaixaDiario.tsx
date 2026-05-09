@@ -14,7 +14,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import {
-  Lock, Unlock, Plus, Minus, Loader2, Trash2, Search, Clock, Printer, Download,
+  Lock, Unlock, Plus, Minus, Loader2, Trash2, Search, Clock, Printer, Download, Pencil,
   TrendingUp, TrendingDown, Banknote, CreditCard, QrCode, Wallet, ArrowDownToLine,
   ArrowUpFromLine, FileText, History, DollarSign, Receipt, ChevronRight, CalendarDays,
   BarChart3, Eye, Stethoscope, ShoppingBag, ShoppingCart, CheckCircle2, FlaskConical,
@@ -117,6 +117,8 @@ export default function CaixaDiario() {
   const [showSangria, setShowSangria] = useState(false);
   const [showSuprimento, setShowSuprimento] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [editLanc, setEditLanc] = useState<Lancamento | null>(null);
+  const [editForm, setEditForm] = useState({ descricao: '', valor: '', forma_pagamento: 'dinheiro' as FormaPagamento });
   const [showDetalhesCaixa, setShowDetalhesCaixa] = useState<CaixaDiarioType | null>(null);
 
   const [valorAbertura, setValorAbertura] = useState('');
@@ -516,6 +518,26 @@ export default function CaixaDiario() {
     onError: (e: any) => toast.error(e?.message || 'Erro'),
   });
 
+  const editarLancamentoMutation = useMutation({
+    mutationFn: async (payload: { id: string; descricao: string; valor: number; forma_pagamento: FormaPagamento }) => {
+      const { data, error } = await supabase
+        .from('lancamentos')
+        .update({ descricao: payload.descricao, valor: payload.valor, forma_pagamento: payload.forma_pagamento })
+        .eq('id', payload.id)
+        .select('id');
+      if (error) throw error;
+      if (!data || data.length === 0) throw new Error('Sem permissão para editar este lançamento.');
+    },
+    onSuccess: () => {
+      toast.success('Lançamento atualizado!');
+      setEditLanc(null);
+      queryClient.invalidateQueries({ queryKey: ['lancamentos-caixa'] });
+      queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
+      queryClient.invalidateQueries({ queryKey: ['caixa-diario'] });
+    },
+    onError: (e: any) => toast.error(e?.message || 'Erro ao editar'),
+  });
+
   // ─── Helpers ────────────────────────────────────
   const fmt = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
   const fmtTime = (iso: string) => new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
@@ -790,6 +812,18 @@ export default function CaixaDiario() {
                                     <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive"
                                       onClick={() => setConfirmDelete(l.id)}>
                                       <Trash2 className="h-3.5 w-3.5" />
+                                    </Button>
+                                    <Button variant="ghost" size="icon" className="h-7 w-7"
+                                      title="Editar"
+                                      onClick={() => {
+                                        setEditLanc(l);
+                                        setEditForm({
+                                          descricao: l.descricao || '',
+                                          valor: String(l.valor ?? ''),
+                                          forma_pagamento: l.forma_pagamento,
+                                        });
+                                      }}>
+                                      <Pencil className="h-3.5 w-3.5" />
                                     </Button>
                                   </div>
                                 </TableCell>
