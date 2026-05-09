@@ -34,6 +34,8 @@ import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useUserPlan, usePlanos } from '@/hooks/useSubscriptionPlan';
+import { useNavigate } from 'react-router-dom';
+import { useMutation } from '@tanstack/react-query';
 
 
 
@@ -318,6 +320,58 @@ export default function Configuracoes() {
   const queryClient = useQueryClient();
   const { planName, planSlug, hasActivePlan, isTrial, trialEnd, trialDaysLeft } = useUserPlan();
   const { data: planos } = usePlanos();
+  const navigate = useNavigate();
+  const [showFaturas, setShowFaturas] = useState(false);
+  const [showCancelPlan, setShowCancelPlan] = useState(false);
+
+  const { data: faturas, isLoading: loadingFaturas } = useQuery({
+    queryKey: ['minhas_faturas_saas', profile?.clinica_id],
+    enabled: !!profile?.clinica_id && showFaturas,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from('pagamentos_mercadopago')
+        .select('id, valor, valor_pago, status, tipo, descricao, data_criacao, data_aprovacao, checkout_url, metodo_pagamento')
+        .eq('clinica_id', profile!.clinica_id)
+        .order('data_criacao', { ascending: false })
+        .limit(50);
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  const cancelPlanMutation = useMutation({
+    mutationFn: async () => {
+      if (!user?.id) throw new Error('Usuário não autenticado');
+      const { data: assinaturaMp, error: searchErr } = await (supabase as any)
+        .from('assinaturas_mercadopago')
+        .select('id, mp_preapproval_id')
+        .eq('status', 'ativa')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (searchErr) throw searchErr;
+      if (!assinaturaMp?.mp_preapproval_id) throw new Error('Não encontramos assinatura ativa para cancelar');
+      const { data, error } = await supabase.functions.invoke('mercadopago-checkout', {
+        body: {
+          action: 'cancel_subscription',
+          assinatura_id: assinaturaMp.id,
+          mp_preapproval_id: assinaturaMp.mp_preapproval_id,
+          user_id: user.id,
+          motivo: 'Cancelado pelo usuário em Configurações',
+        },
+      });
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+      return data;
+    },
+    onSuccess: () => {
+      toast.success('Assinatura cancelada. Acesso mantido até o fim do período pago.');
+      setShowCancelPlan(false);
+      queryClient.invalidateQueries({ queryKey: ['user_plan'] });
+    },
+    onError: (err: any) => toast.error(err.message || 'Erro ao cancelar assinatura'),
+  });
+
   const [isCloudSynced, setIsCloudSynced] = useState(false);
   const [configClinica, setConfigClinica] = useState<ConfiguracaoClinica>(DEFAULT_CLINICA);
   const [configNotificacoes, setConfigNotificacoes] = useState<ConfiguracaoNotificacoes>(DEFAULT_NOTIFICACOES);
@@ -593,7 +647,7 @@ export default function Configuracoes() {
                 {!hasActivePlan ? (
                   <div className="text-center py-8 space-y-4">
                     <p className="text-muted-foreground">Você não possui um plano ativo</p>
-                    <Button className="gap-2">
+                    <Button className="gap-2" onClick={() => navigate('/planos')}>
                       <CreditCard className="h-4 w-4" />
                       Escolher Plano
                     </Button>
@@ -655,15 +709,15 @@ export default function Configuracoes() {
                     <Separator />
 
                     <div className="flex flex-wrap gap-2">
-                      <Button variant="outline" className="gap-2">
+                      <Button variant="outline" className="gap-2" onClick={() => navigate('/planos')}>
                         <CreditCard className="h-4 w-4" />
                         Fazer Upgrade
                       </Button>
-                      <Button variant="outline" className="gap-2">
+                      <Button variant="outline" className="gap-2" onClick={() => setShowFaturas(true)}>
                         <Receipt className="h-4 w-4" />
                         Ver Faturas
                       </Button>
-                      <Button variant="destructive" className="gap-2">
+                      <Button variant="destructive" className="gap-2" onClick={() => setShowCancelPlan(true)}>
                         ✕ Cancelar Plano
                       </Button>
                     </div>
@@ -671,6 +725,75 @@ export default function Configuracoes() {
                 )}
               </CardContent>
             </Card>
+
+            {/* Dialog: Faturas */}
+            <Dialog open={showFaturas} onOpenChange={setShowFaturas}>
+              <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2">
+                    <Receipt className="h-5 w-5 text-primary" /> Histórico de Faturas
+                  </DialogTitle>
+                  <DialogDescription>Pagamentos da sua assinatura EloLab</DialogDescription>
+                </DialogHeader>
+                {loadingFaturas ? (
+                  <div className="py-8 text-center"><Loader2 className="h-6 w-6 animate-spin mx-auto text-primary" /></div>
+                ) : !faturas || faturas.length === 0 ? (
+                  <div className="py-8 text-center text-muted-foreground">Nenhuma fatura encontrada ainda.</div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Data</TableHead>
+                        <TableHead>Descrição</TableHead>
+                        <TableHead>Valor</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Ação</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {faturas.map((f: any) => (
+                        <TableRow key={f.id}>
+                          <TableCell className="text-xs">{f.data_criacao ? new Date(f.data_criacao).toLocaleDateString('pt-BR') : '—'}</TableCell>
+                          <TableCell className="text-xs">{f.descricao || f.tipo || 'Assinatura'}</TableCell>
+                          <TableCell className="text-xs font-semibold">
+                            {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(f.valor_pago || f.valor || 0)}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={f.status === 'approved' || f.status === 'aprovado' ? 'default' : f.status === 'pending' || f.status === 'pendente' ? 'secondary' : 'outline'}>
+                              {f.status || '—'}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            {f.checkout_url && (
+                              <Button size="sm" variant="ghost" onClick={() => window.open(f.checkout_url, '_blank')}>Abrir</Button>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </DialogContent>
+            </Dialog>
+
+            {/* Dialog: Cancel plan */}
+            <Dialog open={showCancelPlan} onOpenChange={setShowCancelPlan}>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Cancelar assinatura?</DialogTitle>
+                  <DialogDescription>
+                    Sua assinatura será cancelada no Mercado Pago. Você manterá acesso até o fim do período já pago.
+                  </DialogDescription>
+                </DialogHeader>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setShowCancelPlan(false)}>Manter assinatura</Button>
+                  <Button variant="destructive" disabled={cancelPlanMutation.isPending} onClick={() => cancelPlanMutation.mutate()}>
+                    {cancelPlanMutation.isPending && <Loader2 className="h-4 w-4 animate-spin mr-1" />}
+                    Confirmar cancelamento
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
           </motion.div>
         </TabsContent>
 
