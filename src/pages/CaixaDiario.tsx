@@ -14,7 +14,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import {
-  Lock, Unlock, Plus, Minus, Loader2, Trash2, Search, Clock, Printer, Download,
+  Lock, Unlock, Plus, Minus, Loader2, Trash2, Search, Clock, Printer, Download, Pencil,
   TrendingUp, TrendingDown, Banknote, CreditCard, QrCode, Wallet, ArrowDownToLine,
   ArrowUpFromLine, FileText, History, DollarSign, Receipt, ChevronRight, CalendarDays,
   BarChart3, Eye, Stethoscope, ShoppingBag, ShoppingCart, CheckCircle2, FlaskConical,
@@ -117,6 +117,8 @@ export default function CaixaDiario() {
   const [showSangria, setShowSangria] = useState(false);
   const [showSuprimento, setShowSuprimento] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [editLanc, setEditLanc] = useState<Lancamento | null>(null);
+  const [editForm, setEditForm] = useState({ descricao: '', valor: '', forma_pagamento: 'dinheiro' as FormaPagamento });
   const [showDetalhesCaixa, setShowDetalhesCaixa] = useState<CaixaDiarioType | null>(null);
 
   const [valorAbertura, setValorAbertura] = useState('');
@@ -516,6 +518,26 @@ export default function CaixaDiario() {
     onError: (e: any) => toast.error(e?.message || 'Erro'),
   });
 
+  const editarLancamentoMutation = useMutation({
+    mutationFn: async (payload: { id: string; descricao: string; valor: number; forma_pagamento: FormaPagamento }) => {
+      const { data, error } = await supabase
+        .from('lancamentos')
+        .update({ descricao: payload.descricao, valor: payload.valor, forma_pagamento: payload.forma_pagamento })
+        .eq('id', payload.id)
+        .select('id');
+      if (error) throw error;
+      if (!data || data.length === 0) throw new Error('Sem permissão para editar este lançamento.');
+    },
+    onSuccess: () => {
+      toast.success('Lançamento atualizado!');
+      setEditLanc(null);
+      queryClient.invalidateQueries({ queryKey: ['lancamentos-caixa'] });
+      queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
+      queryClient.invalidateQueries({ queryKey: ['caixa-diario'] });
+    },
+    onError: (e: any) => toast.error(e?.message || 'Erro ao editar'),
+  });
+
   // ─── Helpers ────────────────────────────────────
   const fmt = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
   const fmtTime = (iso: string) => new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
@@ -790,6 +812,18 @@ export default function CaixaDiario() {
                                     <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive"
                                       onClick={() => setConfirmDelete(l.id)}>
                                       <Trash2 className="h-3.5 w-3.5" />
+                                    </Button>
+                                    <Button variant="ghost" size="icon" className="h-7 w-7"
+                                      title="Editar"
+                                      onClick={() => {
+                                        setEditLanc(l);
+                                        setEditForm({
+                                          descricao: l.descricao || '',
+                                          valor: String(l.valor ?? ''),
+                                          forma_pagamento: l.forma_pagamento,
+                                        });
+                                      }}>
+                                      <Pencil className="h-3.5 w-3.5" />
                                     </Button>
                                   </div>
                                 </TableCell>
@@ -1395,6 +1429,69 @@ export default function CaixaDiario() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Editar lançamento */}
+      <Dialog open={!!editLanc} onOpenChange={(o) => !o && setEditLanc(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Editar lançamento</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>Descrição</Label>
+              <Input
+                value={editForm.descricao}
+                onChange={(e) => setEditForm(f => ({ ...f, descricao: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Valor (R$)</Label>
+              <Input
+                type="number" step="0.01" min="0"
+                value={editForm.valor}
+                onChange={(e) => setEditForm(f => ({ ...f, valor: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Forma de pagamento</Label>
+              <Select
+                value={editForm.forma_pagamento}
+                onValueChange={(v) => setEditForm(f => ({ ...f, forma_pagamento: v as FormaPagamento }))}
+              >
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="dinheiro">Dinheiro</SelectItem>
+                  <SelectItem value="pix">PIX</SelectItem>
+                  <SelectItem value="cartao_credito">Crédito</SelectItem>
+                  <SelectItem value="cartao_debito">Débito</SelectItem>
+                  <SelectItem value="cheque">Cheque</SelectItem>
+                  <SelectItem value="transferencia">Transferência</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditLanc(null)}>Cancelar</Button>
+            <Button
+              onClick={() => {
+                if (!editLanc) return;
+                const valor = parseFloat(editForm.valor);
+                if (!editForm.descricao.trim()) { toast.error('Informe a descrição'); return; }
+                if (!Number.isFinite(valor) || valor <= 0) { toast.error('Valor inválido'); return; }
+                editarLancamentoMutation.mutate({
+                  id: editLanc.id,
+                  descricao: editForm.descricao.trim(),
+                  valor,
+                  forma_pagamento: editForm.forma_pagamento,
+                });
+              }}
+              disabled={editarLancamentoMutation.isPending}
+            >
+              {editarLancamentoMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Salvar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
