@@ -61,32 +61,34 @@ const CENTROS_CUSTO_LABELS: Record<string, string> = {
   administrativo: 'Administrativo',
 };
 
-interface FormData {
-  categoria: string;
-  descricao: string;
-  valor: number;
-  data_vencimento: string;
-  forma_pagamento: string;
-  fornecedor: string;
-  numero_documento: string;
-  data_emissao: string;
-  competencia: string;
-  recorrente: boolean;
-  frequencia_recorrencia: string;
-  centro_custo: string;
-  observacoes: string;
-  marcar_pago: boolean;
-}
+ interface FormData {
+   categoria: string;
+   descricao: string;
+   valor: number;
+   data_vencimento: string;
+   forma_pagamento: string;
+   fornecedor: string;
+   numero_documento: string;
+   data_emissao: string;
+   data_emprestimo: string;
+   competencia: string;
+   recorrente: boolean;
+   frequencia_recorrencia: string;
+   centro_custo: string;
+   observacoes: string;
+   marcar_pago: boolean;
+ }
 
 const initialFormData: FormData = {
   categoria: 'fornecedores', descricao: '', valor: 0,
   data_vencimento: format(new Date(), 'yyyy-MM-dd'),
   forma_pagamento: 'pix', fornecedor: '', numero_documento: '',
-  data_emissao: format(new Date(), 'yyyy-MM-dd'),
-  competencia: format(new Date(), 'yyyy-MM'),
-  recorrente: false, frequencia_recorrencia: 'mensal',
-  centro_custo: 'geral', observacoes: '', marcar_pago: false,
-};
+   data_emissao: format(new Date(), 'yyyy-MM-dd'),
+   data_emprestimo: format(new Date(), 'yyyy-MM-dd'),
+   competencia: format(new Date(), 'yyyy-MM'),
+   recorrente: false, frequencia_recorrencia: 'mensal',
+   centro_custo: 'geral', observacoes: '', marcar_pago: false,
+ };
 
 export default function ContasPagar() {
   const [searchTerm, setSearchTerm] = useState('');
@@ -161,14 +163,16 @@ export default function ContasPagar() {
         forma_pagamento: formData.forma_pagamento || null,
         fornecedor: formData.fornecedor || null,
         numero_documento: formData.numero_documento || null,
-        data_emissao: formData.data_emissao || null,
-        competencia: formData.competencia || null,
-        recorrente: formData.recorrente,
-        frequencia_recorrencia: formData.recorrente ? formData.frequencia_recorrencia : null,
-        centro_custo: formData.centro_custo || null,
-        observacoes: formData.observacoes || null,
-        clinica_id: profile?.clinica_id || null,
-      };
+         data_emissao: formData.data_emissao || null,
+         data_emprestimo: formData.data_emprestimo || null,
+         competencia: formData.competencia || null,
+         recorrente: formData.recorrente,
+         frequencia_recorrencia: formData.recorrente ? formData.frequencia_recorrencia : null,
+         frequencia_pagamento: formData.recorrente ? formData.frequencia_recorrencia : 'unica',
+         centro_custo: formData.centro_custo || null,
+         observacoes: formData.observacoes || null,
+         clinica_id: profile?.clinica_id || null,
+       };
 
       const { error } = await supabase.from('lancamentos').insert(payload);
       if (error) throw error;
