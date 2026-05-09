@@ -647,7 +647,7 @@ export default function Configuracoes() {
                 {!hasActivePlan ? (
                   <div className="text-center py-8 space-y-4">
                     <p className="text-muted-foreground">Você não possui um plano ativo</p>
-                    <Button className="gap-2">
+                    <Button className="gap-2" onClick={() => navigate('/planos')}>
                       <CreditCard className="h-4 w-4" />
                       Escolher Plano
                     </Button>
@@ -709,15 +709,15 @@ export default function Configuracoes() {
                     <Separator />
 
                     <div className="flex flex-wrap gap-2">
-                      <Button variant="outline" className="gap-2">
+                      <Button variant="outline" className="gap-2" onClick={() => navigate('/planos')}>
                         <CreditCard className="h-4 w-4" />
                         Fazer Upgrade
                       </Button>
-                      <Button variant="outline" className="gap-2">
+                      <Button variant="outline" className="gap-2" onClick={() => setShowFaturas(true)}>
                         <Receipt className="h-4 w-4" />
                         Ver Faturas
                       </Button>
-                      <Button variant="destructive" className="gap-2">
+                      <Button variant="destructive" className="gap-2" onClick={() => setShowCancelPlan(true)}>
                         ✕ Cancelar Plano
                       </Button>
                     </div>
@@ -725,6 +725,75 @@ export default function Configuracoes() {
                 )}
               </CardContent>
             </Card>
+
+            {/* Dialog: Faturas */}
+            <Dialog open={showFaturas} onOpenChange={setShowFaturas}>
+              <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2">
+                    <Receipt className="h-5 w-5 text-primary" /> Histórico de Faturas
+                  </DialogTitle>
+                  <DialogDescription>Pagamentos da sua assinatura EloLab</DialogDescription>
+                </DialogHeader>
+                {loadingFaturas ? (
+                  <div className="py-8 text-center"><Loader2 className="h-6 w-6 animate-spin mx-auto text-primary" /></div>
+                ) : !faturas || faturas.length === 0 ? (
+                  <div className="py-8 text-center text-muted-foreground">Nenhuma fatura encontrada ainda.</div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Data</TableHead>
+                        <TableHead>Descrição</TableHead>
+                        <TableHead>Valor</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Ação</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {faturas.map((f: any) => (
+                        <TableRow key={f.id}>
+                          <TableCell className="text-xs">{f.data_criacao ? new Date(f.data_criacao).toLocaleDateString('pt-BR') : '—'}</TableCell>
+                          <TableCell className="text-xs">{f.descricao || f.tipo || 'Assinatura'}</TableCell>
+                          <TableCell className="text-xs font-semibold">
+                            {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(f.valor_pago || f.valor || 0)}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={f.status === 'approved' || f.status === 'aprovado' ? 'default' : f.status === 'pending' || f.status === 'pendente' ? 'secondary' : 'outline'}>
+                              {f.status || '—'}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            {f.checkout_url && (
+                              <Button size="sm" variant="ghost" onClick={() => window.open(f.checkout_url, '_blank')}>Abrir</Button>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </DialogContent>
+            </Dialog>
+
+            {/* Dialog: Cancel plan */}
+            <Dialog open={showCancelPlan} onOpenChange={setShowCancelPlan}>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Cancelar assinatura?</DialogTitle>
+                  <DialogDescription>
+                    Sua assinatura será cancelada no Mercado Pago. Você manterá acesso até o fim do período já pago.
+                  </DialogDescription>
+                </DialogHeader>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setShowCancelPlan(false)}>Manter assinatura</Button>
+                  <Button variant="destructive" disabled={cancelPlanMutation.isPending} onClick={() => cancelPlanMutation.mutate()}>
+                    {cancelPlanMutation.isPending && <Loader2 className="h-4 w-4 animate-spin mr-1" />}
+                    Confirmar cancelamento
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
           </motion.div>
         </TabsContent>
 
