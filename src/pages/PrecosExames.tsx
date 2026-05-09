@@ -578,7 +578,7 @@ function PrecosConvenio() {
       setShowNew(false);
       setEditing(null);
     },
-    onError: (e: any) => toast.error(e.message?.includes('unique') ? 'Já existe preço para este exame neste convênio' : 'Erro ao salvar'),
+    onError: (e: any) => toast.error(e.message?.includes('unique') ? 'Já existe preço para este exame neste convênio' : (e.message || 'Erro ao salvar')),
   });
 
   const deleteMutation = useMutation({
