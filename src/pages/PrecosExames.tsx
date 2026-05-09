@@ -517,6 +517,7 @@ function PrecosInternos() {
 
 // ─── Convênio Prices Tab ───
 function PrecosConvenio() {
+  const { profile } = useSupabaseAuth();
   const [search, setSearch] = useState('');
   const [filterConvenio, setFilterConvenio] = useState('all');
   const [showNew, setShowNew] = useState(false);
@@ -526,37 +527,47 @@ function PrecosConvenio() {
   const { data: convenios } = useQuery({
     queryKey: ['convenios-precos'],
     queryFn: async () => {
-      const { data } = await supabase.from('convenios').select('id, nome, codigo').eq('ativo', true).order('nome');
+      let query = supabase.from('convenios').select('id, nome, codigo').eq('ativo', true).order('nome');
+      if (profile?.clinica_id) query = query.eq('clinica_id', profile.clinica_id);
+      const { data, error } = await query;
+      if (error) throw error;
       return data || [];
     },
+    enabled: !!profile?.clinica_id,
   });
 
   const { data: precos, isLoading } = useQuery({
-    queryKey: ['precos-exames'],
+    queryKey: ['precos-exames', profile?.clinica_id],
     queryFn: async () => {
       const { data } = await supabase
         .from('precos_exames_convenio')
         .select('*, convenios(nome, codigo)')
+        .eq('clinica_id', profile?.clinica_id)
         .order('tipo_exame');
       return data || [];
     },
+    enabled: !!profile?.clinica_id,
   });
 
   const saveMutation = useMutation({
     mutationFn: async (form: any) => {
       if (editing) {
-        const { error } = await supabase.from('precos_exames_convenio').update({
+        const valorTabela = parseMoney(form.valor_tabela);
+        if (!form.convenio_id || !form.tipo_exame || !Number.isFinite(valorTabela) || valorTabela <= 0) {
+          throw new Error('Preencha convênio, exame e valor válido maior que zero.');
+        }
+        const payload = {
           convenio_id: form.convenio_id, tipo_exame: form.tipo_exame, codigo_tuss: form.codigo_tuss || null,
-          descricao: form.descricao || null, valor_tabela: +form.valor_tabela, valor_filme: form.valor_filme ? +form.valor_filme : 0,
-          valor_custo: form.valor_custo ? +form.valor_custo : 0, valor_repasse: form.valor_repasse ? +form.valor_repasse : 0,
-        }).eq('id', editing.id);
+          descricao: form.descricao || null, valor_tabela: valorTabela, valor_filme: form.valor_filme ? parseMoney(form.valor_filme) : 0,
+          valor_custo: form.valor_custo ? parseMoney(form.valor_custo) : 0, valor_repasse: form.valor_repasse ? parseMoney(form.valor_repasse) : 0,
+          clinica_id: profile?.clinica_id,
+        };
+        if (editing) {
+        const { data, error } = await supabase.from('precos_exames_convenio').update(payload).eq('id', editing.id).select('id').maybeSingle();
         if (error) throw error;
+        if (!data) throw new Error('Preço não encontrado ou sem permissão para alterar.');
       } else {
-        const { error } = await supabase.from('precos_exames_convenio').insert({
-          convenio_id: form.convenio_id, tipo_exame: form.tipo_exame, codigo_tuss: form.codigo_tuss || null,
-          descricao: form.descricao || null, valor_tabela: +form.valor_tabela, valor_filme: form.valor_filme ? +form.valor_filme : 0,
-          valor_custo: form.valor_custo ? +form.valor_custo : 0, valor_repasse: form.valor_repasse ? +form.valor_repasse : 0,
-        });
+        const { error } = await supabase.from('precos_exames_convenio').insert(payload);
         if (error) throw error;
       }
     },
