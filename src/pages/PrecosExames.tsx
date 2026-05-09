@@ -269,27 +269,40 @@ function ExameCombobox({ value, onChange }: { value: string; onChange: (nome: st
 }
 
 const fmt = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
+const parseMoney = (value: string | number) => {
+  if (typeof value === 'number') return value;
+  const parsed = Number(String(value).replace(',', '.'));
+  return Number.isFinite(parsed) ? parsed : NaN;
+};
 
 // ─── Internal/Particular Prices Tab ───
 function PrecosInternos() {
-  const { user } = useSupabaseAuth();
+  const { user, profile } = useSupabaseAuth();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [editIdx, setEditIdx] = useState<number | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
   const [form, setForm] = useState({ nome: '', codigo_tuss: '', descricao: '', valor: '', custo: '' });
 
   const { data: precos = [], isLoading } = useQuery({
-    queryKey: ['precos-exames-internos', user?.id],
+    queryKey: ['precos-exames-internos', user?.id, profile?.clinica_id],
     queryFn: async () => {
       if (!user?.id) return [];
-      const { data } = await supabase
+      let query = supabase
         .from('configuracoes_clinica')
-        .select('valor')
+        .select('valor, updated_at')
         .eq('chave', 'precos_exames_internos')
-        .eq('user_id', user.id)
-        .maybeSingle();
-      return (data?.valor as any[]) || [];
+        .order('updated_at', { ascending: false })
+        .limit(1);
+
+      query = profile?.clinica_id
+        ? query.or(`user_id.eq.${user.id},clinica_id.eq.${profile.clinica_id}`)
+        : query.eq('user_id', user.id);
+
+      const { data, error } = await query;
+      if (error) throw error;
+      return (data?.[0]?.valor as any[]) || [];
     },
     enabled: !!user?.id,
   });
@@ -299,6 +312,7 @@ function PrecosInternos() {
     const { error } = await supabase.from('configuracoes_clinica').upsert({
       chave: 'precos_exames_internos',
       user_id: user.id,
+      clinica_id: profile?.clinica_id ?? null,
       valor: list as any,
       updated_at: new Date().toISOString(),
     }, { onConflict: 'user_id,chave' });
@@ -307,12 +321,17 @@ function PrecosInternos() {
   };
 
   const handleSave = async () => {
+    const valor = parseMoney(form.valor);
+    const custo = form.custo ? parseMoney(form.custo) : 0;
     if (!form.nome || !form.valor) { toast.error('Preencha nome e valor'); return; }
-    const entry = { nome: form.nome, codigo_tuss: form.codigo_tuss, descricao: form.descricao, valor: +form.valor, custo: form.custo ? +form.custo : 0 };
+    if (!Number.isFinite(valor) || valor <= 0) { toast.error('Informe um valor válido maior que zero'); return; }
+    if (!Number.isFinite(custo) || custo < 0) { toast.error('Informe um custo válido'); return; }
+    const entry = { nome: form.nome.trim(), codigo_tuss: form.codigo_tuss.trim(), descricao: form.descricao.trim(), valor, custo };
     const list = [...precos];
     if (editIdx !== null) list[editIdx] = entry;
     else list.push(entry);
     try {
+      setIsSaving(true);
       await saveAll(list);
       toast.success(editIdx !== null ? 'Atualizado!' : 'Cadastrado!');
       setShowForm(false);
@@ -320,6 +339,8 @@ function PrecosInternos() {
       setForm({ nome: '', codigo_tuss: '', descricao: '', valor: '', custo: '' });
     } catch (error: any) {
       toast.error(error?.message || 'Erro ao salvar exame');
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -484,7 +505,8 @@ function PrecosInternos() {
           </div>
           <DialogFooter className="gap-2 sm:gap-0">
             <Button variant="outline" onClick={() => setShowForm(false)}>Cancelar</Button>
-            <Button onClick={handleSave} disabled={!form.nome || !form.valor} className="gap-2">
+            <Button onClick={handleSave} disabled={!form.nome || !form.valor || isSaving} className="gap-2">
+              {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
               {editIdx !== null ? 'Salvar Alterações' : 'Cadastrar Exame'}
             </Button>
           </DialogFooter>
@@ -496,6 +518,7 @@ function PrecosInternos() {
 
 // ─── Convênio Prices Tab ───
 function PrecosConvenio() {
+  const { profile } = useSupabaseAuth();
   const [search, setSearch] = useState('');
   const [filterConvenio, setFilterConvenio] = useState('all');
   const [showNew, setShowNew] = useState(false);
@@ -505,37 +528,48 @@ function PrecosConvenio() {
   const { data: convenios } = useQuery({
     queryKey: ['convenios-precos'],
     queryFn: async () => {
-      const { data } = await supabase.from('convenios').select('id, nome, codigo').eq('ativo', true).order('nome');
+      let query = supabase.from('convenios').select('id, nome, codigo').eq('ativo', true).order('nome');
+      if (profile?.clinica_id) query = query.eq('clinica_id', profile.clinica_id);
+      const { data, error } = await query;
+      if (error) throw error;
       return data || [];
     },
+    enabled: !!profile?.clinica_id,
   });
 
   const { data: precos, isLoading } = useQuery({
-    queryKey: ['precos-exames'],
+    queryKey: ['precos-exames', profile?.clinica_id],
     queryFn: async () => {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('precos_exames_convenio')
         .select('*, convenios(nome, codigo)')
+        .eq('clinica_id', profile?.clinica_id)
         .order('tipo_exame');
+      if (error) throw error;
       return data || [];
     },
+    enabled: !!profile?.clinica_id,
   });
 
   const saveMutation = useMutation({
     mutationFn: async (form: any) => {
+      const valorTabela = parseMoney(form.valor_tabela);
+      if (!profile?.clinica_id) throw new Error('Clínica não identificada. Recarregue a página e tente novamente.');
+      if (!form.convenio_id || !form.tipo_exame || !Number.isFinite(valorTabela) || valorTabela <= 0) {
+        throw new Error('Preencha convênio, exame e valor válido maior que zero.');
+      }
+      const payload = {
+        convenio_id: form.convenio_id, tipo_exame: form.tipo_exame.trim(), codigo_tuss: form.codigo_tuss?.trim() || null,
+        descricao: form.descricao?.trim() || null, valor_tabela: valorTabela, valor_filme: form.valor_filme ? parseMoney(form.valor_filme) : 0,
+        valor_custo: form.valor_custo ? parseMoney(form.valor_custo) : 0, valor_repasse: form.valor_repasse ? parseMoney(form.valor_repasse) : 0,
+        clinica_id: profile.clinica_id,
+      };
       if (editing) {
-        const { error } = await supabase.from('precos_exames_convenio').update({
-          convenio_id: form.convenio_id, tipo_exame: form.tipo_exame, codigo_tuss: form.codigo_tuss || null,
-          descricao: form.descricao || null, valor_tabela: +form.valor_tabela, valor_filme: form.valor_filme ? +form.valor_filme : 0,
-          valor_custo: form.valor_custo ? +form.valor_custo : 0, valor_repasse: form.valor_repasse ? +form.valor_repasse : 0,
-        }).eq('id', editing.id);
+        const { data, error } = await supabase.from('precos_exames_convenio').update(payload).eq('id', editing.id).select('id').maybeSingle();
         if (error) throw error;
+        if (!data) throw new Error('Preço não encontrado ou sem permissão para alterar.');
       } else {
-        const { error } = await supabase.from('precos_exames_convenio').insert({
-          convenio_id: form.convenio_id, tipo_exame: form.tipo_exame, codigo_tuss: form.codigo_tuss || null,
-          descricao: form.descricao || null, valor_tabela: +form.valor_tabela, valor_filme: form.valor_filme ? +form.valor_filme : 0,
-          valor_custo: form.valor_custo ? +form.valor_custo : 0, valor_repasse: form.valor_repasse ? +form.valor_repasse : 0,
-        });
+        const { error } = await supabase.from('precos_exames_convenio').insert(payload);
         if (error) throw error;
       }
     },
@@ -545,7 +579,7 @@ function PrecosConvenio() {
       setShowNew(false);
       setEditing(null);
     },
-    onError: (e: any) => toast.error(e.message?.includes('unique') ? 'Já existe preço para este exame neste convênio' : 'Erro ao salvar'),
+    onError: (e: any) => toast.error(e.message?.includes('unique') ? 'Já existe preço para este exame neste convênio' : (e.message || 'Erro ao salvar')),
   });
 
   const deleteMutation = useMutation({
