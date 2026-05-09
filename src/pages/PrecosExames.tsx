@@ -269,27 +269,40 @@ function ExameCombobox({ value, onChange }: { value: string; onChange: (nome: st
 }
 
 const fmt = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
+const parseMoney = (value: string | number) => {
+  if (typeof value === 'number') return value;
+  const parsed = Number(String(value).replace(',', '.'));
+  return Number.isFinite(parsed) ? parsed : NaN;
+};
 
 // ─── Internal/Particular Prices Tab ───
 function PrecosInternos() {
-  const { user } = useSupabaseAuth();
+  const { user, profile } = useSupabaseAuth();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [editIdx, setEditIdx] = useState<number | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
   const [form, setForm] = useState({ nome: '', codigo_tuss: '', descricao: '', valor: '', custo: '' });
 
   const { data: precos = [], isLoading } = useQuery({
     queryKey: ['precos-exames-internos', user?.id],
     queryFn: async () => {
       if (!user?.id) return [];
-      const { data } = await supabase
+      let query = supabase
         .from('configuracoes_clinica')
-        .select('valor')
+        .select('valor, updated_at')
         .eq('chave', 'precos_exames_internos')
-        .eq('user_id', user.id)
-        .maybeSingle();
-      return (data?.valor as any[]) || [];
+        .order('updated_at', { ascending: false })
+        .limit(1);
+
+      query = profile?.clinica_id
+        ? query.or(`user_id.eq.${user.id},clinica_id.eq.${profile.clinica_id}`)
+        : query.eq('user_id', user.id);
+
+      const { data, error } = await query;
+      if (error) throw error;
+      return (data?.[0]?.valor as any[]) || [];
     },
     enabled: !!user?.id,
   });
@@ -299,6 +312,7 @@ function PrecosInternos() {
     const { error } = await supabase.from('configuracoes_clinica').upsert({
       chave: 'precos_exames_internos',
       user_id: user.id,
+      clinica_id: profile?.clinica_id ?? null,
       valor: list as any,
       updated_at: new Date().toISOString(),
     }, { onConflict: 'user_id,chave' });
@@ -307,12 +321,17 @@ function PrecosInternos() {
   };
 
   const handleSave = async () => {
+    const valor = parseMoney(form.valor);
+    const custo = form.custo ? parseMoney(form.custo) : 0;
     if (!form.nome || !form.valor) { toast.error('Preencha nome e valor'); return; }
-    const entry = { nome: form.nome, codigo_tuss: form.codigo_tuss, descricao: form.descricao, valor: +form.valor, custo: form.custo ? +form.custo : 0 };
+    if (!Number.isFinite(valor) || valor <= 0) { toast.error('Informe um valor válido maior que zero'); return; }
+    if (!Number.isFinite(custo) || custo < 0) { toast.error('Informe um custo válido'); return; }
+    const entry = { nome: form.nome.trim(), codigo_tuss: form.codigo_tuss.trim(), descricao: form.descricao.trim(), valor, custo };
     const list = [...precos];
     if (editIdx !== null) list[editIdx] = entry;
     else list.push(entry);
     try {
+      setIsSaving(true);
       await saveAll(list);
       toast.success(editIdx !== null ? 'Atualizado!' : 'Cadastrado!');
       setShowForm(false);
@@ -320,6 +339,8 @@ function PrecosInternos() {
       setForm({ nome: '', codigo_tuss: '', descricao: '', valor: '', custo: '' });
     } catch (error: any) {
       toast.error(error?.message || 'Erro ao salvar exame');
+    } finally {
+      setIsSaving(false);
     }
   };
 
