@@ -65,10 +65,32 @@ export default function Auth() {
 
   const urlCodigo = searchParams.get('codigo') || '';
   const urlEmail = searchParams.get('email') || '';
+  const urlMpStatus = searchParams.get('status') || '';
+  const urlRegistroId = searchParams.get('id') || '';
 
   useEffect(() => {
     if (urlCodigo) { setActiveTab('signup'); setDirection(1); }
   }, [urlCodigo]);
+
+  // Feedback visual quando cliente volta do Mercado Pago checkout
+  useEffect(() => {
+    if (!urlMpStatus) return;
+    if (urlMpStatus === 'success') {
+      toast.success('Pagamento aprovado! Verifique seu email para o código de ativação.', {
+        duration: 8000,
+      });
+      setActiveTab('signup');
+      setDirection(1);
+    } else if (urlMpStatus === 'pending') {
+      toast.info('Pagamento em processamento. Você receberá o código por email assim que for aprovado.', {
+        duration: 8000,
+      });
+    } else if (urlMpStatus === 'error') {
+      toast.error('Pagamento não foi concluído. Tente novamente ou escolha outra forma de pagamento.', {
+        duration: 8000,
+      });
+    }
+  }, [urlMpStatus, urlRegistroId]);
 
   useEffect(() => {
     const host = window.location.hostname;

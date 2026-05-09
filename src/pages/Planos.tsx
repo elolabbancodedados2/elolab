@@ -5,7 +5,13 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Check, Crown, Sparkles, Zap, Clock, Gift, ArrowRight, Shield, Headphones } from 'lucide-react';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
+import { Check, Crown, Sparkles, Zap, Clock, Gift, ArrowRight, Shield, Headphones, XCircle } from 'lucide-react';
 import { useUserPlan, usePlanos, useStartTrialWithPayment } from '@/hooks/useSubscriptionPlan';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { PaymentMethodDialog, type PaymentMethodData } from '@/components/PaymentMethodDialog';
@@ -76,6 +82,8 @@ export default function Planos() {
   // State for payment method dialog
   const [showPaymentDialog, setShowPaymentDialog] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<any>(null);
+  const [showCancelDialog, setShowCancelDialog] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
 
   const handleStartTrialWithPayment = (paymentData: PaymentMethodData) => {
     if (!selectedPlan || !user?.email) return;
@@ -92,6 +100,46 @@ export default function Planos() {
 
     setShowPaymentDialog(false);
   };
+
+  const cancelMutation = useMutation({
+    mutationFn: async (motivo: string) => {
+      if (!user?.id) throw new Error('Usuário não autenticado');
+
+      // Buscar a assinatura MP ativa do usuário
+      const { data: assinaturaMp, error: searchErr } = await supabase
+        .from('assinaturas_mercadopago')
+        .select('id, mp_preapproval_id')
+        .eq('status', 'ativa')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (searchErr) throw searchErr;
+      if (!assinaturaMp?.mp_preapproval_id) {
+        throw new Error('Não encontramos assinatura ativa para cancelar');
+      }
+
+      const { data, error } = await supabase.functions.invoke('mercadopago-checkout', {
+        body: {
+          action: 'cancel_subscription',
+          assinatura_id: assinaturaMp.id,
+          mp_preapproval_id: assinaturaMp.mp_preapproval_id,
+          user_id: user.id,
+          motivo,
+        },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      return data;
+    },
+    onSuccess: () => {
+      toast.success('Assinatura cancelada. O acesso continua até o fim do período pago.');
+      setShowCancelDialog(false);
+      setCancelReason('');
+      queryClient.invalidateQueries({ queryKey: ['user_plan'] });
+    },
+    onError: (err: any) => toast.error(err.message || 'Erro ao cancelar assinatura'),
+  });
 
   const upgradeMutation = useMutation({
     mutationFn: async (plano: any) => {
@@ -275,10 +323,24 @@ export default function Planos() {
               {/* Footer */}
               <div className="relative p-8 pt-2 flex flex-col gap-3">
                 {isCurrentPlan ? (
-                  <Button className="w-full h-12 text-base" variant="outline" disabled>
-                    <Shield className="h-4 w-4 mr-2" />
-                    {isTrial ? 'Em Período de Teste' : 'Seu Plano Atual'}
-                  </Button>
+                  <>
+                    <Button className="w-full h-12 text-base" variant="outline" disabled>
+                      <Shield className="h-4 w-4 mr-2" />
+                      {isTrial ? 'Em Período de Teste' : 'Seu Plano Atual'}
+                    </Button>
+                    {!isTrial && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="w-full text-muted-foreground hover:text-destructive"
+                        onClick={() => setShowCancelDialog(true)}
+                        disabled={cancelMutation.isPending}
+                      >
+                        <XCircle className="h-3.5 w-3.5 mr-1.5" />
+                        {cancelMutation.isPending ? 'Cancelando...' : 'Cancelar assinatura'}
+                      </Button>
+                    )}
+                  </>
                 ) : (
                   <>
                     {!hasActivePlan && (
@@ -339,6 +401,55 @@ export default function Planos() {
           trialDays={selectedPlan.trial_dias || 3}
         />
       )}
+
+      {/* Cancel Subscription Dialog */}
+      <AlertDialog open={showCancelDialog} onOpenChange={setShowCancelDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <XCircle className="h-5 w-5 text-destructive" />
+              Cancelar assinatura?
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2">
+                <p>
+                  Sua assinatura será cancelada no Mercado Pago. Você continua com acesso até
+                  o fim do período já pago — depois disso, o app fica restrito.
+                </p>
+                <p>
+                  Para voltar a usar, basta assinar novamente nesta página.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          <div className="space-y-2">
+            <Label htmlFor="cancel-reason" className="text-sm">
+              Motivo do cancelamento (opcional, ajuda a melhorar)
+            </Label>
+            <Textarea
+              id="cancel-reason"
+              value={cancelReason}
+              onChange={(e) => setCancelReason(e.target.value)}
+              placeholder="Ex.: encontrei outra solução, custo, não atendeu necessidade..."
+              rows={3}
+            />
+          </div>
+
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={cancelMutation.isPending}>
+              Manter assinatura
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => cancelMutation.mutate(cancelReason)}
+              disabled={cancelMutation.isPending}
+              className="bg-destructive hover:bg-destructive/90"
+            >
+              {cancelMutation.isPending ? 'Cancelando...' : 'Confirmar cancelamento'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

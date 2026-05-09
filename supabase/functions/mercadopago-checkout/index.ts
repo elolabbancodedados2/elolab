@@ -296,22 +296,74 @@ async function cancelSubscription(
   supabase: any,
   headers: Record<string, string>
 ) {
-  const { assinatura_id, mp_preapproval_id } = body;
+  const { assinatura_id, mp_preapproval_id, user_id, motivo } = body;
+
+  if (!mp_preapproval_id) {
+    return new Response(
+      JSON.stringify({ error: "mp_preapproval_id é obrigatório" }),
+      { status: 400, headers: { ...headers, "Content-Type": "application/json" } }
+    );
+  }
 
   // PUT /preapproval/{id} with status: "cancelled" per MP API docs
-  const response = await callMercadoPagoWithRetry(
-    `${MP_API_BASE}/preapproval/${mp_preapproval_id}`,
-    "PUT",
-    { status: "cancelled" },
-    mpToken
-  );
+  try {
+    await callMercadoPagoWithRetry(
+      `${MP_API_BASE}/preapproval/${mp_preapproval_id}`,
+      "PUT",
+      { status: "cancelled" },
+      mpToken
+    );
+  } catch (err) {
+    console.error("Falha ao cancelar no Mercado Pago:", err);
+    return new Response(
+      JSON.stringify({
+        error: err instanceof Error ? err.message : "Erro ao cancelar no Mercado Pago",
+      }),
+      { status: 502, headers: { ...headers, "Content-Type": "application/json" } }
+    );
+  }
 
-  await supabase
-    .from("assinaturas_mercadopago")
-    .update({ status: "cancelada" })
-    .eq("id", assinatura_id);
+  const cancelDate = new Date().toISOString();
 
-  return new Response(JSON.stringify({ success: true }), {
+  // Atualiza tabela MP (registro do gateway)
+  if (assinatura_id) {
+    await supabase
+      .from("assinaturas_mercadopago")
+      .update({ status: "cancelada" })
+      .eq("id", assinatura_id);
+  } else {
+    // Fallback: encontrar via mp_preapproval_id
+    await supabase
+      .from("assinaturas_mercadopago")
+      .update({ status: "cancelada" })
+      .eq("mp_preapproval_id", mp_preapproval_id);
+  }
+
+  // Atualiza tabela do plano do usuário (que useUserPlan consulta)
+  if (user_id) {
+    await supabase
+      .from("assinaturas_plano")
+      .update({
+        status: "cancelada",
+        data_cancelamento: cancelDate,
+        updated_at: cancelDate,
+      })
+      .eq("user_id", user_id)
+      .eq("status", "ativa");
+  }
+
+  // Audit trail
+  if (user_id) {
+    await supabase.from("audit_log").insert({
+      action: "SUBSCRIPTION_CANCELLED",
+      collection: "assinaturas_mercadopago",
+      record_id: assinatura_id || mp_preapproval_id,
+      user_id,
+      details: { motivo: motivo || null, mp_preapproval_id, cancelled_at: cancelDate },
+    });
+  }
+
+  return new Response(JSON.stringify({ success: true, cancelled_at: cancelDate }), {
     status: 200,
     headers: { ...headers, "Content-Type": "application/json" },
   });

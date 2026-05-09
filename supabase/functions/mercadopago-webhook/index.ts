@@ -98,17 +98,28 @@ Deno.serve(async (req) => {
     const data = JSON.parse(body);
     console.log("Webhook recebido:", JSON.stringify(data));
 
-    // Validate signature
+    // Validate signature — MERCADOPAGO_WEBHOOK_SECRET é obrigatório.
+    // Se ausente, recusamos webhooks para impedir spoofing (ativar conta de graça
+    // sem ter pago). Configure em Supabase Dashboard → Edge Functions → Secrets.
     const mpWebhookSecret = Deno.env.get("MERCADOPAGO_WEBHOOK_SECRET");
-    if (mpWebhookSecret) {
-      const isValid = await validateMercadoPagoSignature(req, body, mpWebhookSecret);
-      if (!isValid) {
-        console.error("Invalid webhook signature");
-        return new Response(JSON.stringify({ error: "Invalid signature" }), {
-          status: 401,
+    if (!mpWebhookSecret) {
+      console.error("MERCADOPAGO_WEBHOOK_SECRET not configured — webhook rejected");
+      return new Response(
+        JSON.stringify({ error: "Webhook validation not configured. Contact admin." }),
+        {
+          status: 500,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
+        }
+      );
+    }
+
+    const isValid = await validateMercadoPagoSignature(req, body, mpWebhookSecret);
+    if (!isValid) {
+      console.error("Invalid webhook signature");
+      return new Response(JSON.stringify({ error: "Invalid signature" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     // Check for idempotency — prevent duplicate processing

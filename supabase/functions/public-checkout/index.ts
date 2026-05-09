@@ -89,8 +89,16 @@ Deno.serve(async (req) => {
     }
 
     let checkoutUrl = null
+    let checkoutError: string | null = null
+    let emailSent = false
+    let emailError: string | null = null
 
     // MODE: BUY — create Mercado Pago Checkout Pro with all payment methods
+    if (mode === 'buy' && !mpAccessToken) {
+      checkoutError = 'Mercado Pago não configurado (MERCADOPAGO_ACCESS_TOKEN ausente)'
+      console.error(checkoutError)
+    }
+
     if (mode === 'buy' && mpAccessToken) {
       try {
         const appUrl = 'https://app.elolab.com.br'
@@ -166,20 +174,29 @@ Deno.serve(async (req) => {
         } else {
           const errText = await preferenceRes.text()
           console.error('MP preference error:', errText)
+          checkoutError = `Mercado Pago retornou erro ${preferenceRes.status}. Tente novamente em instantes.`
         }
       } catch (mpErr) {
         console.error('Erro Mercado Pago:', mpErr)
+        checkoutError = mpErr instanceof Error
+          ? `Erro ao conectar com Mercado Pago: ${mpErr.message}`
+          : 'Erro ao conectar com Mercado Pago'
       }
     }
 
     // Only send welcome email with invite code for TRIAL mode
     // For BUY mode, the email is sent after payment approval via webhook
+    if (mode === 'trial' && !brevoApiKey) {
+      emailError = 'Brevo não configurado (BREVO_API_KEY ausente). Use o código mostrado abaixo manualmente.'
+      console.error(emailError)
+    }
+
     if (brevoApiKey && mode === 'trial') {
       const appUrl = 'https://app.elolab.com.br'
       const activationLink = `${appUrl}/auth?codigo=${inviteCode}&email=${encodeURIComponent(email)}&plano=${plano.slug}`
 
       try {
-        await fetch('https://api.brevo.com/v3/smtp/email', {
+        const emailRes = await fetch('https://api.brevo.com/v3/smtp/email', {
           method: 'POST',
           headers: {
             'api-key': brevoApiKey,
@@ -217,21 +234,53 @@ Deno.serve(async (req) => {
             `,
           }),
         })
+
+        if (emailRes.ok) {
+          emailSent = true
+        } else {
+          const errBody = await emailRes.text()
+          console.error('Brevo error:', emailRes.status, errBody)
+          emailError = `Falha ao enviar email (HTTP ${emailRes.status}). Use o código abaixo manualmente.`
+        }
       } catch (emailErr) {
         console.error('Erro ao enviar email:', emailErr)
+        emailError = emailErr instanceof Error
+          ? `Erro ao enviar email: ${emailErr.message}`
+          : 'Erro ao enviar email'
       }
+    }
+
+    // Determine final response — success only if critical step succeeded
+    const buySuccess = mode === 'buy' && !!checkoutUrl
+    const trialSuccess = mode === 'trial' && (emailSent || !brevoApiKey)
+    const partialSuccess = mode === 'trial' && !emailSent && !!brevoApiKey
+    // (mode buy without checkoutUrl = failure: client paid nothing, no MP redirect)
+
+    if (mode === 'buy' && !checkoutUrl) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: checkoutError || 'Não foi possível iniciar o checkout. Tente novamente.',
+          mode,
+        }),
+        { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
     }
 
     return new Response(
       JSON.stringify({
         success: true,
         mode,
-        message: mode === 'buy' && checkoutUrl
+        message: buySuccess
           ? 'Redirecionando para pagamento. Após aprovação, você receberá o código de ativação por e-mail.'
-          : 'Registro criado! Verifique seu e-mail para o código de ativação.',
+          : partialSuccess
+            ? `Registro criado, mas houve problema ao enviar email. Use o código de ativação: ${inviteCode}`
+            : 'Registro criado! Verifique seu e-mail para o código de ativação.',
         checkout_url: checkoutUrl,
-        // Only return invite_code for trial mode; for buy mode, code is sent after payment
-        ...(mode === 'trial' ? { invite_code: inviteCode } : {}),
+        email_sent: mode === 'trial' ? emailSent : null,
+        email_error: emailError,
+        // Mostrar o código se trial e email não foi enviado, para o cliente não ficar sem
+        ...(mode === 'trial' && (emailSent || !brevoApiKey || partialSuccess) ? { invite_code: inviteCode } : {}),
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
