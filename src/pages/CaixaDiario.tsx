@@ -1429,6 +1429,69 @@ export default function CaixaDiario() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Editar lançamento */}
+      <Dialog open={!!editLanc} onOpenChange={(o) => !o && setEditLanc(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Editar lançamento</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>Descrição</Label>
+              <Input
+                value={editForm.descricao}
+                onChange={(e) => setEditForm(f => ({ ...f, descricao: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Valor (R$)</Label>
+              <Input
+                type="number" step="0.01" min="0"
+                value={editForm.valor}
+                onChange={(e) => setEditForm(f => ({ ...f, valor: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Forma de pagamento</Label>
+              <Select
+                value={editForm.forma_pagamento}
+                onValueChange={(v) => setEditForm(f => ({ ...f, forma_pagamento: v as FormaPagamento }))}
+              >
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="dinheiro">Dinheiro</SelectItem>
+                  <SelectItem value="pix">PIX</SelectItem>
+                  <SelectItem value="cartao_credito">Crédito</SelectItem>
+                  <SelectItem value="cartao_debito">Débito</SelectItem>
+                  <SelectItem value="cheque">Cheque</SelectItem>
+                  <SelectItem value="transferencia">Transferência</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditLanc(null)}>Cancelar</Button>
+            <Button
+              onClick={() => {
+                if (!editLanc) return;
+                const valor = parseFloat(editForm.valor);
+                if (!editForm.descricao.trim()) { toast.error('Informe a descrição'); return; }
+                if (!Number.isFinite(valor) || valor <= 0) { toast.error('Valor inválido'); return; }
+                editarLancamentoMutation.mutate({
+                  id: editLanc.id,
+                  descricao: editForm.descricao.trim(),
+                  valor,
+                  forma_pagamento: editForm.forma_pagamento,
+                });
+              }}
+              disabled={editarLancamentoMutation.isPending}
+            >
+              {editarLancamentoMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Salvar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
