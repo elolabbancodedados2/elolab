@@ -710,17 +710,37 @@ export default function ContasReceber() {
               <Textarea value={formData.descricao} onChange={e => setFormData({ ...formData, descricao: e.target.value })} placeholder="Detalhe o serviço..." rows={2} />
             </div>
 
-            {/* Valor + Vencimento */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs">Valor (R$) *</Label>
-                <Input type="number" step="0.01" value={formData.valor || ''} onChange={e => setFormData({ ...formData, valor: parseFloat(e.target.value) || 0 })} />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs">Vencimento</Label>
-                <Input type="date" value={formData.data_vencimento} onChange={e => setFormData({ ...formData, data_vencimento: e.target.value })} />
-              </div>
-            </div>
+             {/* Valor + Vencimento + Empréstimo */}
+             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+               <div className="space-y-1.5">
+                 <Label className="text-xs font-semibold">Valor (R$) *</Label>
+                 <Input type="number" step="0.01" value={formData.valor || ''} onChange={e => setFormData({ ...formData, valor: parseFloat(e.target.value) || 0 })} />
+               </div>
+               <div className="space-y-1.5">
+                 <Label className="text-xs font-semibold">Data de Vencimento</Label>
+                 <Input type="date" value={formData.data_vencimento} onChange={e => setFormData({ ...formData, data_vencimento: e.target.value })} />
+               </div>
+               <div className="space-y-1.5">
+                 <Label className="text-xs font-semibold">Data do Empréstimo</Label>
+                 <Input type="date" value={formData.data_emprestimo} onChange={e => setFormData({ ...formData, data_emprestimo: e.target.value })} />
+               </div>
+             </div>
+
+             {/* Frequência de Pagamento */}
+             <div className="space-y-1.5">
+               <Label className="text-xs font-semibold uppercase tracking-wider">Frequência de Pagamento</Label>
+               <Select value={formData.frequencia_pagamento} onValueChange={v => setFormData({ ...formData, frequencia_pagamento: v })}>
+                 <SelectTrigger className="h-9">
+                   <SelectValue placeholder="Selecione a frequência" />
+                 </SelectTrigger>
+                 <SelectContent>
+                   <SelectItem value="unica">Pagamento Único</SelectItem>
+                   <SelectItem value="mensal">Mensal</SelectItem>
+                   <SelectItem value="quinzenal">Quinzenal</SelectItem>
+                   <SelectItem value="semanal">Semanal</SelectItem>
+                 </SelectContent>
+               </Select>
+             </div>
 
             {/* Forma pgto + Centro custo */}
             <div className="grid grid-cols-2 gap-3">
