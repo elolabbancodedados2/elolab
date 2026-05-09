@@ -551,18 +551,18 @@ function PrecosConvenio() {
 
   const saveMutation = useMutation({
     mutationFn: async (form: any) => {
+      const valorTabela = parseMoney(form.valor_tabela);
+      if (!profile?.clinica_id) throw new Error('Clínica não identificada. Recarregue a página e tente novamente.');
+      if (!form.convenio_id || !form.tipo_exame || !Number.isFinite(valorTabela) || valorTabela <= 0) {
+        throw new Error('Preencha convênio, exame e valor válido maior que zero.');
+      }
+      const payload = {
+        convenio_id: form.convenio_id, tipo_exame: form.tipo_exame.trim(), codigo_tuss: form.codigo_tuss?.trim() || null,
+        descricao: form.descricao?.trim() || null, valor_tabela: valorTabela, valor_filme: form.valor_filme ? parseMoney(form.valor_filme) : 0,
+        valor_custo: form.valor_custo ? parseMoney(form.valor_custo) : 0, valor_repasse: form.valor_repasse ? parseMoney(form.valor_repasse) : 0,
+        clinica_id: profile.clinica_id,
+      };
       if (editing) {
-        const valorTabela = parseMoney(form.valor_tabela);
-        if (!form.convenio_id || !form.tipo_exame || !Number.isFinite(valorTabela) || valorTabela <= 0) {
-          throw new Error('Preencha convênio, exame e valor válido maior que zero.');
-        }
-        const payload = {
-          convenio_id: form.convenio_id, tipo_exame: form.tipo_exame, codigo_tuss: form.codigo_tuss || null,
-          descricao: form.descricao || null, valor_tabela: valorTabela, valor_filme: form.valor_filme ? parseMoney(form.valor_filme) : 0,
-          valor_custo: form.valor_custo ? parseMoney(form.valor_custo) : 0, valor_repasse: form.valor_repasse ? parseMoney(form.valor_repasse) : 0,
-          clinica_id: profile?.clinica_id,
-        };
-        if (editing) {
         const { data, error } = await supabase.from('precos_exames_convenio').update(payload).eq('id', editing.id).select('id').maybeSingle();
         if (error) throw error;
         if (!data) throw new Error('Preço não encontrado ou sem permissão para alterar.');
