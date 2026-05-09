@@ -82,18 +82,20 @@ const CENTROS_CUSTO_RECEITA = [
   { value: 'fisioterapia', label: 'Fisioterapia' },
 ];
 
-interface FormData {
-  paciente_id: string;
-  categoria: string;
-  descricao: string;
-  valor: number;
-  data_vencimento: string;
-  forma_pagamento: string;
-  centro_custo: string;
-  numero_documento: string;
-  competencia: string;
-  observacoes: string;
-}
+ interface FormData {
+   paciente_id: string;
+   categoria: string;
+   descricao: string;
+   valor: number;
+   data_vencimento: string;
+   data_emprestimo: string;
+   forma_pagamento: string;
+   centro_custo: string;
+   numero_documento: string;
+   competencia: string;
+   observacoes: string;
+   frequencia_pagamento: string;
+ }
 
 interface BaixaData {
   forma_pagamento: string;
@@ -120,12 +122,15 @@ export default function ContasReceber() {
   const [isPagamentoOpen, setIsPagamentoOpen] = useState(false);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [selectedConta, setSelectedConta] = useState<any>(null);
-  const [formData, setFormData] = useState<FormData>({
-    paciente_id: '', categoria: 'consulta', descricao: '', valor: 0,
-    data_vencimento: format(new Date(), 'yyyy-MM-dd'), forma_pagamento: 'pix',
-    centro_custo: 'geral', numero_documento: '', competencia: format(new Date(), 'yyyy-MM'),
-    observacoes: '',
-  });
+   const [formData, setFormData] = useState<FormData>({
+     paciente_id: '', categoria: 'consulta', descricao: '', valor: 0,
+     data_vencimento: format(new Date(), 'yyyy-MM-dd'),
+     data_emprestimo: format(new Date(), 'yyyy-MM-dd'),
+     forma_pagamento: 'pix',
+     centro_custo: 'geral', numero_documento: '', competencia: format(new Date(), 'yyyy-MM'),
+     observacoes: '',
+     frequencia_pagamento: 'unica',
+   });
   const [baixaData, setBaixaData] = useState<BaixaData>({
     forma_pagamento: 'pix', data_recebimento: format(new Date(), 'yyyy-MM-dd'),
     desconto: 0, acrescimo: 0, observacoes: '',
@@ -231,15 +236,18 @@ export default function ContasReceber() {
 
   const getPacienteNome = (conta: any) => conta.pacientes?.nome || 'Particular';
 
-  const handleNew = () => {
-    setFormData({
-      paciente_id: '', categoria: 'consulta', descricao: '', valor: 0,
-      data_vencimento: format(new Date(), 'yyyy-MM-dd'), forma_pagamento: 'pix',
-      centro_custo: 'geral', numero_documento: '', competencia: format(new Date(), 'yyyy-MM'),
-      observacoes: '',
-    });
-    setIsFormOpen(true);
-  };
+   const handleNew = () => {
+     setFormData({
+       paciente_id: '', categoria: 'consulta', descricao: '', valor: 0,
+       data_vencimento: format(new Date(), 'yyyy-MM-dd'),
+       data_emprestimo: format(new Date(), 'yyyy-MM-dd'),
+       forma_pagamento: 'pix',
+       centro_custo: 'geral', numero_documento: '', competencia: format(new Date(), 'yyyy-MM'),
+       observacoes: '',
+       frequencia_pagamento: 'unica',
+     });
+     setIsFormOpen(true);
+   };
 
   const handleSave = async () => {
     if (!formData.descricao || !formData.valor) {
@@ -252,22 +260,24 @@ export default function ContasReceber() {
     }
     setIsSubmitting(true);
     try {
-      const { error } = await supabase.from('lancamentos').insert({
-        tipo: 'receita',
-        categoria: formData.categoria,
-        descricao: formData.descricao,
-        valor: formData.valor,
-        data: new Date().toISOString().split('T')[0],
-        data_vencimento: formData.data_vencimento,
-        status: 'pendente' as StatusPagamento,
-        paciente_id: formData.paciente_id || null,
-        forma_pagamento: formData.forma_pagamento || null,
-        centro_custo: formData.centro_custo || null,
-        numero_documento: formData.numero_documento || null,
-        competencia: formData.competencia || null,
-        observacoes: formData.observacoes || null,
-        clinica_id: profile?.clinica_id || null,
-      });
+       const { error } = await supabase.from('lancamentos').insert({
+         tipo: 'receita',
+         categoria: formData.categoria,
+         descricao: formData.descricao,
+         valor: formData.valor,
+         data: new Date().toISOString().split('T')[0],
+         data_vencimento: formData.data_vencimento,
+         data_emprestimo: formData.data_emprestimo,
+         frequencia_pagamento: formData.frequencia_pagamento,
+         status: 'pendente' as StatusPagamento,
+         paciente_id: formData.paciente_id || null,
+         forma_pagamento: formData.forma_pagamento || null,
+         centro_custo: formData.centro_custo || null,
+         numero_documento: formData.numero_documento || null,
+         competencia: formData.competencia || null,
+         observacoes: formData.observacoes || null,
+         clinica_id: profile?.clinica_id || null,
+       });
       if (error) throw error;
       toast.success('Receita cadastrada com sucesso!');
       queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
