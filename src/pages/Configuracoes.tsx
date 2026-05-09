@@ -34,6 +34,8 @@ import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useUserPlan, usePlanos } from '@/hooks/useSubscriptionPlan';
+import { useNavigate } from 'react-router-dom';
+import { useMutation } from '@tanstack/react-query';
 
 
 
@@ -318,6 +320,58 @@ export default function Configuracoes() {
   const queryClient = useQueryClient();
   const { planName, planSlug, hasActivePlan, isTrial, trialEnd, trialDaysLeft } = useUserPlan();
   const { data: planos } = usePlanos();
+  const navigate = useNavigate();
+  const [showFaturas, setShowFaturas] = useState(false);
+  const [showCancelPlan, setShowCancelPlan] = useState(false);
+
+  const { data: faturas, isLoading: loadingFaturas } = useQuery({
+    queryKey: ['minhas_faturas_saas', profile?.clinica_id],
+    enabled: !!profile?.clinica_id && showFaturas,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from('pagamentos_mercadopago')
+        .select('id, valor, valor_pago, status, tipo, descricao, data_criacao, data_aprovacao, checkout_url, metodo_pagamento')
+        .eq('clinica_id', profile!.clinica_id)
+        .order('data_criacao', { ascending: false })
+        .limit(50);
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  const cancelPlanMutation = useMutation({
+    mutationFn: async () => {
+      if (!user?.id) throw new Error('Usuário não autenticado');
+      const { data: assinaturaMp, error: searchErr } = await (supabase as any)
+        .from('assinaturas_mercadopago')
+        .select('id, mp_preapproval_id')
+        .eq('status', 'ativa')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (searchErr) throw searchErr;
+      if (!assinaturaMp?.mp_preapproval_id) throw new Error('Não encontramos assinatura ativa para cancelar');
+      const { data, error } = await supabase.functions.invoke('mercadopago-checkout', {
+        body: {
+          action: 'cancel_subscription',
+          assinatura_id: assinaturaMp.id,
+          mp_preapproval_id: assinaturaMp.mp_preapproval_id,
+          user_id: user.id,
+          motivo: 'Cancelado pelo usuário em Configurações',
+        },
+      });
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+      return data;
+    },
+    onSuccess: () => {
+      toast.success('Assinatura cancelada. Acesso mantido até o fim do período pago.');
+      setShowCancelPlan(false);
+      queryClient.invalidateQueries({ queryKey: ['user_plan'] });
+    },
+    onError: (err: any) => toast.error(err.message || 'Erro ao cancelar assinatura'),
+  });
+
   const [isCloudSynced, setIsCloudSynced] = useState(false);
   const [configClinica, setConfigClinica] = useState<ConfiguracaoClinica>(DEFAULT_CLINICA);
   const [configNotificacoes, setConfigNotificacoes] = useState<ConfiguracaoNotificacoes>(DEFAULT_NOTIFICACOES);
