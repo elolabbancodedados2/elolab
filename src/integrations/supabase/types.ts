@@ -1742,12 +1742,10 @@ export type Database = {
           created_at: string | null
           data: string
           data_emissao: string | null
-          data_emprestimo: string | null
           data_vencimento: string | null
           descricao: string
           forma_pagamento: string | null
           fornecedor: string | null
-          frequencia_pagamento: string | null
           frequencia_recorrencia: string | null
           id: string
           numero_documento: string | null
@@ -1769,12 +1767,10 @@ export type Database = {
           created_at?: string | null
           data?: string
           data_emissao?: string | null
-          data_emprestimo?: string | null
           data_vencimento?: string | null
           descricao: string
           forma_pagamento?: string | null
           fornecedor?: string | null
-          frequencia_pagamento?: string | null
           frequencia_recorrencia?: string | null
           id?: string
           numero_documento?: string | null
@@ -1796,12 +1792,10 @@ export type Database = {
           created_at?: string | null
           data?: string
           data_emissao?: string | null
-          data_emprestimo?: string | null
           data_vencimento?: string | null
           descricao?: string
           forma_pagamento?: string | null
           fornecedor?: string | null
-          frequencia_pagamento?: string | null
           frequencia_recorrencia?: string | null
           id?: string
           numero_documento?: string | null
