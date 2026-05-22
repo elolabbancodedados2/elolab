@@ -5,6 +5,7 @@ import { ptBR } from 'date-fns/locale';
 import {
   FileText, Pill, TestTube, FileCheck, ArrowRight, Calendar, Clock,
   DollarSign, CalendarCheck, Paperclip, Activity, RefreshCw, AlertCircle, Search,
+  Download, Sparkles, Loader2,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -14,6 +15,10 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 interface PatientTimelineProps {
   pacienteId: string;
@@ -53,6 +58,10 @@ const TYPE_META: Record<EventType, { label: string; color: string; icon: JSX.Ele
 export function PatientTimeline({ pacienteId, className, maxItems = 50 }: PatientTimelineProps) {
   const [search, setSearch] = useState('');
   const [activeFilter, setActiveFilter] = useState<EventType | 'todos'>('todos');
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiSummary, setAiSummary] = useState<string | null>(null);
+  const [aiOpen, setAiOpen] = useState(false);
+  const [pdfLoading, setPdfLoading] = useState(false);
 
   const { data: events, isLoading } = useQuery({
     queryKey: ['patient-timeline', pacienteId],
@@ -308,6 +317,75 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
     });
   }, [events, search, activeFilter]);
 
+  const handleExportPDF = async () => {
+    if (!events || events.length === 0) {
+      toast.error('Nenhum dado para exportar');
+      return;
+    }
+    setPdfLoading(true);
+    try {
+      const { data: pac } = await supabase
+        .from('pacientes')
+        .select('nome, cpf, data_nascimento, telefone, email, sexo, alergias')
+        .eq('id', pacienteId)
+        .maybeSingle();
+
+      const doc = new jsPDF();
+      doc.setFontSize(16);
+      doc.text('Prontuário Completo do Paciente', 14, 18);
+      doc.setFontSize(10);
+      doc.text(`Paciente: ${pac?.nome || '—'}`, 14, 28);
+      if (pac?.cpf) doc.text(`CPF: ${pac.cpf}`, 14, 34);
+      if (pac?.data_nascimento) doc.text(`Nascimento: ${format(new Date(pac.data_nascimento), 'dd/MM/yyyy')}`, 14, 40);
+      if (pac?.telefone) doc.text(`Telefone: ${pac.telefone}`, 100, 34);
+      if (pac?.email) doc.text(`E-mail: ${pac.email}`, 100, 40);
+      if (pac?.alergias) doc.text(`Alergias: ${pac.alergias}`, 14, 46);
+      doc.text(`Emitido em: ${format(new Date(), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}`, 14, 52);
+
+      const rows = events.map(e => [
+        format(e.date, 'dd/MM/yyyy HH:mm', { locale: ptBR }),
+        TYPE_META[e.type].label,
+        e.title,
+        [e.description, e.medicoNome && `Dr(a). ${e.medicoNome}`, e.status].filter(Boolean).join(' | '),
+      ]);
+
+      autoTable(doc, {
+        head: [['Data', 'Tipo', 'Título', 'Detalhes']],
+        body: rows,
+        startY: 58,
+        styles: { fontSize: 8, cellPadding: 2 },
+        headStyles: { fillColor: [16, 185, 129] },
+        columnStyles: { 3: { cellWidth: 80 } },
+      });
+
+      doc.save(`prontuario-${pac?.nome?.replace(/\s+/g, '_') || pacienteId}.pdf`);
+      toast.success('PDF gerado com sucesso');
+    } catch (err: any) {
+      toast.error('Falha ao gerar PDF: ' + err.message);
+    } finally {
+      setPdfLoading(false);
+    }
+  };
+
+  const handleAISummary = async () => {
+    setAiLoading(true);
+    setAiOpen(true);
+    setAiSummary(null);
+    try {
+      const { data, error } = await supabase.functions.invoke('patient-clinical-summary', {
+        body: { paciente_id: pacienteId },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      setAiSummary(data?.summary || 'Sem resumo gerado.');
+    } catch (err: any) {
+      toast.error('Falha ao gerar resumo: ' + err.message);
+      setAiSummary('Erro ao gerar resumo clínico.');
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <Card className={className}>
@@ -335,6 +413,7 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
   }
 
   return (
+    <>
     <Card className={className}>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
@@ -345,6 +424,16 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
           </Badge>
         </CardTitle>
         <div className="mt-3 space-y-3">
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="outline" onClick={handleExportPDF} disabled={pdfLoading}>
+              {pdfLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Download className="h-4 w-4 mr-2" />}
+              Exportar PDF
+            </Button>
+            <Button size="sm" variant="default" onClick={handleAISummary} disabled={aiLoading}>
+              {aiLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Sparkles className="h-4 w-4 mr-2" />}
+              Resumo clínico IA
+            </Button>
+          </div>
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
@@ -429,5 +518,27 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
         )}
       </CardContent>
     </Card>
+
+    <Dialog open={aiOpen} onOpenChange={setAiOpen}>
+      <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Sparkles className="h-5 w-5 text-primary" />
+            Resumo Clínico Inteligente
+          </DialogTitle>
+        </DialogHeader>
+        {aiLoading ? (
+          <div className="flex items-center gap-3 py-8 text-muted-foreground">
+            <Loader2 className="h-5 w-5 animate-spin" />
+            Analisando histórico do paciente...
+          </div>
+        ) : (
+          <div className="prose prose-sm max-w-none whitespace-pre-wrap text-sm">
+            {aiSummary}
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }
