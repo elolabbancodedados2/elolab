@@ -141,14 +141,19 @@ export default function Automacoes() {
   };
 
   const toggleAutomation = async (key: string, currentState: boolean) => {
-    const setting = getSettingByKey(key);
-    if (!setting) return;
-
     try {
+      const automation = AUTOMATIONS.find(a => a.key === key);
       const { error } = await supabase
         .from('automation_settings')
-        .update({ ativo: !currentState })
-        .eq('chave', key);
+        .upsert(
+          {
+            chave: key,
+            ativo: !currentState,
+            descricao: automation?.description ?? null,
+            valor: {},
+          },
+          { onConflict: 'chave' }
+        );
 
       if (error) throw error;
 
@@ -156,7 +161,7 @@ export default function Automacoes() {
       refetchSettings();
     } catch (error) {
       if (import.meta.env.DEV) console.error('Error toggling automation:', error);
-      toast.error('Erro', { description: 'Erro ao alterar status da automação.' });
+      toast.error('Erro', { description: (error as Error)?.message || 'Erro ao alterar status da automação.' });
     }
   };
 
