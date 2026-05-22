@@ -287,6 +287,7 @@ export default function RelatorioCustomizado() {
   const [valorMin, setValorMin] = useState<string>('');
   const [valorMax, setValorMax] = useState<string>('');
   const [tipoLancamento, setTipoLancamento] = useState<string>('todos');
+  const [groupBy, setGroupBy] = useState<string>('nenhum');
   const [visibleCols, setVisibleCols] = useState<Set<string>>(new Set(cfg.columns.map(c => c.key)));
 
   const [rows, setRows] = useState<any[]>([]);
@@ -301,6 +302,7 @@ export default function RelatorioCustomizado() {
     setMedicoFilter('todos');
     setConvenioFilter('todos');
     setTipoLancamento('todos');
+    setGroupBy('nenhum');
     setRows([]);
   }, [dataset]);
 
