@@ -275,6 +275,27 @@ export default function CaixaDiario() {
     enabled: !!profile?.clinica_id && activeTab === 'historico',
   });
 
+  // Pacientes (busca para vincular à venda)
+  const { data: pacientesBusca = [] } = useQuery({
+    queryKey: ['pacientes-pos-busca', profile?.clinica_id, pacienteSearch],
+    queryFn: async () => {
+      if (!profile?.clinica_id) return [];
+      let q = supabase
+        .from('pacientes')
+        .select('id, nome, nome_social, cpf, telefone')
+        .eq('clinica_id', profile.clinica_id)
+        .order('nome')
+        .limit(20);
+      const term = pacienteSearch.trim();
+      if (term) {
+        q = q.or(`nome.ilike.%${term}%,nome_social.ilike.%${term}%,cpf.ilike.%${term}%,telefone.ilike.%${term}%`);
+      }
+      const { data } = await q;
+      return (data || []) as any[];
+    },
+    enabled: !!profile?.clinica_id && pacientePopoverOpen,
+  });
+
   // Lançamentos do caixa em detalhe
   const { data: lancamentosDetalhe = [] } = useQuery({
     queryKey: ['lancamentos-detalhe', showDetalhesCaixa?.data],
