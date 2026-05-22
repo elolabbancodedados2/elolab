@@ -38,6 +38,7 @@ interface DatasetConfig {
   convenioField?: string;
   textSearchFields?: string[];
   columns: ColumnDef[];
+  groupByOptions?: { key: string; label: string }[];
 }
 
 const DATASETS: Record<DatasetKey, DatasetConfig> = {
@@ -83,6 +84,11 @@ const DATASETS: Record<DatasetKey, DatasetConfig> = {
       { key: 'status', label: 'Status' },
       { key: 'observacoes', label: 'Observações' },
     ],
+    groupByOptions: [
+      { key: 'tipo', label: 'Tipo' },
+      { key: 'status', label: 'Status' },
+      { key: 'medicos.nome', label: 'Médico' },
+    ],
   },
   lancamentos: {
     label: 'Financeiro (Lançamentos)',
@@ -104,6 +110,12 @@ const DATASETS: Record<DatasetKey, DatasetConfig> = {
       { key: 'status', label: 'Status' },
       { key: 'valor', label: 'Valor', format: 'currency' },
     ],
+    groupByOptions: [
+      { key: 'categoria', label: 'Categoria' },
+      { key: 'tipo', label: 'Tipo' },
+      { key: 'status', label: 'Status' },
+      { key: 'forma_pagamento', label: 'Forma de pagamento' },
+    ],
   },
   exames: {
     label: 'Exames',
@@ -123,6 +135,11 @@ const DATASETS: Record<DatasetKey, DatasetConfig> = {
       { key: 'status', label: 'Status' },
       { key: 'observacoes', label: 'Observações' },
     ],
+    groupByOptions: [
+      { key: 'tipo_exame', label: 'Tipo de exame' },
+      { key: 'status', label: 'Status' },
+      { key: 'medicos.nome', label: 'Médico' },
+    ],
   },
   prescricoes: {
     label: 'Prescrições',
@@ -140,6 +157,11 @@ const DATASETS: Record<DatasetKey, DatasetConfig> = {
       { key: 'posologia', label: 'Posologia' },
       { key: 'tipo', label: 'Tipo' },
     ],
+    groupByOptions: [
+      { key: 'medicamento', label: 'Medicamento' },
+      { key: 'tipo', label: 'Tipo' },
+      { key: 'medicos.nome', label: 'Médico' },
+    ],
   },
   atestados: {
     label: 'Atestados',
@@ -156,6 +178,10 @@ const DATASETS: Record<DatasetKey, DatasetConfig> = {
       { key: 'dias', label: 'Dias' },
       { key: 'motivo', label: 'Motivo' },
     ],
+    groupByOptions: [
+      { key: 'tipo', label: 'Tipo' },
+      { key: 'medicos.nome', label: 'Médico' },
+    ],
   },
   prontuarios: {
     label: 'Prontuários',
@@ -171,6 +197,9 @@ const DATASETS: Record<DatasetKey, DatasetConfig> = {
       { key: 'queixa_principal', label: 'Queixa' },
       { key: 'hipotese_diagnostica', label: 'Hipótese' },
       { key: 'conduta', label: 'Conduta' },
+    ],
+    groupByOptions: [
+      { key: 'medicos.nome', label: 'Médico' },
     ],
   },
   encaminhamentos: {
@@ -189,6 +218,11 @@ const DATASETS: Record<DatasetKey, DatasetConfig> = {
       { key: 'especialidade_destino', label: 'Especialidade' },
       { key: 'motivo', label: 'Motivo' },
       { key: 'status', label: 'Status' },
+    ],
+    groupByOptions: [
+      { key: 'especialidade_destino', label: 'Especialidade' },
+      { key: 'status', label: 'Status' },
+      { key: 'medicos.nome', label: 'Médico' },
     ],
   },
   estoque: {
@@ -209,6 +243,10 @@ const DATASETS: Record<DatasetKey, DatasetConfig> = {
       { key: 'validade', label: 'Validade', format: 'date' },
       { key: 'preco_unitario', label: 'Preço', format: 'currency' },
       { key: 'ativo', label: 'Ativo', format: 'boolean' },
+    ],
+    groupByOptions: [
+      { key: 'categoria', label: 'Categoria' },
+      { key: 'localizacao', label: 'Local' },
     ],
   },
 };
@@ -249,6 +287,7 @@ export default function RelatorioCustomizado() {
   const [valorMin, setValorMin] = useState<string>('');
   const [valorMax, setValorMax] = useState<string>('');
   const [tipoLancamento, setTipoLancamento] = useState<string>('todos');
+  const [groupBy, setGroupBy] = useState<string>('nenhum');
   const [visibleCols, setVisibleCols] = useState<Set<string>>(new Set(cfg.columns.map(c => c.key)));
 
   const [rows, setRows] = useState<any[]>([]);
@@ -263,6 +302,7 @@ export default function RelatorioCustomizado() {
     setMedicoFilter('todos');
     setConvenioFilter('todos');
     setTipoLancamento('todos');
+    setGroupBy('nenhum');
     setRows([]);
   }, [dataset]);
 
@@ -364,6 +404,20 @@ export default function RelatorioCustomizado() {
     const d = rows.filter(x => x.tipo === 'despesa').reduce((a, x) => a + Number(x.valor || 0), 0);
     return { receitas: r, despesas: d, saldo: r - d };
   }, [rows, dataset]);
+
+  const grouped = useMemo(() => {
+    if (groupBy === 'nenhum' || !rows.length) return null;
+    const map = new Map<string, { label: string; count: number; sum: number }>();
+    rows.forEach(r => {
+      const raw = getValue(r, groupBy);
+      const key = raw == null || raw === '' ? '(Sem valor)' : String(raw);
+      const cur = map.get(key) || { label: key, count: 0, sum: 0 };
+      cur.count++;
+      cur.sum += Number(r.valor || 0);
+      map.set(key, cur);
+    });
+    return Array.from(map.values()).sort((a, b) => b.count - a.count);
+  }, [rows, groupBy]);
 
   return (
     <div className="space-y-4">
@@ -494,6 +548,21 @@ export default function RelatorioCustomizado() {
                 />
               </div>
             ) : null}
+
+            {cfg.groupByOptions?.length ? (
+              <div>
+                <Label className="text-xs">Agrupar por (contagem)</Label>
+                <Select value={groupBy} onValueChange={setGroupBy}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="nenhum">Sem agrupamento</SelectItem>
+                    {cfg.groupByOptions.map(g => (
+                      <SelectItem key={g.key} value={g.key}>{g.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : null}
           </div>
 
           {/* Column picker */}
@@ -556,7 +625,42 @@ export default function RelatorioCustomizado() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <ScrollArea className="h-[520px]">
+            {grouped && (
+              <div className="mb-6">
+                <h3 className="text-sm font-semibold mb-2">
+                  Resumo por {cfg.groupByOptions?.find(g => g.key === groupBy)?.label}
+                </h3>
+                <div className="border rounded-md overflow-hidden">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Grupo</TableHead>
+                        <TableHead className="text-right">Quantidade</TableHead>
+                        {dataset === 'lancamentos' && <TableHead className="text-right">Soma (R$)</TableHead>}
+                        <TableHead className="text-right">% do total</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {grouped.map(g => (
+                        <TableRow key={g.label}>
+                          <TableCell className="font-medium">{g.label}</TableCell>
+                          <TableCell className="text-right font-semibold">{g.count}</TableCell>
+                          {dataset === 'lancamentos' && (
+                            <TableCell className="text-right">
+                              {g.sum.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                            </TableCell>
+                          )}
+                          <TableCell className="text-right text-muted-foreground">
+                            {((g.count / rows.length) * 100).toFixed(1)}%
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+            )}
+            <ScrollArea className="h-[420px]">
               <Table>
                 <TableHeader>
                   <TableRow>
