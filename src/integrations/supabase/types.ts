@@ -765,6 +765,10 @@ export type Database = {
           id: string
           nome: string
           owner_id: string | null
+          plano_id: string | null
+          suspensa: boolean
+          suspensa_em: string | null
+          suspensa_motivo: string | null
           updated_at: string | null
         }
         Insert: {
@@ -773,6 +777,10 @@ export type Database = {
           id?: string
           nome?: string
           owner_id?: string | null
+          plano_id?: string | null
+          suspensa?: boolean
+          suspensa_em?: string | null
+          suspensa_motivo?: string | null
           updated_at?: string | null
         }
         Update: {
@@ -781,9 +789,21 @@ export type Database = {
           id?: string
           nome?: string
           owner_id?: string | null
+          plano_id?: string | null
+          suspensa?: boolean
+          suspensa_em?: string | null
+          suspensa_motivo?: string | null
           updated_at?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "clinicas_plano_id_fkey"
+            columns: ["plano_id"]
+            isOneToOne: false
+            referencedRelation: "planos"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       coletas_laboratorio: {
         Row: {
@@ -1119,6 +1139,56 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "convenios_clinica_id_fkey"
+            columns: ["clinica_id"]
+            isOneToOne: false
+            referencedRelation: "clinicas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      convites_funcionario: {
+        Row: {
+          accepted_at: string | null
+          accepted_by: string | null
+          clinica_id: string
+          created_at: string
+          email: string
+          expires_at: string
+          id: string
+          invited_by: string
+          nome: string
+          roles: string[]
+          token: string
+        }
+        Insert: {
+          accepted_at?: string | null
+          accepted_by?: string | null
+          clinica_id: string
+          created_at?: string
+          email: string
+          expires_at?: string
+          id?: string
+          invited_by: string
+          nome: string
+          roles: string[]
+          token: string
+        }
+        Update: {
+          accepted_at?: string | null
+          accepted_by?: string | null
+          clinica_id?: string
+          created_at?: string
+          email?: string
+          expires_at?: string
+          id?: string
+          invited_by?: string
+          nome?: string
+          roles?: string[]
+          token?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "convites_funcionario_clinica_id_fkey"
             columns: ["clinica_id"]
             isOneToOne: false
             referencedRelation: "clinicas"
@@ -2688,6 +2758,10 @@ export type Database = {
           features: Json
           frequencia: string
           id: string
+          max_funcionarios_total: number
+          max_medicos: number
+          max_recepcao: number
+          max_storage_mb: number
           nome: string
           ordem: number | null
           slug: string
@@ -2703,6 +2777,10 @@ export type Database = {
           features?: Json
           frequencia?: string
           id?: string
+          max_funcionarios_total?: number
+          max_medicos?: number
+          max_recepcao?: number
+          max_storage_mb?: number
           nome: string
           ordem?: number | null
           slug: string
@@ -2718,6 +2796,10 @@ export type Database = {
           features?: Json
           frequencia?: string
           id?: string
+          max_funcionarios_total?: number
+          max_medicos?: number
+          max_recepcao?: number
+          max_storage_mb?: number
           nome?: string
           ordem?: number | null
           slug?: string
@@ -2726,6 +2808,74 @@ export type Database = {
           valor?: number
         }
         Relationships: []
+      }
+      platform_admins: {
+        Row: {
+          ativo: boolean
+          created_at: string
+          created_by: string | null
+          id: string
+          nivel: string
+          notes: string | null
+          user_id: string
+        }
+        Insert: {
+          ativo?: boolean
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          nivel: string
+          notes?: string | null
+          user_id: string
+        }
+        Update: {
+          ativo?: boolean
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          nivel?: string
+          notes?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      platform_impersonation_log: {
+        Row: {
+          acoes: Json
+          clinica_id: string
+          encerrado_em: string | null
+          id: string
+          iniciado_em: string
+          motivo: string
+          platform_admin_id: string
+        }
+        Insert: {
+          acoes?: Json
+          clinica_id: string
+          encerrado_em?: string | null
+          id?: string
+          iniciado_em?: string
+          motivo: string
+          platform_admin_id: string
+        }
+        Update: {
+          acoes?: Json
+          clinica_id?: string
+          encerrado_em?: string | null
+          id?: string
+          iniciado_em?: string
+          motivo?: string
+          platform_admin_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "platform_impersonation_log_clinica_id_fkey"
+            columns: ["clinica_id"]
+            isOneToOne: false
+            referencedRelation: "clinicas"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       portal_guias_tokens: {
         Row: {
@@ -4479,6 +4629,7 @@ export type Database = {
       can_access_clinical: { Args: { _user_id: string }; Returns: boolean }
       can_access_financial: { Args: { _user_id: string }; Returns: boolean }
       can_manage_data: { Args: { _user_id: string }; Returns: boolean }
+      current_clinica_id: { Args: never; Returns: string }
       delete_all_app_data: { Args: never; Returns: undefined }
       expire_trials: { Args: never; Returns: undefined }
       get_my_clinica_id: { Args: never; Returns: string }
@@ -4501,9 +4652,11 @@ export type Database = {
         Returns: boolean
       }
       is_admin: { Args: { _user_id: string }; Returns: boolean }
+      is_clinica_owner: { Args: { p_clinica_id: string }; Returns: boolean }
       is_enfermagem: { Args: { _user_id: string }; Returns: boolean }
       is_financeiro: { Args: { _user_id: string }; Returns: boolean }
       is_medico: { Args: { _user_id: string }; Returns: boolean }
+      is_platform_admin: { Args: never; Returns: boolean }
       is_recepcao: { Args: { _user_id: string }; Returns: boolean }
       is_same_clinica: { Args: { record_clinica_id: string }; Returns: boolean }
       mask_cpf: { Args: { cpf_value: string }; Returns: string }
