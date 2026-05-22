@@ -1,21 +1,17 @@
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { motion, AnimatePresence } from 'framer-motion';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { 
-  FileText, 
-  Pill, 
-  TestTube, 
-  FileCheck, 
-  ArrowRight, 
-  Calendar,
-  Clock,
-  User
+import {
+  FileText, Pill, TestTube, FileCheck, ArrowRight, Calendar, Clock,
+  DollarSign, CalendarCheck, Paperclip, Activity, RefreshCw, AlertCircle, Search,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
 
@@ -25,29 +21,52 @@ interface PatientTimelineProps {
   maxItems?: number;
 }
 
+type EventType =
+  | 'prontuario' | 'prescricao' | 'exame' | 'atestado' | 'encaminhamento'
+  | 'agendamento' | 'pagamento' | 'triagem' | 'anexo' | 'retorno' | 'comorbidade';
+
 interface TimelineEvent {
   id: string;
-  type: 'prontuario' | 'prescricao' | 'exame' | 'atestado' | 'encaminhamento';
+  type: EventType;
   date: Date;
   title: string;
   description?: string;
   status?: string;
   medicoNome?: string;
+  valor?: number;
 }
 
+const TYPE_META: Record<EventType, { label: string; color: string; icon: JSX.Element }> = {
+  prontuario:      { label: 'Consulta',       color: 'bg-blue-500',    icon: <FileText className="h-4 w-4" /> },
+  prescricao:      { label: 'Prescrição',     color: 'bg-green-500',   icon: <Pill className="h-4 w-4" /> },
+  exame:           { label: 'Exame',          color: 'bg-purple-500',  icon: <TestTube className="h-4 w-4" /> },
+  atestado:        { label: 'Atestado',       color: 'bg-amber-500',   icon: <FileCheck className="h-4 w-4" /> },
+  encaminhamento:  { label: 'Encaminhamento', color: 'bg-orange-500',  icon: <ArrowRight className="h-4 w-4" /> },
+  agendamento:     { label: 'Agendamento',    color: 'bg-sky-500',     icon: <CalendarCheck className="h-4 w-4" /> },
+  pagamento:       { label: 'Pagamento',      color: 'bg-emerald-600', icon: <DollarSign className="h-4 w-4" /> },
+  triagem:         { label: 'Triagem',        color: 'bg-rose-500',    icon: <Activity className="h-4 w-4" /> },
+  anexo:           { label: 'Anexo',          color: 'bg-slate-500',   icon: <Paperclip className="h-4 w-4" /> },
+  retorno:         { label: 'Retorno',        color: 'bg-indigo-500',  icon: <RefreshCw className="h-4 w-4" /> },
+  comorbidade:     { label: 'Comorbidade',    color: 'bg-red-500',     icon: <AlertCircle className="h-4 w-4" /> },
+};
+
 export function PatientTimeline({ pacienteId, className, maxItems = 50 }: PatientTimelineProps) {
+  const [search, setSearch] = useState('');
+  const [activeFilter, setActiveFilter] = useState<EventType | 'todos'>('todos');
+
   const { data: events, isLoading } = useQuery({
     queryKey: ['patient-timeline', pacienteId],
     queryFn: async () => {
       const allEvents: TimelineEvent[] = [];
+      const lim = Math.max(maxItems, 100);
 
       // Fetch prontuários
       const { data: prontuarios } = await supabase
         .from('prontuarios')
-        .select('id, data, queixa_principal, hipotese_diagnostica, medico_id')
+        .select('id, data, queixa_principal, hipotese_diagnostica, conduta, medicos(nome)')
         .eq('paciente_id', pacienteId)
         .order('data', { ascending: false })
-        .limit(maxItems);
+        .limit(lim);
 
       prontuarios?.forEach(p => {
         allEvents.push({
@@ -55,17 +74,18 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
           type: 'prontuario',
           date: new Date(p.data),
           title: 'Consulta Médica',
-          description: p.queixa_principal || p.hipotese_diagnostica || 'Atendimento realizado',
+          description: p.queixa_principal || p.hipotese_diagnostica || p.conduta || 'Atendimento realizado',
+          medicoNome: (p.medicos as any)?.nome,
         });
       });
 
       // Fetch prescrições
       const { data: prescricoes } = await supabase
         .from('prescricoes')
-        .select('id, data_emissao, medicamento, dosagem, tipo')
+        .select('id, data_emissao, medicamento, dosagem, posologia, tipo, medicos(nome)')
         .eq('paciente_id', pacienteId)
         .order('data_emissao', { ascending: false })
-        .limit(maxItems);
+        .limit(lim);
 
       prescricoes?.forEach(p => {
         allEvents.push({
@@ -73,37 +93,39 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
           type: 'prescricao',
           date: new Date(p.data_emissao || new Date()),
           title: 'Prescrição',
-          description: `${p.medicamento}${p.dosagem ? ` - ${p.dosagem}` : ''}`,
+          description: `${p.medicamento}${p.dosagem ? ` - ${p.dosagem}` : ''}${p.posologia ? ` (${p.posologia})` : ''}`,
           status: p.tipo || 'simples',
+          medicoNome: (p.medicos as any)?.nome,
         });
       });
 
       // Fetch exames
       const { data: exames } = await supabase
         .from('exames')
-        .select('id, data_solicitacao, tipo_exame, status')
+        .select('id, data_solicitacao, data_realizacao, tipo_exame, status, resultado, medicos(nome)')
         .eq('paciente_id', pacienteId)
         .order('data_solicitacao', { ascending: false })
-        .limit(maxItems);
+        .limit(lim);
 
       exames?.forEach(e => {
         allEvents.push({
           id: e.id,
           type: 'exame',
-          date: new Date(e.data_solicitacao || new Date()),
+          date: new Date(e.data_realizacao || e.data_solicitacao || new Date()),
           title: 'Exame',
-          description: e.tipo_exame,
+          description: `${e.tipo_exame}${e.resultado ? ' • Resultado disponível' : ''}`,
           status: e.status || 'solicitado',
+          medicoNome: (e.medicos as any)?.nome,
         });
       });
 
       // Fetch atestados
       const { data: atestados } = await supabase
         .from('atestados')
-        .select('id, data_emissao, tipo, dias, motivo')
+        .select('id, data_emissao, tipo, dias, motivo, medicos(nome)')
         .eq('paciente_id', pacienteId)
         .order('data_emissao', { ascending: false })
-        .limit(maxItems);
+        .limit(lim);
 
       atestados?.forEach(a => {
         allEvents.push({
@@ -112,16 +134,17 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
           date: new Date(a.data_emissao || new Date()),
           title: 'Atestado',
           description: a.dias ? `${a.dias} dia(s) - ${a.motivo || a.tipo}` : a.motivo || a.tipo || 'Emitido',
+          medicoNome: (a.medicos as any)?.nome,
         });
       });
 
       // Fetch encaminhamentos
       const { data: encaminhamentos } = await supabase
         .from('encaminhamentos')
-        .select('id, data_encaminhamento, especialidade_destino, motivo, status')
+        .select('id, data_encaminhamento, especialidade_destino, motivo, status, medicos(nome)')
         .eq('paciente_id', pacienteId)
         .order('data_encaminhamento', { ascending: false })
-        .limit(maxItems);
+        .limit(lim);
 
       encaminhamentos?.forEach(e => {
         allEvents.push({
@@ -131,59 +154,159 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
           title: 'Encaminhamento',
           description: `${e.especialidade_destino} - ${e.motivo}`,
           status: e.status || 'pendente',
+          medicoNome: (e.medicos as any)?.nome,
         });
       });
 
-      // Sort by date descending
-      return allEvents.sort((a, b) => b.date.getTime() - a.date.getTime()).slice(0, maxItems);
+      // Fetch agendamentos
+      const { data: agendamentos } = await (supabase as any)
+        .from('agendamentos')
+        .select('id, data, hora_inicio, tipo, status, observacoes, medicos(nome)')
+        .eq('paciente_id', pacienteId)
+        .order('data', { ascending: false })
+        .limit(lim);
+
+      agendamentos?.forEach((a: any) => {
+        if (!a.data) return;
+        allEvents.push({
+          id: `ag-${a.id}`,
+          type: 'agendamento',
+          date: new Date(`${a.data}T${a.hora_inicio || '00:00'}`),
+          title: `Agendamento - ${a.tipo || 'Consulta'}`,
+          description: a.observacoes || `Horário: ${a.hora_inicio || '—'}`,
+          status: a.status,
+          medicoNome: (a.medicos as any)?.nome,
+        });
+      });
+
+      // Fetch pagamentos (lançamentos financeiros)
+      const { data: lancamentos } = await (supabase as any)
+        .from('lancamentos')
+        .select('id, tipo, categoria, descricao, valor, data, data_pagamento, status, forma_pagamento')
+        .eq('paciente_id', pacienteId)
+        .order('data', { ascending: false })
+        .limit(lim);
+
+      lancamentos?.forEach((l: any) => {
+        const valorFmt = Number(l.valor || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        const statusLabel = l.status === 'pago' ? 'pago' : l.status === 'pendente' ? 'pendente' : (l.status || '');
+        allEvents.push({
+          id: `lan-${l.id}`,
+          type: 'pagamento',
+          date: new Date(l.data_pagamento || l.data || new Date()),
+          title: `${l.tipo === 'receita' ? 'Receita' : 'Despesa'} - ${valorFmt}`,
+          description: `${l.descricao || l.categoria || '-'}${l.forma_pagamento ? ` • ${l.forma_pagamento}` : ''}`,
+          status: statusLabel,
+          valor: Number(l.valor || 0),
+        });
+      });
+
+      // Fetch triagens
+      const { data: triagens } = await (supabase as any)
+        .from('triagens')
+        .select('id, data_hora, pressao_arterial, frequencia_cardiaca, temperatura, peso, altura, saturacao_o2, queixa')
+        .eq('paciente_id', pacienteId)
+        .order('data_hora', { ascending: false })
+        .limit(lim);
+
+      triagens?.forEach((t: any) => {
+        const vitals = [
+          t.pressao_arterial && `PA ${t.pressao_arterial}`,
+          t.frequencia_cardiaca && `FC ${t.frequencia_cardiaca}`,
+          t.temperatura && `T ${t.temperatura}°C`,
+          t.saturacao_o2 && `SpO₂ ${t.saturacao_o2}%`,
+          t.peso && `${t.peso}kg`,
+        ].filter(Boolean).join(' • ');
+        allEvents.push({
+          id: `tr-${t.id}`,
+          type: 'triagem',
+          date: new Date(t.data_hora),
+          title: 'Triagem / Sinais Vitais',
+          description: vitals || t.queixa || 'Triagem realizada',
+        });
+      });
+
+      // Fetch anexos
+      const { data: anexos } = await (supabase as any)
+        .from('anexos_prontuario')
+        .select('id, nome_arquivo, tipo, descricao, created_at, prontuarios!inner(paciente_id)')
+        .eq('prontuarios.paciente_id', pacienteId)
+        .order('created_at', { ascending: false })
+        .limit(lim);
+
+      anexos?.forEach((a: any) => {
+        allEvents.push({
+          id: `anx-${a.id}`,
+          type: 'anexo',
+          date: new Date(a.created_at),
+          title: a.nome_arquivo || 'Anexo',
+          description: a.descricao || a.tipo || 'Documento anexado',
+        });
+      });
+
+      // Fetch retornos
+      const { data: retornos } = await (supabase as any)
+        .from('retornos')
+        .select('id, data_retorno, motivo, status, medicos(nome)')
+        .eq('paciente_id', pacienteId)
+        .order('data_retorno', { ascending: false })
+        .limit(lim);
+
+      retornos?.forEach((r: any) => {
+        allEvents.push({
+          id: `ret-${r.id}`,
+          type: 'retorno',
+          date: new Date(r.data_retorno),
+          title: 'Retorno agendado',
+          description: r.motivo || 'Retorno do paciente',
+          status: r.status,
+          medicoNome: (r.medicos as any)?.nome,
+        });
+      });
+
+      // Fetch comorbidades
+      const { data: comorb } = await (supabase as any)
+        .from('paciente_comorbidades')
+        .select('id, codigo_cid, descricao, data_diagnostico, ativo')
+        .eq('paciente_id', pacienteId)
+        .order('data_diagnostico', { ascending: false })
+        .limit(lim);
+
+      comorb?.forEach((c: any) => {
+        allEvents.push({
+          id: `co-${c.id}`,
+          type: 'comorbidade',
+          date: new Date(c.data_diagnostico || new Date()),
+          title: `${c.codigo_cid || 'CID'} - ${c.descricao}`,
+          description: c.ativo ? 'Condição ativa' : 'Condição inativa',
+        });
+      });
+
+      return allEvents.sort((a, b) => b.date.getTime() - a.date.getTime());
     },
     enabled: !!pacienteId,
   });
 
-  const getEventIcon = (type: TimelineEvent['type']) => {
-    switch (type) {
-      case 'prontuario':
-        return <FileText className="h-4 w-4" />;
-      case 'prescricao':
-        return <Pill className="h-4 w-4" />;
-      case 'exame':
-        return <TestTube className="h-4 w-4" />;
-      case 'atestado':
-        return <FileCheck className="h-4 w-4" />;
-      case 'encaminhamento':
-        return <ArrowRight className="h-4 w-4" />;
-    }
-  };
+  const counts = useMemo(() => {
+    const c: Record<string, number> = {};
+    (events || []).forEach(e => { c[e.type] = (c[e.type] || 0) + 1; });
+    return c;
+  }, [events]);
 
-  const getEventColor = (type: TimelineEvent['type']) => {
-    switch (type) {
-      case 'prontuario':
-        return 'bg-blue-500';
-      case 'prescricao':
-        return 'bg-green-500';
-      case 'exame':
-        return 'bg-purple-500';
-      case 'atestado':
-        return 'bg-amber-500';
-      case 'encaminhamento':
-        return 'bg-orange-500';
-    }
-  };
-
-  const getEventBadgeVariant = (type: TimelineEvent['type']) => {
-    switch (type) {
-      case 'prontuario':
-        return 'default';
-      case 'prescricao':
-        return 'secondary';
-      case 'exame':
-        return 'outline';
-      case 'atestado':
-        return 'secondary';
-      case 'encaminhamento':
-        return 'outline';
-    }
-  };
+  const filtered = useMemo(() => {
+    if (!events) return [];
+    const term = search.trim().toLowerCase();
+    return events.filter(e => {
+      if (activeFilter !== 'todos' && e.type !== activeFilter) return false;
+      if (!term) return true;
+      return (
+        e.title.toLowerCase().includes(term) ||
+        (e.description || '').toLowerCase().includes(term) ||
+        (e.medicoNome || '').toLowerCase().includes(term) ||
+        (e.status || '').toLowerCase().includes(term)
+      );
+    });
+  }, [events, search, activeFilter]);
 
   if (isLoading) {
     return (
@@ -191,7 +314,7 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Clock className="h-5 w-5" />
-            Timeline do Paciente
+            Histórico Completo do Paciente
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -211,79 +334,99 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
     );
   }
 
-  if (!events || events.length === 0) {
-    return (
-      <Card className={className}>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Clock className="h-5 w-5" />
-            Timeline do Paciente
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-muted-foreground text-center py-8">
-            Nenhum evento encontrado para este paciente.
-          </p>
-        </CardContent>
-      </Card>
-    );
-  }
-
   return (
     <Card className={className}>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Clock className="h-5 w-5" />
-          Timeline do Paciente
+          Histórico Completo do Paciente
           <Badge variant="outline" className="ml-auto">
-            {events.length} eventos
+            {events?.length || 0} eventos
           </Badge>
         </CardTitle>
+        <div className="mt-3 space-y-3">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Buscar por título, descrição, médico, status..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              variant={activeFilter === 'todos' ? 'default' : 'outline'}
+              onClick={() => setActiveFilter('todos')}
+            >
+              Todos ({events?.length || 0})
+            </Button>
+            {(Object.keys(TYPE_META) as EventType[]).map(t => (
+              counts[t] ? (
+                <Button
+                  key={t}
+                  size="sm"
+                  variant={activeFilter === t ? 'default' : 'outline'}
+                  onClick={() => setActiveFilter(t)}
+                  className="gap-1"
+                >
+                  {TYPE_META[t].icon}
+                  {TYPE_META[t].label} ({counts[t]})
+                </Button>
+              ) : null
+            ))}
+          </div>
+        </div>
       </CardHeader>
       <CardContent>
-        <ScrollArea className="h-[400px] pr-4">
-          <div className="relative">
-            {/* Timeline line */}
-            <div className="absolute left-5 top-0 bottom-0 w-0.5 bg-border" />
-
-            <div className="space-y-6">
-              {events.map((event, index) => (
-                <div key={`${event.type}-${event.id}`} className="relative flex gap-4">
-                  {/* Timeline dot */}
-                  <div
-                    className={cn(
-                      "relative z-10 flex h-10 w-10 items-center justify-center rounded-full text-white shrink-0",
-                      getEventColor(event.type)
-                    )}
-                  >
-                    {getEventIcon(event.type)}
-                  </div>
-
-                  {/* Event content */}
-                  <div className="flex-1 pb-2">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <Badge variant={getEventBadgeVariant(event.type)}>
-                        {event.title}
-                      </Badge>
-                      {event.status && (
-                        <Badge variant="outline" className="text-xs">
-                          {event.status}
-                        </Badge>
-                      )}
+        {filtered.length === 0 ? (
+          <p className="text-muted-foreground text-center py-8">
+            Nenhum evento encontrado.
+          </p>
+        ) : (
+          <ScrollArea className="h-[500px] pr-4">
+            <div className="relative">
+              <div className="absolute left-5 top-0 bottom-0 w-0.5 bg-border" />
+              <div className="space-y-6">
+                {filtered.map((event) => {
+                  const meta = TYPE_META[event.type];
+                  return (
+                    <div key={`${event.type}-${event.id}`} className="relative flex gap-4">
+                      <div
+                        className={cn(
+                          'relative z-10 flex h-10 w-10 items-center justify-center rounded-full text-white shrink-0',
+                          meta.color
+                        )}
+                      >
+                        {meta.icon}
+                      </div>
+                      <div className="flex-1 pb-2">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <Badge variant="default">{meta.label}</Badge>
+                          <span className="text-sm font-semibold">{event.title}</span>
+                          {event.status && (
+                            <Badge variant="outline" className="text-xs">{event.status}</Badge>
+                          )}
+                        </div>
+                        {event.description && (
+                          <p className="text-sm text-muted-foreground mt-1">{event.description}</p>
+                        )}
+                        <p className="text-xs text-muted-foreground mt-1 flex items-center gap-2 flex-wrap">
+                          <span className="flex items-center gap-1">
+                            <Calendar className="h-3 w-3" />
+                            {format(event.date, "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+                          </span>
+                          {event.medicoNome && <span>• Dr(a). {event.medicoNome}</span>}
+                        </p>
+                      </div>
                     </div>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      {event.description}
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
-                      <Calendar className="h-3 w-3" />
-                      {format(event.date, "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
-                    </p>
-                  </div>
-                </div>
-              ))}
+                  );
+                })}
+              </div>
             </div>
-          </div>
-        </ScrollArea>
+          </ScrollArea>
+        )}
       </CardContent>
     </Card>
   );
