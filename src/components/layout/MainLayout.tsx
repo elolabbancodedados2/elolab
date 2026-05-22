@@ -10,6 +10,7 @@ import { useSessionTimeout } from '@/hooks/useSessionTimeout';
 import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 import { useRealtimePushNotifications } from '@/hooks/useRealtimePushNotifications';
 import { ChatPanel } from '@/components/chat/ChatPanel';
+import { ImpersonationBanner } from '@/components/ImpersonationBanner';
 
 export function MainLayout() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -38,6 +39,7 @@ export function MainLayout() {
       {/* Main Content */}
       <div className="flex flex-1 flex-col overflow-hidden">
         <Navbar onMenuClick={() => setMobileMenuOpen(true)} />
+        <ImpersonationBanner />
         <main 
           id="main-content" 
           className="flex-1 overflow-auto overscroll-contain"
