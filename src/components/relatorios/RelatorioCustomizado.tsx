@@ -294,6 +294,18 @@ export default function RelatorioCustomizado() {
 
   const [rows, setRows] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [saveOpen, setSaveOpen] = useState(false);
+  const [saveForm, setSaveForm] = useState({
+    nome: '',
+    descricao: '',
+    frequencia: 'nenhuma',
+    dia_semana: '1',
+    dia_mes: '1',
+    hora: '08:00',
+    destinatarios: '',
+    formato: 'pdf',
+  });
+  const [saving, setSaving] = useState(false);
 
   const { data: medicos = [] } = useMedicos();
   const { data: convenios = [] } = useConvenios();
