@@ -1226,6 +1226,82 @@ export default function CaixaDiario() {
 
               <Separator className="my-3" />
 
+              {/* Paciente (opcional) — vincula ao prontuário */}
+              <div className="space-y-1.5 mb-3">
+                <Label className="text-xs flex items-center gap-1">
+                  <User className="h-3 w-3" /> Paciente
+                  <span className="text-muted-foreground font-normal">(opcional)</span>
+                </Label>
+                {pacienteId ? (
+                  <div className="flex items-center justify-between gap-2 p-2 rounded-md bg-primary/5 border border-primary/20">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <User className="h-3.5 w-3.5 text-primary shrink-0" />
+                      <span className="text-sm font-medium truncate">{pacienteNome}</span>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 shrink-0"
+                      onClick={() => { setPacienteId(null); setPacienteNome(''); }}
+                      title="Remover paciente"
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ) : (
+                  <Popover open={pacientePopoverOpen} onOpenChange={setPacientePopoverOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full justify-start text-xs h-8 text-muted-foreground"
+                      >
+                        <Search className="h-3 w-3 mr-2" />
+                        Vincular paciente...
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[280px] p-0" align="start">
+                      <Command shouldFilter={false}>
+                        <CommandInput
+                          placeholder="Nome, CPF ou telefone..."
+                          value={pacienteSearch}
+                          onValueChange={setPacienteSearch}
+                        />
+                        <CommandList>
+                          <CommandEmpty>Nenhum paciente encontrado</CommandEmpty>
+                          <CommandGroup>
+                            {pacientesBusca.map((p: any) => (
+                              <CommandItem
+                                key={p.id}
+                                value={p.id}
+                                onSelect={() => {
+                                  setPacienteId(p.id);
+                                  setPacienteNome(p.nome_social || p.nome);
+                                  setPacientePopoverOpen(false);
+                                  setPacienteSearch('');
+                                }}
+                              >
+                                <div className="flex flex-col">
+                                  <span className="text-sm">{p.nome_social || p.nome}</span>
+                                  {p.cpf && (
+                                    <span className="text-[10px] text-muted-foreground">CPF: {p.cpf}</span>
+                                  )}
+                                </div>
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
+                )}
+                {pacienteId && carrinho.some(i => i.origem === 'exame') && (
+                  <p className="text-[10px] text-muted-foreground">
+                    Exames serão registrados no prontuário do paciente.
+                  </p>
+                )}
+              </div>
+
               {/* Desconto */}
               <div className="space-y-1.5 mb-3">
                 <Label className="text-xs">Desconto (R$)</Label>
