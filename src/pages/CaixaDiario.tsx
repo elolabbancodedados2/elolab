@@ -136,6 +136,12 @@ export default function CaixaDiario() {
   const [manualNome, setManualNome] = useState('');
   const [manualValor, setManualValor] = useState('');
 
+  // Paciente vinculado à venda (opcional)
+  const [pacienteId, setPacienteId] = useState<string | null>(null);
+  const [pacienteNome, setPacienteNome] = useState<string>('');
+  const [pacienteSearch, setPacienteSearch] = useState('');
+  const [pacientePopoverOpen, setPacientePopoverOpen] = useState(false);
+
   const [lancamentoForm, setLancamentoForm] = useState({
     tipo: 'receita' as LancamentoTipo,
     valor: '',
