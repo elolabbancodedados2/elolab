@@ -4,8 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 
 export type AppRole = 'admin' | 'medico' | 'recepcao' | 'enfermagem' | 'financeiro';
 
-// Emails que têm acesso superadmin (manutenção da plataforma)
-const SUPERADMIN_EMAILS = ['contato@elolab.com.br'];
+export type PlatformAdminLevel = 'owner' | 'support' | 'finance';
 
 export interface Clinica {
   id: string;
@@ -36,6 +35,10 @@ interface SupabaseAuthContextType {
   profile: UserWithRole | null;
   clinicaId: string | null;
   isLoading: boolean;
+  isPlatformAdmin: boolean;
+  platformAdminLevel: PlatformAdminLevel | null;
+  isClinicaOwner: boolean;
+  /** @deprecated use isPlatformAdmin */
   isSuperAdmin: boolean;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signUp: (email: string, password: string, nome: string, telefone?: string, cpfCnpj?: string) => Promise<{ data: any; error: Error | null }>;
@@ -53,6 +56,8 @@ export function SupabaseAuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<UserWithRole | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [platformAdminLevel, setPlatformAdminLevel] = useState<PlatformAdminLevel | null>(null);
+  const [isClinicaOwner, setIsClinicaOwner] = useState(false);
 
   const fetchProfile = async (userId: string) => {
     try {
@@ -124,10 +129,42 @@ export function SupabaseAuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const fetchPlatformAdmin = async (userId: string): Promise<PlatformAdminLevel | null> => {
+    try {
+      const { data } = await (supabase as any)
+        .from('platform_admins')
+        .select('nivel')
+        .eq('user_id', userId)
+        .eq('ativo', true)
+        .maybeSingle();
+      return (data?.nivel as PlatformAdminLevel) ?? null;
+    } catch {
+      return null;
+    }
+  };
+
+  const fetchIsClinicaOwner = async (userId: string, clinicaId?: string | null): Promise<boolean> => {
+    if (!clinicaId) return false;
+    try {
+      const { data } = await supabase
+        .from('clinicas')
+        .select('owner_id')
+        .eq('id', clinicaId)
+        .maybeSingle();
+      return (data as any)?.owner_id === userId;
+    } catch {
+      return false;
+    }
+  };
+
   const refreshProfile = async () => {
     if (user) {
       const userProfile = await fetchProfile(user.id);
       setProfile(userProfile);
+      const level = await fetchPlatformAdmin(user.id);
+      setPlatformAdminLevel(level);
+      const owner = await fetchIsClinicaOwner(user.id, userProfile?.clinica_id);
+      setIsClinicaOwner(owner);
     }
   };
 
@@ -186,6 +223,15 @@ export function SupabaseAuthProvider({ children }: { children: ReactNode }) {
 
       if (!isActive) return;
       setProfile(userProfile);
+
+      const level = await fetchPlatformAdmin(user.id);
+      if (!isActive) return;
+      setPlatformAdminLevel(level);
+
+      const owner = await fetchIsClinicaOwner(user.id, userProfile?.clinica_id);
+      if (!isActive) return;
+      setIsClinicaOwner(owner);
+
       setIsLoading(false);
     };
 
@@ -233,6 +279,8 @@ export function SupabaseAuthProvider({ children }: { children: ReactNode }) {
       setUser(null);
       setSession(null);
       setProfile(null);
+      setPlatformAdminLevel(null);
+      setIsClinicaOwner(false);
     }
   };
 
@@ -251,7 +299,7 @@ export function SupabaseAuthProvider({ children }: { children: ReactNode }) {
     return hasRole('admin');
   };
 
-  const isSuperAdmin = SUPERADMIN_EMAILS.includes(user?.email?.toLowerCase() || '');
+  const isPlatformAdmin = platformAdminLevel !== null;
 
   return (
     <SupabaseAuthContext.Provider
@@ -261,7 +309,10 @@ export function SupabaseAuthProvider({ children }: { children: ReactNode }) {
         profile,
         clinicaId: profile?.clinica_id || null,
         isLoading,
-        isSuperAdmin,
+        isPlatformAdmin,
+        platformAdminLevel,
+        isClinicaOwner,
+        isSuperAdmin: isPlatformAdmin,
         signIn,
         signUp,
         signOut,
