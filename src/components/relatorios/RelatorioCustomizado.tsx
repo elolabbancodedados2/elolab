@@ -702,6 +702,138 @@ export default function RelatorioCustomizado() {
           </CardContent>
         </Card>
       )}
+
+      <Dialog open={saveOpen} onOpenChange={setSaveOpen}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Star className="h-5 w-5 text-primary" />
+              Salvar relatório como favorito
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label className="text-xs">Nome*</Label>
+              <Input value={saveForm.nome} onChange={e => setSaveForm({ ...saveForm, nome: e.target.value })} placeholder="Ex: Receita mensal" />
+            </div>
+            <div>
+              <Label className="text-xs">Descrição</Label>
+              <Textarea rows={2} value={saveForm.descricao} onChange={e => setSaveForm({ ...saveForm, descricao: e.target.value })} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs">Frequência de envio</Label>
+                <Select value={saveForm.frequencia} onValueChange={v => setSaveForm({ ...saveForm, frequencia: v })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="nenhuma">Apenas favoritar (sem envio)</SelectItem>
+                    <SelectItem value="diaria">Diária</SelectItem>
+                    <SelectItem value="semanal">Semanal</SelectItem>
+                    <SelectItem value="mensal">Mensal</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs">Horário de envio</Label>
+                <Input type="time" value={saveForm.hora} onChange={e => setSaveForm({ ...saveForm, hora: e.target.value })} />
+              </div>
+              {saveForm.frequencia === 'semanal' && (
+                <div>
+                  <Label className="text-xs">Dia da semana</Label>
+                  <Select value={saveForm.dia_semana} onValueChange={v => setSaveForm({ ...saveForm, dia_semana: v })}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'].map((d, i) => (
+                        <SelectItem key={i} value={String(i)}>{d}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              {saveForm.frequencia === 'mensal' && (
+                <div>
+                  <Label className="text-xs">Dia do mês</Label>
+                  <Input type="number" min={1} max={28} value={saveForm.dia_mes} onChange={e => setSaveForm({ ...saveForm, dia_mes: e.target.value })} />
+                </div>
+              )}
+              <div>
+                <Label className="text-xs">Formato</Label>
+                <Select value={saveForm.formato} onValueChange={v => setSaveForm({ ...saveForm, formato: v })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="pdf">PDF</SelectItem>
+                    <SelectItem value="csv">CSV</SelectItem>
+                    <SelectItem value="excel">Excel</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            {saveForm.frequencia !== 'nenhuma' && (
+              <div>
+                <Label className="text-xs">Destinatários (e-mails separados por vírgula)</Label>
+                <Textarea rows={2} value={saveForm.destinatarios} onChange={e => setSaveForm({ ...saveForm, destinatarios: e.target.value })} placeholder="gestor@clinica.com, financeiro@clinica.com" />
+              </div>
+            )}
+            <p className="text-xs text-muted-foreground">
+              Os filtros e colunas atuais serão salvos. Use a página <b>Relatórios → Salvos</b> para gerenciar.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSaveOpen(false)}>Cancelar</Button>
+            <Button
+              disabled={saving || !saveForm.nome}
+              onClick={async () => {
+                setSaving(true);
+                try {
+                  const { data: { user } } = await supabase.auth.getUser();
+                  if (!user) throw new Error('Sem sessão');
+                  const { data: prof } = await supabase.from('profiles').select('clinica_id').eq('id', user.id).maybeSingle();
+                  const config = {
+                    dataInicio, dataFim, statusFilter, medicoFilter, convenioFilter,
+                    textoBusca, limite: Number(limite), valorMin, valorMax,
+                    tipoLancamento, groupBy, colunas: Array.from(visibleCols),
+                  };
+                  const dests = saveForm.destinatarios.split(',').map(s => s.trim()).filter(Boolean);
+                  const payload: any = {
+                    user_id: user.id,
+                    clinica_id: prof?.clinica_id,
+                    nome: saveForm.nome,
+                    descricao: saveForm.descricao || null,
+                    dataset,
+                    config,
+                    formato: saveForm.formato,
+                    destinatarios: dests,
+                    ativo: true,
+                  };
+                  if (saveForm.frequencia !== 'nenhuma') {
+                    payload.frequencia = saveForm.frequencia;
+                    payload.hora = saveForm.hora + ':00';
+                    if (saveForm.frequencia === 'semanal') payload.dia_semana = Number(saveForm.dia_semana);
+                    if (saveForm.frequencia === 'mensal') payload.dia_mes = Number(saveForm.dia_mes);
+                    // Calcular próxima execução simples (hoje + horário)
+                    const [h, m] = saveForm.hora.split(':').map(Number);
+                    const d = new Date(); d.setHours(h, m, 0, 0);
+                    if (d.getTime() <= Date.now()) d.setDate(d.getDate() + 1);
+                    payload.proxima_execucao = d.toISOString();
+                  }
+                  const { error } = await (supabase as any).from('relatorios_salvos').insert(payload);
+                  if (error) throw error;
+                  toast.success('Relatório salvo com sucesso');
+                  setSaveOpen(false);
+                  setSaveForm({ nome: '', descricao: '', frequencia: 'nenhuma', dia_semana: '1', dia_mes: '1', hora: '08:00', destinatarios: '', formato: 'pdf' });
+                } catch (e: any) {
+                  toast.error(e.message || 'Erro ao salvar');
+                } finally {
+                  setSaving(false);
+                }
+              }}
+            >
+              {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Star className="h-4 w-4 mr-2" />}
+              Salvar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
