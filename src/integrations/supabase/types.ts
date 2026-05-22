@@ -2815,8 +2815,10 @@ export type Database = {
           created_at: string
           created_by: string | null
           id: string
+          impersonating_clinica_id: string | null
           nivel: string
           notes: string | null
+          original_clinica_id: string | null
           user_id: string
         }
         Insert: {
@@ -2824,8 +2826,10 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           id?: string
+          impersonating_clinica_id?: string | null
           nivel: string
           notes?: string | null
+          original_clinica_id?: string | null
           user_id: string
         }
         Update: {
@@ -2833,11 +2837,21 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           id?: string
+          impersonating_clinica_id?: string | null
           nivel?: string
           notes?: string | null
+          original_clinica_id?: string | null
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "platform_admins_impersonating_clinica_id_fkey"
+            columns: ["impersonating_clinica_id"]
+            isOneToOne: false
+            referencedRelation: "clinicas"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       platform_impersonation_log: {
         Row: {
@@ -4681,6 +4695,11 @@ export type Database = {
           trial_fim: string
         }[]
       }
+      platform_start_impersonation: {
+        Args: { _target_clinica_id: string }
+        Returns: Json
+      }
+      platform_stop_impersonation: { Args: never; Returns: Json }
       start_free_trial: {
         Args: { _plano_slug: string; _user_id: string }
         Returns: Json

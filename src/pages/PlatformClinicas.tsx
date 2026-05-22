@@ -11,9 +11,11 @@ import { Skeleton } from '@/components/ui/skeleton';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
-import { Building2, Search, Users, Stethoscope, CalendarRange, RefreshCw, Crown } from 'lucide-react';
+import { Building2, Search, Users, Stethoscope, CalendarRange, RefreshCw, Crown, LogIn } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { toast } from 'sonner';
+import { useNavigate } from 'react-router-dom';
 
 interface ClinicaOverview {
   clinica_id: string;
@@ -41,8 +43,27 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export default function PlatformClinicas() {
-  const { isPlatformAdmin, isLoading: authLoading } = useSupabaseAuth();
+  const { isPlatformAdmin, isLoading: authLoading, refreshProfile } = useSupabaseAuth();
   const [search, setSearch] = useState('');
+  const [impersonatingId, setImpersonatingId] = useState<string | null>(null);
+  const navigate = useNavigate();
+
+  const handleImpersonate = async (clinicaId: string, clinicaNome: string) => {
+    setImpersonatingId(clinicaId);
+    try {
+      const { error } = await (supabase as any).rpc('platform_start_impersonation', {
+        _target_clinica_id: clinicaId,
+      });
+      if (error) throw error;
+      await refreshProfile();
+      toast.success(`Entrando como ${clinicaNome}`);
+      navigate('/dashboard');
+    } catch (e: any) {
+      toast.error(e.message || 'Erro ao impersonar clínica');
+    } finally {
+      setImpersonatingId(null);
+    }
+  };
 
   const { data, isLoading, refetch, isFetching } = useQuery({
     queryKey: ['platform-clinicas-overview'],
@@ -157,6 +178,7 @@ export default function PlatformClinicas() {
                     <TableHead className="text-center">Pacientes</TableHead>
                     <TableHead className="text-center"><CalendarRange className="h-4 w-4 inline" /></TableHead>
                     <TableHead>Criada em</TableHead>
+                    <TableHead className="text-right">Ações</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -185,6 +207,17 @@ export default function PlatformClinicas() {
                       <TableCell className="text-center">{c.total_agendamentos}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">
                         {c.created_at ? format(new Date(c.created_at), "dd/MM/yyyy", { locale: ptBR }) : '—'}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={impersonatingId === c.clinica_id}
+                          onClick={() => handleImpersonate(c.clinica_id, c.clinica_nome)}
+                        >
+                          <LogIn className="h-3.5 w-3.5 mr-1" />
+                          {impersonatingId === c.clinica_id ? 'Entrando...' : 'Entrar'}
+                        </Button>
                       </TableCell>
                     </TableRow>
                   ))}
