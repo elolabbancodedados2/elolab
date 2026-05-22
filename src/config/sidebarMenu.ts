@@ -109,6 +109,7 @@ export const menuGroups: MenuGroup[] = [
     items: [
       { label: 'Painel Lab', icon: FlaskConical, href: '/laboratorio' },
       { label: 'Mapa de Coleta', icon: MapPinned, href: '/mapa-coleta', roles: ['admin', 'enfermagem'] },
+      { label: 'Guias Externas', icon: FileText, href: '/guias-externas', roles: ['admin', 'recepcao', 'enfermagem'] },
       { label: 'Laudos', icon: ScrollText, href: '/laudos-lab', roles: ['admin', 'medico', 'enfermagem'] },
     ],
   },
