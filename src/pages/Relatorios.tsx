@@ -35,6 +35,7 @@ import { cn } from '@/lib/utils';
 import { exportarFinanceiro, exportarPacientes, exportarAgendamentos, exportarEstoque } from '@/lib/excelExporter';
 import { gerarRelatorioFinanceiro, gerarRelatorioAtendimentos, openPDF } from '@/lib/pdfGenerator';
 import { Skeleton } from '@/components/ui/skeleton';
+import RelatorioCustomizado from '@/components/relatorios/RelatorioCustomizado';
 import {
   AreaChart,
   Area,
@@ -465,8 +466,9 @@ export default function Relatorios() {
         </Card>
       </div>
 
-      <Tabs defaultValue="financeiro" className="space-y-6">
+      <Tabs defaultValue="customizado" className="space-y-6">
         <TabsList className="flex-wrap">
+          <TabsTrigger value="customizado">⚡ Customizado</TabsTrigger>
           <TabsTrigger value="financeiro">Financeiro</TabsTrigger>
           <TabsTrigger value="dre">DRE</TabsTrigger>
           <TabsTrigger value="atendimentos">Atendimentos</TabsTrigger>
@@ -475,6 +477,10 @@ export default function Relatorios() {
           <TabsTrigger value="estoque">Estoque</TabsTrigger>
           <TabsTrigger value="status">Status</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="customizado" className="space-y-6">
+          <RelatorioCustomizado />
+        </TabsContent>
 
         <TabsContent value="financeiro" className="space-y-6">
           <div className="grid gap-6 lg:grid-cols-2">
