@@ -125,6 +125,8 @@ export const menuGroups: MenuGroup[] = [
       { label: 'Fluxo de Caixa', icon: PiggyBank, href: '/fluxo-caixa' },
       { label: 'Preços & Serviços', icon: CircleDollarSign, href: '/precos-servicos' },
       { label: 'Relatórios', icon: FileBarChart, href: '/relatorios' },
+      { label: 'Relatórios Salvos', icon: FileBarChart, href: '/relatorios/salvos' },
+      { label: 'Cobrança Inadimplentes', icon: BadgeDollarSign, href: '/cobranca-inadimplentes' },
     ],
   },
   {
