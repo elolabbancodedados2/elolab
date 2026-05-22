@@ -4661,6 +4661,26 @@ export type Database = {
       is_same_clinica: { Args: { record_clinica_id: string }; Returns: boolean }
       mask_cpf: { Args: { cpf_value: string }; Returns: string }
       normalize_cpf: { Args: { cpf_value: string }; Returns: string }
+      platform_get_clinicas_overview: {
+        Args: never
+        Returns: {
+          assinatura_status: string
+          clinica_id: string
+          clinica_nome: string
+          created_at: string
+          em_trial: boolean
+          owner_email: string
+          owner_id: string
+          owner_nome: string
+          plano_nome: string
+          plano_slug: string
+          total_agendamentos: number
+          total_funcionarios: number
+          total_medicos: number
+          total_pacientes: number
+          trial_fim: string
+        }[]
+      }
       start_free_trial: {
         Args: { _plano_slug: string; _user_id: string }
         Returns: Json
