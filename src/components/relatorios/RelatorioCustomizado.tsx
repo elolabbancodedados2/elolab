@@ -613,6 +613,9 @@ export default function RelatorioCustomizado() {
             <Button variant="outline" onClick={printReport} disabled={!rows.length}>
               <Printer className="h-4 w-4 mr-2" /> Imprimir / PDF
             </Button>
+            <Button variant="outline" onClick={() => setSaveOpen(true)}>
+              <Star className="h-4 w-4 mr-2" /> Salvar / Agendar
+            </Button>
           </div>
         </CardContent>
       </Card>
