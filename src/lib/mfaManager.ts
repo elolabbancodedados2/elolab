@@ -4,8 +4,17 @@
  * Uses speakeasy for TOTP generation + qrcode for QR visualization
  */
 
-import speakeasy from 'speakeasy';
+import * as OTPAuth from 'otpauth';
 import QRCode from 'qrcode';
+
+function randomBase32(length: number): string {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  let out = '';
+  const bytes = new Uint8Array(length);
+  crypto.getRandomValues(bytes);
+  for (let i = 0; i < length; i++) out += alphabet[bytes[i] % 32];
+  return out;
+}
 
 export interface MFASetup {
   secret: string;
@@ -25,26 +34,23 @@ export async function generateMFASetup(
   userEmail: string,
   appName: string = 'EloLab'
 ): Promise<MFASetup> {
-  // Gerar secret TOTP
-  const secret = speakeasy.generateSecret({
-    name: `${appName} (${userEmail})`,
+  const secretBase32 = randomBase32(32);
+  const totp = new OTPAuth.TOTP({
     issuer: appName,
-    length: 32,
+    label: userEmail,
+    algorithm: 'SHA1',
+    digits: 6,
+    period: 30,
+    secret: OTPAuth.Secret.fromBase32(secretBase32),
   });
-
-  // Gerar QR code
-  const qrCodeUrl = await QRCode.toDataURL(secret.otpauth_url || '');
+  const qrCodeUrl = await QRCode.toDataURL(totp.toString());
 
   // Gerar backup codes (10 códigos de 8 dígitos)
   const backupCodes = Array.from({ length: 10 }, () =>
     Math.random().toString(36).substring(2, 10).toUpperCase()
   );
 
-  return {
-    secret: secret.base32,
-    qrCodeUrl,
-    backupCodes,
-  };
+  return { secret: secretBase32, qrCodeUrl, backupCodes };
 }
 
 /**
@@ -56,13 +62,14 @@ export function validateTOTPToken(
   window: number = 2 // Allow ±2 time windows (30s each)
 ): boolean {
   try {
-    const isValid = speakeasy.totp.verify({
-      secret,
-      encoding: 'base32',
-      token,
-      window,
+    const totp = new OTPAuth.TOTP({
+      algorithm: 'SHA1',
+      digits: 6,
+      period: 30,
+      secret: OTPAuth.Secret.fromBase32(secret),
     });
-    return isValid;
+    const delta = totp.validate({ token, window });
+    return delta !== null;
   } catch (error) {
     console.error('TOTP validation error:', error);
     return false;
@@ -93,10 +100,13 @@ export function consumeBackupCode(code: string, backupCodes: string[]): string[]
  * ⚠️ SÓ para testes/desenvolvimento
  */
 export function generateTOTPTokenForTesting(secret: string): string {
-  return speakeasy.totp({
-    secret,
-    encoding: 'base32',
+  const totp = new OTPAuth.TOTP({
+    algorithm: 'SHA1',
+    digits: 6,
+    period: 30,
+    secret: OTPAuth.Secret.fromBase32(secret),
   });
+  return totp.generate();
 }
 
 /**
