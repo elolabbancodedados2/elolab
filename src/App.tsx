@@ -24,6 +24,8 @@ const Financeiro = lazy(() => import("@/pages/Financeiro"));
 const Medicos = lazy(() => import("@/pages/Medicos"));
 const Estoque = lazy(() => import("@/pages/Estoque"));
 const Relatorios = lazy(() => import("@/pages/Relatorios"));
+const RelatoriosSalvos = lazy(() => import("@/pages/RelatoriosSalvos"));
+const CobrancaInadimplentes = lazy(() => import("@/pages/CobrancaInadimplentes"));
 const Usuarios = lazy(() => import("@/pages/Usuarios"));
 const Configuracoes = lazy(() => import("@/pages/Configuracoes"));
 const Prescricoes = lazy(() => import("@/pages/Prescricoes"));
