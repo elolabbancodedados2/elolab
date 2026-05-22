@@ -392,6 +392,9 @@ export default function CaixaDiario() {
     setManualNome('');
     setManualValor('');
     setCatalogoTab('consultas');
+    setPacienteId(null);
+    setPacienteNome('');
+    setPacienteSearch('');
   };
 
   const lancamentosFiltrados = useMemo(() => {
