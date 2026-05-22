@@ -405,6 +405,20 @@ export default function RelatorioCustomizado() {
     return { receitas: r, despesas: d, saldo: r - d };
   }, [rows, dataset]);
 
+  const grouped = useMemo(() => {
+    if (groupBy === 'nenhum' || !rows.length) return null;
+    const map = new Map<string, { label: string; count: number; sum: number }>();
+    rows.forEach(r => {
+      const raw = getValue(r, groupBy);
+      const key = raw == null || raw === '' ? '(Sem valor)' : String(raw);
+      const cur = map.get(key) || { label: key, count: 0, sum: 0 };
+      cur.count++;
+      cur.sum += Number(r.valor || 0);
+      map.set(key, cur);
+    });
+    return Array.from(map.values()).sort((a, b) => b.count - a.count);
+  }, [rows, groupBy]);
+
   return (
     <div className="space-y-4">
       <Card>
@@ -534,6 +548,21 @@ export default function RelatorioCustomizado() {
                 />
               </div>
             ) : null}
+
+            {cfg.groupByOptions?.length ? (
+              <div>
+                <Label className="text-xs">Agrupar por (contagem)</Label>
+                <Select value={groupBy} onValueChange={setGroupBy}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="nenhum">Sem agrupamento</SelectItem>
+                    {cfg.groupByOptions.map(g => (
+                      <SelectItem key={g.key} value={g.key}>{g.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : null}
           </div>
 
           {/* Column picker */}
@@ -596,7 +625,42 @@ export default function RelatorioCustomizado() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <ScrollArea className="h-[520px]">
+            {grouped && (
+              <div className="mb-6">
+                <h3 className="text-sm font-semibold mb-2">
+                  Resumo por {cfg.groupByOptions?.find(g => g.key === groupBy)?.label}
+                </h3>
+                <div className="border rounded-md overflow-hidden">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Grupo</TableHead>
+                        <TableHead className="text-right">Quantidade</TableHead>
+                        {dataset === 'lancamentos' && <TableHead className="text-right">Soma (R$)</TableHead>}
+                        <TableHead className="text-right">% do total</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {grouped.map(g => (
+                        <TableRow key={g.label}>
+                          <TableCell className="font-medium">{g.label}</TableCell>
+                          <TableCell className="text-right font-semibold">{g.count}</TableCell>
+                          {dataset === 'lancamentos' && (
+                            <TableCell className="text-right">
+                              {g.sum.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                            </TableCell>
+                          )}
+                          <TableCell className="text-right text-muted-foreground">
+                            {((g.count / rows.length) * 100).toFixed(1)}%
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+            )}
+            <ScrollArea className="h-[420px]">
               <Table>
                 <TableHeader>
                   <TableRow>
