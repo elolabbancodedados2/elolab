@@ -20,6 +20,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AppRole, useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { ConvidarFuncionarioDialog } from '@/components/ConvidarFuncionarioDialog';
 
 interface FuncionarioWithRoles {
   id: string;
@@ -461,6 +462,13 @@ export default function Funcionarios() {
           <p className="text-muted-foreground">Gerencie a equipe e suas permissões de acesso</p>
         </div>
         <div className="flex gap-2">
+          <ConvidarFuncionarioDialog
+            trigger={
+              <Button variant="outline" className="gap-2">
+                <Mail className="h-4 w-4" />Convidar por e-mail
+              </Button>
+            }
+          />
           <Button variant="outline" onClick={handleOpenCustomize} className="gap-2">
             <Settings2 className="h-4 w-4" />Personalizar Permissões
           </Button>
