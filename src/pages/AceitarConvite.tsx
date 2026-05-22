@@ -10,10 +10,12 @@ import { supabase } from '@/integrations/supabase/client';
 import clinicBackground from '@/assets/clinic-background.jpg';
 
 interface InvitationData {
-  id: string;
+  id?: string;
   email: string;
   roles: string[];
-  funcionario_id: string;
+  funcionario_id?: string;
+  clinica_nome?: string;
+  source: 'new' | 'legacy';
   funcionario?: {
     nome: string;
     cargo: string | null;
@@ -31,6 +33,7 @@ export default function AceitarConvite() {
   const [error, setError] = useState<string | null>(null);
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [telefone, setTelefone] = useState('');
 
   useEffect(() => {
     if (!token) {
@@ -41,6 +44,24 @@ export default function AceitarConvite() {
 
     const validateToken = async () => {
       try {
+        // 1) Try the new edge function flow (convites_funcionario)
+        const { data: newResp } = await supabase.functions.invoke('accept-invite', {
+          body: { action: 'lookup', token },
+        });
+        if (newResp && (newResp as any).success && (newResp as any).invite) {
+          const inv = (newResp as any).invite;
+          setInvitation({
+            source: 'new',
+            email: inv.email,
+            roles: inv.roles || [],
+            clinica_nome: inv.clinica_nome,
+            funcionario: inv.nome ? { nome: inv.nome, cargo: null } : undefined,
+          });
+          setLoading(false);
+          return;
+        }
+
+        // 2) Legacy fallback (employee_invitations)
         const { data: result, error: rpcError } = await supabase.rpc(
           'validate_invitation_token' as any,
           { _token: token }
@@ -62,6 +83,7 @@ export default function AceitarConvite() {
         }
 
         setInvitation({
+          source: 'legacy',
           id: parsed.id,
           email: parsed.email,
           roles: parsed.roles,
@@ -84,8 +106,9 @@ export default function AceitarConvite() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (password.length < 6) {
-      toast.error('A senha deve ter pelo menos 6 caracteres');
+    const minLen = invitation?.source === 'new' ? 8 : 6;
+    if (password.length < minLen) {
+      toast.error(`A senha deve ter pelo menos ${minLen} caracteres`);
       return;
     }
 
@@ -99,6 +122,20 @@ export default function AceitarConvite() {
     setSubmitting(true);
 
     try {
+      if (invitation.source === 'new') {
+        const { data, error } = await supabase.functions.invoke('accept-invite', {
+          body: { action: 'accept', token, password, telefone: telefone || null },
+        });
+        if (error) throw error;
+        if (data && (data as any).success === false) throw new Error((data as any).error);
+
+        // Faz login automático
+        await supabase.auth.signInWithPassword({ email: invitation.email, password });
+        toast.success('Conta criada! Redirecionando...');
+        navigate('/dashboard');
+        return;
+      }
+
       // 1. Create user account with invite_token so handle_new_user skips clinic creation
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: invitation.email,
@@ -217,6 +254,11 @@ export default function AceitarConvite() {
                 {invitation.funcionario.nome}
               </span>
             )}
+            {invitation?.clinica_nome && (
+              <span className="block text-muted-foreground text-sm mt-1">
+                Clínica: <strong>{invitation.clinica_nome}</strong>
+              </span>
+            )}
             Crie sua senha para acessar o sistema
           </CardDescription>
         </CardHeader>
@@ -257,9 +299,9 @@ export default function AceitarConvite() {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Mínimo 6 caracteres"
+                placeholder={invitation?.source === 'new' ? 'Mínimo 8 caracteres' : 'Mínimo 6 caracteres'}
                 required
-                minLength={6}
+                minLength={invitation?.source === 'new' ? 8 : 6}
               />
             </div>
 
@@ -274,6 +316,19 @@ export default function AceitarConvite() {
                 required
               />
             </div>
+
+            {invitation?.source === 'new' && (
+              <div className="space-y-2">
+                <Label htmlFor="telefone">Telefone (opcional)</Label>
+                <Input
+                  id="telefone"
+                  type="tel"
+                  value={telefone}
+                  onChange={(e) => setTelefone(e.target.value)}
+                  placeholder="(11) 99999-9999"
+                />
+              </div>
+            )}
 
             <Button type="submit" className="w-full" disabled={submitting}>
               {submitting ? (
