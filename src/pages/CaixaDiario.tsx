@@ -472,16 +472,39 @@ export default function CaixaDiario() {
         status: 'pago',
         data_vencimento: today,
         data: today, clinica_id: profile.clinica_id,
+        paciente_id: pacienteId || null,
       });
       if (error) throw error;
+
+      // Se há paciente vinculado, registrar exames realizados no prontuário
+      if (pacienteId) {
+        const examesItens = carrinho.filter(i => i.origem === 'exame');
+        if (examesItens.length > 0) {
+          const rows = examesItens.flatMap(i =>
+            Array.from({ length: i.quantidade }).map(() => ({
+              paciente_id: pacienteId,
+              clinica_id: profile.clinica_id,
+              tipo_exame: i.nome,
+              status: 'realizado',
+              data_solicitacao: today,
+              data_realizacao: today,
+              preco_venda: i.valor,
+              observacoes: 'Registrado via Ponto de Venda',
+            }))
+          );
+          const { error: exErr } = await (supabase as any).from('exames').insert(rows);
+          if (exErr) console.error('Erro ao registrar exames no prontuário:', exErr);
+        }
+      }
     },
     onSuccess: () => {
-      toast.success('Venda registrada!');
+      toast.success(pacienteId ? 'Venda registrada e vinculada ao paciente!' : 'Venda registrada!');
       setShowLancamento(false);
       resetPOS();
       queryClient.invalidateQueries({ queryKey: ['lancamentos-caixa'] });
       queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
       queryClient.invalidateQueries({ queryKey: ['caixa-diario'] });
+      queryClient.invalidateQueries({ queryKey: ['exames'] });
     },
     onError: (e: any) => toast.error(e?.message || 'Erro'),
   });
