@@ -148,6 +148,7 @@ export const menuGroups: MenuGroup[] = [
     items: [
       { label: 'Analytics', icon: ActivitySquare, href: '/analytics' },
       { label: 'Automações', icon: Sparkles, href: '/automacoes' },
+      { label: 'Agente IA WhatsApp', icon: BotMessageSquare, href: '/agente-ia' },
       { label: 'Configurações', icon: Settings2, href: '/configuracoes' },
       { label: 'Direitos LGPD', icon: ScrollText, href: '/lgpd-pacientes' },
     ],
@@ -160,7 +161,6 @@ export const menuGroups: MenuGroup[] = [
     superAdminOnly: true,
     items: [
       { label: 'Painel Admin', icon: Shield, href: '/painel-admin', superAdminOnly: true },
-      { label: 'Agente IA', icon: BotMessageSquare, href: '/agente-ia', superAdminOnly: true },
       { label: 'Planos', icon: CreditCard, href: '/planos', superAdminOnly: true },
       { label: 'Documentação', icon: BookMarked, href: '/documentacao', superAdminOnly: true },
     ],
