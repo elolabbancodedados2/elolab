@@ -3277,6 +3277,69 @@ export type Database = {
           },
         ]
       }
+      relatorios_salvos: {
+        Row: {
+          ativo: boolean | null
+          clinica_id: string
+          config: Json
+          created_at: string
+          dataset: string
+          descricao: string | null
+          destinatarios: string[] | null
+          dia_mes: number | null
+          dia_semana: number | null
+          formato: string | null
+          frequencia: string | null
+          hora: string | null
+          id: string
+          nome: string
+          proxima_execucao: string | null
+          ultima_execucao: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          ativo?: boolean | null
+          clinica_id: string
+          config?: Json
+          created_at?: string
+          dataset: string
+          descricao?: string | null
+          destinatarios?: string[] | null
+          dia_mes?: number | null
+          dia_semana?: number | null
+          formato?: string | null
+          frequencia?: string | null
+          hora?: string | null
+          id?: string
+          nome: string
+          proxima_execucao?: string | null
+          ultima_execucao?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          ativo?: boolean | null
+          clinica_id?: string
+          config?: Json
+          created_at?: string
+          dataset?: string
+          descricao?: string | null
+          destinatarios?: string[] | null
+          dia_mes?: number | null
+          dia_semana?: number | null
+          formato?: string | null
+          frequencia?: string | null
+          hora?: string | null
+          id?: string
+          nome?: string
+          proxima_execucao?: string | null
+          ultima_execucao?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       resultados_laboratorio: {
         Row: {
           clinica_id: string | null
