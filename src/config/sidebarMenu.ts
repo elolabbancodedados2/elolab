@@ -33,6 +33,7 @@ import {
   Gauge,
   CalendarCheck,
   UsersRound,
+  FileText,
 } from 'lucide-react';
 import { AppRole } from '@/contexts/SupabaseAuthContext';
 
