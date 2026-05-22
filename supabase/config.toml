@@ -47,3 +47,12 @@ verify_jwt = false
 
 [functions.public-guias-externas]
 verify_jwt = false
+
+[functions.patient-clinical-summary]
+verify_jwt = true
+
+[functions.delinquency-whatsapp-reminder]
+verify_jwt = true
+
+[functions.scheduled-reports-runner]
+verify_jwt = true
