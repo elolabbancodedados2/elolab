@@ -18,7 +18,7 @@ import {
   TrendingUp, TrendingDown, Banknote, CreditCard, QrCode, Wallet, ArrowDownToLine,
   ArrowUpFromLine, FileText, History, DollarSign, Receipt, ChevronRight, CalendarDays,
   BarChart3, Eye, Stethoscope, ShoppingBag, ShoppingCart, CheckCircle2, FlaskConical,
-  ArrowUpRight, ArrowDownRight, ClipboardList, Tag,
+  ArrowUpRight, ArrowDownRight, ClipboardList, Tag, User, X,
 } from 'lucide-react';
 
 const LazyContasReceber = lazy(() => import('./ContasReceber'));
@@ -37,6 +37,8 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 
 type LancamentoTipo = 'receita' | 'despesa' | 'sangria' | 'suprimento';
 type FormaPagamento = 'dinheiro' | 'pix' | 'credito' | 'debito' | 'cartao_credito' | 'cartao_debito' | 'cheque' | 'transferencia';
@@ -133,6 +135,12 @@ export default function CaixaDiario() {
   const [lancDesconto, setLancDesconto] = useState('');
   const [manualNome, setManualNome] = useState('');
   const [manualValor, setManualValor] = useState('');
+
+  // Paciente vinculado à venda (opcional)
+  const [pacienteId, setPacienteId] = useState<string | null>(null);
+  const [pacienteNome, setPacienteNome] = useState<string>('');
+  const [pacienteSearch, setPacienteSearch] = useState('');
+  const [pacientePopoverOpen, setPacientePopoverOpen] = useState(false);
 
   const [lancamentoForm, setLancamentoForm] = useState({
     tipo: 'receita' as LancamentoTipo,
@@ -267,6 +275,27 @@ export default function CaixaDiario() {
     enabled: !!profile?.clinica_id && activeTab === 'historico',
   });
 
+  // Pacientes (busca para vincular à venda)
+  const { data: pacientesBusca = [] } = useQuery({
+    queryKey: ['pacientes-pos-busca', profile?.clinica_id, pacienteSearch],
+    queryFn: async () => {
+      if (!profile?.clinica_id) return [];
+      let q = supabase
+        .from('pacientes')
+        .select('id, nome, nome_social, cpf, telefone')
+        .eq('clinica_id', profile.clinica_id)
+        .order('nome')
+        .limit(20);
+      const term = pacienteSearch.trim();
+      if (term) {
+        q = q.or(`nome.ilike.%${term}%,nome_social.ilike.%${term}%,cpf.ilike.%${term}%,telefone.ilike.%${term}%`);
+      }
+      const { data } = await q;
+      return (data || []) as any[];
+    },
+    enabled: !!profile?.clinica_id && pacientePopoverOpen,
+  });
+
   // Lançamentos do caixa em detalhe
   const { data: lancamentosDetalhe = [] } = useQuery({
     queryKey: ['lancamentos-detalhe', showDetalhesCaixa?.data],
@@ -363,6 +392,9 @@ export default function CaixaDiario() {
     setManualNome('');
     setManualValor('');
     setCatalogoTab('consultas');
+    setPacienteId(null);
+    setPacienteNome('');
+    setPacienteSearch('');
   };
 
   const lancamentosFiltrados = useMemo(() => {
@@ -443,16 +475,39 @@ export default function CaixaDiario() {
         status: 'pago',
         data_vencimento: today,
         data: today, clinica_id: profile.clinica_id,
+        paciente_id: pacienteId || null,
       });
       if (error) throw error;
+
+      // Se há paciente vinculado, registrar exames realizados no prontuário
+      if (pacienteId) {
+        const examesItens = carrinho.filter(i => i.origem === 'exame');
+        if (examesItens.length > 0) {
+          const rows = examesItens.flatMap(i =>
+            Array.from({ length: i.quantidade }).map(() => ({
+              paciente_id: pacienteId,
+              clinica_id: profile.clinica_id,
+              tipo_exame: i.nome,
+              status: 'realizado',
+              data_solicitacao: today,
+              data_realizacao: today,
+              preco_venda: i.valor,
+              observacoes: 'Registrado via Ponto de Venda',
+            }))
+          );
+          const { error: exErr } = await (supabase as any).from('exames').insert(rows);
+          if (exErr) console.error('Erro ao registrar exames no prontuário:', exErr);
+        }
+      }
     },
     onSuccess: () => {
-      toast.success('Venda registrada!');
+      toast.success(pacienteId ? 'Venda registrada e vinculada ao paciente!' : 'Venda registrada!');
       setShowLancamento(false);
       resetPOS();
       queryClient.invalidateQueries({ queryKey: ['lancamentos-caixa'] });
       queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
       queryClient.invalidateQueries({ queryKey: ['caixa-diario'] });
+      queryClient.invalidateQueries({ queryKey: ['exames'] });
     },
     onError: (e: any) => toast.error(e?.message || 'Erro'),
   });
@@ -1170,6 +1225,82 @@ export default function CaixaDiario() {
               )}
 
               <Separator className="my-3" />
+
+              {/* Paciente (opcional) — vincula ao prontuário */}
+              <div className="space-y-1.5 mb-3">
+                <Label className="text-xs flex items-center gap-1">
+                  <User className="h-3 w-3" /> Paciente
+                  <span className="text-muted-foreground font-normal">(opcional)</span>
+                </Label>
+                {pacienteId ? (
+                  <div className="flex items-center justify-between gap-2 p-2 rounded-md bg-primary/5 border border-primary/20">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <User className="h-3.5 w-3.5 text-primary shrink-0" />
+                      <span className="text-sm font-medium truncate">{pacienteNome}</span>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 shrink-0"
+                      onClick={() => { setPacienteId(null); setPacienteNome(''); }}
+                      title="Remover paciente"
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ) : (
+                  <Popover open={pacientePopoverOpen} onOpenChange={setPacientePopoverOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full justify-start text-xs h-8 text-muted-foreground"
+                      >
+                        <Search className="h-3 w-3 mr-2" />
+                        Vincular paciente...
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[280px] p-0" align="start">
+                      <Command shouldFilter={false}>
+                        <CommandInput
+                          placeholder="Nome, CPF ou telefone..."
+                          value={pacienteSearch}
+                          onValueChange={setPacienteSearch}
+                        />
+                        <CommandList>
+                          <CommandEmpty>Nenhum paciente encontrado</CommandEmpty>
+                          <CommandGroup>
+                            {pacientesBusca.map((p: any) => (
+                              <CommandItem
+                                key={p.id}
+                                value={p.id}
+                                onSelect={() => {
+                                  setPacienteId(p.id);
+                                  setPacienteNome(p.nome_social || p.nome);
+                                  setPacientePopoverOpen(false);
+                                  setPacienteSearch('');
+                                }}
+                              >
+                                <div className="flex flex-col">
+                                  <span className="text-sm">{p.nome_social || p.nome}</span>
+                                  {p.cpf && (
+                                    <span className="text-[10px] text-muted-foreground">CPF: {p.cpf}</span>
+                                  )}
+                                </div>
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
+                )}
+                {pacienteId && carrinho.some(i => i.origem === 'exame') && (
+                  <p className="text-[10px] text-muted-foreground">
+                    Exames serão registrados no prontuário do paciente.
+                  </p>
+                )}
+              </div>
 
               {/* Desconto */}
               <div className="space-y-1.5 mb-3">
