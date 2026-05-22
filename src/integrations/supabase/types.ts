@@ -1684,6 +1684,137 @@ export type Database = {
           },
         ]
       }
+      guias_externas: {
+        Row: {
+          agendamento_id: string | null
+          anexo_nome: string | null
+          anexo_url: string | null
+          clinica_id: string | null
+          convenio_id: string | null
+          convenio_nome: string | null
+          created_at: string
+          data_agendamento: string | null
+          data_recebimento: string
+          exames_solicitados: Json
+          hora_agendamento: string | null
+          id: string
+          medico_externo_contato: string | null
+          medico_externo_crm: string | null
+          medico_externo_especialidade: string | null
+          medico_externo_nome: string | null
+          medico_externo_uf: string | null
+          numero_autorizacao: string | null
+          observacoes: string | null
+          origem: string
+          paciente_cpf: string | null
+          paciente_email: string | null
+          paciente_id: string | null
+          paciente_nascimento: string | null
+          paciente_nome: string
+          paciente_sexo: string | null
+          paciente_telefone: string | null
+          registrado_por: string | null
+          status: string
+          updated_at: string
+          validade_autorizacao: string | null
+        }
+        Insert: {
+          agendamento_id?: string | null
+          anexo_nome?: string | null
+          anexo_url?: string | null
+          clinica_id?: string | null
+          convenio_id?: string | null
+          convenio_nome?: string | null
+          created_at?: string
+          data_agendamento?: string | null
+          data_recebimento?: string
+          exames_solicitados?: Json
+          hora_agendamento?: string | null
+          id?: string
+          medico_externo_contato?: string | null
+          medico_externo_crm?: string | null
+          medico_externo_especialidade?: string | null
+          medico_externo_nome?: string | null
+          medico_externo_uf?: string | null
+          numero_autorizacao?: string | null
+          observacoes?: string | null
+          origem?: string
+          paciente_cpf?: string | null
+          paciente_email?: string | null
+          paciente_id?: string | null
+          paciente_nascimento?: string | null
+          paciente_nome: string
+          paciente_sexo?: string | null
+          paciente_telefone?: string | null
+          registrado_por?: string | null
+          status?: string
+          updated_at?: string
+          validade_autorizacao?: string | null
+        }
+        Update: {
+          agendamento_id?: string | null
+          anexo_nome?: string | null
+          anexo_url?: string | null
+          clinica_id?: string | null
+          convenio_id?: string | null
+          convenio_nome?: string | null
+          created_at?: string
+          data_agendamento?: string | null
+          data_recebimento?: string
+          exames_solicitados?: Json
+          hora_agendamento?: string | null
+          id?: string
+          medico_externo_contato?: string | null
+          medico_externo_crm?: string | null
+          medico_externo_especialidade?: string | null
+          medico_externo_nome?: string | null
+          medico_externo_uf?: string | null
+          numero_autorizacao?: string | null
+          observacoes?: string | null
+          origem?: string
+          paciente_cpf?: string | null
+          paciente_email?: string | null
+          paciente_id?: string | null
+          paciente_nascimento?: string | null
+          paciente_nome?: string
+          paciente_sexo?: string | null
+          paciente_telefone?: string | null
+          registrado_por?: string | null
+          status?: string
+          updated_at?: string
+          validade_autorizacao?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "guias_externas_agendamento_id_fkey"
+            columns: ["agendamento_id"]
+            isOneToOne: false
+            referencedRelation: "agendamentos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "guias_externas_clinica_id_fkey"
+            columns: ["clinica_id"]
+            isOneToOne: false
+            referencedRelation: "clinicas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "guias_externas_convenio_id_fkey"
+            columns: ["convenio_id"]
+            isOneToOne: false
+            referencedRelation: "convenios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "guias_externas_paciente_id_fkey"
+            columns: ["paciente_id"]
+            isOneToOne: false
+            referencedRelation: "pacientes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       laboratorios: {
         Row: {
           ativo: boolean | null
@@ -2595,6 +2726,47 @@ export type Database = {
           valor?: number
         }
         Relationships: []
+      }
+      portal_guias_tokens: {
+        Row: {
+          ativo: boolean
+          clinica_id: string
+          created_at: string
+          criado_por: string | null
+          descricao: string | null
+          id: string
+          token: string
+          ultimo_uso: string | null
+        }
+        Insert: {
+          ativo?: boolean
+          clinica_id: string
+          created_at?: string
+          criado_por?: string | null
+          descricao?: string | null
+          id?: string
+          token?: string
+          ultimo_uso?: string | null
+        }
+        Update: {
+          ativo?: boolean
+          clinica_id?: string
+          created_at?: string
+          criado_por?: string | null
+          descricao?: string | null
+          id?: string
+          token?: string
+          ultimo_uso?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "portal_guias_tokens_clinica_id_fkey"
+            columns: ["clinica_id"]
+            isOneToOne: false
+            referencedRelation: "clinicas"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       precos_consulta_convenio: {
         Row: {
