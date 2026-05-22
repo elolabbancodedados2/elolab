@@ -38,6 +38,7 @@ interface DatasetConfig {
   convenioField?: string;
   textSearchFields?: string[];
   columns: ColumnDef[];
+  groupByOptions?: { key: string; label: string }[];
 }
 
 const DATASETS: Record<DatasetKey, DatasetConfig> = {
@@ -83,6 +84,11 @@ const DATASETS: Record<DatasetKey, DatasetConfig> = {
       { key: 'status', label: 'Status' },
       { key: 'observacoes', label: 'Observações' },
     ],
+    groupByOptions: [
+      { key: 'tipo', label: 'Tipo' },
+      { key: 'status', label: 'Status' },
+      { key: 'medicos.nome', label: 'Médico' },
+    ],
   },
   lancamentos: {
     label: 'Financeiro (Lançamentos)',
@@ -104,6 +110,12 @@ const DATASETS: Record<DatasetKey, DatasetConfig> = {
       { key: 'status', label: 'Status' },
       { key: 'valor', label: 'Valor', format: 'currency' },
     ],
+    groupByOptions: [
+      { key: 'categoria', label: 'Categoria' },
+      { key: 'tipo', label: 'Tipo' },
+      { key: 'status', label: 'Status' },
+      { key: 'forma_pagamento', label: 'Forma de pagamento' },
+    ],
   },
   exames: {
     label: 'Exames',
@@ -123,6 +135,11 @@ const DATASETS: Record<DatasetKey, DatasetConfig> = {
       { key: 'status', label: 'Status' },
       { key: 'observacoes', label: 'Observações' },
     ],
+    groupByOptions: [
+      { key: 'tipo_exame', label: 'Tipo de exame' },
+      { key: 'status', label: 'Status' },
+      { key: 'medicos.nome', label: 'Médico' },
+    ],
   },
   prescricoes: {
     label: 'Prescrições',
@@ -140,6 +157,11 @@ const DATASETS: Record<DatasetKey, DatasetConfig> = {
       { key: 'posologia', label: 'Posologia' },
       { key: 'tipo', label: 'Tipo' },
     ],
+    groupByOptions: [
+      { key: 'medicamento', label: 'Medicamento' },
+      { key: 'tipo', label: 'Tipo' },
+      { key: 'medicos.nome', label: 'Médico' },
+    ],
   },
   atestados: {
     label: 'Atestados',
@@ -156,6 +178,10 @@ const DATASETS: Record<DatasetKey, DatasetConfig> = {
       { key: 'dias', label: 'Dias' },
       { key: 'motivo', label: 'Motivo' },
     ],
+    groupByOptions: [
+      { key: 'tipo', label: 'Tipo' },
+      { key: 'medicos.nome', label: 'Médico' },
+    ],
   },
   prontuarios: {
     label: 'Prontuários',
@@ -171,6 +197,9 @@ const DATASETS: Record<DatasetKey, DatasetConfig> = {
       { key: 'queixa_principal', label: 'Queixa' },
       { key: 'hipotese_diagnostica', label: 'Hipótese' },
       { key: 'conduta', label: 'Conduta' },
+    ],
+    groupByOptions: [
+      { key: 'medicos.nome', label: 'Médico' },
     ],
   },
   encaminhamentos: {
@@ -189,6 +218,11 @@ const DATASETS: Record<DatasetKey, DatasetConfig> = {
       { key: 'especialidade_destino', label: 'Especialidade' },
       { key: 'motivo', label: 'Motivo' },
       { key: 'status', label: 'Status' },
+    ],
+    groupByOptions: [
+      { key: 'especialidade_destino', label: 'Especialidade' },
+      { key: 'status', label: 'Status' },
+      { key: 'medicos.nome', label: 'Médico' },
     ],
   },
   estoque: {
@@ -209,6 +243,10 @@ const DATASETS: Record<DatasetKey, DatasetConfig> = {
       { key: 'validade', label: 'Validade', format: 'date' },
       { key: 'preco_unitario', label: 'Preço', format: 'currency' },
       { key: 'ativo', label: 'Ativo', format: 'boolean' },
+    ],
+    groupByOptions: [
+      { key: 'categoria', label: 'Categoria' },
+      { key: 'localizacao', label: 'Local' },
     ],
   },
 };
