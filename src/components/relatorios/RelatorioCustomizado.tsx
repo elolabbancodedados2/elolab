@@ -318,8 +318,10 @@ export default function RelatorioCustomizado() {
     try {
       let q: any = (supabase as any).from(cfg.table).select(cfg.select);
 
+      const isTimestampField = ['created_at', 'updated_at', 'data'].includes(cfg.dateField) === false
+        || cfg.dateField === 'created_at' || cfg.dateField === 'updated_at';
       if (dataInicio) q = q.gte(cfg.dateField, dataInicio);
-      if (dataFim) q = q.lte(cfg.dateField, dataFim + 'T23:59:59');
+      if (dataFim) q = q.lte(cfg.dateField, isTimestampField ? dataFim + 'T23:59:59.999' : dataFim);
       if (cfg.statusField && statusFilter !== 'todos') {
         const v = statusFilter === 'true' ? true : statusFilter === 'false' ? false : statusFilter;
         q = q.eq(cfg.statusField, v);
