@@ -95,7 +95,7 @@ const DATASETS: Record<DatasetKey, DatasetConfig> = {
   lancamentos: {
     label: 'Financeiro (Lançamentos)',
     table: 'lancamentos',
-    select: 'id, tipo, categoria, descricao, valor, data, data_vencimento, data_pagamento, status, forma_pagamento, paciente_id, pacientes(nome)',
+    select: 'id, tipo, categoria, descricao, valor, data, data_vencimento, status, forma_pagamento, paciente_id, pacientes(nome)',
     dateField: 'data',
     statusField: 'status',
     statusOptions: ['pendente', 'pago', 'atrasado', 'cancelado'],
@@ -103,7 +103,6 @@ const DATASETS: Record<DatasetKey, DatasetConfig> = {
     columns: [
       { key: 'data', label: 'Data', format: 'date' },
       { key: 'data_vencimento', label: 'Vencimento', format: 'date' },
-      { key: 'data_pagamento', label: 'Pagamento', format: 'date' },
       { key: 'tipo', label: 'Tipo' },
       { key: 'categoria', label: 'Categoria' },
       { key: 'descricao', label: 'Descrição' },
