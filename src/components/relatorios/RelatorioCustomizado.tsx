@@ -47,10 +47,8 @@ const DATASETS: Record<DatasetKey, DatasetConfig> = {
   pacientes: {
     label: 'Pacientes',
     table: 'pacientes',
-    select: 'id, nome, nome_social, cpf, data_nascimento, sexo, telefone, email, cidade, estado, convenio_id, ativo, created_at, convenios(nome)',
+    select: 'id, nome, nome_social, cpf, data_nascimento, sexo, telefone, email, cidade, estado, convenio_id, created_at, convenios(nome)',
     dateField: 'created_at',
-    statusField: 'ativo',
-    statusOptions: ['true', 'false'],
     convenioField: 'convenio_id',
     textSearchFields: ['nome', 'nome_social', 'cpf', 'email', 'telefone'],
     columns: [
@@ -64,7 +62,6 @@ const DATASETS: Record<DatasetKey, DatasetConfig> = {
       { key: 'cidade', label: 'Cidade' },
       { key: 'estado', label: 'UF' },
       { key: 'convenios.nome', label: 'Convênio' },
-      { key: 'ativo', label: 'Ativo', format: 'boolean' },
       { key: 'created_at', label: 'Cadastro', format: 'datetime' },
     ],
   },
@@ -121,11 +118,11 @@ const DATASETS: Record<DatasetKey, DatasetConfig> = {
   exames: {
     label: 'Exames',
     table: 'exames',
-    select: 'id, tipo_exame, status, data_solicitacao, data_realizacao, data_resultado, observacoes, paciente_id, medico_id, pacientes(nome), medicos(nome)',
+    select: 'id, tipo_exame, status, data_solicitacao, data_realizacao, observacoes, paciente_id, medico_solicitante_id, pacientes(nome), medicos!exames_medico_solicitante_id_fkey(nome)',
     dateField: 'data_solicitacao',
     statusField: 'status',
     statusOptions: ['solicitado', 'agendado', 'coletado', 'em_analise', 'laudo_disponivel', 'cancelado'],
-    medicoField: 'medico_id',
+    medicoField: 'medico_solicitante_id',
     textSearchFields: ['tipo_exame', 'observacoes'],
     columns: [
       { key: 'data_solicitacao', label: 'Solicitação', format: 'date' },
@@ -206,11 +203,11 @@ const DATASETS: Record<DatasetKey, DatasetConfig> = {
   encaminhamentos: {
     label: 'Encaminhamentos',
     table: 'encaminhamentos',
-    select: 'id, data_encaminhamento, especialidade_destino, motivo, status, paciente_id, medico_id, pacientes(nome), medicos(nome)',
+    select: 'id, data_encaminhamento, especialidade_destino, motivo, status, paciente_id, medico_origem_id, pacientes(nome), medicos!encaminhamentos_medico_origem_id_fkey(nome)',
     dateField: 'data_encaminhamento',
     statusField: 'status',
     statusOptions: ['pendente', 'realizado', 'cancelado'],
-    medicoField: 'medico_id',
+    medicoField: 'medico_origem_id',
     textSearchFields: ['motivo', 'especialidade_destino'],
     columns: [
       { key: 'data_encaminhamento', label: 'Data', format: 'date' },
@@ -229,10 +226,8 @@ const DATASETS: Record<DatasetKey, DatasetConfig> = {
   estoque: {
     label: 'Estoque',
     table: 'estoque',
-    select: 'id, nome, categoria, quantidade, quantidade_minima, unidade, localizacao, validade, preco_unitario, ativo, created_at',
+    select: 'id, nome, categoria, quantidade, quantidade_minima, unidade, localizacao, validade, valor_unitario, created_at',
     dateField: 'created_at',
-    statusField: 'ativo',
-    statusOptions: ['true', 'false'],
     textSearchFields: ['nome', 'categoria', 'localizacao'],
     columns: [
       { key: 'nome', label: 'Item' },
@@ -242,8 +237,7 @@ const DATASETS: Record<DatasetKey, DatasetConfig> = {
       { key: 'unidade', label: 'Unidade' },
       { key: 'localizacao', label: 'Local' },
       { key: 'validade', label: 'Validade', format: 'date' },
-      { key: 'preco_unitario', label: 'Preço', format: 'currency' },
-      { key: 'ativo', label: 'Ativo', format: 'boolean' },
+      { key: 'valor_unitario', label: 'Preço', format: 'currency' },
     ],
     groupByOptions: [
       { key: 'categoria', label: 'Categoria' },
@@ -324,8 +318,9 @@ export default function RelatorioCustomizado() {
     try {
       let q: any = (supabase as any).from(cfg.table).select(cfg.select);
 
+      const isTimestamp = cfg.dateField === 'created_at' || cfg.dateField === 'updated_at';
       if (dataInicio) q = q.gte(cfg.dateField, dataInicio);
-      if (dataFim) q = q.lte(cfg.dateField, dataFim + 'T23:59:59');
+      if (dataFim) q = q.lte(cfg.dateField, isTimestamp ? dataFim + 'T23:59:59.999' : dataFim);
       if (cfg.statusField && statusFilter !== 'todos') {
         const v = statusFilter === 'true' ? true : statusFilter === 'false' ? false : statusFilter;
         q = q.eq(cfg.statusField, v);
