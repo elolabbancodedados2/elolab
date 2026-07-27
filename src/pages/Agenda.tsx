@@ -210,6 +210,17 @@ export default function Agenda() {
     });
   }, [agendamentos, selectedMedico, isMedicoOnly, medicoId]);
 
+  // Horários exibidos na grade: base 00:00→23:30 (30min) + qualquer horário
+  // customizado presente em agendamentos, permitindo agendar livremente.
+  const HORARIOS = useMemo(() => {
+    const set = new Set<string>(HORARIOS_BASE);
+    for (const ag of filteredAgendamentos) {
+      const h = ag.hora_inicio?.slice(0, 5);
+      if (h) set.add(h);
+    }
+    return Array.from(set).sort();
+  }, [filteredAgendamentos]);
+
   // Stats do dia atual
   const hoje = format(new Date(), 'yyyy-MM-dd');
   const agendamentosHoje = filteredAgendamentos.filter(a => a.data === hoje);
