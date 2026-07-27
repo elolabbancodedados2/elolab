@@ -622,6 +622,13 @@ export default function Agenda() {
 
     setIsSaving(true);
     try {
+      // Capture slot info BEFORE deletion for waitlist offer
+      const slot = {
+        data: formData.data || '',
+        hora: formData.hora_inicio || '',
+        medico_id: formData.medico_id || null,
+        tipo: formData.tipo || null,
+      };
       const result = await autoCancelarAgendamento({
         agendamentoId: formData.id,
         motivo: 'cancelado',
@@ -632,11 +639,98 @@ export default function Agenda() {
       toast.success('Agendamento cancelado!', { description: result.actions.join(' • ') });
       await queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
       setIsFormOpen(false);
+
+      // Try to fill freed slot from waitlist
+      try {
+        const medicoInfo = slot.medico_id ? medicos.find(m => m.id === slot.medico_id) : null;
+        const especialidade = medicoInfo?.especialidade || null;
+        let q = supabase
+          .from('lista_espera')
+          .select('*, pacientes(nome, telefone)')
+          .eq('status', 'aguardando')
+          .order('prioridade', { ascending: false })
+          .order('data_cadastro', { ascending: true })
+          .limit(10);
+        if (especialidade) q = q.eq('especialidade', especialidade);
+        const { data: candidates } = await q;
+        if (candidates && candidates.length > 0) {
+          setFreedSlot(slot);
+          setWaitlistCandidates(candidates);
+          setWaitlistDialogOpen(true);
+        }
+      } catch (e) {
+        if (import.meta.env.DEV) console.log('Waitlist lookup skipped:', e);
+      }
     } catch (error: any) {
       if (import.meta.env.DEV) console.error('Error cancelling agendamento:', error);
       toast.error('Erro ao cancelar agendamento.');
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const promoteFromWaitlist = async (candidate: any) => {
+    if (!freedSlot) return;
+    setIsPromoting(candidate.id);
+    try {
+      const { error: insErr } = await supabase.from('agendamentos').insert({
+        paciente_id: candidate.paciente_id,
+        medico_id: freedSlot.medico_id || candidate.medico_id || null,
+        data: freedSlot.data,
+        hora_inicio: freedSlot.hora,
+        tipo: freedSlot.tipo || 'consulta',
+        status: 'agendado',
+        observacoes: `Promovido da lista de espera. Motivo original: ${candidate.motivo || '-'}`,
+        clinica_id: profile?.clinica_id || null,
+      });
+      if (insErr) throw insErr;
+      await supabase.from('lista_espera').update({ status: 'agendado' }).eq('id', candidate.id);
+      toast.success(`${candidate.pacientes?.nome || 'Paciente'} agendado no horário liberado!`);
+      await queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
+      await queryClient.invalidateQueries({ queryKey: ['lista_espera'] });
+      setWaitlistDialogOpen(false);
+    } catch (e: any) {
+      toast.error(e?.message || 'Erro ao promover paciente da lista de espera.');
+    } finally {
+      setIsPromoting(null);
+    }
+  };
+
+  // Suggest next free slot for the selected doctor on formData.data
+  const suggestNextSlot = () => {
+    if (!formData.data || !formData.medico_id) {
+      toast.info('Selecione data e médico primeiro.');
+      return;
+    }
+    const busy = new Set(
+      agendamentos
+        .filter(a => a.data === formData.data && a.medico_id === formData.medico_id && a.status !== 'cancelado' && a.id !== formData.id)
+        .map(a => (a.hora_inicio || '').slice(0, 5))
+    );
+    // Try 30-min slots from 07:00 to 20:00
+    for (let h = 7; h < 20; h++) {
+      for (const m of [0, 30]) {
+        const hh = String(h).padStart(2, '0');
+        const mm = String(m).padStart(2, '0');
+        const slot = `${hh}:${mm}`;
+        if (!busy.has(slot)) {
+          setFormData({ ...formData, hora_inicio: slot });
+          toast.success(`Próximo horário livre: ${slot}`);
+          return;
+        }
+      }
+    }
+    toast.warning('Nenhum horário livre encontrado neste dia.');
+  };
+
+  const sendWhatsAppConfirmation = async (agendamentoId?: string) => {
+    const id = agendamentoId || formData.id;
+    if (!id) return;
+    try {
+      await sendWhatsAppNotification(id, 'send_appointment_confirmation');
+      toast.success('Confirmação enviada por WhatsApp!');
+    } catch (e: any) {
+      toast.error('Não foi possível enviar a confirmação.');
     }
   };
 
