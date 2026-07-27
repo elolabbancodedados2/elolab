@@ -681,7 +681,7 @@ export default function Agenda() {
         tipo: freedSlot.tipo || 'consulta',
         status: 'agendado',
         observacoes: `Promovido da lista de espera. Motivo original: ${candidate.motivo || '-'}`,
-        clinica_id: profile?.clinica_id || null,
+        clinica_id: clinicaId || null,
       });
       if (insErr) throw insErr;
       await supabase.from('lista_espera').update({ status: 'agendado' }).eq('id', candidate.id);
