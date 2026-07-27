@@ -1,4 +1,3 @@
- // @ts-nocheck
  import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -50,7 +49,7 @@ export default function VitaisGraficos() {
     queryKey: ['vitais_historico', selectedPacienteId],
     queryFn: async () => {
       if (!selectedPacienteId) return [];
-      const { data } = await supabase
+      const { data } = await (supabase as any)
         .from('vitais_historico')
         .select('*')
         .eq('paciente_id', selectedPacienteId)
