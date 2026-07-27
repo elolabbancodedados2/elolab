@@ -1427,6 +1427,17 @@ export default function Agenda() {
                 <ArrowRightLeft className="h-3.5 w-3.5" />
                 Remarcar
               </Button>
+
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-emerald-700 border-emerald-500/30 hover:bg-emerald-500/10 gap-1.5"
+                disabled={isSaving}
+                onClick={() => sendWhatsAppConfirmation()}
+              >
+                <MessageCircle className="h-3.5 w-3.5" />
+                WhatsApp
+              </Button>
             </div>
           )}
 
