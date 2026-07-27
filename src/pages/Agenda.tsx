@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { format, startOfWeek, addDays, isSameDay, parseISO, addWeeks, subWeeks, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, getDay, isSameMonth } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { ChevronLeft, ChevronRight, Clock, Repeat, Loader2, LayoutList, LayoutGrid, Users, CalendarCheck, AlertTriangle, CalendarDays, LogIn, CheckCircle2, ArrowRightLeft, Bell, Plus } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Clock, Repeat, Loader2, LayoutList, LayoutGrid, Users, CalendarCheck, AlertTriangle, CalendarDays, LogIn, CheckCircle2, ArrowRightLeft, Bell, Plus, MessageCircle, Search, Filter, Wand2, X } from 'lucide-react';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -39,6 +39,8 @@ import { AgendaSkeleton } from '@/components/ui/loading-skeleton';
 import { EmptyAgendamentos } from '@/components/EmptyState';
 import { Database } from '@/integrations/supabase/types';
 import { BloqueioAgenda } from '@/components/agenda/BloqueioAgenda';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Checkbox } from '@/components/ui/checkbox';
 
 type StatusAgendamento = Database['public']['Enums']['status_agendamento'];
 
