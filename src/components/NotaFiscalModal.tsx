@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -38,7 +37,7 @@ export function NotaFiscalModal({
   const loadNotaFiscal = async () => {
     setLoading(true);
     try {
-      const { data } = await supabase
+      const { data } = await (supabase as any)
         .from('notas_fiscais')
         .select('*')
         .eq('lancamento_id', lancamentoId)

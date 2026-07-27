@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -51,9 +50,9 @@ export function AutorizacaoConvenioModal({
     setLoading(true);
     try {
       // Load autorizacoes for this paciente
-      const { data: auths } = await supabase
+      const { data: auths } = await (supabase as any)
         .from('autorizacoes_convenio')
-        .select('*, convenios(nome, telefone_suporte)')
+        .select('*, convenios(nome, telefone)')
         .eq('paciente_id', pacienteId)
         .order('data_solicitacao', { ascending: false });
 
@@ -62,7 +61,7 @@ export function AutorizacaoConvenioModal({
       // Load available convenios
       const { data: convs } = await supabase
         .from('convenios')
-        .select('id, nome, telefone_suporte, email_suporte, dias_carencia')
+        .select('id, nome, telefone, email, carencia')
         .eq('ativo', true)
         .order('nome');
 
@@ -85,7 +84,7 @@ export function AutorizacaoConvenioModal({
 
     setSubmitting(true);
     try {
-      const { data: auth, error } = await supabase
+      const { data: auth, error } = await (supabase as any)
         .from('autorizacoes_convenio')
         .insert({
           paciente_id: pacienteId,
@@ -233,14 +232,14 @@ export function AutorizacaoConvenioModal({
 
                   {selectedConvenioData && (
                     <div className="p-2 rounded bg-muted/50 text-xs space-y-1">
-                      {selectedConvenioData.dias_carencia > 0 && (
-                        <p>📅 Período de carência: {selectedConvenioData.dias_carencia} dias</p>
+                      {selectedConvenioData.carencia > 0 && (
+                        <p>📅 Período de carência: {selectedConvenioData.carencia} dias</p>
                       )}
-                      {selectedConvenioData.telefone_suporte && (
-                        <p>📞 Suporte: {selectedConvenioData.telefone_suporte}</p>
+                      {selectedConvenioData.telefone && (
+                        <p>📞 Suporte: {selectedConvenioData.telefone}</p>
                       )}
-                      {selectedConvenioData.email_suporte && (
-                        <p>✉️ Email: {selectedConvenioData.email_suporte}</p>
+                      {selectedConvenioData.email && (
+                        <p>✉️ Email: {selectedConvenioData.email}</p>
                       )}
                     </div>
                   )}

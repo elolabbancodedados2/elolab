@@ -9,10 +9,15 @@ export default defineConfig({
     globals: true,
     setupFiles: ["./src/test/setup.ts"],
     include: ["src/**/*.{test,spec}.{ts,tsx}"],
-    threads: true,
-    maxThreads: 2,
-    minThreads: 1,
-    isolate: false,
+    // `threads`/`maxThreads`/`minThreads` eram opções do Vitest 1.x e viraram
+    // no-op na v3 instalada aqui — o pool ficava na configuração padrão.
+    pool: "threads",
+    poolOptions: {
+      threads: { minThreads: 1, maxThreads: 2 },
+    },
+    // isolate:false fazia todos os arquivos dividirem o mesmo ambiente jsdom,
+    // então um vazamento em um teste contaminava os demais.
+    isolate: true,
     testTimeout: 20000,
   },
   resolve: {

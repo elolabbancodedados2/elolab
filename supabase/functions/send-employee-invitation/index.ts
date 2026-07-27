@@ -10,7 +10,9 @@ interface InvitationRequest {
   funcionarioId: string;
   email: string;
   nome: string;
-  roles: string[];
+  /** Ignored on purpose — roles are read from funcionarios.pending_roles so the
+   *  caller cannot mint an invitation with arbitrary (e.g. admin) roles. */
+  roles?: string[];
 }
 
 Deno.serve(async (req) => {
@@ -47,7 +49,7 @@ Deno.serve(async (req) => {
 
     const userId = user.id;
 
-    const { funcionarioId, email, nome, roles }: InvitationRequest = await req.json();
+    const { funcionarioId, email, nome }: InvitationRequest = await req.json();
 
     if (!funcionarioId || !email || !nome) {
       throw new Error("Missing required fields: funcionarioId, email, nome");
@@ -55,6 +57,20 @@ Deno.serve(async (req) => {
 
     // Use service client to bypass RLS for insert
     const serviceClient = createClient(supabaseUrl, supabaseServiceKey);
+
+    // Only admins of a clinic may invite. Without this check any authenticated
+    // user could mint an invite with roles: ["admin"] and escalate themselves.
+    const { data: callerRoles } = await serviceClient
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", userId);
+
+    if (!callerRoles?.some((r: { role: string }) => r.role === "admin")) {
+      return new Response(
+        JSON.stringify({ success: false, error: "Apenas administradores podem enviar convites." }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     // Get user's clinica_id
     const { data: profileData } = await serviceClient
@@ -65,16 +81,29 @@ Deno.serve(async (req) => {
 
     const clinicaId = profileData?.clinica_id || null;
 
-    // Get pending_roles from funcionario as fallback if roles not provided
-    let finalRoles = roles || [];
-    if (finalRoles.length === 0) {
-      const { data: funcData } = await serviceClient
-        .from("funcionarios")
-        .select("pending_roles")
-        .eq("id", funcionarioId)
-        .maybeSingle();
-      finalRoles = (funcData?.pending_roles as string[]) || [];
+    // The funcionario must belong to the caller's clinic, and the roles come
+    // from the funcionario record — never from the request body.
+    const { data: funcData } = await serviceClient
+      .from("funcionarios")
+      .select("pending_roles, clinica_id")
+      .eq("id", funcionarioId)
+      .maybeSingle();
+
+    if (!funcData) {
+      throw new Error("Funcionário não encontrado");
     }
+
+    if (funcData.clinica_id && clinicaId && funcData.clinica_id !== clinicaId) {
+      return new Response(
+        JSON.stringify({ success: false, error: "Funcionário pertence a outra clínica." }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const ALLOWED_ROLES = ["admin", "medico", "recepcao", "enfermagem", "financeiro"];
+    const finalRoles = ((funcData.pending_roles as string[]) || []).filter(r =>
+      ALLOWED_ROLES.includes(r)
+    );
 
     const inviteToken = crypto.randomUUID();
 
@@ -105,7 +134,16 @@ Deno.serve(async (req) => {
       financeiro: "Financeiro",
     };
 
-    const rolesDisplay = roles.map(r => roleLabels[r] || r).join(", ") || "Usuário";
+    const rolesDisplay = finalRoles.map(r => roleLabels[r] || r).join(", ") || "Usuário";
+
+    // Escape user-controlled values before interpolating into the email HTML
+    const esc = (s: string) =>
+      String(s)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
 
     const htmlContent = `
       <!DOCTYPE html>
@@ -135,7 +173,7 @@ Deno.serve(async (req) => {
             <h1>🏥 EloLab Clínica</h1>
           </div>
           <div class="content">
-            <p class="greeting">Olá, ${nome}!</p>
+            <p class="greeting">Olá, ${esc(nome)}!</p>
             <p class="text">
               Você foi convidado(a) para fazer parte da nossa equipe no Sistema Clínico.
               Com este convite, você terá acesso ao sistema com as seguintes permissões:
@@ -189,12 +227,12 @@ Deno.serve(async (req) => {
     }
 
     return new Response(
+      // The token is deliberately NOT returned: it is delivered only by email,
+      // otherwise the caller could accept the invitation they just created.
       JSON.stringify({
         success: true,
         message: "Convite enviado com sucesso",
-        token: inviteToken,
-        inviteCode,
-        inviteUrl,
+        emailSent: emailRes.ok,
       }),
       {
         status: 200,

@@ -1,4 +1,3 @@
- // @ts-nocheck
  /**
   * Configurações Avançadas - Complemento ao Painel de Admin
   * Seções críticas para operação da plataforma:
@@ -35,13 +34,14 @@ import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { AdminProtectedRoute } from '@/components/AdminProtectedRoute';
 
 /* ─── Types ─── */
 interface SystemHealth {
   database: { status: 'ok' | 'warning' | 'error'; latency: number; connections: number };
   auth: { status: 'ok' | 'error'; activeUsers: number };
-  storage: { status: 'ok' | 'warning'; usedGB: number; totalGB: number };
+  /** usedGB/totalGB são null: a cota real só é acessível pela API de
+   *  administração do Supabase, indisponível no navegador. */
+  storage: { status: 'ok' | 'warning' | 'error'; usedGB: number | null; totalGB: number | null };
   api: { status: 'ok' | 'warning' | 'error'; responseTime: number };
   lastCheck: Date;
 }
@@ -94,17 +94,21 @@ export function HealthCheckTab() {
       // Auth
       const { data: { user } } = await supabase.auth.getUser();
 
-      // Storage - simular verificação
-      const storageUsedGB = Math.random() * 50; // Exemplo: 0-50GB
-      const storageTotalGB = 100;
+      // Storage: mede o que dá para medir pelo cliente — se algum bucket
+      // responde. O total consumido em GB só existe na API de administração do
+      // Supabase, que não pode ser chamada do navegador, então NÃO inventamos
+      // um número aqui (a versão anterior usava Math.random()).
+      const { error: storageError } = await supabase.storage
+        .from('medical-attachments')
+        .list('', { limit: 1 });
 
       setHealth({
         database: { status: dbError ? 'error' : 'ok', latency: dbLatency, connections: 0 },
         auth: { status: user ? 'ok' : 'error', activeUsers: 1 },
         storage: {
-          status: storageUsedGB > 80 ? 'warning' : 'ok',
-          usedGB: Math.round(storageUsedGB * 10) / 10,
-          totalGB: storageTotalGB,
+          status: storageError ? 'error' : 'ok',
+          usedGB: null,
+          totalGB: null,
         },
         api: { status: 'ok', responseTime: dbLatency },
         lastCheck: new Date(),
@@ -195,13 +199,15 @@ export function HealthCheckTab() {
                       <StatusBadge status={health.storage.status} />
                     </div>
                     <div className="text-sm space-y-1 text-muted-foreground">
-                      <p>Uso: {Math.round(health.storage.usedGB)}/{health.storage.totalGB}GB</p>
-                      <div className="h-2 bg-gray-200 rounded mt-2">
-                        <div
-                          className={`h-full rounded ${health.storage.usedGB > 80 ? 'bg-yellow-500' : 'bg-green-500'}`}
-                          style={{ width: `${(health.storage.usedGB / health.storage.totalGB) * 100}%` }}
-                        />
-                      </div>
+                      <p>
+                        {health.storage.status === 'error'
+                          ? 'Buckets não responderam'
+                          : 'Buckets acessíveis'}
+                      </p>
+                      <p className="text-xs">
+                        Consumo em GB: consulte o painel do Supabase
+                        (Settings → Usage). Não é possível medir pelo navegador.
+                      </p>
                     </div>
                   </CardContent>
                 </Card>
@@ -384,7 +390,9 @@ export function EspecialidadesTab() {
   const { data: especialidades = [] } = useQuery({
     queryKey: ['especialidades'],
     queryFn: async () => {
-      const { data } = await supabase.from('especialidades_destino').select('*').order('nome');
+      // A tabela existe (migration add_referral_system) mas ainda não consta no
+      // types.ts gerado — mesma convenção usada nas demais telas.
+      const { data } = await (supabase as any).from('especialidades_destino').select('*').order('nome');
       return (data || []) as Especialidade[];
     },
   });
@@ -664,10 +672,11 @@ export function LGPDAvancadoTab() {
 }
 
 /* ─── Main Component ─── */
+// O controle de acesso fica na rota (SupabaseProtectedRoute allowedRoles=['admin']),
+// como em todas as outras páginas — antes esta era a única a usar um guard próprio.
 export default function ConfiguracoesAvancadas() {
   return (
-    <AdminProtectedRoute>
-      <div className="space-y-6">
+    <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Configurações Avançadas</h1>
         <p className="text-muted-foreground mt-2">Gerenciamento completo dos serviços e conformidade</p>
@@ -703,7 +712,6 @@ export default function ConfiguracoesAvancadas() {
         <TabsContent value="documentos"><DocumentosTemplatesTab /></TabsContent>
         <TabsContent value="lgpd"><LGPDAvancadoTab /></TabsContent>
       </Tabs>
-      </div>
-    </AdminProtectedRoute>
+    </div>
   );
 }

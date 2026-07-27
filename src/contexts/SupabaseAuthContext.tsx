@@ -270,12 +270,32 @@ export function SupabaseAuthProvider({ children }: { children: ReactNode }) {
     return { data, error: error as Error | null };
   };
 
+  /**
+   * Remove do navegador qualquer resposta de API/arquivo que o service worker
+   * do PWA tenha guardado. Sem isso, dados clínicos continuavam recuperáveis
+   * no Cache Storage depois do logout em computadores compartilhados.
+   */
+  const clearClinicalCaches = async () => {
+    if (typeof caches === 'undefined') return;
+    try {
+      const keys = await caches.keys();
+      await Promise.all(
+        keys
+          .filter(k => k.includes('supabase') || k.includes('images-cache'))
+          .map(k => caches.delete(k))
+      );
+    } catch (error) {
+      console.error('Error clearing caches:', error);
+    }
+  };
+
   const signOut = async () => {
     try {
       await supabase.auth.signOut();
     } catch (error) {
       console.error('Error signing out:', error);
     } finally {
+      await clearClinicalCaches();
       setUser(null);
       setSession(null);
       setProfile(null);

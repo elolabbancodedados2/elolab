@@ -1,62 +1,114 @@
 import { test, expect } from '@playwright/test';
 
+/**
+ * Testes de RLS contra a API REST do Supabase usando apenas a chave anon.
+ *
+ * A versão anterior destes testes aceitava qualquer HTTP 200 desde que o corpo
+ * fosse um array — ou seja, um vazamento total de dados passaria. Agora exigimos
+ * explicitamente ZERO linhas para quem não está autenticado.
+ */
+
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'https://gebygucrpipaufrlyqqj.supabase.co';
-const SUPABASE_ANON_KEY = process.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdlYnlndWNycGlwYXVmcmx5cXFqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk4MTQ2ODAsImV4cCI6MjA4NTM5MDY4MH0.WURCBXjBiAZpk-Qyb3SMu3XQGVvRG07BuCJSURbmouI';
+const SUPABASE_ANON_KEY =
+  process.env.VITE_SUPABASE_PUBLISHABLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || '';
 
-const tables = ['pacientes', 'medicos', 'agendamentos', 'prontuarios', 'lancamentos', 'estoque'];
+const headers = {
+  apikey: SUPABASE_ANON_KEY,
+  Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+  'Content-Type': 'application/json',
+};
 
-test.describe('RLS Security Tests', () => {
-  for (const table of tables) {
-    test(`${table}: sem auth retorna 0 registros ou erro`, async ({ request }) => {
-      const response = await request.get(`${SUPABASE_URL}/rest/v1/${table}?select=*`, {
-        headers: {
-          'apikey': SUPABASE_ANON_KEY,
-          'Content-Type': 'application/json',
-        },
+/** Tabelas que jamais podem devolver linhas para um visitante anônimo. */
+const PRIVATE_TABLES = [
+  'pacientes',
+  'medicos',
+  'agendamentos',
+  'prontuarios',
+  'prescricoes',
+  'atestados',
+  'exames',
+  'lancamentos',
+  'estoque',
+  'funcionarios',
+  'profiles',
+  'user_roles',
+  'employee_invitations',
+  'registros_pendentes',
+  'audit_log',
+];
+
+test.beforeAll(() => {
+  test.skip(!SUPABASE_ANON_KEY, 'VITE_SUPABASE_PUBLISHABLE_KEY não configurada');
+});
+
+test.describe('RLS — leitura anônima', () => {
+  for (const table of PRIVATE_TABLES) {
+    test(`${table}: anônimo não lê nenhuma linha`, async ({ request }) => {
+      const response = await request.get(`${SUPABASE_URL}/rest/v1/${table}?select=*&limit=5`, {
+        headers,
       });
 
-      // RLS should either return empty array or 401/403
       if (response.ok()) {
         const data = await response.json();
-        // With RLS enabled and no auth, should return empty or very limited data
-        expect(Array.isArray(data)).toBe(true);
+        expect(Array.isArray(data), `${table} deveria devolver um array`).toBe(true);
+        expect(data, `VAZAMENTO: ${table} devolveu ${data.length} linha(s) para anônimo`).toHaveLength(0);
       } else {
-        // 401 or 403 is expected
-        expect([401, 403, 406]).toContain(response.status());
+        // Erro explícito também é aceitável (401/403/404/406)
+        expect([401, 403, 404, 406]).toContain(response.status());
       }
     });
   }
+});
 
-  test('insert sem auth é bloqueado', async ({ request }) => {
+test.describe('RLS — escrita anônima', () => {
+  test('insert de paciente é bloqueado', async ({ request }) => {
     const response = await request.post(`${SUPABASE_URL}/rest/v1/pacientes`, {
-      headers: {
-        'apikey': SUPABASE_ANON_KEY,
-        'Content-Type': 'application/json',
-        'Prefer': 'return=minimal',
-      },
-      data: {
-        nome: 'Hacker Test',
-        cpf: '00000000000',
-      },
+      headers: { ...headers, Prefer: 'return=representation' },
+      data: { nome: 'RLS Test — deve falhar', cpf: '00000000000' },
     });
 
-    // Should be rejected (401, 403, or 409)
-    expect(response.ok()).toBe(false);
+    expect(response.ok(), 'anônimo conseguiu inserir paciente').toBe(false);
   });
 
-  test('delete sem auth é bloqueado', async ({ request }) => {
-    const response = await request.delete(
-      `${SUPABASE_URL}/rest/v1/pacientes?id=eq.nonexistent`,
-      {
-        headers: {
-          'apikey': SUPABASE_ANON_KEY,
-          'Content-Type': 'application/json',
-        },
-      }
-    );
+  test('update de paciente não afeta linhas', async ({ request }) => {
+    const response = await request.patch(`${SUPABASE_URL}/rest/v1/pacientes?nome=neq.`, {
+      headers: { ...headers, Prefer: 'return=representation' },
+      data: { observacoes: 'rls-test' },
+    });
 
-    // Should not allow deletion (400 = Supabase rejeita DELETE não autorizado;
-    // 401/403 = rejeição explícita; 200/404/406 = nenhuma linha afetada)
-    expect([200, 400, 401, 403, 404, 406]).toContain(response.status());
+    if (response.ok()) {
+      const data = await response.json();
+      expect(data, 'anônimo alterou linhas de pacientes').toHaveLength(0);
+    } else {
+      expect([401, 403, 404, 405, 406]).toContain(response.status());
+    }
+  });
+
+  test('delete de paciente não remove linhas', async ({ request }) => {
+    const response = await request.delete(`${SUPABASE_URL}/rest/v1/pacientes?nome=neq.`, {
+      headers: { ...headers, Prefer: 'return=representation' },
+    });
+
+    if (response.ok()) {
+      const data = await response.json();
+      expect(data, 'anônimo removeu linhas de pacientes').toHaveLength(0);
+    } else {
+      expect([401, 403, 404, 405, 406]).toContain(response.status());
+    }
+  });
+});
+
+test.describe('RLS — catálogo público', () => {
+  test('planos ativos continuam visíveis (página de preços)', async ({ request }) => {
+    const response = await request.get(`${SUPABASE_URL}/rest/v1/planos?select=id,nome,ativo`, {
+      headers,
+    });
+    expect(response.ok()).toBe(true);
+    const data = await response.json();
+    expect(Array.isArray(data)).toBe(true);
+    // Se algum plano vier, precisa estar ativo — inativos não devem vazar.
+    for (const plano of data) {
+      expect(plano.ativo).toBe(true);
+    }
   });
 });

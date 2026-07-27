@@ -11,6 +11,23 @@ env:
   VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
 
 jobs:
+  static-checks:
+    name: Typecheck & Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npx tsc --noEmit -p tsconfig.app.json
+      # Lint ainda é informativo: a base tem 11 arquivos com @ts-nocheck e
+      # ~880 avisos de `any` herdados. Remova o continue-on-error quando o
+      # contador chegar a zero, senão o job nasce vermelho e ninguém olha.
+      - run: npm run lint
+        continue-on-error: true
+
   unit-tests:
     name: Unit & Integration Tests
     runs-on: ubuntu-latest

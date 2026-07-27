@@ -6,6 +6,22 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+/** Data de hoje em "YYYY-MM-DD", para comparar com colunas `date` do Postgres. */
+function todayISO(): string {
+  return new Date().toISOString().split("T")[0];
+}
+
+/**
+ * Soma minutos a um horário "HH:MM".
+ * A versão anterior fazia `(m + 30) % 60` sem propagar a hora, então 10:45 + 30
+ * virava "10:15" em vez de "11:15".
+ */
+function addMinutes(time: string, minutes: number): string {
+  const [h, m] = time.split(":").map(Number);
+  const total = (h * 60 + m + minutes) % (24 * 60);
+  return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -30,7 +46,7 @@ Deno.serve(async (req) => {
     // Validate token
     const { data: tokenData, error: tokenError } = await supabase
       .from("paciente_portal_tokens")
-      .select("*, pacientes(id, nome, email, telefone, foto_url, cpf, data_nascimento, sexo, alergias, observacoes)")
+      .select("*, pacientes(id, nome, email, telefone, foto_url, cpf, data_nascimento, sexo, alergias, observacoes, clinica_id)")
       .eq("token", token)
       .eq("ativo", true)
       .gte("expires_at", new Date().toISOString())
@@ -44,6 +60,10 @@ Deno.serve(async (req) => {
     }
 
     const pacienteId = tokenData.paciente_id;
+    // Clínica do paciente — usada para impedir que o portal exponha ou agende
+    // com médicos de outras clínicas.
+    const pacienteClinicaId =
+      (tokenData as any).pacientes?.clinica_id ?? (tokenData as any).clinica_id ?? null;
 
     // Update last access
     await supabase
@@ -115,10 +135,15 @@ Deno.serve(async (req) => {
       }
 
       case "get_medicos": {
+        if (!pacienteClinicaId) {
+          result = [];
+          break;
+        }
         const { data } = await supabase
           .from("medicos")
           .select("id, nome, crm, especialidade, foto_url")
           .eq("ativo", true)
+          .eq("clinica_id", pacienteClinicaId)
           .order("nome");
         result = data || [];
         break;
@@ -213,15 +238,22 @@ Deno.serve(async (req) => {
           );
         }
 
-        // Validate doctor exists and is active
+        // Validate doctor exists, is active AND belongs to the patient's clinic
         const { data: medico, error: medicoError } = await supabase
           .from("medicos")
-          .select("id, ativo")
+          .select("id, ativo, clinica_id")
           .eq("id", medico_id)
           .eq("ativo", true)
           .single();
 
         if (medicoError || !medico) {
+          return new Response(
+            JSON.stringify({ error: "Médico não encontrado ou inativo" }),
+            { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        if (!pacienteClinicaId || medico.clinica_id !== pacienteClinicaId) {
           return new Response(
             JSON.stringify({ error: "Médico não encontrado ou inativo" }),
             { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -245,15 +277,14 @@ Deno.serve(async (req) => {
           );
         }
 
-        // Calculate end time (30 minutes after start)
-        const [h, m] = hora_inicio.split(":").map(Number);
-        const endTime = `${String(h).padStart(2, "0")}:${String((m + 30) % 60).padStart(2, "0")}`;
+        const endTime = addMinutes(hora_inicio, 30);
 
         const { data: newAgendamento, error: insertError } = await supabase
           .from("agendamentos")
           .insert({
             paciente_id: pacienteId,
             medico_id: medico_id,
+            clinica_id: pacienteClinicaId,
             data: data,
             hora_inicio: hora_inicio,
             hora_fim: endTime,
@@ -296,8 +327,9 @@ Deno.serve(async (req) => {
           );
         }
 
-        // Cannot cancel past appointments
-        if (new Date(agendamento.data) < new Date()) {
+        // Cannot cancel past appointments. `data` has no time component, so
+        // comparing it against `now` used to block same-day cancellations.
+        if (agendamento.data < todayISO()) {
           return new Response(
             JSON.stringify({ error: "Não é possível cancelar agendamentos passados" }),
             { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -343,8 +375,8 @@ Deno.serve(async (req) => {
           );
         }
 
-        // Validate new date is not in past
-        if (new Date(nova_data) < new Date()) {
+        // Validate new date is not in past (date-only comparison, see above)
+        if (nova_data < todayISO()) {
           return new Response(
             JSON.stringify({ error: "A nova data não pode ser no passado" }),
             { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -369,9 +401,7 @@ Deno.serve(async (req) => {
           );
         }
 
-        // Calculate end time
-        const [h, m] = novo_horario.split(":").map(Number);
-        const endTime = `${String(h).padStart(2, "0")}:${String((m + 30) % 60).padStart(2, "0")}`;
+        const endTime = addMinutes(novo_horario, 30);
 
         // Update appointment
         const { error: updateError } = await supabase
