@@ -219,9 +219,23 @@ export default function Agenda() {
       // If medico-only user, always filter by own medico_id
       if (isMedicoOnly && medicoId && ag.medico_id !== medicoId) return false;
       if (!isMedicoOnly && selectedMedico !== 'todos' && ag.medico_id !== selectedMedico) return false;
+      if (statusFilters.length > 0 && !statusFilters.includes(ag.status as StatusAgendamento)) return false;
+      if (tipoFilters.length > 0 && !tipoFilters.includes(ag.tipo || '')) return false;
+      if (convenioFilters.length > 0) {
+        const p = pacientes.find(pp => pp.id === ag.paciente_id);
+        if (!p?.convenio_id || !convenioFilters.includes(p.convenio_id)) return false;
+      }
+      if (searchPaciente.trim()) {
+        const p = pacientes.find(pp => pp.id === ag.paciente_id);
+        const q = searchPaciente.trim().toLowerCase();
+        const hit = (p?.nome || '').toLowerCase().includes(q) || (p?.cpf || '').includes(q) || (p?.telefone || '').includes(q);
+        if (!hit) return false;
+      }
       return true;
     });
-  }, [agendamentos, selectedMedico, isMedicoOnly, medicoId]);
+  }, [agendamentos, selectedMedico, isMedicoOnly, medicoId, statusFilters, tipoFilters, convenioFilters, searchPaciente, pacientes]);
+
+  const activeFiltersCount = statusFilters.length + tipoFilters.length + convenioFilters.length + (searchPaciente.trim() ? 1 : 0);
 
   // Horários exibidos na grade: base 00:00→23:30 (30min) + qualquer horário
   // customizado presente em agendamentos, permitindo agendar livremente.
