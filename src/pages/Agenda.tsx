@@ -1917,6 +1917,37 @@ export default function Agenda() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Waitlist offer after cancellation */}
+      <Dialog open={waitlistDialogOpen} onOpenChange={setWaitlistDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Preencher horário liberado?</DialogTitle>
+            <DialogDescription>
+              {freedSlot && `${freedSlot.data} às ${freedSlot.hora} — há pacientes na lista de espera compatíveis.`}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 max-h-[50vh] overflow-y-auto">
+            {waitlistCandidates.map((c: any) => (
+              <div key={c.id} className="flex items-center justify-between p-3 border rounded-lg">
+                <div className="min-w-0">
+                  <p className="font-medium text-sm truncate">{c.pacientes?.nome || 'Paciente'}</p>
+                  <p className="text-xs text-muted-foreground truncate">
+                    {c.especialidade} · Prioridade {c.prioridade || '-'} · {c.pacientes?.telefone || 'sem telefone'}
+                  </p>
+                  {c.motivo && <p className="text-xs text-muted-foreground truncate">Motivo: {c.motivo}</p>}
+                </div>
+                <Button size="sm" disabled={!!isPromoting} onClick={() => promoteFromWaitlist(c)}>
+                  {isPromoting === c.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Agendar'}
+                </Button>
+              </div>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setWaitlistDialogOpen(false)}>Fechar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
