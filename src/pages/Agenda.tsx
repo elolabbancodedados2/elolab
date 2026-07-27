@@ -134,6 +134,16 @@ export default function Agenda() {
   const [newPatientData, setNewPatientData] = useState({ nome: '', telefone: '', cpf: '' });
   const [isSavingPatient, setIsSavingPatient] = useState(false);
   const [espFilter, setEspFilter] = useState<string>('');
+  // New: advanced filters
+  const [searchPaciente, setSearchPaciente] = useState('');
+  const [statusFilters, setStatusFilters] = useState<StatusAgendamento[]>([]);
+  const [tipoFilters, setTipoFilters] = useState<string[]>([]);
+  const [convenioFilters, setConvenioFilters] = useState<string[]>([]);
+  // Waitlist offer after cancellation
+  const [waitlistDialogOpen, setWaitlistDialogOpen] = useState(false);
+  const [freedSlot, setFreedSlot] = useState<{ data: string; hora: string; medico_id: string | null; tipo: string | null } | null>(null);
+  const [waitlistCandidates, setWaitlistCandidates] = useState<any[]>([]);
+  const [isPromoting, setIsPromoting] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { data: agendamentos = [], isLoading: loadingAgendamentos } = useAgendamentos();
@@ -143,6 +153,7 @@ export default function Agenda() {
     id: string; medico_id: string; data_inicio: string; data_fim: string;
     hora_inicio: string | null; hora_fim: string | null; dia_inteiro: boolean; motivo: string | null; tipo: string;
   }>('bloqueios_agenda');
+  const { data: convenios = [] } = useSupabaseQuery<{ id: string; nome: string }>('convenios');
   const { medicoId, isMedicoOnly } = useCurrentMedico();
 
   const isLoading = loadingAgendamentos || loadingPacientes || loadingMedicos;
