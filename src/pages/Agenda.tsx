@@ -42,11 +42,14 @@ import { BloqueioAgenda } from '@/components/agenda/BloqueioAgenda';
 
 type StatusAgendamento = Database['public']['Enums']['status_agendamento'];
 
-const HORARIOS = [
-  '08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '11:30',
-  '12:00', '12:30', '13:00', '13:30', '14:00', '14:30', '15:00', '15:30',
-  '16:00', '16:30', '17:00', '17:30', '18:00',
-];
+// Grade base de horários da agenda (00:00 → 23:30, intervalos de 30min).
+// Horários customizados de agendamentos existentes são adicionados dinamicamente
+// via useMemo dentro do componente, permitindo qualquer horário livre.
+const HORARIOS_BASE: string[] = Array.from({ length: 48 }, (_, i) => {
+  const h = Math.floor(i / 2).toString().padStart(2, '0');
+  const m = i % 2 === 0 ? '00' : '30';
+  return `${h}:${m}`;
+});
 
 const STATUS_COLORS: Record<StatusAgendamento, string> = {
   agendado: 'bg-info/10 text-info border-info/20',
