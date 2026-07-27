@@ -18,6 +18,7 @@ import {
 import { toast } from 'sonner';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { checkRateLimit, resetRateLimit, getRemainingAttempts } from '@/lib/rateLimiter';
+import { MFAVerifyDialog } from '@/components/MFAVerifyDialog';
 import { AuthSwitch } from '@/components/ui/auth-switch';
 import logoIcon from '@/assets/logo-elolab-icon.png';
 import authHero from '@/assets/auth-hero.webp';
@@ -28,12 +29,22 @@ const loginSchema = z.object({
   password: z.string().min(1, 'Senha é obrigatória'),
 });
 
+// Sistema de saúde sob LGPD: senha de 6 caracteres sem complexidade era fraca
+// demais. Espelhe estas regras em Authentication → Policies no painel do
+// Supabase, senão a validação continua sendo só do lado do cliente.
+const strongPassword = z
+  .string()
+  .min(10, 'Senha deve ter pelo menos 10 caracteres')
+  .regex(/[a-z]/, 'Inclua ao menos uma letra minúscula')
+  .regex(/[A-Z]/, 'Inclua ao menos uma letra maiúscula')
+  .regex(/[0-9]/, 'Inclua ao menos um número');
+
 const signupSchema = z.object({
   nome: z.string().min(2, 'Nome deve ter pelo menos 2 caracteres'),
   telefone: z.string().min(14, 'Telefone inválido'),
   cpfCnpj: z.string().min(14, 'CPF ou CNPJ inválido'),
   email: z.string().email('Email inválido'),
-  password: z.string().min(6, 'Senha deve ter pelo menos 6 caracteres'),
+  password: strongPassword,
   confirmPassword: z.string().min(1, 'Confirme a senha'),
   codigoConvite: z.string().min(1, 'Código de convite é obrigatório'),
 }).refine((data) => data.password === data.confirmPassword, {
@@ -62,6 +73,8 @@ export default function Auth() {
   const [activeTab, setActiveTab] = useState<'login' | 'signup'>('login');
   const [direction, setDirection] = useState(0);
   const [signupSuccess, setSignupSuccess] = useState(false);
+  /** Fator TOTP a confirmar: senha aceita, sessão ainda em AAL1. */
+  const [pendingFactorId, setPendingFactorId] = useState<string | null>(null);
 
   const urlCodigo = searchParams.get('codigo') || '';
   const urlEmail = searchParams.get('email') || '';
@@ -122,6 +135,23 @@ export default function Auth() {
     setActiveTab(tab);
   };
 
+  /**
+   * Após a senha, se a conta tiver um fator TOTP verificado, a sessão fica em
+   * AAL1 e só vira AAL2 depois do código. Antes disso o app já liberava tudo:
+   * o 2FA existia na tela de Segurança mas nunca era exigido no login.
+   */
+  const requiresSecondFactor = async (): Promise<string | null> => {
+    try {
+      const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+      if (aal?.nextLevel !== 'aal2' || aal.nextLevel === aal.currentLevel) return null;
+
+      const { data: factors } = await supabase.auth.mfa.listFactors();
+      return (factors?.totp ?? []).find(f => f.status === 'verified')?.id ?? null;
+    } catch {
+      return null;
+    }
+  };
+
   const onLogin = async (data: LoginForm) => {
     const rateKey = `login:${data.email.toLowerCase()}`;
     const { allowed, retryAfterMs } = checkRateLimit(rateKey, 'auth');
@@ -148,6 +178,13 @@ export default function Auth() {
         }
       } else {
         resetRateLimit(rateKey);
+
+        const factorId = await requiresSecondFactor();
+        if (factorId) {
+          setPendingFactorId(factorId);
+          return;
+        }
+
         toast.success('Login realizado!');
         navigate('/dashboard');
       }
@@ -156,6 +193,18 @@ export default function Auth() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleMfaVerified = () => {
+    setPendingFactorId(null);
+    toast.success('Login realizado!');
+    navigate('/dashboard');
+  };
+
+  const handleMfaCancel = async () => {
+    setPendingFactorId(null);
+    await supabase.auth.signOut();
+    toast.info('Login cancelado');
   };
 
   const activateSubscription = async (userId: string, codigoConvite: string) => {
@@ -717,6 +766,15 @@ export default function Auth() {
           </div>
         </motion.div>
       </div>
+
+      {pendingFactorId && (
+        <MFAVerifyDialog
+          open
+          factorId={pendingFactorId}
+          onVerified={handleMfaVerified}
+          onCancel={handleMfaCancel}
+        />
+      )}
     </div>
   );
 }

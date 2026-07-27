@@ -1,113 +1,94 @@
 /**
- * MFAVerifyDialog Component
- * Diálogo para verificar TOTP durante login
+ * MFAVerifyDialog — segundo fator no login, validado pelo servidor do Supabase.
+ *
+ * A versão anterior deste componente validava o TOTP no navegador e nunca era
+ * usada em lugar nenhum — o login jamais pedia o segundo fator. Agora o
+ * Auth.tsx chama este diálogo quando a conta tem um fator TOTP verificado e a
+ * sessão ainda está em AAL1.
  */
 
 import { useState } from 'react';
+import { Loader2, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Alert, AlertDescription } from '@/components/ui/alert';
 import { toast } from 'sonner';
-import { validateTOTPToken } from '@/lib/mfaManager';
+import { supabase } from '@/integrations/supabase/client';
 
 interface MFAVerifyDialogProps {
   open: boolean;
-  mfaSecret: string;
-  onVerifyComplete: (isValid: boolean) => void;
-  isLoading?: boolean;
+  /** Id do fator TOTP verificado da conta. */
+  factorId: string;
+  /** Chamado quando a sessão é elevada a AAL2. */
+  onVerified: () => void;
+  /** Chamado se o usuário desistir — a sessão pela metade é encerrada. */
+  onCancel: () => void;
 }
 
-export function MFAVerifyDialog({
-  open,
-  mfaSecret,
-  onVerifyComplete,
-  isLoading = false,
-}: MFAVerifyDialogProps) {
+export function MFAVerifyDialog({ open, factorId, onVerified, onCancel }: MFAVerifyDialogProps) {
   const [token, setToken] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
 
   const handleVerify = async () => {
-    if (token.length !== 6 || !/^\d+$/.test(token)) {
-      toast.error('Token deve conter 6 dígitos');
+    if (!/^\d{6}$/.test(token)) {
+      toast.error('O código deve ter 6 dígitos');
       return;
     }
 
     setIsVerifying(true);
     try {
-      const isValid = validateTOTPToken(token, mfaSecret);
-
-      if (!isValid) {
-        toast.error('Token inválido. Tente novamente.');
-        setToken('');
-        setIsVerifying(false);
-        return;
-      }
-
-      onVerifyComplete(true);
-    } catch (error) {
-      toast.error('Erro ao validar token');
-      console.error(error);
+      // Validação no servidor; eleva a sessão para AAL2.
+      const { error } = await supabase.auth.mfa.challengeAndVerify({ factorId, code: token });
+      if (error) throw error;
+      onVerified();
+    } catch (err: any) {
+      toast.error(err?.message || 'Código inválido. Tente novamente.');
+      setToken('');
+    } finally {
       setIsVerifying(false);
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && token.length === 6) {
-      handleVerify();
-    }
-  };
-
   return (
-    <Dialog open={open}>
-      <DialogContent className="max-w-md">
+    <Dialog open={open} onOpenChange={o => !o && onCancel()}>
+      <DialogContent className="sm:max-w-sm" onInteractOutside={e => e.preventDefault()}>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            🔐 Verificar Autenticação
+            <ShieldCheck className="h-5 w-5 text-primary" />
+            Verificação em duas etapas
           </DialogTitle>
           <DialogDescription>
-            Digite o código do seu authenticator para continuar
+            Digite o código de 6 dígitos do seu aplicativo autenticador.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
-          <Alert>
-            <AlertDescription>
-              Abra seu app authenticator e copie o código de 6 dígitos.
-            </AlertDescription>
-          </Alert>
-
-          <div className="space-y-2">
-            <Label htmlFor="mfa-verify-token">Código de Autenticação</Label>
-            <Input
-              id="mfa-verify-token"
-              value={token}
-              onChange={(e) => setToken(e.target.value.replace(/\D/g, '').slice(0, 6))}
-              onKeyDown={handleKeyDown}
-              placeholder="000000"
-              maxLength={6}
-              className="text-center text-2xl font-mono tracking-widest"
-              autoFocus
-            />
-          </div>
-
-          <Button
-            onClick={handleVerify}
-            disabled={token.length !== 6 || isVerifying || isLoading}
-            className="w-full"
-            size="lg"
-          >
-            {isVerifying ? 'Verificando...' : 'Continuar'}
-          </Button>
-
-          <p className="text-xs text-muted-foreground text-center">
-            Não tem acesso ao authenticator?{' '}
-            <button className="text-primary hover:underline">
-              Use um código de backup
-            </button>
-          </p>
+        <div className="space-y-2">
+          <Label htmlFor="mfa-verify-token">Código</Label>
+          <Input
+            id="mfa-verify-token"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            autoFocus
+            maxLength={6}
+            placeholder="000000"
+            value={token}
+            onChange={e => setToken(e.target.value.replace(/\D/g, ''))}
+            onKeyDown={e => e.key === 'Enter' && handleVerify()}
+          />
         </div>
+
+        <DialogFooter className="gap-2 sm:gap-0">
+          <Button variant="ghost" onClick={onCancel} disabled={isVerifying}>
+            Cancelar
+          </Button>
+          <Button onClick={handleVerify} disabled={isVerifying || token.length !== 6}>
+            {isVerifying && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            Verificar
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

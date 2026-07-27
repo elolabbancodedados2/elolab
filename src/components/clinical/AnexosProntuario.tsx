@@ -42,11 +42,38 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 
+const BUCKET = 'medical-attachments';
+
+/**
+ * `url_arquivo` guarda o path do arquivo. Registros antigos guardam a URL
+ * pública completa (que nunca funcionou, pois o bucket é privado) — para esses,
+ * recuperamos o path a partir do final da URL.
+ */
+function storagePath(stored: string): string {
+  if (!stored.startsWith('http')) return stored;
+  const afterBucket = stored.split(`/${BUCKET}/`)[1];
+  if (afterBucket) return decodeURIComponent(afterBucket.split('?')[0]);
+  return stored.split('/').slice(-2).join('/');
+}
+
+/** Gera um link temporário (1h) para visualizar ou baixar o anexo. */
+async function signedUrlFor(stored: string): Promise<string | null> {
+  const { data, error } = await supabase.storage
+    .from(BUCKET)
+    .createSignedUrl(storagePath(stored), 3600);
+  if (error) {
+    console.error('Erro ao gerar link do anexo:', error);
+    return null;
+  }
+  return data?.signedUrl ?? null;
+}
+
 interface Anexo {
   id: string;
   nome_arquivo: string;
   tipo_arquivo: string;
   tamanho_bytes: number | null;
+  /** Path do arquivo no bucket (registros antigos podem conter uma URL). */
   url_arquivo: string;
   categoria: string | null;
   descricao: string | null;
@@ -139,11 +166,6 @@ export function AnexosProntuario({
 
       if (uploadError) throw uploadError;
 
-      // Get public URL
-      const { data: urlData } = supabase.storage
-        .from('medical-attachments')
-        .getPublicUrl(fileName);
-
       // Get current user
       const { data: { user } } = await supabase.auth.getUser();
 
@@ -156,7 +178,9 @@ export function AnexosProntuario({
           nome_arquivo: selectedFile.name,
           tipo_arquivo: selectedFile.type,
           tamanho_bytes: selectedFile.size,
-          url_arquivo: urlData.publicUrl,
+          // Guardamos o PATH, não uma URL. O bucket medical-attachments é
+          // privado, então getPublicUrl() gerava um link que nunca abria.
+          url_arquivo: fileName,
           categoria,
           descricao: descricao || null,
           uploaded_by: user?.id,
@@ -191,14 +215,10 @@ export function AnexosProntuario({
 
     setLoading(true);
     try {
-      // Extract file path from URL
-      const urlParts = anexo.url_arquivo.split('/');
-      const filePath = urlParts.slice(-2).join('/');
-
       // Delete from storage
       await supabase.storage
         .from('medical-attachments')
-        .remove([filePath]);
+        .remove([storagePath(anexo.url_arquivo)]);
 
       // Delete from database
       const { error } = await supabase
@@ -226,10 +246,32 @@ export function AnexosProntuario({
     }
   };
 
-  const handlePreview = (anexo: Anexo) => {
-    setPreviewUrl(anexo.url_arquivo);
+  const handlePreview = async (anexo: Anexo) => {
+    const url = await signedUrlFor(anexo.url_arquivo);
+    if (!url) {
+      toast({
+        title: 'Erro',
+        description: 'Não foi possível abrir o anexo.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    setPreviewUrl(url);
     setPreviewType(anexo.tipo_arquivo);
     setIsPreviewOpen(true);
+  };
+
+  const handleDownload = async (anexo: Anexo) => {
+    const url = await signedUrlFor(anexo.url_arquivo);
+    if (!url) {
+      toast({
+        title: 'Erro',
+        description: 'Não foi possível baixar o anexo.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    window.open(url, '_blank', 'noopener,noreferrer');
   };
 
   const formatFileSize = (bytes: number | null) => {
@@ -322,11 +364,9 @@ export function AnexosProntuario({
                       variant="ghost"
                       size="icon"
                       className="h-8 w-8"
-                      asChild
+                      onClick={() => handleDownload(anexo)}
                     >
-                      <a href={anexo.url_arquivo} download target="_blank" rel="noopener noreferrer">
-                        <Download className="h-4 w-4" />
-                      </a>
+                      <Download className="h-4 w-4" />
                     </Button>
                     <Button
                       variant="ghost"

@@ -1,5 +1,4 @@
- // @ts-nocheck
- import { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -14,16 +13,16 @@ import { ptBR } from 'date-fns/locale';
 
 interface MfaStatus {
   enabled: boolean;
+  factorId: string | null;
   setupDate: string | null;
-  remainingBackupCodes: number;
 }
 
 export default function Seguranca() {
   const { user, profile, signOut } = useSupabaseAuth();
   const [mfaStatus, setMfaStatus] = useState<MfaStatus>({
     enabled: false,
+    factorId: null,
     setupDate: null,
-    remainingBackupCodes: 0,
   });
   const [isSetupOpen, setIsSetupOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -34,24 +33,21 @@ export default function Seguranca() {
     loadMfaStatus();
   }, [user]);
 
+  // O estado do 2FA vem do Supabase Auth, não mais da tabela profiles (onde o
+  // segredo ficava em texto puro e a validação acontecia no navegador).
   const loadMfaStatus = async () => {
     if (!user) return;
     setIsLoading(true);
     try {
-      const { data } = await supabase
-        .from('profiles')
-        .select('mfa_enabled, mfa_backup_codes, mfa_setup_date')
-        .eq('id', user.id)
-        .maybeSingle();
+      const { data, error } = await supabase.auth.mfa.listFactors();
+      if (error) throw error;
 
-      if (data) {
-        const codes = data.mfa_backup_codes ? JSON.parse(data.mfa_backup_codes) : [];
-        setMfaStatus({
-          enabled: !!data.mfa_enabled,
-          setupDate: data.mfa_setup_date ?? null,
-          remainingBackupCodes: Array.isArray(codes) ? codes.length : 0,
-        });
-      }
+      const verified = (data?.totp ?? []).find(f => f.status === 'verified');
+      setMfaStatus({
+        enabled: !!verified,
+        factorId: verified?.id ?? null,
+        setupDate: verified?.created_at ?? null,
+      });
     } catch (err) {
       console.error('Erro ao carregar status MFA:', err);
     } finally {
@@ -59,49 +55,14 @@ export default function Seguranca() {
     }
   };
 
-  const handleEnableMfa = async (secret: string, backupCodes: string[]) => {
-    if (!user) return;
-    setIsSaving(true);
-    try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({
-          mfa_enabled: true,
-          mfa_secret: secret,
-          mfa_backup_codes: JSON.stringify(backupCodes),
-          mfa_setup_date: new Date().toISOString(),
-        })
-        .eq('id', user.id);
-
-      if (error) throw error;
-
-      toast.success('Autenticação 2FA ativada com sucesso!');
-      await loadMfaStatus();
-    } catch (err: any) {
-      console.error(err);
-      toast.error(err?.message || 'Erro ao ativar 2FA');
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
   const handleDisableMfa = async () => {
-    if (!user) return;
+    if (!mfaStatus.factorId) return;
     if (!confirm('Tem certeza que deseja desativar a autenticação 2FA? Sua conta ficará menos protegida.')) {
       return;
     }
     setIsSaving(true);
     try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({
-          mfa_enabled: false,
-          mfa_secret: null,
-          mfa_backup_codes: null,
-          mfa_setup_date: null,
-        })
-        .eq('id', user.id);
-
+      const { error } = await supabase.auth.mfa.unenroll({ factorId: mfaStatus.factorId });
       if (error) throw error;
 
       toast.success('Autenticação 2FA desativada');
@@ -174,25 +135,10 @@ export default function Seguranca() {
             </Alert>
           )}
 
-          {mfaStatus.enabled && (
-            <div className="text-sm space-y-1">
-              {mfaStatus.setupDate && (
-                <p className="text-muted-foreground">
-                  Ativado em: {format(new Date(mfaStatus.setupDate), "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
-                </p>
-              )}
-              <p className="text-muted-foreground">
-                Códigos de backup restantes: <strong>{mfaStatus.remainingBackupCodes}</strong>
-              </p>
-              {mfaStatus.remainingBackupCodes <= 3 && mfaStatus.remainingBackupCodes > 0 && (
-                <Alert variant="destructive">
-                  <AlertTriangle className="h-4 w-4" />
-                  <AlertDescription>
-                    Poucos códigos de backup restantes. Reconfigure o 2FA para gerar novos códigos.
-                  </AlertDescription>
-                </Alert>
-              )}
-            </div>
+          {mfaStatus.enabled && mfaStatus.setupDate && (
+            <p className="text-sm text-muted-foreground">
+              Ativado em: {format(new Date(mfaStatus.setupDate), "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
+            </p>
           )}
 
           <div className="flex gap-2 flex-wrap">
@@ -202,23 +148,13 @@ export default function Seguranca() {
                 Ativar 2FA
               </Button>
             ) : (
-              <>
-                <Button
-                  variant="outline"
-                  onClick={() => setIsSetupOpen(true)}
-                  disabled={isSaving}
-                >
-                  <KeyRound className="h-4 w-4 mr-2" />
-                  Reconfigurar
-                </Button>
-                <Button
-                  variant="destructive"
-                  onClick={handleDisableMfa}
-                  disabled={isSaving}
-                >
-                  Desativar 2FA
-                </Button>
-              </>
+              <Button
+                variant="destructive"
+                onClick={handleDisableMfa}
+                disabled={isSaving}
+              >
+                Desativar 2FA
+              </Button>
             )}
           </div>
         </CardContent>
@@ -251,9 +187,7 @@ export default function Seguranca() {
       <MFASetupDialog
         open={isSetupOpen}
         onOpenChange={setIsSetupOpen}
-        userEmail={user.email || ''}
-        onMFASetupComplete={handleEnableMfa}
-        isLoading={isSaving}
+        onMFASetupComplete={loadMfaStatus}
       />
     </div>
   );

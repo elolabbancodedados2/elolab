@@ -457,8 +457,9 @@ export default function Exames() {
         const path = `exames/${formData.paciente_id}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
         const { error: upErr } = await supabase.storage.from('medical-attachments').upload(path, file);
         if (!upErr) {
-          const { data: urlData } = supabase.storage.from('medical-attachments').getPublicUrl(path);
-          anexoUrls.push(urlData.publicUrl);
+          // O bucket é privado: getPublicUrl() gerava um link que nunca abria.
+          // Guardamos o path; o link é gerado com createSignedUrl na exibição.
+          anexoUrls.push(path);
         }
       }
 

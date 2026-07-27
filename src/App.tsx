@@ -1,5 +1,4 @@
-import { Suspense, lazy, useEffect } from "react";
-import { autoSetupDatabase } from "@/lib/autoSetup";
+import { Suspense, lazy } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -18,7 +17,7 @@ import LandingPage from "@/pages/LandingPage";
 const Dashboard = lazy(() => import("@/pages/Dashboard"));
 const Agenda = lazy(() => import("@/pages/Agenda"));
 const Pacientes = lazy(() => import("@/pages/Pacientes"));
-const Fila = lazy(() => import("@/pages/Fila"));
+const AtendimentoFila = lazy(() => import("@/pages/AtendimentoFila"));
 const Prontuarios = lazy(() => import("@/pages/Prontuarios"));
 const Financeiro = lazy(() => import("@/pages/Financeiro"));
 const Medicos = lazy(() => import("@/pages/Medicos"));
@@ -28,6 +27,7 @@ const RelatoriosSalvos = lazy(() => import("@/pages/RelatoriosSalvos"));
 const CobrancaInadimplentes = lazy(() => import("@/pages/CobrancaInadimplentes"));
 const Usuarios = lazy(() => import("@/pages/Usuarios"));
 const Configuracoes = lazy(() => import("@/pages/Configuracoes"));
+const ConfiguracoesAvancadas = lazy(() => import("@/pages/ConfiguracoesAvancadas"));
 const Prescricoes = lazy(() => import("@/pages/Prescricoes"));
 const Atestados = lazy(() => import("@/pages/Atestados"));
 const Convenios = lazy(() => import("@/pages/Convenios"));
@@ -133,16 +133,9 @@ function getRoutingMode(): 'landing' | 'app' {
 function App() {
   const mode = getRoutingMode();
 
-  // Auto-setup database tables
-  useEffect(() => {
-    const setup = async () => {
-      // Run setup after a short delay to ensure auth is ready
-      setTimeout(() => {
-        autoSetupDatabase().catch(err => console.warn('Auto-setup failed:', err));
-      }, 1000);
-    };
-    setup();
-  }, []);
+  // Nota: o antigo autoSetupDatabase() rodava a cada carregamento da aplicação e
+  // chamava a edge function auto-migrate (DDL com service_role, sem checagem de
+  // papel). Removido — migrações passam pelo fluxo normal do Supabase.
 
   return (
     <ErrorBoundary>
@@ -200,7 +193,7 @@ function App() {
                           <Route path="/prescricoes" element={<Navigate to="/documentos-clinicos" replace />} />
                           <Route path="/atestados" element={<Navigate to="/documentos-clinicos" replace />} />
                           <Route path="/exames" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico', 'enfermagem']}><Exames /></SupabaseProtectedRoute>} />
-                          <Route path="/triagem" element={<Navigate to="/fila" replace />} />
+                          <Route path="/triagem" element={<Navigate to="/fila?tab=triagem" replace />} />
                           <Route path="/encaminhamentos" element={<Navigate to="/documentos-clinicos" replace />} />
                           <Route path="/retornos" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico', 'recepcao']}><Retornos /></SupabaseProtectedRoute>} />
                           <Route path="/laboratorio" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico', 'enfermagem']}><Laboratorio /></SupabaseProtectedRoute>} />
@@ -208,7 +201,7 @@ function App() {
                           <Route path="/guias-externas" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem']}><GuiasExternas /></SupabaseProtectedRoute>} />
                           <Route path="/laudos-lab" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico', 'enfermagem']}><LaudosLab /></SupabaseProtectedRoute>} />
                           <Route path="/pacientes" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem']}><Pacientes /></SupabaseProtectedRoute>} />
-                          <Route path="/fila" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem']}><Fila /></SupabaseProtectedRoute>} />
+                          <Route path="/fila" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem']}><AtendimentoFila /></SupabaseProtectedRoute>} />
                           <Route path="/equipe" element={<SupabaseProtectedRoute allowedRoles={['admin']}><EquipePage /></SupabaseProtectedRoute>} />
                           <Route path="/medicos" element={<Navigate to="/equipe" replace />} />
                           <Route path="/funcionarios" element={<Navigate to="/equipe" replace />} />
@@ -237,6 +230,7 @@ function App() {
                           <Route path="/cobranca-inadimplentes" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><CobrancaInadimplentes /></SupabaseProtectedRoute>} />
                           <Route path="/usuarios" element={<SupabaseProtectedRoute allowedRoles={['admin']}><Usuarios /></SupabaseProtectedRoute>} />
                           <Route path="/configuracoes" element={<SupabaseProtectedRoute allowedRoles={['admin']}><Configuracoes /></SupabaseProtectedRoute>} />
+                          <Route path="/configuracoes-avancadas" element={<SupabaseProtectedRoute allowedRoles={['admin']}><ConfiguracoesAvancadas /></SupabaseProtectedRoute>} />
                           <Route path="/automacoes" element={<SupabaseProtectedRoute allowedRoles={['admin']}><Automacoes /></SupabaseProtectedRoute>} />
                           <Route path="/templates-email" element={<Navigate to="/todos-templates" replace />} />
                           <Route path="/agente-ia" element={<SupabaseProtectedRoute allowedRoles={['admin']}><AgenteIA /></SupabaseProtectedRoute>} />

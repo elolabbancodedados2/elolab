@@ -1,0 +1,79 @@
+-- ============================================================================
+-- PARTE B — tornar patient-photos privado   ⚠️ NÃO APLIQUE AINDA
+-- ============================================================================
+--
+-- POR QUE ESTÁ SEPARADO:
+-- O bucket 'patient-photos' é público hoje. Todas as fotos gravadas em
+-- pacientes.foto_url e medicos.foto_url / medicos.carimbo_url são URLs
+-- públicas geradas por getPublicUrl(). Ao tornar o bucket privado, essas
+-- URLs param de funcionar e as fotos somem das telas até o frontend passar
+-- a usar createSignedUrl().
+--
+-- ORDEM CORRETA:
+--   1. Ajustar o frontend (3 arquivos, ver abaixo) para gerar links assinados
+--   2. Fazer deploy do frontend
+--   3. Só então rodar este SQL e renomear o arquivo removendo ".PENDENTE"
+--
+-- ARQUIVOS DO FRONTEND A AJUSTAR:
+--   src/components/clinical/PatientPhoto.tsx   (linha ~100)
+--   src/pages/Medicos.tsx                      (linha ~506)
+--   src/components/patients/PatientListTable.tsx e DoctorDashboard.tsx
+--     (leem foto_url direto no <AvatarImage src=...>)
+--
+-- Padrão a adotar: gravar em foto_url apenas o PATH do arquivo
+-- (ex.: "<paciente_id>/168...jpg") e gerar o link na hora da exibição:
+--   const { data } = await supabase.storage
+--     .from('patient-photos').createSignedUrl(path, 3600);
+-- ============================================================================
+
+BEGIN;
+
+UPDATE storage.buckets SET public = false WHERE id = 'patient-photos';
+
+DROP POLICY IF EXISTS "Authenticated users can view patient photos"   ON storage.objects;
+DROP POLICY IF EXISTS "Authenticated users can upload patient photos" ON storage.objects;
+DROP POLICY IF EXISTS "Authenticated users can update patient photos" ON storage.objects;
+DROP POLICY IF EXISTS "Authenticated users can delete patient photos" ON storage.objects;
+DROP POLICY IF EXISTS "patient_photos_select_scoped" ON storage.objects;
+DROP POLICY IF EXISTS "patient_photos_write_scoped"  ON storage.objects;
+
+-- Paths em uso: '<paciente_id>/<arquivo>' e '<medico_id>/<arquivo>'
+CREATE OR REPLACE FUNCTION public.storage_patient_photo_allowed(_name text)
+RETURNS boolean
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  candidate  uuid;
+  my_clinica uuid;
+BEGIN
+  my_clinica := public.get_my_clinica_id();
+  IF my_clinica IS NULL OR _name IS NULL THEN
+    RETURN false;
+  END IF;
+
+  BEGIN
+    candidate := (string_to_array(_name, '/'))[1]::uuid;
+  EXCEPTION WHEN others THEN
+    RETURN false;
+  END;
+
+  RETURN EXISTS (SELECT 1 FROM public.pacientes WHERE id = candidate AND clinica_id = my_clinica)
+      OR EXISTS (SELECT 1 FROM public.medicos   WHERE id = candidate AND clinica_id = my_clinica);
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.storage_patient_photo_allowed(text) TO authenticated;
+
+CREATE POLICY "patient_photos_select_scoped" ON storage.objects
+  FOR SELECT TO authenticated
+  USING (bucket_id = 'patient-photos' AND public.storage_patient_photo_allowed(name));
+
+CREATE POLICY "patient_photos_write_scoped" ON storage.objects
+  FOR ALL TO authenticated
+  USING (bucket_id = 'patient-photos' AND public.storage_patient_photo_allowed(name))
+  WITH CHECK (bucket_id = 'patient-photos' AND public.storage_patient_photo_allowed(name));
+
+COMMIT;

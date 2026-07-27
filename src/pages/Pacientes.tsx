@@ -32,6 +32,7 @@ import { useSupabaseQuery } from '@/hooks/useSupabaseData';
 import { EtiquetaPaciente } from '@/components/EtiquetaPaciente';
 import { PatientStats, PatientListTable } from '@/components/patients';
 import { PatientPhoto, PatientTimeline, VitalSignsChart, AllergyAlert, Cid10Search, ClinicalProtocols, AnexosProntuario, DigitalSignature } from '@/components/clinical';
+import { AutorizacaoConvenioModal } from '@/components/AutorizacaoConvenioModal';
 import { Skeleton } from '@/components/ui/skeleton';
 import { supabase } from '@/integrations/supabase/client';
 import { Paciente } from '@/types';
@@ -129,6 +130,8 @@ export default function Pacientes() {
   const [formData, setFormData] = useState<PacienteFormData>(initialFormData);
   const [isEtiquetaOpen, setIsEtiquetaOpen] = useState(false);
   const [viewTab, setViewTab] = useState('dados');
+  /** Modal de guias/senhas de autorização do convênio do paciente. */
+  const [showAutorizacao, setShowAutorizacao] = useState(false);
   const [cepLoading, setCepLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -1165,6 +1168,27 @@ export default function Pacientes() {
                       <InfoField icon={Building2} label="Convênio" value={getConvenioNome(selectedPaciente.convenio_id)} />
                       <InfoField icon={CreditCard} label="Carteira" value={selectedPaciente.numero_carteira} />
                     </div>
+
+                    {selectedPaciente.convenio_id && (
+                      <div className="flex items-center justify-between rounded-xl border bg-muted/20 p-3">
+                        <div className="text-sm">
+                          <p className="font-medium">Autorizações do convênio</p>
+                          <p className="text-xs text-muted-foreground">
+                            Guias e senhas de autorização deste paciente
+                          </p>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="gap-1.5 rounded-xl text-xs"
+                          onClick={() => setShowAutorizacao(true)}
+                        >
+                          <FileCheck className="h-3.5 w-3.5" />
+                          Gerenciar
+                        </Button>
+                      </div>
+                    )}
+
                     {selectedPaciente.nome_responsavel && (
                       <>
                         <Separator />
@@ -1718,6 +1742,17 @@ export default function Pacientes() {
 
       {/* Etiquetas */}
       <EtiquetaPaciente pacientes={pacientesForEtiqueta} open={isEtiquetaOpen} onOpenChange={setIsEtiquetaOpen} />
+
+      {/* Autorizações de convênio do paciente selecionado */}
+      {selectedPaciente && (
+        <AutorizacaoConvenioModal
+          open={showAutorizacao}
+          onOpenChange={setShowAutorizacao}
+          pacienteId={selectedPaciente.id}
+          pacienteNome={selectedPaciente.nome}
+          convenioId={selectedPaciente.convenio_id || undefined}
+        />
+      )}
     </div>
   );
 }
