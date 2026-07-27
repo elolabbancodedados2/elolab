@@ -1487,12 +1487,17 @@ export default function Agenda() {
               <div className="space-y-2">
                 <Label>Horário</Label>
                 {isRemarkMode || !formData.id ? (
-                  <Input
-                    type="time"
-                    step={60}
-                    value={formData.hora_inicio || ''}
-                    onChange={(e) => setFormData({ ...formData, hora_inicio: e.target.value })}
-                  />
+                  <div className="flex gap-1">
+                    <Input
+                      type="time"
+                      step={60}
+                      value={formData.hora_inicio || ''}
+                      onChange={(e) => setFormData({ ...formData, hora_inicio: e.target.value })}
+                    />
+                    <Button type="button" variant="outline" size="icon" title="Sugerir próximo horário livre" onClick={suggestNextSlot}>
+                      <Wand2 className="h-4 w-4" />
+                    </Button>
+                  </div>
                 ) : (
                   <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted p-2 rounded">
                     <Clock className="h-4 w-4" />
