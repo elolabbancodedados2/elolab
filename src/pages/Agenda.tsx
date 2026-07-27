@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { format, startOfWeek, addDays, isSameDay, parseISO, addWeeks, subWeeks, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, getDay, isSameMonth } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { ChevronLeft, ChevronRight, Clock, Repeat, Loader2, LayoutList, LayoutGrid, Users, CalendarCheck, AlertTriangle, CalendarDays, LogIn, CheckCircle2, ArrowRightLeft, Bell, Plus } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Clock, Repeat, Loader2, LayoutList, LayoutGrid, Users, CalendarCheck, AlertTriangle, CalendarDays, LogIn, CheckCircle2, ArrowRightLeft, Bell, Plus, MessageCircle, Search, Filter, Wand2, X } from 'lucide-react';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -39,6 +39,8 @@ import { AgendaSkeleton } from '@/components/ui/loading-skeleton';
 import { EmptyAgendamentos } from '@/components/EmptyState';
 import { Database } from '@/integrations/supabase/types';
 import { BloqueioAgenda } from '@/components/agenda/BloqueioAgenda';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Checkbox } from '@/components/ui/checkbox';
 
 type StatusAgendamento = Database['public']['Enums']['status_agendamento'];
 
@@ -132,6 +134,16 @@ export default function Agenda() {
   const [newPatientData, setNewPatientData] = useState({ nome: '', telefone: '', cpf: '' });
   const [isSavingPatient, setIsSavingPatient] = useState(false);
   const [espFilter, setEspFilter] = useState<string>('');
+  // New: advanced filters
+  const [searchPaciente, setSearchPaciente] = useState('');
+  const [statusFilters, setStatusFilters] = useState<StatusAgendamento[]>([]);
+  const [tipoFilters, setTipoFilters] = useState<string[]>([]);
+  const [convenioFilters, setConvenioFilters] = useState<string[]>([]);
+  // Waitlist offer after cancellation
+  const [waitlistDialogOpen, setWaitlistDialogOpen] = useState(false);
+  const [freedSlot, setFreedSlot] = useState<{ data: string; hora: string; medico_id: string | null; tipo: string | null } | null>(null);
+  const [waitlistCandidates, setWaitlistCandidates] = useState<any[]>([]);
+  const [isPromoting, setIsPromoting] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { data: agendamentos = [], isLoading: loadingAgendamentos } = useAgendamentos();
@@ -141,6 +153,7 @@ export default function Agenda() {
     id: string; medico_id: string; data_inicio: string; data_fim: string;
     hora_inicio: string | null; hora_fim: string | null; dia_inteiro: boolean; motivo: string | null; tipo: string;
   }>('bloqueios_agenda');
+  const { data: convenios = [] } = useSupabaseQuery<{ id: string; nome: string }>('convenios');
   const { medicoId, isMedicoOnly } = useCurrentMedico();
 
   const isLoading = loadingAgendamentos || loadingPacientes || loadingMedicos;
@@ -206,9 +219,23 @@ export default function Agenda() {
       // If medico-only user, always filter by own medico_id
       if (isMedicoOnly && medicoId && ag.medico_id !== medicoId) return false;
       if (!isMedicoOnly && selectedMedico !== 'todos' && ag.medico_id !== selectedMedico) return false;
+      if (statusFilters.length > 0 && !statusFilters.includes(ag.status as StatusAgendamento)) return false;
+      if (tipoFilters.length > 0 && !tipoFilters.includes(ag.tipo || '')) return false;
+      if (convenioFilters.length > 0) {
+        const p = pacientes.find(pp => pp.id === ag.paciente_id);
+        if (!p?.convenio_id || !convenioFilters.includes(p.convenio_id)) return false;
+      }
+      if (searchPaciente.trim()) {
+        const p = pacientes.find(pp => pp.id === ag.paciente_id);
+        const q = searchPaciente.trim().toLowerCase();
+        const hit = (p?.nome || '').toLowerCase().includes(q) || (p?.cpf || '').includes(q) || (p?.telefone || '').includes(q);
+        if (!hit) return false;
+      }
       return true;
     });
-  }, [agendamentos, selectedMedico, isMedicoOnly, medicoId]);
+  }, [agendamentos, selectedMedico, isMedicoOnly, medicoId, statusFilters, tipoFilters, convenioFilters, searchPaciente, pacientes]);
+
+  const activeFiltersCount = statusFilters.length + tipoFilters.length + convenioFilters.length + (searchPaciente.trim() ? 1 : 0);
 
   // Horários exibidos na grade: base 00:00→23:30 (30min) + qualquer horário
   // customizado presente em agendamentos, permitindo agendar livremente.
@@ -595,6 +622,13 @@ export default function Agenda() {
 
     setIsSaving(true);
     try {
+      // Capture slot info BEFORE deletion for waitlist offer
+      const slot = {
+        data: formData.data || '',
+        hora: formData.hora_inicio || '',
+        medico_id: formData.medico_id || null,
+        tipo: formData.tipo || null,
+      };
       const result = await autoCancelarAgendamento({
         agendamentoId: formData.id,
         motivo: 'cancelado',
@@ -605,11 +639,98 @@ export default function Agenda() {
       toast.success('Agendamento cancelado!', { description: result.actions.join(' • ') });
       await queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
       setIsFormOpen(false);
+
+      // Try to fill freed slot from waitlist
+      try {
+        const medicoInfo = slot.medico_id ? medicos.find(m => m.id === slot.medico_id) : null;
+        const especialidade = medicoInfo?.especialidade || null;
+        let q = supabase
+          .from('lista_espera')
+          .select('*, pacientes(nome, telefone)')
+          .eq('status', 'aguardando')
+          .order('prioridade', { ascending: false })
+          .order('data_cadastro', { ascending: true })
+          .limit(10);
+        if (especialidade) q = q.eq('especialidade', especialidade);
+        const { data: candidates } = await q;
+        if (candidates && candidates.length > 0) {
+          setFreedSlot(slot);
+          setWaitlistCandidates(candidates);
+          setWaitlistDialogOpen(true);
+        }
+      } catch (e) {
+        if (import.meta.env.DEV) console.log('Waitlist lookup skipped:', e);
+      }
     } catch (error: any) {
       if (import.meta.env.DEV) console.error('Error cancelling agendamento:', error);
       toast.error('Erro ao cancelar agendamento.');
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const promoteFromWaitlist = async (candidate: any) => {
+    if (!freedSlot) return;
+    setIsPromoting(candidate.id);
+    try {
+      const { error: insErr } = await supabase.from('agendamentos').insert({
+        paciente_id: candidate.paciente_id,
+        medico_id: freedSlot.medico_id || candidate.medico_id || null,
+        data: freedSlot.data,
+        hora_inicio: freedSlot.hora,
+        tipo: freedSlot.tipo || 'consulta',
+        status: 'agendado',
+        observacoes: `Promovido da lista de espera. Motivo original: ${candidate.motivo || '-'}`,
+        clinica_id: clinicaId || null,
+      });
+      if (insErr) throw insErr;
+      await supabase.from('lista_espera').update({ status: 'agendado' }).eq('id', candidate.id);
+      toast.success(`${candidate.pacientes?.nome || 'Paciente'} agendado no horário liberado!`);
+      await queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
+      await queryClient.invalidateQueries({ queryKey: ['lista_espera'] });
+      setWaitlistDialogOpen(false);
+    } catch (e: any) {
+      toast.error(e?.message || 'Erro ao promover paciente da lista de espera.');
+    } finally {
+      setIsPromoting(null);
+    }
+  };
+
+  // Suggest next free slot for the selected doctor on formData.data
+  const suggestNextSlot = () => {
+    if (!formData.data || !formData.medico_id) {
+      toast.info('Selecione data e médico primeiro.');
+      return;
+    }
+    const busy = new Set(
+      agendamentos
+        .filter(a => a.data === formData.data && a.medico_id === formData.medico_id && a.status !== 'cancelado' && a.id !== formData.id)
+        .map(a => (a.hora_inicio || '').slice(0, 5))
+    );
+    // Try 30-min slots from 07:00 to 20:00
+    for (let h = 7; h < 20; h++) {
+      for (const m of [0, 30]) {
+        const hh = String(h).padStart(2, '0');
+        const mm = String(m).padStart(2, '0');
+        const slot = `${hh}:${mm}`;
+        if (!busy.has(slot)) {
+          setFormData({ ...formData, hora_inicio: slot });
+          toast.success(`Próximo horário livre: ${slot}`);
+          return;
+        }
+      }
+    }
+    toast.warning('Nenhum horário livre encontrado neste dia.');
+  };
+
+  const sendWhatsAppConfirmation = async (agendamentoId?: string) => {
+    const id = agendamentoId || formData.id;
+    if (!id) return;
+    try {
+      await sendWhatsAppNotification(id, 'send_appointment_confirmation');
+      toast.success('Confirmação enviada por WhatsApp!');
+    } catch (e: any) {
+      toast.error('Não foi possível enviar a confirmação.');
     }
   };
 
@@ -857,6 +978,90 @@ export default function Agenda() {
                       </span>
                     ))}
                   </div>
+                )}
+              </div>
+
+              {/* ─── Advanced filter bar ─── */}
+              <div className="flex items-center gap-2 flex-wrap mt-3 pt-3 border-t border-border/40">
+                <div className="relative flex-1 min-w-[220px] max-w-sm">
+                  <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                  <Input
+                    placeholder="Buscar paciente, CPF ou telefone..."
+                    value={searchPaciente}
+                    onChange={(e) => setSearchPaciente(e.target.value)}
+                    className="h-9 pl-8 text-sm"
+                  />
+                </div>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" size="sm" className="gap-1.5">
+                      <Filter className="h-3.5 w-3.5" />
+                      Filtros
+                      {activeFiltersCount > 0 && (
+                        <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">{activeFiltersCount}</Badge>
+                      )}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent align="end" className="w-80 max-h-[70vh] overflow-y-auto">
+                    <div className="space-y-4">
+                      <div>
+                        <Label className="text-xs font-semibold">Status</Label>
+                        <div className="mt-2 grid grid-cols-2 gap-1.5">
+                          {(Object.keys(STATUS_LABELS) as StatusAgendamento[]).map(s => (
+                            <label key={s} className="flex items-center gap-2 text-xs cursor-pointer">
+                              <Checkbox
+                                checked={statusFilters.includes(s)}
+                                onCheckedChange={(c) => setStatusFilters(prev => c ? [...prev, s] : prev.filter(x => x !== s))}
+                              />
+                              {STATUS_LABELS[s]}
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                      <div>
+                        <Label className="text-xs font-semibold">Tipo</Label>
+                        <div className="mt-2 grid grid-cols-2 gap-1.5">
+                          {['consulta','retorno','avaliacao','checkup','procedimento','cirurgia','triagem','coleta','exame','enfermagem','vacina','curativo','outro'].map(t => (
+                            <label key={t} className="flex items-center gap-2 text-xs cursor-pointer capitalize">
+                              <Checkbox
+                                checked={tipoFilters.includes(t)}
+                                onCheckedChange={(c) => setTipoFilters(prev => c ? [...prev, t] : prev.filter(x => x !== t))}
+                              />
+                              {t}
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                      {convenios.length > 0 && (
+                        <div>
+                          <Label className="text-xs font-semibold">Convênio</Label>
+                          <div className="mt-2 space-y-1.5 max-h-40 overflow-y-auto">
+                            {convenios.map(c => (
+                              <label key={c.id} className="flex items-center gap-2 text-xs cursor-pointer">
+                                <Checkbox
+                                  checked={convenioFilters.includes(c.id)}
+                                  onCheckedChange={(v) => setConvenioFilters(prev => v ? [...prev, c.id] : prev.filter(x => x !== c.id))}
+                                />
+                                {c.nome}
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {activeFiltersCount > 0 && (
+                        <Button size="sm" variant="ghost" className="w-full gap-1.5"
+                          onClick={() => { setStatusFilters([]); setTipoFilters([]); setConvenioFilters([]); setSearchPaciente(''); }}
+                        >
+                          <X className="h-3.5 w-3.5" /> Limpar filtros
+                        </Button>
+                      )}
+                    </div>
+                  </PopoverContent>
+                </Popover>
+                {activeFiltersCount > 0 && (
+                  <span className="text-xs text-muted-foreground">
+                    {filteredAgendamentos.length} resultado(s)
+                  </span>
                 )}
               </div>
             </CardHeader>
@@ -1222,6 +1427,17 @@ export default function Agenda() {
                 <ArrowRightLeft className="h-3.5 w-3.5" />
                 Remarcar
               </Button>
+
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-emerald-700 border-emerald-500/30 hover:bg-emerald-500/10 gap-1.5"
+                disabled={isSaving}
+                onClick={() => sendWhatsAppConfirmation()}
+              >
+                <MessageCircle className="h-3.5 w-3.5" />
+                WhatsApp
+              </Button>
             </div>
           )}
 
@@ -1282,12 +1498,17 @@ export default function Agenda() {
               <div className="space-y-2">
                 <Label>Horário</Label>
                 {isRemarkMode || !formData.id ? (
-                  <Input
-                    type="time"
-                    step={60}
-                    value={formData.hora_inicio || ''}
-                    onChange={(e) => setFormData({ ...formData, hora_inicio: e.target.value })}
-                  />
+                  <div className="flex gap-1">
+                    <Input
+                      type="time"
+                      step={60}
+                      value={formData.hora_inicio || ''}
+                      onChange={(e) => setFormData({ ...formData, hora_inicio: e.target.value })}
+                    />
+                    <Button type="button" variant="outline" size="icon" title="Sugerir próximo horário livre" onClick={suggestNextSlot}>
+                      <Wand2 className="h-4 w-4" />
+                    </Button>
+                  </div>
                 ) : (
                   <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted p-2 rounded">
                     <Clock className="h-4 w-4" />
@@ -1696,6 +1917,37 @@ export default function Agenda() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Waitlist offer after cancellation */}
+      <Dialog open={waitlistDialogOpen} onOpenChange={setWaitlistDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Preencher horário liberado?</DialogTitle>
+            <DialogDescription>
+              {freedSlot && `${freedSlot.data} às ${freedSlot.hora} — há pacientes na lista de espera compatíveis.`}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 max-h-[50vh] overflow-y-auto">
+            {waitlistCandidates.map((c: any) => (
+              <div key={c.id} className="flex items-center justify-between p-3 border rounded-lg">
+                <div className="min-w-0">
+                  <p className="font-medium text-sm truncate">{c.pacientes?.nome || 'Paciente'}</p>
+                  <p className="text-xs text-muted-foreground truncate">
+                    {c.especialidade} · Prioridade {c.prioridade || '-'} · {c.pacientes?.telefone || 'sem telefone'}
+                  </p>
+                  {c.motivo && <p className="text-xs text-muted-foreground truncate">Motivo: {c.motivo}</p>}
+                </div>
+                <Button size="sm" disabled={!!isPromoting} onClick={() => promoteFromWaitlist(c)}>
+                  {isPromoting === c.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Agendar'}
+                </Button>
+              </div>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setWaitlistDialogOpen(false)}>Fechar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
