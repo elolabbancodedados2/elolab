@@ -1268,12 +1268,12 @@ export default function Agenda() {
               <div className="space-y-2">
                 <Label>Horário</Label>
                 {isRemarkMode || !formData.id ? (
-                  <Select value={formData.hora_inicio} onValueChange={(v) => setFormData({ ...formData, hora_inicio: v })}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {HORARIOS.map(h => <SelectItem key={h} value={h}>{h}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
+                  <Input
+                    type="time"
+                    step={60}
+                    value={formData.hora_inicio || ''}
+                    onChange={(e) => setFormData({ ...formData, hora_inicio: e.target.value })}
+                  />
                 ) : (
                   <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted p-2 rounded">
                     <Clock className="h-4 w-4" />
