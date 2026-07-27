@@ -980,6 +980,90 @@ export default function Agenda() {
                   </div>
                 )}
               </div>
+
+              {/* ─── Advanced filter bar ─── */}
+              <div className="flex items-center gap-2 flex-wrap mt-3 pt-3 border-t border-border/40">
+                <div className="relative flex-1 min-w-[220px] max-w-sm">
+                  <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                  <Input
+                    placeholder="Buscar paciente, CPF ou telefone..."
+                    value={searchPaciente}
+                    onChange={(e) => setSearchPaciente(e.target.value)}
+                    className="h-9 pl-8 text-sm"
+                  />
+                </div>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" size="sm" className="gap-1.5">
+                      <Filter className="h-3.5 w-3.5" />
+                      Filtros
+                      {activeFiltersCount > 0 && (
+                        <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">{activeFiltersCount}</Badge>
+                      )}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent align="end" className="w-80 max-h-[70vh] overflow-y-auto">
+                    <div className="space-y-4">
+                      <div>
+                        <Label className="text-xs font-semibold">Status</Label>
+                        <div className="mt-2 grid grid-cols-2 gap-1.5">
+                          {(Object.keys(STATUS_LABELS) as StatusAgendamento[]).map(s => (
+                            <label key={s} className="flex items-center gap-2 text-xs cursor-pointer">
+                              <Checkbox
+                                checked={statusFilters.includes(s)}
+                                onCheckedChange={(c) => setStatusFilters(prev => c ? [...prev, s] : prev.filter(x => x !== s))}
+                              />
+                              {STATUS_LABELS[s]}
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                      <div>
+                        <Label className="text-xs font-semibold">Tipo</Label>
+                        <div className="mt-2 grid grid-cols-2 gap-1.5">
+                          {['consulta','retorno','avaliacao','checkup','procedimento','cirurgia','triagem','coleta','exame','enfermagem','vacina','curativo','outro'].map(t => (
+                            <label key={t} className="flex items-center gap-2 text-xs cursor-pointer capitalize">
+                              <Checkbox
+                                checked={tipoFilters.includes(t)}
+                                onCheckedChange={(c) => setTipoFilters(prev => c ? [...prev, t] : prev.filter(x => x !== t))}
+                              />
+                              {t}
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                      {convenios.length > 0 && (
+                        <div>
+                          <Label className="text-xs font-semibold">Convênio</Label>
+                          <div className="mt-2 space-y-1.5 max-h-40 overflow-y-auto">
+                            {convenios.map(c => (
+                              <label key={c.id} className="flex items-center gap-2 text-xs cursor-pointer">
+                                <Checkbox
+                                  checked={convenioFilters.includes(c.id)}
+                                  onCheckedChange={(v) => setConvenioFilters(prev => v ? [...prev, c.id] : prev.filter(x => x !== c.id))}
+                                />
+                                {c.nome}
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {activeFiltersCount > 0 && (
+                        <Button size="sm" variant="ghost" className="w-full gap-1.5"
+                          onClick={() => { setStatusFilters([]); setTipoFilters([]); setConvenioFilters([]); setSearchPaciente(''); }}
+                        >
+                          <X className="h-3.5 w-3.5" /> Limpar filtros
+                        </Button>
+                      )}
+                    </div>
+                  </PopoverContent>
+                </Popover>
+                {activeFiltersCount > 0 && (
+                  <span className="text-xs text-muted-foreground">
+                    {filteredAgendamentos.length} resultado(s)
+                  </span>
+                )}
+              </div>
             </CardHeader>
             <CardContent className="p-0">
               {viewMode === 'month' ? (
