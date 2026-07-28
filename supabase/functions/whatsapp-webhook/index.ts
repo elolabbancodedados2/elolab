@@ -193,27 +193,41 @@ Deno.serve(async (req) => {
             }))
 
             // Buscar dados do paciente se vinculado
+            //
+            // ⚠️ MINIMIZAÇÃO DE DADOS (LGPD art. 6º, III e art. 33)
+            // Este contexto é enviado para api.deepseek.com, provedor sediado
+            // fora do Brasil. Transferência internacional de dado pessoal
+            // sensível de saúde exige base legal e cláusulas contratuais
+            // específicas. Enquanto isso não estiver formalizado, mandamos o
+            // MÍNIMO necessário para o agente funcionar.
+            //
+            // Antes iam nome completo, data de nascimento, telefone e ALERGIAS.
+            // Nada disso é necessário para agendar: alergia é dado de saúde
+            // (art. 11), o telefone o WhatsApp já conhece, e o primeiro nome
+            // basta para tratar bem a pessoa.
+            //
+            // Se algum dia o agente precisar de dado clínico, exponha isso como
+            // opção por agente e registre o consentimento do paciente.
             let patientContext = ''
             if (conversation.paciente_id) {
               const { data: paciente } = await supabase
                 .from('pacientes')
-                .select('*')
+                .select('nome')
                 .eq('id', conversation.paciente_id)
                 .single()
 
               if (paciente) {
+                const primeiroNome = (paciente.nome || '').trim().split(/\s+/)[0] || 'Paciente'
                 patientContext = `
 DADOS DO PACIENTE:
-- Nome: ${paciente.nome}
-- Data de nascimento: ${paciente.data_nascimento || 'Não informada'}
-- Telefone: ${paciente.telefone || 'Não informado'}
-- Alergias: ${paciente.alergias?.join(', ') || 'Nenhuma registrada'}
+- Primeiro nome: ${primeiroNome}
 `
 
-                // Buscar próximos agendamentos
+                // Só data, hora e status — sem médico, especialidade ou tipo de
+                // procedimento, que revelariam informação clínica.
                 const { data: agendamentos } = await supabase
                   .from('agendamentos')
-                  .select('*, medicos(*)')
+                  .select('data, hora_inicio, status')
                   .eq('paciente_id', conversation.paciente_id)
                   .gte('data', new Date().toISOString().split('T')[0])
                   .order('data', { ascending: true })

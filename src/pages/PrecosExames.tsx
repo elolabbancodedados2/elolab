@@ -16,6 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
+import { DeleteConfirmDialog } from '@/components/ConfirmDialog';
 import { DollarSign, Plus, Search, Edit, Trash2, Building2, Stethoscope, Loader2 } from 'lucide-react';
 
 const CATALOGO_EXAMES: { nome: string; tuss: string }[] = [
@@ -523,6 +524,8 @@ function PrecosConvenio() {
   const [filterConvenio, setFilterConvenio] = useState('all');
   const [showNew, setShowNew] = useState(false);
   const [editing, setEditing] = useState<any>(null);
+  /** Remover preço ficava a um clique, sem confirmar nem permitir desfazer. */
+  const [precoParaExcluir, setPrecoParaExcluir] = useState<any>(null);
   const queryClient = useQueryClient();
 
   const { data: convenios } = useQuery({
@@ -670,7 +673,7 @@ function PrecosConvenio() {
                     <TableCell>
                       <div className="flex gap-1">
                         <Button size="icon" variant="ghost" onClick={() => openEdit(p)}><Edit className="h-3 w-3" /></Button>
-                        <Button size="icon" variant="ghost" className="text-destructive" onClick={() => deleteMutation.mutate(p.id)}><Trash2 className="h-3 w-3" /></Button>
+                        <Button size="icon" variant="ghost" className="text-destructive" aria-label={`Remover preço de ${p.tipo_exame}`} onClick={() => setPrecoParaExcluir(p)}><Trash2 className="h-3 w-3" /></Button>
                       </div>
                     </TableCell>
                   </TableRow>
@@ -715,6 +718,19 @@ function PrecosConvenio() {
           </form>
         </DialogContent>
       </Dialog>
+
+      {precoParaExcluir && (
+        <DeleteConfirmDialog
+          open
+          onOpenChange={(o) => !o && setPrecoParaExcluir(null)}
+          itemName={precoParaExcluir.tipo_exame}
+          isLoading={deleteMutation.isPending}
+          onConfirm={() => {
+            deleteMutation.mutate(precoParaExcluir.id);
+            setPrecoParaExcluir(null);
+          }}
+        />
+      )}
     </div>
   );
 }

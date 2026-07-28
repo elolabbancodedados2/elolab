@@ -19,6 +19,26 @@ interface WorkflowResult {
   actions: string[]; // list of automated actions taken
 }
 
+/**
+ * Propaga erro do Supabase como exceção.
+ *
+ * Todas as funções deste arquivo são try/catch que devolvem
+ * `{ success: false }` no catch — só que o supabase-js NÃO lança em erro de
+ * API: devolve `{ data, error }`. Então o catch nunca disparava e cada função
+ * retornava `success: true` mesmo quando nada tinha sido gravado.
+ *
+ * Como é este arquivo que move check-in, início e fim de atendimento, triagem
+ * e progresso de exame, uma falha aqui deixava a tela dizendo "Atendimento
+ * iniciado" com a fila parada — e ninguém ficava sabendo.
+ *
+ * Uso: `await must(supabase.from('x').update({...}).eq('id', y));`
+ */
+async function must<T extends { error: unknown }>(op: PromiseLike<T>): Promise<T> {
+  const res = await op;
+  if (res.error) throw res.error;
+  return res;
+}
+
 // ─── 1. Check-in Automático ─────────────────────────────
 /** When a patient arrives, auto check-in and add to queue */
 export async function autoCheckin(agendamentoId: string): Promise<WorkflowResult> {
@@ -38,7 +58,7 @@ export async function autoCheckin(agendamentoId: string): Promise<WorkflowResult
     }
 
     // Update agendamento status
-    await supabase.from('agendamentos').update({ status: 'aguardando' }).eq('id', agendamentoId);
+    await must(supabase.from('agendamentos').update({ status: 'aguardando' }).eq('id', agendamentoId));
     actions.push('Status do agendamento → Aguardando');
 
     // Get next position
@@ -50,13 +70,13 @@ export async function autoCheckin(agendamentoId: string): Promise<WorkflowResult
     const nextPos = (lastFila?.[0]?.posicao || 0) + 1;
 
     // Add to queue
-    await supabase.from('fila_atendimento').insert({
+    await must(supabase.from('fila_atendimento').insert({
       agendamento_id: agendamentoId,
       posicao: nextPos,
       status: 'aguardando',
       prioridade: 'normal',
       horario_chegada: new Date().toISOString(),
-    });
+    }));
     actions.push('Paciente adicionado à fila');
 
     return { success: true, message: 'Check-in automático realizado', actions };
@@ -77,8 +97,8 @@ export async function autoIniciarAtendimento(
 
   try {
     // Update statuses
-    await supabase.from('agendamentos').update({ status: 'em_atendimento' }).eq('id', agendamentoId);
-    await supabase.from('fila_atendimento').update({ status: 'em_atendimento' }).eq('id', filaId);
+    await must(supabase.from('agendamentos').update({ status: 'em_atendimento' }).eq('id', agendamentoId));
+    await must(supabase.from('fila_atendimento').update({ status: 'em_atendimento' }).eq('id', filaId));
     actions.push('Status → Em Atendimento');
 
     // Auto-create prontuário if none exists for today
@@ -91,13 +111,13 @@ export async function autoIniciarAtendimento(
       .limit(1);
 
     if (!existingPront || existingPront.length === 0) {
-      await supabase.from('prontuarios').insert({
+      await must(supabase.from('prontuarios').insert({
         paciente_id: pacienteId,
         medico_id: medicoId,
         agendamento_id: agendamentoId,
         data: today,
         queixa_principal: '',
-      });
+      }));
       actions.push('Prontuário criado automaticamente');
     }
 
@@ -150,7 +170,7 @@ export async function autoFinalizarAtendimento(params: {
       const dataRetorno = new Date();
       dataRetorno.setDate(dataRetorno.getDate() + params.diasRetorno);
       
-      await supabase.from('retornos').insert({
+      await must(supabase.from('retornos').insert({
         paciente_id: params.pacienteId,
         medico_id: params.medicoId,
         data_retorno_prevista: format(dataRetorno, 'yyyy-MM-dd'),
@@ -158,7 +178,7 @@ export async function autoFinalizarAtendimento(params: {
         motivo: `Retorno de ${params.tipoConsulta || 'consulta'}`,
         status: 'pendente',
         agendamento_id: params.agendamentoId,
-      });
+      }));
       actions.push(`Retorno agendado para ${format(dataRetorno, 'dd/MM/yyyy')}`);
     }
 
@@ -170,7 +190,7 @@ export async function autoFinalizarAtendimento(params: {
       .maybeSingle();
 
     if (pac.data?.email) {
-      await supabase.from('notification_queue').insert({
+      await must(supabase.from('notification_queue').insert({
         tipo: 'email',
         destinatario_id: params.pacienteId,
         destinatario_email: pac.data.email,
@@ -178,7 +198,7 @@ export async function autoFinalizarAtendimento(params: {
         assunto: 'Consulta finalizada — Resumo do atendimento',
         conteudo: `Olá ${params.pacienteNome}, seu atendimento foi concluído. Caso tenha receitas ou exames, eles já estão disponíveis no seu portal.`,
         status: 'pendente',
-      });
+      }));
       actions.push('Notificação de conclusão enviada');
     }
 
@@ -251,7 +271,7 @@ export async function autoCreateColeta(params: {
       return { success: true, message: 'Coleta já registrada', actions: [] };
     }
 
-    await supabase.from('coletas_laboratorio').insert({
+    await must(supabase.from('coletas_laboratorio').insert({
       exame_id: params.exameId,
       paciente_id: params.pacienteId,
       medico_solicitante_id: params.medicoId,
@@ -261,7 +281,7 @@ export async function autoCreateColeta(params: {
       urgente: params.urgente || false,
       jejum_necessario: jejumNecessario,
       jejum_horas: jejumNecessario ? 8 : null,
-    });
+    }));
     actions.push(`Coleta de ${tipoAmostra} criada (tubo: ${tubo})`);
 
     if (jejumNecessario) {
@@ -315,18 +335,18 @@ export async function autoDispensarMedicamentos(params: {
       }
 
       // Deduct
-      await supabase.from('estoque').update({
+      await must(supabase.from('estoque').update({
         quantidade: stockItem.quantidade - qty,
-      }).eq('id', stockItem.id);
+      }).eq('id', stockItem.id));
 
       // Log movement
-      await supabase.from('movimentacoes_estoque').insert({
+      await must(supabase.from('movimentacoes_estoque').insert({
         item_id: stockItem.id,
         tipo: 'saida',
         quantidade: qty,
         motivo: `Dispensação — ${params.pacienteNome}`,
         usuario_id: params.userId || null,
-      });
+      }));
 
       actions.push(`${stockItem.nome}: -${qty} unidade(s)`);
 
@@ -368,7 +388,7 @@ export async function autoNotificarRetornos(): Promise<WorkflowResult> {
 
     for (const ret of retornos as any[]) {
       if (ret.pacientes?.email) {
-        await supabase.from('notification_queue').insert({
+        await must(supabase.from('notification_queue').insert({
           tipo: 'email',
           destinatario_id: ret.paciente_id,
           destinatario_email: ret.pacientes.email,
@@ -376,7 +396,7 @@ export async function autoNotificarRetornos(): Promise<WorkflowResult> {
           assunto: 'Lembrete de Retorno — Amanhã',
           conteudo: `Olá ${ret.pacientes.nome}, lembramos que seu retorno está agendado para amanhã. Entre em contato para confirmar.`,
           status: 'pendente',
-        });
+        }));
         actions.push(`Notificação enviada: ${ret.pacientes.nome}`);
       }
     }
@@ -427,7 +447,7 @@ export async function autoBillingExame(params: {
       if (preco) valor = preco.valor_total || preco.valor_tabela;
     }
 
-    await supabase.from('lancamentos').insert({
+    await must(supabase.from('lancamentos').insert({
       tipo: 'receita',
       categoria: 'exame',
       descricao: `Exame: ${params.tipoExame} — ${params.pacienteNome} [${params.exameId.slice(0, 8)}]`,
@@ -436,7 +456,7 @@ export async function autoBillingExame(params: {
       data_vencimento: format(new Date(), 'yyyy-MM-dd'),
       status: 'pendente',
       paciente_id: params.pacienteId,
-    });
+    }));
     actions.push(`Cobrança de R$ ${valor.toFixed(2)} gerada`);
 
     // Notify patient about result availability
@@ -447,7 +467,7 @@ export async function autoBillingExame(params: {
       .maybeSingle();
 
     if (pac?.email) {
-      await supabase.from('notification_queue').insert({
+      await must(supabase.from('notification_queue').insert({
         tipo: 'email',
         destinatario_id: params.pacienteId,
         destinatario_email: pac.email,
@@ -455,7 +475,7 @@ export async function autoBillingExame(params: {
         assunto: `Resultado de exame disponível — ${params.tipoExame}`,
         conteudo: `Olá ${params.pacienteNome}, o resultado do seu exame "${params.tipoExame}" já está disponível. Acesse pelo portal do paciente ou retire na clínica.`,
         status: 'pendente',
-      });
+      }));
       actions.push('Notificação de resultado enviada ao paciente');
     }
 
@@ -492,9 +512,9 @@ export async function autoTriagemParaFila(params: {
     if (existing && existing.length > 0) {
       // Update priority if already in queue
       if (existing[0].prioridade !== novaPrioridade) {
-        await supabase.from('fila_atendimento')
+        await must(supabase.from('fila_atendimento')
           .update({ prioridade: novaPrioridade })
-          .eq('id', existing[0].id);
+          .eq('id', existing[0].id));
         actions.push(`Prioridade atualizada para ${novaPrioridade}`);
       }
       return { success: true, message: 'Prioridade atualizada na fila', actions };
@@ -512,16 +532,16 @@ export async function autoTriagemParaFila(params: {
     const isUrgent = params.classificacaoRisco === 'vermelho' || params.classificacaoRisco === 'laranja';
     const posicao = isUrgent ? 0 : nextPos;
 
-    await supabase.from('fila_atendimento').insert({
+    await must(supabase.from('fila_atendimento').insert({
       agendamento_id: params.agendamentoId,
       posicao,
       status: 'aguardando',
       prioridade: novaPrioridade,
       horario_chegada: new Date().toISOString(),
-    });
+    }));
     actions.push(`Adicionado à fila (prioridade: ${novaPrioridade})`);
 
-    await supabase.from('agendamentos').update({ status: 'aguardando' }).eq('id', params.agendamentoId);
+    await must(supabase.from('agendamentos').update({ status: 'aguardando' }).eq('id', params.agendamentoId));
     actions.push('Agendamento → Aguardando');
 
     if (isUrgent) {
@@ -546,11 +566,11 @@ export async function autoConfirmarPagamento(params: {
   const actions: string[] = [];
 
   try {
-    await supabase.from('lancamentos').update({
+    await must(supabase.from('lancamentos').update({
       status: 'pago',
       forma_pagamento: params.formaPagamento,
       observacoes: params.observacoes || null,
-    }).eq('id', params.lancamentoId);
+    }).eq('id', params.lancamentoId));
     actions.push('Pagamento confirmado');
 
     const { data: lanc } = await supabase
@@ -562,7 +582,7 @@ export async function autoConfirmarPagamento(params: {
     if (lanc) {
       const valorFinal = lanc.valor - (params.desconto || 0) + (params.acrescimo || 0);
 
-      await supabase.from('pagamentos_mercadopago').insert({
+      await must(supabase.from('pagamentos_mercadopago').insert({
         valor: valorFinal,
         valor_pago: valorFinal,
         status: 'aprovado',
@@ -575,7 +595,7 @@ export async function autoConfirmarPagamento(params: {
         data_aprovacao: new Date().toISOString(),
         desconto: params.desconto || 0,
         acrescimo: params.acrescimo || 0,
-      } as any);
+      } as any));
       actions.push(`Registro de pagamento: R$ ${valorFinal.toFixed(2)}`);
     }
 
@@ -591,7 +611,7 @@ export async function autoConfirmarAgendamento(agendamentoId: string): Promise<W
   const actions: string[] = [];
 
   try {
-    await supabase.from('agendamentos').update({ status: 'confirmado' }).eq('id', agendamentoId);
+    await must(supabase.from('agendamentos').update({ status: 'confirmado' }).eq('id', agendamentoId));
     actions.push('Agendamento confirmado');
 
     // Get patient info for notification
@@ -614,7 +634,7 @@ export async function autoConfirmarAgendamento(agendamentoId: string): Promise<W
         .maybeSingle();
 
       if (pac?.email) {
-        await supabase.from('notification_queue').insert({
+        await must(supabase.from('notification_queue').insert({
           tipo: 'email',
           destinatario_id: ag.paciente_id,
           destinatario_email: pac.email,
@@ -622,12 +642,12 @@ export async function autoConfirmarAgendamento(agendamentoId: string): Promise<W
           assunto: `Consulta confirmada — ${format(new Date(ag.data + 'T12:00:00'), 'dd/MM/yyyy')}`,
           conteudo: `Olá ${pac.nome}, sua consulta com Dr(a). ${med?.nome || 'médico'} no dia ${format(new Date(ag.data + 'T12:00:00'), 'dd/MM/yyyy')} às ${ag.hora_inicio?.slice(0, 5)} está confirmada.`,
           status: 'pendente',
-        });
+        }));
         actions.push('Notificação de confirmação enviada por e-mail');
       }
 
       if (pac?.telefone) {
-        await supabase.from('notification_queue').insert({
+        await must(supabase.from('notification_queue').insert({
           tipo: 'whatsapp',
           destinatario_id: ag.paciente_id,
           destinatario_telefone: pac.telefone,
@@ -635,7 +655,7 @@ export async function autoConfirmarAgendamento(agendamentoId: string): Promise<W
           assunto: 'Confirmação de Consulta',
           conteudo: `Olá ${pac.nome}! Sua consulta do dia ${format(new Date(ag.data + 'T12:00:00'), 'dd/MM/yyyy')} às ${ag.hora_inicio?.slice(0, 5)} com Dr(a). ${med?.nome || ''} está confirmada. ✅`,
           status: 'pendente',
-        });
+        }));
         actions.push('Notificação WhatsApp enfileirada');
       }
     }
@@ -662,11 +682,11 @@ export async function autoCancelarAgendamento(params: {
       .eq('id', params.agendamentoId)
       .maybeSingle();
 
-    await supabase.from('agendamentos').update({ status: params.motivo }).eq('id', params.agendamentoId);
+    await must(supabase.from('agendamentos').update({ status: params.motivo }).eq('id', params.agendamentoId));
     actions.push(`Agendamento marcado como ${params.motivo === 'faltou' ? 'falta' : 'cancelado'}`);
 
     // Remove from queue if present
-    await supabase.from('fila_atendimento').delete().eq('agendamento_id', params.agendamentoId);
+    await must(supabase.from('fila_atendimento').delete().eq('agendamento_id', params.agendamentoId));
     actions.push('Removido da fila (se estava)');
 
     // Auto-convoke waiting list
@@ -698,7 +718,7 @@ export async function autoCancelarAgendamento(params: {
             const msg = `Olá ${pacEspera.nome}! Uma vaga abriu na agenda de Dr(a). ${med?.nome || ''} para o dia ${format(new Date(ag.data + 'T12:00:00'), 'dd/MM/yyyy')} às ${ag.hora_inicio?.slice(0, 5)}. Deseja agendar? Responda SIM para confirmar.`;
 
             if (pacEspera.telefone) {
-              await supabase.from('notification_queue').insert({
+              await must(supabase.from('notification_queue').insert({
                 tipo: 'whatsapp',
                 destinatario_id: item.paciente_id,
                 destinatario_telefone: pacEspera.telefone,
@@ -706,10 +726,10 @@ export async function autoCancelarAgendamento(params: {
                 assunto: 'Vaga Disponível',
                 conteudo: msg,
                 status: 'pendente',
-              });
+              }));
             }
             if (pacEspera.email) {
-              await supabase.from('notification_queue').insert({
+              await must(supabase.from('notification_queue').insert({
                 tipo: 'email',
                 destinatario_id: item.paciente_id,
                 destinatario_email: pacEspera.email,
@@ -717,10 +737,10 @@ export async function autoCancelarAgendamento(params: {
                 assunto: 'Vaga disponível na agenda',
                 conteudo: msg,
                 status: 'pendente',
-              });
+              }));
             }
 
-            await supabase.from('lista_espera').update({ status: 'notificado' }).eq('id', item.id);
+            await must(supabase.from('lista_espera').update({ status: 'notificado' }).eq('id', item.id));
             actions.push(`Lista de espera: ${pacEspera.nome} notificado sobre vaga`);
           }
         }
@@ -756,7 +776,7 @@ export async function autoProgressExame(params: {
       updateData.resultado = params.resultado;
     }
 
-    await supabase.from('exames').update(updateData).eq('id', params.exameId);
+    await must(supabase.from('exames').update(updateData).eq('id', params.exameId));
     actions.push(`Status do exame → ${params.novoStatus}`);
 
     // Auto-create coleta when exam is ordered
@@ -772,20 +792,20 @@ export async function autoProgressExame(params: {
 
     // Auto-update coleta status when exam progresses
     if (params.novoStatus === 'realizado') {
-      await supabase
+      await must(supabase
         .from('coletas_laboratorio')
         .update({ status: 'em_analise' })
         .eq('exame_id', params.exameId)
-        .in('status', ['pendente', 'coletado']);
+        .in('status', ['pendente', 'coletado']));
       actions.push('Coleta → Em Análise');
     }
 
     // Auto-billing + notify when report is ready
     if (params.novoStatus === 'laudo_disponivel') {
-      await supabase
+      await must(supabase
         .from('coletas_laboratorio')
         .update({ status: 'liberado' })
-        .eq('exame_id', params.exameId);
+        .eq('exame_id', params.exameId));
       actions.push('Coleta → Liberada');
 
       const billingResult = await autoBillingExame({
@@ -799,14 +819,14 @@ export async function autoProgressExame(params: {
     }
 
     // Log automation
-    await supabase.from('automation_logs').insert({
+    await must(supabase.from('automation_logs').insert({
       tipo: 'exame',
       nome: `Progresso Exame: ${params.tipoExame}`,
       status: 'sucesso',
       registros_processados: 1,
       registros_sucesso: 1,
       detalhes: { exame_id: params.exameId, novo_status: params.novoStatus },
-    });
+    }));
 
     return { success: true, message: `Exame atualizado para ${params.novoStatus}`, actions };
   } catch (e: any) {
@@ -839,9 +859,9 @@ export async function autoVincularResultadoProntuario(params: {
         `\n\n--- Resultado de Exame (${format(new Date(), 'dd/MM/yyyy HH:mm')}) ---\n` +
         `Exame: ${params.tipoExame}\n${params.resultado}`;
 
-      await supabase.from('prontuarios').update({
+      await must(supabase.from('prontuarios').update({
         observacoes_internas: novaObs,
-      }).eq('id', prontuario.id);
+      }).eq('id', prontuario.id));
 
       actions.push(`Resultado vinculado ao prontuário ${prontuario.id.slice(0, 8)}`);
     } else {
@@ -872,7 +892,7 @@ export async function autoNotificarMedico(params: {
       .maybeSingle();
 
     if (med?.email) {
-      await supabase.from('notification_queue').insert({
+      await must(supabase.from('notification_queue').insert({
         tipo: 'email',
         destinatario_id: med.user_id || params.medicoId,
         destinatario_email: med.email,
@@ -880,7 +900,7 @@ export async function autoNotificarMedico(params: {
         assunto: `Paciente pronto: ${params.pacienteNome}`,
         conteudo: `Dr(a). ${med.nome}, o paciente ${params.pacienteNome} está pronto para atendimento. ${params.motivo}${params.sala ? ` Sala: ${params.sala}.` : ''}`,
         status: 'pendente',
-      });
+      }));
       actions.push(`Médico ${med.nome} notificado por e-mail`);
     }
 
@@ -918,7 +938,7 @@ export async function autoAgendarListaEspera(params: {
     actions.push('Agendamento criado');
 
     // Update waiting list status
-    await supabase.from('lista_espera').update({ status: 'agendado' }).eq('id', params.listaEsperaId);
+    await must(supabase.from('lista_espera').update({ status: 'agendado' }).eq('id', params.listaEsperaId));
     actions.push('Lista de espera → Agendado');
 
     // Notify patient
@@ -935,7 +955,7 @@ export async function autoAgendarListaEspera(params: {
         .eq('id', params.medicoId)
         .maybeSingle();
 
-      await supabase.from('notification_queue').insert({
+      await must(supabase.from('notification_queue').insert({
         tipo: 'email',
         destinatario_id: params.pacienteId,
         destinatario_email: pac.email,
@@ -943,7 +963,7 @@ export async function autoAgendarListaEspera(params: {
         assunto: 'Sua consulta foi agendada!',
         conteudo: `Olá ${pac.nome}! Sua consulta com Dr(a). ${med?.nome || ''} foi agendada para ${format(new Date(params.data + 'T12:00:00'), 'dd/MM/yyyy')} às ${params.horaInicio.slice(0, 5)}. Nos vemos lá! 🎉`,
         status: 'pendente',
-      });
+      }));
       actions.push('Paciente notificado por e-mail');
     }
 
@@ -981,14 +1001,14 @@ export async function autoMarcarFaltasHoje(): Promise<WorkflowResult> {
       actions.push(`Falta registrada: ${ag.hora_inicio}`);
     }
 
-    await supabase.from('automation_logs').insert({
+    await must(supabase.from('automation_logs').insert({
       tipo: 'agenda',
       nome: 'Auto No-Show',
       status: 'sucesso',
       registros_processados: faltas.length,
       registros_sucesso: faltas.length,
       detalhes: { data: today, total_faltas: faltas.length },
-    });
+    }));
 
     return { success: true, message: `${faltas.length} falta(s) registrada(s)`, actions };
   } catch (e: any) {

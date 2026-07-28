@@ -3,6 +3,14 @@ import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { toast } from 'sonner';
 
+/**
+ * Teto de segurança para o carregamento automático em blocos. Existe para que
+ * uma tabela muito grande não trave o navegador tentando trazer tudo — nesse
+ * caso a tela precisa de filtro por período ou paginação de verdade, e o aviso
+ * no console diz isso.
+ */
+const MAX_LINHAS_AUTO = 20000;
+
 // Generic hook for fetching data from a table
 export function useSupabaseQuery<T>(
   tableName: string,
@@ -51,18 +59,48 @@ export function useSupabaseQuery<T>(
         throw error;
       }
 
-      // Truncagem silenciosa: quando a consulta devolve exatamente o limite, é
-      // quase certo que existem mais registros e a tela está mostrando um
-      // recorte sem avisar ninguém. Numa clínica com mais de 5.000 pacientes
-      // isso aparece como "o paciente sumiu do sistema".
-      if (data && data.length === limit && !options?.page) {
-        console.warn(
-          `[${tableName}] retornou exatamente o limite de ${limit} registros — ` +
-          `provavelmente há mais dados. Use options.page para paginar.`
-        );
+      // Truncagem silenciosa: devolver exatamente o limite quase sempre
+      // significa que há mais registros e a tela está exibindo um recorte sem
+      // avisar. Numa clínica grande isso aparece como "o paciente sumiu do
+      // sistema". Quando a página não foi pedida explicitamente, buscamos o
+      // restante em blocos em vez de cortar em silêncio.
+      let rows = (data ?? []) as T[];
+
+      if (rows.length === limit && options?.page === undefined) {
+        let proximaPagina = 1;
+        while (proximaPagina * limit < MAX_LINHAS_AUTO) {
+          const inicio = proximaPagina * limit;
+
+          let q = supabase.from(tableName as any).select(options?.select || '*');
+          if (options?.filters) {
+            for (const f of options.filters) q = q.filter(f.column, f.operator, f.value);
+          }
+          if (options?.orderBy) {
+            q = q.order(options.orderBy.column, { ascending: options.orderBy.ascending ?? true });
+          }
+          q = q.range(inicio, inicio + limit - 1);
+
+          const { data: extra, error: erroExtra } = await q;
+          if (erroExtra) {
+            console.error(`Erro ao paginar ${tableName}:`, erroExtra);
+            break;
+          }
+          if (!extra || extra.length === 0) break;
+
+          rows = rows.concat(extra as T[]);
+          if (extra.length < limit) break;
+          proximaPagina++;
+        }
+
+        if (rows.length >= MAX_LINHAS_AUTO) {
+          console.warn(
+            `[${tableName}] atingiu o teto de ${MAX_LINHAS_AUTO} registros carregados de uma vez. ` +
+            `Esta tela precisa de paginação ou filtro por período.`
+          );
+        }
       }
 
-      return data as T[];
+      return rows;
     },
     enabled: options?.enabled !== false && !!user,
     ...(options?.staleTime !== undefined ? { staleTime: options.staleTime } : {}),
