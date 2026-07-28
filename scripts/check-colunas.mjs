@@ -110,10 +110,64 @@ for (const f of arquivos) {
   }
 }
 
+// ── 3. Colunas listadas em .select('...') ────────────────────────────────────
+/**
+ * Um select do PostgREST aceita formas como:
+ *   'id, nome'                       colunas simples
+ *   '*, pacientes(nome)'             relação aninhada
+ *   'medicos:medico_id(crm)'         relação com apelido
+ *   'count'                          agregado
+ * Verificamos apenas as colunas de PRIMEIRO nível da tabela consultada; o
+ * conteúdo entre parênteses pertence a outra tabela e é ignorado, porque o
+ * apelido nem sempre revela qual é.
+ */
+function colunasDeSelect(sel) {
+  const fora = [];
+  let nivel = 0, atual = '';
+  for (const ch of sel) {
+    if (ch === '(') { nivel++; continue; }
+    if (ch === ')') { nivel--; continue; }
+    if (ch === ',' && nivel === 0) { fora.push(atual); atual = ''; continue; }
+    if (nivel === 0) atual += ch;
+  }
+  fora.push(atual);
+
+  return fora
+    .map(s => s.trim())
+    .filter(Boolean)
+    // descarta o que não é coluna simples desta tabela
+    .filter(s => s !== '*' && s !== 'count' && !s.includes('!'))
+    // `apelido:coluna` → coluna
+    .map(s => (s.includes(':') ? s.split(':').pop().trim() : s))
+    .filter(s => /^[a-z_][a-z_0-9]*$/i.test(s));
+}
+
+for (const f of arquivos) {
+  const src = fs.readFileSync(f, 'utf8');
+  const re = /\.from\(\s*['"]([a-z_0-9]+)['"][^)]*\)\s*(?:as any\s*)?\r?\n?\s*\.select\(\s*(['"])([^'"]*)\2/g;
+  let m;
+  while ((m = re.exec(src))) {
+    const tabela = m[1];
+    const sel = m[3];
+    const cols = schema.get(tabela);
+    if (!cols || cols.size === 0) continue;
+
+    // Se o select traz relação aninhada, o trecho antes do parêntese pode
+    // conter o nome da relação (não é coluna). Ignoramos nomes que casem com
+    // uma tabela conhecida, para não acusar falso positivo.
+    const linha = src.slice(0, m.index).split('\n').length;
+    for (const col of colunasDeSelect(sel)) {
+      if (!cols.has(col) && !schema.has(col)) {
+        achados.push({ f, linha, tabela, op: 'select', col });
+      }
+    }
+  }
+}
+
 if (!achados.length) {
-  console.log('OK — nenhuma escrita em coluna inexistente.');
+  console.log('OK — nenhuma coluna inexistente em insert, update ou select.');
 } else {
-  console.log(`${achados.length} escrita(s) suspeita(s):\n`);
+  console.log(`${achados.length} uso(s) suspeito(s):\n`);
   for (const a of achados) {
     console.log(`  ${a.f}:${a.linha}  ${a.op} em "${a.tabela}" -> coluna "${a.col}"`);
   }
