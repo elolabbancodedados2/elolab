@@ -8,8 +8,11 @@ import { AppointmentCard } from '../AppointmentCard';
 
 const START_HOUR = 6;
 const END_HOUR = 22;
-const SLOT_MINUTES = 30;
-const SLOT_PX = 40;
+// Fine-grained droppable slots (5min) so users can drop / click at any time.
+const SLOT_MINUTES = 5;
+const SLOT_PX = 7;
+// Visual hour rows only (labels + strong borders every hour).
+const HOUR_PX = (60 / SLOT_MINUTES) * SLOT_PX;
 const TOTAL_MINUTES = (END_HOUR - START_HOUR) * 60;
 
 function toMinutes(t: string) {
@@ -24,6 +27,9 @@ function fromMinutes(m: number) {
 
 const SLOTS = Array.from({ length: (END_HOUR - START_HOUR) * (60 / SLOT_MINUTES) }, (_, i) =>
   fromMinutes(START_HOUR * 60 + i * SLOT_MINUTES)
+);
+const HOURS = Array.from({ length: END_HOUR - START_HOUR }, (_, i) =>
+  fromMinutes((START_HOUR + i) * 60)
 );
 
 function DoctorColumn({
@@ -46,17 +52,31 @@ function DoctorColumn({
       </div>
 
       <div className="relative" style={{ height: minutesToPx(TOTAL_MINUTES) }}>
+        {/* Visual hour gridlines */}
+        {HOURS.map((h, i) => (
+          <div
+            key={h}
+            className={cn('absolute inset-x-0 border-t', i === 0 ? 'border-transparent' : 'border-border/50')}
+            style={{ top: minutesToPx(i * 60) }}
+          />
+        ))}
+        {HOURS.map((h, i) => (
+          <div
+            key={`half-${h}`}
+            className="absolute inset-x-0 border-t border-dashed border-border/25"
+            style={{ top: minutesToPx(i * 60 + 30) }}
+          />
+        ))}
+
+        {/* Fine-grained (5min) drop + click targets */}
         {SLOTS.map((slot) => (
           <DropSlot
             key={slot}
             id={`slot:${medico.id}:${date}:${slot}`}
             data={{ medico_id: medico.id, data: date, hora_inicio: slot }}
             onClick={() => onSlotClick(medico.id, slot)}
-            className={cn(
-              'border-b border-border/40 hover:bg-muted/40 transition-colors cursor-pointer',
-              slot.endsWith(':00') && 'border-border/60'
-            )}
-            style={{ height: SLOT_PX }}
+            className="absolute inset-x-0 hover:bg-primary/5 cursor-pointer"
+            style={{ top: minutesToPx(toMinutes(slot) - START_HOUR * 60), height: SLOT_PX }}
           />
         ))}
 
@@ -123,18 +143,18 @@ export function DailyMultiDoctorView({
         <div className="text-sm font-medium capitalize">{dayStr}</div>
       </div>
       <div className="flex overflow-x-auto">
-        <div className="w-14 shrink-0 border-r border-border/60 pt-[52px]">
-          {SLOTS.map((slot) => (
-            <div
-              key={slot}
-              className={cn(
-                'h-10 -mt-2 pt-2 text-[10px] text-muted-foreground text-right pr-1',
-                slot.endsWith(':00') ? 'font-medium' : 'opacity-60'
-              )}
-            >
-              {slot}
-            </div>
-          ))}
+        <div className="w-14 shrink-0 border-r border-border/60 pt-[52px] relative">
+          <div className="relative" style={{ height: HOUR_PX * HOURS.length }}>
+            {HOURS.map((h, i) => (
+              <div
+                key={h}
+                className="absolute right-1 -mt-1.5 text-[11px] font-medium text-muted-foreground"
+                style={{ top: i * HOUR_PX }}
+              >
+                {h}
+              </div>
+            ))}
+          </div>
         </div>
         {activeDoctors.length === 0 ? (
           <div className="flex-1 flex items-center justify-center py-16 text-sm text-muted-foreground">
