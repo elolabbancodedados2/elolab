@@ -30,6 +30,7 @@ import { useCurrentMedico } from '@/hooks/useCurrentMedico';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
 import { EncaminhamentoMedico } from '@/components/clinical/EncaminhamentoMedico';
+import { parseDateOnly } from '@/lib/dateOnly';
 
 interface EncaminhamentoData {
   id: string;
@@ -368,7 +369,7 @@ export default function Encaminhamentos() {
                       <TableRow key={enc.id}>
                         <TableCell className="text-sm">
                           {enc.data_encaminhamento
-                            ? format(new Date(enc.data_encaminhamento), 'dd/MM/yyyy')
+                            ? format(parseDateOnly(enc.data_encaminhamento)!, 'dd/MM/yyyy')
                             : '—'}
                         </TableCell>
                         <TableCell className="font-medium">{enc.paciente?.nome || getPacienteNome(enc.paciente_id)}</TableCell>
@@ -443,7 +444,7 @@ export default function Encaminhamentos() {
                 </div>
                 <div>
                   <p className="text-muted-foreground text-xs">Data</p>
-                  <p>{selectedEnc.data_encaminhamento ? format(new Date(selectedEnc.data_encaminhamento), 'dd/MM/yyyy') : '—'}</p>
+                  <p>{selectedEnc.data_encaminhamento ? format(parseDateOnly(selectedEnc.data_encaminhamento)!, 'dd/MM/yyyy') : '—'}</p>
                 </div>
                 <div>
                   <p className="text-muted-foreground text-xs">Urgência</p>
@@ -489,7 +490,7 @@ export default function Encaminhamentos() {
                   <p className="text-muted-foreground text-xs mb-1 flex items-center gap-1">
                     <CheckCircle2 className="h-3 w-3 text-success" /> Contra-referência
                     {selectedEnc.data_contra_referencia && (
-                      <span className="ml-auto text-[10px]">{format(new Date(selectedEnc.data_contra_referencia), 'dd/MM/yyyy')}</span>
+                      <span className="ml-auto text-[10px]">{format(parseDateOnly(selectedEnc.data_contra_referencia)!, 'dd/MM/yyyy')}</span>
                     )}
                   </p>
                   <p className="bg-success/5 border border-success/20 rounded-lg p-3">{selectedEnc.contra_referencia}</p>

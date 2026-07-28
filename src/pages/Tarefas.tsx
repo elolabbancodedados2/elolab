@@ -21,6 +21,7 @@ import {
   ListTodo, Plus, CheckCircle2, Clock, AlertTriangle, Circle, Search, Trash2,
   Loader2, CalendarClock, User2, LayoutGrid, LayoutList, GripVertical,
 } from 'lucide-react';
+import { parseDateOnly } from '@/lib/dateOnly';
 
 // ─── Config ────────────────────────────────────────────────
 const statusConfig: Record<string, { label: string; icon: typeof Circle; colorClasses: string }> = {
@@ -61,8 +62,8 @@ function KanbanCard({ tarefa, onUpdate, onDelete, onDragStart }: {
   onDragStart: (e: React.DragEvent, id: string) => void;
 }) {
   const pc = prioridadeConfig[tarefa.prioridade] || prioridadeConfig.media;
-  const vencida = tarefa.data_vencimento && isPast(new Date(tarefa.data_vencimento)) && tarefa.status !== 'concluida';
-  const hoje = tarefa.data_vencimento && isToday(new Date(tarefa.data_vencimento));
+  const vencida = tarefa.data_vencimento && isPast(parseDateOnly(tarefa.data_vencimento)!) && tarefa.status !== 'concluida';
+  const hoje = tarefa.data_vencimento && isToday(parseDateOnly(tarefa.data_vencimento)!);
 
   return (
     <motion.div layout initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}>
@@ -105,7 +106,7 @@ function KanbanCard({ tarefa, onUpdate, onDelete, onDragStart }: {
                 vencida ? 'text-destructive font-semibold' : hoje ? 'text-warning font-semibold' : 'text-muted-foreground',
               )}>
                 <CalendarClock className="h-2.5 w-2.5" />
-                {format(new Date(tarefa.data_vencimento), 'dd/MM', { locale: ptBR })}
+                {format(parseDateOnly(tarefa.data_vencimento)!, 'dd/MM', { locale: ptBR })}
                 {vencida && ' · vencida'}
                 {hoje && ' · hoje'}
               </p>
@@ -128,8 +129,8 @@ function TarefaCard({ tarefa, onUpdate, onDelete }: {
 }) {
   const sc = statusConfig[tarefa.status] || statusConfig.pendente;
   const pc = prioridadeConfig[tarefa.prioridade] || prioridadeConfig.media;
-  const vencida = tarefa.data_vencimento && isPast(new Date(tarefa.data_vencimento)) && tarefa.status !== 'concluida' && tarefa.status !== 'cancelada';
-  const hoje = tarefa.data_vencimento && isToday(new Date(tarefa.data_vencimento));
+  const vencida = tarefa.data_vencimento && isPast(parseDateOnly(tarefa.data_vencimento)!) && tarefa.status !== 'concluida' && tarefa.status !== 'cancelada';
+  const hoje = tarefa.data_vencimento && isToday(parseDateOnly(tarefa.data_vencimento)!);
   const StatusIcon = sc.icon;
 
   return (
@@ -180,7 +181,7 @@ function TarefaCard({ tarefa, onUpdate, onDelete }: {
                 {tarefa.data_vencimento && (
                   <span className={cn('flex items-center gap-1', vencida && 'text-destructive font-semibold', hoje && 'text-warning font-semibold')}>
                     <CalendarClock className="h-3 w-3" />
-                    {format(new Date(tarefa.data_vencimento), 'dd/MM/yyyy', { locale: ptBR })}
+                    {format(parseDateOnly(tarefa.data_vencimento)!, 'dd/MM/yyyy', { locale: ptBR })}
                     {vencida && ' (vencida)'}{hoje && ' (hoje)'}
                   </span>
                 )}
@@ -310,7 +311,7 @@ export default function Tarefas() {
     pendentes: enrichedTarefas.filter((t: any) => t.status === 'pendente').length,
     emAndamento: enrichedTarefas.filter((t: any) => t.status === 'em_andamento').length,
     concluidas: enrichedTarefas.filter((t: any) => t.status === 'concluida').length,
-    vencidas: enrichedTarefas.filter((t: any) => t.data_vencimento && isPast(new Date(t.data_vencimento)) && t.status !== 'concluida' && t.status !== 'cancelada').length,
+    vencidas: enrichedTarefas.filter((t: any) => t.data_vencimento && isPast(parseDateOnly(t.data_vencimento)!) && t.status !== 'concluida' && t.status !== 'cancelada').length,
   }), [enrichedTarefas]);
 
   const [form, setForm] = useState({

@@ -26,6 +26,7 @@ import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, LineChart, Line,
 } from 'recharts';
+import { parseDateOnly } from '@/lib/dateOnly';
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
@@ -255,7 +256,7 @@ export default function Dashboard() {
   const financeiroStats = useMemo(() => {
     const filterByMonth = (tipo: string, status: string, month = mesAtual, year = anoAtual) =>
       lancamentos
-        .filter(l => { const d = new Date(l.data); return l.tipo === tipo && l.status === status && d.getMonth() === month && d.getFullYear() === year; })
+        .filter(l => { const d = parseDateOnly(l.data)!; return l.tipo === tipo && l.status === status && d.getMonth() === month && d.getFullYear() === year; })
         .reduce((acc, l) => acc + Number(l.valor), 0);
 
     const receitasMes = filterByMonth('receita', 'pago');
@@ -283,7 +284,7 @@ export default function Dashboard() {
     const sparkReceitas = monthlyChartData.map(d => d.receitas);
 
     const atendimentosFinalizadosMes = baseAgendamentos.filter(a => {
-      const d = new Date(a.data);
+      const d = parseDateOnly(a.data)!;
       return a.status === 'finalizado' && d.getMonth() === mesAtual && d.getFullYear() === anoAtual;
     }).length;
     const ticketMedio = atendimentosFinalizadosMes > 0 ? receitasMes / atendimentosFinalizadosMes : 0;
@@ -313,7 +314,7 @@ export default function Dashboard() {
     const sparkConsultas = Array.from({ length: 6 }, (_, i) => {
       const date = new Date(anoAtual, mesAtual - 5 + i, 1);
       return agendamentos.filter(a => {
-        const d = new Date(a.data);
+        const d = parseDateOnly(a.data)!;
         return d.getMonth() === date.getMonth() && d.getFullYear() === date.getFullYear();
       }).length;
     });

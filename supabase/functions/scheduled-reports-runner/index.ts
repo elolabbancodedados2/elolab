@@ -52,7 +52,8 @@ Deno.serve(async (req) => {
     const resendKey = Deno.env.get("RESEND_API_KEY");
 
     let body: any = {};
-    try { body = await req.json(); } catch {}
+    // Corpo vazio é esperado quando o disparo vem do agendador.
+    try { body = await req.json(); } catch { /* sem corpo */ }
     const forceId = body?.id || null;
 
     let q = supabase.from("relatorios_salvos").select("*").eq("ativo", true);

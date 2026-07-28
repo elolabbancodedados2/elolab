@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx';
 import { format } from 'date-fns';
+import { parseDateOnly } from '@/lib/dateOnly';
 
 // Exportar dados para Excel
 export function exportToExcel<T extends Record<string, any>>(
@@ -185,7 +186,7 @@ export function exportarFinanceiro(
   }>
 ) {
   const data = lancamentos.map((l) => ({
-    data: l.data ? format(new Date(l.data), 'dd/MM/yyyy') : '',
+    data: l.data ? format(parseDateOnly(l.data)!, 'dd/MM/yyyy') : '',
     tipo: l.tipo === 'receita' ? 'Receita' : 'Despesa',
     categoria: l.categoria,
     descricao: l.descricao,
@@ -227,7 +228,7 @@ export function exportarEstoque(
     valorUnitario: i.valorUnitario,
     valorTotal: i.quantidade * i.valorUnitario,
     fornecedor: i.fornecedor || '',
-    validade: i.validade ? format(new Date(i.validade), 'dd/MM/yyyy') : '',
+    validade: i.validade ? format(parseDateOnly(i.validade)!, 'dd/MM/yyyy') : '',
     status: i.quantidade <= i.quantidadeMinima ? 'BAIXO' : 'OK',
   }));
 
@@ -259,7 +260,7 @@ export function exportarAgendamentos(
   }>
 ) {
   const data = agendamentos.map((a) => ({
-    data: a.data ? format(new Date(a.data), 'dd/MM/yyyy') : '',
+    data: a.data ? format(parseDateOnly(a.data)!, 'dd/MM/yyyy') : '',
     horaInicio: a.horaInicio,
     horaFim: a.horaFim,
     paciente: a.paciente,

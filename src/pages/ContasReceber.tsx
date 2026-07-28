@@ -23,7 +23,6 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
-import { NotaFiscalModal } from '@/components/NotaFiscalModal';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { usePacientes } from '@/hooks/useSupabaseData';
@@ -32,6 +31,8 @@ import * as XLSX from 'xlsx';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell,
 } from 'recharts';
+import { parseDateOnly, todayDateOnly } from '@/lib/dateOnly';
+import { valorRealizado } from '@/lib/lancamentos';
 
 type StatusPagamento = Database['public']['Enums']['status_pagamento'];
 
@@ -121,8 +122,6 @@ export default function ContasReceber() {
   const [isPagamentoOpen, setIsPagamentoOpen] = useState(false);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [selectedConta, setSelectedConta] = useState<any>(null);
-  /** Lançamento cuja nota fiscal está sendo registrada. */
-  const [notaFiscalConta, setNotaFiscalConta] = useState<any>(null);
   const [formData, setFormData] = useState<FormData>({
     paciente_id: '', categoria: 'consulta', descricao: '', valor: 0,
     data_vencimento: format(new Date(), 'yyyy-MM-dd'), forma_pagamento: 'pix',
@@ -184,7 +183,7 @@ export default function ContasReceber() {
       const matchCategoria = filterCategoria === 'todas' || c.categoria === filterCategoria;
       let matchPeriodo = true;
       if (periodoRange) {
-        const d = new Date(c.data);
+        const d = parseDateOnly(c.data)!;
         matchPeriodo = d >= periodoRange.start && d <= periodoRange.end;
       }
       return matchSearch && matchStatus && matchCategoria && matchPeriodo;
@@ -197,7 +196,7 @@ export default function ContasReceber() {
       total: filtered.filter(c => c.status !== 'cancelado' && c.status !== 'estornado').reduce((a, c) => a + c.valor, 0),
       pendente: filtered.filter(c => c.status === 'pendente').reduce((a, c) => a + c.valor, 0),
       atrasado: filtered.filter(c => c.status === 'atrasado').reduce((a, c) => a + c.valor, 0),
-      pago: filtered.filter(c => c.status === 'pago').reduce((a, c) => a + c.valor, 0),
+      pago: filtered.filter(c => c.status === 'pago').reduce((a, c) => a + valorRealizado(c), 0),
       countPendente: filtered.filter(c => c.status === 'pendente').length,
       countAtrasado: filtered.filter(c => c.status === 'atrasado').length,
       countPago: filtered.filter(c => c.status === 'pago').length,
@@ -308,14 +307,19 @@ export default function ContasReceber() {
     }
     setIsSubmitting(true);
     try {
-      const { error } = await supabase.from('lancamentos').update({
+      // O valor recebido precisa ser GRAVADO, não só exibido. Antes, desconto e
+      // acréscimo viravam texto em observações e `valor` continuava com o valor
+      // cobrado — então uma conta de R$ 200 recebida com R$ 20 de desconto
+      // seguia contabilizada como R$ 200, inflando receita, DRE e fluxo de caixa.
+      const { error } = await (supabase as any).from('lancamentos').update({
         status: 'pago' as StatusPagamento,
         forma_pagamento: baixaData.forma_pagamento,
+        valor_pago: Number(valorFinal.toFixed(2)),
+        desconto: Number((baixaData.desconto || 0).toFixed(2)),
+        acrescimo: Number((baixaData.acrescimo || 0).toFixed(2)),
+        data_pagamento: baixaData.data_recebimento || todayDateOnly(),
         observacoes: [
           selectedConta.observacoes, baixaData.observacoes,
-          baixaData.desconto > 0 ? `Desconto: R$ ${baixaData.desconto.toFixed(2)}` : null,
-          baixaData.acrescimo > 0 ? `Acréscimo: R$ ${baixaData.acrescimo.toFixed(2)}` : null,
-          `Recebido em ${format(new Date(), "dd/MM/yyyy 'às' HH:mm")}`,
         ].filter(Boolean).join(' | ') || null,
       }).eq('id', selectedConta.id);
       if (error) throw error;
@@ -330,8 +334,12 @@ export default function ContasReceber() {
 
   const handleEstornar = async (conta: any) => {
     try {
-      const { error } = await supabase.from('lancamentos').update({
+      // Estorno desfaz a baixa: o dinheiro não entrou, então valor_pago volta a
+      // ser nulo e o lançamento deixa de contar como receita recebida.
+      const { error } = await (supabase as any).from('lancamentos').update({
         status: 'estornado' as StatusPagamento,
+        valor_pago: null,
+        data_pagamento: null,
       }).eq('id', conta.id);
       if (error) throw error;
       toast.success('Estorno realizado.');
@@ -556,7 +564,7 @@ export default function ContasReceber() {
               const status = STATUS_CONFIG[conta.status || 'pendente'];
               const catInfo = CATEGORIAS_MAP[conta.categoria] || CATEGORIAS_MAP.outros;
               const CatIcon = catInfo?.icon || DollarSign;
-              const diasVenc = conta.data_vencimento ? differenceInDays(new Date(conta.data_vencimento), new Date()) : null;
+              const diasVenc = conta.data_vencimento ? differenceInDays(parseDateOnly(conta.data_vencimento)!, new Date()) : null;
               return (
                 <motion.div key={conta.id} layout initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95 }} transition={{ delay: Math.min(i * 0.02, 0.3) }}>
                   <Card className={cn('hover:shadow-md hover:-translate-y-0.5 transition-all group border', status?.border)}>
@@ -620,11 +628,6 @@ export default function ContasReceber() {
                               <DropdownMenuItem onClick={() => handleViewDetail(conta)} className="gap-2">
                                 <Eye className="h-4 w-4" /> Ver Detalhes
                               </DropdownMenuItem>
-                              {conta.status === 'pago' && (
-                                <DropdownMenuItem onClick={() => setNotaFiscalConta(conta)} className="gap-2">
-                                  <Receipt className="h-4 w-4" /> Nota Fiscal
-                                </DropdownMenuItem>
-                              )}
                               {conta.status === 'pago' && (
                                 <DropdownMenuItem onClick={() => handleEstornar(conta)} className="gap-2 text-destructive">
                                   <Repeat className="h-4 w-4" /> Estornar
@@ -932,15 +935,6 @@ export default function ContasReceber() {
         </DialogContent>
       </Dialog>
 
-      {notaFiscalConta && (
-        <NotaFiscalModal
-          open
-          onOpenChange={o => !o && setNotaFiscalConta(null)}
-          lancamentoId={notaFiscalConta.id}
-          pacienteName={getPacienteNome(notaFiscalConta)}
-          valor={Number(notaFiscalConta.valor) || 0}
-        />
-      )}
     </div>
   );
 }

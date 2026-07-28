@@ -71,6 +71,50 @@ export function AppointmentDialog({ open, onOpenChange, initial, pacientes, medi
 
     setSaving(true);
     try {
+      // Sem esta checagem, salvar pelo formulário permite marcar dois pacientes
+      // no mesmo horário para o mesmo médico. O arrastar-e-soltar em AgendaPage
+      // valida, mas este caminho não validava nada.
+      //
+      // A comparação é em MINUTOS de propósito: o banco guarda TIME e devolve
+      // "08:00:00", enquanto o formulário usa "08:00". Comparar como texto
+      // produz "09:00:00" > "09:00" = true, o que bloqueava marcar 09:00 logo
+      // após uma consulta que termina às 09:00 — ou seja, impedia encaixar
+      // consultas em sequência.
+      const toMin = (t?: string | null): number | null => {
+        if (!t) return null;
+        const [h, m] = t.split(':').map(Number);
+        return Number.isFinite(h) && Number.isFinite(m) ? h * 60 + m : null;
+      };
+      const DURACAO_PADRAO = 30;
+      const novoInicio = toMin(form.hora_inicio)!;
+      const novoFim = toMin(form.hora_fim) ?? novoInicio + DURACAO_PADRAO;
+
+      if (novoFim <= novoInicio) {
+        toast.error('O horário de término deve ser após o início.');
+        setTab('consulta'); setSaving(false); return;
+      }
+
+      const { data: doDia } = await supabase
+        .from('agendamentos')
+        .select('id, hora_inicio, hora_fim, status')
+        .eq('medico_id', form.medico_id)
+        .eq('data', form.data);
+
+      const conflito = (doDia || []).find((a: any) => {
+        if (a.status === 'cancelado') return false;
+        if (editing && a.id === initial?.id) return false;
+        const ini = toMin(a.hora_inicio);
+        if (ini === null) return false;
+        const fim = toMin(a.hora_fim) ?? ini + DURACAO_PADRAO;
+        // Encostar (fim == início) não é conflito.
+        return ini < novoFim && fim > novoInicio;
+      });
+
+      if (conflito) {
+        toast.error('Este médico já tem consulta neste horário.');
+        setTab('consulta'); setSaving(false); return;
+      }
+
       const payload: any = {
         paciente_id: form.paciente_id,
         medico_id: form.medico_id,

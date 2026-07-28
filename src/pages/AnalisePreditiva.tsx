@@ -12,6 +12,7 @@ import { AlertCircle, TrendingUp, Zap, Phone, Mail } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format, differenceInDays, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { parseDateOnly } from '@/lib/dateOnly';
 
 interface PredictedNoShow {
   agendamento_id: string;
@@ -76,7 +77,7 @@ export default function AnalisePreditiva() {
     const recomendacoes: string[] = [];
 
     // Factor 1: Days until appointment
-    const diasAte = differenceInDays(new Date(agendamento.data), new Date());
+    const diasAte = differenceInDays(parseDateOnly(agendamento.data)!, new Date());
     if (diasAte > 14) {
       risco += 0.15; // Appointments far in future have higher no-show
       motivos.push('Agendamento longe');
@@ -96,7 +97,7 @@ export default function AnalisePreditiva() {
     }
 
     // Factor 3: Day of week (Friday afternoon worst)
-    const dataObj = new Date(agendamento.data);
+    const dataObj = parseDateOnly(agendamento.data)!;
     const diaSemana = dataObj.getDay();
     if (diaSemana === 5 && hora >= 15) {
       // Friday afternoon
@@ -252,7 +253,7 @@ export default function AnalisePreditiva() {
                     <div className="flex-1 min-w-0">
                       <p className="font-semibold truncate">{pred.paciente_nome}</p>
                       <p className="text-sm text-muted-foreground">
-                        {format(new Date(pred.data_agendamento), 'dd/MM/yyyy HH:mm', {
+                        {format(parseDateOnly(pred.data_agendamento)!, 'dd/MM/yyyy HH:mm', {
                           locale: ptBR,
                         })}{' '}
                         — {pred.medico_nome}

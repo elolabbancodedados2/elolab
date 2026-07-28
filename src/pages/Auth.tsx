@@ -19,6 +19,7 @@ import { toast } from 'sonner';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { checkRateLimit, resetRateLimit, getRemainingAttempts } from '@/lib/rateLimiter';
 import { MFAVerifyDialog } from '@/components/MFAVerifyDialog';
+import { passwordSchema } from '@/lib/passwordPolicy';
 import { AuthSwitch } from '@/components/ui/auth-switch';
 import logoIcon from '@/assets/logo-elolab-icon.png';
 import authHero from '@/assets/auth-hero.webp';
@@ -29,22 +30,12 @@ const loginSchema = z.object({
   password: z.string().min(1, 'Senha é obrigatória'),
 });
 
-// Sistema de saúde sob LGPD: senha de 6 caracteres sem complexidade era fraca
-// demais. Espelhe estas regras em Authentication → Policies no painel do
-// Supabase, senão a validação continua sendo só do lado do cliente.
-const strongPassword = z
-  .string()
-  .min(10, 'Senha deve ter pelo menos 10 caracteres')
-  .regex(/[a-z]/, 'Inclua ao menos uma letra minúscula')
-  .regex(/[A-Z]/, 'Inclua ao menos uma letra maiúscula')
-  .regex(/[0-9]/, 'Inclua ao menos um número');
-
 const signupSchema = z.object({
   nome: z.string().min(2, 'Nome deve ter pelo menos 2 caracteres'),
   telefone: z.string().min(14, 'Telefone inválido'),
   cpfCnpj: z.string().min(14, 'CPF ou CNPJ inválido'),
   email: z.string().email('Email inválido'),
-  password: strongPassword,
+  password: passwordSchema,
   confirmPassword: z.string().min(1, 'Confirme a senha'),
   codigoConvite: z.string().min(1, 'Código de convite é obrigatório'),
 }).refine((data) => data.password === data.confirmPassword, {

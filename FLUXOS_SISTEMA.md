@@ -1,23 +1,29 @@
 # 🗺️ Mapa de Fluxos do Sistema EloLab
 
+> **Como ler este documento.** Vários módulos deixaram de ter tela própria e
+> viraram **abas** dentro de telas unificadas. Onde aparece `Arquivo.tsx (aba de
+> /rota)`, o arquivo continua existindo mas o usuário chega nele pela rota
+> indicada. A lista de rotas reais está no README.
+
 ## ✅ FLUXOS IMPLEMENTADOS E FUNCIONAIS
 
 ### 1️⃣ **FLUXO DE ATENDIMENTO** ✅ COMPLETO
 ```
-Check-in → Pagamento → Chamada Painel → Sala → Finalizado
-├─ Recepcao.tsx - Check-in + Pagamento
-├─ PainelTV.tsx - Chamadas ao vivo
-├─ Fila.tsx - Gerenciamento fila
-└─ Dashboard.tsx - Resumo do dia
+Check-in → Triagem → Pagamento → Chamada Painel → Sala → Finalizado
+├─ Recepcao.tsx    (aba de /recepcao)  - Check-in + Pagamento
+├─ Triagem.tsx     (aba de /fila)      - Manchester, vitais, IMC
+├─ Fila.tsx        (aba de /fila)      - Gerenciamento da fila
+├─ PainelTV.tsx    (/painel-tv)        - Chamadas ao vivo
+└─ Dashboard.tsx   (/dashboard)        - Resumo do dia
 ```
 
 ### 2️⃣ **FLUXO DE CAIXA** ✅ COMPLETO
 ```
 Abrir Caixa → Lançamentos → Fechamento → Relatório
-├─ CaixaDiario.tsx - Abertura/Fechamento
+├─ CaixaDiario.tsx (aba de /recepcao)  - Abertura/Fechamento
 ├─ Lancamentos - Receitas/Despesas/Sangrias/Suprimentos
 ├─ Recibos - Impressão/Download
-└─ FluxoCaixa.tsx - Análise financeira
+└─ FluxoCaixa.tsx  (/fluxo-caixa)      - Análise financeira
 ```
 
 ### 3️⃣ **FLUXO DE EXAMES** ✅ COMPLETO
@@ -107,14 +113,19 @@ Melhorias possíveis:
 ```
 
 ### 2. **FLUXO DE TRIAGEM** 🩺
-**Status:** ✅ Existe mas básico
+**Status:** ✅ Existe, na aba Triagem de `/fila`
 ```
 Atual:
-├─ Triagem.tsx - Coleta dados vitais
-└─ Registra pressão, peso, temperatura
+├─ Triagem.tsx (aba de /fila) - Manchester, sinais vitais, IMC
+├─ Registra pressão, peso, temperatura, saturação, FC
+├─ Classificação de risco alimenta o Analytics
+└─ autoTriagemParaFila() empurra o paciente para a fila
+
+Nota histórica: por um período a rota /triagem redirecionava para /fila e a
+Fila não tinha triagem, deixando esta tela inalcançável. Corrigido.
 
 Melhorias possíveis:
-├─ Histórico de vitais (gráfico)
+├─ Histórico de vitais (parcial: existe /vitais-graficos)
 ├─ Alertas se fora de padrão
 ├─ Checklist de anamnese automático
 ├─ Integração com aparelhos (pressão, oxímetro)
@@ -173,15 +184,17 @@ O que fazer:
 
 ### 2. **FLUXO DE NOTA FISCAL** 🧾
 ```
-Status: NÃO IMPLEMENTADO
+Status: FORA DO ESCOPO — decisão do negócio
 
-O que fazer:
-├─ Geração automática de NF
-├─ Integração com contadores
-├─ Envio para SEFAZ
-├─ Email com XML
-├─ Relatório mensal
-└─ Sincronização contábil
+A NF da clínica é emitida pelo contador, fora do sistema.
+
+O que existia (NotaFiscalModal + edge function generate-nfe) era apenas um
+registro manual: gravava em notas_fiscais sem enviar nada à SEFAZ. Como isso
+significava redigitar no EloLab algo que já é feito na contabilidade, os dois
+foram removidos.
+
+A tabela notas_fiscais foi mantida no banco para preservar eventuais registros
+já lançados. Se estiver vazia, pode ser descartada com segurança.
 ```
 
 ### 3. **FLUXO DE AGENDAMENTO AUTOMÁTICO** 🤖

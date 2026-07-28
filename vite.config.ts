@@ -40,6 +40,12 @@ export default defineConfig(({ mode }) => ({
     sourcemap: mode === 'development',
     minify: 'esbuild',
   },
+  // console.log/debug são ruído de desenvolvimento e saem do bundle de produção.
+  // console.error e console.warn ficam: são tratamento de erro de verdade e
+  // ajudam no suporte quando o usuário relata um problema.
+  esbuild: {
+    pure: mode === 'production' ? ['console.log', 'console.debug'] : [],
+  },
   plugins: [
     react(),
     mode === "development" && componentTagger(),

@@ -1,4 +1,3 @@
- // @ts-nocheck
  /**
   * LGPD Compliance Module
   * Lei Geral de Proteção de Dados (Brasil)
@@ -6,6 +5,15 @@
   */
 
 import { supabase } from '@/integrations/supabase/client';
+
+/**
+ * As tabelas lgpd_consent_log e lgpd_deletion_log existem no banco (migration
+ * 20260414140000_add_lgpd_compliance_tables.sql) mas ainda não constam no
+ * types.ts gerado. Conferi coluna a coluna contra a migration: os nomes usados
+ * aqui estão corretos. Usamos este alias em vez de @ts-nocheck no arquivo
+ * inteiro, para que o resto do módulo continue verificado pelo TypeScript.
+ */
+const db = supabase as any;
 
 export interface PatientDataExport {
   profile: any;
@@ -48,7 +56,7 @@ export async function exportPatientData(pacienteId: string): Promise<PatientData
 
     // Todos os registros relacionados
     for (const table of tables) {
-      const { data: records } = await supabase
+      const { data: records } = await db
         .from(table)
         .select('*')
         .eq('paciente_id', pacienteId);
@@ -65,7 +73,7 @@ export async function exportPatientData(pacienteId: string): Promise<PatientData
     data.audit_log = auditLog || [];
 
     // Consentimentos LGPD
-    const { data: consentLog } = await supabase
+    const { data: consentLog } = await db
       .from('lgpd_consent_log')
       .select('*')
       .eq('paciente_id', pacienteId);
@@ -102,7 +110,7 @@ export async function deletePatientData(
 
   try {
     // Log de deleção (compliance)
-    await supabase.from('lgpd_deletion_log').insert({
+    await db.from('lgpd_deletion_log').insert({
       paciente_id: pacienteId,
       deleted_at: new Date().toISOString(),
       reason: reason || 'Right to be forgotten request',
@@ -112,7 +120,7 @@ export async function deletePatientData(
     // Deletar registros (ordem importa: foreign keys)
     for (const table of tables) {
       try {
-        const { data: count } = await supabase
+        const { data: count } = await db
           .from(table)
           .delete()
           .eq(table === 'pacientes' ? 'id' : 'paciente_id', pacienteId);
@@ -144,7 +152,7 @@ export async function logLGPDConsent(
   ipAddress?: string
 ): Promise<void> {
   try {
-    await supabase.from('lgpd_consent_log').insert({
+    await db.from('lgpd_consent_log').insert({
       paciente_id: pacienteId,
       consent_type: consentType,
       accepted,
@@ -163,7 +171,7 @@ export async function logLGPDConsent(
  */
 export async function getConsentHistory(pacienteId: string) {
   try {
-    const { data } = await supabase
+    const { data } = await db
       .from('lgpd_consent_log')
       .select('*')
       .eq('paciente_id', pacienteId)
@@ -210,19 +218,26 @@ export async function correctPatientData(
     // Log de correção para auditoria
     const { data: user } = await supabase.auth.getUser();
 
-    await supabase.from('audit_log').insert({
-      action: 'DATA_CORRECTION',
+    // Este insert falhava silenciosamente e a correção não era auditada:
+    // `details` não existe em audit_log (a coluna é `changes`) e 'DATA_CORRECTION'
+    // viola o CHECK action IN ('create','update','delete'). Correção de dado de
+    // paciente sem registro de auditoria é falha de conformidade LGPD.
+    const { error: auditError } = await supabase.from('audit_log').insert({
+      action: 'update',
       collection: 'pacientes',
       record_id: pacienteId,
       user_id: user.user?.id,
-      details: {
-        changes: updates,
+      changes: {
+        motivo: 'DATA_CORRECTION',
+        alteracoes: updates,
         timestamp: new Date().toISOString(),
       },
     });
 
+    if (auditError) throw auditError;
+
     // Aplicar correção
-    await supabase
+    await db
       .from('pacientes')
       .update(updates)
       .eq('id', pacienteId);
@@ -237,12 +252,12 @@ export async function correctPatientData(
  */
 export async function generateLGPDComplianceReport(clinicaId: string) {
   try {
-    const { data: deletionLogs } = await supabase
+    const { data: deletionLogs } = await db
       .from('lgpd_deletion_log')
       .select('*')
       .order('deleted_at', { ascending: false });
 
-    const { data: consentLogs } = await supabase
+    const { data: consentLogs } = await db
       .from('lgpd_consent_log')
       .select('*')
       .order('timestamp', { ascending: false });

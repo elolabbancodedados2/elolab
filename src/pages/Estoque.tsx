@@ -30,6 +30,7 @@ import { ConfirmDialog } from '@/components/ConfirmDialog';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
 } from 'recharts';
+import { parseDateOnly } from '@/lib/dateOnly';
 
 const CATEGORIAS = ['medicamentos', 'materiais_hospitalares', 'epis', 'escritorio', 'limpeza', 'outros'];
 const UNIDADES = ['unidade', 'comprimido', 'caixa', 'frasco', 'ampola', 'pacote', 'litro', 'kg', 'ml'];
@@ -252,33 +253,58 @@ export default function Estoque() {
       toast.error(`Estoque máximo (${produto.quantidade_maxima}) seria ultrapassado.`); return;
     }
     setIsSaving(true);
+    // Guarda o id do movimento para poder desfazer com precisão se a baixa falhar.
+    let movimentoId: string | null = null;
     try {
-      // Insert movement record first (least destructive if partial failure)
-      const { error: e2 } = await supabase.from('movimentacoes_estoque').insert({
-        item_id: selectedId || '', tipo: movimentacao.tipo,
-        quantidade: movimentacao.quantidade, motivo: movimentacao.motivo || null,
-      });
+      // Registra o movimento primeiro (menos destrutivo em falha parcial) e
+      // captura o id — antes o rollback apagava por (item_id, quantidade), o que
+      // podia varrer TODOS os movimentos antigos daquele item com a mesma
+      // quantidade, destruindo histórico legítimo.
+      const { data: movInserido, error: e2 } = await supabase
+        .from('movimentacoes_estoque')
+        .insert({
+          item_id: selectedId || '', tipo: movimentacao.tipo,
+          quantidade: movimentacao.quantidade, motivo: movimentacao.motivo || null,
+        })
+        .select('id')
+        .single();
       if (e2) throw e2;
+      movimentoId = movInserido?.id ?? null;
 
-      // Re-fetch current quantity to avoid race conditions
       const { data: current, error: fetchErr } = await supabase.from('estoque').select('quantidade').eq('id', selectedId).maybeSingle();
       if (fetchErr) throw fetchErr;
       if (!current) throw new Error('Produto não encontrado.');
       const qtdAtual = current.quantidade;
       const novaQtdFinal = movimentacao.tipo === 'entrada' ? qtdAtual + movimentacao.quantidade : qtdAtual - movimentacao.quantidade;
       if (novaQtdFinal < 0) {
-        toast.error('Estoque insuficiente (quantidade alterada por outro usuário).');
-        // Rollback movement - best effort
-        await supabase.from('movimentacoes_estoque').delete().eq('item_id', selectedId).eq('quantidade', movimentacao.quantidade).order('created_at', { ascending: false }).limit(1);
-        return;
+        throw new Error('Estoque insuficiente (quantidade alterada por outro usuário).');
       }
 
-      const { error: e1 } = await supabase.from('estoque').update({ quantidade: novaQtdFinal }).eq('id', selectedId);
+      // Compare-and-swap: só grava se a quantidade ainda for a que lemos. Reler
+      // antes de escrever estreitava a janela de concorrência, mas não a fechava
+      // — duas baixas simultâneas podiam se sobrescrever e o sistema divergia da
+      // contagem física. Com o filtro em `quantidade`, a segunda não encontra
+      // linha e falha de forma visível.
+      const { data: atualizado, error: e1 } = await supabase
+        .from('estoque')
+        .update({ quantidade: novaQtdFinal })
+        .eq('id', selectedId)
+        .eq('quantidade', qtdAtual)
+        .select('id');
       if (e1) throw e1;
+      if (!atualizado || atualizado.length === 0) {
+        throw new Error('A quantidade foi alterada por outro usuário. Confira o saldo e repita a operação.');
+      }
+
+      movimentoId = null; // deu certo, não desfaz
       toast.success(`${movimentacao.tipo === 'entrada' ? 'Entrada' : 'Saída'} registrada!`);
       queryClient.invalidateQueries({ queryKey: ['estoque'] });
       setIsMovimentacaoOpen(false);
     } catch (error: any) {
+      // Desfaz o movimento exatamente deste registro, se a baixa não completou.
+      if (movimentoId) {
+        await supabase.from('movimentacoes_estoque').delete().eq('id', movimentoId);
+      }
       toast.error(error.message || 'Erro ao registrar.');
     } finally { setIsSaving(false); }
   };
@@ -313,11 +339,11 @@ export default function Estoque() {
   const expiryAlerts = useMemo(() => {
     return (estoque as any[]).filter(p => {
       if (!p.validade) return false;
-      const dias = differenceInDays(new Date(p.validade), new Date());
+      const dias = differenceInDays(parseDateOnly(p.validade)!, new Date());
       return dias <= 60;
     }).sort((a, b) => {
-      const dA = differenceInDays(new Date(a.validade), new Date());
-      const dB = differenceInDays(new Date(b.validade), new Date());
+      const dA = differenceInDays(parseDateOnly(a.validade)!, new Date());
+      const dB = differenceInDays(parseDateOnly(b.validade)!, new Date());
       return dA - dB;
     });
   }, [estoque]);
@@ -373,7 +399,7 @@ export default function Estoque() {
                   </p>
                   <div className="flex flex-wrap gap-2 mt-1.5">
                     {expiryAlerts.slice(0, 5).map(p => {
-                      const dias = differenceInDays(new Date(p.validade), new Date());
+                      const dias = differenceInDays(parseDateOnly(p.validade)!, new Date());
                       return (
                         <Badge key={p.id} variant={dias < 0 ? 'destructive' : 'secondary'} className="text-[10px]">
                           {p.nome} — {dias < 0 ? `Vencido há ${Math.abs(dias)}d` : `${dias}d restantes`}
@@ -626,7 +652,7 @@ export default function Estoque() {
                               <TableCell className="hidden sm:table-cell">
                                 {produto.validade ? (
                                   <div className="text-xs">
-                                    <p>{format(new Date(produto.validade), 'dd/MM/yyyy')}</p>
+                                    <p>{format(parseDateOnly(produto.validade)!, 'dd/MM/yyyy')}</p>
                                     {validadeInfo && (
                                       <Badge variant={validadeInfo.color} className="text-[9px] mt-0.5">
                                         {validadeInfo.label}

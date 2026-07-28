@@ -28,6 +28,7 @@ import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { Database } from '@/integrations/supabase/types';
 import { autoCreateColeta, autoProgressExame, autoVincularResultadoProntuario } from '@/lib/workflowAutomation';
 import { GerenciadorLaboratorios } from '@/components/GerenciadorLaboratorios';
+import { parseDateOnly } from '@/lib/dateOnly';
 
 type StatusExame = Database['public']['Enums']['status_exame'];
 
@@ -711,7 +712,7 @@ export default function Exames() {
                       </TableCell>
                       <TableCell className="hidden md:table-cell text-sm text-muted-foreground">{getMedicoInfo(exame)}</TableCell>
                       <TableCell className="hidden sm:table-cell text-sm">
-                        {exame.data_solicitacao && format(new Date(exame.data_solicitacao), 'dd/MM/yyyy')}
+                        {exame.data_solicitacao && format(parseDateOnly(exame.data_solicitacao)!, 'dd/MM/yyyy')}
                       </TableCell>
                       <TableCell>
                         {/* Pipeline visual */}
@@ -1133,12 +1134,12 @@ export default function Exames() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-sm text-muted-foreground">Data Solicitação</p>
-                  <p>{selectedExame.data_solicitacao && format(new Date(selectedExame.data_solicitacao), 'dd/MM/yyyy')}</p>
+                  <p>{selectedExame.data_solicitacao && format(parseDateOnly(selectedExame.data_solicitacao)!, 'dd/MM/yyyy')}</p>
                 </div>
                 {selectedExame.data_realizacao && (
                   <div>
                     <p className="text-sm text-muted-foreground">Data Realização</p>
-                    <p>{format(new Date(selectedExame.data_realizacao), 'dd/MM/yyyy')}</p>
+                    <p>{format(parseDateOnly(selectedExame.data_realizacao)!, 'dd/MM/yyyy')}</p>
                   </div>
                 )}
               </div>

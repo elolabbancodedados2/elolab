@@ -25,6 +25,7 @@ import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { ClinicalAlertsDisplay, useClinicalAlerts } from '@/components/ClinicalAlertsDisplay';
 import { consolidateAlerts, ClinicalAlert } from '@/lib/clinicalAlerts';
+import { parseDateOnly } from '@/lib/dateOnly';
 
 /* ─── PDF Builder ─── */
 function buildReceitaPdf(data: {
@@ -241,7 +242,7 @@ export default function Prescricoes() {
     for (const line of medicationLines) {
       const lineAlerts = consolidateAlerts(line, {
         alergias: toList(pAny.alergias),
-        idade: pAny.data_nascimento ? new Date().getFullYear() - new Date(pAny.data_nascimento).getFullYear() : undefined,
+        idade: pAny.data_nascimento ? new Date().getFullYear() - parseDateOnly(pAny.data_nascimento)!.getFullYear() : undefined,
         dataNascimento: pAny.data_nascimento,
         gestante: !!pAny.gestante,
         amamentando: !!pAny.amamentando,

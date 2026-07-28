@@ -39,6 +39,7 @@ import { useCurrentMedico } from '@/hooks/useCurrentMedico';
 import { supabase } from '@/integrations/supabase/client';
 import { Skeleton } from '@/components/ui/skeleton';
 import { exportToFHIR, exportToXML, downloadClinicalExport } from '@/lib/clinicalExport';
+import { parseDateOnly } from '@/lib/dateOnly';
 
 // ─── Types ─────────────────────────────────────────────────
 interface PrescricaoForm {
@@ -431,13 +432,13 @@ function RelatedRecords({ pacienteId }: { pacienteId: string }) {
       <div className="space-y-1.5">
         <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5"><TestTube className="h-3.5 w-3.5" /> Exames ({exames.length})</h4>
         {exames.length === 0 ? <p className="text-xs text-muted-foreground py-2">Nenhum exame</p> : exames.map(e => (
-          <RecordItem key={e.id} icon={TestTube} label={e.tipo_exame} sub={e.data_solicitacao ? format(new Date(e.data_solicitacao), 'dd/MM/yy') : ''} badge={e.status?.replace(/_/g, ' ')} badgeClass={sc(e.status)} />
+          <RecordItem key={e.id} icon={TestTube} label={e.tipo_exame} sub={e.data_solicitacao ? format(parseDateOnly(e.data_solicitacao)!, 'dd/MM/yy') : ''} badge={e.status?.replace(/_/g, ' ')} badgeClass={sc(e.status)} />
         ))}
       </div>
       <div className="space-y-1.5">
         <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5"><FileCheck className="h-3.5 w-3.5" /> Atestados ({atestados.length})</h4>
         {atestados.length === 0 ? <p className="text-xs text-muted-foreground py-2">Nenhum atestado</p> : atestados.map(a => (
-          <RecordItem key={a.id} icon={FileCheck} label={a.tipo || 'Atestado'} sub={a.dias ? `(${a.dias}d)` : ''} badge={a.data_emissao ? format(new Date(a.data_emissao), 'dd/MM/yy') : ''} badgeClass="bg-muted text-muted-foreground" />
+          <RecordItem key={a.id} icon={FileCheck} label={a.tipo || 'Atestado'} sub={a.dias ? `(${a.dias}d)` : ''} badge={a.data_emissao ? format(parseDateOnly(a.data_emissao)!, 'dd/MM/yy') : ''} badgeClass="bg-muted text-muted-foreground" />
         ))}
       </div>
       <div className="space-y-1.5">
@@ -524,7 +525,7 @@ export default function Prontuarios() {
     if (!selectedPacienteId) return [];
     return prontuarios
       .filter(p => p.paciente_id === selectedPacienteId)
-      .sort((a, b) => new Date(b.data).getTime() - new Date(a.data).getTime());
+      .sort((a, b) => parseDateOnly(b.data)!.getTime() - parseDateOnly(a.data)!.getTime());
   }, [prontuarios, selectedPacienteId]);
 
   // ─── Handlers ────────────────────────────────────────────
@@ -664,35 +665,66 @@ export default function Prontuarios() {
 
       // ─── Save prescriptions (create + update) ───
       if (prontuarioId) {
-        // Delete existing prescriptions for this prontuário, then re-insert
-        await supabase.from('prescricoes').delete().eq('prontuario_id', prontuarioId);
-        for (const presc of prescricoes) {
-          if (presc.medicamento) {
-            await supabase.from('prescricoes').insert({
-              paciente_id: currentProntuario.paciente_id, medico_id: currentProntuario.medico_id,
-              prontuario_id: prontuarioId, medicamento: presc.medicamento,
-              dosagem: presc.dosagem || null, posologia: presc.posologia || null,
-              duracao: presc.duracao || null, quantidade: presc.quantidade || null,
-              observacoes: presc.observacoes || null,
-              data_emissao: format(new Date(), 'yyyy-MM-dd'), tipo: 'simples',
-            });
+        const validas = prescricoes.filter(p => p.medicamento);
 
-            // ─── Stock deduction ───
-            const { data: estoqueItem } = await supabase.from('estoque')
+        // Apaga e reinsere. O erro do insert era ignorado — como o delete já
+        // aconteceu, uma falha aqui apagava as prescrições em definitivo.
+        await supabase.from('prescricoes').delete().eq('prontuario_id', prontuarioId);
+        for (const presc of validas) {
+          const { error: prescErr } = await supabase.from('prescricoes').insert({
+            paciente_id: currentProntuario.paciente_id, medico_id: currentProntuario.medico_id,
+            prontuario_id: prontuarioId, medicamento: presc.medicamento,
+            dosagem: presc.dosagem || null, posologia: presc.posologia || null,
+            duracao: presc.duracao || null, quantidade: presc.quantidade || null,
+            observacoes: presc.observacoes || null,
+            data_emissao: format(new Date(), 'yyyy-MM-dd'), tipo: 'simples',
+          });
+          if (prescErr) throw prescErr;
+        }
+
+        // ─── Baixa de estoque ───
+        // NÃO roda no autosave. O autosave dispara a cada 60s e usava este
+        // mesmo caminho, debitando o estoque de novo a cada minuto enquanto o
+        // prontuário ficasse aberto. A idempotência real vem do índice único
+        // (prontuario_id, item_id) criado na migration 20260728020000 — daí o
+        // insert da movimentação vir ANTES da atualização do saldo.
+        if (!silent) {
+          for (const presc of validas) {
+            // Casamento por nome aproximado pode acertar o medicamento errado.
+            // Se houver mais de um candidato, não adivinhamos: registramos e
+            // deixamos a baixa para o operador fazer manualmente.
+            const { data: candidatos } = await supabase.from('estoque')
               .select('id, quantidade, nome')
               .ilike('nome', `%${presc.medicamento}%`)
               .gt('quantidade', 0)
-              .limit(1)
-              .maybeSingle();
-            if (estoqueItem) {
-              const qtd = parseInt(presc.quantidade) || 1;
-              const newQtd = Math.max(0, estoqueItem.quantidade - qtd);
-              await supabase.from('estoque').update({ quantidade: newQtd }).eq('id', estoqueItem.id);
-              await supabase.from('movimentacoes_estoque').insert({
-                item_id: estoqueItem.id, tipo: 'saida', quantidade: qtd,
-                motivo: `Prescrição — ${selectedPaciente?.nome || 'paciente'}`,
-              });
+              .limit(2);
+
+            if (!candidatos || candidatos.length === 0) continue;
+            if (candidatos.length > 1) {
+              console.warn(
+                `Baixa de estoque ignorada: "${presc.medicamento}" casa com mais de um item.`
+              );
+              continue;
             }
+
+            const estoqueItem = candidatos[0];
+            const qtd = parseInt(presc.quantidade) || 1;
+
+            const { error: movErr } = await supabase.from('movimentacoes_estoque').insert({
+              item_id: estoqueItem.id, tipo: 'saida', quantidade: qtd,
+              prontuario_id: prontuarioId,
+              motivo: `Prescrição — ${selectedPaciente?.nome || 'paciente'}`,
+            } as any);
+
+            // Violação da unicidade = já houve baixa deste item para este
+            // prontuário. Não é erro: é a proteção funcionando.
+            if (movErr) continue;
+
+            const novaQtd = Math.max(0, estoqueItem.quantidade - qtd);
+            await supabase.from('estoque')
+              .update({ quantidade: novaQtd })
+              .eq('id', estoqueItem.id)
+              .eq('quantidade', estoqueItem.quantidade);
           }
         }
       }
@@ -964,7 +996,7 @@ export default function Prontuarios() {
                                 <div className="space-y-1 min-w-0">
                                   <div className="flex items-center gap-1.5 flex-wrap">
                                     <Badge className="bg-primary/10 text-primary border-primary/20 text-[10px] font-bold px-1.5 py-0">
-                                      {format(new Date(p.data), 'dd/MM/yyyy')}
+                                      {format(parseDateOnly(p.data)!, 'dd/MM/yyyy')}
                                     </Badge>
                                     {p.diagnostico_principal && (
                                       <Badge variant="secondary" className="text-[10px] px-1.5 py-0">{p.diagnostico_principal}</Badge>
@@ -1420,7 +1452,7 @@ export default function Prontuarios() {
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-1.5 flex-wrap">
                               <Badge className="bg-primary/10 text-primary border-primary/20 text-[10px] font-bold px-1.5 py-0">
-                                {format(new Date(ev.data), 'dd/MM/yyyy', { locale: ptBR })}
+                                {format(parseDateOnly(ev.data)!, 'dd/MM/yyyy', { locale: ptBR })}
                               </Badge>
                               {ev.medicos && <span className="text-[10px] text-muted-foreground">Dr(a). {ev.medicos.nome || ev.medicos.crm}</span>}
                               {ev.diagnostico_principal && <Badge variant="secondary" className="text-[9px] px-1.5 py-0">{ev.diagnostico_principal}</Badge>}

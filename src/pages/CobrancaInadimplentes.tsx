@@ -9,6 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { parseDateOnly } from '@/lib/dateOnly';
 
 export default function CobrancaInadimplentes() {
   const [sending, setSending] = useState(false);
@@ -102,13 +103,13 @@ export default function CobrancaInadimplentes() {
                 </TableHeader>
                 <TableBody>
                   {data.map((l: any) => {
-                    const dias = Math.floor((Date.now() - new Date(l.data_vencimento).getTime()) / 86400000);
+                    const dias = Math.floor((Date.now() - parseDateOnly(l.data_vencimento)!.getTime()) / 86400000);
                     return (
                       <TableRow key={l.id}>
                         <TableCell className="font-medium">{l.pacientes?.nome || '—'}</TableCell>
                         <TableCell className="text-sm">{l.descricao || '—'}</TableCell>
                         <TableCell>{Number(l.valor || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</TableCell>
-                        <TableCell>{format(new Date(l.data_vencimento), 'dd/MM/yyyy')}</TableCell>
+                        <TableCell>{format(parseDateOnly(l.data_vencimento)!, 'dd/MM/yyyy')}</TableCell>
                         <TableCell>
                           <Badge variant={dias > 30 ? 'destructive' : 'secondary'}>{dias} dias</Badge>
                         </TableCell>

@@ -45,7 +45,9 @@ export function useAgendaColorScheme() {
             criterion: v.criterion || DEFAULT_SCHEME.criterion,
             map: { ...DEFAULT_SCHEME.map, ...(v.map || {}) },
           });
-        } catch {}
+        } catch {
+          // preferência salva em formato inválido — mantém o esquema padrão
+        }
       }
     })();
   }, [profile?.user_id]);

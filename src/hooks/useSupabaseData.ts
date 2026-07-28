@@ -51,6 +51,17 @@ export function useSupabaseQuery<T>(
         throw error;
       }
 
+      // Truncagem silenciosa: quando a consulta devolve exatamente o limite, é
+      // quase certo que existem mais registros e a tela está mostrando um
+      // recorte sem avisar ninguém. Numa clínica com mais de 5.000 pacientes
+      // isso aparece como "o paciente sumiu do sistema".
+      if (data && data.length === limit && !options?.page) {
+        console.warn(
+          `[${tableName}] retornou exatamente o limite de ${limit} registros — ` +
+          `provavelmente há mais dados. Use options.page para paginar.`
+        );
+      }
+
       return data as T[];
     },
     enabled: options?.enabled !== false && !!user,

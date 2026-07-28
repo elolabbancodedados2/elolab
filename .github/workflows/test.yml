@@ -22,11 +22,10 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx tsc --noEmit -p tsconfig.app.json
-      # Lint ainda é informativo: a base tem 11 arquivos com @ts-nocheck e
-      # ~880 avisos de `any` herdados. Remova o continue-on-error quando o
-      # contador chegar a zero, senão o job nasce vermelho e ninguém olha.
+      # Bloqueante: os erros de lint foram zerados (eram 12, todos @ts-nocheck).
+      # Os ~860 avisos de `any` herdados não quebram o build — o eslint só
+      # retorna código de erro quando há erro de verdade.
       - run: npm run lint
-        continue-on-error: true
 
   unit-tests:
     name: Unit & Integration Tests
