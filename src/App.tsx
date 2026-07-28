@@ -104,10 +104,13 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
 
 function RouteFallback() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background">
-      <div className="flex flex-col items-center gap-3">
-        <div className="h-10 w-10 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-        <p className="text-sm text-muted-foreground">Carregando...</p>
+    <div className="flex min-h-[60vh] items-center justify-center bg-background">
+      <div className="flex flex-col items-center gap-4">
+        <div className="relative h-12 w-12">
+          <div className="absolute inset-0 rounded-full border-2 border-primary/15" />
+          <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-primary animate-spin" />
+        </div>
+        <p className="text-sm font-medium text-muted-foreground animate-pulse">Carregando...</p>
       </div>
     </div>
   );
