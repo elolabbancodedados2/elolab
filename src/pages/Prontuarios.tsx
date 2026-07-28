@@ -1501,9 +1501,16 @@ export default function Prontuarios() {
                   <DigitalSignature
                     documentId={currentProntuario.id}
                     documentType="prontuario"
-                    signerName={user?.nome || 'Médico'}
+                    signerName={medicos.find((m: any) => m.id === currentProntuario.medico_id)?.nome || user?.nome || 'Médico'}
                     signerCRM={medicos.find((m: any) => m.id === currentProntuario.medico_id)?.crm}
                     compact
+                    alreadySigned={isSigned}
+                    signedAt={currentProntuario.assinado_em}
+                    onSigned={() => {
+                      setCurrentProntuario(prev => ({ ...prev, assinado: true, assinado_em: new Date().toISOString() }));
+                      setIsEditing(false);
+                      refetchProntuarios();
+                    }}
                   />
                 )}
                 {autoSaveTime && (
