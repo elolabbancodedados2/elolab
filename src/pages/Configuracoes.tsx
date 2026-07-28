@@ -26,6 +26,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
+import { DeleteConfirmDialog } from '@/components/ConfirmDialog';
 import { BackupRestore } from '@/components/BackupRestore';
 import { AuditLog } from '@/components/AuditLog';
 import { supabase } from '@/integrations/supabase/client';
@@ -182,6 +183,8 @@ function SalasManager() {
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
+  /** Excluir sala é irreversível e ficava a um clique de distância, sem aviso. */
+  const [salaParaExcluir, setSalaParaExcluir] = useState<{ id: string; nome: string } | null>(null);
   const [form, setForm] = useState({ nome: '', tipo: 'consultorio', ativo: true, equipamentos: '' as string });
   const [saving, setSaving] = useState(false);
 
@@ -270,7 +273,7 @@ function SalasManager() {
                     <TableCell>
                       <div className="flex gap-1">
                         <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEdit(s)}><Edit className="h-3 w-3" /></Button>
-                        <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={() => handleDelete(s.id)}><Trash2 className="h-3 w-3" /></Button>
+                        <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" aria-label={`Excluir sala ${s.nome}`} onClick={() => setSalaParaExcluir(s)}><Trash2 className="h-3 w-3" /></Button>
                       </div>
                     </TableCell>
                   </TableRow>
@@ -309,6 +312,15 @@ function SalasManager() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {salaParaExcluir && (
+        <DeleteConfirmDialog
+          open
+          onOpenChange={(o) => !o && setSalaParaExcluir(null)}
+          itemName={salaParaExcluir.nome}
+          onConfirm={() => { handleDelete(salaParaExcluir.id); setSalaParaExcluir(null); }}
+        />
+      )}
     </Card>
   );
 }
