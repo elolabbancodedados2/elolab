@@ -1442,13 +1442,25 @@ export default function Prontuarios() {
                   )}
                 </TabsContent>
 
-                {/* ─── Auditoria ─── */}
-                <TabsContent value="auditoria" className="pt-1">
-                  {currentProntuario.id && (
-                    <div className="mb-3">
-                      {/* placeholder to keep spacing consistent */}
+                {/* ─── Adendos ─── */}
+                <TabsContent value="adendos" className="pt-1">
+                  {currentProntuario.id ? (
+                    <ProntuarioAdendos
+                      prontuarioId={currentProntuario.id}
+                      medicoId={currentProntuario.medico_id}
+                      medicoNome={medicos.find((m: any) => m.id === currentProntuario.medico_id)?.nome || user?.nome}
+                      crm={medicos.find((m: any) => m.id === currentProntuario.medico_id)?.crm}
+                    />
+                  ) : (
+                    <div className="flex flex-col items-center py-10 text-muted-foreground">
+                      <ScrollText className="h-8 w-8 opacity-20 mb-2" />
+                      <p className="text-xs">Salve o prontuário para registrar adendos</p>
                     </div>
                   )}
+                </TabsContent>
+
+                {/* ─── Auditoria ─── */}
+                <TabsContent value="auditoria" className="pt-1">
                   {currentProntuario.id ? (
                     <ProntuarioAuditLog prontuarioId={currentProntuario.id} />
                   ) : (
