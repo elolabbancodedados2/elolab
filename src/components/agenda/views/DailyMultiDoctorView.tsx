@@ -160,13 +160,49 @@ export function DailyMultiDoctorView({
 }: any) {
   const activeDoctors = useMemo(() => medicos.filter((m: any) => m.ativo !== false), [medicos]);
   const dayStr = format(parseISO(date), "EEEE, d 'de' MMMM", { locale: ptBR });
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [nowMin, setNowMin] = useState<number>(() => {
+    const n = new Date();
+    return n.getHours() * 60 + n.getMinutes();
+  });
+  const showNow = isToday(parseISO(date));
+
+  useEffect(() => {
+    const t = setInterval(() => {
+      const n = new Date();
+      setNowMin(n.getHours() * 60 + n.getMinutes());
+    }, 60_000);
+    return () => clearInterval(t);
+  }, []);
+
+  useEffect(() => {
+    if (!showNow || !scrollRef.current) return;
+    const relMin = Math.max(0, nowMin - START_HOUR * 60 - 60);
+    scrollRef.current.scrollTop = (relMin / SLOT_MINUTES) * SLOT_PX;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [date, showNow]);
+
+  const nowPx = showNow && nowMin >= START_HOUR * 60 && nowMin <= END_HOUR * 60
+    ? ((nowMin - START_HOUR * 60) / SLOT_MINUTES) * SLOT_PX
+    : null;
 
   return (
     <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
       <div className="px-4 py-2 border-b border-border/60 bg-muted/30">
-        <div className="text-sm font-medium capitalize">{dayStr}</div>
+        <div className="text-sm font-medium capitalize flex items-center gap-2">
+          {dayStr}
+          {showNow && <span className="text-[11px] font-normal text-primary">• agora {fromMinutes(nowMin)}</span>}
+        </div>
       </div>
-      <div className="flex overflow-x-auto">
+      <div ref={scrollRef} className="flex overflow-auto max-h-[calc(100vh-16rem)] relative">
+        {nowPx !== null && (
+          <div
+            className="pointer-events-none absolute left-14 right-0 z-40 border-t-2 border-destructive"
+            style={{ top: 52 + nowPx }}
+          >
+            <span className="absolute -top-2 -left-1 h-3 w-3 rounded-full bg-destructive shadow" />
+          </div>
+        )}
         <div className="w-14 shrink-0 border-r border-border/60 pt-[52px] relative">
           <div className="relative" style={{ height: HOUR_PX * HOURS.length }}>
             {HOURS.map((h, i) => (
