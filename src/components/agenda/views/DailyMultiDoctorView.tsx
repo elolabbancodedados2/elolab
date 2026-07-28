@@ -8,8 +8,11 @@ import { AppointmentCard } from '../AppointmentCard';
 
 const START_HOUR = 6;
 const END_HOUR = 22;
-const SLOT_MINUTES = 30;
-const SLOT_PX = 40;
+// Fine-grained droppable slots (5min) so users can drop / click at any time.
+const SLOT_MINUTES = 5;
+const SLOT_PX = 7;
+// Visual hour rows only (labels + strong borders every hour).
+const HOUR_PX = (60 / SLOT_MINUTES) * SLOT_PX;
 const TOTAL_MINUTES = (END_HOUR - START_HOUR) * 60;
 
 function toMinutes(t: string) {
@@ -24,6 +27,9 @@ function fromMinutes(m: number) {
 
 const SLOTS = Array.from({ length: (END_HOUR - START_HOUR) * (60 / SLOT_MINUTES) }, (_, i) =>
   fromMinutes(START_HOUR * 60 + i * SLOT_MINUTES)
+);
+const HOURS = Array.from({ length: END_HOUR - START_HOUR }, (_, i) =>
+  fromMinutes((START_HOUR + i) * 60)
 );
 
 function DoctorColumn({
@@ -46,19 +52,44 @@ function DoctorColumn({
       </div>
 
       <div className="relative" style={{ height: minutesToPx(TOTAL_MINUTES) }}>
+        {/* Visual hour gridlines */}
+        {HOURS.map((h, i) => (
+          <div
+            key={h}
+            className={cn('absolute inset-x-0 border-t', i === 0 ? 'border-transparent' : 'border-border/50')}
+            style={{ top: minutesToPx(i * 60) }}
+          />
+        ))}
+        {HOURS.map((h, i) => (
+          <div
+            key={`half-${h}`}
+            className="absolute inset-x-0 border-t border-dashed border-border/25"
+            style={{ top: minutesToPx(i * 60 + 30) }}
+          />
+        ))}
+
+        {/* Fine-grained drop targets (invisible) with click-to-pick-exact-minute */}
         {SLOTS.map((slot) => (
           <DropSlot
             key={slot}
             id={`slot:${medico.id}:${date}:${slot}`}
             data={{ medico_id: medico.id, data: date, hora_inicio: slot }}
-            onClick={() => onSlotClick(medico.id, slot)}
-            className={cn(
-              'border-b border-border/40 hover:bg-muted/40 transition-colors cursor-pointer',
-              slot.endsWith(':00') && 'border-border/60'
-            )}
-            style={{ height: SLOT_PX }}
+            className="absolute inset-x-0 hover:bg-primary/5 cursor-pointer"
+            style={{ top: minutesToPx(toMinutes(slot) - START_HOUR * 60), height: SLOT_PX }}
           />
         ))}
+
+        {/* Full-column click layer to allow ANY minute (not snapped to 5min) */}
+        <div
+          className="absolute inset-0"
+          style={{ zIndex: 2 }}
+          onClick={(e) => {
+            const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
+            const y = e.clientY - rect.top;
+            const totalMin = Math.max(0, Math.min(TOTAL_MINUTES - 1, Math.round((y / rect.height) * TOTAL_MINUTES)));
+            onSlotClick(medico.id, fromMinutes(START_HOUR * 60 + totalMin));
+          }}
+        />
 
         {bloqueios.map((b: any) => {
           const start = b.hora_inicio ? toMinutes(b.hora_inicio) : START_HOUR * 60;
