@@ -3513,6 +3513,7 @@ export type Database = {
           nome: string
           plano_id: string | null
           plano_slug: string
+          reminder_count: number
           status: string
           telefone: string | null
           updated_at: string | null
@@ -3530,6 +3531,7 @@ export type Database = {
           nome: string
           plano_id?: string | null
           plano_slug: string
+          reminder_count?: number
           status?: string
           telefone?: string | null
           updated_at?: string | null
@@ -3547,6 +3549,7 @@ export type Database = {
           nome?: string
           plano_id?: string | null
           plano_slug?: string
+          reminder_count?: number
           status?: string
           telefone?: string | null
           updated_at?: string | null
@@ -4821,6 +4824,10 @@ export type Database = {
         Returns: Json
       }
       platform_stop_impersonation: { Args: never; Returns: Json }
+      resend_activation_manual: {
+        Args: { _registro_id: string }
+        Returns: Json
+      }
       start_free_trial: {
         Args: { _plano_slug: string; _user_id: string }
         Returns: Json

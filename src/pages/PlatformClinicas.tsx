@@ -11,7 +11,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
-import { Building2, Search, Users, Stethoscope, CalendarRange, RefreshCw, Crown, LogIn } from 'lucide-react';
+import { Building2, Search, Users, Stethoscope, CalendarRange, RefreshCw, Crown, LogIn, Mail, AlertCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { toast } from 'sonner';
@@ -46,6 +46,8 @@ export default function PlatformClinicas() {
   const { isPlatformAdmin, isLoading: authLoading, refreshProfile } = useSupabaseAuth();
   const [search, setSearch] = useState('');
   const [impersonatingId, setImpersonatingId] = useState<string | null>(null);
+  const [reconciling, setReconciling] = useState(false);
+  const [resendingId, setResendingId] = useState<string | null>(null);
   const navigate = useNavigate();
 
   const handleImpersonate = async (clinicaId: string, clinicaNome: string) => {
@@ -74,6 +76,54 @@ export default function PlatformClinicas() {
     },
     enabled: isPlatformAdmin,
   });
+
+  const { data: orfaos, refetch: refetchOrfaos } = useQuery({
+    queryKey: ['platform-orfaos'],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from('registros_pendentes')
+        .select('id, nome, email, plano_slug, codigo_convite, updated_at, reminder_count')
+        .eq('status', 'pago')
+        .is('user_id', null)
+        .order('updated_at', { ascending: false })
+        .limit(50);
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: isPlatformAdmin,
+  });
+
+  const handleReconcile = async () => {
+    setReconciling(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('reconcile-pending-registrations');
+      if (error) throw error;
+      toast.success(`Reconciliação concluída: ${(data as any)?.resent ?? 0} reenvios, ${(data as any)?.expired ?? 0} expirados`);
+      refetchOrfaos();
+    } catch (e: any) {
+      toast.error(e.message || 'Erro ao reconciliar');
+    } finally {
+      setReconciling(false);
+    }
+  };
+
+  const handleResend = async (id: string, email: string) => {
+    setResendingId(id);
+    try {
+      const { data, error } = await (supabase as any).rpc('resend_activation_manual', { _registro_id: id });
+      if (error) throw error;
+      const r = data as any;
+      if (!r?.success) throw new Error(r?.error || 'Falha');
+      // Trigger email through reconcile function immediately for this record
+      await supabase.functions.invoke('reconcile-pending-registrations');
+      toast.success(`Código reenviado para ${email}`);
+      refetchOrfaos();
+    } catch (e: any) {
+      toast.error(e.message || 'Erro ao reenviar');
+    } finally {
+      setResendingId(null);
+    }
+  };
 
   const filtered = useMemo(() => {
     const list = data ?? [];
@@ -121,6 +171,69 @@ export default function PlatformClinicas() {
           Atualizar
         </Button>
       </div>
+
+      {orfaos && orfaos.length > 0 && (
+        <Card className="border-warning/40">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between gap-4">
+              <CardTitle className="text-base flex items-center gap-2 text-warning">
+                <AlertCircle className="h-5 w-5" />
+                Pagamentos órfãos ({orfaos.length})
+              </CardTitle>
+              <Button size="sm" variant="outline" onClick={handleReconcile} disabled={reconciling}>
+                <RefreshCw className={`h-4 w-4 mr-2 ${reconciling ? 'animate-spin' : ''}`} />
+                Reconciliar agora
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Clientes que pagaram mas ainda não criaram a conta. Reenvie o código quando necessário.
+            </p>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Cliente</TableHead>
+                    <TableHead>Plano</TableHead>
+                    <TableHead>Código</TableHead>
+                    <TableHead>Pago em</TableHead>
+                    <TableHead className="text-center">Lembretes</TableHead>
+                    <TableHead className="text-right">Ação</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {orfaos.map((o: any) => (
+                    <TableRow key={o.id}>
+                      <TableCell className="text-sm">
+                        <div className="font-medium">{o.nome}</div>
+                        <div className="text-xs text-muted-foreground">{o.email}</div>
+                      </TableCell>
+                      <TableCell><Badge variant="outline">{o.plano_slug}</Badge></TableCell>
+                      <TableCell className="font-mono text-xs">{o.codigo_convite}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {format(new Date(o.updated_at), "dd/MM HH:mm", { locale: ptBR })}
+                      </TableCell>
+                      <TableCell className="text-center text-xs">{o.reminder_count ?? 0}</TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={resendingId === o.id}
+                          onClick={() => handleResend(o.id, o.email)}
+                        >
+                          <Mail className="h-3.5 w-3.5 mr-1" />
+                          {resendingId === o.id ? 'Enviando...' : 'Reenviar'}
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
