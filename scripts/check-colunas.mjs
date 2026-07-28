@@ -164,8 +164,72 @@ for (const f of arquivos) {
   }
 }
 
+// ── 4. Colunas em filtros e ordenação ────────────────────────────────────────
+/**
+ * `.eq('col', v)`, `.order('col')`, `.gte('col', v)`… também derrubam a consulta
+ * inteira quando a coluna não existe.
+ *
+ * Cada cadeia começa num `.from('tabela')` e vai até o fim do statement. Não
+ * tentamos entender cadeias montadas em pedaços (`let q = ...; q = q.eq(...)`),
+ * então esses casos ficam de fora — é a diferença entre acusar pouco e acusar
+ * errado, e acusar errado destrói a confiança na ferramenta.
+ */
+const METODOS_FILTRO = 'eq|neq|gt|gte|lt|lte|like|ilike|is|in|contains|containedBy|order';
+
+/** Fim da cadeia: primeiro `;` fora de parênteses/colchetes/strings. */
+function fimDaCadeia(src, inicio) {
+  let nivel = 0;
+  for (let i = inicio; i < src.length; i++) {
+    const ch = src[i];
+    if (ch === "'" || ch === '"' || ch === '`') {
+      const q = ch; i++;
+      while (i < src.length && src[i] !== q) { if (src[i] === '\\') i++; i++; }
+      continue;
+    }
+    if (ch === '(' || ch === '[') nivel++;
+    else if (ch === ')' || ch === ']') nivel--;
+    else if (ch === ';' && nivel <= 0) return i;
+  }
+  return Math.min(src.length, inicio + 1500);
+}
+
+for (const f of arquivos) {
+  const src = fs.readFileSync(f, 'utf8');
+  const fromRe = /\.from\(\s*['"]([a-z_0-9]+)['"]/g;
+  let m;
+  while ((m = fromRe.exec(src))) {
+    const tabela = m[1];
+    const cols = schema.get(tabela);
+    if (!cols || cols.size === 0) continue;
+
+    // A cadeia termina no fim do statement OU no próximo .from(), o que vier
+    // antes. Sem o segundo limite, consultas irmãs dentro de um
+    // `Promise.all([...])` — separadas por vírgula, sem `;` entre elas —
+    // teriam seus filtros atribuídos à tabela da primeira.
+    const proximoFrom = src.indexOf('.from(', m.index + 1);
+    const fimStatement = fimDaCadeia(src, m.index);
+    const fim = proximoFrom === -1 ? fimStatement : Math.min(fimStatement, proximoFrom);
+    const trecho = src.slice(m.index, fim);
+    const filtroRe = new RegExp(`\\.(${METODOS_FILTRO})\\(\\s*['"]([^'"]+)['"]`, 'g');
+    let fm;
+    while ((fm = filtroRe.exec(trecho))) {
+      const metodo = fm[1];
+      const col = fm[2];
+
+      // `prontuarios.paciente_id` refere-se a recurso aninhado — outra tabela
+      if (col.includes('.') || col.includes('(')) continue;
+      if (!/^[a-z_][a-z_0-9]*$/i.test(col)) continue;
+
+      if (!cols.has(col)) {
+        const linha = src.slice(0, m.index + fm.index).split('\n').length;
+        achados.push({ f, linha, tabela, op: `.${metodo}()`, col });
+      }
+    }
+  }
+}
+
 if (!achados.length) {
-  console.log('OK — nenhuma coluna inexistente em insert, update ou select.');
+  console.log('OK — nenhuma coluna inexistente em insert, update, select ou filtro.');
 } else {
   console.log(`${achados.length} uso(s) suspeito(s):\n`);
   for (const a of achados) {
