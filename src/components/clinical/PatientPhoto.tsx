@@ -12,6 +12,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { supabase } from '@/integrations/supabase/client';
+import { StorageAvatarImage } from '@/components/StorageImage';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -95,23 +96,17 @@ export function PatientPhoto({
 
       if (uploadError) throw uploadError;
 
-      // Get public URL
-      const { data: urlData } = supabase.storage
-        .from('patient-photos')
-        .getPublicUrl(fileName);
-
-      const newUrl = urlData.publicUrl;
-
-      // Update patient record
+      // Guardamos o CAMINHO, não uma URL. O bucket é privado e o link assinado
+      // expira — guardá-lo no banco resultaria em foto quebrada depois de 1h.
       const { error: updateError } = await supabase
         .from('pacientes')
-        .update({ foto_url: newUrl })
+        .update({ foto_url: fileName })
         .eq('id', pacienteId);
 
       if (updateError) throw updateError;
 
-      setPhotoUrl(newUrl);
-      onPhotoChange?.(newUrl);
+      setPhotoUrl(fileName);
+      onPhotoChange?.(fileName);
       toast.success('Foto atualizada com sucesso!');
       setIsOpen(false);
     } catch (error) {
@@ -148,7 +143,7 @@ export function PatientPhoto({
 
   const avatarContent = (
     <Avatar className={cn(sizeClasses[size], className)}>
-      <AvatarImage src={photoUrl || undefined} alt={pacienteNome} />
+      <StorageAvatarImage bucket="patient-photos" path={photoUrl} alt={pacienteNome} />
       <AvatarFallback className="bg-primary/10 text-primary">
         {pacienteNome ? getInitials(pacienteNome) : <User className={iconSizes[size]} />}
       </AvatarFallback>
@@ -182,7 +177,7 @@ export function PatientPhoto({
 
         <div className="flex flex-col items-center gap-6 py-4">
           <Avatar className="h-32 w-32">
-            <AvatarImage src={photoUrl || undefined} alt={pacienteNome} />
+            <StorageAvatarImage bucket="patient-photos" path={photoUrl} alt={pacienteNome} />
             <AvatarFallback className="bg-primary/10 text-primary text-4xl">
               {pacienteNome ? getInitials(pacienteNome) : <User className="h-16 w-16" />}
             </AvatarFallback>

@@ -147,7 +147,22 @@ export function AppointmentDialog({ open, onOpenChange, initial, pacientes, medi
       onSaved?.();
       onOpenChange(false);
     } catch (e: any) {
-      toast.error(e.message || 'Erro ao salvar');
+      // A constraint agendamentos_sem_sobreposicao é a rede de segurança para o
+      // caso de duas pessoas marcarem ao mesmo tempo: a checagem acima roda no
+      // navegador e não enxerga o que a outra acabou de gravar. Quando o banco
+      // recusa, o erro vem como violação de constraint — traduzimos para algo
+      // que a recepção entenda.
+      const violouSobreposicao =
+        e?.code === '23P01' || String(e?.message || '').includes('agendamentos_sem_sobreposicao');
+
+      if (violouSobreposicao) {
+        toast.error('Este horário acabou de ser ocupado', {
+          description: 'Outro usuário marcou nesta janela enquanto você preenchia. Escolha outro horário.',
+        });
+        queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
+      } else {
+        toast.error(e.message || 'Erro ao salvar');
+      }
     } finally { setSaving(false); }
   };
 

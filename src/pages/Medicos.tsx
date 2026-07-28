@@ -30,6 +30,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { toast } from 'sonner';
 import { useMedicos } from '@/hooks/useSupabaseData';
 import { supabase } from '@/integrations/supabase/client';
+import { StorageAvatarImage, StorageImg } from '@/components/StorageImage';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { format, parseISO } from 'date-fns';
@@ -237,7 +238,7 @@ function MedicoProfilePanel({ medico, onClose, onEdit }: { medico: any; onClose:
           <SheetHeader className="mb-4"><SheetTitle className="sr-only">Perfil do Médico</SheetTitle></SheetHeader>
           <div className="flex items-start gap-4">
             <Avatar className="h-20 w-20 ring-4 ring-background shadow-xl">
-              {medico.foto_url && <AvatarImage src={medico.foto_url} />}
+              {medico.foto_url && <StorageAvatarImage bucket="patient-photos" path={medico.foto_url} alt={medico.nome} />}
               <AvatarFallback className="bg-primary text-primary-foreground text-xl font-bold">
                 {(medico.nome || medico.crm).slice(0, 2).toUpperCase()}
               </AvatarFallback>
@@ -503,8 +504,8 @@ export default function Medicos() {
       const path = `medicos/${Date.now()}.${ext}`;
       const { error: uploadError } = await supabase.storage.from(bucket).upload(path, file, { upsert: true });
       if (uploadError) throw uploadError;
-      const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(path);
-      setFormData(prev => ({ ...prev, [field]: urlData.publicUrl }));
+      // Guarda o caminho: o bucket é privado e o link assinado expira.
+      setFormData(prev => ({ ...prev, [field]: path }));
       toast.success('Arquivo enviado!');
     } catch (err: any) {
       toast.error(err.message || 'Erro no upload');
@@ -704,7 +705,7 @@ export default function Medicos() {
                   <CardContent className="p-5">
                     <div className="flex items-start gap-4">
                       <Avatar className="h-16 w-16 ring-2 ring-primary/10 group-hover:ring-primary/30 transition-all shadow-md">
-                        {medico.foto_url && <AvatarImage src={medico.foto_url} />}
+                        {medico.foto_url && <StorageAvatarImage bucket="patient-photos" path={medico.foto_url} alt={medico.nome} />}
                         <AvatarFallback className="bg-gradient-to-br from-primary/20 to-primary/5 text-primary font-bold text-lg">
                           {(medico.nome || medico.crm).slice(0, 2).toUpperCase()}
                         </AvatarFallback>
@@ -816,7 +817,7 @@ export default function Medicos() {
               <div className="flex items-center justify-between gap-4">
                 <div className="flex items-center gap-4">
                   <Avatar className="h-16 w-16 ring-2 ring-primary/10">
-                    {formData.foto_url && <AvatarImage src={formData.foto_url} />}
+                    {formData.foto_url && <StorageAvatarImage bucket="patient-photos" path={formData.foto_url} />}
                     <AvatarFallback className="bg-primary/10 text-primary text-lg">{(formData.nome || '??').slice(0, 2).toUpperCase()}</AvatarFallback>
                   </Avatar>
                   <div className="space-y-1">
@@ -955,7 +956,7 @@ export default function Medicos() {
                 <h4 className="text-sm font-semibold text-muted-foreground mb-3 flex items-center gap-1.5"><FileText className="h-4 w-4" /> Carimbo / Assinatura Digital</h4>
                 <div className="flex items-center gap-4">
                   {formData.carimbo_url ? (
-                    <img src={formData.carimbo_url} alt="Carimbo" className="h-16 border rounded-lg p-1 bg-background" />
+                    <StorageImg bucket="patient-photos" path={formData.carimbo_url} alt="Carimbo" className="h-16 border rounded-lg p-1 bg-background" />
                   ) : (
                     <div className="h-16 w-32 border-2 border-dashed rounded-lg flex items-center justify-center text-muted-foreground"><Image className="h-5 w-5" /></div>
                   )}
