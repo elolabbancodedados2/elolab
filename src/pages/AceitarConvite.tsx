@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+import { validatePassword } from '@/lib/passwordPolicy';
 import clinicBackground from '@/assets/clinic-background.jpg';
 
 interface InvitationData {
@@ -106,9 +107,11 @@ export default function AceitarConvite() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    const minLen = invitation?.source === 'new' ? 8 : 6;
-    if (password.length < minLen) {
-      toast.error(`A senha deve ter pelo menos ${minLen} caracteres`);
+    // Mesma política do cadastro. Um convite pode conceder o papel `admin`, então
+    // não faz sentido a conta mais poderosa da clínica aceitar a senha mais fraca.
+    const erroSenha = validatePassword(password);
+    if (erroSenha) {
+      toast.error(erroSenha);
       return;
     }
 

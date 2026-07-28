@@ -19,6 +19,7 @@ import {
   useAgendamentos, usePacientes, useProntuarios,
   usePrescricoes, useAtestados, useExames, useEncaminhamentos,
 } from '@/hooks/useSupabaseData';
+import { parseDateOnly } from '@/lib/dateOnly';
 
 // ─── Animations ────────────────────────────────────────────
 const fadeUp = {
@@ -74,19 +75,19 @@ export function DoctorDashboard({ userName }: DoctorDashboardProps) {
 
     const myProntuarios = medicoId ? prontuarios.filter(p => p.medico_id === medicoId) : prontuarios;
     const prontuariosMes = myProntuarios.filter(p => {
-      const d = new Date(p.data);
+      const d = parseDateOnly(p.data)!;
       return d.getMonth() === mesAtual && d.getFullYear() === anoAtual;
     }).length;
 
     const myPrescricoes = medicoId ? prescricoes.filter(p => p.medico_id === medicoId) : prescricoes;
     const prescricoesMes = myPrescricoes.filter(p => {
       if (!p.data_emissao) return false;
-      const d = new Date(p.data_emissao);
+      const d = parseDateOnly(p.data_emissao)!;
       return d.getMonth() === mesAtual && d.getFullYear() === anoAtual;
     }).length;
 
     const atendimentosMes = myAgendamentos.filter(a => {
-      const d = new Date(a.data);
+      const d = parseDateOnly(a.data)!;
       return a.status === 'finalizado' && d.getMonth() === mesAtual && d.getFullYear() === anoAtual;
     }).length;
 

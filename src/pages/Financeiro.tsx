@@ -22,6 +22,7 @@ import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   BarChart, Bar, PieChart, Pie, Cell, Legend,
 } from 'recharts';
+import { parseDateOnly } from '@/lib/dateOnly';
 
 const fmt = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 const fmtShort = (v: number) => {
@@ -66,11 +67,11 @@ export default function Financeiro() {
   // ─── KPIs ─────────────────────────────────────
   const kpis = useMemo(() => {
     const doMes = lancamentos.filter(l => {
-      const d = new Date(l.data);
+      const d = parseDateOnly(l.data)!;
       return d >= mesAtual.start && d <= mesAtual.end;
     });
     const doMesAnt = lancamentos.filter(l => {
-      const d = new Date(l.data);
+      const d = parseDateOnly(l.data)!;
       return d >= mesAnterior.start && d <= mesAnterior.end;
     });
     const receitas = doMes.filter(l => l.tipo === 'receita');
@@ -107,7 +108,7 @@ export default function Financeiro() {
   // ─── DRE ──────────────────────────────────────
   const dre = useMemo(() => {
     const doMes = lancamentos.filter(l => {
-      const d = new Date(l.data);
+      const d = parseDateOnly(l.data)!;
       return d >= mesAtual.start && d <= mesAtual.end;
     });
 
@@ -146,8 +147,8 @@ export default function Financeiro() {
     return Array.from({ length: 6 }, (_, i) => {
       const d = subMonths(currentDate, 5 - i);
       const m = d.getMonth(); const y = d.getFullYear();
-      const rec = lancamentos.filter(l => l.tipo === 'receita' && l.status === 'pago' && new Date(l.data).getMonth() === m && new Date(l.data).getFullYear() === y).reduce((a, l) => a + Number(l.valor), 0);
-      const des = lancamentos.filter(l => l.tipo === 'despesa' && l.status === 'pago' && new Date(l.data).getMonth() === m && new Date(l.data).getFullYear() === y).reduce((a, l) => a + Number(l.valor), 0);
+      const rec = lancamentos.filter(l => l.tipo === 'receita' && l.status === 'pago' && parseDateOnly(l.data)!.getMonth() === m && parseDateOnly(l.data)!.getFullYear() === y).reduce((a, l) => a + Number(l.valor), 0);
+      const des = lancamentos.filter(l => l.tipo === 'despesa' && l.status === 'pago' && parseDateOnly(l.data)!.getMonth() === m && parseDateOnly(l.data)!.getFullYear() === y).reduce((a, l) => a + Number(l.valor), 0);
       return { name: format(d, 'MMM/yy', { locale: ptBR }), receitas: rec, despesas: des, lucro: rec - des };
     });
   }, [lancamentos, currentDate]);

@@ -387,15 +387,44 @@ export default function Agenda() {
     }
 
     // Check for scheduling conflicts (only when medico is set)
+    //
+    // Comparar horários como texto aqui é armadilha: o banco guarda TIME e
+    // devolve "08:00:00", enquanto o formulário trabalha com "08:00". A
+    // normalização existente só roda na hora de salvar, depois desta checagem.
+    // Isso produzia três defeitos ao mesmo tempo:
+    //   - "08:00:00" < "08:00" é falso → dois agendamentos no MESMO horário
+    //     passavam sem aviso quando o campo de término ficava vazio;
+    //   - agendamento antigo com hora_fim nulo nunca conflitava (null > "08:00");
+    //   - "09:00:00" > "09:00" é verdadeiro → marcar 09:00 logo após uma
+    //     consulta que termina às 09:00 era bloqueado indevidamente, ou seja,
+    //     não dava para encaixar consultas em sequência.
+    // Comparando em minutos os três somem.
     if (formData.medico_id) {
-      const conflito = agendamentos.find(ag =>
-        ag.medico_id === formData.medico_id &&
-        ag.data === formData.data &&
-        ag.status !== 'cancelado' &&
-        ag.id !== formData.id &&
-        ag.hora_inicio < (formData.hora_fim || formData.hora_inicio) &&
-        ag.hora_fim > formData.hora_inicio
-      );
+      const emMinutos = (t?: string | null): number | null => {
+        if (!t) return null;
+        const [h, m] = t.split(':').map(Number);
+        return Number.isFinite(h) && Number.isFinite(m) ? h * 60 + m : null;
+      };
+      const DURACAO_PADRAO_MIN = 30;
+
+      const novoInicio = emMinutos(formData.hora_inicio)!;
+      const novoFim = emMinutos(formData.hora_fim) ?? novoInicio + DURACAO_PADRAO_MIN;
+
+      const conflito = agendamentos.find(ag => {
+        if (ag.medico_id !== formData.medico_id) return false;
+        if (ag.data !== formData.data) return false;
+        if (ag.status === 'cancelado') return false;
+        if (ag.id === formData.id) return false;
+
+        const inicio = emMinutos(ag.hora_inicio);
+        if (inicio === null) return false;
+        const fim = emMinutos(ag.hora_fim) ?? inicio + DURACAO_PADRAO_MIN;
+
+        // Sobreposição real: começa antes do outro terminar e termina depois
+        // de o outro começar. Encostar (fim == início) não é conflito.
+        return inicio < novoFim && fim > novoInicio;
+      });
+
       if (conflito) {
         toast.error('Já existe um agendamento conflitante neste horário para este médico.');
         return;

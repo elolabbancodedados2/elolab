@@ -19,6 +19,7 @@ import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { parseDateOnly } from '@/lib/dateOnly';
 
 interface PatientTimelineProps {
   pacienteId: string;
@@ -81,7 +82,7 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
         allEvents.push({
           id: p.id,
           type: 'prontuario',
-          date: new Date(p.data),
+          date: parseDateOnly(p.data)!,
           title: 'Consulta Médica',
           description: p.queixa_principal || p.hipotese_diagnostica || p.conduta || 'Atendimento realizado',
           medicoNome: (p.medicos as any)?.nome,
@@ -265,7 +266,7 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
         allEvents.push({
           id: `ret-${r.id}`,
           type: 'retorno',
-          date: new Date(r.data_retorno),
+          date: parseDateOnly(r.data_retorno)!,
           title: 'Retorno agendado',
           description: r.motivo || 'Retorno do paciente',
           status: r.status,
@@ -336,7 +337,7 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
       doc.setFontSize(10);
       doc.text(`Paciente: ${pac?.nome || '—'}`, 14, 28);
       if (pac?.cpf) doc.text(`CPF: ${pac.cpf}`, 14, 34);
-      if (pac?.data_nascimento) doc.text(`Nascimento: ${format(new Date(pac.data_nascimento), 'dd/MM/yyyy')}`, 14, 40);
+      if (pac?.data_nascimento) doc.text(`Nascimento: ${format(parseDateOnly(pac.data_nascimento)!, 'dd/MM/yyyy')}`, 14, 40);
       if (pac?.telefone) doc.text(`Telefone: ${pac.telefone}`, 100, 34);
       if (pac?.email) doc.text(`E-mail: ${pac.email}`, 100, 40);
       if (pac?.alergias) doc.text(`Alergias: ${pac.alergias}`, 14, 46);

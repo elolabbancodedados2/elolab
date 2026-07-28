@@ -31,6 +31,7 @@ import * as XLSX from 'xlsx';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell,
 } from 'recharts';
+import { parseDateOnly } from '@/lib/dateOnly';
 
 type StatusPagamento = Database['public']['Enums']['status_pagamento'];
 
@@ -181,7 +182,7 @@ export default function ContasReceber() {
       const matchCategoria = filterCategoria === 'todas' || c.categoria === filterCategoria;
       let matchPeriodo = true;
       if (periodoRange) {
-        const d = new Date(c.data);
+        const d = parseDateOnly(c.data)!;
         matchPeriodo = d >= periodoRange.start && d <= periodoRange.end;
       }
       return matchSearch && matchStatus && matchCategoria && matchPeriodo;
@@ -553,7 +554,7 @@ export default function ContasReceber() {
               const status = STATUS_CONFIG[conta.status || 'pendente'];
               const catInfo = CATEGORIAS_MAP[conta.categoria] || CATEGORIAS_MAP.outros;
               const CatIcon = catInfo?.icon || DollarSign;
-              const diasVenc = conta.data_vencimento ? differenceInDays(new Date(conta.data_vencimento), new Date()) : null;
+              const diasVenc = conta.data_vencimento ? differenceInDays(parseDateOnly(conta.data_vencimento)!, new Date()) : null;
               return (
                 <motion.div key={conta.id} layout initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95 }} transition={{ delay: Math.min(i * 0.02, 0.3) }}>
                   <Card className={cn('hover:shadow-md hover:-translate-y-0.5 transition-all group border', status?.border)}>

@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/dialog';
 import { Separator } from '@/components/ui/separator';
 import jsPDF from 'jspdf';
+import { parseDateOnly } from '@/lib/dateOnly';
 
 interface DischargeReportProps {
   isOpen: boolean;
@@ -208,7 +209,7 @@ export function DischargeReport({
     y = drawSection(doc, 'DADOS DO ATENDIMENTO', y, pageWidth);
     doc.setFontSize(9);
     doc.setFont('helvetica', 'normal');
-    doc.text(`Data: ${format(new Date(data.consulta.data), "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}`, 22, y);
+    doc.text(`Data: ${format(parseDateOnly(data.consulta.data)!, "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}`, 22, y);
     y += 5;
     doc.text(`Médico: Dr(a). ${data.medico.nome}${data.medico.crm ? ` - CRM ${data.medico.crm}` : ''}`, 22, y);
     y += 5;
@@ -272,7 +273,7 @@ export function DischargeReport({
 
       doc.setFillColor(240, 248, 255);
       doc.roundedRect(20, y - 3, pageWidth - 40, 14, 2, 2, 'F');
-      doc.text(`Data prevista: ${format(new Date(data.retorno.data), "dd/MM/yyyy", { locale: ptBR })}`, 24, y + 3);
+      doc.text(`Data prevista: ${format(parseDateOnly(data.retorno.data)!, "dd/MM/yyyy", { locale: ptBR })}`, 24, y + 3);
       if (data.retorno.motivo) {
         doc.text(`Motivo: ${data.retorno.motivo}`, 24, y + 8);
       }
@@ -331,7 +332,7 @@ export function DischargeReport({
               <div className="flex justify-between">
                 <span className="text-sm">Data:</span>
                 <span className="font-medium">
-                  {format(new Date(data.consulta.data), "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
+                  {format(parseDateOnly(data.consulta.data)!, "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
                 </span>
               </div>
               <div className="flex justify-between">
@@ -409,7 +410,7 @@ export function DischargeReport({
               <h3 className="font-semibold text-sm text-muted-foreground mb-2">RETORNO</h3>
               <div className="p-3 border rounded-lg bg-primary/5">
                 <p className="font-medium">
-                  {format(new Date(data.retorno.data), "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
+                  {format(parseDateOnly(data.retorno.data)!, "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
                 </p>
                 {data.retorno.motivo && (
                   <p className="text-sm text-muted-foreground">{data.retorno.motivo}</p>

@@ -32,6 +32,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import { parseDateOnly } from '@/lib/dateOnly';
 
 const SUPER_ADMIN_EMAIL = import.meta.env.VITE_SUPER_ADMIN_EMAIL || 'contato@elolab.com.br';
 
@@ -169,7 +170,7 @@ export default function PainelAdmin() {
     }
     subscriptions.forEach((s: any) => {
       if (s.status !== 'ativa' && s.status !== 'trial') return;
-      const created = s.data_inicio ? new Date(s.data_inicio) : null;
+      const created = s.data_inicio ? parseDateOnly(s.data_inicio)! : null;
       if (!created) return;
       const key = `${created.getFullYear()}-${String(created.getMonth() + 1).padStart(2, '0')}`;
       Object.keys(months).forEach(mk => { if (mk >= key) months[mk].mrr += s.planos?.valor || 0; });

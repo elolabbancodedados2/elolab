@@ -30,6 +30,7 @@ import { ConfirmDialog } from '@/components/ConfirmDialog';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
 } from 'recharts';
+import { parseDateOnly } from '@/lib/dateOnly';
 
 const CATEGORIAS = ['medicamentos', 'materiais_hospitalares', 'epis', 'escritorio', 'limpeza', 'outros'];
 const UNIDADES = ['unidade', 'comprimido', 'caixa', 'frasco', 'ampola', 'pacote', 'litro', 'kg', 'ml'];
@@ -313,11 +314,11 @@ export default function Estoque() {
   const expiryAlerts = useMemo(() => {
     return (estoque as any[]).filter(p => {
       if (!p.validade) return false;
-      const dias = differenceInDays(new Date(p.validade), new Date());
+      const dias = differenceInDays(parseDateOnly(p.validade)!, new Date());
       return dias <= 60;
     }).sort((a, b) => {
-      const dA = differenceInDays(new Date(a.validade), new Date());
-      const dB = differenceInDays(new Date(b.validade), new Date());
+      const dA = differenceInDays(parseDateOnly(a.validade)!, new Date());
+      const dB = differenceInDays(parseDateOnly(b.validade)!, new Date());
       return dA - dB;
     });
   }, [estoque]);
@@ -373,7 +374,7 @@ export default function Estoque() {
                   </p>
                   <div className="flex flex-wrap gap-2 mt-1.5">
                     {expiryAlerts.slice(0, 5).map(p => {
-                      const dias = differenceInDays(new Date(p.validade), new Date());
+                      const dias = differenceInDays(parseDateOnly(p.validade)!, new Date());
                       return (
                         <Badge key={p.id} variant={dias < 0 ? 'destructive' : 'secondary'} className="text-[10px]">
                           {p.nome} — {dias < 0 ? `Vencido há ${Math.abs(dias)}d` : `${dias}d restantes`}
@@ -626,7 +627,7 @@ export default function Estoque() {
                               <TableCell className="hidden sm:table-cell">
                                 {produto.validade ? (
                                   <div className="text-xs">
-                                    <p>{format(new Date(produto.validade), 'dd/MM/yyyy')}</p>
+                                    <p>{format(parseDateOnly(produto.validade)!, 'dd/MM/yyyy')}</p>
                                     {validadeInfo && (
                                       <Badge variant={validadeInfo.color} className="text-[9px] mt-0.5">
                                         {validadeInfo.label}

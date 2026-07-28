@@ -11,6 +11,7 @@ import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
+import { parseDateOnly } from '@/lib/dateOnly';
 
 interface AutorizacaoConvenioModalProps {
   open: boolean;
@@ -191,13 +192,13 @@ export function AutorizacaoConvenioModal({
 
                       <div className="flex items-center gap-2 text-xs text-muted-foreground">
                         {auth.data_solicitacao && (
-                          <span>Solicitado: {format(new Date(auth.data_solicitacao), 'dd/MM/yyyy')}</span>
+                          <span>Solicitado: {format(parseDateOnly(auth.data_solicitacao)!, 'dd/MM/yyyy')}</span>
                         )}
                         {auth.data_autorizacao && (
                           <span>Autorizado: {format(new Date(auth.data_autorizacao), 'dd/MM/yyyy')}</span>
                         )}
                         {auth.data_expiracao && auth.status === 'autorizada' && (
-                          <span>Vence: {format(new Date(auth.data_expiracao), 'dd/MM/yyyy')}</span>
+                          <span>Vence: {format(parseDateOnly(auth.data_expiracao)!, 'dd/MM/yyyy')}</span>
                         )}
                       </div>
 

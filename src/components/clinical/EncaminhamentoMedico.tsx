@@ -42,6 +42,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { Cid10Search } from './Cid10Search';
+import { parseDateOnly } from '@/lib/dateOnly';
 
 interface Encaminhamento {
   id: string;
@@ -343,7 +344,7 @@ export function EncaminhamentoMedico({
                           </p>
                           {enc.data_encaminhamento && (
                             <p className="text-xs text-muted-foreground mt-1">
-                              Encaminhado em: {format(new Date(enc.data_encaminhamento), 'dd/MM/yyyy')}
+                              Encaminhado em: {format(parseDateOnly(enc.data_encaminhamento)!, 'dd/MM/yyyy')}
                             </p>
                           )}
                         </div>
@@ -375,7 +376,7 @@ export function EncaminhamentoMedico({
                       {enc.contra_referencia && (
                         <div className="mt-3 p-2 bg-green-50 rounded border border-green-200">
                           <p className="text-xs font-medium text-green-800">
-                            Contra-referência ({enc.data_contra_referencia && format(new Date(enc.data_contra_referencia), 'dd/MM/yyyy')}):
+                            Contra-referência ({enc.data_contra_referencia && format(parseDateOnly(enc.data_contra_referencia)!, 'dd/MM/yyyy')}):
                           </p>
                           <p className="text-sm text-green-700 mt-1">
                             {enc.contra_referencia}

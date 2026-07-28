@@ -18,6 +18,7 @@ import {
 import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { parseDateOnly } from '@/lib/dateOnly';
 
 const PAGES = [
   { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, group: 'Navegação' },
@@ -188,7 +189,7 @@ export function GlobalSearch() {
                     <p className="font-medium text-sm truncate">{p.nome}</p>
                     <p className="text-xs text-muted-foreground">
                       {p.cpf ? `CPF: ${p.cpf}` : ''}
-                      {p.data_nascimento ? ` · ${format(new Date(p.data_nascimento), 'dd/MM/yyyy', { locale: ptBR })}` : ''}
+                      {p.data_nascimento ? ` · ${format(parseDateOnly(p.data_nascimento)!, 'dd/MM/yyyy', { locale: ptBR })}` : ''}
                     </p>
                   </div>
                   <Badge variant="secondary" className="text-[10px] shrink-0 rounded-lg">Paciente</Badge>

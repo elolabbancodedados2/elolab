@@ -40,6 +40,7 @@ import { cn, sanitizeText } from '@/lib/utils';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { useCurrentMedico } from '@/hooks/useCurrentMedico';
 import { gerarProntuarioPDF, downloadPDF, openPDF } from '@/lib/pdfGenerator';
+import { parseDateOnly } from '@/lib/dateOnly';
 
 interface PacienteFormData {
   nome: string;
@@ -1491,7 +1492,7 @@ export default function Pacientes() {
                                   <div className="space-y-1 min-w-0">
                                     <div className="flex items-center gap-1.5 flex-wrap">
                                       <Badge className="bg-primary/10 text-primary border-primary/20 text-[10px] font-bold px-1.5 py-0">
-                                        {format(new Date(p.data), 'dd/MM/yyyy')}
+                                        {format(parseDateOnly(p.data)!, 'dd/MM/yyyy')}
                                       </Badge>
                                       {p.diagnostico_principal && (
                                         <Badge variant="secondary" className="text-[10px] px-1.5 py-0">{p.diagnostico_principal}</Badge>

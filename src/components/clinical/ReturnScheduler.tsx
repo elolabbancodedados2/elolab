@@ -40,6 +40,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { parseDateOnly } from '@/lib/dateOnly';
 
 interface Return {
   id: string;
@@ -481,7 +482,7 @@ export function ReturnScheduler({
                           <div className="flex items-center gap-2">
                             <Calendar className="h-4 w-4 text-muted-foreground" />
                             <span className="font-medium">
-                              {format(new Date(ret.data_retorno_prevista), "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
+                              {format(parseDateOnly(ret.data_retorno_prevista)!, "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
                             </span>
                             {getStatusBadge(ret.status)}
                           </div>
@@ -529,7 +530,7 @@ export function ReturnScheduler({
                           <div className="flex items-center gap-2">
                             <Calendar className="h-4 w-4 text-muted-foreground" />
                             <span>
-                              {format(new Date(ret.data_retorno_prevista), "dd/MM/yyyy", { locale: ptBR })}
+                              {format(parseDateOnly(ret.data_retorno_prevista)!, "dd/MM/yyyy", { locale: ptBR })}
                             </span>
                             {getStatusBadge(ret.status)}
                           </div>

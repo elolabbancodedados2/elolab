@@ -22,6 +22,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { Database } from '@/integrations/supabase/types';
+import { parseDateOnly } from '@/lib/dateOnly';
 
 type StatusPagamento = Database['public']['Enums']['status_pagamento'];
 
@@ -338,7 +339,7 @@ export default function ContasPagar() {
                         {CATEGORIAS_LABELS[conta.categoria] || conta.categoria}
                       </TableCell>
                       <TableCell className="hidden sm:table-cell tabular-nums">
-                        {conta.data_vencimento && format(new Date(conta.data_vencimento), 'dd/MM/yyyy')}
+                        {conta.data_vencimento && format(parseDateOnly(conta.data_vencimento)!, 'dd/MM/yyyy')}
                       </TableCell>
                       <TableCell className="font-medium tabular-nums">{formatCurrency(conta.valor)}</TableCell>
                       <TableCell>

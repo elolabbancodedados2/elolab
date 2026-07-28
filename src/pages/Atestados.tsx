@@ -27,6 +27,7 @@ import { cn } from '@/lib/utils';
 import { gerarAtestado, openPDF } from '@/lib/pdfGenerator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Cid10Search } from '@/components/clinical';
+import { parseDateOnly } from '@/lib/dateOnly';
 
 interface Atestado {
   id: string;
@@ -367,7 +368,7 @@ export default function Atestados() {
                 ) : (
                   filteredAtestados.map(atestado => (
                     <TableRow key={atestado.id}>
-                      <TableCell>{atestado.data_emissao ? format(new Date(atestado.data_emissao), 'dd/MM/yyyy') : '—'}</TableCell>
+                      <TableCell>{atestado.data_emissao ? format(parseDateOnly(atestado.data_emissao)!, 'dd/MM/yyyy') : '—'}</TableCell>
                       <TableCell><Badge className={cn(getTipoBadge(atestado.tipo))}>{getTipoLabel(atestado.tipo)}</Badge></TableCell>
                       <TableCell className="font-medium">{getPacienteNome(atestado.paciente_id)}</TableCell>
                       <TableCell className="hidden md:table-cell">{getMedicoNome(atestado.medico_id)}</TableCell>
@@ -671,7 +672,7 @@ export default function Atestados() {
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Data de Emissão</p>
-                  <p className="font-medium">{selectedAtestado.data_emissao ? format(new Date(selectedAtestado.data_emissao), 'dd/MM/yyyy') : '—'}</p>
+                  <p className="font-medium">{selectedAtestado.data_emissao ? format(parseDateOnly(selectedAtestado.data_emissao)!, 'dd/MM/yyyy') : '—'}</p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Paciente</p>
@@ -691,8 +692,8 @@ export default function Atestados() {
                       <div>
                         <p className="text-xs text-muted-foreground">Período</p>
                         <p className="font-medium text-sm">
-                          {format(new Date(selectedAtestado.data_inicio), 'dd/MM/yyyy')}
-                          {selectedAtestado.data_fim && ` a ${format(new Date(selectedAtestado.data_fim), 'dd/MM/yyyy')}`}
+                          {format(parseDateOnly(selectedAtestado.data_inicio)!, 'dd/MM/yyyy')}
+                          {selectedAtestado.data_fim && ` a ${format(parseDateOnly(selectedAtestado.data_fim)!, 'dd/MM/yyyy')}`}
                         </p>
                       </div>
                     )}
