@@ -55,7 +55,7 @@ export function AppointmentCard({ agendamento, color, minutesToPx, onClick }: Pr
     zIndex: isDragging ? 50 : 10,
   };
 
-  const setStatus = async (status: string) => {
+  const setStatus = async (status: any) => {
     const { error } = await (supabase.from('agendamentos').update({ status }).eq('id', agendamento.id) as any);
     if (error) return toast.error('Erro ao atualizar');
     toast.success('Status atualizado');
