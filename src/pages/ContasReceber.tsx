@@ -23,7 +23,6 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
-import { NotaFiscalModal } from '@/components/NotaFiscalModal';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { usePacientes } from '@/hooks/useSupabaseData';
@@ -121,8 +120,6 @@ export default function ContasReceber() {
   const [isPagamentoOpen, setIsPagamentoOpen] = useState(false);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [selectedConta, setSelectedConta] = useState<any>(null);
-  /** Lançamento cuja nota fiscal está sendo registrada. */
-  const [notaFiscalConta, setNotaFiscalConta] = useState<any>(null);
   const [formData, setFormData] = useState<FormData>({
     paciente_id: '', categoria: 'consulta', descricao: '', valor: 0,
     data_vencimento: format(new Date(), 'yyyy-MM-dd'), forma_pagamento: 'pix',
@@ -621,11 +618,6 @@ export default function ContasReceber() {
                                 <Eye className="h-4 w-4" /> Ver Detalhes
                               </DropdownMenuItem>
                               {conta.status === 'pago' && (
-                                <DropdownMenuItem onClick={() => setNotaFiscalConta(conta)} className="gap-2">
-                                  <Receipt className="h-4 w-4" /> Nota Fiscal
-                                </DropdownMenuItem>
-                              )}
-                              {conta.status === 'pago' && (
                                 <DropdownMenuItem onClick={() => handleEstornar(conta)} className="gap-2 text-destructive">
                                   <Repeat className="h-4 w-4" /> Estornar
                                 </DropdownMenuItem>
@@ -932,15 +924,6 @@ export default function ContasReceber() {
         </DialogContent>
       </Dialog>
 
-      {notaFiscalConta && (
-        <NotaFiscalModal
-          open
-          onOpenChange={o => !o && setNotaFiscalConta(null)}
-          lancamentoId={notaFiscalConta.id}
-          pacienteName={getPacienteNome(notaFiscalConta)}
-          valor={Number(notaFiscalConta.valor) || 0}
-        />
-      )}
     </div>
   );
 }
