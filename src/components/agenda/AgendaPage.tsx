@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import { format } from 'date-fns';
+import { useEffect, useMemo, useState } from 'react';
+import { addDays, addMonths, addWeeks, format, parseISO } from 'date-fns';
 import {
   DndContext, DragEndEvent, DragOverlay, DragStartEvent, MouseSensor,
   TouchSensor, useSensor, useSensors,
@@ -34,8 +34,10 @@ function toMinutes(t: string) {
 
 export function AgendaPage() {
   const queryClient = useQueryClient();
-  const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'));
-  const [view, setView] = useState<AgendaView>('daily');
+  const [date, setDate] = useState(() => sessionStorage.getItem('agenda:date') || format(new Date(), 'yyyy-MM-dd'));
+  const [view, setView] = useState<AgendaView>(() => (sessionStorage.getItem('agenda:view') as AgendaView) || 'daily');
+  useEffect(() => { sessionStorage.setItem('agenda:date', date); }, [date]);
+  useEffect(() => { sessionStorage.setItem('agenda:view', view); }, [view]);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
   const [medicoFilter, setMedicoFilter] = useState<string[]>([]);
@@ -45,6 +47,27 @@ export function AgendaPage() {
   const [dialogState, setDialogState] = useState<{ open: boolean; initial: any | null }>({ open: false, initial: null });
   const [confirmMove, setConfirmMove] = useState<null | { agendamento: any; medico_id: string; data: string; hora_inicio: string }>(null);
   const [activeDrag, setActiveDrag] = useState<any>(null);
+
+  // Keyboard shortcuts: ← → navigate, T = today, N = new, D/W/M = view
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(tag) || (e.target as HTMLElement)?.isContentEditable) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const d = parseISO(date);
+      const step = view === 'monthly' ? addMonths : view === 'weekly' ? addWeeks : addDays;
+      if (e.key === 'ArrowLeft') { setDate(format(step(d, -1), 'yyyy-MM-dd')); e.preventDefault(); }
+      else if (e.key === 'ArrowRight') { setDate(format(step(d, 1), 'yyyy-MM-dd')); e.preventDefault(); }
+      else if (e.key.toLowerCase() === 't') { setDate(format(new Date(), 'yyyy-MM-dd')); }
+      else if (e.key.toLowerCase() === 'n') { setDialogState({ open: true, initial: { data: date } }); e.preventDefault(); }
+      else if (e.key.toLowerCase() === 'd') setView('daily');
+      else if (e.key.toLowerCase() === 'w') setView('weekly');
+      else if (e.key.toLowerCase() === 'm') setView('monthly');
+      else if (e.key === '/') { setSearch(''); (document.querySelector('input[placeholder*="Buscar paciente"]') as HTMLInputElement)?.focus(); e.preventDefault(); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [date, view]);
 
   const { data: allAppts = [], isLoading } = useAgendamentos();
   const { data: medicos = [] } = useMedicos();
