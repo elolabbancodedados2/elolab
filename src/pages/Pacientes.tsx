@@ -306,12 +306,15 @@ export default function Pacientes() {
         const { error } = await supabase.from('prontuarios').update(payload).eq('id', activeProntuario.id);
         if (error) throw error;
       } else {
+        if (!authProfile?.clinica_id) {
+          throw new Error('Clínica não identificada. Recarregue a página e tente novamente.');
+        }
         const { data, error } = await supabase.from('prontuarios').insert({
           ...payload,
           paciente_id: prontuarioForm.paciente_id,
           medico_id: prontuarioForm.medico_id,
           data: prontuarioForm.data,
-          clinica_id: authProfile?.clinica_id || null,
+          clinica_id: authProfile.clinica_id,
         }).select().single();
         if (error) throw error;
         prontuarioId = data.id;

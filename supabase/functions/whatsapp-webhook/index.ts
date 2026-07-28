@@ -17,6 +17,22 @@ Deno.serve(async (req) => {
     const evolutionApiKey = Deno.env.get('EVOLUTION_API_KEY')!
     const deepseekApiKey = Deno.env.get('DEEPSEEK_API_KEY')!
 
+    // Verifica assinatura do webhook. Evolution API pode ser configurada para
+    // enviar o header `apikey` (ou `x-webhook-token`). Sem essa checagem,
+    // qualquer requisição pública podia forjar mensagens/status.
+    const providedToken =
+      req.headers.get('apikey') ||
+      req.headers.get('x-webhook-token') ||
+      req.headers.get('authorization')?.replace(/^Bearer\s+/i, '') ||
+      ''
+    if (!providedToken || providedToken !== evolutionApiKey) {
+      console.warn('[Webhook] Unauthorized: token ausente ou inválido')
+      return new Response(
+        JSON.stringify({ error: 'unauthorized' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
     const body = await req.json()
 
@@ -31,7 +47,7 @@ Deno.serve(async (req) => {
       .from('whatsapp_sessions')
       .select('*, whatsapp_agents(*)')
       .eq('instance_name', instanceName)
-      .single()
+      .maybeSingle()
 
     if (!session) {
       console.log('[Webhook] Session not found for instance:', instanceName)
@@ -111,7 +127,7 @@ Deno.serve(async (req) => {
             .eq('session_id', session.id)
             .eq('remote_jid', remoteJid)
             .eq('status', 'ativo')
-            .single()
+            .maybeSingle()
 
           if (!conversation) {
             // Tentar vincular a um paciente pelo telefone
@@ -121,7 +137,7 @@ Deno.serve(async (req) => {
               .select('id')
               .or(`telefone.ilike.%${phoneNumber.slice(-8)}%,telefone.ilike.%${phoneNumber.slice(-9)}%`)
               .limit(1)
-              .single()
+              .maybeSingle()
 
             const { data: newConversation } = await supabase
               .from('whatsapp_conversations')
@@ -132,7 +148,7 @@ Deno.serve(async (req) => {
                 contexto: [],
               })
               .select()
-              .single()
+              .maybeSingle()
 
             conversation = newConversation
           }
@@ -214,7 +230,7 @@ Deno.serve(async (req) => {
                 .from('pacientes')
                 .select('nome')
                 .eq('id', conversation.paciente_id)
-                .single()
+                .maybeSingle()
 
               if (paciente) {
                 const primeiroNome = (paciente.nome || '').trim().split(/\s+/)[0] || 'Paciente'

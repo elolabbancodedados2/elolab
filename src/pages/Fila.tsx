@@ -20,6 +20,7 @@ import { createAutoBilling } from '@/lib/autoBilling';
 import { autoIniciarAtendimento, autoFinalizarAtendimento } from '@/lib/workflowAutomation';
 import { useFilaAtendimento, useAgendamentos, usePacientes, useMedicos, useSalas } from '@/hooks/useSupabaseData';
 import { useQueryClient } from '@tanstack/react-query';
+import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { format, formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -168,6 +169,7 @@ export default function Fila() {
 
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const { profile } = useSupabaseAuth();
   const today = format(new Date(), 'yyyy-MM-dd');
 
   const { data: fila = [], isLoading: loadingFila } = useFilaAtendimento();
@@ -247,13 +249,15 @@ export default function Fila() {
     setIsSaving(true);
     try {
       const maxPos = Math.max(0, ...fila.map(f => f.posicao));
-      const { error } = await supabase.from('fila_atendimento').insert({
+      const payload: any = {
         agendamento_id: selectedAgendamento,
         posicao: maxPos + 1,
         status: 'aguardando',
         prioridade: selectedPrioridade,
         horario_chegada: new Date().toISOString(),
-      });
+      };
+      if (profile?.clinica_id) payload.clinica_id = profile.clinica_id;
+      const { error } = await supabase.from('fila_atendimento').insert(payload);
       if (error) throw error;
       await supabase.from('agendamentos').update({ status: 'aguardando' }).eq('id', selectedAgendamento);
       refresh();

@@ -10,17 +10,22 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { parseDateOnly } from '@/lib/dateOnly';
+import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 
 export default function CobrancaInadimplentes() {
   const [sending, setSending] = useState(false);
+  const { profile } = useSupabaseAuth();
+  const clinicaId = profile?.clinica_id;
 
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ['inadimplentes'],
+    queryKey: ['inadimplentes', clinicaId],
+    enabled: !!clinicaId,
     queryFn: async () => {
       const hoje = new Date().toISOString().slice(0, 10);
       const { data, error } = await (supabase as any)
         .from('lancamentos')
         .select('id, descricao, valor, data_vencimento, paciente_id, pacientes(nome, telefone)')
+        .eq('clinica_id', clinicaId)
         .eq('tipo', 'receita')
         .eq('status', 'pendente')
         .lt('data_vencimento', hoje)
