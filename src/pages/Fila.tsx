@@ -288,9 +288,23 @@ export default function Fila() {
   const updateStatus = async (id: string, status: string, agendamentoId?: string) => {
     // Voice call when chamado
     if (status === 'chamado' && agendamentoId) {
-      await supabase.from('fila_atendimento').update({ status }).eq('id', id);
-      // Also update agendamento status so PainelTV can pick it up
-      await supabase.from('agendamentos').update({ status: 'em_atendimento' }).eq('id', agendamentoId);
+      // Os erros eram ignorados: se a atualização falhasse, a voz chamava o
+      // paciente e a tela dizia "Paciente chamado!" enquanto a fila continuava
+      // parada e o Painel TV não exibia nada.
+      const { error: errFila } = await supabase
+        .from('fila_atendimento').update({ status }).eq('id', id);
+      if (errFila) {
+        toast.error('Não foi possível chamar o paciente. Tente novamente.');
+        return;
+      }
+
+      // Também atualiza o agendamento para o Painel TV mostrar a chamada
+      const { error: errAg } = await supabase
+        .from('agendamentos').update({ status: 'em_atendimento' }).eq('id', agendamentoId);
+      if (errAg) {
+        toast.warning('Paciente chamado, mas o Painel TV pode não atualizar.');
+      }
+
       const item = fila.find(f => f.id === id);
       const nome = getPacienteNome(agendamentoId);
       const sala = getSalaNome(item?.sala_id ?? null);
@@ -307,6 +321,12 @@ export default function Fila() {
         agendamentoId, id, ag?.paciente_id || '', ag?.medico_id || ''
       );
       refresh();
+      // Agora que o workflow propaga erro de verdade, o success é confiável —
+      // antes ele vinha true mesmo quando nada era gravado.
+      if (!result.success) {
+        toast.error('Não foi possível iniciar o atendimento', { description: result.message });
+        return;
+      }
       toast.success('▶ Atendimento iniciado', { description: result.actions.join(' • ') });
       // Navigate to prontuário for the consultation
       if (ag?.paciente_id) {
