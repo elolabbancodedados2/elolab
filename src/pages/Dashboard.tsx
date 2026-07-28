@@ -27,6 +27,7 @@ import {
   ResponsiveContainer, LineChart, Line,
 } from 'recharts';
 import { parseDateOnly } from '@/lib/dateOnly';
+import { valorRealizado } from '@/lib/lancamentos';
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
@@ -272,7 +273,7 @@ export default function Dashboard() {
 
     const receitaDia = lancamentos
       .filter(l => l.data === hoje && l.tipo === 'receita' && l.status === 'pago')
-      .reduce((acc, l) => acc + Number(l.valor), 0);
+      .reduce((acc, l) => acc + valorRealizado(l), 0);
 
     const monthlyChartData = Array.from({ length: 6 }, (_, i) => {
       const date = new Date(anoAtual, mesAtual - 5 + i, 1);

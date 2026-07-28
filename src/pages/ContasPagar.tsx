@@ -23,6 +23,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { Database } from '@/integrations/supabase/types';
 import { parseDateOnly } from '@/lib/dateOnly';
+import { valorRealizado } from '@/lib/lancamentos';
 
 type StatusPagamento = Database['public']['Enums']['status_pagamento'];
 
@@ -136,7 +137,7 @@ export default function ContasPagar() {
     total: contas.filter(c => c.status !== 'cancelado').reduce((acc, c) => acc + c.valor, 0),
     pendente: contas.filter(c => c.status === 'pendente').reduce((acc, c) => acc + c.valor, 0),
     atrasado: contas.filter(c => c.status === 'atrasado').reduce((acc, c) => acc + c.valor, 0),
-    pago: contas.filter(c => c.status === 'pago').reduce((acc, c) => acc + c.valor, 0),
+    pago: contas.filter(c => c.status === 'pago').reduce((acc, c) => acc + valorRealizado(c), 0),
   }), [contas]);
 
   const formatCurrency = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
