@@ -12,8 +12,7 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { NotificationBanner } from "@/components/NotificationBanner";
 import { InstallPWA } from "@/components/InstallPWA";
 import { SubscriptionGuard } from "@/components/SubscriptionGuard";
-import LandingPage from "@/pages/LandingPage";
-
+const LandingPage = lazy(() => import("@/pages/LandingPage"));
 const Dashboard = lazy(() => import("@/pages/Dashboard"));
 const Agenda = lazy(() => import("@/pages/Agenda"));
 const Pacientes = lazy(() => import("@/pages/Pacientes"));
