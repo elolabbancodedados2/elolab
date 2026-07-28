@@ -20,6 +20,7 @@ import {
   usePrescricoes, useAtestados, useExames, useEncaminhamentos,
 } from '@/hooks/useSupabaseData';
 import { parseDateOnly } from '@/lib/dateOnly';
+import { StorageAvatarImage } from '@/components/StorageImage';
 
 // ─── Animations ────────────────────────────────────────────
 const fadeUp = {
@@ -168,7 +169,7 @@ export function DoctorDashboard({ userName }: DoctorDashboardProps) {
                     className="relative"
                   >
                     <Avatar className="h-16 w-16 ring-2 ring-primary/20 shadow-lg">
-                      {currentMedico?.foto_url && <AvatarImage src={currentMedico.foto_url} />}
+                      {currentMedico?.foto_url && <StorageAvatarImage bucket="patient-photos" path={currentMedico.foto_url} />}
                       <AvatarFallback className="bg-gradient-to-br from-primary/15 to-primary/5 text-primary text-xl font-bold">
                         {(currentMedico?.nome || 'DR').slice(0, 2).toUpperCase()}
                       </AvatarFallback>

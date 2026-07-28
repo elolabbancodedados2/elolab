@@ -1,29 +1,21 @@
 -- ============================================================================
--- PARTE B — tornar patient-photos privado   ⚠️ NÃO APLIQUE AINDA
--- ============================================================================
+-- Torna patient-photos privado
 --
--- POR QUE ESTÁ SEPARADO:
--- O bucket 'patient-photos' é público hoje. Todas as fotos gravadas em
--- pacientes.foto_url e medicos.foto_url / medicos.carimbo_url são URLs
--- públicas geradas por getPublicUrl(). Ao tornar o bucket privado, essas
--- URLs param de funcionar e as fotos somem das telas até o frontend passar
--- a usar createSignedUrl().
+-- O bucket era público: qualquer pessoa com a URL via a foto do paciente, sem
+-- login. As URLs eram geradas por getPublicUrl() e gravadas em
+-- pacientes.foto_url e medicos.foto_url / carimbo_url.
 --
--- ORDEM CORRETA:
---   1. Ajustar o frontend (3 arquivos, ver abaixo) para gerar links assinados
---   2. Fazer deploy do frontend
---   3. Só então rodar este SQL e renomear o arquivo removendo ".PENDENTE"
+-- O FRONTEND JÁ FOI AJUSTADO (mesmo PR desta migration):
+--   - upload passa a gravar o CAMINHO, não a URL
+--     (PatientPhoto.tsx, Medicos.tsx)
+--   - exibição gera link assinado na hora, via <StorageAvatarImage> /
+--     <StorageImg> (src/components/StorageImage.tsx)
+--   - registros antigos guardam URL completa e continuam sendo usados como
+--     estão — deixarão de abrir quando o bucket fechar, e a foto pode ser
+--     reenviada pela própria tela
 --
--- ARQUIVOS DO FRONTEND A AJUSTAR:
---   src/components/clinical/PatientPhoto.tsx   (linha ~100)
---   src/pages/Medicos.tsx                      (linha ~506)
---   src/components/patients/PatientListTable.tsx e DoctorDashboard.tsx
---     (leem foto_url direto no <AvatarImage src=...>)
---
--- Padrão a adotar: gravar em foto_url apenas o PATH do arquivo
--- (ex.: "<paciente_id>/168...jpg") e gerar o link na hora da exibição:
---   const { data } = await supabase.storage
---     .from('patient-photos').createSignedUrl(path, 3600);
+-- ORDEM DE APLICAÇÃO: deploy do frontend PRIMEIRO, depois esta migration.
+-- Invertendo a ordem, as fotos somem até o deploy sair.
 -- ============================================================================
 
 BEGIN;

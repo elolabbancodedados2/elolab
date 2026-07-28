@@ -111,7 +111,7 @@ function playNotificationChime(): Promise<void> {
 }
 
 export default function PainelTV() {
-  const { isAdmin } = useSupabaseAuth();
+  const { isAdmin, profile } = useSupabaseAuth();
   const [fila, setFila] = useState<FilaItem[]>([]);
   const [pacientes, setPacientes] = useState<Record<string, string>>({});
   const [medicos, setMedicos] = useState<Record<string, string>>({});
@@ -315,8 +315,15 @@ export default function PainelTV() {
     }
     setUploading(true);
     try {
+      // O arquivo passa a ficar numa pasta por clínica. Antes ia para a raiz do
+      // bucket, o que tornava impossível escopar a listagem por clínica — uma
+      // política baseada em pasta simplesmente não casava com nada.
+      if (!profile?.clinica_id) {
+        toast.error('Clínica não identificada. Recarregue a página.');
+        return;
+      }
       const fileExt = file.name.split('.').pop();
-      const fileName = `${Date.now()}.${fileExt}`;
+      const fileName = `${profile.clinica_id}/${Date.now()}.${fileExt}`;
       const { error: uploadError } = await supabase.storage.from('tv-panel-media').upload(fileName, file);
       if (uploadError) throw uploadError;
       const { data: urlData } = supabase.storage.from('tv-panel-media').getPublicUrl(fileName);
@@ -342,9 +349,14 @@ export default function PainelTV() {
 
   const handleDeleteMedia = async (media: MediaItem) => {
     try {
-      const fileName = media.url.split('/').pop();
-      if (fileName) {
-        await supabase.storage.from('tv-panel-media').remove([fileName]);
+      // A URL agora contém a pasta da clínica; pegar só o último segmento
+      // apagaria o caminho errado (ou nada). Extraímos tudo após o bucket.
+      const depoisDoBucket = media.url.split('/tv-panel-media/')[1];
+      const caminho = depoisDoBucket
+        ? decodeURIComponent(depoisDoBucket.split('?')[0])
+        : media.url.split('/').pop();
+      if (caminho) {
+        await supabase.storage.from('tv-panel-media').remove([caminho]);
       }
       const { data, error } = await supabase.from('tv_panel_media').delete().eq('id', media.id).select('id');
       if (error) throw error;
