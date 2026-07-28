@@ -93,7 +93,7 @@ export function ProntuarioAdendos({ prontuarioId, medicoId, medicoNome, crm, dis
       if (error) throw error;
 
       // Log de acesso — ação: adendo
-      await (supabase as any).from('prontuario_acessos').insert({
+      const { error: acessoErr } = await (supabase as any).from('prontuario_acessos').insert({
         prontuario_id: prontuarioId,
         acao: 'adendo',
         user_nome: medicoNome,
@@ -101,7 +101,17 @@ export function ProntuarioAdendos({ prontuarioId, medicoId, medicoNome, crm, dis
         justificativa: form.motivo.trim(),
       });
 
-      toast.success('Adendo registrado', { description: 'Registro imutável adicionado ao prontuário.' });
+      // O adendo em si já foi gravado acima. Se apenas o registro de acesso
+      // falhar, o dado clínico está salvo mas a trilha ficou incompleta — e
+      // isso precisa aparecer, não sumir num catch silencioso.
+      if (acessoErr) {
+        console.error('Falha ao registrar acesso do adendo:', acessoErr);
+        toast.warning('Adendo registrado', {
+          description: 'Não foi possível gravar o registro de acesso na auditoria.',
+        });
+      } else {
+        toast.success('Adendo registrado', { description: 'Registro imutável adicionado ao prontuário.' });
+      }
       setForm({ tipo: 'complemento', motivo: '', texto: '' });
       setOpen(false);
       load();

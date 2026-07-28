@@ -37,13 +37,16 @@ export default function RelatoriosSalvos() {
   };
 
   const toggleAtivo = async (it: any) => {
-    await (supabase as any).from('relatorios_salvos').update({ ativo: !it.ativo }).eq('id', it.id);
+    const { error } = await (supabase as any)
+      .from('relatorios_salvos').update({ ativo: !it.ativo }).eq('id', it.id);
+    if (error) { toast.error('Não foi possível alterar o agendamento do relatório.'); return; }
     qc.invalidateQueries({ queryKey: ['relatorios-salvos'] });
   };
 
   const remove = async (id: string) => {
     if (!confirm('Excluir este relatório?')) return;
-    await (supabase as any).from('relatorios_salvos').delete().eq('id', id);
+    const { error } = await (supabase as any).from('relatorios_salvos').delete().eq('id', id);
+    if (error) { toast.error('Não foi possível excluir o relatório.'); return; }
     toast.success('Excluído');
     qc.invalidateQueries({ queryKey: ['relatorios-salvos'] });
   };

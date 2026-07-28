@@ -27,6 +27,10 @@ jobs:
       # quatro bugs neste projeto (nota fiscal, autorização de convênio,
       # auditoria LGPD e altura da triagem).
       - run: npm run check:colunas
+      # Pega escrita seguida de "sucesso!" sem checar o erro. Mesma raiz do
+      # check acima: o supabase-js não lança em erro de API, então a tela
+      # anuncia algo que não aconteceu.
+      - run: npm run check:falhas
       # Bloqueante: os erros de lint foram zerados (eram 12, todos @ts-nocheck).
       # Os ~860 avisos de `any` herdados não quebram o build — o eslint só
       # retorna código de erro quando há erro de verdade.

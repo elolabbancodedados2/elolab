@@ -14,7 +14,8 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
-    "check:colunas": "node scripts/check-colunas.mjs"
+    "check:colunas": "node scripts/check-colunas.mjs",
+    "check:falhas": "node scripts/check-falhas-silenciosas.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

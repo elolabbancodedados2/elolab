@@ -318,8 +318,12 @@ export default function Estoque() {
     if (!deleteId) return;
     setIsSaving(true);
     try {
-      // Delete movements first
-      await supabase.from('movimentacoes_estoque').delete().eq('item_id', deleteId);
+      // Apaga o histórico de movimentações primeiro (exigência da FK). Se isto
+      // falhar e o delete do item seguir adiante, o item some mas o histórico
+      // fica órfão — daí a checagem.
+      const { error: movErr } = await supabase
+        .from('movimentacoes_estoque').delete().eq('item_id', deleteId);
+      if (movErr) throw movErr;
       const { data, error } = await supabase.from('estoque').delete().eq('id', deleteId).select('id');
       if (error) throw error;
       if (!data || data.length === 0) {

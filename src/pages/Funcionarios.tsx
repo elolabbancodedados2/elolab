@@ -285,10 +285,31 @@ export default function Funcionarios() {
           .eq('email', data.email)
           .maybeSingle();
         if (profiles?.id) {
-          await supabase.from('funcionarios').update({ user_id: profiles.id } as any).eq('id', newFunc.id);
-          await supabase.from('user_roles').delete().eq('user_id', profiles.id);
+          // Vincula a conta existente ao funcionário recém-criado e define os
+          // papéis. Mesma proteção do fluxo de edição: se a reinserção falhar
+          // depois do delete, a pessoa fica sem nenhum acesso.
+          const { error: vincErr } = await supabase
+            .from('funcionarios').update({ user_id: profiles.id } as any).eq('id', newFunc.id);
+          if (vincErr) throw vincErr;
+
+          const { data: papeisAtuais } = await supabase
+            .from('user_roles').select('role').eq('user_id', profiles.id);
+
+          const { error: delErr } = await supabase
+            .from('user_roles').delete().eq('user_id', profiles.id);
+          if (delErr) throw delErr;
+
           if (data.selectedRoles.length > 0) {
-            await supabase.from('user_roles').insert(data.selectedRoles.map(role => ({ user_id: profiles.id, role })));
+            const { error: insErr } = await supabase
+              .from('user_roles')
+              .insert(data.selectedRoles.map(role => ({ user_id: profiles.id, role })));
+            if (insErr) {
+              if (papeisAtuais?.length) {
+                await supabase.from('user_roles')
+                  .insert(papeisAtuais.map(p => ({ user_id: profiles.id, role: p.role })));
+              }
+              throw insErr;
+            }
           }
         }
       }
