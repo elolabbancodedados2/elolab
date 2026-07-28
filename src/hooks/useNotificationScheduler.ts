@@ -16,7 +16,7 @@ export function useNotificationScheduler() {
 
         if (response.error) {
           console.error('Notification processing error:', response.error)
-        } else {
+        } else if (response.data?.processed > 0) {
           console.log('Notifications processed:', response.data)
         }
       } catch (e) {
