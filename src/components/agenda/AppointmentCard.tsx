@@ -1,6 +1,12 @@
 import { useDraggable } from '@dnd-kit/core';
 import { cn } from '@/lib/utils';
-import { Clock, User } from 'lucide-react';
+import { Clock, User, CheckCircle2, PlayCircle, Ban, Trash2, Edit3 } from 'lucide-react';
+import {
+  ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger,
+} from '@/components/ui/context-menu';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
+import { useQueryClient } from '@tanstack/react-query';
 
 interface Props {
   agendamento: any;
@@ -26,6 +32,7 @@ function toMinutes(t: string) {
 }
 
 export function AppointmentCard({ agendamento, color, minutesToPx, onClick }: Props) {
+  const queryClient = useQueryClient();
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: `ag:${agendamento.id}`,
     data: { agendamento },
@@ -48,13 +55,29 @@ export function AppointmentCard({ agendamento, color, minutesToPx, onClick }: Pr
     zIndex: isDragging ? 50 : 10,
   };
 
+  const setStatus = async (status: any) => {
+    const { error } = await (supabase.from('agendamentos').update({ status }).eq('id', agendamento.id) as any);
+    if (error) return toast.error('Erro ao atualizar');
+    toast.success('Status atualizado');
+    queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
+  };
+  const remove = async () => {
+    if (!confirm('Remover esta consulta?')) return;
+    const { error } = await (supabase.from('agendamentos').delete().eq('id', agendamento.id) as any);
+    if (error) return toast.error('Erro ao remover');
+    toast.success('Consulta removida');
+    queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
+  };
+
   return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      {...attributes}
-      {...listeners}
-      onClick={(e) => { e.stopPropagation(); onClick(); }}
+    <ContextMenu>
+      <ContextMenuTrigger asChild>
+      <div
+        ref={setNodeRef}
+        style={style}
+        {...attributes}
+        {...listeners}
+        onClick={(e) => { e.stopPropagation(); onClick(); }}
       className={cn(
         'rounded-md bg-card shadow-sm border border-border/60 hover:shadow-md',
         'cursor-grab active:cursor-grabbing overflow-hidden transition-shadow',
@@ -76,6 +99,21 @@ export function AppointmentCard({ agendamento, color, minutesToPx, onClick }: Pr
           {agendamento.tipo && ` · ${agendamento.tipo}`}
         </div>
       )}
-    </div>
+      </div>
+      </ContextMenuTrigger>
+      <ContextMenuContent className="w-56">
+        <ContextMenuItem onSelect={onClick}><Edit3 className="mr-2 h-4 w-4" /> Abrir / editar</ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem onSelect={() => setStatus('confirmado')}><CheckCircle2 className="mr-2 h-4 w-4" /> Confirmar</ContextMenuItem>
+        <ContextMenuItem onSelect={() => setStatus('aguardando')}>Marcar como aguardando</ContextMenuItem>
+        <ContextMenuItem onSelect={() => setStatus('em_atendimento')}><PlayCircle className="mr-2 h-4 w-4" /> Iniciar atendimento</ContextMenuItem>
+        <ContextMenuItem onSelect={() => setStatus('finalizado')}>Finalizar</ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem onSelect={() => setStatus('faltou')} className="text-warning"><Ban className="mr-2 h-4 w-4" /> Marcar faltou</ContextMenuItem>
+        <ContextMenuItem onSelect={() => setStatus('cancelado')} className="text-destructive">Cancelar consulta</ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem onSelect={remove} className="text-destructive"><Trash2 className="mr-2 h-4 w-4" /> Remover</ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
   );
 }
