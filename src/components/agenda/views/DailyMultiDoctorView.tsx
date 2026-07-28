@@ -143,18 +143,18 @@ export function DailyMultiDoctorView({
         <div className="text-sm font-medium capitalize">{dayStr}</div>
       </div>
       <div className="flex overflow-x-auto">
-        <div className="w-14 shrink-0 border-r border-border/60 pt-[52px]">
-          {SLOTS.map((slot) => (
-            <div
-              key={slot}
-              className={cn(
-                'h-10 -mt-2 pt-2 text-[10px] text-muted-foreground text-right pr-1',
-                slot.endsWith(':00') ? 'font-medium' : 'opacity-60'
-              )}
-            >
-              {slot}
-            </div>
-          ))}
+        <div className="w-14 shrink-0 border-r border-border/60 pt-[52px] relative">
+          <div className="relative" style={{ height: HOUR_PX * HOURS.length }}>
+            {HOURS.map((h, i) => (
+              <div
+                key={h}
+                className="absolute right-1 -mt-1.5 text-[11px] font-medium text-muted-foreground"
+                style={{ top: i * HOUR_PX }}
+              >
+                {h}
+              </div>
+            ))}
+          </div>
         </div>
         {activeDoctors.length === 0 ? (
           <div className="flex-1 flex items-center justify-center py-16 text-sm text-muted-foreground">
