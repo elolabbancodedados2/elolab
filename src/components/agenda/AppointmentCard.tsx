@@ -1,6 +1,6 @@
 import { useDraggable } from '@dnd-kit/core';
 import { cn } from '@/lib/utils';
-import { Clock, User, CheckCircle2, PlayCircle, Ban, Trash2, Edit3 } from 'lucide-react';
+import { CheckCircle2, PlayCircle, Ban, Trash2, Edit3 } from 'lucide-react';
 import {
   ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger,
 } from '@/components/ui/context-menu';
@@ -26,6 +26,22 @@ const STATUS_LABEL: Record<string, string> = {
   faltou: 'Faltou',
 };
 
+const STATUS_DOT: Record<string, string> = {
+  agendado: 'bg-muted-foreground/50',
+  confirmado: 'bg-success',
+  aguardando: 'bg-warning',
+  em_atendimento: 'bg-primary animate-pulse',
+  finalizado: 'bg-muted-foreground/30',
+  cancelado: 'bg-destructive/70',
+  faltou: 'bg-warning/70',
+};
+
+function initials(name?: string) {
+  if (!name) return '?';
+  const parts = name.trim().split(/\s+/);
+  return ((parts[0]?.[0] || '') + (parts[parts.length - 1]?.[0] || '')).toUpperCase();
+}
+
 function toMinutes(t: string) {
   const [h, m] = t.split(':').map(Number);
   return h * 60 + m;
@@ -42,14 +58,18 @@ export function AppointmentCard({ agendamento, color, minutesToPx, onClick }: Pr
   const end = agendamento.hora_fim ? toMinutes(agendamento.hora_fim) : start + 30;
   const duration = Math.max(15, end - start);
   const paciente = agendamento.pacientes;
+  const patientName = paciente?.nome_social || paciente?.nome || 'Paciente';
+  const cancelled = agendamento.status === 'cancelado';
+  const done = agendamento.status === 'finalizado';
 
   const style: React.CSSProperties = {
     position: 'absolute',
     top: minutesToPx(start - toMinutes('06:00')),
     height: minutesToPx(duration) - 4,
-    left: 4,
-    right: 4,
-    borderLeft: `4px solid ${color}`,
+    left: 3,
+    right: 3,
+    borderLeft: `3px solid ${color}`,
+    background: `linear-gradient(to right, ${color}12, hsl(var(--card)) 40%)`,
     transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
     opacity: isDragging ? 0.5 : 1,
     zIndex: isDragging ? 50 : 10,
@@ -79,26 +99,38 @@ export function AppointmentCard({ agendamento, color, minutesToPx, onClick }: Pr
         {...listeners}
         onClick={(e) => { e.stopPropagation(); onClick(); }}
       className={cn(
-        'rounded-md bg-card shadow-sm border border-border/60 hover:shadow-md',
-        'cursor-grab active:cursor-grabbing overflow-hidden transition-shadow',
-        'px-2 py-1.5 text-xs'
+        'group rounded-md bg-card shadow-sm border border-border/60 hover:shadow-md hover:border-primary/40',
+        'cursor-grab active:cursor-grabbing overflow-hidden transition-all',
+        'px-1.5 py-1 text-xs',
+        cancelled && 'opacity-60 line-through',
+        done && 'opacity-70',
       )}
     >
-      <div className="flex items-center gap-1 font-medium text-foreground truncate">
-        <Clock className="h-3 w-3 shrink-0" style={{ color }} />
-        <span>{agendamento.hora_inicio.slice(0, 5)}</span>
-        {agendamento.hora_fim && <span className="text-muted-foreground">–{agendamento.hora_fim.slice(0, 5)}</span>}
-      </div>
-      <div className="flex items-center gap-1 mt-0.5 truncate">
-        <User className="h-3 w-3 shrink-0 text-muted-foreground" />
-        <span className="truncate">{paciente?.nome_social || paciente?.nome || 'Paciente'}</span>
-      </div>
-      {duration >= 45 && (
-        <div className="mt-1 text-[10px] text-muted-foreground truncate">
-          {STATUS_LABEL[agendamento.status] || agendamento.status}
-          {agendamento.tipo && ` · ${agendamento.tipo}`}
+      <div className="flex items-start gap-1.5 min-w-0">
+        <div
+          className="shrink-0 h-6 w-6 rounded-full flex items-center justify-center text-[10px] font-semibold text-white shadow-sm"
+          style={{ backgroundColor: color }}
+          title={patientName}
+        >
+          {initials(patientName)}
         </div>
-      )}
+        <div className="flex-1 min-w-0 leading-tight">
+          <div className="flex items-center gap-1 font-medium text-foreground truncate">
+            <span className="tabular-nums">{agendamento.hora_inicio.slice(0, 5)}</span>
+            {agendamento.hora_fim && duration >= 30 && (
+              <span className="text-muted-foreground text-[10px]">–{agendamento.hora_fim.slice(0, 5)}</span>
+            )}
+            <span className={cn('ml-auto h-1.5 w-1.5 rounded-full shrink-0', STATUS_DOT[agendamento.status] || 'bg-muted')} />
+          </div>
+          <div className="truncate text-[11px]">{patientName}</div>
+          {duration >= 45 && (
+            <div className="mt-0.5 text-[10px] text-muted-foreground truncate">
+              {STATUS_LABEL[agendamento.status] || agendamento.status}
+              {agendamento.tipo && ` · ${agendamento.tipo}`}
+            </div>
+          )}
+        </div>
+      </div>
       </div>
       </ContextMenuTrigger>
       <ContextMenuContent className="w-56">
