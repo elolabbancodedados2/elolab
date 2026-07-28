@@ -77,10 +77,18 @@ const RISCO = {
 
 type Risco = keyof typeof RISCO;
 
+/**
+ * A tela pede altura em centímetros, mas registros antigos podem estar em
+ * metros (antes da migration 20260728170000 a coluna era DECIMAL(4,2), então
+ * só valores em metros cabiam). O limiar de 3 é seguro: ninguém tem 3 cm nem
+ * 3 metros. Mesma lógica já usada em Prontuários.
+ */
 const calcularIMC = (peso: string, altura: string): number | null => {
-  const p = parseFloat(peso); const h = parseFloat(altura) / 100;
-  if (p > 0 && h > 0) return parseFloat((p / (h * h)).toFixed(1));
-  return null;
+  const p = parseFloat(peso);
+  const a = parseFloat(altura);
+  if (!(p > 0) || !(a > 0)) return null;
+  const h = a > 3 ? a / 100 : a; // aceita cm e metros
+  return parseFloat((p / (h * h)).toFixed(1));
 };
 
 const imcClassification = (imc: number): { label: string; color: string } => {

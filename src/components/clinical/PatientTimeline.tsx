@@ -214,7 +214,10 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
       // Fetch triagens
       const { data: triagens } = await (supabase as any)
         .from('triagens')
-        .select('id, data_hora, pressao_arterial, frequencia_cardiaca, temperatura, peso, altura, saturacao_o2, queixa')
+        // As colunas são `saturacao` e `queixa_principal`. Com os nomes errados
+        // o PostgREST rejeitava a consulta inteira e a triagem nunca aparecia
+        // na linha do tempo.
+        .select('id, data_hora, pressao_arterial, frequencia_cardiaca, temperatura, peso, altura, saturacao, queixa_principal')
         .eq('paciente_id', pacienteId)
         .order('data_hora', { ascending: false })
         .limit(lim);
@@ -224,7 +227,7 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
           t.pressao_arterial && `PA ${t.pressao_arterial}`,
           t.frequencia_cardiaca && `FC ${t.frequencia_cardiaca}`,
           t.temperatura && `T ${t.temperatura}°C`,
-          t.saturacao_o2 && `SpO₂ ${t.saturacao_o2}%`,
+          t.saturacao && `SpO₂ ${t.saturacao}%`,
           t.peso && `${t.peso}kg`,
         ].filter(Boolean).join(' • ');
         allEvents.push({
@@ -232,14 +235,15 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
           type: 'triagem',
           date: new Date(t.data_hora),
           title: 'Triagem / Sinais Vitais',
-          description: vitals || t.queixa || 'Triagem realizada',
+          description: vitals || t.queixa_principal || 'Triagem realizada',
         });
       });
 
       // Fetch anexos
       const { data: anexos } = await (supabase as any)
         .from('anexos_prontuario')
-        .select('id, nome_arquivo, tipo, descricao, created_at, prontuarios!inner(paciente_id)')
+        // A coluna é `tipo_arquivo`.
+        .select('id, nome_arquivo, tipo_arquivo, descricao, created_at, prontuarios!inner(paciente_id)')
         .eq('prontuarios.paciente_id', pacienteId)
         .order('created_at', { ascending: false })
         .limit(lim);
@@ -250,23 +254,25 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
           type: 'anexo',
           date: new Date(a.created_at),
           title: a.nome_arquivo || 'Anexo',
-          description: a.descricao || a.tipo || 'Documento anexado',
+          description: a.descricao || a.tipo_arquivo || 'Documento anexado',
         });
       });
 
       // Fetch retornos
       const { data: retornos } = await (supabase as any)
         .from('retornos')
-        .select('id, data_retorno, motivo, status, medicos(nome)')
+        // A coluna em `retornos` é `data_retorno_prevista`. `data_retorno`
+        // pertence a `retornos_agendados`, que é outra tabela.
+        .select('id, data_retorno_prevista, motivo, status, medicos(nome)')
         .eq('paciente_id', pacienteId)
-        .order('data_retorno', { ascending: false })
+        .order('data_retorno_prevista', { ascending: false })
         .limit(lim);
 
       retornos?.forEach((r: any) => {
         allEvents.push({
           id: `ret-${r.id}`,
           type: 'retorno',
-          date: parseDateOnly(r.data_retorno)!,
+          date: parseDateOnly(r.data_retorno_prevista)!,
           title: 'Retorno agendado',
           description: r.motivo || 'Retorno do paciente',
           status: r.status,
