@@ -169,6 +169,7 @@ export default function Fila() {
 
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const { profile } = useSupabaseAuth();
   const today = format(new Date(), 'yyyy-MM-dd');
 
   const { data: fila = [], isLoading: loadingFila } = useFilaAtendimento();
