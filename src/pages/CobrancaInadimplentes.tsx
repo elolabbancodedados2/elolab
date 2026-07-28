@@ -10,11 +10,11 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { parseDateOnly } from '@/lib/dateOnly';
-import { useAuth } from '@/contexts/SupabaseAuthContext';
+import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 
 export default function CobrancaInadimplentes() {
   const [sending, setSending] = useState(false);
-  const { profile } = useAuth();
+  const { profile } = useSupabaseAuth();
   const clinicaId = profile?.clinica_id;
 
   const { data, isLoading, refetch } = useQuery({
