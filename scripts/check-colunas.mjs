@@ -1,0 +1,123 @@
+import fs from 'fs';
+import path from 'path';
+
+/**
+ * Compara as colunas que o código grava com o schema das migrations.
+ *
+ * Esta classe de bug já apareceu quatro vezes no projeto — nota fiscal,
+ * autorização de convênio, auditoria LGPD e altura da triagem — sempre pelo
+ * mesmo motivo: o supabase-js não lança em erro de API, então escrever numa
+ * coluna inexistente falha em silêncio.
+ */
+
+const ID = '[a-z_][a-z_0-9]*'; // nomes de coluna podem ter dígitos (participante_1_id)
+
+// ── 1. Schema a partir das migrations ────────────────────────────────────────
+const migDir = 'supabase/migrations';
+const schema = new Map();
+
+for (const f of fs.readdirSync(migDir).filter(f => f.endsWith('.sql')).sort()) {
+  const sql = fs.readFileSync(path.join(migDir, f), 'utf8');
+
+  const createRe = /CREATE TABLE (?:IF NOT EXISTS )?(?:public\.)?([a-z_0-9]+)\s*\(([\s\S]*?)\n\s*\);/gi;
+  let m;
+  while ((m = createRe.exec(sql))) {
+    const cols = schema.get(m[1]) || new Set();
+    for (const linha of m[2].split('\n')) {
+      const c = linha.trim().match(new RegExp(`^(${ID})\\s+[A-Za-z]`, 'i'));
+      if (c && !/^(constraint|primary|foreign|unique|check|references)$/i.test(c[1])) cols.add(c[1]);
+    }
+    schema.set(m[1], cols);
+  }
+
+  const alterRe = /ALTER TABLE (?:IF EXISTS )?(?:public\.)?([a-z_0-9]+)([\s\S]*?);/gi;
+  while ((m = alterRe.exec(sql))) {
+    const cols = schema.get(m[1]) || new Set();
+    let c;
+    const colRe = new RegExp(`ADD COLUMN (?:IF NOT EXISTS )?(${ID})`, 'gi');
+    while ((c = colRe.exec(m[2]))) cols.add(c[1]);
+    schema.set(m[1], cols);
+  }
+}
+
+// ── 2. Chaves de primeiro nível, ignorando strings e template literals ───────
+function chavesDeTopo(src, abre) {
+  let nivel = 0, chaves = [];
+  // Uma chave só começa logo depois de `{` ou `,`. Sem isso, o `null` de um
+  // ternário (`cond ? null : x`) seria lido como nome de coluna.
+  let podeSerChave = false;
+  for (let i = abre; i < src.length; i++) {
+    const ch = src[i];
+
+    // Pula strings — evita que `${x} Exame` ou 'ID:' virem "colunas"
+    if (ch === "'" || ch === '"' || ch === '`') {
+      const aspas = ch;
+      i++;
+      while (i < src.length) {
+        if (src[i] === '\\') { i += 2; continue; }
+        if (aspas === '`' && src[i] === '$' && src[i + 1] === '{') {
+          let n = 1; i += 2;
+          while (i < src.length && n > 0) { if (src[i] === '{') n++; else if (src[i] === '}') n--; i++; }
+          continue;
+        }
+        if (src[i] === aspas) break;
+        i++;
+      }
+      continue;
+    }
+
+    // Pula comentários de linha
+    if (ch === '/' && src[i + 1] === '/') { while (i < src.length && src[i] !== '\n') i++; continue; }
+
+    if (ch === '{') { nivel++; podeSerChave = nivel === 1; continue; }
+    if (ch === '}') { nivel--; if (nivel === 0) break; podeSerChave = false; continue; }
+    if (ch === ',') { podeSerChave = nivel === 1; continue; }
+    if (/\s/.test(ch)) continue; // espaços não encerram a expectativa de chave
+
+    if (nivel === 1 && podeSerChave) {
+      const k = src.slice(i).match(new RegExp(`^(${ID})\\s*:`, 'i'));
+      if (k) { chaves.push(k[1]); i += k[0].length - 1; }
+    }
+    podeSerChave = false;
+  }
+  return chaves;
+}
+
+const arquivos = [];
+(function walk(d) {
+  for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+    const p = path.join(d, e.name).split(path.sep).join('/');
+    if (e.isDirectory()) walk(p);
+    else if (/\.(ts|tsx)$/.test(e.name) && !/__tests__|\.test\./.test(p)) arquivos.push(p);
+  }
+})('src');
+
+const achados = [];
+for (const f of arquivos) {
+  const src = fs.readFileSync(f, 'utf8');
+  const re = /\.from\(\s*['"]([a-z_0-9]+)['"][^)]*\)\s*(?:as any\s*)?\r?\n?\s*\.(insert|update)\(\s*\[?\s*\{/g;
+  let m;
+  while ((m = re.exec(src))) {
+    const tabela = m[1], op = m[2];
+    const cols = schema.get(tabela);
+    if (!cols || cols.size === 0) continue;
+
+    const abre = src.lastIndexOf('{', re.lastIndex);
+    const linha = src.slice(0, m.index).split('\n').length;
+    for (const col of chavesDeTopo(src, abre)) {
+      if (!cols.has(col)) achados.push({ f, linha, tabela, op, col });
+    }
+  }
+}
+
+if (!achados.length) {
+  console.log('OK — nenhuma escrita em coluna inexistente.');
+} else {
+  console.log(`${achados.length} escrita(s) suspeita(s):\n`);
+  for (const a of achados) {
+    console.log(`  ${a.f}:${a.linha}  ${a.op} em "${a.tabela}" -> coluna "${a.col}"`);
+  }
+}
+console.log(`\n(${schema.size} tabelas, ${arquivos.length} arquivos)`);
+
+if (achados.length) process.exit(1);
