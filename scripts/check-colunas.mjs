@@ -12,6 +12,15 @@ import path from 'path';
 
 const ID = '[a-z_][a-z_0-9]*'; // nomes de coluna podem ter dígitos (participante_1_id)
 
+/** tabela -> coluna -> Set(valores aceitos), vindo de CHECK IN (...) e de ENUM */
+const valoresAceitos = new Map();
+const enums = new Map(); // nome do tipo -> Set(valores)
+
+function registrarValores(tabela, coluna, lista) {
+  if (!valoresAceitos.has(tabela)) valoresAceitos.set(tabela, new Map());
+  valoresAceitos.get(tabela).set(coluna, new Set(lista));
+}
+
 // ── 1. Schema a partir das migrations ────────────────────────────────────────
 const migDir = 'supabase/migrations';
 const schema = new Map();
@@ -19,30 +28,70 @@ const schema = new Map();
 for (const f of fs.readdirSync(migDir).filter(f => f.endsWith('.sql')).sort()) {
   const sql = fs.readFileSync(path.join(migDir, f), 'utf8');
 
+  // Enums declarados como tipo
+  const enumRe = /CREATE TYPE (?:public\.)?([a-z_0-9]+) AS ENUM \(([^)]*)\)/gi;
+  let em;
+  while ((em = enumRe.exec(sql))) {
+    enums.set(em[1], new Set([...em[2].matchAll(/'([^']*)'/g)].map(x => x[1])));
+  }
+
   const createRe = /CREATE TABLE (?:IF NOT EXISTS )?(?:public\.)?([a-z_0-9]+)\s*\(([\s\S]*?)\n\s*\);/gi;
   let m;
   while ((m = createRe.exec(sql))) {
-    const cols = schema.get(m[1]) || new Set();
+    const tabela = m[1];
+    const cols = schema.get(tabela) || new Set();
     for (const linha of m[2].split('\n')) {
       const c = linha.trim().match(new RegExp(`^(${ID})\\s+[A-Za-z]`, 'i'));
-      if (c && !/^(constraint|primary|foreign|unique|check|references)$/i.test(c[1])) cols.add(c[1]);
+      if (!c || /^(constraint|primary|foreign|unique|check|references)$/i.test(c[1])) continue;
+      cols.add(c[1]);
+
+      // CHECK (coluna IN ('a','b')) na própria linha
+      const chk = linha.match(new RegExp(`CHECK\\s*\\(\\s*${c[1]}\\s+IN\\s*\\(([^)]*)\\)`, 'i'));
+      if (chk) {
+        registrarValores(tabela, c[1], [...chk[1].matchAll(/'([^']*)'/g)].map(x => x[1]));
+      }
+
+      // Coluna tipada com um enum conhecido
+      const tipo = linha.trim().match(new RegExp(`^${c[1]}\\s+(?:public\\.)?([a-z_0-9]+)`, 'i'));
+      if (tipo && enums.has(tipo[1])) {
+        registrarValores(tabela, c[1], [...enums.get(tipo[1])]);
+      }
     }
-    schema.set(m[1], cols);
+    schema.set(tabela, cols);
   }
 
   const alterRe = /ALTER TABLE (?:IF EXISTS )?(?:public\.)?([a-z_0-9]+)([\s\S]*?);/gi;
   while ((m = alterRe.exec(sql))) {
-    const cols = schema.get(m[1]) || new Set();
+    const tabela = m[1], corpo = m[2];
+    const cols = schema.get(tabela) || new Set();
     let c;
     const colRe = new RegExp(`ADD COLUMN (?:IF NOT EXISTS )?(${ID})`, 'gi');
-    while ((c = colRe.exec(m[2]))) cols.add(c[1]);
-    schema.set(m[1], cols);
+    while ((c = colRe.exec(corpo))) cols.add(c[1]);
+    schema.set(tabela, cols);
+
+    // Restrições redefinidas depois da criação da tabela. Ignorar isto fazia o
+    // verificador acusar valores que passaram a ser válidos — lancamentos.tipo
+    // ganhou 'sangria'/'suprimento' e agendamentos.tipo ganhou 'coleta'.
+    // Duas sintaxes convivem no projeto:
+    //   CHECK (col IN ('a','b'))
+    //   CHECK (col = ANY (ARRAY['a'::text, 'b'::text]))
+    const chkIn = corpo.match(new RegExp(`CHECK\\s*\\(\\s*(${ID})\\s+IN\\s*\\(([^)]*)\\)`, 'i'));
+    if (chkIn) {
+      registrarValores(tabela, chkIn[1], [...chkIn[2].matchAll(/'([^']*)'/g)].map(x => x[1]));
+    }
+    const chkAny = corpo.match(new RegExp(`CHECK\\s*\\(\\s*(${ID})\\s*=\\s*ANY\\s*\\(\\s*ARRAY\\s*\\[([\\s\\S]*?)\\]`, 'i'));
+    if (chkAny) {
+      registrarValores(tabela, chkAny[1], [...chkAny[2].matchAll(/'([^']*)'/g)].map(x => x[1]));
+    }
   }
 }
 
 // ── 2. Chaves de primeiro nível, ignorando strings e template literals ───────
 function chavesDeTopo(src, abre) {
   let nivel = 0, chaves = [];
+  // Guarda também o literal quando a chave recebe uma string constante,
+  // para conferir contra CHECK IN (...) e enums.
+  const literais = chavesDeTopo.literais = new Map();
   // Uma chave só começa logo depois de `{` ou `,`. Sem isso, o `null` de um
   // ternário (`cond ? null : x`) seria lido como nome de coluna.
   let podeSerChave = false;
@@ -75,8 +124,15 @@ function chavesDeTopo(src, abre) {
     if (/\s/.test(ch)) continue; // espaços não encerram a expectativa de chave
 
     if (nivel === 1 && podeSerChave) {
-      const k = src.slice(i).match(new RegExp(`^(${ID})\\s*:`, 'i'));
-      if (k) { chaves.push(k[1]); i += k[0].length - 1; }
+      const resto = src.slice(i);
+      const k = resto.match(new RegExp(`^(${ID})\\s*:`, 'i'));
+      if (k) {
+        chaves.push(k[1]);
+        // `coluna: 'valor'` — só literal puro; expressões ficam de fora
+        const lit = resto.match(new RegExp(`^${k[1]}\\s*:\\s*'([^']*)'\\s*[,}]`));
+        if (lit) literais.set(k[1], lit[1]);
+        i += k[0].length - 1;
+      }
     }
     podeSerChave = false;
   }
@@ -104,8 +160,23 @@ for (const f of arquivos) {
 
     const abre = src.lastIndexOf('{', re.lastIndex);
     const linha = src.slice(0, m.index).split('\n').length;
-    for (const col of chavesDeTopo(src, abre)) {
-      if (!cols.has(col)) achados.push({ f, linha, tabela, op, col });
+    const chaves = chavesDeTopo(src, abre);
+    const literais = chavesDeTopo.literais;
+
+    for (const col of chaves) {
+      if (!cols.has(col)) { achados.push({ f, linha, tabela, op, col }); continue; }
+
+      // Valor constante fora do conjunto aceito pelo CHECK/enum. Foi assim que
+      // `action: 'DATA_CORRECTION'` passou despercebido em audit_log, cuja
+      // restrição só admite create/update/delete.
+      const permitidos = valoresAceitos.get(tabela)?.get(col);
+      const valor = literais.get(col);
+      if (permitidos && valor !== undefined && !permitidos.has(valor)) {
+        achados.push({
+          f, linha, tabela, op, col,
+          detalhe: `valor '${valor}' não é aceito (esperado: ${[...permitidos].join(', ')})`,
+        });
+      }
     }
   }
 }
@@ -233,7 +304,8 @@ if (!achados.length) {
 } else {
   console.log(`${achados.length} uso(s) suspeito(s):\n`);
   for (const a of achados) {
-    console.log(`  ${a.f}:${a.linha}  ${a.op} em "${a.tabela}" -> coluna "${a.col}"`);
+    const cauda = a.detalhe ? `\n      ${a.detalhe}` : '';
+    console.log(`  ${a.f}:${a.linha}  ${a.op} em "${a.tabela}" -> coluna "${a.col}"${cauda}`);
   }
 }
 console.log(`\n(${schema.size} tabelas, ${arquivos.length} arquivos)`);
