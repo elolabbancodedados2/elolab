@@ -18,6 +18,9 @@ interface DigitalSignatureProps {
   signerCRM?: string;
   onSigned?: (signatureData: SignatureData) => void;
   compact?: boolean;
+  /** If the document is already signed, show the badge and disable re-signing. */
+  alreadySigned?: boolean;
+  signedAt?: string | null;
 }
 
 interface SignatureData {
@@ -35,6 +38,8 @@ export function DigitalSignature({
   signerCRM,
   onSigned,
   compact = false,
+  alreadySigned = false,
+  signedAt = null,
 }: DigitalSignatureProps) {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [signing, setSigning] = useState(false);
@@ -46,10 +51,10 @@ export function DigitalSignature({
   const handleSign = async (method: 'icp-brasil' | 'eletronica-simples') => {
     setSigning(true);
     try {
-      // Generate document hash
-      const hash = btoa(`${documentId}:${documentType}:${signerName}:${new Date().toISOString()}`)
-        .replace(/[^a-zA-Z0-9]/g, '')
-        .substring(0, 32);
+      // Generate real SHA-256 hash of the document identity + timestamp (integrity fingerprint)
+      const payload = `${documentType}:${documentId}:${signerName}:${signerCRM || ''}:${new Date().toISOString()}`;
+      const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(payload));
+      const hash = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
 
       const data: SignatureData = {
         signedAt: new Date().toISOString(),
@@ -58,6 +63,28 @@ export function DigitalSignature({
         hash,
         method,
       };
+
+      // For prontuários — mark as immutably signed at the database level (CFM Res. 1.821/2007)
+      if (documentType === 'prontuario') {
+        const { error: updErr } = await (supabase as any).from('prontuarios').update({
+          assinado: true,
+          assinado_em: data.signedAt,
+          assinado_por: signerName,
+          crm_assinante: signerCRM || null,
+          hash_conteudo: hash,
+          tipo_assinatura: method,
+        }).eq('id', documentId);
+        if (updErr) throw updErr;
+
+        // Access log — dedicated CFM audit table
+        await (supabase as any).from('prontuario_acessos').insert({
+          prontuario_id: documentId,
+          acao: 'assinatura',
+          user_nome: signerName,
+          user_crm: signerCRM || null,
+          justificativa: `Assinatura ${method === 'icp-brasil' ? 'ICP-Brasil' : 'eletrônica simples'} • hash ${hash.substring(0, 16)}`,
+        });
+      }
 
       // Log signature in audit trail
       await supabase.from('audit_log').insert({
@@ -80,7 +107,7 @@ export function DigitalSignature({
     } catch (error) {
       toast({
         title: 'Erro na assinatura',
-        description: 'Não foi possível assinar o documento.',
+        description: (error as any)?.message || 'Não foi possível assinar o documento.',
         variant: 'destructive',
       });
     } finally {
@@ -88,6 +115,25 @@ export function DigitalSignature({
       setCertificatePin('');
     }
   };
+
+  if (alreadySigned && !signed) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="flex items-center gap-2 bg-green-500/10 border border-green-500/30 rounded-lg px-3 py-2"
+      >
+        <CheckCircle2 className="h-4 w-4 text-green-600 flex-shrink-0" />
+        <div className="flex-1 min-w-0">
+          <p className="text-xs font-medium text-green-700">Assinado digitalmente</p>
+          <p className="text-[10px] text-green-600/70 truncate">
+            {signerName}{signerCRM ? ` — CRM ${signerCRM}` : ''}
+            {signedAt && ` • ${new Date(signedAt).toLocaleString('pt-BR')}`}
+          </p>
+        </div>
+      </motion.div>
+    );
+  }
 
   if (signed && signatureData) {
     return (

@@ -3186,13 +3186,120 @@ export type Database = {
           },
         ]
       }
+      prontuario_acessos: {
+        Row: {
+          acao: string
+          clinica_id: string | null
+          created_at: string
+          id: string
+          ip_address: string | null
+          justificativa: string | null
+          paciente_id: string | null
+          prontuario_id: string | null
+          user_agent: string | null
+          user_crm: string | null
+          user_id: string | null
+          user_nome: string | null
+        }
+        Insert: {
+          acao: string
+          clinica_id?: string | null
+          created_at?: string
+          id?: string
+          ip_address?: string | null
+          justificativa?: string | null
+          paciente_id?: string | null
+          prontuario_id?: string | null
+          user_agent?: string | null
+          user_crm?: string | null
+          user_id?: string | null
+          user_nome?: string | null
+        }
+        Update: {
+          acao?: string
+          clinica_id?: string | null
+          created_at?: string
+          id?: string
+          ip_address?: string | null
+          justificativa?: string | null
+          paciente_id?: string | null
+          prontuario_id?: string | null
+          user_agent?: string | null
+          user_crm?: string | null
+          user_id?: string | null
+          user_nome?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "prontuario_acessos_prontuario_id_fkey"
+            columns: ["prontuario_id"]
+            isOneToOne: false
+            referencedRelation: "prontuarios"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      prontuario_adendos: {
+        Row: {
+          clinica_id: string | null
+          created_at: string
+          crm: string
+          hash: string | null
+          id: string
+          medico_id: string | null
+          medico_nome: string
+          motivo: string
+          prontuario_id: string
+          texto: string
+          tipo: string
+        }
+        Insert: {
+          clinica_id?: string | null
+          created_at?: string
+          crm: string
+          hash?: string | null
+          id?: string
+          medico_id?: string | null
+          medico_nome: string
+          motivo: string
+          prontuario_id: string
+          texto: string
+          tipo: string
+        }
+        Update: {
+          clinica_id?: string | null
+          created_at?: string
+          crm?: string
+          hash?: string | null
+          id?: string
+          medico_id?: string | null
+          medico_nome?: string
+          motivo?: string
+          prontuario_id?: string
+          texto?: string
+          tipo?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "prontuario_adendos_prontuario_id_fkey"
+            columns: ["prontuario_id"]
+            isOneToOne: false
+            referencedRelation: "prontuarios"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       prontuarios: {
         Row: {
           agendamento_id: string | null
           alergias_relatadas: string | null
+          assinado: boolean
+          assinado_em: string | null
+          assinado_por: string | null
           clinica_id: string | null
           conduta: string | null
           created_at: string | null
+          crm_assinante: string | null
           data: string
           diagnostico_principal: string | null
           diagnosticos_secundarios: string[] | null
@@ -3203,6 +3310,7 @@ export type Database = {
           exame_pele: string | null
           exame_torax: string | null
           exames_fisicos: string | null
+          hash_conteudo: string | null
           hipotese_diagnostica: string | null
           historia_doenca_atual: string | null
           historia_familiar: string | null
@@ -3218,14 +3326,19 @@ export type Database = {
           queixa_principal: string | null
           revisao_sistemas: string | null
           sinais_vitais: Json | null
+          tipo_assinatura: string | null
           updated_at: string | null
         }
         Insert: {
           agendamento_id?: string | null
           alergias_relatadas?: string | null
+          assinado?: boolean
+          assinado_em?: string | null
+          assinado_por?: string | null
           clinica_id?: string | null
           conduta?: string | null
           created_at?: string | null
+          crm_assinante?: string | null
           data?: string
           diagnostico_principal?: string | null
           diagnosticos_secundarios?: string[] | null
@@ -3236,6 +3349,7 @@ export type Database = {
           exame_pele?: string | null
           exame_torax?: string | null
           exames_fisicos?: string | null
+          hash_conteudo?: string | null
           hipotese_diagnostica?: string | null
           historia_doenca_atual?: string | null
           historia_familiar?: string | null
@@ -3251,14 +3365,19 @@ export type Database = {
           queixa_principal?: string | null
           revisao_sistemas?: string | null
           sinais_vitais?: Json | null
+          tipo_assinatura?: string | null
           updated_at?: string | null
         }
         Update: {
           agendamento_id?: string | null
           alergias_relatadas?: string | null
+          assinado?: boolean
+          assinado_em?: string | null
+          assinado_por?: string | null
           clinica_id?: string | null
           conduta?: string | null
           created_at?: string | null
+          crm_assinante?: string | null
           data?: string
           diagnostico_principal?: string | null
           diagnosticos_secundarios?: string[] | null
@@ -3269,6 +3388,7 @@ export type Database = {
           exame_pele?: string | null
           exame_torax?: string | null
           exames_fisicos?: string | null
+          hash_conteudo?: string | null
           hipotese_diagnostica?: string | null
           historia_doenca_atual?: string | null
           historia_familiar?: string | null
@@ -3284,6 +3404,7 @@ export type Database = {
           queixa_principal?: string | null
           revisao_sistemas?: string | null
           sinais_vitais?: Json | null
+          tipo_assinatura?: string | null
           updated_at?: string | null
         }
         Relationships: [
