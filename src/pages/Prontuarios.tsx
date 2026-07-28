@@ -8,7 +8,7 @@ import {
   Printer, BookOpen, ShieldCheck, FileCheck, X, Clipboard,
   Phone, Mail, Building2, CreditCard, Baby, Shield, Lock, PenLine,
   TestTube, ArrowRight, UserCheck, BadgeCheck, Share2, MessageCircle, ExternalLink,
-  Hash, MapPin, Fingerprint,
+  Hash, MapPin, Fingerprint, FileEdit, ScrollText,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -33,6 +33,7 @@ import {
   VitalSignsChart, PatientTimeline, PatientPhoto, DigitalSignature,
   DrugInteractionChecker,
 } from '@/components/clinical';
+import { ProntuarioAdendos } from '@/components/clinical/ProntuarioAdendos';
 import { usePacientes, useMedicos, useAgendamentos, useSupabaseQuery } from '@/hooks/useSupabaseData';
 import { useCurrentMedico } from '@/hooks/useCurrentMedico';
 import { supabase } from '@/integrations/supabase/client';
@@ -315,12 +316,36 @@ function ProntuarioAuditLog({ prontuarioId }: { prontuarioId: string }) {
   useEffect(() => {
     if (!prontuarioId) return;
     setLoading(true);
-    supabase.from('audit_log').select('*').eq('record_id', prontuarioId).eq('collection', 'prontuarios')
-      .order('timestamp', { ascending: false }).limit(20)
-      .then(({ data }) => { setLogs(data || []); setLoading(false); });
+    Promise.all([
+      (supabase as any).from('prontuario_acessos').select('*').eq('prontuario_id', prontuarioId)
+        .order('created_at', { ascending: false }).limit(50),
+      supabase.from('audit_log').select('*').eq('record_id', prontuarioId).eq('collection', 'prontuarios')
+        .order('timestamp', { ascending: false }).limit(20),
+    ]).then(([acessos, audit]) => {
+      const merged = [
+        ...((acessos.data as any[]) || []).map(a => ({
+          id: `a-${a.id}`, ts: a.created_at, action: a.acao,
+          user_name: a.user_nome, user_crm: a.user_crm,
+          justificativa: a.justificativa, source: 'cfm',
+        })),
+        ...((audit.data as any[]) || []).map(a => ({
+          id: `l-${a.id}`, ts: a.timestamp, action: a.action,
+          user_name: a.user_name, source: 'audit',
+        })),
+      ].sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime());
+      setLogs(merged);
+      setLoading(false);
+    });
   }, [prontuarioId]);
 
   if (loading) return <Skeleton className="h-32" />;
+
+  const actionLabel = (a: string) => ({
+    create: 'Criação', update: 'Edição', access: 'Acesso',
+    visualizacao: 'Visualização', edicao: 'Edição', assinatura: 'Assinatura',
+    adendo: 'Adendo', sign: 'Assinatura', edit_request: 'Solicitou edição',
+    exportacao: 'Exportação', impressao: 'Impressão',
+  } as Record<string, string>)[a] || a;
 
   return (
     <div className="space-y-3">
@@ -331,19 +356,24 @@ function ProntuarioAuditLog({ prontuarioId }: { prontuarioId: string }) {
         <p className="text-xs text-muted-foreground py-6 text-center">Nenhum registro de auditoria</p>
       ) : (
         <div className="space-y-1.5">
-          {logs.map(log => (
+          {logs.map((log: any) => (
             <div key={log.id} className="flex items-start gap-2.5 text-xs border-l-2 border-muted pl-3 py-1.5">
               <Lock className="h-3 w-3 text-muted-foreground mt-0.5 flex-shrink-0" />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-1.5 flex-wrap">
-                  <Badge variant="outline" className="text-[9px] px-1.5 py-0">
-                    {log.action === 'create' ? 'Criação' : log.action === 'update' ? 'Edição' : log.action === 'access' ? 'Acesso' : log.action}
-                  </Badge>
+                  <Badge variant="outline" className="text-[9px] px-1.5 py-0">{actionLabel(log.action)}</Badge>
                   <span className="text-[10px] text-muted-foreground">
-                    {log.timestamp ? format(new Date(log.timestamp), "dd/MM/yy HH:mm", { locale: ptBR }) : '—'}
+                    {log.ts ? format(new Date(log.ts), "dd/MM/yy HH:mm", { locale: ptBR }) : '—'}
                   </span>
                 </div>
-                {log.user_name && <p className="text-[10px] text-muted-foreground">por {log.user_name}</p>}
+                {log.user_name && (
+                  <p className="text-[10px] text-muted-foreground">
+                    por {log.user_name}{log.user_crm ? ` — CRM ${log.user_crm}` : ''}
+                  </p>
+                )}
+                {log.justificativa && (
+                  <p className="text-[10px] text-muted-foreground italic mt-0.5">{log.justificativa}</p>
+                )}
               </div>
             </div>
           ))}
@@ -463,7 +493,7 @@ export default function Prontuarios() {
     setLoadingHistorico(true);
     let query = supabase
       .from('prontuarios')
-      .select('id, data, queixa_principal, historia_doenca_atual, exames_fisicos, hipotese_diagnostica, conduta, sinais_vitais, diagnostico_principal, plano_terapeutico, medicos(nome, crm, especialidade)')
+      .select('id, data, queixa_principal, historia_doenca_atual, exames_fisicos, hipotese_diagnostica, conduta, sinais_vitais, diagnostico_principal, plano_terapeutico, assinado, assinado_em, assinado_por, crm_assinante, medicos(nome, crm, especialidade)')
       .eq('paciente_id', selectedPacienteId)
       .order('data', { ascending: false })
       .limit(50);
@@ -535,6 +565,12 @@ export default function Prontuarios() {
         action: 'access', collection: 'prontuarios', record_id: prontuario.id,
         record_name: selectedPaciente?.nome || '', user_id: user?.id || null, user_name: user?.nome || null,
       });
+      // CFM Res. 1.821/2007 — dedicated access log for chart views
+      await (supabase as any).from('prontuario_acessos').insert({
+        prontuario_id: prontuario.id,
+        acao: 'visualizacao',
+        user_nome: user?.nome || null,
+      });
     } catch { /* silent */ }
   };
 
@@ -544,15 +580,28 @@ export default function Prontuarios() {
   };
   const handleRemovePrescricao = (i: number) => setPrescricoes(prescricoes.filter((_, idx) => idx !== i));
 
-  const isReadOnly = !!currentProntuario.id && !isEditing;
+  const isSigned = !!currentProntuario.assinado;
+  const isReadOnly = (!!currentProntuario.id && !isEditing) || isSigned;
 
   const handleRequestEdit = async () => {
+    if (isSigned) {
+      toast.error('Prontuário assinado', {
+        description: 'Registros assinados são imutáveis (CFM 1.821/07). Use "Adendos" para retificar ou complementar.',
+      });
+      return;
+    }
     try {
       await supabase.from('audit_log').insert({
         action: 'edit_request', collection: 'prontuarios', record_id: currentProntuario.id,
         record_name: `Edição — ${selectedPaciente?.nome || ''}`,
         user_id: user?.id || null, user_name: user?.nome || null,
         changes: { motivo: 'Edição solicitada pelo médico' },
+      });
+      await (supabase as any).from('prontuario_acessos').insert({
+        prontuario_id: currentProntuario.id,
+        acao: 'edicao',
+        user_nome: user?.nome || null,
+        justificativa: 'Modo de edição ativado',
       });
     } catch { /* silent */ }
     setIsEditing(true);
@@ -565,6 +614,12 @@ export default function Prontuarios() {
   const performSave = async (silent = false): Promise<string | null> => {
     if (!currentProntuario.queixa_principal) {
       if (!silent) toast.error('Erro', { description: 'Preencha a queixa principal.' });
+      return null;
+    }
+    if (isSigned) {
+      if (!silent) toast.error('Prontuário assinado', {
+        description: 'Registro imutável. Use "Adendos" para complementar ou retificar.',
+      });
       return null;
     }
     try {
@@ -690,7 +745,7 @@ export default function Prontuarios() {
         refetchProntuarios();
         // Reload history
         const { data: hist } = await supabase.from('prontuarios')
-          .select('id, data, queixa_principal, historia_doenca_atual, exames_fisicos, hipotese_diagnostica, conduta, sinais_vitais, diagnostico_principal, plano_terapeutico, medicos(nome, crm, especialidade)')
+          .select('id, data, queixa_principal, historia_doenca_atual, exames_fisicos, hipotese_diagnostica, conduta, sinais_vitais, diagnostico_principal, plano_terapeutico, assinado, assinado_em, assinado_por, crm_assinante, medicos(nome, crm, especialidade)')
           .eq('paciente_id', currentProntuario.paciente_id)
           .order('data', { ascending: false }).limit(50);
         setHistoricoEvolucoes(hist ?? []);
@@ -1140,15 +1195,21 @@ export default function Prontuarios() {
             <motion.div
               initial={{ opacity: 0, y: -4 }}
               animate={{ opacity: 1, y: 0 }}
-              className="flex-shrink-0 flex items-center gap-2 px-3 py-2 bg-warning/8 border border-warning/25 rounded-xl"
+              className={`flex-shrink-0 flex items-center gap-2 px-3 py-2 rounded-xl border ${
+                isSigned ? 'bg-success/8 border-success/30' : 'bg-warning/8 border-warning/25'
+              }`}
             >
-              <Lock className="h-3.5 w-3.5 text-warning flex-shrink-0" />
-              <span className="text-xs text-warning font-medium flex-1">
-                Somente leitura — CFM nº 1.821/07
+              <Lock className={`h-3.5 w-3.5 flex-shrink-0 ${isSigned ? 'text-success' : 'text-warning'}`} />
+              <span className={`text-xs font-medium flex-1 ${isSigned ? 'text-success' : 'text-warning'}`}>
+                {isSigned
+                  ? `Assinado digitalmente — imutável (CFM 1.821/07)${currentProntuario.assinado_em ? ` em ${format(new Date(currentProntuario.assinado_em), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}` : ''}`
+                  : 'Somente leitura — CFM nº 1.821/07'}
               </span>
-              <Button variant="outline" size="sm" onClick={handleRequestEdit} className="h-6 text-[10px] gap-1 border-warning/40 text-warning hover:bg-warning/10">
-                <PenLine className="h-3 w-3" />Solicitar Edição
-              </Button>
+              {!isSigned && (
+                <Button variant="outline" size="sm" onClick={handleRequestEdit} className="h-6 text-[10px] gap-1 border-warning/40 text-warning hover:bg-warning/10">
+                  <PenLine className="h-3 w-3" />Solicitar Edição
+                </Button>
+              )}
             </motion.div>
           )}
 
@@ -1156,7 +1217,7 @@ export default function Prontuarios() {
           <ScrollArea className="flex-1 pr-4">
             <fieldset disabled={isReadOnly} className="contents">
               <Tabs defaultValue="anamnese" className="w-full">
-                <TabsList className="grid w-full grid-cols-8 mb-3 h-auto p-0.5 bg-muted/40 rounded-xl">
+                <TabsList className="grid w-full grid-cols-9 mb-3 h-auto p-0.5 bg-muted/40 rounded-xl">
                   {[
                     { val: 'anamnese', icon: ClipboardList, label: 'Anamnese' },
                     { val: 'exame', icon: Stethoscope, label: 'Exame' },
@@ -1165,6 +1226,7 @@ export default function Prontuarios() {
                     { val: 'prescricao', icon: Pill, label: 'Prescrição' },
                     { val: 'anexos', icon: Paperclip, label: 'Anexos' },
                     { val: 'historico', icon: History, label: 'Histórico' },
+            { val: 'adendos', icon: ScrollText, label: 'Adendos' },
                     { val: 'auditoria', icon: Shield, label: 'Auditoria' },
                   ].map(t => (
                     <TabsTrigger key={t.val} value={t.val} className="text-[10px] gap-1 rounded-lg py-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm">
@@ -1412,6 +1474,23 @@ export default function Prontuarios() {
                   )}
                 </TabsContent>
 
+                {/* ─── Adendos ─── */}
+                <TabsContent value="adendos" className="pt-1">
+                  {currentProntuario.id ? (
+                    <ProntuarioAdendos
+                      prontuarioId={currentProntuario.id}
+                      medicoId={currentProntuario.medico_id}
+                      medicoNome={medicos.find((m: any) => m.id === currentProntuario.medico_id)?.nome || user?.nome}
+                      crm={medicos.find((m: any) => m.id === currentProntuario.medico_id)?.crm}
+                    />
+                  ) : (
+                    <div className="flex flex-col items-center py-10 text-muted-foreground">
+                      <ScrollText className="h-8 w-8 opacity-20 mb-2" />
+                      <p className="text-xs">Salve o prontuário para registrar adendos</p>
+                    </div>
+                  )}
+                </TabsContent>
+
                 {/* ─── Auditoria ─── */}
                 <TabsContent value="auditoria" className="pt-1">
                   {currentProntuario.id ? (
@@ -1454,9 +1533,16 @@ export default function Prontuarios() {
                   <DigitalSignature
                     documentId={currentProntuario.id}
                     documentType="prontuario"
-                    signerName={user?.nome || 'Médico'}
+                    signerName={medicos.find((m: any) => m.id === currentProntuario.medico_id)?.nome || user?.nome || 'Médico'}
                     signerCRM={medicos.find((m: any) => m.id === currentProntuario.medico_id)?.crm}
                     compact
+                    alreadySigned={isSigned}
+                    signedAt={currentProntuario.assinado_em}
+                    onSigned={() => {
+                      setCurrentProntuario(prev => ({ ...prev, assinado: true, assinado_em: new Date().toISOString() }));
+                      setIsEditing(false);
+                      refetchProntuarios();
+                    }}
                   />
                 )}
                 {autoSaveTime && (
