@@ -10,6 +10,7 @@ import { useQueryClient } from '@tanstack/react-query';
 
 import { useAgendamentos, useMedicos, usePacientes, useSupabaseQuery } from '@/hooks/useSupabaseData';
 import { useAgendaColorScheme } from './hooks/useAgendaColorScheme';
+import { useAgendaDefaultView } from './hooks/useAgendaDefaultView';
 import { AgendaHeader } from './AgendaHeader';
 import { DailyMultiDoctorView } from './views/DailyMultiDoctorView';
 import { WeeklyView } from './views/WeeklyView';
@@ -36,6 +37,12 @@ export function AgendaPage() {
   const queryClient = useQueryClient();
   const [date, setDate] = useState(() => sessionStorage.getItem('agenda:date') || format(new Date(), 'yyyy-MM-dd'));
   const [view, setView] = useState<AgendaView>(() => (sessionStorage.getItem('agenda:view') as AgendaView) || 'daily');
+  const { defaultView, setDefaultView, loaded: defaultViewLoaded } = useAgendaDefaultView();
+  const [viewTouched, setViewTouched] = useState(() => !!sessionStorage.getItem('agenda:view'));
+  useEffect(() => {
+    if (defaultViewLoaded && defaultView && !viewTouched) setView(defaultView);
+  }, [defaultViewLoaded, defaultView, viewTouched]);
+  const handleViewChange = (v: AgendaView) => { setViewTouched(true); setView(v); };
   useEffect(() => { sessionStorage.setItem('agenda:date', date); }, [date]);
   useEffect(() => { sessionStorage.setItem('agenda:view', view); }, [view]);
   const [search, setSearch] = useState('');
@@ -186,7 +193,9 @@ export function AgendaPage() {
           date={date}
           view={view}
           onDateChange={setDate}
-          onViewChange={setView}
+          onViewChange={handleViewChange}
+          defaultView={defaultView}
+          onSetDefaultView={setDefaultView}
           search={search}
           onSearchChange={setSearch}
           medicos={medicos}
