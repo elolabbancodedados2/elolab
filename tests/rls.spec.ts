@@ -18,6 +18,13 @@ const headers = {
   'Content-Type': 'application/json',
 };
 
+/**
+ * UUID que não corresponde a nenhum registro. Os testes de escrita miram nele
+ * de propósito: esta suíte roda contra o banco real, então um alvo amplo
+ * transformaria uma falha de RLS em perda de dados causada pelo próprio teste.
+ */
+const ID_INEXISTENTE = '00000000-0000-0000-0000-000000000000';
+
 /** Tabelas que jamais podem devolver linhas para um visitante anônimo. */
 const PRIVATE_TABLES = [
   'pacientes',
@@ -71,7 +78,12 @@ test.describe('RLS — escrita anônima', () => {
   });
 
   test('update de paciente não afeta linhas', async ({ request }) => {
-    const response = await request.patch(`${SUPABASE_URL}/rest/v1/pacientes?nome=neq.`, {
+    // Filtro deliberadamente impossível: esta suíte roda contra o banco REAL.
+    // Uma versão anterior usava `?nome=neq.`, que casa com praticamente toda
+    // linha — se o RLS estivesse aberto, o próprio teste alteraria a base
+    // inteira de pacientes. O teste continua provando o que importa (anônimo
+    // não escreve) sem poder causar dano se a proteção falhar.
+    const response = await request.patch(`${SUPABASE_URL}/rest/v1/pacientes?id=eq.${ID_INEXISTENTE}`, {
       headers: { ...headers, Prefer: 'return=representation' },
       data: { observacoes: 'rls-test' },
     });
@@ -85,7 +97,9 @@ test.describe('RLS — escrita anônima', () => {
   });
 
   test('delete de paciente não remove linhas', async ({ request }) => {
-    const response = await request.delete(`${SUPABASE_URL}/rest/v1/pacientes?nome=neq.`, {
+    // Mesmo cuidado do teste acima: alvo impossível, para que uma falha de RLS
+    // seja detectada sem apagar nada.
+    const response = await request.delete(`${SUPABASE_URL}/rest/v1/pacientes?id=eq.${ID_INEXISTENTE}`, {
       headers: { ...headers, Prefer: 'return=representation' },
     });
 
