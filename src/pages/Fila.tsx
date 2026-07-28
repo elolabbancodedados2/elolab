@@ -20,6 +20,7 @@ import { createAutoBilling } from '@/lib/autoBilling';
 import { autoIniciarAtendimento, autoFinalizarAtendimento } from '@/lib/workflowAutomation';
 import { useFilaAtendimento, useAgendamentos, usePacientes, useMedicos, useSalas } from '@/hooks/useSupabaseData';
 import { useQueryClient } from '@tanstack/react-query';
+import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { format, formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
