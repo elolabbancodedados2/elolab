@@ -1163,15 +1163,21 @@ export default function Prontuarios() {
             <motion.div
               initial={{ opacity: 0, y: -4 }}
               animate={{ opacity: 1, y: 0 }}
-              className="flex-shrink-0 flex items-center gap-2 px-3 py-2 bg-warning/8 border border-warning/25 rounded-xl"
+              className={`flex-shrink-0 flex items-center gap-2 px-3 py-2 rounded-xl border ${
+                isSigned ? 'bg-success/8 border-success/30' : 'bg-warning/8 border-warning/25'
+              }`}
             >
-              <Lock className="h-3.5 w-3.5 text-warning flex-shrink-0" />
-              <span className="text-xs text-warning font-medium flex-1">
-                Somente leitura — CFM nº 1.821/07
+              <Lock className={`h-3.5 w-3.5 flex-shrink-0 ${isSigned ? 'text-success' : 'text-warning'}`} />
+              <span className={`text-xs font-medium flex-1 ${isSigned ? 'text-success' : 'text-warning'}`}>
+                {isSigned
+                  ? `Assinado digitalmente — imutável (CFM 1.821/07)${currentProntuario.assinado_em ? ` em ${format(new Date(currentProntuario.assinado_em), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}` : ''}`
+                  : 'Somente leitura — CFM nº 1.821/07'}
               </span>
-              <Button variant="outline" size="sm" onClick={handleRequestEdit} className="h-6 text-[10px] gap-1 border-warning/40 text-warning hover:bg-warning/10">
-                <PenLine className="h-3 w-3" />Solicitar Edição
-              </Button>
+              {!isSigned && (
+                <Button variant="outline" size="sm" onClick={handleRequestEdit} className="h-6 text-[10px] gap-1 border-warning/40 text-warning hover:bg-warning/10">
+                  <PenLine className="h-3 w-3" />Solicitar Edição
+                </Button>
+              )}
             </motion.div>
           )}
 
@@ -1179,7 +1185,7 @@ export default function Prontuarios() {
           <ScrollArea className="flex-1 pr-4">
             <fieldset disabled={isReadOnly} className="contents">
               <Tabs defaultValue="anamnese" className="w-full">
-                <TabsList className="grid w-full grid-cols-8 mb-3 h-auto p-0.5 bg-muted/40 rounded-xl">
+                <TabsList className="grid w-full grid-cols-9 mb-3 h-auto p-0.5 bg-muted/40 rounded-xl">
                   {[
                     { val: 'anamnese', icon: ClipboardList, label: 'Anamnese' },
                     { val: 'exame', icon: Stethoscope, label: 'Exame' },
