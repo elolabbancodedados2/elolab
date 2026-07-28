@@ -23,6 +23,7 @@ import {
   BarChart, Bar, PieChart, Pie, Cell, Legend,
 } from 'recharts';
 import { parseDateOnly } from '@/lib/dateOnly';
+import { valorRealizado } from '@/lib/lancamentos';
 
 const fmt = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 const fmtShort = (v: number) => {
@@ -76,20 +77,20 @@ export default function Financeiro() {
     });
     const receitas = doMes.filter(l => l.tipo === 'receita');
     const despesas = doMes.filter(l => l.tipo === 'despesa');
-    const recebido = receitas.filter(l => l.status === 'pago').reduce((a, l) => a + Number(l.valor), 0);
+    const recebido = receitas.filter(l => l.status === 'pago').reduce((a, l) => a + valorRealizado(l), 0);
     const aReceber = receitas.filter(l => l.status === 'pendente').reduce((a, l) => a + Number(l.valor), 0);
     const totalReceitas = receitas.filter(l => l.status !== 'cancelado' && l.status !== 'estornado').reduce((a, l) => a + Number(l.valor), 0);
     const vencido = receitas.filter(l => {
       if (l.status !== 'pendente' || !l.data_vencimento) return false;
       return l.data_vencimento < format(new Date(), 'yyyy-MM-dd');
     }).reduce((a, l) => a + Number(l.valor), 0);
-    const totalDespesas = despesas.filter(l => l.status === 'pago').reduce((a, l) => a + Number(l.valor), 0);
+    const totalDespesas = despesas.filter(l => l.status === 'pago').reduce((a, l) => a + valorRealizado(l), 0);
     const aPagar = despesas.filter(l => l.status === 'pendente').reduce((a, l) => a + Number(l.valor), 0);
     const saldo = recebido - totalDespesas;
 
     // Previous month for comparison
-    const recAnt = doMesAnt.filter(l => l.tipo === 'receita' && l.status === 'pago').reduce((a, l) => a + Number(l.valor), 0);
-    const despAnt = doMesAnt.filter(l => l.tipo === 'despesa' && l.status === 'pago').reduce((a, l) => a + Number(l.valor), 0);
+    const recAnt = doMesAnt.filter(l => l.tipo === 'receita' && l.status === 'pago').reduce((a, l) => a + valorRealizado(l), 0);
+    const despAnt = doMesAnt.filter(l => l.tipo === 'despesa' && l.status === 'pago').reduce((a, l) => a + valorRealizado(l), 0);
     const varReceita = recAnt > 0 ? ((recebido - recAnt) / recAnt) * 100 : 0;
     const varDespesa = despAnt > 0 ? ((totalDespesas - despAnt) / despAnt) * 100 : 0;
 
@@ -147,8 +148,8 @@ export default function Financeiro() {
     return Array.from({ length: 6 }, (_, i) => {
       const d = subMonths(currentDate, 5 - i);
       const m = d.getMonth(); const y = d.getFullYear();
-      const rec = lancamentos.filter(l => l.tipo === 'receita' && l.status === 'pago' && parseDateOnly(l.data)!.getMonth() === m && parseDateOnly(l.data)!.getFullYear() === y).reduce((a, l) => a + Number(l.valor), 0);
-      const des = lancamentos.filter(l => l.tipo === 'despesa' && l.status === 'pago' && parseDateOnly(l.data)!.getMonth() === m && parseDateOnly(l.data)!.getFullYear() === y).reduce((a, l) => a + Number(l.valor), 0);
+      const rec = lancamentos.filter(l => l.tipo === 'receita' && l.status === 'pago' && parseDateOnly(l.data)!.getMonth() === m && parseDateOnly(l.data)!.getFullYear() === y).reduce((a, l) => a + valorRealizado(l), 0);
+      const des = lancamentos.filter(l => l.tipo === 'despesa' && l.status === 'pago' && parseDateOnly(l.data)!.getMonth() === m && parseDateOnly(l.data)!.getFullYear() === y).reduce((a, l) => a + valorRealizado(l), 0);
       return { name: format(d, 'MMM/yy', { locale: ptBR }), receitas: rec, despesas: des, lucro: rec - des };
     });
   }, [lancamentos, currentDate]);

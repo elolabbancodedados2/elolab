@@ -31,7 +31,8 @@ import * as XLSX from 'xlsx';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell,
 } from 'recharts';
-import { parseDateOnly } from '@/lib/dateOnly';
+import { parseDateOnly, todayDateOnly } from '@/lib/dateOnly';
+import { valorRealizado } from '@/lib/lancamentos';
 
 type StatusPagamento = Database['public']['Enums']['status_pagamento'];
 
@@ -195,7 +196,7 @@ export default function ContasReceber() {
       total: filtered.filter(c => c.status !== 'cancelado' && c.status !== 'estornado').reduce((a, c) => a + c.valor, 0),
       pendente: filtered.filter(c => c.status === 'pendente').reduce((a, c) => a + c.valor, 0),
       atrasado: filtered.filter(c => c.status === 'atrasado').reduce((a, c) => a + c.valor, 0),
-      pago: filtered.filter(c => c.status === 'pago').reduce((a, c) => a + c.valor, 0),
+      pago: filtered.filter(c => c.status === 'pago').reduce((a, c) => a + valorRealizado(c), 0),
       countPendente: filtered.filter(c => c.status === 'pendente').length,
       countAtrasado: filtered.filter(c => c.status === 'atrasado').length,
       countPago: filtered.filter(c => c.status === 'pago').length,
@@ -306,14 +307,19 @@ export default function ContasReceber() {
     }
     setIsSubmitting(true);
     try {
-      const { error } = await supabase.from('lancamentos').update({
+      // O valor recebido precisa ser GRAVADO, não só exibido. Antes, desconto e
+      // acréscimo viravam texto em observações e `valor` continuava com o valor
+      // cobrado — então uma conta de R$ 200 recebida com R$ 20 de desconto
+      // seguia contabilizada como R$ 200, inflando receita, DRE e fluxo de caixa.
+      const { error } = await (supabase as any).from('lancamentos').update({
         status: 'pago' as StatusPagamento,
         forma_pagamento: baixaData.forma_pagamento,
+        valor_pago: Number(valorFinal.toFixed(2)),
+        desconto: Number((baixaData.desconto || 0).toFixed(2)),
+        acrescimo: Number((baixaData.acrescimo || 0).toFixed(2)),
+        data_pagamento: baixaData.data_recebimento || todayDateOnly(),
         observacoes: [
           selectedConta.observacoes, baixaData.observacoes,
-          baixaData.desconto > 0 ? `Desconto: R$ ${baixaData.desconto.toFixed(2)}` : null,
-          baixaData.acrescimo > 0 ? `Acréscimo: R$ ${baixaData.acrescimo.toFixed(2)}` : null,
-          `Recebido em ${format(new Date(), "dd/MM/yyyy 'às' HH:mm")}`,
         ].filter(Boolean).join(' | ') || null,
       }).eq('id', selectedConta.id);
       if (error) throw error;
@@ -328,8 +334,12 @@ export default function ContasReceber() {
 
   const handleEstornar = async (conta: any) => {
     try {
-      const { error } = await supabase.from('lancamentos').update({
+      // Estorno desfaz a baixa: o dinheiro não entrou, então valor_pago volta a
+      // ser nulo e o lançamento deixa de contar como receita recebida.
+      const { error } = await (supabase as any).from('lancamentos').update({
         status: 'estornado' as StatusPagamento,
+        valor_pago: null,
+        data_pagamento: null,
       }).eq('id', conta.id);
       if (error) throw error;
       toast.success('Estorno realizado.');
