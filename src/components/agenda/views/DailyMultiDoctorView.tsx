@@ -68,28 +68,17 @@ function DoctorColumn({
           />
         ))}
 
-        {/* Fine-grained drop targets (invisible) with click-to-pick-exact-minute */}
+        {/* Fine-grained (5min) drop + click targets */}
         {SLOTS.map((slot) => (
           <DropSlot
             key={slot}
             id={`slot:${medico.id}:${date}:${slot}`}
             data={{ medico_id: medico.id, data: date, hora_inicio: slot }}
+            onClick={() => onSlotClick(medico.id, slot)}
             className="absolute inset-x-0 hover:bg-primary/5 cursor-pointer"
             style={{ top: minutesToPx(toMinutes(slot) - START_HOUR * 60), height: SLOT_PX }}
           />
         ))}
-
-        {/* Full-column click layer to allow ANY minute (not snapped to 5min) */}
-        <div
-          className="absolute inset-0"
-          style={{ zIndex: 2 }}
-          onClick={(e) => {
-            const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
-            const y = e.clientY - rect.top;
-            const totalMin = Math.max(0, Math.min(TOTAL_MINUTES - 1, Math.round((y / rect.height) * TOTAL_MINUTES)));
-            onSlotClick(medico.id, fromMinutes(START_HOUR * 60 + totalMin));
-          }}
-        />
 
         {bloqueios.map((b: any) => {
           const start = b.hora_inicio ? toMinutes(b.hora_inicio) : START_HOUR * 60;
