@@ -10,7 +10,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import {
   ChevronLeft, ChevronRight, Filter, Plus, Palette, Ban, Search,
-  CalendarDays, LayoutGrid, List, MoreHorizontal, Users2, Printer, Keyboard,
+  CalendarDays, LayoutGrid, List, MoreHorizontal, Users2, Printer, Keyboard, Pin,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AgendaView } from './AgendaPage';
@@ -33,6 +33,8 @@ interface Props {
   onToggleWaiting: () => void;
   waitingCount: number;
   totals: { total: number; confirmados: number; aguardando: number; cancelados: number };
+  defaultView: AgendaView | null;
+  onSetDefaultView: (v: AgendaView) => void;
 }
 
 const STATUSES: [string, string][] = [
@@ -115,6 +117,12 @@ export function AgendaHeader(p: Props) {
               <DropdownMenuItem onSelect={p.onNewBlock}><Ban className="mr-2 h-4 w-4" /> Bloquear horário</DropdownMenuItem>
               <DropdownMenuItem onSelect={p.onOpenColorScheme}><Palette className="mr-2 h-4 w-4" /> Esquema de cores</DropdownMenuItem>
               <DropdownMenuItem onSelect={() => window.print()}><Printer className="mr-2 h-4 w-4" /> Imprimir agenda</DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={() => p.onSetDefaultView(p.view)}>
+                <Pin className="mr-2 h-4 w-4" />
+                Definir visão atual como padrão
+                {p.defaultView === p.view && <Badge variant="secondary" className="ml-auto text-[10px]">Atual</Badge>}
+              </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem className="text-xs text-muted-foreground focus:bg-transparent" disabled>
                 <Keyboard className="mr-2 h-3.5 w-3.5" />
