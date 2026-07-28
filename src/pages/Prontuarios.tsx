@@ -1444,6 +1444,11 @@ export default function Prontuarios() {
 
                 {/* ─── Auditoria ─── */}
                 <TabsContent value="auditoria" className="pt-1">
+                  {currentProntuario.id && (
+                    <div className="mb-3">
+                      {/* placeholder to keep spacing consistent */}
+                    </div>
+                  )}
                   {currentProntuario.id ? (
                     <ProntuarioAuditLog prontuarioId={currentProntuario.id} />
                   ) : (
