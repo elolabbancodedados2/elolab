@@ -1,6 +1,6 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useDroppable } from '@dnd-kit/core';
-import { format, parseISO } from 'date-fns';
+import { format, isToday, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Ban, User } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -36,6 +36,8 @@ function DoctorColumn({
   medico, date, agendamentos, bloqueios, colorFor, onSlotClick, onCardClick,
 }: any) {
   const minutesToPx = (m: number) => (m / SLOT_MINUTES) * SLOT_PX;
+  const columnRef = useRef<HTMLDivElement>(null);
+  const [hoverMin, setHoverMin] = useState<number | null>(null);
 
   return (
     <div className="flex-1 min-w-[220px] border-r border-border/60 last:border-r-0">
@@ -51,7 +53,29 @@ function DoctorColumn({
         </div>
       </div>
 
-      <div className="relative" style={{ height: minutesToPx(TOTAL_MINUTES) }}>
+      <div
+        ref={columnRef}
+        className="relative"
+        style={{ height: minutesToPx(TOTAL_MINUTES) }}
+        onMouseMove={(e) => {
+          const rect = columnRef.current?.getBoundingClientRect();
+          if (!rect) return;
+          const y = e.clientY - rect.top;
+          const totalMin = Math.max(0, Math.min(TOTAL_MINUTES - 1, Math.round((y / rect.height) * TOTAL_MINUTES)));
+          setHoverMin(totalMin);
+        }}
+        onMouseLeave={() => setHoverMin(null)}
+      >
+        {hoverMin !== null && (
+          <div
+            className="pointer-events-none absolute inset-x-0 border-t border-primary/60 z-30"
+            style={{ top: minutesToPx(hoverMin) }}
+          >
+            <span className="absolute -top-2 left-1 rounded bg-primary px-1 py-0 text-[10px] font-medium text-primary-foreground shadow">
+              {fromMinutes(START_HOUR * 60 + hoverMin)}
+            </span>
+          </div>
+        )}
         {/* Visual hour gridlines */}
         {HOURS.map((h, i) => (
           <div
