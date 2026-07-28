@@ -3,14 +3,14 @@ import { supabase } from '@/integrations/supabase/client'
 
 /**
  * Initialize notification processing scheduler
- * Runs process-notifications edge function every 2 minutes
+ * Runs process-notification-queue edge function every 2 minutes
  */
 export function useNotificationScheduler() {
   useEffect(() => {
     // Run immediately on startup
     const processNotifications = async () => {
       try {
-        const response = await supabase.functions.invoke('process-notifications', {
+        const response = await supabase.functions.invoke('process-notification-queue', {
           method: 'POST',
         })
 
@@ -40,7 +40,7 @@ export function useNotificationScheduler() {
  */
 export async function triggerNotificationProcessing() {
   try {
-    const response = await supabase.functions.invoke('process-notifications', {
+    const response = await supabase.functions.invoke('process-notification-queue', {
       method: 'POST',
     })
 
