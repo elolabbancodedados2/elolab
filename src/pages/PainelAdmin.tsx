@@ -199,8 +199,25 @@ export default function PainelAdmin() {
         ativo: editFormData.ativo,
       }).eq('id', editUser.id);
 
-      await supabase.from('user_roles').delete().eq('user_id', editUser.id);
-      await supabase.from('user_roles').insert({ user_id: editUser.id, role: editFormData.role });
+      // Mesmo cuidado de Funcionarios: sem checar o erro, um insert que falha
+      // depois do delete deixa a conta sem nenhum papel, com a tela dizendo que
+      // deu certo. Guardamos os papéis para restaurar em caso de falha.
+      const { data: papeisAtuais } = await supabase
+        .from('user_roles').select('role').eq('user_id', editUser.id);
+
+      const { error: delErr } = await supabase
+        .from('user_roles').delete().eq('user_id', editUser.id);
+      if (delErr) throw delErr;
+
+      const { error: insErr } = await supabase
+        .from('user_roles').insert({ user_id: editUser.id, role: editFormData.role });
+      if (insErr) {
+        if (papeisAtuais?.length) {
+          await supabase.from('user_roles')
+            .insert(papeisAtuais.map(p => ({ user_id: editUser.id, role: p.role })));
+        }
+        throw insErr;
+      }
 
       queryClient.invalidateQueries({ queryKey: ['admin-profiles'] });
       queryClient.invalidateQueries({ queryKey: ['admin-user-roles'] });
