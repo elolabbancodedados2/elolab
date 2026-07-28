@@ -38,19 +38,40 @@ function DoctorColumn({
   const minutesToPx = (m: number) => (m / SLOT_MINUTES) * SLOT_PX;
   const columnRef = useRef<HTMLDivElement>(null);
   const [hoverMin, setHoverMin] = useState<number | null>(null);
+  const sorted = [...agendamentos].sort((a: any, b: any) => a.hora_inicio.localeCompare(b.hora_inicio));
+  const total = agendamentos.length;
+  const confirmed = agendamentos.filter((a: any) => ['confirmado', 'em_atendimento', 'finalizado'].includes(a.status)).length;
+  const nowMin = new Date().getHours() * 60 + new Date().getMinutes();
+  const next = sorted.find((a: any) => toMinutes(a.hora_inicio) >= nowMin);
 
   return (
     <div className="flex-1 min-w-[220px] border-r border-border/60 last:border-r-0">
       <div className="sticky top-0 z-20 bg-card/95 backdrop-blur border-b border-border/60 px-3 py-2">
         <div className="flex items-center gap-2">
-          <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+          <div className="h-9 w-9 rounded-full bg-gradient-to-br from-primary/20 to-primary/5 border border-primary/20 flex items-center justify-center text-primary shrink-0">
             <User className="h-4 w-4" />
           </div>
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <div className="text-sm font-semibold truncate">Dr(a). {medico.nome || medico.crm}</div>
             <div className="text-[11px] text-muted-foreground truncate">{medico.especialidade || 'Clínico Geral'}</div>
           </div>
+          {total > 0 && (
+            <div className="text-right shrink-0">
+              <div className="text-xs font-semibold tabular-nums">{total}</div>
+              <div className="text-[9px] uppercase tracking-wide text-muted-foreground">consultas</div>
+            </div>
+          )}
         </div>
+        {next && (
+          <div className="mt-1.5 flex items-center gap-1 text-[10px] text-muted-foreground">
+            <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+            <span>Próximo <span className="font-semibold tabular-nums text-foreground">{next.hora_inicio.slice(0, 5)}</span></span>
+            {confirmed > 0 && <span className="ml-auto text-success">✓ {confirmed}</span>}
+          </div>
+        )}
+        {total === 0 && (
+          <div className="mt-1.5 text-[10px] text-muted-foreground/60 italic">Agenda livre</div>
+        )}
       </div>
 
       <div
