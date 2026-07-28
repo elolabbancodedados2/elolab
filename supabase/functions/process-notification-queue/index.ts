@@ -108,16 +108,68 @@ Deno.serve(async (req) => {
           const evolutionUrl = Deno.env.get('EVOLUTION_API_URL')
           const evolutionKey = Deno.env.get('EVOLUTION_API_KEY')
 
-          if (evolutionUrl && evolutionKey) {
-            // TODO: implement WhatsApp sending via Evolution API
-            console.log(`⏭️ WhatsApp para ${notif.destinatario_telefone} - implementação pendente`)
-          }
+          if (!evolutionUrl || !evolutionKey) {
+            await supabase
+              .from('notification_queue')
+              .update({ status: 'erro', erro_mensagem: 'EVOLUTION_API_URL/KEY não configurados' })
+              .eq('id', notif.id)
+            errorCount++
+          } else {
+            // Selecionar uma sessão conectada. Prefere a sessão da mesma clínica
+            // do destinatário, quando a notificação tiver clinica_id.
+            let sessionQuery = supabase
+              .from('whatsapp_sessions')
+              .select('instance_name, clinica_id')
+              .eq('status', 'connected')
+              .limit(1)
+            if ((notif as any).clinica_id) {
+              sessionQuery = sessionQuery.eq('clinica_id', (notif as any).clinica_id)
+            }
+            const { data: session } = await sessionQuery.maybeSingle()
 
-          await supabase
-            .from('notification_queue')
-            .update({ status: 'erro', erro_mensagem: 'Integração WhatsApp pendente de configuração completa' })
-            .eq('id', notif.id)
-          errorCount++
+            if (!session?.instance_name) {
+              await supabase
+                .from('notification_queue')
+                .update({ status: 'erro', erro_mensagem: 'Nenhuma sessão WhatsApp conectada' })
+                .eq('id', notif.id)
+              errorCount++
+            } else {
+              const phone = String(notif.destinatario_telefone).replace(/\D/g, '')
+              const jid = phone.length >= 10 ? phone : `55${phone}`
+              const sendRes = await fetch(
+                `${evolutionUrl.replace(/\/$/, '')}/message/sendText/${session.instance_name}`,
+                {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'apikey': evolutionKey,
+                  },
+                  body: JSON.stringify({
+                    number: jid,
+                    text: notif.conteudo,
+                  }),
+                }
+              )
+              if (sendRes.ok) {
+                await supabase
+                  .from('notification_queue')
+                  .update({ status: 'enviado', enviado_em: new Date().toISOString() })
+                  .eq('id', notif.id)
+                successCount++
+              } else {
+                const errBody = await sendRes.text()
+                const novasTentativas = notif.tentativas + 1
+                await supabase
+                  .from('notification_queue')
+                  .update({
+                    status: novasTentativas >= notif.max_tentativas ? 'erro' : 'pendente',
+                    erro_mensagem: `Evolution ${sendRes.status}: ${errBody.slice(0, 500)}`,
+                  })
+                  .eq('id', notif.id)
+                errorCount++
+              }
+            }
+          }
         } else {
           errorCount++
         }

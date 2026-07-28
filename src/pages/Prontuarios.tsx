@@ -768,15 +768,19 @@ export default function Prontuarios() {
   };
 
   // ─── Auto-save every 60s ───
+  // IMPORTANTE: dependências limitadas a flags estáveis (open/editing) para
+  // não recriar o setInterval a cada tecla — bug anterior fazia o auto-save
+  // nunca disparar em digitação contínua. Usamos ref para acessar o valor
+  // mais recente dentro do interval sem depender dele.
+  const performSaveRef = useRef(performSave);
+  useEffect(() => { performSaveRef.current = performSave; });
   useEffect(() => {
-    if (isProntuarioOpen && isEditing && currentProntuario.queixa_principal) {
-      autoSaveRef.current = setInterval(() => {
-        performSave(true);
-      }, 60000);
-      return () => { if (autoSaveRef.current) clearInterval(autoSaveRef.current); };
-    }
+    if (!(isProntuarioOpen && isEditing)) return;
+    autoSaveRef.current = setInterval(() => {
+      performSaveRef.current(true);
+    }, 60000);
     return () => { if (autoSaveRef.current) clearInterval(autoSaveRef.current); };
-  }, [isProntuarioOpen, isEditing, currentProntuario, sinaisVitais, prescricoes]);
+  }, [isProntuarioOpen, isEditing]);
 
   // Reset auto-save time when dialog closes
   useEffect(() => {
