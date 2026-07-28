@@ -492,7 +492,7 @@ export default function Prontuarios() {
     setLoadingHistorico(true);
     let query = supabase
       .from('prontuarios')
-      .select('id, data, queixa_principal, historia_doenca_atual, exames_fisicos, hipotese_diagnostica, conduta, sinais_vitais, diagnostico_principal, plano_terapeutico, medicos(nome, crm, especialidade)')
+      .select('id, data, queixa_principal, historia_doenca_atual, exames_fisicos, hipotese_diagnostica, conduta, sinais_vitais, diagnostico_principal, plano_terapeutico, assinado, assinado_em, assinado_por, crm_assinante, medicos(nome, crm, especialidade)')
       .eq('paciente_id', selectedPacienteId)
       .order('data', { ascending: false })
       .limit(50);
@@ -713,7 +713,7 @@ export default function Prontuarios() {
         refetchProntuarios();
         // Reload history
         const { data: hist } = await supabase.from('prontuarios')
-          .select('id, data, queixa_principal, historia_doenca_atual, exames_fisicos, hipotese_diagnostica, conduta, sinais_vitais, diagnostico_principal, plano_terapeutico, medicos(nome, crm, especialidade)')
+          .select('id, data, queixa_principal, historia_doenca_atual, exames_fisicos, hipotese_diagnostica, conduta, sinais_vitais, diagnostico_principal, plano_terapeutico, assinado, assinado_em, assinado_por, crm_assinante, medicos(nome, crm, especialidade)')
           .eq('paciente_id', currentProntuario.paciente_id)
           .order('data', { ascending: false }).limit(50);
         setHistoricoEvolucoes(hist ?? []);
