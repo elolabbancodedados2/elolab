@@ -16,6 +16,7 @@ import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { supabase } from '@/integrations/supabase/client';
+import { notificarResultadoLiberado } from '@/lib/notificarResultado';
 import { toast } from 'sonner';
 import { format, formatDistanceToNow, isToday } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -69,32 +70,7 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
         .eq('id', resultadoId);
       if (error) throw error;
 
-      // Send exam result notification to patient with retry logic
-      let notificado = false;
-      for (let attempt = 0; attempt < 2; attempt++) {
-        try {
-          await supabase.functions.invoke('exam-result-notification', {
-            body: { resultado_id: resultadoId }
-          });
-          notificado = true;
-          break;
-        } catch (e) {
-          if (attempt === 1) {
-            // Last attempt failed - queue for retry
-            try {
-              await supabase.from('notification_queue').insert({
-                tipo: 'email',
-                status: 'pendente',
-                dados_extras: { resultado_id: resultadoId, tipo: 'exam_result' },
-                conteudo: `Resultado de exame disponível - ID: ${resultadoId}`,
-                assunto: 'Seu resultado de exame está disponível'
-              });
-            } catch (qErr) {
-              console.error('Failed to queue notification:', qErr);
-            }
-          }
-        }
-      }
+      const notificado = await notificarResultadoLiberado(resultadoId);
 
       toast.success(notificado ? 'Resultado liberado e paciente notificado!' : 'Resultado liberado (notificação será reenviada)');
       await fetchData();
@@ -111,47 +87,44 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
     if (pendentes.length === 0) { toast.info('Todos já liberados'); return; }
     try {
       let notificacoesFalhadas = 0;
+      const liberados: string[] = [];
+
       for (const r of pendentes) {
-        await supabase.from('resultados_laboratorio')
+        // O erro do update era ignorado: um resultado que falhava ao liberar
+        // ainda entrava na contagem final e o paciente era "notificado" de algo
+        // que continuava pendente.
+        const { error: upErr } = await supabase.from('resultados_laboratorio')
           .update({ liberado: true, data_liberacao: new Date().toISOString() })
           .eq('id', r.id);
-
-        // Send exam result notification with retry
-        let notificado = false;
-        for (let attempt = 0; attempt < 2; attempt++) {
-          try {
-            await supabase.functions.invoke('exam-result-notification', {
-              body: { resultado_id: r.id }
-            });
-            notificado = true;
-            break;
-          } catch (e) {
-            if (attempt === 1) {
-              // Queue for retry
-              try {
-                await supabase.from('notification_queue').insert({
-                  tipo: 'email',
-                  status: 'pendente',
-                  dados_extras: { resultado_id: r.id, tipo: 'exam_result' },
-                  conteudo: `Resultado de exame disponível - ID: ${r.id}`,
-                  assunto: 'Seu resultado de exame está disponível'
-                });
-              } catch (qErr) {
-                console.error('Failed to queue notification for:', r.id, qErr);
-                notificacoesFalhadas++;
-              }
-            }
-          }
+        if (upErr) {
+          console.error('Falha ao liberar resultado', r.id, upErr);
+          continue;
         }
-      }
-      // Update coleta status to liberado
-      await supabase.from('coletas_laboratorio')
-        .update({ status: 'liberado' }).eq('id', coletaId!);
+        liberados.push(r.id);
 
-      const msg = notificacoesFalhadas > 0
-        ? `${pendentes.length} resultado(s) liberado(s)! (${notificacoesFalhadas} notificação(ões) será(ão) reenviada(s))`
-        : `${pendentes.length} resultado(s) liberado(s) e pacientes notificados!`;
-      toast.success(msg);
+        if (!(await notificarResultadoLiberado(r.id))) notificacoesFalhadas++;
+      }
+
+      if (liberados.length === 0) {
+        toast.error('Nenhum resultado pôde ser liberado.');
+        return;
+      }
+
+      // A coleta só é dada como liberada se TODOS os pendentes saíram.
+      if (liberados.length === pendentes.length) {
+        const { error: colErr } = await supabase.from('coletas_laboratorio')
+          .update({ status: 'liberado' }).eq('id', coletaId!);
+        if (colErr) console.error('Falha ao atualizar status da coleta', colErr);
+      }
+
+      const naoLiberados = pendentes.length - liberados.length;
+      const partes = [`${liberados.length} de ${pendentes.length} resultado(s) liberado(s)`];
+      if (naoLiberados > 0) partes.push(`${naoLiberados} falhou(aram)`);
+      if (notificacoesFalhadas > 0) partes.push(`${notificacoesFalhadas} notificação(ões) na fila de reenvio`);
+      const msg = partes.join(' · ');
+
+      if (naoLiberados > 0) toast.warning(msg);
+      else toast.success(msg);
       await fetchData();
       onUpdate();
     } catch (err: any) {
