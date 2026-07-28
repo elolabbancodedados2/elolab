@@ -18,7 +18,13 @@
     <meta name="format-detection" content="telephone=no" />
     <meta name="msapplication-TileColor" content="#6bcfa4" />
     <meta name="msapplication-tap-highlight" content="no" />
-    
+
+    <!-- Perf: early connect to backend/CDN -->
+    <link rel="preconnect" href="https://gebygucrpipaufrlyqqj.supabase.co" crossorigin />
+    <link rel="dns-prefetch" href="https://gebygucrpipaufrlyqqj.supabase.co" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+
     <!-- Favicon & App Icons -->
     <link rel="icon" type="image/png" href="/favicon.png" />
     <link rel="apple-touch-icon" href="/pwa-192x192.png" />
@@ -64,7 +70,21 @@
   </head>
 
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <style>
+        #initial-loader{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;background:#eef0f2;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;z-index:9999}
+        #initial-loader .brand{font-size:28px;font-weight:700;color:#0f172a;letter-spacing:-0.02em}
+        #initial-loader .brand span{color:#10b981}
+        #initial-loader .spinner{width:40px;height:40px;border-radius:50%;border:3px solid rgba(16,185,129,.15);border-top-color:#10b981;animation:il-spin .8s linear infinite}
+        #initial-loader .msg{font-size:13px;color:#64748b}
+        @keyframes il-spin{to{transform:rotate(360deg)}}
+      </style>
+      <div id="initial-loader">
+        <div class="brand">Elo<span>Lab</span></div>
+        <div class="spinner"></div>
+        <div class="msg">Carregando seu ambiente...</div>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
