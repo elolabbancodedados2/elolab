@@ -20,6 +20,7 @@ import {
 import { format, subDays, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, differenceInDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
+import { valorRealizado } from '@/lib/lancamentos';
 
 const COLORS = ['hsl(var(--primary))', 'hsl(var(--success))', 'hsl(var(--warning))', 'hsl(var(--info))', 'hsl(var(--destructive))'];
 
@@ -163,14 +164,14 @@ export default function Analytics() {
   const prevFinalizados = prevAgendamentos.filter((a: any) => a.status === 'finalizado').length;
   const prevTaxaComp = prevTotalAg > 0 ? Math.round((prevFinalizados / prevTotalAg) * 100) : 0;
 
-  const receitaTotal = lancamentos.filter(l => l.tipo === 'receita' && l.status === 'pago').reduce((acc, l) => acc + Number(l.valor), 0);
-  const despesaTotal = lancamentos.filter(l => l.tipo === 'despesa' && l.status === 'pago').reduce((acc, l) => acc + Number(l.valor), 0);
+  const receitaTotal = lancamentos.filter(l => l.tipo === 'receita' && l.status === 'pago').reduce((acc, l) => acc + valorRealizado(l), 0);
+  const despesaTotal = lancamentos.filter(l => l.tipo === 'despesa' && l.status === 'pago').reduce((acc, l) => acc + valorRealizado(l), 0);
   const lucroLiquido = receitaTotal - despesaTotal;
   const margemLucro = receitaTotal > 0 ? Math.round((lucroLiquido / receitaTotal) * 100) : 0;
   const ticketMedio = finalizados > 0 ? receitaTotal / finalizados : 0;
 
-  const prevReceita = prevLancamentos.filter((l: any) => l.tipo === 'receita' && l.status === 'pago').reduce((acc: number, l: any) => acc + Number(l.valor), 0);
-  const prevDespesa = prevLancamentos.filter((l: any) => l.tipo === 'despesa' && l.status === 'pago').reduce((acc: number, l: any) => acc + Number(l.valor), 0);
+  const prevReceita = prevLancamentos.filter((l: any) => l.tipo === 'receita' && l.status === 'pago').reduce((acc: number, l: any) => acc + valorRealizado(l), 0);
+  const prevDespesa = prevLancamentos.filter((l: any) => l.tipo === 'despesa' && l.status === 'pago').reduce((acc: number, l: any) => acc + valorRealizado(l), 0);
 
   const calcChange = (current: number, previous: number) => {
     if (previous === 0) return current > 0 ? 100 : 0;
@@ -230,8 +231,8 @@ export default function Analytics() {
     const slice = chartInterval === 'week' ? days.filter((_, i) => i % 7 === 0) : days.slice(-14);
     return slice.map(d => {
       const ds = format(d, 'yyyy-MM-dd');
-      const receitas = lancamentos.filter(l => l.data === ds && l.tipo === 'receita' && l.status === 'pago').reduce((acc, l) => acc + Number(l.valor), 0);
-      const despesas = lancamentos.filter(l => l.data === ds && l.tipo === 'despesa' && l.status === 'pago').reduce((acc, l) => acc + Number(l.valor), 0);
+      const receitas = lancamentos.filter(l => l.data === ds && l.tipo === 'receita' && l.status === 'pago').reduce((acc, l) => acc + valorRealizado(l), 0);
+      const despesas = lancamentos.filter(l => l.data === ds && l.tipo === 'despesa' && l.status === 'pago').reduce((acc, l) => acc + valorRealizado(l), 0);
       return { dia: format(d, 'dd/MM'), receitas, despesas, saldo: receitas - despesas };
     });
   }, [lancamentos, days, chartInterval]);

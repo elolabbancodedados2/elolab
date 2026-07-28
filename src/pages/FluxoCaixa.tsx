@@ -29,6 +29,7 @@ import {
 } from 'recharts';
 import { cn } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/skeleton';
+import { valorRealizado } from '@/lib/lancamentos';
 
 export default function FluxoCaixa() {
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -54,11 +55,11 @@ export default function FluxoCaixa() {
 
     const receitas = lancamentosMes
       .filter(l => l.tipo === 'receita' && l.status === 'pago')
-      .reduce((acc, l) => acc + Number(l.valor), 0);
+      .reduce((acc, l) => acc + valorRealizado(l), 0);
 
     const despesas = lancamentosMes
       .filter(l => l.tipo === 'despesa' && l.status === 'pago')
-      .reduce((acc, l) => acc + Number(l.valor), 0);
+      .reduce((acc, l) => acc + valorRealizado(l), 0);
 
     const receitasPendentes = lancamentosMes
       .filter(l => l.tipo === 'receita' && l.status === 'pendente')
@@ -89,13 +90,15 @@ export default function FluxoCaixa() {
       const dataStr = format(dia, 'yyyy-MM-dd');
       const lancamentosDia = lancamentos.filter(l => l.data === dataStr && l.status === 'pago');
 
+      // lancamentosDia já está filtrado por status 'pago', então soma o
+      // realizado — o que de fato entrou/saiu, com desconto e acréscimo.
       const receitas = lancamentosDia
         .filter(l => l.tipo === 'receita')
-        .reduce((acc, l) => acc + Number(l.valor), 0);
+        .reduce((acc, l) => acc + valorRealizado(l), 0);
 
       const despesas = lancamentosDia
         .filter(l => l.tipo === 'despesa')
-        .reduce((acc, l) => acc + Number(l.valor), 0);
+        .reduce((acc, l) => acc + valorRealizado(l), 0);
 
       saldoAcumulado += receitas - despesas;
 
@@ -123,9 +126,9 @@ export default function FluxoCaixa() {
           categorias[l.categoria] = { receitas: 0, despesas: 0 };
         }
         if (l.tipo === 'receita') {
-          categorias[l.categoria].receitas += Number(l.valor);
+          categorias[l.categoria].receitas += valorRealizado(l);
         } else {
-          categorias[l.categoria].despesas += Number(l.valor);
+          categorias[l.categoria].despesas += valorRealizado(l);
         }
       });
 
@@ -148,11 +151,11 @@ export default function FluxoCaixa() {
 
     const receitasAnt = lancamentosMesAnterior
       .filter(l => l.tipo === 'receita')
-      .reduce((acc, l) => acc + Number(l.valor), 0);
+      .reduce((acc, l) => acc + valorRealizado(l), 0);
 
     const despesasAnt = lancamentosMesAnterior
       .filter(l => l.tipo === 'despesa')
-      .reduce((acc, l) => acc + Number(l.valor), 0);
+      .reduce((acc, l) => acc + valorRealizado(l), 0);
 
     const variacaoReceita = receitasAnt > 0 
       ? ((totaisMes.receitas - receitasAnt) / receitasAnt) * 100 
