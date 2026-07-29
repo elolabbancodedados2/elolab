@@ -96,6 +96,12 @@ export function AgendaPage() {
     return map;
   }, [medicos]);
 
+  const convenioByIdMap = useMemo(() => {
+    const map: Record<string, any> = {};
+    // convenios é carregado logo abaixo; lookup roda depois via dependência.
+    return map;
+  }, []);
+
   const { data: pacientes = [] } = usePacientes();
   const { data: bloqueios = [] } = useSupabaseQuery<any>('bloqueios_agenda', {
     orderBy: { column: 'data_inicio', ascending: true },
@@ -272,6 +278,7 @@ export function AgendaPage() {
                 agendamentos={dayAppts}
                 bloqueios={bloqueios}
                 colorFor={colorFor}
+                convenioById={Object.fromEntries((convenios as any[]).map(c => [c.id, c]))}
                 onSlotClick={handleSlotClick}
                 onCardClick={(a: any) => setDialogState({ open: true, initial: a })}
               />
