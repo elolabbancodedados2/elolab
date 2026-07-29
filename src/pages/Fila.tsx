@@ -23,6 +23,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { format, formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { ListSkeleton } from '@/components/ui/loading-skeleton';
 
 // ─── Helpers ───────────────────────────────────────────────
 function calcularEspera(horarioChegada: string | null): string {
@@ -442,7 +443,7 @@ export default function Fila() {
 
       {/* Queue */}
       {isLoading ? (
-        <div className="flex justify-center py-16"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
+        <ListSkeleton items={4} />
       ) : filaAtiva.length === 0 ? (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
           <Card>

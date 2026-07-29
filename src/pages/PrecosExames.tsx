@@ -18,6 +18,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import { DeleteConfirmDialog } from '@/components/ConfirmDialog';
 import { DollarSign, Plus, Search, Edit, Trash2, Building2, Stethoscope, Loader2 } from 'lucide-react';
+import { TableSkeleton } from '@/components/ui/loading-skeleton';
 
 const CATALOGO_EXAMES: { nome: string; tuss: string }[] = [
   { nome: 'Hemograma Completo', tuss: '40304361' },
@@ -396,7 +397,7 @@ function PrecosInternos() {
             </TableHeader>
             <TableBody>
               {isLoading ? (
-                <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Carregando...</TableCell></TableRow>
+                <TableRow><TableCell colSpan={7} className="p-0"><TableSkeleton rows={5} cols={5} /></TableCell></TableRow>
               ) : filtered.length === 0 ? (
                 <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Nenhum exame cadastrado. Clique "Novo Exame" para começar.</TableCell></TableRow>
               ) : (

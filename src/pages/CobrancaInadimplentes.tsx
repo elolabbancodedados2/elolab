@@ -11,6 +11,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { parseDateOnly } from '@/lib/dateOnly';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
+import { TableSkeleton } from '@/components/ui/loading-skeleton';
 
 export default function CobrancaInadimplentes() {
   const [sending, setSending] = useState(false);
@@ -88,7 +89,7 @@ export default function CobrancaInadimplentes() {
             </Badge>
           </div>
           {isLoading ? (
-            <div className="text-center py-8 text-muted-foreground">Carregando...</div>
+            <TableSkeleton rows={5} cols={5} />
           ) : !data?.length ? (
             <div className="text-center py-12 text-emerald-700">
               ✅ Nenhum paciente inadimplente no momento.
