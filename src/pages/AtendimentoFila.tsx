@@ -2,6 +2,7 @@ import { useState, lazy, Suspense } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { ClipboardCheck, Activity } from 'lucide-react';
+import { SectionFallback } from '@/components/ui/loading-skeleton';
 
 /**
  * Casca "Fila / Triagem" — mesmo padrão de GestaoFluxo, Contas e RecepcaoCaixa.
@@ -15,11 +16,7 @@ import { ClipboardCheck, Activity } from 'lucide-react';
 const Fila = lazy(() => import('./Fila'));
 const Triagem = lazy(() => import('./Triagem'));
 
-const Loader = () => (
-  <div className="flex justify-center py-12">
-    <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
-  </div>
-);
+const Loader = () => <SectionFallback />;
 
 export default function AtendimentoFila() {
   const [searchParams, setSearchParams] = useSearchParams();
