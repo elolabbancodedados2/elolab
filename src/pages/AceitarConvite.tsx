@@ -152,16 +152,39 @@ export default function AceitarConvite() {
         },
       });
 
-      if (authError) throw authError;
+      // Quem já tem conta não pode ficar preso aqui. Acontece com quem se
+      // cadastrou antes de abrir o convite — e aconteceu com todo mundo
+      // enquanto accept_employee_invitation estava ambígua e o aceite falhava
+      // depois da conta já ter sido criada. Nesses casos entramos com a senha
+      // informada e seguimos para o aceite, que é o passo que faltava.
+      let usuario = authData?.user ?? null;
 
-      if (!authData.user) {
+      if (authError) {
+        const jaExiste = /already registered|already been registered|user already exists/i
+          .test(authError.message);
+        if (!jaExiste) throw authError;
+
+        const { data: login, error: erroLogin } = await supabase.auth.signInWithPassword({
+          email: invitation.email,
+          password,
+        });
+        if (erroLogin) {
+          throw new Error(
+            'Você já tem conta com este e-mail. Digite a senha dela para concluir o convite, ' +
+            'ou use "Esqueci minha senha" na tela de login.'
+          );
+        }
+        usuario = login.user;
+      }
+
+      if (!usuario) {
         throw new Error('Erro ao criar conta');
       }
 
       // 2. Accept invitation via SECURITY DEFINER function (handles roles, funcionario link, status update)
       const { data: acceptResult, error: acceptError } = await supabase.rpc(
         'accept_employee_invitation' as any,
-        { _token: token, _user_id: authData.user.id }
+        { _token: token, _user_id: usuario.id }
       );
 
       if (acceptError) {
