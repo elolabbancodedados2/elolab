@@ -207,7 +207,7 @@ const plans = [
       'Automações (16 fluxos)',
       'LGPD & Auditoria',
       'PWA Mobile',
-      'Suporte via Chat',
+      'Suporte humano via chat',
     ],
   },
   {
@@ -216,7 +216,7 @@ const plans = [
     price: 399,
     popular: true,
     features: [
-      'Tudo do plano Max +',
+      'Tudo do plano Max, mais:',
       'WhatsApp IA (Agente 24h)',
       'Agendamento Online',
       'Confirmação Automática',
@@ -225,7 +225,7 @@ const plans = [
       'Portal do Paciente',
       'Painel TV Recepção',
       'Suporte Prioritário',
-      'Migração de Dados Grátis',
+      'Migração de dados sem custo',
     ],
   },
 ];
@@ -495,15 +495,15 @@ export default function LandingPage() {
               <div className="animate-fade-in min-w-0">
                 <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/10 backdrop-blur-sm border border-white/20 mb-6">
                   <Zap className="w-3.5 h-3.5 text-yellow-300" />
-                  <span className="text-xs font-semibold text-white/90">Novo: Agente IA WhatsApp 24h</span>
+                  <span className="text-xs font-semibold text-white/90">Novidade: Agente de IA no WhatsApp atendendo 24h</span>
                 </div>
                 <h1 className="text-4xl sm:text-5xl lg:text-[3.5rem] font-light leading-[1.15] tracking-tight text-white">
-                  O melhor<br />
-                  <span className="font-extrabold">sistema de gestão</span><br />
-                  para sua clínica.
+                  Sua clínica organizada,<br />
+                  <span className="font-extrabold">lucrativa e sem papelada</span><br />
+                  a partir de hoje.
                 </h1>
                 <p className="mt-5 text-base md:text-lg text-white/70 max-w-lg leading-relaxed">
-                  Agenda, prontuário, financeiro, laboratório e WhatsApp IA — tudo integrado em uma única plataforma.
+                  Agenda, prontuário, financeiro, laboratório e um agente de IA no WhatsApp: tudo em uma só plataforma, pronta para usar em minutos.
                 </p>
                 <div className="mt-8 flex flex-col sm:flex-row gap-3">
                   <Button
@@ -511,21 +511,21 @@ export default function LandingPage() {
                     className="rounded-lg px-8 py-3.5 text-sm font-bold border-2 border-white bg-white hover:bg-white/90 transition-all hover:scale-105 hover:shadow-xl"
                     style={{ color: 'hsl(215,75%,30%)' }}
                   >
-                    Começar teste grátis <ArrowRight className="w-4 h-4 ml-2" />
+                    Testar grátis por 3 dias <ArrowRight className="w-4 h-4 ml-2" />
                   </Button>
                   <Button
                     onClick={() => scrollTo('modulos')}
                     variant="ghost"
                     className="rounded-lg px-8 py-3.5 text-sm font-bold text-white border-2 border-white/30 hover:bg-white/10 transition-all"
                   >
-                    Ver módulos
+                    Ver o que está incluso
                   </Button>
                 </div>
                 <div className="mt-8 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs font-medium text-white/60">
                   <span className="flex items-center gap-1.5"><Lock className="w-3.5 h-3.5" /> LGPD</span>
                   <span className="flex items-center gap-1.5"><Clock className="w-3.5 h-3.5" /> 3 dias grátis</span>
                   <span className="flex items-center gap-1.5"><Shield className="w-3.5 h-3.5" /> 100% seguro</span>
-                  <span className="flex items-center gap-1.5"><CreditCard className="w-3.5 h-3.5" /> Sem cartão</span>
+                  <span className="flex items-center gap-1.5"><CreditCard className="w-3.5 h-3.5" /> Sem cartão de crédito</span>
                 </div>
               </div>
 
@@ -618,10 +618,10 @@ export default function LandingPage() {
         <section className="py-16 md:py-20 relative">
           <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-8 md:gap-12">
-              <StatCounter end={500} suffix="+" label="Profissionais de saúde" icon={Users} />
-              <StatCounter end={24} suffix="" label="Módulos integrados" icon={Zap} />
-              <StatCounter end={99} suffix=".9%" label="Uptime garantido" icon={TrendingUp} />
-              <StatCounter end={40} suffix="%" label="Menos faltas" icon={Award} />
+              <StatCounter end={500} suffix="+" label="Profissionais de saúde ativos" icon={Users} />
+              <StatCounter end={24} suffix="" label="Módulos já inclusos" icon={Zap} />
+              <StatCounter end={99} suffix=".9%" label="Disponibilidade do sistema" icon={TrendingUp} />
+              <StatCounter end={40} suffix="%" label="Menos faltas na agenda" icon={Award} />
             </div>
           </div>
         </section>
@@ -674,12 +674,11 @@ export default function LandingPage() {
         <section id="modulos">
           <div className="text-center py-16 md:py-20">
             <h2 className="text-3xl md:text-4xl font-extrabold tracking-tight" style={{ color: C.dark }}>
-              Tudo que o{' '}
-              <span className="bg-clip-text text-transparent" style={{ backgroundImage: C.grad }}>EloLab</span>
-              {' '}oferece
+              Tudo o que sua clínica precisa,{' '}
+              <span className="bg-clip-text text-transparent" style={{ backgroundImage: C.grad }}>em um só lugar</span>
             </h2>
             <p className="mt-3 text-lg" style={{ color: C.textL }}>
-              +24 módulos integrados para sua clínica funcionar com máxima eficiência
+              Mais de 24 módulos integrados, sem taxa extra e sem sistemas paralelos
             </p>
           </div>
 
@@ -727,11 +726,11 @@ export default function LandingPage() {
           <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="text-center mb-14">
               <h2 className="text-3xl md:text-4xl font-extrabold tracking-tight" style={{ color: C.dark }}>
-                Escolha o plano{' '}
-                <span className="bg-clip-text text-transparent" style={{ backgroundImage: C.grad }}>ideal para você</span>
+                Escolha o plano e comece{' '}
+                <span className="bg-clip-text text-transparent" style={{ backgroundImage: C.grad }}>a economizar hoje</span>
               </h2>
               <p className="mt-3 text-lg" style={{ color: C.textL }}>
-                Comece com 3 dias grátis. Cancele quando quiser.
+                Teste 3 dias grátis, sem cartão de crédito. Cancele quando quiser.
               </p>
             </div>
             <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
@@ -779,7 +778,7 @@ export default function LandingPage() {
                       className="w-full rounded-full py-3 font-bold text-white border-0 transition-all hover:scale-[1.02] hover:shadow-lg"
                       style={{ background: C.grad, boxShadow: plan.popular ? '0 8px 24px -4px hsl(12,76%,61%,0.4)' : undefined }}
                     >
-                      <Clock className="w-4 h-4 mr-2" /> Teste Grátis 3 Dias
+                      <Clock className="w-4 h-4 mr-2" /> Testar 3 dias grátis
                     </Button>
                     <Button
                       variant="outline"
@@ -787,7 +786,7 @@ export default function LandingPage() {
                       className="w-full rounded-full py-3 font-bold border-2 transition-all hover:scale-[1.02]"
                       style={{ borderColor: C.coral, color: C.coral }}
                     >
-                      <CreditCard className="w-4 h-4 mr-2" /> Assinar Agora
+                      <CreditCard className="w-4 h-4 mr-2" /> Assinar agora
                     </Button>
                   </div>
                 </div>
@@ -822,7 +821,7 @@ export default function LandingPage() {
                   )}
                 </div>
                 <h3 className="text-xl font-extrabold" style={{ color: C.dark }}>
-                  {checkoutMode === 'trial' ? 'Iniciar Teste Grátis' : 'Assinar Plano'}
+                  {checkoutMode === 'trial' ? 'Comece seus 3 dias grátis' : 'Finalize sua assinatura'}
                 </h3>
                 <p className="text-sm mt-1" style={{ color: C.textL }}>
                   {selectedPlan.name} — R$ {selectedPlan.price}/mês
@@ -879,16 +878,16 @@ export default function LandingPage() {
                 {loading ? (
                   <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Processando...</>
                 ) : checkoutMode === 'trial' ? (
-                  <>Começar Teste Grátis <ArrowRight className="w-4 h-4 ml-2" /></>
+                  <>Liberar meu acesso grátis <ArrowRight className="w-4 h-4 ml-2" /></>
                 ) : (
-                  <>Ir para Pagamento <ArrowRight className="w-4 h-4 ml-2" /></>
+                  <>Ir para o pagamento seguro <ArrowRight className="w-4 h-4 ml-2" /></>
                 )}
               </Button>
 
               <p className="text-center text-xs mt-4" style={{ color: C.textL }}>
                 {checkoutMode === 'trial'
-                  ? 'Sem cartão de crédito. Após o teste, assine para continuar.'
-                  : 'Pagamento seguro via Mercado Pago. Cancele quando quiser.'}
+                  ? 'Sem cartão de crédito e sem compromisso. Ao final do teste, você decide se continua.'
+                  : 'Pagamento 100% seguro via Mercado Pago. Sem fidelidade: cancele quando quiser.'}
               </p>
             </div>
           </div>
@@ -899,10 +898,10 @@ export default function LandingPage() {
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="text-center mb-14">
               <h2 className="text-3xl md:text-4xl font-extrabold tracking-tight" style={{ color: C.dark }}>
-                O que estão falando sobre o{' '}
+                Quem já usa não volta atrás com o{' '}
                 <span className="bg-clip-text text-transparent" style={{ backgroundImage: C.grad }}>EloLab?</span>
               </h2>
-              <p className="mt-3 text-lg" style={{ color: C.textL }}>Mais de 500 profissionais de saúde confiam no EloLab</p>
+              <p className="mt-3 text-lg" style={{ color: C.textL }}>Mais de 500 profissionais de saúde já confiam no EloLab todos os dias</p>
             </div>
           </div>
 
@@ -958,7 +957,7 @@ export default function LandingPage() {
                 <span className="bg-clip-text text-transparent" style={{ backgroundImage: C.grad }}>Frequentes</span>
               </h2>
               <p className="mt-3 text-lg" style={{ color: C.textL }}>
-                Tire suas dúvidas sobre o EloLab
+                Respostas diretas para decidir com tranquilidade
               </p>
             </div>
             <div className="bg-white/80 backdrop-blur-sm rounded-3xl border border-[hsl(20,30%,90%)] p-6 md:p-8 shadow-sm">
@@ -968,10 +967,10 @@ export default function LandingPage() {
             </div>
             <div className="text-center mt-8">
               <p className="text-sm" style={{ color: C.textL }}>
-                Ainda tem dúvidas?{' '}
+                Ficou com alguma dúvida?{' '}
                 <a href="https://wa.me/5511937687369" target="_blank" rel="noopener noreferrer"
                   className="font-bold hover:underline" style={{ color: C.coral }}>
-                  Fale conosco no WhatsApp
+                  Fale agora com um especialista no WhatsApp
                 </a>
               </p>
             </div>
@@ -990,27 +989,27 @@ export default function LandingPage() {
               }} />
               <div className="relative z-10">
                 <h2 className="text-3xl md:text-4xl font-extrabold tracking-tight text-white">
-                  Pronto para transformar sua clínica?
+                  Comece hoje e veja a diferença já na primeira semana
                 </h2>
                 <p className="mt-4 text-lg text-white/70 max-w-xl mx-auto">
-                  Comece agora com 3 dias grátis. Sem cartão de crédito. Sem compromisso.
+                  Crie sua conta em poucos minutos, teste 3 dias grátis e leve sua clínica para um novo patamar. Sem cartão de crédito, sem compromisso.
                 </p>
                 <div className="mt-10 flex flex-col sm:flex-row gap-4 justify-center">
                   <Button size="lg" onClick={goToAuth}
                     className="rounded-full px-10 text-base font-bold border-2 border-white bg-white hover:bg-white/90 transition-all hover:scale-105 hover:shadow-xl"
                     style={{ color: 'hsl(215,75%,30%)' }}>
-                    Começar teste grátis <ArrowRight className="w-4 h-4 ml-2" />
+                    Criar minha conta grátis <ArrowRight className="w-4 h-4 ml-2" />
                   </Button>
                   <a href="https://wa.me/5511937687369" target="_blank" rel="noopener noreferrer">
                     <Button size="lg" variant="ghost"
                       className="rounded-full px-10 text-base font-bold text-white border-2 border-white/30 hover:bg-white/10 transition-all w-full">
-                      <Headphones className="w-4 h-4 mr-2" /> Falar com consultor
+                      <Headphones className="w-4 h-4 mr-2" /> Falar com um especialista
                     </Button>
                   </a>
                 </div>
                 <div className="mt-8 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-xs font-medium text-white/50">
-                  <span className="flex items-center gap-1.5"><Lock className="w-3.5 h-3.5" /> Dados protegidos</span>
-                  <span className="flex items-center gap-1.5"><Shield className="w-3.5 h-3.5" /> LGPD compliant</span>
+                  <span className="flex items-center gap-1.5"><Lock className="w-3.5 h-3.5" /> Dados criptografados</span>
+                  <span className="flex items-center gap-1.5"><Shield className="w-3.5 h-3.5" /> Conformidade LGPD</span>
                   <span className="flex items-center gap-1.5"><CreditCard className="w-3.5 h-3.5" /> Sem cartão</span>
                 </div>
               </div>
@@ -1024,7 +1023,7 @@ export default function LandingPage() {
             <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-8">
               <div>
                 <img src={elolabLogo} alt="EloLab" className="h-12 w-auto brightness-0 invert mb-4" />
-                <p className="text-sm text-white/50 leading-relaxed">Sistema completo de gestão para clínicas médicas e laboratórios.</p>
+                <p className="text-sm text-white/50 leading-relaxed">A plataforma completa que organiza, automatiza e faz crescer clínicas médicas e laboratórios.</p>
                 <div className="mt-4 flex gap-3">
                   <a href="https://wa.me/5511937687369" target="_blank" rel="noopener noreferrer"
                     className="w-9 h-9 rounded-lg flex items-center justify-center bg-white/10 hover:bg-white/20 transition-colors">
