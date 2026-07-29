@@ -115,6 +115,27 @@ export function AppointmentDialog({ open, onOpenChange, initial, pacientes, medi
         setTab('consulta'); setSaving(false); return;
       }
 
+      // Bloqueio de agenda cobrindo o novo horário?
+      const { data: blocks } = await (supabase
+        .from('bloqueios_agenda' as any)
+        .select('id, data_inicio, data_fim, hora_inicio, hora_fim, dia_inteiro, motivo, tipo')
+        .eq('medico_id', form.medico_id)
+        .lte('data_inicio', form.data)
+        .gte('data_fim', form.data) as any);
+      const bloqueio = (blocks || []).find((b: any) => {
+        if (b.dia_inteiro) return true;
+        const bi = toMin(b.hora_inicio);
+        const bf = toMin(b.hora_fim);
+        if (bi === null || bf === null) return false;
+        return bi < novoFim && bf > novoInicio;
+      });
+      if (bloqueio) {
+        toast.error('Horário bloqueado para este médico', {
+          description: bloqueio.motivo || bloqueio.tipo || 'Escolha outro horário.',
+        });
+        setTab('consulta'); setSaving(false); return;
+      }
+
       const payload: any = {
         paciente_id: form.paciente_id,
         medico_id: form.medico_id,

@@ -154,11 +154,36 @@ export function AgendaPage() {
       const ag = active.agendamento;
       if (ag.medico_id === slotData.medico_id && ag.data === slotData.data && ag.hora_inicio.slice(0, 5) === slotData.hora_inicio) return;
 
-      // conflict?
-      const conflict = allAppts.find((a: any) =>
-        a.id !== ag.id && a.medico_id === slotData.medico_id && a.data === slotData.data &&
-        Math.abs(toMinutes(a.hora_inicio) - toMinutes(slotData.hora_inicio)) < 30
+      // Conflito real por sobreposição de janela (não apenas "menos de 30 min de distância")
+      const oldDur = ag.hora_fim
+        ? Math.max(5, toMinutes(ag.hora_fim.slice(0, 5)) - toMinutes(ag.hora_inicio.slice(0, 5)))
+        : 30;
+      const newStart = toMinutes(slotData.hora_inicio);
+      const newEnd = newStart + oldDur;
+
+      // Bloqueio de agenda cobre o novo horário?
+      const blocked = (bloqueios as any[]).find((b: any) =>
+        b.medico_id === slotData.medico_id &&
+        slotData.data >= b.data_inicio && slotData.data <= b.data_fim &&
+        (b.dia_inteiro || (
+          b.hora_inicio && b.hora_fim &&
+          toMinutes(b.hora_inicio.slice(0, 5)) < newEnd &&
+          toMinutes(b.hora_fim.slice(0, 5)) > newStart
+        ))
       );
+      if (blocked) {
+        toast.error('Horário bloqueado', { description: blocked.motivo || blocked.tipo || 'Este período está bloqueado para o médico.' });
+        return;
+      }
+
+      const conflict = allAppts.find((a: any) => {
+        if (a.id === ag.id) return false;
+        if (a.status === 'cancelado') return false;
+        if (a.medico_id !== slotData.medico_id || a.data !== slotData.data) return false;
+        const ini = toMinutes(a.hora_inicio.slice(0, 5));
+        const fim = a.hora_fim ? toMinutes(a.hora_fim.slice(0, 5)) : ini + 30;
+        return ini < newEnd && fim > newStart;
+      });
       if (conflict) {
         setConfirmMove({ agendamento: ag, ...slotData });
         return;
@@ -178,8 +203,15 @@ export function AgendaPage() {
       hora_inicio: hh(newStart),
       hora_fim: hh(newEnd),
     }).eq('id', ag.id) as any);
-    if (error) toast.error('Erro ao mover consulta');
-    else { toast.success('Consulta remarcada'); queryClient.invalidateQueries({ queryKey: ['agendamentos'] }); }
+    if (error) {
+      const overlap = error.code === '23P01' || String(error.message || '').includes('agendamentos_sem_sobreposicao');
+      if (overlap) {
+        toast.error('Horário indisponível', { description: 'Outra consulta deste médico se sobrepõe a este período.' });
+        queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
+      } else {
+        toast.error('Erro ao mover consulta', { description: error.message });
+      }
+    } else { toast.success('Consulta remarcada'); queryClient.invalidateQueries({ queryKey: ['agendamentos'] }); }
   };
 
   const handleSlotClick = (medico_id: string, hora_inicio: string) => {
