@@ -340,7 +340,7 @@ function GuiaFormDialog({ open, onClose, clinicaId, userId, onSaved }: any) {
         </DialogHeader>
 
         <Tabs defaultValue="paciente" className="mt-2">
-          <TabsList className="grid grid-cols-4 w-full">
+          <TabsList className="grid grid-cols-2 sm:grid-cols-4 w-full h-auto">
             <TabsTrigger value="paciente">Paciente</TabsTrigger>
             <TabsTrigger value="medico">Médico</TabsTrigger>
             <TabsTrigger value="convenio">Convênio</TabsTrigger>
@@ -358,7 +358,7 @@ function GuiaFormDialog({ open, onClose, clinicaId, userId, onSaved }: any) {
 
           <TabsContent value="medico" className="space-y-3 pt-3">
             <div><Label>Nome do médico solicitante</Label><Input value={form.medico_externo_nome} onChange={(e) => setForm({ ...form, medico_externo_nome: e.target.value })} /></div>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div className="col-span-2"><Label>CRM</Label><Input value={form.medico_externo_crm} onChange={(e) => setForm({ ...form, medico_externo_crm: e.target.value })} /></div>
               <div><Label>UF</Label><Input maxLength={2} value={form.medico_externo_uf} onChange={(e) => setForm({ ...form, medico_externo_uf: e.target.value.toUpperCase() })} /></div>
             </div>

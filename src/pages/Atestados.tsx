@@ -482,7 +482,7 @@ export default function Atestados() {
                   <Calendar className="h-4 w-4 text-warning" />
                   Período de Afastamento *
                 </h4>
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div className="space-y-1">
                     <Label className="text-xs">Dias de Afastamento *</Label>
                     <Input

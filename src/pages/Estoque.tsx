@@ -459,7 +459,7 @@ export default function Estoque() {
       {activeTab === 'curva_abc' && (
         <div className="space-y-4">
           {/* ABC Summary Cards */}
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {[
               { classe: 'A', label: 'Classe A — Alto valor', color: 'text-destructive', bg: 'bg-destructive/10', ...abcSummary.a },
               { classe: 'B', label: 'Classe B — Médio valor', color: 'text-warning', bg: 'bg-warning/10', ...abcSummary.b },

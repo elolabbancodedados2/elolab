@@ -289,7 +289,7 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
                       </div>
                     </div>
                     {res.resultado && (
-                      <div className="grid grid-cols-3 gap-2 text-sm">
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-sm">
                         <div>
                           <p className="text-[11px] text-muted-foreground">Resultado</p>
                           <p className={cn('font-bold', isAltered ? 'text-destructive' : 'text-primary')}>

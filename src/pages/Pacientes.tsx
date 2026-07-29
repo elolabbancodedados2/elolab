@@ -1319,7 +1319,7 @@ export default function Pacientes() {
                         <Separator />
                         <div>
                           <h4 className="font-medium text-sm mb-2 flex items-center gap-2"><Baby className="h-4 w-4 text-warning" /> Responsável Legal</h4>
-                          <div className="grid grid-cols-3 gap-4 text-sm">
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
                             <InfoField icon={User2} label="Nome" value={selectedPaciente.nome_responsavel} />
                             <InfoField icon={FileText} label="CPF" value={selectedPaciente.cpf_responsavel} />
                             <InfoField icon={Users} label="Parentesco" value={selectedPaciente.parentesco_responsavel} />

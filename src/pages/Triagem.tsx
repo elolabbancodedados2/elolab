@@ -579,7 +579,7 @@ export default function TriagemPage() {
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
                 <Scale className="h-3.5 w-3.5" /> Antropometria
               </p>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <VitalInput icon={Scale} label="Peso" value={formData.peso} onChange={setField('peso')} placeholder="70" unit="kg" />
                 <VitalInput icon={ArrowUpRight} label="Altura" value={formData.altura} onChange={setField('altura')} placeholder="170" unit="cm" />
                 <div className="space-y-1.5">
