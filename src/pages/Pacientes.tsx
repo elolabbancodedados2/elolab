@@ -18,6 +18,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { LoadingButton } from '@/components/ui/loading-button';
@@ -64,6 +65,13 @@ interface PacienteFormData {
   numero_carteira: string;
   validade_carteira: string;
   alergias: string[];
+  // Alimentam os alertas de contraindicação em src/lib/clinicalAlerts.ts. Sem
+  // eles a checagem de segurança da prescrição roda cega nesses dois pontos.
+  gestante: boolean;
+  amamentando: boolean;
+  // Ficam em paciente_comorbidades, não numa coluna de `pacientes`. Aqui só a
+  // descrição, que é o que o alerta de contraindicação compara.
+  comorbidades: string[];
   observacoes: string;
   nome_responsavel: string;
   cpf_responsavel: string;
@@ -76,7 +84,7 @@ const initialFormData: PacienteFormData = {
   sexo: '', estado_civil: '', profissao: '', tipo_sanguineo: '',
   cep: '', logradouro: '', numero: '', complemento: '', bairro: '', cidade: '', estado: '',
   convenio_id: '', numero_carteira: '', validade_carteira: '',
-  alergias: [], observacoes: '',
+  alergias: [], gestante: false, amamentando: false, comorbidades: [], observacoes: '',
   nome_responsavel: '', cpf_responsavel: '', parentesco_responsavel: '',
   is_menor: false,
 };
@@ -460,9 +468,26 @@ export default function Pacientes() {
     setIsFormOpen(true);
   };
 
-  const handleEdit = (paciente: any) => {
+  const handleEdit = async (paciente: any) => {
     setIsViewOpen(false);
     setSelectedPacienteId(paciente.id);
+
+    // As comorbidades vivem em tabela própria. Só as ativas entram no campo —
+    // as inativas ficam no histórico e aparecem na linha do tempo do paciente.
+    const { data: comorbidades, error: erroComorbidades } = await (supabase as any)
+      .from('paciente_comorbidades')
+      .select('descricao')
+      .eq('paciente_id', paciente.id)
+      .eq('ativo', true)
+      .order('created_at');
+
+    if (erroComorbidades) {
+      // Sem isto, um erro aqui abriria o formulário com o campo vazio e o
+      // salvamento apagaria as comorbidades que já existiam.
+      toast.error('Não foi possível carregar as comorbidades. Recarregue antes de salvar.');
+      return;
+    }
+
     setFormData({
       nome: paciente.nome,
       nome_social: paciente.nome_social || '',
@@ -485,6 +510,9 @@ export default function Pacientes() {
       numero_carteira: paciente.numero_carteira || '',
       validade_carteira: paciente.validade_carteira || '',
       alergias: paciente.alergias || [],
+      gestante: !!(paciente as any).gestante,
+      amamentando: !!(paciente as any).amamentando,
+      comorbidades: (comorbidades || []).map((c: any) => c.descricao).filter(Boolean),
       observacoes: paciente.observacoes || '',
       nome_responsavel: paciente.nome_responsavel || '',
       cpf_responsavel: paciente.cpf_responsavel || '',
@@ -520,6 +548,50 @@ export default function Pacientes() {
     } finally {
       setIsDeleting(false);
       setIsDeleteOpen(false);
+    }
+  };
+
+  /**
+   * Espelha o campo de comorbidades da ficha na tabela paciente_comorbidades.
+   *
+   * Uma comorbidade retirada da lista é marcada como inativa, não apagada: a
+   * linha do tempo do paciente mostra "Condição inativa", e histórico clínico
+   * não se joga fora. Reaparecer na lista reativa a mesma linha, preservando a
+   * data de diagnóstico registrada antes.
+   */
+  const sincronizarComorbidades = async (pacienteId: string, desejadas: string[]) => {
+    const { data: existentes, error: erroLeitura } = await (supabase as any)
+      .from('paciente_comorbidades')
+      .select('id, descricao, ativo')
+      .eq('paciente_id', pacienteId);
+
+    if (erroLeitura) throw erroLeitura;
+
+    const normalizar = (s: string) => s.trim().toLowerCase();
+    const alvo = new Map(desejadas.map(d => [normalizar(d), d.trim()]));
+    const linhas: Array<{ id: string; descricao: string; ativo: boolean }> = existentes || [];
+
+    const reativar = linhas.filter(l => !l.ativo && alvo.has(normalizar(l.descricao))).map(l => l.id);
+    const desativar = linhas.filter(l => l.ativo && !alvo.has(normalizar(l.descricao))).map(l => l.id);
+
+    const jaRegistradas = new Set(linhas.map(l => normalizar(l.descricao)));
+    const inserir = [...alvo.entries()]
+      .filter(([chave]) => !jaRegistradas.has(chave))
+      .map(([, descricao]) => ({ paciente_id: pacienteId, descricao, ativo: true }));
+
+    if (desativar.length) {
+      const { error } = await (supabase as any)
+        .from('paciente_comorbidades').update({ ativo: false }).in('id', desativar);
+      if (error) throw error;
+    }
+    if (reativar.length) {
+      const { error } = await (supabase as any)
+        .from('paciente_comorbidades').update({ ativo: true }).in('id', reativar);
+      if (error) throw error;
+    }
+    if (inserir.length) {
+      const { error } = await (supabase as any).from('paciente_comorbidades').insert(inserir);
+      if (error) throw error;
     }
   };
 
@@ -602,6 +674,8 @@ export default function Pacientes() {
         numero_carteira: formData.numero_carteira || null,
         validade_carteira: formData.validade_carteira || null,
         alergias: (formData.alergias || []).map((a: string) => sanitizeText(a) || 'Alergia').filter(Boolean),
+        gestante: formData.gestante,
+        amamentando: formData.amamentando,
         observacoes: sanitizeText(formData.observacoes),
         nome_responsavel: formData.nome_responsavel || null,
         cpf_responsavel: formData.cpf_responsavel || null,
@@ -612,10 +686,18 @@ export default function Pacientes() {
       if (selectedPacienteId) {
         const { error } = await supabase.from('pacientes').update(dataToSave).eq('id', selectedPacienteId);
         if (error) throw error;
+        await sincronizarComorbidades(selectedPacienteId, formData.comorbidades);
         toast.success('Paciente atualizado com sucesso');
       } else {
-        const { error } = await supabase.from('pacientes').insert(dataToSave);
+        // `.select('id').single()` porque as comorbidades vão para outra tabela
+        // e precisam do id que o banco acabou de gerar.
+        const { data: novo, error } = await supabase
+          .from('pacientes')
+          .insert(dataToSave)
+          .select('id')
+          .single();
         if (error) throw error;
+        await sincronizarComorbidades(novo.id, formData.comorbidades);
         toast.success('Paciente cadastrado com sucesso');
       }
       refetch();
@@ -1093,6 +1175,45 @@ export default function Pacientes() {
                     onChange={e => setFormData({ ...formData, alergias: e.target.value.split(',').map(a => a.trim()).filter(Boolean) })}
                     placeholder="Penicilina, Dipirona, Ibuprofeno, etc."
                   />
+                </div>
+                {/* Alimentam os alertas de contraindicação na prescrição. Antes
+                    não havia onde informar, então esses alertas nunca disparavam. */}
+                <div className="space-y-2">
+                  <Label>Condições que restringem medicamentos</Label>
+                  <div className="flex flex-wrap gap-6 rounded-md border p-3">
+                    <label className="flex items-center gap-2 text-sm font-normal cursor-pointer">
+                      <Checkbox
+                        checked={formData.gestante}
+                        onCheckedChange={v => setFormData({ ...formData, gestante: v === true })}
+                      />
+                      Gestante
+                    </label>
+                    <label className="flex items-center gap-2 text-sm font-normal cursor-pointer">
+                      <Checkbox
+                        checked={formData.amamentando}
+                        onCheckedChange={v => setFormData({ ...formData, amamentando: v === true })}
+                      />
+                      Amamentando
+                    </label>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    A prescrição avisa o médico se o medicamento for contraindicado nessas condições.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label>Comorbidades (separadas por vírgula)</Label>
+                  <Input
+                    value={formData.comorbidades.join(', ')}
+                    onChange={e => setFormData({
+                      ...formData,
+                      comorbidades: e.target.value.split(',').map(c => c.trim()).filter(Boolean),
+                    })}
+                    placeholder="Hipertensão, Diabetes tipo 2, Insuficiência renal, etc."
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Retirar uma comorbidade daqui não apaga o histórico — ela passa a constar como
+                    inativa na linha do tempo do paciente.
+                  </p>
                 </div>
                 <div className="space-y-2">
                   <Label>Observações Gerais</Label>

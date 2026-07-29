@@ -1,6 +1,7 @@
 // Reconciliação diária: reenvia código de ativação para registros pagos há +24h
 // que ainda não viraram conta (user_id NULL). Também expira registros vencidos.
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { cronSecretOk, cronForbidden } from "../_shared/cronAuth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -9,6 +10,9 @@ const corsHeaders = {
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+
+  // Só o agendador. Antes a chave anon, que é pública, bastava para disparar.
+  if (!cronSecretOk(req)) return cronForbidden(corsHeaders);
 
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,

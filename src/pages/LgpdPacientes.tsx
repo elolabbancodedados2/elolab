@@ -64,8 +64,10 @@ export default function LgpdPacientes() {
     if (!selectedPaciente) return;
     setIsProcessing(true);
     try {
-      await deletePatientData(selectedPaciente.id, deleteReason);
-      toast.success(`Dados de ${selectedPaciente.nome} apagados conforme LGPD`);
+      const { deletedRecords } = await deletePatientData(selectedPaciente.id, deleteReason);
+      toast.success(
+        `Dados de ${selectedPaciente.nome} apagados conforme LGPD — ${deletedRecords} registro(s)`
+      );
       setIsDeleteOpen(false);
       setSelectedPaciente(null);
       setDeleteReason('');

@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { cronSecretOk, cronForbidden } from '../_shared/cronAuth.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -9,6 +10,10 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
+
+  // Só o agendador. Sem isso, qualquer visitante disparava e-mails de
+  // boas-vindas em massa em nome da clínica, queimando o domínio.
+  if (!cronSecretOk(req)) return cronForbidden(corsHeaders)
 
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!

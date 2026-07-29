@@ -46,15 +46,47 @@ export default function VitaisGraficos() {
   });
 
   const { data: vitais = [], isLoading: loadingVitais } = useQuery({
-    queryKey: ['vitais_historico', selectedPacienteId],
+    queryKey: ['vitais_triagens', selectedPacienteId],
     queryFn: async () => {
       if (!selectedPacienteId) return [];
-      const { data } = await (supabase as any)
-        .from('vitais_historico')
-        .select('*')
+      // Antes esta tela lia `vitais_historico`, uma tabela que nunca existiu no
+      // banco — a consulta falhava e o gráfico ficava permanentemente vazio.
+      // Os sinais vitais são coletados na triagem, então é de lá que vêm.
+      const { data, error } = await supabase
+        .from('triagens')
+        .select(
+          'id, paciente_id, pressao_arterial, frequencia_cardiaca, temperatura, peso, altura, imc, saturacao, glicemia, data_hora, created_at'
+        )
         .eq('paciente_id', selectedPacienteId)
-        .order('created_at', { ascending: true });
-      return (data || []) as VitalSignData[];
+        .order('data_hora', { ascending: true });
+
+      if (error) throw error;
+
+      return (data || []).map((t): VitalSignData => {
+        // A triagem grava a pressão como texto ("120/80"); os gráficos
+        // precisam dos dois números separados.
+        const [sistolica, diastolica] = (t.pressao_arterial || '')
+          .split('/')
+          .map((n) => {
+            const v = Number.parseInt(n.trim(), 10);
+            return Number.isFinite(v) ? v : null;
+          });
+
+        return {
+          id: t.id,
+          paciente_id: t.paciente_id,
+          pressao_sistolica: sistolica ?? null,
+          pressao_diastolica: diastolica ?? null,
+          frequencia_cardiaca: t.frequencia_cardiaca,
+          temperatura: t.temperatura,
+          peso: t.peso,
+          altura: t.altura,
+          imc: t.imc,
+          oxigenacao: t.saturacao,
+          glicemia: t.glicemia,
+          created_at: t.data_hora || t.created_at,
+        };
+      });
     },
     enabled: !!selectedPacienteId,
   });
