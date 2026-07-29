@@ -33,7 +33,7 @@ const HOURS = Array.from({ length: END_HOUR - START_HOUR }, (_, i) =>
 );
 
 function DoctorColumn({
-  medico, date, agendamentos, bloqueios, colorFor, onSlotClick, onCardClick,
+  medico, date, agendamentos, bloqueios, colorFor, onSlotClick, onCardClick, convenioById, columnIndex,
 }: any) {
   const minutesToPx = (m: number) => (m / SLOT_MINUTES) * SLOT_PX;
   const columnRef = useRef<HTMLDivElement>(null);
@@ -45,7 +45,10 @@ function DoctorColumn({
   const next = sorted.find((a: any) => toMinutes(a.hora_inicio) >= nowMin);
 
   return (
-    <div className="flex-1 min-w-[220px] border-r border-border/60 last:border-r-0">
+    <div className={cn(
+      'flex-1 min-w-[240px] border-r border-border/60 last:border-r-0',
+      columnIndex % 2 === 1 && 'bg-muted/[0.15]'
+    )}>
       <div className="sticky top-0 z-20 bg-card/95 backdrop-blur border-b border-border/60 px-3 py-2">
         <div className="flex items-center gap-2">
           <div className="h-9 w-9 rounded-full bg-gradient-to-br from-primary/20 to-primary/5 border border-primary/20 flex items-center justify-center text-primary shrink-0">
@@ -157,6 +160,7 @@ function DoctorColumn({
             slotHeight={SLOT_PX}
             minutesToPx={minutesToPx}
             onClick={() => onCardClick(ag)}
+            convenioName={convenioById?.[ag.pacientes?.convenio_id]?.nome}
           />
         ))}
       </div>
@@ -177,7 +181,7 @@ function DropSlot({ id, data, className, style, onClick }: any) {
 }
 
 export function DailyMultiDoctorView({
-  date, medicos, agendamentos, bloqueios, colorFor, onSlotClick, onCardClick,
+  date, medicos, agendamentos, bloqueios, colorFor, onSlotClick, onCardClick, convenioById,
 }: any) {
   const activeDoctors = useMemo(() => medicos.filter((m: any) => m.ativo !== false), [medicos]);
   const dayStr = format(parseISO(date), "EEEE, d 'de' MMMM", { locale: ptBR });
@@ -242,14 +246,16 @@ export function DailyMultiDoctorView({
             Nenhum médico ativo. Cadastre médicos em <span className="mx-1 font-medium">Equipe</span> para começar.
           </div>
         ) : (
-          activeDoctors.map((m: any) => (
+          activeDoctors.map((m: any, idx: number) => (
             <DoctorColumn
               key={m.id}
               medico={m}
               date={date}
+              columnIndex={idx}
               agendamentos={agendamentos.filter((a: any) => a.medico_id === m.id)}
               bloqueios={bloqueios.filter((b: any) => b.medico_id === m.id && date >= b.data_inicio && date <= b.data_fim)}
               colorFor={colorFor}
+              convenioById={convenioById}
               onSlotClick={onSlotClick}
               onCardClick={onCardClick}
             />
