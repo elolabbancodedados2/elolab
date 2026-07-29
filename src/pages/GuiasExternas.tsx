@@ -501,13 +501,16 @@ function DetalheGuiaDialog({ guia, open, onClose, onChanged }: any) {
       }).select('id').single();
       if (agErr) throw agErr;
 
-      await (supabase as any).from('guias_externas').update({
+      // Sem checar o erro, o agendamento era criado mas a guia continuava como
+      // não agendada — a coleta existia na agenda e sumia do fluxo de guias.
+      const { error: guiaErr } = await (supabase as any).from('guias_externas').update({
         status: 'agendada',
         paciente_id: pacienteId,
         agendamento_id: ag.id,
         data_agendamento: dataAg,
         hora_agendamento: horaAg,
       }).eq('id', guia.id);
+      if (guiaErr) throw guiaErr;
     },
     onSuccess: () => { onChanged(); toast.success('Coleta agendada'); setAgendando(false); onClose(); },
     onError: (e: any) => toast.error(e.message),

@@ -326,6 +326,33 @@ export default function Exames() {
     enabled: !!user,
   });
 
+  /**
+   * Cadastra tipo de exame personalizado.
+   *
+   * Estava duplicado entre o Enter do campo e o botão Adicionar, e em ambos o
+   * erro do insert era ignorado: a tela dizia "Tipo cadastrado!" e a lista
+   * continuava igual, sem explicação.
+   */
+  const cadastrarTipoExame = async () => {
+    if (!newTypeInput.trim() || !user) return;
+    const { error } = await supabase.from('tipos_exame_custom' as any).insert({
+      user_id: user.id,
+      nome: newTypeInput.trim(),
+      categoria: newTypeCat,
+    } as any);
+    if (error) {
+      toast.error(
+        error.message?.includes('duplicate')
+          ? 'Já existe um tipo com esse nome.'
+          : 'Não foi possível cadastrar o tipo.'
+      );
+      return;
+    }
+    queryClient.invalidateQueries({ queryKey: ['tipos_exame_custom'] });
+    setNewTypeInput('');
+    toast.success('Tipo cadastrado!');
+  };
+
   // Merge catalog with custom types
   const allExames = useMemo(() => {
     const custom = customTypesFromDB.map((t: any) => ({
@@ -1188,20 +1215,11 @@ export default function Exames() {
               <Input value={newTypeInput} onChange={e => setNewTypeInput(e.target.value)} placeholder="Nome do exame..." className="flex-1"
                 onKeyDown={async e => {
                   if (e.key === 'Enter' && newTypeInput.trim() && user) {
-                    await supabase.from('tipos_exame_custom' as any).insert({ user_id: user.id, nome: newTypeInput.trim(), categoria: newTypeCat } as any);
-                    queryClient.invalidateQueries({ queryKey: ['tipos_exame_custom'] });
-                    setNewTypeInput('');
-                    toast.success('Tipo cadastrado!');
+                    await cadastrarTipoExame();
                   }
                 }}
               />
-              <Button disabled={!newTypeInput.trim()} onClick={async () => {
-                if (!newTypeInput.trim() || !user) return;
-                await supabase.from('tipos_exame_custom' as any).insert({ user_id: user.id, nome: newTypeInput.trim(), categoria: newTypeCat } as any);
-                queryClient.invalidateQueries({ queryKey: ['tipos_exame_custom'] });
-                setNewTypeInput('');
-                toast.success('Tipo cadastrado!');
-              }} className="gap-1"><Plus className="h-4 w-4" />Adicionar</Button>
+              <Button disabled={!newTypeInput.trim()} onClick={cadastrarTipoExame} className="gap-1"><Plus className="h-4 w-4" />Adicionar</Button>
             </div>
             {customTypesFromDB.length === 0 ? (
               <p className="text-center text-muted-foreground py-8 text-sm">Nenhum tipo personalizado cadastrado</p>
@@ -1214,7 +1232,8 @@ export default function Exames() {
                       <p className="text-xs text-muted-foreground">{tipo.categoria} {tipo.codigo_tuss && `• TUSS: ${tipo.codigo_tuss}`}</p>
                     </div>
                     <Button variant="ghost" size="sm" className="text-destructive h-7" onClick={async () => {
-                      await supabase.from('tipos_exame_custom' as any).delete().eq('id', tipo.id);
+                      const { error } = await supabase.from('tipos_exame_custom' as any).delete().eq('id', tipo.id);
+                      if (error) { toast.error('Não foi possível remover o tipo.'); return; }
                       queryClient.invalidateQueries({ queryKey: ['tipos_exame_custom'] });
                       toast.success('Removido');
                     }}>Remover</Button>

@@ -139,7 +139,10 @@ export default function Usuarios() {
 
     setIsSaving(true);
     try {
-      await supabase.from('user_roles').delete().eq('user_id', selectedUser.id);
+      const { error: rolesError } = await supabase
+        .from('user_roles').delete().eq('user_id', selectedUser.id);
+      if (rolesError) throw rolesError;
+
       const { error } = await supabase.from('profiles').update({ ativo: false }).eq('id', selectedUser.id);
       if (error) throw error;
       queryClient.invalidateQueries({ queryKey: ['profiles'] });
@@ -169,9 +172,25 @@ export default function Usuarios() {
       if (profileError) throw profileError;
 
       if (formData.role) {
-        await supabase.from('user_roles').delete().eq('user_id', selectedUser.id);
-        const { error: roleError } = await supabase.from('user_roles').insert({ user_id: selectedUser.id, role: formData.role });
-        if (roleError) throw roleError;
+        // Apaga e reinsere. O erro do insert já era checado, mas o papel antigo
+        // já tinha sido removido — a conta ficava sem nenhum acesso e a pessoa
+        // via "Acesso Pendente" sem entender por quê. Guardamos para restaurar.
+        const { data: papeisAtuais } = await supabase
+          .from('user_roles').select('role').eq('user_id', selectedUser.id);
+
+        const { error: delError } = await supabase
+          .from('user_roles').delete().eq('user_id', selectedUser.id);
+        if (delError) throw delError;
+
+        const { error: roleError } = await supabase
+          .from('user_roles').insert({ user_id: selectedUser.id, role: formData.role });
+        if (roleError) {
+          if (papeisAtuais?.length) {
+            await supabase.from('user_roles')
+              .insert(papeisAtuais.map(p => ({ user_id: selectedUser.id, role: p.role })));
+          }
+          throw roleError;
+        }
       }
 
       queryClient.invalidateQueries({ queryKey: ['profiles'] });

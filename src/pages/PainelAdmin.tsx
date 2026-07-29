@@ -199,8 +199,25 @@ export default function PainelAdmin() {
         ativo: editFormData.ativo,
       }).eq('id', editUser.id);
 
-      await supabase.from('user_roles').delete().eq('user_id', editUser.id);
-      await supabase.from('user_roles').insert({ user_id: editUser.id, role: editFormData.role });
+      // Mesmo cuidado de Funcionarios: sem checar o erro, um insert que falha
+      // depois do delete deixa a conta sem nenhum papel, com a tela dizendo que
+      // deu certo. Guardamos os papéis para restaurar em caso de falha.
+      const { data: papeisAtuais } = await supabase
+        .from('user_roles').select('role').eq('user_id', editUser.id);
+
+      const { error: delErr } = await supabase
+        .from('user_roles').delete().eq('user_id', editUser.id);
+      if (delErr) throw delErr;
+
+      const { error: insErr } = await supabase
+        .from('user_roles').insert({ user_id: editUser.id, role: editFormData.role });
+      if (insErr) {
+        if (papeisAtuais?.length) {
+          await supabase.from('user_roles')
+            .insert(papeisAtuais.map(p => ({ user_id: editUser.id, role: p.role })));
+        }
+        throw insErr;
+      }
 
       queryClient.invalidateQueries({ queryKey: ['admin-profiles'] });
       queryClient.invalidateQueries({ queryKey: ['admin-user-roles'] });
@@ -217,8 +234,14 @@ export default function PainelAdmin() {
     if (!deleteUser) return;
     setIsSaving(true);
     try {
-      await supabase.from('user_roles').delete().eq('user_id', deleteUser.id);
-      await supabase.from('profiles').update({ ativo: false }).eq('id', deleteUser.id);
+      const { error: rolesErr } = await supabase
+        .from('user_roles').delete().eq('user_id', deleteUser.id);
+      if (rolesErr) throw rolesErr;
+
+      const { error: profErr } = await supabase
+        .from('profiles').update({ ativo: false }).eq('id', deleteUser.id);
+      if (profErr) throw profErr;
+
       queryClient.invalidateQueries({ queryKey: ['admin-profiles'] });
       queryClient.invalidateQueries({ queryKey: ['admin-user-roles'] });
       setDeleteUser(null);
@@ -231,13 +254,20 @@ export default function PainelAdmin() {
   };
 
   const handleToggleAtivo = async (u: any) => {
-    await supabase.from('profiles').update({ ativo: !u.ativo }).eq('id', u.id);
+    const { error } = await supabase.from('profiles').update({ ativo: !u.ativo }).eq('id', u.id);
+    if (error) { toast.error('Não foi possível alterar o status.'); return; }
     queryClient.invalidateQueries({ queryKey: ['admin-profiles'] });
     toast.success(u.ativo ? 'Desativado.' : 'Ativado.');
   };
 
   const handleCancelSub = async (subId: string) => {
-    await supabase.from('assinaturas_plano').update({ status: 'cancelada', data_cancelamento: new Date().toISOString() }).eq('id', subId);
+    // Cancelamento de assinatura mexe em cobrança: anunciar sucesso sem
+    // confirmar deixaria o cliente achando que cancelou algo que segue ativo.
+    const { error } = await supabase
+      .from('assinaturas_plano')
+      .update({ status: 'cancelada', data_cancelamento: new Date().toISOString() })
+      .eq('id', subId);
+    if (error) { toast.error('Não foi possível cancelar a assinatura.'); return; }
     queryClient.invalidateQueries({ queryKey: ['admin-subscriptions'] });
     toast.success('Assinatura cancelada.');
   };

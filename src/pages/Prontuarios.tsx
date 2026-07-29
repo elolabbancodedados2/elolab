@@ -590,6 +590,8 @@ export default function Prontuarios() {
       });
       return;
     }
+
+    let auditado = false;
     try {
       await supabase.from('audit_log').insert({
         action: 'edit_request', collection: 'prontuarios', record_id: currentProntuario.id,
@@ -597,15 +599,30 @@ export default function Prontuarios() {
         user_id: user?.id || null, user_name: user?.nome || null,
         changes: { motivo: 'Edição solicitada pelo médico' },
       });
-      await (supabase as any).from('prontuario_acessos').insert({
+      const { error: acessoErr } = await (supabase as any).from('prontuario_acessos').insert({
         prontuario_id: currentProntuario.id,
         acao: 'edicao',
         user_nome: user?.nome || null,
         justificativa: 'Modo de edição ativado',
       });
-    } catch { /* silent */ }
+      if (acessoErr) throw acessoErr;
+      auditado = true;
+    } catch (e) {
+      // Engolir a falha em silêncio era pior que não auditar: a tela afirmava
+      // "Alterações serão auditadas" mesmo quando o registro não fora gravado.
+      // Auditoria que falha calada cria garantia falsa — justamente o que a
+      // rastreabilidade exigida pela LGPD deveria impedir.
+      console.error('Falha ao registrar acesso ao prontuário:', e);
+    }
+
     setIsEditing(true);
-    toast.success('Modo de edição ativado', { description: 'Alterações serão auditadas.' });
+    if (auditado) {
+      toast.success('Modo de edição ativado', { description: 'Alterações serão auditadas.' });
+    } else {
+      toast.warning('Modo de edição ativado', {
+        description: 'Não foi possível registrar o acesso na auditoria.',
+      });
+    }
   };
 
   const updateField = (field: string, value: any) => setCurrentProntuario(prev => ({ ...prev, [field]: value }));

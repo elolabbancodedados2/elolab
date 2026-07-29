@@ -259,7 +259,13 @@ export default function Fila() {
       if (profile?.clinica_id) payload.clinica_id = profile.clinica_id;
       const { error } = await supabase.from('fila_atendimento').insert(payload);
       if (error) throw error;
-      await supabase.from('agendamentos').update({ status: 'aguardando' }).eq('id', selectedAgendamento);
+      // Falha aqui deixa o paciente na fila mas com o agendamento em outro
+      // estado — a Recepção e o Painel TV passam a discordar da Fila.
+      const { error: agErr } = await supabase
+        .from('agendamentos').update({ status: 'aguardando' }).eq('id', selectedAgendamento);
+      if (agErr) {
+        toast.warning('Paciente na fila, mas o status do agendamento não mudou.');
+      }
       refresh();
       setIsAddOpen(false);
       setSelectedAgendamento('');

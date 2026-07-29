@@ -285,10 +285,31 @@ export default function Funcionarios() {
           .eq('email', data.email)
           .maybeSingle();
         if (profiles?.id) {
-          await supabase.from('funcionarios').update({ user_id: profiles.id } as any).eq('id', newFunc.id);
-          await supabase.from('user_roles').delete().eq('user_id', profiles.id);
+          // Vincula a conta existente ao funcionário recém-criado e define os
+          // papéis. Mesma proteção do fluxo de edição: se a reinserção falhar
+          // depois do delete, a pessoa fica sem nenhum acesso.
+          const { error: vincErr } = await supabase
+            .from('funcionarios').update({ user_id: profiles.id } as any).eq('id', newFunc.id);
+          if (vincErr) throw vincErr;
+
+          const { data: papeisAtuais } = await supabase
+            .from('user_roles').select('role').eq('user_id', profiles.id);
+
+          const { error: delErr } = await supabase
+            .from('user_roles').delete().eq('user_id', profiles.id);
+          if (delErr) throw delErr;
+
           if (data.selectedRoles.length > 0) {
-            await supabase.from('user_roles').insert(data.selectedRoles.map(role => ({ user_id: profiles.id, role })));
+            const { error: insErr } = await supabase
+              .from('user_roles')
+              .insert(data.selectedRoles.map(role => ({ user_id: profiles.id, role })));
+            if (insErr) {
+              if (papeisAtuais?.length) {
+                await supabase.from('user_roles')
+                  .insert(papeisAtuais.map(p => ({ user_id: profiles.id, role: p.role })));
+              }
+              throw insErr;
+            }
           }
         }
       }
@@ -328,10 +349,35 @@ export default function Funcionarios() {
       if (funcError) throw funcError;
 
       // Sync user_roles if employee has an account
+      //
+      // Apaga tudo e reinsere. Os erros eram ignorados: se o insert falhasse
+      // depois do delete, a pessoa ficava SEM NENHUM papel — trancada para fora
+      // do sistema — e a tela anunciava sucesso. Num turno, isso é um médico
+      // perdendo acesso ao prontuário no meio do atendimento.
+      //
+      // Guardamos os papéis atuais antes de apagar, para restaurá-los se a
+      // reinserção falhar.
       if (userId) {
-        await supabase.from('user_roles').delete().eq('user_id', userId);
+        const { data: papeisAtuais } = await supabase
+          .from('user_roles').select('role').eq('user_id', userId);
+
+        const { error: delErr } = await supabase
+          .from('user_roles').delete().eq('user_id', userId);
+        if (delErr) throw delErr;
+
         if (data.selectedRoles.length > 0) {
-          await supabase.from('user_roles').insert(data.selectedRoles.map(role => ({ user_id: userId, role })));
+          const { error: insErr } = await supabase
+            .from('user_roles')
+            .insert(data.selectedRoles.map(role => ({ user_id: userId, role })));
+
+          if (insErr) {
+            // Devolve o que havia antes para não deixar a conta sem acesso
+            if (papeisAtuais?.length) {
+              await supabase.from('user_roles')
+                .insert(papeisAtuais.map(p => ({ user_id: userId, role: p.role })));
+            }
+            throw insErr;
+          }
         }
       }
     },

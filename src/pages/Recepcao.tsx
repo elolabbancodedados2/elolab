@@ -345,7 +345,12 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
   async function handleChamar(filaId: string) {
     setIsProcessing(true);
     try {
-      await supabase.from('fila_atendimento').update({ status: 'chamado' }).eq('id', filaId);
+      // O erro era ignorado: a tela dizia "Paciente chamado!" enquanto a fila
+      // continuava parada e o Painel TV não exibia nada.
+      const { error } = await supabase
+        .from('fila_atendimento').update({ status: 'chamado' }).eq('id', filaId);
+      if (error) throw error;
+
       queryClient.invalidateQueries({ queryKey: ['fila_atendimento'] });
       toast.success('Paciente chamado!');
     } catch (err: any) {
