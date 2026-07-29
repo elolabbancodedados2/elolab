@@ -28,21 +28,29 @@ BEGIN;
 ALTER TABLE public.triagens
   ALTER COLUMN altura TYPE numeric(6,2);
 
--- vitais_historico tem o mesmo limite e a mesma finalidade
-ALTER TABLE public.vitais_historico
-  ALTER COLUMN altura TYPE numeric(6,2);
-
 -- Normaliza para centímetros o que foi gravado em metros
 UPDATE public.triagens
    SET altura = round(altura * 100, 2)
  WHERE altura IS NOT NULL AND altura > 0 AND altura < 3;
 
-UPDATE public.vitais_historico
-   SET altura = round(altura * 100, 2)
- WHERE altura IS NOT NULL AND altura > 0 AND altura < 3;
-
 COMMENT ON COLUMN public.triagens.altura IS 'Altura em centímetros (ex.: 170).';
-COMMENT ON COLUMN public.vitais_historico.altura IS 'Altura em centímetros (ex.: 170).';
+
+-- vitais_historico tem o mesmo limite e a mesma finalidade, mas a migration que
+-- a cria (20260414000001_add_all_workflows.sql) nunca foi aplicada em produção:
+-- a tabela não existe no banco. Tratamos condicionalmente para que este arquivo
+-- funcione tanto no banco atual quanto num banco onde aquela migration rodou.
+DO $$
+BEGIN
+  IF to_regclass('public.vitais_historico') IS NOT NULL THEN
+    ALTER TABLE public.vitais_historico ALTER COLUMN altura TYPE numeric(6,2);
+
+    UPDATE public.vitais_historico
+       SET altura = round(altura * 100, 2)
+     WHERE altura IS NOT NULL AND altura > 0 AND altura < 3;
+
+    COMMENT ON COLUMN public.vitais_historico.altura IS 'Altura em centímetros (ex.: 170).';
+  END IF;
+END $$;
 
 COMMIT;
 

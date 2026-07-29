@@ -1,5 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { cronSecretOk, cronForbidden } from '../_shared/cronAuth.ts';
+import { cronOrUserOk, cronForbidden } from '../_shared/cronAuth.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -23,8 +23,8 @@ Deno.serve(async (req) => {
     return new Response('ok', { headers: corsHeaders })
   }
 
-  // Só o agendador (pg_cron) pode disparar esta rotina.
-  if (!cronSecretOk(req)) return cronForbidden(corsHeaders);
+  // O agendador (com o segredo) ou um usuário logado. A chave anon não basta.
+  if (!cronOrUserOk(req)) return cronForbidden(corsHeaders);
 
   const startTime = Date.now()
 
