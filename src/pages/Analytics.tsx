@@ -268,6 +268,21 @@ export default function Analytics() {
     );
   }
 
+  const semDados = agendamentos.length === 0 && lancamentos.length === 0;
+
+  if (semDados) {
+    return (
+      <div className="pb-8">
+        <EmptyState
+          icon={Activity}
+          title="Ainda não há dados neste período"
+          description="Assim que houver agendamentos ou lançamentos financeiros no intervalo selecionado, os indicadores aparecerão aqui. Experimente ampliar o período."
+          action={{ label: 'Ver últimos 90 dias', onClick: () => setPeriodPreset('90d') }}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 pb-8">
       {/* Header + Period Selector */}
