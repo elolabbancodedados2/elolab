@@ -9,10 +9,11 @@ interface Props {
   date: string;
   agendamentos: any[];
   colorFor: (a: any) => string;
+  medicoById?: Record<string, any>;
   onDayClick: (day: string) => void;
 }
 
-export function MonthlyView({ date, agendamentos, colorFor, onDayClick }: Props) {
+export function MonthlyView({ date, agendamentos, colorFor, medicoById = {}, onDayClick }: Props) {
   const days = useMemo(() => {
     const base = parseISO(date);
     const start = startOfWeek(startOfMonth(base), { weekStartsOn: 1 });
@@ -72,6 +73,9 @@ export function MonthlyView({ date, agendamentos, colorFor, onDayClick }: Props)
                     <span className="font-medium tabular-nums">{a.hora_inicio.slice(0, 5)}</span>
                     <span className="truncate text-muted-foreground">
                       {a.pacientes?.nome_social || a.pacientes?.nome || ''}
+                      {medicoById[a.medico_id] && (
+                        <span className="text-muted-foreground/60"> · Dr(a). {medicoById[a.medico_id].nome?.split(' ')[0] || medicoById[a.medico_id].crm}</span>
+                      )}
                     </span>
                   </div>
                 ))}

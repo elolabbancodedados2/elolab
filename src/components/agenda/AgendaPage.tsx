@@ -11,6 +11,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useAgendamentos, useMedicos, usePacientes, useSupabaseQuery } from '@/hooks/useSupabaseData';
 import { useAgendaColorScheme } from './hooks/useAgendaColorScheme';
 import { useAgendaDefaultView } from './hooks/useAgendaDefaultView';
+import { useCurrentMedico } from '@/hooks/useCurrentMedico';
 import { AgendaHeader } from './AgendaHeader';
 import { DailyMultiDoctorView } from './views/DailyMultiDoctorView';
 import { WeeklyView } from './views/WeeklyView';
@@ -35,6 +36,7 @@ function toMinutes(t: string) {
 
 export function AgendaPage() {
   const queryClient = useQueryClient();
+  const { medicoId: myMedicoId, isMedicoOnly } = useCurrentMedico();
   const [date, setDate] = useState(() => sessionStorage.getItem('agenda:date') || format(new Date(), 'yyyy-MM-dd'));
   const [view, setView] = useState<AgendaView>(() => (sessionStorage.getItem('agenda:view') as AgendaView) || 'daily');
   const { defaultView, setDefaultView, loaded: defaultViewLoaded } = useAgendaDefaultView();
@@ -78,6 +80,22 @@ export function AgendaPage() {
 
   const { data: allAppts = [], isLoading } = useAgendamentos();
   const { data: medicos = [] } = useMedicos();
+
+  // Isolamento por profissional: um médico só vê a própria agenda; admin/recepção veem todos.
+  // Isso corrige o vazamento em que pacientes de um médico apareciam na agenda de outro
+  // (principalmente nas visões Semana e Mês, que mostravam todos os médicos misturados).
+  useEffect(() => {
+    if (isMedicoOnly && myMedicoId && !medicoFilter.includes(myMedicoId)) {
+      setMedicoFilter([myMedicoId]);
+    }
+  }, [isMedicoOnly, myMedicoId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const medicoById = useMemo(() => {
+    const map: Record<string, any> = {};
+    for (const m of medicos as any[]) map[m.id] = m;
+    return map;
+  }, [medicos]);
+
   const { data: pacientes = [] } = usePacientes();
   const { data: bloqueios = [] } = useSupabaseQuery<any>('bloqueios_agenda', {
     orderBy: { column: 'data_inicio', ascending: true },
@@ -263,6 +281,7 @@ export function AgendaPage() {
                 date={date}
                 agendamentos={filtered}
                 colorFor={colorFor}
+                medicoById={medicoById}
                 onDayClick={(d) => { setDate(d); setView('daily'); }}
                 onCardClick={(a) => setDialogState({ open: true, initial: a })}
               />
@@ -272,6 +291,7 @@ export function AgendaPage() {
                 date={date}
                 agendamentos={filtered}
                 colorFor={colorFor}
+                medicoById={medicoById}
                 onDayClick={(d) => { setDate(d); setView('daily'); }}
               />
             )}
