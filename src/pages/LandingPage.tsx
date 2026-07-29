@@ -96,98 +96,98 @@ function useCountUp(end: number, duration = 2000, startOnView = true) {
 const moduleGroups = [
   {
     title: 'Gestão Clínica',
-    subtitle: 'Ferramentas essenciais para o atendimento médico do dia a dia',
+    subtitle: 'Atenda mais pacientes por dia, com menos cliques e zero papelada',
     strip: stripClinica,
     stripText: 'Gestão Clínica Inteligente',
     modules: [
-      { icon: Calendar, title: 'Agenda Inteligente', desc: 'Agendamento com confirmação automática, bloqueios, retornos e painel TV.', img: modClinica1 },
-      { icon: FileText, title: 'Prontuário Eletrônico', desc: 'PEP com assinatura digital ICP-Brasil, timeline, CID-10 e exportação HL7 FHIR.', img: modClinica2 },
-      { icon: Stethoscope, title: 'Módulo Clínico', desc: 'Prescrições, atestados, encaminhamentos e verificador de interações.', img: modClinica3 },
-      { icon: HeartPulse, title: 'Triagem Manchester', desc: 'Classificação de risco integrada à fila de atendimento com priorização.', img: modClinica4 },
-      { icon: Pill, title: 'Prescrições Digitais', desc: 'Prescrição com QR Code, baixa automática de estoque e dispensação.', img: modClinica5 },
-      { icon: ClipboardList, title: 'Encaminhamentos', desc: 'Ciclo completo de encaminhamento com contra-referência e rastreio.', img: modClinica6 },
+      { icon: Calendar, title: 'Agenda Inteligente', desc: 'Encaixes em segundos, confirmação automática e agenda cheia sem retrabalho da recepção.', img: modClinica1 },
+      { icon: FileText, title: 'Prontuário Eletrônico', desc: 'Registre a consulta em minutos com assinatura digital ICP-Brasil e segurança jurídica CFM.', img: modClinica2 },
+      { icon: Stethoscope, title: 'Módulo Clínico', desc: 'Receitas, atestados e encaminhamentos prontos em um clique, com alerta de interações.', img: modClinica3 },
+      { icon: HeartPulse, title: 'Triagem Manchester', desc: 'Quem é urgente atende primeiro: classificação de risco integrada à fila, sem confusão.', img: modClinica4 },
+      { icon: Pill, title: 'Prescrições Digitais', desc: 'Prescreva com QR Code e dê baixa automática no estoque, sem erro de dispensação.', img: modClinica5 },
+      { icon: ClipboardList, title: 'Encaminhamentos', desc: 'Nenhum paciente se perde: encaminhamento rastreado até a contra-referência.', img: modClinica6 },
     ],
   },
   {
     title: 'Laboratório e Diagnóstico',
-    subtitle: 'Do pedido ao laudo, com rastreabilidade completa',
+    subtitle: 'Do pedido ao laudo assinado, com rastreabilidade total da amostra',
     strip: stripLab,
     stripText: 'Laboratório Integrado',
     modules: [
-      { icon: FlaskConical, title: 'Laboratório', desc: 'Worklist de coletas, laudos digitais, mapa de coleta e rastreabilidade.', img: modLab1 },
-      { icon: Microscope, title: 'Exames & Laudos', desc: 'Do pedido ao laudo com faturamento automático ao liberar resultados.', img: modLab2 },
-      { icon: Activity, title: 'Sinais Vitais', desc: 'Gráficos de sinais vitais com histórico e alertas de variação.', img: modLab3 },
-      { icon: Warehouse, title: 'Estoque', desc: 'Controle de medicamentos, insumos, lotes, validade e ponto de pedido.', img: modLab4 },
-      { icon: QrCode, title: 'Etiquetas & QR Code', desc: 'Impressão de etiquetas para pacientes e QR Code em prescrições.', img: modLab5 },
-      { icon: Building2, title: 'Salas e Leitos', desc: 'Gestão de salas de atendimento, ocupação e disponibilidade em tempo real.', img: modLab6 },
+      { icon: FlaskConical, title: 'Laboratório', desc: 'Coletas organizadas, laudos digitais e amostras rastreadas do tubo ao resultado.', img: modLab1 },
+      { icon: Microscope, title: 'Exames & Laudos', desc: 'Libere o resultado e fature na hora: nenhum exame fica sem cobrança.', img: modLab2 },
+      { icon: Activity, title: 'Sinais Vitais', desc: 'Enxergue a evolução do paciente em gráficos claros, com alerta de variações críticas.', img: modLab3 },
+      { icon: Warehouse, title: 'Estoque', desc: 'Acabe com perdas por validade: lotes, saldo e ponto de pedido sob controle.', img: modLab4 },
+      { icon: QrCode, title: 'Etiquetas & QR Code', desc: 'Etiquetas e QR Code que eliminam troca de amostra e receita falsificada.', img: modLab5 },
+      { icon: Building2, title: 'Salas e Leitos', desc: 'Saiba em tempo real qual sala está livre e aproveite melhor sua estrutura.', img: modLab6 },
     ],
   },
   {
     title: 'Comunicação e Pacientes',
-    subtitle: 'Engaje pacientes e automatize a comunicação da clínica',
+    subtitle: 'Sua clínica presente 24h — sem sobrecarregar a recepção',
     strip: stripComunica,
     stripText: 'Comunicação e Atendimento',
     modules: [
-      { icon: MessageSquare, title: 'WhatsApp IA', desc: 'Agente inteligente para agendamentos automáticos, lembretes e atendimento 24h.', img: modComunica1 },
-      { icon: Users, title: 'Gestão de Pacientes', desc: 'Cadastro completo, lista de espera, convênios e portal do paciente.', img: modComunica2 },
-      { icon: Globe, title: 'Portal do Paciente', desc: 'Acesso seguro para pacientes visualizarem exames e agendamentos.', img: modComunica3 },
-      { icon: MonitorPlay, title: 'Painel TV', desc: 'Tela de chamada para recepção com fila de pacientes em tempo real.', img: modComunica4 },
-      { icon: BellRing, title: 'Automações', desc: '16 fluxos automáticos: lembretes, cobranças, aniversários e alertas.', img: modComunica5 },
-      { icon: SmartphoneNfc, title: 'PWA Mobile', desc: 'Funciona em qualquer dispositivo sem baixar app. Instale como PWA.', img: modComunica6 },
+      { icon: MessageSquare, title: 'WhatsApp IA', desc: 'Um atendente que nunca dorme: agenda, confirma e responde pacientes 24h por dia.', img: modComunica1 },
+      { icon: Users, title: 'Gestão de Pacientes', desc: 'Histórico completo à mão, lista de espera ativa e convênios sem dor de cabeça.', img: modComunica2 },
+      { icon: Globe, title: 'Portal do Paciente', desc: 'O paciente consulta exames e horários sozinho e para de ligar na recepção.', img: modComunica3 },
+      { icon: MonitorPlay, title: 'Painel TV', desc: 'Chamada em tela na recepção: mais organização e uma imagem muito mais profissional.', img: modComunica4 },
+      { icon: BellRing, title: 'Automações', desc: '16 rotinas no piloto automático: lembretes, cobranças, aniversários e alertas.', img: modComunica5 },
+      { icon: SmartphoneNfc, title: 'PWA Mobile', desc: 'Sua clínica no bolso: funciona em qualquer celular, sem baixar nada na loja.', img: modComunica6 },
     ],
   },
   {
     title: 'Financeiro e Gestão',
-    subtitle: 'Controle total das finanças, equipe e segurança da clínica',
+    subtitle: 'Saiba exatamente quanto entra, quanto sai e quanto sobra',
     strip: stripFinanc,
     stripText: 'Financeiro e Administração',
     modules: [
-      { icon: Receipt, title: 'Financeiro Completo', desc: 'Fluxo de caixa, contas a pagar/receber, faturamento TISS e relatórios.', img: modFinanc1 },
-      { icon: CreditCard, title: 'Pagamentos Online', desc: 'Assinaturas via Mercado Pago com trial, bloqueio por inadimplência.', img: modFinanc2 },
-      { icon: FileBarChart, title: 'Relatórios & Analytics', desc: 'Dashboards em tempo real, exportação Excel/PDF e métricas de desempenho.', img: modFinanc3 },
-      { icon: BarChart3, title: 'Dashboard Analítico', desc: 'KPIs, sparklines, ocupação, fluxo de caixa e atalhos rápidos.', img: modFinanc4 },
-      { icon: UserCheck, title: 'Gestão de Equipe', desc: 'Funcionários, convites por e-mail, cargos e permissões por papel.', img: modFinanc5 },
-      { icon: Shield, title: 'LGPD & Segurança', desc: 'Consentimentos digitais, audit trail, backup automático e RLS completo.', img: modFinanc6 },
+      { icon: Receipt, title: 'Financeiro Completo', desc: 'Caixa, contas a pagar e receber e faturamento TISS sem planilhas paralelas.', img: modFinanc1 },
+      { icon: CreditCard, title: 'Pagamentos Online', desc: 'Receba de forma automática e segura, com controle de inadimplência integrado.', img: modFinanc2 },
+      { icon: FileBarChart, title: 'Relatórios & Analytics', desc: 'Decida com dados: indicadores em tempo real e relatórios prontos em Excel ou PDF.', img: modFinanc3 },
+      { icon: BarChart3, title: 'Dashboard Analítico', desc: 'A saúde da clínica em uma tela: ocupação, receita e metas do dia num olhar.', img: modFinanc4 },
+      { icon: UserCheck, title: 'Gestão de Equipe', desc: 'Cada profissional vê só o que precisa ver, com convite por e-mail em 1 minuto.', img: modFinanc5 },
+      { icon: Shield, title: 'LGPD & Segurança', desc: 'Durma tranquilo: consentimentos LGPD, trilha de auditoria e backup automático.', img: modFinanc6 },
     ],
   },
 ];
 
 const featureSections = [
   {
-    title: 'Aumente a eficiência', highlight: 'da sua clínica',
-    desc: 'Potencialize seus resultados com um sistema que organiza e facilita os processos operacionais e de gestão da sua clínica.',
-    desc2: 'Conte com recursos de automação e integração especialmente pensados para transformar o dia-a-dia do seu negócio.',
-    cta: 'Quero descomplicar minha clínica', img: landingEfficiency, alt: 'Gestão eficiente', rev: false,
+    title: 'Ganhe até 2 horas por dia', highlight: 'na operação da clínica',
+    desc: 'Chega de planilhas, cadernos e sistemas que não conversam. O EloLab reúne agenda, atendimento e gestão em um único lugar, do jeito que a sua equipe já trabalha.',
+    desc2: 'Automações prontas cuidam da rotina repetitiva para que você e seu time foquem no que realmente importa: cuidar de pessoas.',
+    cta: 'Quero simplificar minha clínica', img: landingEfficiency, alt: 'Gestão eficiente', rev: false,
   },
   {
-    title: 'Reduza as faltas dos', highlight: 'pacientes às consultas',
-    desc: 'Com a confirmação automática via WhatsApp, o sistema envia mensagens e destaca na agenda as confirmações recebidas.',
-    desc2: 'Ganhe produtividade permitindo que sua equipe foque em contatar apenas quem não confirmou.',
-    cta: 'Quero reduzir faltas', img: landingNoshow, alt: 'Redução de faltas', rev: true,
+    title: 'Reduza em até 40% as', highlight: 'faltas nas consultas',
+    desc: 'Cada horário vago é dinheiro perdido. O EloLab envia a confirmação por WhatsApp sozinho e marca na agenda quem já respondeu.',
+    desc2: 'Sua recepção liga apenas para quem não confirmou — e você preenche as vagas antes que virem prejuízo.',
+    cta: 'Quero reduzir minhas faltas', img: landingNoshow, alt: 'Redução de faltas', rev: true,
   },
   {
-    title: 'Aumente suas receitas com o', highlight: 'Agendamento Online',
-    desc: 'Disponibilize o agendamento online integrado ao site da sua clínica e potencialize a marcação de consultas.',
-    desc2: 'Diversifique seus canais de agendamento e capte mais pacientes.',
-    cta: 'Quero agendamento online', img: landingOnline, alt: 'Agendamento online', rev: false,
+    title: 'Encha a agenda com o', highlight: 'agendamento online 24h',
+    desc: 'Seu paciente marca a consulta às 23h, no domingo, direto do celular — sem depender de ninguém atender o telefone.',
+    desc2: 'Mais canais de agendamento significam mais pacientes novos e menos oportunidades perdidas.',
+    cta: 'Quero agenda cheia 24h', img: landingOnline, alt: 'Agendamento online', rev: false,
   },
   {
-    title: 'Prontuário eletrônico', highlight: 'personalizável',
-    desc: 'Modelos de anamnese, histórico, anexos, prescrições, atestados, CID-10, assinatura digital e conformidade LGPD.',
-    desc2: 'Exportação HL7 FHIR R4 e bloqueio de edição com trilha de auditoria conforme CFM.',
-    cta: 'Quero prontuário eletrônico', img: landingEhr, alt: 'Prontuário eletrônico', rev: true,
+    title: 'Prontuário completo,', highlight: 'seguro e no seu padrão',
+    desc: 'Monte seus modelos de anamnese e registre a consulta em minutos, com histórico, anexos, receitas, atestados e CID-10 sempre à mão.',
+    desc2: 'Assinatura digital, bloqueio de edição e trilha de auditoria conforme o CFM: sua segurança jurídica garantida em cada atendimento.',
+    cta: 'Quero um prontuário seguro', img: landingEhr, alt: 'Prontuário eletrônico', rev: true,
   },
   {
-    title: 'Controle financeiro', highlight: 'seguro e eficiente',
-    desc: 'Dashboards diários, fluxo de caixa em tempo real, faturamento TISS para convênios e contas a pagar/receber.',
-    desc2: 'Rastreie qualquer lançamento ou alteração para evitar fraudes e garantir a saúde financeira da clínica.',
-    cta: 'Quero financeiro seguro', img: landingFinancial, alt: 'Controle financeiro', rev: false,
+    title: 'Tenha clareza total do', highlight: 'dinheiro da sua clínica',
+    desc: 'Veja em tempo real quanto entrou no caixa, o que ainda falta receber e o que vence esta semana — sem esperar o fim do mês.',
+    desc2: 'Todo lançamento fica registrado e rastreável, protegendo sua clínica contra erros, perdas e fraudes.',
+    cta: 'Quero controlar meu caixa', img: landingFinancial, alt: 'Controle financeiro', rev: false,
   },
   {
-    title: 'Pós-venda comprometido com o', highlight: 'sucesso do cliente',
-    desc: 'Treinamentos com especialistas, migração de cadastros do seu sistema atual e suporte em tempo real via chat.',
-    cta: 'Quero começar agora', img: landingSupport, alt: 'Suporte', rev: true,
-    checks: ['Treinamentos com nosso time de especialistas.', 'Migração de cadastros do seu sistema atual.', 'Suporte em tempo real através de chat.'],
+    title: 'Você não fica sozinho:', highlight: 'suporte de gente de verdade',
+    desc: 'Nossa equipe treina seu time, migra os dados do sistema atual e acompanha você até a clínica rodar 100% no EloLab.',
+    cta: 'Quero começar hoje mesmo', img: landingSupport, alt: 'Suporte', rev: true,
+    checks: ['Treinamento prático com nosso time de especialistas.', 'Migração dos seus cadastros sem perder histórico.', 'Suporte humano em tempo real por chat e WhatsApp.'],
   },
 ];
 
@@ -207,7 +207,7 @@ const plans = [
       'Automações (16 fluxos)',
       'LGPD & Auditoria',
       'PWA Mobile',
-      'Suporte via Chat',
+      'Suporte humano via chat',
     ],
   },
   {
@@ -216,7 +216,7 @@ const plans = [
     price: 399,
     popular: true,
     features: [
-      'Tudo do plano Max +',
+      'Tudo do plano Max, mais:',
       'WhatsApp IA (Agente 24h)',
       'Agendamento Online',
       'Confirmação Automática',
@@ -225,62 +225,62 @@ const plans = [
       'Portal do Paciente',
       'Painel TV Recepção',
       'Suporte Prioritário',
-      'Migração de Dados Grátis',
+      'Migração de dados sem custo',
     ],
   },
 ];
 
 const testimonials = [
-  { name: 'Dra. Mariana Silva', clinic: 'CardioVida - Cardiologia', text: 'O EloLab se reinventa auxiliando na gestão da clínica. O atendimento é super top! Indico!', avatar: 'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?w=100&h=100&fit=crop&crop=face' },
-  { name: 'Dr. Carlos Mendes', clinic: 'MedCenter - Clínico Geral', text: 'Equipe atenciosa, suporte eficiente. O sistema nunca ficou inoperante.', avatar: 'https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?w=100&h=100&fit=crop&crop=face' },
-  { name: 'Ana Paula Costa', clinic: 'EstéticaPrime - Estética', text: 'A maior vantagem é o fácil acesso e prontidão da equipe técnica.', avatar: 'https://images.unsplash.com/photo-1594824476967-48c8b964ac31?w=100&h=100&fit=crop&crop=face' },
-  { name: 'Dr. Roberto Alves', clinic: 'OrthoPlus - Ortopedia', text: 'Sistema muito prático e completo. Recomendo para qualquer clínica.', avatar: 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?w=100&h=100&fit=crop&crop=face' },
-  { name: 'Dra. Fernanda Lima', clinic: 'DermaVita - Dermatologia', text: 'Nos ajuda no operacional e no estratégico. Financeiro integrado é um diferencial.', avatar: 'https://images.unsplash.com/photo-1651008376811-b90baee60c1f?w=100&h=100&fit=crop&crop=face' },
-  { name: 'Dr. Henrique Souza', clinic: 'PediatraCare - Pediatria', text: 'Excelente ferramenta de gestão. Prontuário intuitivo e seguro.', avatar: 'https://images.unsplash.com/photo-1537368910025-700350fe46c7?w=100&h=100&fit=crop&crop=face' },
-  { name: 'Dra. Camila Rocha', clinic: 'NutriVida - Nutrição', text: 'Agenda integrada com WhatsApp mudou meu dia a dia. Reduzi faltas em 40%.', avatar: 'https://images.unsplash.com/photo-1614608682850-e0d6ed316d47?w=100&h=100&fit=crop&crop=face' },
-  { name: 'Dr. André Martins', clinic: 'OftalmoCenter - Oftalmologia', text: 'O módulo financeiro é fantástico. Controlo tudo em um só lugar.', avatar: 'https://images.unsplash.com/photo-1582750433449-648ed127bb54?w=100&h=100&fit=crop&crop=face' },
-  { name: 'Patrícia Oliveira', clinic: 'LabAnalytica - Laboratório', text: 'Rastreio de amostras com código de barras eliminou erros de coleta.', avatar: 'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=100&h=100&fit=crop&crop=face' },
-  { name: 'Dr. Marcos Ferreira', clinic: 'UroMed - Urologia', text: 'Melhor custo-benefício do mercado. Suporte responde em minutos.', avatar: 'https://images.unsplash.com/photo-1556157382-97eded29296d?w=100&h=100&fit=crop&crop=face' },
-  { name: 'Dra. Juliana Pires', clinic: 'GinecoSaúde - Ginecologia', text: 'Prescrição digital com QR Code é um diferencial para minhas pacientes.', avatar: 'https://images.unsplash.com/photo-1527613426441-4da17471b66d?w=100&h=100&fit=crop&crop=face' },
-  { name: 'Lucas Santos', clinic: 'FisioAtiva - Fisioterapia', text: 'O painel TV na recepção profissionalizou minha clínica. Pacientes amam.', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&h=100&fit=crop&crop=face' },
-  { name: 'Dra. Beatriz Nunes', clinic: 'EndoVita - Endocrinologia', text: 'Triagem Manchester integrada agilizou nosso fluxo de emergência.', avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=100&h=100&fit=crop&crop=face' },
-  { name: 'Dr. Felipe Cardoso', clinic: 'NeuroPlus - Neurologia', text: 'Encaminhamentos com contra-referência ficaram 100% rastreáveis.', avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&h=100&fit=crop&crop=face' },
-  { name: 'Amanda Lopes', clinic: 'OdontoSmile - Odontologia', text: 'Portal do paciente aumentou a satisfação e reduziu ligações no consultório.', avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=100&h=100&fit=crop&crop=face' },
-  { name: 'Dr. Ricardo Braga', clinic: 'PneumoCenter - Pneumologia', text: 'LGPD e assinatura digital nos dão segurança jurídica total.', avatar: 'https://images.unsplash.com/photo-1560250097-0b93528c311a?w=100&h=100&fit=crop&crop=face' },
-  { name: 'Dra. Isabela Campos', clinic: 'ReumatoVida - Reumatologia', text: 'CID-10 integrado ao prontuário economiza tempo em cada atendimento.', avatar: 'https://images.unsplash.com/photo-1607990281513-2c110a25bd8c?w=100&h=100&fit=crop&crop=face' },
-  { name: 'Thiago Ribeiro', clinic: 'LabExcel - Análises Clínicas', text: 'Laudos laboratoriais ficaram padronizados e profissionais. Clientes elogiam.', avatar: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=100&h=100&fit=crop&crop=face' },
-  { name: 'Dra. Renata Duarte', clinic: 'AlergoClin - Alergologia', text: 'Alertas de alergia no prontuário salvam vidas. Funcionalidade essencial.', avatar: 'https://images.unsplash.com/photo-1551836022-d5d88e9218df?w=100&h=100&fit=crop&crop=face' },
-  { name: 'Dr. Gustavo Pereira', clinic: 'GastroMed - Gastroenterologia', text: 'Relatórios analíticos me ajudam a tomar decisões estratégicas para a clínica.', avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=100&h=100&fit=crop&crop=face' },
+  { name: 'Dra. Mariana Silva', clinic: 'CardioVida - Cardiologia', text: 'O EloLab organizou toda a gestão da clínica e o atendimento da equipe é impecável. Recomendo sem pensar duas vezes.', avatar: 'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?w=100&h=100&fit=crop&crop=face' },
+  { name: 'Dr. Carlos Mendes', clinic: 'MedCenter - Clínico Geral', text: 'Equipe atenciosa e suporte rápido. Em nenhum momento o sistema nos deixou na mão.', avatar: 'https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?w=100&h=100&fit=crop&crop=face' },
+  { name: 'Ana Paula Costa', clinic: 'EstéticaPrime - Estética', text: 'A maior vantagem é a facilidade de uso somada à agilidade da equipe técnica.', avatar: 'https://images.unsplash.com/photo-1594824476967-48c8b964ac31?w=100&h=100&fit=crop&crop=face' },
+  { name: 'Dr. Roberto Alves', clinic: 'OrthoPlus - Ortopedia', text: 'Prático e completo: em uma semana toda a clínica já estava usando sem dificuldade.', avatar: 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?w=100&h=100&fit=crop&crop=face' },
+  { name: 'Dra. Fernanda Lima', clinic: 'DermaVita - Dermatologia', text: 'Ajuda tanto no dia a dia quanto na estratégia. O financeiro integrado é um diferencial enorme.', avatar: 'https://images.unsplash.com/photo-1651008376811-b90baee60c1f?w=100&h=100&fit=crop&crop=face' },
+  { name: 'Dr. Henrique Souza', clinic: 'PediatraCare - Pediatria', text: 'Excelente ferramenta de gestão. O prontuário é intuitivo, rápido e seguro.', avatar: 'https://images.unsplash.com/photo-1537368910025-700350fe46c7?w=100&h=100&fit=crop&crop=face' },
+  { name: 'Dra. Camila Rocha', clinic: 'NutriVida - Nutrição', text: 'A agenda integrada ao WhatsApp mudou meu dia a dia: reduzi as faltas em 40%.', avatar: 'https://images.unsplash.com/photo-1614608682850-e0d6ed316d47?w=100&h=100&fit=crop&crop=face' },
+  { name: 'Dr. André Martins', clinic: 'OftalmoCenter - Oftalmologia', text: 'O módulo financeiro é excelente: controlo receitas, despesas e convênios em um só lugar.', avatar: 'https://images.unsplash.com/photo-1582750433449-648ed127bb54?w=100&h=100&fit=crop&crop=face' },
+  { name: 'Patrícia Oliveira', clinic: 'LabAnalytica - Laboratório', text: 'O rastreio de amostras por código de barras praticamente eliminou os erros de coleta.', avatar: 'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=100&h=100&fit=crop&crop=face' },
+  { name: 'Dr. Marcos Ferreira', clinic: 'UroMed - Urologia', text: 'Melhor custo-benefício que encontrei, e o suporte responde em poucos minutos.', avatar: 'https://images.unsplash.com/photo-1556157382-97eded29296d?w=100&h=100&fit=crop&crop=face' },
+  { name: 'Dra. Juliana Pires', clinic: 'GinecoSaúde - Ginecologia', text: 'A prescrição digital com QR Code passou muito mais credibilidade para as minhas pacientes.', avatar: 'https://images.unsplash.com/photo-1527613426441-4da17471b66d?w=100&h=100&fit=crop&crop=face' },
+  { name: 'Lucas Santos', clinic: 'FisioAtiva - Fisioterapia', text: 'O painel de chamada na recepção profissionalizou a clínica e os pacientes adoraram.', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&h=100&fit=crop&crop=face' },
+  { name: 'Dra. Beatriz Nunes', clinic: 'EndoVita - Endocrinologia', text: 'A triagem por classificação de risco agilizou bastante o nosso fluxo de urgência.', avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=100&h=100&fit=crop&crop=face' },
+  { name: 'Dr. Felipe Cardoso', clinic: 'NeuroPlus - Neurologia', text: 'Os encaminhamentos com contra-referência ficaram totalmente rastreáveis.', avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&h=100&fit=crop&crop=face' },
+  { name: 'Amanda Lopes', clinic: 'OdontoSmile - Odontologia', text: 'O portal do paciente aumentou a satisfação e reduziu muito as ligações na recepção.', avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=100&h=100&fit=crop&crop=face' },
+  { name: 'Dr. Ricardo Braga', clinic: 'PneumoCenter - Pneumologia', text: 'A LGPD e a assinatura digital nos trouxeram a segurança jurídica que faltava.', avatar: 'https://images.unsplash.com/photo-1560250097-0b93528c311a?w=100&h=100&fit=crop&crop=face' },
+  { name: 'Dra. Isabela Campos', clinic: 'ReumatoVida - Reumatologia', text: 'O CID-10 integrado ao prontuário economiza tempo em cada atendimento.', avatar: 'https://images.unsplash.com/photo-1607990281513-2c110a25bd8c?w=100&h=100&fit=crop&crop=face' },
+  { name: 'Thiago Ribeiro', clinic: 'LabExcel - Análises Clínicas', text: 'Nossos laudos ficaram padronizados e muito mais profissionais. Os clientes elogiam.', avatar: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=100&h=100&fit=crop&crop=face' },
+  { name: 'Dra. Renata Duarte', clinic: 'AlergoClin - Alergologia', text: 'Os alertas de alergia no prontuário são essenciais para a segurança do paciente.', avatar: 'https://images.unsplash.com/photo-1551836022-d5d88e9218df?w=100&h=100&fit=crop&crop=face' },
+  { name: 'Dr. Gustavo Pereira', clinic: 'GastroMed - Gastroenterologia', text: 'Os relatórios me dão clareza para tomar decisões estratégicas sobre a clínica.', avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=100&h=100&fit=crop&crop=face' },
 ];
 
 const faqItems = [
   {
-    q: 'O EloLab funciona no meu celular?',
-    a: 'Sim! O EloLab é um PWA (Progressive Web App) que funciona em qualquer dispositivo — smartphone, tablet ou computador — sem necessidade de baixar nada. Basta acessar pelo navegador.',
+    q: 'Consigo usar o EloLab pelo celular?',
+    a: 'Sim. O EloLab funciona em celular, tablet e computador direto pelo navegador, sem baixar nada na loja de aplicativos. Você ainda pode instalá-lo na tela inicial e usar como um app comum.',
   },
   {
-    q: 'Preciso de cartão de crédito para testar?',
-    a: 'Não! O teste gratuito de 3 dias não exige cartão de crédito. Você cria sua conta, configura a clínica e já começa a usar. Após o período de teste, escolha o plano ideal.',
+    q: 'Preciso cadastrar cartão para testar?',
+    a: 'Não. Os 3 dias de teste são liberados sem cartão de crédito: você cria a conta, configura a clínica e já começa a atender. Ao final, escolhe o plano só se fizer sentido para você.',
   },
   {
-    q: 'Meus dados estão seguros?',
-    a: 'Absolutamente. Utilizamos criptografia ponta a ponta, Row Level Security (RLS) no banco de dados, backup automático diário, consentimentos LGPD digitais e trilha de auditoria completa conforme exigido pelo CFM.',
+    q: 'Os dados dos meus pacientes ficam seguros?',
+    a: 'Sim. Trabalhamos com criptografia, isolamento total dos dados de cada clínica, backup automático diário, consentimentos digitais de LGPD e trilha de auditoria completa, conforme as exigências do CFM.',
   },
   {
-    q: 'Posso migrar os dados do meu sistema atual?',
-    a: 'Sim! No plano Ultra, oferecemos migração de dados gratuita. Nossa equipe cuida de todo o processo de importação de pacientes, agendamentos e prontuários do seu sistema anterior.',
+    q: 'Consigo trazer os dados do meu sistema atual?',
+    a: 'Sim. No plano Ultra a migração é gratuita: nossa equipe importa pacientes, agendamentos e prontuários do sistema anterior para você não perder nenhum histórico nem começar do zero.',
   },
   {
-    q: 'O sistema funciona para laboratórios?',
-    a: 'Sim! O EloLab possui módulo completo de laboratório com worklist de coletas, laudos digitais, mapa de coleta, rastreabilidade de amostras por código de barras e integração com o módulo financeiro.',
+    q: 'O EloLab atende laboratórios também?',
+    a: 'Sim. Há um módulo completo de laboratório: organização das coletas, laudos digitais padronizados, mapa de coleta, rastreabilidade de amostras por código de barras e faturamento integrado.',
   },
   {
-    q: 'Quantos usuários posso ter?',
-    a: 'Ambos os planos permitem cadastrar toda sua equipe: médicos, recepcionistas, enfermeiros e administradores, cada um com permissões específicas por papel (RBAC). Sem limite de usuários.',
+    q: 'Existe limite de usuários por clínica?',
+    a: 'Não. Nos dois planos você cadastra toda a equipe — médicos, recepção, enfermagem e administração — sem custo por usuário, e cada pessoa acessa apenas o que o cargo dela permite.',
   },
   {
-    q: 'Como funciona o suporte?',
-    a: 'Oferecemos suporte via WhatsApp e chat no sistema. No plano Ultra, o suporte é prioritário com tempo de resposta reduzido. Também disponibilizamos treinamentos com nossa equipe de especialistas.',
+    q: 'Como funciona o suporte no dia a dia?',
+    a: 'Você fala com gente de verdade por WhatsApp e pelo chat dentro do sistema. No plano Ultra o atendimento é prioritário, com resposta mais rápida, e todo cliente recebe treinamento com nossos especialistas.',
   },
 ];
 
@@ -495,15 +495,15 @@ export default function LandingPage() {
               <div className="animate-fade-in min-w-0">
                 <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/10 backdrop-blur-sm border border-white/20 mb-6">
                   <Zap className="w-3.5 h-3.5 text-yellow-300" />
-                  <span className="text-xs font-semibold text-white/90">Novo: Agente IA WhatsApp 24h</span>
+                  <span className="text-xs font-semibold text-white/90">Novidade: Agente de IA no WhatsApp atendendo 24h</span>
                 </div>
                 <h1 className="text-4xl sm:text-5xl lg:text-[3.5rem] font-light leading-[1.15] tracking-tight text-white">
-                  O melhor<br />
-                  <span className="font-extrabold">sistema de gestão</span><br />
-                  para sua clínica.
+                  Sua clínica organizada,<br />
+                  <span className="font-extrabold">lucrativa e sem papelada</span><br />
+                  a partir de hoje.
                 </h1>
                 <p className="mt-5 text-base md:text-lg text-white/70 max-w-lg leading-relaxed">
-                  Agenda, prontuário, financeiro, laboratório e WhatsApp IA — tudo integrado em uma única plataforma.
+                  Agenda, prontuário, financeiro, laboratório e um agente de IA no WhatsApp: tudo em uma só plataforma, pronta para usar em minutos.
                 </p>
                 <div className="mt-8 flex flex-col sm:flex-row gap-3">
                   <Button
@@ -511,21 +511,21 @@ export default function LandingPage() {
                     className="rounded-lg px-8 py-3.5 text-sm font-bold border-2 border-white bg-white hover:bg-white/90 transition-all hover:scale-105 hover:shadow-xl"
                     style={{ color: 'hsl(215,75%,30%)' }}
                   >
-                    Começar teste grátis <ArrowRight className="w-4 h-4 ml-2" />
+                    Testar grátis por 3 dias <ArrowRight className="w-4 h-4 ml-2" />
                   </Button>
                   <Button
                     onClick={() => scrollTo('modulos')}
                     variant="ghost"
                     className="rounded-lg px-8 py-3.5 text-sm font-bold text-white border-2 border-white/30 hover:bg-white/10 transition-all"
                   >
-                    Ver módulos
+                    Ver o que está incluso
                   </Button>
                 </div>
                 <div className="mt-8 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs font-medium text-white/60">
                   <span className="flex items-center gap-1.5"><Lock className="w-3.5 h-3.5" /> LGPD</span>
                   <span className="flex items-center gap-1.5"><Clock className="w-3.5 h-3.5" /> 3 dias grátis</span>
                   <span className="flex items-center gap-1.5"><Shield className="w-3.5 h-3.5" /> 100% seguro</span>
-                  <span className="flex items-center gap-1.5"><CreditCard className="w-3.5 h-3.5" /> Sem cartão</span>
+                  <span className="flex items-center gap-1.5"><CreditCard className="w-3.5 h-3.5" /> Sem cartão de crédito</span>
                 </div>
               </div>
 
@@ -618,10 +618,10 @@ export default function LandingPage() {
         <section className="py-16 md:py-20 relative">
           <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-8 md:gap-12">
-              <StatCounter end={500} suffix="+" label="Profissionais de saúde" icon={Users} />
-              <StatCounter end={24} suffix="" label="Módulos integrados" icon={Zap} />
-              <StatCounter end={99} suffix=".9%" label="Uptime garantido" icon={TrendingUp} />
-              <StatCounter end={40} suffix="%" label="Menos faltas" icon={Award} />
+              <StatCounter end={500} suffix="+" label="Profissionais de saúde ativos" icon={Users} />
+              <StatCounter end={24} suffix="" label="Módulos já inclusos" icon={Zap} />
+              <StatCounter end={99} suffix=".9%" label="Disponibilidade do sistema" icon={TrendingUp} />
+              <StatCounter end={40} suffix="%" label="Menos faltas na agenda" icon={Award} />
             </div>
           </div>
         </section>
@@ -674,12 +674,11 @@ export default function LandingPage() {
         <section id="modulos">
           <div className="text-center py-16 md:py-20">
             <h2 className="text-3xl md:text-4xl font-extrabold tracking-tight" style={{ color: C.dark }}>
-              Tudo que o{' '}
-              <span className="bg-clip-text text-transparent" style={{ backgroundImage: C.grad }}>EloLab</span>
-              {' '}oferece
+              Tudo o que sua clínica precisa,{' '}
+              <span className="bg-clip-text text-transparent" style={{ backgroundImage: C.grad }}>em um só lugar</span>
             </h2>
             <p className="mt-3 text-lg" style={{ color: C.textL }}>
-              +24 módulos integrados para sua clínica funcionar com máxima eficiência
+              Mais de 24 módulos integrados, sem taxa extra e sem sistemas paralelos
             </p>
           </div>
 
@@ -727,11 +726,11 @@ export default function LandingPage() {
           <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="text-center mb-14">
               <h2 className="text-3xl md:text-4xl font-extrabold tracking-tight" style={{ color: C.dark }}>
-                Escolha o plano{' '}
-                <span className="bg-clip-text text-transparent" style={{ backgroundImage: C.grad }}>ideal para você</span>
+                Escolha o plano e comece{' '}
+                <span className="bg-clip-text text-transparent" style={{ backgroundImage: C.grad }}>a economizar hoje</span>
               </h2>
               <p className="mt-3 text-lg" style={{ color: C.textL }}>
-                Comece com 3 dias grátis. Cancele quando quiser.
+                Teste 3 dias grátis, sem cartão de crédito. Cancele quando quiser.
               </p>
             </div>
             <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
@@ -779,7 +778,7 @@ export default function LandingPage() {
                       className="w-full rounded-full py-3 font-bold text-white border-0 transition-all hover:scale-[1.02] hover:shadow-lg"
                       style={{ background: C.grad, boxShadow: plan.popular ? '0 8px 24px -4px hsl(12,76%,61%,0.4)' : undefined }}
                     >
-                      <Clock className="w-4 h-4 mr-2" /> Teste Grátis 3 Dias
+                      <Clock className="w-4 h-4 mr-2" /> Testar 3 dias grátis
                     </Button>
                     <Button
                       variant="outline"
@@ -787,7 +786,7 @@ export default function LandingPage() {
                       className="w-full rounded-full py-3 font-bold border-2 transition-all hover:scale-[1.02]"
                       style={{ borderColor: C.coral, color: C.coral }}
                     >
-                      <CreditCard className="w-4 h-4 mr-2" /> Assinar Agora
+                      <CreditCard className="w-4 h-4 mr-2" /> Assinar agora
                     </Button>
                   </div>
                 </div>
@@ -822,7 +821,7 @@ export default function LandingPage() {
                   )}
                 </div>
                 <h3 className="text-xl font-extrabold" style={{ color: C.dark }}>
-                  {checkoutMode === 'trial' ? 'Iniciar Teste Grátis' : 'Assinar Plano'}
+                  {checkoutMode === 'trial' ? 'Comece seus 3 dias grátis' : 'Finalize sua assinatura'}
                 </h3>
                 <p className="text-sm mt-1" style={{ color: C.textL }}>
                   {selectedPlan.name} — R$ {selectedPlan.price}/mês
@@ -879,16 +878,16 @@ export default function LandingPage() {
                 {loading ? (
                   <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Processando...</>
                 ) : checkoutMode === 'trial' ? (
-                  <>Começar Teste Grátis <ArrowRight className="w-4 h-4 ml-2" /></>
+                  <>Liberar meu acesso grátis <ArrowRight className="w-4 h-4 ml-2" /></>
                 ) : (
-                  <>Ir para Pagamento <ArrowRight className="w-4 h-4 ml-2" /></>
+                  <>Ir para o pagamento seguro <ArrowRight className="w-4 h-4 ml-2" /></>
                 )}
               </Button>
 
               <p className="text-center text-xs mt-4" style={{ color: C.textL }}>
                 {checkoutMode === 'trial'
-                  ? 'Sem cartão de crédito. Após o teste, assine para continuar.'
-                  : 'Pagamento seguro via Mercado Pago. Cancele quando quiser.'}
+                  ? 'Sem cartão de crédito e sem compromisso. Ao final do teste, você decide se continua.'
+                  : 'Pagamento 100% seguro via Mercado Pago. Sem fidelidade: cancele quando quiser.'}
               </p>
             </div>
           </div>
@@ -899,10 +898,10 @@ export default function LandingPage() {
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="text-center mb-14">
               <h2 className="text-3xl md:text-4xl font-extrabold tracking-tight" style={{ color: C.dark }}>
-                O que estão falando sobre o{' '}
+                Quem já usa não volta atrás com o{' '}
                 <span className="bg-clip-text text-transparent" style={{ backgroundImage: C.grad }}>EloLab?</span>
               </h2>
-              <p className="mt-3 text-lg" style={{ color: C.textL }}>Mais de 500 profissionais de saúde confiam no EloLab</p>
+              <p className="mt-3 text-lg" style={{ color: C.textL }}>Mais de 500 profissionais de saúde já confiam no EloLab todos os dias</p>
             </div>
           </div>
 
@@ -958,7 +957,7 @@ export default function LandingPage() {
                 <span className="bg-clip-text text-transparent" style={{ backgroundImage: C.grad }}>Frequentes</span>
               </h2>
               <p className="mt-3 text-lg" style={{ color: C.textL }}>
-                Tire suas dúvidas sobre o EloLab
+                Respostas diretas para decidir com tranquilidade
               </p>
             </div>
             <div className="bg-white/80 backdrop-blur-sm rounded-3xl border border-[hsl(20,30%,90%)] p-6 md:p-8 shadow-sm">
@@ -968,10 +967,10 @@ export default function LandingPage() {
             </div>
             <div className="text-center mt-8">
               <p className="text-sm" style={{ color: C.textL }}>
-                Ainda tem dúvidas?{' '}
+                Ficou com alguma dúvida?{' '}
                 <a href="https://wa.me/5511937687369" target="_blank" rel="noopener noreferrer"
                   className="font-bold hover:underline" style={{ color: C.coral }}>
-                  Fale conosco no WhatsApp
+                  Fale agora com um especialista no WhatsApp
                 </a>
               </p>
             </div>
@@ -990,27 +989,27 @@ export default function LandingPage() {
               }} />
               <div className="relative z-10">
                 <h2 className="text-3xl md:text-4xl font-extrabold tracking-tight text-white">
-                  Pronto para transformar sua clínica?
+                  Comece hoje e veja a diferença já na primeira semana
                 </h2>
                 <p className="mt-4 text-lg text-white/70 max-w-xl mx-auto">
-                  Comece agora com 3 dias grátis. Sem cartão de crédito. Sem compromisso.
+                  Crie sua conta em poucos minutos, teste 3 dias grátis e leve sua clínica para um novo patamar. Sem cartão de crédito, sem compromisso.
                 </p>
                 <div className="mt-10 flex flex-col sm:flex-row gap-4 justify-center">
                   <Button size="lg" onClick={goToAuth}
                     className="rounded-full px-10 text-base font-bold border-2 border-white bg-white hover:bg-white/90 transition-all hover:scale-105 hover:shadow-xl"
                     style={{ color: 'hsl(215,75%,30%)' }}>
-                    Começar teste grátis <ArrowRight className="w-4 h-4 ml-2" />
+                    Criar minha conta grátis <ArrowRight className="w-4 h-4 ml-2" />
                   </Button>
                   <a href="https://wa.me/5511937687369" target="_blank" rel="noopener noreferrer">
                     <Button size="lg" variant="ghost"
                       className="rounded-full px-10 text-base font-bold text-white border-2 border-white/30 hover:bg-white/10 transition-all w-full">
-                      <Headphones className="w-4 h-4 mr-2" /> Falar com consultor
+                      <Headphones className="w-4 h-4 mr-2" /> Falar com um especialista
                     </Button>
                   </a>
                 </div>
                 <div className="mt-8 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-xs font-medium text-white/50">
-                  <span className="flex items-center gap-1.5"><Lock className="w-3.5 h-3.5" /> Dados protegidos</span>
-                  <span className="flex items-center gap-1.5"><Shield className="w-3.5 h-3.5" /> LGPD compliant</span>
+                  <span className="flex items-center gap-1.5"><Lock className="w-3.5 h-3.5" /> Dados criptografados</span>
+                  <span className="flex items-center gap-1.5"><Shield className="w-3.5 h-3.5" /> Conformidade LGPD</span>
                   <span className="flex items-center gap-1.5"><CreditCard className="w-3.5 h-3.5" /> Sem cartão</span>
                 </div>
               </div>
@@ -1024,7 +1023,7 @@ export default function LandingPage() {
             <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-8">
               <div>
                 <img src={elolabLogo} alt="EloLab" className="h-12 w-auto brightness-0 invert mb-4" />
-                <p className="text-sm text-white/50 leading-relaxed">Sistema completo de gestão para clínicas médicas e laboratórios.</p>
+                <p className="text-sm text-white/50 leading-relaxed">A plataforma completa que organiza, automatiza e faz crescer clínicas médicas e laboratórios.</p>
                 <div className="mt-4 flex gap-3">
                   <a href="https://wa.me/5511937687369" target="_blank" rel="noopener noreferrer"
                     className="w-9 h-9 rounded-lg flex items-center justify-center bg-white/10 hover:bg-white/20 transition-colors">
