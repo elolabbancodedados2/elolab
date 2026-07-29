@@ -15,18 +15,22 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Shield, Download, Trash2, Search, FileJson, AlertTriangle } from 'lucide-react';
+import { Shield, Download, Trash2, Search, FileJson, AlertTriangle, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { usePacientes } from '@/hooks/useSupabaseData';
+import { LoadingButton } from '@/components/ui/loading-button';
+import { ListSkeleton } from '@/components/ui/loading-skeleton';
+import { ErrorState } from '@/components/ErrorState';
 import { exportPatientData, deletePatientData } from '@/lib/lgpdCompliance';
 
 export default function LgpdPacientes() {
-  const { data: pacientes = [], refetch } = usePacientes();
+  const { data: pacientes = [], refetch, isLoading, error } = usePacientes();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedPaciente, setSelectedPaciente] = useState<any>(null);
   const [deleteReason, setDeleteReason] = useState('');
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [acaoEmCurso, setAcaoEmCurso] = useState<string | null>(null);
 
   const filtered = pacientes.filter((p: any) => {
     const term = searchTerm.toLowerCase().trim();
@@ -40,6 +44,7 @@ export default function LgpdPacientes() {
 
   const handleExport = async (paciente: any) => {
     setIsProcessing(true);
+    setAcaoEmCurso(paciente.id);
     try {
       const data = await exportPatientData(paciente.id);
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -57,6 +62,7 @@ export default function LgpdPacientes() {
       toast.error(err?.message || 'Erro ao exportar dados');
     } finally {
       setIsProcessing(false);
+      setAcaoEmCurso(null);
     }
   };
 
@@ -118,10 +124,21 @@ export default function LgpdPacientes() {
           </div>
 
           <div className="mt-4 space-y-2 max-h-96 overflow-y-auto">
-            {searchTerm && filtered.length === 0 && (
-              <p className="text-sm text-muted-foreground text-center py-4">Nenhum paciente encontrado</p>
+            {isLoading && <ListSkeleton items={4} />}
+            {!isLoading && error && (
+              <ErrorState compact error={error} onRetry={() => refetch()} />
             )}
-            {filtered.slice(0, 30).map((p: any) => (
+            {!isLoading && !error && pacientes.length === 0 && (
+              <p className="text-sm text-muted-foreground text-center py-6">
+                Nenhum paciente cadastrado ainda. Cadastre pacientes para atender solicitações da LGPD.
+              </p>
+            )}
+            {!isLoading && !error && searchTerm && filtered.length === 0 && pacientes.length > 0 && (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                Nenhum paciente encontrado para "{searchTerm}". Verifique a grafia ou tente pelo CPF.
+              </p>
+            )}
+            {!isLoading && !error && filtered.slice(0, 30).map((p: any) => (
               <div
                 key={p.id}
                 className="flex items-center justify-between gap-4 p-3 border rounded-lg hover:bg-muted/40 transition-colors"
@@ -133,16 +150,18 @@ export default function LgpdPacientes() {
                   </p>
                 </div>
                 <div className="flex gap-2 shrink-0">
-                  <Button
+                  <LoadingButton
                     size="sm"
                     variant="outline"
                     onClick={() => handleExport(p)}
                     disabled={isProcessing}
+                    isLoading={acaoEmCurso === p.id}
+                    loadingText="Exportando..."
                     title="Exportar dados (portabilidade)"
                   >
                     <FileJson className="h-4 w-4 mr-1" />
                     Exportar
-                  </Button>
+                  </LoadingButton>
                   <Button
                     size="sm"
                     variant="destructive"
@@ -203,7 +222,13 @@ export default function LgpdPacientes() {
               disabled={isProcessing || !deleteReason.trim()}
               className="bg-destructive hover:bg-destructive/90"
             >
-              {isProcessing ? 'Apagando...' : 'Confirmar exclusão'}
+              {isProcessing ? (
+                <span className="flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Apagando...
+                </span>
+              ) : (
+                'Confirmar exclusão'
+              )}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

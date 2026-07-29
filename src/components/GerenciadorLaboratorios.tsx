@@ -10,6 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { Plus, Trash2, Edit2, Building2, Loader2 } from 'lucide-react';
+import { ListSkeleton } from '@/components/ui/loading-skeleton';
 
 interface Laboratorio {
   id: string;
@@ -118,7 +119,7 @@ export function GerenciadorLaboratorios() {
         </div>
 
         {isLoading ? (
-          <div className="text-center py-4 text-muted-foreground">Carregando...</div>
+          <ListSkeleton items={3} />
         ) : laboratorios.length === 0 ? (
           <div className="text-center py-8 text-muted-foreground">
             <p>Nenhum laboratório cadastrado</p>

@@ -138,7 +138,7 @@ export function AuditLog() {
           <AnimatePresence mode="popLayout">
             {filteredEntries.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
-                {loading ? 'Carregando...' : 'Nenhum registro encontrado'}
+                {loading ? 'Carregando registros...' : 'Nenhum registro encontrado neste período'}
               </div>
             ) : (
               filteredEntries.map((entry) => (

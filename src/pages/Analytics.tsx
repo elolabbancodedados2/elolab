@@ -21,6 +21,9 @@ import { format, subDays, subMonths, startOfMonth, endOfMonth, eachDayOfInterval
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { valorRealizado } from '@/lib/lancamentos';
+import { DashboardSkeleton } from '@/components/ui/loading-skeleton';
+import { ErrorState } from '@/components/ErrorState';
+import { EmptyState } from '@/components/EmptyState';
 
 const COLORS = ['hsl(var(--primary))', 'hsl(var(--success))', 'hsl(var(--warning))', 'hsl(var(--info))', 'hsl(var(--destructive))'];
 
@@ -96,13 +99,14 @@ export default function Analytics() {
   }), [range, rangeDays]);
 
   // ─── Data queries ───────────────────────────────────────
-  const { data: agendamentos = [] } = useQuery({
+  const { data: agendamentos = [], isLoading: loadingAg, error: errorAg, refetch: refetchAg } = useQuery({
     queryKey: ['analytics-ag', range.from.toISOString(), range.to.toISOString()],
     queryFn: async () => {
-      const { data } = await supabase.from('agendamentos')
+      const { data, error } = await supabase.from('agendamentos')
         .select('*, medicos(nome, especialidade)')
         .gte('data', format(range.from, 'yyyy-MM-dd'))
         .lte('data', format(range.to, 'yyyy-MM-dd'));
+      if (error) throw error;
       return data || [];
     },
   });
@@ -119,13 +123,14 @@ export default function Analytics() {
     },
   });
 
-  const { data: lancamentos = [] } = useQuery({
+  const { data: lancamentos = [], isLoading: loadingLanc, error: errorLanc, refetch: refetchLanc } = useQuery({
     queryKey: ['analytics-lanc', range.from.toISOString(), range.to.toISOString()],
     queryFn: async () => {
-      const { data } = await supabase.from('lancamentos')
+      const { data, error } = await supabase.from('lancamentos')
         .select('*')
         .gte('data', format(range.from, 'yyyy-MM-dd'))
         .lte('data', format(range.to, 'yyyy-MM-dd'));
+      if (error) throw error;
       return data || [];
     },
   });
@@ -236,6 +241,47 @@ export default function Analytics() {
       return { dia: format(d, 'dd/MM'), receitas, despesas, saldo: receitas - despesas };
     });
   }, [lancamentos, days, chartInterval]);
+
+  const isLoadingDados = loadingAg || loadingLanc;
+  const erroDados = errorAg || errorLanc;
+
+  if (isLoadingDados) {
+    return (
+      <div className="pb-8">
+        <DashboardSkeleton />
+      </div>
+    );
+  }
+
+  if (erroDados) {
+    return (
+      <div className="pb-8">
+        <ErrorState
+          title="Não foi possível carregar os indicadores"
+          error={erroDados}
+          onRetry={() => {
+            refetchAg();
+            refetchLanc();
+          }}
+        />
+      </div>
+    );
+  }
+
+  const semDados = agendamentos.length === 0 && lancamentos.length === 0;
+
+  if (semDados) {
+    return (
+      <div className="pb-8">
+        <EmptyState
+          icon={Activity}
+          title="Ainda não há dados neste período"
+          description="Assim que houver agendamentos ou lançamentos financeiros no intervalo selecionado, os indicadores aparecerão aqui. Experimente ampliar o período."
+          action={{ label: 'Ver últimos 90 dias', onClick: () => setPeriodPreset('90d') }}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 pb-8">

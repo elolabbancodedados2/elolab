@@ -21,6 +21,7 @@ import { AppRole, useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { ConvidarFuncionarioDialog } from '@/components/ConvidarFuncionarioDialog';
+import { SectionFallback } from '@/components/ui/loading-skeleton';
 
 interface FuncionarioWithRoles {
   id: string;
@@ -497,7 +498,7 @@ export default function Funcionarios() {
   const hasRegistro = !!selectedTipoConfig?.registroLabel;
 
   if (isLoading) {
-    return <div className="flex items-center justify-center h-64"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
+    return <SectionFallback rows={6} />;
   }
 
   return (

@@ -3,6 +3,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Stethoscope, UserCog, Mail } from 'lucide-react';
 import { lazy, Suspense } from 'react';
 import { ConvitesList } from '@/components/ConvitesList';
+import { SectionFallback } from '@/components/ui/loading-skeleton';
 
 const Medicos = lazy(() => import('./Medicos'));
 const Funcionarios = lazy(() => import('./Funcionarios'));
@@ -29,13 +30,13 @@ export default function Equipe() {
         </TabsList>
 
         <TabsContent value="medicos" className="mt-4">
-          <Suspense fallback={<div className="flex justify-center py-12"><div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" /></div>}>
+          <Suspense fallback={<SectionFallback />}>
             <Medicos />
           </Suspense>
         </TabsContent>
 
         <TabsContent value="funcionarios" className="mt-4">
-          <Suspense fallback={<div className="flex justify-center py-12"><div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" /></div>}>
+          <Suspense fallback={<SectionFallback />}>
             <Funcionarios />
           </Suspense>
         </TabsContent>

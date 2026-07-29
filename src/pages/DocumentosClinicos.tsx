@@ -1,16 +1,13 @@
 import { useState, lazy, Suspense } from 'react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { BookMarked, FileBarChart, Stethoscope } from 'lucide-react';
+import { SectionFallback } from '@/components/ui/loading-skeleton';
 
 const Prescricoes = lazy(() => import('./Prescricoes'));
 const Atestados = lazy(() => import('./Atestados'));
 const Encaminhamentos = lazy(() => import('./Encaminhamentos'));
 
-const Loader = () => (
-  <div className="flex justify-center py-12">
-    <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
-  </div>
-);
+const Loader = () => <SectionFallback />;
 
 export default function DocumentosClinicos() {
   const [tab, setTab] = useState('prescricoes');

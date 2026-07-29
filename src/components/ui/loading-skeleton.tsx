@@ -233,3 +233,26 @@ export function PageSkeleton({ title = true }: { title?: boolean }) {
     </div>
   );
 }
+
+/**
+ * Fallback padrão para seções/abas carregadas sob demanda (lazy + Suspense).
+ * Substitui spinners soltos por um esqueleto que já sugere o layout final.
+ */
+export function SectionFallback({ rows = 5 }: { rows?: number }) {
+  return (
+    <div className="space-y-4 animate-fade-in" role="status" aria-label="Carregando conteúdo">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="space-y-2">
+          <Skeleton className="h-6 w-40 rounded-lg" />
+          <Skeleton className="h-3 w-56 rounded-md" />
+        </div>
+        <Skeleton className="h-10 w-32 rounded-lg" />
+      </div>
+      <Card>
+        <CardContent className="p-0">
+          <TableSkeleton rows={rows} cols={4} />
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
