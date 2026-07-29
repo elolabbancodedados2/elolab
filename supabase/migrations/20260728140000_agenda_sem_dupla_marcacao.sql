@@ -43,8 +43,8 @@ BEGIN
    AND a.medico_id = b.medico_id
    AND a.data = b.data
    AND a.medico_id IS NOT NULL
-   AND COALESCE(a.status, '') NOT IN ('cancelado', 'faltou')
-   AND COALESCE(b.status, '') NOT IN ('cancelado', 'faltou')
+   AND (a.status IS NULL OR a.status NOT IN ('cancelado', 'faltou'))
+   AND (b.status IS NULL OR b.status NOT IN ('cancelado', 'faltou'))
    AND a.hora_inicio < COALESCE(b.hora_fim, b.hora_inicio + interval '30 minutes')
    AND COALESCE(a.hora_fim, a.hora_inicio + interval '30 minutes') > b.hora_inicio;
 
@@ -72,7 +72,7 @@ ALTER TABLE public.agendamentos
   )
   WHERE (
     medico_id IS NOT NULL
-    AND COALESCE(status, '') NOT IN ('cancelado', 'faltou')
+    AND (status IS NULL OR status NOT IN ('cancelado', 'faltou'))
   );
 
 COMMENT ON CONSTRAINT agendamentos_sem_sobreposicao ON public.agendamentos IS
@@ -95,8 +95,8 @@ COMMIT;
 --   LEFT JOIN public.pacientes pa ON pa.id = a.paciente_id
 --   LEFT JOIN public.pacientes pb ON pb.id = b.paciente_id
 --  WHERE a.medico_id IS NOT NULL
---    AND COALESCE(a.status,'') NOT IN ('cancelado','faltou')
---    AND COALESCE(b.status,'') NOT IN ('cancelado','faltou')
+--    AND (a.status IS NULL OR a.status NOT IN ('cancelado','faltou'))
+--    AND (b.status IS NULL OR b.status NOT IN ('cancelado','faltou'))
 --    AND a.hora_inicio < COALESCE(b.hora_fim, b.hora_inicio + interval '30 minutes')
 --    AND COALESCE(a.hora_fim, a.hora_inicio + interval '30 minutes') > b.hora_inicio
 --  ORDER BY a.data, a.hora_inicio;
