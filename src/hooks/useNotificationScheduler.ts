@@ -1,37 +1,13 @@
-import { useEffect } from 'react'
 import { supabase } from '@/integrations/supabase/client'
 
 /**
- * Initialize notification processing scheduler
- * Runs process-notification-queue edge function every 2 minutes
+ * A fila de notificações é processada exclusivamente pelo agendador (cron) no
+ * servidor. A edge function `process-notification-queue` recusa chamadas do
+ * navegador com 403, então o antigo agendador no cliente só gerava erros a
+ * cada 2 minutos no console. Mantido como no-op para não quebrar imports.
  */
 export function useNotificationScheduler() {
-  useEffect(() => {
-    // Run immediately on startup
-    const processNotifications = async () => {
-      try {
-        const response = await supabase.functions.invoke('process-notification-queue', {
-          method: 'POST',
-        })
-
-        if (response.error) {
-          console.error('Notification processing error:', response.error)
-        } else if (response.data?.processed > 0) {
-          console.log('Notifications processed:', response.data)
-        }
-      } catch (e) {
-        console.error('Error calling notification processor:', e)
-      }
-    }
-
-    // Call immediately
-    processNotifications()
-
-    // Then set up interval to run every 2 minutes
-    const interval = setInterval(processNotifications, 2 * 60 * 1000)
-
-    return () => clearInterval(interval)
-  }, [])
+  // no-op: processamento roda no cron do servidor
 }
 
 /**
