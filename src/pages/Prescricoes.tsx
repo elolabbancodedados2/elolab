@@ -222,6 +222,9 @@ export default function Prescricoes() {
       return;
     }
 
+    setGerando(true);
+    try {
+
     const paciente = pacientes.find(p => p.id === form.paciente_id);
     const medico = medicos.find(m => m.id === form.medico_id);
     if (!paciente || !medico) return;
