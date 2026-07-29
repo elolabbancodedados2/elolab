@@ -31,3 +31,7 @@ dist-ssr
 .env.production.local
 .env*.local
 test-results/
+
+# Dump do schema de produção (gerado por npm run schema:real). Fica desatualizado
+# rápido e é reconstruído em segundos — não faz sentido versionar.
+schema-real.json

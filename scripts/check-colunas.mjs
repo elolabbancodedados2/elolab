@@ -86,6 +86,37 @@ for (const f of fs.readdirSync(migDir).filter(f => f.endsWith('.sql')).sort()) {
   }
 }
 
+// ── 1b. Schema real de produção, quando disponível ──────────────────────────
+// Os arquivos de migration DIVERGEM do banco: várias nunca foram aplicadas
+// (20260414000001_add_all_workflows, 20260414140000_add_lgpd_compliance_tables).
+// Enquanto isso, este verificador dava OK e o app consultava seis tabelas
+// inexistentes — as telas só vinham vazias, porque o supabase-js não lança em
+// erro de API.
+//
+// Se houver um schema-real.json na raiz (ou o caminho em SCHEMA_REAL), ele
+// SUBSTITUI o schema montado acima. Gere com `npm run schema:real`, ou use
+// `npm run check:colunas:real` para fazer as duas coisas de uma vez.
+//
+// Sem o arquivo, o comportamento continua o de antes — é assim que o CI roda,
+// já que não tem credencial do Supabase.
+const arquivoSchemaReal = process.env.SCHEMA_REAL
+  || (fs.existsSync('schema-real.json') ? 'schema-real.json' : null);
+
+if (arquivoSchemaReal) {
+  const real = JSON.parse(fs.readFileSync(arquivoSchemaReal, 'utf8'));
+  schema.clear();
+  for (const [tabela, colunas] of Object.entries(real.tabelas)) {
+    schema.set(tabela, new Set(colunas));
+  }
+  valoresAceitos.clear();
+  for (const [tabela, colunas] of Object.entries(real.valoresAceitos || {})) {
+    for (const [coluna, lista] of Object.entries(colunas)) {
+      registrarValores(tabela, coluna, lista);
+    }
+  }
+  console.log(`schema real: ${schema.size} tabelas (${arquivoSchemaReal})`);
+}
+
 // ── 2. Chaves de primeiro nível, ignorando strings e template literals ───────
 function chavesDeTopo(src, abre) {
   let nivel = 0, chaves = [];
