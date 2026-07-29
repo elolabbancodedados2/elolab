@@ -7,11 +7,14 @@
 import { supabase } from '@/integrations/supabase/client';
 
 /**
- * As tabelas lgpd_consent_log e lgpd_deletion_log existem no banco (migration
- * 20260414140000_add_lgpd_compliance_tables.sql) mas ainda não constam no
- * types.ts gerado. Conferi coluna a coluna contra a migration: os nomes usados
- * aqui estão corretos. Usamos este alias em vez de @ts-nocheck no arquivo
- * inteiro, para que o resto do módulo continue verificado pelo TypeScript.
+ * As tabelas lgpd_* ainda não constam no types.ts gerado. Usamos este alias em
+ * vez de @ts-nocheck no arquivo inteiro, para que o resto do módulo continue
+ * verificado pelo TypeScript.
+ *
+ * Elas passaram a existir em 20260729140000_tabelas_lgpd_de_verdade.sql. Antes
+ * dessa migration não existiam, e como o supabase-js não lança em erro de API,
+ * cada gravação daqui falhava em silêncio. A migration antiga citada no
+ * comentário anterior (20260414140000) nunca foi aplicada.
  */
 const db = supabase as any;
 
@@ -106,40 +109,54 @@ export async function deletePatientData(
     'pacientes', // Delete paciente por último (FK constraints)
   ];
 
-  let totalDeleted = 0;
+  // O registro vem ANTES de apagar, e um erro aqui interrompe tudo: apagar os
+  // dados de um paciente sem deixar registro de quem pediu, quando e por quê é
+  // pior do que não apagar — é justamente o que a LGPD exige comprovar.
+  const { error: erroLog } = await db.from('lgpd_deletion_log').insert({
+    paciente_id: pacienteId,
+    deleted_at: new Date().toISOString(),
+    reason: reason || 'Right to be forgotten request',
+    deleted_by: (await supabase.auth.getUser()).data.user?.id,
+  });
 
-  try {
-    // Log de deleção (compliance)
-    await db.from('lgpd_deletion_log').insert({
-      paciente_id: pacienteId,
-      deleted_at: new Date().toISOString(),
-      reason: reason || 'Right to be forgotten request',
-      deleted_by: (await supabase.auth.getUser()).data.user?.id,
-    });
-
-    // Deletar registros (ordem importa: foreign keys)
-    for (const table of tables) {
-      try {
-        const { data: count } = await db
-          .from(table)
-          .delete()
-          .eq(table === 'pacientes' ? 'id' : 'paciente_id', pacienteId);
-
-        totalDeleted += 1; // Count de sucesso, não records (API não retorna count)
-      } catch (error) {
-        console.warn(`Failed to delete from ${table}:`, error);
-        // Continue com tabelas seguintes
-      }
-    }
-
-    return {
-      deletedRecords: totalDeleted,
-      success: true,
-    };
-  } catch (error) {
-    console.error('Error deleting patient data:', error);
-    throw error;
+  if (erroLog) {
+    throw new Error(
+      `Não foi possível registrar a exclusão, então nada foi apagado: ${erroLog.message}`
+    );
   }
+
+  // Ordem importa por causa das chaves estrangeiras.
+  //
+  // `.select('id')` é o que faz o PostgREST devolver as linhas removidas — sem
+  // ele a resposta vem vazia e não há como saber se algo foi apagado. A versão
+  // anterior contava tabelas percorridas, não registros, e devolvia
+  // success: true mesmo quando o RLS barrava tudo: a tela dizia ao paciente que
+  // seus dados foram apagados sem que nada tivesse saído do banco.
+  let totalDeleted = 0;
+  const falhas: string[] = [];
+
+  for (const table of tables) {
+    const { data: removidos, error } = await db
+      .from(table)
+      .delete()
+      .eq(table === 'pacientes' ? 'id' : 'paciente_id', pacienteId)
+      .select('id');
+
+    if (error) {
+      falhas.push(`${table}: ${error.message}`);
+      continue;
+    }
+    totalDeleted += removidos?.length ?? 0;
+  }
+
+  if (falhas.length) {
+    throw new Error(
+      `Exclusão incompleta — ${totalDeleted} registro(s) apagado(s) antes da falha. ` +
+        `Tabelas com erro: ${falhas.join('; ')}`
+    );
+  }
+
+  return { deletedRecords: totalDeleted, success: true };
 }
 
 /**
@@ -151,18 +168,19 @@ export async function logLGPDConsent(
   accepted: boolean,
   ipAddress?: string
 ): Promise<void> {
-  try {
-    await db.from('lgpd_consent_log').insert({
-      paciente_id: pacienteId,
-      consent_type: consentType,
-      accepted,
-      timestamp: new Date().toISOString(),
-      ip_address: ipAddress,
-      user_agent: navigator.userAgent,
-    });
-  } catch (error) {
-    console.error('Error logging LGPD consent:', error);
-    throw error;
+  // O try/catch anterior não pegava nada: o supabase-js devolve { error } em vez
+  // de lançar, então o consentimento sumia sem ninguém saber.
+  const { error } = await db.from('lgpd_consent_log').insert({
+    paciente_id: pacienteId,
+    consent_type: consentType,
+    accepted,
+    timestamp: new Date().toISOString(),
+    ip_address: ipAddress,
+    user_agent: navigator.userAgent,
+  });
+
+  if (error) {
+    throw new Error(`Não foi possível registrar o consentimento: ${error.message}`);
   }
 }
 

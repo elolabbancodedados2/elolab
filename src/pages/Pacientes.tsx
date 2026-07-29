@@ -18,6 +18,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { LoadingButton } from '@/components/ui/loading-button';
@@ -64,6 +65,10 @@ interface PacienteFormData {
   numero_carteira: string;
   validade_carteira: string;
   alergias: string[];
+  // Alimentam os alertas de contraindicação em src/lib/clinicalAlerts.ts. Sem
+  // eles a checagem de segurança da prescrição roda cega nesses dois pontos.
+  gestante: boolean;
+  amamentando: boolean;
   observacoes: string;
   nome_responsavel: string;
   cpf_responsavel: string;
@@ -76,7 +81,7 @@ const initialFormData: PacienteFormData = {
   sexo: '', estado_civil: '', profissao: '', tipo_sanguineo: '',
   cep: '', logradouro: '', numero: '', complemento: '', bairro: '', cidade: '', estado: '',
   convenio_id: '', numero_carteira: '', validade_carteira: '',
-  alergias: [], observacoes: '',
+  alergias: [], gestante: false, amamentando: false, observacoes: '',
   nome_responsavel: '', cpf_responsavel: '', parentesco_responsavel: '',
   is_menor: false,
 };
@@ -485,6 +490,8 @@ export default function Pacientes() {
       numero_carteira: paciente.numero_carteira || '',
       validade_carteira: paciente.validade_carteira || '',
       alergias: paciente.alergias || [],
+      gestante: !!(paciente as any).gestante,
+      amamentando: !!(paciente as any).amamentando,
       observacoes: paciente.observacoes || '',
       nome_responsavel: paciente.nome_responsavel || '',
       cpf_responsavel: paciente.cpf_responsavel || '',
@@ -602,6 +609,8 @@ export default function Pacientes() {
         numero_carteira: formData.numero_carteira || null,
         validade_carteira: formData.validade_carteira || null,
         alergias: (formData.alergias || []).map((a: string) => sanitizeText(a) || 'Alergia').filter(Boolean),
+        gestante: formData.gestante,
+        amamentando: formData.amamentando,
         observacoes: sanitizeText(formData.observacoes),
         nome_responsavel: formData.nome_responsavel || null,
         cpf_responsavel: formData.cpf_responsavel || null,
@@ -1093,6 +1102,30 @@ export default function Pacientes() {
                     onChange={e => setFormData({ ...formData, alergias: e.target.value.split(',').map(a => a.trim()).filter(Boolean) })}
                     placeholder="Penicilina, Dipirona, Ibuprofeno, etc."
                   />
+                </div>
+                {/* Alimentam os alertas de contraindicação na prescrição. Antes
+                    não havia onde informar, então esses alertas nunca disparavam. */}
+                <div className="space-y-2">
+                  <Label>Condições que restringem medicamentos</Label>
+                  <div className="flex flex-wrap gap-6 rounded-md border p-3">
+                    <label className="flex items-center gap-2 text-sm font-normal cursor-pointer">
+                      <Checkbox
+                        checked={formData.gestante}
+                        onCheckedChange={v => setFormData({ ...formData, gestante: v === true })}
+                      />
+                      Gestante
+                    </label>
+                    <label className="flex items-center gap-2 text-sm font-normal cursor-pointer">
+                      <Checkbox
+                        checked={formData.amamentando}
+                        onCheckedChange={v => setFormData({ ...formData, amamentando: v === true })}
+                      />
+                      Amamentando
+                    </label>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    A prescrição avisa o médico se o medicamento for contraindicado nessas condições.
+                  </p>
                 </div>
                 <div className="space-y-2">
                   <Label>Observações Gerais</Label>

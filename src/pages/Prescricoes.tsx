@@ -236,6 +236,22 @@ export default function Prescricoes() {
     };
 
     const pAny = paciente as any;
+
+    // As comorbidades ficam em tabela própria, não numa coluna de `pacientes`.
+    // Antes este código lia pAny.comorbidades, campo que nunca existiu: o alerta
+    // de contraindicação por comorbidade nunca chegava a disparar.
+    const { data: comorbidades, error: erroComorbidades } = await (supabase as any)
+      .from('paciente_comorbidades')
+      .select('descricao')
+      .eq('paciente_id', paciente.id)
+      .eq('ativo', true);
+
+    if (erroComorbidades) {
+      // Prescrever sem saber as comorbidades é decisão do médico, não um
+      // detalhe a esconder: avisamos e seguimos.
+      toast.warning('Não foi possível carregar as comorbidades — os alertas podem estar incompletos.');
+    }
+
     const medicationLines = form.medicamentos_texto.split('\n').filter(line => line.trim());
     const alerts: ClinicalAlert[] = [];
 
@@ -246,7 +262,7 @@ export default function Prescricoes() {
         dataNascimento: pAny.data_nascimento,
         gestante: !!pAny.gestante,
         amamentando: !!pAny.amamentando,
-        comorbidades: toList(pAny.comorbidades),
+        comorbidades: (comorbidades || []).map((c: any) => c.descricao).filter(Boolean),
       });
       alerts.push(...lineAlerts);
     }
