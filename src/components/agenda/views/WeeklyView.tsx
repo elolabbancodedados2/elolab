@@ -8,11 +8,12 @@ interface Props {
   date: string;
   agendamentos: any[];
   colorFor: (a: any) => string;
+  medicoById?: Record<string, any>;
   onDayClick: (day: string) => void;
   onCardClick: (a: any) => void;
 }
 
-export function WeeklyView({ date, agendamentos, colorFor, onDayClick, onCardClick }: Props) {
+export function WeeklyView({ date, agendamentos, colorFor, medicoById = {}, onDayClick, onCardClick }: Props) {
   const days = useMemo(() => {
     const start = startOfWeek(parseISO(date), { weekStartsOn: 1 });
     return Array.from({ length: 7 }, (_, i) => {
@@ -93,6 +94,11 @@ export function WeeklyView({ date, agendamentos, colorFor, onDayClick, onCardCli
                     <div className="truncate text-muted-foreground">
                       {a.pacientes?.nome_social || a.pacientes?.nome || 'Paciente'}
                     </div>
+                    {medicoById[a.medico_id] && (
+                      <div className="truncate text-[10px] text-muted-foreground/80 mt-0.5">
+                        Dr(a). {medicoById[a.medico_id].nome || medicoById[a.medico_id].crm}
+                      </div>
+                    )}
                   </button>
                 ))}
               </div>
