@@ -657,7 +657,7 @@ function PrecosConvenio() {
             </TableHeader>
             <TableBody>
               {isLoading ? (
-                <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">Carregando...</TableCell></TableRow>
+                <TableRow><TableCell colSpan={9} className="p-0"><TableSkeleton rows={5} cols={6} /></TableCell></TableRow>
               ) : filtered?.length === 0 ? (
                 <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">Nenhum preço cadastrado</TableCell></TableRow>
               ) : (
