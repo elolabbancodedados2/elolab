@@ -492,7 +492,7 @@ export default function LandingPage() {
           <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 md:py-32 lg:py-36">
             <div className="grid lg:grid-cols-2 gap-12 lg:gap-8 items-center">
               {/* Left: Text */}
-              <div className="animate-fade-in">
+              <div className="animate-fade-in min-w-0">
                 <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/10 backdrop-blur-sm border border-white/20 mb-6">
                   <Zap className="w-3.5 h-3.5 text-yellow-300" />
                   <span className="text-xs font-semibold text-white/90">Novo: Agente IA WhatsApp 24h</span>
@@ -521,7 +521,7 @@ export default function LandingPage() {
                     Ver módulos
                   </Button>
                 </div>
-                <div className="mt-8 flex items-center gap-6 text-xs font-medium text-white/60">
+                <div className="mt-8 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs font-medium text-white/60">
                   <span className="flex items-center gap-1.5"><Lock className="w-3.5 h-3.5" /> LGPD</span>
                   <span className="flex items-center gap-1.5"><Clock className="w-3.5 h-3.5" /> 3 dias grátis</span>
                   <span className="flex items-center gap-1.5"><Shield className="w-3.5 h-3.5" /> 100% seguro</span>
@@ -530,10 +530,10 @@ export default function LandingPage() {
               </div>
 
               {/* Right: Floating mockups */}
-              <div className="flex items-end justify-center lg:justify-end gap-6 animate-fade-in" style={{ animationDelay: '0.3s' }}>
+              <div className="min-w-0 w-full flex items-end justify-center lg:justify-end gap-3 sm:gap-6 animate-fade-in" style={{ animationDelay: '0.3s' }}>
                 {/* Desktop mockup */}
-                <div className="relative" style={{ animation: 'heroFloat 4s ease-in-out infinite' }}>
-                  <div className="w-[320px] md:w-[380px] rounded-xl overflow-hidden shadow-2xl border border-white/10">
+                <div className="relative min-w-0" style={{ animation: 'heroFloat 4s ease-in-out infinite' }}>
+                  <div className="w-[64vw] max-w-[320px] md:max-w-[380px] rounded-xl overflow-hidden shadow-2xl border border-white/10">
                     <div className="h-8 bg-gray-200 flex items-center px-3 gap-1.5">
                       <div className="w-2.5 h-2.5 rounded-full bg-red-400" />
                       <div className="w-2.5 h-2.5 rounded-full bg-yellow-400" />
@@ -577,8 +577,8 @@ export default function LandingPage() {
                 </div>
 
                 {/* Phone mockup */}
-                <div className="relative -mb-4" style={{ animation: 'heroFloat 4s ease-in-out infinite 1s' }}>
-                  <div className="w-[140px] md:w-[160px] rounded-[24px] overflow-hidden shadow-2xl border-4 border-gray-800 bg-gray-800">
+                <div className="relative -mb-4 min-w-0" style={{ animation: 'heroFloat 4s ease-in-out infinite 1s' }}>
+                  <div className="w-[28vw] max-w-[140px] md:max-w-[160px] rounded-[24px] overflow-hidden shadow-2xl border-4 border-gray-800 bg-gray-800">
                     <div className="h-5 bg-gray-800 flex justify-center">
                       <div className="w-16 h-3 bg-gray-900 rounded-b-xl" />
                     </div>
@@ -910,7 +910,7 @@ export default function LandingPage() {
           <div className="relative mb-5">
             <div className="flex gap-5 animate-[scrollLeft_60s_linear_infinite] w-max">
               {[...testimonials, ...testimonials].map((t, i) => (
-                <div key={`r1-${i}`} className="flex-shrink-0 w-[340px] bg-white/80 backdrop-blur-sm rounded-2xl p-6 border border-[hsl(20,30%,90%)] hover:shadow-lg transition-all duration-300 hover:-translate-y-1">
+                <div key={`r1-${i}`} className="flex-shrink-0 w-[280px] sm:w-[340px] bg-white/80 backdrop-blur-sm rounded-2xl p-6 border border-[hsl(20,30%,90%)] hover:shadow-lg transition-all duration-300 hover:-translate-y-1">
                   <div className="flex items-center gap-3 mb-4">
                     <img src={t.avatar} alt={t.name} className="w-12 h-12 rounded-full object-cover border-2 border-[hsl(12,76%,61%,0.3)]" loading="lazy" />
                     <div>
@@ -931,7 +931,7 @@ export default function LandingPage() {
           <div className="relative">
             <div className="flex gap-5 animate-[scrollRight_55s_linear_infinite] w-max">
               {[...testimonials.slice(10), ...testimonials.slice(0, 10), ...testimonials.slice(10), ...testimonials.slice(0, 10)].map((t, i) => (
-                <div key={`r2-${i}`} className="flex-shrink-0 w-[340px] bg-white/80 backdrop-blur-sm rounded-2xl p-6 border border-[hsl(20,30%,90%)] hover:shadow-lg transition-all duration-300 hover:-translate-y-1">
+                <div key={`r2-${i}`} className="flex-shrink-0 w-[280px] sm:w-[340px] bg-white/80 backdrop-blur-sm rounded-2xl p-6 border border-[hsl(20,30%,90%)] hover:shadow-lg transition-all duration-300 hover:-translate-y-1">
                   <div className="flex items-center gap-3 mb-4">
                     <img src={t.avatar} alt={t.name} className="w-12 h-12 rounded-full object-cover border-2 border-[hsl(12,76%,61%,0.3)]" loading="lazy" />
                     <div>
@@ -981,7 +981,7 @@ export default function LandingPage() {
         {/* ══ FINAL CTA ══ */}
         <section className="py-20 md:py-28">
           <div className="max-w-4xl mx-auto px-4">
-            <div className="relative rounded-3xl overflow-hidden p-12 md:p-16 text-center"
+            <div className="relative rounded-3xl overflow-hidden p-8 sm:p-12 md:p-16 text-center"
               style={{ background: 'linear-gradient(135deg, hsl(210,70%,35%), hsl(215,75%,30%), hsl(220,65%,25%))' }}>
               {/* Pattern overlay */}
               <div className="absolute inset-0 opacity-[0.04]" style={{
@@ -1008,7 +1008,7 @@ export default function LandingPage() {
                     </Button>
                   </a>
                 </div>
-                <div className="mt-8 flex items-center justify-center gap-6 text-xs font-medium text-white/50">
+                <div className="mt-8 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-xs font-medium text-white/50">
                   <span className="flex items-center gap-1.5"><Lock className="w-3.5 h-3.5" /> Dados protegidos</span>
                   <span className="flex items-center gap-1.5"><Shield className="w-3.5 h-3.5" /> LGPD compliant</span>
                   <span className="flex items-center gap-1.5"><CreditCard className="w-3.5 h-3.5" /> Sem cartão</span>

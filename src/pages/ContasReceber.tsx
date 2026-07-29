@@ -801,7 +801,7 @@ export default function ContasReceber() {
 
               <div className="space-y-1.5">
                 <Label className="text-xs font-semibold uppercase tracking-wider">Forma de Pagamento *</Label>
-                <div className="grid grid-cols-4 gap-1.5">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
                   {FORMAS_PAGAMENTO.slice(0, 4).map(fp => {
                     const FPIcon = fp.icon;
                     const isSelected = baixaData.forma_pagamento === fp.value;

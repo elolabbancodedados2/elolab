@@ -407,7 +407,7 @@ function NewDirectBillingForm({ pacientes, onSuccess, onCancel }: { pacientes: a
           <h4 className="text-sm font-semibold text-muted-foreground mb-3 flex items-center gap-1.5">
             <DollarSign className="h-4 w-4" /> Valores
           </h4>
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="space-y-1.5">
               <Label className="text-xs">Valor (R$) *</Label>
               <Input type="number" step="0.01" value={form.valor}

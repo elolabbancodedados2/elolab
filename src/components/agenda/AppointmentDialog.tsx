@@ -270,7 +270,7 @@ export function AppointmentDialog({ open, onOpenChange, initial, pacientes, medi
                 </SelectContent>
               </Select>
             </div>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               <div>
                 <Label>Data *</Label>
                 <Input type="date" value={form.data} onChange={(e) => setForm({ ...form, data: e.target.value })} />
