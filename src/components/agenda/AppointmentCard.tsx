@@ -14,6 +14,7 @@ interface Props {
   slotHeight: number;
   minutesToPx: (m: number) => number;
   onClick: () => void;
+  convenioName?: string;
 }
 
 const STATUS_LABEL: Record<string, string> = {
@@ -47,7 +48,13 @@ function toMinutes(t: string) {
   return h * 60 + m;
 }
 
-export function AppointmentCard({ agendamento, color, minutesToPx, onClick }: Props) {
+const TIPO_LABEL: Record<string, string> = {
+  consulta: 'Consulta', retorno: 'Retorno', exame: 'Exame', procedimento: 'Procedimento',
+  telemedicina: 'Telemed.', checkup: 'Check-up', avaliacao: 'Avaliação', cirurgia: 'Cirurgia',
+  triagem: 'Triagem', coleta: 'Coleta', enfermagem: 'Enfermagem', vacina: 'Vacina', curativo: 'Curativo',
+};
+
+export function AppointmentCard({ agendamento, color, minutesToPx, onClick, convenioName }: Props) {
   const queryClient = useQueryClient();
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: `ag:${agendamento.id}`,
@@ -61,6 +68,7 @@ export function AppointmentCard({ agendamento, color, minutesToPx, onClick }: Pr
   const patientName = paciente?.nome_social || paciente?.nome || 'Paciente';
   const cancelled = agendamento.status === 'cancelado';
   const done = agendamento.status === 'finalizado';
+  const tipoLabel = TIPO_LABEL[agendamento.tipo as string] || agendamento.tipo;
 
   const style: React.CSSProperties = {
     position: 'absolute',
@@ -123,10 +131,16 @@ export function AppointmentCard({ agendamento, color, minutesToPx, onClick }: Pr
             <span className={cn('ml-auto h-1.5 w-1.5 rounded-full shrink-0', STATUS_DOT[agendamento.status] || 'bg-muted')} />
           </div>
           <div className="truncate text-[11px]">{patientName}</div>
-          {duration >= 45 && (
-            <div className="mt-0.5 text-[10px] text-muted-foreground truncate">
+          {duration >= 30 && (tipoLabel || convenioName) && (
+            <div className="mt-0.5 flex items-center gap-1 text-[10px] text-muted-foreground truncate">
+              {tipoLabel && <span className="truncate">{tipoLabel}</span>}
+              {tipoLabel && convenioName && <span className="text-muted-foreground/40">·</span>}
+              {convenioName && <span className="truncate">{convenioName}</span>}
+            </div>
+          )}
+          {duration >= 60 && (
+            <div className="mt-0.5 text-[10px] text-muted-foreground/70 truncate">
               {STATUS_LABEL[agendamento.status] || agendamento.status}
-              {agendamento.tipo && ` · ${agendamento.tipo}`}
             </div>
           )}
         </div>

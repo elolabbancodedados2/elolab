@@ -272,6 +272,7 @@ export function AgendaPage() {
                 agendamentos={dayAppts}
                 bloqueios={bloqueios}
                 colorFor={colorFor}
+                convenioById={Object.fromEntries((convenios as any[]).map(c => [c.id, c]))}
                 onSlotClick={handleSlotClick}
                 onCardClick={(a: any) => setDialogState({ open: true, initial: a })}
               />
