@@ -256,21 +256,3 @@ export function SectionFallback({ rows = 5 }: { rows?: number }) {
     </div>
   );
 }
-
-function LegacyPageSkeleton({ title = true }: { title?: boolean }) {
-  return (
-    <div className="space-y-6">
-      {title && (
-        <div className="space-y-2">
-          <Skeleton className="h-8 w-48 rounded-lg" />
-          <Skeleton className="h-4 w-64 rounded-md" />
-        </div>
-      )}
-      <Card>
-        <CardContent className="pt-6">
-          <FormSkeleton fields={6} />
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
