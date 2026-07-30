@@ -65,7 +65,9 @@ export const menuGroups: MenuGroup[] = [
       { label: 'Dashboard', icon: LayoutDashboard, href: '/dashboard' },
       { label: 'Agenda', icon: CalendarRange, href: '/agenda' },
       { label: 'Chat Interno', icon: MessageCircle, href: '/chat' },
-      { label: 'Tarefas', icon: ListChecks, href: '/tarefas', roles: ['admin', 'recepcao', 'enfermagem', 'financeiro'] },
+      // `medico` faltava aqui, mas a rota de /tarefas já o libera — o médico
+      // tinha acesso e nenhum caminho para chegar.
+      { label: 'Tarefas', icon: ListChecks, href: '/tarefas', roles: ['admin', 'recepcao', 'enfermagem', 'financeiro', 'medico'] },
       { label: 'Segurança da Conta', icon: Shield, href: '/seguranca' },
     ],
   },
@@ -73,10 +75,17 @@ export const menuGroups: MenuGroup[] = [
     label: 'Atendimento',
     icon: MonitorSmartphone,
     color: '#0ea5e9',
-    roles: ['admin', 'recepcao', 'enfermagem'],
+    // getFilteredMenuGroups filtra nos DOIS níveis: sem `medico` aqui, o grupo
+    // inteiro desaparece para o médico e o item Fila / Triagem nunca aparece,
+    // por mais que o item o inclua. `financeiro` pelo mesmo motivo, para
+    // Recepção & Caixa — a rota de /recepcao já o libera.
+    roles: ['admin', 'recepcao', 'enfermagem', 'medico', 'financeiro'],
     items: [
       { label: 'Recepção & Caixa', icon: MonitorSmartphone, href: '/recepcao', roles: ['admin', 'recepcao', 'financeiro'] },
-      { label: 'Fila / Triagem', icon: ClipboardCheck, href: '/fila', roles: ['admin', 'recepcao', 'enfermagem'] },
+      // `medico` incluído: o painel do médico já oferecia um atalho para /fila
+      // (DoctorDashboard), mas a rota e este menu barravam o papel — o médico
+      // clicava e recebia "sem permissão". O banco sempre autorizou.
+      { label: 'Fila / Triagem', icon: ClipboardCheck, href: '/fila', roles: ['admin', 'recepcao', 'enfermagem', 'medico'] },
       { label: 'Salas & Espera', icon: DoorOpen, href: '/gestao-fluxo', roles: ['admin', 'recepcao'] },
     ],
   },
@@ -106,9 +115,14 @@ export const menuGroups: MenuGroup[] = [
     label: 'Laboratório',
     icon: TestTubes,
     color: '#06b6d4',
-    roles: ['admin', 'medico', 'enfermagem'],
+    // `recepcao` incluído para que Guias Externas apareça: a rota de
+    // /guias-externas já libera recepção, mas o grupo derrubava o item.
+    roles: ['admin', 'medico', 'enfermagem', 'recepcao'],
     items: [
-      { label: 'Painel Lab', icon: FlaskConical, href: '/laboratorio' },
+      // Sem `roles` o item vale para todos os papéis do grupo. Como /laboratorio
+      // NÃO libera recepção, deixar implícito faria o item aparecer e negar no
+      // clique — o defeito que esta revisão foi corrigir.
+      { label: 'Painel Lab', icon: FlaskConical, href: '/laboratorio', roles: ['admin', 'medico', 'enfermagem'] },
       { label: 'Mapa de Coleta', icon: MapPinned, href: '/mapa-coleta', roles: ['admin', 'enfermagem'] },
       { label: 'Guias Externas', icon: FileText, href: '/guias-externas', roles: ['admin', 'recepcao', 'enfermagem'] },
       { label: 'Laudos', icon: ScrollText, href: '/laudos-lab', roles: ['admin', 'medico', 'enfermagem'] },
@@ -133,9 +147,13 @@ export const menuGroups: MenuGroup[] = [
     label: 'Equipe',
     icon: UsersRound,
     color: '#ec4899',
-    roles: ['admin'],
+    // `enfermagem` e `medico` incluídos para que Estoque e Templates apareçam:
+    // as rotas dos dois já liberam esses papéis, mas o grupo derrubava os itens.
+    roles: ['admin', 'enfermagem', 'medico'],
     items: [
-      { label: 'Equipe', icon: UsersRound, href: '/equipe' },
+      // Explícito porque /equipe é só de admin. Sem `roles`, o item herdaria o
+      // grupo inteiro e apareceria para enfermagem e médico, que a rota nega.
+      { label: 'Equipe', icon: UsersRound, href: '/equipe', roles: ['admin'] },
       { label: 'Estoque', icon: PackageSearch, href: '/estoque', roles: ['admin', 'enfermagem'] },
       { label: 'Templates', icon: FolderKanban, href: '/todos-templates', roles: ['admin', 'medico'] },
     ],
