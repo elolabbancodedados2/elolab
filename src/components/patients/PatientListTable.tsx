@@ -12,12 +12,19 @@ interface PatientListTableProps {
   onEdit: (paciente: any) => void;
   onDelete: (paciente: any) => void;
   onGeneratePortalLink: (id: string, nome: string) => void;
+  /**
+   * Gerar link do portal grava em paciente_portal_tokens, cujo RLS exige admin
+   * ou recepção. Enfermagem alcança esta tela e era recusada no clique — o
+   * botão precisa desaparecer para quem não pode usá-lo.
+   */
+  podeGerarLinkPortal?: boolean;
   getConvenioNome: (id: string | null) => string;
   calcularIdade: (data: string | null) => number;
 }
 
 export const PatientListTable = memo(function PatientListTable({
-  pacientes, onView, onEdit, onDelete, onGeneratePortalLink, getConvenioNome, calcularIdade,
+  pacientes, onView, onEdit, onDelete, onGeneratePortalLink,
+  podeGerarLinkPortal = true, getConvenioNome, calcularIdade,
 }: PatientListTableProps) {
   return (
     <div className="overflow-x-auto">
@@ -102,11 +109,13 @@ export const PatientListTable = memo(function PatientListTable({
                           <Eye className="h-4 w-4" />
                         </Button>
                       </motion.div>
-                      <motion.div whileHover={{ scale: 1.15 }} whileTap={{ scale: 0.9 }} transition={{ type: "spring", stiffness: 500, damping: 15 }}>
-                        <Button variant="ghost" size="icon" onClick={() => onGeneratePortalLink(paciente.id, paciente.nome)} title="Link do portal" className="rounded-xl hover:bg-accent/60">
-                          <Link className="h-4 w-4" />
-                        </Button>
-                      </motion.div>
+                      {podeGerarLinkPortal && (
+                        <motion.div whileHover={{ scale: 1.15 }} whileTap={{ scale: 0.9 }} transition={{ type: "spring", stiffness: 500, damping: 15 }}>
+                          <Button variant="ghost" size="icon" onClick={() => onGeneratePortalLink(paciente.id, paciente.nome)} title="Link do portal" className="rounded-xl hover:bg-accent/60">
+                            <Link className="h-4 w-4" />
+                          </Button>
+                        </motion.div>
+                      )}
                       <motion.div whileHover={{ scale: 1.15 }} whileTap={{ scale: 0.9 }} transition={{ type: "spring", stiffness: 500, damping: 15 }}>
                         <Button variant="ghost" size="icon" onClick={() => onEdit(paciente)} title="Editar" className="rounded-xl hover:bg-accent/60">
                           <Edit className="h-4 w-4" />
