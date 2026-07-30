@@ -5,6 +5,7 @@ import { Label } from '@/components/ui/label';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Clock, Save, Plus, AlertCircle } from 'lucide-react';
+import { LoadingButton } from '@/components/ui/loading-button';
 
 const DAYS_OF_WEEK = [
   { value: 1, label: 'Segunda-feira' },
@@ -195,10 +196,16 @@ export function MedicoAvailabilityManager({ medico_id, medico_nome }: Props) {
             </div>
             <div className="flex gap-2 pt-2 border-t">
               <Button variant="outline" onClick={() => setEditing(null)} className="flex-1">Cancelar</Button>
-              <Button onClick={handleSave} disabled={loading} className="flex-1 gap-2">
+              <LoadingButton
+                onClick={handleSave}
+                disabled={loading}
+                isLoading={loading}
+                loadingText="Salvando..."
+                className="flex-1 gap-2"
+              >
                 <Save className="h-4 w-4" />
                 Salvar
-              </Button>
+              </LoadingButton>
             </div>
           </div>
         )}

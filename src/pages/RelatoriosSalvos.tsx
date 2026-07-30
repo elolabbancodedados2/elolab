@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { ListSkeleton } from '@/components/ui/loading-skeleton';
 
 export default function RelatoriosSalvos() {
   const qc = useQueryClient();
@@ -64,7 +65,7 @@ export default function RelatoriosSalvos() {
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <div className="text-center py-12 text-muted-foreground">Carregando...</div>
+            <ListSkeleton items={3} />
           ) : items.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               Nenhum relatório salvo. Vá em <b>Relatórios → Customizado</b> e clique em <b>Salvar / Agendar</b>.

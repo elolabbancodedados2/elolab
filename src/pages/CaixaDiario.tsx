@@ -39,6 +39,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { SectionFallback } from '@/components/ui/loading-skeleton';
 
 type LancamentoTipo = 'receita' | 'despesa' | 'sangria' | 'suprimento';
 type FormaPagamento = 'dinheiro' | 'pix' | 'credito' | 'debito' | 'cartao_credito' | 'cartao_debito' | 'cheque' | 'transferencia';
@@ -617,7 +618,7 @@ export default function CaixaDiario() {
   });
 
   if (!profile?.clinica_id) {
-    return <div className="p-8 text-center text-muted-foreground">Carregando...</div>;
+    return <SectionFallback rows={5} />;
   }
 
   if (loadingCaixa) {
@@ -1071,7 +1072,7 @@ export default function CaixaDiario() {
               </div>
 
               <Tabs value={catalogoTab} onValueChange={v => setCatalogoTab(v as any)} className="flex-1 flex flex-col min-h-0">
-                <TabsList className="grid grid-cols-4 w-full">
+                <TabsList className="grid grid-cols-2 sm:grid-cols-4 w-full h-auto">
                   <TabsTrigger value="consultas" className="text-xs gap-1"><Stethoscope className="h-3.5 w-3.5" /> Consultas</TabsTrigger>
                   <TabsTrigger value="exames" className="text-xs gap-1"><FlaskConical className="h-3.5 w-3.5" /> Exames</TabsTrigger>
                   <TabsTrigger value="produtos" className="text-xs gap-1"><ShoppingBag className="h-3.5 w-3.5" /> Produtos</TabsTrigger>

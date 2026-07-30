@@ -29,6 +29,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useMedicos, useSupabaseQuery } from '@/hooks/useSupabaseData';
 import { useQueryClient } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
+import { LoadingButton } from '@/components/ui/loading-button';
 
 interface Bloqueio {
   id: string;
@@ -59,6 +60,7 @@ export function BloqueioAgenda({ medicoIdFilter }: BloqueioAgendaProps) {
     tipo: 'bloqueio',
   });
 
+  const [salvando, setSalvando] = useState(false);
   const queryClient = useQueryClient();
   const { data: medicos = [] } = useMedicos();
   const { data: bloqueios = [], isLoading } = useSupabaseQuery<Bloqueio>('bloqueios_agenda', {
@@ -77,6 +79,7 @@ export function BloqueioAgenda({ medicoIdFilter }: BloqueioAgendaProps) {
       return;
     }
 
+    setSalvando(true);
     const { error } = await supabase.from('bloqueios_agenda' as any).insert({
       medico_id: form.medico_id,
       data_inicio: form.data_inicio,
@@ -97,6 +100,7 @@ export function BloqueioAgenda({ medicoIdFilter }: BloqueioAgendaProps) {
       setDialogOpen(false);
       setForm({ medico_id: medicoIdFilter || '', data_inicio: '', data_fim: '', hora_inicio: '', hora_fim: '', dia_inteiro: true, motivo: '', tipo: 'bloqueio' });
     }
+    setSalvando(false);
   };
 
   const handleDelete = async (id: string) => {
@@ -242,7 +246,9 @@ export function BloqueioAgenda({ medicoIdFilter }: BloqueioAgendaProps) {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancelar</Button>
-            <Button onClick={handleSave}>Salvar Bloqueio</Button>
+            <LoadingButton onClick={handleSave} isLoading={salvando} loadingText="Salvando...">
+              Salvar Bloqueio
+            </LoadingButton>
           </DialogFooter>
         </DialogContent>
       </Dialog>

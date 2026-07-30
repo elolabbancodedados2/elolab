@@ -2,7 +2,9 @@ import { Suspense, lazy } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider, QueryCache } from "@tanstack/react-query";
+import { toast } from "sonner";
+import { friendlyErrorMessage } from "@/components/ErrorState";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { SupabaseAuthProvider } from "@/contexts/SupabaseAuthContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
@@ -83,6 +85,13 @@ import { useNotificationScheduler } from "@/hooks/useNotificationScheduler";
 import { CookieConsent } from "@/components/CookieConsent";
 
 const queryClient = new QueryClient({
+  // Falha de carregamento nunca deve virar tela em branco silenciosa:
+  // o usuário recebe uma mensagem clara (uma única vez por erro).
+  queryCache: new QueryCache({
+    onError: (error) => {
+      toast.error(friendlyErrorMessage(error), { id: `query-error-${friendlyErrorMessage(error)}` });
+    },
+  }),
   defaultOptions: {
     queries: {
       staleTime: 1000 * 60 * 5, // 5 minutes

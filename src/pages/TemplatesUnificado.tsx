@@ -1,15 +1,12 @@
 import { useState, lazy, Suspense } from 'react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { FolderKanban, Mail } from 'lucide-react';
+import { SectionFallback } from '@/components/ui/loading-skeleton';
 
 const Templates = lazy(() => import('./Templates'));
 const TemplatesEmail = lazy(() => import('./TemplatesEmail'));
 
-const Loader = () => (
-  <div className="flex justify-center py-12">
-    <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
-  </div>
-);
+const Loader = () => <SectionFallback />;
 
 export default function TemplatesUnificado() {
   const [tab, setTab] = useState('prontuario');

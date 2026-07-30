@@ -766,7 +766,7 @@ function Convenios() {
                 <h4 className="text-sm font-semibold text-muted-foreground mb-3 flex items-center gap-1.5">
                   <User className="h-4 w-4" /> Responsável no Convênio (Faturamento)
                 </h4>
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div className="space-y-1.5">
                     <Label className="text-xs">Nome</Label>
                     <Input value={formData.responsavel_nome} onChange={e => setFormData({ ...formData, responsavel_nome: e.target.value })} />

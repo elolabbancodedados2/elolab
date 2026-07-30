@@ -26,6 +26,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { ClinicalAlertsDisplay, useClinicalAlerts } from '@/components/ClinicalAlertsDisplay';
 import { consolidateAlerts, ClinicalAlert } from '@/lib/clinicalAlerts';
 import { parseDateOnly } from '@/lib/dateOnly';
+import { LoadingButton } from '@/components/ui/loading-button';
 
 /* ─── PDF Builder ─── */
 function buildReceitaPdf(data: {
@@ -187,6 +188,7 @@ export default function Prescricoes() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isResultOpen, setIsResultOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [gerando, setGerando] = useState(false);
   const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
   const [pdfFileName, setPdfFileName] = useState('');
   const [clinicalAlerts, setClinicalAlerts] = useState<ClinicalAlert[]>([]);
@@ -222,9 +224,14 @@ export default function Prescricoes() {
       return;
     }
 
+    setGerando(true);
+
     const paciente = pacientes.find(p => p.id === form.paciente_id);
     const medico = medicos.find(m => m.id === form.medico_id);
-    if (!paciente || !medico) return;
+    if (!paciente || !medico) {
+      setGerando(false);
+      return;
+    }
 
     // ✅ CHECK CLINICAL ALERTS antes de salvar
     // Helper: aceita array de strings ou CSV (campo no banco pode vir como ambos)
@@ -276,6 +283,7 @@ export default function Prescricoes() {
       if (hasCriticalAlerts) {
         toast.error('⚠️ Alertas de segurança críticos! Resolva antes de prescrever.');
       }
+      setGerando(false);
       return;
     }
 
@@ -320,13 +328,18 @@ export default function Prescricoes() {
     setShowAlertsDialog(false);
     setClinicalAlerts([]);
     toast.success('Receita gerada com sucesso!');
+    setGerando(false);
   };
 
   // Chamado pelo dialog de alertas quando o médico confirma prescrever apesar dos avisos
   const handleConfirmDespiteAlerts = async () => {
+    setGerando(true);
     const paciente = pacientes.find(p => p.id === form.paciente_id);
     const medico = medicos.find(m => m.id === form.medico_id);
-    if (!paciente || !medico) return;
+    if (!paciente || !medico) {
+      setGerando(false);
+      return;
+    }
     await executeSaveAndPdf(paciente, medico);
   };
 
@@ -485,9 +498,14 @@ export default function Prescricoes() {
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsFormOpen(false)}>Cancelar</Button>
-            <Button onClick={handleSaveAndGenerate} className="gap-2">
+            <LoadingButton
+              onClick={handleSaveAndGenerate}
+              isLoading={gerando}
+              loadingText="Gerando receita..."
+              className="gap-2"
+            >
               <FileDown className="h-4 w-4" />Gerar Receita PDF
-            </Button>
+            </LoadingButton>
           </DialogFooter>
         </DialogContent>
       </Dialog>

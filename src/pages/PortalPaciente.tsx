@@ -594,7 +594,7 @@ export default function PortalPaciente() {
           {/* ─── Tabs ─── */}
           <motion.div variants={itemVariants}>
             <Tabs defaultValue="consultas" className="w-full">
-              <TabsList className="grid w-full grid-cols-6 h-12">
+              <TabsList className="grid w-full grid-cols-3 sm:grid-cols-6 h-auto sm:h-12">
                 <TabsTrigger value="agendar" className="gap-1.5 data-[state=active]:bg-primary/10">
                   <span className="text-lg">+</span>
                   <span className="hidden sm:inline text-sm">Agendar</span>
@@ -682,7 +682,7 @@ export default function PortalPaciente() {
                             <div className="inline-block h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
                           </div>
                         ) : availableSlots.length > 0 ? (
-                          <div className="grid grid-cols-4 gap-2">
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                             {availableSlots.map(slot => (
                               <button
                                 key={slot}

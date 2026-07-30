@@ -323,7 +323,7 @@ function MedicoProfilePanel({ medico, onClose, onEdit }: { medico: any; onClose:
           </div>
         </div>
 
-        <div className="grid grid-cols-4 gap-2 px-4 py-3 border-b bg-muted/30">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 px-4 py-3 border-b bg-muted/30">
           {[
             { label: 'Hoje', value: agendamentosHoje.length, icon: Activity, color: 'text-primary' },
             { label: 'Futuros', value: agendamentosFuturos.length, icon: Calendar, color: 'text-info' },
@@ -339,7 +339,7 @@ function MedicoProfilePanel({ medico, onClose, onEdit }: { medico: any; onClose:
         </div>
 
         <Tabs defaultValue="agenda" className="flex-1 flex flex-col overflow-hidden">
-          <TabsList className="mx-4 mt-3 grid grid-cols-4 h-9">
+          <TabsList className="mx-4 mt-3 grid grid-cols-2 sm:grid-cols-4 h-auto sm:h-9">
             <TabsTrigger value="agenda" className="text-[11px] gap-1"><Calendar className="h-3 w-3" /> Agenda</TabsTrigger>
             <TabsTrigger value="prontuarios" className="text-[11px] gap-1"><ClipboardList className="h-3 w-3" /> Prontuários</TabsTrigger>
             <TabsTrigger value="prescricoes" className="text-[11px] gap-1"><Pill className="h-3 w-3" /> Prescrições</TabsTrigger>
