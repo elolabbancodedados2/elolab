@@ -70,6 +70,7 @@ const ChatInterno = lazy(() => import("@/pages/ChatInterno"));
 const TemplatesEmail = lazy(() => import("@/pages/TemplatesEmail"));
 const Auth = lazy(() => import("@/pages/Auth"));
 const AceitarConvite = lazy(() => import("@/pages/AceitarConvite"));
+const RedefinirSenha = lazy(() => import("@/pages/RedefinirSenha"));
 const PainelTV = lazy(() => import("@/pages/PainelTV"));
 const PortalPaciente = lazy(() => import("@/pages/PortalPaciente"));
 const NotFound = lazy(() => import("@/pages/NotFound"));
@@ -167,6 +168,7 @@ function App() {
                         <Route path="/auth" element={<Auth />} />
                         <Route path="/login" element={<Navigate to="/auth" replace />} />
                         <Route path="/aceitar-convite" element={<AceitarConvite />} />
+                        <Route path="/redefinir-senha" element={<RedefinirSenha />} />
                         <Route path="/politica-privacidade" element={<PoliticaPrivacidade />} />
                         <Route path="/politica-cookies" element={<PoliticaCookies />} />
                         <Route path="/termos-uso" element={<TermosUso />} />
@@ -180,6 +182,7 @@ function App() {
                         <Route path="/auth" element={<Auth />} />
                         <Route path="/login" element={<Navigate to="/auth" replace />} />
                         <Route path="/aceitar-convite" element={<AceitarConvite />} />
+                        <Route path="/redefinir-senha" element={<RedefinirSenha />} />
                         <Route path="/politica-privacidade" element={<PoliticaPrivacidade />} />
                         <Route path="/politica-cookies" element={<PoliticaCookies />} />
                         <Route path="/termos-uso" element={<TermosUso />} />
