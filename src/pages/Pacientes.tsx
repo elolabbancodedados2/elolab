@@ -683,11 +683,14 @@ export default function Pacientes() {
         clinica_id: authProfile?.clinica_id || null,
       };
 
+      let pacienteId: string;
+      let acao: 'atualizado' | 'cadastrado';
+
       if (selectedPacienteId) {
         const { error } = await supabase.from('pacientes').update(dataToSave).eq('id', selectedPacienteId);
         if (error) throw error;
-        await sincronizarComorbidades(selectedPacienteId, formData.comorbidades);
-        toast.success('Paciente atualizado com sucesso');
+        pacienteId = selectedPacienteId;
+        acao = 'atualizado';
       } else {
         // `.select('id').single()` porque as comorbidades vão para outra tabela
         // e precisam do id que o banco acabou de gerar.
@@ -697,15 +700,32 @@ export default function Pacientes() {
           .select('id')
           .single();
         if (error) throw error;
-        await sincronizarComorbidades(novo.id, formData.comorbidades);
-        toast.success('Paciente cadastrado com sucesso');
+        pacienteId = novo.id;
+        acao = 'cadastrado';
       }
+
+      // A partir daqui o paciente JÁ está salvo. Uma falha nas comorbidades não
+      // pode ser anunciada como "erro ao salvar paciente": foi assim que o
+      // cadastro pela recepção parecia falhar enquanto o paciente era criado, e
+      // quem tentava de novo acabava com paciente duplicado.
+      try {
+        await sincronizarComorbidades(pacienteId, formData.comorbidades);
+        toast.success(`Paciente ${acao} com sucesso`);
+      } catch (erroComorbidades: any) {
+        toast.warning(`Paciente ${acao}, mas as comorbidades não foram salvas`, {
+          description: erroComorbidades?.message || 'Edite a ficha para tentar de novo.',
+        });
+      }
+
       refetch();
       setIsFormOpen(false);
     } catch (error: any) {
       console.error('Erro ao salvar paciente:', error);
-      const msg = error?.message || error?.details || 'Verifique os dados e tente novamente.';
-      toast.error('Erro ao salvar paciente');
+      // A mensagem do banco costuma dizer exatamente o que faltou (campo
+      // obrigatório, CPF duplicado, permissão). Esconder isso obriga a adivinhar.
+      toast.error('Erro ao salvar paciente', {
+        description: error?.message || error?.details || 'Verifique os dados e tente novamente.',
+      });
     } finally {
       setIsSubmitting(false);
     }
