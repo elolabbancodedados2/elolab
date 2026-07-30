@@ -733,15 +733,35 @@ export default function Prontuarios() {
               motivo: `Prescrição — ${selectedPaciente?.nome || 'paciente'}`,
             } as any);
 
-            // Violação da unicidade = já houve baixa deste item para este
-            // prontuário. Não é erro: é a proteção funcionando.
-            if (movErr) continue;
+            if (movErr) {
+              // 23505 = violação da unicidade: já houve baixa deste item para
+              // este prontuário. Não é erro, é a proteção contra o autosave.
+              //
+              // Qualquer OUTRO erro precisa aparecer. Antes tudo caía no mesmo
+              // `continue`, e falta de permissão passava por "já foi baixado":
+              // o médico salvava, a baixa era recusada, e o estoque seguia
+              // mostrando material já consumido — sem aviso em tela nenhuma.
+              if (movErr.code !== '23505') {
+                toast.warning(`Estoque não foi baixado: ${estoqueItem.nome}`, {
+                  description: movErr.message,
+                });
+              }
+              continue;
+            }
 
             const novaQtd = Math.max(0, estoqueItem.quantidade - qtd);
-            await supabase.from('estoque')
+            const { error: saldoErr } = await supabase.from('estoque')
               .update({ quantidade: novaQtd })
               .eq('id', estoqueItem.id)
               .eq('quantidade', estoqueItem.quantidade);
+
+            // A movimentação já foi registrada; se o saldo não acompanhar, os
+            // dois ficam divergentes e ninguém saberia.
+            if (saldoErr) {
+              toast.warning(`Saldo de ${estoqueItem.nome} não foi atualizado`, {
+                description: saldoErr.message,
+              });
+            }
           }
         }
       }

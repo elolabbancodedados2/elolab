@@ -172,7 +172,18 @@ export default function Pacientes() {
   const [exameForm, setExameForm] = useState<Record<string, string>>({});
   const [savingExame, setSavingExame] = useState(false);
 
-  const { profile: authProfile } = useSupabaseAuth();
+  const { profile: authProfile, hasRole, isAdmin } = useSupabaseAuth();
+
+  // A aba Prontuário grava em `prontuarios` e `prescricoes`, e o RLS das duas
+  // aceita SÓ admin e médico — nem enfermagem. A rota /pacientes admite recepção
+  // e enfermagem, então a aba aparecia para quem não consegue salvar: preenchia
+  // o prontuário e perdia tudo no botão. Melhor não oferecer do que recusar
+  // depois de a pessoa digitar.
+  const podeVerProntuario = isAdmin() || hasRole('medico');
+
+  // Gerar link do portal grava em paciente_portal_tokens, cujo RLS exige
+  // can_manage_data — admin ou recepção. Enfermagem não passa.
+  const podeGerarLinkPortal = isAdmin() || hasRole('recepcao');
   const { medicoId, isMedicoOnly } = useCurrentMedico();
   const { data: pacientes = [], isLoading, refetch } = usePacientes();
   const { data: convenios = [] } = useSupabaseQuery<any>('convenios', { orderBy: { column: 'nome', ascending: true } });
@@ -900,6 +911,7 @@ export default function Pacientes() {
             onEdit={handleEdit}
             onDelete={handleDeleteClick}
             onGeneratePortalLink={handleGeneratePortalLink}
+            podeGerarLinkPortal={podeGerarLinkPortal}
             getConvenioNome={getConvenioNome}
             calcularIdade={calcularIdade}
           />
@@ -1295,7 +1307,9 @@ export default function Pacientes() {
                     <TabsTrigger value="dados" className="text-[11px] gap-1 py-1.5 rounded-lg"><User2 className="h-3 w-3" />Dados</TabsTrigger>
                     <TabsTrigger value="consultas" className="text-[11px] gap-1 py-1.5 rounded-lg"><Calendar className="h-3 w-3" />Consultas</TabsTrigger>
                     <TabsTrigger value="exames" className="text-[11px] gap-1 py-1.5 rounded-lg"><TestTube className="h-3 w-3" />Exames</TabsTrigger>
-                    <TabsTrigger value="prontuario" className="text-[11px] gap-1 py-1.5 rounded-lg"><Stethoscope className="h-3 w-3" />Prontuário</TabsTrigger>
+                    {podeVerProntuario && (
+                      <TabsTrigger value="prontuario" className="text-[11px] gap-1 py-1.5 rounded-lg"><Stethoscope className="h-3 w-3" />Prontuário</TabsTrigger>
+                    )}
                     <TabsTrigger value="historico" className="text-[11px] gap-1 py-1.5 rounded-lg"><History className="h-3 w-3" />Timeline</TabsTrigger>
                     <TabsTrigger value="sinais" className="text-[11px] gap-1 py-1.5 rounded-lg"><Activity className="h-3 w-3" />Sinais</TabsTrigger>
                     <TabsTrigger value="endereco" className="text-[11px] gap-1 py-1.5 rounded-lg"><MapPin className="h-3 w-3" />Endereço</TabsTrigger>
@@ -1600,7 +1614,9 @@ export default function Pacientes() {
                   </TabsContent>
 
                   {/* Tab: Prontuário */}
-                  <TabsContent value="prontuario" className="mt-0 space-y-3">
+                  {/* Também condicionado: esconder só o gatilho deixaria o
+                      conteúdo acessível por URL ou pelo estado da aba. */}
+                  <TabsContent value="prontuario" className={podeVerProntuario ? 'mt-0 space-y-3' : 'hidden'}>
                     {prontuarioTab === 'lista' && (
                       <div className="space-y-3">
                         <div className="flex items-center justify-between">
