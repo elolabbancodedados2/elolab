@@ -58,13 +58,15 @@ jobs:
     name: E2E Tests
     runs-on: ubuntu-latest
     needs: unit-tests
-    # Informativo por enquanto. Este job dependia de unit-tests, que falhava com
-    # estouro de memória — ou seja, o e2e NUNCA chegou a executar e nunca esteve
-    # verde. Agora que os testes unitários passam, ele roda pela primeira vez,
-    # contra specs escritas para uma versão anterior da interface.
-    # Deixar como obrigatório agora travaria todo merge por um problema que já
-    # existia. Remova o continue-on-error depois de estabilizar as specs.
-    continue-on-error: true
+    # Bloqueante desde 2026-07-30. O continue-on-error existia porque o job
+    # nunca tinha chegado a rodar (dependia de unit-tests, que estourava
+    # memória). Verificado no log do CI: 18 passam, 0 falham. Manter como
+    # informativo agora só serviria para deixar regressão passar despercebida.
+    #
+    # Os 19 testes de RLS ficavam PULADOS por falta do secret com a chave anon,
+    # então o job passava verde sem nunca ter checado vazamento de dados. A
+    # spec agora lê a chave do client.ts quando a variável não existe — ela é
+    # pública, vai no bundle de todo jeito.
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
