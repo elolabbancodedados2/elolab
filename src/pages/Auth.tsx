@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -540,6 +540,14 @@ export default function Auth() {
                     >
                       {isLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Entrando...</> : 'Entrar'}
                     </Button>
+                    {/* Até aqui não havia saída para quem esquecia a senha: o app
+                        não tinha nenhuma chamada de recuperação. */}
+                    <Link
+                      to="/redefinir-senha"
+                      className="block text-center text-sm text-muted-foreground hover:text-foreground"
+                    >
+                      Esqueci minha senha
+                    </Link>
                   </form>
                 </Form>
               </motion.div>
