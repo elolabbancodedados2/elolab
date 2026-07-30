@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { readFileSync } from 'node:fs';
 
 /**
  * Testes de RLS contra a API REST do Supabase usando apenas a chave anon.
@@ -9,8 +10,29 @@ import { test, expect } from '@playwright/test';
  */
 
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'https://gebygucrpipaufrlyqqj.supabase.co';
+
+/**
+ * A chave anon é PÚBLICA — vai no JavaScript entregue a todo visitante, e o
+ * próprio client.ts a traz embutida como padrão. Ler dali quando a variável de
+ * ambiente não existe não expõe nada e resolve um problema real: sem o secret
+ * configurado no repositório, estes 15 testes eram PULADOS e o job de e2e
+ * passava verde sem nunca ter verificado vazamento de dados.
+ *
+ * Justamente os testes que mais importam eram os que não rodavam.
+ */
+function chaveAnonDoRepo(): string {
+  try {
+    const src = readFileSync('src/integrations/supabase/client.ts', 'utf8');
+    return src.match(/"(eyJ[A-Za-z0-9._-]+)"/)?.[1] ?? '';
+  } catch {
+    return '';
+  }
+}
+
 const SUPABASE_ANON_KEY =
-  process.env.VITE_SUPABASE_PUBLISHABLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || '';
+  process.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
+  process.env.VITE_SUPABASE_ANON_KEY ||
+  chaveAnonDoRepo();
 
 const headers = {
   apikey: SUPABASE_ANON_KEY,
@@ -45,7 +67,9 @@ const PRIVATE_TABLES = [
 ];
 
 test.beforeAll(() => {
-  test.skip(!SUPABASE_ANON_KEY, 'VITE_SUPABASE_PUBLISHABLE_KEY não configurada');
+  // Só pula se nem a variável nem o client.ts trouxerem a chave — o que
+  // significaria que o repositório está incompleto, não que falta um secret.
+  test.skip(!SUPABASE_ANON_KEY, 'chave anon não encontrada nem no ambiente nem em client.ts');
 });
 
 test.describe('RLS — leitura anônima', () => {
