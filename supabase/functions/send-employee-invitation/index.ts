@@ -105,6 +105,37 @@ Deno.serve(async (req) => {
       ALLOWED_ROLES.includes(r)
     );
 
+    // Convite sem papel não dá acesso a nada: a pessoa aceita, fica vinculada à
+    // clínica e continua sem enxergar uma tela sequer, porque todo o RLS parte
+    // de has_any_role. Aconteceu de verdade — vários convites antigos foram
+    // criados assim, com roles vazio, e ninguém entendia por que o funcionário
+    // "entrava e não via nada".
+    //
+    // Melhor recusar aqui e dizer o que fazer do que gastar o convite e o
+    // tempo da pessoa.
+    if (finalRoles.length === 0) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error:
+            "Defina a função do funcionário (médico, recepção, enfermagem, financeiro ou administrador) antes de enviar o convite. Sem função, ele entraria no sistema sem acesso a nenhuma tela.",
+        }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (!clinicaId && !funcData.clinica_id) {
+      // Sem clínica, o aceite vincula a lugar nenhum e o RLS barra tudo pelo
+      // is_same_clinica. Três convites antigos estão assim.
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: "Não foi possível identificar a clínica deste funcionário. Recarregue a página e tente de novo.",
+        }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     const inviteToken = crypto.randomUUID();
 
     const { error: insertError } = await serviceClient
