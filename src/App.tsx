@@ -215,7 +215,12 @@ function App() {
                           <Route path="/guias-externas" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem']}><GuiasExternas /></SupabaseProtectedRoute>} />
                           <Route path="/laudos-lab" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico', 'enfermagem']}><LaudosLab /></SupabaseProtectedRoute>} />
                           <Route path="/pacientes" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem']}><Pacientes /></SupabaseProtectedRoute>} />
-                          <Route path="/fila" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem']}><AtendimentoFila /></SupabaseProtectedRoute>} />
+                          {/* `medico` estava fora, então o médico recebia "sem permissão" numa
+                              tela que o banco já autorizava: fila_atendimento e agendamentos
+                              liberam has_any_role exceto financeiro, e triagens liberam
+                              can_access_clinical, que inclui médico. Sem ele, o médico não via
+                              quem estava esperando para chamar o próximo paciente. */}
+                          <Route path="/fila" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'medico']}><AtendimentoFila /></SupabaseProtectedRoute>} />
                           <Route path="/equipe" element={<SupabaseProtectedRoute allowedRoles={['admin']}><EquipePage /></SupabaseProtectedRoute>} />
                           <Route path="/medicos" element={<Navigate to="/equipe" replace />} />
                           <Route path="/funcionarios" element={<Navigate to="/equipe" replace />} />
