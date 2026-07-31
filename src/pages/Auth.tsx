@@ -16,6 +16,7 @@ import {
   Stethoscope, HeartPulse, MonitorSmartphone, UserCog,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { mensagemDeErro } from '@/lib/erros';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { checkRateLimit, resetRateLimit, getRemainingAttempts } from '@/lib/rateLimiter';
 import { MFAVerifyDialog } from '@/components/MFAVerifyDialog';
@@ -179,8 +180,8 @@ export default function Auth() {
         toast.success('Login realizado!');
         navigate('/dashboard');
       }
-    } catch {
-      toast.error('Erro ao fazer login');
+    } catch (e) {
+      toast.error('Erro ao fazer login', { description: mensagemDeErro(e) });
     } finally {
       setIsLoading(false);
     }
@@ -246,7 +247,7 @@ export default function Auth() {
       );
 
       if (valError) {
-        toast.error('Erro ao validar código. Tente novamente.');
+        toast.error('Erro ao validar código. Tente novamente.', { description: mensagemDeErro(valError) });
         setIsLoading(false);
         return;
       }
@@ -269,8 +270,8 @@ export default function Auth() {
         toast.success('Conta criada com sucesso!');
         signupForm.reset();
       }
-    } catch {
-      toast.error('Erro ao criar conta');
+    } catch (e) {
+      toast.error('Erro ao criar conta', { description: mensagemDeErro(e) });
     } finally {
       setIsLoading(false);
     }

@@ -558,8 +558,11 @@ export default function Medicos() {
               .insert({ nome: formData.nome, email: formData.email, cargo: 'Médico', departamento: formData.especialidade || 'Clínico', ativo: true, clinica_id: profile?.clinica_id || null, pending_roles: ['medico'] } as any)
               .select().single();
             if (!funcError && funcData) {
-              const { data: inviteData, error: inviteError } = await supabase.functions.invoke('send-employee-invitation', {
-                body: { funcionarioId: funcData.id, email: formData.email, nome: formData.nome, roles: ['medico'] },
+              // invite-employee é o caminho único de convite. O antigo
+              // send-employee-invitation gravava em outra tabela, com outro
+              // aceite, e travava quando a pessoa já tinha conta.
+              const { data: inviteData, error: inviteError } = await supabase.functions.invoke('invite-employee', {
+                body: { email: formData.email, nome: formData.nome, roles: ['medico'] },
               });
               if (inviteError) {
                 toast.info('Médico cadastrado, mas o convite não pôde ser enviado.');

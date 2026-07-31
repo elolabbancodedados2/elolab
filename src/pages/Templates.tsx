@@ -33,6 +33,7 @@ import {
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
+import { mensagemDeErro } from '@/lib/erros';
 import { useSupabaseQuery } from '@/hooks/useSupabaseData';
 import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient } from '@tanstack/react-query';
@@ -134,7 +135,7 @@ export default function Templates() {
       setPrescriptionForm({});
     } catch (error) {
       if (import.meta.env.DEV) console.error('Error saving prescription template:', error);
-      toast.error('Erro ao salvar template');
+      toast.error('Erro ao salvar template', { description: mensagemDeErro(error) });
     } finally {
       setIsSaving(false);
     }
@@ -182,7 +183,7 @@ export default function Templates() {
       setCertificateForm({});
     } catch (error) {
       if (import.meta.env.DEV) console.error('Error saving certificate template:', error);
-      toast.error('Erro ao salvar template');
+      toast.error('Erro ao salvar template', { description: mensagemDeErro(error) });
     } finally {
       setIsSaving(false);
     }
@@ -201,7 +202,7 @@ export default function Templates() {
       toast.success('Template excluído');
     } catch (error) {
       if (import.meta.env.DEV) console.error('Error deleting template:', error);
-      toast.error('Erro ao excluir template');
+      toast.error('Erro ao excluir template', { description: mensagemDeErro(error) });
     } finally {
       setIsSaving(false);
       setDeleteDialog({ open: false, type: 'prescription', id: '' });
@@ -223,7 +224,7 @@ export default function Templates() {
       toast.success('Template duplicado');
     } catch (error) {
       if (import.meta.env.DEV) console.error('Error duplicating template:', error);
-      toast.error('Erro ao duplicar template');
+      toast.error('Erro ao duplicar template', { description: mensagemDeErro(error) });
     }
   };
 

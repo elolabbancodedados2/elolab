@@ -406,10 +406,21 @@ export default function Funcionarios() {
   const inviteMutation = useMutation({
     mutationFn: async (func: FuncionarioWithRoles) => {
       if (!func.email) throw new Error('Funcionário não possui e-mail cadastrado');
+      if (!func.roles?.length) {
+        throw new Error(
+          'Defina a função deste funcionário antes de convidar. Sem função, ele entra no sistema e não vê nenhuma tela.'
+        );
+      }
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error('Você precisa estar autenticado');
-      const response = await supabase.functions.invoke('send-employee-invitation', {
-        body: { funcionarioId: func.id, email: func.email, nome: func.nome, roles: func.roles },
+
+      // Passou a usar invite-employee, o mesmo do botão "Convidar funcionário".
+      // Conviviam dois sistemas de convite gravando em tabelas diferentes, com
+      // aceites diferentes — e o reenvio pulava de um para o outro, deixando o
+      // original pendente. Este caminho também trata quem já tem conta, que era
+      // onde o outro travava.
+      const response = await supabase.functions.invoke('invite-employee', {
+        body: { email: func.email, nome: func.nome, roles: func.roles },
       });
       if (response.error) throw new Error(response.error.message || 'Erro ao enviar convite');
       if (!response.data?.success) throw new Error(response.data?.error || 'Erro ao enviar convite');

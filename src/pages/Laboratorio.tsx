@@ -15,6 +15,7 @@ import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
+import { mensagemDeErro } from '@/lib/erros';
 import { format, differenceInMinutes, differenceInHours, isToday, isYesterday, subDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -164,7 +165,7 @@ export default function Laboratorio() {
       toast.success('Coleta registrada com sucesso!');
       setShowNewColeta(false);
     },
-    onError: () => toast.error('Erro ao registrar coleta'),
+    onError: (e) => toast.error('Erro ao registrar coleta', { description: mensagemDeErro(e) }),
   });
 
   const updateStatus = useMutation({
@@ -189,7 +190,7 @@ export default function Laboratorio() {
       queryClient.invalidateQueries({ queryKey: ['resultados-laboratorio'] });
       toast.success('Resultado adicionado!');
     },
-    onError: () => toast.error('Erro ao adicionar resultado'),
+    onError: (e) => toast.error('Erro ao adicionar resultado', { description: mensagemDeErro(e) }),
   });
 
   // ─── Filtering with date ─────────────────────────────────

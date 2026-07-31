@@ -16,6 +16,7 @@ import { Progress } from '@/components/ui/progress';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { mensagemDeErro } from '@/lib/erros';
 import { format, differenceInMinutes } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -92,7 +93,7 @@ export default function MapaColeta() {
       .in('status', ['pendente', 'coletado', 'recoleta'])
       .order('created_at', { ascending: true });
 
-    if (error) toast.error('Erro ao carregar mapa de coleta');
+    if (error) toast.error('Erro ao carregar mapa de coleta', { description: mensagemDeErro(error) });
     else setItens(data ?? []);
     setLoading(false);
   }, []);
@@ -109,7 +110,7 @@ export default function MapaColeta() {
   const handleColetar = async (id: string) => {
     const { error } = await supabase.from('coletas_laboratorio')
       .update({ status: 'coletado', data_coleta: new Date().toISOString() }).eq('id', id);
-    if (error) toast.error('Erro ao registrar coleta');
+    if (error) toast.error('Erro ao registrar coleta', { description: mensagemDeErro(error) });
     else { toast.success('Coleta registrada!'); fetchColetas(); }
   };
 
@@ -132,19 +133,19 @@ export default function MapaColeta() {
 
   const handleRecoleta = async (id: string) => {
     const { error } = await supabase.from('coletas_laboratorio').update({ status: 'recoleta' }).eq('id', id);
-    if (error) toast.error('Erro'); else { toast.warning('Recoleta solicitada'); fetchColetas(); }
+    if (error) toast.error('Erro', { description: mensagemDeErro(error) }); else { toast.warning('Recoleta solicitada'); fetchColetas(); }
   };
 
   const handleCancelar = async (id: string) => {
     const { error } = await supabase.from('coletas_laboratorio').update({ status: 'cancelado' }).eq('id', id);
-    if (error) toast.error('Erro ao cancelar');
+    if (error) toast.error('Erro ao cancelar', { description: mensagemDeErro(error) });
     else { toast.success('Coleta cancelada'); fetchColetas(); }
     setCancelarId(null);
   };
 
   const handleEncaminharAnalise = async (id: string) => {
     const { error } = await supabase.from('coletas_laboratorio').update({ status: 'em_analise' }).eq('id', id);
-    if (error) toast.error('Erro');
+    if (error) toast.error('Erro', { description: mensagemDeErro(error) });
     else { toast.success('Enviado para análise'); fetchColetas(); }
   };
 

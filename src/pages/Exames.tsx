@@ -17,6 +17,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Separator } from '@/components/ui/separator';
 import { LoadingButton } from '@/components/ui/loading-button';
 import { toast } from 'sonner';
+import { mensagemDeErro } from '@/lib/erros';
 import { cn } from '@/lib/utils';
 import { format, addDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -606,7 +607,7 @@ export default function Exames() {
         .select('id');
       if (error) throw error;
       if (!data || data.length === 0) {
-        toast.error('Não foi possível excluir: você não tem permissão ou o exame já foi removido.');
+        toast.error('Não foi possível excluir: você não tem permissão ou o exame já foi removido.', { description: mensagemDeErro(error) });
         return;
       }
       toast.success('Exame excluído!');
@@ -1233,7 +1234,7 @@ export default function Exames() {
                     </div>
                     <Button variant="ghost" size="sm" className="text-destructive h-7" onClick={async () => {
                       const { error } = await supabase.from('tipos_exame_custom' as any).delete().eq('id', tipo.id);
-                      if (error) { toast.error('Não foi possível remover o tipo.'); return; }
+                      if (error) { toast.error('Não foi possível remover o tipo.', { description: mensagemDeErro(error) }); return; }
                       queryClient.invalidateQueries({ queryKey: ['tipos_exame_custom'] });
                       toast.success('Removido');
                     }}>Remover</Button>

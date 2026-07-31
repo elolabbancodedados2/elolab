@@ -11,6 +11,7 @@ import { autoCheckin, autoIniciarAtendimento, autoFinalizarAtendimento, autoConf
 import { useAgendamentos, usePacientes, useMedicos, useSalas } from '@/hooks/useSupabaseData';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { toast } from 'sonner';
+import { mensagemDeErro } from '@/lib/erros';
 import { cn, sanitizeText } from '@/lib/utils';
 import {
   UserCheck, Clock, Play, Check, Banknote, QrCode, CreditCard,
@@ -474,8 +475,8 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
            onClick: () => openPagamento(lanc, pac),
          },
        });
-     } catch {
-       toast.error('Erro ao chamar paciente');
+     } catch (e) {
+       toast.error('Erro ao chamar paciente', { description: mensagemDeErro(e) });
      }
      setIsProcessing(false);
    }
@@ -627,7 +628,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
         action: { label: 'Ir para Triagem', onClick: () => navigate('/triagem') },
       });
       navigate(`/triagem`);
-    } catch { toast.error('Erro ao encaminhar'); }
+    } catch (e) { toast.error('Erro ao encaminhar', { description: mensagemDeErro(e) }); }
     setIsProcessing(false);
   }
 

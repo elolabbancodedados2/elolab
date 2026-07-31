@@ -19,6 +19,7 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
+import { mensagemDeErro } from '@/lib/erros';
 import { usePacientes, useMedicos, useSupabaseQuery } from '@/hooks/useSupabaseData';
 import { useCurrentMedico } from '@/hooks/useCurrentMedico';
 import { supabase } from '@/integrations/supabase/client';
@@ -218,7 +219,7 @@ export default function Atestados() {
       toast.success('Atestado emitido com sucesso.');
     } catch (error) {
       if (import.meta.env.DEV) console.error('Error saving atestado:', error);
-      toast.error('Erro ao emitir atestado.');
+      toast.error('Erro ao emitir atestado.', { description: mensagemDeErro(error) });
     } finally {
       setIsSaving(false);
     }

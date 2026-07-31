@@ -30,6 +30,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
+import { mensagemDeErro } from '@/lib/erros';
 import { cn } from '@/lib/utils';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { parseDateOnly } from '@/lib/dateOnly';
@@ -223,8 +224,8 @@ export default function PainelAdmin() {
       queryClient.invalidateQueries({ queryKey: ['admin-user-roles'] });
       setEditUser(null);
       toast.success('Usuário atualizado.');
-    } catch {
-      toast.error('Erro ao salvar.');
+    } catch (e) {
+      toast.error('Erro ao salvar.', { description: mensagemDeErro(e) });
     } finally {
       setIsSaving(false);
     }
@@ -246,8 +247,8 @@ export default function PainelAdmin() {
       queryClient.invalidateQueries({ queryKey: ['admin-user-roles'] });
       setDeleteUser(null);
       toast.success('Usuário desativado.');
-    } catch {
-      toast.error('Erro ao desativar.');
+    } catch (e) {
+      toast.error('Erro ao desativar.', { description: mensagemDeErro(e) });
     } finally {
       setIsSaving(false);
     }
@@ -255,7 +256,7 @@ export default function PainelAdmin() {
 
   const handleToggleAtivo = async (u: any) => {
     const { error } = await supabase.from('profiles').update({ ativo: !u.ativo }).eq('id', u.id);
-    if (error) { toast.error('Não foi possível alterar o status.'); return; }
+    if (error) { toast.error('Não foi possível alterar o status.', { description: mensagemDeErro(error) }); return; }
     queryClient.invalidateQueries({ queryKey: ['admin-profiles'] });
     toast.success(u.ativo ? 'Desativado.' : 'Ativado.');
   };
@@ -267,7 +268,7 @@ export default function PainelAdmin() {
       .from('assinaturas_plano')
       .update({ status: 'cancelada', data_cancelamento: new Date().toISOString() })
       .eq('id', subId);
-    if (error) { toast.error('Não foi possível cancelar a assinatura.'); return; }
+    if (error) { toast.error('Não foi possível cancelar a assinatura.', { description: mensagemDeErro(error) }); return; }
     queryClient.invalidateQueries({ queryKey: ['admin-subscriptions'] });
     toast.success('Assinatura cancelada.');
   };

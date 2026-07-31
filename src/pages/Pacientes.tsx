@@ -28,6 +28,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { toast } from 'sonner';
+import { mensagemDeErro } from '@/lib/erros';
 import { usePacientes } from '@/hooks/useSupabaseData';
 import { useSupabaseQuery } from '@/hooks/useSupabaseData';
 import { EtiquetaPaciente } from '@/components/EtiquetaPaciente';
@@ -378,7 +379,7 @@ export default function Pacientes() {
       setActiveProntuario(null);
     } catch (error) {
       if (import.meta.env.DEV) console.error('Error saving prontuario:', error);
-      toast.error('Erro ao salvar prontuário');
+      toast.error('Erro ao salvar prontuário', { description: mensagemDeErro(error) });
     } finally {
       setSavingProntuario(false);
     }
@@ -495,7 +496,7 @@ export default function Pacientes() {
     if (erroComorbidades) {
       // Sem isto, um erro aqui abriria o formulário com o campo vazio e o
       // salvamento apagaria as comorbidades que já existiam.
-      toast.error('Não foi possível carregar as comorbidades. Recarregue antes de salvar.');
+      toast.error('Não foi possível carregar as comorbidades. Recarregue antes de salvar.', { description: mensagemDeErro(erroComorbidades) });
       return;
     }
 
@@ -555,7 +556,7 @@ export default function Pacientes() {
       refetch();
     } catch (error) {
       if (import.meta.env.DEV) console.error('Erro ao excluir:', error);
-      toast.error('Erro ao excluir paciente');
+      toast.error('Erro ao excluir paciente', { description: mensagemDeErro(error) });
     } finally {
       setIsDeleting(false);
       setIsDeleteOpen(false);
@@ -753,8 +754,8 @@ export default function Pacientes() {
       const portalUrl = `${window.location.origin}/portal-paciente?token=${data.token}`;
       await navigator.clipboard.writeText(portalUrl);
       toast.success('Link copiado!', { description: `Link do portal de ${pacienteNome} copiado.` });
-    } catch {
-      toast.error('Erro ao gerar link do portal');
+    } catch (e) {
+      toast.error('Erro ao gerar link do portal', { description: mensagemDeErro(e) });
     }
   };
 
@@ -1455,7 +1456,7 @@ export default function Pacientes() {
                               setShowAgendamentoForm(false);
                               loadAgendamentos(selectedPacienteId!);
                             } catch (err: any) {
-                              toast.error('Erro ao agendar');
+                              toast.error('Erro ao agendar', { description: mensagemDeErro(err) });
                             } finally { setSavingAgendamento(false); }
                           }}>Agendar</LoadingButton>
                         </div>
@@ -1565,7 +1566,7 @@ export default function Pacientes() {
                               setShowExameForm(false);
                               loadExames(selectedPacienteId!);
                             } catch (err: any) {
-                              toast.error('Erro ao solicitar exame');
+                              toast.error('Erro ao solicitar exame', { description: mensagemDeErro(err) });
                             } finally { setSavingExame(false); }
                           }}>Solicitar</LoadingButton>
                         </div>

@@ -14,6 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
+import { mensagemDeErro } from '@/lib/erros';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { createAutoBilling } from '@/lib/autoBilling';
@@ -305,7 +306,7 @@ export default function Fila() {
       const { error: errFila } = await supabase
         .from('fila_atendimento').update({ status }).eq('id', id);
       if (errFila) {
-        toast.error('Não foi possível chamar o paciente. Tente novamente.');
+        toast.error('Não foi possível chamar o paciente. Tente novamente.', { description: mensagemDeErro(errFila) });
         return;
       }
 
