@@ -125,7 +125,7 @@ export default function RetornosControl() {
       .eq('id', id);
 
     if (error) {
-      toast.error('Erro ao atualizar retorno');
+      toast.error('Erro ao atualizar retorno', { description: mensagemDeErro(error) });
     } else {
       toast.success('Retorno marcado como realizado');
       queryClient.invalidateQueries({ queryKey: ['retornos'] });

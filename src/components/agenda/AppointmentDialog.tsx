@@ -12,6 +12,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Search, Trash2, Loader2, MessageCircle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { mensagemDeErro } from '@/lib/erros';
 import { useQueryClient } from '@tanstack/react-query';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 
@@ -191,7 +192,7 @@ export function AppointmentDialog({ open, onOpenChange, initial, pacientes, medi
     if (!editing) return;
     if (!confirm('Cancelar esta consulta?')) return;
     const { error } = await (supabase.from('agendamentos').delete().eq('id', initial.id) as any);
-    if (error) return toast.error('Erro ao remover');
+    if (error) return toast.error('Erro ao remover', { description: mensagemDeErro(error) });
     toast.success('Consulta removida');
     queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
     onOpenChange(false);

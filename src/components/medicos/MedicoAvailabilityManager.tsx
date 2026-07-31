@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { mensagemDeErro } from '@/lib/erros';
 import { Clock, Save, Plus, AlertCircle } from 'lucide-react';
 import { LoadingButton } from '@/components/ui/loading-button';
 
@@ -51,8 +52,8 @@ export function MedicoAvailabilityManager({ medico_id, medico_nome }: Props) {
 
       if (error) throw error;
       setAvailabilities((data || []) as Availability[]);
-    } catch {
-      toast.error('Erro ao carregar disponibilidade');
+    } catch (e) {
+      toast.error('Erro ao carregar disponibilidade', { description: mensagemDeErro(e) });
     } finally {
       setLoading(false);
     }

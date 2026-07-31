@@ -1234,7 +1234,7 @@ export default function Exames() {
                     </div>
                     <Button variant="ghost" size="sm" className="text-destructive h-7" onClick={async () => {
                       const { error } = await supabase.from('tipos_exame_custom' as any).delete().eq('id', tipo.id);
-                      if (error) { toast.error('Não foi possível remover o tipo.'); return; }
+                      if (error) { toast.error('Não foi possível remover o tipo.', { description: mensagemDeErro(error) }); return; }
                       queryClient.invalidateQueries({ queryKey: ['tipos_exame_custom'] });
                       toast.success('Removido');
                     }}>Remover</Button>

@@ -496,7 +496,7 @@ export default function Pacientes() {
     if (erroComorbidades) {
       // Sem isto, um erro aqui abriria o formulário com o campo vazio e o
       // salvamento apagaria as comorbidades que já existiam.
-      toast.error('Não foi possível carregar as comorbidades. Recarregue antes de salvar.');
+      toast.error('Não foi possível carregar as comorbidades. Recarregue antes de salvar.', { description: mensagemDeErro(erroComorbidades) });
       return;
     }
 
@@ -754,8 +754,8 @@ export default function Pacientes() {
       const portalUrl = `${window.location.origin}/portal-paciente?token=${data.token}`;
       await navigator.clipboard.writeText(portalUrl);
       toast.success('Link copiado!', { description: `Link do portal de ${pacienteNome} copiado.` });
-    } catch {
-      toast.error('Erro ao gerar link do portal');
+    } catch (e) {
+      toast.error('Erro ao gerar link do portal', { description: mensagemDeErro(e) });
     }
   };
 

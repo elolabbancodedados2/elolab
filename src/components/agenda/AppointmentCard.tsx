@@ -6,6 +6,7 @@ import {
 } from '@/components/ui/context-menu';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { mensagemDeErro } from '@/lib/erros';
 import { useQueryClient } from '@tanstack/react-query';
 
 interface Props {
@@ -85,14 +86,14 @@ export function AppointmentCard({ agendamento, color, minutesToPx, onClick, conv
 
   const setStatus = async (status: any) => {
     const { error } = await (supabase.from('agendamentos').update({ status }).eq('id', agendamento.id) as any);
-    if (error) return toast.error('Erro ao atualizar');
+    if (error) return toast.error('Erro ao atualizar', { description: mensagemDeErro(error) });
     toast.success('Status atualizado');
     queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
   };
   const remove = async () => {
     if (!confirm('Remover esta consulta?')) return;
     const { error } = await (supabase.from('agendamentos').delete().eq('id', agendamento.id) as any);
-    if (error) return toast.error('Erro ao remover');
+    if (error) return toast.error('Erro ao remover', { description: mensagemDeErro(error) });
     toast.success('Consulta removida');
     queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
   };

@@ -25,6 +25,7 @@ import {
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
+import { mensagemDeErro } from '@/lib/erros';
 import { supabase } from '@/integrations/supabase/client';
 import { useMedicos, useSupabaseQuery } from '@/hooks/useSupabaseData';
 import { useQueryClient } from '@tanstack/react-query';
@@ -92,7 +93,7 @@ export function BloqueioAgenda({ medicoIdFilter }: BloqueioAgendaProps) {
     });
 
     if (error) {
-      toast.error('Erro ao criar bloqueio');
+      toast.error('Erro ao criar bloqueio', { description: mensagemDeErro(error) });
       console.error(error);
     } else {
       toast.success('Horário bloqueado com sucesso');
@@ -106,7 +107,7 @@ export function BloqueioAgenda({ medicoIdFilter }: BloqueioAgendaProps) {
   const handleDelete = async (id: string) => {
     const { data, error } = await (supabase.from('bloqueios_agenda' as any).delete().eq('id', id).select('id') as any);
     if (error) {
-      toast.error('Erro ao remover bloqueio');
+      toast.error('Erro ao remover bloqueio', { description: mensagemDeErro(error) });
     } else if (!data || data.length === 0) {
       toast.error('Sem permissão para remover este bloqueio.');
     } else {

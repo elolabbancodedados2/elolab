@@ -7,6 +7,7 @@ import {
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { toast } from 'sonner';
+import { mensagemDeErro } from '@/lib/erros';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -158,7 +159,7 @@ export default function Encaminhamentos() {
       queryClient.invalidateQueries({ queryKey: ['encaminhamentos'] });
       if (selectedEnc?.id === id) setSelectedEnc({ ...selectedEnc, status: newStatus } as any);
       toast.success(`Status atualizado para "${STATUS_CONFIG[newStatus]?.label || newStatus}"`);
-    } catch { toast.error('Erro ao atualizar status'); }
+    } catch (e) { toast.error('Erro ao atualizar status', { description: mensagemDeErro(e) }); }
     setIsUpdating(false);
   };
 
@@ -175,7 +176,7 @@ export default function Encaminhamentos() {
       queryClient.invalidateQueries({ queryKey: ['encaminhamentos'] });
       setSelectedEnc({ ...selectedEnc, contra_referencia: contraRefText, status: 'concluido' } as any);
       toast.success('Contra-referência registrada! Encaminhamento concluído.');
-    } catch { toast.error('Erro ao salvar contra-referência'); }
+    } catch (e) { toast.error('Erro ao salvar contra-referência', { description: mensagemDeErro(e) }); }
     setIsUpdating(false);
   };
 

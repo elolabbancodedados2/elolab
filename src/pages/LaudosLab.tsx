@@ -18,6 +18,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { supabase } from '@/integrations/supabase/client';
 import { notificarResultadoLiberado } from '@/lib/notificarResultado';
 import { toast } from 'sonner';
+import { mensagemDeErro } from '@/lib/erros';
 import { format, formatDistanceToNow, isToday } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -55,7 +56,7 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
       `)
       .eq('id', coletaId)
       .maybeSingle();
-    if (error) toast.error('Erro ao carregar dados da coleta.');
+    if (error) toast.error('Erro ao carregar dados da coleta.', { description: mensagemDeErro(error) });
     setColeta(data);
     setLoading(false);
   }, [coletaId]);
@@ -141,8 +142,8 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
       toast.success('Coleta validada!');
       await fetchData();
       onUpdate();
-    } catch {
-      toast.error('Erro ao validar.');
+    } catch (e) {
+      toast.error('Erro ao validar.', { description: mensagemDeErro(e) });
     }
   };
 
@@ -376,7 +377,7 @@ export default function LaudosLab() {
       `)
       .order('created_at', { ascending: true });
 
-    if (error) toast.error('Erro ao carregar laudos');
+    if (error) toast.error('Erro ao carregar laudos', { description: mensagemDeErro(error) });
     else {
       const comResultados = (data ?? []).filter((c: any) =>
         (c.resultados_laboratorio ?? []).length > 0

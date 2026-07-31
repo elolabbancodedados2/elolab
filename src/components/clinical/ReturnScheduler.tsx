@@ -166,8 +166,8 @@ export function ReturnScheduler({
       queryClient.invalidateQueries({ queryKey: ['patient-returns', pacienteId] });
       toast.success('Status atualizado!');
     },
-    onError: () => {
-      toast.error('Erro ao atualizar status');
+    onError: (e) => {
+      toast.error('Erro ao atualizar status', { description: mensagemDeErro(e) });
     },
   });
 

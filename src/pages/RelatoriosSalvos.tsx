@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { mensagemDeErro } from '@/lib/erros';
 import { ListSkeleton } from '@/components/ui/loading-skeleton';
 
 export default function RelatoriosSalvos() {
@@ -40,14 +41,14 @@ export default function RelatoriosSalvos() {
   const toggleAtivo = async (it: any) => {
     const { error } = await (supabase as any)
       .from('relatorios_salvos').update({ ativo: !it.ativo }).eq('id', it.id);
-    if (error) { toast.error('Não foi possível alterar o agendamento do relatório.'); return; }
+    if (error) { toast.error('Não foi possível alterar o agendamento do relatório.', { description: mensagemDeErro(error) }); return; }
     qc.invalidateQueries({ queryKey: ['relatorios-salvos'] });
   };
 
   const remove = async (id: string) => {
     if (!confirm('Excluir este relatório?')) return;
     const { error } = await (supabase as any).from('relatorios_salvos').delete().eq('id', id);
-    if (error) { toast.error('Não foi possível excluir o relatório.'); return; }
+    if (error) { toast.error('Não foi possível excluir o relatório.', { description: mensagemDeErro(error) }); return; }
     toast.success('Excluído');
     qc.invalidateQueries({ queryKey: ['relatorios-salvos'] });
   };
