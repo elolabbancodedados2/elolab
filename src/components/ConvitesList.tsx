@@ -142,19 +142,19 @@ export function ConvitesList() {
     mutationFn: async (inv: Invite) => {
       setResendingId(inv.id);
 
-      // O reenvio precisa usar o MESMO sistema do convite original. Antes
-      // chamava sempre invite-employee, que grava em convites_funcionario —
-      // então reenviar um convite de employee_invitations criava um registro
-      // na outra tabela e deixava o original pendente. É a origem dos e-mails
-      // que hoje aparecem duplicados nas duas listas.
-      const { data, error } =
-        inv.source === 'employee_invitations'
-          ? await supabase.functions.invoke('send-employee-invitation', {
-              body: { funcionarioId: inv.funcionario_id, email: inv.email },
-            })
-          : await supabase.functions.invoke('invite-employee', {
-              body: { email: inv.email, nome: inv.nome || inv.email, roles: inv.roles },
-            });
+      if (!inv.roles.length) {
+        throw new Error(
+          'Este convite não tem função definida. Defina a função do funcionário na aba Funcionários e convide de novo.'
+        );
+      }
+
+      // Caminho único desde a unificação: invite-employee grava em
+      // convites_funcionario e o aceite passa por accept-invite, que trata quem
+      // já tem conta. Convites antigos em employee_invitations continuam
+      // válidos e aceitáveis; o reenvio deles nasce já no sistema novo.
+      const { data, error } = await supabase.functions.invoke('invite-employee', {
+        body: { email: inv.email, nome: inv.nome || inv.email, roles: inv.roles },
+      });
 
       if (error) throw error;
       if (data && (data as any).success === false) throw new Error((data as any).error);

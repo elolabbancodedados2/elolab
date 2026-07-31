@@ -96,6 +96,43 @@ Deno.serve(async (req) => {
       await service.from("user_roles").upsert(rows as any, { onConflict: "user_id,role" });
     }
 
+    // Vincula o cadastro de funcionário à conta criada.
+    //
+    // Era a única coisa que este caminho não fazia e o outro
+    // (accept_employee_invitation) fazia. Sem o vínculo, a pessoa passa a ter
+    // login mas a ficha de funcionário fica órfã: hoje 9 dos 12 funcionários
+    // estão assim, sem user_id, e por isso não aparecem em nada que dependa de
+    // conta.
+    //
+    // Casa pelo e-mail dentro da MESMA clínica. Se não houver ficha, cria —
+    // convidar alguém já é a decisão de que essa pessoa faz parte da equipe.
+    const { data: fichaExistente } = await service
+      .from("funcionarios")
+      .select("id, user_id")
+      .eq("clinica_id", clinicaId)
+      .ilike("email", email)
+      .maybeSingle();
+
+    if (fichaExistente) {
+      if (!(fichaExistente as any).user_id) {
+        await service
+          .from("funcionarios")
+          .update({ user_id: userId })
+          .eq("id", (fichaExistente as any).id);
+      }
+    } else {
+      await service.from("funcionarios").insert({
+        nome,
+        email,
+        user_id: userId,
+        clinica_id: clinicaId,
+        ativo: true,
+        // pending_roles espelha os papéis concedidos: é de onde o outro fluxo
+        // lê para reenviar convite, e vazio ali gera convite que não dá acesso.
+        pending_roles: roles,
+      } as any);
+    }
+
     // Se médico, garantir registro em medicos
     if (roles.includes("medico")) {
       const { data: existsMed } = await service
