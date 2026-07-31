@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Loader2, Mail, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
+import { mensagemDeErro } from '@/lib/erros';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -63,17 +64,33 @@ export function ConvidarFuncionarioDialog({ trigger }: ConvidarFuncionarioDialog
       queryClient.invalidateQueries({ queryKey: ['funcionarios'] });
       queryClient.invalidateQueries({ queryKey: ['plan-limits'] });
     },
-    onError: (err: any) => {
-      toast.error(err?.message ?? 'Falha ao enviar convite');
+    onError: (err) => {
+      toast.error('Não foi possível enviar o convite', {
+        description: mensagemDeErro(err),
+      });
     },
   });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!nome.trim()) return toast.error('Informe o nome.');
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return toast.error('E-mail inválido.');
-    if (roles.length === 0) return toast.error('Selecione ao menos um papel.');
-    if (willExceed) return toast.error('Limite do plano atingido.');
+    // Mensagens de validação dizem o que fazer, não só o que está errado —
+    // "Selecione ao menos um papel" deixa a pessoa procurando qual campo é.
+    if (!nome.trim()) return toast.error('Informe o nome do funcionário.');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return toast.error('E-mail inválido', {
+        description: 'Confira se não faltou o @ ou o ponto no domínio.',
+      });
+    }
+    if (roles.length === 0) {
+      return toast.error('Escolha a função deste funcionário', {
+        description: 'Sem função, ele entra no sistema e não vê nenhuma tela.',
+      });
+    }
+    if (willExceed) {
+      return toast.error('Limite de funcionários do plano atingido', {
+        description: 'Remova um funcionário inativo ou mude de plano para convidar mais.',
+      });
+    }
     mutation.mutate();
   };
 
