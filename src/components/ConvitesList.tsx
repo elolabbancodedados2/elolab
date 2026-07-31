@@ -2,9 +2,11 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { Copy, Mail, RefreshCw, CheckCircle2, Clock, XCircle, Loader2 } from 'lucide-react';
+import { Copy, Mail, RefreshCw, CheckCircle2, Clock, XCircle, Loader2, Ban, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+import { mensagemDeErro, detalheTecnico } from '@/lib/erros';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -25,6 +27,8 @@ interface Invite {
   expires_at: string;
   accepted_at: string | null;
   status: InviteStatus;
+  /** Só em employee_invitations. O reenvio precisa dele. */
+  funcionario_id?: string | null;
 }
 
 const ROLE_LABELS: Record<string, string> = {
@@ -68,6 +72,8 @@ function StatusBadge({ status }: { status: InviteStatus }) {
 export function ConvitesList() {
   const queryClient = useQueryClient();
   const [resendingId, setResendingId] = useState<string | null>(null);
+  const [cancelando, setCancelando] = useState<Invite | null>(null);
+  const [filtro, setFiltro] = useState<InviteStatus | 'todos'>('todos');
 
   const { data: invites = [], isLoading } = useQuery({
     queryKey: ['convites-list'],
@@ -123,6 +129,7 @@ export function ConvitesList() {
           expires_at: r.expires_at,
           accepted_at: r.accepted_at,
           status: computeStatus(r),
+          funcionario_id: r.funcionario_id,
         });
       });
 
@@ -134,9 +141,21 @@ export function ConvitesList() {
   const resendMutation = useMutation({
     mutationFn: async (inv: Invite) => {
       setResendingId(inv.id);
-      const { data, error } = await supabase.functions.invoke('invite-employee', {
-        body: { email: inv.email, nome: inv.nome || inv.email, roles: inv.roles },
-      });
+
+      // O reenvio precisa usar o MESMO sistema do convite original. Antes
+      // chamava sempre invite-employee, que grava em convites_funcionario —
+      // então reenviar um convite de employee_invitations criava um registro
+      // na outra tabela e deixava o original pendente. É a origem dos e-mails
+      // que hoje aparecem duplicados nas duas listas.
+      const { data, error } =
+        inv.source === 'employee_invitations'
+          ? await supabase.functions.invoke('send-employee-invitation', {
+              body: { funcionarioId: inv.funcionario_id, email: inv.email },
+            })
+          : await supabase.functions.invoke('invite-employee', {
+              body: { email: inv.email, nome: inv.nome || inv.email, roles: inv.roles },
+            });
+
       if (error) throw error;
       if (data && (data as any).success === false) throw new Error((data as any).error);
       return data;
@@ -145,22 +164,72 @@ export function ConvitesList() {
       toast.success('Novo convite enviado por e-mail.');
       queryClient.invalidateQueries({ queryKey: ['convites-list'] });
     },
-    onError: (e: any) => toast.error(e?.message ?? 'Falha ao reenviar convite'),
+    onError: (e) =>
+      toast.error('Não foi possível reenviar o convite', {
+        description: mensagemDeErro(e),
+      }),
     onSettled: () => setResendingId(null),
+  });
+
+  const cancelMutation = useMutation({
+    mutationFn: async (inv: Invite) => {
+      // employee_invitations não tem política de DELETE, só de UPDATE, e o
+      // status aceita apenas pending/accepted/expired. Expirar invalida o
+      // token do mesmo jeito: accept_employee_invitation exige expires_at
+      // futuro. Em convites_funcionario dá para apagar de fato.
+      if (inv.source === 'employee_invitations') {
+        const { error } = await (supabase as any)
+          .from('employee_invitations')
+          .update({ status: 'expired', expires_at: new Date().toISOString() })
+          .eq('id', inv.id);
+        if (error) throw error;
+      } else {
+        const { error } = await (supabase as any)
+          .from('convites_funcionario')
+          .delete()
+          .eq('id', inv.id);
+        if (error) throw error;
+      }
+    },
+    onSuccess: () => {
+      toast.success('Convite cancelado. O link deixou de funcionar.');
+      queryClient.invalidateQueries({ queryKey: ['convites-list'] });
+      setCancelando(null);
+    },
+    onError: (e) =>
+      toast.error('Não foi possível cancelar o convite', {
+        description: mensagemDeErro(e),
+      }),
   });
 
   const copyLink = async (inv: Invite) => {
     try {
       await navigator.clipboard.writeText(buildInviteUrl(inv.token));
       toast.success('Link copiado para a área de transferência.');
-    } catch {
-      toast.error('Não foi possível copiar o link.');
+    } catch (e) {
+      toast.error('Não foi possível copiar o link', {
+        description: mensagemDeErro(e) + ' Você pode selecionar e copiar manualmente.',
+      });
     }
   };
 
   const pendentes = invites.filter((i) => i.status === 'pendente').length;
   const aceitos = invites.filter((i) => i.status === 'aceito').length;
   const expirados = invites.filter((i) => i.status === 'expirado').length;
+
+  // Convite sem papel não dá acesso a nada: a pessoa aceita, fica vinculada à
+  // clínica e não enxerga uma tela sequer. Precisa aparecer na lista, senão o
+  // administrador reenvia o mesmo convite inútil.
+  const semPapel = invites.filter((i) => i.status !== 'aceito' && i.roles.length === 0);
+
+  const visiveis = filtro === 'todos' ? invites : invites.filter((i) => i.status === filtro);
+
+  const FILTROS: Array<{ chave: InviteStatus | 'todos'; texto: string; total: number }> = [
+    { chave: 'todos', texto: 'Todos', total: invites.length },
+    { chave: 'pendente', texto: 'Pendentes', total: pendentes },
+    { chave: 'aceito', texto: 'Aceitos', total: aceitos },
+    { chave: 'expirado', texto: 'Expirados', total: expirados },
+  ];
 
   return (
     <div className="space-y-4">
@@ -172,11 +241,17 @@ export function ConvitesList() {
             <strong>1.</strong> O funcionário recebe um e-mail com o link de aceitação (válido por 7 dias).
           </p>
           <p>
-            <strong>2.</strong> Ele abre o link, define uma senha (mínimo 8 caracteres) e confirma o cadastro.
+            <strong>2.</strong> Ele abre o link e define uma senha: mínimo 10 caracteres, com
+            maiúscula, minúscula e número. Quem já tem conta informa a senha atual.
           </p>
           <p>
-            <strong>3.</strong> Após aceito, o acesso é liberado automaticamente conforme os papéis atribuídos.
-            Se o convite expirar, use <em>Reenviar</em> para gerar um novo link.
+            <strong>3.</strong> O acesso é liberado conforme a função definida no cadastro do
+            funcionário. <strong>Convite sem função não dá acesso a nada</strong> — a pessoa entra
+            e não vê nenhuma tela.
+          </p>
+          <p>
+            <strong>4.</strong> Convite expirado? Use <em>Reenviar</em> para gerar um link novo.
+            Convidou a pessoa errada? Use <em>Cancelar</em> — o link para de funcionar na hora.
           </p>
         </AlertDescription>
       </Alert>
@@ -202,10 +277,45 @@ export function ConvitesList() {
         </Card>
       </div>
 
+      {semPapel.length > 0 && (
+        <Alert variant="destructive">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle>
+            {semPapel.length === 1
+              ? '1 convite não vai dar acesso a nada'
+              : `${semPapel.length} convites não vão dar acesso a nada`}
+          </AlertTitle>
+          <AlertDescription>
+            Estes convites foram criados sem função definida:{' '}
+            <strong>{semPapel.map((i) => i.email).join(', ')}</strong>. Quem aceitar entra no
+            sistema e não enxerga nenhuma tela. Cancele, defina a função do funcionário na aba
+            Funcionários e convide de novo.
+          </AlertDescription>
+        </Alert>
+      )}
+
       <Card>
-        <CardHeader>
-          <CardTitle>Convites enviados</CardTitle>
-          <CardDescription>Acompanhe o status de cada convite e reenvie quando necessário.</CardDescription>
+        <CardHeader className="gap-3">
+          <div>
+            <CardTitle>Convites enviados</CardTitle>
+            <CardDescription>Acompanhe o status de cada convite, reenvie ou cancele.</CardDescription>
+          </div>
+          {invites.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {FILTROS.map((f) => (
+                <Button
+                  key={f.chave}
+                  size="sm"
+                  variant={filtro === f.chave ? 'default' : 'outline'}
+                  onClick={() => setFiltro(f.chave)}
+                  className="h-8"
+                >
+                  {f.texto}
+                  <Badge variant="secondary" className="ml-2 px-1.5">{f.total}</Badge>
+                </Button>
+              ))}
+            </div>
+          )}
         </CardHeader>
         <CardContent>
           {isLoading ? (
@@ -232,7 +342,7 @@ export function ConvitesList() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {invites.map((inv) => (
+                  {visiveis.map((inv) => (
                     <TableRow key={`${inv.source}-${inv.id}`}>
                       <TableCell>
                         <div className="font-medium">{inv.nome || '—'}</div>
@@ -240,11 +350,17 @@ export function ConvitesList() {
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-wrap gap-1">
-                          {inv.roles.map((r) => (
-                            <Badge key={r} variant="outline" className="text-xs">
-                              {ROLE_LABELS[r] || r}
+                          {inv.roles.length === 0 ? (
+                            <Badge variant="destructive" className="text-xs gap-1">
+                              <AlertTriangle className="h-3 w-3" /> Sem função
                             </Badge>
-                          ))}
+                          ) : (
+                            inv.roles.map((r) => (
+                              <Badge key={r} variant="outline" className="text-xs">
+                                {ROLE_LABELS[r] || r}
+                              </Badge>
+                            ))
+                          )}
                         </div>
                       </TableCell>
                       <TableCell>
@@ -285,16 +401,50 @@ export function ConvitesList() {
                               <span className="ml-1 hidden sm:inline">Reenviar</span>
                             </Button>
                           )}
+                          {inv.status !== 'aceito' && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => setCancelando(inv)}
+                              title="Cancelar convite"
+                              className="text-destructive hover:text-destructive"
+                            >
+                              <Ban className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
+
+              {visiveis.length === 0 && (
+                <p className="text-sm text-muted-foreground text-center py-8">
+                  Nenhum convite {FILTROS.find((f) => f.chave === filtro)?.texto.toLowerCase()}.
+                </p>
+              )}
             </div>
           )}
         </CardContent>
       </Card>
+
+      <ConfirmDialog
+        open={!!cancelando}
+        onOpenChange={(aberto) => !aberto && setCancelando(null)}
+        title="Cancelar este convite?"
+        description={
+          cancelando
+            ? `O link enviado para ${cancelando.email} deixa de funcionar imediatamente. ` +
+              'Se a pessoa ainda precisar de acesso, será necessário convidá-la de novo.'
+            : ''
+        }
+        confirmLabel="Cancelar convite"
+        cancelLabel="Voltar"
+        variant="destructive"
+        isLoading={cancelMutation.isPending}
+        onConfirm={() => cancelando && cancelMutation.mutate(cancelando)}
+      />
     </div>
   );
 }

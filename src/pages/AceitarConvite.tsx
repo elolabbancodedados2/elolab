@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { validatePassword } from '@/lib/passwordPolicy';
+import { mensagemDeErro } from '@/lib/erros';
 import clinicBackground from '@/assets/clinic-background.jpg';
 
 interface InvitationData {
@@ -96,7 +97,10 @@ export default function AceitarConvite() {
         setLoading(false);
       } catch (err: unknown) {
         if (import.meta.env.DEV) console.error('Error validating token:', err);
-        setError('Erro ao validar convite');
+        // "Erro ao validar convite" não dizia se o link expirou, se já foi
+        // usado ou se a internet caiu — e quem recebe o convite não tem como
+        // descobrir sozinho.
+        setError(mensagemDeErro(err));
         setLoading(false);
       }
     };
@@ -197,11 +201,13 @@ export default function AceitarConvite() {
         throw new Error(result.error || 'Erro ao processar convite');
       }
 
-      toast.success('Conta criada com sucesso! Verifique seu e-mail para confirmar.');
+      toast.success('Convite aceito! Entre com seu e-mail e senha.');
       navigate('/auth');
     } catch (err: any) {
       if (import.meta.env.DEV) console.error('Error creating account:', err);
-      toast.error(err.message || 'Erro ao criar conta');
+      toast.error('Não foi possível concluir o convite', {
+        description: mensagemDeErro(err),
+      });
     } finally {
       setSubmitting(false);
     }
