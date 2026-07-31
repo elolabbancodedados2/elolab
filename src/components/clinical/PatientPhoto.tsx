@@ -14,6 +14,7 @@ import {
 import { supabase } from '@/integrations/supabase/client';
 import { StorageAvatarImage } from '@/components/StorageImage';
 import { toast } from 'sonner';
+import { mensagemDeErro } from '@/lib/erros';
 import { cn } from '@/lib/utils';
 
 interface PatientPhotoProps {
@@ -111,7 +112,7 @@ export function PatientPhoto({
       setIsOpen(false);
     } catch (error) {
       console.error('Erro ao fazer upload:', error);
-      toast.error('Erro ao fazer upload da foto');
+      toast.error('Erro ao fazer upload da foto', { description: mensagemDeErro(error) });
     } finally {
       setUploading(false);
     }
@@ -135,7 +136,7 @@ export function PatientPhoto({
       setIsOpen(false);
     } catch (error) {
       console.error('Erro ao remover foto:', error);
-      toast.error('Erro ao remover foto');
+      toast.error('Erro ao remover foto', { description: mensagemDeErro(error) });
     } finally {
       setUploading(false);
     }

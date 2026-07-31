@@ -22,6 +22,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { useSupabaseQuery } from '@/hooks/useSupabaseData';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { mensagemDeErro } from '@/lib/erros';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   CalendarClock, AlertTriangle, CheckCircle2, Phone, Clock, Filter, Search,
@@ -174,7 +175,7 @@ export default function RetornosControl() {
       toast.success(`Retorno agendado para ${format(dataAgendamento, 'dd/MM/yyyy')} às ${horaAgendamento}`);
     } catch (error) {
       if (import.meta.env.DEV) console.error(error);
-      toast.error('Erro ao criar agendamento de retorno.');
+      toast.error('Erro ao criar agendamento de retorno.', { description: mensagemDeErro(error) });
     } finally {
       setIsAgendando(false);
     }

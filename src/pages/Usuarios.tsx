@@ -27,6 +27,7 @@ import {
   Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { toast } from 'sonner';
+import { mensagemDeErro } from '@/lib/erros';
 import { useSupabaseQuery } from '@/hooks/useSupabaseData';
 import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient } from '@tanstack/react-query';
@@ -150,7 +151,7 @@ export default function Usuarios() {
       toast.success('Usuário desativado com sucesso.');
     } catch (error) {
       if (import.meta.env.DEV) console.error('Error deleting user:', error);
-      toast.error('Erro ao desativar usuário.');
+      toast.error('Erro ao desativar usuário.', { description: mensagemDeErro(error) });
     } finally {
       setIsSaving(false);
       setIsDeleteOpen(false);
@@ -199,7 +200,7 @@ export default function Usuarios() {
       toast.success('Usuário atualizado com sucesso.');
     } catch (error) {
       if (import.meta.env.DEV) console.error('Error saving user:', error);
-      toast.error('Erro ao salvar usuário.');
+      toast.error('Erro ao salvar usuário.', { description: mensagemDeErro(error) });
     } finally {
       setIsSaving(false);
     }
@@ -217,7 +218,7 @@ export default function Usuarios() {
       toast.success(user.ativo ? 'Usuário desativado.' : 'Usuário ativado.');
     } catch (error) {
       if (import.meta.env.DEV) console.error('Error toggling user status:', error);
-      toast.error('Erro ao alterar status do usuário.');
+      toast.error('Erro ao alterar status do usuário.', { description: mensagemDeErro(error) });
     }
   };
 

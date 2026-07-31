@@ -31,6 +31,7 @@ import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { toast } from 'sonner';
+import { mensagemDeErro } from '@/lib/erros';
 import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -116,7 +117,7 @@ export function HealthCheckTab() {
 
       toast.success('Health check realizado');
     } catch (error) {
-      toast.error('Erro ao verificar saúde do sistema');
+      toast.error('Erro ao verificar saúde do sistema', { description: mensagemDeErro(error) });
       console.error(error);
     } finally {
       setChecking(false);

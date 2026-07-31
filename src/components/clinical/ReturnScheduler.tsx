@@ -39,6 +39,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { mensagemDeErro } from '@/lib/erros';
 import { cn } from '@/lib/utils';
 import { parseDateOnly } from '@/lib/dateOnly';
 
@@ -148,7 +149,7 @@ export function ReturnScheduler({
     },
     onError: (error) => {
       console.error('Erro ao agendar retorno:', error);
-      toast.error('Erro ao agendar retorno');
+      toast.error('Erro ao agendar retorno', { description: mensagemDeErro(error) });
     },
   });
 
