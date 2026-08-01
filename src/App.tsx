@@ -84,6 +84,7 @@ const VitaisGraficos = lazy(() => import("@/pages/VitaisGraficos"));
 const AnalisePreditiva = lazy(() => import("@/pages/AnalisePreditiva"));
 import { useNotificationScheduler } from "@/hooks/useNotificationScheduler";
 import { CookieConsent } from "@/components/CookieConsent";
+import { ModoManutencao } from "@/components/ModoManutencao";
 
 const queryClient = new QueryClient({
   // Falha de carregamento nunca deve virar tela em branco silenciosa:
@@ -159,6 +160,11 @@ function App() {
             <Sonner />
             <BrowserRouter>
               <SupabaseAuthProvider>
+                {/* Dentro do provedor de autenticação porque precisa saber se
+                    quem está na tela é o dono da plataforma — ele não pode ser
+                    bloqueado, é quem desliga o aviso. Envolve as rotas para
+                    valer em todas as telas, inclusive a de login. */}
+                <ModoManutencao>
                 <AppInitializer>
                 <NotificationBanner />
                 <Suspense fallback={<RouteFallback />}>
@@ -274,6 +280,7 @@ function App() {
                 <InstallPWA />
                 <CookieConsent />
                 </AppInitializer>
+                </ModoManutencao>
               </SupabaseAuthProvider>
             </BrowserRouter>
           </TooltipProvider>
