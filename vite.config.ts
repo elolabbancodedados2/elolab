@@ -146,8 +146,13 @@ export default defineConfig(({ mode }) => ({
     }),
   ].filter(Boolean),
   define: {
+    // Identifica a versão publicada. Cada hospedagem expõe o commit com um nome
+    // próprio; sem ler o do Cloudflare, uma publicação lá cairia no horário do
+    // build — que muda a cada compilação e não aponta para commit nenhum,
+    // deixando o rastreamento de erro sem como dizer qual versão quebrou.
     "globalThis.__APP_BUILD_ID__": JSON.stringify(
-      process.env.VERCEL_GIT_COMMIT_SHA ??
+      process.env.CF_PAGES_COMMIT_SHA ??
+        process.env.VERCEL_GIT_COMMIT_SHA ??
         process.env.VITE_APP_BUILD_ID ??
         `build-${Date.now()}`,
     ),

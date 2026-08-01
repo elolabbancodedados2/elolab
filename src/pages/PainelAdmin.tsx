@@ -4,10 +4,12 @@ import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth, AppRole } from '@/contexts/SupabaseAuthContext';
 import { Navigate } from 'react-router-dom';
 import {
-  Shield, Users, CreditCard, Activity, Search, Edit, Trash2, TrendingUp, TrendingDown,
+  Shield, Users, CreditCard, Activity, Search, Edit, TrendingUp, TrendingDown,
   UserCheck, UserX, Loader2, Crown, Clock, Ban, CheckCircle2,
-  BarChart3, Building2, RefreshCw,
+  BarChart3, Building2, RefreshCw, ShieldAlert, ScrollText, Lock,
 } from 'lucide-react';
+import { FerramentasDeConta } from '@/components/admin/FerramentasDeConta';
+import { chamarAdminContas } from '@/lib/adminContas';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -24,10 +26,6 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
 import { mensagemDeErro } from '@/lib/erros';
@@ -36,6 +34,17 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { parseDateOnly } from '@/lib/dateOnly';
 
 const SUPER_ADMIN_EMAIL = import.meta.env.VITE_SUPER_ADMIN_EMAIL || 'contato@elolab.com.br';
+
+const ACAO_LABELS: Record<string, string> = {
+  bloquear: 'bloqueou',
+  desbloquear: 'desbloqueou',
+  trocar_senha: 'trocou a senha',
+  enviar_reset: 'enviou link de senha',
+  confirmar_email: 'confirmou o e-mail',
+  apagar: 'apagou a conta',
+  previa: 'consultou',
+  desconhecida: 'pedido inválido',
+};
 
 const ROLE_LABELS: Record<AppRole, string> = {
   admin: 'Administrador',
@@ -82,8 +91,8 @@ export default function PainelAdmin() {
   const [search, setSearch] = useState('');
   const [editUser, setEditUser] = useState<any>(null);
   const [editFormData, setEditFormData] = useState<any>({});
-  const [deleteUser, setDeleteUser] = useState<any>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [contaEmFerramentas, setContaEmFerramentas] = useState<any>(null);
 
   const isSuperAdmin = user?.email === SUPER_ADMIN_EMAIL;
 
@@ -123,14 +132,40 @@ export default function PainelAdmin() {
     },
   });
 
+  const { data: auditoria = [], isLoading: carregandoAuditoria } = useQuery({
+    queryKey: ['admin-auditoria'],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from('admin_acoes')
+        .select('*')
+        .order('criado_em', { ascending: false })
+        .limit(200);
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  // O bloqueio de verdade mora em auth.users.banned_until, que o PostgREST não
+  // expõe. Esta função traz o estado de todas as contas de uma vez, em vez de
+  // uma chamada por linha da tabela.
+  const { data: situacoes = [] } = useQuery({
+    queryKey: ['admin-situacao-contas'],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).rpc('admin_situacao_contas');
+      if (error) throw error;
+      return (data || []) as { user_id: string; bloqueado: boolean; ultimo_login: string | null }[];
+    },
+  });
+
   // Computed data
   const usuarios = useMemo(() => {
     return profiles.map(p => ({
       ...p,
+      bloqueado: situacoes.find(s => s.user_id === p.id)?.bloqueado ?? false,
       roles: userRoles.filter(r => r.user_id === p.id).map(r => r.role),
       subscription: subscriptions.find((s: any) => s.user_id === p.id),
     }));
-  }, [profiles, userRoles, subscriptions]);
+  }, [profiles, userRoles, subscriptions, situacoes]);
 
   const filtered = useMemo(() => {
     if (!search) return usuarios;
@@ -231,34 +266,37 @@ export default function PainelAdmin() {
     }
   };
 
-  const handleDelete = async () => {
-    if (!deleteUser) return;
-    setIsSaving(true);
+  /**
+   * A chave gravava `profiles.ativo`, e nada no sistema lê esse campo para
+   * negar acesso — nem o contexto de autenticação, nem as rotas, nem uma
+   * política de RLS. Quem fosse "desativado" continuava entrando e
+   * trabalhando. Pior que ferramenta ausente: uma que parece resolver.
+   *
+   * Agora bloqueia no Auth, que é onde o login realmente é decidido, e mantém
+   * `ativo` em dia para as telas que listam por esse campo.
+   */
+  const [alterandoAcesso, setAlterandoAcesso] = useState<string | null>(null);
+
+  const handleToggleAcesso = async (u: any) => {
+    setAlterandoAcesso(u.id);
     try {
-      const { error: rolesErr } = await supabase
-        .from('user_roles').delete().eq('user_id', deleteUser.id);
-      if (rolesErr) throw rolesErr;
-
-      const { error: profErr } = await supabase
-        .from('profiles').update({ ativo: false }).eq('id', deleteUser.id);
-      if (profErr) throw profErr;
-
+      await chamarAdminContas({
+        acao: u.bloqueado ? 'desbloquear' : 'bloquear',
+        alvo_id: u.id,
+      });
+      queryClient.invalidateQueries({ queryKey: ['admin-situacao-contas'] });
       queryClient.invalidateQueries({ queryKey: ['admin-profiles'] });
-      queryClient.invalidateQueries({ queryKey: ['admin-user-roles'] });
-      setDeleteUser(null);
-      toast.success('Usuário desativado.');
+      queryClient.invalidateQueries({ queryKey: ['admin-auditoria'] });
+      toast.success(
+        u.bloqueado
+          ? 'Acesso liberado. A pessoa já consegue entrar.'
+          : 'Acesso bloqueado e sessões encerradas.',
+      );
     } catch (e) {
-      toast.error('Erro ao desativar.', { description: mensagemDeErro(e) });
+      toast.error('Não foi possível alterar o acesso.', { description: mensagemDeErro(e) });
     } finally {
-      setIsSaving(false);
+      setAlterandoAcesso(null);
     }
-  };
-
-  const handleToggleAtivo = async (u: any) => {
-    const { error } = await supabase.from('profiles').update({ ativo: !u.ativo }).eq('id', u.id);
-    if (error) { toast.error('Não foi possível alterar o status.', { description: mensagemDeErro(error) }); return; }
-    queryClient.invalidateQueries({ queryKey: ['admin-profiles'] });
-    toast.success(u.ativo ? 'Desativado.' : 'Ativado.');
   };
 
   const handleCancelSub = async (subId: string) => {
@@ -382,6 +420,7 @@ export default function PainelAdmin() {
           <TabsTrigger value="users" className="gap-2"><Users className="h-4 w-4" />Usuários</TabsTrigger>
           <TabsTrigger value="subscriptions" className="gap-2"><CreditCard className="h-4 w-4" />Assinaturas</TabsTrigger>
           <TabsTrigger value="metrics" className="gap-2"><BarChart3 className="h-4 w-4" />Métricas</TabsTrigger>
+          <TabsTrigger value="auditoria" className="gap-2"><ScrollText className="h-4 w-4" />Auditoria</TabsTrigger>
         </TabsList>
 
         {/* Users Tab */}
@@ -407,7 +446,7 @@ export default function PainelAdmin() {
                       <TableHead>Funções</TableHead>
                       <TableHead>Plano</TableHead>
                       <TableHead>Cadastro</TableHead>
-                      <TableHead>Status</TableHead>
+                      <TableHead>Acesso</TableHead>
                       <TableHead className="text-right">Ações</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -422,7 +461,7 @@ export default function PainelAdmin() {
                       filtered.map(u => {
                         const sub = u.subscription as any;
                         return (
-                          <TableRow key={u.id} className={cn(!u.ativo && 'opacity-50')}>
+                          <TableRow key={u.id} className={cn(u.bloqueado && 'opacity-50')}>
                             <TableCell>
                               <div className="flex items-center gap-2">
                                 {u.email === SUPER_ADMIN_EMAIL && <Crown className="h-4 w-4 text-warning" />}
@@ -448,24 +487,44 @@ export default function PainelAdmin() {
                             </TableCell>
                             <TableCell className="text-sm">{formatDate(u.created_at)}</TableCell>
                             <TableCell>
-                              <Switch
-                                checked={u.ativo ?? true}
-                                onCheckedChange={() => handleToggleAtivo(u)}
-                                disabled={u.email === SUPER_ADMIN_EMAIL}
-                              />
+                              <div className="flex items-center gap-2">
+                                <Switch
+                                  checked={!u.bloqueado}
+                                  onCheckedChange={() => handleToggleAcesso(u)}
+                                  disabled={
+                                    alterandoAcesso !== null
+                                    || u.id === user?.id
+                                    || u.email === SUPER_ADMIN_EMAIL
+                                  }
+                                  aria-label={u.bloqueado ? 'Liberar acesso' : 'Bloquear acesso'}
+                                />
+                                {alterandoAcesso === u.id && (
+                                  <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+                                )}
+                                {u.bloqueado && (
+                                  <span className="text-xs text-destructive font-medium">bloqueada</span>
+                                )}
+                              </div>
                             </TableCell>
                             <TableCell className="text-right">
                               <div className="flex justify-end gap-1">
-                                <Button variant="ghost" size="icon" onClick={() => handleEdit(u)}>
+                                <Button variant="ghost" size="icon" onClick={() => handleEdit(u)} title="Editar dados">
                                   <Edit className="h-4 w-4" />
                                 </Button>
+                                {/* Bloquear, trocar senha e apagar. Havia aqui um segundo
+                                    botão de lixeira que só removia as funções e marcava
+                                    `ativo = false` — dois caminhos parecidos, um deles sem
+                                    efeito sobre o login. Ficou o que funciona. */}
                                 <Button
                                   variant="ghost"
                                   size="icon"
-                                  onClick={() => setDeleteUser(u)}
-                                  disabled={u.email === SUPER_ADMIN_EMAIL}
+                                  onClick={() => setContaEmFerramentas(u)}
+                                  disabled={u.id === user?.id}
+                                  title={u.id === user?.id
+                                    ? 'Não dá para usar as ferramentas na própria conta'
+                                    : 'Bloquear, trocar senha, apagar'}
                                 >
-                                  <Trash2 className="h-4 w-4 text-destructive" />
+                                  <ShieldAlert className="h-4 w-4 text-destructive" />
                                 </Button>
                               </div>
                             </TableCell>
@@ -659,7 +718,85 @@ export default function PainelAdmin() {
             </Card>
           </div>
         </TabsContent>
+
+        {/* Auditoria */}
+        <TabsContent value="auditoria" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <ScrollText className="h-4 w-4" />
+                Ações sobre contas
+              </CardTitle>
+              <CardDescription>
+                Toda vez que alguém bloqueia, troca senha ou apaga uma conta, entra aqui — inclusive
+                as tentativas recusadas. O registro não pode ser alterado nem apagado, nem por mim.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="p-0">
+              {carregandoAuditoria ? (
+                <div className="p-6"><Skeleton className="h-32 w-full" /></div>
+              ) : auditoria.length === 0 ? (
+                <p className="text-center text-sm text-muted-foreground py-10">
+                  Nada registrado ainda.
+                </p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Quando</TableHead>
+                        <TableHead>Quem fez</TableHead>
+                        <TableHead>Ação</TableHead>
+                        <TableHead>Conta alvo</TableHead>
+                        <TableHead>Motivo</TableHead>
+                        <TableHead>Resultado</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {auditoria.map((a: any) => (
+                        <TableRow key={a.id}>
+                          <TableCell className="text-xs whitespace-nowrap">
+                            {new Date(a.criado_em).toLocaleString('pt-BR')}
+                          </TableCell>
+                          <TableCell className="text-xs">{a.ator_email}</TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className="text-xs">{ACAO_LABELS[a.acao] ?? a.acao}</Badge>
+                          </TableCell>
+                          <TableCell className="text-xs">{a.alvo_email}</TableCell>
+                          <TableCell className="text-xs text-muted-foreground max-w-[220px] truncate">
+                            {a.motivo || '—'}
+                          </TableCell>
+                          <TableCell>
+                            {a.sucesso ? (
+                              <Badge className="text-xs bg-success/10 text-success border-success/20">
+                                <CheckCircle2 className="h-3 w-3 mr-1" />feito
+                              </Badge>
+                            ) : (
+                              <Badge variant="destructive" className="text-xs" title={a.erro || ''}>
+                                <Ban className="h-3 w-3 mr-1" />recusado
+                              </Badge>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
       </Tabs>
+
+      <FerramentasDeConta
+        usuario={contaEmFerramentas}
+        onFechar={() => setContaEmFerramentas(null)}
+        onMudou={() => {
+          queryClient.invalidateQueries({ queryKey: ['admin-profiles'] });
+          queryClient.invalidateQueries({ queryKey: ['admin-user-roles'] });
+          queryClient.invalidateQueries({ queryKey: ['admin-auditoria'] });
+        }}
+      />
 
       {/* Edit Dialog */}
       <Dialog open={!!editUser} onOpenChange={(open) => !open && setEditUser(null)}>
@@ -701,23 +838,6 @@ export default function PainelAdmin() {
         </DialogContent>
       </Dialog>
 
-      {/* Delete Dialog */}
-      <AlertDialog open={!!deleteUser} onOpenChange={open => !open && setDeleteUser(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Desativar usuário</AlertDialogTitle>
-            <AlertDialogDescription>
-              Deseja desativar "{deleteUser?.nome}"? O acesso ao sistema será revogado.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isSaving}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground" disabled={isSaving}>
-              {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Desativar
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 }
