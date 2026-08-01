@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { NavegacaoLegal } from '@/components/NavegacaoLegal';
 import { ArrowLeft, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
@@ -133,6 +134,7 @@ export default function TermosUso() {
             <p>Dúvidas sobre estes termos: <strong>contato@elolab.com.br</strong></p>
             <p>Questões sobre privacidade: <strong>privacidade@elolab.com.br</strong></p>
           </section>
+          <NavegacaoLegal atual="/termos-uso" />
         </div>
       </div>
     </div>

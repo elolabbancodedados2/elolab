@@ -5,10 +5,21 @@ import { Loader2 } from 'lucide-react';
 interface SupabaseProtectedRouteProps {
   children: React.ReactNode;
   allowedRoles?: AppRole[];
+  /**
+   * Restringe ao dono da plataforma (tabela platform_admins), não ao papel
+   * `admin`, que é de CLÍNICA. Sem isso, telas de plataforma ficavam abertas ao
+   * administrador de qualquer clínica: /painel-admin listava perfis, papéis,
+   * assinaturas e planos de todos os clientes.
+   */
+  somentePlataforma?: boolean;
 }
 
-export function SupabaseProtectedRoute({ children, allowedRoles }: SupabaseProtectedRouteProps) {
-  const { user, profile, isLoading, hasAnyRole } = useSupabaseAuth();
+export function SupabaseProtectedRoute({
+  children,
+  allowedRoles,
+  somentePlataforma,
+}: SupabaseProtectedRouteProps) {
+  const { user, profile, isLoading, hasAnyRole, isPlatformAdmin } = useSupabaseAuth();
   const location = useLocation();
 
   if (isLoading) {
@@ -39,6 +50,11 @@ export function SupabaseProtectedRoute({ children, allowedRoles }: SupabaseProte
         </div>
       </div>
     );
+  }
+
+  // Telas da plataforma: não basta ser admin da clínica.
+  if (somentePlataforma && !isPlatformAdmin) {
+    return <Navigate to="/dashboard" replace />;
   }
 
   // Check role-based access

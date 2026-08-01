@@ -164,6 +164,7 @@ export const menuGroups: MenuGroup[] = [
     color: '#ef4444',
     roles: ['admin'],
     items: [
+      { label: 'Meu Plano', icon: CreditCard, href: '/planos', roles: ['admin'] },
       { label: 'Analytics', icon: ActivitySquare, href: '/analytics' },
       { label: 'Automações', icon: Sparkles, href: '/automacoes' },
       { label: 'Agente IA WhatsApp', icon: BotMessageSquare, href: '/agente-ia' },
@@ -179,8 +180,9 @@ export const menuGroups: MenuGroup[] = [
     roles: ['admin'],
     superAdminOnly: true,
     items: [
+      { label: 'CRM', icon: Building2, href: '/admin/crm', superAdminOnly: true },
+      { label: 'Clínicas', icon: Building2, href: '/admin/clinicas', superAdminOnly: true },
       { label: 'Painel Admin', icon: Shield, href: '/painel-admin', superAdminOnly: true },
-      { label: 'Planos', icon: CreditCard, href: '/planos', superAdminOnly: true },
       { label: 'Documentação', icon: BookMarked, href: '/documentacao', superAdminOnly: true },
     ],
   },

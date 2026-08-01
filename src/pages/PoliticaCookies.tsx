@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { NavegacaoLegal } from '@/components/NavegacaoLegal';
 import { ArrowLeft, Cookie } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -98,6 +99,7 @@ export default function PoliticaCookies() {
             <p>Dúvidas sobre cookies: <strong>privacidade@elolab.com.br</strong></p>
             <p>Consulte também nossa <Link to="/politica-privacidade" className="text-primary hover:underline">Política de Privacidade</Link>.</p>
           </section>
+          <NavegacaoLegal atual="/politica-cookies" />
         </div>
       </div>
     </div>
