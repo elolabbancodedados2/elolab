@@ -6,9 +6,10 @@ import { Navigate } from 'react-router-dom';
 import {
   Shield, Users, CreditCard, Activity, Search, Edit, TrendingUp, TrendingDown,
   UserCheck, UserX, Loader2, Crown, Clock, Ban, CheckCircle2,
-  BarChart3, Building2, RefreshCw, ShieldAlert, ScrollText, Lock,
+  BarChart3, Building2, RefreshCw, ShieldAlert, ScrollText, Lock, Wrench,
 } from 'lucide-react';
 import { FerramentasDeConta } from '@/components/admin/FerramentasDeConta';
+import { InterruptorManutencao } from '@/components/admin/InterruptorManutencao';
 import { chamarAdminContas } from '@/lib/adminContas';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -421,6 +422,7 @@ export default function PainelAdmin() {
           <TabsTrigger value="subscriptions" className="gap-2"><CreditCard className="h-4 w-4" />Assinaturas</TabsTrigger>
           <TabsTrigger value="metrics" className="gap-2"><BarChart3 className="h-4 w-4" />Métricas</TabsTrigger>
           <TabsTrigger value="auditoria" className="gap-2"><ScrollText className="h-4 w-4" />Auditoria</TabsTrigger>
+          <TabsTrigger value="sistema" className="gap-2"><Wrench className="h-4 w-4" />Sistema</TabsTrigger>
         </TabsList>
 
         {/* Users Tab */}
@@ -785,6 +787,13 @@ export default function PainelAdmin() {
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* Sistema */}
+        <TabsContent value="sistema" className="space-y-4">
+          <div className="max-w-xl">
+            <InterruptorManutencao />
+          </div>
         </TabsContent>
       </Tabs>
 
