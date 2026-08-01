@@ -56,3 +56,12 @@ verify_jwt = true
 
 [functions.scheduled-reports-runner]
 verify_jwt = true
+
+# Ferramentas de conta do dono da plataforma. A função confere a identidade por
+# conta própria (platform_admins); verify_jwt é a trava anterior a essa.
+[functions.admin-contas]
+verify_jwt = true
+
+# Desativada: trocava senha por segredo compartilhado. Substituída por admin-contas.
+[functions.admin-set-password]
+verify_jwt = true
