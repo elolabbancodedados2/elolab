@@ -34,8 +34,15 @@ export function SupabaseProtectedRoute({
     return <Navigate to="/auth" state={{ from: location }} replace />;
   }
 
-  // Check if user has any role assigned
-  if (!profile || profile.roles.length === 0) {
+  // Dono da plataforma não tem papel de clínica, e não deveria mesmo ter: ele
+  // não atende paciente, administra o produto. Sem esta saída, tirar o papel
+  // solto da conta dele o trancaria na tela de "Acesso Pendente" — o dono do
+  // app impedido de entrar no próprio app.
+  //
+  // São dois tipos de administrador que o sistema precisa distinguir:
+  //   admin de clínica  — comprou o EloLab e administra a clínica dele
+  //   dono da plataforma — administra o EloLab, e não pertence a clínica alguma
+  if (!profile || (profile.roles.length === 0 && !isPlatformAdmin)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background p-4">
         <div className="text-center max-w-md">

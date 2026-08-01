@@ -46,7 +46,11 @@ export function Sidebar() {
   const filteredMenuGroups = getFilteredMenuGroups(
     profile?.roles || [],
     isAdmin(),
-    isSuperAdmin
+    isSuperAdmin,
+    // Durante a impersonação o perfil recebe a clinica_id da clínica visitada,
+    // então as telas de clínica reaparecem — que é justamente quando o dono
+    // precisa delas.
+    !!profile?.clinica_id
   );
 
   const searchedGroups = search.trim()

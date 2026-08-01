@@ -194,9 +194,21 @@ export const menuGroups: MenuGroup[] = [
 export function getFilteredMenuGroups(
   userRoles: AppRole[],
   isAdmin: boolean,
-  isSuperAdmin = false
+  isSuperAdmin = false,
+  /**
+   * O dono da plataforma não pertence a clínica alguma: ele administra o
+   * produto, não atende paciente. Sem clínica, as telas de Agenda, Pacientes e
+   * Prontuários abririam vazias — ruído, não recurso.
+   *
+   * Ao entrar numa clínica pela impersonação, o perfil recebe aquela clinica_id
+   * e as telas voltam, porque aí elas têm dado para mostrar.
+   */
+  temClinica = true
 ): MenuGroup[] {
+  const soPlataforma = isSuperAdmin && !temClinica;
+
   return menuGroups
+    .filter((group) => (soPlataforma ? !!group.superAdminOnly : true))
     .filter((group) => {
       if (group.superAdminOnly && !isSuperAdmin) return false;
       if (isAdmin || isSuperAdmin) return true;
