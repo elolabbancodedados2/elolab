@@ -303,17 +303,22 @@ Deno.serve(async (req) => {
 
     const duration = Date.now() - startTime
 
-    await supabase.from('automation_logs').insert({
-      tipo: 'lembrete',
-      nome: 'Lembretes de Consulta (Email + WhatsApp)',
-      status: totalErrors === 0 ? 'sucesso' : totalErrors === totalProcessed ? 'erro' : 'parcial',
-      registros_processados: totalProcessed,
-      registros_sucesso: totalSuccess,
-      registros_erro: totalErrors,
-      detalhes: { errors, whatsapp_available: !!whatsappInstanceName },
-      duracao_ms: duration,
-      executado_por: 'cron',
-    })
+    // Mesmo motivo do welcome-email: este roda de hora em hora e registrava
+    // "sucesso" mesmo sem nenhum lembrete para mandar — 24 linhas vazias por
+    // dia. Sem nada processado não há o que registrar.
+    if (totalProcessed > 0) {
+      await supabase.from('automation_logs').insert({
+        tipo: 'lembrete',
+        nome: 'Lembretes de Consulta (Email + WhatsApp)',
+        status: totalErrors === 0 ? 'sucesso' : totalErrors === totalProcessed ? 'erro' : 'parcial',
+        registros_processados: totalProcessed,
+        registros_sucesso: totalSuccess,
+        registros_erro: totalErrors,
+        detalhes: { errors, whatsapp_available: !!whatsappInstanceName },
+        duracao_ms: duration,
+        executado_por: 'cron',
+      })
+    }
 
     return new Response(
       JSON.stringify({

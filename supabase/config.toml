@@ -65,3 +65,7 @@ verify_jwt = true
 # Desativada: trocava senha por segredo compartilhado. Substituída por admin-contas.
 [functions.admin-set-password]
 verify_jwt = true
+
+# Vigilância de disponibilidade. Disparada pelo agendador, com x-cron-secret.
+[functions.monitor-app]
+verify_jwt = true

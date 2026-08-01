@@ -39,6 +39,27 @@ export function Cid10Search({ value, onChange, placeholder = "Buscar CID-10...",
   const [loading, setLoading] = useState(false);
   const [selectedCids, setSelectedCids] = useState<Cid10[]>([]);
 
+  /**
+   * A tabela `cid10` nunca foi carregada: a migration que a criou não trouxe
+   * nenhum código. Toda busca voltava vazia e a tela dizia "Nenhum CID
+   * encontrado" — o médico entendia que tinha errado o termo e tentava de novo,
+   * indefinidamente, num catálogo que não existe.
+   *
+   * Saber que está vazia muda a mensagem: o problema não é a busca dele.
+   */
+  const [catalogoVazio, setCatalogoVazio] = useState(false);
+
+  useEffect(() => {
+    let ativo = true;
+    supabase
+      .from('cid10')
+      .select('id', { count: 'exact', head: true })
+      .then(({ count, error }) => {
+        if (ativo && !error) setCatalogoVazio((count ?? 0) === 0);
+      });
+    return () => { ativo = false; };
+  }, []);
+
   // Parse initial value to extract CIDs (only on mount or when value changes externally)
   useEffect(() => {
     if (value) {
@@ -148,7 +169,9 @@ export function Cid10Search({ value, onChange, placeholder = "Buscar CID-10...",
           <Command shouldFilter={false}>
             <CommandList>
               <CommandEmpty>
-                {search.length < 2 
+                {catalogoVazio
+                  ? "A tabela de CID-10 está vazia — nenhum código foi carregado no sistema ainda. Não é a sua busca: avise o administrador da plataforma."
+                  : search.length < 2
                   ? "Digite pelo menos 2 caracteres para buscar..."
                   : "Nenhum CID encontrado."
                 }

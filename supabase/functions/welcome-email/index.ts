@@ -139,14 +139,27 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Log
-    await supabase.from('automation_logs').insert({
-      tipo: 'email',
-      nome: 'E-mail de Boas-Vindas',
-      status: 'sucesso',
-      registros_processados: newUsers?.length || 0,
-      registros_sucesso: sentCount,
-    })
+    // Só registra quando houve o que fazer.
+    //
+    // Este cron roda a cada 5 minutos. Registrando sempre, gravava 288 linhas
+    // de "sucesso" por dia — 37 mil em quatro meses, todas dizendo que nada
+    // aconteceu. Virou a maior tabela do banco, 400 vezes maior que a de
+    // pacientes, e afogava os registros que importam: nenhuma falha real
+    // aparecia no meio daquilo.
+    const encontrados = newUsers?.length ?? 0
+    if (encontrados > 0) {
+      await supabase.from('automation_logs').insert({
+        tipo: 'email',
+        nome: 'E-mail de Boas-Vindas',
+        // Achou usuário e não conseguiu enviar para ninguém é falha, não
+        // sucesso: antes as duas coisas ficavam registradas igual.
+        status: sentCount === encontrados ? 'sucesso'
+              : sentCount === 0 ? 'erro' : 'parcial',
+        registros_processados: encontrados,
+        registros_sucesso: sentCount,
+        registros_erro: encontrados - sentCount,
+      })
+    }
 
     console.info(`Welcome emails sent: ${sentCount}`)
 
