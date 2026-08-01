@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
+import { RodapeLegal } from './RodapeLegal';
 import { Navbar } from './Navbar';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { SkipLink } from '@/components/ui/skip-link';
@@ -51,6 +52,7 @@ export function MainLayout() {
             <div className="animate-fade-in">
               <Outlet />
             </div>
+            <RodapeLegal />
           </div>
         </main>
       </div>

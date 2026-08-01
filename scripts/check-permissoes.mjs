@@ -32,10 +32,19 @@ const PAPEIS = ['admin', 'medico', 'recepcao', 'enfermagem', 'financeiro'];
 const app = fs.readFileSync(path.join(SRC, 'App.tsx'), 'utf8');
 
 const rotas = new Map();
-const RE_ROTA = /path="([^"]+)"\s+element=\{<SupabaseProtectedRoute(?:\s+allowedRoles=\{\[([^\]]*)\]\})?/g;
+// Captura também `somentePlataforma`, que restringe ao dono da plataforma
+// (tabela platform_admins) e não a um papel de clínica. Sem tratá-la, a rota
+// parecia aberta a todos e o verificador acusava "recurso escondido" nas telas
+// de plataforma — que o menu esconde de propósito, via superAdminOnly.
+const RE_ROTA =
+  /path="([^"]+)"\s+element=\{<SupabaseProtectedRoute(\s+somentePlataforma)?(?:\s+allowedRoles=\{\[([^\]]*)\]\})?/g;
 for (const m of app.matchAll(RE_ROTA)) {
-  // Sem allowedRoles = qualquer autenticado.
-  const papeis = m[2] ? [...m[2].matchAll(/'([a-z]+)'/g)].map((x) => x[1]) : [...PAPEIS];
+  // Rota de plataforma não é alcançável por papel nenhum de clínica.
+  const papeis = m[2]
+    ? []
+    : m[3]
+      ? [...m[3].matchAll(/'([a-z]+)'/g)].map((x) => x[1])
+      : [...PAPEIS]; // sem restrição = qualquer autenticado
   // A mesma rota aparece nos dois modos de roteamento (landing e app); o
   // efetivo é a união.
   const atual = rotas.get(m[1]) || new Set();
@@ -68,6 +77,7 @@ for (let i = 0; i < marcas.length - 1; i++) {
 
   const rg = cabeca.match(/roles:\s*\[([^\]]*)\]/);
   const papeisGrupo = rg ? [...rg[1].matchAll(/'([a-z]+)'/g)].map((x) => x[1]) : [...PAPEIS];
+  const soPlataformaGrupo = /superAdminOnly:\s*true/.test(cabeca);
 
   const itens = [];
   for (const m of corpo.matchAll(/\{[^{}]*href:\s*'([^']+)'[^{}]*\}/g)) {
@@ -76,7 +86,9 @@ for (let i = 0; i < marcas.length - 1; i++) {
     const ri = trecho.match(/roles:\s*\[([^\]]*)\]/);
     // Item sem roles vale para todos os papéis do grupo.
     const papeisItem = ri ? [...ri[1].matchAll(/'([a-z]+)'/g)].map((x) => x[1]) : [...PAPEIS];
-    itens.push({ label, href: m[1], papeisItem });
+    // superAdminOnly: nenhum papel de clínica enxerga, seja no item ou no grupo.
+    const soPlataforma = /superAdminOnly:\s*true/.test(trecho) || soPlataformaGrupo;
+    itens.push({ label, href: m[1], papeisItem, soPlataforma });
   }
   grupos.push({ labelGrupo, papeisGrupo, itens });
 }
@@ -85,6 +97,7 @@ for (let i = 0; i < marcas.length - 1; i++) {
 const cliqueNegado = [];
 const recursoEscondido = [];
 const grupoAnulaItem = [];
+const rotaAbertaDemais = [];
 const semRota = [];
 
 for (const g of grupos) {
@@ -96,6 +109,16 @@ for (const g of grupos) {
     const caminho = it.href.split('?')[0];
     const daRota = rotas.get(aliases.get(caminho) || caminho);
     if (!daRota) { semRota.push({ ...it, grupo: g.labelGrupo }); continue; }
+
+    // Tela marcada como só-do-dono no menu, mas cuja ROTA aceita papel de
+    // clínica. O menu esconder não protege nada: basta digitar o endereço.
+    // Foi assim que /painel-admin ficou aberto ao admin de qualquer clínica,
+    // expondo perfis, papéis, assinaturas e planos de todos os clientes.
+    if (it.soPlataforma && daRota.size > 0) {
+      rotaAbertaDemais.push({ ...it, grupo: g.labelGrupo, papeis: [...daRota] });
+      continue;
+    }
+    if (it.soPlataforma) continue;
 
     const negados = efetivo.filter((p) => !daRota.has(p));
     const escondidos = [...daRota].filter((p) => p !== 'admin' && !efetivo.includes(p));
@@ -116,7 +139,12 @@ function bloco(titulo, lista, nota) {
 const itens = grupos.reduce((a, g) => a + g.itens.length, 0);
 console.log(`${grupos.length} grupos, ${itens} itens de menu, ${rotas.size} rotas protegidas`);
 
-const problemas = cliqueNegado.length + recursoEscondido.length;
+const problemas = cliqueNegado.length + recursoEscondido.length + rotaAbertaDemais.length;
+
+if (rotaAbertaDemais.length) {
+  bloco('ROTA ABERTA DEMAIS', rotaAbertaDemais,
+    'Tela só-do-dono no menu, mas a rota aceita papel de clínica. Esconder do menu não protege: basta digitar o endereço.');
+}
 
 if (cliqueNegado.length) {
   bloco('CLIQUE NEGADO', cliqueNegado,

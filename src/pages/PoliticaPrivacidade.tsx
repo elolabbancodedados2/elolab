@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { NavegacaoLegal } from '@/components/NavegacaoLegal';
 import { ArrowLeft, Shield } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
@@ -146,6 +147,7 @@ export default function PoliticaPrivacidade() {
             <h2 className="text-lg font-semibold text-foreground">13. Contato e Reclamações</h2>
             <p>Se não estiver satisfeito com o tratamento de seus dados, você pode registrar reclamação junto à <strong>Autoridade Nacional de Proteção de Dados (ANPD)</strong> — <a href="https://www.gov.br/anpd" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">www.gov.br/anpd</a></p>
           </section>
+          <NavegacaoLegal atual="/politica-privacidade" />
         </div>
       </div>
     </div>
