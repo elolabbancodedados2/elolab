@@ -36,11 +36,38 @@ function normalizar(texto: string): string {
     .trim();
 }
 
-/** `alvo` contém `termo` como palavra inteira (evita "as" casar dentro de "gastrite"). */
+/**
+ * Comprimento a partir do qual um termo pode casar como INÍCIO de palavra.
+ *
+ * Termos curtos ("AAS", "sal") exigem palavra inteira, senão "sal" casaria em
+ * "salbutamol" e o alerta viraria ruído. Ruído é problema clínico de verdade:
+ * médico que aprende que o alerta mente passa a ignorar o alerta que importa.
+ */
+const MIN_PARA_PREFIXO = 4;
+
+/**
+ * `alvo` contém `termo` como palavra inteira ou como início de palavra.
+ *
+ * Exigir palavra inteira parecia mais seguro, mas criava falso NEGATIVO no caso
+ * mais comum do consultório: o médico digita "Enalapril10mg", sem espaço entre
+ * princípio ativo e dose, e nenhum alerta de idade, alergia ou contraindicação
+ * disparava. O mesmo valia para alergia anotada abreviada ("amoxi") contra
+ * "Amoxicilina 500mg".
+ *
+ * Num verificador de segurança clínica, o erro caro é deixar passar — desde que
+ * não se caia no extremo oposto, daí o piso de comprimento acima.
+ */
 function contemTermo(alvo: string, termo: string): boolean {
   const t = normalizar(termo);
   if (!t) return false;
-  return new RegExp(`(^| )${t.replace(/ /g, ' ')}( |$)`).test(alvo);
+
+  // `normalizar` já trocou tudo que não é alfanumérico por espaço, então não
+  // sobra metacaractere de regex — mas escapamos assim mesmo para que uma
+  // mudança futura em `normalizar` não abra caminho para regex quebrada.
+  const seguro = t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+  const limiteFinal = t.length >= MIN_PARA_PREFIXO ? '' : '( |$)';
+  return new RegExp(`(^| )${seguro}${limiteFinal}`).test(alvo);
 }
 
 interface Medicamento {

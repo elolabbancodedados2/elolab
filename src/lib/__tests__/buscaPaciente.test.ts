@@ -81,9 +81,26 @@ describe('casos de borda do balcão', () => {
     expect(pacienteCorresponde(semDados, 'recem')).toBe(true);
   });
 
-  it('termo numérico não casa por nome', () => {
+  /**
+   * Nome com número é comum em cadastro provisório: recém-nascido ainda sem
+   * nome ("RN 2"), paciente identificado por leito, atendimento de emergência.
+   * Uma versão anterior deste helper bloqueava termo numérico na busca por
+   * nome e esses pacientes ficavam inalcançáveis.
+   */
+  it('termo numérico também procura no nome', () => {
     const numerico = { nome: 'Paciente 123', cpf: '999.888.777-66' };
-    expect(pacienteCorresponde(numerico, '123')).toBe(false);
+    expect(pacienteCorresponde(numerico, '123')).toBe(true);
+  });
+
+  it('recém-nascido identificado por número é encontrado', () => {
+    const rn = { nome: 'RN 2 Maria Souza' };
+    expect(pacienteCorresponde(rn, '2')).toBe(true);
+    expect(pacienteCorresponde(rn, 'RN')).toBe(true);
+  });
+
+  it('termo numérico não deixa de achar por CPF', () => {
+    const numerico = { nome: 'Paciente 123', cpf: '999.888.777-66' };
+    expect(pacienteCorresponde(numerico, '99988877766')).toBe(true);
   });
 
   it('acha por e-mail', () => {

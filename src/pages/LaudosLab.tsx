@@ -104,9 +104,10 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
         .update({
           liberado: true,
           data_liberacao: new Date().toISOString(),
-          // A coluna existia e não era preenchida: não dava para saber quem
-          // liberou um resultado depois de ele chegar ao paciente.
-          liberado_por: profile?.nome || user?.id || null,
+          // `liberado_por` é uuid REFERENCES profiles(id) — precisa do ID, não
+          // do nome. Gravar o nome fazia o Postgres recusar com
+          // "invalid input syntax for type uuid" e NENHUM laudo era liberado.
+          liberado_por: user?.id ?? null,
         })
         .eq('id', resultadoId);
       if (error) throw error;
@@ -140,7 +141,7 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
           .update({
             liberado: true,
             data_liberacao: new Date().toISOString(),
-            liberado_por: profile?.nome || user?.id || null,
+            liberado_por: user?.id ?? null,
           })
           .eq('id', r.id);
         if (upErr) {

@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
+import { limparAuditoriaPendente } from '@/lib/auditTrail';
 
 export type AppRole = 'admin' | 'medico' | 'recepcao' | 'enfermagem' | 'financeiro';
 
@@ -296,6 +297,9 @@ export function SupabaseAuthProvider({ children }: { children: ReactNode }) {
       console.error('Error signing out:', error);
     } finally {
       await clearClinicalCaches();
+      // A fila de auditoria pendente também precisa sair: em computador de
+      // recepção compartilhado, o próximo turno herdaria registros do anterior.
+      limparAuditoriaPendente();
       setUser(null);
       setSession(null);
       setProfile(null);

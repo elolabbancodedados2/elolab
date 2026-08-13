@@ -59,9 +59,13 @@ export function pacienteCorresponde(paciente: PacienteBuscavel, termo: string): 
     if (apenasDigitos(paciente.cartao_sus).includes(digitos)) return true;
   }
 
-  // Termo puramente numérico não deve casar por nome.
-  if (digitos.length === busca.length) return false;
-
+  // A busca textual roda SEMPRE, inclusive para termo só de dígitos.
+  //
+  // Havia aqui um `if (digitos.length === busca.length) return false`, que
+  // impedia termo numérico de casar por nome. Isso regredia o comportamento
+  // anterior: quem procurasse "123" deixava de encontrar "Paciente 123" — e
+  // nome com número é comum em cadastro provisório ("RN 2", "Leito 12") e em
+  // recém-nascido ainda sem nome definido.
   const texto = normalizarTexto(busca);
   return (
     normalizarTexto(paciente.nome).includes(texto) ||

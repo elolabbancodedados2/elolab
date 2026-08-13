@@ -80,6 +80,31 @@ describe('checkAllergyAlerts', () => {
     expect(alerts).toEqual([]);
   });
 
+  /**
+   * O médico digita rápido e nem sempre separa princípio ativo da dose. Exigir
+   * palavra inteira fazia "Amoxicilina500mg" não casar com nada — falso
+   * negativo num verificador de segurança, que é o erro caro.
+   */
+  it('pega o medicamento colado na dose', () => {
+    const alerts = checkAllergyAlerts('Amoxicilina500mg', ['Penicilina']);
+    expect(alerts.length).toBeGreaterThan(0);
+  });
+
+  it('pega alergia anotada de forma abreviada no prontuário', () => {
+    const alerts = checkAllergyAlerts('Amoxicilina 500mg', ['amoxi']);
+    expect(alerts.length).toBeGreaterThan(0);
+  });
+
+  /**
+   * O outro extremo: termo curto casando por prefixo viraria ruído — "sal"
+   * acusaria alergia em salbutamol. Alerta que mente é ignorado, e aí o alerta
+   * que importa também é.
+   */
+  it('termo curto exige palavra inteira, para não virar ruído', () => {
+    const alerts = checkAllergyAlerts('Salbutamol spray', ['sal']);
+    expect(alerts).toEqual([]);
+  });
+
   it('alergia direta não dispara também a cruzada (early return)', () => {
     const alerts = checkAllergyAlerts('Ibuprofeno', ['ibuprofeno', 'aines']);
     expect(alerts).toHaveLength(1);
