@@ -14,14 +14,6 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const mpToken = Deno.env.get("MERCADOPAGO_ACCESS_TOKEN");
-    if (!mpToken) {
-      return new Response(
-        JSON.stringify({ error: "MERCADOPAGO_ACCESS_TOKEN não configurado" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
     // Auth
     const authHeader = req.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) {
@@ -51,6 +43,14 @@ Deno.serve(async (req) => {
       });
     }
 
+    const mpToken = Deno.env.get("MERCADOPAGO_ACCESS_TOKEN");
+    if (!mpToken) {
+      return new Response(
+        JSON.stringify({ error: "MERCADOPAGO_ACCESS_TOKEN não configurado" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     const body = await req.json();
     const { action } = body;
 
@@ -59,7 +59,7 @@ Deno.serve(async (req) => {
     } else if (action === "create_subscription") {
       return await createSubscription(body, mpToken, adminSupabase, corsHeaders, user);
     } else if (action === "get_payment") {
-      return await getPayment(body, mpToken, corsHeaders);
+      return await getPayment(body, mpToken, corsHeaders, supabase);
     } else if (action === "cancel_subscription") {
       return await cancelSubscription(
         mpToken,
@@ -205,7 +205,8 @@ async function createSubscription(
   }
   if (existing?.status === "pendente") {
     const pendingGateway = await findPendingGateway(supabase, authUser.id);
-    if (pendingGateway?.checkout_url) {
+    const detalhes = (pendingGateway?.detalhes || {}) as Record<string, unknown>;
+    if (pendingGateway?.checkout_url && detalhes.plano_slug === plano.slug) {
       return json({
         checkout_url: pendingGateway.checkout_url,
         preapproval_id: pendingGateway.mp_preapproval_id,
@@ -324,9 +325,26 @@ async function findPendingGateway(supabase: any, authUserId: string) {
 async function getPayment(
   body: any,
   mpToken: string,
-  headers: Record<string, string>
+  headers: Record<string, string>,
+  supabase: any,
 ) {
   const { payment_id } = body;
+  if (!payment_id || typeof payment_id !== "string") {
+    return json({ error: "payment_id é obrigatório" }, 400, headers);
+  }
+
+  // Nunca consultar o gateway apenas com um ID fornecido pelo navegador:
+  // isso permitiria a qualquer usuário autenticado enumerar pagamentos de
+  // outras clínicas. O registro local é a autorização do recurso.
+  const { data: localPayment, error: localPaymentError } = await supabase
+    .from("pagamentos_mercadopago")
+    .select("id")
+    .eq("mp_payment_id", payment_id)
+    .limit(1)
+    .maybeSingle();
+  if (localPaymentError) throw localPaymentError;
+  if (!localPayment) return json({ error: "Pagamento não encontrado" }, 404, headers);
+
   // GET /v1/payments/{id} per MP API docs
   const response = await callMercadoPagoWithRetry(
     `${MP_API_BASE}/v1/payments/${payment_id}`,

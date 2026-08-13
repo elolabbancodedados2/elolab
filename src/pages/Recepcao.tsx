@@ -342,6 +342,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
               .select('id')
               .eq('agendamento_id', agId)
               .eq('clinica_id', profile?.clinica_id || '')
+              .limit(1)
               .maybeSingle();
             if (billingLookupError) throw billingLookupError;
             if (!existingBilling) throw new Error('A cobrança não foi gerada para este atendimento.');
