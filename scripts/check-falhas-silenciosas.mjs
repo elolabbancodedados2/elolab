@@ -30,6 +30,9 @@ for (const f of arquivos) {
     if (/await must\(/.test(linhas[i])) continue;
 
     const janela = linhas.slice(i + 1, i + 9).join('\n');
+    // Formas que guardam a resposta em uma variável podem validar o erro
+    // algumas linhas depois da escrita, antes do toast de sucesso.
+    if (/if\s*\(\s*result\.error\s*\)/.test(janela)) continue;
     if (/toast\.success/.test(janela)) {
       achados.push({ f, linha: i + 1, trecho: linhas[i].trim() });
     }

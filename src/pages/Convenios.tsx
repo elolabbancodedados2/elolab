@@ -23,6 +23,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { useConvenios } from '@/hooks/useSupabaseData';
 import { supabase } from '@/integrations/supabase/client';
+import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 
 const VERSOES_TISS = ['04.01.00', '04.00.02', '03.05.00', '03.04.01'];
@@ -76,6 +77,7 @@ const initialExameForm: ExamePreco = {
 
 /* ─── Tabela de Exames do Convênio ─── */
 function TabelaExamesConvenio({ convenioId }: { convenioId: string }) {
+  const { profile } = useSupabaseAuth();
   const queryClient = useQueryClient();
   const [exameForm, setExameForm] = useState<ExamePreco>(initialExameForm);
   const [editingExameId, setEditingExameId] = useState<string | null>(null);
@@ -145,7 +147,10 @@ function TabelaExamesConvenio({ convenioId }: { convenioId: string }) {
         if (error) throw error;
         toast.success('Exame atualizado!');
       } else {
-        const { error } = await supabase.from('precos_exames_convenio').insert(payload);
+        const { error } = await supabase.from('precos_exames_convenio').insert({
+          ...payload,
+          clinica_id: profile?.clinica_id || null,
+        });
         if (error) throw error;
         toast.success('Exame adicionado à tabela!');
       }
@@ -354,6 +359,7 @@ function TabelaExamesConvenio({ convenioId }: { convenioId: string }) {
 
 /* ─── Página Principal ─── */
 function Convenios() {
+  const { profile } = useSupabaseAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
@@ -448,7 +454,10 @@ function Convenios() {
         if (error) throw error;
         toast.success('Convênio atualizado!');
       } else {
-        const { data, error } = await supabase.from('convenios').insert(payload).select('id').single();
+        const { data, error } = await supabase.from('convenios').insert({
+          ...payload,
+          clinica_id: profile?.clinica_id || null,
+        }).select('id').single();
         if (error) throw error;
         toast.success('Convênio cadastrado!');
         if (data) setEditingId(data.id);

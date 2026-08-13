@@ -11,7 +11,7 @@ const MP_API_BASE = "https://api.mercadopago.com";
 // Validate Mercado Pago signature (HMAC-SHA256)
 async function validateMercadoPagoSignature(
   request: Request,
-  body: string,
+  dataId: string,
   secret: string
 ): Promise<boolean> {
   const xSignature = request.headers.get("x-signature");
@@ -38,8 +38,14 @@ async function validateMercadoPagoSignature(
     return false;
   }
 
-  // Construct the signature string: request_id.timestamp.body
-  const signatureString = `${xRequestId}.${timestamp}.${body}`;
+  if (!dataId) {
+    console.warn("Missing notification data.id");
+    return false;
+  }
+
+  // Mercado Pago signs a manifest built from the notification data.id,
+  // x-request-id and timestamp (not the raw request body).
+  const signatureString = `id:${dataId};request-id:${xRequestId};ts:${timestamp};`;
 
   // Create HMAC-SHA256
   const encoder = new TextEncoder();
@@ -78,6 +84,8 @@ Deno.serve(async (req) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
   );
 
+  let logId: string | undefined;
+
   try {
     // Handle redirect back_urls (GET) — user returning from checkout
     if (req.method === "GET") {
@@ -96,6 +104,11 @@ Deno.serve(async (req) => {
     // Handle webhook notification (POST)
     const body = await req.text();
     const data = JSON.parse(body);
+    const requestUrl = new URL(req.url);
+    const dataId = requestUrl.searchParams.get("data.id") ||
+      requestUrl.searchParams.get("data_id") ||
+      data.data?.id?.toString() ||
+      "";
     console.log("Webhook recebido:", JSON.stringify(data));
 
     // Validate signature — MERCADOPAGO_WEBHOOK_SECRET é obrigatório.
@@ -113,7 +126,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    const isValid = await validateMercadoPagoSignature(req, body, mpWebhookSecret);
+    const isValid = await validateMercadoPagoSignature(req, dataId, mpWebhookSecret);
     if (!isValid) {
       console.error("Invalid webhook signature");
       return new Response(JSON.stringify({ error: "Invalid signature" }), {
@@ -139,7 +152,7 @@ Deno.serve(async (req) => {
     }
 
     // Log webhook event (or update if idempotency key already exists)
-    let logId = existingLog?.id;
+    logId = existingLog?.id;
     if (!logId) {
       const { data: newLog, error: logError } = await supabase
         .from("mercadopago_webhook_logs")
@@ -170,8 +183,8 @@ Deno.serve(async (req) => {
         .from("mercadopago_webhook_logs")
         .update({ erro_mensagem: "Missing MERCADOPAGO_ACCESS_TOKEN" })
         .eq("id", logId);
-      return new Response(JSON.stringify({ received: true }), {
-        status: 200,
+      return new Response(JSON.stringify({ error: "Mercado Pago não configurado" }), {
+        status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -184,7 +197,12 @@ Deno.serve(async (req) => {
     ) {
       const paymentId = data.data?.id;
       if (paymentId) {
-        await processPaymentNotification(paymentId.toString(), mpToken, supabase, logId);
+        await processAuthorizedSubscriptionPaymentNotification(
+          paymentId.toString(),
+          mpToken,
+          supabase,
+          logId
+        );
       }
     }
 
@@ -244,7 +262,6 @@ Deno.serve(async (req) => {
                   .from("assinaturas_plano")
                   .select("id")
                   .eq("user_id", userId)
-                  .eq("plano_slug", planoSlug)
                   .order("created_at", { ascending: false })
                   .limit(1)
                   .maybeSingle();
@@ -282,10 +299,14 @@ Deno.serve(async (req) => {
     });
   } catch (error: any) {
     console.error("Erro no webhook:", error);
-    // Log error but return 200 to avoid Mercado Pago retries
-    // The webhook log entry has already been created
-    return new Response(JSON.stringify({ received: true }), {
-      status: 200,
+    if (logId) {
+      await supabase
+        .from("mercadopago_webhook_logs")
+        .update({ erro_mensagem: error?.message || "Erro ao processar webhook" })
+        .eq("id", logId);
+    }
+    return new Response(JSON.stringify({ error: "Erro ao processar webhook" }), {
+      status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
@@ -447,7 +468,6 @@ async function processPaymentNotification(
               .from("assinaturas_plano")
               .select("id")
               .eq("user_id", userId)
-              .eq("plano_slug", planoSlug)
               .order("created_at", { ascending: false })
               .limit(1)
               .maybeSingle();
@@ -510,6 +530,203 @@ async function processPaymentNotification(
     .eq("id", logId);
 }
 
+type PlatformPlanSyncInput = {
+  assinaturaId: string;
+  userId: string;
+  planoId: string;
+  planoSlug: string;
+  gatewayStatus: string;
+  trialEnd?: string | null;
+};
+
+async function syncPlatformPlan(supabase: any, input: PlatformPlanSyncInput, mpToken?: string) {
+  const now = new Date();
+  const trialIsActive = Boolean(
+    input.trialEnd && new Date(input.trialEnd).getTime() > now.getTime()
+  );
+  const targetStatus = input.gatewayStatus === "authorized"
+    ? (trialIsActive ? "trial" : "ativa")
+    : input.gatewayStatus === "cancelled" || input.gatewayStatus === "canceled"
+      ? "cancelada"
+      : input.gatewayStatus === "paused"
+        ? "pausada"
+        : "pendente";
+
+  const { data: existingPlan, error: existingError } = await supabase
+    .from("assinaturas_plano")
+    .select("id, status, mp_assinatura_id")
+    .eq("user_id", input.userId)
+    .maybeSingle();
+  if (existingError) throw existingError;
+
+  // Do not take an already active plan offline while a replacement checkout
+  // is still pending. The replacement becomes authoritative once authorized.
+  if (
+    existingPlan &&
+    targetStatus === "pendente" &&
+    ["ativa", "trial"].includes(existingPlan.status)
+  ) {
+    return;
+  }
+
+  if (
+    existingPlan &&
+    ["cancelada", "pausada"].includes(targetStatus) &&
+    existingPlan.mp_assinatura_id &&
+    existingPlan.mp_assinatura_id !== input.assinaturaId
+  ) {
+    return;
+  }
+
+  const baseData = {
+    plano_id: input.planoId,
+    plano_slug: input.planoSlug,
+    status: targetStatus,
+    mp_assinatura_id: input.assinaturaId,
+    em_trial: targetStatus === "trial",
+    trial_fim: targetStatus === "trial" ? input.trialEnd : null,
+    data_cancelamento: targetStatus === "cancelada" ? now.toISOString() : null,
+    updated_at: now.toISOString(),
+  };
+
+  if (existingPlan?.id) {
+    if (
+      ["ativa", "trial"].includes(targetStatus) &&
+      existingPlan.mp_assinatura_id &&
+      existingPlan.mp_assinatura_id !== input.assinaturaId &&
+      mpToken
+    ) {
+      const { data: previousGateway, error: previousGatewayError } = await supabase
+        .from("assinaturas_mercadopago")
+        .select("id, mp_preapproval_id, status")
+        .eq("id", existingPlan.mp_assinatura_id)
+        .maybeSingle();
+      if (previousGatewayError) throw previousGatewayError;
+
+      if (previousGateway?.mp_preapproval_id && previousGateway.status !== "cancelada") {
+        const cancelResponse = await fetch(
+          `${MP_API_BASE}/preapproval/${previousGateway.mp_preapproval_id}`,
+          {
+            method: "PUT",
+            headers: {
+              Authorization: `Bearer ${mpToken}`,
+              "Content-Type": "application/json",
+              Accept: "application/json",
+            },
+            body: JSON.stringify({ status: "canceled" }),
+          },
+        );
+        if (!cancelResponse.ok) {
+          throw new Error(`Não foi possível cancelar a assinatura anterior (${cancelResponse.status})`);
+        }
+
+        const { error: previousUpdateError } = await supabase
+          .from("assinaturas_mercadopago")
+          .update({ status: "cancelada", data_fim: now.toISOString().slice(0, 10) })
+          .eq("id", previousGateway.id);
+        if (previousUpdateError) throw previousUpdateError;
+      }
+    }
+
+    const { error } = await supabase
+      .from("assinaturas_plano")
+      .update(baseData)
+      .eq("id", existingPlan.id);
+    if (error) throw error;
+    return;
+  }
+
+  if (["ativa", "trial", "pendente"].includes(targetStatus)) {
+    const { error } = await supabase
+      .from("assinaturas_plano")
+      .insert({
+        user_id: input.userId,
+        data_inicio: now.toISOString(),
+        ...baseData,
+      });
+    if (error) throw error;
+  }
+}
+
+async function processAuthorizedSubscriptionPaymentNotification(
+  authorizedPaymentId: string,
+  mpToken: string,
+  supabase: any,
+  logId: string
+) {
+  const response = await fetch(`${MP_API_BASE}/authorized_payments/${authorizedPaymentId}`, {
+    headers: {
+      Authorization: `Bearer ${mpToken}`,
+      Accept: "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    const message = await response.text();
+    await supabase
+      .from("mercadopago_webhook_logs")
+      .update({ erro_mensagem: `Failed to fetch authorized payment: ${response.status}` })
+      .eq("id", logId);
+    throw new Error(`Mercado Pago authorized payment ${authorizedPaymentId}: ${message}`);
+  }
+
+  const authorizedPayment = await response.json();
+  const payment = authorizedPayment.payment || authorizedPayment;
+  const preapprovalId = authorizedPayment.preapproval_id ||
+    authorizedPayment.subscription_id ||
+    authorizedPayment.preapproval?.id;
+
+  if (!preapprovalId) {
+    console.warn("Authorized payment without preapproval id:", authorizedPaymentId);
+    return;
+  }
+
+  const { data: assinatura, error: assinaturaError } = await supabase
+    .from("assinaturas_mercadopago")
+    .select("id, detalhes")
+    .eq("mp_preapproval_id", preapprovalId.toString())
+    .maybeSingle();
+  if (assinaturaError) throw assinaturaError;
+  if (!assinatura) {
+    console.warn("Subscription not found for authorized payment:", preapprovalId);
+    return;
+  }
+
+  const detalhes = (assinatura.detalhes || {}) as Record<string, unknown>;
+  const paymentStatus = payment.status || authorizedPayment.status;
+  const approved = paymentStatus === "approved";
+  const userId = typeof detalhes.user_id === "string" ? detalhes.user_id : null;
+  const planoId = typeof detalhes.plano_id === "string" ? detalhes.plano_id : null;
+  const planoSlug = typeof detalhes.plano_slug === "string" ? detalhes.plano_slug : null;
+  const trialEnd = typeof detalhes.trial_end === "string" ? detalhes.trial_end : null;
+
+  const { error: updateError } = await supabase
+    .from("assinaturas_mercadopago")
+    .update({
+      status: approved ? "ativa" : "pendente",
+      detalhes: {
+        ...detalhes,
+        ultima_renovacao: new Date().toISOString(),
+        ultimo_pagamento_autorizado: authorizedPaymentId,
+        ultimo_pagamento_status: paymentStatus || null,
+        ultimo_pagamento: authorizedPayment,
+      },
+    })
+    .eq("id", assinatura.id);
+  if (updateError) throw updateError;
+
+  if (userId && planoId && planoSlug) {
+    await syncPlatformPlan(supabase, {
+      assinaturaId: assinatura.id,
+      userId,
+      planoId,
+      planoSlug,
+      gatewayStatus: approved ? "authorized" : "pending",
+      trialEnd,
+    }, mpToken);
+  }
+}
+
 async function processSubscriptionNotification(
   preapprovalId: string,
   mpToken: string,
@@ -551,6 +768,7 @@ async function processSubscriptionNotification(
         pending: "pendente",
         paused: "pausada",
         cancelled: "cancelada",
+        canceled: "cancelada",
       };
 
       const status = statusMap[preapproval.status] || preapproval.status;
@@ -581,19 +799,8 @@ async function processSubscriptionNotification(
           throw new Error(`Failed to update subscription: ${updateError.message}`);
         }
       } else {
-        // Create new record if not found
-        const { error: createError } = await supabase
-          .from("assinaturas_mercadopago")
-          .update({
-            status,
-            data_inicio: preapproval.date_created,
-            detalhes: preapproval,
-          })
-          .eq("mp_preapproval_id", preapprovalId);
-
-        if (createError) {
-          throw new Error(`Failed to create subscription: ${createError.message}`);
-        }
+        console.warn("Subscription webhook has no local record:", preapprovalId);
+        return;
       }
 
       // If subscription is now authorized, handle activation or trial start
@@ -618,7 +825,6 @@ async function processSubscriptionNotification(
               .from("assinaturas_plano")
               .select("id")
               .eq("user_id", userId)
-              .eq("plano_slug", planoSlug)
               .order("created_at", { ascending: false })
               .limit(1)
               .maybeSingle();
@@ -695,6 +901,28 @@ async function processSubscriptionNotification(
               }
             }
             console.log("Plan processed for user:", userId, "Plan:", planoSlug);
+          }
+        }
+
+        // Keep the application plan synchronized for every subscription state.
+        // The lookup is by user only because assinaturas_plano has one row per user;
+        // filtering by the new plan would break upgrades.
+        if (existingAssinatura) {
+          const detalhes = (existingAssinatura.detalhes || {}) as Record<string, unknown>;
+          const userId = typeof detalhes.user_id === "string" ? detalhes.user_id : null;
+          const planoId = typeof detalhes.plano_id === "string" ? detalhes.plano_id : null;
+          const planoSlug = typeof detalhes.plano_slug === "string" ? detalhes.plano_slug : null;
+          const trialEnd = typeof detalhes.trial_end === "string" ? detalhes.trial_end : null;
+
+          if (userId && planoId && planoSlug) {
+            await syncPlatformPlan(supabase, {
+              assinaturaId: existingAssinatura.id,
+              userId,
+              planoId,
+              planoSlug,
+              gatewayStatus: preapproval.status,
+              trialEnd,
+            }, mpToken);
           }
         }
 

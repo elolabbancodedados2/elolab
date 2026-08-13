@@ -40,6 +40,8 @@ import { Label } from '@/components/ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { SectionFallback } from '@/components/ui/loading-skeleton';
+import { todayDateOnly } from '@/lib/dateOnly';
+import { mesmoValor, diferencaEmReais } from '@/lib/dinheiro';
 
 type LancamentoTipo = 'receita' | 'despesa' | 'sangria' | 'suprimento';
 type FormaPagamento = 'dinheiro' | 'pix' | 'credito' | 'debito' | 'cartao_credito' | 'cartao_debito' | 'cheque' | 'transferencia';
@@ -110,7 +112,7 @@ interface ProdutoCarrinho {
 export default function CaixaDiario() {
   const { profile } = useSupabaseAuth();
   const queryClient = useQueryClient();
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayDateOnly();
 
   const [activeTab, setActiveTab] = useState('hoje');
   const [searchTerm, setSearchTerm] = useState('');
@@ -480,7 +482,16 @@ export default function CaixaDiario() {
       });
       if (error) throw error;
 
-      // Se há paciente vinculado, registrar exames realizados no prontuário
+      // Se há paciente vinculado, registrar exames realizados no prontuário.
+      //
+      // A falha aqui só ia para o console, e mesmo assim a tela dizia "Venda
+      // registrada e vinculada ao paciente!". O caixa recebia o pagamento e o
+      // exame comprado não aparecia no histórico clínico nem no fluxo do
+      // laboratório — ninguém ficava sabendo que faltava lançar.
+      //
+      // Não desfazemos a venda: o dinheiro já entrou. Mas quem está no balcão
+      // precisa saber que sobrou um lançamento manual para fazer.
+      let examesNaoRegistrados = false;
       if (pacienteId) {
         const examesItens = carrinho.filter(i => i.origem === 'exame');
         if (examesItens.length > 0) {
@@ -497,12 +508,24 @@ export default function CaixaDiario() {
             }))
           );
           const { error: exErr } = await (supabase as any).from('exames').insert(rows);
-          if (exErr) console.error('Erro ao registrar exames no prontuário:', exErr);
+          if (exErr) {
+            examesNaoRegistrados = true;
+            console.error('Erro ao registrar exames no prontuário:', exErr);
+          }
         }
       }
+
+      return { examesNaoRegistrados };
     },
-    onSuccess: () => {
-      toast.success(pacienteId ? 'Venda registrada e vinculada ao paciente!' : 'Venda registrada!');
+    onSuccess: (resultado) => {
+      if (resultado?.examesNaoRegistrados) {
+        toast.warning('Venda registrada, mas o exame não entrou no prontuário.', {
+          description: 'O pagamento foi lançado. Cadastre o exame manualmente em Exames — sem isso ele não aparece no histórico do paciente nem chega ao laboratório.',
+          duration: 12000,
+        });
+      } else {
+        toast.success(pacienteId ? 'Venda registrada e vinculada ao paciente!' : 'Venda registrada!');
+      }
       setShowLancamento(false);
       resetPOS();
       queryClient.invalidateQueries({ queryKey: ['lancamentos-caixa'] });
@@ -1446,21 +1469,30 @@ export default function CaixaDiario() {
                 <Input type="number" placeholder="Digite o valor contado" value={valorFechamento}
                   onChange={e => setValorFechamento(e.target.value)} step="0.01" min="0" autoFocus />
               </div>
-              {valorFechamento && (
-                <div className={cn(
-                  'p-3 rounded-lg border',
-                  parseFloat(valorFechamento) === totais.final
-                    ? 'bg-emerald-50 border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-800'
-                    : 'bg-red-50 border-red-200 dark:bg-red-950/30 dark:border-red-800'
-                )}>
-                  <p className="text-xs text-muted-foreground">Diferença</p>
-                  <p className={cn('text-xl font-bold tabular-nums',
-                    parseFloat(valorFechamento) === totais.final ? 'text-emerald-600' : 'text-red-500'
+              {valorFechamento && Number.isFinite(parseFloat(valorFechamento)) && (() => {
+                // Comparação em centavos (ver src/lib/dinheiro.ts). Com `===`
+                // entre floats, a operadora contava o caixa certinho e o painel
+                // acusava divergência exibindo "Diferença: R$ 0,00".
+                const contado = parseFloat(valorFechamento);
+                const bate = mesmoValor(contado, totais.final);
+                const diferenca = diferencaEmReais(contado, totais.final);
+
+                return (
+                  <div className={cn(
+                    'p-3 rounded-lg border',
+                    bate
+                      ? 'bg-emerald-50 border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-800'
+                      : 'bg-red-50 border-red-200 dark:bg-red-950/30 dark:border-red-800'
                   )}>
-                    {fmt(parseFloat(valorFechamento) - totais.final)}
-                  </p>
-                </div>
-              )}
+                    <p className="text-xs text-muted-foreground">Diferença</p>
+                    <p className={cn('text-xl font-bold tabular-nums',
+                      bate ? 'text-emerald-600' : 'text-red-500'
+                    )}>
+                      {fmt(diferenca)}
+                    </p>
+                  </div>
+                );
+              })()}
               <div className="space-y-1.5">
                 <Label className="text-xs">Observações (opcional)</Label>
                 <Textarea placeholder="Anotações sobre o fechamento..." value={obsFechamento}

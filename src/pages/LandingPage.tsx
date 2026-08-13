@@ -101,7 +101,10 @@ const moduleGroups = [
     stripText: 'Gestão Clínica Inteligente',
     modules: [
       { icon: Calendar, title: 'Agenda Inteligente', desc: 'Encaixes em segundos, confirmação automática e agenda cheia sem retrabalho da recepção.', img: modClinica1 },
-      { icon: FileText, title: 'Prontuário Eletrônico', desc: 'Registre a consulta em minutos com assinatura digital ICP-Brasil e segurança jurídica CFM.', img: modClinica2 },
+      // Não prometa ICP-Brasil: o sistema não assina com certificado. O que ele
+      // faz — e que já é diferencial — é fechar o prontuário para edição com
+      // trilha de auditoria, como a CFM 1.821/07 exige.
+      { icon: FileText, title: 'Prontuário Eletrônico', desc: 'Registre a consulta em minutos. Assinado e fechado para edição, com trilha de auditoria conforme a CFM 1.821/07.', img: modClinica2 },
       { icon: Stethoscope, title: 'Módulo Clínico', desc: 'Receitas, atestados e encaminhamentos prontos em um clique, com alerta de interações.', img: modClinica3 },
       { icon: HeartPulse, title: 'Triagem Manchester', desc: 'Quem é urgente atende primeiro: classificação de risco integrada à fila, sem confusão.', img: modClinica4 },
       { icon: Pill, title: 'Prescrições Digitais', desc: 'Prescreva com QR Code e dê baixa automática no estoque, sem erro de dispensação.', img: modClinica5 },

@@ -34,6 +34,7 @@ import { toast } from 'sonner';
 import { useSupabaseQuery, useSupabaseUpdate } from '@/hooks/useSupabaseData';
 import { Skeleton } from '@/components/ui/skeleton';
 import { supabase } from '@/integrations/supabase/client';
+import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 
 interface AutomationLog {
   id: string;
@@ -127,6 +128,7 @@ const AUTOMATIONS = [
 
 export default function Automacoes() {
   const [isRunning, setIsRunning] = useState<Record<string, boolean>>({});
+  const { profile } = useSupabaseAuth();
 
   const { data: logs = [], isLoading: loadingLogs, refetch: refetchLogs } = useSupabaseQuery<AutomationLog>('automation_logs', {
     orderBy: { column: 'created_at', ascending: false }
@@ -143,17 +145,26 @@ export default function Automacoes() {
   const toggleAutomation = async (key: string, currentState: boolean) => {
     try {
       const automation = AUTOMATIONS.find(a => a.key === key);
-      const { error } = await supabase
-        .from('automation_settings')
-        .upsert(
-          {
+      const existing = getSettingByKey(key);
+      let error: any = null;
+
+      if (existing) {
+        ({ error } = await supabase
+          .from('automation_settings')
+          .update({ ativo: !currentState })
+          .eq('id', existing.id));
+      } else {
+        if (!profile?.clinica_id) throw new Error('Clínica não identificada. Recarregue a página e tente novamente.');
+        ({ error } = await supabase
+          .from('automation_settings')
+          .insert({
             chave: key,
             ativo: !currentState,
             descricao: automation?.description ?? null,
             valor: {},
-          },
-          { onConflict: 'chave' }
-        );
+            clinica_id: profile.clinica_id,
+          }));
+      }
 
       if (error) throw error;
 

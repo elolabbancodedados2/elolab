@@ -34,6 +34,8 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { todayDateOnly } from '@/lib/dateOnly';
+import { pacienteCorresponde, normalizarTexto } from '@/lib/buscaPaciente';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
@@ -292,12 +294,11 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
      if (activeTab === 'atendimento') list = list.filter(e => e.step === 2 || e.step === 3);
      if (activeTab === 'concluido') list = list.filter(e => e.step === 4);
      if (search) {
-       const q = search.toLowerCase();
+       const q = normalizarTexto(search);
        list = list.filter(e =>
-         e.pac?.nome?.toLowerCase().includes(q) ||
-         e.pac?.cpf?.includes(search) ||
-         e.pac?.telefone?.includes(search) ||
-         e.med?.nome?.toLowerCase().includes(q) ||
+         // Paciente: ignora acento, caixa e máscara de CPF/telefone.
+         (e.pac && pacienteCorresponde(e.pac, search)) ||
+         normalizarTexto(e.med?.nome).includes(q) ||
          e.ag?.hora_inicio?.includes(search)
        );
      }
@@ -313,17 +314,20 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
    }), [enriched]);
 
   // ─── Actions ──────────────────────────────────────────
-   async function handleCheckin(agId: string) {
+  async function handleCheckin(agId: string) {
      if (!checkCaixaAberto()) return;
      setIsProcessing(true);
      try {
-       const result = await autoCheckin(agId);
+       const result = await autoCheckin(agId, profile?.clinica_id);
        if (!result.success) throw new Error(result.message);
 
-        // Generate billing entry at check-in so price is ready at the counter
+        // Generate billing entry at check-in so price is ready at the counter.
+        // If this is a new check-in and the billing row was not created, undo
+        // the queue transition instead of leaving a patient unable to pay.
         const item = enriched.find(e => e.ag.id === agId);
-        if (item) {
-          await createAutoBilling({
+        if (!item) throw new Error('Agendamento não encontrado');
+        try {
+          const billingCreated = await createAutoBilling({
             agendamentoId: agId,
             pacienteId: item.ag.paciente_id,
             pacienteNome: item.pac?.nome || 'Paciente',
@@ -331,6 +335,29 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
             tipoConsulta: item.ag.tipo,
             clinicaId: profile?.clinica_id,
           });
+
+          if (!billingCreated) {
+            const { data: existingBilling, error: billingLookupError } = await supabase
+              .from('lancamentos')
+              .select('id')
+              .eq('agendamento_id', agId)
+              .eq('clinica_id', profile?.clinica_id || '')
+              .maybeSingle();
+            if (billingLookupError) throw billingLookupError;
+            if (!existingBilling) throw new Error('A cobrança não foi gerada para este atendimento.');
+          }
+        } catch (billingError) {
+          // autoCheckin reports actions only when it inserted a new queue row.
+          if (result.actions.length > 0) {
+            await supabase.from('fila_atendimento')
+              .delete()
+              .eq('agendamento_id', agId)
+              .neq('status', 'finalizado');
+            await supabase.from('agendamentos')
+              .update({ status: 'confirmado' })
+              .eq('id', agId);
+          }
+          throw billingError;
         }
 
        queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
@@ -383,45 +410,26 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
     try {
       const item = enriched.find(e => e.ag.id === agId);
       if (!item) throw new Error('Agendamento não encontrado');
-
-      // Direct updates as primary method (more reliable)
-      const { error: agErr } = await supabase
-        .from('agendamentos')
-        .update({ status: 'finalizado' as any })
-        .eq('id', agId);
-      if (agErr) {
-        console.error('Erro ao atualizar agendamento:', agErr);
-        throw new Error('Erro ao finalizar agendamento: ' + agErr.message);
-      }
-
-      if (filaId) {
-        const { error: filaErr } = await supabase
-          .from('fila_atendimento')
-          .update({ status: 'finalizado' })
-          .eq('id', filaId);
-        if (filaErr) console.error('Erro ao atualizar fila:', filaErr);
-      }
-
-      // Auto-billing (non-blocking) — only if not already billed at check-in
-      try {
-        await createAutoBilling({
-          agendamentoId: agId,
-          pacienteId: item.ag.paciente_id,
-          pacienteNome: item.pac?.nome || 'Paciente',
-          convenioId: item.pac?.convenio_id,
-          tipoConsulta: item.ag.tipo,
-          data: format(new Date(), 'yyyy-MM-dd'),
-          clinicaId: profile?.clinica_id,
-        });
-      } catch (billingErr) {
-        console.warn('Auto-billing falhou:', billingErr);
-      }
+      const result = await autoFinalizarAtendimento({
+        agendamentoId: agId,
+        filaId,
+        pacienteId: item.ag.paciente_id,
+        pacienteNome: item.pac?.nome || 'Paciente',
+        medicoId: item.ag.medico_id,
+        convenioId: item.pac?.convenio_id,
+        tipoConsulta: item.ag.tipo,
+        clinicaId: profile?.clinica_id,
+      });
+      if (!result.success) throw new Error(result.message);
 
       queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
       queryClient.invalidateQueries({ queryKey: ['fila_atendimento'] });
       queryClient.invalidateQueries({ queryKey: ['lancamentos_hoje'] });
       queryClient.invalidateQueries({ queryKey: ['caixa-diario'] });
-      toast.success('Atendimento finalizado!');
+
+      toast.success('Atendimento finalizado!', {
+        description: result.actions.join(' • '),
+      });
     } catch (err: any) {
       console.error('Erro ao finalizar:', err);
       toast.error('Erro ao finalizar: ' + (err?.message || 'Erro desconhecido'));
@@ -533,14 +541,33 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
 
     setIsProcessing(true);
     try {
-      const valorFinal = valorBase - desconto + acrescimo;
-      const { error } = await supabase.from('lancamentos').update({
+      // `valor` é o que foi FATURADO e não pode ser sobrescrito pelo que foi
+      // recebido. Antes esta tela gravava `valor: valorFinal`: uma consulta de
+      // R$ 200 recebida com R$ 20 de desconto passava a constar como uma
+      // consulta que sempre custou R$ 180, e o desconto concedido sumia — sem
+      // como auditar quem deu, quanto, nem para quem.
+      //
+      // A tela de Contas a Receber já gravava do jeito certo. O mesmo evento de
+      // negócio era registrado de duas formas conforme a tela usada, e o
+      // relatório mudava de número por causa disso.
+      const valorFinal = Number((valorBase - desconto + acrescimo).toFixed(2));
+      let pagamentoQuery = (supabase as any).from('lancamentos').update({
         status: 'pago' as any,
         forma_pagamento: formaPagamento,
-        valor: valorFinal,
+        valor_pago: valorFinal,
+        desconto: Number(desconto.toFixed(2)),
+        acrescimo: Number(acrescimo.toFixed(2)),
+        data_pagamento: todayDateOnly(),
         observacoes: sanitizeText(obsPagamento),
       }).eq('id', selectedLancamento.id);
+      if (profile?.clinica_id) pagamentoQuery = pagamentoQuery.eq('clinica_id', profile.clinica_id);
+      const { data: pagamentoAtualizado, error } = await pagamentoQuery
+        .select('id, status, valor, valor_pago')
+        .maybeSingle();
       if (error) throw error;
+      if (!pagamentoAtualizado) {
+        throw new Error('Lançamento não encontrado ou sem permissão para esta clínica.');
+      }
 
       // Send payment receipt to patient
       try {
@@ -687,23 +714,30 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
       </motion.div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="w-full justify-start bg-muted/50 p-1 gap-1">
-          <TabsTrigger value="todos" className="data-[state=active]:bg-background">
-            Todos ({enriched.length})
-          </TabsTrigger>
-           <TabsTrigger value="checkin" className="data-[state=active]:bg-background">
-             <Clock className="h-3.5 w-3.5 mr-1" /> Check-in ({stats.aguardando})
-           </TabsTrigger>
-           <TabsTrigger value="balcao" className="data-[state=active]:bg-background">
-             <DollarSign className="h-3.5 w-3.5 mr-1" /> Balcão ({stats.balcao})
-           </TabsTrigger>
-           <TabsTrigger value="atendimento" className="data-[state=active]:bg-background">
-             <Stethoscope className="h-3.5 w-3.5 mr-1" /> Atendimento ({stats.atendimento})
-           </TabsTrigger>
-           <TabsTrigger value="concluido" className="data-[state=active]:bg-background">
-            <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> Concluído ({stats.concluido})
-          </TabsTrigger>
-        </TabsList>
+        {/* A recepção trabalha em tablet. Cinco abas com ícone e contador não
+            cabem em 768px: os rótulos eram cortados e o conteúdo empurrava a
+            página para fora da área visível. O contêiner rola na horizontal e
+            cada aba para de encolher, então "Atendimento (12)" continua
+            legível em vez de virar "Atend...". */}
+        <div className="overflow-x-auto -mx-1 px-1 pb-1">
+          <TabsList className="w-max min-w-full justify-start bg-muted/50 p-1 gap-1">
+            <TabsTrigger value="todos" className="shrink-0 data-[state=active]:bg-background">
+              Todos ({enriched.length})
+            </TabsTrigger>
+            <TabsTrigger value="checkin" className="shrink-0 data-[state=active]:bg-background">
+              <Clock className="h-3.5 w-3.5 mr-1" /> Check-in ({stats.aguardando})
+            </TabsTrigger>
+            <TabsTrigger value="balcao" className="shrink-0 data-[state=active]:bg-background">
+              <DollarSign className="h-3.5 w-3.5 mr-1" /> Balcão ({stats.balcao})
+            </TabsTrigger>
+            <TabsTrigger value="atendimento" className="shrink-0 data-[state=active]:bg-background">
+              <Stethoscope className="h-3.5 w-3.5 mr-1" /> Atendimento ({stats.atendimento})
+            </TabsTrigger>
+            <TabsTrigger value="concluido" className="shrink-0 data-[state=active]:bg-background">
+              <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> Concluído ({stats.concluido})
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
         <div className="mt-4">
           {loadingAg ? (

@@ -23,6 +23,14 @@ interface DigitalSignatureProps {
   signedAt?: string | null;
 }
 
+/**
+ * `method` mantém 'icp-brasil' apenas para ler registros antigos: existia um
+ * botão "Assinar com ICP-Brasil" que pedia o PIN do certificado do médico, não
+ * usava esse PIN para nada, e gravava o documento como assinado por certificado.
+ * Nenhuma assinatura ICP acontecia — o app calcula um hash local e registra na
+ * trilha de auditoria. Assinaturas novas só podem ser 'eletronica-simples',
+ * que é o que de fato ocorre.
+ */
 interface SignatureData {
   signedAt: string;
   signerName: string;
@@ -45,10 +53,9 @@ export function DigitalSignature({
   const [signing, setSigning] = useState(false);
   const [signed, setSigned] = useState(false);
   const [signatureData, setSignatureData] = useState<SignatureData | null>(null);
-  const [certificatePin, setCertificatePin] = useState('');
   const { toast } = useToast();
 
-  const handleSign = async (method: 'icp-brasil' | 'eletronica-simples') => {
+  const handleSign = async (method: 'eletronica-simples') => {
     setSigning(true);
     try {
       // Generate real SHA-256 hash of the document identity + timestamp (integrity fingerprint)
@@ -82,7 +89,7 @@ export function DigitalSignature({
           acao: 'assinatura',
           user_nome: signerName,
           user_crm: signerCRM || null,
-          justificativa: `Assinatura ${method === 'icp-brasil' ? 'ICP-Brasil' : 'eletrônica simples'} • hash ${hash.substring(0, 16)}`,
+          justificativa: `Assinatura eletrônica simples • hash ${hash.substring(0, 16)}`,
         });
       }
 
@@ -91,7 +98,7 @@ export function DigitalSignature({
         action: 'sign',
         collection: documentType === 'prontuario' ? 'prontuarios' : `${documentType}s`,
         record_id: documentId,
-        record_name: `Assinatura Digital (${method === 'icp-brasil' ? 'ICP-Brasil' : 'Eletrônica Simples'})`,
+        record_name: 'Assinatura eletrônica simples',
         user_name: `${signerName}${signerCRM ? ` — CRM ${signerCRM}` : ''}`,
       });
 
@@ -102,7 +109,7 @@ export function DigitalSignature({
 
       toast({
         title: 'Documento assinado',
-        description: `Assinatura ${method === 'icp-brasil' ? 'ICP-Brasil' : 'eletrônica'} registrada com sucesso.`,
+        description: 'Assinatura eletrônica registrada. O documento não pode mais ser editado.',
       });
     } catch (error) {
       toast({
@@ -112,7 +119,6 @@ export function DigitalSignature({
       });
     } finally {
       setSigning(false);
-      setCertificatePin('');
     }
   };
 
@@ -145,11 +151,13 @@ export function DigitalSignature({
         <CheckCircle2 className="h-4 w-4 text-green-600 flex-shrink-0" />
         <div className="flex-1 min-w-0">
           <p className="text-xs font-medium text-green-700">
-            Assinado digitalmente
+            Assinado eletronicamente
           </p>
+          {/* Registros antigos gravados como 'icp-brasil' também eram assinatura
+              eletrônica simples — nenhum certificado foi usado. Exibir
+              "ICP-Brasil" neles repetiria a afirmação falsa. */}
           <p className="text-[10px] text-green-600/70 truncate">
             {signatureData.signerName} — {new Date(signatureData.signedAt).toLocaleString('pt-BR')}
-            {' • '}{signatureData.method === 'icp-brasil' ? 'ICP-Brasil' : 'Eletrônica'}
             {' • Hash: '}{signatureData.hash.substring(0, 8)}...
           </p>
         </div>
@@ -188,60 +196,37 @@ export function DigitalSignature({
               </p>
             </div>
 
-            {/* ICP-Brasil option */}
+            {/* Só existe um caminho porque só existe um comportamento. O botão
+                "Assinar com ICP-Brasil" pedia o PIN do certificado, descartava
+                o PIN e gravava exatamente esta mesma assinatura — dando ao
+                médico a impressão de ter assinado com certificado. */}
             <div className="border rounded-lg p-4 space-y-3">
               <div className="flex items-center gap-2">
-                <ShieldCheck className="h-5 w-5 text-primary" />
+                <FileKey className="h-5 w-5 text-primary" />
                 <div>
-                  <p className="font-medium text-sm">Certificado ICP-Brasil</p>
-                  <p className="text-xs text-muted-foreground">Validade jurídica plena — requer certificado A1 ou A3</p>
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label className="text-xs">PIN do Certificado Digital</Label>
-                <Input
-                  type="password"
-                  placeholder="Digite o PIN do seu certificado"
-                  value={certificatePin}
-                  onChange={e => setCertificatePin(e.target.value)}
-                  className="h-9"
-                />
-              </div>
-              <Button
-                onClick={() => handleSign('icp-brasil')}
-                disabled={signing || !certificatePin}
-                className="w-full gap-2"
-              >
-                {signing ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
-                Assinar com ICP-Brasil
-              </Button>
-            </div>
-
-            {/* Simple electronic signature option */}
-            <div className="border rounded-lg p-4 space-y-3 border-dashed">
-              <div className="flex items-center gap-2">
-                <FileKey className="h-5 w-5 text-muted-foreground" />
-                <div>
-                  <p className="font-medium text-sm">Assinatura Eletrônica Simples</p>
-                  <p className="text-xs text-muted-foreground">Registro com hash e trilha de auditoria — sem certificado</p>
+                  <p className="font-medium text-sm">Assinatura eletrônica</p>
+                  <p className="text-xs text-muted-foreground">
+                    Fecha o documento para edição e registra autor, CRM, data e hash na trilha de auditoria
+                  </p>
                 </div>
               </div>
               <Button
-                variant="outline"
                 onClick={() => handleSign('eletronica-simples')}
                 disabled={signing}
                 className="w-full gap-2"
               >
                 {signing ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileKey className="h-4 w-4" />}
-                Assinar Eletronicamente
+                Assinar e fechar o documento
               </Button>
             </div>
 
             <div className="flex items-start gap-2 text-xs text-muted-foreground bg-amber-500/10 rounded p-2.5">
               <AlertTriangle className="h-3.5 w-3.5 text-amber-500 mt-0.5 flex-shrink-0" />
               <span>
-                A assinatura ICP-Brasil confere validade jurídica plena conforme MP 2.200-2/01.
-                A assinatura eletrônica simples tem validade reduzida, recomendada apenas para documentos internos.
+                Esta é uma assinatura eletrônica simples (MP 2.200-2/01, art. 10 §2º): vale entre
+                as partes e atende a exigência de imutabilidade do prontuário da CFM 1.821/07.
+                Para validade jurídica plena perante terceiros, assine o PDF exportado com seu
+                certificado ICP-Brasil no assinador gov.br.
               </span>
             </div>
           </div>

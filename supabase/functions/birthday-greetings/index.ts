@@ -29,26 +29,18 @@ Deno.serve(async (req) => {
 
     const { data: settings } = await supabase
       .from('automation_settings')
-      .select('valor, ativo')
+      .select('valor, ativo, clinica_id')
       .eq('chave', 'aniversariantes')
-      .single()
 
-    if (settings?.ativo === false) {
-      return new Response(
-        JSON.stringify({ success: true, message: 'Aniversariantes desativado' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
 
-    const { data: template } = await supabase
+    const { data: templates } = await supabase
       .from('notification_templates')
       .select('*')
       .eq('categoria', 'aniversario')
       .eq('tipo', 'email')
       .eq('ativo', true)
-      .single()
 
-    if (!template) {
+    if (!templates || templates.length === 0) {
       throw new Error('Template de aniversário não encontrado')
     }
 
@@ -58,7 +50,7 @@ Deno.serve(async (req) => {
 
     const { data: aniversariantes, error: fetchError } = await supabase
       .from('pacientes')
-      .select('id, nome, email, data_nascimento')
+      .select('id, nome, email, data_nascimento, clinica_id')
       .not('email', 'is', null)
       .not('data_nascimento', 'is', null)
 
@@ -69,7 +61,7 @@ Deno.serve(async (req) => {
     const aniversariantesHoje = aniversariantes?.filter(p => {
       if (!p.data_nascimento) return false
       const [ano, m, d] = p.data_nascimento.split('-')
-      return d === dia && m === mes
+      return d === dia && m === mes && isAutomationActive(settings || [], p.clinica_id)
     }) || []
 
     if (aniversariantesHoje.length === 0) {
@@ -84,6 +76,9 @@ Deno.serve(async (req) => {
 
     for (const paciente of aniversariantesHoje) {
       if (!paciente.email) continue
+
+      const template = templateForClinic(templates || [], paciente.clinica_id)
+      if (!template) continue
 
       const { data: existing } = await supabase
         .from('notification_queue')
@@ -129,6 +124,7 @@ Deno.serve(async (req) => {
             assunto,
             conteudo,
             dados_extras: { tipo: 'aniversario' },
+            clinica_id: paciente.clinica_id,
             status: 'enviado',
             enviado_em: new Date().toISOString(),
           })
@@ -174,3 +170,15 @@ Deno.serve(async (req) => {
     )
   }
 })
+
+function isAutomationActive(settings: any[], clinicId: string | null): boolean {
+  const scoped = settings.find((setting) => setting.clinica_id === clinicId)
+  const legacy = settings.find((setting) => setting.clinica_id == null)
+  return (scoped || legacy)?.ativo !== false
+}
+
+function templateForClinic(templates: any[], clinicId: string | null): any | null {
+  return templates.find((template) => template.clinica_id === clinicId)
+    || templates.find((template) => template.clinica_id == null)
+    || null
+}

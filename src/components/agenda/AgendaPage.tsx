@@ -113,7 +113,12 @@ export function AgendaPage() {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
+    // A política de acesso continua sendo a autoridade final, mas o médico
+    // não deve sequer receber uma primeira renderização com a agenda de toda a
+    // clínica enquanto o useEffect sincroniza o filtro visual.
+    const allowedMedicoId = isMedicoOnly && myMedicoId ? myMedicoId : null;
     return allAppts.filter((a: any) => {
+      if (allowedMedicoId && a.medico_id !== allowedMedicoId) return false;
       if (medicoFilter.length && !medicoFilter.includes(a.medico_id)) return false;
       if (statusFilter.length && !statusFilter.includes(a.status)) return false;
       if (q) {
@@ -123,7 +128,12 @@ export function AgendaPage() {
       }
       return true;
     });
-  }, [allAppts, medicoFilter, statusFilter, search]);
+  }, [allAppts, medicoFilter, statusFilter, search, isMedicoOnly, myMedicoId]);
+
+  const visibleMedicos = useMemo(
+    () => isMedicoOnly && myMedicoId ? medicos.filter((m: any) => m.id === myMedicoId) : medicos,
+    [medicos, isMedicoOnly, myMedicoId],
+  );
 
   const dayAppts = useMemo(() => filtered.filter((a: any) => a.data === date), [filtered, date]);
 
@@ -248,7 +258,7 @@ export function AgendaPage() {
           onSetDefaultView={setDefaultView}
           search={search}
           onSearchChange={setSearch}
-          medicos={medicos}
+           medicos={visibleMedicos}
           statusFilter={statusFilter}
           medicoFilter={medicoFilter}
           onStatusFilterChange={setStatusFilter}
@@ -268,7 +278,7 @@ export function AgendaPage() {
             {view === 'daily' && (
               <DailyMultiDoctorView
                 date={date}
-                medicos={medicoFilter.length ? medicos.filter((m: any) => medicoFilter.includes(m.id)) : medicos}
+                medicos={medicoFilter.length ? visibleMedicos.filter((m: any) => medicoFilter.includes(m.id)) : visibleMedicos}
                 agendamentos={dayAppts}
                 bloqueios={bloqueios}
                 colorFor={colorFor}
@@ -318,8 +328,8 @@ export function AgendaPage() {
         open={dialogState.open}
         onOpenChange={(o) => setDialogState({ open: o, initial: o ? dialogState.initial : null })}
         initial={dialogState.initial}
-        pacientes={pacientes}
-        medicos={medicos}
+         pacientes={pacientes}
+         medicos={visibleMedicos}
         tipos={tipos}
         salas={salas}
         onSaved={async () => {
@@ -336,7 +346,7 @@ export function AgendaPage() {
         onOpenChange={setColorOpen}
         scheme={scheme}
         onSave={setScheme}
-        medicos={medicos}
+         medicos={visibleMedicos}
         convenios={convenios}
         tipos={tipos}
       />

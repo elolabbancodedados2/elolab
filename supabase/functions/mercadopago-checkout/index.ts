@@ -31,10 +31,15 @@ Deno.serve(async (req) => {
       });
     }
 
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
+      supabaseUrl,
       Deno.env.get("SUPABASE_ANON_KEY")!,
       { global: { headers: { Authorization: authHeader } } }
+    );
+    const adminSupabase = createClient(
+      supabaseUrl,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
     const token = authHeader.replace("Bearer ", "");
@@ -52,11 +57,17 @@ Deno.serve(async (req) => {
     if (action === "create_preference") {
       return await createPreference(body, mpToken, supabase, corsHeaders);
     } else if (action === "create_subscription") {
-      return await createSubscription(body, mpToken, supabase, corsHeaders, user.id);
+      return await createSubscription(body, mpToken, adminSupabase, corsHeaders, user);
     } else if (action === "get_payment") {
       return await getPayment(body, mpToken, corsHeaders);
     } else if (action === "cancel_subscription") {
-      return await cancelSubscription(body, mpToken, supabase, corsHeaders);
+      return await cancelSubscription(
+        mpToken,
+        adminSupabase,
+        corsHeaders,
+        user.id,
+        typeof body.motivo === "string" ? body.motivo.slice(0, 500) : null,
+      );
     } else {
       return new Response(
         JSON.stringify({ error: `Ação desconhecida: ${action}` }),
@@ -158,28 +169,91 @@ async function createSubscription(
   mpToken: string,
   supabase: any,
   headers: Record<string, string>,
-  authUserId: string
+  authUser: { id: string; email?: string }
 ) {
-  const { paciente_id, plano_id, plano_slug, nome_plano, descricao, valor, frequencia, payer_email, payer_name } = body;
+  const { plano_slug, trial_dias } = body;
+  if (typeof plano_slug !== "string" || !plano_slug.trim()) {
+    return json({ error: "plano_slug é obrigatório" }, 400, headers);
+  }
+
+  const { data: plano, error: planoError } = await supabase
+    .from("planos")
+    .select("id, slug, nome, descricao, valor, frequencia, ativo, trial_dias")
+    .eq("slug", plano_slug.trim().toLowerCase())
+    .eq("ativo", true)
+    .maybeSingle();
+  if (planoError || !plano) return json({ error: "Plano não encontrado" }, 404, headers);
+
+  const requestedTrialDays = trial_dias === undefined || trial_dias === null ? 0 : Number(trial_dias);
+  const planTrialDays = Number(plano.trial_dias || 0);
+  if (!Number.isInteger(requestedTrialDays) || requestedTrialDays < 0 || requestedTrialDays > planTrialDays) {
+    return json({ error: "Período de teste inválido para este plano" }, 400, headers);
+  }
+
+  const payerEmail = (authUser.email || "").trim().toLowerCase();
+  if (!payerEmail) return json({ error: "A conta precisa ter um e-mail válido" }, 400, headers);
+
+  const { data: existing } = await supabase
+    .from("assinaturas_plano")
+    .select("id, status, plano_slug")
+    .eq("user_id", authUser.id)
+    .in("status", ["ativa", "trial", "pendente"])
+    .limit(1)
+    .maybeSingle();
+  if (existing && ["ativa", "trial"].includes(existing.status) && existing.plano_slug === plano.slug) {
+    return json({ error: "Este plano já está ativo para esta conta" }, 409, headers);
+  }
+  if (existing?.status === "pendente") {
+    const pendingGateway = await findPendingGateway(supabase, authUser.id);
+    if (pendingGateway?.checkout_url) {
+      return json({
+        checkout_url: pendingGateway.checkout_url,
+        preapproval_id: pendingGateway.mp_preapproval_id,
+        assinatura_id: pendingGateway.id,
+        message: "A assinatura pendente foi reutilizada.",
+      }, 200, headers);
+    }
+    return json({ error: "Já existe um pagamento de assinatura aguardando conclusão" }, 409, headers);
+  }
+
+  // O webhook pode ainda não ter criado assinaturas_plano. Reutilizar o
+  // preapproval pendente evita assinaturas duplicadas por cliques repetidos.
+  const pendingGateway = await findPendingGateway(supabase, authUser.id);
+  if (pendingGateway?.checkout_url) {
+    const detalhes = (pendingGateway.detalhes || {}) as Record<string, unknown>;
+    if (detalhes.plano_slug === plano.slug) {
+      return json({
+        checkout_url: pendingGateway.checkout_url,
+        preapproval_id: pendingGateway.mp_preapproval_id,
+        assinatura_id: pendingGateway.id,
+        message: "A assinatura pendente foi reutilizada.",
+      }, 200, headers);
+    }
+    return json({ error: "Já existe um pagamento de assinatura aguardando conclusão" }, 409, headers);
+  }
+
   const appUrl = "https://app.elolab.com.br";
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const webhookUrl = `${supabaseUrl}/functions/v1/mercadopago-webhook`;
   const externalReference = crypto.randomUUID();
+  const trialEnd = requestedTrialDays > 0
+    ? new Date(Date.now() + requestedTrialDays * 24 * 60 * 60 * 1000)
+    : new Date();
 
   // Use Preapproval API for recurring subscriptions
   // Reference: https://developers.mercadopago.com/en/reference/preapproval/_preapproval/post
   const preapprovalPayload = {
-    payer_email: payer_email,
+    status: "pending",
+    payer_email: payerEmail,
     back_url: `${appUrl}/planos?mp_status=success`,
-    reason: nome_plano,
+    reason: `EloLab ${plano.nome}`,
     external_reference: externalReference,
     auto_recurring: {
       frequency: 1,
-      frequency_type: "months", // Monthly subscription
-      transaction_amount: Number(valor),
+      frequency_type: plano.frequencia === "anual" ? "years" : "months",
+      transaction_amount: Number(plano.valor),
       currency_id: "BRL",
-      start_date: new Date().toISOString(),
-      end_date: new Date(new Date().setFullYear(new Date().getFullYear() + 1)).toISOString(), // 1 year validity
+      start_date: trialEnd.toISOString(),
     },
     notification_url: webhookUrl,
   };
@@ -191,63 +265,27 @@ async function createSubscription(
     mpToken
   );
 
-  // Create a preference for the initial payment (first month)
-  // Reference: https://developers.mercadopago.com/en/reference/preferences/_checkout_preferences/post
-  const preference = {
-    items: [
-      {
-        title: nome_plano,
-        description: descricao || `Plano ${nome_plano} EloLab - 1º mês`,
-        quantity: 1,
-        unit_price: Number(valor),
-        currency_id: "BRL",
-      },
-    ],
-    payer: {
-      ...(payer_name && { name: payer_name }),
-      ...(payer_email && { email: payer_email }),
-    },
-    external_reference: externalReference,
-    payment_methods: {
-      installments: 1,
-      default_installments: 1,
-    },
-    back_urls: {
-      success: `${appUrl}/planos?mp_status=success`,
-      failure: `${appUrl}/planos?mp_status=failure`,
-      pending: `${appUrl}/planos?mp_status=pending`,
-    },
-    auto_return: "approved",
-    notification_url: webhookUrl,
-    statement_descriptor: "ELOLAB",
-  };
-
-  const preferenceResponse = await callMercadoPagoWithRetry(
-    `${MP_API_BASE}/checkout/preferences`,
-    "POST",
-    preference,
-    mpToken
-  );
-
+  // Persist the pending preapproval locally; the payer completes it at init_point.
   const { data: assinatura, error } = await supabase
     .from("assinaturas_mercadopago")
     .insert({
-      paciente_id,
       mp_preapproval_id: response.id,
-      nome_plano,
-      descricao,
-      valor: Number(valor),
-      frequencia: "mensal",
-      checkout_url: preferenceResponse.init_point,
+      nome_plano: plano.nome,
+      descricao: plano.descricao,
+      valor: Number(plano.valor),
+      frequencia: plano.frequencia || "mensal",
+      checkout_url: response.init_point,
       status: "pendente",
       detalhes: {
         checkout_type: "preapproval",
         preapproval_id: response.id,
         checkout_reference: externalReference,
-        user_id: authUserId,
-        plano_id: plano_id ?? null,
-        plano_slug: plano_slug ?? null,
-        payer_email: payer_email ?? null,
+        user_id: authUser.id,
+        plano_id: plano.id,
+        plano_slug: plano.slug,
+        payer_email: payerEmail,
+        trial_type: requestedTrialDays > 0 ? "with_payment_method" : "none",
+        trial_end: requestedTrialDays > 0 ? trialEnd.toISOString() : null,
         auto_recurring: preapprovalPayload.auto_recurring,
       },
     })
@@ -261,13 +299,26 @@ async function createSubscription(
 
   return new Response(
     JSON.stringify({
-      checkout_url: preferenceResponse.init_point,
+      checkout_url: response.init_point,
       preapproval_id: response.id,
       assinatura_id: assinatura.id,
       message: "Assinatura recorrente criada. Página de checkout aberta para pagamento do 1º mês.",
     }),
     { status: 200, headers: { ...headers, "Content-Type": "application/json" } }
   );
+}
+
+async function findPendingGateway(supabase: any, authUserId: string) {
+  const { data, error } = await supabase
+    .from("assinaturas_mercadopago")
+    .select("id, mp_preapproval_id, checkout_url, detalhes")
+    .eq("status", "pendente")
+    .filter("detalhes->>user_id", "eq", authUserId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return data;
 }
 
 async function getPayment(
@@ -291,12 +342,23 @@ async function getPayment(
 }
 
 async function cancelSubscription(
-  body: any,
   mpToken: string,
   supabase: any,
-  headers: Record<string, string>
+  headers: Record<string, string>,
+  authUserId: string,
+  motivo: string | null = null,
 ) {
-  const { assinatura_id, mp_preapproval_id, user_id, motivo } = body;
+  const { data: candidates, error: searchError } = await supabase
+    .from("assinaturas_mercadopago")
+    .select("id, mp_preapproval_id, detalhes")
+    .in("status", ["pendente", "ativa", "pausada"])
+    .filter("detalhes->>user_id", "eq", authUserId)
+    .order("created_at", { ascending: false })
+    .limit(1);
+  if (searchError) throw searchError;
+
+  const assinatura = candidates?.[0];
+  const mp_preapproval_id = assinatura?.mp_preapproval_id;
 
   if (!mp_preapproval_id) {
     return new Response(
@@ -305,12 +367,12 @@ async function cancelSubscription(
     );
   }
 
-  // PUT /preapproval/{id} with status: "cancelled" per MP API docs
+  // O Mercado Pago usa o valor `canceled` para cancelar o preapproval.
   try {
     await callMercadoPagoWithRetry(
       `${MP_API_BASE}/preapproval/${mp_preapproval_id}`,
       "PUT",
-      { status: "cancelled" },
+      { status: "canceled" },
       mpToken
     );
   } catch (err) {
@@ -325,41 +387,33 @@ async function cancelSubscription(
 
   const cancelDate = new Date().toISOString();
 
-  // Atualiza tabela MP (registro do gateway)
-  if (assinatura_id) {
-    await supabase
-      .from("assinaturas_mercadopago")
-      .update({ status: "cancelada" })
-      .eq("id", assinatura_id);
-  } else {
-    // Fallback: encontrar via mp_preapproval_id
-    await supabase
-      .from("assinaturas_mercadopago")
-      .update({ status: "cancelada" })
-      .eq("mp_preapproval_id", mp_preapproval_id);
-  }
+  const { error: assinaturaError } = await supabase
+    .from("assinaturas_mercadopago")
+    .update({ status: "cancelada", data_fim: cancelDate.slice(0, 10) })
+    .eq("id", assinatura.id);
+  if (assinaturaError) throw assinaturaError;
 
   // Atualiza tabela do plano do usuário (que useUserPlan consulta)
-  if (user_id) {
-    await supabase
-      .from("assinaturas_plano")
-      .update({
-        status: "cancelada",
-        data_cancelamento: cancelDate,
-        updated_at: cancelDate,
-      })
-      .eq("user_id", user_id)
-      .eq("status", "ativa");
-  }
+  const { error: planError } = await supabase
+    .from("assinaturas_plano")
+    .update({
+      status: "cancelada",
+      data_cancelamento: cancelDate,
+      updated_at: cancelDate,
+    })
+    .eq("user_id", authUserId)
+    .eq("mp_assinatura_id", assinatura.id)
+    .in("status", ["ativa", "trial", "pendente"]);
+  if (planError) throw planError;
 
   // Audit trail
-  if (user_id) {
+  if (authUserId) {
     await supabase.from("audit_log").insert({
       action: "SUBSCRIPTION_CANCELLED",
       collection: "assinaturas_mercadopago",
-      record_id: assinatura_id || mp_preapproval_id,
-      user_id,
-      details: { motivo: motivo || null, mp_preapproval_id, cancelled_at: cancelDate },
+      record_id: assinatura.id,
+      user_id: authUserId,
+      details: { mp_preapproval_id, cancelled_at: cancelDate, motivo },
     });
   }
 
@@ -424,4 +478,11 @@ async function callMercadoPagoWithRetry(
     await new Promise((r) => setTimeout(r, 2000 * Math.pow(2, attempt - 1)));
     return callMercadoPagoWithRetry(url, method, payload, token, attempt + 1);
   }
+}
+
+function json(payload: Record<string, unknown>, status: number, headers: Record<string, string>) {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: { ...headers, "Content-Type": "application/json" },
+  });
 }

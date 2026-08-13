@@ -13,8 +13,9 @@ export default defineConfig({
     // no-op na v3 instalada aqui — o pool ficava na configuração padrão.
     pool: "threads",
     poolOptions: {
-      threads: { minThreads: 1, maxThreads: 2 },
+      threads: { singleThread: true },
     },
+    fileParallelism: false,
     // isolate:false fazia todos os arquivos dividirem o mesmo ambiente jsdom,
     // então um vazamento em um teste contaminava os demais.
     isolate: true,

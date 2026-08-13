@@ -25,6 +25,16 @@ import { cn } from '@/lib/utils';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { gerarLaudoPDF, downloadLaudoPDF, LaudoData } from '@/lib/pdfGenerator';
 
+/**
+ * Teto da worklist do laboratório.
+ *
+ * O PostgREST corta em 1.000 linhas por padrão e não avisa. Pedimos um a mais
+ * que este teto para detectar o corte e dizer ao operador que existe mais
+ * histórico, em vez de deixá-lo achar que a amostra sumiu.
+ */
+const TETO_WORKLIST = 500;
+
+
 const normalize = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 
 const stagger = { hidden: {}, visible: { transition: { staggerChildren: 0.05 } } };
@@ -37,7 +47,7 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
   const [coleta, setColeta] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [observacaoLaudo, setObservacaoLaudo] = useState('');
-  const { user } = useSupabaseAuth();
+  const { user, profile } = useSupabaseAuth();
 
   const fetchData = useCallback(async () => {
     if (!coletaId) return;
@@ -63,11 +73,41 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
+  /**
+   * O laudo só sai depois da conferência técnica.
+   *
+   * O pipeline é pendente → coletado → em_analise → validado → liberado, mas a
+   * liberação gravava `liberado = true` direto, sem olhar em que etapa a coleta
+   * estava. Um resultado digitado errado — ou ainda em análise — podia ser
+   * liberado e o paciente notificado antes de qualquer conferência.
+   */
+  const ETAPAS_QUE_PERMITEM_LIBERAR = ['validado', 'liberado'];
+
+  const conferenciaPendente = (): boolean => {
+    if (!coleta?.status) return false;
+    return !ETAPAS_QUE_PERMITEM_LIBERAR.includes(coleta.status);
+  };
+
+  const avisarConferenciaPendente = () => {
+    toast.error('Esta coleta ainda não foi validada.', {
+      description: `Situação atual: ${coleta?.status || 'desconhecida'}. Conclua a conferência técnica antes de liberar — o paciente é notificado assim que o resultado sai.`,
+      duration: 8000,
+    });
+  };
+
   const handleLiberarResultado = async (resultadoId: string) => {
+    if (conferenciaPendente()) { avisarConferenciaPendente(); return; }
+
     try {
       const { error } = await supabase
         .from('resultados_laboratorio')
-        .update({ liberado: true, data_liberacao: new Date().toISOString() })
+        .update({
+          liberado: true,
+          data_liberacao: new Date().toISOString(),
+          // A coluna existia e não era preenchida: não dava para saber quem
+          // liberou um resultado depois de ele chegar ao paciente.
+          liberado_por: profile?.nome || user?.id || null,
+        })
         .eq('id', resultadoId);
       if (error) throw error;
 
@@ -86,6 +126,8 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
     if (!coleta?.resultados_laboratorio?.length) return;
     const pendentes = coleta.resultados_laboratorio.filter((r: any) => !r.liberado);
     if (pendentes.length === 0) { toast.info('Todos já liberados'); return; }
+    // A liberação em lote é o caminho mais usado — e era o que menos conferia.
+    if (conferenciaPendente()) { avisarConferenciaPendente(); return; }
     try {
       let notificacoesFalhadas = 0;
       const liberados: string[] = [];
@@ -95,7 +137,11 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
         // ainda entrava na contagem final e o paciente era "notificado" de algo
         // que continuava pendente.
         const { error: upErr } = await supabase.from('resultados_laboratorio')
-          .update({ liberado: true, data_liberacao: new Date().toISOString() })
+          .update({
+            liberado: true,
+            data_liberacao: new Date().toISOString(),
+            liberado_por: profile?.nome || user?.id || null,
+          })
           .eq('id', r.id);
         if (upErr) {
           console.error('Falha ao liberar resultado', r.id, upErr);
@@ -112,19 +158,27 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
       }
 
       // A coleta só é dada como liberada se TODOS os pendentes saíram.
+      // A falha aqui só ia para o console: os resultados saíam, o paciente era
+      // notificado, e a coleta continuava aparecendo como pendente na worklist
+      // do laboratório — trabalho que parece não ter sido feito.
+      let coletaPendente = false;
       if (liberados.length === pendentes.length) {
         const { error: colErr } = await supabase.from('coletas_laboratorio')
           .update({ status: 'liberado' }).eq('id', coletaId!);
-        if (colErr) console.error('Falha ao atualizar status da coleta', colErr);
+        if (colErr) {
+          coletaPendente = true;
+          console.error('Falha ao atualizar status da coleta', colErr);
+        }
       }
 
       const naoLiberados = pendentes.length - liberados.length;
       const partes = [`${liberados.length} de ${pendentes.length} resultado(s) liberado(s)`];
       if (naoLiberados > 0) partes.push(`${naoLiberados} falhou(aram)`);
       if (notificacoesFalhadas > 0) partes.push(`${notificacoesFalhadas} notificação(ões) na fila de reenvio`);
+      if (coletaPendente) partes.push('a coleta continua marcada como pendente na worklist');
       const msg = partes.join(' · ');
 
-      if (naoLiberados > 0) toast.warning(msg);
+      if (naoLiberados > 0 || coletaPendente) toast.warning(msg);
       else toast.success(msg);
       await fetchData();
       onUpdate();
@@ -366,6 +420,12 @@ export default function LaudosLab() {
 
   const fetchLaudos = useCallback(async () => {
     setLoading(true);
+    // A ordenação era ASCENDENTE e sem `.limit()`. O PostgREST corta em 1.000
+    // linhas por padrão, então numa base com histórico o laboratório recebia as
+    // amostras mais ANTIGAS e as de hoje nunca apareciam na tela de laudos.
+    //
+    // Buscamos as mais recentes e reordenamos em memória para manter o FIFO
+    // dentro da janela de trabalho — que é o que a bancada precisa.
     const { data, error } = await supabase
       .from('coletas_laboratorio')
       .select(`
@@ -375,13 +435,26 @@ export default function LaudosLab() {
         resultados_laboratorio(id, liberado, parametro, resultado, unidade,
           valor_referencia_min, valor_referencia_max, exames(tipo_exame))
       `)
-      .order('created_at', { ascending: true });
+      .order('created_at', { ascending: false })
+      .limit(TETO_WORKLIST + 1);
 
     if (error) toast.error('Erro ao carregar laudos', { description: mensagemDeErro(error) });
     else {
-      const comResultados = (data ?? []).filter((c: any) =>
-        (c.resultados_laboratorio ?? []).length > 0
-      );
+      const linhas = data ?? [];
+      if (linhas.length > TETO_WORKLIST) {
+        toast.warning(`Mostrando as ${TETO_WORKLIST} coletas mais recentes.`, {
+          description: 'Há mais no histórico. Use a busca por paciente ou código da amostra para chegar às antigas.',
+          duration: 8000,
+        });
+      }
+
+      const comResultados = linhas
+        .slice(0, TETO_WORKLIST)
+        .filter((c: any) => (c.resultados_laboratorio ?? []).length > 0)
+        // FIFO: mais antiga primeiro, dentro da janela carregada.
+        .sort((a: any, b: any) =>
+          new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+
       setColetas(comResultados);
     }
     setLoading(false);

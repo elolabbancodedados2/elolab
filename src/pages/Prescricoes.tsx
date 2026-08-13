@@ -128,12 +128,17 @@ function buildReceitaPdf(data: {
   doc.setFontSize(9);
   doc.text(`CRM: ${data.crm}${data.especialidade ? ` — ${data.especialidade}` : ''}`, w / 2, y, { align: 'center' });
 
-  // ── Footer — digital signature notice ──
+  // ── Rodapé ──
+  // Este texto dizia "Documento assinado digitalmente. Valide a autenticidade
+  // em assinaturadigital.iti.gov.br" — impresso na hora da geração, antes de
+  // qualquer assinatura. A própria tela pede que o médico baixe e assine no
+  // portal do ITI depois. Quem tentasse validar receberia "documento não
+  // assinado", e a clínica é que pareceria estar falsificando receita.
   const footerY = 280;
   doc.setFontSize(7);
   doc.setTextColor(130);
   doc.text(
-    'Documento assinado digitalmente. Valide a autenticidade em assinaturadigital.iti.gov.br',
+    'Documento sem assinatura digital. Assine no portal gov.br ou de próprio punho para ter validade.',
     w / 2, footerY, { align: 'center' },
   );
   doc.text(
@@ -265,7 +270,10 @@ export default function Prescricoes() {
     for (const line of medicationLines) {
       const lineAlerts = consolidateAlerts(line, {
         alergias: toList(pAny.alergias),
-        idade: pAny.data_nascimento ? new Date().getFullYear() - parseDateOnly(pAny.data_nascimento)!.getFullYear() : undefined,
+        // Não passamos `idade`: a conta aqui era `anoAtual - anoNascimento`, sem
+        // ajuste de aniversário, e tinha precedência sobre o cálculo correto do
+        // motor de alertas. Uma criança de 1 ano e 8 meses virava 2 anos e o
+        // alerta pediátrico deixava de disparar. A data basta.
         dataNascimento: pAny.data_nascimento,
         gestante: !!pAny.gestante,
         amamentando: !!pAny.amamentando,
@@ -294,7 +302,11 @@ export default function Prescricoes() {
   // Função extraída: salva no DB e gera PDF. Chamada quando não há alertas
   // ou após o médico confirmar no dialog de alertas.
   const executeSaveAndPdf = async (paciente: any, medico: any) => {
-    await supabase.from('prescricoes').insert({
+    // O retorno deste insert era descartado. O Supabase devolve `{ error }` em
+    // vez de lançar exceção, então uma falha de RLS, de rede ou de constraint
+    // passava batida: o PDF era gerado, a tela dizia "sucesso" e o médico
+    // entregava ao paciente uma receita que não existia no prontuário.
+    const { error: erroInsert } = await supabase.from('prescricoes').insert({
       paciente_id: form.paciente_id,
       medico_id: form.medico_id,
       medicamento: form.medicamentos_texto.slice(0, 100),
@@ -302,6 +314,16 @@ export default function Prescricoes() {
       data_emissao: form.data_emissao,
       tipo: 'simples',
     });
+
+    if (erroInsert) {
+      setGerando(false);
+      toast.error('A receita não foi salva — nada foi gerado.', {
+        description: `${erroInsert.message}. Tente de novo; se persistir, avise o suporte antes de entregar qualquer receita ao paciente.`,
+        duration: 10000,
+      });
+      return;
+    }
+
     refetch();
 
     // Generate PDF

@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { format, isPast, isToday, isFuture, parseISO, differenceInDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { todayDateOnly } from '@/lib/dateOnly';
 
 // ─── Status helpers ────────────────────────────────────────
 const statusConfig: Record<string, { bg: string; label: string }> = {
@@ -669,7 +670,7 @@ export default function PortalPaciente() {
                             loadAvailableSlots(schedulingForm.medico_id, e.target.value);
                           }
                         }}
-                        min={new Date().toISOString().split('T')[0]}
+                        min={todayDateOnly()}
                         className="w-full px-3 py-2 border rounded-lg bg-background text-foreground"
                       />
                     </div>
@@ -1150,7 +1151,7 @@ export default function PortalPaciente() {
                         type="date"
                         value={rescheduleForm.data}
                         onChange={(e) => setRescheduleForm(f => ({ ...f, data: e.target.value }))}
-                        min={new Date().toISOString().split('T')[0]}
+                        min={todayDateOnly()}
                         className="w-full px-3 py-2 border rounded-lg bg-background text-foreground"
                       />
                     </div>

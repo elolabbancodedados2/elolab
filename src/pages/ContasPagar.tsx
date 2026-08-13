@@ -22,7 +22,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { Database } from '@/integrations/supabase/types';
-import { parseDateOnly } from '@/lib/dateOnly';
+import { parseDateOnly, todayDateOnly } from '@/lib/dateOnly';
 import { valorRealizado } from '@/lib/lancamentos';
 
 type StatusPagamento = Database['public']['Enums']['status_pagamento'];
@@ -112,7 +112,7 @@ export default function ContasPagar() {
         .eq('tipo', 'despesa')
         .order('data_vencimento', { ascending: true });
       if (error) throw error;
-      const today = new Date().toISOString().split('T')[0];
+      const today = todayDateOnly();
       return data.map(conta => {
         if (conta.status === 'pendente' && conta.data_vencimento && conta.data_vencimento < today) {
           return { ...conta, status: 'atrasado' as StatusPagamento };
@@ -147,7 +147,7 @@ export default function ContasPagar() {
   const handleSave = async () => {
     if (!formData.descricao || !formData.valor) { toast.error('Preencha descrição e valor.'); return; }
     if (formData.valor <= 0) { toast.error('O valor deve ser maior que zero.'); return; }
-    if (formData.data_vencimento && formData.data_vencimento < new Date().toISOString().split('T')[0] && !selectedId) {
+    if (formData.data_vencimento && formData.data_vencimento < todayDateOnly() && !selectedId) {
       toast.error('A data de vencimento não pode ser no passado.'); return;
     }
     setIsSubmitting(true);
@@ -157,7 +157,7 @@ export default function ContasPagar() {
         categoria: formData.categoria,
         descricao: formData.descricao,
         valor: formData.valor,
-        data: new Date().toISOString().split('T')[0],
+        data: todayDateOnly(),
         data_vencimento: formData.data_vencimento,
         status: formData.marcar_pago ? 'pago' as StatusPagamento : 'pendente' as StatusPagamento,
         forma_pagamento: formData.forma_pagamento || null,

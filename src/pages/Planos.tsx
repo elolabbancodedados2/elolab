@@ -1,6 +1,4 @@
 import React, { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { useNavigate } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
@@ -12,9 +10,8 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Check, Crown, Sparkles, Zap, Clock, Gift, ArrowRight, Shield, Headphones, XCircle } from 'lucide-react';
-import { useUserPlan, usePlanos, useStartTrialWithPayment } from '@/hooks/useSubscriptionPlan';
+import { useUserPlan, usePlanos, useCreatePlatformSubscription } from '@/hooks/useSubscriptionPlan';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
-import { PaymentMethodDialog, type PaymentMethodData } from '@/components/PaymentMethodDialog';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -74,58 +71,26 @@ const premiumFeatures = ['agente_ia', 'chatbot_whatsapp'];
 export default function Planos() {
   const { data: planos, isLoading } = usePlanos();
   const { planSlug, hasActivePlan, isTrial, trialEnd, trialDaysLeft } = useUserPlan();
-  const startTrialWithPayment = useStartTrialWithPayment();
-  const { user, profile } = useSupabaseAuth();
-  const navigate = useNavigate();
+  const createPlatformSubscription = useCreatePlatformSubscription();
+  const startTrialWithPayment = createPlatformSubscription;
+  const { user } = useSupabaseAuth();
   const queryClient = useQueryClient();
 
-  // State for payment method dialog
-  const [showPaymentDialog, setShowPaymentDialog] = useState(false);
-  const [selectedPlan, setSelectedPlan] = useState<any>(null);
   const [showCancelDialog, setShowCancelDialog] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
-
-  const handleStartTrialWithPayment = (paymentData: PaymentMethodData) => {
-    if (!selectedPlan || !user?.email) return;
-
-    startTrialWithPayment.mutate({
-      plano_slug: selectedPlan.slug,
-      plano_nome: selectedPlan.nome,
-      plano_valor: selectedPlan.valor,
-      trial_dias: selectedPlan.trial_dias || 3,
-      payment_method: paymentData.method,
-      payer_email: user.email,
-      payer_name: profile?.nome || user.email,
-    });
-
-    setShowPaymentDialog(false);
-  };
 
   const cancelMutation = useMutation({
     mutationFn: async (motivo: string) => {
       if (!user?.id) throw new Error('Usuário não autenticado');
 
       // Buscar a assinatura MP ativa do usuário
-      const { data: assinaturaMp, error: searchErr } = await supabase
-        .from('assinaturas_mercadopago')
-        .select('id, mp_preapproval_id')
-        .eq('status', 'ativa')
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (searchErr) throw searchErr;
-      if (!assinaturaMp?.mp_preapproval_id) {
+      if (!user?.id) {
         throw new Error('Não encontramos assinatura ativa para cancelar');
       }
 
       const { data, error } = await supabase.functions.invoke('mercadopago-checkout', {
         body: {
           action: 'cancel_subscription',
-          assinatura_id: assinaturaMp.id,
-          mp_preapproval_id: assinaturaMp.mp_preapproval_id,
-          user_id: user.id,
-          motivo,
         },
       });
       if (error) throw error;
@@ -148,14 +113,8 @@ export default function Planos() {
       const { data, error } = await supabase.functions.invoke('mercadopago-checkout', {
         body: {
           action: 'create_subscription',
-          plano_id: plano.id,
           plano_slug: plano.slug,
-          nome_plano: plano.nome,
-          descricao: plano.descricao || `Plano ${plano.nome} EloLab`,
-          valor: plano.valor,
-          frequencia: 'mensal',
-          payer_email: user.email,
-          payer_name: profile?.nome || user.email,
+          trial_dias: 0,
         },
       });
       if (error) throw error;
@@ -347,11 +306,8 @@ export default function Planos() {
                       <Button
                         className={`w-full h-12 text-base font-semibold ${isHighlighted ? config.btnClass : ''}`}
                         variant={isHighlighted ? 'default' : 'outline'}
-                        onClick={() => {
-                          setSelectedPlan(plano);
-                          setShowPaymentDialog(true);
-                        }}
-                        disabled={startTrialWithPayment.isPending}
+                        onClick={() => createPlatformSubscription.mutate({ plano_slug: plano.slug, trial_dias: plano.trial_dias || 3 })}
+                        disabled={createPlatformSubscription.isPending}
                       >
                         <Gift className="h-4 w-4 mr-2" />
                         {startTrialWithPayment.isPending ? 'Ativando...' : `Testar Grátis ${plano.trial_dias || 3} Dias`}
@@ -391,17 +347,6 @@ export default function Planos() {
       </div>
 
       {/* Payment Method Dialog */}
-      {selectedPlan && (
-        <PaymentMethodDialog
-          open={showPaymentDialog}
-          onOpenChange={setShowPaymentDialog}
-          onSubmit={handleStartTrialWithPayment}
-          isLoading={startTrialWithPayment.isPending}
-          planName={selectedPlan.nome}
-          trialDays={selectedPlan.trial_dias || 3}
-        />
-      )}
-
       {/* Cancel Subscription Dialog */}
       <AlertDialog open={showCancelDialog} onOpenChange={setShowCancelDialog}>
         <AlertDialogContent>

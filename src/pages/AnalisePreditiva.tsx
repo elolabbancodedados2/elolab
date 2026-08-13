@@ -12,7 +12,7 @@ import { AlertCircle, TrendingUp, Zap, Phone, Mail } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format, differenceInDays, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { parseDateOnly } from '@/lib/dateOnly';
+import { parseDateOnly, todayDateOnly } from '@/lib/dateOnly';
 
 interface PredictedNoShow {
   agendamento_id: string;
@@ -47,7 +47,7 @@ export default function AnalisePreditiva() {
         )
         .eq('clinica_id', profile.clinica_id)
         .eq('status', 'confirmado')
-        .gte('data', new Date().toISOString().split('T')[0])
+        .gte('data', todayDateOnly())
         .order('data', { ascending: true });
 
       if (!agendamentos) return [];

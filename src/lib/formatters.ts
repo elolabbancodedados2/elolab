@@ -1,5 +1,7 @@
 // Utility functions for formatting and masking
 
+import { toDateOnly } from './dateOnly';
+
 export function formatCPF(value: string): string {
   const digits = value.replace(/\D/g, '').slice(0, 11);
   
@@ -77,7 +79,9 @@ export function formatDate(date: Date | string, format: 'short' | 'long' | 'iso'
         day: 'numeric',
       });
     case 'iso':
-      return d.toISOString().split('T')[0];
+      // Dia no fuso local. `toISOString()` devolveria o dia em UTC, que à
+      // noite no Brasil já é o dia seguinte.
+      return toDateOnly(d);
     default:
       return d.toLocaleDateString('pt-BR');
   }

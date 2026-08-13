@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { parseDateOnly, todayDateOnly, daysBetweenDateOnly } from '@/lib/dateOnly';
+import { describe, it, expect, afterEach, vi } from 'vitest';
+import { parseDateOnly, todayDateOnly, toDateOnly, daysBetweenDateOnly } from '@/lib/dateOnly';
 
 /**
  * Estes testes existem por causa de um bug real: colunas DATE do Postgres
@@ -51,6 +51,67 @@ describe('todayDateOnly', () => {
 
   it('resulta em formato YYYY-MM-DD', () => {
     expect(todayDateOnly()).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+});
+
+/**
+ * O caixa da clínica quebrava aqui. `toISOString().split('T')[0]` devolve o dia
+ * em UTC; das 21h à meia-noite no Brasil (UTC−3) isso já é o dia seguinte.
+ * A recepcionista ia fechar o caixa às 21h e a tela dizia que não havia caixa
+ * aberto, porque procurava pela data de amanhã. Estes testes congelam o relógio
+ * no horário em que o bug aparece.
+ */
+describe('a virada de dia em UTC não afeta a data local', () => {
+  afterEach(() => vi.useRealTimers());
+
+  /** 12/08/2026 às 22h no fuso local, seja qual for o fuso da máquina. */
+  const noiteLocal = new Date(2026, 7, 12, 22, 0, 0);
+
+  it('às 22h ainda é hoje, não amanhã', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(noiteLocal);
+    expect(todayDateOnly()).toBe('2026-08-12');
+  });
+
+  it('às 23h59 ainda é hoje', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 7, 12, 23, 59, 59));
+    expect(todayDateOnly()).toBe('2026-08-12');
+  });
+
+  it('vira o dia só à meia-noite local', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 7, 13, 0, 0, 1));
+    expect(todayDateOnly()).toBe('2026-08-13');
+  });
+
+  it('atravessa a virada do mês pela hora local', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 7, 31, 22, 30, 0));
+    expect(todayDateOnly()).toBe('2026-08-31');
+  });
+
+  it('atravessa a virada do ano pela hora local', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 11, 31, 23, 0, 0));
+    expect(todayDateOnly()).toBe('2026-12-31');
+  });
+});
+
+describe('toDateOnly', () => {
+  it('formata uma data qualquer no fuso local', () => {
+    expect(toDateOnly(new Date(2026, 7, 12, 22, 0, 0))).toBe('2026-08-12');
+  });
+
+  it('preenche mês e dia com zero à esquerda', () => {
+    expect(toDateOnly(new Date(2026, 0, 5, 22, 0, 0))).toBe('2026-01-05');
+  });
+
+  it('é o que todayDateOnly usa por baixo', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 7, 12, 22, 0, 0));
+    expect(todayDateOnly()).toBe(toDateOnly(new Date(2026, 7, 12, 22, 0, 0)));
+    vi.useRealTimers();
   });
 });
 

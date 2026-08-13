@@ -39,6 +39,7 @@ import { usePacientes, useMedicos } from '@/hooks/useSupabaseData';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
+import { todayDateOnly } from '@/lib/dateOnly';
 
 const STATUS_COLORS: Record<string, string> = {
   aguardando: 'bg-warning/10 text-warning',
@@ -157,7 +158,7 @@ export default function ListaEspera() {
         preferencia_horario: formData.preferencia_horario || null,
         observacoes: formData.observacoes || null,
         status: 'aguardando',
-        data_cadastro: new Date().toISOString().split('T')[0],
+        data_cadastro: todayDateOnly(),
         clinica_id: profile?.clinica_id || null,
       });
 

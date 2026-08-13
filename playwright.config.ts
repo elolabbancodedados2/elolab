@@ -17,7 +17,19 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+      use: {
+        ...devices['Desktop Chrome'],
+        // Escape hatch para máquinas onde o download do browser do Playwright
+        // falha (CDN bloqueada, proxy corporativo). Sem isto a suíte inteira
+        // morre em milissegundos com "Executable doesn't exist" — 46 testes
+        // vermelhos que não têm nada a ver com o código do app, o que faz a
+        // pessoa duvidar do resultado em vez de duvidar do ambiente.
+        //
+        // Uso: PLAYWRIGHT_CHROMIUM_PATH=/caminho/para/chrome.exe npm run test:e2e
+        ...(process.env.PLAYWRIGHT_CHROMIUM_PATH
+          ? { launchOptions: { executablePath: process.env.PLAYWRIGHT_CHROMIUM_PATH } }
+          : {}),
+      },
     },
   ],
   webServer: {

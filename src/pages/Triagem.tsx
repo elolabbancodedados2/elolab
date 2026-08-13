@@ -297,19 +297,25 @@ export default function TriagemPage() {
         const triagemResult = await autoTriagemParaFila({
           agendamentoId: formData.agendamento_id,
           classificacaoRisco: formData.classificacao_risco,
+          clinicaId: profile?.clinica_id,
         });
+        if (!triagemResult.success) throw new Error(triagemResult.message);
 
         // Auto-notify doctor for urgent cases
         if (formData.classificacao_risco === 'vermelho' || formData.classificacao_risco === 'laranja') {
           const ag = agendamentos.find(a => a.id === formData.agendamento_id);
           if (ag) {
             const pac = pacientes.find(p => p.id === formData.paciente_id);
-            await autoNotificarMedico({
+            const notificacaoResult = await autoNotificarMedico({
               medicoId: ag.medico_id,
               pacienteNome: pac?.nome || 'Paciente',
               motivo: `Triagem ${formData.classificacao_risco.toUpperCase()} — PA: ${formData.pressao_arterial}, FC: ${formData.frequencia_cardiaca || '—'}`,
             });
-            triagemResult.actions.push('Médico notificado (urgência)');
+            if (notificacaoResult.success) {
+              triagemResult.actions.push(...notificacaoResult.actions);
+            } else {
+              triagemResult.actions.push(`Aviso: médico não notificado — ${notificacaoResult.message}`);
+            }
           }
         }
 

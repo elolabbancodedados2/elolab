@@ -22,6 +22,7 @@ import { LoadingButton } from '@/components/ui/loading-button';
 import { ListSkeleton } from '@/components/ui/loading-skeleton';
 import { ErrorState } from '@/components/ErrorState';
 import { exportPatientData, deletePatientData } from '@/lib/lgpdCompliance';
+import { pacienteCorresponde } from '@/lib/buscaPaciente';
 
 export default function LgpdPacientes() {
   const { data: pacientes = [], refetch, isLoading, error } = usePacientes();
@@ -33,13 +34,9 @@ export default function LgpdPacientes() {
   const [acaoEmCurso, setAcaoEmCurso] = useState<string | null>(null);
 
   const filtered = pacientes.filter((p: any) => {
-    const term = searchTerm.toLowerCase().trim();
-    if (!term) return true;
-    return (
-      p.nome?.toLowerCase().includes(term) ||
-      p.cpf?.includes(term) ||
-      p.email?.toLowerCase().includes(term)
-    );
+    // O titular que pede seus dados pela LGPD informa o CPF do próprio
+    // documento, sem máscara. Não achá-lo aqui é descumprir prazo legal.
+    return pacienteCorresponde(p, searchTerm);
   });
 
   const handleExport = async (paciente: any) => {

@@ -246,7 +246,9 @@ export async function gerarReceita(
   doc.text(`CRM: ${medico.crm || 'N/A'} | ${medico.especialidade || ''}`, 90, assinaturaY + 12, { align: 'center' });
   doc.setFontSize(7);
   doc.setTextColor(100, 100, 100);
-  doc.text('Assinatura digital ICP-Brasil pendente', 90, assinaturaY + 17, { align: 'center' });
+  // "pendente" sugeria um processo de assinatura em andamento no sistema, que
+  // não existe: não há integração com ICP-Brasil em lugar nenhum do app.
+  doc.text('Assine acima ou pelo assinador gov.br', 90, assinaturaY + 17, { align: 'center' });
   doc.setTextColor(0, 0, 0);
 
   addFooter(doc);

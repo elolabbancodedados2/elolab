@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import {
   Plus, Search, Eye, Printer, FileText, Loader2, Star,
   Clock, Calendar, AlertTriangle, ShieldCheck, Clipboard,
-  BadgeCheck, BookOpen, X,
+  BadgeCheck, BookOpen, X, FileSignature,
 } from 'lucide-react';
 import { format, addDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -296,12 +296,12 @@ export default function Atestados() {
             <FileText className="h-8 w-8 text-primary" />
             Atestados e Documentos
           </h1>
-          <p className="text-muted-foreground">Emissão de atestados e declarações com validade jurídica</p>
+          <p className="text-muted-foreground">Emissão de atestados e declarações</p>
         </div>
         <div className="flex gap-2">
           <Badge variant="outline" className="gap-1.5 text-xs">
-            <BadgeCheck className="h-3.5 w-3.5 text-success" />
-            Assinatura Digital
+            <FileSignature className="h-3.5 w-3.5 text-muted-foreground" />
+            Assinatura manual
           </Badge>
           <Button onClick={handleNew} className="gap-2"><Plus className="h-4 w-4" />Novo Atestado</Button>
         </div>
@@ -401,7 +401,7 @@ export default function Atestados() {
               <FileText className="h-5 w-5 text-primary" />
               Emitir Atestado
               <Badge variant="outline" className="gap-1 ml-auto text-[10px]">
-                <BadgeCheck className="h-3 w-3 text-success" />ICP-Brasil
+                <FileSignature className="h-3 w-3 text-muted-foreground" />Assinatura manual
               </Badge>
             </DialogTitle>
           </DialogHeader>
@@ -600,12 +600,19 @@ export default function Atestados() {
               />
             </div>
 
-            {/* Digital signature indicator */}
-            <div className="flex items-center gap-3 bg-success/5 border border-success/20 rounded-lg p-3">
-              <BadgeCheck className="h-5 w-5 text-success flex-shrink-0" />
+            {/* O sistema NÃO assina o documento. Não há integração com Memed,
+                ICP-Brasil ou qualquer provedor: o PDF é montado localmente.
+                Dizer o contrário fazia a clínica entregar ao paciente um
+                atestado que se declarava assinado e falhava na validação. */}
+            <div className="flex items-center gap-3 bg-warning/5 border border-warning/20 rounded-lg p-3">
+              <FileSignature className="h-5 w-5 text-warning flex-shrink-0" />
               <div className="text-sm">
-                <p className="font-medium text-success">Assinatura Digital ICP-Brasil</p>
-                <p className="text-xs text-muted-foreground">Documento com validade jurídica — assinatura eletrônica via Memed.</p>
+                <p className="font-medium text-warning">Este atestado sai sem assinatura digital</p>
+                <p className="text-xs text-muted-foreground">
+                  Vale como documento assinado de próprio punho depois de impresso e assinado pelo
+                  médico. Para assinatura com validade ICP-Brasil, assine o PDF no
+                  assinador gov.br antes de entregar.
+                </p>
               </div>
             </div>
           </div>
@@ -614,7 +621,7 @@ export default function Atestados() {
             <Button variant="outline" onClick={() => setIsFormOpen(false)} disabled={isSaving}>Cancelar</Button>
             <Button onClick={handleSave} disabled={isSaving} className="gap-2">
               {isSaving && <Loader2 className="h-4 w-4 animate-spin" />}
-              <BadgeCheck className="h-4 w-4" />Emitir e Assinar
+              <FileSignature className="h-4 w-4" />Emitir atestado
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -719,9 +726,9 @@ export default function Atestados() {
                   <p className="text-sm whitespace-pre-wrap">{selectedAtestado.observacoes}</p>
                 </div>
               )}
-              <div className="flex items-center gap-2 text-xs text-success bg-success/5 rounded p-2">
-                <BadgeCheck className="h-3.5 w-3.5" />
-                <span>Documento assinado digitalmente — ICP-Brasil via Memed</span>
+              <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/50 rounded p-2">
+                <FileSignature className="h-3.5 w-3.5" />
+                <span>Documento sem assinatura digital — imprima e assine, ou assine o PDF no gov.br</span>
               </div>
             </div>
           )}

@@ -114,17 +114,19 @@ export default function Financeiro() {
     });
 
     // Receitas por categoria
+    // Estes dois agrupamentos ficaram com `valor` enquanto os KPIs do topo já
+    // usavam `valorRealizado`: a soma das categorias não fechava com o total.
     const receitasPorCat: Record<string, number> = {};
     doMes.filter(l => l.tipo === 'receita' && l.status === 'pago').forEach(l => {
       const cat = l.categoria || 'outros';
-      receitasPorCat[cat] = (receitasPorCat[cat] || 0) + Number(l.valor);
+      receitasPorCat[cat] = (receitasPorCat[cat] || 0) + valorRealizado(l);
     });
 
     // Despesas por categoria
     const despesasPorCat: Record<string, number> = {};
     doMes.filter(l => l.tipo === 'despesa' && l.status === 'pago').forEach(l => {
       const cat = l.categoria || 'outros';
-      despesasPorCat[cat] = (despesasPorCat[cat] || 0) + Number(l.valor);
+      despesasPorCat[cat] = (despesasPorCat[cat] || 0) + valorRealizado(l);
     });
 
     const totalReceitas = Object.values(receitasPorCat).reduce((a, b) => a + b, 0);

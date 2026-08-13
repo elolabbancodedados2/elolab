@@ -29,9 +29,7 @@ describe('checkAllergyAlerts', () => {
     expect(alerts[0].severity).toBe('critical');
   });
 
-  it('detecta reação cruzada por classe (penicillin → amoxicillin)', () => {
-    // Nota: COMMON_ALLERGENS usa nomes em inglês ('amoxicillin').
-    // Prescrições em português ('amoxicilina') NÃO disparam a cruzada — bug conhecido.
+  it('detecta reação cruzada por classe em inglês', () => {
     const alerts = checkAllergyAlerts('Amoxicillin 500mg', ['penicillin']);
     expect(alerts.length).toBeGreaterThan(0);
     expect(alerts[0].severity).toBe('critical');
@@ -39,29 +37,121 @@ describe('checkAllergyAlerts', () => {
     expect(alerts[0].canIgnore).toBe(true);
   });
 
-  it('NÃO dispara reação cruzada quando nome está em português (limitação conhecida)', () => {
-    // Documenta o bug: 'Amoxicilina' (PT) não bate com 'amoxicillin' (EN no DB).
-    const alerts = checkAllergyAlerts('Amoxicilina 500mg', ['penicillin']);
-    expect(alerts).toEqual([]);
+  /**
+   * O caso clássico de anafilaxia na clínica: paciente com "Penicilina" anotada
+   * no prontuário recebendo "Amoxicilina". A tabela era em inglês e a comparação
+   * era `includes()` puro, então este alerta nunca disparava em português.
+   */
+  it('dispara reação cruzada com prontuário e receita em português', () => {
+    const alerts = checkAllergyAlerts('Amoxicilina 500mg', ['Penicilina']);
+    expect(alerts.length).toBeGreaterThan(0);
+    expect(alerts[0].id).toContain('allergy-class');
+    expect(alerts[0].severity).toBe('critical');
+  });
+
+  it('dispara mesmo com acento e caixa diferentes na alergia', () => {
+    const alerts = checkAllergyAlerts('amoxicilina 500 mg', ['ALERGIA A PENICILINA']);
+    expect(alerts.some(a => a.id.includes('allergy-class'))).toBe(true);
+  });
+
+  it('avisa do risco cruzado penicilina → cefalosporina', () => {
+    const alerts = checkAllergyAlerts('Cefalexina 500mg', ['penicilina']);
+    expect(alerts.some(a => a.id.startsWith('allergy-cross-'))).toBe(true);
+    expect(alerts[0].canIgnore).toBe(true);
+  });
+
+  it('pega alergia a sulfa prescrevendo sulfametoxazol', () => {
+    const alerts = checkAllergyAlerts('Sulfametoxazol + Trimetoprima', ['Sulfa']);
+    expect(alerts.length).toBeGreaterThan(0);
+  });
+
+  it('pega alergia a AINE prescrevendo diclofenaco', () => {
+    const alerts = checkAllergyAlerts('Diclofenaco sódico 50mg', ['anti-inflamatório']);
+    expect(alerts.length).toBeGreaterThan(0);
   });
 
   it('não dispara reação cruzada se medicamento não pertence à classe', () => {
-    const alerts = checkAllergyAlerts('Paracetamol', ['penicillin']);
+    const alerts = checkAllergyAlerts('Paracetamol', ['penicilina']);
+    expect(alerts).toEqual([]);
+  });
+
+  it('não confunde substring: "asma" na comorbidade não vira alergia a AAS', () => {
+    const alerts = checkAllergyAlerts('Paracetamol 750mg', ['asma']);
     expect(alerts).toEqual([]);
   });
 
   it('alergia direta não dispara também a cruzada (early return)', () => {
-    const alerts = checkAllergyAlerts('Ibuprofeno', ['ibuprofeno', 'nsaid']);
+    const alerts = checkAllergyAlerts('Ibuprofeno', ['ibuprofeno', 'aines']);
     expect(alerts).toHaveLength(1);
     expect(alerts[0].id).toBe('allergy-direct');
   });
 });
 
 describe('checkAgeAndReproductiveAlerts', () => {
-  it('bloqueia ibuprofeno em criança de 2 anos (DB: ageMin=3)', () => {
-    // Nota: idade=0 não dispara alerta por bug "if (ageYears && ...)" tratar 0 como falsy.
-    // Idade=2 funciona normalmente.
+  /**
+   * A idade mínima do ibuprofeno é 3 MESES, não 3 anos — o campo estava marcado
+   * "3 // meses" e era comparado contra anos. O pediatra batia num bloqueio
+   * crítico e inegável ao prescrever um antitérmico corriqueiro, todo dia.
+   */
+  it('permite ibuprofeno em criança de 2 anos (mínimo é 3 meses)', () => {
     const alerts = checkAgeAndReproductiveAlerts('Ibuprofeno', { idade: 2 });
+    expect(alerts.some(a => a.id === 'age-too-young')).toBe(false);
+  });
+
+  it('permite ibuprofeno em bebê de 6 meses', () => {
+    const nasc = new Date();
+    nasc.setMonth(nasc.getMonth() - 6);
+    const alerts = checkAgeAndReproductiveAlerts('Ibuprofeno', {
+      dataNascimento: nasc.toISOString().slice(0, 10),
+    });
+    expect(alerts.some(a => a.id === 'age-too-young')).toBe(false);
+  });
+
+  /**
+   * `if (ageYears && ...)` tratava idade 0 como falsy: recém-nascido a 11 meses
+   * era a única faixa que passava sem checagem nenhuma — justamente a que mais
+   * depende dela.
+   */
+  it('bloqueia ibuprofeno em recém-nascido de 1 mês (idade 0 não é mais falsy)', () => {
+    const nasc = new Date();
+    nasc.setMonth(nasc.getMonth() - 1);
+    const alerts = checkAgeAndReproductiveAlerts('Ibuprofeno', {
+      dataNascimento: nasc.toISOString().slice(0, 10),
+    });
+    expect(alerts.some(a => a.id === 'age-too-young')).toBe(true);
+  });
+
+  it('bloqueia doxiciclina em bebê de idade 0 informada como número', () => {
+    const alerts = checkAgeAndReproductiveAlerts('Doxiciclina', { idade: 0 });
+    expect(alerts.some(a => a.id === 'age-too-young')).toBe(true);
+  });
+
+  it('descreve a idade do bebê em meses, não em "0 anos"', () => {
+    const nasc = new Date();
+    // Evita overflow ao subtrair meses em meses com 29/30/31 dias.
+    nasc.setDate(1);
+    nasc.setMonth(nasc.getMonth() - 2);
+    const alerts = checkAgeAndReproductiveAlerts('Doxiciclina', {
+      dataNascimento: nasc.toISOString().slice(0, 10),
+    });
+    const alerta = alerts.find(a => a.id === 'age-too-young');
+    expect(alerta?.message).toContain('meses');
+  });
+
+  /**
+   * A tela de receitas calculava idade como `anoAtual - anoNascimento` e esse
+   * valor tinha precedência sobre o cálculo interno. Sempre arredondava para
+   * cima, ou seja, sempre a favor de liberar.
+   */
+  it('a data de nascimento tem precedência sobre uma idade errada recebida pronta', () => {
+    const nasc = new Date();
+    nasc.setFullYear(nasc.getFullYear() - 1);
+    nasc.setMonth(nasc.getMonth() - 8); // 1 ano e 8 meses
+    const alerts = checkAgeAndReproductiveAlerts('Enalapril', {
+      idade: 2, // o que a tela calculava errado
+      dataNascimento: nasc.toISOString().slice(0, 10),
+    });
+    // Enalapril: mínimo 2 anos. Com 1a8m o alerta precisa disparar.
     expect(alerts.some(a => a.id === 'age-too-young')).toBe(true);
   });
 
@@ -111,14 +201,39 @@ describe('checkComorbidityAlerts', () => {
     expect(checkComorbidityAlerts('Ibuprofeno', [])).toEqual([]);
   });
 
-  it('alerta ibuprofeno em paciente com úlcera ativa', () => {
-    const alerts = checkComorbidityAlerts('Ibuprofeno', ['ulcer_disease']);
+  /**
+   * As comorbidades vêm de `paciente_comorbidades.descricao`, texto livre em
+   * português. A comparação era feita contra tokens internos em inglês
+   * (`ulcer_disease`), então este alerta também era código morto na prática.
+   */
+  it('alerta ibuprofeno em paciente com úlcera gástrica (texto do prontuário)', () => {
+    const alerts = checkComorbidityAlerts('Ibuprofeno 600mg', ['Úlcera gástrica']);
     expect(alerts.length).toBeGreaterThan(0);
     expect(alerts[0].severity).toBe('warning');
   });
 
+  it('alerta naproxeno em paciente com insuficiência renal', () => {
+    const alerts = checkComorbidityAlerts('Naproxeno', ['Insuficiência renal crônica']);
+    expect(alerts.length).toBeGreaterThan(0);
+  });
+
+  it('alerta sinvastatina em paciente com cirrose', () => {
+    const alerts = checkComorbidityAlerts('Sinvastatina 20mg', ['Cirrose hepática']);
+    expect(alerts.length).toBeGreaterThan(0);
+  });
+
+  it('alerta varfarina em paciente com plaquetopenia', () => {
+    const alerts = checkComorbidityAlerts('Varfarina', ['Trombocitopenia']);
+    expect(alerts.length).toBeGreaterThan(0);
+  });
+
   it('não emite alerta se comorbidade não conflita', () => {
     const alerts = checkComorbidityAlerts('Ibuprofeno', ['hipertensao']);
+    expect(alerts).toEqual([]);
+  });
+
+  it('não emite alerta para medicamento fora da tabela', () => {
+    const alerts = checkComorbidityAlerts('MedicamentoFicticio123', ['Úlcera gástrica']);
     expect(alerts).toEqual([]);
   });
 });
@@ -128,11 +243,23 @@ describe('consolidateAlerts', () => {
     const alerts = consolidateAlerts('Ibuprofeno', {
       idade: 1,
       alergias: ['ibuprofeno'],
-      comorbidades: ['ulcer_disease'],
+      comorbidades: ['Úlcera gástrica'],
     });
     const ids = alerts.map(a => a.id);
     expect(new Set(ids).size).toBe(ids.length);
     expect(alerts.some(a => a.id === 'allergy-direct')).toBe(true);
+  });
+
+  it('junta os três tipos de alerta num caso realista de balcão', () => {
+    const nasc = new Date();
+    nasc.setMonth(nasc.getMonth() - 1); // 1 mês de vida
+    const alerts = consolidateAlerts('Ibuprofeno 100mg/ml', {
+      dataNascimento: nasc.toISOString().slice(0, 10),
+      alergias: ['Penicilina'],
+      comorbidades: ['Asma grave'],
+    });
+    expect(alerts.some(a => a.id === 'age-too-young')).toBe(true);
+    expect(alerts.some(a => a.id.startsWith('comorbidity-'))).toBe(true);
   });
 
   it('retorna lista vazia para paciente saudável e medicamento seguro', () => {

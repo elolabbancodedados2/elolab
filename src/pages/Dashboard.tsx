@@ -257,8 +257,23 @@ export default function Dashboard() {
   const financeiroStats = useMemo(() => {
     const filterByMonth = (tipo: string, status: string, month = mesAtual, year = anoAtual) =>
       lancamentos
-        .filter(l => { const d = parseDateOnly(l.data)!; return l.tipo === tipo && l.status === status && d.getMonth() === month && d.getFullYear() === year; })
-        .reduce((acc, l) => acc + Number(l.valor), 0);
+        .filter(l => {
+          const d = parseDateOnly(l.data);
+          return Boolean(
+            d &&
+            l.tipo === tipo &&
+            l.status === status &&
+            d.getMonth() === month &&
+            d.getFullYear() === year,
+          );
+        })
+        .reduce((acc, l) => {
+          // Depois da baixa, `valor_pago` é o que efetivamente entrou/saiu do
+          // caixa. O `valor` continua sendo o total originalmente cobrado e
+          // deve ser usado apenas para valores ainda em aberto.
+          const valor = status === 'pago' ? valorRealizado(l) : Number(l.valor) || 0;
+          return acc + valor;
+        }, 0);
 
     const receitasMes = filterByMonth('receita', 'pago');
     const aReceber = filterByMonth('receita', 'pendente');
@@ -285,8 +300,13 @@ export default function Dashboard() {
     const sparkReceitas = monthlyChartData.map(d => d.receitas);
 
     const atendimentosFinalizadosMes = baseAgendamentos.filter(a => {
-      const d = parseDateOnly(a.data)!;
-      return a.status === 'finalizado' && d.getMonth() === mesAtual && d.getFullYear() === anoAtual;
+      const d = parseDateOnly(a.data);
+      return Boolean(
+        d &&
+        a.status === 'finalizado' &&
+        d.getMonth() === mesAtual &&
+        d.getFullYear() === anoAtual,
+      );
     }).length;
     const ticketMedio = atendimentosFinalizadosMes > 0 ? receitasMes / atendimentosFinalizadosMes : 0;
 
@@ -315,8 +335,8 @@ export default function Dashboard() {
     const sparkConsultas = Array.from({ length: 6 }, (_, i) => {
       const date = new Date(anoAtual, mesAtual - 5 + i, 1);
       return agendamentos.filter(a => {
-        const d = parseDateOnly(a.data)!;
-        return d.getMonth() === date.getMonth() && d.getFullYear() === date.getFullYear();
+        const d = parseDateOnly(a.data);
+        return Boolean(d && d.getMonth() === date.getMonth() && d.getFullYear() === date.getFullYear());
       }).length;
     });
 

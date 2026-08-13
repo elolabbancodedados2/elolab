@@ -20,12 +20,22 @@ import { format, differenceInMinutes, differenceInHours, isToday, isYesterday, s
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
+
+/**
+ * Teto da worklist do laboratório.
+ *
+ * O PostgREST corta em 1.000 linhas por padrão e não avisa. Pedimos um a mais
+ * que este teto para detectar o corte e dizer ao operador que existe mais
+ * histórico, em vez de deixá-lo achar que a amostra sumiu.
+ */
+const TETO_WORKLIST = 500;
+
 import {
   FlaskConical, Search, Plus, TestTube, ClipboardCheck, AlertTriangle,
   Clock, CheckCircle2, XCircle, Eye, Printer, Tag, Barcode,
   User, Droplets, MapPin, Package, FileText, Link2, Filter,
   TrendingUp, Activity, Calendar, ArrowRight, Trash2, RotateCcw,
-  Download, Zap, Timer, Shield,
+  Download, Zap, Timer, Shield, Loader2,
 } from 'lucide-react';
 
 const statusColors: Record<string, string> = {
@@ -128,11 +138,30 @@ export default function Laboratorio() {
   const { data: coletas, isLoading } = useQuery({
     queryKey: ['coletas-laboratorio'],
     queryFn: async () => {
-      const { data } = await supabase
+      // Sem `.limit()` o PostgREST aplica o teto padrão (1.000 linhas) e corta
+      // em silêncio: passado esse ponto, amostras antigas simplesmente somem da
+      // worklist sem nenhum aviso, e o técnico conclui que a coleta se perdeu.
+      // Pedimos um a mais que o teto justamente para saber se houve corte.
+      const { data, error } = await supabase
         .from('coletas_laboratorio')
         .select('*, pacientes(nome, cpf, data_nascimento, sexo), medicos(nome, crm, especialidade)')
-        .order('created_at', { ascending: false });
-      return data || [];
+        .order('created_at', { ascending: false })
+        .limit(TETO_WORKLIST + 1);
+
+      if (error) {
+        toast.error('Não foi possível carregar a worklist.', { description: mensagemDeErro(error) });
+        throw error;
+      }
+
+      const linhas = data || [];
+      if (linhas.length > TETO_WORKLIST) {
+        toast.warning(`Mostrando as ${TETO_WORKLIST} coletas mais recentes.`, {
+          description: 'Há mais registros no histórico. Use os filtros de situação e busca para chegar às amostras antigas.',
+          duration: 8000,
+        });
+        return linhas.slice(0, TETO_WORKLIST);
+      }
+      return linhas;
     },
   });
 
@@ -179,6 +208,11 @@ export default function Laboratorio() {
       queryClient.invalidateQueries({ queryKey: ['coletas-laboratorio'] });
       toast.success('Status atualizado');
     },
+    // Sem `onError` o botão parecia não fazer nada: o técnico seguia
+    // trabalhando com uma coleta pendente sem saber que o update falhou.
+    onError: (e) => toast.error('Não foi possível mudar o status da coleta', {
+      description: mensagemDeErro(e),
+    }),
   });
 
   const addResultado = useMutation({
@@ -939,6 +973,10 @@ export default function Laboratorio() {
                 <form onSubmit={(e) => {
                   e.preventDefault();
                   if (!showResultados) return;
+                  // O botão não era desabilitado durante a mutation: dois
+                  // cliques por impaciência inseriam o mesmo parâmetro duas
+                  // vezes na coleta, e o laudo saía com a linha repetida.
+                  if (addResultado.isPending) return;
                   const coleta = coletas?.find((c: any) => c.id === showResultados);
                   addResultado.mutate({
                     coleta_id: showResultados,
@@ -960,7 +998,15 @@ export default function Laboratorio() {
                   <div><Label className="text-xs">Ref. Mínimo</Label><Input type="number" step="any" value={newResultForm.valor_referencia_min} onChange={(e) => setNewResultForm(p => ({ ...p, valor_referencia_min: e.target.value }))} /></div>
                   <div><Label className="text-xs">Ref. Máximo</Label><Input type="number" step="any" value={newResultForm.valor_referencia_max} onChange={(e) => setNewResultForm(p => ({ ...p, valor_referencia_max: e.target.value }))} /></div>
                   <div className="col-span-2">
-                    <Button type="submit" size="sm" disabled={!newResultForm.parametro || !newResultForm.resultado}>Adicionar</Button>
+                    <Button
+                      type="submit"
+                      size="sm"
+                      disabled={!newResultForm.parametro || !newResultForm.resultado || addResultado.isPending}
+                      className="gap-2"
+                    >
+                      {addResultado.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                      Adicionar
+                    </Button>
                   </div>
                 </form>
               </CardContent>

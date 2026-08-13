@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import QRCode from 'qrcode';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -39,6 +40,41 @@ export function SessionsTab({
 }: SessionsTabProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [newInstanceName, setNewInstanceName] = useState('');
+  const [qrImages, setQrImages] = useState<Record<string, string>>({});
+
+  // A Evolution API can return either an image/base64 or the raw QR payload
+  // (`code`). Generate the image in the browser for the latter so the user
+  // always gets something scannable instead of a broken <img>.
+  useEffect(() => {
+    let active = true;
+
+    const generateImages = async () => {
+      const entries = await Promise.all(
+        sessions
+          .filter((session) => session.status !== 'connected' && session.qr_code)
+          .map(async (session) => {
+            const value = session.qr_code!.trim();
+            if (value.startsWith('data:image/')) return [session.id, value] as const;
+
+            // Raw base64 image data is common in Evolution API responses.
+            if (value.length > 100 && /^[A-Za-z0-9+/=]+$/.test(value)) {
+              return [session.id, `data:image/png;base64,${value}`] as const;
+            }
+
+            try {
+              return [session.id, await QRCode.toDataURL(value, { width: 384, margin: 2 })] as const;
+            } catch {
+              return null;
+            }
+          }),
+      );
+
+      if (active) setQrImages(Object.fromEntries(entries.filter(Boolean) as Array<readonly [string, string]>));
+    };
+
+    void generateImages();
+    return () => { active = false; };
+  }, [sessions]);
 
   const handleCreate = () => {
     onCreateSession(newInstanceName);
@@ -133,13 +169,15 @@ export function SessionsTab({
                 )}
               </CardHeader>
               <CardContent className="space-y-4">
-                {session.status === 'qr_code' && session.qr_code && (
+                {session.status !== 'connected' && (
                   <div className="flex flex-col items-center gap-2">
-                    <img
-                      src={session.qr_code.startsWith('data:') ? session.qr_code : `data:image/png;base64,${session.qr_code}`}
-                      alt="QR Code"
-                      className="w-48 h-48 border rounded"
-                    />
+                    {qrImages[session.id] && (
+                      <img
+                        src={qrImages[session.id]}
+                        alt="QR Code para conectar o WhatsApp"
+                        className="w-48 h-48 border rounded"
+                      />
+                    )}
                     <Button
                       variant="outline"
                       size="sm"
@@ -147,7 +185,7 @@ export function SessionsTab({
                       disabled={isRefreshing}
                     >
                       <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
-                      Atualizar QR
+                      {session.qr_code ? 'Atualizar QR' : 'Gerar QR Code'}
                     </Button>
                   </div>
                 )}

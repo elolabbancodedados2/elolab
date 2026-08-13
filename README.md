@@ -94,13 +94,26 @@ VITE_SUPABASE_PUBLISHABLE_KEY=
 ## ✅ Qualidade
 
 ```bash
-npm run test:run     # 173 testes unitários e de integração
-npm run test:e2e     # Playwright (inclui verificação de RLS)
+npm run test:run     # 291 testes unitários e de integração
+npm run test:e2e     # Playwright: RLS, autorização das edge functions e varredura dos 41 módulos
 npx tsc --noEmit -p tsconfig.app.json
 npm run lint
 ```
 
 O CI roda typecheck, lint e testes a cada push em `dev` e PR para `main`.
+
+**Isolamento entre clínicas** tem suíte própria, que só roda com duas contas
+reais em clínicas diferentes — sem elas os testes são pulados, nunca passam em
+falso:
+
+```bash
+CLINICA_A_EMAIL=... CLINICA_A_SENHA=... \
+CLINICA_B_EMAIL=... CLINICA_B_SENHA=... \
+npm run test:e2e -- tests/isolamento-entre-clinicas.spec.ts
+```
+
+Se o download do browser do Playwright falhar (CDN bloqueada, proxy), aponte um
+Chromium já instalado com `PLAYWRIGHT_CHROMIUM_PATH=/caminho/para/chrome`.
 
 ## 🔒 Segurança
 
@@ -116,10 +129,22 @@ O CI roda typecheck, lint e testes a cada push em `dev` e PR para `main`.
 
 ### ⚠️ Pontos de atenção
 
-- **O agente de WhatsApp usa DeepSeek** (`api.deepseek.com`). Conteúdo de
-  conversas com pacientes sai para um provedor no exterior — sob a LGPD isso é
-  transferência internacional de dado sensível de saúde e exige base legal e
-  cláusulas contratuais próprias. Avalie com o jurídico antes de divulgar.
+- **O sistema não assina documento digitalmente.** Receita, atestado e guia de
+  exame saem sem assinatura — o médico assina de próprio punho após imprimir, ou
+  assina o PDF no assinador gov.br. Não há integração com ICP-Brasil nem Memed.
+  A tela dizia o contrário: o atestado se declarava "assinado digitalmente via
+  Memed" e havia um botão que pedia o PIN do certificado do médico, descartava o
+  PIN e marcava o documento como assinado por certificado. Foi removido. A
+  assinatura do **prontuário** existe e funciona, mas é eletrônica simples (fecha
+  para edição e registra autor, CRM, data e hash), o que atende a CFM 1.821/07 —
+  não é ICP-Brasil.
+- **A IA usa OpenAI** (`api.openai.com`), tanto no apoio à decisão clínica quanto
+  no agente de WhatsApp. Conteúdo de conversas e texto clínico sai para um
+  provedor no exterior — sob a LGPD isso é transferência internacional de dado
+  sensível de saúde e exige base legal e cláusulas contratuais próprias. O
+  endpoint clínico agora exige papel de médico, restringe por clínica e registra
+  cada envio na auditoria, mas isso não substitui o DPA. Avalie com o jurídico
+  antes de divulgar.
 - **O sistema não emite nota fiscal.** A NF da clínica sai pelo contador. O
   módulo que existia era apenas um registro manual, sem envio à SEFAZ, e foi
   removido para não gerar digitação duplicada.
