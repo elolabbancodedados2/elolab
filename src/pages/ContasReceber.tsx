@@ -147,7 +147,7 @@ export default function ContasReceber() {
         .eq('tipo', 'receita')
         .order('created_at', { ascending: false });
       if (error) throw error;
-      const today = new Date().toISOString().split('T')[0];
+      const today = todayDateOnly();
       return data.map(conta => {
         if (conta.status === 'pendente' && conta.data_vencimento && conta.data_vencimento < today) {
           return { ...conta, status: 'atrasado' as StatusPagamento };
@@ -221,7 +221,9 @@ export default function ContasReceber() {
     const map: Record<string, number> = {};
     filteredContas.filter(c => c.status === 'pago').forEach(c => {
       const fp = c.forma_pagamento || 'outros';
-      map[fp] = (map[fp] || 0) + c.valor;
+      // Recebido por forma de pagamento é dinheiro que entrou: se somar `valor`
+      // aqui, o gráfico não fecha com o KPI "Recebido" da mesma tela.
+      map[fp] = (map[fp] || 0) + valorRealizado(c);
     });
     return Object.entries(map)
       .map(([key, value]) => ({
@@ -259,7 +261,7 @@ export default function ContasReceber() {
         categoria: formData.categoria,
         descricao: formData.descricao,
         valor: formData.valor,
-        data: new Date().toISOString().split('T')[0],
+        data: todayDateOnly(),
         data_vencimento: formData.data_vencimento,
         status: 'pendente' as StatusPagamento,
         paciente_id: formData.paciente_id || null,

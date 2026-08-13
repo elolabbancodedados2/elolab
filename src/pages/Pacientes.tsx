@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Plus, Search, Edit, Trash2, Eye, Tag, Link, Loader2, MapPin,
@@ -42,7 +42,9 @@ import { cn, sanitizeText } from '@/lib/utils';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { useCurrentMedico } from '@/hooks/useCurrentMedico';
 import { gerarProntuarioPDF, downloadPDF, openPDF } from '@/lib/pdfGenerator';
-import { parseDateOnly } from '@/lib/dateOnly';
+import { parseDateOnly, todayDateOnly } from '@/lib/dateOnly';
+import { pacienteCorresponde } from '@/lib/buscaPaciente';
+import { logAudit } from '@/lib/auditTrail';
 
 interface PacienteFormData {
   nome: string;
@@ -190,39 +192,74 @@ export default function Pacientes() {
   const { data: convenios = [] } = useSupabaseQuery<any>('convenios', { orderBy: { column: 'nome', ascending: true } });
   const { data: medicos = [] } = useSupabaseQuery<any>('medicos', { orderBy: { column: 'nome', ascending: true } });
 
-  // Load prontuários when patient changes
+  /**
+   * Guarda qual paciente está aberto AGORA.
+   *
+   * As três cargas abaixo eram disparadas sem cancelamento nem verificação: ao
+   * abrir o paciente A e logo em seguida o B, a resposta atrasada de A
+   * preenchia as abas de B. O operador via prontuário, exames ou consultas de
+   * outra pessoa na ficha aberta — e é o tipo de erro que ninguém consegue
+   * reproduzir depois, mas que causa dano se alguém agir sobre o que viu.
+   */
+  const pacienteEmFococRef = useRef<string | null>(null);
+
+  // Load prontuários when patient changes.
+  //
+  // As três cargas descartavam `error`: numa falha de rede ou de permissão a
+  // lista vinha vazia e a tela dizia "nenhum registro". Um paciente com dez
+  // anos de histórico aparecia como se nunca tivesse sido atendido — e o
+  // médico decidia em cima disso.
   const loadProntuarios = useCallback(async (pacienteId: string) => {
     setLoadingProntuarios(true);
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('prontuarios')
       .select('id, data, queixa_principal, hipotese_diagnostica, diagnostico_principal, conduta, sinais_vitais, plano_terapeutico, historia_doenca_atual, historia_patologica_pregressa, historia_familiar, historia_social, revisao_sistemas, alergias_relatadas, medicamentos_em_uso, exames_fisicos, exame_cabeca_pescoco, exame_torax, exame_abdomen, exame_membros, exame_neurologico, exame_pele, orientacoes_paciente, observacoes_internas, diagnosticos_secundarios, medico_id, paciente_id, medicos(nome, crm, especialidade)')
       .eq('paciente_id', pacienteId)
       .order('data', { ascending: false })
       .limit(50);
+    if (pacienteEmFococRef.current !== pacienteId) return; // resposta velha
+    if (error) {
+      toast.error('Não foi possível carregar o histórico de prontuários.', {
+        description: `${error.message}. A lista abaixo pode estar incompleta — não trate como "sem histórico".`,
+        duration: 10000,
+      });
+    }
     setProntuarioList(data || []);
     setLoadingProntuarios(false);
   }, []);
 
   const loadAgendamentos = useCallback(async (pacienteId: string) => {
     setLoadingAgendamentos(true);
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('agendamentos')
       .select('id, data, hora_inicio, hora_fim, status, tipo, observacoes, medico_id, medicos(nome, crm, especialidade), salas(nome)')
       .eq('paciente_id', pacienteId)
       .order('data', { ascending: false })
       .limit(50);
+    if (pacienteEmFococRef.current !== pacienteId) return;
+    if (error) {
+      toast.error('Não foi possível carregar as consultas deste paciente.', {
+        description: `${error.message}. A lista pode estar incompleta.`,
+      });
+    }
     setAgendamentosList(data || []);
     setLoadingAgendamentos(false);
   }, []);
 
   const loadExames = useCallback(async (pacienteId: string) => {
     setLoadingExames(true);
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('exames')
       .select('id, tipo_exame, status, data_solicitacao, data_realizacao, resultado, observacoes, medico_solicitante_id, medicos:medico_solicitante_id(nome, crm)')
       .eq('paciente_id', pacienteId)
       .order('data_solicitacao', { ascending: false })
       .limit(50);
+    if (pacienteEmFococRef.current !== pacienteId) return;
+    if (error) {
+      toast.error('Não foi possível carregar os exames deste paciente.', {
+        description: `${error.message}. A lista pode estar incompleta.`,
+      });
+    }
     setExamesList(data || []);
     setLoadingExames(false);
   }, []);
@@ -230,7 +267,13 @@ export default function Pacientes() {
   // Reset state when view opens
   const handleViewWithProntuario = useCallback((paciente: any) => {
     setIsFormOpen(false);
+    pacienteEmFococRef.current = paciente.id; // antes de disparar as cargas
     setSelectedPacienteId(paciente.id);
+    // Limpa as listas do paciente anterior: sem isso, entre abrir a ficha e a
+    // resposta chegar, a tela mostra os dados de quem estava aberto antes.
+    setProntuarioList([]);
+    setAgendamentosList([]);
+    setExamesList([]);
     setViewTab('dados');
     setProntuarioTab('lista');
     setActiveProntuario(null);
@@ -340,39 +383,54 @@ export default function Pacientes() {
         prontuarioId = data.id;
       }
 
-      if (!activeProntuario?.id) {
-        for (const presc of prontuarioPrescricoes) {
-          if (presc.medicamento) {
-            await supabase.from('prescricoes').insert({
-              paciente_id: prontuarioForm.paciente_id,
-              medico_id: prontuarioForm.medico_id,
-              prontuario_id: prontuarioId,
+      // Prescrições numa transação só (migration 20260812120000). Antes eram
+      // inserts soltos com o erro descartado: a tela dizia "Prontuário salvo"
+      // e um medicamento podia simplesmente não ter sido gravado.
+      //
+      // Também passou a rodar na edição, não só na criação: antes o bloco era
+      // `if (!activeProntuario?.id)`, então alterar ou remover uma prescrição
+      // de um prontuário existente não mudava nada no banco.
+      if (prontuarioId) {
+        const validas = prontuarioPrescricoes.filter(p => p.medicamento);
+        const { error: prescErr } = await (supabase as any).rpc(
+          'substituir_prescricoes_do_prontuario',
+          {
+            p_prontuario_id: prontuarioId,
+            p_prescricoes: validas.map(presc => ({
               medicamento: presc.medicamento,
               dosagem: presc.dosagem || null,
               posologia: presc.posologia || null,
               duracao: presc.duracao || null,
               quantidade: presc.quantidade || null,
               observacoes: presc.observacoes || null,
-              data_emissao: format(new Date(), 'yyyy-MM-dd'),
+              data_emissao: todayDateOnly(),
               tipo: 'simples',
-              clinica_id: authProfile?.clinica_id || null,
-            });
+            })),
           }
-        }
+        );
+        if (prescErr) throw prescErr;
       }
 
-      try {
-        await supabase.from('audit_log').insert({
-          action: activeProntuario?.id ? 'update' : 'create',
-          collection: 'prontuarios',
-          record_id: prontuarioId,
-          record_name: pacientes.find(p => p.id === selectedPacienteId)?.nome || '',
-          user_id: authProfile?.id || null,
-          user_name: authProfile?.nome || null,
-        });
-      } catch { /* silent */ }
+      // O `catch` vazio daqui nunca disparava: o supabase-js devolve `{ error }`
+      // em vez de lançar. Um prontuário podia ser alterado sem qualquer
+      // registro de quem foi — exatamente o que a CFM 1.821/07 exige que haja.
+      const trilhaOk = await logAudit({
+        action: activeProntuario?.id ? 'update' : 'create',
+        collection: 'prontuarios',
+        recordId: prontuarioId,
+        recordName: pacientes.find(p => p.id === selectedPacienteId)?.nome || '',
+        userId: authProfile?.id || undefined,
+        userName: authProfile?.nome || undefined,
+      });
 
-      toast.success('Prontuário salvo com sucesso!');
+      if (trilhaOk) {
+        toast.success('Prontuário salvo com sucesso!');
+      } else {
+        toast.warning('Prontuário salvo, mas não registrado na auditoria.', {
+          description: 'O registro ficou na fila de reenvio. Se persistir, avise o suporte.',
+          duration: 8000,
+        });
+      }
       if (selectedPacienteId) loadProntuarios(selectedPacienteId);
       setProntuarioTab('lista');
       setIsEditingProntuario(false);
@@ -425,15 +483,11 @@ export default function Pacientes() {
   const filteredPacientes = useMemo(() => {
     let result = pacientes;
 
-    // Text search
+    // Text search — ignora acento, caixa e máscara (ver src/lib/buscaPaciente.ts).
+    // Antes comparava texto cru: quem digitasse o CPF sem pontos, como está no
+    // documento, não encontrava ninguém e acabava cadastrando o paciente de novo.
     if (searchTerm) {
-      const q = searchTerm.toLowerCase();
-      result = result.filter(p =>
-        p.nome.toLowerCase().includes(q) ||
-        (p.cpf && p.cpf.includes(searchTerm)) ||
-        (p.telefone && p.telefone.includes(searchTerm)) ||
-        (p.email && p.email.toLowerCase().includes(q))
-      );
+      result = result.filter(p => pacienteCorresponde(p, searchTerm));
     }
 
     // Sexo filter

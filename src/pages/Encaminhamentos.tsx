@@ -31,7 +31,7 @@ import { useCurrentMedico } from '@/hooks/useCurrentMedico';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
 import { EncaminhamentoMedico } from '@/components/clinical/EncaminhamentoMedico';
-import { parseDateOnly } from '@/lib/dateOnly';
+import { parseDateOnly, todayDateOnly } from '@/lib/dateOnly';
 
 interface EncaminhamentoData {
   id: string;
@@ -153,7 +153,7 @@ export default function Encaminhamentos() {
     setIsUpdating(true);
     try {
       const updateData: Record<string, any> = { status: newStatus };
-      if (newStatus === 'em_andamento') updateData.data_atendimento = new Date().toISOString().split('T')[0];
+      if (newStatus === 'em_andamento') updateData.data_atendimento = todayDateOnly();
       const { error } = await (supabase as any).from('encaminhamentos').update(updateData).eq('id', id);
       if (error) throw error;
       queryClient.invalidateQueries({ queryKey: ['encaminhamentos'] });
@@ -169,7 +169,7 @@ export default function Encaminhamentos() {
     try {
       const { error } = await supabase.from('encaminhamentos').update({
         contra_referencia: contraRefText,
-        data_contra_referencia: new Date().toISOString().split('T')[0],
+        data_contra_referencia: todayDateOnly(),
         status: 'concluido',
       }).eq('id', selectedEnc.id);
       if (error) throw error;

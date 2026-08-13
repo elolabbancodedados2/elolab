@@ -42,7 +42,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { Cid10Search } from './Cid10Search';
-import { parseDateOnly } from '@/lib/dateOnly';
+import { parseDateOnly, todayDateOnly } from '@/lib/dateOnly';
 
 interface Encaminhamento {
   id: string;
@@ -179,7 +179,7 @@ export function EncaminhamentoMedico({
           tratamento_atual: formData.tratamento_atual || null,
           informacoes_adicionais: formData.informacoes_adicionais || null,
           status: 'pendente',
-          data_encaminhamento: new Date().toISOString().split('T')[0],
+          data_encaminhamento: todayDateOnly(),
         });
 
       if (error) throw error;
@@ -220,9 +220,9 @@ export function EncaminhamentoMedico({
         .from('encaminhamentos')
         .update({
           contra_referencia: contraReferencia,
-          data_contra_referencia: new Date().toISOString().split('T')[0],
+          data_contra_referencia: todayDateOnly(),
           status: 'concluido',
-          data_atendimento: new Date().toISOString().split('T')[0],
+          data_atendimento: todayDateOnly(),
         })
         .eq('id', selectedEncaminhamento.id);
 

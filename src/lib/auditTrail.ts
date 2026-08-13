@@ -17,20 +17,84 @@ export interface AuditEntry {
   userName?: string;
 }
 
-export async function logAudit(entry: Omit<AuditEntry, 'id' | 'timestamp'>) {
+/**
+ * Fila local de auditoria que não conseguiu ser gravada.
+ *
+ * A trilha do prontuário é exigência da CFM 1.821/07: precisa constar quem
+ * acessou e quem alterou. Perder um registro por causa de uma oscilação de rede
+ * é perder prova. Guardamos no navegador e reenviamos na próxima chamada.
+ *
+ * Só metadados — nunca conteúdo clínico —, e os caches são limpos no logout.
+ */
+const CHAVE_PENDENTES = 'auditoria_pendente';
+const MAX_PENDENTES = 200;
+
+type LinhaAuditoria = Record<string, unknown>;
+
+function lerPendentes(): LinhaAuditoria[] {
   try {
-    await supabase.from('audit_log').insert({
-      action: entry.action,
-      collection: entry.collection,
-      record_id: entry.recordId,
-      record_name: entry.recordName || null,
-      changes: entry.changes ? JSON.parse(JSON.stringify(entry.changes)) : null,
-      user_id: entry.userId || null,
-      user_name: entry.userName || null,
-    });
-  } catch (err) {
-    console.error('Audit log error:', err);
+    const bruto = localStorage.getItem(CHAVE_PENDENTES);
+    return bruto ? (JSON.parse(bruto) as LinhaAuditoria[]) : [];
+  } catch {
+    return [];
   }
+}
+
+function guardarPendente(linha: LinhaAuditoria) {
+  try {
+    const fila = lerPendentes();
+    fila.push(linha);
+    // Mantém as mais recentes: uma fila infinita estouraria o localStorage.
+    localStorage.setItem(CHAVE_PENDENTES, JSON.stringify(fila.slice(-MAX_PENDENTES)));
+  } catch {
+    // localStorage cheio ou indisponível — o console abaixo já denuncia.
+  }
+}
+
+/** Tenta reenviar o que ficou pendente. Silencioso: é oportunista. */
+async function reenviarPendentes(): Promise<void> {
+  const fila = lerPendentes();
+  if (fila.length === 0) return;
+
+  const { error } = await supabase.from('audit_log').insert(fila as any);
+  if (!error) {
+    localStorage.removeItem(CHAVE_PENDENTES);
+    console.info(`[auditoria] ${fila.length} registro(s) pendente(s) reenviado(s).`);
+  }
+}
+
+/**
+ * Grava na trilha de auditoria.
+ *
+ * O corpo antigo era `try { await insert(...) } catch { console.error(...) }`.
+ * O supabase-js NÃO lança em erro de API: devolve `{ error }`. Então o catch
+ * nunca disparava e a falha era invisível até para o console — um prontuário
+ * podia ser aberto ou alterado sem registro nenhum de quem foi.
+ *
+ * @returns `true` se gravou; `false` se ficou na fila para reenvio.
+ */
+export async function logAudit(entry: Omit<AuditEntry, 'id' | 'timestamp'>): Promise<boolean> {
+  const linha: LinhaAuditoria = {
+    action: entry.action,
+    collection: entry.collection,
+    record_id: entry.recordId,
+    record_name: entry.recordName || null,
+    changes: entry.changes ? JSON.parse(JSON.stringify(entry.changes)) : null,
+    user_id: entry.userId || null,
+    user_name: entry.userName || null,
+  };
+
+  const { error } = await supabase.from('audit_log').insert(linha as any);
+
+  if (error) {
+    console.error('[auditoria] falha ao gravar — enfileirado para reenvio:', error, linha);
+    guardarPendente(linha);
+    return false;
+  }
+
+  // Gravou: boa hora para escoar o que ficou para trás.
+  await reenviarPendentes().catch(() => { /* oportunista */ });
+  return true;
 }
 
 export async function getAuditLog(filters?: {

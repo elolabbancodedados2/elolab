@@ -138,14 +138,27 @@ Deno.serve(async (req) => {
       const { data: existsMed } = await service
         .from("medicos").select("id").eq("user_id", userId).maybeSingle();
       if (!existsMed) {
-        await service.from("medicos").insert({
-          nome,
-          email,
-          crm: "PENDENTE",
-          user_id: userId,
-          ativo: true,
-          clinica_id: clinicaId,
-        } as any);
+        // Ficha criada anteriormente pela clínica pode ainda não ter user_id.
+        // Vincule-a por e-mail antes de criar uma segunda ficha médica.
+        const { data: medByEmail } = await service
+          .from("medicos")
+          .select("id")
+          .eq("clinica_id", clinicaId)
+          .ilike("email", email)
+          .limit(1)
+          .maybeSingle();
+        if (medByEmail) {
+          await service.from("medicos").update({ user_id: userId }).eq("id", medByEmail.id);
+        } else {
+          await service.from("medicos").insert({
+            nome,
+            email,
+            crm: "PENDENTE",
+            user_id: userId,
+            ativo: true,
+            clinica_id: clinicaId,
+          } as any);
+        }
       }
     }
 

@@ -13,6 +13,14 @@ interface EvolutionRequest {
   message?: string
 }
 
+function extractQrCode(payload: any): string | null {
+  const base64 = payload?.base64 || payload?.qrcode?.base64 || payload?.qr?.base64
+  if (typeof base64 === 'string' && base64.trim()) return base64
+
+  const code = payload?.code || payload?.qrcode?.code || payload?.qr?.code
+  return typeof code === 'string' && code.trim() ? code : null
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -30,14 +38,13 @@ Deno.serve(async (req) => {
     const authClient = createClient(supabaseUrl, supabaseAnonKey, {
       global: { headers: { Authorization: authHeader } }
     })
-    const token = authHeader.replace('Bearer ', '')
-    const { data: claimsData, error: claimsError } = await authClient.auth.getClaims(token)
-    if (claimsError || !claimsData?.claims) {
+    const { data: { user }, error: userError } = await authClient.auth.getUser()
+    if (userError || !user) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: corsHeaders })
     }
 
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    const evolutionApiUrl = Deno.env.get('EVOLUTION_API_URL')
+    const evolutionApiUrl = (Deno.env.get('EVOLUTION_API_URL') || '').replace(/\/+$/, '')
     const evolutionApiKey = Deno.env.get('EVOLUTION_API_KEY')
 
     if (!evolutionApiUrl || !evolutionApiKey) {
@@ -45,16 +52,89 @@ Deno.serve(async (req) => {
     }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
+
+    // ─── Autorização ──────────────────────────────────────────────────────
+    // Antes daqui só se validava que o JWT era válido. Depois disso a função
+    // passava a usar o service_role — que ignora o RLS — e aceitava o
+    // `session_id`/`instance_name` que viesse no corpo da requisição, sem
+    // conferir de quem era. Um usuário de uma clínica que descobrisse o id de
+    // sessão de outra pegava o QR Code dela (ou seja, pareava o WhatsApp da
+    // concorrente no próprio celular), mandava mensagem em nome dela ou
+    // apagava a instância.
+    //
+    // A clínica agora vem do perfil de quem chamou, nunca do corpo.
+    const { data: profile } = await supabase
+      .from('profiles').select('clinica_id').eq('id', user.id).maybeSingle()
+    const clinicaId = (profile as any)?.clinica_id
+
+    if (!clinicaId) {
+      return new Response(
+        JSON.stringify({ error: 'Usuário sem clínica associada.' }),
+        { status: 403, headers: corsHeaders },
+      )
+    }
+
+    // Conectar, trocar ou apagar o WhatsApp da clínica é ação de administrador.
+    const { data: ehAdmin } = await supabase
+      .from('user_roles').select('role').eq('user_id', user.id).eq('role', 'admin').maybeSingle()
+
     const body: EvolutionRequest = await req.json()
     const { action, instance_name, session_id, to, message } = body
 
-    console.log(`[WhatsApp Evolution] Action: ${action}, Instance: ${instance_name || session_id}`)
+    const ACOES_DE_ADMIN = new Set(['create_instance', 'delete_instance', 'get_qr_code'])
+    if (ACOES_DE_ADMIN.has(action) && !ehAdmin) {
+      return new Response(
+        JSON.stringify({ error: 'Só um administrador da clínica pode gerenciar a conexão do WhatsApp.' }),
+        { status: 403, headers: corsHeaders },
+      )
+    }
+
+    /**
+     * Resolve a instância a partir de `session_id` ou `instance_name` e confirma
+     * que ela pertence à clínica de quem chamou. Devolve null quando não é dela
+     * — e o chamador responde 404, para não confirmar que a sessão existe.
+     */
+    const resolverInstanciaDaClinica = async (): Promise<string | null> => {
+      const filtro = supabase
+        .from('whatsapp_sessions')
+        .select('instance_name')
+        .eq('clinica_id', clinicaId)
+
+      const { data: sessao } = session_id
+        ? await filtro.eq('id', session_id).maybeSingle()
+        : await filtro.eq('instance_name', instance_name!).maybeSingle()
+
+      return (sessao as any)?.instance_name ?? null
+    }
+
+    const naoEncontrada = () => new Response(
+      JSON.stringify({ error: 'Sessão não encontrada nesta clínica.' }),
+      { status: 404, headers: corsHeaders },
+    )
+
+    console.log(`[WhatsApp Evolution] Action: ${action}, Clínica: ${clinicaId}`)
 
     let result: any = null
 
     switch (action) {
       case 'create_instance': {
         if (!instance_name) throw new Error('instance_name é obrigatório')
+
+        // Nome de instância é global na Evolution API. Sem esta checagem, uma
+        // clínica podia criar uma instância com o nome da instância de outra e
+        // sequestrar a sessão dela.
+        const { data: jaExiste } = await supabase
+          .from('whatsapp_sessions')
+          .select('clinica_id')
+          .eq('instance_name', instance_name)
+          .maybeSingle()
+
+        if (jaExiste && (jaExiste as any).clinica_id !== clinicaId) {
+          return new Response(
+            JSON.stringify({ error: 'Este nome de instância já está em uso. Escolha outro.' }),
+            { status: 409, headers: corsHeaders },
+          )
+        }
 
         // Criar instância na Evolution API
         const createResponse = await fetch(`${evolutionApiUrl}/instance/create`, {
@@ -90,7 +170,7 @@ Deno.serve(async (req) => {
         let qrCode = null
         if (qrResponse.ok) {
           const qrData = await qrResponse.json()
-          qrCode = qrData.base64 || qrData.code
+          qrCode = extractQrCode(qrData)
         }
 
         // Salvar sessão no banco
@@ -105,6 +185,7 @@ Deno.serve(async (req) => {
             qr_code: qrCode,
             qr_code_expires_at: qrCode ? new Date(Date.now() + 60000).toISOString() : null,
             webhook_url: webhookUrl,
+            clinica_id: clinicaId, // sem isto a sessão nasce órfã e some do filtro
           })
           .select()
           .single()
@@ -144,17 +225,10 @@ Deno.serve(async (req) => {
       case 'get_qr_code': {
         if (!instance_name && !session_id) throw new Error('instance_name ou session_id é obrigatório')
 
-        let instanceName = instance_name
-        if (session_id) {
-          const { data: session } = await supabase
-            .from('whatsapp_sessions')
-            .select('instance_name')
-            .eq('id', session_id)
-            .single()
-          instanceName = session?.instance_name
-        }
-
-        if (!instanceName) throw new Error('Sessão não encontrada')
+        // O QR Code é a credencial de pareamento: quem o obtém conecta o
+        // WhatsApp da clínica ao próprio aparelho. Só sai para a clínica dona.
+        const instanceName = await resolverInstanciaDaClinica()
+        if (!instanceName) return naoEncontrada()
 
         const qrResponse = await fetch(`${evolutionApiUrl}/instance/connect/${instanceName}`, {
           method: 'GET',
@@ -169,7 +243,11 @@ Deno.serve(async (req) => {
         }
 
         const qrData = await qrResponse.json()
-        const qrCode = qrData.base64 || qrData.code
+        const qrCode = extractQrCode(qrData)
+
+        if (!qrCode) {
+          throw new Error('A Evolution API não retornou um QR Code válido.')
+        }
 
         // Atualizar no banco
         await supabase
@@ -188,17 +266,8 @@ Deno.serve(async (req) => {
       case 'check_status': {
         if (!instance_name && !session_id) throw new Error('instance_name ou session_id é obrigatório')
 
-        let instanceName = instance_name
-        if (session_id) {
-          const { data: session } = await supabase
-            .from('whatsapp_sessions')
-            .select('instance_name')
-            .eq('id', session_id)
-            .single()
-          instanceName = session?.instance_name
-        }
-
-        if (!instanceName) throw new Error('Sessão não encontrada')
+        const instanceName = await resolverInstanciaDaClinica()
+        if (!instanceName) return naoEncontrada()
 
         const statusResponse = await fetch(`${evolutionApiUrl}/instance/connectionState/${instanceName}`, {
           method: 'GET',
@@ -233,11 +302,17 @@ Deno.serve(async (req) => {
       }
 
       case 'send_message': {
-        if (!instance_name || !to || !message) {
-          throw new Error('instance_name, to e message são obrigatórios')
+        if ((!instance_name && !session_id) || !to || !message) {
+          throw new Error('instance_name (ou session_id), to e message são obrigatórios')
         }
 
-        const sendResponse = await fetch(`${evolutionApiUrl}/message/sendText/${instance_name}`, {
+        // O `instance_name` vinha do corpo e ia direto para a Evolution API:
+        // bastava saber o nome da instância de outra clínica para disparar
+        // mensagem em nome dela, para os pacientes dela.
+        const instanceName = await resolverInstanciaDaClinica()
+        if (!instanceName) return naoEncontrada()
+
+        const sendResponse = await fetch(`${evolutionApiUrl}/message/sendText/${instanceName}`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -261,17 +336,8 @@ Deno.serve(async (req) => {
       case 'delete_instance': {
         if (!instance_name && !session_id) throw new Error('instance_name ou session_id é obrigatório')
 
-        let instanceName = instance_name
-        if (session_id) {
-          const { data: session } = await supabase
-            .from('whatsapp_sessions')
-            .select('instance_name')
-            .eq('id', session_id)
-            .single()
-          instanceName = session?.instance_name
-        }
-
-        if (!instanceName) throw new Error('Sessão não encontrada')
+        const instanceName = await resolverInstanciaDaClinica()
+        if (!instanceName) return naoEncontrada()
 
         // Deletar da Evolution API
         await fetch(`${evolutionApiUrl}/instance/delete/${instanceName}`, {
@@ -292,6 +358,23 @@ Deno.serve(async (req) => {
       }
 
       case 'list_instances': {
+        // Devolvia a lista de TODAS as instâncias da Evolution API — de todas
+        // as clínicas do servidor. Era o mapa que tornava os outros ataques
+        // triviais: dava os nomes de instância de todo mundo.
+        const { data: sessoesDaClinica } = await supabase
+          .from('whatsapp_sessions')
+          .select('instance_name')
+          .eq('clinica_id', clinicaId)
+
+        const nomesPermitidos = new Set(
+          (sessoesDaClinica || []).map((s: any) => s.instance_name),
+        )
+
+        if (nomesPermitidos.size === 0) {
+          result = []
+          break
+        }
+
         const listResponse = await fetch(`${evolutionApiUrl}/instance/fetchInstances`, {
           method: 'GET',
           headers: {
@@ -300,7 +383,12 @@ Deno.serve(async (req) => {
         })
 
         if (listResponse.ok) {
-          result = await listResponse.json()
+          const todas = await listResponse.json()
+          result = Array.isArray(todas)
+            ? todas.filter((i: any) =>
+                nomesPermitidos.has(i?.instance?.instanceName ?? i?.instanceName ?? i?.name),
+              )
+            : []
         } else {
           result = []
         }

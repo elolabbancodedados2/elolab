@@ -13,6 +13,15 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  // Este endpoint antigo aceitava valores e dados de pagamento enviados pelo
+  // navegador e ainda tentava gravar em uma estrutura que não possui esses
+  // campos. O fluxo único e seguro agora é mercadopago-checkout, que resolve o
+  // plano no servidor e abre o checkout hospedado pelo Mercado Pago.
+  return new Response(
+    JSON.stringify({ error: "Use o checkout oficial da assinatura da plataforma." }),
+    { status: 410, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+  );
+
   try {
     const mpToken = Deno.env.get("MERCADOPAGO_ACCESS_TOKEN");
     if (!mpToken) {

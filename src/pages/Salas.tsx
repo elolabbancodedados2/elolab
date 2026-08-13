@@ -117,16 +117,19 @@ export default function Salas() {
 
   // Fetch active queue entries with sala_id to show who occupies each room
   const { data: ocupacoes = [] } = useQuery({
-    queryKey: ['fila_atendimento_salas'],
+    queryKey: ['fila_atendimento_salas', profile?.clinica_id],
     queryFn: async () => {
-      const { data, error } = await (supabase as any)
+      let query = (supabase as any)
         .from('fila_atendimento')
         .select('id, sala_id, status, agendamento_id, agendamentos(id, paciente_id, medico_id, pacientes(id, nome), medicos(id, nome, crm, especialidade))')
         .in('status', ['em_atendimento', 'aguardando'])
         .not('sala_id', 'is', null);
+      if (profile?.clinica_id) query = query.eq('clinica_id', profile.clinica_id);
+      const { data, error } = await query;
       if (error) throw error;
       return data || [];
     },
+    enabled: !!profile?.clinica_id,
     refetchInterval: 10000, // auto-refresh every 10s
   });
 

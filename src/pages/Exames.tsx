@@ -480,16 +480,35 @@ export default function Exames() {
       const validadeData = format(addDays(new Date(formData.data_solicitacao + 'T12:00'), formData.validade_dias), 'yyyy-MM-dd');
 
       // Upload attachments
+      //
+      // A falha de upload era descartada com `if (!upErr)`: o arquivo
+      // simplesmente não entrava na lista, a guia era criada e a tela dizia
+      // sucesso. A solicitação saía sem o pedido médico, sem a autorização do
+      // convênio ou sem a imagem — e a recepção só descobria no laboratório,
+      // com o paciente já lá.
       const anexoUrls: string[] = [];
+      const anexosQueFalharam: string[] = [];
       for (const file of anexos) {
         const ext = file.name.split('.').pop();
         const path = `exames/${formData.paciente_id}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
         const { error: upErr } = await supabase.storage.from('medical-attachments').upload(path, file);
-        if (!upErr) {
-          // O bucket é privado: getPublicUrl() gerava um link que nunca abria.
-          // Guardamos o path; o link é gerado com createSignedUrl na exibição.
-          anexoUrls.push(path);
+        if (upErr) {
+          console.error('Falha ao enviar anexo', file.name, upErr);
+          anexosQueFalharam.push(file.name);
+          continue;
         }
+        // O bucket é privado: getPublicUrl() gerava um link que nunca abria.
+        // Guardamos o path; o link é gerado com createSignedUrl na exibição.
+        anexoUrls.push(path);
+      }
+
+      if (anexosQueFalharam.length > 0) {
+        setIsSubmitting(false);
+        toast.error(`${anexosQueFalharam.length} anexo(s) não foram enviados — a guia não foi criada.`, {
+          description: `${anexosQueFalharam.join(', ')}. Tente de novo; emitir a guia sem o anexo faz o paciente voltar.`,
+          duration: 10000,
+        });
+        return;
       }
 
       // Build details
@@ -534,6 +553,7 @@ export default function Exames() {
             medicoId: formData.medico_solicitante_id,
             tipoExame: ex.tipo_exame,
             urgente: formData.urgencia === 'urgente' || formData.urgencia === 'emergencia',
+            clinicaId: profile?.clinica_id,
           }))
         );
         const coletasCriadas = coletaResults.filter(r => r.actions.length > 0).length;
@@ -574,16 +594,23 @@ export default function Exames() {
         tipoExame: exame.tipo_exame,
         convenioId: pac?.convenio_id,
         resultado: exame.resultado || undefined,
+        clinicaId: profile?.clinica_id,
       });
+      if (!result.success) throw new Error(result.message);
 
       // Auto-link result to prontuario when report is available
       if (newStatus === 'laudo_disponivel' && exame.resultado) {
-        await autoVincularResultadoProntuario({
+        const linkResult = await autoVincularResultadoProntuario({
           exameId: id,
           pacienteId: exame.paciente_id,
           tipoExame: exame.tipo_exame,
           resultado: exame.resultado,
         });
+        if (!linkResult.success) {
+          toast.warning('Exame atualizado, mas não foi possível vincular ao prontuário.', {
+            description: linkResult.message,
+          });
+        }
       }
 
       if (result.actions.length > 0) {
@@ -798,7 +825,7 @@ export default function Exames() {
             <DialogTitle className="flex items-center gap-2">
               <FileText className="h-5 w-5 text-primary" />
               Nova Guia de Exames
-              <Badge variant="outline" className="ml-auto text-[10px] gap-1"><ShieldCheck className="h-3 w-3 text-success" />ICP-Brasil</Badge>
+              {/* Selo removido: a guia sai sem assinatura digital nenhuma. */}
             </DialogTitle>
           </DialogHeader>
 

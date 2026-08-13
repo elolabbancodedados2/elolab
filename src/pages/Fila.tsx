@@ -171,7 +171,7 @@ export default function Fila() {
 
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const { profile } = useSupabaseAuth();
+  const { profile, hasAnyRole } = useSupabaseAuth();
   const today = format(new Date(), 'yyyy-MM-dd');
 
   const { data: fila = [], isLoading: loadingFila } = useFilaAtendimento();
@@ -310,13 +310,6 @@ export default function Fila() {
         return;
       }
 
-      // Também atualiza o agendamento para o Painel TV mostrar a chamada
-      const { error: errAg } = await supabase
-        .from('agendamentos').update({ status: 'em_atendimento' }).eq('id', agendamentoId);
-      if (errAg) {
-        toast.warning('Paciente chamado, mas o Painel TV pode não atualizar.');
-      }
-
       const item = fila.find(f => f.id === id);
       const nome = getPacienteNome(agendamentoId);
       const sala = getSalaNome(item?.sala_id ?? null);
@@ -340,9 +333,12 @@ export default function Fila() {
         return;
       }
       toast.success('▶ Atendimento iniciado', { description: result.actions.join(' • ') });
-      // Navigate to prontuário for the consultation
-      if (ag?.paciente_id) {
+      // Somente perfil clínico deve abrir/editar o prontuário. Recepção e
+      // enfermagem apenas movem o paciente no fluxo operacional.
+      if (ag?.paciente_id && hasAnyRole(['admin', 'medico'])) {
         navigate(`/prontuarios?paciente=${ag.paciente_id}&agendamento=${agendamentoId}`);
+      } else if (ag?.paciente_id) {
+        toast.info('Atendimento iniciado. O médico responsável deve abrir o prontuário.');
       }
       return;
     }
@@ -359,8 +355,13 @@ export default function Fila() {
           medicoId: ag.medico_id,
           convenioId: pac?.convenio_id,
           tipoConsulta: ag.tipo,
+          clinicaId: profile?.clinica_id,
         });
         refresh();
+        if (!result.success) {
+          toast.error('Não foi possível finalizar o atendimento', { description: result.message });
+          return;
+        }
         toast.success(`✅ Atendimento finalizado — ${pac?.nome || 'Paciente'}`, {
           description: result.actions.join(' • '),
           duration: 8000,
@@ -373,11 +374,31 @@ export default function Fila() {
       }
     }
 
-    // Fallback for other statuses
-    await supabase.from('fila_atendimento').update({ status }).eq('id', id);
+    // Fallback for other statuses.
+    // Os dois updates tinham o erro descartado: numa falha de permissão a tela
+    // só chamava refresh() e o card voltava ao estado anterior, sem explicação.
+    // O paciente seguia na fila e no painel da sala de espera.
+    const { error: erroFila } = await supabase
+      .from('fila_atendimento').update({ status }).eq('id', id);
+
+    if (erroFila) {
+      toast.error('Não foi possível mudar o status na fila.', {
+        description: erroFila.message,
+      });
+      refresh();
+      return;
+    }
+
     if (agendamentoId) {
       const agStatus = status === 'em_atendimento' ? 'em_atendimento' : status === 'finalizado' ? 'finalizado' : 'aguardando';
-      await supabase.from('agendamentos').update({ status: agStatus }).eq('id', agendamentoId);
+      const { error: erroAg } = await supabase
+        .from('agendamentos').update({ status: agStatus }).eq('id', agendamentoId);
+
+      if (erroAg) {
+        toast.warning('A fila foi atualizada, mas o agendamento não acompanhou.', {
+          description: `${erroAg.message}. A agenda pode mostrar este paciente com status antigo.`,
+        });
+      }
     }
     refresh();
   };

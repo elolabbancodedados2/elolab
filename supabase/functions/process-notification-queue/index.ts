@@ -105,7 +105,7 @@ Deno.serve(async (req) => {
           }
         } else if (notif.tipo === 'whatsapp' && notif.destinatario_telefone) {
           // WhatsApp via Evolution API
-          const evolutionUrl = Deno.env.get('EVOLUTION_API_URL')
+          const evolutionUrl = (Deno.env.get('EVOLUTION_API_URL') || '').replace(/\/+$/, '')
           const evolutionKey = Deno.env.get('EVOLUTION_API_KEY')
 
           if (!evolutionUrl || !evolutionKey) {

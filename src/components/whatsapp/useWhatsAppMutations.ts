@@ -7,10 +7,11 @@ import { WhatsAppAgent, NewAgentForm } from './types';
 export function useWhatsAppMutations() {
   const queryClient = useQueryClient();
 
-   const { profile } = useSupabaseAuth();
+     const { profile } = useSupabaseAuth();
 
    const createAgent = useMutation({
      mutationFn: async (agent: NewAgentForm) => {
+       if (!profile?.clinica_id) throw new Error('Clínica não identificada. Recarregue a página e tente novamente.');
        const insertData = { ...agent, clinica_id: profile?.clinica_id };
        const { data, error } = await supabase
          .from('whatsapp_agents')

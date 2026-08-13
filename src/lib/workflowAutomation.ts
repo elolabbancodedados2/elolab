@@ -41,7 +41,10 @@ async function must<T extends { error: unknown }>(op: PromiseLike<T>): Promise<T
 
 // ─── 1. Check-in Automático ─────────────────────────────
 /** When a patient arrives, auto check-in and add to queue */
-export async function autoCheckin(agendamentoId: string): Promise<WorkflowResult> {
+export async function autoCheckin(
+  agendamentoId: string,
+  clinicaId?: string | null,
+): Promise<WorkflowResult> {
   const actions: string[] = [];
 
   try {
@@ -57,9 +60,13 @@ export async function autoCheckin(agendamentoId: string): Promise<WorkflowResult
       return { success: true, message: 'Paciente já está na fila', actions: [] };
     }
 
-    // Update agendamento status
-    await must(supabase.from('agendamentos').update({ status: 'aguardando' }).eq('id', agendamentoId));
-    actions.push('Status do agendamento → Aguardando');
+    // ORDEM IMPORTA. Antes o status do agendamento era atualizado primeiro e a
+    // fila depois: se o insert na fila falhasse, o agendamento ficava
+    // "aguardando" sem existir item na fila. A recepção via o paciente como
+    // aguardando, mas ele não aparecia no painel e não podia ser chamado.
+    //
+    // Agora a fila — que é o artefato visível — vem primeiro. Se ela falhar,
+    // nada mudou. Se o status falhar depois, desfazemos a entrada na fila.
 
     // Get next position
     const { data: lastFila } = await supabase
@@ -70,14 +77,36 @@ export async function autoCheckin(agendamentoId: string): Promise<WorkflowResult
     const nextPos = (lastFila?.[0]?.posicao || 0) + 1;
 
     // Add to queue
-    await must(supabase.from('fila_atendimento').insert({
-      agendamento_id: agendamentoId,
-      posicao: nextPos,
-      status: 'aguardando',
-      prioridade: 'normal',
-      horario_chegada: new Date().toISOString(),
-    }));
+    const { data: filaCriada, error: erroFila } = await supabase
+      .from('fila_atendimento')
+      .insert({
+        agendamento_id: agendamentoId,
+        posicao: nextPos,
+        status: 'aguardando',
+        prioridade: 'normal',
+        horario_chegada: new Date().toISOString(),
+        clinica_id: clinicaId || null,
+      })
+      .select('id')
+      .single();
+
+    if (erroFila) throw erroFila;
     actions.push('Paciente adicionado à fila');
+
+    // Update agendamento status
+    const { error: erroStatus } = await supabase
+      .from('agendamentos').update({ status: 'aguardando' }).eq('id', agendamentoId);
+
+    if (erroStatus) {
+      // Compensação: sem o status certo, o item na fila viraria um fantasma que
+      // ninguém consegue chamar. Melhor voltar ao estado anterior e pedir para
+      // tentar de novo do que deixar o balcão com uma fila inconsistente.
+      if (filaCriada?.id) {
+        await supabase.from('fila_atendimento').delete().eq('id', filaCriada.id);
+      }
+      throw erroStatus;
+    }
+    actions.push('Status do agendamento → Aguardando');
 
     return { success: true, message: 'Check-in automático realizado', actions };
   } catch (e: any) {
@@ -86,7 +115,9 @@ export async function autoCheckin(agendamentoId: string): Promise<WorkflowResult
 }
 
 // ─── 2. Iniciar Atendimento ─────────────────────────────
-/** Start consultation: update statuses + auto-create prontuário */
+/** Start consultation: update only the operational statuses.
+ * The medical user creates the chart when opening the consultation.
+ */
 export async function autoIniciarAtendimento(
   agendamentoId: string,
   filaId: string,
@@ -96,30 +127,33 @@ export async function autoIniciarAtendimento(
   const actions: string[] = [];
 
   try {
-    // Update statuses
-    await must(supabase.from('agendamentos').update({ status: 'em_atendimento' }).eq('id', agendamentoId));
-    await must(supabase.from('fila_atendimento').update({ status: 'em_atendimento' }).eq('id', filaId));
-    actions.push('Status → Em Atendimento');
+    // A fila visível é atualizada primeiro. Se o agendamento falhar, desfazemos
+    // a fila para não deixar o painel médico em um estado diferente do agenda.
+    const { data: filaAtual, error: filaLeituraError } = await supabase
+      .from('fila_atendimento')
+      .select('status')
+      .eq('id', filaId)
+      .maybeSingle();
+    if (filaLeituraError) throw filaLeituraError;
+    if (!filaAtual) throw new Error('Item da fila não encontrado. Atualize a tela e tente novamente.');
 
-    // Auto-create prontuário if none exists for today
-    const today = format(new Date(), 'yyyy-MM-dd');
-    const { data: existingPront } = await supabase
-      .from('prontuarios')
+    await must(supabase.from('fila_atendimento')
+      .update({ status: 'em_atendimento' })
+      .eq('id', filaId)
       .select('id')
-      .eq('paciente_id', pacienteId)
-      .eq('agendamento_id', agendamentoId)
-      .limit(1);
+      .single());
 
-    if (!existingPront || existingPront.length === 0) {
-      await must(supabase.from('prontuarios').insert({
-        paciente_id: pacienteId,
-        medico_id: medicoId,
-        agendamento_id: agendamentoId,
-        data: today,
-        queixa_principal: '',
-      }));
-      actions.push('Prontuário criado automaticamente');
+    try {
+      await must(supabase.from('agendamentos')
+        .update({ status: 'em_atendimento' })
+        .eq('id', agendamentoId)
+        .select('id')
+        .single());
+    } catch (agendamentoError) {
+      await supabase.from('fila_atendimento').update({ status: filaAtual.status }).eq('id', filaId);
+      throw agendamentoError;
     }
+    actions.push('Status → Em Atendimento');
 
     return { success: true, message: 'Atendimento iniciado', actions };
   } catch (e: any) {
@@ -137,33 +171,74 @@ export async function autoFinalizarAtendimento(params: {
   medicoId: string;
   convenioId?: string | null;
   tipoConsulta?: string | null;
+  clinicaId?: string | null;
   agendarRetorno?: boolean;
   diasRetorno?: number;
 }): Promise<WorkflowResult> {
   const actions: string[] = [];
 
   try {
-    // Update statuses
-    const { error: agError } = await supabase.from('agendamentos').update({ status: 'finalizado' }).eq('id', params.agendamentoId);
-    if (agError) throw new Error('Erro ao atualizar agendamento: ' + agError.message);
-    actions.push('Agendamento → Finalizado');
-
+    // Atualiza os dois registros como uma operação compensável. Sem isso, um
+    // erro de RLS na fila podia finalizar o agendamento e deixar o paciente
+    // preso em atendimento no painel.
+    let filaStatusAnterior: string | null = null;
     if (params.filaId) {
-      const { error: filaError } = await supabase.from('fila_atendimento').update({ status: 'finalizado' }).eq('id', params.filaId);
-      if (filaError) throw new Error('Erro ao atualizar fila: ' + filaError.message);
-      actions.push('Fila → Finalizado');
+      const { data: filaAtual, error: filaLeituraError } = await supabase
+        .from('fila_atendimento')
+        .select('status')
+        .eq('id', params.filaId)
+        .maybeSingle();
+      if (filaLeituraError) throw filaLeituraError;
+      if (!filaAtual) throw new Error('Item da fila não encontrado. Atualize a tela e tente novamente.');
+      filaStatusAnterior = filaAtual.status;
+
+      await must(supabase.from('fila_atendimento')
+        .update({ status: 'finalizado' })
+        .eq('id', params.filaId)
+        .select('id')
+        .single());
     }
 
-    // Auto-billing
-    const billed = await createAutoBilling({
-      agendamentoId: params.agendamentoId,
-      pacienteId: params.pacienteId,
-      pacienteNome: params.pacienteNome,
-      convenioId: params.convenioId,
-      tipoConsulta: params.tipoConsulta,
-      data: format(new Date(), 'yyyy-MM-dd'),
-    });
-    if (billed) actions.push('Cobrança gerada automaticamente');
+    try {
+      await must(supabase.from('agendamentos')
+        .update({ status: 'finalizado' })
+        .eq('id', params.agendamentoId)
+        .select('id')
+        .single());
+    } catch (agendamentoError) {
+      if (params.filaId && filaStatusAnterior) {
+        await supabase.from('fila_atendimento').update({ status: filaStatusAnterior }).eq('id', params.filaId);
+      }
+      throw agendamentoError;
+    }
+    actions.push('Agendamento → Finalizado');
+    if (params.filaId) actions.push('Fila → Finalizado');
+
+    // Auto-billing is part of finalization. If it fails, restore the two
+    // operational statuses so the patient can be corrected and finalized
+    // again instead of disappearing from the payment flow.
+    try {
+      const billed = await createAutoBilling({
+        agendamentoId: params.agendamentoId,
+        pacienteId: params.pacienteId,
+        pacienteNome: params.pacienteNome,
+        convenioId: params.convenioId,
+        tipoConsulta: params.tipoConsulta,
+        data: format(new Date(), 'yyyy-MM-dd'),
+        clinicaId: params.clinicaId,
+      });
+      if (billed) actions.push('Cobrança gerada automaticamente');
+    } catch (billingError) {
+      if (params.filaId && filaStatusAnterior) {
+        await supabase.from('fila_atendimento')
+          .update({ status: filaStatusAnterior })
+          .eq('id', params.filaId);
+      }
+      await supabase.from('agendamentos')
+        .update({ status: 'em_atendimento' })
+        .eq('id', params.agendamentoId);
+      throw billingError;
+    }
 
     // Auto-schedule return if requested
     if (params.agendarRetorno && params.diasRetorno) {
@@ -190,7 +265,7 @@ export async function autoFinalizarAtendimento(params: {
       .maybeSingle();
 
     if (pac.data?.email) {
-      await must(supabase.from('notification_queue').insert({
+      const { error: notificationError } = await supabase.from('notification_queue').insert({
         tipo: 'email',
         destinatario_id: params.pacienteId,
         destinatario_email: pac.data.email,
@@ -198,8 +273,15 @@ export async function autoFinalizarAtendimento(params: {
         assunto: 'Consulta finalizada — Resumo do atendimento',
         conteudo: `Olá ${params.pacienteNome}, seu atendimento foi concluído. Caso tenha receitas ou exames, eles já estão disponíveis no seu portal.`,
         status: 'pendente',
-      }));
-      actions.push('Notificação de conclusão enviada');
+      });
+      // Notificação é efeito secundário: a fila clínica e a cobrança já foram
+      // concluídas. A RLS pode bloquear este insert para médico/recepção sem
+      // transformar uma consulta finalizada em erro falso.
+      if (notificationError) {
+        console.warn('Notificação de conclusão não enfileirada:', notificationError.message);
+      } else {
+        actions.push('Notificação de conclusão enviada');
+      }
     }
 
     return { success: true, message: 'Atendimento finalizado com sucesso', actions };
@@ -216,6 +298,7 @@ export async function autoCreateColeta(params: {
   medicoId: string;
   tipoExame: string;
   urgente?: boolean;
+  clinicaId?: string | null;
 }): Promise<WorkflowResult> {
   const actions: string[] = [];
 
@@ -281,6 +364,7 @@ export async function autoCreateColeta(params: {
       urgente: params.urgente || false,
       jejum_necessario: jejumNecessario,
       jejum_horas: jejumNecessario ? 8 : null,
+      clinica_id: params.clinicaId || null,
     }));
     actions.push(`Coleta de ${tipoAmostra} criada (tubo: ${tubo})`);
 
@@ -415,17 +499,30 @@ export async function autoBillingExame(params: {
   pacienteNome: string;
   tipoExame: string;
   convenioId?: string | null;
+  clinicaId?: string | null;
 }): Promise<WorkflowResult> {
   const actions: string[] = [];
 
   try {
+    const { data: { user } } = await supabase.auth.getUser();
+    let clinicaId: string | null = params.clinicaId || null;
+    if (!clinicaId && user) {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('clinica_id')
+        .eq('id', user.id)
+        .maybeSingle();
+      clinicaId = profile?.clinica_id || null;
+    }
+
     // Check if already billed
-    const { data: existing } = await supabase
+    let existingQuery = supabase
       .from('lancamentos')
       .select('id')
       .eq('categoria', 'exame')
-      .ilike('descricao', `%${params.exameId.slice(0, 8)}%`)
-      .limit(1);
+      .ilike('descricao', `%${params.exameId.slice(0, 8)}%`);
+    if (clinicaId) existingQuery = existingQuery.eq('clinica_id', clinicaId);
+    const { data: existing } = await existingQuery.limit(1);
 
     if (existing && existing.length > 0) {
       return { success: true, message: 'Exame já faturado', actions: [] };
@@ -456,6 +553,7 @@ export async function autoBillingExame(params: {
       data_vencimento: format(new Date(), 'yyyy-MM-dd'),
       status: 'pendente',
       paciente_id: params.pacienteId,
+      clinica_id: clinicaId,
     }));
     actions.push(`Cobrança de R$ ${valor.toFixed(2)} gerada`);
 
@@ -490,6 +588,7 @@ export async function autoBillingExame(params: {
 export async function autoTriagemParaFila(params: {
   agendamentoId: string;
   classificacaoRisco: 'vermelho' | 'laranja' | 'amarelo' | 'verde' | 'azul';
+  clinicaId?: string | null;
 }): Promise<WorkflowResult> {
   const actions: string[] = [];
 
@@ -532,16 +631,35 @@ export async function autoTriagemParaFila(params: {
     const isUrgent = params.classificacaoRisco === 'vermelho' || params.classificacaoRisco === 'laranja';
     const posicao = isUrgent ? 0 : nextPos;
 
-    await must(supabase.from('fila_atendimento').insert({
-      agendamento_id: params.agendamentoId,
-      posicao,
-      status: 'aguardando',
-      prioridade: novaPrioridade,
-      horario_chegada: new Date().toISOString(),
-    }));
+    const { data: filaCriada, error: filaError } = await supabase
+      .from('fila_atendimento')
+      .insert({
+        agendamento_id: params.agendamentoId,
+        posicao,
+        status: 'aguardando',
+        prioridade: novaPrioridade,
+        horario_chegada: new Date().toISOString(),
+        clinica_id: params.clinicaId || null,
+      })
+      .select('id')
+      .single();
+    if (filaError) throw filaError;
     actions.push(`Adicionado à fila (prioridade: ${novaPrioridade})`);
 
-    await must(supabase.from('agendamentos').update({ status: 'aguardando' }).eq('id', params.agendamentoId));
+    try {
+      await must(supabase.from('agendamentos')
+        .update({ status: 'aguardando' })
+        .eq('id', params.agendamentoId)
+        .select('id')
+        .single());
+    } catch (agendamentoError) {
+      // O item recém-criado não pode ficar órfão na fila se a atualização do
+      // agendamento for rejeitada por RLS ou por um id inválido.
+      if (filaCriada?.id) {
+        await supabase.from('fila_atendimento').delete().eq('id', filaCriada.id);
+      }
+      throw agendamentoError;
+    }
     actions.push('Agendamento → Aguardando');
 
     if (isUrgent) {
@@ -764,6 +882,7 @@ export async function autoProgressExame(params: {
   tipoExame: string;
   convenioId?: string | null;
   resultado?: string;
+  clinicaId?: string | null;
 }): Promise<WorkflowResult> {
   const actions: string[] = [];
 
@@ -786,7 +905,9 @@ export async function autoProgressExame(params: {
         pacienteId: params.pacienteId,
         medicoId: params.medicoId,
         tipoExame: params.tipoExame,
+        clinicaId: params.clinicaId,
       });
+      if (!coletaResult.success) throw new Error(coletaResult.message);
       actions.push(...coletaResult.actions);
     }
 
@@ -814,7 +935,11 @@ export async function autoProgressExame(params: {
         pacienteNome: params.pacienteNome,
         tipoExame: params.tipoExame,
         convenioId: params.convenioId,
+        clinicaId: params.clinicaId,
       });
+      if (!billingResult.success) {
+        actions.push(`Cobrança não gerada: ${billingResult.message}`);
+      }
       actions.push(...billingResult.actions);
     }
 

@@ -152,29 +152,61 @@ export interface TrialWithPaymentData {
   payer_name: string;
 }
 
+export interface PlatformSubscriptionData {
+  plano_slug: string;
+  trial_dias?: number;
+}
+
+/** Abre o checkout de uma assinatura recorrente da plataforma. */
+export function useCreatePlatformSubscription() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (data: PlatformSubscriptionData) => {
+      const { data: response, error } = await supabase.functions.invoke('mercadopago-checkout', {
+        body: {
+          action: 'create_subscription',
+          plano_slug: data.plano_slug,
+          trial_dias: data.trial_dias || 0,
+        },
+      });
+      if (error) throw error;
+      if (response?.error) throw new Error(response.error);
+      if (!response?.checkout_url) throw new Error('O Mercado Pago não retornou o checkout da assinatura');
+      return response as { checkout_url: string; preapproval_id: string; assinatura_id: string; message: string };
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['user_plan'] });
+      window.location.href = data.checkout_url;
+    },
+    onError: (err: any) => {
+      toast.error(err.message || 'Erro ao abrir o checkout da assinatura');
+    },
+  });
+}
+
 export function useStartTrialWithPayment() {
-  const { user, profile } = useSupabaseAuth();
+  const { user } = useSupabaseAuth();
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: async (data: TrialWithPaymentData) => {
       if (!user?.email) throw new Error('Usuário não autenticado');
 
-      const { data: response, error } = await supabase.functions.invoke('trial-with-payment', {
+      const { data: response, error } = await supabase.functions.invoke('mercadopago-checkout', {
         body: {
+          action: 'create_subscription',
           plano_slug: data.plano_slug,
-          plano_nome: data.plano_nome,
-          plano_valor: data.plano_valor,
           trial_dias: data.trial_dias,
-          payment_method: data.payment_method,
-          payer_email: data.payer_email || user.email,
-          payer_name: data.payer_name || profile?.nome || user.email,
         },
       });
 
       if (error) throw error;
+      if (response?.error) throw new Error(response.error);
+      if (!response?.checkout_url) throw new Error('O Mercado Pago não retornou o checkout da assinatura');
       return response as unknown as {
         success: boolean;
+        checkout_url: string;
         preapproval_id: string;
         trial_id: string;
         trial_end: string;
@@ -184,6 +216,7 @@ export function useStartTrialWithPayment() {
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['user_plan'] });
+      window.location.href = data.checkout_url;
       toast.success(data.message || 'Período de teste iniciado com sucesso!');
     },
     onError: (err: any) => {

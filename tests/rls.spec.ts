@@ -64,6 +64,9 @@ const PRIVATE_TABLES = [
   'employee_invitations',
   'registros_pendentes',
   'audit_log',
+  // A sessão guarda o nome da instância do WhatsApp da clínica. Esse nome era a
+  // chave que permitia operar a conexão de outra clínica pela edge function.
+  'whatsapp_sessions',
 ];
 
 test.beforeAll(() => {
@@ -133,6 +136,60 @@ test.describe('RLS — escrita anônima', () => {
     } else {
       expect([401, 403, 404, 405, 406]).toContain(response.status());
     }
+  });
+});
+
+/**
+ * As edge functions abaixo usam `SUPABASE_SERVICE_ROLE_KEY`, que passa por cima
+ * do RLS. Nelas a autorização é código, não política de banco — então precisa
+ * ser testada separadamente.
+ *
+ * O `whatsapp-evolution` validava só que o JWT existia e depois aceitava o
+ * `session_id`/`instance_name` que viesse no corpo da requisição. Quem tivesse
+ * qualquer login pegava o QR Code de outra clínica (e parearia o WhatsApp dela
+ * no próprio aparelho), mandaria mensagem em nome dela ou apagaria a instância.
+ */
+test.describe('Edge functions — autorização própria', () => {
+  const SESSAO_DE_OUTRA_CLINICA = '11111111-2222-3333-4444-555555555555';
+
+  test('whatsapp-evolution recusa quem não está autenticado', async ({ request }) => {
+    const response = await request.post(`${SUPABASE_URL}/functions/v1/whatsapp-evolution`, {
+      headers,
+      data: { action: 'get_qr_code', session_id: SESSAO_DE_OUTRA_CLINICA },
+    });
+
+    // Nunca 200: sem usuário não há clínica, e sem clínica não há o que operar.
+    expect(response.status(), 'anônimo obteve resposta de sucesso da função do WhatsApp')
+      .not.toBe(200);
+    expect([401, 403, 404]).toContain(response.status());
+  });
+
+  test('whatsapp-evolution não envia mensagem para anônimo', async ({ request }) => {
+    const response = await request.post(`${SUPABASE_URL}/functions/v1/whatsapp-evolution`, {
+      headers,
+      data: {
+        action: 'send_message',
+        instance_name: 'instancia-de-outra-clinica',
+        to: '5511999999999',
+        message: 'teste de autorização',
+      },
+    });
+
+    expect(response.status(), 'anônimo disparou mensagem de WhatsApp').not.toBe(200);
+  });
+
+  test('ai-medical-assistant não aceita dado clínico de anônimo', async ({ request }) => {
+    const response = await request.post(`${SUPABASE_URL}/functions/v1/ai-medical-assistant`, {
+      headers,
+      data: {
+        action: 'suggest_diagnosis',
+        data: { queixa_principal: 'teste de autorização' },
+      },
+    });
+
+    // Dado de saúde não pode sair para provedor externo sem papel verificado.
+    expect(response.status(), 'anônimo enviou dado clínico para a IA').not.toBe(200);
+    expect([401, 403]).toContain(response.status());
   });
 });
 

@@ -221,15 +221,21 @@ export default function Tarefas() {
   const queryClient = useQueryClient();
 
   const { data: profiles } = useQuery({
-    queryKey: ['profiles-tarefas'],
+    queryKey: ['profiles-tarefas', profile?.clinica_id],
     queryFn: async () => {
-      const { data } = await supabase.from('profiles').select('id, nome').order('nome');
+      if (!profile?.clinica_id) return [];
+      const { data } = await supabase
+        .from('profiles')
+        .select('id, nome')
+        .eq('clinica_id', profile.clinica_id)
+        .order('nome');
       return data || [];
     },
+    enabled: !!profile?.clinica_id,
   });
 
   const { data: tarefas, isLoading } = useQuery({
-    queryKey: ['tarefas'],
+    queryKey: ['tarefas', profile?.clinica_id],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('tarefas')
@@ -245,6 +251,7 @@ export default function Tarefas() {
     },
     refetchOnWindowFocus: true,
     staleTime: 5000,
+    enabled: !!profile?.clinica_id,
   });
 
   const createTarefa = useMutation({

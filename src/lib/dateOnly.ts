@@ -35,12 +35,23 @@ export function parseDateOnly(value: string | null | undefined): Date | null {
   return new Date(`${value}T12:00:00`);
 }
 
+/**
+ * Um `Date` como "YYYY-MM-DD" no fuso local (não em UTC).
+ *
+ * Use no lugar de `data.toISOString().split('T')[0]`, que devolve o dia em UTC:
+ * no Brasil (UTC−3), das 21h à meia-noite esse recorte já é o dia seguinte, e a
+ * clínica que atende à noite grava lançamento, agendamento e vencimento com a
+ * data errada.
+ */
+export function toDateOnly(data: Date): string {
+  const mes = String(data.getMonth() + 1).padStart(2, '0');
+  const dia = String(data.getDate()).padStart(2, '0');
+  return `${data.getFullYear()}-${mes}-${dia}`;
+}
+
 /** Data de hoje como "YYYY-MM-DD" no fuso local (não em UTC). */
 export function todayDateOnly(): string {
-  const now = new Date();
-  const mes = String(now.getMonth() + 1).padStart(2, '0');
-  const dia = String(now.getDate()).padStart(2, '0');
-  return `${now.getFullYear()}-${mes}-${dia}`;
+  return toDateOnly(new Date());
 }
 
 /** Dias inteiros entre duas datas-only. Positivo = `fim` no futuro. */

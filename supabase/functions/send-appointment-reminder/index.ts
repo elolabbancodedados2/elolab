@@ -41,21 +41,22 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const brevoApiKey = Deno.env.get('BREVO_API_KEY')
-    const evolutionApiUrl = Deno.env.get('EVOLUTION_API_URL')
+    const evolutionApiUrl = (Deno.env.get('EVOLUTION_API_URL') || '').replace(/\/+$/, '')
     const evolutionApiKey = Deno.env.get('EVOLUTION_API_KEY')
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
-    // Cache clinic configs
+    // Cache clinic configs and WhatsApp instances per clinic. A single global
+    // connected instance would send one clinic's messages through another
+    // clinic's number when the cron processes multiple tenants.
     const clinicConfigCache: Record<string, any> = {}
+    const whatsappInstanceCache: Record<string, string | null> = {}
+    const whatsappInstancesUsed = new Set<string>()
 
     const { data: settings } = await supabase
       .from('automation_settings')
-      .select('chave, valor, ativo')
+      .select('chave, valor, ativo, clinica_id')
       .in('chave', ['lembrete_consulta_24h', 'lembrete_consulta_2h'])
-
-    const config24h = settings?.find(s => s.chave === 'lembrete_consulta_24h')
-    const config2h = settings?.find(s => s.chave === 'lembrete_consulta_2h')
 
     const { data: templates } = await supabase
       .from('notification_templates')
@@ -63,9 +64,6 @@ Deno.serve(async (req) => {
       .eq('categoria', 'lembrete_consulta')
       .eq('tipo', 'email')
       .eq('ativo', true)
-
-    const template24h = templates?.find(t => t.nome.includes('24h'))
-    const template2h = templates?.find(t => t.nome.includes('2h'))
 
     const tomorrow = new Date()
     tomorrow.setDate(tomorrow.getDate() + 1)
@@ -81,20 +79,8 @@ Deno.serve(async (req) => {
     let totalErrors = 0
     const errors: string[] = []
 
-    // Check if WhatsApp is available
-    let whatsappInstanceName: string | null = null
-    if (evolutionApiUrl && evolutionApiKey) {
-      const { data: session } = await supabase
-        .from('whatsapp_sessions')
-        .select('instance_name')
-        .eq('status', 'connected')
-        .limit(1)
-        .single()
-      whatsappInstanceName = session?.instance_name || null
-    }
-
     // === LEMBRETE 24H ===
-    if (config24h?.ativo !== false) {
+    if (hasGlobalOrClinicSetting(settings, null, 'lembrete_consulta_24h')) {
       const { data: agendamentos24h, error: err24h } = await supabase
         .from('agendamentos')
         .select(`
@@ -109,6 +95,7 @@ Deno.serve(async (req) => {
         errors.push(`Erro 24h: ${err24h.message}`)
       } else if (agendamentos24h && agendamentos24h.length > 0) {
         for (const ag of agendamentos24h as unknown as Agendamento[]) {
+          if (!isAutomationActive(settings, ag.clinica_id, 'lembrete_consulta_24h')) continue
           totalProcessed++
 
           const { data: existing } = await supabase
@@ -123,6 +110,7 @@ Deno.serve(async (req) => {
           const paciente = ag.pacientes
           const medico = ag.medicos
           const medicoNome = medico.nome ? `Dr(a). ${medico.nome}` : `Dr(a). CRM ${medico.crm}`
+          const template24h = templateForClinic(templates || [], ag.clinica_id, '24h')
 
           // Fetch clinic config
           const clinicConfig = await getClinicConfig(supabase, ag.clinica_id, clinicConfigCache)
@@ -156,6 +144,7 @@ Deno.serve(async (req) => {
                   assunto,
                   conteudo,
                   dados_extras: { agendamento_id: ag.id, tipo_lembrete: '24h' },
+                  clinica_id: ag.clinica_id,
                   status: 'enviado',
                   enviado_em: new Date().toISOString(),
                 })
@@ -169,6 +158,15 @@ Deno.serve(async (req) => {
               errors.push(`Exceção email para ${paciente.email}: ${emailError}`)
             }
           }
+
+          const whatsappInstanceName = await getWhatsAppInstance(
+            supabase,
+            ag.clinica_id,
+            whatsappInstanceCache,
+            evolutionApiUrl,
+            evolutionApiKey,
+          )
+          if (whatsappInstanceName) whatsappInstancesUsed.add(ag.clinica_id)
 
           // === SEND VIA WHATSAPP ===
           if (whatsappInstanceName && paciente?.telefone) {
@@ -184,6 +182,7 @@ Deno.serve(async (req) => {
                 destinatario_nome: paciente.nome,
                 conteudo: whatsappMsg,
                 dados_extras: { agendamento_id: ag.id, tipo_lembrete: '24h_whatsapp' },
+                clinica_id: ag.clinica_id,
                 status: 'enviado',
                 enviado_em: new Date().toISOString(),
               })
@@ -197,7 +196,7 @@ Deno.serve(async (req) => {
     }
 
     // === LEMBRETE 2H ===
-    if (config2h?.ativo !== false) {
+    if (hasGlobalOrClinicSetting(settings, null, 'lembrete_consulta_2h')) {
       const { data: agendamentos2h, error: err2h } = await supabase
         .from('agendamentos')
         .select(`
@@ -212,6 +211,7 @@ Deno.serve(async (req) => {
         errors.push(`Erro 2h: ${err2h.message}`)
       } else if (agendamentos2h && agendamentos2h.length > 0) {
         for (const ag of agendamentos2h as unknown as Agendamento[]) {
+          if (!isAutomationActive(settings, ag.clinica_id, 'lembrete_consulta_2h')) continue
           const [hours, minutes] = ag.hora_inicio.split(':').map(Number)
           const appointmentTime = new Date(today)
           appointmentTime.setHours(hours, minutes, 0, 0)
@@ -232,6 +232,7 @@ Deno.serve(async (req) => {
           const paciente = ag.pacientes
           const medico = ag.medicos
           const medicoNome = medico.nome ? `Dr(a). ${medico.nome}` : `Dr(a). CRM ${medico.crm}`
+          const template2h = templateForClinic(templates || [], ag.clinica_id, '2h')
 
           // Fetch clinic config
           const clinicConfig2h = await getClinicConfig(supabase, ag.clinica_id, clinicConfigCache)
@@ -263,6 +264,7 @@ Deno.serve(async (req) => {
                   assunto,
                   conteudo,
                   dados_extras: { agendamento_id: ag.id, tipo_lembrete: '2h' },
+                  clinica_id: ag.clinica_id,
                   status: 'enviado',
                   enviado_em: new Date().toISOString(),
                 })
@@ -274,6 +276,15 @@ Deno.serve(async (req) => {
               errors.push(`Exceção 2h email: ${emailError}`)
             }
           }
+
+          const whatsappInstanceName = await getWhatsAppInstance(
+            supabase,
+            ag.clinica_id,
+            whatsappInstanceCache,
+            evolutionApiUrl,
+            evolutionApiKey,
+          )
+          if (whatsappInstanceName) whatsappInstancesUsed.add(ag.clinica_id)
 
           // === SEND VIA WHATSAPP ===
           if (whatsappInstanceName && paciente?.telefone) {
@@ -289,6 +300,7 @@ Deno.serve(async (req) => {
                 destinatario_nome: paciente.nome,
                 conteudo: whatsappMsg,
                 dados_extras: { agendamento_id: ag.id, tipo_lembrete: '2h_whatsapp' },
+                clinica_id: ag.clinica_id,
                 status: 'enviado',
                 enviado_em: new Date().toISOString(),
               })
@@ -314,7 +326,7 @@ Deno.serve(async (req) => {
         registros_processados: totalProcessed,
         registros_sucesso: totalSuccess,
         registros_erro: totalErrors,
-        detalhes: { errors, whatsapp_available: !!whatsappInstanceName },
+        detalhes: { errors, whatsapp_available: whatsappInstancesUsed.size > 0 },
         duracao_ms: duration,
         executado_por: 'cron',
       })
@@ -324,7 +336,7 @@ Deno.serve(async (req) => {
       JSON.stringify({
         success: true,
         message: 'Lembretes processados (Email + WhatsApp)',
-        stats: { processados: totalProcessed, sucesso: totalSuccess, erros: totalErrors, duracao_ms: duration, whatsapp: !!whatsappInstanceName },
+        stats: { processados: totalProcessed, sucesso: totalSuccess, erros: totalErrors, duracao_ms: duration, whatsapp: whatsappInstancesUsed.size > 0 },
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
@@ -353,6 +365,44 @@ async function getClinicConfig(supabase: any, clinicId: string, cache: Record<st
     .single()
 
   cache[clinicId] = data || {}
+  return cache[clinicId]
+}
+
+function isAutomationActive(settings: any[] | null, clinicId: string | null, chave: string): boolean {
+  const scoped = settings?.find((setting) => setting.clinica_id === clinicId && setting.chave === chave)
+  const legacy = settings?.find((setting) => setting.clinica_id == null && setting.chave === chave)
+  return (scoped || legacy)?.ativo !== false
+}
+
+function hasGlobalOrClinicSetting(settings: any[] | null, _clinicId: string | null, chave: string): boolean {
+  return settings?.some((setting) => setting.chave === chave) ?? true
+}
+
+function templateForClinic(templates: any[], clinicId: string, suffix: string): any | null {
+  return templates.find((template) => template.clinica_id === clinicId && template.nome.includes(suffix))
+    || templates.find((template) => template.clinica_id == null && template.nome.includes(suffix))
+    || null
+}
+
+async function getWhatsAppInstance(
+  supabase: any,
+  clinicId: string,
+  cache: Record<string, string | null>,
+  apiUrl: string,
+  apiKey: string | undefined,
+): Promise<string | null> {
+  if (!apiUrl || !apiKey) return null
+  if (Object.prototype.hasOwnProperty.call(cache, clinicId)) return cache[clinicId]
+
+  const { data: session } = await supabase
+    .from('whatsapp_sessions')
+    .select('instance_name')
+    .eq('clinica_id', clinicId)
+    .eq('status', 'connected')
+    .limit(1)
+    .maybeSingle()
+
+  cache[clinicId] = session?.instance_name || null
   return cache[clinicId]
 }
 

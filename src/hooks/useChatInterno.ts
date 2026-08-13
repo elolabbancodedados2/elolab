@@ -196,6 +196,7 @@ export function useChatInterno() {
       .insert({
         participante_1_id: user.id,
         participante_2_id: outroUserId,
+        clinica_id: profile?.clinica_id || null,
       })
       .select()
       .maybeSingle();
@@ -216,7 +217,7 @@ export function useChatInterno() {
     setConversaAtiva(conv);
     fetchConversas();
     return conv;
-  }, [user, fetchConversas]);
+  }, [user, profile?.clinica_id, fetchConversas]);
 
   // Send a message
   const enviarMensagem = useCallback(async (texto: string, urgente = false) => {
@@ -235,6 +236,7 @@ export function useChatInterno() {
         destinatario_id: outroId,
         texto: texto.trim(),
         urgente,
+        clinica_id: profile?.clinica_id || null,
       })
       .select()
       .maybeSingle();
@@ -254,7 +256,7 @@ export function useChatInterno() {
       setMensagens(prev => [...prev, msg as ChatMensagem]);
     }
     fetchConversas();
-  }, [user, fetchConversas]);
+  }, [user, profile?.clinica_id, fetchConversas]);
 
   // Marcar todas mensagens de uma conversa como lidas
   const marcarComoLida = useCallback(async (conversaId: string) => {

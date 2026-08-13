@@ -22,6 +22,7 @@ import {
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { printReceiptPdf, downloadReceiptPdf, ReceiptData } from '@/lib/pdfReceipt';
+import { todayDateOnly, toDateOnly } from '@/lib/dateOnly';
 
 const statusColors: Record<string, string> = {
   pendente: 'bg-warning/10 text-warning',
@@ -350,7 +351,7 @@ function NewDirectBillingForm({ pacientes, onSuccess, onCancel }: { pacientes: a
           parcela_atual: i + 1,
           intervalo_parcelas: intervalo,
           cobranca_direta: true,
-          data_vencimento: vencimento.toISOString().split('T')[0],
+          data_vencimento: toDateOnly(vencimento),
           data_recebimento: form.marcar_pago ? form.data_recebimento : null,
           data_criacao: new Date().toISOString(),
         };

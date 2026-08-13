@@ -36,6 +36,7 @@ import { exportarFinanceiro, exportarPacientes, exportarAgendamentos, exportarEs
 import { gerarRelatorioFinanceiro, gerarRelatorioAtendimentos, openPDF } from '@/lib/pdfGenerator';
 import { Skeleton } from '@/components/ui/skeleton';
 import RelatorioCustomizado from '@/components/relatorios/RelatorioCustomizado';
+import { valorRealizado } from '@/lib/lancamentos';
 import {
   AreaChart,
   Area,
@@ -113,14 +114,19 @@ export default function Relatorios() {
     const cancelamentos = agendamentosFiltrados.filter(a => a.status === 'cancelado').length;
     const faltas = agendamentosFiltrados.filter(a => a.status === 'faltou').length;
 
+    // Pago = dinheiro que circulou → `valorRealizado`, que já considera
+    // desconto e acréscimo. Somar `valor` aqui inflava a receita pelo total de
+    // descontos concedidos: o dono fechava o mês com um número que não existia
+    // na conta bancária.
     const receitas = lancamentosFiltrados
       .filter(l => l.tipo === 'receita' && l.status === 'pago')
-      .reduce((acc, l) => acc + Number(l.valor), 0);
+      .reduce((acc, l) => acc + valorRealizado(l), 0);
 
     const despesas = lancamentosFiltrados
       .filter(l => l.tipo === 'despesa' && l.status === 'pago')
-      .reduce((acc, l) => acc + Number(l.valor), 0);
+      .reduce((acc, l) => acc + valorRealizado(l), 0);
 
+    // Pendente é o que ainda está em aberto: aqui `valor` é o certo.
     const pendentes = lancamentosFiltrados
       .filter(l => l.status === 'pendente')
       .reduce((acc, l) => acc + Number(l.valor), 0);
@@ -154,10 +160,10 @@ export default function Relatorios() {
       const atendimentos = agendamentosFiltrados.filter(a => a.data === diaStr).length;
       const receita = lancamentosFiltrados
         .filter(l => l.data === diaStr && l.tipo === 'receita' && l.status === 'pago')
-        .reduce((acc, l) => acc + Number(l.valor), 0);
+        .reduce((acc, l) => acc + valorRealizado(l), 0);
       const despesa = lancamentosFiltrados
         .filter(l => l.data === diaStr && l.tipo === 'despesa' && l.status === 'pago')
-        .reduce((acc, l) => acc + Number(l.valor), 0);
+        .reduce((acc, l) => acc + valorRealizado(l), 0);
 
       return {
         data: format(dia, 'dd/MM'),
@@ -206,7 +212,9 @@ export default function Relatorios() {
       .filter(l => l.tipo === 'receita' && l.status === 'pago')
       .forEach(l => {
         const forma = l.forma_pagamento || 'Não informado';
-        formas[forma] = (formas[forma] || 0) + Number(l.valor);
+        // O agrupamento precisa fechar com o total de receitas acima, senão a
+        // soma das fatias do gráfico não bate com o KPI ao lado.
+        formas[forma] = (formas[forma] || 0) + valorRealizado(l);
       });
     return Object.entries(formas).map(([name, value]) => ({
       name: name.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase()),

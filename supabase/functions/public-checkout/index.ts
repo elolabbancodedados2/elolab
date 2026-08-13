@@ -104,77 +104,68 @@ Deno.serve(async (req) => {
         const appUrl = 'https://app.elolab.com.br'
         const webhookUrl = `${supabaseUrl}/functions/v1/mercadopago-webhook`
 
-        // Use Checkout Pro preference which supports ALL payment methods (PIX, boleto, credit, debit, etc.)
-        const preferencePayload = {
-          items: [{
-            title: `${plano.nome} - Assinatura Mensal EloLab`,
-            description: plano.descricao || `Plano ${plano.nome}`,
-            unit_price: Number(plano.valor),
-            quantity: 1,
-            currency_id: 'BRL',
-          }],
-          payer: {
-            name: nome,
-            email,
-          },
+        // Assinatura recorrente: o checkout do preapproval coleta o meio de
+        // pagamento e gera as cobranças mensais automaticamente.
+        const subscriptionPayload = {
+          status: 'pending',
+          payer_email: email,
+          reason: `${plano.nome} - Assinatura EloLab`,
           external_reference: registro.id,
-          back_urls: {
-            success: `${appUrl}/auth?status=success&id=${registro.id}`,
-            failure: `${appUrl}/auth?status=error`,
-            pending: `${appUrl}/auth?status=pending`,
+          back_url: `${appUrl}/auth?status=success&id=${registro.id}`,
+          auto_recurring: {
+            frequency: 1,
+            frequency_type: plano.frequencia === 'anual' ? 'years' : 'months',
+            transaction_amount: Number(plano.valor),
+            currency_id: 'BRL',
+            start_date: new Date().toISOString(),
           },
-          auto_return: 'approved',
           notification_url: webhookUrl,
-          statement_descriptor: 'ELOLAB',
-          payment_methods: {
-            installments: 12,
-            default_installments: 1,
-          },
         }
 
-        console.log('Creating checkout preference:', JSON.stringify(preferencePayload))
+        console.log('Creating recurring subscription:', JSON.stringify(subscriptionPayload))
 
-        const preferenceRes = await fetch(`${MP_API_BASE}/checkout/preferences`, {
+        const preapprovalRes = await fetch(`${MP_API_BASE}/preapproval`, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${mpAccessToken}`,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify(preferencePayload),
+          body: JSON.stringify(subscriptionPayload),
         })
 
-        if (preferenceRes.ok) {
-          const prefData = await preferenceRes.json()
-          checkoutUrl = prefData.init_point || prefData.sandbox_init_point
-          console.log('Preference created with all payment methods:', prefData.id)
+        if (preapprovalRes.ok) {
+          const preapprovalData = await preapprovalRes.json()
+          checkoutUrl = preapprovalData.init_point || preapprovalData.sandbox_init_point
+          console.log('Recurring subscription created:', preapprovalData.id)
 
           // Save reference
           await supabase
             .from('assinaturas_mercadopago')
             .insert({
-              mp_preapproval_id: prefData.id,
+                mp_preapproval_id: preapprovalData.id,
               nome_plano: plano.nome,
               descricao: plano.descricao || `Plano ${plano.nome} EloLab`,
               valor: Number(plano.valor),
-              frequencia: 'mensal',
+               frequencia: plano.frequencia || 'mensal',
               checkout_url: checkoutUrl,
               status: 'pendente',
               detalhes: {
                 registro_pendente_id: registro.id,
                 payer_email: email,
                 payer_name: nome,
-                checkout_type: 'preference',
+                 checkout_reference: registro.id,
+                  checkout_type: 'preapproval',
               },
             })
 
           await supabase
             .from('registros_pendentes')
-            .update({ mp_payment_id: prefData.id })
+            .update({ mp_payment_id: preapprovalData.id })
             .eq('id', registro.id)
         } else {
-          const errText = await preferenceRes.text()
+          const errText = await preapprovalRes.text()
           console.error('MP preference error:', errText)
-          checkoutError = `Mercado Pago retornou erro ${preferenceRes.status}. Tente novamente em instantes.`
+          checkoutError = `Mercado Pago retornou erro ${preapprovalRes.status}. Tente novamente em instantes.`
         }
       } catch (mpErr) {
         console.error('Erro Mercado Pago:', mpErr)

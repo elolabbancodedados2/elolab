@@ -28,6 +28,7 @@ import { toast } from 'sonner';
 import { mensagemDeErro } from '@/lib/erros';
 import { supabase } from '@/integrations/supabase/client';
 import { useMedicos, useSupabaseQuery } from '@/hooks/useSupabaseData';
+import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { useQueryClient } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
 import { LoadingButton } from '@/components/ui/loading-button';
@@ -63,6 +64,7 @@ export function BloqueioAgenda({ medicoIdFilter }: BloqueioAgendaProps) {
 
   const [salvando, setSalvando] = useState(false);
   const queryClient = useQueryClient();
+  const { profile } = useSupabaseAuth();
   const { data: medicos = [] } = useMedicos();
   const { data: bloqueios = [], isLoading } = useSupabaseQuery<Bloqueio>('bloqueios_agenda', {
     orderBy: { column: 'data_inicio', ascending: true },
@@ -90,6 +92,7 @@ export function BloqueioAgenda({ medicoIdFilter }: BloqueioAgendaProps) {
       dia_inteiro: form.dia_inteiro,
       motivo: form.motivo || null,
       tipo: form.tipo,
+      clinica_id: profile?.clinica_id || null,
     });
 
     if (error) {

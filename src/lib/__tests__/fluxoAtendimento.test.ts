@@ -1,0 +1,188 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+/**
+ * Fluxos de atendimento nos caminhos de FALHA.
+ *
+ * Os testes de fluxo que existiam só verificavam que os módulos podiam ser
+ * importados. O que quebra na clínica não é o import — é o segundo passo de uma
+ * operação de dois passos falhando e a tela dizendo que deu tudo certo.
+ */
+
+/** Constrói um mock encadeável do supabase-js com respostas programáveis. */
+function criarSupabaseMock(respostas: Record<string, any>) {
+  const chamadas: Array<{ tabela: string; op: string; payload?: any }> = [];
+
+  const construirQuery = (tabela: string, op: string, payload?: any) => {
+    chamadas.push({ tabela, op, payload });
+    const chave = `${tabela}.${op}`;
+    const resposta = respostas[chave] ?? { data: null, error: null };
+
+    const encadeavel: any = {
+      select: () => encadeavel,
+      eq: () => encadeavel,
+      neq: () => encadeavel,
+      order: () => encadeavel,
+      limit: () => Promise.resolve(resposta),
+      single: () => Promise.resolve(resposta),
+      maybeSingle: () => Promise.resolve(resposta),
+      then: (fn: any) => Promise.resolve(resposta).then(fn),
+    };
+    return encadeavel;
+  };
+
+  return {
+    chamadas,
+    cliente: {
+      auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: 'u1' } } }) },
+      from: (tabela: string) => ({
+        select: () => construirQuery(tabela, 'select'),
+        insert: (payload: any) => construirQuery(tabela, 'insert', payload),
+        update: (payload: any) => construirQuery(tabela, 'update', payload),
+        delete: () => construirQuery(tabela, 'delete'),
+      }),
+    },
+  };
+}
+
+let mockAtual = criarSupabaseMock({});
+vi.mock('@/integrations/supabase/client', () => ({
+  get supabase() {
+    return mockAtual.cliente;
+  },
+}));
+
+beforeEach(() => {
+  mockAtual = criarSupabaseMock({});
+});
+
+describe('check-in — o paciente nunca fica marcado como aguardando fora da fila', () => {
+  it('entra na fila antes de mudar o status do agendamento', async () => {
+    mockAtual = criarSupabaseMock({
+      'fila_atendimento.select': { data: [], error: null },
+      'fila_atendimento.insert': { data: { id: 'fila-1' }, error: null },
+      'agendamentos.update': { data: null, error: null },
+    });
+
+    const { autoCheckin } = await import('@/lib/workflowAutomation');
+    const resultado = await autoCheckin('ag-1');
+
+    expect(resultado.success).toBe(true);
+
+    const ordem = mockAtual.chamadas
+      .filter(c => (c.tabela === 'fila_atendimento' && c.op === 'insert')
+                || (c.tabela === 'agendamentos' && c.op === 'update'))
+      .map(c => `${c.tabela}.${c.op}`);
+
+    // A fila (artefato visível no painel) precisa vir primeiro: se ela falhar,
+    // nada mudou. O contrário deixava o agendamento "aguardando" sem fila.
+    expect(ordem[0]).toBe('fila_atendimento.insert');
+    expect(ordem[1]).toBe('agendamentos.update');
+  });
+
+  it('grava a clínica no item da fila para ele continuar visível no isolamento', async () => {
+    mockAtual = criarSupabaseMock({
+      'fila_atendimento.select': { data: [], error: null },
+      'fila_atendimento.insert': { data: { id: 'fila-1' }, error: null },
+      'agendamentos.update': { data: null, error: null },
+    });
+
+    const { autoCheckin } = await import('@/lib/workflowAutomation');
+    const resultado = await autoCheckin('ag-1', 'clinica-1');
+
+    expect(resultado.success).toBe(true);
+    const insercao = mockAtual.chamadas.find(
+      c => c.tabela === 'fila_atendimento' && c.op === 'insert',
+    );
+    expect(insercao?.payload).toMatchObject({ clinica_id: 'clinica-1' });
+  });
+
+  it('falha ao entrar na fila não mexe no agendamento', async () => {
+    mockAtual = criarSupabaseMock({
+      'fila_atendimento.select': { data: [], error: null },
+      'fila_atendimento.insert': { data: null, error: { message: 'permissão negada' } },
+    });
+
+    const { autoCheckin } = await import('@/lib/workflowAutomation');
+    const resultado = await autoCheckin('ag-1');
+
+    expect(resultado.success).toBe(false);
+    const mexeuNoAgendamento = mockAtual.chamadas.some(
+      c => c.tabela === 'agendamentos' && c.op === 'update',
+    );
+    expect(mexeuNoAgendamento, 'agendamento foi alterado apesar da falha na fila').toBe(false);
+  });
+
+  it('falha no status desfaz a entrada na fila', async () => {
+    mockAtual = criarSupabaseMock({
+      'fila_atendimento.select': { data: [], error: null },
+      'fila_atendimento.insert': { data: { id: 'fila-1' }, error: null },
+      'agendamentos.update': { data: null, error: { message: 'permissão negada' } },
+    });
+
+    const { autoCheckin } = await import('@/lib/workflowAutomation');
+    const resultado = await autoCheckin('ag-1');
+
+    expect(resultado.success).toBe(false);
+
+    // Sem a compensação, sobraria na fila um paciente que ninguém consegue chamar.
+    const desfezFila = mockAtual.chamadas.some(
+      c => c.tabela === 'fila_atendimento' && c.op === 'delete',
+    );
+    expect(desfezFila, 'entrada órfã ficou na fila').toBe(true);
+  });
+
+  it('paciente já na fila não é inserido de novo', async () => {
+    mockAtual = criarSupabaseMock({
+      'fila_atendimento.select': { data: [{ id: 'fila-existente' }], error: null },
+    });
+
+    const { autoCheckin } = await import('@/lib/workflowAutomation');
+    const resultado = await autoCheckin('ag-1');
+
+    expect(resultado.success).toBe(true);
+    expect(resultado.message).toContain('já está na fila');
+    expect(mockAtual.chamadas.some(c => c.op === 'insert')).toBe(false);
+  });
+});
+
+describe('faturamento automático — uma cobrança por agendamento', () => {
+  it('não cobra de novo quando já existe lançamento', async () => {
+    mockAtual = criarSupabaseMock({
+      'lancamentos.select': { data: [{ id: 'lanc-1' }], error: null },
+    });
+
+    const { createAutoBilling } = await import('@/lib/autoBilling');
+    const criou = await createAutoBilling({
+      agendamentoId: 'ag-1',
+      pacienteId: 'pac-1',
+      pacienteNome: 'Maria',
+      data: '2026-08-12',
+      clinicaId: 'cli-1',
+    });
+
+    expect(criou).toBe(false);
+    expect(mockAtual.chamadas.some(c => c.tabela === 'lancamentos' && c.op === 'insert')).toBe(false);
+  });
+
+  it('perder a corrida para outro atendente (23505) não é tratado como erro', async () => {
+    // Dois atendentes fazendo check-in ao mesmo tempo: os dois consultam, os
+    // dois não acham nada, e os dois inserem. O índice único
+    // lancamentos_um_por_agendamento barra o segundo — e isso é o resultado
+    // desejado, não uma falha a ser gritada na tela.
+    mockAtual = criarSupabaseMock({
+      'lancamentos.select': { data: [], error: null },
+      'lancamentos.insert': { data: null, error: { code: '23505', message: 'duplicate key' } },
+    });
+
+    const { createAutoBilling } = await import('@/lib/autoBilling');
+    const criou = await createAutoBilling({
+      agendamentoId: 'ag-1',
+      pacienteId: 'pac-1',
+      pacienteNome: 'Maria',
+      data: '2026-08-12',
+      clinicaId: 'cli-1',
+    });
+
+    expect(criou).toBe(false);
+  });
+});

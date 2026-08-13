@@ -15,6 +15,8 @@ import { toast } from 'sonner';
 import { mensagemDeErro } from '@/lib/erros';
 import { useQueryClient } from '@tanstack/react-query';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
+import { todayDateOnly } from '@/lib/dateOnly';
+import { pacienteCorresponde } from '@/lib/buscaPaciente';
 
 interface Props {
   open: boolean;
@@ -42,7 +44,7 @@ export function AppointmentDialog({ open, onOpenChange, initial, pacientes, medi
       setForm({
         paciente_id: initial?.paciente_id || '',
         medico_id: initial?.medico_id || '',
-        data: initial?.data || new Date().toISOString().split('T')[0],
+        data: initial?.data || todayDateOnly(),
         hora_inicio: initial?.hora_inicio || '09:00',
         hora_fim: initial?.hora_fim || '',
         tipo: initial?.tipo || 'consulta',
@@ -57,12 +59,11 @@ export function AppointmentDialog({ open, onOpenChange, initial, pacientes, medi
   }, [open, initial]);
 
   const paciente = pacientes.find(p => p.id === form.paciente_id);
+  // Ignora acento, caixa e máscara (ver src/lib/buscaPaciente.ts): marcar
+  // consulta é o momento em que a recepcionista tem o paciente na frente e o
+  // CPF na mão, digitado sem pontos.
   const filteredPacs = pacSearch
-    ? pacientes.filter(p =>
-        (p.nome || '').toLowerCase().includes(pacSearch.toLowerCase()) ||
-        (p.cpf || '').includes(pacSearch) ||
-        (p.telefone || '').includes(pacSearch)
-      ).slice(0, 20)
+    ? pacientes.filter(p => pacienteCorresponde(p, pacSearch)).slice(0, 20)
     : pacientes.slice(0, 20);
 
   const handleSave = async () => {
@@ -95,11 +96,21 @@ export function AppointmentDialog({ open, onOpenChange, initial, pacientes, medi
         setTab('consulta'); setSaving(false); return;
       }
 
-      const { data: doDia } = await supabase
+      const { data: doDia, error: erroDoDia } = await supabase
         .from('agendamentos')
         .select('id, hora_inicio, hora_fim, status')
         .eq('medico_id', form.medico_id)
         .eq('data', form.data);
+
+      // Sem esta checagem, uma falha aqui devolvia lista vazia e o código
+      // concluía "não há conflito". A constraint do banco ainda barraria a
+      // sobreposição, mas com uma mensagem que ninguém entende.
+      if (erroDoDia) {
+        toast.error('Não foi possível conferir a agenda do médico.', {
+          description: `${erroDoDia.message}. Tente de novo antes de salvar.`,
+        });
+        setTab('consulta'); setSaving(false); return;
+      }
 
       const conflito = (doDia || []).find((a: any) => {
         if (a.status === 'cancelado') return false;
@@ -117,12 +128,24 @@ export function AppointmentDialog({ open, onOpenChange, initial, pacientes, medi
       }
 
       // Bloqueio de agenda cobrindo o novo horário?
-      const { data: blocks } = await (supabase
+      // Diferente da sobreposição, o bloqueio NÃO tem constraint no banco como
+      // rede de segurança: se esta consulta falhasse e a lista viesse vazia, a
+      // recepção marcava consulta dentro das férias do médico ou de um feriado
+      // sem nenhum aviso.
+      const { data: blocks, error: erroBlocks } = await (supabase
         .from('bloqueios_agenda' as any)
         .select('id, data_inicio, data_fim, hora_inicio, hora_fim, dia_inteiro, motivo, tipo')
         .eq('medico_id', form.medico_id)
         .lte('data_inicio', form.data)
         .gte('data_fim', form.data) as any);
+
+      if (erroBlocks) {
+        toast.error('Não foi possível conferir os bloqueios da agenda.', {
+          description: `${erroBlocks.message}. Tente de novo — sem isso não dá para saber se o médico está de férias ou se é feriado.`,
+        });
+        setTab('consulta'); setSaving(false); return;
+      }
+
       const bloqueio = (blocks || []).find((b: any) => {
         if (b.dia_inteiro) return true;
         const bi = toMin(b.hora_inicio);
@@ -158,13 +181,28 @@ export function AppointmentDialog({ open, onOpenChange, initial, pacientes, medi
       }
       if (result.error) throw result.error;
 
+      toast.success(editing ? 'Consulta atualizada' : 'Consulta agendada');
+
+      // O lembrete é secundário: a consulta já está marcada e não deve ser
+      // desfeita se o WhatsApp falhar. Mas a falha era engolida com
+      // `.catch(() => {})` e a recepção não sabia que precisava reenviar —
+      // o que vira falta na agenda.
       if (form.send_whatsapp && !editing) {
-        supabase.functions.invoke('send-appointment-reminder', {
-          body: { paciente_id: form.paciente_id, data: form.data, hora: form.hora_inicio },
-        }).catch(() => {});
+        supabase.functions
+          .invoke('send-appointment-reminder', {
+            body: { paciente_id: form.paciente_id, data: form.data, hora: form.hora_inicio },
+          })
+          .then(({ error }) => {
+            if (error) throw error;
+          })
+          .catch((erroLembrete: any) => {
+            toast.warning('Consulta marcada, mas o lembrete não foi enviado.', {
+              description: `${erroLembrete?.message || 'Falha no envio'}. Avise o paciente por outro meio.`,
+              duration: 10000,
+            });
+          });
       }
 
-      toast.success(editing ? 'Consulta atualizada' : 'Consulta agendada');
       queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
       onSaved?.();
       onOpenChange(false);

@@ -12,7 +12,11 @@ export function useCurrentMedico() {
 
   const currentMedico = useMemo(() => {
     if (!user) return null;
-    return medicos.find(m => m.user_id === user.id) || null;
+    const byUser = medicos.find(m => m.user_id === user.id);
+    if (byUser) return byUser;
+    // Convites antigos podem ter criado a ficha antes de vincular user_id.
+    // O e-mail é um segundo vínculo dentro da clínica já filtrada pelo hook.
+    return medicos.find(m => m.email?.trim().toLowerCase() === user.email?.trim().toLowerCase()) || null;
   }, [user, medicos]);
 
   const isMedicoOnly = useMemo(() => {

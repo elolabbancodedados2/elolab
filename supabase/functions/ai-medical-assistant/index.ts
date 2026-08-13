@@ -36,23 +36,68 @@ Deno.serve(async (req) => {
     const authClient = createClient(supabaseUrl, supabaseAnonKey, {
       global: { headers: { Authorization: authHeader } }
     })
-    const token = authHeader.replace('Bearer ', '')
-    const { data: claimsData, error: claimsError } = await authClient.auth.getClaims(token)
-    if (claimsError || !claimsData?.claims) {
+    const { data: { user }, error: userError } = await authClient.auth.getUser()
+    if (userError || !user) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: corsHeaders })
     }
 
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    const deepseekApiKey = Deno.env.get('DEEPSEEK_API_KEY')
+    const openaiApiKey = Deno.env.get('OPENAI_API_KEY')
+    const openaiModel = Deno.env.get('OPENAI_MODEL') || 'gpt-4o-mini'
 
-    if (!deepseekApiKey) {
-      throw new Error('DEEPSEEK_API_KEY não configurada')
+    if (!openaiApiKey) {
+      throw new Error('OPENAI_API_KEY não configurada')
     }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
+    // ─── Autorização ──────────────────────────────────────────────────────
+    // A checagem anterior parava na validade do JWT. Como o texto enviado aqui
+    // é queixa, história, exame físico, alergias e hipótese diagnóstica — dado
+    // de saúde, sensível pelo art. 11 da LGPD — e sai do país rumo a um
+    // provedor externo (hoje api.openai.com), qualquer usuário autenticado
+    // (recepção, estagiário, funcionário de outra clínica) podia disparar uma
+    // transferência internacional de dado sensível sem registro nenhum.
+    const { data: profile } = await supabase
+      .from('profiles').select('clinica_id, nome').eq('id', user.id).maybeSingle()
+    const clinicaId = (profile as any)?.clinica_id
+
+    if (!clinicaId) {
+      return new Response(
+        JSON.stringify({ error: 'Usuário sem clínica associada.' }),
+        { status: 403, headers: corsHeaders },
+      )
+    }
+
+    // Apoio à decisão clínica é ferramenta de quem prescreve.
+    const { data: papeis } = await supabase
+      .from('user_roles').select('role').eq('user_id', user.id)
+    const podeUsar = (papeis || []).some((p: any) => p.role === 'medico' || p.role === 'admin')
+
+    if (!podeUsar) {
+      return new Response(
+        JSON.stringify({ error: 'Apoio à decisão clínica é restrito a médicos.' }),
+        { status: 403, headers: corsHeaders },
+      )
+    }
+
     const body: MedicalAssistantRequest = await req.json()
     const { action, data } = body
+
+    // Registro da transferência internacional, exigido para demonstrar base
+    // legal e rastrear quem enviou o quê para fora.
+    await supabase.from('audit_log').insert({
+      action: 'ai_request',
+      collection: 'ai_medical_assistant',
+      record_id: crypto.randomUUID(), // não há registro próprio; o evento é o registro
+      record_name: `Envio de dado clínico a provedor externo (${action})`,
+      user_id: user.id,
+      user_name: (profile as any)?.nome || null,
+      clinica_id: clinicaId,
+    }).then(({ error }) => {
+      // Não bloqueia o atendimento, mas precisa aparecer no log do servidor.
+      if (error) console.error('[ai-medical-assistant] falha ao registrar auditoria:', error)
+    })
 
     let systemPrompt = ''
     let userPrompt = ''
@@ -134,30 +179,34 @@ Sugira os medicamentos mais apropriados.`
         throw new Error(`Ação desconhecida: ${action}`)
     }
 
-    // Chamar DeepSeek API
-    const aiResponse = await fetch('https://api.deepseek.com/chat/completions', {
+    // Chamar OpenAI Responses API
+    const safetyIdentifier = await createSafetyIdentifier(user.id)
+    const aiResponse = await fetch('https://api.openai.com/v1/responses', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${deepseekApiKey}`,
+        'Authorization': `Bearer ${openaiApiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'deepseek-chat',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-        max_tokens: 2000,
+        model: openaiModel,
+        instructions: systemPrompt,
+        input: [{ role: 'user', content: userPrompt }],
+        max_output_tokens: 2000,
         temperature: 0.3,
+        store: false,
+        safety_identifier: safetyIdentifier,
       }),
     })
 
     if (!aiResponse.ok) {
       const error = await aiResponse.text()
-      throw new Error(`Erro na API DeepSeek: ${error}`)
+      throw new Error(`Erro na API OpenAI: ${error}`)
     }
 
     const aiResult = await aiResponse.json()
+    if (!aiResult.choices) {
+      aiResult.choices = [{ message: { content: aiResult.output_text || extractResponseText(aiResult) } }]
+    }
     const suggestion = aiResult.choices?.[0]?.message?.content || 'Não foi possível gerar sugestão'
 
     const duration = Date.now() - startTime
@@ -199,3 +248,21 @@ Sugira os medicamentos mais apropriados.`
     )
   }
 })
+
+function extractResponseText(result: any): string {
+  return (result?.output || [])
+    .flatMap((item: any) => item.content || [])
+    .filter((item: any) => item?.type === 'output_text' && typeof item.text === 'string')
+    .map((item: any) => item.text)
+    .join('\n')
+}
+
+async function createSafetyIdentifier(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(value),
+  )
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('')
+}

@@ -42,11 +42,13 @@ export async function createAutoBilling(params: AutoBillingParams): Promise<bool
   }
 
   // Check if lancamento already exists for this agendamento (bypass RLS issue by also checking without clinica filter)
-  const { data: existing } = await (supabase as any)
+  let existingQuery = (supabase as any)
     .from('lancamentos')
     .select('id')
-    .eq('agendamento_id', agendamentoId)
-    .limit(1);
+    .eq('agendamento_id', agendamentoId);
+  if (resolvedClinicaId) existingQuery = existingQuery.eq('clinica_id', resolvedClinicaId);
+  const { data: existing, error: existingError } = await existingQuery.limit(1);
+  if (existingError) throw existingError;
 
   if (existing && existing.length > 0) return false; // Already billed
 
@@ -55,7 +57,7 @@ export async function createAutoBilling(params: AutoBillingParams): Promise<bool
 
   // Try to find price from tipos_consulta
   if (tipoConsulta) {
-    const { data: tc } = await supabase
+    const { data: tc, error: tcError } = await supabase
       .from('tipos_consulta')
       .select('id, nome, valor_particular')
       .eq('nome', tipoConsulta)
@@ -63,19 +65,21 @@ export async function createAutoBilling(params: AutoBillingParams): Promise<bool
       .limit(1)
       .maybeSingle();
 
+    if (tcError) throw tcError;
     if (tc) {
       valor = tc.valor_particular || 0;
       descricao = tc.nome;
 
       // Check for convenio-specific price
       if (convenioId && tc.id) {
-        const { data: precoConv } = await supabase
+        const { data: precoConv, error: precoConvError } = await supabase
           .from('precos_consulta_convenio')
           .select('valor')
           .eq('convenio_id', convenioId)
           .eq('tipo_consulta_id', tc.id)
           .eq('ativo', true)
           .maybeSingle();
+        if (precoConvError) throw precoConvError;
         if (precoConv) valor = precoConv.valor;
       }
     }
@@ -83,11 +87,12 @@ export async function createAutoBilling(params: AutoBillingParams): Promise<bool
 
   // Fallback: use convenio default value
   if (valor === 0 && convenioId) {
-    const { data: conv } = await supabase
+    const { data: conv, error: convError } = await supabase
       .from('convenios')
       .select('valor_consulta')
       .eq('id', convenioId)
       .maybeSingle();
+    if (convError) throw convError;
     if (conv?.valor_consulta) valor = conv.valor_consulta;
   }
 
@@ -111,8 +116,15 @@ export async function createAutoBilling(params: AutoBillingParams): Promise<bool
   });
 
   if (error) {
+    // 23505 = unique_violation. O índice lancamentos_um_por_agendamento
+    // (migration 20260812130000) fecha a corrida entre dois atendentes fazendo
+    // check-in ao mesmo tempo. Perder essa corrida não é erro: significa que a
+    // cobrança já foi criada pelo outro, que é exatamente o resultado desejado.
+    if ((error as any).code === '23505') {
+      return false;
+    }
     console.error('Auto-billing insert error:', error);
-    return false;
+    throw error;
   }
 
   return true;

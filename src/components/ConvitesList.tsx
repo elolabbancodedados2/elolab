@@ -5,6 +5,7 @@ import { ptBR } from 'date-fns/locale';
 import { Copy, Mail, RefreshCw, CheckCircle2, Clock, XCircle, Loader2, Ban, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { mensagemDeErro, detalheTecnico } from '@/lib/erros';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -29,6 +30,7 @@ interface Invite {
   status: InviteStatus;
   /** Só em employee_invitations. O reenvio precisa dele. */
   funcionario_id?: string | null;
+  clinica_id?: string | null;
 }
 
 const ROLE_LABELS: Record<string, string> = {
@@ -71,29 +73,38 @@ function StatusBadge({ status }: { status: InviteStatus }) {
 
 export function ConvitesList() {
   const queryClient = useQueryClient();
+  const { profile, isPlatformAdmin } = useSupabaseAuth();
   const [resendingId, setResendingId] = useState<string | null>(null);
   const [cancelando, setCancelando] = useState<Invite | null>(null);
   const [filtro, setFiltro] = useState<InviteStatus | 'todos'>('todos');
 
   const { data: invites = [], isLoading } = useQuery({
-    queryKey: ['convites-list'],
+    queryKey: ['convites-list', profile?.clinica_id, isPlatformAdmin],
+    enabled: isPlatformAdmin || !!profile?.clinica_id,
     queryFn: async (): Promise<Invite[]> => {
+      const clinicId = profile?.clinica_id;
+      if (!isPlatformAdmin && !clinicId) return [];
+      const scoped = (query: any) => isPlatformAdmin ? query : query.eq('clinica_id', clinicId);
       const [cf, ei] = await Promise.all([
-        (supabase as any)
+        scoped((supabase as any)
           .from('convites_funcionario')
-          .select('id, email, nome, roles, token, created_at, expires_at, accepted_at')
-          .order('created_at', { ascending: false }),
-        (supabase as any)
+          .select('id, clinica_id, email, nome, roles, token, created_at, expires_at, accepted_at')
+          .order('created_at', { ascending: false })),
+        scoped((supabase as any)
           .from('employee_invitations')
-          .select('id, email, roles, token, created_at, expires_at, accepted_at, funcionario_id')
-          .order('created_at', { ascending: false }),
+          .select('id, clinica_id, email, roles, token, created_at, expires_at, accepted_at, funcionario_id')
+          .order('created_at', { ascending: false })),
       ]);
+
+      if (cf.error) throw cf.error;
+      if (ei.error) throw ei.error;
 
       const merged: Invite[] = [];
 
       (cf.data || []).forEach((r: any) => {
         merged.push({
           id: r.id,
+          clinica_id: r.clinica_id,
           source: 'convites_funcionario',
           email: r.email,
           nome: r.nome,
@@ -120,6 +131,7 @@ export function ConvitesList() {
       (ei.data || []).forEach((r: any) => {
         merged.push({
           id: r.id,
+          clinica_id: r.clinica_id,
           source: 'employee_invitations',
           email: r.email,
           nome: funcMap[r.funcionario_id] ?? null,
@@ -178,16 +190,20 @@ export function ConvitesList() {
       // token do mesmo jeito: accept_employee_invitation exige expires_at
       // futuro. Em convites_funcionario dá para apagar de fato.
       if (inv.source === 'employee_invitations') {
-        const { error } = await (supabase as any)
+        let query = (supabase as any)
           .from('employee_invitations')
           .update({ status: 'expired', expires_at: new Date().toISOString() })
           .eq('id', inv.id);
+        if (!isPlatformAdmin && profile?.clinica_id) query = query.eq('clinica_id', profile.clinica_id);
+        const { error } = await query;
         if (error) throw error;
       } else {
-        const { error } = await (supabase as any)
+        let query = (supabase as any)
           .from('convites_funcionario')
           .delete()
           .eq('id', inv.id);
+        if (!isPlatformAdmin && profile?.clinica_id) query = query.eq('clinica_id', profile.clinica_id);
+        const { error } = await query;
         if (error) throw error;
       }
     },

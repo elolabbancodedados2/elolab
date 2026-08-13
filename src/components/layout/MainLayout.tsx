@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { Sidebar } from './Sidebar';
 import { RodapeLegal } from './RodapeLegal';
 import { Navbar } from './Navbar';
@@ -15,6 +16,7 @@ import { ImpersonationBanner } from '@/components/ImpersonationBanner';
 
 export function MainLayout() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const location = useLocation();
   useSessionTimeout();
   useRealtimeSubscription();
   useRealtimePushNotifications();
@@ -50,7 +52,18 @@ export function MainLayout() {
           <div className="container mx-auto p-3 sm:p-4 md:p-6 lg:p-8 max-w-7xl">
             <Breadcrumbs />
             <div className="animate-fade-in">
-              <Outlet />
+              {/* Barreira POR TELA. Havia só um ErrorBoundary no topo do App,
+                  envolvendo tudo: um registro com campo inesperado em Analytics
+                  derrubava também a agenda, a fila e o caixa, e o usuário via a
+                  tela de erro no lugar do sistema inteiro. Isso transformava
+                  cada bug pequeno em "o sistema caiu".
+
+                  A `key` pelo pathname remonta a barreira ao navegar: sem ela,
+                  a tela de erro ficaria grudada mesmo depois de trocar de
+                  módulo pelo menu, que continua funcionando. */}
+              <ErrorBoundary key={location.pathname}>
+                <Outlet />
+              </ErrorBoundary>
             </div>
             <RodapeLegal />
           </div>

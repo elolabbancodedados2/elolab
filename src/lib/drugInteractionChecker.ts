@@ -106,7 +106,16 @@ async function checkOpenFDAInteractions(drug1: string, drug2: string): Promise<D
     const query = `(${drug1} AND ${drug2})`;
     const url = `https://api.fda.gov/drug/label.json?search=openfda_rxcui:${encodeURIComponent(drug1)}&limit=10`;
 
-    const response = await fetch(url, { signal: AbortSignal.timeout(5000) });
+    // AbortSignal.timeout não existe em alguns navegadores/WebViews. Use a
+    // API compatível de AbortController para manter o fallback local.
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    let response: Response;
+    try {
+      response = await fetch(url, { signal: controller.signal });
+    } finally {
+      clearTimeout(timeoutId);
+    }
 
     if (!response.ok) {
       return null; // OpenFDA failed, use local

@@ -180,6 +180,7 @@ function SettingRow({ icon: Icon, title, description, children }: {
 
 /* ─── Salas Management ─── */
 function SalasManager() {
+  const { profile } = useSupabaseAuth();
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
@@ -207,7 +208,10 @@ function SalasManager() {
         if (error) throw error;
         toast.success('Sala atualizada!');
       } else {
-        const { error } = await supabase.from('salas').insert([payload]);
+        const { error } = await supabase.from('salas').insert([{
+          ...payload,
+          clinica_id: profile?.clinica_id || null,
+        }]);
         if (error) throw error;
         toast.success('Sala criada!');
       }

@@ -13,9 +13,18 @@ Deno.serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    const evolutionApiUrl = Deno.env.get('EVOLUTION_API_URL')!
-    const evolutionApiKey = Deno.env.get('EVOLUTION_API_KEY')!
-    const deepseekApiKey = Deno.env.get('DEEPSEEK_API_KEY')!
+    const evolutionApiUrl = (Deno.env.get('EVOLUTION_API_URL') || '').replace(/\/+$/, '')
+    const evolutionApiKey = Deno.env.get('EVOLUTION_API_KEY') || ''
+    const openaiApiKey = Deno.env.get('OPENAI_API_KEY')
+    const openaiModel = Deno.env.get('OPENAI_MODEL') || 'gpt-4o-mini'
+
+    if (!evolutionApiUrl || !evolutionApiKey) {
+      console.error('[Webhook] Evolution API não configurada')
+      return new Response(
+        JSON.stringify({ error: 'Evolution API não configurada' }),
+        { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      )
+    }
 
     // Verifica assinatura do webhook. Evolution API pode ser configurada para
     // enviar o header `apikey` (ou `x-webhook-token`). Sem essa checagem,
@@ -54,6 +63,18 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ received: true }), { headers: corsHeaders })
     }
 
+    if (
+      session.clinica_id &&
+      session.whatsapp_agents?.clinica_id &&
+      session.whatsapp_agents.clinica_id !== session.clinica_id
+    ) {
+      console.error('[Webhook] Agente não pertence à clínica da sessão:', session.id)
+      return new Response(JSON.stringify({ error: 'Configuração de agente inválida' }), {
+        status: 409,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
     switch (event) {
       case 'connection.update':
       case 'CONNECTION_UPDATE': {
@@ -79,7 +100,7 @@ Deno.serve(async (req) => {
 
       case 'qrcode.updated':
       case 'QRCODE_UPDATED': {
-        const qrCode = data?.qrcode?.base64 || data?.base64
+      const qrCode = data?.qrcode?.base64 || data?.base64 || data?.qrcode?.code || data?.code
         
         await supabase
           .from('whatsapp_sessions')
@@ -136,13 +157,15 @@ Deno.serve(async (req) => {
               .from('pacientes')
               .select('id')
               .or(`telefone.ilike.%${phoneNumber.slice(-8)}%,telefone.ilike.%${phoneNumber.slice(-9)}%`)
+              .eq('clinica_id', session.clinica_id)
               .limit(1)
               .maybeSingle()
 
-            const { data: newConversation } = await supabase
-              .from('whatsapp_conversations')
-              .insert({
+          const { data: newConversation } = await supabase
+            .from('whatsapp_conversations')
+            .insert({
                 session_id: session.id,
+                clinica_id: session.clinica_id || null,
                 remote_jid: remoteJid,
                 paciente_id: paciente?.id || null,
                 contexto: [],
@@ -160,6 +183,7 @@ Deno.serve(async (req) => {
             .from('whatsapp_messages')
             .insert({
               conversation_id: conversation.id,
+              clinica_id: session.clinica_id || null,
               message_id: msg.key?.id,
               direcao: 'entrada',
               tipo: 'texto',
@@ -174,8 +198,13 @@ Deno.serve(async (req) => {
             .eq('id', conversation.id)
 
           // Processar com IA se tiver agente configurado
-          if (session.agent_id && session.whatsapp_agents) {
+          if (session.agent_id && session.whatsapp_agents?.ativo) {
             const agent = session.whatsapp_agents
+
+            if (!openaiApiKey) {
+              console.error('[AI] OPENAI_API_KEY não configurada para sessão:', session.id)
+              continue
+            }
 
             // Verificar horário de atendimento
             const now = new Date()
@@ -241,11 +270,12 @@ DADOS DO PACIENTE:
 
                 // Só data, hora e status — sem médico, especialidade ou tipo de
                 // procedimento, que revelariam informação clínica.
-                const { data: agendamentos } = await supabase
-                  .from('agendamentos')
-                  .select('data, hora_inicio, status')
-                  .eq('paciente_id', conversation.paciente_id)
-                  .gte('data', new Date().toISOString().split('T')[0])
+            const { data: agendamentos } = await supabase
+              .from('agendamentos')
+              .select('data, hora_inicio, status')
+              .eq('paciente_id', conversation.paciente_id)
+              .eq('clinica_id', session.clinica_id)
+              .gte('data', new Date().toISOString().split('T')[0])
                   .order('data', { ascending: true })
                   .limit(3)
 
@@ -261,16 +291,61 @@ DADOS DO PACIENTE:
             // Construir system prompt baseado no tipo e humor do agente
             const systemPrompt = buildSystemPrompt(agent, patientContext)
 
-            // Chamar IA
+            // Atendimento IA via OpenAI Responses API. A chave permanece no
+            // backend e nunca é enviada ao navegador ou ao WhatsApp.
+            let responseText = ''
+            try {
+              responseText = await runOpenAIAgent({
+                apiKey: openaiApiKey,
+                model: openaiModel,
+                agent,
+                systemPrompt,
+                conversationHistory,
+                messageContent,
+                supabase,
+                conversation,
+                clinicaId: session.clinica_id,
+              })
+            } catch (error) {
+              console.error('[AI] OpenAI error:', error)
+              responseText = 'No momento estou com dificuldade para responder. Vou encaminhar seu atendimento para nossa equipe humana.'
+              await supabase
+                .from('whatsapp_conversations')
+                .update({ status: 'aguardando_humano' })
+                .eq('id', conversation.id)
+            }
+
+            if (responseText) {
+              await sendWhatsAppMessage(
+                evolutionApiUrl,
+                evolutionApiKey,
+                instanceName,
+                remoteJid,
+                responseText,
+              )
+
+              await supabase
+                .from('whatsapp_messages')
+                .insert({
+                  conversation_id: conversation.id,
+                  clinica_id: session.clinica_id || null,
+                  direcao: 'saida',
+                  tipo: 'texto',
+                  conteudo: responseText,
+                })
+            }
+
+            if (legacyDeepSeekDisabled()) {
+            // Legado DeepSeek mantido apenas durante a migração; não é executado.
             const startTime = Date.now()
-            const aiResponse = await fetch('https://api.deepseek.com/chat/completions', {
+            const aiResponse = await fetch('https://api.openai.com/v1/responses', {
               method: 'POST',
               headers: {
-                'Authorization': `Bearer ${deepseekApiKey}`,
+                'Authorization': 'Bearer disabled',
                 'Content-Type': 'application/json',
               },
               body: JSON.stringify({
-                model: 'deepseek-chat',
+                model: openaiModel,
                 messages: [
                   { role: 'system', content: systemPrompt },
                   ...conversationHistory,
@@ -320,7 +395,6 @@ DADOS DO PACIENTE:
                 }
               }
             }
-
             if (!responseText && choice?.message?.content) {
               responseText = choice.message.content
             }
@@ -345,6 +419,7 @@ DADOS DO PACIENTE:
                   conteudo: responseText,
                 })
             }
+            }
           }
         }
         break
@@ -363,6 +438,142 @@ DADOS DO PACIENTE:
     )
   }
 })
+
+async function runOpenAIAgent({
+  apiKey,
+  model,
+  agent,
+  systemPrompt,
+  conversationHistory,
+  messageContent,
+  supabase,
+  conversation,
+  clinicaId,
+}: {
+  apiKey: string
+  model: string
+  agent: any
+  systemPrompt: string
+  conversationHistory: any[]
+  messageContent: string
+  supabase: any
+  conversation: any
+  clinicaId?: string | null
+}): Promise<string> {
+  const tools = getAgentTools(agent.tipo)
+  const input = [
+    ...conversationHistory,
+    { role: 'user', content: messageContent },
+  ]
+  const safetyIdentifier = await createSafetyIdentifier(conversation.remote_jid || conversation.id)
+  const request = async (requestInput: any[]) => {
+    const response = await fetch('https://api.openai.com/v1/responses', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model,
+        instructions: systemPrompt,
+        input: requestInput,
+        tools,
+        max_output_tokens: Math.min(Math.max(Number(agent.max_tokens) || 600, 100), 2000),
+        temperature: Math.min(Math.max(Number(agent.temperatura) || 0.7, 0), 1),
+        store: false,
+        safety_identifier: safetyIdentifier,
+      }),
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      throw new Error(`OpenAI ${response.status}: ${errorText.slice(0, 500)}`)
+    }
+
+    return await response.json()
+  }
+
+  const firstResult = await request(input)
+  const functionCalls = (firstResult.output || []).filter(
+    (item: any) => item?.type === 'function_call',
+  )
+
+  if (functionCalls.length === 0) {
+    return extractResponsesText(firstResult) || 'Não consegui formular uma resposta agora. Vou encaminhar para nossa equipe.'
+  }
+
+  const toolOutputs: any[] = []
+  for (const call of functionCalls) {
+    let args: any = {}
+    try {
+      args = JSON.parse(call.arguments || '{}')
+    } catch {
+      args = {}
+    }
+
+    const toolStartedAt = Date.now()
+    const toolResult = await executeAgentTool(
+      supabase,
+      call.name,
+      args,
+      conversation,
+      clinicaId,
+    )
+
+    await supabase.from('whatsapp_agent_actions').insert({
+      conversation_id: conversation.id,
+      clinica_id: clinicaId || null,
+      tipo_acao: call.name,
+      dados_entrada: { campos: Object.keys(args) },
+      dados_saida: { success: Boolean(toolResult.success), has_message: Boolean(toolResult.message) },
+      sucesso: Boolean(toolResult.success),
+      erro_mensagem: toolResult.error || null,
+      duracao_ms: Date.now() - toolStartedAt,
+    })
+
+    toolOutputs.push({
+      type: 'function_call_output',
+      call_id: call.call_id,
+      output: JSON.stringify(toolResult),
+    })
+  }
+
+  // Keep the request stateless: replay the model output and tool results instead
+  // of storing a response that may contain patient context.
+  const finalResult = await request([
+    ...input,
+    ...(firstResult.output || []),
+    ...toolOutputs,
+  ])
+
+  return extractResponsesText(finalResult) ||
+    toolOutputs.map((item) => item.output).join('\n') ||
+    'Não consegui concluir o atendimento. Vou encaminhar para nossa equipe.'
+}
+
+function extractResponsesText(result: any): string {
+  if (typeof result?.output_text === 'string' && result.output_text.trim()) {
+    return result.output_text.trim()
+  }
+
+  return (result?.output || [])
+    .filter((item: any) => item?.type === 'message')
+    .flatMap((item: any) => item.content || [])
+    .filter((item: any) => item?.type === 'output_text' && typeof item.text === 'string')
+    .map((item: any) => item.text.trim())
+    .filter(Boolean)
+    .join('\n')
+}
+
+async function createSafetyIdentifier(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(value),
+  )
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('')
+}
 
 function buildSystemPrompt(agent: any, patientContext: string): string {
   let humorInstructions = ''
@@ -492,24 +703,37 @@ function getAgentTools(tipo: string): any[] {
     },
   })
 
-  return tools
+  return tools.map((tool) => ({
+    type: 'function',
+    name: tool.function.name,
+    description: tool.function.description,
+    parameters: tool.function.parameters,
+    strict: false,
+  }))
 }
 
 async function executeAgentTool(
   supabase: any,
   toolName: string,
   args: any,
-  conversation: any
+  conversation: any,
+  clinicaId?: string | null
 ): Promise<any> {
   try {
+    if (!clinicaId) {
+      return { success: false, error: 'Sessão WhatsApp sem clínica vinculada.' }
+    }
+
     switch (toolName) {
       case 'consultar_disponibilidade': {
-        const { data: medicos } = await supabase
+        let medicosQuery = supabase
           .from('medicos')
           .select('id, crm, especialidade')
           .eq('ativo', true)
           .ilike('especialidade', `%${args.especialidade || ''}%`)
           .limit(5)
+        if (clinicaId) medicosQuery = medicosQuery.eq('clinica_id', clinicaId)
+        const { data: medicos } = await medicosQuery
 
         if (!medicos || medicos.length === 0) {
           return {
@@ -520,11 +744,13 @@ async function executeAgentTool(
 
         // Buscar horários ocupados
         const dataRef = args.data_preferencia || new Date().toISOString().split('T')[0]
-        const { data: agendamentos } = await supabase
+        let disponibilidadeQuery = supabase
           .from('agendamentos')
           .select('medico_id, hora_inicio')
           .eq('data', dataRef)
           .in('medico_id', medicos.map((m: any) => m.id))
+        if (clinicaId) disponibilidadeQuery = disponibilidadeQuery.eq('clinica_id', clinicaId)
+        const { data: agendamentos } = await disponibilidadeQuery
 
         const horariosOcupados = new Set(
           (agendamentos || []).map((a: any) => `${a.medico_id}-${a.hora_inicio}`)
@@ -558,13 +784,15 @@ async function executeAgentTool(
           }
         }
 
-        const { data: agendamentos } = await supabase
+        let pacienteAgendamentosQuery = supabase
           .from('agendamentos')
           .select('*, medicos(crm, especialidade)')
           .eq('paciente_id', conversation.paciente_id)
           .gte('data', new Date().toISOString().split('T')[0])
           .order('data', { ascending: true })
           .limit(5)
+        if (clinicaId) pacienteAgendamentosQuery = pacienteAgendamentosQuery.eq('clinica_id', clinicaId)
+        const { data: agendamentos } = await pacienteAgendamentosQuery
 
         if (!agendamentos || agendamentos.length === 0) {
           return {
@@ -591,8 +819,37 @@ async function executeAgentTool(
           }
         }
 
+        if (!clinicaId || !args.medico_id || !args.data || !args.hora_inicio) {
+          return { success: false, message: 'Preciso da data, horário e profissional para concluir o agendamento.' }
+        }
+
+        const { data: medico } = await supabase
+          .from('medicos')
+          .select('id')
+          .eq('id', args.medico_id)
+          .eq('clinica_id', clinicaId)
+          .eq('ativo', true)
+          .maybeSingle()
+        if (!medico) {
+          return { success: false, message: 'Esse profissional não está disponível nesta clínica.' }
+        }
+
+        const { data: conflito } = await supabase
+          .from('agendamentos')
+          .select('id')
+          .eq('clinica_id', clinicaId)
+          .eq('medico_id', args.medico_id)
+          .eq('data', args.data)
+          .eq('hora_inicio', args.hora_inicio)
+          .not('status', 'in', '(cancelado,recusado)')
+          .limit(1)
+        if (conflito?.length) {
+          return { success: false, message: 'Esse horário acabou de ser ocupado. Escolha outro, por favor.' }
+        }
+
         const { error } = await supabase.from('agendamentos').insert({
           paciente_id: conversation.paciente_id,
+          clinica_id: clinicaId,
           medico_id: args.medico_id,
           data: args.data,
           hora_inicio: args.hora_inicio,
@@ -624,12 +881,21 @@ async function executeAgentTool(
           registrado_em: new Date().toISOString(),
         }
 
+        const { data: conversaAtual } = await supabase
+          .from('whatsapp_conversations')
+          .select('contexto')
+          .eq('id', conversation.id)
+          .eq('clinica_id', clinicaId)
+          .maybeSingle()
+
+        const contextoAtual = Array.isArray(conversaAtual?.contexto)
+          ? conversaAtual.contexto
+          : []
         await supabase
           .from('whatsapp_conversations')
-          .update({
-            contexto: supabase.sql`contexto || ${JSON.stringify(triageData)}::jsonb`,
-          })
+          .update({ contexto: [...contextoAtual, triageData] })
           .eq('id', conversation.id)
+          .eq('clinica_id', clinicaId)
 
         return {
           success: true,
@@ -680,4 +946,9 @@ async function sendWhatsAppMessage(
   if (!response.ok) {
     console.error('[SendMessage] Error:', await response.text())
   }
+}
+
+// Compatibilidade de leitura durante a migração; o fluxo retorna sempre false.
+function legacyDeepSeekDisabled(): boolean {
+  return false
 }
