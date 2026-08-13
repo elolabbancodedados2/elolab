@@ -20,6 +20,7 @@ import { format, differenceInMinutes, differenceInHours, isToday, isYesterday, s
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
+import { pacienteCorresponde } from '@/lib/buscaPaciente';
 
 /**
  * Teto da worklist do laboratório.
@@ -233,10 +234,11 @@ export default function Laboratorio() {
     return coletas.filter((c: any) => {
       // Search
       if (search.trim()) {
-        const q = search.toLowerCase();
-        if (!c.pacientes?.nome?.toLowerCase().includes(q) &&
-            !c.codigo_amostra?.toLowerCase().includes(q) &&
-            !c.pacientes?.cpf?.toLowerCase().includes(q)) return false;
+        // O código da amostra é específico do laboratório; paciente segue a
+        // mesma regra das outras telas (sem acento, CPF sem máscara).
+        const codigo = c.codigo_amostra?.toLowerCase().includes(search.trim().toLowerCase());
+        const paciente = c.pacientes && pacienteCorresponde(c.pacientes, search);
+        if (!codigo && !paciente) return false;
       }
       // Status
       if (statusFilter !== 'todos' && c.status !== statusFilter) return false;

@@ -26,6 +26,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { AgendaSkeleton } from '@/components/ui/loading-skeleton';
+import { pacienteCorresponde } from '@/lib/buscaPaciente';
 
 export type AgendaView = 'daily' | 'weekly' | 'monthly';
 
@@ -122,9 +123,9 @@ export function AgendaPage() {
       if (medicoFilter.length && !medicoFilter.includes(a.medico_id)) return false;
       if (statusFilter.length && !statusFilter.includes(a.status)) return false;
       if (q) {
-        const p = a.pacientes;
-        const hay = `${p?.nome || ''} ${p?.nome_social || ''} ${p?.cpf || ''} ${p?.telefone || ''}`.toLowerCase();
-        if (!hay.includes(q)) return false;
+        // O CPF é gravado com máscara: concatenar e comparar com o termo cru
+        // fazia "12345678900" não achar "123.456.789-00".
+        if (!a.pacientes || !pacienteCorresponde(a.pacientes, q)) return false;
       }
       return true;
     });
