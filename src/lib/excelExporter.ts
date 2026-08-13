@@ -1,9 +1,24 @@
-import * as XLSX from 'xlsx';
+import type * as XLSXTipos from 'xlsx';
 import { format } from 'date-fns';
 import { parseDateOnly } from '@/lib/dateOnly';
 
+/**
+ * Carrega o `xlsx` só quando alguém exporta de verdade.
+ *
+ * Era um `import` estático no topo. O xlsx entra no chunk `export-vendor`
+ * (664 KB junto com o jsPDF), e este módulo é importado por Relatórios e
+ * Contas a Receber — então abrir a tela de relatórios baixava a biblioteca
+ * inteira de planilha mesmo para quem só queria olhar um gráfico.
+ */
+let _xlsx: typeof XLSXTipos | null = null;
+
+async function carregarXlsx(): Promise<typeof XLSXTipos> {
+  if (!_xlsx) _xlsx = await import('xlsx');
+  return _xlsx;
+}
+
 // Exportar dados para Excel
-export function exportToExcel<T extends Record<string, any>>(
+export async function exportToExcel<T extends Record<string, any>>(
   data: T[],
   filename: string,
   sheetName: string = 'Dados',
@@ -32,6 +47,7 @@ export function exportToExcel<T extends Record<string, any>>(
   }
 
   // Criar workbook e worksheet
+  const XLSX = await carregarXlsx();
   const worksheet = XLSX.utils.json_to_sheet(processedData);
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
@@ -46,7 +62,7 @@ export function exportToExcel<T extends Record<string, any>>(
 }
 
 // Exportar múltiplas abas
-export function exportToExcelMultiSheet(
+export async function exportToExcelMultiSheet(
   sheets: Array<{
     data: Record<string, any>[];
     sheetName: string;
@@ -54,6 +70,7 @@ export function exportToExcelMultiSheet(
   }>,
   filename: string
 ) {
+  const XLSX = await carregarXlsx();
   const workbook = XLSX.utils.book_new();
 
   sheets.forEach(({ data, sheetName, columnHeaders }) => {
@@ -134,7 +151,7 @@ function calculateColumnWidths(data: Record<string, any>[]): { wch: number }[] {
 }
 
 // Exportar pacientes
-export function exportarPacientes(
+export async function exportarPacientes(
   pacientes: Array<{
     nome: string;
     cpf: string;
@@ -159,7 +176,7 @@ export function exportarPacientes(
     estado: p.endereco?.estado || '',
   }));
 
-  exportToExcel(data, 'pacientes', 'Pacientes', {
+  await exportToExcel(data, 'pacientes', 'Pacientes', {
     nome: 'Nome',
     cpf: 'CPF',
     dataNascimento: 'Data de Nascimento',
@@ -174,7 +191,7 @@ export function exportarPacientes(
 }
 
 // Exportar lançamentos financeiros
-export function exportarFinanceiro(
+export async function exportarFinanceiro(
   lancamentos: Array<{
     data: string;
     tipo: string;
@@ -195,7 +212,7 @@ export function exportarFinanceiro(
     formaPagamento: l.formaPagamento?.replace('_', ' ') || '',
   }));
 
-  exportToExcel(data, 'financeiro', 'Lançamentos', {
+  await exportToExcel(data, 'financeiro', 'Lançamentos', {
     data: 'Data',
     tipo: 'Tipo',
     categoria: 'Categoria',
@@ -207,7 +224,7 @@ export function exportarFinanceiro(
 }
 
 // Exportar estoque
-export function exportarEstoque(
+export async function exportarEstoque(
   itens: Array<{
     nome: string;
     categoria: string;
@@ -232,7 +249,7 @@ export function exportarEstoque(
     status: i.quantidade <= i.quantidadeMinima ? 'BAIXO' : 'OK',
   }));
 
-  exportToExcel(data, 'estoque', 'Itens', {
+  await exportToExcel(data, 'estoque', 'Itens', {
     nome: 'Nome',
     categoria: 'Categoria',
     quantidade: 'Quantidade',
@@ -247,7 +264,7 @@ export function exportarEstoque(
 }
 
 // Exportar agendamentos
-export function exportarAgendamentos(
+export async function exportarAgendamentos(
   agendamentos: Array<{
     data: string;
     horaInicio: string;
@@ -270,7 +287,7 @@ export function exportarAgendamentos(
     sala: a.sala || '',
   }));
 
-  exportToExcel(data, 'agendamentos', 'Agendamentos', {
+  await exportToExcel(data, 'agendamentos', 'Agendamentos', {
     data: 'Data',
     horaInicio: 'Início',
     horaFim: 'Fim',

@@ -1300,10 +1300,12 @@ export default function Prontuarios() {
                   const fn = `prontuario-${selectedPaciente?.nome?.replace(/\s+/g, '-') || 'paciente'}`;
                   return (
                     <>
-                      <Button variant="outline" size="sm" onClick={() => openPDF(buildPDF())} className="gap-1 text-xs h-7"><ExternalLink className="h-3 w-3" />Visualizar</Button>
-                      <Button variant="outline" size="sm" onClick={() => downloadPDF(buildPDF(), fn)} className="gap-1 text-xs h-7"><Printer className="h-3 w-3" />PDF</Button>
-                      <Button variant="outline" size="sm" onClick={() => {
-                        sharePDFWhatsApp(buildPDF(), fn, selectedPaciente?.telefone);
+                      {/* `buildPDF()` agora é assíncrono: o jsPDF só é baixado
+                          quando alguém clica, em vez de vir junto com a tela. */}
+                      <Button variant="outline" size="sm" onClick={async () => openPDF(await buildPDF())} className="gap-1 text-xs h-7"><ExternalLink className="h-3 w-3" />Visualizar</Button>
+                      <Button variant="outline" size="sm" onClick={async () => downloadPDF(await buildPDF(), fn)} className="gap-1 text-xs h-7"><Printer className="h-3 w-3" />PDF</Button>
+                      <Button variant="outline" size="sm" onClick={async () => {
+                        sharePDFWhatsApp(await buildPDF(), fn, selectedPaciente?.telefone);
                         toast.info('WhatsApp', { description: 'PDF baixado! Cole na conversa.' });
                       }} className="gap-1 text-xs h-7 text-success border-success/30 hover:bg-success/5">
                         <MessageCircle className="h-3 w-3" />WhatsApp

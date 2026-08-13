@@ -1,10 +1,42 @@
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
+// `import type` é apagado na compilação: dá o tipo sem puxar as ~660 KB do
+// jsPDF para o bundle de quem só precisa da assinatura da função.
+import type jsPDF from 'jspdf';
+import type { UserOptions } from 'jspdf-autotable';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import QRCode from 'qrcode';
 
 import { supabase } from '@/integrations/supabase/client';
+
+/**
+ * Carrega jsPDF e jspdf-autotable só quando alguém vai realmente gerar um PDF.
+ *
+ * Antes eram `import` estáticos no topo. Como este módulo é importado por
+ * prescrições, atestados, prontuários, laudos, relatórios e etiquetas, o chunk
+ * `export-vendor` (664 KB) mais o `html2canvas` (200 KB, que o jsPDF arrasta e
+ * ninguém usa — não há nenhuma chamada a `doc.html()` no projeto) baixavam ao
+ * ABRIR qualquer uma dessas telas, mesmo que o usuário nunca clicasse em
+ * imprimir. Num computador de recepção com internet ruim isso é quase 1 MB de
+ * espera antes de a tela aparecer.
+ *
+ * O módulo fica em cache depois da primeira carga, então gerar o segundo PDF
+ * não paga o custo de novo.
+ */
+let _pdfLib: {
+  JsPDF: typeof jsPDF;
+  autoTable: (doc: jsPDF, options: UserOptions) => void;
+} | null = null;
+
+async function carregarPdfLib() {
+  if (!_pdfLib) {
+    const [{ default: JsPDF }, { default: autoTable }] = await Promise.all([
+      import('jspdf'),
+      import('jspdf-autotable'),
+    ]);
+    _pdfLib = { JsPDF, autoTable: autoTable as any };
+  }
+  return _pdfLib;
+}
 
 interface ClinicaInfo {
   nome: string;
@@ -139,7 +171,8 @@ export async function gerarReceita(
   orientacoes: string,
   tipo: 'simples' | 'controle_especial' | 'antimicrobiano' = 'simples'
 ) {
-  const doc = new jsPDF();
+  const { JsPDF, autoTable } = await carregarPdfLib();
+  const doc = new JsPDF();
 
   const tipoLabel = {
     simples: 'RECEITUÁRIO SIMPLES',
@@ -257,7 +290,7 @@ export async function gerarReceita(
 }
 
 // Gerar atestado médico
-export function gerarAtestado(
+export async function gerarAtestado(
   paciente: { nome: string; cpf?: string },
   medico: { nome: string; crm?: string; especialidade?: string },
   atestado: {
@@ -268,7 +301,8 @@ export function gerarAtestado(
     observacoes?: string;
   }
 ) {
-  const doc = new jsPDF();
+  const { JsPDF, autoTable } = await carregarPdfLib();
+  const doc = new JsPDF();
 
   const tipoTitulo = {
     comparecimento: 'ATESTADO DE COMPARECIMENTO',
@@ -335,7 +369,7 @@ export function gerarAtestado(
 }
 
 // Gerar relatório financeiro
-export function gerarRelatorioFinanceiro(
+export async function gerarRelatorioFinanceiro(
   dados: {
     periodo: string;
     receitas: number;
@@ -351,7 +385,8 @@ export function gerarRelatorioFinanceiro(
     }>;
   }
 ) {
-  const doc = new jsPDF();
+  const { JsPDF, autoTable } = await carregarPdfLib();
+  const doc = new JsPDF();
 
   addHeader(doc, 'RELATÓRIO FINANCEIRO');
 
@@ -410,7 +445,7 @@ export function gerarRelatorioFinanceiro(
 }
 
 // Gerar etiqueta de paciente
-export function gerarEtiquetaPaciente(
+export async function gerarEtiquetaPaciente(
   pacientes: Array<{
     nome: string;
     cpf: string;
@@ -428,7 +463,8 @@ export function gerarEtiquetaPaciente(
   };
 
   const size = sizes[tamanho];
-  const doc = new jsPDF({
+  const { JsPDF, autoTable } = await carregarPdfLib();
+  const doc = new JsPDF({
     orientation: 'landscape',
     unit: 'mm',
     format: [size.width, size.height],
@@ -461,7 +497,7 @@ export function gerarEtiquetaPaciente(
 }
 
 // Gerar PDF do prontuário completo (Super Prontuário)
-export function gerarProntuarioPDF(
+export async function gerarProntuarioPDF(
   paciente: {
     nome: string; cpf?: string; dataNascimento?: string; alergias?: string[];
     telefone?: string; email?: string; sexo?: string; convenio?: string;
@@ -495,7 +531,8 @@ export function gerarProntuarioPDF(
   },
   prescricoes: Array<{ medicamento: string; dosagem?: string; posologia?: string; duracao?: string; quantidade?: string; observacoes?: string }> = []
 ) {
-  const doc = new jsPDF();
+  const { JsPDF, autoTable } = await carregarPdfLib();
+  const doc = new JsPDF();
   const pageWidth = doc.internal.pageSize.width;
   const margin = 20;
   const contentWidth = pageWidth - margin * 2;
@@ -758,7 +795,7 @@ function formatDateBR(dateStr: string): string {
 }
 
 // Gerar relatório de atendimentos
-export function gerarRelatorioAtendimentos(
+export async function gerarRelatorioAtendimentos(
   dados: {
     periodo: string;
     totalAtendimentos: number;
@@ -766,7 +803,8 @@ export function gerarRelatorioAtendimentos(
     porTipo: Array<{ tipo: string; quantidade: number }>;
   }
 ) {
-  const doc = new jsPDF();
+  const { JsPDF, autoTable } = await carregarPdfLib();
+  const doc = new JsPDF();
 
   addHeader(doc, 'RELATÓRIO DE ATENDIMENTOS');
 
@@ -880,7 +918,8 @@ function formatSexo(sexo?: string): string {
 }
 
 export async function gerarLaudoPDF(dados: LaudoData): Promise<jsPDF> {
-  const doc = new jsPDF();
+  const { JsPDF, autoTable } = await carregarPdfLib();
+  const doc = new JsPDF();
   const clinica = await getClinicaInfo();
   const pageWidth = doc.internal.pageSize.width;
   const pageHeight = doc.internal.pageSize.height;

@@ -13,7 +13,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Separator } from '@/components/ui/separator';
-import jsPDF from 'jspdf';
+import type jsPDF from 'jspdf';
 import { parseDateOnly } from '@/lib/dateOnly';
 
 interface DischargeReportProps {
@@ -179,8 +179,10 @@ export function DischargeReport({
     }
   };
 
-  const generatePDF = () => {
-    const doc = new jsPDF();
+  const generatePDF = async () => {
+    // jsPDF sob demanda: o relatório de alta é gerado por clique.
+    const { default: JsPDF } = await import('jspdf');
+    const doc = new JsPDF();
     const pageWidth = doc.internal.pageSize.getWidth();
     
     let y = drawHeader(doc, pageWidth);
@@ -286,14 +288,14 @@ export function DischargeReport({
     return doc;
   };
 
-  const handlePrint = () => {
-    const doc = generatePDF();
+  const handlePrint = async () => {
+    const doc = await generatePDF();
     doc.autoPrint();
     window.open(doc.output('bloburl'), '_blank');
   };
 
-  const handleDownload = () => {
-    const doc = generatePDF();
+  const handleDownload = async () => {
+    const doc = await generatePDF();
     doc.save(`relatorio-alta-${data.paciente.nome.replace(/\s+/g, '-')}-${format(new Date(), 'yyyy-MM-dd')}.pdf`);
   };
 

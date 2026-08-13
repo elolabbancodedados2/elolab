@@ -2,7 +2,9 @@
  * PDF Receipt/Cupom generator using jsPDF
  * Replaces all text/HTML-based receipt generation
  */
-import jsPDF from 'jspdf';
+// Tipo apenas; o runtime entra por import() em buildPdf. O cupom é impresso
+// no balcão, mas a biblioteca não precisa vir junto com a tela do caixa.
+import type jsPDF from 'jspdf';
 
 export interface ReceiptData {
   titulo?: string;
@@ -22,8 +24,9 @@ export interface ReceiptData {
   operador?: string;
 }
 
-function buildPdf(data: ReceiptData): jsPDF {
-  const doc = new jsPDF({ unit: 'mm', format: [80, 160] }); // thermal receipt size
+async function buildPdf(data: ReceiptData): Promise<jsPDF> {
+  const { default: JsPDF } = await import('jspdf');
+  const doc = new JsPDF({ unit: 'mm', format: [80, 160] }); // thermal receipt size
   const w = 80;
   const margin = 6;
   const contentW = w - margin * 2;
@@ -121,16 +124,16 @@ function buildPdf(data: ReceiptData): jsPDF {
 }
 
 /** Download receipt as PDF */
-export function downloadReceiptPdf(data: ReceiptData) {
-  const doc = buildPdf(data);
+export async function downloadReceiptPdf(data: ReceiptData) {
+  const doc = await buildPdf(data);
   const safeName = data.paciente.replace(/\s+/g, '_').slice(0, 30);
   const safeDate = data.dataHora.replace(/[\s/:]/g, '-').slice(0, 10);
   doc.save(`comprovante_${safeName}_${safeDate}.pdf`);
 }
 
 /** Open receipt PDF in new tab for printing */
-export function printReceiptPdf(data: ReceiptData) {
-  const doc = buildPdf(data);
+export async function printReceiptPdf(data: ReceiptData) {
+  const doc = await buildPdf(data);
   const blob = doc.output('blob');
   const url = URL.createObjectURL(blob);
   const w = window.open(url, '_blank');
