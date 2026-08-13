@@ -185,4 +185,51 @@ describe('faturamento automático — uma cobrança por agendamento', () => {
 
     expect(criou).toBe(false);
   });
+
+  it('usa o preço interno do exame e não cria cobrança zerada', async () => {
+    mockAtual = criarSupabaseMock({
+      'lancamentos.select': { data: [], error: null },
+      'configuracoes_clinica.select': {
+        data: [{ valor: [{ nome: 'Hemograma completo', valor: 89.9 }] }],
+        error: null,
+      },
+      'lancamentos.insert': { data: { id: 'lanc-exame' }, error: null },
+    });
+
+    const { createAutoBilling } = await import('@/lib/autoBilling');
+    const criou = await createAutoBilling({
+      agendamentoId: 'ag-exame-1',
+      pacienteId: 'pac-1',
+      pacienteNome: 'Maria',
+      tipoConsulta: 'exame',
+      tipoExame: 'Hemograma completo',
+      data: '2026-08-12',
+      clinicaId: 'cli-1',
+    });
+
+    expect(criou).toBe(true);
+    const insercao = mockAtual.chamadas.find(c => c.tabela === 'lancamentos' && c.op === 'insert');
+    expect(insercao?.payload).toMatchObject({ categoria: 'exame', valor: 89.9 });
+  });
+
+  it('recusa exame sem preço em vez de enviar R$ 0,00 ao balcão', async () => {
+    mockAtual = criarSupabaseMock({
+      'lancamentos.select': { data: [], error: null },
+      'configuracoes_clinica.select': { data: [], error: null },
+      'tipo_exames_catalog.select': { data: [], error: null },
+    });
+
+    const { createAutoBilling } = await import('@/lib/autoBilling');
+    await expect(createAutoBilling({
+      agendamentoId: 'ag-exame-2',
+      pacienteId: 'pac-1',
+      pacienteNome: 'Maria',
+      tipoConsulta: 'exame',
+      tipoExame: 'Exame sem cadastro',
+      data: '2026-08-12',
+      clinicaId: 'cli-1',
+    })).rejects.toThrow('Não há preço cadastrado');
+
+    expect(mockAtual.chamadas.some(c => c.tabela === 'lancamentos' && c.op === 'insert')).toBe(false);
+  });
 });

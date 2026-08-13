@@ -9,7 +9,7 @@
  * - Notificações automáticas em pontos-chave
  */
 import { supabase } from '@/integrations/supabase/client';
-import { createAutoBilling } from '@/lib/autoBilling';
+import { createAutoBilling, resolveExamPrice } from '@/lib/autoBilling';
 import { format } from 'date-fns';
 
 // ─── Types ──────────────────────────────────────────────
@@ -171,6 +171,7 @@ export async function autoFinalizarAtendimento(params: {
   medicoId: string;
   convenioId?: string | null;
   tipoConsulta?: string | null;
+  tipoExame?: string | null;
   clinicaId?: string | null;
   agendarRetorno?: boolean;
   diasRetorno?: number;
@@ -224,6 +225,7 @@ export async function autoFinalizarAtendimento(params: {
         pacienteNome: params.pacienteNome,
         convenioId: params.convenioId,
         tipoConsulta: params.tipoConsulta,
+        tipoExame: params.tipoExame,
         data: format(new Date(), 'yyyy-MM-dd'),
         clinicaId: params.clinicaId,
       });
@@ -528,21 +530,13 @@ export async function autoBillingExame(params: {
       return { success: true, message: 'Exame já faturado', actions: [] };
     }
 
-    let valor = 0;
-
-    // Lookup price from convenio table
-    if (params.convenioId) {
-      const exameName = params.tipoExame.split(' - ').pop() || params.tipoExame;
-      const { data: preco } = await supabase
-        .from('precos_exames_convenio')
-        .select('valor_total, valor_tabela')
-        .eq('convenio_id', params.convenioId)
-        .ilike('tipo_exame', `%${exameName}%`)
-        .eq('ativo', true)
-        .limit(1)
-        .maybeSingle();
-      if (preco) valor = preco.valor_total || preco.valor_tabela;
-    }
+    // Use the same resolver as the reception check-in. Previously this path
+    // only looked at convenio rows and silently inserted R$ 0,00 otherwise.
+    const valor = await resolveExamPrice({
+      tipoExame: params.tipoExame,
+      convenioId: params.convenioId,
+      clinicaId,
+    });
 
     await must(supabase.from('lancamentos').insert({
       tipo: 'receita',

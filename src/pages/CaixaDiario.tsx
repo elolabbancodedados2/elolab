@@ -236,8 +236,9 @@ export default function CaixaDiario() {
           .maybeSingle();
         if (cfg?.valor && Array.isArray(cfg.valor)) {
           (cfg.valor as any[]).forEach((e: any) => {
-            if (e.nome && e.valor > 0) {
-              items.push({ id: `interno-${e.nome}`, nome: e.nome, valor: e.valor });
+            const valor = Number(e.valor);
+            if (e.nome && Number.isFinite(valor) && valor > 0) {
+              items.push({ id: `interno-${e.nome}`, nome: e.nome, valor });
             }
           });
         }
@@ -251,8 +252,9 @@ export default function CaixaDiario() {
         .eq('ativo', true);
       if (convenioExames) {
         convenioExames.forEach((e: any) => {
-          if (!items.find(i => i.nome === e.tipo_exame)) {
-            items.push({ id: e.id, nome: e.tipo_exame, valor: e.valor_total || e.valor_tabela || 0 });
+          const valor = Number(e.valor_total ?? e.valor_tabela ?? 0);
+          if (!items.find(i => i.nome === e.tipo_exame) && Number.isFinite(valor) && valor > 0) {
+            items.push({ id: e.id, nome: e.tipo_exame, valor });
           }
         });
       }

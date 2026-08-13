@@ -355,6 +355,9 @@ export default function Fila() {
           medicoId: ag.medico_id,
           convenioId: pac?.convenio_id,
           tipoConsulta: ag.tipo,
+          tipoExame: ['exame', 'exames'].includes(String(ag.tipo || '').toLocaleLowerCase('pt-BR'))
+            ? ag.observacoes
+            : null,
           clinicaId: profile?.clinica_id,
         });
         refresh();
