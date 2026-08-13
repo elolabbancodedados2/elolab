@@ -37,6 +37,11 @@ jobs:
       # que aconteceu em outras quatro. Atenção ao aninhamento: o menu filtra
       # por grupo E por item, então incluir o papel só no item não resolve.
       - run: npm run check:permissoes
+      # Pega botão que só tem ícone e nenhum nome acessível: o leitor de tela
+      # anuncia apenas "botão", e nesse sistema um deles apaga prontuário. Roda
+      # com teto igual à dívida atual (61) — o objetivo é impedir que CRESÇA.
+      # Ao corrigir um lote, baixe o teto no package.json.
+      - run: npm run check:a11y
       # Bloqueante: os erros de lint foram zerados (eram 12, todos @ts-nocheck).
       # Os ~860 avisos de `any` herdados não quebram o build — o eslint só
       # retorna código de erro quando há erro de verdade.

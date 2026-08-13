@@ -888,7 +888,7 @@ export default function CaixaDiario() {
                                         </Button>
                                       </>
                                     )}
-                                    <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive"
+                                    <Button variant="ghost" size="icon" aria-label="Excluir lançamento" className="h-7 w-7 text-destructive hover:text-destructive"
                                       onClick={() => setConfirmDelete(l.id)}>
                                       <Trash2 className="h-3.5 w-3.5" />
                                     </Button>
@@ -1227,17 +1227,17 @@ export default function CaixaDiario() {
                           <p className="text-[10px] text-muted-foreground capitalize">{item.origem}</p>
                         </div>
                         <div className="flex items-center gap-1.5">
-                          <Button variant="ghost" size="icon" className="h-6 w-6"
+                          <Button variant="ghost" size="icon" aria-label="Diminuir quantidade" className="h-6 w-6"
                             onClick={() => updateCartQty(item.id, item.quantidade - 1)}>
                             <Minus className="h-3 w-3" />
                           </Button>
                           <span className="text-xs font-bold w-4 text-center">{item.quantidade}</span>
-                          <Button variant="ghost" size="icon" className="h-6 w-6"
+                          <Button variant="ghost" size="icon" aria-label="Aumentar quantidade" className="h-6 w-6"
                             onClick={() => updateCartQty(item.id, item.quantidade + 1)}>
                             <Plus className="h-3 w-3" />
                           </Button>
                           <span className="font-bold tabular-nums w-20 text-right">{fmt(item.valor * item.quantidade)}</span>
-                          <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive"
+                          <Button variant="ghost" size="icon" aria-label="Remover item da venda" className="h-6 w-6 text-destructive"
                             onClick={() => removeFromCart(item.id)}>
                             <Trash2 className="h-3 w-3" />
                           </Button>
