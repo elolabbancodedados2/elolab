@@ -241,7 +241,7 @@ export default function Relatorios() {
     })));
   };
 
-  const handleExportPDF = () => {
+  const handleExportPDF = async () => {
     const periodoLabel = {
       mes_atual: 'Mês Atual',
       mes_anterior: 'Mês Anterior',
@@ -249,7 +249,7 @@ export default function Relatorios() {
       ultimos_6_meses: 'Últimos 6 Meses',
     }[periodo] || periodo;
 
-    const doc = gerarRelatorioFinanceiro({
+    const doc = await gerarRelatorioFinanceiro({
       periodo: periodoLabel,
       receitas: estatisticas.receitas,
       despesas: estatisticas.despesas,
@@ -266,7 +266,7 @@ export default function Relatorios() {
     openPDF(doc);
   };
 
-  const handleExportAtendimentosPDF = () => {
+  const handleExportAtendimentosPDF = async () => {
     const periodoLabel = {
       mes_atual: 'Mês Atual',
       mes_anterior: 'Mês Anterior',
@@ -274,7 +274,7 @@ export default function Relatorios() {
       ultimos_6_meses: 'Últimos 6 Meses',
     }[periodo] || periodo;
 
-    const doc = gerarRelatorioAtendimentos({
+    const doc = await gerarRelatorioAtendimentos({
       periodo: periodoLabel,
       totalAtendimentos: estatisticas.totalAtendimentos,
       porMedico: dadosPorMedico,

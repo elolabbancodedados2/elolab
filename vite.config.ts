@@ -31,8 +31,17 @@ export default defineConfig(({ mode }) => ({
           'supabase-vendor': ['@supabase/supabase-js'],
           // Forms
           'form-vendor': ['react-hook-form', 'zod', '@hookform/resolvers'],
-          // PDF/Excel
-          'export-vendor': ['jspdf', 'xlsx'],
+          // NÃO agrupar jspdf/xlsx aqui.
+          //
+          // Havia um `'export-vendor': ['jspdf', 'xlsx']`. Forçar essas duas
+          // bibliotecas num chunk nomeado faz o Rollup tratá-lo como
+          // dependência estática de quem o referencia, anulando a divisão que o
+          // `import()` dinâmico deveria produzir: as telas de prescrição,
+          // relatórios e contas baixavam ~820 KB de gerador de PDF e planilha
+          // ao ABRIR, mesmo sem ninguém clicar em exportar.
+          //
+          // Sem a regra, o Rollup cria os chunks a partir dos próprios
+          // `import()` e eles só descem quando alguém gera um documento.
         },
       },
     },

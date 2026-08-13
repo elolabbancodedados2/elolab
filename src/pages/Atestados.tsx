@@ -251,11 +251,11 @@ export default function Atestados() {
 
   const handleView = (atestado: Atestado) => { setSelectedAtestado(atestado); setIsViewOpen(true); };
 
-  const handlePrint = (atestado: Atestado) => {
+  const handlePrint = async (atestado: Atestado) => {
     const paciente = pacientes.find(p => p.id === atestado.paciente_id);
     const medico = medicos.find(m => m.id === atestado.medico_id);
     if (!paciente || !medico) { toast.error('Dados não encontrados.'); return; }
-    const doc = gerarAtestado(
+    const doc = await gerarAtestado(
       { nome: paciente.nome, cpf: paciente.cpf || '' },
       { nome: medico.nome || medico.crm, crm: medico.crm, especialidade: medico.especialidade || '' },
       {

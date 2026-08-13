@@ -2,7 +2,8 @@ import { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import jsPDF from 'jspdf';
+// Tipo apenas: o runtime entra por import() dentro de buildReceitaPdf.
+import type jsPDF from 'jspdf';
 import { useQuery } from '@tanstack/react-query';
 import {
   Pill, Plus, Search, Eye, FileDown, ExternalLink, Clipboard,
@@ -29,7 +30,7 @@ import { parseDateOnly } from '@/lib/dateOnly';
 import { LoadingButton } from '@/components/ui/loading-button';
 
 /* ─── PDF Builder ─── */
-function buildReceitaPdf(data: {
+async function buildReceitaPdf(data: {
   pacienteNome: string;
   cpf: string;
   dataEmissao: string;
@@ -41,8 +42,11 @@ function buildReceitaPdf(data: {
   clinicaEndereco?: string;
   clinicaTelefone?: string;
   clinicaCnpj?: string;
-}): jsPDF {
-  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+}): Promise<jsPDF> {
+  // Carrega as ~660 KB do jsPDF só quando o médico gera a receita,
+  // em vez de ao abrir a tela.
+  const { default: JsPDF } = await import('jspdf');
+  const doc = new JsPDF({ unit: 'mm', format: 'a4' });
   const w = 210;
   const margin = 20;
 
@@ -327,7 +331,7 @@ export default function Prescricoes() {
     refetch();
 
     // Generate PDF
-    const doc = buildReceitaPdf({
+    const doc = await buildReceitaPdf({
       pacienteNome: paciente.nome,
       cpf: paciente.cpf || '',
       dataEmissao: format(new Date(form.data_emissao + 'T12:00:00'), 'dd/MM/yyyy'),

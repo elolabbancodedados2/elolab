@@ -17,8 +17,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
+import type jsPDF from 'jspdf';
+
 import { parseDateOnly } from '@/lib/dateOnly';
 
 interface PatientTimelineProps {
@@ -337,7 +337,13 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
         .eq('id', pacienteId)
         .maybeSingle();
 
-      const doc = new jsPDF();
+      // A timeline abre junto com a ficha do paciente; o PDF só é montado
+      // quando alguém exporta, então a biblioteca entra aqui.
+      const [{ default: JsPDF }, { default: autoTable }] = await Promise.all([
+        import('jspdf'),
+        import('jspdf-autotable'),
+      ]);
+      const doc = new JsPDF();
       doc.setFontSize(16);
       doc.text('Prontuário Completo do Paciente', 14, 18);
       doc.setFontSize(10);

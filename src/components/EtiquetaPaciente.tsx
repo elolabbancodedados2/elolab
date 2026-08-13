@@ -46,7 +46,7 @@ export function EtiquetaPaciente({ pacientes, open, onOpenChange }: EtiquetaPaci
     }
   };
 
-  const handleImprimir = () => {
+  const handleImprimir = async () => {
     const pacientesSelecionados = pacientes
       .filter((p) => selecionados.includes(p.id))
       .map((p) => ({
@@ -67,7 +67,7 @@ export function EtiquetaPaciente({ pacientes, open, onOpenChange }: EtiquetaPaci
       return;
     }
 
-    const doc = gerarEtiquetaPaciente(pacientesSelecionados, tamanho);
+    const doc = await gerarEtiquetaPaciente(pacientesSelecionados, tamanho);
     openPDF(doc);
     onOpenChange(false);
 
@@ -77,7 +77,7 @@ export function EtiquetaPaciente({ pacientes, open, onOpenChange }: EtiquetaPaci
     });
   };
 
-  const handleDownload = () => {
+  const handleDownload = async () => {
     const pacientesSelecionados = pacientes
       .filter((p) => selecionados.includes(p.id))
       .map((p) => ({
@@ -98,7 +98,7 @@ export function EtiquetaPaciente({ pacientes, open, onOpenChange }: EtiquetaPaci
       return;
     }
 
-    const doc = gerarEtiquetaPaciente(pacientesSelecionados, tamanho);
+    const doc = await gerarEtiquetaPaciente(pacientesSelecionados, tamanho);
     downloadPDF(doc, 'etiquetas-pacientes');
     onOpenChange(false);
   };

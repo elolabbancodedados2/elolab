@@ -27,7 +27,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { usePacientes } from '@/hooks/useSupabaseData';
 import { Database } from '@/integrations/supabase/types';
-import * as XLSX from 'xlsx';
+
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell,
 } from 'recharts';
@@ -364,7 +364,7 @@ export default function ContasReceber() {
     }
   };
 
-  const exportarExcel = () => {
+  const exportarExcel = async () => {
     const rows = filteredContas.map(c => ({
       Paciente: getPacienteNome(c),
       Descrição: c.descricao,
@@ -377,6 +377,8 @@ export default function ContasReceber() {
       Competência: c.competencia || '',
       'Nº Documento': c.numero_documento || '',
     }));
+    // Só baixa a biblioteca de planilha quando alguém exporta.
+    const XLSX = await import('xlsx');
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Contas a Receber');

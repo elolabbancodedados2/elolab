@@ -30,6 +30,7 @@ import { useSupabaseQuery } from '@/hooks/useSupabaseData';
 import { useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { pacienteCorresponde } from '@/lib/buscaPaciente';
 
 // ─── Manchester Triage Colors ──────────────────────────────
 const RISCO = {
@@ -343,8 +344,11 @@ export default function TriagemPage() {
   const filtered = triagemHoje.filter(t => {
     if (filterRisco !== 'todos' && t.classificacao_risco !== filterRisco) return false;
     if (search.trim()) {
-      const nome = getPacienteNome(t.paciente_id).toLowerCase();
-      if (!nome.includes(search.toLowerCase())) return false;
+      // Antes comparava só o nome, com toLowerCase e sem acento: quem chegasse
+      // com o documento na mão e digitasse o CPF não achava ninguém na fila de
+      // triagem, embora achasse na recepção. Mesma regra em todas as telas.
+      const paciente = pacientes.find(x => x.id === t.paciente_id);
+      if (!paciente || !pacienteCorresponde(paciente, search)) return false;
     }
     return true;
   });

@@ -59,7 +59,14 @@ BEGIN
       USING ERRCODE = 'check_violation';
   END IF;
 
-  -- Carimba quem liberou, quando a aplicação não informar.
+  -- Autoria da liberação vem do JWT, não do cliente.
+  --
+  -- A coluna é `uuid REFERENCES profiles(id)`. Confiar no que o cliente manda
+  -- permitia dois problemas: liberar sem autoria nenhuma (NULL), ou atribuir a
+  -- liberação a outro usuário. Num laudo que vai para o paciente, "quem
+  -- liberou" é a informação que a clínica precisa ter quando algo dá errado.
+  NEW.liberado_por := COALESCE(auth.uid(), NEW.liberado_por);
+
   IF NEW.data_liberacao IS NULL THEN
     NEW.data_liberacao := now();
   END IF;

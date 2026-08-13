@@ -18,7 +18,8 @@
     "check:falhas": "node scripts/check-falhas-silenciosas.mjs",
     "check:permissoes": "node scripts/check-permissoes.mjs",
     "schema:real": "node scripts/dump-schema-real.mjs > schema-real.json",
-    "check:colunas:real": "npm run schema:real && node scripts/check-colunas.mjs"
+    "check:colunas:real": "npm run schema:real && node scripts/check-colunas.mjs",
+    "check:a11y": "node scripts/check-acessibilidade.mjs --teto 61"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

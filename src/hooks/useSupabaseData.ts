@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { toast } from 'sonner';
+import { logAudit as registrarAuditoria } from '@/lib/auditTrail';
 
 /**
  * Teto de segurança para o carregamento automático em blocos. Existe para que
@@ -207,6 +208,22 @@ export function useSupabaseDelete(tableName: string) {
 }
 
 // Audit logging function
+/**
+ * Adaptador para a trilha de auditoria compartilhada.
+ *
+ * Havia aqui uma segunda implementação de `logAudit`, com o mesmo defeito que
+ * já foi corrigido em `src/lib/auditTrail.ts`: `try { await insert() } catch`.
+ * O supabase-js devolve `{ error }` em vez de lançar, então o catch nunca
+ * disparava e a falha era invisível.
+ *
+ * Como estes hooks genéricos fazem create/update/delete de TODAS as tabelas,
+ * esta era a maior lacuna de auditoria do sistema — bem maior que os pontos
+ * pontuais já corrigidos nas telas de prontuário.
+ *
+ * A assinatura posicional foi mantida para não mexer nos três pontos de
+ * chamada; o comportamento (checagem de erro e fila de reenvio) vem do módulo
+ * compartilhado.
+ */
 async function logAudit(
   action: 'create' | 'update' | 'delete',
   collection: string,
@@ -214,17 +231,13 @@ async function logAudit(
   userId?: string,
   userName?: string
 ) {
-  try {
-    await supabase.from('audit_log').insert({
-      action,
-      collection,
-      record_id: recordId,
-      user_id: userId,
-      user_name: userName,
-    });
-  } catch (error) {
-    console.error('Error logging audit:', error);
-  }
+  await registrarAuditoria({
+    action,
+    collection,
+    recordId,
+    userId,
+    userName,
+  });
 }
 
 // Specific hooks for each table
