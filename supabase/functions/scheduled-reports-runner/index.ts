@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { cronOrUserOk, cronForbidden } from "../_shared/cronAuth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -43,6 +44,10 @@ function csvEscape(v: any) {
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+
+  // Sem guarda, qualquer visitante com a chave pública `anon` disparava a
+  // geração e o envio de relatórios da clínica.
+  if (!cronOrUserOk(req)) return cronForbidden(corsHeaders);
 
   try {
     const supabase = createClient(

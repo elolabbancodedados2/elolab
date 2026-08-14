@@ -1,5 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { cronSecretOk, cronForbidden } from '../_shared/cronAuth.ts'
+import { cronOrUserOk, cronForbidden, clinicaDoChamador } from '../_shared/cronAuth.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -18,7 +18,9 @@ interface EstoqueItem {
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
-  if (!cronSecretOk(req)) return cronForbidden(corsHeaders)
+  // O agendador OU um usuário logado. Com `cronSecretOk` o botão "Executar
+  // agora" da tela de Automações recebia 403 e a automação parecia quebrada.
+  if (!cronOrUserOk(req)) return cronForbidden(corsHeaders)
 
   const startTime = Date.now()
 
@@ -34,10 +36,16 @@ Deno.serve(async (req) => {
       .select('valor, ativo, clinica_id')
       .eq('chave', 'alerta_estoque_critico')
 
-    const { data: itensCriticos, error: fetchError } = await supabase
+    // Disparo manual só alcança a clínica de quem clicou; o cron segue global.
+    const clinicaAlvo = await clinicaDoChamador(req, supabase)
+
+    let consulta = supabase
       .from('estoque')
       .select('id, clinica_id, nome, quantidade, quantidade_minima, categoria, localizacao')
       .not('quantidade_minima', 'is', null)
+    if (clinicaAlvo) consulta = consulta.eq('clinica_id', clinicaAlvo)
+
+    const { data: itensCriticos, error: fetchError } = await consulta
 
     if (fetchError) throw new Error(`Erro ao buscar estoque: ${fetchError.message}`)
 

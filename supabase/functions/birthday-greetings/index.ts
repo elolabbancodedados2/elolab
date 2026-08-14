@@ -1,5 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { cronSecretOk, cronForbidden } from '../_shared/cronAuth.ts';
+import { cronOrUserOk, cronForbidden, clinicaDoChamador } from '../_shared/cronAuth.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -11,8 +11,9 @@ Deno.serve(async (req) => {
     return new Response('ok', { headers: corsHeaders })
   }
 
-  // Só o agendador (pg_cron) pode disparar esta rotina.
-  if (!cronSecretOk(req)) return cronForbidden(corsHeaders);
+  // O agendador OU um usuário logado. Com `cronSecretOk` o botão "Executar
+  // agora" da tela de Automações recebia 403 e a automação parecia quebrada.
+  if (!cronOrUserOk(req)) return cronForbidden(corsHeaders);
 
   const startTime = Date.now()
 
@@ -48,11 +49,17 @@ Deno.serve(async (req) => {
     const dia = String(hoje.getDate()).padStart(2, '0')
     const mes = String(hoje.getMonth() + 1).padStart(2, '0')
 
-    const { data: aniversariantes, error: fetchError } = await supabase
+    // Disparo manual só alcança a clínica de quem clicou; o cron segue global.
+    const clinicaAlvo = await clinicaDoChamador(req, supabase)
+
+    let consulta = supabase
       .from('pacientes')
       .select('id, nome, email, data_nascimento, clinica_id')
       .not('email', 'is', null)
       .not('data_nascimento', 'is', null)
+    if (clinicaAlvo) consulta = consulta.eq('clinica_id', clinicaAlvo)
+
+    const { data: aniversariantes, error: fetchError } = await consulta
 
     if (fetchError) {
       throw new Error(`Erro ao buscar pacientes: ${fetchError.message}`)
