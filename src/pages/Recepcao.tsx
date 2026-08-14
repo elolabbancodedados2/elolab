@@ -487,7 +487,15 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
        }
      }
 
-     setSelectedLancamento(lancamentoSelecionado);
+      const valorSelecionado = Number(lancamentoSelecionado?.valor || 0);
+      if (!Number.isFinite(valorSelecionado) || valorSelecionado <= 0) {
+        toast.error('Este atendimento não possui um preço válido.', {
+          description: 'Configure o valor do serviço antes de cobrar o paciente.',
+        });
+        return;
+      }
+
+      setSelectedLancamento(lancamentoSelecionado);
      setSelectedPacienteBalcao(pac);
      setFormaPagamento('');
      setDesconto(0);
@@ -570,6 +578,10 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
     }
 
     const valorBase = Number(selectedLancamento.valor || 0);
+    if (!Number.isFinite(valorBase) || valorBase <= 0) {
+      toast.error('Não é possível confirmar uma cobrança sem valor.');
+      return;
+    }
     if (desconto > valorBase) {
       toast.error(`Desconto não pode ser maior que o valor da consulta (R$ ${valorBase.toFixed(2)})`);
       return;

@@ -25,9 +25,12 @@ function isGenericExamType(value?: string | null): boolean {
 }
 
 function toMoney(value: unknown): number {
-  const parsed = typeof value === 'string'
-    ? Number(value.replace(',', '.'))
-    : Number(value);
+  const normalized = typeof value === 'string'
+    ? value.trim().replace(/\s/g, '').includes(',')
+      ? value.trim().replace(/\s/g, '').replace(/\./g, '').replace(',', '.')
+      : value.trim().replace(/\s/g, '')
+    : value;
+  const parsed = Number(normalized);
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
@@ -63,7 +66,11 @@ function matchesServiceName(rowName: unknown, requestedName: string): boolean {
 }
 
 function priceFromExamRow(row: any): number {
-  return toMoney(row?.valor_total ?? row?.valor_tabela ?? row?.preco_venda ?? row?.valor);
+  // `valor_total` is generated for convenio rows, but old/imported rows can
+  // contain zero or null there while the source price is still populated.
+  return [row?.valor_total, row?.valor_tabela, row?.preco_venda, row?.valor]
+    .map(toMoney)
+    .find(value => value > 0) || 0;
 }
 
 /**
@@ -292,6 +299,10 @@ export async function createAutoBilling(params: AutoBillingParams): Promise<bool
 
   if (isExam && valor <= 0) {
     throw new Error(`Não há preço cadastrado para o exame "${tipoExame || tipoConsulta}".`);
+  }
+
+  if (!isExam && valor <= 0) {
+    throw new Error(`Não há preço cadastrado para a consulta "${tipoConsulta || 'atendimento'}".`);
   }
 
   // Build full description with patient name and type

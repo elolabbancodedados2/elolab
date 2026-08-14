@@ -90,6 +90,18 @@ async function createPreference(
   headers: Record<string, string>
 ) {
   const { paciente_id, lancamento_id, agendamento_id, descricao, valor, parcelas_max, payer_email, payer_name } = body;
+  const valorNumerico = Number(valor);
+  const parcelas = Number(parcelas_max || 1);
+
+  if (!Number.isFinite(valorNumerico) || valorNumerico <= 0) {
+    return json({ error: "O valor da cobrança deve ser maior que zero" }, 400, headers);
+  }
+  if (typeof descricao !== "string" || !descricao.trim()) {
+    return json({ error: "A descrição da cobrança é obrigatória" }, 400, headers);
+  }
+  if (!Number.isInteger(parcelas) || parcelas < 1 || parcelas > 12) {
+    return json({ error: "O número de parcelas deve estar entre 1 e 12" }, 400, headers);
+  }
 
   const externalReference = crypto.randomUUID();
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -101,7 +113,7 @@ async function createPreference(
       {
         title: descricao || "Consulta Médica - EloLab",
         quantity: 1,
-        unit_price: Number(valor),
+        unit_price: valorNumerico,
         currency_id: "BRL",
       },
     ],
@@ -111,7 +123,7 @@ async function createPreference(
     },
     external_reference: externalReference,
     payment_methods: {
-      installments: parcelas_max || 12,
+      installments: parcelas,
     },
     back_urls: {
       success: `${supabaseUrl}/functions/v1/mercadopago-webhook?status=success`,
@@ -139,11 +151,11 @@ async function createPreference(
       agendamento_id,
       mp_preference_id: response.id,
       mp_external_reference: externalReference,
-      valor: Number(valor),
-      descricao: descricao || "Consulta Médica",
+      valor: valorNumerico,
+      descricao: descricao.trim(),
       tipo: "pagamento",
       checkout_url: response.init_point,
-      parcelas: parcelas_max || 1,
+      parcelas,
     })
     .select()
     .single();
@@ -183,6 +195,11 @@ async function createSubscription(
     .eq("ativo", true)
     .maybeSingle();
   if (planoError || !plano) return json({ error: "Plano não encontrado" }, 404, headers);
+
+  const planoValor = Number(plano?.valor);
+  if (!Number.isFinite(planoValor) || planoValor <= 0) {
+    return json({ error: "O plano não possui um valor válido" }, 422, headers);
+  }
 
   const requestedTrialDays = trial_dias === undefined || trial_dias === null ? 0 : Number(trial_dias);
   const planTrialDays = Number(plano.trial_dias || 0);
@@ -239,7 +256,7 @@ async function createSubscription(
   const externalReference = crypto.randomUUID();
   const trialEnd = requestedTrialDays > 0
     ? new Date(Date.now() + requestedTrialDays * 24 * 60 * 60 * 1000)
-    : new Date();
+    : null;
 
   // Use Preapproval API for recurring subscriptions
   // Reference: https://developers.mercadopago.com/en/reference/preapproval/_preapproval/post
@@ -252,9 +269,9 @@ async function createSubscription(
     auto_recurring: {
       frequency: 1,
       frequency_type: plano.frequencia === "anual" ? "years" : "months",
-      transaction_amount: Number(plano.valor),
+      transaction_amount: planoValor,
       currency_id: "BRL",
-      start_date: trialEnd.toISOString(),
+      ...(trialEnd ? { start_date: trialEnd.toISOString() } : {}),
     },
     notification_url: webhookUrl,
   };
@@ -286,7 +303,7 @@ async function createSubscription(
         plano_slug: plano.slug,
         payer_email: payerEmail,
         trial_type: requestedTrialDays > 0 ? "with_payment_method" : "none",
-        trial_end: requestedTrialDays > 0 ? trialEnd.toISOString() : null,
+        trial_end: trialEnd?.toISOString() || null,
         auto_recurring: preapprovalPayload.auto_recurring,
       },
     })

@@ -177,6 +177,7 @@ describe('faturamento automático — uma cobrança por agendamento', () => {
     // desejado, não uma falha a ser gritada na tela.
     mockAtual = criarSupabaseMock({
       'lancamentos.select': { data: [], error: null },
+      'tipos_consulta.select': { data: { id: 'tipo-1', nome: 'Consulta', valor_particular: 100 }, error: null },
       'lancamentos.insert': { data: null, error: { code: '23505', message: 'duplicate key' } },
     });
 
@@ -185,6 +186,7 @@ describe('faturamento automático — uma cobrança por agendamento', () => {
       agendamentoId: 'ag-1',
       pacienteId: 'pac-1',
       pacienteNome: 'Maria',
+      tipoConsulta: 'Consulta',
       data: '2026-08-12',
       clinicaId: 'cli-1',
     });
@@ -235,6 +237,51 @@ describe('faturamento automático — uma cobrança por agendamento', () => {
       data: '2026-08-12',
       clinicaId: 'cli-1',
     })).rejects.toThrow('Não há preço cadastrado');
+
+    expect(mockAtual.chamadas.some(c => c.tabela === 'lancamentos' && c.op === 'insert')).toBe(false);
+  });
+  it('usa o valor de tabela quando o valor total legado está zerado', async () => {
+    mockAtual = criarSupabaseMock({
+      'lancamentos.select': { data: [], error: null },
+      'precos_exames_convenio.select': {
+        data: [{ tipo_exame: 'Raio X', valor_total: 0, valor_tabela: 75 }],
+        error: null,
+      },
+      'lancamentos.insert': { data: { id: 'lanc-exame-legado' }, error: null },
+    });
+
+    const { createAutoBilling } = await import('@/lib/autoBilling');
+    const criou = await createAutoBilling({
+      agendamentoId: 'ag-exame-legado',
+      pacienteId: 'pac-1',
+      pacienteNome: 'Maria',
+      convenioId: 'conv-1',
+      tipoConsulta: 'exame',
+      tipoExame: 'Raio X',
+      data: '2026-08-12',
+      clinicaId: 'cli-1',
+    });
+
+    expect(criou).toBe(true);
+    const insercao = mockAtual.chamadas.find(c => c.tabela === 'lancamentos' && c.op === 'insert');
+    expect(insercao?.payload).toMatchObject({ categoria: 'exame', valor: 75 });
+  });
+
+  it('recusa consulta sem preço em vez de criar lançamento zerado', async () => {
+    mockAtual = criarSupabaseMock({
+      'lancamentos.select': { data: [], error: null },
+      'tipos_consulta.select': { data: null, error: null },
+    });
+
+    const { createAutoBilling } = await import('@/lib/autoBilling');
+    await expect(createAutoBilling({
+      agendamentoId: 'ag-consulta-sem-preco',
+      pacienteId: 'pac-1',
+      pacienteNome: 'Maria',
+      tipoConsulta: 'Consulta sem cadastro',
+      data: '2026-08-12',
+      clinicaId: 'cli-1',
+    })).rejects.toThrow('Não há preço cadastrado para a consulta');
 
     expect(mockAtual.chamadas.some(c => c.tabela === 'lancamentos' && c.op === 'insert')).toBe(false);
   });
