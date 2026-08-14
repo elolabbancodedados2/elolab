@@ -1,5 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { cronOrUserOk, cronForbidden } from "../_shared/cronAuth.ts";
+import { cronOrUserOk, cronForbidden, clinicaDoChamador } from "../_shared/cronAuth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -54,6 +54,10 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
+    // A execução manual feita pela interface deve permanecer restrita à
+    // clínica do usuário. Disparos do agendador não carregam JWT e continuam
+    // processando todas as clínicas vencidas.
+    const clinicaAlvo = await clinicaDoChamador(req, supabase);
     const resendKey = Deno.env.get("RESEND_API_KEY");
 
     let body: any = {};
@@ -62,6 +66,7 @@ Deno.serve(async (req) => {
     const forceId = body?.id || null;
 
     let q = supabase.from("relatorios_salvos").select("*").eq("ativo", true);
+    if (clinicaAlvo) q = q.eq("clinica_id", clinicaAlvo);
     if (forceId) q = q.eq("id", forceId);
     else q = q.lte("proxima_execucao", new Date().toISOString());
     const { data: relatorios, error } = await q;

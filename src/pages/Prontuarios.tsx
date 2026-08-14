@@ -792,8 +792,9 @@ export default function Prontuarios() {
         // NÃO roda no autosave. O autosave dispara a cada 60s e usava este
         // mesmo caminho, debitando o estoque de novo a cada minuto enquanto o
         // prontuário ficasse aberto. A idempotência real vem do índice único
-        // (prontuario_id, item_id) criado na migration 20260728020000 — daí o
-        // insert da movimentação vir ANTES da atualização do saldo.
+        // (prontuario_id, item_id) criado na migration 20260728020000. A baixa
+        // agora passa pelo RPC transacional, que serializa o item e grava o
+        // movimento junto com o novo saldo.
         if (!silent) {
           for (const presc of validas) {
             // Casamento por nome aproximado pode acertar o medicamento errado.
@@ -816,41 +817,31 @@ export default function Prontuarios() {
             const estoqueItem = candidatos[0];
             const qtd = parseInt(presc.quantidade) || 1;
 
-            const { error: movErr } = await supabase.from('movimentacoes_estoque').insert({
-              item_id: estoqueItem.id, tipo: 'saida', quantidade: qtd,
-              prontuario_id: prontuarioId,
-              motivo: `Prescrição — ${selectedPaciente?.nome || 'paciente'}`,
-            } as any);
+            const { data: baixa, error: movErr } = await (supabase as any).rpc(
+              'registrar_baixa_estoque',
+              {
+                p_item_id: estoqueItem.id,
+                p_quantidade: qtd,
+                p_prontuario_id: prontuarioId,
+                p_usuario_id: user?.id || null,
+                p_motivo: `Prescrição — ${selectedPaciente?.nome || 'paciente'}`,
+              },
+            );
 
             if (movErr) {
-              // 23505 = violação da unicidade: já houve baixa deste item para
-              // este prontuário. Não é erro, é a proteção contra o autosave.
-              //
-              // Qualquer OUTRO erro precisa aparecer. Antes tudo caía no mesmo
-              // `continue`, e falta de permissão passava por "já foi baixado":
-              // o médico salvava, a baixa era recusada, e o estoque seguia
-              // mostrando material já consumido — sem aviso em tela nenhuma.
-              if (movErr.code !== '23505') {
-                toast.warning(`Estoque não foi baixado: ${estoqueItem.nome}`, {
-                  description: movErr.message,
-                });
-              }
+              // Baixa duplicada é tratada dentro do RPC como no-op. Qualquer
+              // outro erro precisa aparecer, porque a transação inteira foi
+              // desfeita e o saldo continua inalterado.
+              toast.warning(`Estoque não foi baixado: ${estoqueItem.nome}`, {
+                description: movErr.message,
+              });
               continue;
             }
 
-            const novaQtd = Math.max(0, estoqueItem.quantidade - qtd);
-            const { error: saldoErr } = await supabase.from('estoque')
-              .update({ quantidade: novaQtd })
-              .eq('id', estoqueItem.id)
-              .eq('quantidade', estoqueItem.quantidade);
-
-            // A movimentação já foi registrada; se o saldo não acompanhar, os
-            // dois ficam divergentes e ninguém saberia.
-            if (saldoErr) {
-              toast.warning(`Saldo de ${estoqueItem.nome} não foi atualizado`, {
-                description: saldoErr.message,
-              });
-            }
+            // A função SQL já grava a movimentação e o saldo na mesma
+            // transação. O retorno é usado apenas para manter o fluxo
+            // explícito quando a chamada foi idempotente.
+            if (baixa?.[0]?.ja_baixado) continue;
           }
         }
       }

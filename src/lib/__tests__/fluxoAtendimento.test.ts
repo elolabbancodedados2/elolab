@@ -21,8 +21,10 @@ function criarSupabaseMock(respostas: Record<string, any>) {
       select: () => encadeavel,
       eq: () => encadeavel,
       neq: () => encadeavel,
+      ilike: () => encadeavel,
+      gt: () => encadeavel,
       order: () => encadeavel,
-      limit: () => Promise.resolve(resposta),
+      limit: () => encadeavel,
       single: () => Promise.resolve(resposta),
       maybeSingle: () => Promise.resolve(resposta),
       then: (fn: any) => Promise.resolve(resposta).then(fn),
@@ -40,6 +42,10 @@ function criarSupabaseMock(respostas: Record<string, any>) {
         update: (payload: any) => construirQuery(tabela, 'update', payload),
         delete: () => construirQuery(tabela, 'delete'),
       }),
+      rpc: (nome: string, payload: any) => {
+        chamadas.push({ tabela: `rpc:${nome}`, op: 'call', payload });
+        return Promise.resolve(respostas[`rpc.${nome}`] ?? { data: null, error: null });
+      },
     },
   };
 }
@@ -231,5 +237,87 @@ describe('faturamento automático — uma cobrança por agendamento', () => {
     })).rejects.toThrow('Não há preço cadastrado');
 
     expect(mockAtual.chamadas.some(c => c.tabela === 'lancamentos' && c.op === 'insert')).toBe(false);
+  });
+});
+
+describe('finalizacao - retorno e estados operacionais', () => {
+  it('desfaz a finalizacao se o retorno nao puder ser agendado', async () => {
+    mockAtual = criarSupabaseMock({
+      'fila_atendimento.select': { data: { status: 'em_atendimento' }, error: null },
+      'fila_atendimento.update': { data: { id: 'fila-1' }, error: null },
+      'agendamentos.update': { data: { id: 'ag-1' }, error: null },
+      'lancamentos.select': { data: [], error: null },
+      'tipos_consulta.select': {
+        data: { id: 'tipo-1', nome: 'Consulta', valor_particular: 120 },
+        error: null,
+      },
+      'lancamentos.insert': { data: { id: 'lanc-1' }, error: null },
+      'retornos.insert': { data: null, error: { message: 'horario indisponivel' } },
+    });
+
+    const { autoFinalizarAtendimento } = await import('@/lib/workflowAutomation');
+    const resultado = await autoFinalizarAtendimento({
+      agendamentoId: 'ag-1',
+      filaId: 'fila-1',
+      pacienteId: 'pac-1',
+      pacienteNome: 'Maria',
+      medicoId: 'med-1',
+      tipoConsulta: 'Consulta',
+      clinicaId: 'cli-1',
+      agendarRetorno: true,
+      diasRetorno: 30,
+    });
+
+    expect(resultado.success).toBe(false);
+    expect(resultado.message).toContain('horario indisponivel');
+
+    const atualizacoesFila = mockAtual.chamadas
+      .filter(c => c.tabela === 'fila_atendimento' && c.op === 'update')
+      .map(c => c.payload);
+    const atualizacoesAgendamento = mockAtual.chamadas
+      .filter(c => c.tabela === 'agendamentos' && c.op === 'update')
+      .map(c => c.payload);
+
+    expect(atualizacoesFila).toEqual([{ status: 'finalizado' }, { status: 'em_atendimento' }]);
+    expect(atualizacoesAgendamento).toEqual([{ status: 'finalizado' }, { status: 'em_atendimento' }]);
+  });
+});
+
+describe('dispensacao - baixa de estoque transacional', () => {
+  it('usa a baixa atomica do banco e nao atualiza o saldo pela leitura da tela', async () => {
+    mockAtual = criarSupabaseMock({
+      'estoque.select': {
+        data: {
+          id: 'item-1',
+          nome: 'Dipirona 500mg',
+          quantidade: 10,
+          quantidade_minima: 2,
+        },
+        error: null,
+      },
+      'rpc.registrar_baixa_estoque': {
+        data: [{ item_id: 'item-1', quantidade_anterior: 10, quantidade_nova: 8, ja_baixado: false }],
+        error: null,
+      },
+    });
+
+    const { autoDispensarMedicamentos } = await import('@/lib/workflowAutomation');
+    const resultado = await autoDispensarMedicamentos({
+      medicamentos: [{ nome: 'Dipirona 500mg', quantidade: '2' }],
+      pacienteId: 'pac-1',
+      pacienteNome: 'Maria',
+      userId: 'user-1',
+    });
+
+    expect(resultado.success).toBe(true);
+    expect(resultado.actions).toContain('Dipirona 500mg: -2 unidade(s)');
+    expect(mockAtual.chamadas.some(c => c.tabela === 'estoque' && c.op === 'update')).toBe(false);
+
+    const chamada = mockAtual.chamadas.find(c => c.tabela === 'rpc:registrar_baixa_estoque');
+    expect(chamada?.payload).toMatchObject({
+      p_item_id: 'item-1',
+      p_quantidade: 2,
+      p_usuario_id: 'user-1',
+    });
   });
 });

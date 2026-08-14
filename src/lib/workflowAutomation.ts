@@ -215,6 +215,21 @@ export async function autoFinalizarAtendimento(params: {
     actions.push('Agendamento → Finalizado');
     if (params.filaId) actions.push('Fila → Finalizado');
 
+    const restaurarAtendimento = async () => {
+      if (params.filaId && filaStatusAnterior) {
+        await must(supabase.from('fila_atendimento')
+          .update({ status: filaStatusAnterior })
+          .eq('id', params.filaId)
+          .select('id')
+          .single());
+      }
+      await must(supabase.from('agendamentos')
+        .update({ status: 'em_atendimento' })
+        .eq('id', params.agendamentoId)
+        .select('id')
+        .single());
+    };
+
     // Auto-billing is part of finalization. If it fails, restore the two
     // operational statuses so the patient can be corrected and finalized
     // again instead of disappearing from the payment flow.
@@ -231,14 +246,7 @@ export async function autoFinalizarAtendimento(params: {
       });
       if (billed) actions.push('Cobrança gerada automaticamente');
     } catch (billingError) {
-      if (params.filaId && filaStatusAnterior) {
-        await supabase.from('fila_atendimento')
-          .update({ status: filaStatusAnterior })
-          .eq('id', params.filaId);
-      }
-      await supabase.from('agendamentos')
-        .update({ status: 'em_atendimento' })
-        .eq('id', params.agendamentoId);
+      await restaurarAtendimento();
       throw billingError;
     }
 
@@ -247,15 +255,23 @@ export async function autoFinalizarAtendimento(params: {
       const dataRetorno = new Date();
       dataRetorno.setDate(dataRetorno.getDate() + params.diasRetorno);
       
-      await must(supabase.from('retornos').insert({
-        paciente_id: params.pacienteId,
-        medico_id: params.medicoId,
-        data_retorno_prevista: format(dataRetorno, 'yyyy-MM-dd'),
-        data_consulta_origem: format(new Date(), 'yyyy-MM-dd'),
-        motivo: `Retorno de ${params.tipoConsulta || 'consulta'}`,
-        status: 'pendente',
-        agendamento_id: params.agendamentoId,
-      }));
+      try {
+        await must(supabase.from('retornos').insert({
+          paciente_id: params.pacienteId,
+          medico_id: params.medicoId,
+          data_retorno_prevista: format(dataRetorno, 'yyyy-MM-dd'),
+          data_consulta_origem: format(new Date(), 'yyyy-MM-dd'),
+          motivo: `Retorno de ${params.tipoConsulta || 'consulta'}`,
+          status: 'pendente',
+          agendamento_id: params.agendamentoId,
+        }));
+      } catch (retornoError) {
+        // O retorno faz parte do pedido de finalização. Se ele não puder ser
+        // criado, desfazemos os estados já avançados para o balcão poder
+        // corrigir/agendar novamente sem deixar uma consulta inconsistente.
+        await restaurarAtendimento();
+        throw retornoError;
+      }
       actions.push(`Retorno agendado para ${format(dataRetorno, 'dd/MM/yyyy')}`);
     }
 
@@ -420,19 +436,20 @@ export async function autoDispensarMedicamentos(params: {
         continue;
       }
 
-      // Deduct
-      await must(supabase.from('estoque').update({
-        quantidade: stockItem.quantidade - qty,
-      }).eq('id', stockItem.id));
-
-      // Log movement
-      await must(supabase.from('movimentacoes_estoque').insert({
-        item_id: stockItem.id,
-        tipo: 'saida',
-        quantidade: qty,
-        motivo: `Dispensação — ${params.pacienteNome}`,
-        usuario_id: params.userId || null,
-      }));
+      // O RPC bloqueia o item e grava saldo + movimentação na mesma
+      // transação. Assim uma corrida ou uma falha no log nunca deixa apenas
+      // metade da baixa aplicada.
+      const { data: baixa, error: baixaError } = await (supabase as any).rpc(
+        'registrar_baixa_estoque',
+        {
+          p_item_id: stockItem.id,
+          p_quantidade: qty,
+          p_usuario_id: params.userId || null,
+          p_motivo: `Dispensação — ${params.pacienteNome}`,
+        },
+      );
+      if (baixaError) throw baixaError;
+      if (baixa?.[0]?.ja_baixado) continue;
 
       actions.push(`${stockItem.nome}: -${qty} unidade(s)`);
 
