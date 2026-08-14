@@ -181,13 +181,13 @@ export default function Financeiro() {
           </p>
         </div>
         <div className="flex items-center gap-2 bg-muted/50 rounded-xl p-1">
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setCurrentDate(subMonths(currentDate, 1))}>
+          <Button aria-label="Mês anterior" variant="ghost" size="icon" className="h-8 w-8" onClick={() => setCurrentDate(subMonths(currentDate, 1))}>
             <ChevronLeft className="h-4 w-4" />
           </Button>
           <span className="font-bold text-sm min-w-[120px] text-center capitalize">
             {format(currentDate, 'MMMM yyyy', { locale: ptBR })}
           </span>
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setCurrentDate(addMonths(currentDate, 1))}>
+          <Button aria-label="Próximo mês" variant="ghost" size="icon" className="h-8 w-8" onClick={() => setCurrentDate(addMonths(currentDate, 1))}>
             <ChevronRight className="h-4 w-4" />
           </Button>
         </div>

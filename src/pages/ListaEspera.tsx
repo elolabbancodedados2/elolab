@@ -405,6 +405,7 @@ export default function ListaEspera() {
                               </Button>
                             )}
                             <Button 
+                              aria-label="Remover paciente da lista de espera"
                               variant="ghost" 
                               size="icon"
                               onClick={() => setRemoveId(item.id)}

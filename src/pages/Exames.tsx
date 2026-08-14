@@ -792,14 +792,14 @@ export default function Exames() {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
-                          <Button variant="ghost" size="icon" onClick={() => handleView(exame.id)}><Eye className="h-4 w-4" /></Button>
+                           <Button variant="ghost" size="icon" aria-label={`Ver exame ${exame.tipo_exame || exame.id}`} onClick={() => handleView(exame.id)}><Eye className="h-4 w-4" /></Button>
                           {nextStatus && (
                             <Button variant="outline" size="sm" className="text-xs gap-1" onClick={() => handleUpdateStatus(exame.id, nextStatus)}>
                               {nextLabel}
                             </Button>
                           )}
                           {exame.status !== 'cancelado' && exame.status !== 'laudo_disponivel' && (
-                            <Button variant="ghost" size="icon" className="text-destructive/60 hover:text-destructive" onClick={() => handleUpdateStatus(exame.id, 'cancelado')}>
+                             <Button variant="ghost" size="icon" aria-label={`Cancelar exame ${exame.tipo_exame || exame.id}`} className="text-destructive/60 hover:text-destructive" onClick={() => handleUpdateStatus(exame.id, 'cancelado')}>
                               <X className="h-3.5 w-3.5" />
                             </Button>
                           )}

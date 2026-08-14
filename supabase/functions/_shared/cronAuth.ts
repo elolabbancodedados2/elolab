@@ -68,6 +68,47 @@ export function cronOrUserOk(req: Request): boolean {
   return jwtRole(req) === 'authenticated';
 }
 
+/**
+ * Clínica de quem chamou, quando a chamada veio de um usuário logado.
+ *
+ * Rotinas como `birthday-greetings` e `stock-alert` foram escritas para o
+ * agendador: percorrem TODAS as clínicas e disparam para cada uma que tenha a
+ * automação ligada. Isso está certo quando quem chama é o pg_cron.
+ *
+ * Mas a tela de Automações tem um botão "Executar agora". Se ele rodasse a
+ * rotina global, um clique na clínica A dispararia mensagem para pacientes das
+ * outras onze — envio duplicado, em nome de quem não pediu.
+ *
+ * Então: chamada do cron continua global; chamada de usuário fica restrita à
+ * clínica dele. A clínica vem do JWT, nunca do corpo da requisição.
+ *
+ * @returns `null` quando é o cron (processa tudo) ou quando não há clínica.
+ */
+export async function clinicaDoChamador(
+  req: Request,
+  supabase: { from: (t: string) => any },
+): Promise<string | null> {
+  const token = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '');
+  const parts = token.split('.');
+  if (parts.length !== 3) return null;
+
+  let sub: string | null = null;
+  try {
+    const resto = parts[1].length % 4;
+    const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/') + '='.repeat(resto ? 4 - resto : 0);
+    const claims = JSON.parse(atob(b64));
+    if (claims?.role !== 'authenticated') return null; // cron ou service_role
+    sub = claims?.sub ?? null;
+  } catch {
+    return null;
+  }
+  if (!sub) return null;
+
+  const { data } = await supabase
+    .from('profiles').select('clinica_id').eq('id', sub).maybeSingle();
+  return (data as any)?.clinica_id ?? null;
+}
+
 export function cronForbidden(corsHeaders: Record<string, string>): Response {
   return new Response(
     JSON.stringify({ error: 'Forbidden: esta função só pode ser disparada pelo agendador.' }),

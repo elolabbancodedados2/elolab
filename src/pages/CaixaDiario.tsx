@@ -46,6 +46,20 @@ import { mesmoValor, diferencaEmReais } from '@/lib/dinheiro';
 type LancamentoTipo = 'receita' | 'despesa' | 'sangria' | 'suprimento';
 type FormaPagamento = 'dinheiro' | 'pix' | 'credito' | 'debito' | 'cartao_credito' | 'cartao_debito' | 'cheque' | 'transferencia';
 
+function toMoney(value: unknown): number {
+  const normalized = typeof value === 'string'
+    ? value.trim().replace(/\s/g, '').includes(',')
+      ? value.trim().replace(/\s/g, '').replace(/\./g, '').replace(',', '.')
+      : value.trim().replace(/\s/g, '')
+    : value;
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function firstPositiveMoney(...values: unknown[]): number {
+  return values.map(toMoney).find(value => value > 0) || 0;
+}
+
 interface Lancamento {
   id: string;
   tipo: LancamentoTipo;
@@ -227,20 +241,35 @@ export default function CaixaDiario() {
       const items: { id: string; nome: string; valor: number }[] = [];
 
       // 1. Preços internos salvos em configuracoes_clinica
-      if (profile?.id) {
-        const { data: cfg } = await supabase
+      let cfgRows: any[] = [];
+      if (profile?.clinica_id) {
+        const { data } = await (supabase as any)
           .from('configuracoes_clinica')
-          .select('valor')
+          .select('valor, updated_at')
+          .eq('chave', 'precos_exames_internos')
+          .eq('clinica_id', profile.clinica_id)
+          .order('updated_at', { ascending: false })
+          .limit(1);
+        cfgRows = data || [];
+      }
+      if (cfgRows.length === 0 && profile?.id) {
+        const { data } = await (supabase as any)
+          .from('configuracoes_clinica')
+          .select('valor, updated_at')
           .eq('chave', 'precos_exames_internos')
           .eq('user_id', profile.id)
-          .maybeSingle();
-        if (cfg?.valor && Array.isArray(cfg.valor)) {
-          (cfg.valor as any[]).forEach((e: any) => {
-            if (e.nome && e.valor > 0) {
-              items.push({ id: `interno-${e.nome}`, nome: e.nome, valor: e.valor });
-            }
-          });
-        }
+          .order('updated_at', { ascending: false })
+          .limit(1);
+        cfgRows = data || [];
+      }
+      const internalPrices = cfgRows[0]?.valor;
+      if (Array.isArray(internalPrices)) {
+        internalPrices.forEach((e: any) => {
+          const valor = toMoney(e.valor);
+          if (e.nome && valor > 0) {
+            items.push({ id: `interno-${e.nome}`, nome: e.nome, valor });
+          }
+        });
       }
 
       // 2. Preços de convênio (valor_total ou valor_tabela)
@@ -251,8 +280,9 @@ export default function CaixaDiario() {
         .eq('ativo', true);
       if (convenioExames) {
         convenioExames.forEach((e: any) => {
-          if (!items.find(i => i.nome === e.tipo_exame)) {
-            items.push({ id: e.id, nome: e.tipo_exame, valor: e.valor_total || e.valor_tabela || 0 });
+          const valor = firstPositiveMoney(e.valor_total, e.valor_tabela);
+          if (!items.find(i => i.nome === e.tipo_exame) && Number.isFinite(valor) && valor > 0) {
+            items.push({ id: e.id, nome: e.tipo_exame, valor });
           }
         });
       }
@@ -360,6 +390,11 @@ export default function CaixaDiario() {
 
   // Cart helpers
   const addToCart = (item: Omit<ProdutoCarrinho, 'quantidade'>) => {
+    const valor = toMoney(item.valor);
+    if (valor <= 0) {
+      toast.error(`O item "${item.nome}" não possui preço cadastrado.`);
+      return;
+    }
     setCarrinho(prev => {
       const existing = prev.find(p => p.id === item.id && p.origem === item.origem);
       if (existing) {
@@ -368,7 +403,7 @@ export default function CaixaDiario() {
           : p
         );
       }
-      return [...prev, { ...item, quantidade: 1 }];
+      return [...prev, { ...item, valor, quantidade: 1 }];
     });
   };
 
@@ -470,6 +505,7 @@ export default function CaixaDiario() {
     mutationFn: async () => {
       if (!profile?.clinica_id || !caixaHoje?.id) throw new Error('Caixa não está aberto');
       if (carrinho.length === 0) throw new Error('Adicione pelo menos um item');
+      if (!Number.isFinite(carrinhoTotal) || carrinhoTotal <= 0) throw new Error('O total da venda deve ser maior que zero');
       const descricao = carrinho.map(i => `${i.nome}${i.quantidade > 1 ? ` x${i.quantidade}` : ''}`).join(', ');
       const { error } = await (supabase as any).from('lancamentos').insert({
         tipo: 'receita', valor: carrinhoTotal,

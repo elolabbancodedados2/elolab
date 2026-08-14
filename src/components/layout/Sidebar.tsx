@@ -130,6 +130,7 @@ export function Sidebar() {
             variant="ghost"
             size="icon"
             onClick={() => setCollapsed(true)}
+            aria-label="Recolher menu lateral"
             className="h-7 w-7 rounded-lg text-sidebar-foreground/25 hover:text-sidebar-foreground/60 hover:bg-sidebar-accent/60"
           >
             <ChevronLeft className="h-3.5 w-3.5" />
@@ -161,6 +162,7 @@ export function Sidebar() {
                 variant="ghost"
                 size="icon"
                 onClick={() => setCollapsed(false)}
+                aria-label="Expandir menu lateral"
                 className="w-full h-8 rounded-lg text-sidebar-foreground/25 hover:text-sidebar-foreground/60 hover:bg-sidebar-accent/60"
               >
                 <PanelLeftOpen className="h-3.5 w-3.5" />

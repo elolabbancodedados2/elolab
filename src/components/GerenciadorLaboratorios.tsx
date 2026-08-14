@@ -146,10 +146,10 @@ export function GerenciadorLaboratorios() {
                     <TableCell className="text-sm">{lab.telefone || '—'}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
-                        <Button variant="ghost" size="icon" onClick={() => handleEdit(lab)}>
+                        <Button variant="ghost" size="icon" aria-label={`Editar laboratório ${lab.nome}`} onClick={() => handleEdit(lab)}>
                           <Edit2 className="h-4 w-4" />
                         </Button>
-                        <Button variant="ghost" size="icon" className="text-destructive" onClick={() => deleteMutation.mutate(lab.id)}>
+                        <Button variant="ghost" size="icon" className="text-destructive" aria-label={`Excluir laboratório ${lab.nome}`} onClick={() => deleteMutation.mutate(lab.id)}>
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>

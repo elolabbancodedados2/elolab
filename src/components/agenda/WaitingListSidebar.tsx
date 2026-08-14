@@ -77,7 +77,7 @@ export function WaitingListSidebar({ open, onToggle, items }: Props) {
               <Badge variant="secondary" className="text-[10px]">{items.length}</Badge>
             </div>
           )}
-          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onToggle}>
+          <Button variant="ghost" size="icon" className="h-7 w-7" aria-label={open ? 'Recolher lista de espera' : 'Expandir lista de espera'} onClick={onToggle}>
             <ChevronLeft className={cn('h-4 w-4 transition-transform', !open && 'rotate-180')} />
           </Button>
         </div>

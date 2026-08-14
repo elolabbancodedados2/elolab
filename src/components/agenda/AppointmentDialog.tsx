@@ -71,6 +71,14 @@ export function AppointmentDialog({ open, onOpenChange, initial, pacientes, medi
     if (!form.medico_id) { toast.error('Selecione um médico'); setTab('consulta'); return; }
     if (!form.hora_inicio) { toast.error('Informe o horário'); setTab('consulta'); return; }
 
+    if (['exame', 'exames'].includes(String(form.tipo || '').toLocaleLowerCase('pt-BR')) && !form.observacoes?.trim()) {
+      toast.error('Informe qual exame será realizado', {
+        description: 'O nome do exame é necessário para localizar o preço no balcão.',
+      });
+      setTab('obs');
+      return;
+    }
+
     setSaving(true);
     try {
       // Sem esta checagem, salvar pelo formulário permite marcar dois pacientes
@@ -369,8 +377,8 @@ export function AppointmentDialog({ open, onOpenChange, initial, pacientes, medi
 
           <TabsContent value="obs" className="space-y-3 mt-4">
             <div>
-              <Label>Observações</Label>
-              <Textarea rows={4} value={form.observacoes} onChange={(e) => setForm({ ...form, observacoes: e.target.value })} placeholder="Motivo, sintomas, orientações..." />
+              <Label>{['exame', 'exames'].includes(String(form.tipo || '').toLocaleLowerCase('pt-BR')) ? 'Nome do exame *' : 'Observações'}</Label>
+              <Textarea rows={4} value={form.observacoes} onChange={(e) => setForm({ ...form, observacoes: e.target.value })} placeholder={['exame', 'exames'].includes(String(form.tipo || '').toLocaleLowerCase('pt-BR')) ? 'Ex.: Hemograma completo ou 40301630 - Hemograma' : 'Motivo, sintomas, orientações...'} />
             </div>
             {!editing && (
               <div className="flex items-center justify-between rounded-md border p-3">

@@ -290,7 +290,7 @@ function ViewConversa({
     <div className="flex flex-col h-full">
       {/* Header */}
       <div className="flex items-center gap-3 px-3 py-2.5 border-b bg-card/80 backdrop-blur-sm">
-        <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 rounded-full" onClick={onBack}>
+        <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 rounded-full" aria-label="Voltar para conversas" onClick={onBack}>
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <Avatar className="h-9 w-9 shrink-0">
@@ -578,6 +578,7 @@ export function ChatPanel() {
                 variant="ghost"
                 size="icon"
                 className="h-8 w-8 text-primary-foreground hover:bg-white/10 rounded-full sm:hidden"
+                aria-label="Fechar chat"
                 onClick={() => setAberto(false)}
               >
                 <X className="h-4 w-4" />

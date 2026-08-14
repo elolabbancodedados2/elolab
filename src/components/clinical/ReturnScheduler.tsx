@@ -497,6 +497,7 @@ export function ReturnScheduler({
                             size="icon"
                             variant="ghost"
                             className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-50"
+                            aria-label="Marcar retorno como concluído"
                             onClick={() => updateReturnStatus.mutate({ id: ret.id, status: 'concluido' })}
                           >
                             <Check className="h-4 w-4" />
@@ -505,6 +506,7 @@ export function ReturnScheduler({
                             size="icon"
                             variant="ghost"
                             className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50"
+                            aria-label="Cancelar retorno"
                             onClick={() => updateReturnStatus.mutate({ id: ret.id, status: 'cancelado' })}
                           >
                             <X className="h-4 w-4" />

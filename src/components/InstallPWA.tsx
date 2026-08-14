@@ -93,6 +93,7 @@ export function InstallPWA() {
           size="icon"
           variant="ghost"
           className="absolute top-2 right-2 h-6 w-6"
+          aria-label="Fechar aviso de instalação"
           onClick={handleDismiss}
         >
           <X className="h-4 w-4" />

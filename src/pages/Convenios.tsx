@@ -245,10 +245,10 @@ function TabelaExamesConvenio({ convenioId }: { convenioId: string }) {
                   <TableCell className="text-right tabular-nums text-sm font-semibold">{formatCurrency(e.valor_total || e.valor_tabela + (e.valor_filme || 0))}</TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-1">
-                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleEditExame(e)}>
+                      <Button variant="ghost" size="icon" className="h-7 w-7" aria-label={`Editar exame ${e.tipo_exame}`} onClick={() => handleEditExame(e)}>
                         <Edit className="h-3.5 w-3.5" />
                       </Button>
-                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setDeleteExameId(e.id)}>
+                      <Button variant="ghost" size="icon" className="h-7 w-7" aria-label={`Excluir exame ${e.tipo_exame}`} onClick={() => setDeleteExameId(e.id)}>
                         <Trash2 className="h-3.5 w-3.5 text-destructive" />
                       </Button>
                     </div>
@@ -600,8 +600,8 @@ function Convenios() {
                               </a>
                             </Button>
                           )}
-                          <Button variant="ghost" size="icon" onClick={() => handleEdit(c)}><Edit className="h-4 w-4" /></Button>
-                          <Button variant="ghost" size="icon" onClick={() => handleDeleteClick(c.id)}>
+                          <Button variant="ghost" size="icon" aria-label={`Editar convênio ${c.nome}`} onClick={() => handleEdit(c)}><Edit className="h-4 w-4" /></Button>
+                          <Button variant="ghost" size="icon" aria-label={`Excluir convênio ${c.nome}`} onClick={() => handleDeleteClick(c.id)}>
                             <Trash2 className="h-4 w-4 text-destructive" />
                           </Button>
                         </div>

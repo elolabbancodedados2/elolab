@@ -755,7 +755,7 @@ export default function Medicos() {
                       <div className="flex gap-1">
                         <Tooltip>
                           <TooltipTrigger asChild>
-                            <Button size="icon" variant="ghost" className="h-8 w-8"
+                            <Button aria-label={`Editar médico ${medico.nome}`} size="icon" variant="ghost" className="h-8 w-8"
                               onClick={(e) => { e.stopPropagation(); handleOpenDialog(medico); }}>
                               <Pencil className="h-3.5 w-3.5" />
                             </Button>
@@ -764,7 +764,7 @@ export default function Medicos() {
                         </Tooltip>
                         <Tooltip>
                           <TooltipTrigger asChild>
-                            <Button size="icon" variant="ghost" className="h-8 w-8 hover:bg-destructive/10"
+                            <Button aria-label={`Excluir médico ${medico.nome}`} size="icon" variant="ghost" className="h-8 w-8 hover:bg-destructive/10"
                               onClick={(e) => { e.stopPropagation(); handleDeleteClick(medico.id); }}>
                               <Trash2 className="h-3.5 w-3.5 text-destructive" />
                             </Button>

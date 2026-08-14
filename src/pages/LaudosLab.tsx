@@ -22,7 +22,6 @@ import { mensagemDeErro } from '@/lib/erros';
 import { format, formatDistanceToNow, isToday } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
-import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { gerarLaudoPDF, downloadLaudoPDF, LaudoData } from '@/lib/pdfGenerator';
 
 /**
@@ -47,7 +46,6 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
   const [coleta, setColeta] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [observacaoLaudo, setObservacaoLaudo] = useState('');
-  const { user, profile } = useSupabaseAuth();
 
   const fetchData = useCallback(async () => {
     if (!coletaId) return;
@@ -99,17 +97,10 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
     if (conferenciaPendente()) { avisarConferenciaPendente(); return; }
 
     try {
-      const { error } = await supabase
-        .from('resultados_laboratorio')
-        .update({
-          liberado: true,
-          data_liberacao: new Date().toISOString(),
-          // `liberado_por` é uuid REFERENCES profiles(id) — precisa do ID, não
-          // do nome. Gravar o nome fazia o Postgres recusar com
-          // "invalid input syntax for type uuid" e NENHUM laudo era liberado.
-          liberado_por: user?.id ?? null,
-        })
-        .eq('id', resultadoId);
+      const { error } = await (supabase as any).rpc('liberar_resultados_laboratorio', {
+        p_coleta_id: coletaId,
+        p_resultado_ids: [resultadoId],
+      });
       if (error) throw error;
 
       const notificado = await notificarResultadoLiberado(resultadoId);
@@ -130,27 +121,21 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
     // A liberação em lote é o caminho mais usado — e era o que menos conferia.
     if (conferenciaPendente()) { avisarConferenciaPendente(); return; }
     try {
+      // A RPC atualiza todos os resultados e a coleta dentro da mesma
+      // transação. Se qualquer validação do banco falhar, nenhum resultado
+      // fica parcialmente publicado.
+      const { data: liberadosData, error: liberacaoError } = await (supabase as any)
+        .rpc('liberar_resultados_laboratorio', {
+          p_coleta_id: coletaId,
+          p_resultado_ids: pendentes.map((r: any) => r.id),
+        });
+      if (liberacaoError) throw liberacaoError;
+
+      const liberados = (liberadosData ?? []).map((r: { id: string }) => r.id);
       let notificacoesFalhadas = 0;
-      const liberados: string[] = [];
 
-      for (const r of pendentes) {
-        // O erro do update era ignorado: um resultado que falhava ao liberar
-        // ainda entrava na contagem final e o paciente era "notificado" de algo
-        // que continuava pendente.
-        const { error: upErr } = await supabase.from('resultados_laboratorio')
-          .update({
-            liberado: true,
-            data_liberacao: new Date().toISOString(),
-            liberado_por: user?.id ?? null,
-          })
-          .eq('id', r.id);
-        if (upErr) {
-          console.error('Falha ao liberar resultado', r.id, upErr);
-          continue;
-        }
-        liberados.push(r.id);
-
-        if (!(await notificarResultadoLiberado(r.id))) notificacoesFalhadas++;
+      for (const resultadoId of liberados) {
+        if (!(await notificarResultadoLiberado(resultadoId))) notificacoesFalhadas++;
       }
 
       if (liberados.length === 0) {
@@ -158,28 +143,16 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
         return;
       }
 
-      // A coleta só é dada como liberada se TODOS os pendentes saíram.
-      // A falha aqui só ia para o console: os resultados saíam, o paciente era
-      // notificado, e a coleta continuava aparecendo como pendente na worklist
-      // do laboratório — trabalho que parece não ter sido feito.
-      let coletaPendente = false;
-      if (liberados.length === pendentes.length) {
-        const { error: colErr } = await supabase.from('coletas_laboratorio')
-          .update({ status: 'liberado' }).eq('id', coletaId!);
-        if (colErr) {
-          coletaPendente = true;
-          console.error('Falha ao atualizar status da coleta', colErr);
-        }
-      }
-
+      // O status da coleta já foi atualizado pela mesma RPC, junto com os
+      // resultados. Se ainda houver pendentes, a função mantém a coleta em
+      // validado e o contador abaixo informa a liberação parcial.
       const naoLiberados = pendentes.length - liberados.length;
       const partes = [`${liberados.length} de ${pendentes.length} resultado(s) liberado(s)`];
       if (naoLiberados > 0) partes.push(`${naoLiberados} falhou(aram)`);
       if (notificacoesFalhadas > 0) partes.push(`${notificacoesFalhadas} notificação(ões) na fila de reenvio`);
-      if (coletaPendente) partes.push('a coleta continua marcada como pendente na worklist');
       const msg = partes.join(' · ');
 
-      if (naoLiberados > 0 || coletaPendente) toast.warning(msg);
+      if (naoLiberados > 0) toast.warning(msg);
       else toast.success(msg);
       await fetchData();
       onUpdate();

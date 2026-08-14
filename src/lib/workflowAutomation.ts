@@ -9,7 +9,7 @@
  * - Notificações automáticas em pontos-chave
  */
 import { supabase } from '@/integrations/supabase/client';
-import { createAutoBilling } from '@/lib/autoBilling';
+import { createAutoBilling, resolveExamPrice } from '@/lib/autoBilling';
 import { format } from 'date-fns';
 
 // ─── Types ──────────────────────────────────────────────
@@ -171,6 +171,7 @@ export async function autoFinalizarAtendimento(params: {
   medicoId: string;
   convenioId?: string | null;
   tipoConsulta?: string | null;
+  tipoExame?: string | null;
   clinicaId?: string | null;
   agendarRetorno?: boolean;
   diasRetorno?: number;
@@ -214,6 +215,21 @@ export async function autoFinalizarAtendimento(params: {
     actions.push('Agendamento → Finalizado');
     if (params.filaId) actions.push('Fila → Finalizado');
 
+    const restaurarAtendimento = async () => {
+      if (params.filaId && filaStatusAnterior) {
+        await must(supabase.from('fila_atendimento')
+          .update({ status: filaStatusAnterior })
+          .eq('id', params.filaId)
+          .select('id')
+          .single());
+      }
+      await must(supabase.from('agendamentos')
+        .update({ status: 'em_atendimento' })
+        .eq('id', params.agendamentoId)
+        .select('id')
+        .single());
+    };
+
     // Auto-billing is part of finalization. If it fails, restore the two
     // operational statuses so the patient can be corrected and finalized
     // again instead of disappearing from the payment flow.
@@ -224,19 +240,13 @@ export async function autoFinalizarAtendimento(params: {
         pacienteNome: params.pacienteNome,
         convenioId: params.convenioId,
         tipoConsulta: params.tipoConsulta,
+        tipoExame: params.tipoExame,
         data: format(new Date(), 'yyyy-MM-dd'),
         clinicaId: params.clinicaId,
       });
       if (billed) actions.push('Cobrança gerada automaticamente');
     } catch (billingError) {
-      if (params.filaId && filaStatusAnterior) {
-        await supabase.from('fila_atendimento')
-          .update({ status: filaStatusAnterior })
-          .eq('id', params.filaId);
-      }
-      await supabase.from('agendamentos')
-        .update({ status: 'em_atendimento' })
-        .eq('id', params.agendamentoId);
+      await restaurarAtendimento();
       throw billingError;
     }
 
@@ -245,15 +255,23 @@ export async function autoFinalizarAtendimento(params: {
       const dataRetorno = new Date();
       dataRetorno.setDate(dataRetorno.getDate() + params.diasRetorno);
       
-      await must(supabase.from('retornos').insert({
-        paciente_id: params.pacienteId,
-        medico_id: params.medicoId,
-        data_retorno_prevista: format(dataRetorno, 'yyyy-MM-dd'),
-        data_consulta_origem: format(new Date(), 'yyyy-MM-dd'),
-        motivo: `Retorno de ${params.tipoConsulta || 'consulta'}`,
-        status: 'pendente',
-        agendamento_id: params.agendamentoId,
-      }));
+      try {
+        await must(supabase.from('retornos').insert({
+          paciente_id: params.pacienteId,
+          medico_id: params.medicoId,
+          data_retorno_prevista: format(dataRetorno, 'yyyy-MM-dd'),
+          data_consulta_origem: format(new Date(), 'yyyy-MM-dd'),
+          motivo: `Retorno de ${params.tipoConsulta || 'consulta'}`,
+          status: 'pendente',
+          agendamento_id: params.agendamentoId,
+        }));
+      } catch (retornoError) {
+        // O retorno faz parte do pedido de finalização. Se ele não puder ser
+        // criado, desfazemos os estados já avançados para o balcão poder
+        // corrigir/agendar novamente sem deixar uma consulta inconsistente.
+        await restaurarAtendimento();
+        throw retornoError;
+      }
       actions.push(`Retorno agendado para ${format(dataRetorno, 'dd/MM/yyyy')}`);
     }
 
@@ -418,19 +436,20 @@ export async function autoDispensarMedicamentos(params: {
         continue;
       }
 
-      // Deduct
-      await must(supabase.from('estoque').update({
-        quantidade: stockItem.quantidade - qty,
-      }).eq('id', stockItem.id));
-
-      // Log movement
-      await must(supabase.from('movimentacoes_estoque').insert({
-        item_id: stockItem.id,
-        tipo: 'saida',
-        quantidade: qty,
-        motivo: `Dispensação — ${params.pacienteNome}`,
-        usuario_id: params.userId || null,
-      }));
+      // O RPC bloqueia o item e grava saldo + movimentação na mesma
+      // transação. Assim uma corrida ou uma falha no log nunca deixa apenas
+      // metade da baixa aplicada.
+      const { data: baixa, error: baixaError } = await (supabase as any).rpc(
+        'registrar_baixa_estoque',
+        {
+          p_item_id: stockItem.id,
+          p_quantidade: qty,
+          p_usuario_id: params.userId || null,
+          p_motivo: `Dispensação — ${params.pacienteNome}`,
+        },
+      );
+      if (baixaError) throw baixaError;
+      if (baixa?.[0]?.ja_baixado) continue;
 
       actions.push(`${stockItem.nome}: -${qty} unidade(s)`);
 
@@ -528,21 +547,13 @@ export async function autoBillingExame(params: {
       return { success: true, message: 'Exame já faturado', actions: [] };
     }
 
-    let valor = 0;
-
-    // Lookup price from convenio table
-    if (params.convenioId) {
-      const exameName = params.tipoExame.split(' - ').pop() || params.tipoExame;
-      const { data: preco } = await supabase
-        .from('precos_exames_convenio')
-        .select('valor_total, valor_tabela')
-        .eq('convenio_id', params.convenioId)
-        .ilike('tipo_exame', `%${exameName}%`)
-        .eq('ativo', true)
-        .limit(1)
-        .maybeSingle();
-      if (preco) valor = preco.valor_total || preco.valor_tabela;
-    }
+    // Use the same resolver as the reception check-in. Previously this path
+    // only looked at convenio rows and silently inserted R$ 0,00 otherwise.
+    const valor = await resolveExamPrice({
+      tipoExame: params.tipoExame,
+      convenioId: params.convenioId,
+      clinicaId,
+    });
 
     await must(supabase.from('lancamentos').insert({
       tipo: 'receita',

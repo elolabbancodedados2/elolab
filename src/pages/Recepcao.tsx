@@ -333,6 +333,9 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
             pacienteNome: item.pac?.nome || 'Paciente',
             convenioId: item.pac?.convenio_id,
             tipoConsulta: item.ag.tipo,
+            tipoExame: ['exame', 'exames'].includes(String(item.ag.tipo || '').toLocaleLowerCase('pt-BR'))
+              ? item.ag.observacoes
+              : null,
             clinicaId: profile?.clinica_id,
           });
 
@@ -419,6 +422,9 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
         medicoId: item.ag.medico_id,
         convenioId: item.pac?.convenio_id,
         tipoConsulta: item.ag.tipo,
+        tipoExame: ['exame', 'exames'].includes(String(item.ag.tipo || '').toLocaleLowerCase('pt-BR'))
+          ? item.ag.observacoes
+          : null,
         clinicaId: profile?.clinica_id,
       });
       if (!result.success) throw new Error(result.message);
@@ -438,9 +444,58 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
     setIsProcessing(false);
   }
 
-   function openPagamento(lanc: any, pac: any) {
+   async function openPagamento(lanc: any, pac: any) {
      if (!checkCaixaAberto()) return;
-     setSelectedLancamento(lanc);
+
+     // Compatibilidade com cobranças de exames criadas pela versão antiga,
+     // que podia salvar valor zero antes de consultar o catálogo.
+     const item = enriched.find(e => e.ag.id === lanc?.agendamento_id);
+     const tipoAgendamento = String(item?.ag?.tipo || '').toLocaleLowerCase('pt-BR');
+     const isExam = lanc?.categoria === 'exame' || tipoAgendamento === 'exame' || tipoAgendamento === 'exames';
+     let lancamentoSelecionado = lanc;
+     if (isExam && Number(lanc?.valor || 0) <= 0) {
+       if (!item) {
+         toast.error('Não foi possível identificar o exame deste lançamento.');
+         return;
+       }
+       try {
+         await createAutoBilling({
+           agendamentoId: item.ag.id,
+           pacienteId: item.ag.paciente_id,
+           pacienteNome: pac?.nome || 'Paciente',
+           convenioId: pac?.convenio_id,
+           tipoConsulta: item.ag.tipo,
+           tipoExame: item.ag.observacoes,
+           clinicaId: profile?.clinica_id,
+         });
+         let repairedQuery = (supabase as any).from('lancamentos')
+           .select('*')
+           .eq('id', lanc.id);
+         if (profile?.clinica_id) repairedQuery = repairedQuery.eq('clinica_id', profile.clinica_id);
+         const { data: repaired, error: repairedError } = await repairedQuery.maybeSingle();
+         if (repairedError) throw repairedError;
+         if (!repaired || Number(repaired.valor || 0) <= 0) {
+           throw new Error('O exame ainda não possui um preço cadastrado.');
+         }
+         lancamentoSelecionado = repaired;
+         queryClient.invalidateQueries({ queryKey: ['lancamentos_hoje'] });
+       } catch (error: any) {
+         toast.error('Não foi possível abrir a cobrança do exame', {
+           description: error?.message || 'Cadastre o preço do exame e tente novamente.',
+         });
+         return;
+       }
+     }
+
+      const valorSelecionado = Number(lancamentoSelecionado?.valor || 0);
+      if (!Number.isFinite(valorSelecionado) || valorSelecionado <= 0) {
+        toast.error('Este atendimento não possui um preço válido.', {
+          description: 'Configure o valor do serviço antes de cobrar o paciente.',
+        });
+        return;
+      }
+
+      setSelectedLancamento(lancamentoSelecionado);
      setSelectedPacienteBalcao(pac);
      setFormaPagamento('');
      setDesconto(0);
@@ -503,7 +558,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
       especialidade: med?.especialidade || undefined,
       descricao: lanc.descricao || 'Consulta',
       formaPagamento: formaLabel,
-      valorOriginal: lanc.valor || 0,
+      valorOriginal: Number(lanc.valor || 0),
       desconto: desconto > 0 ? desconto : undefined,
       acrescimo: acrescimo > 0 ? acrescimo : undefined,
       valorFinal,
@@ -522,7 +577,11 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
       return;
     }
 
-    const valorBase = selectedLancamento.valor || 0;
+    const valorBase = Number(selectedLancamento.valor || 0);
+    if (!Number.isFinite(valorBase) || valorBase <= 0) {
+      toast.error('Não é possível confirmar uma cobrança sem valor.');
+      return;
+    }
     if (desconto > valorBase) {
       toast.error(`Desconto não pode ser maior que o valor da consulta (R$ ${valorBase.toFixed(2)})`);
       return;
@@ -889,7 +948,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
                                         className="gap-1.5 bg-success hover:bg-success/90 text-success-foreground"
                                       >
                                         <DollarSign className="h-3.5 w-3.5" />
-                                        Receber R$ {lanc.valor?.toFixed(2)}
+                                        Receber R$ {Number(lanc.valor || 0).toFixed(2)}
                                       </Button>
                                     )}
                                   </div>
@@ -1030,12 +1089,12 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Valor</span>
                   <span className="font-bold text-lg">
-                    R$ {((selectedLancamento.valor || 0) - desconto + acrescimo).toFixed(2)}
+                    R$ {(Number(selectedLancamento.valor || 0) - desconto + acrescimo).toFixed(2)}
                   </span>
                 </div>
                 {(desconto > 0 || acrescimo > 0) && (
                   <div className="text-xs text-muted-foreground">
-                    Original: R$ {selectedLancamento.valor?.toFixed(2)}
+                    Original: R$ {Number(selectedLancamento.valor || 0).toFixed(2)}
                     {desconto > 0 && ` • Desc: -R$ ${desconto.toFixed(2)}`}
                     {acrescimo > 0 && ` • Acrés: +R$ ${acrescimo.toFixed(2)}`}
                   </div>

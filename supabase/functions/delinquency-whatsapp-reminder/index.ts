@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { cronOrUserOk, cronForbidden, clinicaDoChamador } from "../_shared/cronAuth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -7,6 +8,12 @@ const corsHeaders = {
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+
+  // Esta função não tinha guarda NENHUMA. A chave `anon` é pública — está no
+  // JavaScript entregue a todo visitante — então qualquer pessoa disparava a
+  // régua de cobrança da clínica, e a RESPOSTA devolvia nome de paciente e
+  // valor em aberto para quem chamou. Verificado em produção.
+  if (!cronOrUserOk(req)) return cronForbidden(corsHeaders);
 
   try {
     const supabase = createClient(
@@ -19,7 +26,11 @@ Deno.serve(async (req) => {
     let body: any = {};
     try { body = await req.json(); } catch { /* GET via cron */ }
     const dryRun = body?.dry_run === true;
-    const filterClinicaId = body?.clinica_id || null;
+    // A clínica vem do JWT de quem chamou, nunca do corpo: aceitar
+    // `body.clinica_id` deixava um usuário disparar cobrança de outra clínica.
+    // Quando é o cron (sem usuário), segue processando todas.
+    const clinicaDoUsuario = await clinicaDoChamador(req, supabase);
+    const filterClinicaId = clinicaDoUsuario;
 
     // Buscar lançamentos receita vencidos e pendentes
     const hoje = new Date().toISOString().slice(0, 10);

@@ -78,7 +78,7 @@ export function Navbar({ onMenuClick }: NavbarProps) {
     <KeyboardShortcutsDialog />
     <header className="sticky top-0 z-30 flex h-14 items-center border-b border-border/25 bg-background/75 backdrop-blur-2xl px-3 md:px-5">
       {/* Left: Hamburger */}
-      <Button variant="ghost" size="icon" className="md:hidden h-9 w-9 rounded-xl" onClick={onMenuClick}>
+      <Button variant="ghost" size="icon" className="md:hidden h-9 w-9 rounded-xl" aria-label="Abrir menu de navegação" onClick={onMenuClick}>
         <Menu className="h-5 w-5" />
       </Button>
 
@@ -101,6 +101,7 @@ export function Navbar({ onMenuClick }: NavbarProps) {
                   variant="ghost"
                   size="icon"
                   className="hidden sm:inline-flex h-9 w-9 rounded-xl text-muted-foreground hover:text-primary hover:bg-primary/8 transition-all duration-200"
+                  aria-label="Adicionar rapidamente"
                 >
                   <Plus className="h-4 w-4" strokeWidth={2.5} />
                 </Button>

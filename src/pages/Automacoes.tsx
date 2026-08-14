@@ -259,7 +259,17 @@ export default function Automacoes() {
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {AUTOMATIONS.map((automation) => {
               const setting = getSettingByKey(automation.key);
-              const isActive = setting?.ativo ?? false;
+              // Sem linha no banco, o BACKEND considera a automação ligada
+              // (`isAutomationActive` faz `?.ativo !== false`). Aqui estava
+              // `?? false`, então a tela mostrava desligado enquanto o sistema
+              // mandava e-mail de aniversário e lembrete de consulta para os
+              // pacientes — a clínica não tinha como saber.
+              //
+              // A migration 20260814130000 dá linha explícita a toda clínica e
+              // um trigger para as novas, então este `?? true` só vale no
+              // intervalo entre criar a clínica e o trigger rodar. Fica assim
+              // mesmo para não voltar a discordar do backend.
+              const isActive = setting?.ativo ?? true;
               const Icon = automation.icon;
 
               return (

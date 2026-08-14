@@ -191,13 +191,13 @@ export default function FluxoCaixa() {
           <p className="text-muted-foreground">Acompanhe as movimentações financeiras</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="icon" onClick={handlePrevMonth}>
+          <Button aria-label="Mês anterior" variant="outline" size="icon" onClick={handlePrevMonth}>
             <ChevronLeft className="h-4 w-4" />
           </Button>
           <span className="font-medium min-w-[140px] text-center">
             {format(currentDate, "MMMM 'de' yyyy", { locale: ptBR })}
           </span>
-          <Button variant="outline" size="icon" onClick={handleNextMonth}>
+          <Button aria-label="Próximo mês" variant="outline" size="icon" onClick={handleNextMonth}>
             <ChevronRight className="h-4 w-4" />
           </Button>
         </div>
