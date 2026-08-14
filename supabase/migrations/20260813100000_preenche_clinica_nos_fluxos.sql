@@ -62,13 +62,24 @@ UPDATE public.fila_atendimento f
    AND f.clinica_id IS NULL
    AND a.clinica_id IS NOT NULL;
 
+-- Subquery por origem em vez de UPDATE..FROM com JOIN.
+--
+-- A versão anterior fazia `FROM pacientes p LEFT JOIN exames e ON e.id =
+-- c.exame_id`, e o Postgres recusa: a tabela ALVO do UPDATE (`c`) não pode ser
+-- referenciada na condição de JOIN do FROM —
+-- "invalid reference to FROM-clause entry for table c" (42P01).
+-- A migration inteira abortava, então nada deste arquivo era aplicado.
 UPDATE public.coletas_laboratorio c
-   SET clinica_id = COALESCE(e.clinica_id, p.clinica_id, m.clinica_id)
-  FROM public.pacientes p
-  LEFT JOIN public.exames e ON e.id = c.exame_id
-  LEFT JOIN public.medicos m ON m.id = c.medico_solicitante_id
- WHERE c.paciente_id = p.id
-   AND c.clinica_id IS NULL
-   AND COALESCE(e.clinica_id, p.clinica_id, m.clinica_id) IS NOT NULL;
+   SET clinica_id = COALESCE(
+         (SELECT e.clinica_id FROM public.exames   e WHERE e.id = c.exame_id),
+         (SELECT p.clinica_id FROM public.pacientes p WHERE p.id = c.paciente_id),
+         (SELECT m.clinica_id FROM public.medicos  m WHERE m.id = c.medico_solicitante_id)
+       )
+ WHERE c.clinica_id IS NULL
+   AND COALESCE(
+         (SELECT e.clinica_id FROM public.exames   e WHERE e.id = c.exame_id),
+         (SELECT p.clinica_id FROM public.pacientes p WHERE p.id = c.paciente_id),
+         (SELECT m.clinica_id FROM public.medicos  m WHERE m.id = c.medico_solicitante_id)
+       ) IS NOT NULL;
 
 COMMIT;
