@@ -635,8 +635,8 @@ export default function Funcionarios() {
                                 <TooltipContent>Conta vinculada</TooltipContent>
                               </Tooltip>
                             )}
-                            <Button size="icon" variant="ghost" onClick={() => handleOpenDialog(func)}><Pencil className="h-4 w-4" /></Button>
-                            <Button size="icon" variant="ghost" onClick={() => handleDeleteClick(func.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                            <Button aria-label={`Editar funcionário ${func.nome}`} size="icon" variant="ghost" onClick={() => handleOpenDialog(func)}><Pencil className="h-4 w-4" /></Button>
+                            <Button aria-label={`Excluir funcionário ${func.nome}`} size="icon" variant="ghost" onClick={() => handleDeleteClick(func.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
                           </div>
                         </TableCell>
                       </TableRow>

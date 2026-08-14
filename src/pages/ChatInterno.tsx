@@ -377,7 +377,7 @@ function ConversaView({
     <div className="flex flex-col h-full">
       {/* Header */}
       <div className="flex items-center gap-3 px-4 py-3 border-b border-border/25 bg-background/75 backdrop-blur-xl">
-        <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 rounded-full md:hidden" onClick={onBack}>
+        <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 rounded-full md:hidden" aria-label="Voltar para conversas" onClick={onBack}>
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <div className="relative shrink-0">

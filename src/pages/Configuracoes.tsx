@@ -276,7 +276,7 @@ function SalasManager() {
                     <TableCell><Badge variant={s.ativo !== false ? 'default' : 'secondary'}>{s.ativo !== false ? 'Ativa' : 'Inativa'}</Badge></TableCell>
                     <TableCell>
                       <div className="flex gap-1">
-                        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEdit(s)}><Edit className="h-3 w-3" /></Button>
+                         <Button size="icon" variant="ghost" className="h-7 w-7" aria-label={`Editar sala ${s.nome}`} onClick={() => openEdit(s)}><Edit className="h-3 w-3" /></Button>
                         <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" aria-label={`Excluir sala ${s.nome}`} onClick={() => setSalaParaExcluir(s)}><Trash2 className="h-3 w-3" /></Button>
                       </div>
                     </TableCell>

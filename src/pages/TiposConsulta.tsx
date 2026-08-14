@@ -433,11 +433,11 @@ function PrecoRow({ convenio, precoAtual, onSave }: {
       <TableCell className="text-center">
         {editing ? (
           <div className="flex gap-1 justify-center">
-            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={save}><Check className="h-3.5 w-3.5 text-success" /></Button>
-            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setEditing(false)}><X className="h-3.5 w-3.5" /></Button>
+            <Button aria-label="Salvar preço" variant="ghost" size="icon" className="h-7 w-7" onClick={save}><Check className="h-3.5 w-3.5 text-success" /></Button>
+            <Button aria-label="Cancelar edição do preço" variant="ghost" size="icon" className="h-7 w-7" onClick={() => setEditing(false)}><X className="h-3.5 w-3.5" /></Button>
           </div>
         ) : (
-          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setValor(precoAtual?.toString() ?? ''); setEditing(true); }}>
+          <Button aria-label="Editar preço" variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setValor(precoAtual?.toString() ?? ''); setEditing(true); }}>
             <Edit className="h-3.5 w-3.5" />
           </Button>
         )}

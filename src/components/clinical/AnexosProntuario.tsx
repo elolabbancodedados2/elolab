@@ -356,6 +356,7 @@ export function AnexosProntuario({
                       variant="ghost"
                       size="icon"
                       className="h-8 w-8"
+                      aria-label={`Visualizar anexo ${anexo.nome_arquivo}`}
                       onClick={() => handlePreview(anexo)}
                     >
                       <Eye className="h-4 w-4" />
@@ -364,6 +365,7 @@ export function AnexosProntuario({
                       variant="ghost"
                       size="icon"
                       className="h-8 w-8"
+                      aria-label={`Baixar anexo ${anexo.nome_arquivo}`}
                       onClick={() => handleDownload(anexo)}
                     >
                       <Download className="h-4 w-4" />
@@ -372,6 +374,7 @@ export function AnexosProntuario({
                       variant="ghost"
                       size="icon"
                       className="h-8 w-8 text-destructive"
+                      aria-label={`Excluir anexo ${anexo.nome_arquivo}`}
                       onClick={() => handleDelete(anexo)}
                       disabled={loading}
                     >

@@ -704,14 +704,14 @@ function TokensPortalDialog({ open, onClose, clinicaId, userId }: any) {
                       </div>
                       <div className="flex items-center gap-2">
                         <Switch checked={t.ativo} onCheckedChange={(v) => toggleAtivo.mutate({ id: t.id, ativo: v })} />
-                        <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive" onClick={() => deletarToken.mutate(t.id)}>
+                        <Button aria-label={`Excluir link ${t.descricao || 'genérico'}`} size="icon" variant="ghost" className="h-8 w-8 text-destructive" onClick={() => deletarToken.mutate(t.id)}>
                           <Trash2 className="h-3.5 w-3.5" />
                         </Button>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
                       <Input value={url} readOnly className="text-xs font-mono" />
-                      <Button size="icon" variant="outline" className="h-9 w-9 shrink-0" onClick={() => { navigator.clipboard.writeText(url); toast.success('Copiado!'); }}>
+                      <Button aria-label="Copiar link da guia" size="icon" variant="outline" className="h-9 w-9 shrink-0" onClick={() => { navigator.clipboard.writeText(url); toast.success('Copiado!'); }}>
                         <Copy className="h-3.5 w-3.5" />
                       </Button>
                     </div>

@@ -383,7 +383,7 @@ export default function TriagemPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="icon" onClick={() => queryClient.invalidateQueries({ queryKey: ['triagens'] })}>
+          <Button aria-label="Atualizar triagens" variant="outline" size="icon" onClick={() => queryClient.invalidateQueries({ queryKey: ['triagens'] })}>
             <RefreshCw className="h-4 w-4" />
           </Button>
           <Button className="gap-2" onClick={() => handleOpenDialog()}>

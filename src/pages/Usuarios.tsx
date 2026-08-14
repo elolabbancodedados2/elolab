@@ -340,10 +340,10 @@ export default function Usuarios() {
                           </TableCell>
                           <TableCell className="text-right">
                             <div className="flex justify-end gap-2">
-                              <Button variant="ghost" size="icon" onClick={() => handleEdit(usuario)}>
+                              <Button aria-label={`Editar usuário ${usuario.nome}`} variant="ghost" size="icon" onClick={() => handleEdit(usuario)}>
                                 <Edit className="h-4 w-4" />
                               </Button>
-                              <Button variant="ghost" size="icon" onClick={() => handleDeleteClick(usuario)} disabled={usuario.id === currentUser?.id}>
+                              <Button aria-label={`Excluir usuário ${usuario.nome}`} variant="ghost" size="icon" onClick={() => handleDeleteClick(usuario)} disabled={usuario.id === currentUser?.id}>
                                 <Trash2 className="h-4 w-4 text-destructive" />
                               </Button>
                             </div>

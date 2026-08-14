@@ -418,8 +418,8 @@ function PrecosInternos() {
                       </TableCell>
                       <TableCell>
                         <div className="flex gap-1">
-                          <Button size="icon" variant="ghost" onClick={() => openEdit(originalIdx)}><Edit className="h-3 w-3" /></Button>
-                          <Button size="icon" variant="ghost" className="text-destructive" onClick={() => handleDelete(originalIdx)}><Trash2 className="h-3 w-3" /></Button>
+                          <Button aria-label={`Editar preço de ${p.tipo_exame}`} size="icon" variant="ghost" onClick={() => openEdit(originalIdx)}><Edit className="h-3 w-3" /></Button>
+                          <Button aria-label={`Excluir preço de ${p.tipo_exame}`} size="icon" variant="ghost" className="text-destructive" onClick={() => handleDelete(originalIdx)}><Trash2 className="h-3 w-3" /></Button>
                         </div>
                       </TableCell>
                     </TableRow>
@@ -673,7 +673,7 @@ function PrecosConvenio() {
                     <TableCell className="text-right font-semibold">{fmt(p.valor_total || p.valor_tabela)}</TableCell>
                     <TableCell>
                       <div className="flex gap-1">
-                        <Button size="icon" variant="ghost" onClick={() => openEdit(p)}><Edit className="h-3 w-3" /></Button>
+                        <Button aria-label={`Editar preço de ${p.tipo_exame}`} size="icon" variant="ghost" onClick={() => openEdit(p)}><Edit className="h-3 w-3" /></Button>
                         <Button size="icon" variant="ghost" className="text-destructive" aria-label={`Remover preço de ${p.tipo_exame}`} onClick={() => setPrecoParaExcluir(p)}><Trash2 className="h-3 w-3" /></Button>
                       </div>
                     </TableCell>

@@ -181,7 +181,7 @@ export default function PortalGuias() {
                   placeholder={`Exame ${i + 1}`}
                 />
                 {exames.length > 1 && (
-                  <Button size="icon" variant="ghost" onClick={() => setExames(exames.filter((_, idx) => idx !== i))} className="h-10 w-10 shrink-0">
+                  <Button aria-label={`Remover exame ${i + 1}`} size="icon" variant="ghost" onClick={() => setExames(exames.filter((_, idx) => idx !== i))} className="h-10 w-10 shrink-0">
                     <X className="h-4 w-4" />
                   </Button>
                 )}

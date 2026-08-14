@@ -352,6 +352,7 @@ export function EncaminhamentoMedico({
                           <Button
                             variant="ghost"
                             size="icon"
+                            aria-label={`Ver encaminhamento para ${enc.especialidade_destino}`}
                             onClick={() => {
                               setSelectedEncaminhamento(enc);
                               setIsViewOpen(true);
@@ -363,6 +364,7 @@ export function EncaminhamentoMedico({
                             <Button
                               variant="ghost"
                               size="icon"
+                              aria-label={`Registrar contra-referência para ${enc.especialidade_destino}`}
                               onClick={() => {
                                 setSelectedEncaminhamento(enc);
                                 setIsContraReferenciaOpen(true);

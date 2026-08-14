@@ -228,6 +228,7 @@ export function FerramentasDeConta({ usuario, onFechar, onMudou }: Props) {
                   </Button>
                   <Button
                     type="button" variant="ghost" size="icon" disabled={!senha}
+                    aria-label="Copiar senha temporária"
                     onClick={async () => {
                       // A área de transferência falha em contexto não seguro e
                       // quando o navegador nega a permissão. Anunciar "copiada"

@@ -454,7 +454,7 @@ export default function PainelTV() {
             {/* Settings */}
             <Dialog open={showSettings} onOpenChange={setShowSettings}>
               <DialogTrigger asChild>
-                <Button variant="outline" size="icon" className="bg-white/10 border-white/20 text-white hover:bg-white/20">
+                <Button aria-label="Configurar mídias do painel" variant="outline" size="icon" className="bg-white/10 border-white/20 text-white hover:bg-white/20">
                   <Settings className="h-5 w-5" />
                 </Button>
               </DialogTrigger>
@@ -511,7 +511,7 @@ export default function PainelTV() {
                               </div>
                               <div className="flex items-center gap-2">
                                 <Switch checked={media.ativo} onCheckedChange={() => toggleMediaActive(media)} />
-                                <Button variant="ghost" size="icon" onClick={() => handleDeleteMedia(media)} className="text-destructive hover:text-destructive">
+                                <Button aria-label={`Excluir mídia ${media.nome}`} variant="ghost" size="icon" onClick={() => handleDeleteMedia(media)} className="text-destructive hover:text-destructive">
                                   <Trash2 className="h-4 w-4" />
                                 </Button>
                               </div>
@@ -530,13 +530,13 @@ export default function PainelTV() {
         {/* Media Controls */}
         {isAdmin() && mediaItems.length > 1 && (
           <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 bg-black/50 backdrop-blur-sm rounded-full px-3 py-2">
-            <Button variant="ghost" size="icon" onClick={() => setCurrentMediaIndex((prev) => (prev - 1 + mediaItems.length) % mediaItems.length)} className="h-8 w-8 text-white hover:bg-white/20">
+            <Button aria-label="Mídia anterior" variant="ghost" size="icon" onClick={() => setCurrentMediaIndex((prev) => (prev - 1 + mediaItems.length) % mediaItems.length)} className="h-8 w-8 text-white hover:bg-white/20">
               <ChevronLeft className="h-4 w-4" />
             </Button>
             <Button variant="ghost" size="icon" onClick={() => setIsPlaying(!isPlaying)} className="h-8 w-8 text-white hover:bg-white/20">
               {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
             </Button>
-            <Button variant="ghost" size="icon" onClick={() => setCurrentMediaIndex((prev) => (prev + 1) % mediaItems.length)} className="h-8 w-8 text-white hover:bg-white/20">
+            <Button aria-label="Próxima mídia" variant="ghost" size="icon" onClick={() => setCurrentMediaIndex((prev) => (prev + 1) % mediaItems.length)} className="h-8 w-8 text-white hover:bg-white/20">
               <ChevronRight className="h-4 w-4" />
             </Button>
             <span className="text-xs text-white/60 ml-2">{currentMediaIndex + 1}/{mediaItems.length}</span>

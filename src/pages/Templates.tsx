@@ -287,13 +287,13 @@ export default function Templates() {
                         </CardDescription>
                       </div>
                       <div className="flex gap-1">
-                        <Button size="icon" variant="ghost" onClick={() => duplicateTemplate(template, 'prescription')}>
+                        <Button aria-label={`Duplicar modelo ${template.nome}`} size="icon" variant="ghost" onClick={() => duplicateTemplate(template, 'prescription')}>
                           <Copy className="h-4 w-4" />
                         </Button>
-                        <Button size="icon" variant="ghost" onClick={() => { setPrescriptionForm(template); setIsPrescriptionFormOpen(true); }}>
+                        <Button aria-label={`Editar modelo ${template.nome}`} size="icon" variant="ghost" onClick={() => { setPrescriptionForm(template); setIsPrescriptionFormOpen(true); }}>
                           <Edit className="h-4 w-4" />
                         </Button>
-                        <Button size="icon" variant="ghost" onClick={() => setDeleteDialog({ open: true, type: 'prescription', id: template.id })}>
+                        <Button aria-label={`Excluir modelo ${template.nome}`} size="icon" variant="ghost" onClick={() => setDeleteDialog({ open: true, type: 'prescription', id: template.id })}>
                           <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
                       </div>
@@ -341,13 +341,13 @@ export default function Templates() {
                         </CardDescription>
                       </div>
                       <div className="flex gap-1">
-                        <Button size="icon" variant="ghost" onClick={() => duplicateTemplate(template, 'certificate')}>
+                        <Button aria-label={`Duplicar modelo ${template.nome}`} size="icon" variant="ghost" onClick={() => duplicateTemplate(template, 'certificate')}>
                           <Copy className="h-4 w-4" />
                         </Button>
-                        <Button size="icon" variant="ghost" onClick={() => { setCertificateForm(template); setIsCertificateFormOpen(true); }}>
+                        <Button aria-label={`Editar modelo ${template.nome}`} size="icon" variant="ghost" onClick={() => { setCertificateForm(template); setIsCertificateFormOpen(true); }}>
                           <Edit className="h-4 w-4" />
                         </Button>
-                        <Button size="icon" variant="ghost" onClick={() => setDeleteDialog({ open: true, type: 'certificate', id: template.id })}>
+                        <Button aria-label={`Excluir modelo ${template.nome}`} size="icon" variant="ghost" onClick={() => setDeleteDialog({ open: true, type: 'certificate', id: template.id })}>
                           <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
                       </div>

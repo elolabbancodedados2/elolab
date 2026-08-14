@@ -313,6 +313,7 @@ export default function Prescricoes() {
     const { error: erroInsert } = await supabase.from('prescricoes').insert({
       paciente_id: form.paciente_id,
       medico_id: form.medico_id,
+      clinica_id: profile?.clinica_id,
       medicamento: form.medicamentos_texto.slice(0, 100),
       posologia: form.medicamentos_texto,
       data_emissao: form.data_emissao,
