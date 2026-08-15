@@ -29,6 +29,7 @@ import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { Database } from '@/integrations/supabase/types';
 import { autoCreateColeta, autoProgressExame, autoVincularResultadoProntuario } from '@/lib/workflowAutomation';
 import { GerenciadorLaboratorios } from '@/components/GerenciadorLaboratorios';
+import { LancarResultado } from '@/components/exames/LancarResultado';
 import { parseDateOnly } from '@/lib/dateOnly';
 
 type StatusExame = Database['public']['Enums']['status_exame'];
@@ -579,9 +580,34 @@ export default function Exames() {
     }
   };
 
+  /**
+   * O exame que está tendo o resultado lançado.
+   *
+   * O botão de avançar para "laudo disponível" passa por aqui em vez de mudar
+   * o status direto: sem resultado, o banco recusa a transição — e recusar
+   * depois do clique, com a mensagem do trigger, seria pior que pedir antes.
+   */
+  const [lancandoResultado, setLancandoResultado] = useState<any | null>(null);
+
   const handleUpdateStatus = async (id: string, newStatus: StatusExame) => {
     try {
-      const exame = exames.find(e => e.id === id);
+      let exame = exames.find(e => e.id === id);
+
+      // Ao liberar o laudo, o exame vem do BANCO e não do cache: o resultado
+      // pode ter acabado de ser salvo pelo diálogo, e a lista em memória ainda
+      // não sabe. Com o resultado ausente, a vinculação ao prontuário era
+      // pulada em silêncio — o laudo saía e a ficha do paciente continuava
+      // vazia, que é o defeito que este fluxo veio corrigir.
+      if (newStatus === 'laudo_disponivel') {
+        const { data: fresco, error: erroLeitura } = await supabase
+          .from('exames')
+          .select('*')
+          .eq('id', id)
+          .maybeSingle();
+        if (erroLeitura) throw erroLeitura;
+        if (fresco) exame = fresco as any;
+      }
+
       if (!exame) throw new Error('Exame não encontrado');
       const pac = pacientes.find(p => p.id === exame.paciente_id);
 
@@ -794,8 +820,20 @@ export default function Exames() {
                         <div className="flex justify-end gap-1">
                            <Button variant="ghost" size="icon" aria-label={`Ver exame ${exame.tipo_exame || exame.id}`} onClick={() => handleView(exame.id)}><Eye className="h-4 w-4" /></Button>
                           {nextStatus && (
-                            <Button variant="outline" size="sm" className="text-xs gap-1" onClick={() => handleUpdateStatus(exame.id, nextStatus)}>
-                              {nextLabel}
+                            <Button
+                              variant="outline" size="sm" className="text-xs gap-1"
+                              onClick={() => {
+                                const temResultado = !!(exame.resultado?.trim() || exame.arquivo_resultado);
+                                if (nextStatus === 'laudo_disponivel' && !temResultado) {
+                                  setLancandoResultado(exame);
+                                  return;
+                                }
+                                handleUpdateStatus(exame.id, nextStatus);
+                              }}
+                            >
+                              {nextStatus === 'laudo_disponivel' && !(exame.resultado?.trim() || exame.arquivo_resultado)
+                                ? 'Lançar resultado'
+                                : nextLabel}
                             </Button>
                           )}
                           {exame.status !== 'cancelado' && exame.status !== 'laudo_disponivel' && (
@@ -1273,6 +1311,15 @@ export default function Exames() {
           <DialogFooter><Button variant="outline" onClick={() => setIsManageTypesOpen(false)}>Fechar</Button></DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Lançar resultado — o degrau que faltava entre "realizado" e o laudo.
+          Depois de salvar, segue o fluxo normal, que vincula ao prontuário e
+          avisa o paciente. */}
+      <LancarResultado
+        exame={lancandoResultado}
+        onFechar={() => setLancandoResultado(null)}
+        aoSalvar={async (exameId) => { await handleUpdateStatus(exameId, 'laudo_disponivel'); }}
+      />
     </div>
   );
 }
