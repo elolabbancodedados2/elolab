@@ -28,6 +28,14 @@ const PAGINA = 1000
 const TETO_POR_TABELA = 200_000
 const GUARDAR_DIAS = 90
 
+/**
+ * Teto de arquivos copiados por execução. Existe para uma clínica com dez anos
+ * de exame não deixar a função rodando até o timeout e não guardar nada — o
+ * que seria pior que copiar uma parte. Ao bater no teto, `completo` fica falso
+ * e o manifesto mostra o que entrou.
+ */
+const TETO_DE_ARQUIVOS = 5_000
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -108,7 +116,80 @@ Deno.serve(async (req) => {
       },
     }
 
-    const nome = `backup-auto-${new Date().toISOString().replace(/[:.]/g, '-')}.json`
+    // ─── Os ARQUIVOS ───
+    //
+    // O backup copiava as 78 tabelas e deixava de fora os arquivos: exame em
+    // PDF, foto do paciente, documento assinado. Restaurar devolvia a linha
+    // "anexo tal" apontando para um arquivo que não existe mais — o pior tipo
+    // de falha, porque quem restaura acha que recuperou tudo e só descobre o
+    // buraco quando um paciente pede um exame antigo.
+    //
+    // A cópia é feita aqui, no servidor, porque o navegador não aguenta o
+    // volume de uma clínica com anos de exame.
+    const carimbo = new Date().toISOString().replace(/[:.]/g, '-')
+    const arquivos: Array<{ bucket: string; caminho: string; bytes: number }> = []
+    const falhasDeArquivo: string[] = []
+
+    try {
+      const { data: buckets } = await supabase.storage.listBuckets()
+      for (const b of buckets ?? []) {
+        // O bucket de backup não se copia a si mesmo: cada semana dobraria.
+        if (b.id === 'backups' || b.id === 'backups-arquivos') continue
+
+        const paraVisitar: string[] = ['']
+        while (paraVisitar.length > 0 && arquivos.length < TETO_DE_ARQUIVOS) {
+          const pasta = paraVisitar.shift()!
+          const { data: itens, error } = await supabase.storage
+            .from(b.id).list(pasta, { limit: 1000 })
+          if (error) { falhasDeArquivo.push(`${b.id}/${pasta}: ${error.message}`); continue }
+
+          for (const item of itens ?? []) {
+            const caminho = pasta ? `${pasta}/${item.name}` : item.name
+            // Sem metadata é pasta: entra na fila para ser visitada.
+            if (!item.metadata) { paraVisitar.push(caminho); continue }
+            if (arquivos.length >= TETO_DE_ARQUIVOS) break
+
+            const { data: blob, error: erroBaixa } = await supabase.storage
+              .from(b.id).download(caminho)
+            if (erroBaixa || !blob) {
+              falhasDeArquivo.push(`${b.id}/${caminho}: ${erroBaixa?.message ?? 'download vazio'}`)
+              continue
+            }
+
+            // Bucket separado: `backups` só aceita application/json, e essa
+            // restrição protege o lugar onde ficam os backups.
+            const { error: erroCopia } = await supabase.storage
+              .from('backups-arquivos')
+              .upload(`${carimbo}/${b.id}/${caminho}`, blob, {
+                contentType: blob.type || 'application/octet-stream',
+                upsert: true,
+              })
+            if (erroCopia) {
+              falhasDeArquivo.push(`${b.id}/${caminho}: ${erroCopia.message}`)
+              continue
+            }
+            arquivos.push({ bucket: b.id, caminho, bytes: blob.size })
+          }
+        }
+      }
+    } catch (e) {
+      falhasDeArquivo.push(`varredura interrompida: ${(e as Error).message}`)
+    }
+
+    // O manifesto entra no JSON: na hora de restaurar, é ele que diz o que
+    // deveria existir. Arquivo copiado sem manifesto é arquivo que ninguém
+    // sabe de onde veio.
+    ;(backup as Record<string, unknown>).arquivos = {
+      bucket: 'backups-arquivos',
+      pasta: carimbo,
+      total: arquivos.length,
+      bytes: arquivos.reduce((s, a) => s + a.bytes, 0),
+      falhas: falhasDeArquivo,
+      lista: arquivos,
+    }
+    if (falhasDeArquivo.length > 0) (backup as Record<string, unknown>).completo = false
+
+    const nome = `backup-auto-${carimbo}.json`
     const corpo = JSON.stringify(backup)
 
     const { error: erroSubida } = await supabase.storage
@@ -151,18 +232,37 @@ Deno.serve(async (req) => {
     try {
       const { data: antigos } = await supabase.storage.from('backups').list('', { limit: 1000 })
       const vencidos = (antigos ?? [])
-        .filter((o) => o.created_at && o.created_at < limite)
+        .filter((o) => o.metadata && o.created_at && o.created_at < limite)
         .map((o) => o.name)
       if (vencidos.length > 0) {
         await supabase.storage.from('backups').remove(vencidos)
         apagados = vencidos.length
+      }
+
+      // As pastas de arquivo também vencem. Sem isto o bucket só cresce, e a
+      // cópia dos anexos passaria a ser o maior custo de armazenamento da
+      // clínica sem ninguém perceber.
+      const { data: pastas } = await supabase.storage
+        .from('backups-arquivos').list('', { limit: 1000 })
+      for (const pasta of pastas ?? []) {
+        if (pasta.metadata) continue
+        // O nome da pasta é o carimbo ISO com ':' e '.' trocados por '-'.
+        const quando = pasta.name.replace(
+          /^(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})-(\d+)Z$/,
+          '$1T$2:$3:$4.$5Z',
+        )
+        if (quando >= limite) continue
+        const { data: dentro } = await supabase.storage
+          .from('backups-arquivos').list(pasta.name, { limit: 1000 })
+        const caminhos = (dentro ?? []).map((o) => `${pasta.name}/${o.name}`)
+        if (caminhos.length > 0) await supabase.storage.from('backups-arquivos').remove(caminhos)
       }
     } catch (e) {
       console.error('limpeza de backups antigos falhou:', e)
     }
 
     await registrar({
-      status: completo ? 'sucesso' : 'parcial',
+      status: completo && falhasDeArquivo.length === 0 ? 'sucesso' : 'parcial',
       registros_processados: total,
       registros_sucesso: total,
       duracao_ms: duracao,
@@ -173,7 +273,12 @@ Deno.serve(async (req) => {
         tabelas: Object.keys(dados).length,
         registros: total,
         tamanho_bytes: corpo.length,
-        completo,
+        arquivos_copiados: arquivos.length,
+        arquivos_com_falha: falhasDeArquivo.length,
+        // A mensagem no log, e não só no JSON: quem investiga uma falha de
+        // backup não tem o arquivo em mãos, tem a tabela de log.
+        arquivos_erros: falhasDeArquivo.slice(0, 5),
+        completo: completo && falhasDeArquivo.length === 0,
         antigos_apagados: apagados,
       },
     })
