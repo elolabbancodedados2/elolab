@@ -9,6 +9,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { createAutoBilling } from '@/lib/autoBilling';
 import { autoCheckin, autoIniciarAtendimento, autoFinalizarAtendimento, autoConfirmarPagamento } from '@/lib/workflowAutomation';
 import { PainelDoDia } from '@/components/recepcao/PainelDoDia';
+import { AtendimentosEmAberto } from '@/components/recepcao/AtendimentosEmAberto';
 import { useAgendamentos, usePacientes, useMedicos, useSalas } from '@/hooks/useSupabaseData';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { toast } from 'sonner';
@@ -781,6 +782,11 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
       {/* As quatro caixas de contagem viraram o painel do dia: as mesmas
           informações mais o dinheiro (recebido, a receber, adicional pendente),
           e cada cartão filtra a lista abaixo. */}
+      {/* Antes do painel do dia: consulta de outro dia parada em "em
+          atendimento" nunca faturou, e ninguém a vê em tela nenhuma — a fila
+          só guarda quem aguarda ou já terminou. */}
+      <AtendimentosEmAberto />
+
       <PainelDoDia
         atendimentos={enriched}
         clinicaId={profile?.clinica_id}

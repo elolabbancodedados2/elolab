@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useDraggable } from '@dnd-kit/core';
 import { cn } from '@/lib/utils';
 import { CheckCircle2, PlayCircle, Ban, Trash2, Edit3 } from 'lucide-react';
@@ -6,6 +7,8 @@ import {
 } from '@/components/ui/context-menu';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
+import { autoCheckin, autoIniciarAtendimento, autoFinalizarAtendimento } from '@/lib/workflowAutomation';
 import { mensagemDeErro } from '@/lib/erros';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -65,6 +68,7 @@ const TIPO_LABEL: Record<string, string> = {
 
 export function AppointmentCard({ agendamento, color, minutesToPx, onClick, convenioName }: Props) {
   const queryClient = useQueryClient();
+  const { profile } = useSupabaseAuth();
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: `ag:${agendamento.id}`,
     data: { agendamento },
@@ -92,11 +96,105 @@ export function AppointmentCard({ agendamento, color, minutesToPx, onClick, conv
     zIndex: isDragging ? 50 : 10,
   };
 
+  /**
+   * Muda o status pelo menu da agenda.
+   *
+   * Iniciar e finalizar NÃO passam por aqui: os dois têm consequência além do
+   * campo `status`, e gravá-lo direto foi o que produziu o estrago que o banco
+   * mostrava — 13 consultas paradas em "em atendimento", a mais antiga de cinco
+   * meses, cinco delas numa clínica em operação.
+   */
+  const [ocupado, setOcupado] = useState(false);
+
   const setStatus = async (status: any) => {
     const { error } = await (supabase.from('agendamentos').update({ status }).eq('id', agendamento.id) as any);
     if (error) return toast.error('Erro ao atualizar', { description: mensagemDeErro(error) });
     toast.success('Status atualizado');
     queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
+  };
+
+  /**
+   * Iniciar atendimento pela agenda.
+   *
+   * Marcava `em_atendimento` direto, sem criar item na fila. O paciente ficava
+   * invisível para o médico (a fila nunca o mostrava) e ninguém conseguia
+   * finalizá-lo depois — a tela de finalizar age sobre a fila. Foi assim que
+   * cinco agendamentos ficaram presos sem fila nenhuma.
+   *
+   * Agora faz o caminho inteiro: check-in cria a fila, e o início usa o item
+   * criado.
+   */
+  const iniciarAtendimento = async () => {
+    setOcupado(true);
+    try {
+      const checkin = await autoCheckin(agendamento.id, profile?.clinica_id);
+      if (!checkin.success) throw new Error(checkin.message);
+
+      const { data: item, error: erroFila } = await supabase
+        .from('fila_atendimento')
+        .select('id')
+        .eq('agendamento_id', agendamento.id)
+        .neq('status', 'finalizado')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (erroFila) throw erroFila;
+      if (!item) throw new Error('Não encontrei o paciente na fila depois do check-in.');
+
+      const r = await autoIniciarAtendimento(
+        agendamento.id, item.id, agendamento.paciente_id, agendamento.medico_id,
+      );
+      if (!r.success) throw new Error(r.message);
+
+      toast.success('Atendimento iniciado', { description: r.actions.join(' • ') });
+      queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
+      queryClient.invalidateQueries({ queryKey: ['fila_atendimento'] });
+    } catch (e: any) {
+      toast.error('Não foi possível iniciar', { description: mensagemDeErro(e) });
+    } finally {
+      setOcupado(false);
+    }
+  };
+
+  /**
+   * Finalizar pela agenda.
+   *
+   * Este era o pior: gravava `finalizado` direto e a consulta NÃO GERAVA
+   * COBRANÇA. O atendimento acontecia, sumia da agenda como concluído, e nunca
+   * virava dinheiro. Agora passa pela finalização de verdade, que fatura e
+   * fecha a fila junto.
+   */
+  const finalizarAtendimento = async () => {
+    setOcupado(true);
+    try {
+      const { data: item } = await supabase
+        .from('fila_atendimento')
+        .select('id')
+        .eq('agendamento_id', agendamento.id)
+        .neq('status', 'finalizado')
+        .limit(1)
+        .maybeSingle();
+
+      const r = await autoFinalizarAtendimento({
+        agendamentoId: agendamento.id,
+        filaId: item?.id,
+        pacienteId: agendamento.paciente_id,
+        pacienteNome: agendamento.pacientes?.nome ?? patientName ?? 'Paciente',
+        medicoId: agendamento.medico_id,
+        tipoConsulta: agendamento.tipo,
+        clinicaId: profile?.clinica_id,
+      });
+      if (!r.success) throw new Error(r.message);
+
+      toast.success('Atendimento finalizado', { description: r.actions.join(' • ') });
+      queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
+      queryClient.invalidateQueries({ queryKey: ['fila_atendimento'] });
+      queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
+    } catch (e: any) {
+      toast.error('Não foi possível finalizar', { description: mensagemDeErro(e) });
+    } finally {
+      setOcupado(false);
+    }
   };
   const remove = async () => {
     if (!confirm('Remover esta consulta?')) return;
@@ -161,8 +259,8 @@ export function AppointmentCard({ agendamento, color, minutesToPx, onClick, conv
         <ContextMenuSeparator />
         <ContextMenuItem onSelect={() => setStatus('confirmado')}><CheckCircle2 className="mr-2 h-4 w-4" /> Confirmar</ContextMenuItem>
         <ContextMenuItem onSelect={() => setStatus('aguardando')}>Marcar como aguardando</ContextMenuItem>
-        <ContextMenuItem onSelect={() => setStatus('em_atendimento')}><PlayCircle className="mr-2 h-4 w-4" /> Iniciar atendimento</ContextMenuItem>
-        <ContextMenuItem onSelect={() => setStatus('finalizado')}>Finalizar</ContextMenuItem>
+        <ContextMenuItem disabled={ocupado} onSelect={iniciarAtendimento}><PlayCircle className="mr-2 h-4 w-4" /> Iniciar atendimento</ContextMenuItem>
+        <ContextMenuItem disabled={ocupado} onSelect={finalizarAtendimento}>Finalizar</ContextMenuItem>
         <ContextMenuSeparator />
         <ContextMenuItem onSelect={() => setStatus('faltou')} className="text-warning"><Ban className="mr-2 h-4 w-4" /> Marcar faltou</ContextMenuItem>
         <ContextMenuItem onSelect={() => setStatus('cancelado')} className="text-destructive">Cancelar consulta</ContextMenuItem>
