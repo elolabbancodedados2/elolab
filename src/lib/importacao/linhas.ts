@@ -6,7 +6,7 @@
  * importação inteira nem sumir em silêncio; têm que voltar identificadas, com
  * o número da linha do Excel, para a pessoa corrigir na origem.
  */
-import { CAMPO_POR_NOME, apenasDigitos } from './campos';
+import { CAMPO_POR_NOME, CAMPOS_AGENDAMENTO, apenasDigitos, type Campo } from './campos';
 import type { Mapeamento } from './mapeamento';
 
 export interface LinhaConvertida {
@@ -22,13 +22,17 @@ export function converterLinha(
   celulas: string[],
   mapeamento: Mapeamento,
   numeroDaLinha: number,
+  campos?: Campo[],
 ): LinhaConvertida {
+  const porNome: Record<string, Campo> = campos
+    ? Object.fromEntries(campos.map(c => [c.nome, c]))
+    : CAMPO_POR_NOME;
   const paciente: Record<string, any> = {};
   const erros: string[] = [];
 
   for (const [colunaTexto, nomeDoCampo] of Object.entries(mapeamento)) {
     if (!nomeDoCampo) continue;
-    const campo = CAMPO_POR_NOME[nomeDoCampo];
+    const campo = porNome[nomeDoCampo];
     if (!campo) continue;
 
     const bruto = celulas[Number(colunaTexto)] ?? '';
@@ -46,7 +50,10 @@ export function converterLinha(
     }
   }
 
-  if (!paciente.nome) {
+  // Só a importação de paciente exige `nome`; a de agendamento tem os seus
+  // próprios obrigatórios, já cobertos pela conversão campo a campo.
+  const ehAgendamento = !!campos && campos === CAMPOS_AGENDAMENTO;
+  if (!ehAgendamento && !paciente.nome) {
     if (!erros.some(e => e.startsWith('Nome'))) erros.push('Nome: coluna vazia');
   }
 
@@ -59,7 +66,12 @@ export function errosImpeditivos(linha: LinhaConvertida): string[] {
 }
 
 export function podeImportar(linha: LinhaConvertida): boolean {
-  return errosImpeditivos(linha).length === 0 && !!linha.paciente.nome;
+  if (errosImpeditivos(linha).length > 0) return false;
+  // Paciente precisa de nome; agendamento precisa de paciente, data e hora.
+  if ('data' in linha.paciente || 'hora_inicio' in linha.paciente) {
+    return !!linha.paciente.data && !!linha.paciente.hora_inicio && !!linha.paciente.paciente_nome;
+  }
+  return !!linha.paciente.nome;
 }
 
 /**

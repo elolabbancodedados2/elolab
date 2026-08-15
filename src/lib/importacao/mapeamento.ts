@@ -42,11 +42,14 @@ export function pontuar(cabecalho: string, campo: Campo): number {
   return 0;
 }
 
-export function mapearAutomaticamente(cabecalhos: string[]): Mapeamento {
+export function mapearAutomaticamente(
+  cabecalhos: string[],
+  campos: Campo[] = CAMPOS_PACIENTE,
+): Mapeamento {
   const candidatos: Array<{ coluna: number; campo: NomeDoCampo; nota: number }> = [];
 
   cabecalhos.forEach((cabecalho, coluna) => {
-    for (const campo of CAMPOS_PACIENTE) {
+    for (const campo of campos) {
       const nota = pontuar(cabecalho, campo);
       if (nota > 0) candidatos.push({ coluna, campo: campo.nome, nota });
     }
@@ -75,7 +78,10 @@ export function mapearAutomaticamente(cabecalhos: string[]): Mapeamento {
 }
 
 /** Campos obrigatórios que ficaram sem coluna. */
-export function faltandoObrigatorios(mapeamento: Mapeamento): string[] {
+export function faltandoObrigatorios(
+  mapeamento: Mapeamento,
+  campos: Campo[] = CAMPOS_PACIENTE,
+): string[] {
   const usados = new Set(Object.values(mapeamento).filter(Boolean));
-  return CAMPOS_PACIENTE.filter(c => c.obrigatorio && !usados.has(c.nome)).map(c => c.rotulo);
+  return campos.filter(c => c.obrigatorio && !usados.has(c.nome)).map(c => c.rotulo);
 }

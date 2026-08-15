@@ -282,3 +282,162 @@ describe('erros e devolutiva', () => {
     expect(csv.startsWith('﻿')).toBe(true);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// AGENDAMENTOS
+// ═══════════════════════════════════════════════════════════════════════════
+import { converterHora, converterStatus, CAMPOS_AGENDAMENTO } from '@/lib/importacao/campos';
+import { acharPaciente, acharMedico, prepararAgenda } from '@/lib/importacao/agendamentos';
+
+describe('converterHora', () => {
+  it('lê os formatos que aparecem em planilha', () => {
+    expect(converterHora('14:30').valor).toBe('14:30');
+    expect(converterHora('9:05').valor).toBe('09:05');
+    expect(converterHora('14h30').valor).toBe('14:30');
+    expect(converterHora('1430').valor).toBe('14:30');
+  });
+
+  it('lê a fração de dia do Excel', () => {
+    expect(converterHora('0,5').valor).toBe('12:00');
+    expect(converterHora('0.75').valor).toBe('18:00');
+  });
+
+  it('pega a hora quando a célula traz data junto', () => {
+    expect(converterHora('15/08/2026 14:30').valor).toBe('14:30');
+  });
+
+  it('recusa hora impossível', () => {
+    expect(converterHora('25:00').erro).toBeTruthy();
+    expect(converterHora('12:99').erro).toBeTruthy();
+    expect(converterHora('depois do almoço').erro).toBeTruthy();
+  });
+});
+
+describe('converterStatus', () => {
+  it('traduz os nomes usados por outros sistemas', () => {
+    expect(converterStatus('Cancelado').valor).toBe('cancelado');
+    expect(converterStatus('Não compareceu').valor).toBe('faltou');
+    expect(converterStatus('Atendido').valor).toBe('finalizado');
+    expect(converterStatus('Confirmada').valor).toBe('confirmado');
+  });
+
+  /** Chutar "finalizado" faria a clínica migrar com consultas dadas como
+   *  realizadas que nunca aconteceram. */
+  it('desconhecido vira Agendado, com aviso', () => {
+    const r = converterStatus('sei lá o que');
+    expect(r.valor).toBe('agendado');
+    expect(r.erro).toBeTruthy();
+  });
+
+  it('vazio vira Agendado sem reclamar', () => {
+    expect(converterStatus('')).toEqual({ valor: 'agendado' });
+  });
+});
+
+describe('mapeamento de agenda', () => {
+  it('reconhece os cabeçalhos de uma agenda', () => {
+    const m = mapearAutomaticamente(
+      ['Paciente', 'Data', 'Horário', 'Profissional', 'Situação'],
+      CAMPOS_AGENDAMENTO,
+    );
+    expect(m[0]).toBe('paciente_nome');
+    expect(m[1]).toBe('data');
+    expect(m[2]).toBe('hora_inicio');
+    expect(m[3]).toBe('medico_nome');
+    expect(m[4]).toBe('status');
+  });
+
+  it('cobra data e hora, que são obrigatórias', () => {
+    const faltando = faltandoObrigatorios(
+      mapearAutomaticamente(['Paciente'], CAMPOS_AGENDAMENTO),
+      CAMPOS_AGENDAMENTO,
+    );
+    expect(faltando).toContain('Data');
+    expect(faltando).toContain('Hora');
+  });
+});
+
+describe('casar a linha da agenda com o cadastro', () => {
+  const pacientes = new Map([
+    ['cpf:52998224725', 'pac-cpf'],
+    ['nome:maria de souza', 'pac-nome'],
+  ]);
+  const medicos = new Map([['ana laura', 'med-1']]);
+
+  it('acha por CPF antes de qualquer coisa', () => {
+    expect(acharPaciente({ paciente_cpf: '529.982.247-25', paciente_nome: 'Outro Nome' }, pacientes))
+      .toBe('pac-cpf');
+  });
+
+  it('cai para o nome quando a agenda não traz CPF', () => {
+    expect(acharPaciente({ paciente_nome: 'MARIA DE SOUZA' }, pacientes)).toBe('pac-nome');
+  });
+
+  it('não inventa paciente quando não acha', () => {
+    expect(acharPaciente({ paciente_nome: 'Quem Nunca Veio' }, pacientes)).toBeNull();
+  });
+
+  it('ignora "Dra." no nome do profissional', () => {
+    expect(acharMedico('Dra. Ana Laura', medicos)).toBe('med-1');
+    expect(acharMedico('ANA LAURA', medicos)).toBe('med-1');
+    expect(acharMedico('Dr. Fulano', medicos)).toBeNull();
+  });
+});
+
+describe('prepararAgenda', () => {
+  const indices = {
+    pacientes: new Map([['nome:maria de souza', 'pac-1']]),
+    medicos: new Map([['ana laura', 'med-1']]),
+  };
+  const linha = (n: number, p: any) => ({ linha: n, paciente: p, erros: [] });
+
+  it('resolve paciente e profissional', () => {
+    const r = prepararAgenda(
+      [linha(2, { paciente_nome: 'Maria de Souza', data: '2026-09-01', hora_inicio: '14:30', medico_nome: 'Dra. Ana Laura' })] as any,
+      indices, new Set(),
+    );
+    expect(r[0].paciente._paciente_id).toBe('pac-1');
+    expect(r[0].paciente._medico_id).toBe('med-1');
+  });
+
+  /** Criar o paciente aqui geraria cadastro sem CPF nem nascimento — a
+   *  duplicata que a importação de pacientes existe para evitar. */
+  it('paciente desconhecido derruba a linha, com instrução', () => {
+    const r = prepararAgenda(
+      [linha(3, { paciente_nome: 'Fulano', data: '2026-09-01', hora_inicio: '08:00' })] as any,
+      indices, new Set(),
+    );
+    expect(podeImportar(r[0])).toBe(false);
+    expect(r[0].erros.join(' ')).toContain('importe os pacientes primeiro');
+  });
+
+  /** Consulta sem médico é remarcável; consulta que não existe é um paciente
+   *  que aparece e ninguém esperava. */
+  it('profissional desconhecido é só aviso, e a consulta entra', () => {
+    const r = prepararAgenda(
+      [linha(4, { paciente_nome: 'Maria de Souza', data: '2026-09-01', hora_inicio: '09:00', medico_nome: 'Dr. Ninguém' })] as any,
+      indices, new Set(),
+    );
+    expect(podeImportar(r[0])).toBe(true);
+    expect(r[0].paciente._medico_id).toBeNull();
+    expect(r[0].erros.join(' ')).toContain('ignorado');
+  });
+
+  it('não duplica o que já está na agenda', () => {
+    const jaTem = new Set(['pac-1|2026-09-01|14:30']);
+    const r = prepararAgenda(
+      [linha(5, { paciente_nome: 'Maria de Souza', data: '2026-09-01', hora_inicio: '14:30' })] as any,
+      indices, jaTem,
+    );
+    expect(r[0].duplicadaDe).toContain('já existe na agenda');
+  });
+
+  it('nem o que se repete dentro do próprio arquivo', () => {
+    const r = prepararAgenda([
+      linha(6, { paciente_nome: 'Maria de Souza', data: '2026-09-02', hora_inicio: '10:00' }),
+      linha(7, { paciente_nome: 'Maria de Souza', data: '2026-09-02', hora_inicio: '10:00' }),
+    ] as any, indices, new Set());
+    expect(r[0].duplicadaDe).toBeUndefined();
+    expect(r[1].duplicadaDe).toContain('repetido');
+  });
+});

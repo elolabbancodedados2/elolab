@@ -13,10 +13,16 @@
 
 import { normalizarTexto } from '@/lib/buscaPaciente';
 
-export type NomeDoCampo =
+export type CampoDePaciente =
   | 'nome' | 'cpf' | 'data_nascimento' | 'telefone' | 'email' | 'sexo'
   | 'cep' | 'logradouro' | 'numero' | 'complemento' | 'bairro' | 'cidade' | 'estado'
   | 'nome_responsavel' | 'cpf_responsavel' | 'numero_carteira' | 'observacoes';
+
+export type CampoDeAgendamento =
+  | 'paciente_nome' | 'paciente_cpf' | 'paciente_nascimento'
+  | 'data' | 'hora_inicio' | 'medico_nome' | 'tipo' | 'status' | 'observacoes';
+
+export type NomeDoCampo = CampoDePaciente | CampoDeAgendamento;
 
 export interface Campo {
   nome: NomeDoCampo;
@@ -219,3 +225,128 @@ export const CAMPOS_PACIENTE: Campo[] = [
 
 export const CAMPO_POR_NOME: Record<string, Campo> =
   Object.fromEntries(CAMPOS_PACIENTE.map(c => [c.nome, c]));
+
+// ═══════════════════════════════════════════════════════════════════════════
+// AGENDAMENTOS
+//
+// Importar a agenda é o que faz a clínica conseguir usar o sistema no dia
+// seguinte à migração. Sem ela, a recepção abre o app e vê um dia vazio
+// enquanto a sala de espera enche.
+//
+// A diferença para pacientes: aqui as linhas APONTAM para cadastros que já
+// precisam existir. Paciente que não estiver na base não vira agendamento —
+// criar um paciente "João" a partir de uma linha de agenda produziria
+// duplicata sem CPF nem nascimento, que é justamente o que a importação de
+// pacientes evita.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** 'HH:MM' a partir de 14:30, 14h30, 1430 ou da fração de dia do Excel. */
+export function converterHora(bruto: string): { valor: string | null; erro?: string } {
+  const texto = String(bruto ?? '').trim();
+  if (!texto) return { valor: null };
+
+  // Excel guarda hora como fração do dia: 0,5 = meio-dia.
+  if (/^0?[.,]\d+$/.test(texto)) {
+    const fracao = Number(texto.replace(',', '.'));
+    const total = Math.round(fracao * 24 * 60);
+    return { valor: `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}` };
+  }
+
+  // Data com hora junto ("2026-08-15 14:30" ou "15/08/2026 14:30").
+  const comData = texto.match(/(\d{1,2})[:h](\d{2})/);
+  if (comData) {
+    const h = Number(comData[1]);
+    const m = Number(comData[2]);
+    if (h > 23 || m > 59) return { valor: null, erro: `hora fora da faixa: "${texto}"` };
+    return { valor: `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}` };
+  }
+
+  // "1430" sem separador.
+  const seco = texto.match(/^(\d{1,2})(\d{2})$/);
+  if (seco) {
+    const h = Number(seco[1]);
+    const m = Number(seco[2]);
+    if (h > 23 || m > 59) return { valor: null, erro: `hora fora da faixa: "${texto}"` };
+    return { valor: `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}` };
+  }
+
+  return { valor: null, erro: `hora não reconhecida: "${texto}"` };
+}
+
+/**
+ * Status do sistema de origem → o nosso.
+ *
+ * Cada sistema chama de um jeito, e o que não reconhecer entra como
+ * `agendado` — o estado mais neutro. Chutar "finalizado" faria a clínica
+ * migrar com atendimentos dados como concluídos que nunca aconteceram.
+ */
+export function converterStatus(bruto: string): { valor: string; erro?: string } {
+  const v = normalizarCabecalho(bruto);
+  if (!v) return { valor: 'agendado' };
+  if (['cancelado', 'cancelada', 'desmarcado', 'desmarcada'].includes(v)) return { valor: 'cancelado' };
+  if (['faltou', 'falta', 'nao compareceu', 'ausente', 'no show'].includes(v)) return { valor: 'faltou' };
+  if (['confirmado', 'confirmada'].includes(v)) return { valor: 'confirmado' };
+  if (['atendido', 'atendida', 'finalizado', 'finalizada', 'realizado', 'realizada', 'concluido', 'concluida'].includes(v))
+    return { valor: 'finalizado' };
+  if (['agendado', 'agendada', 'marcado', 'marcada', 'aberto'].includes(v)) return { valor: 'agendado' };
+  return { valor: 'agendado', erro: `status "${bruto}" não reconhecido, importado como Agendado` };
+}
+
+export const CAMPOS_AGENDAMENTO: Campo[] = [
+  {
+    nome: 'paciente_nome', rotulo: 'Paciente', obrigatorio: true,
+    apelidos: ['paciente', 'nome', 'nome do paciente', 'nome paciente', 'cliente', 'nome completo'],
+    converter: (b) => {
+      const v = String(b ?? '').replace(/\s+/g, ' ').trim();
+      return v ? { valor: v } : { valor: null, erro: 'paciente vazio' };
+    },
+  },
+  {
+    nome: 'paciente_cpf', rotulo: 'CPF do paciente',
+    apelidos: ['cpf', 'cpf do paciente', 'documento'],
+    converter: (b) => {
+      const d = apenasDigitos(b);
+      if (!d) return { valor: null };
+      if (d.length !== 11) return { valor: null, erro: `CPF com ${d.length} dígitos` };
+      return { valor: d };
+    },
+  },
+  {
+    nome: 'paciente_nascimento', rotulo: 'Nascimento do paciente',
+    apelidos: ['data nascimento', 'data de nascimento', 'nascimento', 'dtnasc'],
+    converter: (b) => converterData(b),
+  },
+  {
+    nome: 'data', rotulo: 'Data', obrigatorio: true,
+    apelidos: ['data', 'data agendamento', 'data da consulta', 'dia', 'data atendimento'],
+    converter: (b) => {
+      const r = converterData(b);
+      if (!r.valor && !r.erro) return { valor: null, erro: 'data vazia' };
+      return r;
+    },
+  },
+  {
+    nome: 'hora_inicio', rotulo: 'Hora', obrigatorio: true,
+    apelidos: ['hora', 'horario', 'hora inicio', 'hora de inicio', 'hora agendamento', 'hr'],
+    converter: (b) => {
+      const r = converterHora(b);
+      if (!r.valor && !r.erro) return { valor: null, erro: 'hora vazia' };
+      return r;
+    },
+  },
+  {
+    nome: 'medico_nome', rotulo: 'Profissional',
+    apelidos: ['medico', 'profissional', 'doutor', 'dentista', 'nome do medico', 'prestador', 'responsavel'],
+    converter: texto,
+  },
+  { nome: 'tipo', rotulo: 'Tipo', apelidos: ['tipo', 'tipo consulta', 'procedimento', 'servico', 'especialidade'], converter: texto },
+  {
+    nome: 'status', rotulo: 'Situação',
+    apelidos: ['status', 'situacao', 'estado'],
+    converter: (b) => {
+      const r = converterStatus(b);
+      return { valor: r.valor, erro: r.erro };
+    },
+  },
+  { nome: 'observacoes', rotulo: 'Observações', apelidos: ['observacoes', 'observacao', 'obs', 'anotacoes'], converter: texto },
+];

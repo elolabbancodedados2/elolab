@@ -29,7 +29,7 @@ import {
 import { toast } from 'sonner';
 import { DeleteConfirmDialog } from '@/components/ConfirmDialog';
 import { BackupRestore } from '@/components/BackupRestore';
-import { ImportadorDePacientes } from '@/components/importacao/ImportadorDePacientes';
+import { ImportadorDePlanilha } from '@/components/importacao/ImportadorDePlanilha';
 import { AuditLog } from '@/components/AuditLog';
 import { supabase } from '@/integrations/supabase/client';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -1215,7 +1215,7 @@ export default function Configuracoes() {
             {/* Fica junto do backup porque é a mesma pergunta do usuário —
                 "como tiro e como ponho dados aqui" — e é onde ele procura no
                 dia em que troca de sistema. */}
-            <ImportadorDePacientes />
+            <ImportadorDePlanilha />
           </motion.div>
         </TabsContent>
 

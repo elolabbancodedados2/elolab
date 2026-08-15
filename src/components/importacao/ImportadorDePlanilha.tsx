@@ -1,5 +1,5 @@
 /**
- * Trazer a base de pacientes de outro sistema.
+ * Trazer a base de outro sistema — pacientes e agenda.
  *
  * Quatro passos, e nenhum deles pede que a pessoa entenda o banco: sobe o
  * arquivo, confere o que o sistema adivinhou, vê o que vai acontecer, importa.
@@ -12,7 +12,7 @@
 import { useState } from 'react';
 import {
   Upload, FileSpreadsheet, ArrowRight, ArrowLeft, CheckCircle2,
-  AlertTriangle, Loader2, Download, Users,
+  AlertTriangle, Loader2, Download, Users, CalendarRange,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -21,16 +21,20 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { lerArquivo, type Planilha } from '@/lib/importacao/planilha';
-import { CAMPOS_PACIENTE, type NomeDoCampo } from '@/lib/importacao/campos';
+import { CAMPOS_PACIENTE, CAMPOS_AGENDAMENTO, type NomeDoCampo } from '@/lib/importacao/campos';
 import { mapearAutomaticamente, faltandoObrigatorios, type Mapeamento } from '@/lib/importacao/mapeamento';
 import { converterLinha, marcarDuplicadas, resumir, podeImportar, type LinhaConvertida } from '@/lib/importacao/linhas';
 import { carregarExistentes, importarPacientes, csvDasRecusadas, type ResultadoImportacao } from '@/lib/importacao/importar';
+import {
+  carregarIndices, carregarAgendaExistente, prepararAgenda, importarAgendamentos,
+} from '@/lib/importacao/agendamentos';
 
 const SEM_CAMPO = '__nenhum__';
 
-export function ImportadorDePacientes() {
+export function ImportadorDePlanilha() {
   const { profile } = useSupabaseAuth();
   const [passo, setPasso] = useState<1 | 2 | 3 | 4>(1);
+  const [tipo, setTipo] = useState<'pacientes' | 'agendamentos'>('pacientes');
   const [ocupado, setOcupado] = useState(false);
   const [progresso, setProgresso] = useState<{ feitas: number; total: number } | null>(null);
 
@@ -38,7 +42,9 @@ export function ImportadorDePacientes() {
   const [planilha, setPlanilha] = useState<Planilha | null>(null);
   const [mapeamento, setMapeamento] = useState<Mapeamento>({});
   const [linhas, setLinhas] = useState<LinhaConvertida[]>([]);
-  const [resultado, setResultado] = useState<ResultadoImportacao | null>(null);
+  const [resultado, setResultado] = useState<(ResultadoImportacao & { semPaciente?: number; semProfissional?: number }) | null>(null);
+
+  const campos = tipo === 'agendamentos' ? CAMPOS_AGENDAMENTO : CAMPOS_PACIENTE;
 
   function reiniciar() {
     setPasso(1); setArquivo(null); setPlanilha(null);
@@ -61,7 +67,7 @@ export function ImportadorDePacientes() {
       }
       setArquivo(f);
       setPlanilha(p);
-      setMapeamento(mapearAutomaticamente(p.cabecalhos));
+      setMapeamento(mapearAutomaticamente(p.cabecalhos, campos));
       setPasso(2);
     } catch (err: any) {
       toast.error('Não consegui ler o arquivo', { description: err?.message });
@@ -72,7 +78,7 @@ export function ImportadorDePacientes() {
 
   async function conferir() {
     if (!planilha) return;
-    const faltando = faltandoObrigatorios(mapeamento);
+    const faltando = faltandoObrigatorios(mapeamento, campos);
     if (faltando.length > 0) {
       toast.error(`Falta apontar: ${faltando.join(', ')}`, {
         description: 'Sem isso não dá para saber de quem é cada linha.',
@@ -83,9 +89,21 @@ export function ImportadorDePacientes() {
     setOcupado(true);
     try {
       // +2: a linha 1 é o cabeçalho, e o Excel conta a partir de 1.
-      const convertidas = planilha.linhas.map((l, i) => converterLinha(l, mapeamento, i + 2));
-      const existentes = await carregarExistentes(profile!.clinica_id!);
-      setLinhas(marcarDuplicadas(convertidas, existentes));
+      const convertidas = planilha.linhas.map((l, i) => converterLinha(l, mapeamento, i + 2, campos));
+
+      if (tipo === 'agendamentos') {
+        // A agenda depende de cadastros que já precisam existir: cada linha é
+        // resolvida contra os pacientes e profissionais da clínica ANTES de
+        // gravar, para a prévia dizer a verdade.
+        const [indices, jaNaAgenda] = await Promise.all([
+          carregarIndices(profile!.clinica_id!),
+          carregarAgendaExistente(profile!.clinica_id!),
+        ]);
+        setLinhas(prepararAgenda(convertidas, indices, jaNaAgenda));
+      } else {
+        const existentes = await carregarExistentes(profile!.clinica_id!);
+        setLinhas(marcarDuplicadas(convertidas, existentes));
+      }
       setPasso(3);
     } catch (err: any) {
       toast.error('Não consegui conferir com os pacientes atuais', { description: err?.message });
@@ -98,13 +116,14 @@ export function ImportadorDePacientes() {
     setOcupado(true);
     setProgresso({ feitas: 0, total: resumo.prontas });
     try {
-      const r = await importarPacientes(linhas, profile!.clinica_id!, (feitas, total) =>
-        setProgresso({ feitas, total }),
-      );
-      setResultado(r);
+      const aoProgredir = (feitas: number, total: number) => setProgresso({ feitas, total });
+      const r = tipo === 'agendamentos'
+        ? await importarAgendamentos(linhas, profile!.clinica_id!, aoProgredir)
+        : await importarPacientes(linhas, profile!.clinica_id!, aoProgredir);
+      setResultado(r as any);
       setPasso(4);
       if (r.falhas.length === 0) {
-        toast.success(`${r.inseridos} paciente(s) importado(s)`);
+        toast.success(`${r.inseridos} ${tipo === 'agendamentos' ? 'agendamento(s)' : 'paciente(s)'} importado(s)`);
       } else {
         toast.warning(`${r.inseridos} importado(s), ${r.falhas.length} recusado(s)`);
       }
@@ -134,7 +153,7 @@ export function ImportadorDePacientes() {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Users className="h-5 w-5" />
-          Trazer pacientes de outro sistema
+          Trazer dados de outro sistema
         </CardTitle>
         <CardDescription>
           Planilha .csv, .xlsx ou .xls exportada da Feegow, iClinic, Ninsaúde ou
@@ -143,9 +162,47 @@ export function ImportadorDePacientes() {
       </CardHeader>
 
       <CardContent className="space-y-4">
-        {/* ─── 1. Arquivo ─── */}
+        {/* ─── 1. O que, e depois o arquivo ─── */}
         {passo === 1 && (
-          <label className="flex cursor-pointer flex-col items-center gap-2 rounded-xl border border-dashed border-border p-8 text-center transition-colors hover:bg-accent/40">
+          <div className="space-y-3">
+            <div className="grid gap-2 sm:grid-cols-2">
+              {([
+                { id: 'pacientes', icone: Users, titulo: 'Pacientes',
+                  ajuda: 'Nome, CPF, nascimento, telefone, endereço' },
+                { id: 'agendamentos', icone: CalendarRange, titulo: 'Agenda',
+                  ajuda: 'Consultas marcadas — importe os pacientes antes' },
+              ] as const).map(op => {
+                const Icone = op.icone;
+                const ativo = tipo === op.id;
+                return (
+                  <button
+                    key={op.id} type="button"
+                    onClick={() => setTipo(op.id)}
+                    className={`rounded-xl border p-3 text-left transition-colors ${
+                      ativo ? 'border-primary bg-accent/40 ring-1 ring-primary/30' : 'border-border/60 hover:bg-accent/30'
+                    }`}
+                  >
+                    <span className="flex items-center gap-2 text-sm font-semibold">
+                      <Icone className="h-4 w-4 text-primary" />{op.titulo}
+                    </span>
+                    <span className="mt-0.5 block text-[11px] text-muted-foreground">{op.ajuda}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {tipo === 'agendamentos' && (
+              // Sem esse aviso a pessoa sobe a agenda primeiro, vê tudo
+              // recusado por "paciente não cadastrado" e conclui que não
+              // funciona.
+              <p className="rounded-lg border border-info/30 bg-info/5 px-3 py-2 text-[11px] text-muted-foreground">
+                A agenda aponta para pacientes que já precisam existir aqui.
+                Importe a base de pacientes antes — linha cujo paciente não for
+                encontrado é recusada e devolvida no CSV.
+              </p>
+            )}
+
+            <label className="flex cursor-pointer flex-col items-center gap-2 rounded-xl border border-dashed border-border p-8 text-center transition-colors hover:bg-accent/40">
             {ocupado
               ? <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
               : <Upload className="h-8 w-8 text-muted-foreground" />}
@@ -159,7 +216,8 @@ export function ImportadorDePacientes() {
               type="file" className="sr-only" accept=".csv,.xlsx,.xls,.txt"
               onChange={aoEscolherArquivo} disabled={ocupado}
             />
-          </label>
+            </label>
+          </div>
         )}
 
         {/* ─── 2. Colunas ─── */}
@@ -298,10 +356,20 @@ export function ImportadorDePacientes() {
               {resultado.falhas.length === 0
                 ? <CheckCircle2 className="h-5 w-5 text-success" />
                 : <AlertTriangle className="h-5 w-5 text-warning" />}
-              <p className="text-sm font-medium">
-                {resultado.inseridos} paciente(s) importado(s)
-                {resultado.ignorados > 0 && ` · ${resultado.ignorados} não entraram`}
-              </p>
+              <div>
+                <p className="text-sm font-medium">
+                  {resultado.inseridos} {tipo === 'agendamentos' ? 'agendamento(s)' : 'paciente(s)'} importado(s)
+                  {resultado.ignorados > 0 && ` · ${resultado.ignorados} não entraram`}
+                </p>
+                {tipo === 'agendamentos' && (
+                  <p className="text-[11px] text-muted-foreground">
+                    {(resultado.semPaciente ?? 0) > 0 &&
+                      `${resultado.semPaciente} sem paciente cadastrado. `}
+                    {(resultado.semProfissional ?? 0) > 0 &&
+                      `${resultado.semProfissional} entraram sem profissional definido.`}
+                  </p>
+                )}
+              </div>
             </div>
 
             {resultado.falhas.length > 0 && (
