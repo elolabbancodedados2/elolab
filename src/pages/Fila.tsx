@@ -169,6 +169,16 @@ export default function Fila() {
   const [selectedPrioridade, setSelectedPrioridade] = useState('normal');
   const [isSaving, setIsSaving] = useState(false);
   const [removeId, setRemoveId] = useState<string | null>(null);
+  /**
+   * Finalização pendente, esperando a resposta sobre retorno.
+   *
+   * O retorno é decidido AQUI, no momento em que o profissional fecha a
+   * consulta e sabe se o paciente volta — não numa aba do prontuário que
+   * alguém precisa lembrar de abrir. A finalização já sabia agendar retorno; o
+   * parâmetro existia e nenhuma tela passava, e o resultado foi ZERO retornos
+   * em 18 atendimentos finalizados.
+   */
+  const [finalizando, setFinalizando] = useState<{ filaId: string; agendamentoId: string; nome: string } | null>(null);
   const [now, setNow] = useState(Date.now());
 
   const queryClient = useQueryClient();
@@ -402,6 +412,49 @@ export default function Fila() {
     }
   };
 
+  /**
+   * Finaliza de verdade, já sabendo se agenda retorno.
+   *
+   * `dias` nulo = sem retorno. A finalização desfaz tudo se o retorno não puder
+   * ser criado, então o "sim" aqui é uma promessa que o banco cumpre ou
+   * cancela inteira.
+   */
+  const confirmarFinalizacao = async (dias: number | null) => {
+    if (!finalizando) return;
+    const { filaId, agendamentoId } = finalizando;
+    const ag = agendamentos.find(a => a.id === agendamentoId);
+    if (!ag) { setFinalizando(null); return; }
+
+    const pac = pacientes.find(p => p.id === ag.paciente_id);
+    const result = await autoFinalizarAtendimento({
+      agendamentoId,
+      filaId,
+      pacienteId: ag.paciente_id,
+      pacienteNome: pac?.nome || 'Paciente',
+      medicoId: ag.medico_id,
+      convenioId: pac?.convenio_id,
+      tipoConsulta: ag.tipo,
+      tipoExame: ['exame', 'exames'].includes(String(ag.tipo || '').toLocaleLowerCase('pt-BR'))
+        ? ag.observacoes : null,
+      clinicaId: profile?.clinica_id,
+      agendarRetorno: dias !== null,
+      diasRetorno: dias ?? undefined,
+    });
+
+    setFinalizando(null);
+    refresh();
+
+    if (!result.success) {
+      toast.error('Não foi possível finalizar o atendimento', { description: result.message });
+      return;
+    }
+    toast.success(`✅ Atendimento finalizado — ${pac?.nome || 'Paciente'}`, {
+      description: result.actions.join(' • '),
+      duration: 8000,
+      action: { label: 'Abrir Caixa', onClick: () => navigate('/caixa') },
+    });
+  };
+
   const updateStatus = async (id: string, status: string, agendamentoId?: string) => {
     // Voice call when chamado
     if (status === 'chamado' && agendamentoId) {
@@ -449,37 +502,12 @@ export default function Fila() {
     }
 
     if (status === 'finalizado' && agendamentoId) {
-      const ag = agendamentos.find(a => a.id === agendamentoId);
-      if (ag) {
-        const pac = pacientes.find(p => p.id === ag.paciente_id);
-        const result = await autoFinalizarAtendimento({
-          agendamentoId,
-          filaId: id,
-          pacienteId: ag.paciente_id,
-          pacienteNome: pac?.nome || 'Paciente',
-          medicoId: ag.medico_id,
-          convenioId: pac?.convenio_id,
-          tipoConsulta: ag.tipo,
-          tipoExame: ['exame', 'exames'].includes(String(ag.tipo || '').toLocaleLowerCase('pt-BR'))
-            ? ag.observacoes
-            : null,
-          clinicaId: profile?.clinica_id,
-        });
-        refresh();
-        if (!result.success) {
-          toast.error('Não foi possível finalizar o atendimento', { description: result.message });
-          return;
-        }
-        toast.success(`✅ Atendimento finalizado — ${pac?.nome || 'Paciente'}`, {
-          description: result.actions.join(' • '),
-          duration: 8000,
-          action: {
-            label: 'Abrir Caixa',
-            onClick: () => navigate('/caixa'),
-          },
-        });
-        return;
-      }
+      // Finalizar não acontece direto: abre a pergunta do retorno, e
+      // `confirmarFinalizacao` faz o trabalho com a resposta em mãos. É aqui
+      // que o profissional sabe se o paciente volta — depois de finalizado ele
+      // sai da fila e o momento passa.
+      setFinalizando({ filaId: id, agendamentoId, nome: getPacienteNome(agendamentoId) });
+      return;
     }
 
     // Fallback for other statuses.
@@ -759,6 +787,39 @@ export default function Fila() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      {/* ─── Retorno ───
+          Perguntado no fechamento porque é aqui que o profissional sabe se o
+          paciente volta. A tela de retorno existia no prontuário, numa aba que
+          é preciso lembrar de abrir — e o resultado foi zero retornos em 18
+          atendimentos. */}
+      <Dialog open={!!finalizando} onOpenChange={a => !a && setFinalizando(null)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Finalizar — {finalizando?.nome}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">Este paciente volta?</p>
+            <div className="grid grid-cols-3 gap-2">
+              {[7, 15, 30].map(d => (
+                <Button key={d} variant="outline" onClick={() => confirmarFinalizacao(d)}>
+                  {d} dias
+                </Button>
+              ))}
+              {[60, 90, 180].map(d => (
+                <Button key={d} variant="outline" onClick={() => confirmarFinalizacao(d)}>
+                  {d === 180 ? '6 meses' : `${d} dias`}
+                </Button>
+              ))}
+            </div>
+          </div>
+          <DialogFooter className="sm:justify-between">
+            <Button variant="ghost" onClick={() => setFinalizando(null)}>Cancelar</Button>
+            <Button onClick={() => confirmarFinalizacao(null)}>
+              Sem retorno — finalizar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
