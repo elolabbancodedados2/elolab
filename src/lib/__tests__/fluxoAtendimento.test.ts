@@ -367,6 +367,86 @@ describe('finalizacao - retorno e estados operacionais', () => {
   });
 });
 
+/**
+ * O caso do enunciado: o paciente pagou R$ 250 antes de entrar e levou uma
+ * sutura de R$ 100 no meio da consulta. O atendimento acabou, o dinheiro não
+ * entrou — e o paciente precisa aparecer no balcão, não sumir em "finalizado".
+ */
+describe('finalizacao - cobranca lancada durante a consulta', () => {
+  const cenario = (extras: Record<string, any>) => criarSupabaseMock({
+    'fila_atendimento.select': { data: { status: 'em_atendimento' }, error: null },
+    'fila_atendimento.update': { data: { id: 'fila-1' }, error: null },
+    'agendamentos.update': { data: { id: 'ag-1' }, error: null },
+    'lancamentos.select': { data: [{ id: 'lanc-1' }], error: null },
+    ...extras,
+  });
+
+  const finalizar = async () => {
+    const { autoFinalizarAtendimento } = await import('@/lib/workflowAutomation');
+    return autoFinalizarAtendimento({
+      agendamentoId: 'ag-1',
+      filaId: 'fila-1',
+      pacienteId: 'pac-1',
+      pacienteNome: 'Maria',
+      medicoId: 'med-1',
+      tipoConsulta: 'Consulta',
+      clinicaId: 'cli-1',
+    });
+  };
+
+  const statusGravado = () => mockAtual.chamadas
+    .filter(c => c.tabela === 'agendamentos' && c.op === 'update')
+    .map(c => c.payload?.status);
+
+  it('sobrou saldo com a trava ligada: vai para aguardando pagamento adicional', async () => {
+    mockAtual = cenario({
+      'clinicas.select': { data: { exigir_pagamento_previo: true }, error: null },
+      'rpc.saldo_devedor_do_agendamento': { data: 100, error: null },
+    });
+
+    const resultado = await finalizar();
+
+    expect(resultado.success).toBe(true);
+    expect(statusGravado()).toContain('aguardando_pagamento_adicional');
+    expect(resultado.actions).toContain('Agendamento → Aguardando pagamento adicional');
+  });
+
+  it('saldo zerado: finaliza como sempre', async () => {
+    mockAtual = cenario({
+      'clinicas.select': { data: { exigir_pagamento_previo: true }, error: null },
+      'rpc.saldo_devedor_do_agendamento': { data: 0, error: null },
+    });
+
+    await finalizar();
+    expect(statusGravado()).toContain('finalizado');
+    expect(statusGravado()).not.toContain('aguardando_pagamento_adicional');
+  });
+
+  it('trava desligada: o estado novo nao aparece, nem devendo', async () => {
+    // Clínica que não pediu pagamento antecipado não pode ver atendimentos
+    // saindo da contagem de "finalizado" em relatório e dashboard.
+    mockAtual = cenario({
+      'clinicas.select': { data: { exigir_pagamento_previo: false }, error: null },
+      'rpc.saldo_devedor_do_agendamento': { data: 100, error: null },
+    });
+
+    await finalizar();
+    expect(statusGravado()).toContain('finalizado');
+    expect(statusGravado()).not.toContain('aguardando_pagamento_adicional');
+  });
+
+  it('erro ao consultar o saldo nao impede o fechamento', async () => {
+    mockAtual = cenario({
+      'clinicas.select': { data: { exigir_pagamento_previo: true }, error: null },
+      'rpc.saldo_devedor_do_agendamento': { data: null, error: { message: 'timeout' } },
+    });
+
+    const resultado = await finalizar();
+    expect(resultado.success).toBe(true);
+    expect(statusGravado()).toContain('finalizado');
+  });
+});
+
 describe('dispensacao - baixa de estoque transacional', () => {
   it('usa a baixa atomica do banco e nao atualiza o saldo pela leitura da tela', async () => {
     mockAtual = criarSupabaseMock({

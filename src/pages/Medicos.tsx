@@ -227,6 +227,10 @@ function MedicoProfilePanel({ medico, onClose, onEdit }: { medico: any; onClose:
       finalizado: 'bg-muted text-muted-foreground',
       cancelado: 'bg-destructive/10 text-destructive border-destructive/20',
       em_atendimento: 'bg-warning/10 text-warning border-warning/20',
+      aguardando_pagamento: 'bg-warning/10 text-warning border-warning/20',
+      pago: 'bg-success/10 text-success border-success/20',
+      atendimento_finalizado: 'bg-muted text-muted-foreground',
+      aguardando_pagamento_adicional: 'bg-destructive/10 text-destructive border-destructive/20',
     };
     return map[s] || 'bg-muted text-muted-foreground';
   };

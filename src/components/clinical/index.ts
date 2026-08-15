@@ -11,3 +11,4 @@ export { VitalSignsChart } from './VitalSignsChart';
 export { DrugInteractionChecker } from './DrugInteractionChecker';
 export { DischargeReport } from './DischargeReport';
 export { DigitalSignature } from './DigitalSignature';
+export { ProcedimentosDoAtendimento } from './ProcedimentosDoAtendimento';

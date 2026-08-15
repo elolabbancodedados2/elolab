@@ -31,7 +31,7 @@ import {
   AllergyAlert, Cid10Search, ClinicalProtocols,
   ReturnScheduler, DischargeReport, AnexosProntuario,
   VitalSignsChart, PatientTimeline, PatientPhoto, DigitalSignature,
-  DrugInteractionChecker,
+  DrugInteractionChecker, ProcedimentosDoAtendimento,
 } from '@/components/clinical';
 import { ProntuarioAdendos } from '@/components/clinical/ProntuarioAdendos';
 import { usePacientes, useMedicos, useAgendamentos, useSupabaseQuery } from '@/hooks/useSupabaseData';
@@ -1490,6 +1490,16 @@ export default function Prontuarios() {
                   <Section icon={User} title="Orientações ao Paciente">
                     <Textarea placeholder="Cuidados, retorno, sinais de alarme..." value={currentProntuario.orientacoes_paciente || ''} onChange={e => updateField('orientacoes_paciente', e.target.value)} rows={3} />
                   </Section>
+                  {/* Procedimento feito na consulta vira cobrança no balcão.
+                      Sem agendamento não há conta onde lançar. */}
+                  {routeAgendamentoId && (
+                    <Section icon={CreditCard} title="Procedimentos Realizados (cobrança)">
+                      <ProcedimentosDoAtendimento
+                        agendamentoId={routeAgendamentoId}
+                        prontuarioId={currentProntuario.id || null}
+                      />
+                    </Section>
+                  )}
                   <Section icon={ShieldCheck} title="Observações Internas" collapsible>
                     <Textarea placeholder="Anotações internas (não imprime)..." value={currentProntuario.observacoes_internas || ''} onChange={e => updateField('observacoes_internas', e.target.value)} rows={2} className="border-dashed" />
                   </Section>
