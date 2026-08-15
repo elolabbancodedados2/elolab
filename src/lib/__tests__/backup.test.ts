@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { validateBackup } from '@/lib/backup';
+import { validateBackup, clinicaDoBackup, TABELAS_QUE_NAO_SE_RESTAURA } from '@/lib/backup';
 
 /**
  * `validateBackup` é o portão da restauração: é ele que decide se um arquivo
@@ -92,5 +92,44 @@ describe('validateBackup', () => {
     });
     expect(r.backup?.metadata.totalRecords).toBe(3);
     expect(r.backup?.metadata.collectionCounts).toEqual({ pacientes: 3 });
+  });
+});
+
+
+/**
+ * A restauração escreve por cima do banco de uma clínica em produção. Estes
+ * testes cobrem as duas decisões que impedem isso de virar estrago: o que NÃO
+ * se restaura, e de que clínica o arquivo é.
+ */
+describe('o que a restauração recusa a tocar', () => {
+  it('não restaura contas, papéis nem a plataforma', () => {
+    for (const t of ['platform_admins', 'user_roles', 'profiles', 'clinicas', 'plataforma_estado']) {
+      expect(TABELAS_QUE_NAO_SE_RESTAURA.has(t)).toBe(true);
+    }
+  });
+
+  it('não reescreve trilha de auditoria', () => {
+    for (const t of ['audit_log', 'prontuario_acessos', 'lgpd_consent_log']) {
+      expect(TABELAS_QUE_NAO_SE_RESTAURA.has(t)).toBe(true);
+    }
+  });
+
+  it('mas restaura o dado clínico e financeiro, que é o motivo do backup', () => {
+    for (const t of ['pacientes', 'agendamentos', 'prontuarios', 'lancamentos', 'pagamentos', 'triagens']) {
+      expect(TABELAS_QUE_NAO_SE_RESTAURA.has(t)).toBe(false);
+    }
+  });
+});
+
+describe('clinicaDoBackup', () => {
+  it('acha a clínica de origem na primeira linha que tiver', () => {
+    expect(clinicaDoBackup({
+      collections: { convenios: [{ id: '1' }], pacientes: [{ id: '2', clinica_id: 'cli-A' }] },
+    } as any)).toBe('cli-A');
+  });
+
+  it('devolve null quando não dá para saber, em vez de chutar', () => {
+    expect(clinicaDoBackup({ collections: { cid10: [{ id: '1' }] } } as any)).toBeNull();
+    expect(clinicaDoBackup({ collections: {} } as any)).toBeNull();
   });
 });

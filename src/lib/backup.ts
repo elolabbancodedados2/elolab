@@ -241,29 +241,90 @@ async function ordemDeRestauracao(presentes: string[]): Promise<string[]> {
   return [...ordenadas, ...sobrando];
 }
 
+/**
+ * Tabelas que a restauração NUNCA escreve.
+ *
+ * Não são dados da clínica: são o chão em que o SaaS pisa. Restaurar
+ * `platform_admins` ou `user_roles` a partir de um JSON — que é um arquivo de
+ * texto que qualquer um edita antes de subir — seria entregar a plataforma a
+ * quem tem o botão de restaurar. `clinicas` fica de fora pelo mesmo motivo:
+ * um backup antigo desligaria a regra de pagamento e mudaria o nome da clínica
+ * sem ninguém pedir.
+ *
+ * O RLS continua sendo a defesa real; esta lista existe para o acidente, que é
+ * o caso comum: restaurar um backup de três meses atrás e voltar os papéis de
+ * todo mundo junto.
+ */
+export const TABELAS_QUE_NAO_SE_RESTAURA = new Set([
+  'platform_admins', 'platform_impersonation_log', 'plataforma_estado',
+  'admin_acoes', 'user_roles', 'profiles', 'clinicas',
+  'planos', 'assinaturas_plano', 'registros_pendentes',
+  'monitor_saude', 'cid10',
+  // Trilhas de auditoria: reescrever histórico de acesso é pior que perdê-lo.
+  'audit_log', 'prontuario_acessos',
+  'lgpd_access_request_log', 'lgpd_consent_log', 'lgpd_deletion_log',
+]);
+
 export interface ResultadoRestauracao {
   success: boolean;
   restored: number;
   porTabela: ResultadoDaTabela[];
   falhas: string[];
+  /** Tabelas presentes no arquivo que foram deliberadamente puladas. */
+  puladas: string[];
+  /** Linhas cuja clínica foi trocada para a do usuário logado. */
+  remapeadas: number;
+}
+
+/** De que clínica é este arquivo. `null` quando não dá para saber. */
+export function clinicaDoBackup(backup: BackupData): string | null {
+  for (const linhas of Object.values(backup.collections)) {
+    for (const linha of linhas ?? []) {
+      const id = (linha as any)?.clinica_id;
+      if (id) return String(id);
+    }
+  }
+  return null;
 }
 
 export async function restoreBackup(
   backup: BackupData,
   overwrite = true,
+  clinicaDestino?: string | null,
+  aoProgredir?: (feitas: number, total: number, tabela: string) => void,
 ): Promise<ResultadoRestauracao> {
-  const presentes = Object.keys(backup.collections).filter(
+  const todas = Object.keys(backup.collections).filter(
     t => Array.isArray(backup.collections[t]) && backup.collections[t].length > 0,
   );
+  const puladas = todas.filter(t => TABELAS_QUE_NAO_SE_RESTAURA.has(t));
+  const presentes = todas.filter(t => !TABELAS_QUE_NAO_SE_RESTAURA.has(t));
   const ordem = await ordemDeRestauracao(presentes);
 
   const porTabela: ResultadoDaTabela[] = [];
   const falhas: string[] = [];
   let restored = 0;
+  let remapeadas = 0;
 
-  for (const tabela of ordem) {
-    const linhas = backup.collections[tabela];
-    if (!linhas?.length) continue;
+  for (let t = 0; t < ordem.length; t++) {
+    const tabela = ordem[t];
+    aoProgredir?.(t, ordem.length, tabela);
+
+    const originais = backup.collections[tabela];
+    if (!originais?.length) continue;
+
+    // A clínica de destino é sempre a de quem está restaurando. Um backup
+    // carrega o `clinica_id` de origem; restaurado noutra clínica sem trocar,
+    // ele criaria linhas invisíveis (o RLS não as mostra a ninguém) ou seria
+    // recusado — e nos dois casos a pessoa não entenderia o porquê.
+    const linhas = clinicaDestino
+      ? originais.map(l => {
+          if (l && typeof l === 'object' && 'clinica_id' in l && l.clinica_id !== clinicaDestino) {
+            remapeadas++;
+            return { ...l, clinica_id: clinicaDestino };
+          }
+          return l;
+        })
+      : originais;
 
     let inseridas = 0;
     let erroDaTabela: string | undefined;
@@ -284,8 +345,10 @@ export async function restoreBackup(
     porTabela.push({ tabela, linhas: inseridas, erro: erroDaTabela });
   }
 
+  aoProgredir?.(ordem.length, ordem.length, '');
+
   // O antigo devolvia `success: true` sempre, inclusive quando nada entrou.
-  return { success: falhas.length === 0, restored, porTabela, falhas };
+  return { success: falhas.length === 0, restored, porTabela, falhas, puladas, remapeadas };
 }
 
 export async function getStorageStats(): Promise<{ used: string; collections: Record<string, number> }> {

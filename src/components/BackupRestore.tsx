@@ -25,11 +25,13 @@ import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
+import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { 
   downloadBackup, 
   validateBackup, 
   restoreBackup, 
   getStorageStats,
+  clinicaDoBackup,
   BackupData 
 } from '@/lib/backup';
 import { format } from 'date-fns';
@@ -64,8 +66,10 @@ export function BackupRestore() {
   const [restoring, setRestoring] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [progresso, setProgresso] = useState<{ feitas: number; total: number; tabela: string } | null>(null);
+  const [deOutraClinica, setDeOutraClinica] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
+  const { profile } = useSupabaseAuth();
 
   useEffect(() => {
     getStorageStats().then(setStats);
@@ -130,8 +134,24 @@ export function BackupRestore() {
           return;
         }
 
-        setPreviewData(validation.backup!);
+        const b = validation.backup!;
+        setPreviewData(b);
         setShowPreview(true);
+
+        // Restaurar backup da clínica errada é o engano mais fácil de cometer
+        // e o mais caro de desfazer — os dois arquivos têm o mesmo nome.
+        const origem = clinicaDoBackup(b);
+        setDeOutraClinica(!!origem && !!profile?.clinica_id && origem !== profile.clinica_id);
+
+        if (!b.completo) {
+          toast({
+            title: 'Este backup está incompleto',
+            description: b.metadata.tabelasComFalha.length
+              ? `Faltam dados de: ${b.metadata.tabelasComFalha.map(f => f.split(':')[0]).join(', ')}.`
+              : 'Alguma tabela foi cortada no limite quando o arquivo foi gerado.',
+            variant: 'destructive',
+          });
+        }
       } catch {
         toast({
           title: 'Erro ao ler arquivo',
@@ -152,7 +172,7 @@ export function BackupRestore() {
     
     setRestoring(true);
     try {
-      const result = await restoreBackup(previewData, overwrite);
+      const result = await restoreBackup(previewData, overwrite, profile?.clinica_id ?? null);
 
       setShowPreview(false);
       const newStats = await getStorageStats();
@@ -161,7 +181,11 @@ export function BackupRestore() {
       if (result.success) {
         toast({
           title: 'Backup restaurado',
-          description: `${result.restored.toLocaleString('pt-BR')} registros em ${result.porTabela.length} tabelas.`,
+          description: [
+            `${result.restored.toLocaleString('pt-BR')} registros em ${result.porTabela.length} tabelas.`,
+            result.remapeadas > 0 ? `${result.remapeadas.toLocaleString('pt-BR')} vieram de outra clínica e foram trazidos para a sua.` : '',
+            result.puladas.length > 0 ? `Não restauradas (contas, papéis e auditoria): ${result.puladas.join(', ')}.` : '',
+          ].filter(Boolean).join(' '),
         });
       } else {
         // Restauração parcial deixa o banco num estado que ninguém consegue
@@ -295,6 +319,39 @@ export function BackupRestore() {
           
           {previewData && (
             <div className="space-y-4 py-4">
+              {deOutraClinica && (
+                <div className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/10 p-3">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
+                  <div className="text-xs">
+                    <p className="font-semibold text-warning">Este backup é de outra clínica</p>
+                    <p className="text-muted-foreground">
+                      Os dados vão entrar na SUA clínica — pacientes, agendamentos e
+                      financeiro do arquivo passam a ser seus. Se você só queria
+                      restaurar a sua própria clínica, cancele e confira o arquivo.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {!previewData.completo && (
+                <div className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 p-3">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+                  <div className="text-xs">
+                    <p className="font-semibold text-destructive">Arquivo incompleto</p>
+                    <p className="text-muted-foreground">
+                      Ele foi gerado com falha em alguma tabela. Restaurar traz o
+                      que tem, mas não devolve o que ficou de fora.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              <p className="text-[11px] text-muted-foreground">
+                Contas de usuário, papéis e trilhas de auditoria não são
+                restaurados — reescrever histórico de acesso é pior que perdê-lo,
+                e devolver papéis antigos mudaria quem pode o quê sem ninguém pedir.
+              </p>
+
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
                   <span className="text-muted-foreground">Data do backup:</span>
