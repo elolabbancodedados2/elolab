@@ -469,6 +469,51 @@ function AnexosWrapper({ pacienteId, prontuarioId }: { pacienteId: string; pront
 // ─── MAIN COMPONENT ───────────────────────────────────────
 // ═══════════════════════════════════════════════════════════
 export default function Prontuarios() {
+  const [dispensando, setDispensando] = useState(false);
+
+  /**
+   * Dá baixa no estoque dos medicamentos que a clínica entregou em mãos.
+   *
+   * Só o que tem quantidade preenchida entra: sem quantidade não há o que
+   * descontar, e chutar "1" faria o estoque divergir do armário — que é pior
+   * que não controlar.
+   */
+  const dispensarNaClinica = async () => {
+    const itens = prescricoes
+      .filter(p => p.medicamento?.trim() && p.quantidade?.trim())
+      .map(p => ({ nome: p.medicamento.trim(), quantidade: p.quantidade.trim() }));
+
+    if (itens.length === 0) {
+      toast.error('Preencha a quantidade dos medicamentos entregues');
+      return;
+    }
+
+    setDispensando(true);
+    try {
+      const { autoDispensarMedicamentos } = await import('@/lib/workflowAutomation');
+      const r = await autoDispensarMedicamentos({
+        medicamentos: itens,
+        pacienteId: selectedPaciente?.id ?? '',
+        pacienteNome: selectedPaciente?.nome ?? 'Paciente',
+        userId: user?.id,
+      });
+
+      if (!r.success) throw new Error(r.message);
+      // Baixa parcial não é sucesso silencioso: o que não saiu precisa aparecer,
+      // senão a clínica acha que descontou tudo.
+      const houveAlerta = r.actions.some(a => a.includes('não encontrado') || a.includes('insuficiente'));
+      if (houveAlerta) {
+        toast.warning(r.message, { description: r.actions.join(' • '), duration: 9000 });
+      } else {
+        toast.success(r.message, { description: r.actions.join(' • ') });
+      }
+    } catch (e: any) {
+      toast.error('Não foi possível dar baixa', { description: e?.message });
+    } finally {
+      setDispensando(false);
+    }
+  };
+
   const [searchParams] = useSearchParams();
   const routePacienteId = searchParams.get('paciente');
   const routeAgendamentoId = searchParams.get('agendamento');
@@ -1516,6 +1561,31 @@ export default function Prontuarios() {
                       <Button variant="outline" size="sm" onClick={handleAddPrescricao} className="text-[10px] h-6 gap-1"><Plus className="h-3 w-3" />Adicionar</Button>
                     </div>
                   </div>
+
+                  {/* Dispensar é DIFERENTE de prescrever, e por isso é um botão
+                      separado: a maioria das receitas o paciente leva para a
+                      farmácia. Baixar o estoque a cada prescrição faria o
+                      sistema descontar remédio que nunca saiu do armário.
+
+                      A função de baixa existia, testada, e NINGUÉM a chamava —
+                      por isso o estoque tinha zero movimentações e o alerta de
+                      estoque baixo disparava todo dia sobre um número que nunca
+                      mudava. */}
+                  {prescricoes.filter(p => p.medicamento && p.quantidade).length > 0 && (
+                    <div className="flex items-center justify-between gap-2 rounded-lg border border-border/50 px-3 py-2">
+                      <p className="text-[10px] text-muted-foreground">
+                        Entregou o medicamento aqui na clínica? Dê baixa no estoque.
+                      </p>
+                      <Button
+                        variant="outline" size="sm" className="h-6 shrink-0 gap-1 text-[10px]"
+                        disabled={dispensando}
+                        onClick={dispensarNaClinica}
+                      >
+                        <Pill className="h-3 w-3" />
+                        {dispensando ? 'Baixando…' : 'Dispensar na clínica'}
+                      </Button>
+                    </div>
+                  )}
                   <p className="text-[10px] text-muted-foreground flex items-center gap-1 bg-muted/40 rounded-lg p-2">
                     <BadgeCheck className="h-3 w-3" />
                     Prescrição sai sem assinatura digital — imprima e assine, ou assine o PDF no gov.br
