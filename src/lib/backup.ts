@@ -365,3 +365,72 @@ export async function getStorageStats(): Promise<{ used: string; collections: Re
   const total = Object.values(collectionCounts).reduce((a, b) => a + b, 0);
   return { used: `${total.toLocaleString('pt-BR')} registros`, collections: collectionCounts };
 }
+
+export interface PreviaDaTabela {
+  tabela: string;
+  novos: number;
+  sobrescritos: number;
+}
+
+export interface PreviaRestauracao {
+  porTabela: PreviaDaTabela[];
+  novos: number;
+  sobrescritos: number;
+  puladas: string[];
+}
+
+/**
+ * O que a restauração vai fazer, ANTES de fazer.
+ *
+ * Restaurar é derramar um arquivo por cima de um banco em produção, e a
+ * pergunta que decide se é seguro — "isso vai criar ou vai sobrescrever?" —
+ * não tinha resposta na tela. Um backup de três meses atrás com 800 pacientes
+ * pode significar 800 cadastros novos ou 800 cadastros voltando no tempo, e
+ * são situações opostas.
+ *
+ * Conta por `id`: o que já existe será sobrescrito, o resto é novo. Só lê.
+ */
+export async function previaRestauracao(backup: BackupData): Promise<PreviaRestauracao> {
+  const todas = Object.keys(backup.collections).filter(
+    t => Array.isArray(backup.collections[t]) && backup.collections[t].length > 0,
+  );
+  const puladas = todas.filter(t => TABELAS_QUE_NAO_SE_RESTAURA.has(t));
+  const alvo = todas.filter(t => !TABELAS_QUE_NAO_SE_RESTAURA.has(t));
+
+  const porTabela: PreviaDaTabela[] = [];
+
+  for (const tabela of alvo) {
+    const ids = backup.collections[tabela]
+      .map((l: any) => l?.id)
+      .filter((id: any) => typeof id === 'string');
+
+    // Linha sem `id` é sempre inserção — não há com o que colidir.
+    const semId = backup.collections[tabela].length - ids.length;
+
+    let existentes = 0;
+    for (let i = 0; i < ids.length; i += PAGINA) {
+      const lote = ids.slice(i, i + PAGINA);
+      const { data, error } = await (supabase as any)
+        .from(tabela).select('id').in('id', lote);
+      // Tabela ilegível para este perfil: some da prévia em vez de mentir um
+      // número. A restauração vai reportar o erro dela por tabela.
+      if (error) { existentes = -1; break; }
+      existentes += data?.length ?? 0;
+    }
+
+    if (existentes < 0) continue;
+
+    porTabela.push({
+      tabela,
+      sobrescritos: existentes,
+      novos: ids.length - existentes + semId,
+    });
+  }
+
+  return {
+    porTabela: porTabela.sort((a, b) => (b.novos + b.sobrescritos) - (a.novos + a.sobrescritos)),
+    novos: porTabela.reduce((s, t) => s + t.novos, 0),
+    sobrescritos: porTabela.reduce((s, t) => s + t.sobrescritos, 0),
+    puladas,
+  };
+}

@@ -32,6 +32,7 @@ import {
   restoreBackup, 
   getStorageStats,
   clinicaDoBackup,
+  previaRestauracao,
   BackupData 
 } from '@/lib/backup';
 import { format } from 'date-fns';
@@ -67,6 +68,8 @@ export function BackupRestore() {
   const [downloading, setDownloading] = useState(false);
   const [progresso, setProgresso] = useState<{ feitas: number; total: number; tabela: string } | null>(null);
   const [deOutraClinica, setDeOutraClinica] = useState(false);
+  const [previa, setPrevia] = useState<{ novos: number; sobrescritos: number; porTabela: Array<{ tabela: string; novos: number; sobrescritos: number }> } | null>(null);
+  const [calculandoPrevia, setCalculandoPrevia] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const { profile } = useSupabaseAuth();
@@ -142,6 +145,15 @@ export function BackupRestore() {
         // e o mais caro de desfazer — os dois arquivos têm o mesmo nome.
         const origem = clinicaDoBackup(b);
         setDeOutraClinica(!!origem && !!profile?.clinica_id && origem !== profile.clinica_id);
+
+        // "Isso vai criar ou vai sobrescrever?" é a pergunta que decide se
+        // restaurar é seguro, e ela precisa ser respondida ANTES do clique.
+        setPrevia(null);
+        setCalculandoPrevia(true);
+        previaRestauracao(b)
+          .then(p => setPrevia(p))
+          .catch(() => setPrevia(null))
+          .finally(() => setCalculandoPrevia(false));
 
         if (!b.completo) {
           toast({
@@ -342,6 +354,48 @@ export function BackupRestore() {
                       Ele foi gerado com falha em alguma tabela. Restaurar traz o
                       que tem, mas não devolve o que ficou de fora.
                     </p>
+                  </div>
+                </div>
+              )}
+
+              {calculandoPrevia && (
+                <p className="text-xs text-muted-foreground">Conferindo o que vai mudar…</p>
+              )}
+
+              {previa && (
+                <div className="rounded-lg border border-border/50 p-3 space-y-2">
+                  <div className="flex flex-wrap gap-4">
+                    <div>
+                      <p className="text-xl font-bold tabular-nums text-success">
+                        {previa.novos.toLocaleString('pt-BR')}
+                      </p>
+                      <p className="text-[10px] text-muted-foreground">registros novos</p>
+                    </div>
+                    <div>
+                      <p className={`text-xl font-bold tabular-nums ${previa.sobrescritos > 0 ? 'text-warning' : ''}`}>
+                        {previa.sobrescritos.toLocaleString('pt-BR')}
+                      </p>
+                      <p className="text-[10px] text-muted-foreground">
+                        já existem e serão {overwrite ? 'SOBRESCRITOS' : 'mantidos como estão'}
+                      </p>
+                    </div>
+                  </div>
+                  {previa.sobrescritos > 0 && overwrite && (
+                    <p className="text-[11px] text-warning">
+                      Um backup antigo faz esses {previa.sobrescritos.toLocaleString('pt-BR')} registros
+                      voltarem ao estado de quando o arquivo foi gerado. Desmarque
+                      "sobrescrever" para só acrescentar o que falta.
+                    </p>
+                  )}
+                  <div className="max-h-24 overflow-y-auto text-[10px] text-muted-foreground">
+                    {previa.porTabela.slice(0, 12).map(t => (
+                      <div key={t.tabela} className="flex justify-between gap-2">
+                        <span className="truncate">{COLLECTION_LABELS[t.tabela] ?? t.tabela}</span>
+                        <span className="shrink-0 tabular-nums">
+                          +{t.novos}{t.sobrescritos > 0 && ` · ~${t.sobrescritos}`}
+                        </span>
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}
