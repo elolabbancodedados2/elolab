@@ -63,6 +63,7 @@ export function BackupRestore() {
   const [overwrite, setOverwrite] = useState(true);
   const [restoring, setRestoring] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [progresso, setProgresso] = useState<{ feitas: number; total: number; tabela: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
@@ -72,16 +73,41 @@ export function BackupRestore() {
 
   const handleDownload = async () => {
     setDownloading(true);
+    setProgresso(null);
     try {
-      await downloadBackup();
+      const { backup } = await downloadBackup((feitas, total, tabela) =>
+        setProgresso({ feitas, total, tabela }),
+      );
+
+      // "Backup criado com sucesso" num arquivo pela metade é a mentira mais
+      // cara deste sistema: só se descobre no dia de restaurar.
+      if (!backup.completo) {
+        const falhas = backup.metadata.tabelasComFalha;
+        const cortadas = backup.metadata.tabelasTruncadas;
+        toast({
+          title: 'Backup INCOMPLETO — o arquivo saiu com "PARCIAL" no nome',
+          description: [
+            falhas.length ? `Não consegui ler: ${falhas.slice(0, 3).join('; ')}${falhas.length > 3 ? ` e mais ${falhas.length - 3}` : ''}.` : '',
+            cortadas.length ? `Cortadas no limite: ${cortadas.join(', ')}.` : '',
+            'Não use este arquivo como backup único.',
+          ].filter(Boolean).join(' '),
+          variant: 'destructive',
+        });
+      } else {
+        toast({
+          title: 'Backup completo baixado',
+          description: `${backup.metadata.totalRecords.toLocaleString('pt-BR')} registros de ${backup.metadata.tablesCount} tabelas.`,
+        });
+      }
+    } catch (e: any) {
       toast({
-        title: 'Backup criado',
-        description: 'O arquivo de backup foi baixado com sucesso.',
+        title: 'Erro ao criar backup',
+        description: e?.message || 'Tente novamente.',
+        variant: 'destructive',
       });
-    } catch {
-      toast({ title: 'Erro ao criar backup', variant: 'destructive' });
     } finally {
       setDownloading(false);
+      setProgresso(null);
     }
   };
 
@@ -127,17 +153,31 @@ export function BackupRestore() {
     setRestoring(true);
     try {
       const result = await restoreBackup(previewData, overwrite);
-      
+
       setShowPreview(false);
       const newStats = await getStorageStats();
       setStats(newStats);
-      
+
+      if (result.success) {
+        toast({
+          title: 'Backup restaurado',
+          description: `${result.restored.toLocaleString('pt-BR')} registros em ${result.porTabela.length} tabelas.`,
+        });
+      } else {
+        // Restauração parcial deixa o banco num estado que ninguém consegue
+        // avaliar de fora. Dizer quais tabelas falharam é o mínimo.
+        toast({
+          title: `Restauração parcial — ${result.falhas.length} tabela(s) falharam`,
+          description: `${result.restored.toLocaleString('pt-BR')} registros entraram. Falhou: ${result.falhas.slice(0, 3).join('; ')}${result.falhas.length > 3 ? ` e mais ${result.falhas.length - 3}` : ''}.`,
+          variant: 'destructive',
+        });
+      }
+    } catch (e: any) {
       toast({
-        title: 'Backup restaurado',
-        description: `${result.restored} registros foram restaurados com sucesso.`,
+        title: 'Erro ao restaurar backup',
+        description: e?.message || 'Tente novamente.',
+        variant: 'destructive',
       });
-    } catch {
-      toast({ title: 'Erro ao restaurar backup', variant: 'destructive' });
     } finally {
       setRestoring(false);
     }
@@ -154,7 +194,8 @@ export function BackupRestore() {
               Fazer Backup
             </CardTitle>
             <CardDescription>
-              Baixe todos os dados do Supabase em um arquivo JSON
+              Todas as 78 tabelas da clínica em um arquivo JSON — inclui
+              pagamentos, triagem, anexos de prontuário e a trilha de LGPD.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -166,6 +207,22 @@ export function BackupRestore() {
               <Download className="mr-2 h-4 w-4" />
               {downloading ? 'Exportando...' : 'Baixar Backup'}
             </Button>
+            {progresso && (
+              // São 78 tabelas: sem isto o botão fica "Exportando..." por um
+              // minuto e a pessoa acha que travou e recarrega a página.
+              <div className="space-y-1">
+                <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                  <div
+                    className="h-full bg-primary transition-all"
+                    style={{ width: `${Math.round((progresso.feitas / progresso.total) * 100)}%` }}
+                  />
+                </div>
+                <p className="text-[11px] text-muted-foreground tabular-nums">
+                  {progresso.feitas} de {progresso.total} tabelas
+                  {progresso.tabela ? ` · ${progresso.tabela}` : ''}
+                </p>
+              </div>
+            )}
           </CardContent>
         </Card>
 
