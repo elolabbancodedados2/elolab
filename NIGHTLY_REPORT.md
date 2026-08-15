@@ -263,3 +263,97 @@ Com a flag, funcionou bem: dos 15 achados que trouxe, confirmei 10 no código e
 descartei os demais após verificação. Vale manter o hábito de reconferir cada
 um — o de nº 3, por exemplo, era menos grave do que ele estimou, porque o
 `EXISTS` que eu já tinha posto falha no sentido seguro.
+
+---
+---
+
+# Continuação — 14 e 15/08/2026: pagamento antes da consulta
+
+As nove etapas do fluxo pedido, aplicadas em produção uma por vez, cada uma
+com verificação contra o banco real terminando em `ROLLBACK`.
+
+## Resumo
+
+| | |
+|---|---|
+| Etapas | **9 de 9** concluídas |
+| Testes | 306 → **358** unitários |
+| Migrations aplicadas | 16, todas com `migration repair --status applied` |
+| Verificações contra o banco real | 6 arquivos em `supabase/verificacoes/` |
+| Produção depois de tudo | 16 clínicas · 80 lançamentos · R$ 21.147,84 — **inalterados** |
+
+**A propriedade que sustenta as nove etapas:** nada muda até a clínica ligar a
+chave. `clinicas.exigir_pagamento_previo` e `clinicas.exigir_triagem` nascem
+`false`; com elas desligadas o sistema se comporta exatamente como antes. Hoje
+**nenhuma das 16 clínicas** tem qualquer uma ligada — o código está em
+produção, o comportamento não mudou para ninguém.
+
+## As nove etapas
+
+| # | O quê | Commit |
+|---|---|---|
+| 1 | Estados do fluxo no enum (`aguardando_pagamento`, `pago`, `aguardando_triagem`, `em_triagem`, `atendimento_finalizado`, `aguardando_pagamento_adicional`) | — |
+| 2 | Conta com itens e pagamentos: uma conta pode ter vários pagamentos (R$ 200 Pix + R$ 300 cartão) e vários itens | — |
+| 3 | RPC `registrar_pagamento` com chave de idempotência e `FOR UPDATE`: dois cliques ou um refresh não viram dois pagamentos | — |
+| 4 | Trava no banco — `payment_status != PAID` bloqueia de verdade, não só visualmente | — |
+| 5 | Tela de pagamento: Valor / Já pago / Saldo, formas múltiplas, pagamento parcial | — |
+| 6 | Fila do profissional separa quem pode ser chamado de quem está no balcão | `b0df884` |
+| 7 | Triagem entre o pagamento e a fila — opcional por clínica | `c38403d` |
+| 8 | Procedimento lançado na consulta vira cobrança adicional no balcão | `49c7dc7` |
+| 9 | Painel do dia com as sete perguntas da recepção | `1ed1b39` |
+
+## Decisões que tomei no seu lugar
+
+Você delegou ("faça o que for melhor"). As quatro, com o porquê:
+
+1. **Trava de pagamento desligada por padrão, ligável por clínica.** Ligar para
+   as 16 de uma vez mudaria a operação de clínicas que não pediram nada.
+2. **Pagamento parcial é permitido, mas não libera a consulta.** Recusar o
+   parcial faria a recepcionista registrar R$ 0 e cobrar por fora; aceitar e
+   liberar furaria a regra. O paciente que pagou metade fica visível, com o
+   saldo à mostra.
+3. **Triagem opcional por clínica, desligada por padrão.** Consultório de um
+   clínico só não tem enfermagem: triagem obrigatória congelaria a fila num
+   passo que ninguém pode executar.
+4. **Cobrança adicional só muda o estado onde a trava está ligada.** Criar o
+   estado `aguardando_pagamento_adicional` para todos tiraria atendimentos da
+   contagem de "finalizado" em relatório e dashboard sem ninguém ter pedido.
+
+## Bugs encontrados pelas verificações — antes de chegar a produção
+
+Nenhum destes veio de relato: todos apareceram porque a verificação roda contra
+o banco de verdade.
+
+1. **`lancamentos_valor_pago_coerente` proibia pagamento parcial** (23514). A
+   restrição exigia `valor_pago` igual ao total. Descoberto pelo teste da
+   etapa 2, antes de qualquer código usar a coluna.
+2. **A conta antiga perdia o valor ao receber o primeiro item.**
+   `recalcular_conta` faz `valor = SUM(itens)`, e **todas as 80 contas em
+   produção** estão no modelo antigo, sem itens. Consulta R$ 250 + sutura
+   R$ 100 dava **R$ 100**. Agora a conta vira item antes de receber o
+   adicional.
+3. **A trava rejeitava a própria compensação de erro.**
+   `autoFinalizarAtendimento` devolve o agendamento para `em_atendimento` quando
+   o faturamento falha; com saldo reaberto, a trava barrava — erro dentro do
+   tratamento de erro. A trava guarda a **entrada** no consultório; quem já foi
+   atendido não pode ser des-atendido.
+4. **Conta paga à moda antiga continuava marcada "pago" devendo o adicional.**
+   `recalcular_conta` só acertava o status quando havia linha em `pagamentos`.
+
+## O que ficou fora, e por quê
+
+- **Ligar as chaves para alguma clínica.** É decisão sua e muda a operação do
+  balcão no dia seguinte. Está tudo pronto; o comando está no rodapé de
+  `20260814210000_trava_pagamento_antes_da_consulta.sql` e de
+  `20260814250000_triagem_entre_o_pagamento_e_a_fila.sql`.
+- **As sete perguntas do painel** foram reconstruídas a partir do fluxo — o
+  texto original da seção 11 não estava mais recuperável. Se a sua lista era
+  outra, `resumoDoDia` em `src/components/recepcao/PainelDoDia.tsx` é uma
+  função pura e trocar as perguntas é barato.
+
+## Pendências suas
+
+1. **Rotacione o token do Supabase** — ele passou pela conversa.
+2. PR #28 continua aberto.
+3. Existe uma "Clínica de QA Descartavel" (01/08) em produção que não é minha.
+4. 61 botões de ícone ainda sem `aria-label` (teto travado no CI, não sobe).
