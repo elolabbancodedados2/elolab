@@ -14,7 +14,9 @@
 import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { Wallet, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { Wallet, AlertTriangle, CheckCircle2, ChevronRight, ChevronDown } from 'lucide-react';
+import { useState } from 'react';
+import { PagamentosDaCobranca } from './PagamentosDaCobranca';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { supabase } from '@/integrations/supabase/client';
@@ -54,6 +56,10 @@ function faltaNesta(c: Cobranca): number {
 }
 
 export function ExtratoDoPaciente({ pacienteId }: Props) {
+  // Uma cobrança por vez: abrir todas encheria a ficha de detalhe que ninguém
+  // pediu.
+  const [aberta, setAberta] = useState<string | null>(null);
+
   const { data: cobrancas = [], isLoading, error } = useQuery({
     queryKey: ['extrato-paciente', pacienteId],
     enabled: !!pacienteId,
@@ -135,8 +141,17 @@ export function ExtratoDoPaciente({ pacienteId }: Props) {
           const vencida = falta > 0.009 && !!c.data_vencimento && c.data_vencimento < hoje
             && !['cancelado', 'estornado'].includes(c.status);
 
+          const expandida = aberta === c.id;
           return (
-            <div key={c.id} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 rounded-lg border border-border/50 px-3 py-2 text-xs">
+            <div key={c.id} className="rounded-lg border border-border/50">
+            <button
+              type="button"
+              onClick={() => setAberta(expandida ? null : c.id)}
+              className="flex w-full flex-wrap items-baseline gap-x-3 gap-y-1 px-3 py-2 text-left text-xs hover:bg-accent/30"
+            >
+              {expandida
+                ? <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground" />
+                : <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground" />}
               <span className="tabular-nums text-muted-foreground">
                 {format(new Date(`${c.data}T12:00:00`), 'dd/MM/yy', { locale: ptBR })}
               </span>
@@ -153,6 +168,12 @@ export function ExtratoDoPaciente({ pacienteId }: Props) {
               {falta > 0.009 && (
                 <span className="tabular-nums text-destructive">falta {formatCurrency(falta)}</span>
               )}
+            </button>
+            {expandida && (
+              <div className="border-t border-border/50 py-2">
+                <PagamentosDaCobranca lancamentoId={c.id} pacienteId={pacienteId} />
+              </div>
+            )}
             </div>
           );
         })}

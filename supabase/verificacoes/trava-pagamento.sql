@@ -25,7 +25,12 @@ DECLARE
   r_desligada text; r_ligada_devendo text; r_ligada_paga text;
   r_retorno text; r_isento text; r_liberado text;
 BEGIN
-  INSERT INTO public.clinicas (nome) VALUES ('TESTE TRAVA') RETURNING id INTO cli;
+  -- `exigir_pagamento_previo` é explícito aqui porque o PADRÃO mudou: desde
+  -- 20260815120000 a trava nasce LIGADA. O caso 1 testa justamente a clínica
+  -- que a desligou, então precisa desligar de propósito — depender do padrão
+  -- fez este teste acusar falha quando o padrão virou.
+  INSERT INTO public.clinicas (nome, exigir_pagamento_previo)
+    VALUES ('TESTE TRAVA', false) RETURNING id INTO cli;
   INSERT INTO public.pacientes (nome, clinica_id) VALUES ('Paciente Teste', cli) RETURNING id INTO pac;
   INSERT INTO public.medicos (nome, crm, clinica_id) VALUES ('Dr Teste', 'TESTE-000', cli) RETURNING id INTO med;
 

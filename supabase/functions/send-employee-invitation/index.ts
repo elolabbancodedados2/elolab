@@ -93,9 +93,20 @@ Deno.serve(async (req) => {
       throw new Error("Funcionário não encontrado");
     }
 
-    if (funcData.clinica_id && clinicaId && funcData.clinica_id !== clinicaId) {
+    // A comparação exigia que OS DOIS lados existissem — com qualquer um deles
+    // nulo, a checagem era pulada. Um administrador de plataforma (sem clínica
+    // no perfil) convidava para qualquer clínica, e funcionário sem clínica
+    // passava por cima do escopo. Agora os dois precisam existir e bater.
+    if (!clinicaId || !funcData.clinica_id || funcData.clinica_id !== clinicaId) {
       return new Response(
-        JSON.stringify({ success: false, error: "Funcionário pertence a outra clínica." }),
+        JSON.stringify({
+          success: false,
+          error: !clinicaId
+            ? "Seu perfil não está vinculado a uma clínica."
+            : !funcData.clinica_id
+              ? "Este funcionário não tem clínica definida. Edite o cadastro antes de convidar."
+              : "Funcionário pertence a outra clínica.",
+        }),
         { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
