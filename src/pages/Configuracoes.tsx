@@ -5,8 +5,9 @@ import {
   Shield, Globe, Mail, Smartphone, MessageSquare, Database,
   Key, RefreshCw, CloudOff, Cloud,
   DollarSign, Printer, MapPin, Phone, FileText, Users, Plus, Trash2, Edit,
-  CreditCard, Receipt, Loader2, Hash, Clipboard, Image,
+  CreditCard, Receipt, Loader2, Hash, Clipboard, Image, Workflow,
 } from 'lucide-react';
+import { FluxoDoAtendimento } from '@/components/configuracoes/FluxoDoAtendimento';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -642,6 +643,14 @@ export default function Configuracoes() {
                     <Input value={configClinica.crmResponsavel} onChange={e => setConfigClinica({ ...configClinica, crmResponsavel: e.target.value })} placeholder="CRM/UF 00000" />
                   </div>
                 </div>
+
+                <Separator />
+                {/* Fica na aba da clínica, e não em Financeiro, porque decide
+                    quem entra no consultório — não é ajuste de cobrança. */}
+                <h3 className="font-semibold text-sm flex items-center gap-2">
+                  <Workflow className="h-4 w-4 text-primary" /> Fluxo do Atendimento
+                </h3>
+                <FluxoDoAtendimento />
 
                 <Separator />
                 <SaveBtn configKey="config_clinica" label="Dados da clínica" configValue={configClinica} />

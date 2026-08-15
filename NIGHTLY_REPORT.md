@@ -282,11 +282,21 @@ com verificação contra o banco real terminando em `ROLLBACK`.
 | Verificações contra o banco real | 6 arquivos em `supabase/verificacoes/` |
 | Produção depois de tudo | 16 clínicas · 80 lançamentos · R$ 21.147,84 — **inalterados** |
 
-**A propriedade que sustenta as nove etapas:** nada muda até a clínica ligar a
-chave. `clinicas.exigir_pagamento_previo` e `clinicas.exigir_triagem` nascem
-`false`; com elas desligadas o sistema se comporta exatamente como antes. Hoje
-**nenhuma das 16 clínicas** tem qualquer uma ligada — o código está em
-produção, o comportamento não mudou para ninguém.
+**Correção de rumo (15/08):** eu tinha feito as nove etapas nascerem
+desligadas, para ligar clínica por clínica. Estava errado como decisão de
+produto — vira um sistema com 16 comportamentos diferentes, definidos por uma
+chave que só quem tem acesso ao banco consegue mexer.
+
+Agora **pagamento antes da consulta é o fluxo padrão, ligado nas 16 clínicas**,
+e a chave virou configuração visível em Configurações → Clínica → Fluxo do
+Atendimento, onde o titular da conta liga e desliga. Clínica que fatura
+convênio no fim do mês desliga sozinha.
+
+Impacto medido antes de aplicar: **0 pacientes barrados**. Havia 17
+agendamentos abertos de hoje em diante, nenhum com saldo devedor.
+
+A **triagem continua opcional e desligada** — o enunciado diz "Triagem (se
+houver)", e consultório de um clínico só não tem enfermagem.
 
 ## As nove etapas
 
@@ -306,8 +316,9 @@ produção, o comportamento não mudou para ninguém.
 
 Você delegou ("faça o que for melhor"). As quatro, com o porquê:
 
-1. **Trava de pagamento desligada por padrão, ligável por clínica.** Ligar para
-   as 16 de uma vez mudaria a operação de clínicas que não pediram nada.
+1. ~~Trava de pagamento desligada por padrão~~ — **revertida em 15/08 a seu
+   pedido**: "todos os usuários do app devem ter o mesmo fluxo". Ligada nas 16,
+   com interruptor na tela para quem precisar desligar.
 2. **Pagamento parcial é permitido, mas não libera a consulta.** Recusar o
    parcial faria a recepcionista registrar R$ 0 e cobrar por fora; aceitar e
    liberar furaria a regra. O paciente que pagou metade fica visível, com o
@@ -342,10 +353,8 @@ o banco de verdade.
 
 ## O que ficou fora, e por quê
 
-- **Ligar as chaves para alguma clínica.** É decisão sua e muda a operação do
-  balcão no dia seguinte. Está tudo pronto; o comando está no rodapé de
-  `20260814210000_trava_pagamento_antes_da_consulta.sql` e de
-  `20260814250000_triagem_entre_o_pagamento_e_a_fila.sql`.
+- **Ligar a triagem.** Continua desligada nas 16. Quem tem enfermagem liga em
+  Configurações → Clínica → Fluxo do Atendimento, sem precisar de mim.
 - **As sete perguntas do painel** foram reconstruídas a partir do fluxo — o
   texto original da seção 11 não estava mais recuperável. Se a sua lista era
   outra, `resumoDoDia` em `src/components/recepcao/PainelDoDia.tsx` é uma
