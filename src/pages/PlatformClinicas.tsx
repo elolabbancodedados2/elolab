@@ -20,6 +20,8 @@ import { Building2, Search, Users, Stethoscope, CalendarRange, RefreshCw, Crown,
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { toast } from 'sonner';
+import { AcoesDaClinica } from '@/components/plataforma/AcoesDaClinica';
+import { LogDeAcessos } from '@/components/plataforma/LogDeAcessos';
 import { useNavigate } from 'react-router-dom';
 
 interface ClinicaOverview {
@@ -38,6 +40,9 @@ interface ClinicaOverview {
   total_funcionarios: number;
   total_pacientes: number;
   total_agendamentos: number;
+  arquivada?: boolean;
+  arquivada_em?: string | null;
+  arquivada_motivo?: string | null;
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -55,6 +60,7 @@ export default function PlatformClinicas() {
   const [resendingId, setResendingId] = useState<string | null>(null);
   const [alvo, setAlvo] = useState<{ id: string; nome: string } | null>(null);
   const [motivo, setMotivo] = useState('');
+  const [mostrarArquivadas, setMostrarArquivadas] = useState(false);
   const navigate = useNavigate();
 
   /**
@@ -148,7 +154,9 @@ export default function PlatformClinicas() {
   };
 
   const filtered = useMemo(() => {
-    const list = data ?? [];
+    // Arquivada fica escondida por padrão: o objetivo de arquivar é justamente
+    // tirar da frente. O contador ao lado do botão diz quantas estão guardadas.
+    const list = (data ?? []).filter(c => mostrarArquivadas || !c.arquivada);
     if (!search.trim()) return list;
     const q = search.toLowerCase();
     return list.filter(c =>
@@ -157,7 +165,7 @@ export default function PlatformClinicas() {
       c.owner_nome?.toLowerCase().includes(q) ||
       c.plano_nome?.toLowerCase().includes(q)
     );
-  }, [data, search]);
+  }, [data, search, mostrarArquivadas]);
 
   const totals = useMemo(() => {
     const list = data ?? [];
@@ -188,10 +196,19 @@ export default function PlatformClinicas() {
             Visão global de todas as clínicas, assinaturas e uso. Restrito a administradores da plataforma.
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching}>
-          <RefreshCw className={`h-4 w-4 mr-2 ${isFetching ? 'animate-spin' : ''}`} />
-          Atualizar
-        </Button>
+        <div className="flex gap-2">
+          {(data ?? []).some(c => c.arquivada) && (
+            <Button variant="outline" size="sm" onClick={() => setMostrarArquivadas(v => !v)}>
+              {mostrarArquivadas
+                ? 'Ocultar arquivadas'
+                : `Ver arquivadas (${(data ?? []).filter(c => c.arquivada).length})`}
+            </Button>
+          )}
+          <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching}>
+            <RefreshCw className={`h-4 w-4 mr-2 ${isFetching ? 'animate-spin' : ''}`} />
+            Atualizar
+          </Button>
+        </div>
       </div>
 
       {orfaos && orfaos.length > 0 && (
@@ -319,7 +336,16 @@ export default function PlatformClinicas() {
                 <TableBody>
                   {filtered.map(c => (
                     <TableRow key={c.clinica_id}>
-                      <TableCell className="font-medium">{c.clinica_nome}</TableCell>
+                      <TableCell className="font-medium">
+                        <span className={c.arquivada ? 'text-muted-foreground line-through' : ''}>
+                          {c.clinica_nome}
+                        </span>
+                        {c.arquivada && (
+                          <Badge variant="outline" className="ml-2 text-[10px]" title={c.arquivada_motivo ?? ''}>
+                            Arquivada
+                          </Badge>
+                        )}
+                      </TableCell>
                       <TableCell className="text-sm">
                         <div>{c.owner_nome || <span className="text-muted-foreground">—</span>}</div>
                         <div className="text-xs text-muted-foreground">{c.owner_email || '—'}</div>
@@ -353,6 +379,11 @@ export default function PlatformClinicas() {
                           <LogIn className="h-3.5 w-3.5 mr-1" />
                           {impersonatingId === c.clinica_id ? 'Entrando...' : 'Entrar'}
                         </Button>
+                        <AcoesDaClinica
+                          clinicaId={c.clinica_id}
+                          nome={c.clinica_nome}
+                          arquivada={!!c.arquivada}
+                        />
                       </TableCell>
                     </TableRow>
                   ))}
@@ -362,6 +393,8 @@ export default function PlatformClinicas() {
           )}
         </CardContent>
       </Card>
+
+      <LogDeAcessos />
 
       <Dialog open={!!alvo} onOpenChange={aberto => { if (!aberto) { setAlvo(null); setMotivo(''); } }}>
         <DialogContent className="sm:max-w-md">
