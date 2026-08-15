@@ -138,6 +138,10 @@ export function DoctorDashboard({ userName }: DoctorDashboardProps) {
     em_atendimento: 'bg-primary/10 text-primary border-primary/20',
     aguardando: 'bg-warning/10 text-warning border-warning/20',
     finalizado: 'bg-muted text-muted-foreground',
+    aguardando_pagamento: 'bg-warning/10 text-warning border-warning/20',
+    pago: 'bg-success/10 text-success border-success/20',
+    atendimento_finalizado: 'bg-muted text-muted-foreground',
+    aguardando_pagamento_adicional: 'bg-destructive/10 text-destructive border-destructive/20',
   };
 
   const statusLabel: Record<string, string> = {
@@ -148,6 +152,10 @@ export function DoctorDashboard({ userName }: DoctorDashboardProps) {
     finalizado: 'Finalizado',
     cancelado: 'Cancelado',
     faltou: 'Faltou',
+    aguardando_pagamento: 'Aguardando pagamento',
+    pago: 'Pago',
+    atendimento_finalizado: 'Atendimento finalizado',
+    aguardando_pagamento_adicional: 'Falta pagar o adicional',
   };
 
   return (

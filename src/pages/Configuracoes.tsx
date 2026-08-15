@@ -5,8 +5,9 @@ import {
   Shield, Globe, Mail, Smartphone, MessageSquare, Database,
   Key, RefreshCw, CloudOff, Cloud,
   DollarSign, Printer, MapPin, Phone, FileText, Users, Plus, Trash2, Edit,
-  CreditCard, Receipt, Loader2, Hash, Clipboard, Image,
+  CreditCard, Receipt, Loader2, Hash, Clipboard, Image, Workflow,
 } from 'lucide-react';
+import { FluxoDoAtendimento } from '@/components/configuracoes/FluxoDoAtendimento';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -28,6 +29,7 @@ import {
 import { toast } from 'sonner';
 import { DeleteConfirmDialog } from '@/components/ConfirmDialog';
 import { BackupRestore } from '@/components/BackupRestore';
+import { ImportadorDePlanilha } from '@/components/importacao/ImportadorDePlanilha';
 import { AuditLog } from '@/components/AuditLog';
 import { supabase } from '@/integrations/supabase/client';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -644,6 +646,14 @@ export default function Configuracoes() {
                 </div>
 
                 <Separator />
+                {/* Fica na aba da clínica, e não em Financeiro, porque decide
+                    quem entra no consultório — não é ajuste de cobrança. */}
+                <h3 className="font-semibold text-sm flex items-center gap-2">
+                  <Workflow className="h-4 w-4 text-primary" /> Fluxo do Atendimento
+                </h3>
+                <FluxoDoAtendimento />
+
+                <Separator />
                 <SaveBtn configKey="config_clinica" label="Dados da clínica" configValue={configClinica} />
               </CardContent>
             </Card>
@@ -1200,8 +1210,12 @@ export default function Configuracoes() {
 
         {/* ─── Backup ─── */}
         <TabsContent value="backup">
-          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
+          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
             <BackupRestore />
+            {/* Fica junto do backup porque é a mesma pergunta do usuário —
+                "como tiro e como ponho dados aqui" — e é onde ele procura no
+                dia em que troca de sistema. */}
+            <ImportadorDePlanilha />
           </motion.div>
         </TabsContent>
 

@@ -199,14 +199,33 @@ export default function TriagemPage() {
     return () => { supabase.removeChannel(ch); };
   }, [queryClient]);
 
-  // Count of agendamentos without triagem today (pending triages)
-  const pendingTriagemCount = useMemo(() => {
-    const todayAgs = agendamentos.filter((a: any) =>
-      ['agendado', 'confirmado', 'aguardando'].includes(a.status || '')
+  /**
+   * A lista de trabalho da enfermagem: quem chegou hoje e ainda não foi triado.
+   *
+   * Antes isto era só um número, e um número que contava até quem nem tinha
+   * chegado. Agora é a lista, com o nome e o horário, e o botão que abre a
+   * ficha já preenchida — a enfermeira não precisa procurar o paciente.
+   *
+   * Vale mesmo onde `clinicas.exigir_triagem` está desligado: a clínica pode
+   * triar sem que o sistema bloqueie a consulta.
+   */
+  const aguardandoTriagem = useMemo(() => {
+    const jaTriados = new Set(
+      triagens
+        .filter((t: any) => t.data_hora?.startsWith(today))
+        .map((t: any) => t.agendamento_id)
     );
-    const triagemAgIds = new Set(triagens.filter((t: any) => t.data_hora?.startsWith(today)).map((t: any) => t.agendamento_id));
-    return todayAgs.filter((a: any) => !triagemAgIds.has(a.id)).length;
+    return agendamentos
+      .filter((a: any) =>
+        a.data === today &&
+        ['agendado', 'confirmado', 'aguardando', 'aguardando_triagem', 'pago'].includes(a.status || '') &&
+        a.exige_triagem !== false &&
+        !jaTriados.has(a.id)
+      )
+      .sort((a: any, b: any) => String(a.hora_inicio).localeCompare(String(b.hora_inicio)));
   }, [agendamentos, triagens, today]);
+
+  const pendingTriagemCount = aguardandoTriagem.length;
 
   const setField = (field: keyof TriagemForm) => (value: string) =>
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -391,6 +410,46 @@ export default function TriagemPage() {
           </Button>
         </div>
       </div>
+
+      {/* ─── Fila da enfermagem ───
+          Quem chegou e ainda não foi triado, com o botão que abre a ficha já
+          apontando para o paciente certo. */}
+      {aguardandoTriagem.length > 0 && (
+        <div className="rounded-xl border border-info/30 bg-info/5 p-4 space-y-2">
+          <p className="text-xs font-medium text-info flex items-center gap-2">
+            <Activity className="h-3.5 w-3.5" />
+            {aguardandoTriagem.length === 1
+              ? '1 paciente aguardando triagem'
+              : `${aguardandoTriagem.length} pacientes aguardando triagem`}
+          </p>
+          <div className="space-y-1.5 pt-1">
+            {aguardandoTriagem.slice(0, 12).map((ag: any) => {
+              const pac = pacientes.find((p: any) => p.id === ag.paciente_id);
+              return (
+                <div key={ag.id} className="flex items-center justify-between gap-3 rounded-lg bg-background/60 px-3 py-2">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium truncate">{pac?.nome || 'Paciente'}</p>
+                    <p className="text-[10px] text-muted-foreground tabular-nums">
+                      {String(ag.hora_inicio).slice(0, 5)} · {ag.tipo || 'consulta'}
+                    </p>
+                  </div>
+                  <Button
+                    size="sm" className="h-7 gap-1 text-xs shrink-0"
+                    onClick={() => handleOpenDialog(ag.paciente_id, ag.id)}
+                  >
+                    <Activity className="h-3 w-3" /> Triar
+                  </Button>
+                </div>
+              );
+            })}
+            {aguardandoTriagem.length > 12 && (
+              <p className="px-3 text-[10px] text-muted-foreground">
+                e mais {aguardandoTriagem.length - 12}…
+              </p>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Risk summary */}
       <motion.div variants={stagger} initial="hidden" animate="visible" className="flex flex-wrap gap-3">

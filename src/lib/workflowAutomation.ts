@@ -39,6 +39,49 @@ async function must<T extends { error: unknown }>(op: PromiseLike<T>): Promise<T
   return res;
 }
 
+/**
+ * Para onde vai o agendamento quando o profissional finaliza.
+ *
+ * Regra: se ainda há saldo (o procedimento lançado durante a consulta, por
+ * exemplo), o atendimento acabou mas o dinheiro não entrou — vai para
+ * `aguardando_pagamento_adicional`, e a recepção vê que falta receber. Sem
+ * saldo, `finalizado` como sempre foi.
+ *
+ * Só muda de comportamento em clínica que ligou `exigir_pagamento_previo`.
+ * Nas outras, criar um estado novo tiraria atendimentos da contagem de
+ * `finalizado` em relatório e dashboard sem ninguém ter pedido.
+ *
+ * Qualquer erro aqui devolve 'finalizado': a consulta terminou de verdade, e
+ * uma falha na consulta do saldo não pode impedir o fechamento.
+ */
+async function definirStatusDeFinalizacao(
+  agendamentoId: string,
+  clinicaId?: string | null,
+): Promise<'finalizado' | 'aguardando_pagamento_adicional'> {
+  try {
+    let clinica = clinicaId;
+    if (!clinica) {
+      const { data } = await supabase
+        .from('agendamentos').select('clinica_id').eq('id', agendamentoId).maybeSingle();
+      clinica = data?.clinica_id ?? null;
+    }
+    if (!clinica) return 'finalizado';
+
+    const { data: config, error: erroConfig } = await supabase
+      .from('clinicas').select('exigir_pagamento_previo').eq('id', clinica).maybeSingle();
+    if (erroConfig || !config?.exigir_pagamento_previo) return 'finalizado';
+
+    const { data: saldo, error: erroSaldo } = await supabase
+      .rpc('saldo_devedor_do_agendamento', { p_agendamento_id: agendamentoId });
+    if (erroSaldo) return 'finalizado';
+
+    // Mesma tolerância de um centavo do trigger.
+    return Number(saldo ?? 0) > 0.009 ? 'aguardando_pagamento_adicional' : 'finalizado';
+  } catch {
+    return 'finalizado';
+  }
+}
+
 // ─── 1. Check-in Automático ─────────────────────────────
 /** When a patient arrives, auto check-in and add to queue */
 export async function autoCheckin(
@@ -200,9 +243,20 @@ export async function autoFinalizarAtendimento(params: {
         .single());
     }
 
+    // ─── Sobrou saldo? ───
+    // O enunciado: "paciente pagou R$ 250 antes; durante o atendimento foi
+    // feito um procedimento de R$ 100 → atendimento finalizado, pagamento
+    // adicional pendente". O procedimento entrou como item da conta e reabriu
+    // o saldo (ver lancar_item_no_atendimento).
+    //
+    // Só vale quando a clínica ligou a trava: sem isso, o estado novo faria
+    // relatórios e dashboards que contam `finalizado` pararem de ver esses
+    // atendimentos, sem a clínica ter pedido nada.
+    const statusFinal = await definirStatusDeFinalizacao(params.agendamentoId, params.clinicaId);
+
     try {
       await must(supabase.from('agendamentos')
-        .update({ status: 'finalizado' })
+        .update({ status: statusFinal as any })
         .eq('id', params.agendamentoId)
         .select('id')
         .single());
@@ -212,7 +266,11 @@ export async function autoFinalizarAtendimento(params: {
       }
       throw agendamentoError;
     }
-    actions.push('Agendamento → Finalizado');
+    actions.push(
+      statusFinal === 'aguardando_pagamento_adicional'
+        ? 'Agendamento → Aguardando pagamento adicional'
+        : 'Agendamento → Finalizado'
+    );
     if (params.filaId) actions.push('Fila → Finalizado');
 
     const restaurarAtendimento = async () => {

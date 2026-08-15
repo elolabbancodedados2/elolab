@@ -25,11 +25,14 @@ import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
+import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { 
   downloadBackup, 
   validateBackup, 
   restoreBackup, 
   getStorageStats,
+  clinicaDoBackup,
+  previaRestauracao,
   BackupData 
 } from '@/lib/backup';
 import { format } from 'date-fns';
@@ -63,8 +66,13 @@ export function BackupRestore() {
   const [overwrite, setOverwrite] = useState(true);
   const [restoring, setRestoring] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [progresso, setProgresso] = useState<{ feitas: number; total: number; tabela: string } | null>(null);
+  const [deOutraClinica, setDeOutraClinica] = useState(false);
+  const [previa, setPrevia] = useState<{ novos: number; sobrescritos: number; porTabela: Array<{ tabela: string; novos: number; sobrescritos: number }> } | null>(null);
+  const [calculandoPrevia, setCalculandoPrevia] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
+  const { profile } = useSupabaseAuth();
 
   useEffect(() => {
     getStorageStats().then(setStats);
@@ -72,16 +80,41 @@ export function BackupRestore() {
 
   const handleDownload = async () => {
     setDownloading(true);
+    setProgresso(null);
     try {
-      await downloadBackup();
+      const { backup } = await downloadBackup((feitas, total, tabela) =>
+        setProgresso({ feitas, total, tabela }),
+      );
+
+      // "Backup criado com sucesso" num arquivo pela metade é a mentira mais
+      // cara deste sistema: só se descobre no dia de restaurar.
+      if (!backup.completo) {
+        const falhas = backup.metadata.tabelasComFalha;
+        const cortadas = backup.metadata.tabelasTruncadas;
+        toast({
+          title: 'Backup INCOMPLETO — o arquivo saiu com "PARCIAL" no nome',
+          description: [
+            falhas.length ? `Não consegui ler: ${falhas.slice(0, 3).join('; ')}${falhas.length > 3 ? ` e mais ${falhas.length - 3}` : ''}.` : '',
+            cortadas.length ? `Cortadas no limite: ${cortadas.join(', ')}.` : '',
+            'Não use este arquivo como backup único.',
+          ].filter(Boolean).join(' '),
+          variant: 'destructive',
+        });
+      } else {
+        toast({
+          title: 'Backup completo baixado',
+          description: `${backup.metadata.totalRecords.toLocaleString('pt-BR')} registros de ${backup.metadata.tablesCount} tabelas.`,
+        });
+      }
+    } catch (e: any) {
       toast({
-        title: 'Backup criado',
-        description: 'O arquivo de backup foi baixado com sucesso.',
+        title: 'Erro ao criar backup',
+        description: e?.message || 'Tente novamente.',
+        variant: 'destructive',
       });
-    } catch {
-      toast({ title: 'Erro ao criar backup', variant: 'destructive' });
     } finally {
       setDownloading(false);
+      setProgresso(null);
     }
   };
 
@@ -104,8 +137,33 @@ export function BackupRestore() {
           return;
         }
 
-        setPreviewData(validation.backup!);
+        const b = validation.backup!;
+        setPreviewData(b);
         setShowPreview(true);
+
+        // Restaurar backup da clínica errada é o engano mais fácil de cometer
+        // e o mais caro de desfazer — os dois arquivos têm o mesmo nome.
+        const origem = clinicaDoBackup(b);
+        setDeOutraClinica(!!origem && !!profile?.clinica_id && origem !== profile.clinica_id);
+
+        // "Isso vai criar ou vai sobrescrever?" é a pergunta que decide se
+        // restaurar é seguro, e ela precisa ser respondida ANTES do clique.
+        setPrevia(null);
+        setCalculandoPrevia(true);
+        previaRestauracao(b)
+          .then(p => setPrevia(p))
+          .catch(() => setPrevia(null))
+          .finally(() => setCalculandoPrevia(false));
+
+        if (!b.completo) {
+          toast({
+            title: 'Este backup está incompleto',
+            description: b.metadata.tabelasComFalha.length
+              ? `Faltam dados de: ${b.metadata.tabelasComFalha.map(f => f.split(':')[0]).join(', ')}.`
+              : 'Alguma tabela foi cortada no limite quando o arquivo foi gerado.',
+            variant: 'destructive',
+          });
+        }
       } catch {
         toast({
           title: 'Erro ao ler arquivo',
@@ -126,18 +184,36 @@ export function BackupRestore() {
     
     setRestoring(true);
     try {
-      const result = await restoreBackup(previewData, overwrite);
-      
+      const result = await restoreBackup(previewData, overwrite, profile?.clinica_id ?? null);
+
       setShowPreview(false);
       const newStats = await getStorageStats();
       setStats(newStats);
-      
+
+      if (result.success) {
+        toast({
+          title: 'Backup restaurado',
+          description: [
+            `${result.restored.toLocaleString('pt-BR')} registros em ${result.porTabela.length} tabelas.`,
+            result.remapeadas > 0 ? `${result.remapeadas.toLocaleString('pt-BR')} vieram de outra clínica e foram trazidos para a sua.` : '',
+            result.puladas.length > 0 ? `Não restauradas (contas, papéis e auditoria): ${result.puladas.join(', ')}.` : '',
+          ].filter(Boolean).join(' '),
+        });
+      } else {
+        // Restauração parcial deixa o banco num estado que ninguém consegue
+        // avaliar de fora. Dizer quais tabelas falharam é o mínimo.
+        toast({
+          title: `Restauração parcial — ${result.falhas.length} tabela(s) falharam`,
+          description: `${result.restored.toLocaleString('pt-BR')} registros entraram. Falhou: ${result.falhas.slice(0, 3).join('; ')}${result.falhas.length > 3 ? ` e mais ${result.falhas.length - 3}` : ''}.`,
+          variant: 'destructive',
+        });
+      }
+    } catch (e: any) {
       toast({
-        title: 'Backup restaurado',
-        description: `${result.restored} registros foram restaurados com sucesso.`,
+        title: 'Erro ao restaurar backup',
+        description: e?.message || 'Tente novamente.',
+        variant: 'destructive',
       });
-    } catch {
-      toast({ title: 'Erro ao restaurar backup', variant: 'destructive' });
     } finally {
       setRestoring(false);
     }
@@ -154,7 +230,8 @@ export function BackupRestore() {
               Fazer Backup
             </CardTitle>
             <CardDescription>
-              Baixe todos os dados do Supabase em um arquivo JSON
+              Todas as 78 tabelas da clínica em um arquivo JSON — inclui
+              pagamentos, triagem, anexos de prontuário e a trilha de LGPD.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -166,6 +243,22 @@ export function BackupRestore() {
               <Download className="mr-2 h-4 w-4" />
               {downloading ? 'Exportando...' : 'Baixar Backup'}
             </Button>
+            {progresso && (
+              // São 78 tabelas: sem isto o botão fica "Exportando..." por um
+              // minuto e a pessoa acha que travou e recarrega a página.
+              <div className="space-y-1">
+                <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                  <div
+                    className="h-full bg-primary transition-all"
+                    style={{ width: `${Math.round((progresso.feitas / progresso.total) * 100)}%` }}
+                  />
+                </div>
+                <p className="text-[11px] text-muted-foreground tabular-nums">
+                  {progresso.feitas} de {progresso.total} tabelas
+                  {progresso.tabela ? ` · ${progresso.tabela}` : ''}
+                </p>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -238,6 +331,81 @@ export function BackupRestore() {
           
           {previewData && (
             <div className="space-y-4 py-4">
+              {deOutraClinica && (
+                <div className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/10 p-3">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
+                  <div className="text-xs">
+                    <p className="font-semibold text-warning">Este backup é de outra clínica</p>
+                    <p className="text-muted-foreground">
+                      Os dados vão entrar na SUA clínica — pacientes, agendamentos e
+                      financeiro do arquivo passam a ser seus. Se você só queria
+                      restaurar a sua própria clínica, cancele e confira o arquivo.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {!previewData.completo && (
+                <div className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 p-3">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+                  <div className="text-xs">
+                    <p className="font-semibold text-destructive">Arquivo incompleto</p>
+                    <p className="text-muted-foreground">
+                      Ele foi gerado com falha em alguma tabela. Restaurar traz o
+                      que tem, mas não devolve o que ficou de fora.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {calculandoPrevia && (
+                <p className="text-xs text-muted-foreground">Conferindo o que vai mudar…</p>
+              )}
+
+              {previa && (
+                <div className="rounded-lg border border-border/50 p-3 space-y-2">
+                  <div className="flex flex-wrap gap-4">
+                    <div>
+                      <p className="text-xl font-bold tabular-nums text-success">
+                        {previa.novos.toLocaleString('pt-BR')}
+                      </p>
+                      <p className="text-[10px] text-muted-foreground">registros novos</p>
+                    </div>
+                    <div>
+                      <p className={`text-xl font-bold tabular-nums ${previa.sobrescritos > 0 ? 'text-warning' : ''}`}>
+                        {previa.sobrescritos.toLocaleString('pt-BR')}
+                      </p>
+                      <p className="text-[10px] text-muted-foreground">
+                        já existem e serão {overwrite ? 'SOBRESCRITOS' : 'mantidos como estão'}
+                      </p>
+                    </div>
+                  </div>
+                  {previa.sobrescritos > 0 && overwrite && (
+                    <p className="text-[11px] text-warning">
+                      Um backup antigo faz esses {previa.sobrescritos.toLocaleString('pt-BR')} registros
+                      voltarem ao estado de quando o arquivo foi gerado. Desmarque
+                      "sobrescrever" para só acrescentar o que falta.
+                    </p>
+                  )}
+                  <div className="max-h-24 overflow-y-auto text-[10px] text-muted-foreground">
+                    {previa.porTabela.slice(0, 12).map(t => (
+                      <div key={t.tabela} className="flex justify-between gap-2">
+                        <span className="truncate">{COLLECTION_LABELS[t.tabela] ?? t.tabela}</span>
+                        <span className="shrink-0 tabular-nums">
+                          +{t.novos}{t.sobrescritos > 0 && ` · ~${t.sobrescritos}`}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <p className="text-[11px] text-muted-foreground">
+                Contas de usuário, papéis e trilhas de auditoria não são
+                restaurados — reescrever histórico de acesso é pior que perdê-lo,
+                e devolver papéis antigos mudaria quem pode o quê sem ninguém pedir.
+              </p>
+
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
                   <span className="text-muted-foreground">Data do backup:</span>

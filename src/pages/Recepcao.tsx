@@ -8,6 +8,7 @@ import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { createAutoBilling } from '@/lib/autoBilling';
 import { autoCheckin, autoIniciarAtendimento, autoFinalizarAtendimento, autoConfirmarPagamento } from '@/lib/workflowAutomation';
+import { PainelDoDia } from '@/components/recepcao/PainelDoDia';
 import { useAgendamentos, usePacientes, useMedicos, useSalas } from '@/hooks/useSupabaseData';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { toast } from 'sonner';
@@ -36,6 +37,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { todayDateOnly } from '@/lib/dateOnly';
 import { pacienteCorresponde, normalizarTexto } from '@/lib/buscaPaciente';
+import { montarPagamentos, somaDasExtras } from '@/lib/pagamentoDividido';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
@@ -101,10 +103,13 @@ function corEspera(ts: string | null): string {
 // New flow: Check-in(0) → Balcão/Pagamento(1) → Atendimento(2) → Finalizado(3) → Concluído(4)
 // Patient pays BEFORE entering the consultation room
 function patientStep(ag: any, filaItem: any, lancamento: any): number {
+  // Consulta terminou mas ficou saldo — um procedimento lançado durante o
+  // atendimento. Nunca é "concluído": tem dinheiro a receber no balcão.
+  if (ag.status === 'aguardando_pagamento_adicional') return 3;
   // Concluído: explicitly marked as concluded in the queue
-  if (ag.status === 'finalizado' && filaItem?.status === 'concluido') return 4;
+  if ((ag.status === 'finalizado' || ag.status === 'atendimento_finalizado') && filaItem?.status === 'concluido') return 4;
   // Finalizado: consultation done — show post-consultation actions (regardless of payment)
-  if (ag.status === 'finalizado') return 3;
+  if (ag.status === 'finalizado' || ag.status === 'atendimento_finalizado') return 3;
   // Em atendimento: in consultation
   if (ag.status === 'em_atendimento') return 2;
   // Already paid, waiting to be called for consultation
@@ -138,6 +143,23 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
    const [formaPagamento, setFormaPagamento] = useState('');
    const [desconto, setDesconto] = useState(0);
    const [acrescimo, setAcrescimo] = useState(0);
+   /**
+    * Formas ADICIONAIS, para o pagamento dividido.
+    *
+    * A primeira forma continua sendo `formaPagamento` — assim o caso comum
+    * (uma forma só) não muda em nada, nem na tela nem para quem já usa. Quem
+    * precisa dividir ("R$ 200 no Pix e o resto no cartão") acrescenta linhas
+    * aqui, e só então o valor da primeira passa a ser o restante.
+    */
+   const [formasExtras, setFormasExtras] = useState<Array<{ forma: string; valor: number }>>([]);
+   /**
+    * Identifica ESTA tentativa de pagamento no servidor.
+    *
+    * Vai para `registrar_pagamento`, que recusa a segunda chamada com a mesma
+    * chave. É o que faz clique duplo, botão travado e refresh no meio do
+    * caminho não virarem duas cobranças.
+    */
+   const [chaveIdempotencia, setChaveIdempotencia] = useState('');
    const [obsPagamento, setObsPagamento] = useState('');
   const [now, setNow] = useState(Date.now());
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
@@ -501,6 +523,10 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
      setDesconto(0);
      setAcrescimo(0);
      setObsPagamento('');
+     setFormasExtras([]);
+     // Uma chave por ABERTURA do diálogo. Se o operador confirmar duas vezes,
+     // as duas chamadas levam a mesma chave e o banco cobra uma vez só.
+     setChaveIdempotencia(crypto.randomUUID());
      setShowPagamento(true);
    }
 
@@ -599,6 +625,20 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
       return;
     }
 
+    // Pagamento dividido: as formas extras não podem somar mais que o devido,
+    // senão a primeira ficaria com valor negativo.
+    const devido = Number((valorBase - desconto + acrescimo).toFixed(2));
+    if (somaDasExtras(formasExtras) > devido) {
+      toast.error('As formas de pagamento somam mais que o valor devido.', {
+        description: `Informado R$ ${somaDasExtras(formasExtras).toFixed(2)} para uma conta de R$ ${devido.toFixed(2)}.`,
+      });
+      return;
+    }
+    if (formasExtras.some(f => !f.forma || Number(f.valor) <= 0)) {
+      toast.error('Preencha forma e valor em cada linha do pagamento dividido.');
+      return;
+    }
+
     setIsProcessing(true);
     try {
       // `valor` é o que foi FATURADO e não pode ser sobrescrito pelo que foi
@@ -611,22 +651,28 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
       // negócio era registrado de duas formas conforme a tela usada, e o
       // relatório mudava de número por causa disso.
       const valorFinal = Number((valorBase - desconto + acrescimo).toFixed(2));
-      let pagamentoQuery = (supabase as any).from('lancamentos').update({
-        status: 'pago' as any,
-        forma_pagamento: formaPagamento,
-        valor_pago: valorFinal,
-        desconto: Number(desconto.toFixed(2)),
-        acrescimo: Number(acrescimo.toFixed(2)),
-        data_pagamento: todayDateOnly(),
-        observacoes: sanitizeText(obsPagamento),
-      }).eq('id', selectedLancamento.id);
-      if (profile?.clinica_id) pagamentoQuery = pagamentoQuery.eq('clinica_id', profile.clinica_id);
-      const { data: pagamentoAtualizado, error } = await pagamentoQuery
-        .select('id, status, valor, valor_pago')
-        .maybeSingle();
+
+      // Uma chamada só, no banco, em transação: grava os pagamentos, aplica
+      // desconto e acréscimo, recalcula o saldo e avança o agendamento. Antes
+      // eram passos soltos aqui no navegador — se a rede caísse no meio, o
+      // dinheiro entrava na gaveta e o sistema não sabia.
+      //
+      // A chave de idempotência faz a segunda chamada devolver o estado atual
+      // em vez de cobrar de novo.
+      const { data: resultado, error } = await (supabase as any).rpc('registrar_pagamento', {
+        p_lancamento_id: selectedLancamento.id,
+        p_pagamentos: montarPagamentos(formaPagamento, formasExtras, valorFinal),
+        p_desconto: Number(desconto.toFixed(2)),
+        p_acrescimo: Number(acrescimo.toFixed(2)),
+        p_chave_idempotencia: chaveIdempotencia || null,
+        p_observacoes: sanitizeText(obsPagamento) || null,
+      });
       if (error) throw error;
-      if (!pagamentoAtualizado) {
-        throw new Error('Lançamento não encontrado ou sem permissão para esta clínica.');
+
+      if (resultado?.repetido) {
+        toast.info('Este pagamento já havia sido registrado.', {
+          description: 'Nada foi cobrado de novo.',
+        });
       }
 
       // Send payment receipt to patient
@@ -732,33 +778,16 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
 
 
       {/* Stats */}
-      <motion.div
-        variants={stagger}
-        initial="hidden"
-        animate="visible"
-        className="grid grid-cols-2 md:grid-cols-4 gap-3"
-      >
-         {[
-           { label: 'Aguardando Check-in', value: stats.aguardando, icon: Clock, color: 'text-warning', bg: 'bg-warning/10' },
-           { label: 'Balcão (Pgto)', value: stats.balcao, icon: DollarSign, color: 'text-accent-foreground', bg: 'bg-accent/50' },
-           { label: 'Em Atendimento', value: stats.atendimento, icon: Stethoscope, color: 'text-info', bg: 'bg-info/10' },
-           { label: 'Concluídos', value: stats.concluido, icon: CheckCircle2, color: 'text-success', bg: 'bg-success/10' },
-        ].map((s, i) => (
-          <motion.div key={i} variants={fadeUp}>
-            <Card className="border bg-card">
-              <CardContent className="p-4 flex items-center gap-3">
-                <div className={cn('p-2.5 rounded-xl', s.bg)}>
-                  <s.icon className={cn('h-5 w-5', s.color)} />
-                </div>
-                <div>
-                  <p className="text-2xl font-bold">{s.value}</p>
-                  <p className="text-xs text-muted-foreground">{s.label}</p>
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
-        ))}
-      </motion.div>
+      {/* As quatro caixas de contagem viraram o painel do dia: as mesmas
+          informações mais o dinheiro (recebido, a receber, adicional pendente),
+          e cada cartão filtra a lista abaixo. */}
+      <PainelDoDia
+        atendimentos={enriched}
+        clinicaId={profile?.clinica_id}
+        hoje={today}
+        abaAtiva={activeTab as any}
+        onFiltrar={setActiveTab}
+      />
 
       {/* Search + Tabs */}
       <motion.div variants={fadeUp} initial="hidden" animate="visible" className="flex flex-col sm:flex-row gap-3">
@@ -1084,22 +1113,40 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
 
           {selectedLancamento && (
             <div className="space-y-4">
-              <div className="rounded-xl bg-muted/50 p-4 space-y-2">
-                <p className="text-sm font-medium">{selectedLancamento.descricao}</p>
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Valor</span>
-                  <span className="font-bold text-lg">
-                    R$ {(Number(selectedLancamento.valor || 0) - desconto + acrescimo).toFixed(2)}
-                  </span>
-                </div>
-                {(desconto > 0 || acrescimo > 0) && (
-                  <div className="text-xs text-muted-foreground">
-                    Original: R$ {Number(selectedLancamento.valor || 0).toFixed(2)}
-                    {desconto > 0 && ` • Desc: -R$ ${desconto.toFixed(2)}`}
-                    {acrescimo > 0 && ` • Acrés: +R$ ${acrescimo.toFixed(2)}`}
+              {/* Resumo Valor / Pago / Saldo, para a recepcionista não precisar
+                  fazer a conta de cabeça antes de receber. */}
+              {(() => {
+                const bruto = Number(selectedLancamento.valor || 0);
+                const devido = Number((bruto - desconto + acrescimo).toFixed(2));
+                const jaPago = Number(selectedLancamento.valor_pago || 0);
+                const saldo = Number((devido - jaPago).toFixed(2));
+                return (
+                  <div className="rounded-xl bg-muted/50 p-4 space-y-2">
+                    <p className="text-sm font-medium">{selectedLancamento.descricao}</p>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Valor</span>
+                      <span className="tabular-nums">R$ {devido.toFixed(2)}</span>
+                    </div>
+                    {jaPago > 0 && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Já pago</span>
+                        <span className="tabular-nums text-success">− R$ {jaPago.toFixed(2)}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between items-baseline border-t pt-2">
+                      <span className="text-sm font-medium">Saldo a receber</span>
+                      <span className="font-bold text-lg tabular-nums">R$ {saldo.toFixed(2)}</span>
+                    </div>
+                    {(desconto > 0 || acrescimo > 0) && (
+                      <div className="text-xs text-muted-foreground">
+                        Original: R$ {bruto.toFixed(2)}
+                        {desconto > 0 && ` • Desc: -R$ ${desconto.toFixed(2)}`}
+                        {acrescimo > 0 && ` • Acrés: +R$ ${acrescimo.toFixed(2)}`}
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
+                );
+              })()}
 
               <div className="space-y-2">
                 <Label className="text-xs font-medium">Forma de Pagamento</Label>
@@ -1121,6 +1168,54 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
                   ))}
                 </div>
               </div>
+
+              {/* ─── Pagamento dividido ───
+                  A primeira forma (acima) fica com o RESTANTE. Aqui entram as
+                  outras: "R$ 200 no Pix" numa conta de R$ 500 deixa R$ 300 na
+                  primeira, sem o operador precisar calcular. */}
+              {formasExtras.length > 0 && (
+                <div className="space-y-2">
+                  <Label className="text-xs font-medium">Dividir com outra forma</Label>
+                  {formasExtras.map((extra, i) => (
+                    <div key={i} className="flex gap-2 items-center">
+                      <Select
+                        value={extra.forma}
+                        onValueChange={v => setFormasExtras(fs => fs.map((f, j) => j === i ? { ...f, forma: v } : f))}
+                      >
+                        <SelectTrigger className="h-9 flex-1"><SelectValue placeholder="Forma" /></SelectTrigger>
+                        <SelectContent>
+                          {FORMAS_PAGAMENTO.filter(fp => fp.value !== formaPagamento).map(fp => (
+                            <SelectItem key={fp.value} value={fp.value}>{fp.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Input
+                        type="number" min={0} step="0.01" placeholder="R$"
+                        className="h-9 w-28"
+                        value={extra.valor || ''}
+                        onChange={e => setFormasExtras(fs => fs.map((f, j) => j === i ? { ...f, valor: Number(e.target.value) || 0 } : f))}
+                      />
+                      <Button
+                        variant="ghost" size="icon" aria-label="Remover forma de pagamento"
+                        className="h-9 w-9 shrink-0 text-destructive"
+                        onClick={() => setFormasExtras(fs => fs.filter((_, j) => j !== i))}
+                      >
+                        <XCircle className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {formaPagamento && (
+                <Button
+                  variant="outline" size="sm" className="w-full gap-2 h-8 text-xs"
+                  onClick={() => setFormasExtras(fs => [...fs, { forma: '', valor: 0 }])}
+                >
+                  <DollarSign className="h-3.5 w-3.5" />
+                  Dividir com outra forma de pagamento
+                </Button>
+              )}
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">

@@ -26,6 +26,10 @@ const STATUS_LABEL: Record<string, string> = {
   finalizado: 'Finalizado',
   cancelado: 'Cancelado',
   faltou: 'Faltou',
+  aguardando_pagamento: 'Aguardando pagamento',
+  pago: 'Pago',
+  atendimento_finalizado: 'Atendimento finalizado',
+  aguardando_pagamento_adicional: 'Falta pagar o adicional',
 };
 
 const STATUS_DOT: Record<string, string> = {
@@ -36,6 +40,10 @@ const STATUS_DOT: Record<string, string> = {
   finalizado: 'bg-muted-foreground/30',
   cancelado: 'bg-destructive/70',
   faltou: 'bg-warning/70',
+  aguardando_pagamento: 'bg-warning',
+  pago: 'bg-success',
+  atendimento_finalizado: 'bg-muted-foreground/30',
+  aguardando_pagamento_adicional: 'bg-destructive',
 };
 
 function initials(name?: string) {

@@ -8,7 +8,7 @@ import {
   AlertTriangle, Activity, ChevronRight, History, PenLine, Lock,
   ShieldCheck, BookOpen, FileCheck, Brain, Bone, Eye as EyeIcon,
   Thermometer, Scale, Ruler, Paperclip, Shield, Clipboard,
-  Clock, TestTube, DollarSign, CalendarPlus, RefreshCw,
+  Clock, TestTube, DollarSign, CalendarPlus, RefreshCw, Wallet,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -20,6 +20,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { ExtratoDoPaciente } from '@/components/patients/ExtratoDoPaciente';
 import { Button } from '@/components/ui/button';
 import { LoadingButton } from '@/components/ui/loading-button';
 import { Badge } from '@/components/ui/badge';
@@ -1368,10 +1369,23 @@ export default function Pacientes() {
                     <TabsTrigger value="historico" className="text-[11px] gap-1 py-1.5 rounded-lg"><History className="h-3 w-3" />Timeline</TabsTrigger>
                     <TabsTrigger value="sinais" className="text-[11px] gap-1 py-1.5 rounded-lg"><Activity className="h-3 w-3" />Sinais</TabsTrigger>
                     <TabsTrigger value="endereco" className="text-[11px] gap-1 py-1.5 rounded-lg"><MapPin className="h-3 w-3" />Endereço</TabsTrigger>
+                    <TabsTrigger value="financeiro" className="text-[11px] gap-1 py-1.5 rounded-lg"><Wallet className="h-3 w-3" />Financeiro</TabsTrigger>
                   </TabsList>
                 </div>
 
                 <ScrollArea className="flex-1 mt-3">
+                  {/* Tab: Financeiro —
+                      "esse paciente deve alguma coisa?" é a pergunta que a
+                      recepção faz o dia inteiro e que não tinha resposta em
+                      lugar nenhum do sistema. */}
+                  <TabsContent value="financeiro" className="mt-0 space-y-3">
+                    <span className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                      <Wallet className="h-3.5 w-3.5" />
+                      Extrato do paciente
+                    </span>
+                    <ExtratoDoPaciente pacienteId={selectedPaciente.id} />
+                  </TabsContent>
+
                   {/* Tab: Dados */}
                   <TabsContent value="dados" className="space-y-5 pt-1 mt-0">
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
