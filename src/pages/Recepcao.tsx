@@ -8,6 +8,7 @@ import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { createAutoBilling } from '@/lib/autoBilling';
 import { autoCheckin, autoIniciarAtendimento, autoFinalizarAtendimento, autoConfirmarPagamento } from '@/lib/workflowAutomation';
+import { PainelDoDia } from '@/components/recepcao/PainelDoDia';
 import { useAgendamentos, usePacientes, useMedicos, useSalas } from '@/hooks/useSupabaseData';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { toast } from 'sonner';
@@ -777,33 +778,16 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
 
 
       {/* Stats */}
-      <motion.div
-        variants={stagger}
-        initial="hidden"
-        animate="visible"
-        className="grid grid-cols-2 md:grid-cols-4 gap-3"
-      >
-         {[
-           { label: 'Aguardando Check-in', value: stats.aguardando, icon: Clock, color: 'text-warning', bg: 'bg-warning/10' },
-           { label: 'Balcão (Pgto)', value: stats.balcao, icon: DollarSign, color: 'text-accent-foreground', bg: 'bg-accent/50' },
-           { label: 'Em Atendimento', value: stats.atendimento, icon: Stethoscope, color: 'text-info', bg: 'bg-info/10' },
-           { label: 'Concluídos', value: stats.concluido, icon: CheckCircle2, color: 'text-success', bg: 'bg-success/10' },
-        ].map((s, i) => (
-          <motion.div key={i} variants={fadeUp}>
-            <Card className="border bg-card">
-              <CardContent className="p-4 flex items-center gap-3">
-                <div className={cn('p-2.5 rounded-xl', s.bg)}>
-                  <s.icon className={cn('h-5 w-5', s.color)} />
-                </div>
-                <div>
-                  <p className="text-2xl font-bold">{s.value}</p>
-                  <p className="text-xs text-muted-foreground">{s.label}</p>
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
-        ))}
-      </motion.div>
+      {/* As quatro caixas de contagem viraram o painel do dia: as mesmas
+          informações mais o dinheiro (recebido, a receber, adicional pendente),
+          e cada cartão filtra a lista abaixo. */}
+      <PainelDoDia
+        atendimentos={enriched}
+        clinicaId={profile?.clinica_id}
+        hoje={today}
+        abaAtiva={activeTab as any}
+        onFiltrar={setActiveTab}
+      />
 
       {/* Search + Tabs */}
       <motion.div variants={fadeUp} initial="hidden" animate="visible" className="flex flex-col sm:flex-row gap-3">
