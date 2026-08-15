@@ -366,3 +366,108 @@ o banco de verdade.
 2. PR #28 continua aberto.
 3. Existe uma "Clínica de QA Descartavel" (01/08) em produção que não é minha.
 4. 61 botões de ícone ainda sem `aria-label` (teto travado no CI, não sobe).
+
+---
+---
+
+# Continuação — 15/08/2026: isolamento, backup e fluxos mortos
+
+Depois das nove etapas do pagamento, o trabalho seguiu por três frentes que
+apareceram ao investigar, não por planejamento: falhas de isolamento entre
+clínicas, o backup que ninguém nunca tinha aberto, e fluxos escritos que
+nenhuma tela chamava.
+
+## Resumo
+
+| | |
+|---|---|
+| Migrations aplicadas neste dia | 12 |
+| Verificações contra o banco real | 15 arquivos |
+| Testes unitários | 413 → **437** |
+| Funções de servidor novas | `backup-verificar`, `backup-restaurar-arquivos` |
+
+## Falhas de isolamento entre clínicas
+
+Todas reproduzidas em produção, dentro de transação desfeita, com o antes e o
+depois registrados.
+
+**Anexo de prontuário legível por qualquer clínica.** As quatro políticas de
+`anexos_prontuario` checavam só o papel, nunca a clínica. O `SELECT` permitia a
+qualquer usuário clínico ler exame, laudo e foto de paciente de **todas** as
+outras clínicas. É a mais séria da série. Não houve vazamento porque a tabela
+está vazia — ninguém chegou a usar a aba.
+
+**Token de portal do paciente para clínica alheia.** Cada linha dessa tabela é
+uma credencial de acesso. Mais três tabelas no mesmo caso: a política checava
+permissão, não clínica, e o gatilho que carimba a clínica respeita o valor
+quando ele vem preenchido.
+
+**A dona do SaaS entrava na clínica e via o sistema vazio.** As policies pedem
+papel + mesma clínica, e ela não é funcionária de lugar nenhum. Junto disso:
+`platform_impersonation_log` existia desde sempre e **nenhuma função escrevia
+nela** — acesso a prontuário de cliente sem rastro.
+
+**CPF único global**, impedindo a mesma pessoa de ser paciente de duas
+clínicas, com 63 dos 79 CPFs mascarados e 16 não — o índice nem pegava
+duplicata real.
+
+## Backup
+
+Havia três arquivos guardados e ninguém jamais tinha aberto nenhum.
+
+- O backup manual baixava **17 de 78 tabelas** e cortava em 1000 linhas sem
+  avisar, dizendo "sucesso".
+- A restauração ordenava por lista escrita à mão; 61 tabelas quebravam por
+  chave estrangeira em silêncio.
+- **Os arquivos ficavam de fora**: restaurar devolvia a linha "anexo tal"
+  apontando para um arquivo que não existe mais.
+- O backup era **semanal**. Perder o banco numa sexta custava cinco dias.
+
+Hoje: diário às 3h com os arquivos junto, conferência automática às 3h30 que
+compara contagem a contagem, e devolução de arquivos com simulação antes.
+Primeira conferência real: 78 tabelas, 5.169 registros, zero problemas.
+
+## Fluxos escritos que ninguém chamava
+
+Um padrão que se repetiu quatro vezes: a função existia, testada e correta, e
+nenhuma tela a invocava.
+
+| Fluxo | Sintoma no banco | O que faltava |
+|---|---|---|
+| Resultado de exame | 285 realizados, **0 com resultado** | tela para digitar |
+| Baixa de estoque | 0 movimentações, alerta diário | botão ao dispensar |
+| Retorno | 0 em 18 finalizados | perguntar no fechamento |
+| Cobrança pela agenda | consultas finalizadas **sem faturar** | passar pelo fluxo |
+
+E o inverso: `Exames.tsx` só vinculava o laudo ao prontuário quando havia
+resultado — como nada preenchia, nada era vinculado.
+
+## Erros meus, e como apareceram
+
+- **Estornar o último pagamento deixava a conta paga.** Guarda minha da etapa
+  2: `recalcular_conta` contava só pagamento não estornado, então a conta
+  parecia do modelo antigo e a função saía deixando o dinheiro devolvido.
+  Achado pelo teste do estorno.
+- **Duas funções de servidor não gravavam log e diziam que sim.** `nome` é NOT
+  NULL, ficou de fora, e o `{ error }` foi descartado — o vício que este
+  projeto passou a sessão corrigindo. Achado ao conferir o log vazio.
+- **Um teste que media nada.** Setei as claims do JWT e esqueci de trocar o
+  papel para `authenticated`: rodou como `postgres`, que ignora RLS, e acusou
+  uma falha de isolamento inexistente na prescrição.
+- **A cópia dos anexos foi recusada em produção** na primeira tentativa —
+  `mime type image/png is not supported`, porque o bucket de backup só aceita
+  JSON. Resolvido com bucket próprio, sem afrouxar a restrição.
+
+## O que não tem defeito
+
+Verificado e sadio, apesar do número zero: **prescrição** (4/4), **triagem** e
+**lista de espera** (políticas corretas). O zero é falta de uso, e isso é
+conversa com a clínica, não código.
+
+## Pendências
+
+1. **Revogar o token antigo do Supabase** — foi criado um novo, mas o anterior
+   continua válido. Rotacionar é criar E revogar.
+2. Mergear o PR #30.
+3. Decidir sobre as clínicas de teste que sobraram — agora há botão no painel.
+4. Ligar a triagem, se a clínica tiver enfermagem.
