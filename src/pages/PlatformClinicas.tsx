@@ -8,6 +8,11 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+} from '@/components/ui/dialog';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
@@ -48,17 +53,34 @@ export default function PlatformClinicas() {
   const [impersonatingId, setImpersonatingId] = useState<string | null>(null);
   const [reconciling, setReconciling] = useState(false);
   const [resendingId, setResendingId] = useState<string | null>(null);
+  const [alvo, setAlvo] = useState<{ id: string; nome: string } | null>(null);
+  const [motivo, setMotivo] = useState('');
   const navigate = useNavigate();
 
-  const handleImpersonate = async (clinicaId: string, clinicaNome: string) => {
-    setImpersonatingId(clinicaId);
+  /**
+   * Entrar numa clínica é ver o prontuário de paciente de um cliente. O motivo
+   * é gravado em `platform_impersonation_log` e é o que transforma o registro
+   * em rastro de verdade — sem ele toda linha do log fica igual.
+   */
+  const handleImpersonate = async () => {
+    if (!alvo) return;
+    if (motivo.trim().length < 5) {
+      toast.error('Descreva o motivo do acesso', {
+        description: 'Fica registrado no log de auditoria da plataforma.',
+      });
+      return;
+    }
+    setImpersonatingId(alvo.id);
     try {
       const { error } = await (supabase as any).rpc('platform_start_impersonation', {
-        _target_clinica_id: clinicaId,
+        _target_clinica_id: alvo.id,
+        _motivo: motivo.trim(),
       });
       if (error) throw error;
       await refreshProfile();
-      toast.success(`Entrando como ${clinicaNome}`);
+      setAlvo(null);
+      setMotivo('');
+      toast.success(`Entrando como ${alvo.nome}`);
       navigate('/dashboard');
     } catch (e: any) {
       toast.error(e.message || 'Erro ao impersonar clínica');
@@ -326,7 +348,7 @@ export default function PlatformClinicas() {
                           size="sm"
                           variant="outline"
                           disabled={impersonatingId === c.clinica_id}
-                          onClick={() => handleImpersonate(c.clinica_id, c.clinica_nome)}
+                          onClick={() => { setAlvo({ id: c.clinica_id, nome: c.clinica_nome }); setMotivo(''); }}
                         >
                           <LogIn className="h-3.5 w-3.5 mr-1" />
                           {impersonatingId === c.clinica_id ? 'Entrando...' : 'Entrar'}
@@ -340,6 +362,35 @@ export default function PlatformClinicas() {
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={!!alvo} onOpenChange={aberto => { if (!aberto) { setAlvo(null); setMotivo(''); } }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Entrar em {alvo?.nome}</DialogTitle>
+            <DialogDescription>
+              Você vai acessar os dados dessa clínica, inclusive prontuários de
+              pacientes. O motivo fica registrado no log da plataforma, com data
+              e hora de entrada e de saída.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="motivo-impersonacao">Motivo do acesso</Label>
+            <Textarea
+              id="motivo-impersonacao"
+              value={motivo}
+              onChange={e => setMotivo(e.target.value)}
+              placeholder="Ex.: chamado #142 — agenda não abre para a recepção"
+              rows={3}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAlvo(null)}>Cancelar</Button>
+            <Button onClick={handleImpersonate} disabled={!!impersonatingId}>
+              {impersonatingId ? 'Entrando...' : 'Entrar na clínica'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
