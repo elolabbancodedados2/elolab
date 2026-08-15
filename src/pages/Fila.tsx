@@ -20,7 +20,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { createAutoBilling } from '@/lib/autoBilling';
 import { autoIniciarAtendimento, autoFinalizarAtendimento } from '@/lib/workflowAutomation';
 import { useFilaAtendimento, useAgendamentos, usePacientes, useMedicos, useSalas } from '@/hooks/useSupabaseData';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { podeAtender, saldoDevedor } from '@/lib/liberacaoAtendimento';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { format, formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -180,6 +181,56 @@ export default function Fila() {
   const { data: medicos = [] } = useMedicos();
   const { data: salas = [] } = useSalas();
 
+  /**
+   * Saldo devedor dos atendimentos do dia.
+   *
+   * A fila não carregava lançamento nenhum: o profissional não tinha como saber
+   * se o paciente passou pelo balcão, e "Iniciar" chamava qualquer um.
+   */
+  const { data: cobrancas = [] } = useQuery({
+    queryKey: ['fila-cobrancas', profile?.clinica_id],
+    queryFn: async () => {
+      if (!profile?.clinica_id) return [];
+      const { data, error } = await supabase
+        .from('lancamentos')
+        .select('agendamento_id, valor, valor_pago, desconto, acrescimo')
+        .eq('clinica_id', profile.clinica_id)
+        .eq('tipo', 'receita')
+        .not('agendamento_id', 'is', null)
+        .not('status', 'in', '("cancelado","estornado")');
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: !!profile?.clinica_id,
+  });
+
+  /** A clínica ligou a trava de pagamento antes da consulta? */
+  const { data: clinicaConfig } = useQuery({
+    queryKey: ['clinica-exige-pagamento', profile?.clinica_id],
+    queryFn: async () => {
+      if (!profile?.clinica_id) return null;
+      const { data } = await (supabase as any)
+        .from('clinicas').select('exigir_pagamento_previo')
+        .eq('id', profile.clinica_id).maybeSingle();
+      return data;
+    },
+    enabled: !!profile?.clinica_id,
+  });
+
+  const travaLigada = Boolean(clinicaConfig?.exigir_pagamento_previo);
+
+  const saldoDoAgendamento = (agendamentoId: string) =>
+    saldoDevedor(agendamentoId, cobrancas as any);
+
+  /** Espelha o trigger do banco; ver src/lib/liberacaoAtendimento.ts. */
+  const podeAtenderAgendamento = (agendamentoId: string) =>
+    podeAtender(
+      agendamentoId,
+      agendamentos.find(a => a.id === agendamentoId) as any,
+      cobrancas as any,
+      travaLigada,
+    );
+
   const isLoading = loadingFila || loadingAgendamentos;
 
   // Realtime subscription for instant queue updates
@@ -208,9 +259,22 @@ export default function Fila() {
     !fila.some(f => f.agendamento_id === ag.id)
   );
 
-  const filaAtiva = fila
+  const filaAtivaCompleta = fila
     .filter(f => f.status !== 'finalizado')
     .sort((a, b) => a.posicao - b.posicao);
+
+  /**
+   * A lista de trabalho do profissional: só quem pode ser chamado.
+   *
+   * Quem está devendo não some — vai para `filaAguardandoPagamento`, logo
+   * abaixo. Esconder faria o médico perguntar "cadê o paciente que acabei de
+   * ver na sala de espera"; separar responde antes da pergunta existir.
+   *
+   * Com a trava desligada `podeAtenderAgendamento` devolve sempre true, então a
+   * fila fica idêntica à de hoje.
+   */
+  const filaAtiva = filaAtivaCompleta.filter(f => podeAtenderAgendamento(f.agendamento_id));
+  const filaAguardandoPagamento = filaAtivaCompleta.filter(f => !podeAtenderAgendamento(f.agendamento_id));
 
   const filaFinalizada = fila
     .filter(f => f.status === 'finalizado')
@@ -502,6 +566,41 @@ export default function Fila() {
             ))}
           </AnimatePresence>
         </motion.div>
+      )}
+
+      {/* ─── Aguardando pagamento ───
+          Fora da lista de chamada, mas à vista: o paciente está fisicamente na
+          sala de espera e o profissional precisa saber por que não pode chamá-lo.
+          Só aparece quando a clínica ligou a trava. */}
+      {filaAguardandoPagamento.length > 0 && (
+        <div className="rounded-xl border border-warning/30 bg-warning/5 p-4 space-y-2">
+          <p className="text-xs font-medium text-warning flex items-center gap-2">
+            <AlertTriangle className="h-3.5 w-3.5" />
+            {filaAguardandoPagamento.length === 1
+              ? '1 paciente aguardando pagamento'
+              : `${filaAguardandoPagamento.length} pacientes aguardando pagamento`}
+          </p>
+          <p className="text-[11px] text-muted-foreground">
+            Não podem ser chamados até passarem pelo balcão. A recepção resolve em
+            Recepção &rarr; Balcão.
+          </p>
+          <div className="space-y-1.5 pt-1">
+            {filaAguardandoPagamento.map(item => (
+              <div key={item.id} className="flex items-center justify-between gap-3 text-sm bg-background/60 rounded-lg px-3 py-2">
+                <span className="font-medium truncate">{getPacienteNome(item.agendamento_id)}</span>
+                <div className="flex items-center gap-3 shrink-0">
+                  <span className={cn('text-xs tabular-nums', corEspera(item.horario_chegada))}>
+                    <Timer className="h-3 w-3 inline mr-1" />
+                    {calcularEspera(item.horario_chegada)}
+                  </span>
+                  <Badge variant="outline" className="text-[10px] border-warning/40 text-warning tabular-nums">
+                    R$ {saldoDoAgendamento(item.agendamento_id).toFixed(2)}
+                  </Badge>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
       )}
 
       {/* Finalizados do dia */}
