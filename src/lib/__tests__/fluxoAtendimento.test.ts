@@ -194,6 +194,43 @@ describe('faturamento automático — uma cobrança por agendamento', () => {
     expect(criou).toBe(false);
   });
 
+  /**
+   * Zero no catálogo é decisão da clínica; zero por ausência é esquecimento.
+   * Tratar os dois como erro barrava o check-in de retorno — que é gratuito por
+   * convenção no Brasil e tem 17 agendamentos na base.
+   */
+  it('atendimento cadastrado como gratuito não gera cobrança nem erro', async () => {
+    mockAtual = criarSupabaseMock({
+      'lancamentos.select': { data: [], error: null },
+      'tipos_consulta.select': { data: { id: 't-retorno', nome: 'Retorno', valor_particular: 0 }, error: null },
+    });
+
+    const { createAutoBilling } = await import('@/lib/autoBilling');
+    const criou = await createAutoBilling({
+      agendamentoId: 'ag-1', pacienteId: 'pac-1', pacienteNome: 'Maria',
+      tipoConsulta: 'retorno', data: '2026-08-14', clinicaId: 'cli-1',
+    });
+
+    expect(criou).toBe(false);
+    expect(
+      mockAtual.chamadas.some(c => c.tabela === 'lancamentos' && c.op === 'insert'),
+      'criou cobrança para atendimento gratuito',
+    ).toBe(false);
+  });
+
+  it('tipo ausente do catálogo continua sendo erro de preço não cadastrado', async () => {
+    mockAtual = criarSupabaseMock({
+      'lancamentos.select': { data: [], error: null },
+      'tipos_consulta.select': { data: null, error: null },
+    });
+
+    const { createAutoBilling } = await import('@/lib/autoBilling');
+    await expect(createAutoBilling({
+      agendamentoId: 'ag-1', pacienteId: 'pac-1', pacienteNome: 'Maria',
+      tipoConsulta: 'consulta-que-ninguem-cadastrou', data: '2026-08-14', clinicaId: 'cli-1',
+    })).rejects.toThrow(/preço cadastrado/i);
+  });
+
   it('usa o preço interno do exame e não cria cobrança zerada', async () => {
     mockAtual = criarSupabaseMock({
       'lancamentos.select': { data: [], error: null },

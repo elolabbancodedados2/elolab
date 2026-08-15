@@ -238,6 +238,14 @@ export async function createAutoBilling(params: AutoBillingParams): Promise<bool
   let valor = 0;
   let descricao = 'Consulta';
   let categoria = 'consulta';
+  /**
+   * O tipo foi encontrado no catálogo `tipos_consulta`?
+   *
+   * Distingue as duas origens possíveis de um valor zero: atendimento que a
+   * clínica cadastrou como gratuito (retorno, coleta) versus preço que ninguém
+   * cadastrou. O primeiro não gera cobrança; o segundo é erro.
+   */
+  let precoCadastrado = false;
   const isExam = Boolean(tipoExame?.trim()) || isGenericExamType(tipoConsulta);
 
   if (isExam) {
@@ -260,7 +268,11 @@ export async function createAutoBilling(params: AutoBillingParams): Promise<bool
     let tcQuery = (supabase as any)
       .from('tipos_consulta')
       .select('id, nome, valor_particular')
-      .eq('nome', tipoConsulta)
+      // `ilike` sem curinga é igualdade sem diferenciar maiúsculas. O
+      // agendamento guarda o tipo em minúsculas ("retorno") e o catálogo tem
+      // "Retorno" — com `eq` a busca não achava nada, e os 17 agendamentos de
+      // retorno caíam no erro de "preço não cadastrado".
+      .ilike('nome', tipoConsulta)
       .eq('ativo', true);
     if (resolvedClinicaId) tcQuery = tcQuery.eq('clinica_id', resolvedClinicaId);
     const { data: tc, error: tcError } = await tcQuery.limit(1).maybeSingle();
@@ -269,6 +281,9 @@ export async function createAutoBilling(params: AutoBillingParams): Promise<bool
     if (tc) {
       valor = toMoney(tc.valor_particular);
       descricao = tc.nome;
+      // O tipo existe no catálogo — então zero é decisão da clínica, não
+      // esquecimento. Ver `precoCadastrado` abaixo.
+      precoCadastrado = true;
 
       // Check for convenio-specific price
       if (convenioId && tc.id) {
@@ -297,12 +312,29 @@ export async function createAutoBilling(params: AutoBillingParams): Promise<bool
     if (conv?.valor_consulta) valor = toMoney(conv.valor_consulta);
   }
 
-  if (isExam && valor <= 0) {
-    throw new Error(`Não há preço cadastrado para o exame "${tipoExame || tipoConsulta}".`);
-  }
-
-  if (!isExam && valor <= 0) {
-    throw new Error(`Não há preço cadastrado para a consulta "${tipoConsulta || 'atendimento'}".`);
+  // ─── Zero cadastrado é diferente de preço esquecido ───
+  //
+  // Havia aqui um `throw` para todo valor <= 0, para impedir cobrança de R$ 0
+  // criada por preço não cadastrado. A intenção é certa, mas o efeito era
+  // barrar o check-in de atendimento que é gratuito DE PROPÓSITO: hoje três
+  // tipos ativos têm valor zero — "Retorno" e as duas coletas de laboratório.
+  // Nenhum paciente de retorno conseguiria ser atendido.
+  //
+  // A distinção honesta é pela origem do zero:
+  //   tipo encontrado no catálogo com valor 0  → gratuito, não gera cobrança
+  //   tipo não encontrado                      → preço esquecido, erro
+  if (valor <= 0) {
+    if (precoCadastrado) {
+      // Sem cobrança e sem erro. Como não há lançamento, também não há saldo
+      // devedor — é assim que retorno gratuito atravessa a trava de pagamento
+      // da etapa 4 sem precisar de exceção escrita em lugar nenhum.
+      return false;
+    }
+    throw new Error(
+      isExam
+        ? `Não há preço cadastrado para o exame "${tipoExame || tipoConsulta}".`
+        : `Não há preço cadastrado para a consulta "${tipoConsulta || 'atendimento'}".`
+    );
   }
 
   // Build full description with patient name and type
