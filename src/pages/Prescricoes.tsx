@@ -306,6 +306,14 @@ export default function Prescricoes() {
   // Função extraída: salva no DB e gera PDF. Chamada quando não há alertas
   // ou após o médico confirmar no dialog de alertas.
   const executeSaveAndPdf = async (paciente: any, medico: any) => {
+    if (!profile?.clinica_id) {
+      setGerando(false);
+      toast.error('Sua clínica ainda não foi identificada.', {
+        description: 'Atualize a página e entre novamente antes de emitir a receita.',
+      });
+      return;
+    }
+
     // O retorno deste insert era descartado. O Supabase devolve `{ error }` em
     // vez de lançar exceção, então uma falha de RLS, de rede ou de constraint
     // passava batida: o PDF era gerado, a tela dizia "sucesso" e o médico
@@ -313,7 +321,7 @@ export default function Prescricoes() {
     const { error: erroInsert } = await supabase.from('prescricoes').insert({
       paciente_id: form.paciente_id,
       medico_id: form.medico_id,
-      clinica_id: profile?.clinica_id,
+      clinica_id: profile.clinica_id,
       medicamento: form.medicamentos_texto.slice(0, 100),
       posologia: form.medicamentos_texto,
       data_emissao: form.data_emissao,

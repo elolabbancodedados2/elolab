@@ -3558,7 +3558,7 @@ export type Database = {
       }
       prescricoes: {
         Row: {
-          clinica_id: string | null
+          clinica_id: string
           created_at: string | null
           data_emissao: string | null
           dosagem: string | null
@@ -3575,7 +3575,7 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
-          clinica_id?: string | null
+          clinica_id: string
           created_at?: string | null
           data_emissao?: string | null
           dosagem?: string | null
@@ -3592,7 +3592,7 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
-          clinica_id?: string | null
+          clinica_id?: string
           created_at?: string | null
           data_emissao?: string | null
           dosagem?: string | null
