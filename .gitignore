@@ -43,3 +43,4 @@ schema-real.json
 
 # Artefatos de execução do Playwright
 playwright-report/
+.playwright-cli/
