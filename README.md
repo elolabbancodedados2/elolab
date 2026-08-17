@@ -94,13 +94,16 @@ VITE_SUPABASE_PUBLISHABLE_KEY=
 ## ✅ Qualidade
 
 ```bash
-npm run test:run     # 291 testes unitários e de integração
-npm run test:e2e     # Playwright: RLS, autorização das edge functions e varredura dos 41 módulos
+npm run test:run     # 440 testes unitários e de integração
+npm run test:e2e     # Playwright: RLS, autorização das edge functions e varredura dos módulos
 npx tsc --noEmit -p tsconfig.app.json
 npm run lint
 ```
 
 O CI roda typecheck, lint e testes a cada push em `dev` e PR para `main`.
+
+O deploy é automatizado por `.github/workflows/deploy.yml` — cada push na
+`main` gera um novo bundle no Cloudflare Pages (`app.elolab.com.br`).
 
 **Isolamento entre clínicas** tem suíte própria, que só roda com duas contas
 reais em clínicas diferentes — sem elas os testes são pulados, nunca passam em
