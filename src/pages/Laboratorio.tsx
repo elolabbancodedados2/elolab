@@ -90,10 +90,55 @@ export default function Laboratorio() {
   const [dateFilter, setDateFilter] = useState('hoje');
   const [urgentOnly, setUrgentOnly] = useState(false);
   const [showNewColeta, setShowNewColeta] = useState(false);
+
+  // Limpeza de fila em lote: a INOVALAB acumulou 253 coletas em `pendente`
+  // vindas de exames que nunca tinham passado pelo laboratório. Sem uma
+  // saída em bloco, o técnico teria que cancelar uma a uma.
+  const [showLimparFila, setShowLimparFila] = useState(false);
+  const [limparDias, setLimparDias] = useState('30');
+  const [limparMotivo, setLimparMotivo] = useState('');
+
   const [showResultados, setShowResultados] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState('worklist');
   const queryClient = useQueryClient();
   const { user, profile } = useSupabaseAuth();
+
+  const previewLimpar = useQuery({
+    queryKey: ['preview-limpar-fila-lab', profile?.clinica_id, limparDias],
+    enabled: !!profile?.clinica_id && showLimparFila && Number(limparDias) >= 1,
+    queryFn: async () => {
+      const dias = Number(limparDias);
+      const corte = new Date(Date.now() - dias * 86400_000).toISOString();
+      const { count, error } = await supabase
+        .from('coletas_laboratorio')
+        .select('id', { count: 'exact', head: true })
+        .eq('clinica_id', profile!.clinica_id!)
+        .eq('status', 'pendente')
+        .lt('created_at', corte);
+      if (error) throw error;
+      return count ?? 0;
+    },
+  });
+
+  const limparFila = useMutation({
+    mutationFn: async () => {
+      const dias = Number(limparDias);
+      if (!Number.isFinite(dias) || dias < 1) throw new Error('Informe dias >= 1');
+      if (!limparMotivo || limparMotivo.trim().length < 5) throw new Error('Motivo mínimo 5 caracteres');
+      const { data, error } = await supabase
+        .rpc('cancelar_coletas_pendentes_antigas', { p_dias: dias, p_motivo: limparMotivo.trim() });
+      if (error) throw error;
+      return Number(data ?? 0);
+    },
+    onSuccess: (n) => {
+      queryClient.invalidateQueries({ queryKey: ['coletas-laboratorio'] });
+      queryClient.invalidateQueries({ queryKey: ['preview-limpar-fila-lab'] });
+      setShowLimparFila(false);
+      setLimparMotivo('');
+      toast.success(n === 0 ? 'Nada a cancelar' : `${n} coleta(s) cancelada(s)`);
+    },
+    onError: (e) => toast.error('Não foi possível cancelar em lote', { description: mensagemDeErro(e) }),
+  });
 
   const { data: pacientes } = useQuery({
     queryKey: ['pacientes-lab'],
@@ -347,10 +392,50 @@ export default function Laboratorio() {
           </h1>
           <p className="text-muted-foreground">Central de gestão laboratorial — worklist, coletas e resultados</p>
         </div>
-        <Button onClick={() => { resetColetaForm(); setShowNewColeta(true); }}>
-          <Plus className="h-4 w-4 mr-2" /> Nova Coleta
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => setShowLimparFila(true)}>
+            Limpar fila antiga
+          </Button>
+          <Button onClick={() => { resetColetaForm(); setShowNewColeta(true); }}>
+            <Plus className="h-4 w-4 mr-2" /> Nova Coleta
+          </Button>
+        </div>
       </div>
+
+      <Dialog open={showLimparFila} onOpenChange={(o) => { setShowLimparFila(o); if (!o) setLimparMotivo(''); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Cancelar coletas pendentes antigas</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label htmlFor="limpar-dias">A partir de quantos dias em "pendente"?</Label>
+              <Input id="limpar-dias" type="number" min={1} value={limparDias}
+                onChange={(e) => setLimparDias(e.target.value)} />
+              <p className="text-xs text-muted-foreground mt-1">
+                {previewLimpar.data ?? '…'} coleta(s) da sua clínica seriam canceladas.
+              </p>
+            </div>
+            <div>
+              <Label htmlFor="limpar-motivo">Motivo (obrigatório, aparece na auditoria)</Label>
+              <Textarea id="limpar-motivo" value={limparMotivo}
+                onChange={(e) => setLimparMotivo(e.target.value)}
+                placeholder="Ex.: Limpeza de fila — material nunca coletado, dados migrados de sistema anterior." />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Só coletas em <strong>pendente</strong> serão afetadas. Coletado, em análise, validado
+              e liberado ficam intactos — eles significam que material físico existe.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowLimparFila(false)}>Cancelar</Button>
+            <Button variant="destructive" onClick={() => limparFila.mutate()}
+              disabled={limparFila.isPending || !previewLimpar.data || limparMotivo.trim().length < 5}>
+              {limparFila.isPending ? 'Cancelando…' : `Cancelar ${previewLimpar.data ?? 0} coleta(s)`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* SLA Breach Alert */}
       {slaBreaches.length > 0 && (

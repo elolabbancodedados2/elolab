@@ -41,7 +41,8 @@ export interface MenuItem {
   label: string;
   icon: LucideIcon;
   href: string;
-  badge?: number;
+  /** Contador (número) ou etiqueta curta (ex.: "Em breve"). */
+  badge?: number | string;
   roles?: AppRole[];
   external?: boolean;
   superAdminOnly?: boolean;
@@ -167,7 +168,7 @@ export const menuGroups: MenuGroup[] = [
       { label: 'Meu Plano', icon: CreditCard, href: '/planos', roles: ['admin'] },
       { label: 'Analytics', icon: ActivitySquare, href: '/analytics' },
       { label: 'Automações', icon: Sparkles, href: '/automacoes' },
-      { label: 'Agente IA WhatsApp', icon: BotMessageSquare, href: '/agente-ia' },
+      { label: 'Agente IA WhatsApp', icon: BotMessageSquare, href: '/agente-ia', badge: 'Em breve' },
       { label: 'Configurações', icon: Settings2, href: '/configuracoes' },
       { label: 'Configurações Avançadas', icon: Gauge, href: '/configuracoes-avancadas' },
       { label: 'Direitos LGPD', icon: ScrollText, href: '/lgpd-pacientes' },

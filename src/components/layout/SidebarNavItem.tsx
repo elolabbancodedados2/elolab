@@ -89,13 +89,18 @@ export function SidebarNavItem({ item, collapsed, groupColor }: SidebarNavItemPr
             </span>
           )}
 
-          {/* Badge */}
-          {!collapsed && item.badge && item.badge > 0 && (
+          {/* Badge — número (contador) ou texto curto (ex.: "Em breve") */}
+          {!collapsed && item.badge != null && item.badge !== 0 && item.badge !== '' && (
             <motion.span
               initial={{ scale: 0 }}
               animate={{ scale: 1 }}
               transition={{ type: 'spring', stiffness: 500, damping: 20 }}
-              className="ml-auto flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-primary/15 px-1.5 text-[9px] font-bold text-primary tabular-nums ring-1 ring-primary/10"
+              className={cn(
+                'ml-auto flex h-[18px] items-center justify-center rounded-full px-1.5 text-[9px] font-bold tabular-nums ring-1',
+                typeof item.badge === 'number'
+                  ? 'min-w-[18px] bg-primary/15 text-primary ring-primary/10'
+                  : 'bg-muted text-muted-foreground ring-border uppercase tracking-wide'
+              )}
             >
               {item.badge}
             </motion.span>
@@ -120,7 +125,7 @@ export function SidebarNavItem({ item, collapsed, groupColor }: SidebarNavItemPr
             className="flex items-center gap-2 font-medium text-xs"
           >
             {item.label}
-            {item.badge && item.badge > 0 && (
+            {item.badge != null && item.badge !== 0 && item.badge !== '' && (
               <span className="flex h-[17px] min-w-[17px] items-center justify-center rounded-full bg-primary/10 px-1 text-[9px] font-bold text-primary">
                 {item.badge}
               </span>
