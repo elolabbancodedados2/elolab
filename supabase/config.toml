@@ -2,7 +2,12 @@ project_id = "gebygucrpipaufrlyqqj"
 
 # Functions requiring authenticated user (JWT verified)
 [functions.send-employee-invitation]
-verify_jwt = false
+# Estava aberta (verify_jwt = false) e NENHUMA tela a chama desde 29/07 — o
+# fluxo em uso é invite-employee. Função pública que ninguém usa é só
+# superfície de ataque parada. Ela já validava o Authorization por conta
+# própria; agora o gateway barra antes, e uma chamada anônima nem chega ao
+# código.
+verify_jwt = true
 
 [functions.send-appointment-reminder]
 verify_jwt = true
