@@ -53,3 +53,11 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: pages deploy dist --project-name=elolab-app --branch=main --commit-dirty=true
+
+      - name: Install smoke-test browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Verify production after deploy
+        env:
+          PRODUCAO_URL: https://app.elolab.com.br
+        run: npx playwright test tests/producao-smoke.spec.ts --reporter=line

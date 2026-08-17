@@ -528,10 +528,12 @@ export default function Prontuarios() {
   const [showDischargeReport, setShowDischargeReport] = useState(false);
   const [sinaisVitais, setSinaisVitais] = useState<SinaisVitais>(emptySinaisVitais);
   const [isEditing, setIsEditing] = useState(false);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [autoSaveTime, setAutoSaveTime] = useState<string | null>(null);
   const [showExamSolicitation, setShowExamSolicitation] = useState(false);
   const [examForm, setExamForm] = useState({ tipo_exame: '', descricao: '', observacoes: '' });
   const autoSaveRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const changeVersionRef = useRef(0);
   const { profile: user } = useSupabaseAuth();
 
   const { data: pacientes = [], isLoading: loadingPacientes } = usePacientes();
@@ -616,6 +618,7 @@ export default function Prontuarios() {
     });
     setSinaisVitais(emptySinaisVitais);
     setPrescricoes([]);
+    setHasUnsavedChanges(false);
     setIsEditing(true);
     setIsProntuarioOpen(true);
     return true;
@@ -637,6 +640,7 @@ export default function Prontuarios() {
       medicamento: p.medicamento, dosagem: p.dosagem || '', posologia: p.posologia || '',
       duracao: p.duracao || '', quantidade: p.quantidade || '', observacoes: p.observacoes || '',
     })));
+    setHasUnsavedChanges(false);
     setIsEditing(false);
     setIsProntuarioOpen(true);
     // Registro de acesso ao prontuário — CFM Res. 1.821/2007.
@@ -699,11 +703,19 @@ export default function Prontuarios() {
     handleNovoProntuario,
   ]);
 
-  const handleAddPrescricao = () => setPrescricoes([...prescricoes, { medicamento: '', dosagem: '', posologia: '', duracao: '', quantidade: '', observacoes: '' }]);
-  const handleUpdatePrescricao = (i: number, field: keyof PrescricaoForm, value: string) => {
-    const u = [...prescricoes]; u[i] = { ...u[i], [field]: value }; setPrescricoes(u);
+  const handleAddPrescricao = () => {
+    setPrescricoes([...prescricoes, { medicamento: '', dosagem: '', posologia: '', duracao: '', quantidade: '', observacoes: '' }]);
+    setHasUnsavedChanges(true);
+    changeVersionRef.current += 1;
   };
-  const handleRemovePrescricao = (i: number) => setPrescricoes(prescricoes.filter((_, idx) => idx !== i));
+  const handleUpdatePrescricao = (i: number, field: keyof PrescricaoForm, value: string) => {
+    const u = [...prescricoes]; u[i] = { ...u[i], [field]: value }; setPrescricoes(u); setHasUnsavedChanges(true); changeVersionRef.current += 1;
+  };
+  const handleRemovePrescricao = (i: number) => {
+    setPrescricoes(prescricoes.filter((_, idx) => idx !== i));
+    setHasUnsavedChanges(true);
+    changeVersionRef.current += 1;
+  };
 
   const isSigned = !!currentProntuario.assinado;
   const isReadOnly = (!!currentProntuario.id && !isEditing) || isSigned;
@@ -750,7 +762,11 @@ export default function Prontuarios() {
     }
   };
 
-  const updateField = (field: string, value: any) => setCurrentProntuario(prev => ({ ...prev, [field]: value }));
+  const updateField = (field: string, value: any) => {
+    setCurrentProntuario(prev => ({ ...prev, [field]: value }));
+    setHasUnsavedChanges(true);
+    changeVersionRef.current += 1;
+  };
 
   // ─── Core save logic (used by manual save and auto-save) ───
   const performSave = async (silent = false): Promise<string | null> => {
@@ -765,6 +781,7 @@ export default function Prontuarios() {
       return null;
     }
     try {
+      const savingVersion = changeVersionRef.current;
       const payload = {
         queixa_principal: currentProntuario.queixa_principal,
         historia_doenca_atual: currentProntuario.historia_doenca_atual,
@@ -925,6 +942,10 @@ export default function Prontuarios() {
         setHistoricoEvolucoes(hist ?? []);
       }
 
+      // Se o profissional digitou enquanto a requisição estava em trânsito,
+      // a nova versão continua pendente e será salva no próximo ciclo.
+      if (changeVersionRef.current === savingVersion) setHasUnsavedChanges(false);
+
       return prontuarioId;
     } catch (error) {
       if (import.meta.env.DEV) console.error('Error saving prontuario:', error);
@@ -941,7 +962,7 @@ export default function Prontuarios() {
     }
   };
 
-  // ─── Auto-save every 60s ───
+  // ─── Auto-save every 30s ───
   // IMPORTANTE: dependências limitadas a flags estáveis (open/editing) para
   // não recriar o setInterval a cada tecla — bug anterior fazia o auto-save
   // nunca disparar em digitação contínua. Usamos ref para acessar o valor
@@ -952,9 +973,27 @@ export default function Prontuarios() {
     if (!(isProntuarioOpen && isEditing)) return;
     autoSaveRef.current = setInterval(() => {
       performSaveRef.current(true);
-    }, 60000);
+    }, 30000);
     return () => { if (autoSaveRef.current) clearInterval(autoSaveRef.current); };
   }, [isProntuarioOpen, isEditing]);
+
+  // Evita perder uma evolução digitada caso a aba seja fechada antes do
+  // próximo autosave. Não persistimos texto clínico em localStorage: em
+  // computadores compartilhados isso deixaria dados sensíveis no disco.
+  useEffect(() => {
+    if (!hasUnsavedChanges) return;
+    const warnBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', warnBeforeUnload);
+    return () => window.removeEventListener('beforeunload', warnBeforeUnload);
+  }, [hasUnsavedChanges]);
+
+  const handleProntuarioOpenChange = (open: boolean) => {
+    if (!open && hasUnsavedChanges && !window.confirm('Há alterações ainda não salvas. Deseja fechar e descartá-las?')) return;
+    setIsProntuarioOpen(open);
+  };
 
   // Reset auto-save time when dialog closes
   useEffect(() => {
@@ -1287,7 +1326,7 @@ export default function Prontuarios() {
       {/* ═══════════════════════════════════════════════════════ */}
       {/* ─── Prontuário Dialog ─────────────────────────────── */}
       {/* ═══════════════════════════════════════════════════════ */}
-      <Dialog open={isProntuarioOpen} onOpenChange={setIsProntuarioOpen}>
+      <Dialog open={isProntuarioOpen} onOpenChange={handleProntuarioOpenChange}>
         <DialogContent className="max-w-6xl max-h-[95vh] overflow-hidden flex flex-col">
           <DialogHeader className="flex-shrink-0">
             <DialogTitle className="flex items-center justify-between flex-wrap gap-2">
@@ -1479,7 +1518,7 @@ export default function Prontuarios() {
 
                 {/* ─── Exame Físico ─── */}
                 <TabsContent value="exame" className="space-y-4 pt-1">
-                  <VitalSignsInput sinais={sinaisVitais} onChange={setSinaisVitais} />
+                  <VitalSignsInput sinais={sinaisVitais} onChange={(value) => { setSinaisVitais(value); setHasUnsavedChanges(true); changeVersionRef.current += 1; }} />
                   <Separator />
                   <Section icon={Stethoscope} title="Exame Físico Geral">
                     <Textarea placeholder="Estado geral, consciência, hidratação..." value={currentProntuario.exames_fisicos || ''} onChange={e => updateField('exames_fisicos', e.target.value)} rows={3} />
