@@ -47,16 +47,9 @@ interface SystemHealth {
   lastCheck: Date;
 }
 
-interface Integration {
-  id: string;
-  nome: string;
-  tipo: 'api' | 'webhook' | 'oauth' | 'smtp';
-  chave: string;
-  chaveSecreta?: string;
-  webhook?: string;
-  status: 'ativo' | 'inativo' | 'erro';
-  configData?: Record<string, any>;
-  createdAt: Date;
+interface IntegrationCheck {
+  id: string; nome: string; status: 'ok' | 'warning' | 'error';
+  detalhe: string; latencia_ms?: number;
 }
 
 interface Especialidade {
@@ -246,34 +239,17 @@ export function HealthCheckTab() {
 
 /* ─── 2. INTEGRAÇÕES ─── */
 export function IntegracoesTab() {
-  const [showAddIntegration, setShowAddIntegration] = useState(false);
-  const [newIntegration, setNewIntegration] = useState<Partial<Integration>>({});
-  const [showSecret, setShowSecret] = useState(false);
-
-  const { data: integracoes = [], isLoading } = useQuery({
-    queryKey: ['integracoes'],
+  const { data, isLoading, error, refetch, isFetching } = useQuery({
+    queryKey: ['integration-health'],
     queryFn: async () => {
-      // Simular fetch de integrações
-      return [
-        {
-          id: '1',
-          nome: 'MercadoPago',
-          tipo: 'api',
-          chave: 'APP_USR_XXXX',
-          status: 'ativo',
-          createdAt: new Date('2026-04-01'),
-        },
-        {
-          id: '2',
-          nome: 'SendGrid Email',
-          tipo: 'smtp',
-          chave: 'SG_XXXX',
-          status: 'ativo',
-          createdAt: new Date('2026-04-02'),
-        },
-      ] as Integration[];
+      const { data, error } = await supabase.functions.invoke('integration-health');
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      return data as { checked_at: string; overall: string; checks: IntegrationCheck[] };
     },
+    staleTime: 60_000,
   });
+  const integracoes = data?.checks ?? [];
 
   return (
     <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
@@ -283,102 +259,36 @@ export function IntegracoesTab() {
             <CardTitle className="flex items-center gap-2"><Code className="h-5 w-5" />Integrações</CardTitle>
             <CardDescription>APIs e webhooks conectados</CardDescription>
           </div>
-          <Button onClick={() => setShowAddIntegration(true)} size="sm">
-            <Plus className="h-4 w-4 mr-2" />
-            Nova Integração
+          <Button onClick={() => refetch()} disabled={isFetching} size="sm" variant="outline">
+            <RefreshCw className={`h-4 w-4 mr-2 ${isFetching ? 'animate-spin' : ''}`} />
+            Verificar agora
           </Button>
         </CardHeader>
         <CardContent className="space-y-4">
+          {error && <Alert variant="destructive"><AlertCircle className="h-4 w-4" /><AlertDescription>{mensagemDeErro(error)}</AlertDescription></Alert>}
           {integracoes.map(integracao => (
             <div key={integracao.id} className="flex items-start justify-between p-4 border rounded-lg">
               <div className="flex-1">
                 <h3 className="font-semibold flex items-center gap-2">
-                  {integracao.tipo === 'api' ? <Zap className="h-4 w-4" /> : <Webhook className="h-4 w-4" />}
+                  <Zap className="h-4 w-4" />
                   {integracao.nome}
                 </h3>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Tipo: {integracao.tipo === 'api' ? 'API Key' : 'Webhook'}
-                </p>
-                <div className="mt-2 flex items-center gap-2">
-                  <code className="bg-gray-100 px-2 py-1 rounded text-xs font-mono">
-                    {showSecret ? integracao.chave : '•'.repeat(10)}
-                  </code>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => setShowSecret(!showSecret)}
-                  >
-                    {showSecret ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => {
-                      navigator.clipboard.writeText(integracao.chave);
-                      toast.success('Chave copiada');
-                    }}
-                  >
-                    <Copy className="h-3 w-3" />
-                  </Button>
-                </div>
+                <p className="text-sm text-muted-foreground mt-1">{integracao.detalhe}</p>
+                {integracao.latencia_ms !== undefined && <p className="text-xs text-muted-foreground mt-1">Latência: {integracao.latencia_ms} ms</p>}
               </div>
-              <div className="flex items-center gap-2">
-                <Badge className={integracao.status === 'ativo' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}>
-                  {integracao.status === 'ativo' ? '✓ Ativo' : 'Inativo'}
-                </Badge>
-                <Button size="sm" variant="outline"><Edit className="h-3 w-3" /></Button>
-                <Button size="sm" variant="outline" className="text-red-600"><Trash2 className="h-3 w-3" /></Button>
-              </div>
+              <Badge className={integracao.status === 'ok' ? 'bg-green-100 text-green-800' : integracao.status === 'warning' ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800'}>{integracao.status === 'ok' ? 'Operacional' : integracao.status === 'warning' ? 'Atenção' : 'Falha'}</Badge>
             </div>
           ))}
 
           {integracoes.length === 0 && (
             <div className="text-center py-8 text-muted-foreground">
               <Code className="h-12 w-12 mx-auto opacity-20 mb-2" />
-              <p>Nenhuma integração ativa</p>
+              <p>{isLoading ? 'Verificando integrações...' : 'Nenhuma integração encontrada'}</p>
             </div>
           )}
+          {data?.checked_at && <p className="text-xs text-muted-foreground">Última verificação: {format(new Date(data.checked_at), "dd/MM/yyyy 'às' HH:mm:ss", { locale: ptBR })}</p>}
         </CardContent>
       </Card>
-
-      {/* Dialog para nova integração */}
-      <Dialog open={showAddIntegration} onOpenChange={setShowAddIntegration}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Nova Integração</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>Nome da Integração</Label>
-              <Input placeholder="Ex: MercadoPago, SendGrid..." />
-            </div>
-            <div className="space-y-2">
-              <Label>Tipo</Label>
-              <select className="w-full border rounded-md p-2">
-                <option>API Key</option>
-                <option>OAuth</option>
-                <option>Webhook</option>
-                <option>SMTP</option>
-              </select>
-            </div>
-            <div className="space-y-2">
-              <Label>Chave / Token</Label>
-              <Input type="password" placeholder="Chave segura..." />
-            </div>
-            <div className="space-y-2">
-              <Label>Chave Secreta (opcional)</Label>
-              <Input type="password" placeholder="Chave secreta..." />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowAddIntegration(false)}>Cancelar</Button>
-            <Button onClick={() => {
-              toast.success('Integração adicionada');
-              setShowAddIntegration(false);
-            }}>Adicionar</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </motion.div>
   );
 }
