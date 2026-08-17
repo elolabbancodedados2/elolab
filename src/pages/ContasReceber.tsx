@@ -377,12 +377,10 @@ export default function ContasReceber() {
       Competência: c.competencia || '',
       'Nº Documento': c.numero_documento || '',
     }));
-    // Só baixa a biblioteca de planilha quando alguém exporta.
-    const XLSX = await import('xlsx');
-    const ws = XLSX.utils.json_to_sheet(rows);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Contas a Receber');
-    XLSX.writeFile(wb, `contas_receber_${format(new Date(), 'yyyy-MM-dd')}.xlsx`);
+    // `exportToExcel` já cuida do import dinâmico da lib de escrita.
+    // Substituição do `xlsx@0.18.5` — SEC-001 (prototype pollution / ReDoS).
+    const { exportToExcel } = await import('@/lib/excelExporter');
+    await exportToExcel(rows, 'contas_receber', 'Contas a Receber');
     toast.success('Exportado com sucesso!');
   };
 

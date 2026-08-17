@@ -5,8 +5,12 @@
  * produzem. Tudo vira texto: a conversão para data, CPF e telefone é problema
  * de `campos.ts`, que sabe explicar o erro em português.
  *
- * O `xlsx` entra por import dinâmico — são 430 KB que não podem estar no
- * pacote inicial de quem só quer ver a agenda.
+ * `read-excel-file` substituiu `xlsx@0.18.5` em 08/2026: a lib antiga tinha
+ * prototype pollution e ReDoS sem patch upstream (SEC-001 do report de
+ * segurança). Esta é ~5× menor no bundle e mantida.
+ *
+ * O `read-excel-file` entra por import dinâmico — o chunk sai do caminho
+ * inicial de quem só quer ver a agenda.
  */
 
 /** Marca de ordem de byte. Escrita por código para não virar caractere
@@ -82,35 +86,42 @@ export function lerCsv(texto: string): Planilha {
 }
 
 export async function lerXlsx(arquivo: File): Promise<Planilha> {
-  const XLSX = await import('xlsx');
-  const buffer = await arquivo.arrayBuffer();
-  // `cellDates` faz a data voltar como Date em vez do número de série; ainda
-  // assim `campos.ts` trata o número, porque nem toda planilha marca a coluna
-  // como data.
-  const pasta = XLSX.read(buffer, { type: 'array', cellDates: true });
+  const { default: readXlsxFile } = await import('read-excel-file/browser');
 
-  const nomeAba = pasta.SheetNames[0];
-  if (!nomeAba) return { cabecalhos: [], linhas: [] };
+  // `readXlsxFile(file)` sem opções devolve `Sheet[]` (todas as abas, com
+  // nome e dados). Pegamos a primeira. Cada Row é um array de valores
+  // nativos: string | number | boolean | Date | null.
+  const abas = await readXlsxFile(arquivo);
+  const primeira = abas[0];
+  if (!primeira) return { cabecalhos: [], linhas: [] };
 
-  const aba = pasta.Sheets[nomeAba];
-  const matriz = XLSX.utils.sheet_to_json<any[]>(aba, {
-    header: 1, raw: false, defval: '', blankrows: false,
-  });
+  const rows = primeira.data;
 
-  if (matriz.length > MAXIMO_DE_LINHAS) {
+  if (rows.length > MAXIMO_DE_LINHAS) {
     throw new Error(`A planilha excede o limite de ${MAXIMO_DE_LINHAS.toLocaleString('pt-BR')} linhas.`);
   }
 
-  const naoVazias = matriz.filter(l => Array.isArray(l) && l.some(c => String(c ?? '').trim() !== ''));
-  if (naoVazias.length === 0) return { cabecalhos: [], linhas: [], aba: nomeAba };
+  const naoVazias = rows.filter(l => Array.isArray(l) && l.some(c => String(c ?? '').trim() !== ''));
+  if (naoVazias.length === 0) return { cabecalhos: [], linhas: [], aba: primeira.sheet };
 
   const [cabecalhos, ...resto] = naoVazias;
-  const nomes = cabecalhos.map((c: any) => String(c ?? '').trim());
+  // Data vem como `Date`; convertemos para dd/MM/yyyy no formato brasileiro,
+  // que é o que `campos.ts::converterData` já aceita.
+  const paraTexto = (c: unknown): string => {
+    if (c == null) return '';
+    if (c instanceof Date) {
+      const dd = String(c.getUTCDate()).padStart(2, '0');
+      const mm = String(c.getUTCMonth() + 1).padStart(2, '0');
+      return `${dd}/${mm}/${c.getUTCFullYear()}`;
+    }
+    return String(c).trim();
+  };
+  const nomes = cabecalhos.map(paraTexto);
 
   return {
-    aba: nomeAba,
+    aba: primeira.sheet,
     cabecalhos: nomes,
-    linhas: resto.map(l => nomes.map((_, i) => String(l[i] ?? '').trim())),
+    linhas: resto.map(l => nomes.map((_, i) => paraTexto(l[i]))),
   };
 }
 
@@ -120,7 +131,13 @@ export async function lerArquivo(arquivo: File): Promise<Planilha> {
   }
   const nome = arquivo.name.toLowerCase();
 
-  if (nome.endsWith('.xlsx') || nome.endsWith('.xls')) {
+  // `.xls` binário antigo NÃO é suportado por `read-excel-file`. Se aparecer,
+  // avisamos o usuário para converter no próprio Excel para `.xlsx` — o modo
+  // binário caiu junto com `xlsx@0.18.5` como parte da mitigação do SEC-001.
+  if (nome.endsWith('.xls') && !nome.endsWith('.xlsx')) {
+    throw new Error('Arquivos .xls (formato antigo) não são mais aceitos. Abra no Excel e salve como .xlsx antes de importar.');
+  }
+  if (nome.endsWith('.xlsx')) {
     return lerXlsx(arquivo);
   }
   if (nome.endsWith('.csv') || nome.endsWith('.txt')) {

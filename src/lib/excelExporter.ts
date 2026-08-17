@@ -1,67 +1,83 @@
-import type * as XLSXTipos from 'xlsx';
+/**
+ * Exportação para .xlsx.
+ *
+ * Substituímos `xlsx@0.18.5` por `write-excel-file` em 08/2026 (SEC-001):
+ * prototype pollution e ReDoS sem patch upstream. `write-excel-file` é
+ * ~5× menor, mantido, e cobre 100% dos casos que este módulo produz —
+ * uma aba ou várias, com cabeçalho, largura por coluna e formatação básica
+ * de data/boolean/número.
+ *
+ * Import dinâmico: a lib entra no chunk só quando alguém clica em exportar.
+ * Sem isso, todo mundo que abre a tela de Relatórios ou Contas a Receber
+ * baixa ~100 KB de gzip que quase nunca são usados.
+ */
 import { format } from 'date-fns';
 import { parseDateOnly } from '@/lib/dateOnly';
 
-/**
- * Carrega o `xlsx` só quando alguém exporta de verdade.
- *
- * Era um `import` estático no topo. O xlsx entra no chunk `export-vendor`
- * (664 KB junto com o jsPDF), e este módulo é importado por Relatórios e
- * Contas a Receber — então abrir a tela de relatórios baixava a biblioteca
- * inteira de planilha mesmo para quem só queria olhar um gráfico.
- */
-let _xlsx: typeof XLSXTipos | null = null;
+type WriteXlsxFile = typeof import('write-excel-file/browser').default;
+let _writer: WriteXlsxFile | null = null;
 
-async function carregarXlsx(): Promise<typeof XLSXTipos> {
-  if (!_xlsx) _xlsx = await import('xlsx');
-  return _xlsx;
+async function carregarEscritor(): Promise<WriteXlsxFile> {
+  if (!_writer) {
+    const mod = await import('write-excel-file/browser');
+    _writer = mod.default;
+  }
+  return _writer;
 }
 
-// Exportar dados para Excel
+interface CellSpec {
+  value: string | number | Date | boolean | null;
+  type?: typeof String | typeof Number | typeof Date | typeof Boolean;
+  format?: string;
+}
+
+interface ColumnSpec { width: number }
+
+/**
+ * Aceita o mesmo shape do exportador antigo, converte cada linha em
+ * `CellSpec[]` do `write-excel-file`, calcula largura por coluna e baixa.
+ *
+ * No browser, `writeXlsxFile` retorna `{ toBlob, toFile }`. Chamamos
+ * `.toFile(nome)` para o navegador iniciar o download com o nome certo.
+ */
 export async function exportToExcel<T extends Record<string, any>>(
   data: T[],
   filename: string,
   sheetName: string = 'Dados',
   columnHeaders?: Record<keyof T, string>
 ) {
-  // Preparar dados com headers traduzidos
-  let processedData: Record<string, any>[];
+  const writer = await carregarEscritor();
+  const dateStr = format(new Date(), 'yyyy-MM-dd');
 
-  if (columnHeaders) {
-    processedData = data.map((row) => {
-      const newRow: Record<string, any> = {};
-      Object.keys(row).forEach((key) => {
-        const header = columnHeaders[key as keyof T] || key;
-        newRow[header] = formatValue(row[key]);
-      });
-      return newRow;
+  if (data.length === 0) {
+    // Ainda assim gera arquivo (não deixa botão parecer travado).
+    const resultado = writer([[{ value: '(sem dados)', type: String }]], {
+      sheet: sheetName.substring(0, 31),
     });
-  } else {
-    processedData = data.map((row) => {
-      const newRow: Record<string, any> = {};
-      Object.keys(row).forEach((key) => {
-        newRow[key] = formatValue(row[key]);
-      });
-      return newRow;
-    });
+    await resultado.toFile(`${filename}-${dateStr}.xlsx`);
+    return;
   }
 
-  // Criar workbook e worksheet
-  const XLSX = await carregarXlsx();
-  const worksheet = XLSX.utils.json_to_sheet(processedData);
-  const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
+  const chaves = Object.keys(data[0]) as (keyof T)[];
+  const cabecalhos = chaves.map((k) => columnHeaders?.[k] ?? String(k));
 
-  // Auto-ajustar largura das colunas
-  const colWidths = calculateColumnWidths(processedData);
-  worksheet['!cols'] = colWidths;
+  const linhaCabecalho: CellSpec[] = cabecalhos.map((h) => ({
+    value: h, type: String,
+  }));
+  const linhas: CellSpec[][] = data.map((row) =>
+    chaves.map((k) => celulaDe(row[k])),
+  );
 
-  // Gerar arquivo e download
-  const dateStr = format(new Date(), 'yyyy-MM-dd');
-  XLSX.writeFile(workbook, `${filename}-${dateStr}.xlsx`);
+  const colunas: ColumnSpec[] = larguraDasColunas(cabecalhos, data, chaves);
+
+  const resultado = writer([linhaCabecalho, ...linhas], {
+    sheet: sheetName.substring(0, 31),
+    columns: colunas,
+  });
+  await resultado.toFile(`${filename}-${dateStr}.xlsx`);
 }
 
-// Exportar múltiplas abas
+/** Exporta múltiplas abas em um único arquivo. */
 export async function exportToExcelMultiSheet(
   sheets: Array<{
     data: Record<string, any>[];
@@ -70,87 +86,61 @@ export async function exportToExcelMultiSheet(
   }>,
   filename: string
 ) {
-  const XLSX = await carregarXlsx();
-  const workbook = XLSX.utils.book_new();
+  const writer = await carregarEscritor();
 
-  sheets.forEach(({ data, sheetName, columnHeaders }) => {
-    let processedData: Record<string, any>[];
-
-    if (columnHeaders) {
-      processedData = data.map((row) => {
-        const newRow: Record<string, any> = {};
-        Object.keys(row).forEach((key) => {
-          const header = columnHeaders[key] || key;
-          newRow[header] = formatValue(row[key]);
-        });
-        return newRow;
-      });
-    } else {
-      processedData = data.map((row) => {
-        const newRow: Record<string, any> = {};
-        Object.keys(row).forEach((key) => {
-          newRow[key] = formatValue(row[key]);
-        });
-        return newRow;
-      });
-    }
-
-    const worksheet = XLSX.utils.json_to_sheet(processedData);
-    worksheet['!cols'] = calculateColumnWidths(processedData);
-    XLSX.utils.book_append_sheet(workbook, worksheet, sheetName.substring(0, 31)); // Max 31 chars
+  // Overload "Multiple sheets" espera `Sheet<FileContent>[]` — cada Sheet é
+  // um objeto com `data`, `sheet` (nome), `columns` etc.
+  const abas = sheets.map(({ data, sheetName, columnHeaders }) => {
+    const chaves = data.length > 0 ? Object.keys(data[0]) : [];
+    const cabecalhos = chaves.map((k) => columnHeaders?.[k] ?? k);
+    return {
+      sheet: sheetName.substring(0, 31),
+      data: [
+        cabecalhos.map((h) => ({ value: h, type: String } as CellSpec)),
+        ...data.map((row) => chaves.map((k) => celulaDe(row[k]))),
+      ],
+      columns: larguraDasColunas(cabecalhos, data, chaves),
+    };
   });
 
   const dateStr = format(new Date(), 'yyyy-MM-dd');
-  XLSX.writeFile(workbook, `${filename}-${dateStr}.xlsx`);
+  const resultado = writer(abas as Parameters<typeof writer>[0]);
+  await resultado.toFile(`${filename}-${dateStr}.xlsx`);
 }
 
-// Formatar valores para Excel
-function formatValue(value: any): any {
-  if (value === null || value === undefined) {
-    return '';
-  }
-
-  if (value instanceof Date) {
-    return format(value, 'dd/MM/yyyy HH:mm');
-  }
-
-  if (typeof value === 'boolean') {
-    return value ? 'Sim' : 'Não';
-  }
-
-  if (Array.isArray(value)) {
-    return value.join(', ');
-  }
-
-  if (typeof value === 'object') {
-    return JSON.stringify(value);
-  }
-
-  return value;
+/** Converte um valor JS na `CellSpec` que o `write-excel-file` espera. */
+function celulaDe(v: unknown): CellSpec {
+  if (v == null || v === '') return { value: '', type: String };
+  if (v instanceof Date) return { value: v, type: Date, format: 'dd/mm/yyyy hh:mm' };
+  if (typeof v === 'boolean') return { value: v ? 'Sim' : 'Não', type: String };
+  if (typeof v === 'number' && Number.isFinite(v)) return { value: v, type: Number };
+  if (Array.isArray(v)) return { value: v.join(', '), type: String };
+  if (typeof v === 'object') return { value: JSON.stringify(v), type: String };
+  return { value: String(v), type: String };
 }
 
-// Calcular largura das colunas baseado no conteúdo
-function calculateColumnWidths(data: Record<string, any>[]): { wch: number }[] {
-  if (data.length === 0) return [];
-
-  const headers = Object.keys(data[0]);
-  const widths = headers.map((header) => {
-    let maxWidth = header.length;
-
-    data.forEach((row) => {
-      const value = String(row[header] || '');
-      if (value.length > maxWidth) {
-        maxWidth = value.length;
-      }
-    });
-
-    return { wch: Math.min(maxWidth + 2, 50) }; // Max 50 chars
+/**
+ * Largura por coluna, seguindo o texto mais longo com teto de 50.
+ * Padrão idêntico ao exportador anterior.
+ */
+function larguraDasColunas(
+  cabecalhos: string[],
+  data: Record<string, any>[],
+  chaves: (string | number | symbol)[],
+): ColumnSpec[] {
+  return cabecalhos.map((h, i) => {
+    let max = h.length;
+    for (const row of data) {
+      const v = row[chaves[i] as string];
+      const s = v == null ? '' : String(v);
+      if (s.length > max) max = s.length;
+    }
+    return { width: Math.min(max + 2, 50) };
   });
-
-  return widths;
 }
 
-// Exportar pacientes
+// ─── Exportadores específicos (não mudou nada da API pública) ──────────────
+
 export async function exportarPacientes(
   pacientes: Array<{
     nome: string;
@@ -190,7 +180,6 @@ export async function exportarPacientes(
   } as any);
 }
 
-// Exportar lançamentos financeiros
 export async function exportarFinanceiro(
   lancamentos: Array<{
     data: string;
@@ -223,7 +212,6 @@ export async function exportarFinanceiro(
   } as any);
 }
 
-// Exportar estoque
 export async function exportarEstoque(
   itens: Array<{
     nome: string;
@@ -263,7 +251,6 @@ export async function exportarEstoque(
   } as any);
 }
 
-// Exportar agendamentos
 export async function exportarAgendamentos(
   agendamentos: Array<{
     data: string;
