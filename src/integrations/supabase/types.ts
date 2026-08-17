@@ -5339,6 +5339,29 @@ export type Database = {
           trial_fim: string
         }[]
       }
+      platform_get_clinicas_saude: {
+        Args: never
+        Returns: {
+          clinica_id: string
+          clinica_nome: string
+          criada_em: string
+          assinatura_status: string
+          em_trial: boolean
+          plano_nome: string
+          suspensa: boolean
+          arquivada: boolean
+          ultima_atividade: string | null
+          ultima_atividade_ha_dias: number | null
+          agendamentos_em_atendimento: number
+          coletas_esquecidas: number
+          exames_solicitados_ha_7d: number
+          contas_a_receber_vencidas: number
+          contas_a_receber_valor: number
+          total_pacientes: number
+          total_agendamentos_no_mes: number
+          audits_no_mes: number
+        }[]
+      }
       platform_start_impersonation: {
         Args: { _target_clinica_id: string }
         Returns: Json

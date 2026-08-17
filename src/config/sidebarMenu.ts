@@ -181,6 +181,7 @@ export const menuGroups: MenuGroup[] = [
     roles: ['admin'],
     superAdminOnly: true,
     items: [
+      { label: 'Saúde da Plataforma', icon: ActivitySquare, href: '/admin/saude', superAdminOnly: true },
       { label: 'CRM', icon: Building2, href: '/admin/crm', superAdminOnly: true },
       { label: 'Clínicas', icon: Building2, href: '/admin/clinicas', superAdminOnly: true },
       { label: 'Painel Admin', icon: Shield, href: '/painel-admin', superAdminOnly: true },
