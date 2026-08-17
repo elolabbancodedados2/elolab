@@ -41,8 +41,12 @@ test.describe('Produção — smoke', () => {
     expect(requisicoesQuebradas, `asset quebrado: ${requisicoesQuebradas.join(' | ')}`).toHaveLength(0);
 
     // Tela branca responde 200 e passaria num teste de status.
-    const texto = (await page.textContent('body')) ?? '';
-    expect(texto.trim().length, 'produção renderizou tela em branco').toBeGreaterThan(200);
+    // No primeiro acesso a um commit novo, main.tsx limpa o service worker e
+    // faz um redirect com cache_reset=1. Aguardar esse ciclo evita classificar
+    // o estado transitório "Carregando..." como tela branca.
+    await expect.poll(async () => ((await page.textContent('body')) ?? '').trim().length, {
+      message: 'produção renderizou tela em branco', timeout: 15_000,
+    }).toBeGreaterThan(200);
   });
 
   test('a tela de login carrega e aceita digitação', async ({ page }) => {
