@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { checarRateLimit, clientIp } from "../_shared/rateLimit.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -32,6 +33,21 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
+
+    // Portal do paciente é um caminho mais tranquilo — o paciente lê seus
+    // agendamentos, resultados. 60 req/min por IP dá margem generosa para
+    // navegação normal (uma tela puxa vários endpoints) e ainda barra bot.
+    const limitado = await checarRateLimit(supabase, {
+      chave: `portal:${clientIp(req)}`,
+      limite: 60,
+      janelaSegundos: 60,
+    });
+    if (limitado) {
+      return new Response(
+        JSON.stringify({ error: "Muitas tentativas — aguarde alguns segundos." }),
+        { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     const body = await req.json();
     const { action, token } = body;

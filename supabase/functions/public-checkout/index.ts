@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { checarRateLimit, clientIp } from '../_shared/rateLimit.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -19,6 +20,21 @@ Deno.serve(async (req) => {
     const mpAccessToken = Deno.env.get('MERCADOPAGO_ACCESS_TOKEN')
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
+
+    // Cria conta + checkout MP é caro. 10 req/min por IP é folgado para uso
+    // legítimo (mesma pessoa corrige e reenvia) e barra script.
+    const limitado = await checarRateLimit(supabase, {
+      chave: `checkout:${clientIp(req)}`,
+      limite: 10,
+      janelaSegundos: 60,
+    })
+    if (limitado) {
+      return new Response(
+        JSON.stringify({ error: 'Muitas tentativas — aguarde alguns segundos.' }),
+        { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
     const body = await req.json()
     const { plano_id, plano_slug, nome, email, telefone, clinica, mode = 'trial' } = body
     const normalizedPlanSlug = typeof plano_slug === 'string' ? plano_slug.trim().toLowerCase() : ''

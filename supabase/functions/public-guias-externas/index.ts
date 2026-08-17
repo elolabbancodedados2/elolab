@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { checarRateLimit, clientIp } from "../_shared/rateLimit.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -14,6 +15,15 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
+
+    // Rate limit por IP: 30 requisições/minuto é folgado para uso legítimo
+    // (recepcionista digita, envia, corrige e reenvia) e barra script abusivo.
+    const limitado = await checarRateLimit(supabase, {
+      chave: `guias:${clientIp(req)}`,
+      limite: 30,
+      janelaSegundos: 60,
+    });
+    if (limitado) return json({ error: "Muitas tentativas — aguarde alguns segundos e tente de novo." }, 429);
 
     const url = new URL(req.url);
     const action = url.searchParams.get("action") || "submit";
