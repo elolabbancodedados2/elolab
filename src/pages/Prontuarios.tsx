@@ -1315,7 +1315,7 @@ export default function Prontuarios() {
                       },
                       { nome: md?.nome || user?.nome || 'Médico', crm: md?.crm, especialidade: md?.especialidade, rqe: md?.rqe, crmUf: md?.crm_uf },
                       {
-                        data: currentProntuario.data, queixaPrincipal: currentProntuario.queixa_principal,
+                        id: currentProntuario.id, data: currentProntuario.data, queixaPrincipal: currentProntuario.queixa_principal,
                         historiaDoencaAtual: currentProntuario.historia_doenca_atual,
                         historiaPatologicaPregressa: currentProntuario.historia_patologica_pregressa,
                         historiaFamiliar: currentProntuario.historia_familiar, historiaSocial: currentProntuario.historia_social,

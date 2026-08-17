@@ -155,6 +155,19 @@ function addFooter(doc: jsPDF, pageNum: number = 1) {
   );
 }
 
+// Referência estável para o mesmo registro. Não é assinatura criptográfica;
+// serve para que duas vias do mesmo documento não recebam números diferentes.
+function documentReference(...parts: unknown[]): string {
+  const value = JSON.stringify(parts);
+  let a = 0x811c9dc5;
+  let b = 0x9e3779b9;
+  for (let i = 0; i < value.length; i++) {
+    a = Math.imul(a ^ value.charCodeAt(i), 0x01000193);
+    b = Math.imul(b ^ value.charCodeAt(i), 0x85ebca6b);
+  }
+  return `${(a >>> 0).toString(36)}${(b >>> 0).toString(36)}`.toUpperCase().slice(0, 12);
+}
+
 // Gerar receita médica
 export async function gerarReceita(
   paciente: { nome: string; cpf?: string; dataNascimento?: string },
@@ -186,7 +199,8 @@ export async function gerarReceita(
   doc.setFontSize(10);
   doc.setTextColor(0, 0, 0);
   doc.text(`Data: ${format(new Date(), 'dd/MM/yyyy')}`, 20, 60);
-  doc.text(`Nº: ${Math.random().toString(36).substr(2, 9).toUpperCase()}`, 170, 60, { align: 'right' });
+  const referencia = documentReference(paciente, medico, medicamentos, orientacoes, tipo);
+  doc.text(`Ref.: ${referencia}`, 170, 60, { align: 'right' });
 
   // Dados do paciente
   doc.setFontSize(11);
@@ -256,7 +270,7 @@ export async function gerarReceita(
     crm: medico.crm,
     data: format(new Date(), 'yyyy-MM-dd'),
     medicamentos: medicamentos.map(m => m.nome).join(', '),
-    hash: Math.random().toString(36).substr(2, 12).toUpperCase(),
+    referencia,
   });
 
   try {
@@ -505,6 +519,7 @@ export async function gerarProntuarioPDF(
   },
   medico: { nome: string; crm?: string; especialidade?: string; rqe?: string; crmUf?: string },
   prontuario: {
+    id?: string;
     data: string;
     queixaPrincipal?: string;
     historiaDoencaAtual?: string;
@@ -565,7 +580,10 @@ export async function gerarProntuarioPDF(
   doc.setFontSize(8);
   doc.setTextColor(100, 100, 100);
   doc.text(`Data: ${formatDateBR(prontuario.data)}`, margin + 2, 42);
-  doc.text(`Nº ${Math.random().toString(36).substr(2, 8).toUpperCase()}`, pageWidth - margin - 2, 42, { align: 'right' });
+  const referencia = prontuario.id
+    ? prontuario.id.replace(/-/g, '').slice(0, 12).toUpperCase()
+    : documentReference(paciente, medico, prontuario.data, prontuario.queixaPrincipal);
+  doc.text(`Ref. ${referencia}`, pageWidth - margin - 2, 42, { align: 'right' });
 
   yPos = 52;
 
