@@ -285,6 +285,37 @@ export function EspecialidadesTab() {
     },
   });
 
+  const criarEspecialidade = async () => {
+    const nome = window.prompt('Nome da nova especialidade:')?.trim();
+    if (!nome) return;
+    const sugerido = nome.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '_');
+    const codigo = window.prompt('Código curto:', sugerido)?.trim();
+    if (!codigo) return;
+    const descricao = window.prompt('Descrição:', '')?.trim() || '';
+    const { error } = await (supabase as any).from('especialidades_destino').insert({ nome, codigo, descricao, ativo: true });
+    if (error) return toast.error('Erro ao criar especialidade', { description: error.message });
+    await queryClient.invalidateQueries({ queryKey: ['especialidades'] });
+    toast.success('Especialidade criada');
+  };
+
+  const editarEspecialidade = async (esp: Especialidade) => {
+    const nome = window.prompt('Nome da especialidade:', esp.nome)?.trim();
+    if (!nome) return;
+    const descricao = window.prompt('Descrição:', esp.descricao)?.trim() ?? esp.descricao;
+    const { error } = await (supabase as any).from('especialidades_destino').update({ nome, descricao }).eq('id', esp.id);
+    if (error) return toast.error('Erro ao editar', { description: error.message });
+    await queryClient.invalidateQueries({ queryKey: ['especialidades'] });
+    toast.success('Especialidade atualizada');
+  };
+
+  const removerEspecialidade = async (esp: Especialidade) => {
+    if (!window.confirm(`Excluir a especialidade "${esp.nome}"?`)) return;
+    const { error } = await (supabase as any).from('especialidades_destino').delete().eq('id', esp.id);
+    if (error) return toast.error('Não foi possível excluir', { description: error.message });
+    await queryClient.invalidateQueries({ queryKey: ['especialidades'] });
+    toast.success('Especialidade excluída');
+  };
+
   return (
     <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
       <Card>
@@ -371,36 +402,6 @@ export function LGPDAvancadoTab() {
     },
   });
 
-  const criarEspecialidade = async () => {
-    const nome = window.prompt('Nome da nova especialidade:')?.trim();
-    if (!nome) return;
-    const sugerido = nome.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '_');
-    const codigo = window.prompt('Código curto:', sugerido)?.trim();
-    if (!codigo) return;
-    const descricao = window.prompt('Descrição:', '')?.trim() || '';
-    const { error } = await (supabase as any).from('especialidades_destino').insert({ nome, codigo, descricao, ativo: true });
-    if (error) return toast.error('Erro ao criar especialidade', { description: error.message });
-    await queryClient.invalidateQueries({ queryKey: ['especialidades'] });
-    toast.success('Especialidade criada');
-  };
-
-  const editarEspecialidade = async (esp: Especialidade) => {
-    const nome = window.prompt('Nome da especialidade:', esp.nome)?.trim();
-    if (!nome) return;
-    const descricao = window.prompt('Descrição:', esp.descricao)?.trim() ?? esp.descricao;
-    const { error } = await (supabase as any).from('especialidades_destino').update({ nome, descricao }).eq('id', esp.id);
-    if (error) return toast.error('Erro ao editar', { description: error.message });
-    await queryClient.invalidateQueries({ queryKey: ['especialidades'] });
-    toast.success('Especialidade atualizada');
-  };
-
-  const removerEspecialidade = async (esp: Especialidade) => {
-    if (!window.confirm(`Excluir a especialidade "${esp.nome}"?`)) return;
-    const { error } = await (supabase as any).from('especialidades_destino').delete().eq('id', esp.id);
-    if (error) return toast.error('Não foi possível excluir', { description: error.message });
-    await queryClient.invalidateQueries({ queryKey: ['especialidades'] });
-    toast.success('Especialidade excluída');
-  };
   const { data: requests = [] } = useQuery({
     queryKey: ['lgpd-access-requests'],
     queryFn: async () => {
