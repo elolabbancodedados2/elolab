@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useDraggable } from '@dnd-kit/core';
+import { useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
-import { CheckCircle2, PlayCircle, Ban, Trash2, Edit3 } from 'lucide-react';
+import { CheckCircle2, PlayCircle, Ban, Trash2, Edit3, User, Receipt } from 'lucide-react';
 import {
   ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger,
 } from '@/components/ui/context-menu';
@@ -69,6 +70,7 @@ const TIPO_LABEL: Record<string, string> = {
 export function AppointmentCard({ agendamento, color, minutesToPx, onClick, convenioName }: Props) {
   const queryClient = useQueryClient();
   const { profile } = useSupabaseAuth();
+  const navigate = useNavigate();
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: `ag:${agendamento.id}`,
     data: { agendamento },
@@ -256,6 +258,17 @@ export function AppointmentCard({ agendamento, color, minutesToPx, onClick, conv
       </ContextMenuTrigger>
       <ContextMenuContent className="w-56">
         <ContextMenuItem onSelect={onClick}><Edit3 className="mr-2 h-4 w-4" /> Abrir / editar</ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem
+          disabled={!agendamento.paciente_id}
+          onSelect={() => navigate(`/pacientes?paciente=${agendamento.paciente_id}`)}>
+          <User className="mr-2 h-4 w-4" /> Ficha do paciente
+        </ContextMenuItem>
+        <ContextMenuItem
+          disabled={!agendamento.paciente_id}
+          onSelect={() => navigate(`/pacientes?paciente=${agendamento.paciente_id}&tab=financeiro`)}>
+          <Receipt className="mr-2 h-4 w-4" /> Extrato financeiro
+        </ContextMenuItem>
         <ContextMenuSeparator />
         <ContextMenuItem onSelect={() => setStatus('confirmado')}><CheckCircle2 className="mr-2 h-4 w-4" /> Confirmar</ContextMenuItem>
         <ContextMenuItem onSelect={() => setStatus('aguardando')}>Marcar como aguardando</ContextMenuItem>

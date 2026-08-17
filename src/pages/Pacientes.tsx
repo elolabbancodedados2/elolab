@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Plus, Search, Edit, Trash2, Eye, Tag, Link, Loader2, MapPin,
@@ -143,6 +144,27 @@ export default function Pacientes() {
   const [formData, setFormData] = useState<PacienteFormData>(initialFormData);
   const [isEtiquetaOpen, setIsEtiquetaOpen] = useState(false);
   const [viewTab, setViewTab] = useState('dados');
+
+  // Deep-link: /pacientes?paciente=<id>&tab=<financeiro|...>
+  // Vem da agenda ("Ficha do paciente" / "Extrato financeiro" no menu de
+  // contexto do card) e de outros lugares que queiram apontar direto.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const deepLinkAplicadoRef = useRef<string | null>(null);
+  useEffect(() => {
+    const pid = searchParams.get('paciente');
+    const tab = searchParams.get('tab');
+    if (!pid || deepLinkAplicadoRef.current === pid) return;
+    deepLinkAplicadoRef.current = pid;
+    setSelectedPacienteId(pid);
+    setIsViewOpen(true);
+    if (tab) setViewTab(tab);
+    // Limpa a URL para não repetir a ação se o usuário navegar de novo.
+    const params = new URLSearchParams(searchParams);
+    params.delete('paciente');
+    params.delete('tab');
+    setSearchParams(params, { replace: true });
+  }, [searchParams, setSearchParams]);
+
   /** Modal de guias/senhas de autorização do convênio do paciente. */
   const [showAutorizacao, setShowAutorizacao] = useState(false);
   const [cepLoading, setCepLoading] = useState(false);
