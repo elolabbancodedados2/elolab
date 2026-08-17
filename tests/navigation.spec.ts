@@ -25,6 +25,12 @@ test.describe('Navigation', () => {
     expect(body).toBeTruthy();
   });
 
+  test('portal remove o código de acesso da URL imediatamente', async ({ page }) => {
+    await page.goto('/portal-paciente?token=segredo-de-teste');
+    await expect.poll(() => page.url()).not.toContain('token=');
+    expect(page.url()).toMatch(/\/portal-paciente$/);
+  });
+
   test('responsividade mobile (375px)', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 667 });
     await page.goto('/');

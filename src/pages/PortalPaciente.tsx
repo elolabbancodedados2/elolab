@@ -512,6 +512,12 @@ export default function PortalPaciente() {
   useEffect(() => {
     const urlToken = searchParams.get('token');
     if (urlToken) {
+      // O link pode chegar por e-mail/WhatsApp, mas o segredo não deve
+      // permanecer no histórico, em screenshots ou no Referer de navegação.
+      // O estado React mantém o token apenas em memória durante esta sessão.
+      const sanitizedUrl = new URL(window.location.href);
+      sanitizedUrl.searchParams.delete('token');
+      window.history.replaceState({}, '', `${sanitizedUrl.pathname}${sanitizedUrl.search}${sanitizedUrl.hash}`);
       setToken(urlToken);
       handleLogin();
     }

@@ -5,6 +5,12 @@ const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
+  // Respostas contêm dados clínicos e financeiros. Proxies, service workers e
+  // navegadores compartilhados não podem armazená-las.
+  "Cache-Control": "no-store, no-cache, must-revalidate, private",
+  "Pragma": "no-cache",
+  "Referrer-Policy": "no-referrer",
+  "X-Content-Type-Options": "nosniff",
 };
 
 /** Data de hoje em "YYYY-MM-DD", para comparar com colunas `date` do Postgres. */
