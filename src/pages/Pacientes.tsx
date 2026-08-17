@@ -22,6 +22,7 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ExtratoDoPaciente } from '@/components/patients/ExtratoDoPaciente';
+import { ConsentimentoLGPD } from '@/components/clinical/ConsentimentoLGPD';
 import { Button } from '@/components/ui/button';
 import { LoadingButton } from '@/components/ui/loading-button';
 import { Badge } from '@/components/ui/badge';
@@ -1392,6 +1393,7 @@ export default function Pacientes() {
                     <TabsTrigger value="sinais" className="text-[11px] gap-1 py-1.5 rounded-lg"><Activity className="h-3 w-3" />Sinais</TabsTrigger>
                     <TabsTrigger value="endereco" className="text-[11px] gap-1 py-1.5 rounded-lg"><MapPin className="h-3 w-3" />Endereço</TabsTrigger>
                     <TabsTrigger value="financeiro" className="text-[11px] gap-1 py-1.5 rounded-lg"><Wallet className="h-3 w-3" />Financeiro</TabsTrigger>
+                    <TabsTrigger value="lgpd" className="text-[11px] gap-1 py-1.5 rounded-lg"><ShieldCheck className="h-3 w-3" />LGPD</TabsTrigger>
                   </TabsList>
                 </div>
 
@@ -1406,6 +1408,19 @@ export default function Pacientes() {
                       Extrato do paciente
                     </span>
                     <ExtratoDoPaciente pacienteId={selectedPaciente.id} />
+                  </TabsContent>
+
+                  {/* Tab: LGPD — captação de consentimento. Sem esta tab, o
+                      componente `ConsentimentoLGPD` existia mas ninguém
+                      chamava, e `consentimentos_lgpd` ficou zerado nas 12
+                      clínicas. Agora aparece na ficha, ao lado do resto. */}
+                  <TabsContent value="lgpd" className="mt-0 space-y-3">
+                    <ConsentimentoLGPD
+                      pacienteId={selectedPaciente.id}
+                      pacienteNome={selectedPaciente.nome}
+                      consentimentos={[]}
+                      onConsentimentoRegistrado={() => { /* refetch é feito internamente pelo componente */ }}
+                    />
                   </TabsContent>
 
                   {/* Tab: Dados */}
