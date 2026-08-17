@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { converterData, cpfValido, CAMPO_POR_NOME, normalizarCabecalho } from '@/lib/importacao/campos';
 import { mapearAutomaticamente, faltandoObrigatorios, pontuar } from '@/lib/importacao/mapeamento';
-import { detectarSeparador, lerCsv } from '@/lib/importacao/planilha';
+import { detectarSeparador, lerArquivo, lerCsv } from '@/lib/importacao/planilha';
 import { converterLinha, podeImportar, chaveDeComparacao, marcarDuplicadas, resumir } from '@/lib/importacao/linhas';
 import { traduzirErro, csvDasRecusadas } from '@/lib/importacao/importar';
 import { CAMPOS_PACIENTE } from '@/lib/importacao/campos';
@@ -158,6 +158,11 @@ describe('mapeamento automático de colunas', () => {
 });
 
 describe('leitura de CSV', () => {
+  it('recusa arquivos grandes antes de tentar processá-los', async () => {
+    const grande = new File([new Uint8Array(10 * 1024 * 1024 + 1)], 'grande.csv');
+    await expect(lerArquivo(grande)).rejects.toThrow('limite de 10 MB');
+  });
+
   /** Excel em português salva com ponto e vírgula — o erro clássico. */
   it('detecta ponto e vírgula do Excel brasileiro', () => {
     expect(detectarSeparador('Nome;CPF;Telefone')).toBe(';');

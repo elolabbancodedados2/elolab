@@ -20,6 +20,7 @@ import { mensagemDeErro } from '@/lib/erros';
 import { format, differenceInMinutes } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
+import { escapeHtml } from '@/lib/html';
 
 const TUBOS = [
   { color: 'bg-purple-500', label: 'EDTA (Roxo)', nome: 'Roxo', volume: '4mL' },
@@ -162,10 +163,10 @@ export default function MapaColeta() {
         <button class="no-print" onclick="window.print()">🖨️ Imprimir</button>
         <h3 class="no-print">${selected.size} etiqueta(s)</h3>
         ${selectedItems.map(i => `<div class="label">
-          <div class="code">${i.codigo_amostra}</div>
-          <div><strong>${i.pacientes?.nome}</strong></div>
+          <div class="code">${escapeHtml(i.codigo_amostra)}</div>
+          <div><strong>${escapeHtml(i.pacientes?.nome)}</strong></div>
           <div>${calcAge(i.pacientes?.data_nascimento) ?? '?'}a — ${i.pacientes?.sexo === 'M' ? 'Masc' : i.pacientes?.sexo === 'F' ? 'Fem' : '?'}</div>
-          <div>Tubo: ${i.tubo ?? i.tipo_amostra} | Exame: ${i.exames?.tipo_exame ?? '—'}</div>
+          <div>Tubo: ${escapeHtml(i.tubo ?? i.tipo_amostra)} | Exame: ${escapeHtml(i.exames?.tipo_exame ?? '—')}</div>
           <div>${format(new Date(), 'dd/MM/yyyy HH:mm')}</div>
         </div>`).join('')}</body></html>`);
       w.document.close();

@@ -12,6 +12,8 @@
 /** Marca de ordem de byte. Escrita por código para não virar caractere
  *  invisível no meio do arquivo, que é ilegível em revisão e o lint recusa. */
 const BOM = String.fromCharCode(0xfeff);
+const TAMANHO_MAXIMO = 10 * 1024 * 1024;
+const MAXIMO_DE_LINHAS = 100_000;
 
 export interface Planilha {
   cabecalhos: string[];
@@ -95,6 +97,10 @@ export async function lerXlsx(arquivo: File): Promise<Planilha> {
     header: 1, raw: false, defval: '', blankrows: false,
   });
 
+  if (matriz.length > MAXIMO_DE_LINHAS) {
+    throw new Error(`A planilha excede o limite de ${MAXIMO_DE_LINHAS.toLocaleString('pt-BR')} linhas.`);
+  }
+
   const naoVazias = matriz.filter(l => Array.isArray(l) && l.some(c => String(c ?? '').trim() !== ''));
   if (naoVazias.length === 0) return { cabecalhos: [], linhas: [], aba: nomeAba };
 
@@ -109,6 +115,9 @@ export async function lerXlsx(arquivo: File): Promise<Planilha> {
 }
 
 export async function lerArquivo(arquivo: File): Promise<Planilha> {
+  if (arquivo.size > TAMANHO_MAXIMO) {
+    throw new Error('O arquivo excede o limite de 10 MB. Divida a planilha antes de importar.');
+  }
   const nome = arquivo.name.toLowerCase();
 
   if (nome.endsWith('.xlsx') || nome.endsWith('.xls')) {

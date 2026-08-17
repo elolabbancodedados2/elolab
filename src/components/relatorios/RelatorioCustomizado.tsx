@@ -18,6 +18,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useMedicos, useConvenios } from '@/hooks/useSupabaseData';
 import { exportToExcel } from '@/lib/excelExporter';
 import { toast } from 'sonner';
+import { escapeHtml } from '@/lib/html';
 
 type DatasetKey =
   | 'pacientes' | 'agendamentos' | 'lancamentos' | 'exames'
@@ -382,7 +383,7 @@ export default function RelatorioCustomizado() {
     const w = window.open('', '_blank');
     if (!w) return;
     w.document.write(`
-      <html><head><title>${cfg.label}</title>
+      <html><head><title>${escapeHtml(cfg.label)}</title>
       <style>
         body{font-family:Arial;padding:20px;color:#000}
         h1{font-size:18px;margin:0 0 4px}
@@ -391,12 +392,12 @@ export default function RelatorioCustomizado() {
         th,td{border:1px solid #ccc;padding:6px;text-align:left}
         th{background:#f3f4f6}
       </style></head><body>
-        <h1>Relatório - ${cfg.label}</h1>
-        <div class="meta">Período: ${dataInicio} a ${dataFim} • ${rows.length} registros • Gerado em ${format(new Date(), 'dd/MM/yyyy HH:mm')}</div>
+        <h1>Relatório - ${escapeHtml(cfg.label)}</h1>
+        <div class="meta">Período: ${escapeHtml(dataInicio)} a ${escapeHtml(dataFim)} • ${rows.length} registros • Gerado em ${format(new Date(), 'dd/MM/yyyy HH:mm')}</div>
         <table>
-          <thead><tr>${visibleColumns.map(c => `<th>${c.label}</th>`).join('')}</tr></thead>
+          <thead><tr>${visibleColumns.map(c => `<th>${escapeHtml(c.label)}</th>`).join('')}</tr></thead>
           <tbody>
-            ${rows.map(r => `<tr>${visibleColumns.map(c => `<td>${formatCell(getValue(r, c.key), c.format)}</td>`).join('')}</tr>`).join('')}
+            ${rows.map(r => `<tr>${visibleColumns.map(c => `<td>${escapeHtml(formatCell(getValue(r, c.key), c.format))}</td>`).join('')}</tr>`).join('')}
           </tbody>
         </table>
       </body></html>

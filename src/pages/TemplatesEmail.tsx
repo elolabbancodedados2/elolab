@@ -12,6 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
 import { Plus, Edit2, Trash2, Copy } from 'lucide-react';
+import DOMPurify from 'dompurify';
 
 const CATEGORIAS = [
   { value: 'lembrete_consulta', label: 'Lembrete de Consulta' },
@@ -54,6 +55,11 @@ const VALORES_EXEMPLO = {
   localizacao: 'Armário A1',
 };
 
+const sanitizeTemplateHtml = (html: string) => DOMPurify.sanitize(html, {
+  USE_PROFILES: { html: true },
+  FORBID_TAGS: ['script', 'style', 'iframe', 'object', 'embed', 'form'],
+});
+
 export default function TemplatesEmail() {
   const queryClient = useQueryClient();
   const { profile } = useSupabaseAuth();
@@ -91,6 +97,8 @@ export default function TemplatesEmail() {
       }
       if (!profile?.clinica_id) throw new Error('Clínica não identificada');
 
+      const conteudoSeguro = sanitizeTemplateHtml(form.conteudo);
+
       // Extract variables from content
       const regex = /\{\{(\w+)\}\}/g;
       const variaveis: string[] = [];
@@ -104,7 +112,7 @@ export default function TemplatesEmail() {
       if (editId) {
         const { error } = await supabase
           .from('notification_templates')
-          .update({ ...form, variaveis })
+          .update({ ...form, conteudo: conteudoSeguro, variaveis })
           .eq('id', editId);
         if (error) throw error;
       } else {
@@ -113,6 +121,7 @@ export default function TemplatesEmail() {
           .insert([
             {
               ...form,
+              conteudo: conteudoSeguro,
               clinica_id: profile.clinica_id,
               tipo: 'email',
               variaveis,
@@ -208,7 +217,7 @@ export default function TemplatesEmail() {
     Object.entries(VALORES_EXEMPLO).forEach(([key, value]) => {
       html = html.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), String(value));
     });
-    return html;
+    return sanitizeTemplateHtml(html);
   };
 
   return (
