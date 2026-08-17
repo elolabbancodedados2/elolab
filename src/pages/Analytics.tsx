@@ -16,6 +16,7 @@ import {
 import {
   TrendingUp, Users, Calendar as CalendarIcon, DollarSign, Activity, Stethoscope,
   ArrowUp, ArrowDown, Filter, Download,
+  Star,
 } from 'lucide-react';
 import { format, subDays, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, differenceInDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -157,6 +158,21 @@ export default function Analytics() {
       return data || [];
     },
   });
+
+  const { data: feedbacks = [] } = useQuery({
+    queryKey: ['analytics-feedback', range.from.toISOString(), range.to.toISOString()],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('feedbacks_nps')
+        .select('id, nota, comentario, created_at, pacientes(nome), medicos(nome)')
+        .gte('created_at', range.from.toISOString()).lte('created_at', range.to.toISOString())
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  const mediaSatisfacao = feedbacks.length
+    ? feedbacks.reduce((total: number, item: any) => total + item.nota, 0) / feedbacks.length : 0;
 
   // ─── KPI calculations ──────────────────────────────────
   const totalAg = agendamentos.length;
@@ -419,6 +435,7 @@ export default function Analytics() {
           <TabsTrigger value="produtividade">Produtividade</TabsTrigger>
           <TabsTrigger value="financeiro">Financeiro</TabsTrigger>
           <TabsTrigger value="triagem">Triagem</TabsTrigger>
+          <TabsTrigger value="satisfacao">Satisfação</TabsTrigger>
         </TabsList>
 
         <TabsContent value="atendimento" className="space-y-4">
@@ -598,6 +615,23 @@ export default function Analytics() {
               </CardContent>
             </Card>
           </div>
+        </TabsContent>
+        <TabsContent value="satisfacao" className="space-y-4">
+          <div className="grid gap-4 md:grid-cols-3">
+            <Card><CardContent className="pt-6"><p className="text-sm text-muted-foreground">Média</p><p className="text-3xl font-bold">{mediaSatisfacao.toFixed(1)}/5</p></CardContent></Card>
+            <Card><CardContent className="pt-6"><p className="text-sm text-muted-foreground">Respostas</p><p className="text-3xl font-bold">{feedbacks.length}</p></CardContent></Card>
+            <Card><CardContent className="pt-6"><p className="text-sm text-muted-foreground">Alertas (1–2)</p><p className="text-3xl font-bold text-destructive">{feedbacks.filter((f: any) => f.nota <= 2).length}</p></CardContent></Card>
+          </div>
+          <Card><CardHeader><CardTitle>Avaliações recentes</CardTitle><CardDescription>Notas e comentários do período</CardDescription></CardHeader>
+            <CardContent className="space-y-3">
+              {feedbacks.length === 0 ? <p className="text-sm text-muted-foreground">Nenhuma avaliação no período.</p> : feedbacks.slice(0, 20).map((f: any) => (
+                <div key={f.id} className={cn('rounded-lg border p-3', f.nota <= 2 && 'border-destructive/50 bg-destructive/5')}>
+                  <div className="flex items-center justify-between"><span className="font-medium">{f.pacientes?.nome || 'Paciente'}</span><Badge variant={f.nota <= 2 ? 'destructive' : 'secondary'}><Star className="mr-1 h-3 w-3" />{f.nota}/5</Badge></div>
+                  {f.comentario && <p className="mt-2 text-sm text-muted-foreground">{f.comentario}</p>}
+                </div>
+              ))}
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
     </div>

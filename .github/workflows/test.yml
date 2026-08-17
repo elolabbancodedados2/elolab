@@ -9,16 +9,21 @@ on:
 env:
   VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
   VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+  CLINICA_A_EMAIL: ${{ secrets.CLINICA_A_EMAIL }}
+  CLINICA_A_SENHA: ${{ secrets.CLINICA_A_SENHA }}
+  CLINICA_B_EMAIL: ${{ secrets.CLINICA_B_EMAIL }}
+  CLINICA_B_SENHA: ${{ secrets.CLINICA_B_SENHA }}
+  SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
 
 jobs:
   static-checks:
     name: Typecheck & Lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
       - run: npm ci
       - run: npx tsc --noEmit -p tsconfig.app.json
@@ -46,15 +51,20 @@ jobs:
       # Os ~860 avisos de `any` herdados não quebram o build — o eslint só
       # retorna código de erro quando há erro de verdade.
       - run: npm run lint
+      - name: Dependency audit
+        run: npm audit --audit-level=high
+      - name: Supabase database lint
+        if: ${{ env.SUPABASE_ACCESS_TOKEN != '' }}
+        run: npx supabase link --project-ref gebygucrpipaufrlyqqj && npx supabase db lint --linked --level warning
 
   unit-tests:
     name: Unit & Integration Tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
       - run: npm ci
       - run: npm run test:run
@@ -73,10 +83,10 @@ jobs:
     # spec agora lê a chave do client.ts quando a variável não existe — ela é
     # pública, vai no bundle de todo jeito.
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium

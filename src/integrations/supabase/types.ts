@@ -16,6 +16,7 @@ export type Database = {
     Tables: {
       agendamentos: {
         Row: {
+          convenio_id: string | null
           clinica_id: string | null
           created_at: string | null
           data: string
@@ -3575,6 +3576,7 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          convenio_id?: string | null
           clinica_id: string
           created_at?: string | null
           data_emissao?: string | null
@@ -3592,6 +3594,7 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          convenio_id?: string | null
           clinica_id?: string
           created_at?: string | null
           data_emissao?: string | null
@@ -5285,8 +5288,10 @@ export type Database = {
           p_agendar_retorno?: boolean
           p_dias_retorno?: number | null
           p_fila_id?: string | null
+          p_tipo_exame?: string | null
         }
         Returns: {
+          cobranca_criada: boolean
           retorno_id: string | null
           status_agendamento: string
         }[]

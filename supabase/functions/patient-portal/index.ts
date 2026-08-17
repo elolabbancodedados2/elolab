@@ -117,6 +117,66 @@ Deno.serve(async (req) => {
         break;
       }
 
+      case "get_retornos": {
+        const { data, error } = await supabase.from("retornos")
+          .select("id, data_retorno_prevista, motivo, tipo_retorno, status, confirmado_em, agendamento_retorno_id, created_at, medicos(nome, especialidade)")
+          .eq("paciente_id", pacienteId).order("data_retorno_prevista", { ascending: false }).limit(50);
+        if (error) throw error;
+        result = data || [];
+        break;
+      }
+
+      case "confirm_retorno": {
+        const { retorno_id } = body;
+        if (!retorno_id) return new Response(JSON.stringify({ error: "retorno_id é obrigatório" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        const { data: atual } = await supabase.from("retornos").select("historico").eq("id", retorno_id).eq("paciente_id", pacienteId).single();
+        const historico = Array.isArray(atual?.historico) ? atual.historico : [];
+        const confirmadoEm = new Date().toISOString();
+        const { data, error } = await supabase.from("retornos").update({ status: "confirmado", confirmado_em: confirmadoEm,
+          historico: [...historico, { evento: "confirmado_pelo_paciente", em: confirmadoEm }] })
+          .eq("id", retorno_id).eq("paciente_id", pacienteId).select("id").single();
+        if (error || !data) return new Response(JSON.stringify({ error: "Retorno não encontrado" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        result = { success: true, message: "Retorno confirmado" };
+        break;
+      }
+
+      case "reschedule_retorno": {
+        const { retorno_id, nova_data } = body;
+        if (!retorno_id || !nova_data || nova_data < todayISO()) return new Response(JSON.stringify({ error: "Informe uma data futura válida" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        const { data: retorno, error: retornoError } = await supabase.from("retornos").select("id, data_retorno_prevista, historico")
+          .eq("id", retorno_id).eq("paciente_id", pacienteId).single();
+        if (retornoError || !retorno) return new Response(JSON.stringify({ error: "Retorno não encontrado" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        const historico = Array.isArray(retorno.historico) ? retorno.historico : [];
+        const { error } = await supabase.from("retornos").update({ data_retorno_prevista: nova_data, status: "pendente", confirmado_em: null, lembrete_enviado: false,
+          historico: [...historico, { evento: "remarcado_pelo_paciente", de: retorno.data_retorno_prevista, para: nova_data, em: new Date().toISOString() }] }).eq("id", retorno_id).eq("paciente_id", pacienteId);
+        if (error) throw error;
+        result = { success: true, message: "Retorno remarcado" };
+        break;
+      }
+
+      case "submit_feedback": {
+        const nota = Number(body.nota); const comentario = String(body.comentario || "").trim().slice(0, 2000);
+        if (!Number.isInteger(nota) || nota < 1 || nota > 5) return new Response(JSON.stringify({ error: "A nota deve estar entre 1 e 5" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        const { data: atendimento } = await supabase.from("agendamentos").select("id, medico_id, clinica_id")
+          .eq("paciente_id", pacienteId).in("status", ["finalizado", "aguardando_pagamento_adicional"]).order("data", { ascending: false }).limit(1).maybeSingle();
+        if (!atendimento) return new Response(JSON.stringify({ error: "Nenhum atendimento concluído para avaliar" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        const { error } = await supabase.from("feedbacks_nps").insert({ paciente_id: pacienteId, agendamento_id: atendimento.id, medico_id: atendimento.medico_id,
+          clinica_id: atendimento.clinica_id, nota, comentario: comentario || null, categoria: "geral" });
+        if (error?.code === "23505") return new Response(JSON.stringify({ error: "Este atendimento já foi avaliado" }), { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        if (error) throw error;
+        if (nota <= 2) {
+          const { data: clinica } = await supabase.from("clinicas").select("owner_id").eq("id", atendimento.clinica_id).maybeSingle();
+          const { data: admin } = clinica?.owner_id
+            ? await supabase.from("profiles").select("id, nome, email").eq("id", clinica.owner_id).maybeSingle()
+            : { data: null };
+          if (admin?.email) await supabase.from("notification_queue").insert({ tipo: "email", destinatario_id: admin.id, destinatario_email: admin.email, destinatario_nome: admin.nome,
+            assunto: "Alerta: avaliação baixa de paciente", conteudo: `Uma avaliação nota ${nota}/5 foi recebida. Comentário: ${comentario || "sem comentário"}`,
+            status: "pendente", clinica_id: atendimento.clinica_id, dados_extras: { tipo: "feedback_baixo", agendamento_id: atendimento.id } });
+        }
+        result = { success: true };
+        break;
+      }
+
       case "get_exames": {
         const { data } = await supabase
           .from("exames")

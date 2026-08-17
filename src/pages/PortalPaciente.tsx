@@ -229,15 +229,28 @@ function NextAppointmentHero({ agendamentos }: { agendamentos: any[] }) {
 }
 
 // ─── NPS Survey ────────────────────────────────────────────
-function NPSSurvey({ profile }: { profile: any }) {
+function NPSSurvey({ token }: { token: string }) {
   const [nota, setNota] = useState<number | null>(null);
   const [comentario, setComentario] = useState('');
   const [sent, setSent] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [submitError, setSubmitError] = useState('');
 
   const handleSubmit = async () => {
     if (nota === null) return;
-    // Store in audit_log or notification_queue as feedback
-    setSent(true);
+    setSending(true);
+    setSubmitError('');
+    try {
+      const { data, error } = await supabase.functions.invoke('patient-portal', {
+        body: { action: 'submit_feedback', token, nota, comentario },
+      });
+      if (error || data?.error) throw new Error(data?.error || error?.message || 'Não foi possível enviar');
+      setSent(true);
+    } catch (e: any) {
+      setSubmitError(e.message);
+    } finally {
+      setSending(false);
+    }
   };
 
   if (sent) {
@@ -265,7 +278,7 @@ function NPSSurvey({ profile }: { profile: any }) {
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex justify-center gap-1">
-          {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => (
+          {[1, 2, 3, 4, 5].map(n => (
             <motion.button
               key={n}
               whileHover={{ scale: 1.15 }}
@@ -302,9 +315,10 @@ function NPSSurvey({ profile }: { profile: any }) {
                 rows={2}
                 className="text-sm"
               />
-              <Button onClick={handleSubmit} className="w-full gap-2" size="sm">
+              {submitError && <p className="text-xs text-destructive" role="alert">{submitError}</p>}
+              <Button onClick={handleSubmit} disabled={sending} className="w-full gap-2" size="sm">
                 <Star className="h-3.5 w-3.5" />
-                Enviar Avaliação
+                {sending ? 'Enviando...' : 'Enviar Avaliação'}
               </Button>
             </motion.div>
           )}
@@ -326,6 +340,7 @@ export default function PortalPaciente() {
   const [exames, setExames] = useState<any[]>([]);
   const [pagamentos, setPagamentos] = useState<any[]>([]);
   const [prescricoes, setPrescricoes] = useState<any[]>([]);
+  const [retornos, setRetornos] = useState<any[]>([]);
 
   // Scheduling form state
   const [medicos, setMedicos] = useState<any[]>([]);
@@ -367,18 +382,20 @@ export default function PortalPaciente() {
       setProfile(profileData);
       setAuthenticated(true);
 
-      const [ag, ex, pg, presc, docs] = await Promise.all([
+      const [ag, ex, pg, presc, docs, rets] = await Promise.all([
         fetchData(token, 'get_agendamentos'),
         fetchData(token, 'get_exames'),
         fetchData(token, 'get_pagamentos'),
         fetchData(token, 'get_prescricoes').catch(() => []),
         fetchData(token, 'get_medicos'),
+        fetchData(token, 'get_retornos').catch(() => []),
       ]);
       setAgendamentos(ag || []);
       setExames(ex || []);
       setPagamentos(pg || []);
       setPrescricoes(presc || []);
       setMedicos(docs || []);
+      setRetornos(rets || []);
     } catch (err: any) {
       setError(err.message || 'Erro ao acessar portal');
     } finally {
@@ -1191,8 +1208,40 @@ export default function PortalPaciente() {
           </AnimatePresence>
 
           {/* ─── NPS Survey ─── */}
+          {retornos.length > 0 && (
+            <motion.div variants={itemVariants}>
+              <Card>
+                <CardHeader><CardTitle className="text-base">Seus retornos</CardTitle></CardHeader>
+                <CardContent className="space-y-3">
+                  {retornos.slice(0, 5).map(retorno => (
+                    <div key={retorno.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3">
+                      <div>
+                        <p className="font-medium">{format(new Date(`${retorno.data_retorno_prevista}T12:00:00`), 'dd/MM/yyyy')}</p>
+                        <p className="text-xs text-muted-foreground">{retorno.motivo || 'Retorno de acompanhamento'} · {retorno.status}</p>
+                      </div>
+                      {['pendente', 'agendado'].includes(retorno.status) && (
+                        <div className="flex gap-2">
+                          <Button size="sm" onClick={async () => {
+                            await fetchData(token, 'confirm_retorno', { retorno_id: retorno.id });
+                            setRetornos(await fetchData(token, 'get_retornos'));
+                          }}>Confirmar</Button>
+                          <Button size="sm" variant="outline" onClick={async () => {
+                            const novaData = window.prompt('Nova data do retorno (AAAA-MM-DD):', retorno.data_retorno_prevista);
+                            if (!novaData) return;
+                            await fetchData(token, 'reschedule_retorno', { retorno_id: retorno.id, nova_data: novaData });
+                            setRetornos(await fetchData(token, 'get_retornos'));
+                          }}>Remarcar</Button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            </motion.div>
+          )}
+
           <motion.div variants={itemVariants}>
-            <NPSSurvey profile={profile} />
+            <NPSSurvey token={token} />
           </motion.div>
 
           {/* ─── Footer ─── */}

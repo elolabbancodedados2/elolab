@@ -121,6 +121,18 @@ test.describe('Isolamento entre clínicas', () => {
     ).toBeLessThanOrEqual(1);
   });
 
+  for (const tabela of ['agendamentos', 'prontuarios', 'prescricoes', 'lancamentos', 'retornos', 'feedbacks_nps']) {
+    test(`A enxerga somente sua clínica em ${tabela}`, async ({ request }) => {
+      const resposta = await request.get(`${SUPABASE_URL}/rest/v1/${tabela}?select=id,clinica_id&limit=500`, {
+        headers: cabecalhos(tokenA),
+      });
+      expect(resposta.ok(), await resposta.text()).toBe(true);
+      const linhas = await resposta.json();
+      const clinicas = new Set(linhas.map((linha: any) => linha.clinica_id).filter(Boolean));
+      expect(clinicas.size, `VAZAMENTO: ${tabela} devolveu ${clinicas.size} clínicas`).toBeLessThanOrEqual(1);
+    });
+  }
+
   test('A não obtém o QR Code do WhatsApp de B', async ({ request }) => {
     test.skip(!sessaoDaClinicaB, 'A clínica B não tem sessão de WhatsApp cadastrada para servir de alvo.');
 

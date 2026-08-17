@@ -9,7 +9,7 @@
  * - Notificações automáticas em pontos-chave
  */
 import { supabase } from '@/integrations/supabase/client';
-import { createAutoBilling, resolveExamPrice } from '@/lib/autoBilling';
+import { resolveExamPrice } from '@/lib/autoBilling';
 import { format } from 'date-fns';
 
 // ─── Types ──────────────────────────────────────────────
@@ -179,18 +179,6 @@ export async function autoFinalizarAtendimento(params: {
   const actions: string[] = [];
 
   try {
-    const billed = await createAutoBilling({
-      agendamentoId: params.agendamentoId,
-      pacienteId: params.pacienteId,
-      pacienteNome: params.pacienteNome,
-      convenioId: params.convenioId,
-      tipoConsulta: params.tipoConsulta,
-      tipoExame: params.tipoExame,
-      data: format(new Date(), 'yyyy-MM-dd'),
-      clinicaId: params.clinicaId,
-    });
-    if (billed) actions.push('Cobrança gerada automaticamente');
-
     const { data: finalizacao, error: finalizacaoError } = await supabase.rpc(
       'finalizar_atendimento_atomico',
       {
@@ -198,11 +186,13 @@ export async function autoFinalizarAtendimento(params: {
         p_fila_id: params.filaId || null,
         p_agendar_retorno: Boolean(params.agendarRetorno),
         p_dias_retorno: params.agendarRetorno ? params.diasRetorno || null : null,
+        p_tipo_exame: params.tipoExame || null,
       },
     );
     if (finalizacaoError) throw finalizacaoError;
 
     const statusFinal = finalizacao?.[0]?.status_agendamento || 'finalizado';
+    if (finalizacao?.[0]?.cobranca_criada) actions.push('Cobrança gerada atomicamente');
     actions.push(
       statusFinal === 'aguardando_pagamento_adicional'
         ? 'Agendamento → Aguardando pagamento adicional'

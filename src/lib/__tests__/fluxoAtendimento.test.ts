@@ -358,6 +358,7 @@ describe('finalizacao - retorno e estados operacionais', () => {
       p_fila_id: 'fila-1',
       p_agendar_retorno: true,
       p_dias_retorno: 30,
+      p_tipo_exame: null,
     });
     expect(mockAtual.chamadas.some(c => c.tabela === 'agendamentos' && c.op === 'update')).toBe(false);
     expect(mockAtual.chamadas.some(c => c.tabela === 'fila_atendimento' && c.op === 'update')).toBe(false);
