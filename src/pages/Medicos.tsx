@@ -317,10 +317,12 @@ function MedicoProfilePanel({ medico, onClose, onEdit }: { medico: any; onClose:
                       `Atenciosamente,\nEquipe EloLab`
                     );
                     window.open(`mailto:${medico.email}?subject=${subject}&body=${body}`, '_blank');
-                    toast.success('E-mail preparado!', { description: `Para: ${medico.email}` });
+                    toast.info('Cliente de e-mail aberto', {
+                      description: `Revise e envie a mensagem para ${medico.email}`,
+                    });
                   }}
                 >
-                  <Send className="h-3 w-3" /> Enviar por E-mail
+                  <Send className="h-3 w-3" /> Abrir no E-mail
                 </Button>
               )}
             </div>

@@ -40,12 +40,11 @@ import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 
 /* ─── Types ─── */
 interface SystemHealth {
-  database: { status: 'ok' | 'warning' | 'error'; latency: number; connections: number };
-  auth: { status: 'ok' | 'error'; activeUsers: number };
+  database: { status: 'ok' | 'warning' | 'error'; latency: number };
+  auth: { status: 'ok' | 'error'; detail: string };
   /** usedGB/totalGB são null: a cota real só é acessível pela API de
    *  administração do Supabase, indisponível no navegador. */
   storage: { status: 'ok' | 'warning' | 'error'; usedGB: number | null; totalGB: number | null };
-  api: { status: 'ok' | 'warning' | 'error'; responseTime: number };
   lastCheck: Date;
 }
 
@@ -90,14 +89,16 @@ export function HealthCheckTab() {
         .list('', { limit: 1 });
 
       setHealth({
-        database: { status: dbError ? 'error' : 'ok', latency: dbLatency, connections: 0 },
-        auth: { status: user ? 'ok' : 'error', activeUsers: 1 },
+        database: { status: dbError ? 'error' : 'ok', latency: dbLatency },
+        auth: {
+          status: user ? 'ok' : 'error',
+          detail: user ? 'Sessão atual validada' : 'Sessão não autenticada',
+        },
         storage: {
           status: storageError ? 'error' : 'ok',
           usedGB: null,
           totalGB: null,
         },
-        api: { status: 'ok', responseTime: dbLatency },
         lastCheck: new Date(),
       });
 
@@ -148,13 +149,12 @@ export function HealthCheckTab() {
                     <div className="flex items-start justify-between mb-3">
                       <div className="flex items-center gap-2">
                         <Database className="h-5 w-5 text-blue-600" />
-                        <span className="font-semibold">Base de Dados</span>
+                        <span className="font-semibold">API de Dados</span>
                       </div>
                       <StatusBadge status={health.database.status} />
                     </div>
                     <div className="text-sm space-y-1 text-muted-foreground">
-                      <p>Latência: <span className="font-semibold text-foreground">{health.database.latency}ms</span></p>
-                      <p>Conexões: <span className="font-semibold text-foreground">{health.database.connections}</span></p>
+                      <p>Consulta real: <span className="font-semibold text-foreground">{health.database.latency}ms</span></p>
                     </div>
                   </CardContent>
                 </Card>
@@ -170,7 +170,7 @@ export function HealthCheckTab() {
                       <StatusBadge status={health.auth.status} />
                     </div>
                     <div className="text-sm space-y-1 text-muted-foreground">
-                      <p>Usuários Ativos: <span className="font-semibold text-foreground">{health.auth.activeUsers}</span></p>
+                      <p>{health.auth.detail}</p>
                     </div>
                   </CardContent>
                 </Card>
@@ -199,21 +199,6 @@ export function HealthCheckTab() {
                   </CardContent>
                 </Card>
 
-                {/* API */}
-                <Card className="border-l-4 border-l-orange-500">
-                  <CardContent className="pt-6">
-                    <div className="flex items-start justify-between mb-3">
-                      <div className="flex items-center gap-2">
-                        <Zap className="h-5 w-5 text-orange-600" />
-                        <span className="font-semibold">API Response</span>
-                      </div>
-                      <StatusBadge status={health.api.status} />
-                    </div>
-                    <div className="text-sm space-y-1 text-muted-foreground">
-                      <p>Tempo Médio: <span className="font-semibold text-foreground">{health.api.responseTime}ms</span></p>
-                    </div>
-                  </CardContent>
-                </Card>
               </div>
 
               <Separator />
