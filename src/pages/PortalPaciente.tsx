@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -341,6 +341,7 @@ export default function PortalPaciente() {
   const [pagamentos, setPagamentos] = useState<any[]>([]);
   const [prescricoes, setPrescricoes] = useState<any[]>([]);
   const [retornos, setRetornos] = useState<any[]>([]);
+  const [ofertasEspera, setOfertasEspera] = useState<any[]>([]);
 
   // Scheduling form state
   const [medicos, setMedicos] = useState<any[]>([]);
@@ -382,13 +383,14 @@ export default function PortalPaciente() {
       setProfile(profileData);
       setAuthenticated(true);
 
-      const [ag, ex, pg, presc, docs, rets] = await Promise.all([
+      const [ag, ex, pg, presc, docs, rets, ofertas] = await Promise.all([
         fetchData(token, 'get_agendamentos'),
         fetchData(token, 'get_exames'),
         fetchData(token, 'get_pagamentos'),
         fetchData(token, 'get_prescricoes').catch(() => []),
         fetchData(token, 'get_medicos'),
         fetchData(token, 'get_retornos').catch(() => []),
+        fetchData(token, 'get_waitlist_offers').catch(() => []),
       ]);
       setAgendamentos(ag || []);
       setExames(ex || []);
@@ -396,6 +398,7 @@ export default function PortalPaciente() {
       setPrescricoes(presc || []);
       setMedicos(docs || []);
       setRetornos(rets || []);
+      setOfertasEspera(ofertas || []);
     } catch (err: any) {
       setError(err.message || 'Erro ao acessar portal');
     } finally {
@@ -1225,6 +1228,30 @@ export default function PortalPaciente() {
           </AnimatePresence>
 
           {/* ─── NPS Survey ─── */}
+          {ofertasEspera.length > 0 && (
+            <motion.div variants={itemVariants}>
+              <Card className="border-primary/40 bg-primary/5">
+                <CardHeader><CardTitle className="text-base">Vaga disponível para você</CardTitle><CardDescription>A reserva expira automaticamente; confirme para garantir o horário.</CardDescription></CardHeader>
+                <CardContent className="space-y-3">
+                  {ofertasEspera.map(oferta => (
+                    <div key={oferta.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-background p-3">
+                      <div><p className="font-medium">{format(new Date(`${oferta.vaga.data}T12:00:00`), 'dd/MM/yyyy')} às {oferta.vaga.hora_inicio?.slice(0, 5)}</p>
+                        <p className="text-xs text-muted-foreground">Dr(a). {oferta.vaga.medicos?.nome || 'Médico'} · expira {format(new Date(oferta.oferta_expira_em), 'HH:mm')}</p></div>
+                      <Button disabled={actionLoading} onClick={async () => {
+                        try {
+                          setActionLoading(true);
+                          await fetchData(token, 'accept_waitlist_offer', { lista_espera_id: oferta.id });
+                          const [ag, ofertas] = await Promise.all([fetchData(token, 'get_agendamentos'), fetchData(token, 'get_waitlist_offers')]);
+                          setAgendamentos(ag || []); setOfertasEspera(ofertas || []);
+                        } finally { setActionLoading(false); }
+                      }}><CheckCircle2 className="mr-2 h-4 w-4" />Aceitar vaga</Button>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            </motion.div>
+          )}
+
           {retornos.length > 0 && (
             <motion.div variants={itemVariants}>
               <Card>

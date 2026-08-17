@@ -126,6 +126,32 @@ Deno.serve(async (req) => {
         break;
       }
 
+      case "get_waitlist_offers": {
+        const { data: ofertas, error } = await supabase.from("lista_espera")
+          .select("id, oferta_agendamento_id, oferta_expira_em, prioridade, motivo")
+          .eq("paciente_id", pacienteId).eq("status", "notificado").gt("oferta_expira_em", new Date().toISOString());
+        if (error) throw error;
+        const completas = [];
+        for (const oferta of ofertas || []) {
+          const { data: vaga } = await supabase.from("agendamentos")
+            .select("id, data, hora_inicio, hora_fim, tipo, medicos(nome, especialidade)")
+            .eq("id", oferta.oferta_agendamento_id).eq("status", "cancelado").maybeSingle();
+          if (vaga) completas.push({ ...oferta, vaga });
+        }
+        result = completas;
+        break;
+      }
+
+      case "accept_waitlist_offer": {
+        const { lista_espera_id } = body;
+        if (!lista_espera_id) return new Response(JSON.stringify({ error: "lista_espera_id é obrigatório" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        const { data: novoId, error } = await supabase.rpc("aceitar_oferta_lista_espera", { p_lista_espera_id: lista_espera_id, p_paciente_id: pacienteId });
+        if (error) throw error;
+        if (!novoId) return new Response(JSON.stringify({ error: "A vaga expirou ou já foi preenchida" }), { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        result = { success: true, agendamento_id: novoId, message: "Vaga reservada e consulta confirmada" };
+        break;
+      }
+
       case "confirm_retorno": {
         const { retorno_id } = body;
         if (!retorno_id) return new Response(JSON.stringify({ error: "retorno_id é obrigatório" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });

@@ -2399,6 +2399,8 @@ export type Database = {
           medico_id: string | null
           motivo: string | null
           observacoes: string | null
+          oferta_agendamento_id: string | null
+          oferta_expira_em: string | null
           paciente_id: string
           preferencia_horario: string | null
           prioridade: string | null
@@ -3586,6 +3588,8 @@ export type Database = {
           medicamento: string
           medico_id?: string | null
           observacoes?: string | null
+          oferta_agendamento_id?: string | null
+          oferta_expira_em?: string | null
           paciente_id?: string | null
           posologia?: string | null
           prontuario_id?: string | null
@@ -3604,6 +3608,8 @@ export type Database = {
           medicamento?: string
           medico_id?: string | null
           observacoes?: string | null
+          oferta_agendamento_id?: string | null
+          oferta_expira_em?: string | null
           paciente_id?: string | null
           posologia?: string | null
           prontuario_id?: string | null
