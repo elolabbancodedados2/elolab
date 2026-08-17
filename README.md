@@ -121,7 +121,7 @@ Chromium já instalado com `PLAYWRIGHT_CHROMIUM_PATH=/caminho/para/chrome`.
 - **Papéis** (`admin`, `medico`, `recepcao`, `enfermagem`, `financeiro`) ficam em
   tabela separada (`user_roles`), consultada por funções `SECURITY DEFINER`.
 - **2FA** usa o MFA nativo do Supabase (validação no servidor, fator no JWT).
-- **Cabeçalhos HTTP** (CSP, HSTS, `frame-ancestors: none`) configurados em `vercel.json`.
+- **Cabeçalhos HTTP** (CSP, HSTS, `frame-ancestors: none`) configurados em `public/_headers` — o Cloudflare Pages serve estes cabeçalhos em cada resposta.
 - **Assinatura vencida** deixa o sistema em modo somente leitura, aplicado por
   trigger no banco — não apenas no navegador.
 - Nunca comite o `.env`. Se uma chave vazar, rotacione em

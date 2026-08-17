@@ -69,7 +69,6 @@
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.7",
     "lucide-react": "^0.462.0",
-    "motion": "^12.38.0",
     "msw": "^2.12.14",
     "next-themes": "^0.3.0",
     "otpauth": "^9.5.1",
