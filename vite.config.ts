@@ -14,23 +14,21 @@ export default defineConfig(({ mode }) => ({
     // Code splitting for better performance
     rollupOptions: {
       output: {
-        manualChunks: {
-          // Core React
-          'react-vendor': ['react', 'react-dom', 'react-router-dom'],
-          // UI libraries
-          'ui-vendor': ['@radix-ui/react-dialog', '@radix-ui/react-dropdown-menu', 
-                        '@radix-ui/react-select', '@radix-ui/react-tabs',
-                        '@radix-ui/react-tooltip', 'lucide-react'],
-          // Charts
-          'charts-vendor': ['recharts'],
-          // Date utilities
-          'date-vendor': ['date-fns'],
-          // Animation
-          'motion-vendor': ['framer-motion'],
-          // Supabase
-          'supabase-vendor': ['@supabase/supabase-js'],
-          // Forms
-          'form-vendor': ['react-hook-form', 'zod', '@hookform/resolvers'],
+        // O Rolldown do Vite 8 aceita `manualChunks` como função. O mapa usado
+        // pelo Rollup antigo agora falha durante o build.
+        manualChunks(id) {
+          const grupos: Array<[string, string[]]> = [
+            ['react-vendor', ['react', 'react-dom', 'react-router-dom']],
+            ['ui-vendor', ['@radix-ui/react-', 'lucide-react']],
+            ['charts-vendor', ['recharts']],
+            ['date-vendor', ['date-fns']],
+            ['motion-vendor', ['framer-motion']],
+            ['supabase-vendor', ['@supabase/supabase-js']],
+            ['form-vendor', ['react-hook-form', 'zod', '@hookform/resolvers']],
+          ];
+
+          if (!id.includes('node_modules')) return undefined;
+          return grupos.find(([, pacotes]) => pacotes.some((pacote) => id.includes(`/node_modules/${pacote}`)))?.[0];
           // NÃO agrupar jspdf/xlsx aqui.
           //
           // Havia um `'export-vendor': ['jspdf', 'xlsx']`. Forçar essas duas
@@ -47,14 +45,11 @@ export default defineConfig(({ mode }) => ({
     },
     chunkSizeWarningLimit: 1000,
     sourcemap: mode === 'development',
-    minify: 'esbuild',
+    minify: 'oxc',
   },
   // console.log/debug são ruído de desenvolvimento e saem do bundle de produção.
   // console.error e console.warn ficam: são tratamento de erro de verdade e
   // ajudam no suporte quando o usuário relata um problema.
-  esbuild: {
-    pure: mode === 'production' ? ['console.log', 'console.debug'] : [],
-  },
   plugins: [
     react(),
     mode === "development" && componentTagger(),
@@ -167,7 +162,7 @@ export default defineConfig(({ mode }) => ({
     ),
   },
   resolve: {
-    alias: { "@": path.resolve(__dirname, "./src") },
+    alias: { "@": path.resolve(import.meta.dirname, "./src") },
     dedupe: ["react", "react-dom", "react/jsx-runtime"],
   },
   optimizeDeps: {

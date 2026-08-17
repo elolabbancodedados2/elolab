@@ -1,5 +1,17 @@
 # Revisão de segurança — EloLab
 
+## Atualização final — 17/08/2026
+
+Todas as pendências deste relatório foram migradas:
+
+- `xlsx@0.18.5` foi removido e substituído por `read-excel-file` e `write-excel-file`;
+- links públicos de guias agora expiram em 90 dias e têm rate limit atômico por IP;
+- a CSP de produção não permite scripts inline;
+- URLs vindas do backend passam por allowlist HTTPS de Mercado Pago ou do host configurado do Supabase;
+- Vite 8.2.1, Vitest 4.1.10 e React Router 7.18.2 eliminaram os alertas restantes do audit.
+
+Validação final: 442 testes aprovados, TypeScript, build e ESLint aprovados; `npm audit` com zero vulnerabilidades.
+
 ## Resumo executivo
 
 O EloLab possui uma base de segurança acima da média para um SPA clínico: RLS é testada contra acesso anônimo, operações privilegiadas usam Edge Functions, o CI é reproduzível e há cabeçalhos defensivos em produção. Nesta revisão foram corrigidas três superfícies de XSS, atualizadas dependências compatíveis e adicionados limites à importação de planilhas. Permanecem duas decisões arquiteturais de alta prioridade: migrar a biblioteca `xlsx` e definir expiração/limitação de uso para links públicos de guias.

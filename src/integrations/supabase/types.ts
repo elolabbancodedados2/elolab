@@ -5279,6 +5279,18 @@ export type Database = {
       current_clinica_id: { Args: never; Returns: string }
       delete_all_app_data: { Args: never; Returns: undefined }
       expire_trials: { Args: never; Returns: undefined }
+      finalizar_atendimento_atomico: {
+        Args: {
+          p_agendamento_id: string
+          p_agendar_retorno?: boolean
+          p_dias_retorno?: number | null
+          p_fila_id?: string | null
+        }
+        Returns: {
+          retorno_id: string | null
+          status_agendamento: string
+        }[]
+      }
       get_my_clinica_id: { Args: never; Returns: string }
       get_user_plan: {
         Args: { _user_id: string }

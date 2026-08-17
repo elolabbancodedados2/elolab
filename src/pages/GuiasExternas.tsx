@@ -22,6 +22,7 @@ import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { abrirUrlSegura, storageUrlSeguro } from '@/lib/safeUrl';
 
 const STATUS_LABEL: Record<string, { label: string; variant: any }> = {
   recebida: { label: 'Recebida', variant: 'secondary' },
@@ -519,7 +520,9 @@ function DetalheGuiaDialog({ guia, open, onClose, onChanged }: any) {
   const openAnexo = async () => {
     if (!guia.anexo_url) return;
     const { data } = await supabase.storage.from('guias-externas').createSignedUrl(guia.anexo_url, 300);
-    if (data?.signedUrl) window.open(data.signedUrl, '_blank');
+    if (data?.signedUrl && !abrirUrlSegura(data.signedUrl, storageUrlSeguro)) {
+      toast.error('O arquivo retornou um endereço não confiável');
+    }
   };
 
   return (

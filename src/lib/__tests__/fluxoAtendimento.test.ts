@@ -325,18 +325,15 @@ describe('faturamento automático — uma cobrança por agendamento', () => {
 });
 
 describe('finalizacao - retorno e estados operacionais', () => {
-  it('desfaz a finalizacao se o retorno nao puder ser agendado', async () => {
+  it('delega status e retorno a uma única transacao no banco', async () => {
     mockAtual = criarSupabaseMock({
-      'fila_atendimento.select': { data: { status: 'em_atendimento' }, error: null },
-      'fila_atendimento.update': { data: { id: 'fila-1' }, error: null },
-      'agendamentos.update': { data: { id: 'ag-1' }, error: null },
       'lancamentos.select': { data: [], error: null },
       'tipos_consulta.select': {
         data: { id: 'tipo-1', nome: 'Consulta', valor_particular: 120 },
         error: null,
       },
       'lancamentos.insert': { data: { id: 'lanc-1' }, error: null },
-      'retornos.insert': { data: null, error: { message: 'horario indisponivel' } },
+      'rpc.finalizar_atendimento_atomico': { data: null, error: { message: 'horario indisponivel' } },
     });
 
     const { autoFinalizarAtendimento } = await import('@/lib/workflowAutomation');
@@ -355,15 +352,16 @@ describe('finalizacao - retorno e estados operacionais', () => {
     expect(resultado.success).toBe(false);
     expect(resultado.message).toContain('horario indisponivel');
 
-    const atualizacoesFila = mockAtual.chamadas
-      .filter(c => c.tabela === 'fila_atendimento' && c.op === 'update')
-      .map(c => c.payload);
-    const atualizacoesAgendamento = mockAtual.chamadas
-      .filter(c => c.tabela === 'agendamentos' && c.op === 'update')
-      .map(c => c.payload);
-
-    expect(atualizacoesFila).toEqual([{ status: 'finalizado' }, { status: 'em_atendimento' }]);
-    expect(atualizacoesAgendamento).toEqual([{ status: 'finalizado' }, { status: 'em_atendimento' }]);
+    const chamada = mockAtual.chamadas.find(c => c.tabela === 'rpc:finalizar_atendimento_atomico');
+    expect(chamada?.payload).toEqual({
+      p_agendamento_id: 'ag-1',
+      p_fila_id: 'fila-1',
+      p_agendar_retorno: true,
+      p_dias_retorno: 30,
+    });
+    expect(mockAtual.chamadas.some(c => c.tabela === 'agendamentos' && c.op === 'update')).toBe(false);
+    expect(mockAtual.chamadas.some(c => c.tabela === 'fila_atendimento' && c.op === 'update')).toBe(false);
+    expect(mockAtual.chamadas.some(c => c.tabela === 'retornos' && c.op === 'insert')).toBe(false);
   });
 });
 
@@ -374,9 +372,6 @@ describe('finalizacao - retorno e estados operacionais', () => {
  */
 describe('finalizacao - cobranca lancada durante a consulta', () => {
   const cenario = (extras: Record<string, any>) => criarSupabaseMock({
-    'fila_atendimento.select': { data: { status: 'em_atendimento' }, error: null },
-    'fila_atendimento.update': { data: { id: 'fila-1' }, error: null },
-    'agendamentos.update': { data: { id: 'ag-1' }, error: null },
     'lancamentos.select': { data: [{ id: 'lanc-1' }], error: null },
     ...extras,
   });
@@ -394,56 +389,53 @@ describe('finalizacao - cobranca lancada durante a consulta', () => {
     });
   };
 
-  const statusGravado = () => mockAtual.chamadas
-    .filter(c => c.tabela === 'agendamentos' && c.op === 'update')
-    .map(c => c.payload?.status);
-
   it('sobrou saldo com a trava ligada: vai para aguardando pagamento adicional', async () => {
     mockAtual = cenario({
-      'clinicas.select': { data: { exigir_pagamento_previo: true }, error: null },
-      'rpc.saldo_devedor_do_agendamento': { data: 100, error: null },
+      'rpc.finalizar_atendimento_atomico': {
+        data: [{ status_agendamento: 'aguardando_pagamento_adicional', retorno_id: null }], error: null,
+      },
     });
 
     const resultado = await finalizar();
 
     expect(resultado.success).toBe(true);
-    expect(statusGravado()).toContain('aguardando_pagamento_adicional');
     expect(resultado.actions).toContain('Agendamento → Aguardando pagamento adicional');
   });
 
   it('saldo zerado: finaliza como sempre', async () => {
     mockAtual = cenario({
-      'clinicas.select': { data: { exigir_pagamento_previo: true }, error: null },
-      'rpc.saldo_devedor_do_agendamento': { data: 0, error: null },
+      'rpc.finalizar_atendimento_atomico': {
+        data: [{ status_agendamento: 'finalizado', retorno_id: null }], error: null,
+      },
     });
 
-    await finalizar();
-    expect(statusGravado()).toContain('finalizado');
-    expect(statusGravado()).not.toContain('aguardando_pagamento_adicional');
+    const resultado = await finalizar();
+    expect(resultado.actions).toContain('Agendamento → Finalizado');
+    expect(resultado.actions).not.toContain('Agendamento → Aguardando pagamento adicional');
   });
 
   it('trava desligada: o estado novo nao aparece, nem devendo', async () => {
     // Clínica que não pediu pagamento antecipado não pode ver atendimentos
     // saindo da contagem de "finalizado" em relatório e dashboard.
     mockAtual = cenario({
-      'clinicas.select': { data: { exigir_pagamento_previo: false }, error: null },
-      'rpc.saldo_devedor_do_agendamento': { data: 100, error: null },
-    });
-
-    await finalizar();
-    expect(statusGravado()).toContain('finalizado');
-    expect(statusGravado()).not.toContain('aguardando_pagamento_adicional');
-  });
-
-  it('erro ao consultar o saldo nao impede o fechamento', async () => {
-    mockAtual = cenario({
-      'clinicas.select': { data: { exigir_pagamento_previo: true }, error: null },
-      'rpc.saldo_devedor_do_agendamento': { data: null, error: { message: 'timeout' } },
+      'rpc.finalizar_atendimento_atomico': {
+        data: [{ status_agendamento: 'finalizado', retorno_id: null }], error: null,
+      },
     });
 
     const resultado = await finalizar();
-    expect(resultado.success).toBe(true);
-    expect(statusGravado()).toContain('finalizado');
+    expect(resultado.actions).toContain('Agendamento → Finalizado');
+    expect(resultado.actions).not.toContain('Agendamento → Aguardando pagamento adicional');
+  });
+
+  it('erro na transacao não deixa a tela afirmar que finalizou', async () => {
+    mockAtual = cenario({
+      'rpc.finalizar_atendimento_atomico': { data: null, error: { message: 'timeout' } },
+    });
+
+    const resultado = await finalizar();
+    expect(resultado.success).toBe(false);
+    expect(resultado.message).toContain('timeout');
   });
 });
 

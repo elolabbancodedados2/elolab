@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { toast } from 'sonner';
+import { redirecionarParaCheckout } from '@/lib/safeUrl';
 
 export interface Plano {
   id: string;
@@ -177,7 +178,7 @@ export function useCreatePlatformSubscription() {
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['user_plan'] });
-      window.location.href = data.checkout_url;
+      redirecionarParaCheckout(data.checkout_url);
     },
     onError: (err: any) => {
       toast.error(err.message || 'Erro ao abrir o checkout da assinatura');
@@ -216,7 +217,7 @@ export function useStartTrialWithPayment() {
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['user_plan'] });
-      window.location.href = data.checkout_url;
+      redirecionarParaCheckout(data.checkout_url);
       toast.success(data.message || 'Período de teste iniciado com sucesso!');
     },
     onError: (err: any) => {

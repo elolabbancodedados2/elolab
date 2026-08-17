@@ -39,49 +39,6 @@ async function must<T extends { error: unknown }>(op: PromiseLike<T>): Promise<T
   return res;
 }
 
-/**
- * Para onde vai o agendamento quando o profissional finaliza.
- *
- * Regra: se ainda há saldo (o procedimento lançado durante a consulta, por
- * exemplo), o atendimento acabou mas o dinheiro não entrou — vai para
- * `aguardando_pagamento_adicional`, e a recepção vê que falta receber. Sem
- * saldo, `finalizado` como sempre foi.
- *
- * Só muda de comportamento em clínica que ligou `exigir_pagamento_previo`.
- * Nas outras, criar um estado novo tiraria atendimentos da contagem de
- * `finalizado` em relatório e dashboard sem ninguém ter pedido.
- *
- * Qualquer erro aqui devolve 'finalizado': a consulta terminou de verdade, e
- * uma falha na consulta do saldo não pode impedir o fechamento.
- */
-async function definirStatusDeFinalizacao(
-  agendamentoId: string,
-  clinicaId?: string | null,
-): Promise<'finalizado' | 'aguardando_pagamento_adicional'> {
-  try {
-    let clinica = clinicaId;
-    if (!clinica) {
-      const { data } = await supabase
-        .from('agendamentos').select('clinica_id').eq('id', agendamentoId).maybeSingle();
-      clinica = data?.clinica_id ?? null;
-    }
-    if (!clinica) return 'finalizado';
-
-    const { data: config, error: erroConfig } = await supabase
-      .from('clinicas').select('exigir_pagamento_previo').eq('id', clinica).maybeSingle();
-    if (erroConfig || !config?.exigir_pagamento_previo) return 'finalizado';
-
-    const { data: saldo, error: erroSaldo } = await supabase
-      .rpc('saldo_devedor_do_agendamento', { p_agendamento_id: agendamentoId });
-    if (erroSaldo) return 'finalizado';
-
-    // Mesma tolerância de um centavo do trigger.
-    return Number(saldo ?? 0) > 0.009 ? 'aguardando_pagamento_adicional' : 'finalizado';
-  } catch {
-    return 'finalizado';
-  }
-}
-
 // ─── 1. Check-in Automático ─────────────────────────────
 /** When a patient arrives, auto check-in and add to queue */
 export async function autoCheckin(
@@ -222,114 +179,39 @@ export async function autoFinalizarAtendimento(params: {
   const actions: string[] = [];
 
   try {
-    // Atualiza os dois registros como uma operação compensável. Sem isso, um
-    // erro de RLS na fila podia finalizar o agendamento e deixar o paciente
-    // preso em atendimento no painel.
-    let filaStatusAnterior: string | null = null;
-    if (params.filaId) {
-      const { data: filaAtual, error: filaLeituraError } = await supabase
-        .from('fila_atendimento')
-        .select('status')
-        .eq('id', params.filaId)
-        .maybeSingle();
-      if (filaLeituraError) throw filaLeituraError;
-      if (!filaAtual) throw new Error('Item da fila não encontrado. Atualize a tela e tente novamente.');
-      filaStatusAnterior = filaAtual.status;
+    const billed = await createAutoBilling({
+      agendamentoId: params.agendamentoId,
+      pacienteId: params.pacienteId,
+      pacienteNome: params.pacienteNome,
+      convenioId: params.convenioId,
+      tipoConsulta: params.tipoConsulta,
+      tipoExame: params.tipoExame,
+      data: format(new Date(), 'yyyy-MM-dd'),
+      clinicaId: params.clinicaId,
+    });
+    if (billed) actions.push('Cobrança gerada automaticamente');
 
-      await must(supabase.from('fila_atendimento')
-        .update({ status: 'finalizado' })
-        .eq('id', params.filaId)
-        .select('id')
-        .single());
-    }
+    const { data: finalizacao, error: finalizacaoError } = await supabase.rpc(
+      'finalizar_atendimento_atomico',
+      {
+        p_agendamento_id: params.agendamentoId,
+        p_fila_id: params.filaId || null,
+        p_agendar_retorno: Boolean(params.agendarRetorno),
+        p_dias_retorno: params.agendarRetorno ? params.diasRetorno || null : null,
+      },
+    );
+    if (finalizacaoError) throw finalizacaoError;
 
-    // ─── Sobrou saldo? ───
-    // O enunciado: "paciente pagou R$ 250 antes; durante o atendimento foi
-    // feito um procedimento de R$ 100 → atendimento finalizado, pagamento
-    // adicional pendente". O procedimento entrou como item da conta e reabriu
-    // o saldo (ver lancar_item_no_atendimento).
-    //
-    // Só vale quando a clínica ligou a trava: sem isso, o estado novo faria
-    // relatórios e dashboards que contam `finalizado` pararem de ver esses
-    // atendimentos, sem a clínica ter pedido nada.
-    const statusFinal = await definirStatusDeFinalizacao(params.agendamentoId, params.clinicaId);
-
-    try {
-      await must(supabase.from('agendamentos')
-        .update({ status: statusFinal as any })
-        .eq('id', params.agendamentoId)
-        .select('id')
-        .single());
-    } catch (agendamentoError) {
-      if (params.filaId && filaStatusAnterior) {
-        await supabase.from('fila_atendimento').update({ status: filaStatusAnterior }).eq('id', params.filaId);
-      }
-      throw agendamentoError;
-    }
+    const statusFinal = finalizacao?.[0]?.status_agendamento || 'finalizado';
     actions.push(
       statusFinal === 'aguardando_pagamento_adicional'
         ? 'Agendamento → Aguardando pagamento adicional'
-        : 'Agendamento → Finalizado'
+        : 'Agendamento → Finalizado',
     );
     if (params.filaId) actions.push('Fila → Finalizado');
-
-    const restaurarAtendimento = async () => {
-      if (params.filaId && filaStatusAnterior) {
-        await must(supabase.from('fila_atendimento')
-          .update({ status: filaStatusAnterior })
-          .eq('id', params.filaId)
-          .select('id')
-          .single());
-      }
-      await must(supabase.from('agendamentos')
-        .update({ status: 'em_atendimento' })
-        .eq('id', params.agendamentoId)
-        .select('id')
-        .single());
-    };
-
-    // Auto-billing is part of finalization. If it fails, restore the two
-    // operational statuses so the patient can be corrected and finalized
-    // again instead of disappearing from the payment flow.
-    try {
-      const billed = await createAutoBilling({
-        agendamentoId: params.agendamentoId,
-        pacienteId: params.pacienteId,
-        pacienteNome: params.pacienteNome,
-        convenioId: params.convenioId,
-        tipoConsulta: params.tipoConsulta,
-        tipoExame: params.tipoExame,
-        data: format(new Date(), 'yyyy-MM-dd'),
-        clinicaId: params.clinicaId,
-      });
-      if (billed) actions.push('Cobrança gerada automaticamente');
-    } catch (billingError) {
-      await restaurarAtendimento();
-      throw billingError;
-    }
-
-    // Auto-schedule return if requested
     if (params.agendarRetorno && params.diasRetorno) {
       const dataRetorno = new Date();
       dataRetorno.setDate(dataRetorno.getDate() + params.diasRetorno);
-      
-      try {
-        await must(supabase.from('retornos').insert({
-          paciente_id: params.pacienteId,
-          medico_id: params.medicoId,
-          data_retorno_prevista: format(dataRetorno, 'yyyy-MM-dd'),
-          data_consulta_origem: format(new Date(), 'yyyy-MM-dd'),
-          motivo: `Retorno de ${params.tipoConsulta || 'consulta'}`,
-          status: 'pendente',
-          agendamento_id: params.agendamentoId,
-        }));
-      } catch (retornoError) {
-        // O retorno faz parte do pedido de finalização. Se ele não puder ser
-        // criado, desfazemos os estados já avançados para o balcão poder
-        // corrigir/agendar novamente sem deixar uma consulta inconsistente.
-        await restaurarAtendimento();
-        throw retornoError;
-      }
       actions.push(`Retorno agendado para ${format(dataRetorno, 'dd/MM/yyyy')}`);
     }
 

@@ -39,6 +39,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useUserPlan, usePlanos } from '@/hooks/useSubscriptionPlan';
 import { useNavigate } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
+import { abrirUrlSegura, checkoutUrlSeguro } from '@/lib/safeUrl';
 
 
 
@@ -791,7 +792,7 @@ export default function Configuracoes() {
                           </TableCell>
                           <TableCell>
                             {f.checkout_url && (
-                              <Button size="sm" variant="ghost" onClick={() => window.open(f.checkout_url, '_blank')}>Abrir</Button>
+                              <Button size="sm" variant="ghost" onClick={() => abrirUrlSegura(f.checkout_url, checkoutUrlSeguro)}>Abrir</Button>
                             )}
                           </TableCell>
                         </TableRow>

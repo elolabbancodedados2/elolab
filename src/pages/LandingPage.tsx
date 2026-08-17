@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { redirecionarParaCheckout } from '@/lib/safeUrl';
 import {
   Calendar, Users, FileText, Shield, BarChart3, Stethoscope,
   MessageSquare, Star, ArrowRight, Check,
@@ -367,7 +368,7 @@ export default function LandingPage() {
 
       if (checkoutMode === 'buy' && data?.checkout_url) {
         toast.success('Redirecionando para pagamento...');
-        window.location.href = data.checkout_url;
+        redirecionarParaCheckout(data.checkout_url);
       } else if (data?.success) {
         toast.success('Verifique seu e-mail para o código de ativação!');
         setCheckoutOpen(false);

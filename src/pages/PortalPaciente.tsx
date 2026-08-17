@@ -18,6 +18,7 @@ import {
 import { format, isPast, isToday, isFuture, parseISO, differenceInDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { todayDateOnly } from '@/lib/dateOnly';
+import { abrirUrlSegura, checkoutUrlSeguro, storageUrlSeguro } from '@/lib/safeUrl';
 
 // ─── Status helpers ────────────────────────────────────────
 const statusConfig: Record<string, { bg: string; label: string }> = {
@@ -860,7 +861,7 @@ export default function PortalPaciente() {
                                     variant="outline"
                                     size="sm"
                                     className="h-8 gap-1 text-xs"
-                                    onClick={() => window.open(e.arquivo_resultado, '_blank')}
+                                    onClick={() => abrirUrlSegura(e.arquivo_resultado, storageUrlSeguro)}
                                   >
                                     <Download className="h-3 w-3" />
                                     PDF
@@ -1103,7 +1104,7 @@ export default function PortalPaciente() {
                                   size="sm"
                                   variant="default"
                                   className="gap-1.5"
-                                  onClick={() => window.open(p.checkout_url, '_blank')}
+                                  onClick={() => abrirUrlSegura(p.checkout_url, checkoutUrlSeguro)}
                                 >
                                   <ExternalLink className="h-3 w-3" />
                                   Pagar

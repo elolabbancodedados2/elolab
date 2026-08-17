@@ -160,7 +160,7 @@ export default function MapaColeta() {
         .label{border:1px dashed #999;padding:8px;margin:4px 0;page-break-inside:avoid}
         .code{font-size:16px;font-weight:bold;letter-spacing:2px}
         @media print{.no-print{display:none}}</style></head><body>
-        <button class="no-print" onclick="window.print()">🖨️ Imprimir</button>
+        <button class="no-print" id="imprimir-mapa">🖨️ Imprimir</button>
         <h3 class="no-print">${selected.size} etiqueta(s)</h3>
         ${selectedItems.map(i => `<div class="label">
           <div class="code">${escapeHtml(i.codigo_amostra)}</div>
@@ -169,7 +169,8 @@ export default function MapaColeta() {
           <div>Tubo: ${escapeHtml(i.tubo ?? i.tipo_amostra)} | Exame: ${escapeHtml(i.exames?.tipo_exame ?? '—')}</div>
           <div>${format(new Date(), 'dd/MM/yyyy HH:mm')}</div>
         </div>`).join('')}</body></html>`);
-      w.document.close();
+    w.document.close();
+    w.document.getElementById('imprimir-mapa')?.addEventListener('click', () => w.print());
     }
     toast.success(`${selected.size} etiqueta(s) gerada(s)`);
   };

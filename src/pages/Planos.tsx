@@ -15,6 +15,7 @@ import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { redirecionarParaCheckout } from '@/lib/safeUrl';
 
 const planConfig: Record<string, {
   icon: React.ReactNode;
@@ -123,7 +124,7 @@ export default function Planos() {
     onSuccess: (data: any) => {
       if (data?.checkout_url) {
         toast.success('Redirecionando para o Mercado Pago...', { duration: 4000 });
-        window.location.href = data.checkout_url;
+        redirecionarParaCheckout(data.checkout_url);
       }
       queryClient.invalidateQueries({ queryKey: ['user_plan'] });
     },
