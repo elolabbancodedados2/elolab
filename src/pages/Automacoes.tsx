@@ -59,6 +59,14 @@ interface AutomationSetting {
   updated_at: string;
 }
 
+interface QueueItem {
+  id: string; tipo: string; destinatario_nome: string | null;
+  destinatario_email: string | null; destinatario_telefone: string | null;
+  assunto: string | null; status: string; tentativas: number;
+  max_tentativas: number; erro_mensagem: string | null;
+  agendado_para: string; created_at: string;
+}
+
 const AUTOMATIONS = [
   {
     key: 'lembrete_consulta_24h',
@@ -137,6 +145,20 @@ export default function Automacoes() {
   const { data: settings = [], isLoading: loadingSettings, refetch: refetchSettings } = useSupabaseQuery<AutomationSetting>('automation_settings', {
     orderBy: { column: 'chave', ascending: true }
   });
+
+  const { data: queue = [], isLoading: loadingQueue, refetch: refetchQueue } = useSupabaseQuery<QueueItem>('notification_queue', {
+    orderBy: { column: 'created_at', ascending: false }, limit: 100, page: 0,
+  });
+
+  const updateQueueItem = async (id: string, action: 'retry' | 'cancel') => {
+    const changes = action === 'retry'
+      ? { status: 'pendente', tentativas: 0, erro_mensagem: null, agendado_para: new Date().toISOString(), iniciado_em: null }
+      : { status: 'cancelado', iniciado_em: null };
+    const { error } = await (supabase.from('notification_queue') as any).update(changes).eq('id', id);
+    if (error) return toast.error('Não foi possível atualizar o envio', { description: error.message });
+    toast.success(action === 'retry' ? 'Envio devolvido à fila' : 'Envio cancelado');
+    refetchQueue();
+  };
 
   const getSettingByKey = (key: string): AutomationSetting | undefined => {
     return settings.find(s => s.chave === key);
@@ -223,7 +245,7 @@ export default function Automacoes() {
     return <Badge className={colors[tipo] || 'bg-muted text-muted-foreground'}>{tipo}</Badge>;
   };
 
-  if (loadingLogs || loadingSettings) {
+  if (loadingLogs || loadingSettings || loadingQueue) {
     return (
       <div className="space-y-6">
         <Skeleton className="h-10 w-64" />
@@ -243,7 +265,7 @@ export default function Automacoes() {
           <h1 className="text-3xl font-bold text-foreground">Automações</h1>
           <p className="text-muted-foreground">Gerencie as automações do sistema</p>
         </div>
-        <Button variant="outline" onClick={() => { refetchLogs(); refetchSettings(); }}>
+        <Button variant="outline" onClick={() => { refetchLogs(); refetchSettings(); refetchQueue(); }}>
           <RefreshCw className="h-4 w-4 mr-2" />
           Atualizar
         </Button>
@@ -253,6 +275,7 @@ export default function Automacoes() {
         <TabsList>
           <TabsTrigger value="automacoes">Automações</TabsTrigger>
           <TabsTrigger value="logs">Logs de Execução</TabsTrigger>
+          <TabsTrigger value="fila">Fila de envios</TabsTrigger>
         </TabsList>
 
         <TabsContent value="automacoes">
@@ -383,6 +406,39 @@ export default function Automacoes() {
                 </Table>
               </div>
             </CardContent>
+          </Card>
+        </TabsContent>
+        <TabsContent value="fila" className="space-y-4">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {[
+              ['Pendentes', 'pendente', Clock], ['Enviando', 'enviando', RefreshCw],
+              ['Com erro', 'erro', AlertTriangle], ['Enviados', 'enviado', CheckCircle2],
+            ].map(([label, status, Icon]) => (
+              <Card key={String(status)}><CardContent className="flex items-center justify-between p-5">
+                <div><p className="text-sm text-muted-foreground">{String(label)}</p><p className="text-2xl font-bold">{queue.filter(item => item.status === status).length}</p></div>
+                <Icon className="h-5 w-5 text-muted-foreground" />
+              </CardContent></Card>
+            ))}
+          </div>
+          <Card>
+            <CardHeader><CardTitle>Últimos envios</CardTitle><CardDescription>Até 100 mensagens recentes, com tentativas e detalhes de falha.</CardDescription></CardHeader>
+            <CardContent><div className="overflow-x-auto rounded-md border"><Table>
+              <TableHeader><TableRow><TableHead>Agendado</TableHead><TableHead>Canal</TableHead><TableHead>Destinatário</TableHead><TableHead>Status</TableHead><TableHead>Tentativas</TableHead><TableHead>Detalhe</TableHead><TableHead className="text-right">Ações</TableHead></TableRow></TableHeader>
+              <TableBody>{queue.length === 0 ? <TableRow><TableCell colSpan={7} className="py-8 text-center text-muted-foreground">Nenhum envio na fila</TableCell></TableRow> : queue.map(item => (
+                <TableRow key={item.id}>
+                  <TableCell className="whitespace-nowrap text-sm">{format(new Date(item.agendado_para), 'dd/MM HH:mm')}</TableCell>
+                  <TableCell><Badge variant="outline">{item.tipo}</Badge></TableCell>
+                  <TableCell><div className="max-w-48 truncate font-medium">{item.destinatario_nome || item.destinatario_email || item.destinatario_telefone || 'Não informado'}</div></TableCell>
+                  <TableCell><Badge variant={item.status === 'erro' ? 'destructive' : item.status === 'enviado' ? 'default' : 'secondary'}>{item.status}</Badge></TableCell>
+                  <TableCell>{item.tentativas}/{item.max_tentativas}</TableCell>
+                  <TableCell><p className="max-w-64 truncate text-xs text-muted-foreground" title={item.erro_mensagem || item.assunto || ''}>{item.erro_mensagem || item.assunto || '—'}</p></TableCell>
+                  <TableCell><div className="flex justify-end gap-1">
+                    {(item.status === 'erro' || item.status === 'cancelado') && <Button size="sm" variant="outline" onClick={() => updateQueueItem(item.id, 'retry')}><RefreshCw className="mr-1 h-3 w-3" />Repetir</Button>}
+                    {(item.status === 'pendente' || item.status === 'erro') && <Button size="icon" variant="ghost" title="Cancelar" onClick={() => updateQueueItem(item.id, 'cancel')}><XCircle className="h-4 w-4" /></Button>}
+                  </div></TableCell>
+                </TableRow>
+              ))}</TableBody>
+            </Table></div></CardContent>
           </Card>
         </TabsContent>
       </Tabs>

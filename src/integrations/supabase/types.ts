@@ -1,4 +1,4 @@
-export type Json =
+﻿export type Json =
   | string
   | number
   | boolean
@@ -12,21 +12,96 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "14.1"
   }
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
   public: {
     Tables: {
+      admin_acoes: {
+        Row: {
+          acao: string
+          alvo_email: string
+          alvo_id: string | null
+          ator_email: string
+          ator_id: string | null
+          criado_em: string
+          detalhe: Json
+          erro: string | null
+          id: string
+          ip: string | null
+          motivo: string | null
+          sucesso: boolean
+        }
+        Insert: {
+          acao: string
+          alvo_email: string
+          alvo_id?: string | null
+          ator_email: string
+          ator_id?: string | null
+          criado_em?: string
+          detalhe?: Json
+          erro?: string | null
+          id?: string
+          ip?: string | null
+          motivo?: string | null
+          sucesso?: boolean
+        }
+        Update: {
+          acao?: string
+          alvo_email?: string
+          alvo_id?: string | null
+          ator_email?: string
+          ator_id?: string | null
+          criado_em?: string
+          detalhe?: Json
+          erro?: string | null
+          id?: string
+          ip?: string | null
+          motivo?: string | null
+          sucesso?: boolean
+        }
+        Relationships: []
+      }
       agendamentos: {
         Row: {
-          convenio_id: string | null
           clinica_id: string | null
+          convenio_id: string | null
           created_at: string | null
           data: string
           exige_pagamento_previo: boolean
+          exige_triagem: boolean
           hora_fim: string | null
           hora_inicio: string
           id: string
           liberado_sem_pagamento: boolean
           liberado_sem_pagamento_em: string | null
           liberado_sem_pagamento_por: string | null
+          liberado_sem_triagem: boolean
+          liberado_sem_triagem_em: string | null
+          liberado_sem_triagem_motivo: string | null
+          liberado_sem_triagem_por: string | null
           medico_id: string | null
           motivo_liberacao: string | null
           observacoes: string | null
@@ -38,15 +113,21 @@ export type Database = {
         }
         Insert: {
           clinica_id?: string | null
+          convenio_id?: string | null
           created_at?: string | null
           data: string
           exige_pagamento_previo?: boolean
+          exige_triagem?: boolean
           hora_fim?: string | null
           hora_inicio: string
           id?: string
           liberado_sem_pagamento?: boolean
           liberado_sem_pagamento_em?: string | null
           liberado_sem_pagamento_por?: string | null
+          liberado_sem_triagem?: boolean
+          liberado_sem_triagem_em?: string | null
+          liberado_sem_triagem_motivo?: string | null
+          liberado_sem_triagem_por?: string | null
           medico_id?: string | null
           motivo_liberacao?: string | null
           observacoes?: string | null
@@ -58,15 +139,21 @@ export type Database = {
         }
         Update: {
           clinica_id?: string | null
+          convenio_id?: string | null
           created_at?: string | null
           data?: string
           exige_pagamento_previo?: boolean
+          exige_triagem?: boolean
           hora_fim?: string | null
           hora_inicio?: string
           id?: string
           liberado_sem_pagamento?: boolean
           liberado_sem_pagamento_em?: string | null
           liberado_sem_pagamento_por?: string | null
+          liberado_sem_triagem?: boolean
+          liberado_sem_triagem_em?: string | null
+          liberado_sem_triagem_motivo?: string | null
+          liberado_sem_triagem_por?: string | null
           medico_id?: string | null
           motivo_liberacao?: string | null
           observacoes?: string | null
@@ -82,6 +169,27 @@ export type Database = {
             columns: ["clinica_id"]
             isOneToOne: false
             referencedRelation: "clinicas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agendamentos_convenio_id_fkey"
+            columns: ["convenio_id"]
+            isOneToOne: false
+            referencedRelation: "convenios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agendamentos_liberado_sem_pagamento_por_fkey"
+            columns: ["liberado_sem_pagamento_por"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agendamentos_liberado_sem_triagem_por_fkey"
+            columns: ["liberado_sem_triagem_por"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
           {
@@ -846,9 +954,14 @@ export type Database = {
       }
       clinicas: {
         Row: {
+          arquivada: boolean
+          arquivada_em: string | null
+          arquivada_motivo: string | null
+          arquivada_por: string | null
           cnpj: string | null
           created_at: string | null
           exigir_pagamento_previo: boolean
+          exigir_triagem: boolean
           id: string
           nome: string
           owner_id: string | null
@@ -859,9 +972,14 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          arquivada?: boolean
+          arquivada_em?: string | null
+          arquivada_motivo?: string | null
+          arquivada_por?: string | null
           cnpj?: string | null
           created_at?: string | null
           exigir_pagamento_previo?: boolean
+          exigir_triagem?: boolean
           id?: string
           nome?: string
           owner_id?: string | null
@@ -872,9 +990,14 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          arquivada?: boolean
+          arquivada_em?: string | null
+          arquivada_motivo?: string | null
+          arquivada_por?: string | null
           cnpj?: string | null
           created_at?: string | null
           exigir_pagamento_previo?: boolean
+          exigir_triagem?: boolean
           id?: string
           nome?: string
           owner_id?: string | null
@@ -885,6 +1008,13 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "clinicas_arquivada_por_fkey"
+            columns: ["arquivada_por"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "clinicas_plano_id_fkey"
             columns: ["plano_id"]
@@ -1599,6 +1729,8 @@ export type Database = {
           preco_custo: number | null
           preco_venda: number | null
           resultado: string | null
+          resultado_em: string | null
+          resultado_por: string | null
           status: Database["public"]["Enums"]["status_exame"] | null
           tipo_categorizado: string | null
           tipo_exame: string
@@ -1621,6 +1753,8 @@ export type Database = {
           preco_custo?: number | null
           preco_venda?: number | null
           resultado?: string | null
+          resultado_em?: string | null
+          resultado_por?: string | null
           status?: Database["public"]["Enums"]["status_exame"] | null
           tipo_categorizado?: string | null
           tipo_exame: string
@@ -1643,6 +1777,8 @@ export type Database = {
           preco_custo?: number | null
           preco_venda?: number | null
           resultado?: string | null
+          resultado_em?: string | null
+          resultado_por?: string | null
           status?: Database["public"]["Enums"]["status_exame"] | null
           tipo_categorizado?: string | null
           tipo_exame?: string
@@ -1677,12 +1813,20 @@ export type Database = {
             referencedRelation: "pacientes"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "exames_resultado_por_fkey"
+            columns: ["resultado_por"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
         ]
       }
       feedbacks_nps: {
         Row: {
           agendamento_id: string | null
           categoria: string | null
+          clinica_id: string | null
           comentario: string | null
           created_at: string | null
           id: string
@@ -1693,6 +1837,7 @@ export type Database = {
         Insert: {
           agendamento_id?: string | null
           categoria?: string | null
+          clinica_id?: string | null
           comentario?: string | null
           created_at?: string | null
           id?: string
@@ -1703,6 +1848,7 @@ export type Database = {
         Update: {
           agendamento_id?: string | null
           categoria?: string | null
+          clinica_id?: string | null
           comentario?: string | null
           created_at?: string | null
           id?: string
@@ -1716,6 +1862,13 @@ export type Database = {
             columns: ["agendamento_id"]
             isOneToOne: false
             referencedRelation: "agendamentos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "feedbacks_nps_clinica_id_fkey"
+            columns: ["clinica_id"]
+            isOneToOne: false
+            referencedRelation: "clinicas"
             referencedColumns: ["id"]
           },
           {
@@ -2071,7 +2224,7 @@ export type Database = {
           origem: string
           prontuario_id: string | null
           quantidade: number
-          valor_total: number
+          valor_total: number | null
           valor_unitario: number
         }
         Insert: {
@@ -2085,6 +2238,7 @@ export type Database = {
           origem?: string
           prontuario_id?: string | null
           quantidade?: number
+          valor_total?: number | null
           valor_unitario: number
         }
         Update: {
@@ -2098,6 +2252,7 @@ export type Database = {
           origem?: string
           prontuario_id?: string | null
           quantidade?: number
+          valor_total?: number | null
           valor_unitario?: number
         }
         Relationships: [
@@ -2416,6 +2571,8 @@ export type Database = {
           medico_id?: string | null
           motivo?: string | null
           observacoes?: string | null
+          oferta_agendamento_id?: string | null
+          oferta_expira_em?: string | null
           paciente_id: string
           preferencia_horario?: string | null
           prioridade?: string | null
@@ -2431,6 +2588,8 @@ export type Database = {
           medico_id?: string | null
           motivo?: string | null
           observacoes?: string | null
+          oferta_agendamento_id?: string | null
+          oferta_expira_em?: string | null
           paciente_id?: string
           preferencia_horario?: string | null
           prioridade?: string | null
@@ -2450,6 +2609,13 @@ export type Database = {
             columns: ["medico_id"]
             isOneToOne: false
             referencedRelation: "medicos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lista_espera_oferta_agendamento_id_fkey"
+            columns: ["oferta_agendamento_id"]
+            isOneToOne: false
+            referencedRelation: "agendamentos"
             referencedColumns: ["id"]
           },
           {
@@ -2615,6 +2781,39 @@ export type Database = {
         }
         Relationships: []
       }
+      monitor_saude: {
+        Row: {
+          alvo: string
+          erro: string | null
+          id: string
+          ms: number | null
+          ok: boolean
+          status_code: number | null
+          verificado_em: string
+          virada: boolean
+        }
+        Insert: {
+          alvo: string
+          erro?: string | null
+          id?: string
+          ms?: number | null
+          ok: boolean
+          status_code?: number | null
+          verificado_em?: string
+          virada?: boolean
+        }
+        Update: {
+          alvo?: string
+          erro?: string | null
+          id?: string
+          ms?: number | null
+          ok?: boolean
+          status_code?: number | null
+          verificado_em?: string
+          virada?: boolean
+        }
+        Relationships: []
+      }
       movimentacoes_estoque: {
         Row: {
           clinica_id: string | null
@@ -2691,11 +2890,13 @@ export type Database = {
           enviado_em: string | null
           erro_mensagem: string | null
           id: string
+          iniciado_em: string | null
           max_tentativas: number | null
           status: string
           template_id: string | null
           tentativas: number | null
           tipo: string
+          ultimo_erro_em: string | null
           updated_at: string | null
         }
         Insert: {
@@ -2712,11 +2913,13 @@ export type Database = {
           enviado_em?: string | null
           erro_mensagem?: string | null
           id?: string
+          iniciado_em?: string | null
           max_tentativas?: number | null
           status?: string
           template_id?: string | null
           tentativas?: number | null
           tipo: string
+          ultimo_erro_em?: string | null
           updated_at?: string | null
         }
         Update: {
@@ -2733,11 +2936,13 @@ export type Database = {
           enviado_em?: string | null
           erro_mensagem?: string | null
           id?: string
+          iniciado_em?: string | null
           max_tentativas?: number | null
           status?: string
           template_id?: string | null
           tentativas?: number | null
           tipo?: string
+          ultimo_erro_em?: string | null
           updated_at?: string | null
         }
         Relationships: [
@@ -3312,6 +3517,36 @@ export type Database = {
         }
         Relationships: []
       }
+      plataforma_estado: {
+        Row: {
+          atualizado_em: string
+          atualizado_por: string | null
+          id: boolean
+          manutencao: boolean
+          mensagem: string
+          previsao_retorno: string | null
+          titulo: string
+        }
+        Insert: {
+          atualizado_em?: string
+          atualizado_por?: string | null
+          id?: boolean
+          manutencao?: boolean
+          mensagem?: string
+          previsao_retorno?: string | null
+          titulo?: string
+        }
+        Update: {
+          atualizado_em?: string
+          atualizado_por?: string | null
+          id?: boolean
+          manutencao?: boolean
+          mensagem?: string
+          previsao_retorno?: string | null
+          titulo?: string
+        }
+        Relationships: []
+      }
       platform_admins: {
         Row: {
           ativo: boolean
@@ -3559,6 +3794,64 @@ export type Database = {
           },
         ]
       }
+      predicoes_no_show: {
+        Row: {
+          agendamento_id: string | null
+          clinica_id: string
+          created_at: string
+          id: string
+          motivos_risco: string[]
+          paciente_id: string
+          probabilidade_no_show: number
+          recomendacoes: string | null
+          updated_at: string
+        }
+        Insert: {
+          agendamento_id?: string | null
+          clinica_id: string
+          created_at?: string
+          id?: string
+          motivos_risco?: string[]
+          paciente_id: string
+          probabilidade_no_show: number
+          recomendacoes?: string | null
+          updated_at?: string
+        }
+        Update: {
+          agendamento_id?: string | null
+          clinica_id?: string
+          created_at?: string
+          id?: string
+          motivos_risco?: string[]
+          paciente_id?: string
+          probabilidade_no_show?: number
+          recomendacoes?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "predicoes_no_show_agendamento_id_fkey"
+            columns: ["agendamento_id"]
+            isOneToOne: false
+            referencedRelation: "agendamentos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "predicoes_no_show_clinica_id_fkey"
+            columns: ["clinica_id"]
+            isOneToOne: false
+            referencedRelation: "clinicas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "predicoes_no_show_paciente_id_fkey"
+            columns: ["paciente_id"]
+            isOneToOne: false
+            referencedRelation: "pacientes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       prescricoes: {
         Row: {
           clinica_id: string
@@ -3578,7 +3871,6 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
-          convenio_id?: string | null
           clinica_id: string
           created_at?: string | null
           data_emissao?: string | null
@@ -3588,8 +3880,6 @@ export type Database = {
           medicamento: string
           medico_id?: string | null
           observacoes?: string | null
-          oferta_agendamento_id?: string | null
-          oferta_expira_em?: string | null
           paciente_id?: string | null
           posologia?: string | null
           prontuario_id?: string | null
@@ -3598,7 +3888,6 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
-          convenio_id?: string | null
           clinica_id?: string
           created_at?: string | null
           data_emissao?: string | null
@@ -3608,8 +3897,6 @@ export type Database = {
           medicamento?: string
           medico_id?: string | null
           observacoes?: string | null
-          oferta_agendamento_id?: string | null
-          oferta_expira_em?: string | null
           paciente_id?: string | null
           posologia?: string | null
           prontuario_id?: string | null
@@ -4012,6 +4299,24 @@ export type Database = {
           },
         ]
       }
+      rate_limit_counters: {
+        Row: {
+          chave: string
+          contagem: number
+          janela: string
+        }
+        Insert: {
+          chave: string
+          contagem?: number
+          janela: string
+        }
+        Update: {
+          chave?: string
+          contagem?: number
+          janela?: string
+        }
+        Relationships: []
+      }
       registros_pendentes: {
         Row: {
           activated_at: string | null
@@ -4229,6 +4534,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "resultados_laboratorio_coleta_id_fkey"
+            columns: ["coleta_id"]
+            isOneToOne: false
+            referencedRelation: "fila_alertas_lab_esquecido"
+            referencedColumns: ["coleta_id"]
+          },
+          {
             foreignKeyName: "resultados_laboratorio_exame_id_fkey"
             columns: ["exame_id"]
             isOneToOne: false
@@ -4261,12 +4573,16 @@ export type Database = {
       retornos: {
         Row: {
           agendamento_id: string | null
+          agendamento_retorno_id: string | null
           clinica_id: string | null
+          confirmado_em: string | null
           created_at: string | null
           data_consulta_origem: string
           data_retorno_prevista: string
+          historico: Json
           id: string
           lembrete_enviado: boolean | null
+          lembretes_enviados: number
           medico_id: string | null
           motivo: string | null
           observacoes: string | null
@@ -4278,12 +4594,16 @@ export type Database = {
         }
         Insert: {
           agendamento_id?: string | null
+          agendamento_retorno_id?: string | null
           clinica_id?: string | null
+          confirmado_em?: string | null
           created_at?: string | null
           data_consulta_origem?: string
           data_retorno_prevista: string
+          historico?: Json
           id?: string
           lembrete_enviado?: boolean | null
+          lembretes_enviados?: number
           medico_id?: string | null
           motivo?: string | null
           observacoes?: string | null
@@ -4295,12 +4615,16 @@ export type Database = {
         }
         Update: {
           agendamento_id?: string | null
+          agendamento_retorno_id?: string | null
           clinica_id?: string | null
+          confirmado_em?: string | null
           created_at?: string | null
           data_consulta_origem?: string
           data_retorno_prevista?: string
+          historico?: Json
           id?: string
           lembrete_enviado?: boolean | null
+          lembretes_enviados?: number
           medico_id?: string | null
           motivo?: string | null
           observacoes?: string | null
@@ -4314,6 +4638,13 @@ export type Database = {
           {
             foreignKeyName: "retornos_agendamento_id_fkey"
             columns: ["agendamento_id"]
+            isOneToOne: false
+            referencedRelation: "agendamentos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "retornos_agendamento_retorno_id_fkey"
+            columns: ["agendamento_retorno_id"]
             isOneToOne: false
             referencedRelation: "agendamentos"
             referencedColumns: ["id"]
@@ -5199,6 +5530,42 @@ export type Database = {
       }
     }
     Views: {
+      fila_alertas_lab_esquecido: {
+        Row: {
+          clinica_id: string | null
+          coleta_id: string | null
+          created_at: string | null
+          exame_id: string | null
+          paciente_id: string | null
+          paciente_nome: string | null
+          parado_ha: string | null
+          status: string | null
+          tipo_exame: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coletas_laboratorio_clinica_id_fkey"
+            columns: ["clinica_id"]
+            isOneToOne: false
+            referencedRelation: "clinicas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coletas_laboratorio_exame_id_fkey"
+            columns: ["exame_id"]
+            isOneToOne: false
+            referencedRelation: "exames"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coletas_laboratorio_paciente_id_fkey"
+            columns: ["paciente_id"]
+            isOneToOne: false
+            referencedRelation: "pacientes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       funcionarios_safe: {
         Row: {
           ativo: boolean | null
@@ -5257,6 +5624,7 @@ export type Database = {
       }
       nps_resumo_mensal: {
         Row: {
+          clinica_id: string | null
           detratores: number | null
           media: number | null
           mes: string | null
@@ -5264,6 +5632,26 @@ export type Database = {
           nps_score: number | null
           promotores: number | null
           total: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "feedbacks_nps_clinica_id_fkey"
+            columns: ["clinica_id"]
+            isOneToOne: false
+            referencedRelation: "clinicas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      platform_saude_agregada: {
+        Row: {
+          agendamentos_no_mes: number | null
+          audits_ultimos_7d: number | null
+          clinicas_arquivadas: number | null
+          clinicas_ativas: number | null
+          clinicas_em_trial: number | null
+          total_clinicas: number | null
+          total_pacientes: number | null
         }
         Relationships: []
       }
@@ -5273,32 +5661,71 @@ export type Database = {
         Args: { _token: string; _user_id: string }
         Returns: Json
       }
+      aceitar_oferta_lista_espera: {
+        Args: { p_lista_espera_id: string; p_paciente_id: string }
+        Returns: string
+      }
       activate_public_registration: {
         Args: { _codigo_convite: string; _user_id: string }
         Returns: Json
       }
+      admin_encerrar_sessoes: { Args: { p_user_id: string }; Returns: number }
+      admin_situacao_contas: {
+        Args: never
+        Returns: {
+          bloqueado: boolean
+          bloqueado_ate: string
+          email_confirmado: boolean
+          sessoes_abertas: number
+          ultimo_login: string
+          user_id: string
+        }[]
+      }
+      atualizar_predicoes_no_show: { Args: never; Returns: number }
+      automacoes_padrao: {
+        Args: never
+        Returns: {
+          chave: string
+          descricao: string
+        }[]
+      }
       can_access_clinical: { Args: { _user_id: string }; Returns: boolean }
       can_access_financial: { Args: { _user_id: string }; Returns: boolean }
+      can_manage_data: { Args: { _user_id: string }; Returns: boolean }
       cancelar_coletas_pendentes_antigas: {
         Args: { p_dias: number; p_motivo: string }
         Returns: number
       }
-      can_manage_data: { Args: { _user_id: string }; Returns: boolean }
+      checar_rate_limit: {
+        Args: { p_chave: string; p_janela_segundos?: number; p_limite: number }
+        Returns: boolean
+      }
       clinica_acesso_bloqueado: { Args: never; Returns: boolean }
       current_clinica_id: { Args: never; Returns: string }
       delete_all_app_data: { Args: never; Returns: undefined }
+      enfileirar_lembrete_risco: {
+        Args: { p_agendamento_id: string }
+        Returns: boolean
+      }
+      enfileirar_lembretes_retorno: { Args: never; Returns: number }
+      estornar_pagamento: {
+        Args: { p_motivo: string; p_pagamento_id: string }
+        Returns: Json
+      }
+      exame_e_de_laboratorio: { Args: { p_tipo: string }; Returns: boolean }
+      expirar_ofertas_lista_espera: { Args: never; Returns: number }
       expire_trials: { Args: never; Returns: undefined }
       finalizar_atendimento_atomico: {
         Args: {
           p_agendamento_id: string
           p_agendar_retorno?: boolean
-          p_dias_retorno?: number | null
-          p_fila_id?: string | null
-          p_tipo_exame?: string | null
+          p_dias_retorno?: number
+          p_fila_id?: string
+          p_tipo_exame?: string
         }
         Returns: {
           cobranca_criada: boolean
-          retorno_id: string | null
+          retorno_id: string
           status_agendamento: string
         }[]
       }
@@ -5334,17 +5761,71 @@ export type Database = {
           p_agendamento_id: string
           p_categoria?: string
           p_descricao: string
-          p_prontuario_id?: string | null
+          p_prontuario_id?: string
           p_quantidade?: number
           p_valor_unitario: number
         }
         Returns: Json
       }
+      liberar_resultados_laboratorio: {
+        Args: { p_coleta_id: string; p_resultado_ids: string[] }
+        Returns: {
+          id: string
+        }[]
+      }
+      limpar_logs_antigos: { Args: never; Returns: number }
+      limpar_rate_limit_antigos: { Args: never; Returns: number }
+      link_portal_paciente: { Args: { p_paciente_id: string }; Returns: string }
       mask_cpf: { Args: { cpf_value: string }; Returns: string }
       normalize_cpf: { Args: { cpf_value: string }; Returns: string }
+      ordem_de_restauracao: { Args: never; Returns: string[] }
+      platform_arquivar_clinica: {
+        Args: { _clinica_id: string; _motivo?: string }
+        Returns: Json
+      }
+      platform_conteudo_da_clinica: {
+        Args: { _clinica_id: string }
+        Returns: Json
+      }
+      platform_crm_overview: {
+        Args: never
+        Returns: {
+          assinatura_status: string
+          cliente_desde: string
+          clinica_id: string
+          clinica_nome: string
+          cnpj: string
+          dias_para_vencer: number
+          dias_sem_uso: number
+          dono_email: string
+          dono_nome: string
+          dono_telefone: string
+          em_trial: boolean
+          plano_nome: string
+          plano_valor: number
+          suspensa: boolean
+          total_agendamentos: number
+          total_funcionarios: number
+          total_medicos: number
+          total_pacientes: number
+          ultima_atividade: string
+          vence_em: string
+        }[]
+      }
+      platform_desarquivar_clinica: {
+        Args: { _clinica_id: string }
+        Returns: Json
+      }
+      platform_excluir_clinica_vazia: {
+        Args: { _clinica_id: string; _confirmacao: string }
+        Returns: Json
+      }
       platform_get_clinicas_overview: {
         Args: never
         Returns: {
+          arquivada: boolean
+          arquivada_em: string
+          arquivada_motivo: string
           assinatura_status: string
           clinica_id: string
           clinica_nome: string
@@ -5365,31 +5846,93 @@ export type Database = {
       platform_get_clinicas_saude: {
         Args: never
         Returns: {
+          agendamentos_em_atendimento: number
+          arquivada: boolean
+          assinatura_status: string
+          audits_no_mes: number
           clinica_id: string
           clinica_nome: string
+          coletas_esquecidas: number
+          contas_a_receber_valor: number
+          contas_a_receber_vencidas: number
           criada_em: string
-          assinatura_status: string
           em_trial: boolean
+          exames_solicitados_ha_7d: number
           plano_nome: string
           suspensa: boolean
-          arquivada: boolean
-          ultima_atividade: string | null
-          ultima_atividade_ha_dias: number | null
-          agendamentos_em_atendimento: number
-          coletas_esquecidas: number
-          exames_solicitados_ha_7d: number
-          contas_a_receber_vencidas: number
-          contas_a_receber_valor: number
-          total_pacientes: number
           total_agendamentos_no_mes: number
-          audits_no_mes: number
+          total_pacientes: number
+          ultima_atividade: string
+          ultima_atividade_ha_dias: number
         }[]
       }
       platform_start_impersonation: {
-        Args: { _target_clinica_id: string }
+        Args: { _motivo?: string; _target_clinica_id: string }
         Returns: Json
       }
       platform_stop_impersonation: { Args: never; Returns: Json }
+      recalcular_conta: {
+        Args: { p_lancamento_id: string }
+        Returns: undefined
+      }
+      registrar_baixa_estoque: {
+        Args: {
+          p_item_id: string
+          p_motivo?: string
+          p_prontuario_id?: string
+          p_quantidade: number
+          p_usuario_id?: string
+        }
+        Returns: {
+          item_id: string
+          ja_baixado: boolean
+          quantidade_anterior: number
+          quantidade_nova: number
+        }[]
+      }
+      registrar_pagamento: {
+        Args: {
+          p_acrescimo?: number
+          p_chave_idempotencia?: string
+          p_desconto?: number
+          p_lancamento_id: string
+          p_observacoes?: string
+          p_pagamentos: Json
+        }
+        Returns: Json
+      }
+      reivindicar_notificacoes: {
+        Args: { p_clinica_id?: string; p_limite?: number }
+        Returns: {
+          agendado_para: string | null
+          assunto: string | null
+          clinica_id: string | null
+          conteudo: string
+          created_at: string | null
+          dados_extras: Json | null
+          destinatario_email: string | null
+          destinatario_id: string | null
+          destinatario_nome: string | null
+          destinatario_telefone: string | null
+          enviado_em: string | null
+          erro_mensagem: string | null
+          id: string
+          iniciado_em: string | null
+          max_tentativas: number | null
+          status: string
+          template_id: string | null
+          tentativas: number | null
+          tipo: string
+          ultimo_erro_em: string | null
+          updated_at: string | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "notification_queue"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       resend_activation_manual: {
         Args: { _registro_id: string }
         Returns: Json
@@ -5407,6 +5950,12 @@ export type Database = {
         Args: { _name: string }
         Returns: boolean
       }
+      substituir_prescricoes_do_prontuario: {
+        Args: { p_prescricoes?: Json; p_prontuario_id: string }
+        Returns: number
+      }
+      tabelas_para_backup: { Args: never; Returns: string[] }
+      tem_triagem: { Args: { p_agendamento_id: string }; Returns: boolean }
       user_has_feature: {
         Args: { _feature: string; _user_id: string }
         Returns: boolean
@@ -5417,6 +5966,15 @@ export type Database = {
       }
       validate_invitation_token: { Args: { _token: string }; Returns: Json }
       validate_invite_code: { Args: { _codigo: string }; Returns: Json }
+      verificar_saude_clinicas_e_alertar: {
+        Args: never
+        Returns: {
+          clinica_id: string
+          enfileirada: boolean
+          motivo: string
+        }[]
+      }
+      watchdog_atendimento_travado: { Args: never; Returns: number }
     }
     Enums: {
       app_role: "admin" | "medico" | "recepcao" | "enfermagem" | "financeiro"
@@ -5429,6 +5987,12 @@ export type Database = {
         | "finalizado"
         | "cancelado"
         | "faltou"
+        | "aguardando_pagamento"
+        | "pago"
+        | "aguardando_triagem"
+        | "em_triagem"
+        | "atendimento_finalizado"
+        | "aguardando_pagamento_adicional"
       status_exame:
         | "solicitado"
         | "agendado"
@@ -5441,6 +6005,7 @@ export type Database = {
         | "cancelado"
         | "estornado"
         | "atrasado"
+        | "parcial"
       status_sala: "disponivel" | "ocupado" | "manutencao" | "limpeza"
     }
     CompositeTypes: {
@@ -5567,6 +6132,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {
       app_role: ["admin", "medico", "recepcao", "enfermagem", "financeiro"],
@@ -5579,6 +6147,12 @@ export const Constants = {
         "finalizado",
         "cancelado",
         "faltou",
+        "aguardando_pagamento",
+        "pago",
+        "aguardando_triagem",
+        "em_triagem",
+        "atendimento_finalizado",
+        "aguardando_pagamento_adicional",
       ],
       status_exame: [
         "solicitado",
@@ -5593,6 +6167,7 @@ export const Constants = {
         "cancelado",
         "estornado",
         "atrasado",
+        "parcial",
       ],
       status_sala: ["disponivel", "ocupado", "manutencao", "limpeza"],
     },

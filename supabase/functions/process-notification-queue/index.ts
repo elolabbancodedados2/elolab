@@ -1,218 +1,95 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { cronOrUserOk, cronForbidden } from '../_shared/cronAuth.ts';
+import { clinicaDoChamador, cronForbidden, cronOrUserOk, cronSecretOk } from '../_shared/cronAuth.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-cron-secret',
 }
 
 interface NotificationItem {
-  id: string
-  tipo: string
-  destinatario_email: string | null
-  destinatario_telefone: string | null
-  destinatario_nome: string | null
-  assunto: string | null
-  conteudo: string
-  tentativas: number
-  max_tentativas: number
+  id: string; tipo: string; destinatario_email: string | null
+  destinatario_telefone: string | null; destinatario_nome: string | null
+  assunto: string | null; conteudo: string; tentativas: number
+  max_tentativas: number; clinica_id: string | null
 }
 
 Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
-  }
-
-  // O agendador (com o segredo) ou um usuário logado. A chave anon não basta.
-  if (!cronOrUserOk(req)) return cronForbidden(corsHeaders);
-
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
+  if (!cronOrUserOk(req)) return cronForbidden(corsHeaders)
   const startTime = Date.now()
 
   try {
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    const brevoApiKey = Deno.env.get('BREVO_API_KEY')
+    const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
+    const chamadaDoCron = req.headers.has('x-cron-secret') && cronSecretOk(req)
+    const clinicaId = chamadaDoCron ? null : await clinicaDoChamador(req, supabase)
+    if (!chamadaDoCron && !clinicaId) return cronForbidden(corsHeaders)
 
-    if (!brevoApiKey) {
-      throw new Error('BREVO_API_KEY não configurada')
+    const { data: pendentes, error } = await supabase.rpc('reivindicar_notificacoes', {
+      p_limite: 50, p_clinica_id: clinicaId,
+    })
+    if (error) throw new Error(`Erro ao reservar fila: ${error.message}`)
+    if (!pendentes?.length) return new Response(JSON.stringify({ success: true, processados: 0 }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
+
+    let successCount = 0; let errorCount = 0
+    const falhar = async (notif: NotificationItem, mensagem: string, retryable = true) => {
+      const terminal = !retryable || notif.tentativas >= notif.max_tentativas
+      const minutos = Math.min(60, 5 * 2 ** Math.max(0, notif.tentativas - 1))
+      await supabase.from('notification_queue').update({
+        status: terminal ? 'erro' : 'pendente', erro_mensagem: mensagem.slice(0, 1000),
+        ultimo_erro_em: new Date().toISOString(), iniciado_em: null,
+        ...(!terminal ? { agendado_para: new Date(Date.now() + minutos * 60_000).toISOString() } : {}),
+      }).eq('id', notif.id)
     }
-
-    const supabase = createClient(supabaseUrl, supabaseServiceKey)
-
-    const { data: pendentes, error: fetchError } = await supabase
-      .from('notification_queue')
-      .select('*')
-      .eq('status', 'pendente')
-      .lte('agendado_para', new Date().toISOString())
-      .lt('tentativas', 3)
-      .order('agendado_para', { ascending: true })
-      .limit(50)
-
-    if (fetchError) {
-      throw new Error(`Erro ao buscar fila: ${fetchError.message}`)
-    }
-
-    if (!pendentes || pendentes.length === 0) {
-      return new Response(
-        JSON.stringify({ success: true, message: 'Nenhuma notificação pendente', processados: 0 }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
-
-    let successCount = 0
-    let errorCount = 0
+    const concluir = async (id: string) => supabase.from('notification_queue').update({
+      status: 'enviado', enviado_em: new Date().toISOString(), iniciado_em: null, erro_mensagem: null,
+    }).eq('id', id)
 
     for (const notif of pendentes as NotificationItem[]) {
-      await supabase
-        .from('notification_queue')
-        .update({ status: 'enviando', tentativas: notif.tentativas + 1 })
-        .eq('id', notif.id)
-
       try {
         if (notif.tipo === 'email' && notif.destinatario_email) {
-          const emailRes = await fetch('https://api.brevo.com/v3/smtp/email', {
-            method: 'POST',
-            headers: {
-              'api-key': brevoApiKey,
-              'Content-Type': 'application/json',
-              'Accept': 'application/json',
-            },
-            body: JSON.stringify({
-              sender: { name: 'EloLab Clínica', email: 'noreply@elolab.com.br' },
+          const key = Deno.env.get('BREVO_API_KEY')
+          if (!key) throw new Error('BREVO_API_KEY não configurada')
+          const res = await fetch('https://api.brevo.com/v3/smtp/email', {
+            method: 'POST', headers: { 'api-key': key, 'Content-Type': 'application/json', Accept: 'application/json' },
+            body: JSON.stringify({ sender: { name: 'EloLab Clínica', email: 'noreply@elolab.com.br' },
               to: [{ email: notif.destinatario_email, name: notif.destinatario_nome || '' }],
-              subject: notif.assunto || 'Notificação EloLab',
-              htmlContent: notif.conteudo.replace(/\n/g, '<br>'),
-            }),
+              subject: notif.assunto || 'Notificação EloLab', htmlContent: notif.conteudo.replace(/\n/g, '<br>') }),
           })
-
-          if (emailRes.ok) {
-            await supabase
-              .from('notification_queue')
-              .update({ status: 'enviado', enviado_em: new Date().toISOString() })
-              .eq('id', notif.id)
-            successCount++
-          } else {
-            const result = await emailRes.json()
-            const novasTentativas = notif.tentativas + 1
-            await supabase
-              .from('notification_queue')
-              .update({
-                status: novasTentativas >= notif.max_tentativas ? 'erro' : 'pendente',
-                erro_mensagem: JSON.stringify(result),
-              })
-              .eq('id', notif.id)
-            errorCount++
-          }
+          if (!res.ok) { await falhar(notif, `Brevo ${res.status}: ${(await res.text()).slice(0, 700)}`); errorCount++; continue }
+          await concluir(notif.id); successCount++
         } else if (notif.tipo === 'whatsapp' && notif.destinatario_telefone) {
-          // WhatsApp via Evolution API
-          const evolutionUrl = (Deno.env.get('EVOLUTION_API_URL') || '').replace(/\/+$/, '')
-          const evolutionKey = Deno.env.get('EVOLUTION_API_KEY')
-
-          if (!evolutionUrl || !evolutionKey) {
-            await supabase
-              .from('notification_queue')
-              .update({ status: 'erro', erro_mensagem: 'EVOLUTION_API_URL/KEY não configurados' })
-              .eq('id', notif.id)
-            errorCount++
-          } else {
-            // Selecionar uma sessão conectada. Prefere a sessão da mesma clínica
-            // do destinatário, quando a notificação tiver clinica_id.
-            let sessionQuery = supabase
-              .from('whatsapp_sessions')
-              .select('instance_name, clinica_id')
-              .eq('status', 'connected')
-              .limit(1)
-            if ((notif as any).clinica_id) {
-              sessionQuery = sessionQuery.eq('clinica_id', (notif as any).clinica_id)
-            }
-            const { data: session } = await sessionQuery.maybeSingle()
-
-            if (!session?.instance_name) {
-              await supabase
-                .from('notification_queue')
-                .update({ status: 'erro', erro_mensagem: 'Nenhuma sessão WhatsApp conectada' })
-                .eq('id', notif.id)
-              errorCount++
-            } else {
-              const phone = String(notif.destinatario_telefone).replace(/\D/g, '')
-              const jid = phone.length >= 10 ? phone : `55${phone}`
-              const sendRes = await fetch(
-                `${evolutionUrl.replace(/\/$/, '')}/message/sendText/${session.instance_name}`,
-                {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json',
-                    'apikey': evolutionKey,
-                  },
-                  body: JSON.stringify({
-                    number: jid,
-                    text: notif.conteudo,
-                  }),
-                }
-              )
-              if (sendRes.ok) {
-                await supabase
-                  .from('notification_queue')
-                  .update({ status: 'enviado', enviado_em: new Date().toISOString() })
-                  .eq('id', notif.id)
-                successCount++
-              } else {
-                const errBody = await sendRes.text()
-                const novasTentativas = notif.tentativas + 1
-                await supabase
-                  .from('notification_queue')
-                  .update({
-                    status: novasTentativas >= notif.max_tentativas ? 'erro' : 'pendente',
-                    erro_mensagem: `Evolution ${sendRes.status}: ${errBody.slice(0, 500)}`,
-                  })
-                  .eq('id', notif.id)
-                errorCount++
-              }
-            }
-          }
-        } else {
-          errorCount++
-        }
-      } catch (err) {
-        const novasTentativas = notif.tentativas + 1
-        await supabase
-          .from('notification_queue')
-          .update({
-            status: novasTentativas >= notif.max_tentativas ? 'erro' : 'pendente',
-            erro_mensagem: String(err),
+          const url = (Deno.env.get('EVOLUTION_API_URL') || '').replace(/\/+$/, '')
+          const key = Deno.env.get('EVOLUTION_API_KEY')
+          if (!url || !key) throw new Error('EVOLUTION_API_URL/KEY não configurados')
+          const { data: session } = await supabase.from('whatsapp_sessions').select('instance_name')
+            .eq('status', 'connected').eq('clinica_id', notif.clinica_id).limit(1).maybeSingle()
+          if (!session?.instance_name) throw new Error('Nenhuma sessão WhatsApp conectada')
+          const digits = notif.destinatario_telefone.replace(/\D/g, '')
+          const res = await fetch(`${url}/message/sendText/${session.instance_name}`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json', apikey: key },
+            body: JSON.stringify({ number: digits.length >= 10 ? digits : `55${digits}`, text: notif.conteudo }),
           })
-          .eq('id', notif.id)
-        errorCount++
-      }
+          if (!res.ok) { await falhar(notif, `Evolution ${res.status}: ${(await res.text()).slice(0, 700)}`); errorCount++; continue }
+          await concluir(notif.id); successCount++
+        } else {
+          await falhar(notif, `Canal "${notif.tipo}" sem destinatário válido ou não suportado`, false); errorCount++
+        }
+      } catch (err) { await falhar(notif, String(err)); errorCount++ }
     }
 
     const duration = Date.now() - startTime
-
-    await supabase.from('automation_logs').insert({
-      tipo: 'fila_notificacao',
-      nome: 'Processamento de Fila de Notificações',
+    await supabase.from('automation_logs').insert({ tipo: 'fila_notificacao', nome: 'Processamento de Fila de Notificações',
       status: errorCount === 0 ? 'sucesso' : successCount === 0 ? 'erro' : 'parcial',
-      registros_processados: pendentes.length,
-      registros_sucesso: successCount,
-      registros_erro: errorCount,
-      duracao_ms: duration,
-      executado_por: 'cron',
+      registros_processados: pendentes.length, registros_sucesso: successCount, registros_erro: errorCount,
+      duracao_ms: duration, executado_por: chamadaDoCron ? 'cron' : 'usuario', clinica_id: clinicaId })
+    return new Response(JSON.stringify({ success: true, stats: { processados: pendentes.length, sucesso: successCount, erros: errorCount, duracao_ms: duration } }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
-
-    return new Response(
-      JSON.stringify({
-        success: true,
-        message: 'Fila processada',
-        stats: { processados: pendentes.length, sucesso: successCount, erros: errorCount, duracao_ms: duration },
-      }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    )
   } catch (error) {
-    console.error('Erro na função process-notification-queue:', error)
-    const errorMessage = error instanceof Error ? error.message : String(error)
-    return new Response(
-      JSON.stringify({ success: false, error: errorMessage }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    )
+    return new Response(JSON.stringify({ success: false, error: error instanceof Error ? error.message : String(error) }), {
+      status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
   }
 })
