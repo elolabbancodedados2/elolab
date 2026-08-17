@@ -10,6 +10,7 @@
   */
 
 import { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -35,6 +36,7 @@ import { mensagemDeErro } from '@/lib/erros';
 import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 
 /* ─── Types ─── */
 interface SystemHealth {
@@ -57,15 +59,6 @@ interface Especialidade {
   codigo: string;
   nome: string;
   descricao: string;
-  ativo: boolean;
-}
-
-interface DocumentTemplate {
-  id: string;
-  nome: string;
-  tipo: 'prontuario' | 'prescricao' | 'atestado' | 'encaminhamento' | 'relatorio';
-  conteudo: string;
-  variables: string[]; // {{nome_paciente}}, {{data}}, etc
   ativo: boolean;
 }
 
@@ -295,8 +288,7 @@ export function IntegracoesTab() {
 
 /* ─── 3. ESPECIALIDADES ─── */
 export function EspecialidadesTab() {
-  const [showAddEspecialidade, setShowAddEspecialidade] = useState(false);
-  const [newEspecialidade, setNewEspecialidade] = useState<Partial<Especialidade>>({ ativo: true });
+  const queryClient = useQueryClient();
 
   const { data: especialidades = [] } = useQuery({
     queryKey: ['especialidades'],
@@ -316,7 +308,7 @@ export function EspecialidadesTab() {
             <CardTitle className="flex items-center gap-2"><Stethoscope className="h-5 w-5" />Especialidades</CardTitle>
             <CardDescription>Gerenciar especialidades disponíveis</CardDescription>
           </div>
-          <Button onClick={() => setShowAddEspecialidade(true)} size="sm">
+          <Button onClick={() => void criarEspecialidade()} size="sm">
             <Plus className="h-4 w-4 mr-2" />
             Nova Especialidade
           </Button>
@@ -333,8 +325,8 @@ export function EspecialidadesTab() {
                   <Badge variant={esp.ativo ? 'default' : 'secondary'}>
                     {esp.ativo ? 'Ativo' : 'Inativo'}
                   </Badge>
-                  <Button size="sm" variant="outline"><Edit className="h-3 w-3" /></Button>
-                  <Button size="sm" variant="outline" className="text-red-600"><Trash2 className="h-3 w-3" /></Button>
+                  <Button size="sm" variant="outline" onClick={() => void editarEspecialidade(esp)}><Edit className="h-3 w-3" /></Button>
+                  <Button size="sm" variant="outline" className="text-red-600" onClick={() => void removerEspecialidade(esp)}><Trash2 className="h-3 w-3" /></Button>
                 </div>
               </div>
             ))}
@@ -347,25 +339,7 @@ export function EspecialidadesTab() {
 
 /* ─── 4. DOCUMENTOS & TEMPLATES ─── */
 export function DocumentosTemplatesTab() {
-  const [showAddTemplate, setShowAddTemplate] = useState(false);
-  const [selectedTemplate, setSelectedTemplate] = useState<DocumentTemplate | null>(null);
-
-  const { data: templates = [] } = useQuery({
-    queryKey: ['document-templates'],
-    queryFn: async () => {
-      // Simular dados
-      return [
-        {
-          id: '1',
-          nome: 'Prontuário Padrão',
-          tipo: 'prontuario',
-          conteudo: 'PRONTUÁRIO CLÍNICO\nPaciente: {{nome_paciente}}\nData: {{data}}',
-          variables: ['nome_paciente', 'data', 'idade'],
-          ativo: true,
-        },
-      ] as DocumentTemplate[];
-    },
-  });
+  const navigate = useNavigate();
 
   return (
     <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
@@ -375,35 +349,12 @@ export function DocumentosTemplatesTab() {
             <CardTitle className="flex items-center gap-2"><FileText className="h-5 w-5" />Templates de Documentos</CardTitle>
             <CardDescription>Prontuários, prescrições, atestados</CardDescription>
           </div>
-          <Button onClick={() => setShowAddTemplate(true)} size="sm">
-            <Plus className="h-4 w-4 mr-2" />
-            Novo Template
+          <Button onClick={() => navigate('/todos-templates')} size="sm">
+            <FileText className="h-4 w-4 mr-2" />
+            Abrir gerenciador
           </Button>
         </CardHeader>
-        <CardContent className="space-y-3">
-          {templates.map(template => (
-            <Card key={template.id} className="border">
-              <CardContent className="pt-6">
-                <div className="flex items-start justify-between mb-2">
-                  <div>
-                    <h3 className="font-semibold">{template.nome}</h3>
-                    <p className="text-xs text-muted-foreground mt-1">Tipo: {template.tipo}</p>
-                  </div>
-                  <Badge className={template.ativo ? 'bg-green-100 text-green-800' : 'bg-gray-100'}>
-                    {template.ativo ? 'Ativo' : 'Inativo'}
-                  </Badge>
-                </div>
-                <div className="bg-gray-50 p-2 rounded text-xs font-mono text-muted-foreground max-h-20 overflow-auto">
-                  {template.conteudo}
-                </div>
-                <div className="mt-3 flex gap-2">
-                  <Button size="sm" variant="outline"><Edit className="h-3 w-3 mr-1" />Editar</Button>
-                  <Button size="sm" variant="outline"><Copy className="h-3 w-3 mr-1" />Duplicar</Button>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </CardContent>
+        <CardContent><Alert><FileText className="h-4 w-4" /><AlertDescription>Os templates reais de prontuário, prescrição, atestado e e-mail ficam no gerenciador unificado. Alterações feitas lá são persistidas e usadas nos documentos clínicos.</AlertDescription></Alert></CardContent>
       </Card>
     </motion.div>
   );
@@ -411,6 +362,9 @@ export function DocumentosTemplatesTab() {
 
 /* ─── 5. LGPD & PRIVACIDADE AVANÇADA ─── */
 export function LGPDAvancadoTab() {
+  const { profile } = useSupabaseAuth();
+  const [showRequests, setShowRequests] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [configLGPD, setConfigLGPD] = useState({
     consentimentoObrigatorio: true,
     politicaPrivacidadeUrl: '',
@@ -423,6 +377,72 @@ export function LGPDAvancadoTab() {
     backupAutomatico: true,
     dpoEmail: '',
   });
+
+  const { data: savedConfig, refetch: refetchConfig } = useQuery({
+    queryKey: ['lgpd-config'],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('automation_settings').select('id,valor').eq('chave', 'lgpd_config').maybeSingle();
+      if (error) throw error; return data;
+    },
+  });
+
+  const criarEspecialidade = async () => {
+    const nome = window.prompt('Nome da nova especialidade:')?.trim();
+    if (!nome) return;
+    const sugerido = nome.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '_');
+    const codigo = window.prompt('Código curto:', sugerido)?.trim();
+    if (!codigo) return;
+    const descricao = window.prompt('Descrição:', '')?.trim() || '';
+    const { error } = await (supabase as any).from('especialidades_destino').insert({ nome, codigo, descricao, ativo: true });
+    if (error) return toast.error('Erro ao criar especialidade', { description: error.message });
+    await queryClient.invalidateQueries({ queryKey: ['especialidades'] });
+    toast.success('Especialidade criada');
+  };
+
+  const editarEspecialidade = async (esp: Especialidade) => {
+    const nome = window.prompt('Nome da especialidade:', esp.nome)?.trim();
+    if (!nome) return;
+    const descricao = window.prompt('Descrição:', esp.descricao)?.trim() ?? esp.descricao;
+    const { error } = await (supabase as any).from('especialidades_destino').update({ nome, descricao }).eq('id', esp.id);
+    if (error) return toast.error('Erro ao editar', { description: error.message });
+    await queryClient.invalidateQueries({ queryKey: ['especialidades'] });
+    toast.success('Especialidade atualizada');
+  };
+
+  const removerEspecialidade = async (esp: Especialidade) => {
+    if (!window.confirm(`Excluir a especialidade "${esp.nome}"?`)) return;
+    const { error } = await (supabase as any).from('especialidades_destino').delete().eq('id', esp.id);
+    if (error) return toast.error('Não foi possível excluir', { description: error.message });
+    await queryClient.invalidateQueries({ queryKey: ['especialidades'] });
+    toast.success('Especialidade excluída');
+  };
+  const { data: requests = [] } = useQuery({
+    queryKey: ['lgpd-access-requests'],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('lgpd_access_request_log').select('id,request_type,status,requested_at,pacientes(nome)').eq('status','pending').order('requested_at',{ascending:true});
+      if (error) throw error; return data ?? [];
+    },
+  });
+  useEffect(() => {
+    if (savedConfig?.valor && typeof savedConfig.valor === 'object') setConfigLGPD(current => ({...current, ...(savedConfig.valor as typeof current)}));
+  }, [savedConfig]);
+
+  const saveLGPD = async () => {
+    if (!profile?.clinica_id) return toast.error('Clínica não identificada');
+    setSaving(true);
+    const payload = { chave:'lgpd_config', valor:configLGPD, descricao:'Configurações de conformidade LGPD', ativo:true, clinica_id:profile.clinica_id };
+    const query = savedConfig?.id ? supabase.from('automation_settings').update(payload).eq('id',savedConfig.id) : supabase.from('automation_settings').insert(payload);
+    const { error } = await query; setSaving(false);
+    if (error) return toast.error('Erro ao salvar LGPD',{description:error.message});
+    await refetchConfig(); toast.success('Configurações LGPD salvas');
+  };
+
+  const exportReport = () => {
+    const report = { gerado_em:new Date().toISOString(), configuracao:configLGPD, requisicoes_pendentes:requests.length };
+    const url=URL.createObjectURL(new Blob([JSON.stringify(report,null,2)],{type:'application/json'}));
+    const link=document.createElement('a'); link.href=url; link.download=`relatorio-lgpd-${format(new Date(),'yyyy-MM-dd')}.json`; link.click(); URL.revokeObjectURL(url);
+    toast.success('Relatório LGPD gerado');
+  };
 
   return (
     <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
@@ -562,21 +582,22 @@ export function LGPDAvancadoTab() {
           <Separator />
 
           <div className="flex gap-2">
-            <Button variant="outline" className="flex-1">
+            <Button variant="outline" className="flex-1" onClick={exportReport}>
               <Download className="h-4 w-4 mr-2" />
               Gerar Relatório LGPD
             </Button>
-            <Button variant="outline" className="flex-1">
+            <Button variant="outline" className="flex-1" onClick={() => setShowRequests(v=>!v)}>
               <FileText className="h-4 w-4 mr-2" />
-              Ver Requisições Pendentes
+              Requisições Pendentes ({requests.length})
             </Button>
           </div>
+          {showRequests && <div className="space-y-2">{requests.length===0 ? <p className="text-sm text-muted-foreground">Nenhuma requisição pendente.</p> : requests.map((request:any)=><div key={request.id} className="flex justify-between rounded border p-3 text-sm"><span>{request.pacientes?.nome || 'Paciente'} — {request.request_type}</span><span>{format(new Date(request.requested_at),'dd/MM/yyyy')}</span></div>)}</div>}
         </CardContent>
       </Card>
 
-      <Button className="w-full">
+      <Button className="w-full" onClick={saveLGPD} disabled={saving}>
         <Save className="h-4 w-4 mr-2" />
-        Salvar Configurações LGPD
+        {saving ? 'Salvando...' : 'Salvar Configurações LGPD'}
       </Button>
     </motion.div>
   );
