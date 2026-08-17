@@ -470,6 +470,18 @@ export default function PortalPaciente() {
     }
   };
 
+  const handleConfirmAppointment = async (agendamento_id: string) => {
+    try {
+      setActionLoading(true);
+      await fetchData(token, 'confirm_agendamento', { agendamento_id });
+      setAgendamentos(await fetchData(token, 'get_agendamentos'));
+    } catch (err: any) {
+      setError(err.message || 'Erro ao confirmar consulta');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   const handleRescheduleAppointment = async () => {
     if (!rescheduleForm.data || !rescheduleForm.hora_inicio || !rescheduleModal) {
       return;
@@ -793,6 +805,11 @@ export default function PortalPaciente() {
                               {/* Action buttons for future appointments */}
                               {!passado && a.status !== 'cancelado' && (
                                 <div className="flex gap-2 pt-2 border-t">
+                                  {!['confirmado', 'em_atendimento', 'finalizado'].includes(a.status) && (
+                                    <Button size="sm" onClick={() => handleConfirmAppointment(a.id)} disabled={actionLoading} className="flex-1 text-xs">
+                                      <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> Confirmar
+                                    </Button>
+                                  )}
                                   <Button
                                     size="sm"
                                     variant="outline"

@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { cronOrUserOk, cronForbidden, clinicaDoChamador } from '../_shared/cronAuth.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -10,12 +11,16 @@ Deno.serve(async (req) => {
     return new Response('ok', { headers: corsHeaders })
   }
 
+  if (!cronOrUserOk(req)) return cronForbidden(corsHeaders)
+
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const brevoApiKey = Deno.env.get('BREVO_API_KEY')
     const appUrl = Deno.env.get('APP_URL') || 'https://app.elolab.com.br'
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
+    const clinicaDoUsuario = await clinicaDoChamador(req, supabase)
+    if (!clinicaDoUsuario) return cronForbidden(corsHeaders)
 
     // Get request body (agendamento_id)
     const { agendamento_id } = await req.json()
@@ -31,11 +36,12 @@ Deno.serve(async (req) => {
     const { data: agendamento, error: agenError } = await supabase
       .from('agendamentos')
       .select(`
-        id, data, hora_inicio, clinica_id,
+        id, data, hora_inicio, clinica_id, paciente_id,
         pacientes!inner(nome, email, telefone),
         medicos!inner(nome, crm, especialidade)
       `)
       .eq('id', agendamento_id)
+      .eq('clinica_id', clinicaDoUsuario)
       .single()
 
     if (agenError || !agendamento) {
@@ -135,6 +141,7 @@ Deno.serve(async (req) => {
             .from('whatsapp_sessions')
             .select('instance_name')
             .eq('status', 'connected')
+            .eq('clinica_id', agendamento.clinica_id)
             .limit(1)
             .single()
 

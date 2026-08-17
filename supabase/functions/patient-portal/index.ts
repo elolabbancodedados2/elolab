@@ -365,7 +365,7 @@ Deno.serve(async (req) => {
             hora_inicio: hora_inicio,
             hora_fim: endTime,
             tipo: tipo,
-            status: "pendente",
+            status: "agendado",
             nota_cancelamento: null,
           })
           .select()
@@ -424,6 +424,20 @@ Deno.serve(async (req) => {
 
         if (updateError) throw updateError;
         result = { success: true, message: "Agendamento cancelado com sucesso" };
+        break;
+      }
+
+      case "confirm_agendamento": {
+        const { agendamento_id } = body;
+        if (!agendamento_id) return new Response(JSON.stringify({ error: "agendamento_id é obrigatório" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        const { data: confirmado, error } = await supabase.from("agendamentos")
+          .update({ status: "confirmado" })
+          .eq("id", agendamento_id).eq("paciente_id", pacienteId)
+          .gte("data", todayISO()).eq("status", "agendado")
+          .select("id").maybeSingle();
+        if (error) throw error;
+        if (!confirmado) return new Response(JSON.stringify({ error: "Consulta não encontrada ou não pode mais ser confirmada" }), { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        result = { success: true, message: "Consulta confirmada" };
         break;
       }
 

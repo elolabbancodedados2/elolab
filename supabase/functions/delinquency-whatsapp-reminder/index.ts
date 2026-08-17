@@ -36,7 +36,7 @@ Deno.serve(async (req) => {
     const hoje = new Date().toISOString().slice(0, 10);
     let query = supabase
       .from("lancamentos")
-      .select("id, descricao, valor, data_vencimento, paciente_id, clinica_id, pacientes(nome, telefone)")
+      .select("id, descricao, valor, data_vencimento, paciente_id, clinica_id, pacientes(nome, telefone, email)")
       .eq("tipo", "receita")
       .eq("status", "pendente")
       .lt("data_vencimento", hoje)
@@ -67,21 +67,42 @@ Deno.serve(async (req) => {
 
       for (const l of items) {
         const pac: any = (l as any).pacientes;
-        if (!pac?.telefone) {
-          results.push({ id: l.id, sent: false, reason: "sem_telefone" });
-          continue;
-        }
         const diasAtraso = Math.max(
           1,
           Math.floor((Date.now() - new Date(l.data_vencimento).getTime()) / 86400000)
         );
+        // Régua progressiva: evita cobrar a mesma pessoa todos os dias.
+        if (![1, 3, 7, 15, 30].includes(diasAtraso) && diasAtraso % 30 !== 0) {
+          results.push({ id: l.id, sent: false, reason: "fora_da_regua" });
+          continue;
+        }
+        const { data: jaEnviado } = await supabase.from("notification_queue").select("id")
+          .eq("clinica_id", clinicaId)
+          .contains("dados_extras", { tipo_notificacao: "cobranca_inadimplente", lancamento_id: l.id, dias_atraso: diasAtraso })
+          .limit(1);
+        if (jaEnviado?.length) {
+          results.push({ id: l.id, sent: false, reason: "ja_enviado" });
+          continue;
+        }
         const valorFmt = Number(l.valor || 0).toLocaleString("pt-BR", {
           style: "currency", currency: "BRL",
         });
         const msg = `Olá, ${pac.nome}! 👋\n\nIdentificamos que você possui um pagamento em aberto:\n\n• ${l.descricao || "Atendimento"}\n• Valor: ${valorFmt}\n• Vencimento: ${new Date(l.data_vencimento).toLocaleDateString("pt-BR")}\n• Dias em atraso: ${diasAtraso}\n\nPara regularizar, entre em contato com a clínica. Caso já tenha pago, desconsidere esta mensagem. 💙`;
 
-        if (dryRun || !instance || !evolutionApiUrl || !evolutionApiKey) {
-          results.push({ id: l.id, sent: false, preview: msg, reason: dryRun ? "dry_run" : "sem_instancia" });
+        if (dryRun) {
+          results.push({ id: l.id, sent: false, preview: msg, reason: "dry_run" });
+          continue;
+        }
+
+        // Sem WhatsApp, o e-mail entra na mesma fila de entrega/retry.
+        if (!pac?.telefone || !instance || !evolutionApiUrl || !evolutionApiKey) {
+          if (pac?.email) {
+            await supabase.from("notification_queue").insert({ tipo: "email", clinica_id: clinicaId,
+              destinatario_id: l.paciente_id, destinatario_email: pac.email, destinatario_nome: pac.nome,
+              assunto: `Pagamento em aberto há ${diasAtraso} dia(s)`, conteudo: msg, status: "pendente",
+              dados_extras: { tipo_notificacao: "cobranca_inadimplente", lancamento_id: l.id, dias_atraso: diasAtraso } });
+            results.push({ id: l.id, sent: true, channel: "email_queue" });
+          } else results.push({ id: l.id, sent: false, reason: "sem_contato" });
           continue;
         }
 
@@ -94,6 +115,10 @@ Deno.serve(async (req) => {
             body: JSON.stringify({ number: fmt, text: msg }),
           });
           const ok = r.ok;
+          if (ok) await supabase.from("notification_queue").insert({ tipo: "whatsapp", clinica_id: clinicaId,
+            destinatario_id: l.paciente_id, destinatario_telefone: pac.telefone, destinatario_nome: pac.nome,
+            assunto: "Pagamento em aberto", conteudo: msg, status: "enviado", enviado_em: new Date().toISOString(),
+            dados_extras: { tipo_notificacao: "cobranca_inadimplente", lancamento_id: l.id, dias_atraso: diasAtraso } });
           await supabase.from("automation_logs").insert({
             tipo: "cobranca_whatsapp",
             nome: "Cobrança inadimplente",
