@@ -1,17 +1,17 @@
-# Cabeçalhos para o Cloudflare Pages.
-#
-# Precisa espelhar vercel.json: a Vercel lê aquele arquivo, o Cloudflare lê
-# este. Ao mexer na CSP de um, mexa no outro.
-#
-# A versão anterior deste arquivo estava incompleta — faltavam a CSP, o
-# X-Frame-Options, o X-XSS-Protection, o Cross-Origin-Opener-Policy e a
-# permissão de `payment` para o Mercado Pago. Publicar no Pages assim serviria o
-# app sem proteção contra clickjacking e sem restrição de origem de scripts.
+# Cabeçalhos para o Cloudflare Pages — fonte única, agora que a Vercel saiu.
 #
 # Formato: um padrão de caminho por bloco, cabeçalhos indentados abaixo. Vale o
 # bloco MAIS ESPECÍFICO que casa — por isso /assets/* e /sw.js vêm antes de /*.
 # O arquivo mora em public/ porque o Vite copia essa pasta para a raiz do dist,
-# que é o diretório que o Pages deve publicar.
+# que é o diretório que o Pages publica.
+#
+# CSP: `script-src` sem `'unsafe-inline'` — o build do Vite gera scripts
+# externos, e os `dangerouslySetInnerHTML` do repo são todos `<style>`.
+# O `<script type="application/ld+json">` do index.html é dado estruturado
+# para SEO, não executável, e navegadores modernos não o tratam como script
+# executável no CSP. `style-src` mantém `'unsafe-inline'` porque
+# `chart.tsx` e os ripple buttons montam estilos dinâmicos com variáveis do
+# runtime. Remover isso exige portar para CSS variables tradicionais.
 
 /assets/*
   Cache-Control: public, max-age=31536000, immutable
@@ -29,4 +29,4 @@
   Permissions-Policy: camera=(self), microphone=(self), geolocation=(self), payment=(self "https://*.mercadopago.com" "https://*.mercadopago.com.br"), usb=(), interest-cohort=()
   X-XSS-Protection: 1; mode=block
   Cross-Origin-Opener-Policy: same-origin-allow-popups
-  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://*.mercadopago.com https://*.mercadopago.com.br https://*.mlstatic.com https://js.mercadopago.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https: http:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.mercadopago.com https://api.mercadopago.com https://*.mercadopago.com.br https://app.elolab.com.br; frame-src 'self' https://*.mercadopago.com https://*.mercadopago.com.br; media-src 'self' blob: data:; worker-src 'self' blob:; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self' https://*.mercadopago.com https://*.mercadopago.com.br; frame-ancestors 'none'; upgrade-insecure-requests
+  Content-Security-Policy: default-src 'self'; script-src 'self' https://*.mercadopago.com https://*.mercadopago.com.br https://*.mlstatic.com https://js.mercadopago.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https: http:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.mercadopago.com https://api.mercadopago.com https://*.mercadopago.com.br https://app.elolab.com.br; frame-src 'self' https://*.mercadopago.com https://*.mercadopago.com.br; media-src 'self' blob: data:; worker-src 'self' blob:; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self' https://*.mercadopago.com https://*.mercadopago.com.br; frame-ancestors 'none'; upgrade-insecure-requests

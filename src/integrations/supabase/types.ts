@@ -3398,6 +3398,7 @@ export type Database = {
           created_at: string
           criado_por: string | null
           descricao: string | null
+          expires_at: string
           id: string
           token: string
           ultimo_uso: string | null
@@ -3408,6 +3409,7 @@ export type Database = {
           created_at?: string
           criado_por?: string | null
           descricao?: string | null
+          expires_at?: string
           id?: string
           token?: string
           ultimo_uso?: string | null
@@ -3418,6 +3420,7 @@ export type Database = {
           created_at?: string
           criado_por?: string | null
           descricao?: string | null
+          expires_at?: string
           id?: string
           token?: string
           ultimo_uso?: string | null

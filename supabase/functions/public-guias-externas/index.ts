@@ -23,10 +23,13 @@ Deno.serve(async (req) => {
       if (!token) return json({ valid: false, error: "Token ausente" }, 400);
       const { data } = await supabase
         .from("portal_guias_tokens")
-        .select("clinica_id, ativo, descricao, clinicas:clinica_id(nome)")
+        .select("clinica_id, ativo, expires_at, descricao, clinicas:clinica_id(nome)")
         .eq("token", token)
         .maybeSingle();
       if (!data || !data.ativo) return json({ valid: false, error: "Token inválido" }, 401);
+      if (data.expires_at && new Date(data.expires_at) <= new Date()) {
+        return json({ valid: false, error: "Token expirado" }, 401);
+      }
       return json({ valid: true, clinica_nome: (data as any).clinicas?.nome, descricao: data.descricao });
     }
 
@@ -38,11 +41,14 @@ Deno.serve(async (req) => {
 
     const { data: tokenRow } = await supabase
       .from("portal_guias_tokens")
-      .select("clinica_id, ativo")
+      .select("clinica_id, ativo, expires_at")
       .eq("token", token)
       .maybeSingle();
 
     if (!tokenRow || !tokenRow.ativo) return json({ error: "Token inválido ou inativo" }, 401);
+    if (tokenRow.expires_at && new Date(tokenRow.expires_at) <= new Date()) {
+      return json({ error: "Token expirado" }, 401);
+    }
 
     if (!body.paciente_nome || !String(body.paciente_nome).trim()) {
       return json({ error: "Nome do paciente é obrigatório" }, 400);
