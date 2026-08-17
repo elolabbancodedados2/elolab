@@ -95,5 +95,7 @@ test.describe('Produção — smoke', () => {
       `cabeçalhos de segurança ausentes em produção: ${ausentes.join(', ')}. ` +
       'Estão em vercel.json, mas o deploy é Cloudflare Pages — precisa de _headers ou wrangler.toml.',
     ).toHaveLength(0);
+
+    expect(headers['content-security-policy'], 'CSP precisa permitir a busca de CEP').toContain('https://viacep.com.br');
   });
 });

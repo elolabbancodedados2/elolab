@@ -1,3 +1,5 @@
+import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from '@/integrations/supabase/client';
+
 /**
  * Global error tracking — captures unhandled errors and promise rejections.
  * Stores them in-memory for debugging and could be extended to send to an analytics service.
@@ -16,10 +18,31 @@ interface TrackedError {
 
 const errorStore: TrackedError[] = [];
 const MAX_ERRORS = 50;
+const TELEMETRY_URL = `${SUPABASE_URL}/functions/v1/client-telemetry`;
+const TELEMETRY_KEY = SUPABASE_PUBLISHABLE_KEY;
+const sentFingerprints = new Set<string>();
+
+function reportError(error: TrackedError) {
+  if (import.meta.env.DEV || !TELEMETRY_KEY) return;
+  const fingerprint = `${error.type}:${error.message}:${error.source ?? ''}:${error.line ?? ''}`.slice(0, 100);
+  if (sentFingerprints.has(fingerprint)) return;
+  sentFingerprints.add(fingerprint);
+  try {
+    const rawSession = localStorage.getItem('sb-gebygucrpipaufrlyqqj-auth-token');
+    const accessToken = rawSession ? JSON.parse(rawSession)?.access_token : null;
+    void fetch(TELEMETRY_URL, {
+      method: 'POST', keepalive: true,
+      headers: { 'Content-Type': 'application/json', apikey: TELEMETRY_KEY, Authorization: `Bearer ${accessToken || TELEMETRY_KEY}` },
+      body: JSON.stringify({ tipo: error.type, mensagem: error.message, origem: error.source,
+        rota: `${location.pathname}${location.search}`, release: (globalThis as any).__APP_BUILD_ID__, fingerprint }),
+    }).catch(() => undefined);
+  } catch { /* telemetria nunca pode derrubar a aplicação */ }
+}
 
 function storeError(error: TrackedError) {
   errorStore.push(error);
   if (errorStore.length > MAX_ERRORS) errorStore.shift();
+  reportError(error);
 }
 
 export function initGlobalErrorTracking() {

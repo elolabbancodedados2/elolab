@@ -67,6 +67,11 @@ interface QueueItem {
   agendado_para: string; created_at: string;
 }
 
+interface ClientErrorEvent {
+  id: string; tipo: string; mensagem: string; origem: string | null;
+  rota: string | null; release: string | null; created_at: string;
+}
+
 const AUTOMATIONS = [
   {
     key: 'lembrete_consulta_24h',
@@ -147,6 +152,9 @@ export default function Automacoes() {
   });
 
   const { data: queue = [], isLoading: loadingQueue, refetch: refetchQueue } = useSupabaseQuery<QueueItem>('notification_queue', {
+    orderBy: { column: 'created_at', ascending: false }, limit: 100, page: 0,
+  });
+  const { data: clientErrors = [], refetch: refetchClientErrors } = useSupabaseQuery<ClientErrorEvent>('client_error_events', {
     orderBy: { column: 'created_at', ascending: false }, limit: 100, page: 0,
   });
 
@@ -265,7 +273,7 @@ export default function Automacoes() {
           <h1 className="text-3xl font-bold text-foreground">Automações</h1>
           <p className="text-muted-foreground">Gerencie as automações do sistema</p>
         </div>
-        <Button variant="outline" onClick={() => { refetchLogs(); refetchSettings(); refetchQueue(); }}>
+        <Button variant="outline" onClick={() => { refetchLogs(); refetchSettings(); refetchQueue(); refetchClientErrors(); }}>
           <RefreshCw className="h-4 w-4 mr-2" />
           Atualizar
         </Button>
@@ -276,6 +284,7 @@ export default function Automacoes() {
           <TabsTrigger value="automacoes">Automações</TabsTrigger>
           <TabsTrigger value="logs">Logs de Execução</TabsTrigger>
           <TabsTrigger value="fila">Fila de envios</TabsTrigger>
+          <TabsTrigger value="erros-app">Erros do app</TabsTrigger>
         </TabsList>
 
         <TabsContent value="automacoes">
@@ -438,6 +447,18 @@ export default function Automacoes() {
                   </div></TableCell>
                 </TableRow>
               ))}</TableBody>
+            </Table></div></CardContent>
+          </Card>
+        </TabsContent>
+        <TabsContent value="erros-app">
+          <Card><CardHeader><CardTitle>Erros reais do navegador</CardTitle><CardDescription>Falhas não tratadas registradas em produção, sem e-mails, documentos ou stack traces sensíveis.</CardDescription></CardHeader>
+            <CardContent><div className="overflow-x-auto rounded-md border"><Table>
+              <TableHeader><TableRow><TableHead>Data</TableHead><TableHead>Tipo</TableHead><TableHead>Rota</TableHead><TableHead>Mensagem</TableHead><TableHead>Versão</TableHead></TableRow></TableHeader>
+              <TableBody>{clientErrors.length === 0 ? <TableRow><TableCell colSpan={5} className="py-8 text-center text-muted-foreground">Nenhum erro capturado</TableCell></TableRow> : clientErrors.map(item => <TableRow key={item.id}>
+                <TableCell className="whitespace-nowrap">{format(new Date(item.created_at), 'dd/MM HH:mm')}</TableCell>
+                <TableCell><Badge variant="destructive">{item.tipo}</Badge></TableCell><TableCell>{item.rota || '—'}</TableCell>
+                <TableCell><p className="max-w-xl truncate" title={item.mensagem}>{item.mensagem}</p></TableCell><TableCell className="max-w-32 truncate text-xs">{item.release || '—'}</TableCell>
+              </TableRow>)}</TableBody>
             </Table></div></CardContent>
           </Card>
         </TabsContent>

@@ -85,19 +85,13 @@ export function AutorizacaoConvenioModal({
 
     setSubmitting(true);
     try {
-      const { data: auth, error } = await (supabase as any)
-        .from('autorizacoes_convenio')
-        .insert({
-          paciente_id: pacienteId,
-          convenio_id: selectedConvenio,
-          tipo_servico: tipoServico,
-          descricao: descricao.trim(),
-          status: 'pendente',
-          data_solicitacao: new Date().toISOString(),
-          observacoes: datosCarencia,
-        })
-        .select()
-        .single();
+      const { data: auth, error } = await (supabase as any).rpc('solicitar_autorizacao_convenio', {
+        p_paciente_id: pacienteId,
+        p_convenio_id: selectedConvenio,
+        p_tipo_servico: tipoServico,
+        p_descricao: descricao.trim(),
+        p_observacoes: datosCarencia,
+      });
 
       if (error) throw error;
 
@@ -106,7 +100,11 @@ export function AutorizacaoConvenioModal({
       setShowNewAuth(false);
       setDescricao(procedimento);
       setDadosCarencia('');
-      toast.success('Solicitação de autorização enviada ao convênio!');
+      if (auth?.email_enfileirado) {
+        toast.success('Solicitação enviada ao e-mail do convênio', { description: 'O retorno continuará pendente até a clínica registrar a resposta.' });
+      } else {
+        toast.warning('Solicitação registrada internamente', { description: 'Este convênio não possui e-mail cadastrado. Entre em contato manualmente e atualize o status depois.' });
+      }
     } catch (e: any) {
       toast.error('Erro ao solicitar autorização: ' + e.message);
     } finally {

@@ -952,6 +952,56 @@ export type Database = {
         }
         Relationships: []
       }
+      client_error_events: {
+        Row: {
+          clinica_id: string | null
+          created_at: string
+          fingerprint: string | null
+          id: string
+          mensagem: string
+          navegador: string | null
+          origem: string | null
+          release: string | null
+          rota: string | null
+          tipo: string
+          user_id: string | null
+        }
+        Insert: {
+          clinica_id?: string | null
+          created_at?: string
+          fingerprint?: string | null
+          id?: string
+          mensagem: string
+          navegador?: string | null
+          origem?: string | null
+          release?: string | null
+          rota?: string | null
+          tipo: string
+          user_id?: string | null
+        }
+        Update: {
+          clinica_id?: string | null
+          created_at?: string
+          fingerprint?: string | null
+          id?: string
+          mensagem?: string
+          navegador?: string | null
+          origem?: string | null
+          release?: string | null
+          rota?: string | null
+          tipo?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_error_events_clinica_id_fkey"
+            columns: ["clinica_id"]
+            isOneToOne: false
+            referencedRelation: "clinicas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       clinicas: {
         Row: {
           arquivada: boolean
@@ -5940,6 +5990,16 @@ export type Database = {
       saldo_devedor_do_agendamento: {
         Args: { p_agendamento_id: string }
         Returns: number
+      }
+      solicitar_autorizacao_convenio: {
+        Args: {
+          p_convenio_id: string
+          p_descricao: string
+          p_observacoes?: string
+          p_paciente_id: string
+          p_tipo_servico: string
+        }
+        Returns: Json
       }
       start_free_trial: {
         Args: { _plano_slug: string; _user_id: string }
