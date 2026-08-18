@@ -100,6 +100,9 @@ export function ModoManutencao({ children }: { children: React.ReactNode }) {
   return (
     <div
       role="alertdialog"
+      aria-modal="true"
+      aria-labelledby="manutencao-titulo"
+      aria-describedby="manutencao-mensagem"
       aria-live="assertive"
       className="fixed inset-0 z-[999] flex items-center justify-center overflow-y-auto bg-background p-6"
     >
@@ -112,11 +115,11 @@ export function ModoManutencao({ children }: { children: React.ReactNode }) {
           <Wrench className="h-5 w-5 text-warning" />
         </div>
 
-        <h1 className="mb-3 text-2xl font-bold tracking-tight">
+        <h1 id="manutencao-titulo" className="mb-3 text-2xl font-bold tracking-tight">
           {estado?.titulo || 'Estamos em manutenção'}
         </h1>
 
-        <p className="text-sm leading-relaxed text-muted-foreground">
+        <p id="manutencao-mensagem" className="text-sm leading-relaxed text-muted-foreground">
           {estado?.mensagem}
         </p>
 
