@@ -91,8 +91,10 @@ test.describe('Módulos — nenhum quebra ao carregar', () => {
       expect(excecoes, `${rota} estourou exceção: ${excecoes.join(' | ')}`).toHaveLength(0);
 
       // Tela em branco é falha: o teste antigo passava com body vazio.
-      const texto = (await page.textContent('body')) ?? '';
-      expect(texto.trim().length, `${rota} renderizou tela em branco`).toBeGreaterThan(50);
+      await expect.poll(async () => {
+        const texto = (await page.textContent('body')) ?? '';
+        return texto.trim().length;
+      }, { message: `${rota} renderizou tela em branco`, timeout: 15_000 }).toBeGreaterThan(50);
     });
   }
 
