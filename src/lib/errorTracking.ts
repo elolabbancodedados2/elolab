@@ -1,4 +1,4 @@
-import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from '@/integrations/supabase/client';
+import { supabase, SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from '@/integrations/supabase/client';
 
 /**
  * Global error tracking — captures unhandled errors and promise rejections.
@@ -22,15 +22,17 @@ const TELEMETRY_URL = `${SUPABASE_URL}/functions/v1/client-telemetry`;
 const TELEMETRY_KEY = SUPABASE_PUBLISHABLE_KEY;
 const sentFingerprints = new Set<string>();
 
-function reportError(error: TrackedError) {
+async function reportError(error: TrackedError) {
   if (import.meta.env.DEV || !TELEMETRY_KEY) return;
   const fingerprint = `${error.type}:${error.message}:${error.source ?? ''}:${error.line ?? ''}`.slice(0, 100);
   if (sentFingerprints.has(fingerprint)) return;
   sentFingerprints.add(fingerprint);
   try {
-    const rawSession = localStorage.getItem('sb-gebygucrpipaufrlyqqj-auth-token');
-    const accessToken = rawSession ? JSON.parse(rawSession)?.access_token : null;
-    void fetch(TELEMETRY_URL, {
+    // Nunca interpretar diretamente o armazenamento de autenticação. A sessão
+    // é obtida pela API oficial, que também abstrai mudanças no formato interno.
+    const { data } = await supabase.auth.getSession();
+    const accessToken = data.session?.access_token;
+    await fetch(TELEMETRY_URL, {
       method: 'POST', keepalive: true,
       headers: { 'Content-Type': 'application/json', apikey: TELEMETRY_KEY, Authorization: `Bearer ${accessToken || TELEMETRY_KEY}` },
       body: JSON.stringify({ tipo: error.type, mensagem: error.message, origem: error.source,
@@ -42,7 +44,7 @@ function reportError(error: TrackedError) {
 function storeError(error: TrackedError) {
   errorStore.push(error);
   if (errorStore.length > MAX_ERRORS) errorStore.shift();
-  reportError(error);
+  void reportError(error);
 }
 
 export function initGlobalErrorTracking() {
