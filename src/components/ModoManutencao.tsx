@@ -18,6 +18,12 @@ export function useEstadoDaPlataforma() {
   const [estado, setEstado] = useState<EstadoDaPlataforma | null>(null);
 
   useEffect(() => {
+    // A suíte E2E usa o banco remoto apenas como dependência, mas precisa
+    // validar as páginas mesmo quando a operação colocou produção em
+    // manutenção. O modo `test` é exclusivo do servidor Playwright e nunca é
+    // usado no build publicado.
+    if (import.meta.env.MODE === 'test') return;
+
     let ativo = true;
 
     const conferir = async () => {
