@@ -35,6 +35,8 @@ export default function AgenteIA() {
     sendHumanMessage,
     markConversationRead,
     addInternalNote,
+    updateConversationPriority,
+    generateConversationSummary,
   } = useWhatsAppMutations();
 
   if (planLoading) {
@@ -116,6 +118,9 @@ export default function AgenteIA() {
             onMarkRead={(conversationId) => markConversationRead.mutate(conversationId)}
             onAddInternalNote={(conversationId, content) => addInternalNote.mutateAsync({ conversationId, content })}
             isAddingNote={addInternalNote.isPending}
+            onPriorityChange={(conversationId, priority) => updateConversationPriority.mutate({ conversationId, priority })}
+            onGenerateSummary={(conversationId) => generateConversationSummary.mutate(conversationId)}
+            isGeneratingSummary={generateConversationSummary.isPending}
           />
         </TabsContent>
       </Tabs>

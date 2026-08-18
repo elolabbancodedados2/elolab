@@ -180,6 +180,35 @@ export function useWhatsAppMutations() {
     onError: (error) => toast.error('Não foi possível salvar a nota: ' + error.message),
   });
 
+  const updateConversationPriority = useMutation({
+    mutationFn: async ({ conversationId, priority }: { conversationId: string; priority: string }) => {
+      if (!profile?.clinica_id) throw new Error('Clínica não identificada.');
+      const { error } = await supabase.from('whatsapp_conversations')
+        .update({ prioridade: priority })
+        .eq('id', conversationId)
+        .eq('clinica_id', profile.clinica_id);
+      if (error) throw error;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['whatsapp-conversations'], exact: false }),
+    onError: (error) => toast.error('Não foi possível alterar a prioridade: ' + error.message),
+  });
+
+  const generateConversationSummary = useMutation({
+    mutationFn: async (conversationId: string) => {
+      const { data, error } = await supabase.functions.invoke('whatsapp-evolution', {
+        body: { action: 'generate_summary', conversation_id: conversationId },
+      });
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || 'Não foi possível gerar o resumo.');
+      return data.data?.summary as string;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['whatsapp-conversations'], exact: false });
+      toast.success('Resumo atualizado.');
+    },
+    onError: (error) => toast.error('Falha ao resumir a conversa: ' + error.message),
+  });
+
   const sendHumanMessage = useMutation({
     mutationFn: async ({ conversationId, sessionId, to, message }: { conversationId: string; sessionId: string; to: string; message: string }) => {
       const cleanMessage = message.trim();
@@ -212,5 +241,7 @@ export function useWhatsAppMutations() {
     sendHumanMessage,
     markConversationRead,
     addInternalNote,
+    updateConversationPriority,
+    generateConversationSummary,
   };
 }

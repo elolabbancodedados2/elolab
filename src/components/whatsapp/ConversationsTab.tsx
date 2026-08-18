@@ -10,6 +10,7 @@ import { ptBR } from 'date-fns/locale';
 import { WhatsAppConversation } from './types';
 import { Button } from '@/components/ui/button';
 import { useWhatsAppInternalNotes, useWhatsAppMessages } from './useWhatsAppQueries';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 interface ConversationsTabProps {
   conversations: WhatsAppConversation[];
@@ -20,9 +21,12 @@ interface ConversationsTabProps {
   onMarkRead: (conversationId: string) => void;
   onAddInternalNote: (conversationId: string, content: string) => Promise<void>;
   isAddingNote: boolean;
+  onPriorityChange: (conversationId: string, priority: string) => void;
+  onGenerateSummary: (conversationId: string) => void;
+  isGeneratingSummary: boolean;
 }
 
-export function ConversationsTab({ conversations, onStatusChange, isUpdating, onSendMessage, isSending, onMarkRead, onAddInternalNote, isAddingNote }: ConversationsTabProps) {
+export function ConversationsTab({ conversations, onStatusChange, isUpdating, onSendMessage, isSending, onMarkRead, onAddInternalNote, isAddingNote, onPriorityChange, onGenerateSummary, isGeneratingSummary }: ConversationsTabProps) {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('todos');
   const [selected, setSelected] = useState<WhatsAppConversation | null>(null);
@@ -34,7 +38,7 @@ export function ConversationsTab({ conversations, onStatusChange, isUpdating, on
   useEffect(() => {
     if (!selected) return;
     const updated = conversations.find(conversation => conversation.id === selected.id);
-    if (updated && updated.status !== selected.status) setSelected(updated);
+    if (updated && updated !== selected) setSelected(updated);
   }, [conversations, selected]);
 
   const handleSend = async () => {
@@ -221,6 +225,29 @@ export function ConversationsTab({ conversations, onStatusChange, isUpdating, on
             </Button>
           </CardHeader>
           <CardContent className="space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-xs text-muted-foreground">Prioridade do atendimento</span>
+              <Select value={selected.prioridade} onValueChange={priority => onPriorityChange(selected.id, priority)}>
+                <SelectTrigger className="w-36 h-8"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="baixa">Baixa</SelectItem>
+                  <SelectItem value="normal">Normal</SelectItem>
+                  <SelectItem value="alta">Alta</SelectItem>
+                  <SelectItem value="urgente">Urgente</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="rounded-lg border bg-muted/20 p-3 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm font-medium">Resumo para transferência</span>
+                <Button size="sm" variant="outline" disabled={isGeneratingSummary} onClick={() => onGenerateSummary(selected.id)}>
+                  {isGeneratingSummary ? 'Gerando...' : selected.resumo_ia ? 'Atualizar' : 'Gerar resumo'}
+                </Button>
+              </div>
+              <p className="whitespace-pre-wrap text-xs text-muted-foreground">
+                {selected.resumo_ia || 'Gere um resumo objetivo antes de transferir o atendimento.'}
+              </p>
+            </div>
             <ScrollArea className="h-[380px] rounded-lg border bg-muted/20 p-3">
               {loadingMessages ? (
                 <p className="text-sm text-muted-foreground">Carregando mensagens...</p>

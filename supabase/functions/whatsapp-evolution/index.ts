@@ -6,7 +6,7 @@ const corsHeaders = {
 }
 
 interface EvolutionRequest {
-  action: 'create_instance' | 'get_qr_code' | 'check_status' | 'send_message' | 'delete_instance' | 'list_instances'
+  action: 'create_instance' | 'get_qr_code' | 'check_status' | 'send_message' | 'generate_summary' | 'delete_instance' | 'list_instances'
   instance_name?: string
   session_id?: string
   conversation_id?: string
@@ -118,6 +118,42 @@ Deno.serve(async (req) => {
     let result: any = null
 
     switch (action) {
+      case 'generate_summary': {
+        if (!conversation_id) throw new Error('conversation_id é obrigatório')
+        const openaiApiKey = Deno.env.get('OPENAI_API_KEY')
+        if (!openaiApiKey) throw new Error('OPENAI_API_KEY não configurada')
+        const { data: conversa } = await supabase.from('whatsapp_conversations')
+          .select('id').eq('id', conversation_id).eq('clinica_id', clinicaId).maybeSingle()
+        if (!conversa) return naoEncontrada()
+        const { data: mensagens } = await supabase.from('whatsapp_messages')
+          .select('direcao, conteudo, created_at').eq('conversation_id', conversation_id)
+          .eq('clinica_id', clinicaId).order('created_at', { ascending: true }).limit(100)
+        const transcript = (mensagens || []).map((item: any) =>
+          `${item.direcao === 'entrada' ? 'Paciente' : 'Atendimento'}: ${item.conteudo || ''}`
+        ).join('\n').slice(-24000)
+        const aiResponse = await fetch('https://api.openai.com/v1/responses', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${openaiApiKey}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: Deno.env.get('OPENAI_MODEL') || 'gpt-4o-mini',
+            instructions: 'Resuma a conversa para o próximo atendente em português. Liste: motivo do contato, dados já confirmados, ações realizadas, pendências e sinais de urgência. Não invente nada. Máximo 900 caracteres.',
+            input: transcript || 'Conversa sem mensagens.',
+            max_output_tokens: 350,
+            temperature: 0.1,
+            store: false,
+          }),
+        })
+        if (!aiResponse.ok) throw new Error(`OpenAI ${aiResponse.status}: ${(await aiResponse.text()).slice(0, 300)}`)
+        const aiResult = await aiResponse.json()
+        const resumo = aiResult.output_text || (aiResult.output || [])
+          .flatMap((item: any) => item.content || []).find((item: any) => item.type === 'output_text')?.text
+        if (!resumo) throw new Error('A IA não retornou um resumo')
+        await supabase.from('whatsapp_conversations').update({ resumo_ia: resumo })
+          .eq('id', conversation_id).eq('clinica_id', clinicaId)
+        result = { summary: resumo }
+        break
+      }
+
       case 'create_instance': {
         if (!instance_name) throw new Error('instance_name é obrigatório')
 
