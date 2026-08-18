@@ -33,6 +33,8 @@ export default function AgenteIA() {
     linkAgentToSession,
     updateConversationStatus,
     sendHumanMessage,
+    markConversationRead,
+    addInternalNote,
   } = useWhatsAppMutations();
 
   if (planLoading) {
@@ -111,6 +113,9 @@ export default function AgenteIA() {
               message,
             })}
             isSending={sendHumanMessage.isPending}
+            onMarkRead={(conversationId) => markConversationRead.mutate(conversationId)}
+            onAddInternalNote={(conversationId, content) => addInternalNote.mutateAsync({ conversationId, content })}
+            isAddingNote={addInternalNote.isPending}
           />
         </TabsContent>
       </Tabs>

@@ -136,11 +136,13 @@ export function useWhatsAppMutations() {
   const updateConversationStatus = useMutation({
     mutationFn: async ({ conversationId, status }: { conversationId: string; status: string }) => {
       if (!profile?.clinica_id) throw new Error('Clínica não identificada.');
-      const { error } = await supabase
-        .from('whatsapp_conversations')
-        .update({ status })
-        .eq('id', conversationId)
-        .eq('clinica_id', profile.clinica_id);
+      const rpcName = status === 'em_atendimento_humano'
+        ? 'assumir_conversa_whatsapp'
+        : 'alterar_status_conversa_whatsapp';
+      const params = status === 'em_atendimento_humano'
+        ? { _conversation_id: conversationId }
+        : { _conversation_id: conversationId, _status: status };
+      const { error } = await (supabase as any).rpc(rpcName, params);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -148,6 +150,34 @@ export function useWhatsAppMutations() {
       toast.success('Responsável pelo atendimento atualizado.');
     },
     onError: (error) => toast.error('Não foi possível atualizar a conversa: ' + error.message),
+  });
+
+  const markConversationRead = useMutation({
+    mutationFn: async (conversationId: string) => {
+      const { error } = await (supabase as any).rpc('marcar_whatsapp_como_lida', { _conversation_id: conversationId });
+      if (error) throw error;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['whatsapp-conversations'], exact: false }),
+  });
+
+  const addInternalNote = useMutation({
+    mutationFn: async ({ conversationId, content }: { conversationId: string; content: string }) => {
+      if (!profile?.clinica_id || !profile.id) throw new Error('Usuário ou clínica não identificados.');
+      const cleanContent = content.trim();
+      if (!cleanContent || cleanContent.length > 2000) throw new Error('A nota deve ter entre 1 e 2.000 caracteres.');
+      const { error } = await (supabase as any).from('whatsapp_notas_internas').insert({
+        conversation_id: conversationId,
+        clinica_id: profile.clinica_id,
+        autor_id: profile.id,
+        conteudo: cleanContent,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['whatsapp-internal-notes'], exact: false });
+      toast.success('Nota interna adicionada.');
+    },
+    onError: (error) => toast.error('Não foi possível salvar a nota: ' + error.message),
   });
 
   const sendHumanMessage = useMutation({
@@ -180,5 +210,7 @@ export function useWhatsAppMutations() {
     linkAgentToSession,
     updateConversationStatus,
     sendHumanMessage,
+    markConversationRead,
+    addInternalNote,
   };
 }

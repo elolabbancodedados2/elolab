@@ -213,6 +213,10 @@ Deno.serve(async (req) => {
             .update({ ultima_mensagem_at: new Date().toISOString() })
             .eq('id', conversation.id)
 
+          await supabase.rpc('incrementar_whatsapp_nao_lidas', {
+            _conversation_id: conversation.id,
+          })
+
           // Processar com IA se tiver agente configurado
           if (session.agent_id && session.whatsapp_agents?.ativo) {
             const agent = session.whatsapp_agents

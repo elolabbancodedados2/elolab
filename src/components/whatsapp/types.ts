@@ -34,7 +34,18 @@ export interface WhatsAppConversation {
   remote_jid: string;
   status: string;
   ultima_mensagem_at: string;
+  responsavel_id: string | null;
+  prioridade: 'baixa' | 'normal' | 'alta' | 'urgente';
+  nao_lidas: number;
+  primeira_resposta_em: string | null;
+  atendimento_humano_em: string | null;
+  encerrada_em: string | null;
+  sla_limite_em: string | null;
+  resumo_ia: string | null;
+  satisfacao_nota: number | null;
+  satisfacao_comentario: string | null;
   pacientes?: { nome: string } | null;
+  profiles?: { nome: string } | null;
 }
 
 export interface WhatsAppMessage {
@@ -44,6 +55,14 @@ export interface WhatsAppMessage {
   status: string | null;
   created_at: string | null;
   metadata: Record<string, unknown> | null;
+}
+
+export interface WhatsAppInternalNote {
+  id: string;
+  conteudo: string;
+  created_at: string;
+  autor_id: string;
+  profiles?: { nome: string } | null;
 }
 
 export interface WhatsAppStats {

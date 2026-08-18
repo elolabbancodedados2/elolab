@@ -4,12 +4,12 @@ import { motion } from 'framer-motion';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { MessageSquare, User, Search, Clock, CheckCircle2, AlertCircle, Send, X } from 'lucide-react';
+import { MessageSquare, User, Search, Clock, CheckCircle2, AlertCircle, Send, X, StickyNote } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { WhatsAppConversation } from './types';
 import { Button } from '@/components/ui/button';
-import { useWhatsAppMessages } from './useWhatsAppQueries';
+import { useWhatsAppInternalNotes, useWhatsAppMessages } from './useWhatsAppQueries';
 
 interface ConversationsTabProps {
   conversations: WhatsAppConversation[];
@@ -17,14 +17,19 @@ interface ConversationsTabProps {
   isUpdating: boolean;
   onSendMessage: (conversation: WhatsAppConversation, message: string) => Promise<void>;
   isSending: boolean;
+  onMarkRead: (conversationId: string) => void;
+  onAddInternalNote: (conversationId: string, content: string) => Promise<void>;
+  isAddingNote: boolean;
 }
 
-export function ConversationsTab({ conversations, onStatusChange, isUpdating, onSendMessage, isSending }: ConversationsTabProps) {
+export function ConversationsTab({ conversations, onStatusChange, isUpdating, onSendMessage, isSending, onMarkRead, onAddInternalNote, isAddingNote }: ConversationsTabProps) {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('todos');
   const [selected, setSelected] = useState<WhatsAppConversation | null>(null);
   const [reply, setReply] = useState('');
+  const [note, setNote] = useState('');
   const { data: messages = [], isLoading: loadingMessages } = useWhatsAppMessages(selected?.id || null);
+  const { data: notes = [] } = useWhatsAppInternalNotes(selected?.id || null);
 
   useEffect(() => {
     if (!selected) return;
@@ -36,6 +41,12 @@ export function ConversationsTab({ conversations, onStatusChange, isUpdating, on
     if (!selected || !reply.trim()) return;
     await onSendMessage(selected, reply);
     setReply('');
+  };
+
+  const handleAddNote = async () => {
+    if (!selected || !note.trim()) return;
+    await onAddInternalNote(selected.id, note);
+    setNote('');
   };
 
   const filtered = useMemo(() => {
@@ -142,7 +153,7 @@ export function ConversationsTab({ conversations, onStatusChange, isUpdating, on
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: i * 0.03 }}
                       className="flex items-center gap-3 px-4 py-3 hover:bg-muted/40 transition-colors cursor-pointer"
-                      onClick={() => setSelected(conv)}
+                      onClick={() => { setSelected(conv); if (conv.nao_lidas > 0) onMarkRead(conv.id); }}
                     >
                       <div className="relative">
                         <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center">
@@ -156,9 +167,13 @@ export function ConversationsTab({ conversations, onStatusChange, isUpdating, on
                         <div className="flex items-center gap-2">
                           <p className="font-medium text-sm truncate">{name}</p>
                           {getStatusIcon(conv.status)}
+                          {conv.nao_lidas > 0 && <Badge className="h-5 min-w-5 justify-center rounded-full px-1.5 text-[10px]">{conv.nao_lidas > 99 ? '99+' : conv.nao_lidas}</Badge>}
                         </div>
                         <p className="text-xs text-muted-foreground truncate">
                           {phone !== name ? phone : 'WhatsApp'}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground">
+                          {conv.profiles?.nome ? `Responsável: ${conv.profiles.nome}` : 'Sem responsável'} · Prioridade {conv.prioridade}
                         </p>
                       </div>
                       <div className="text-right flex-shrink-0 space-y-1">
@@ -196,7 +211,10 @@ export function ConversationsTab({ conversations, onStatusChange, isUpdating, on
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
             <div>
               <CardTitle className="text-base">{selected.pacientes?.nome || selected.remote_jid.replace('@s.whatsapp.net', '')}</CardTitle>
-              <p className="text-xs text-muted-foreground">Histórico do atendimento</p>
+              <p className="text-xs text-muted-foreground">
+                {selected.profiles?.nome ? `Responsável: ${selected.profiles.nome}` : 'Sem responsável'}
+                {selected.sla_limite_em && !selected.primeira_resposta_em ? ` · SLA até ${format(new Date(selected.sla_limite_em), 'HH:mm')}` : ''}
+              </p>
             </div>
             <Button size="icon" variant="ghost" aria-label="Fechar conversa" onClick={() => setSelected(null)}>
               <X className="h-4 w-4" />
@@ -244,6 +262,22 @@ export function ConversationsTab({ conversations, onStatusChange, isUpdating, on
             ) : (
               <p className="text-xs text-muted-foreground">Assuma a conversa para responder como atendente.</p>
             )}
+            <div className="rounded-lg border border-dashed p-3 space-y-2">
+              <div className="flex items-center gap-2 text-sm font-medium"><StickyNote className="h-4 w-4" />Notas internas</div>
+              {notes.length > 0 && (
+                <div className="max-h-28 space-y-1 overflow-y-auto">
+                  {notes.map(internalNote => (
+                    <p key={internalNote.id} className="rounded bg-muted px-2 py-1 text-xs">
+                      <strong>{internalNote.profiles?.nome || 'Equipe'}:</strong> {internalNote.conteudo}
+                    </p>
+                  ))}
+                </div>
+              )}
+              <div className="flex gap-2">
+                <Input value={note} maxLength={2000} placeholder="Nota invisível para o paciente..." onChange={event => setNote(event.target.value)} />
+                <Button variant="secondary" disabled={isAddingNote || !note.trim()} onClick={() => void handleAddNote()}>Adicionar</Button>
+              </div>
+            </div>
           </CardContent>
         </Card>
       )}

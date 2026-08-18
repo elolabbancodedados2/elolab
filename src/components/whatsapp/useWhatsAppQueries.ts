@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { WhatsAppAgent, WhatsAppSession, WhatsAppConversation, WhatsAppMessage, WhatsAppStats } from './types';
+import { WhatsAppAgent, WhatsAppSession, WhatsAppConversation, WhatsAppInternalNote, WhatsAppMessage, WhatsAppStats } from './types';
 import { todayDateOnly } from '@/lib/dateOnly';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 
@@ -48,7 +48,7 @@ export function useWhatsAppConversations() {
       if (!profile?.clinica_id) return [] as WhatsAppConversation[];
       const { data, error } = await supabase
         .from('whatsapp_conversations')
-        .select('*, pacientes(nome)')
+        .select('*, pacientes(nome), profiles!whatsapp_conversations_responsavel_id_fkey(nome)')
         .eq('clinica_id', profile.clinica_id)
         .order('ultima_mensagem_at', { ascending: false })
         .limit(50);
@@ -56,6 +56,25 @@ export function useWhatsAppConversations() {
       return data as WhatsAppConversation[];
     },
     enabled: !!profile?.clinica_id,
+  });
+}
+
+export function useWhatsAppInternalNotes(conversationId: string | null) {
+  const { profile } = useSupabaseAuth();
+  return useQuery({
+    queryKey: ['whatsapp-internal-notes', profile?.clinica_id, conversationId],
+    queryFn: async () => {
+      if (!profile?.clinica_id || !conversationId) return [] as WhatsAppInternalNote[];
+      const { data, error } = await (supabase as any)
+        .from('whatsapp_notas_internas')
+        .select('id, conteudo, created_at, autor_id, profiles!whatsapp_notas_internas_autor_id_fkey(nome)')
+        .eq('clinica_id', profile.clinica_id)
+        .eq('conversation_id', conversationId)
+        .order('created_at', { ascending: true });
+      if (error) throw error;
+      return data as WhatsAppInternalNote[];
+    },
+    enabled: !!profile?.clinica_id && !!conversationId,
   });
 }
 
