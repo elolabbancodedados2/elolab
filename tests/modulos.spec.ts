@@ -51,6 +51,7 @@ const MODULOS_PROTEGIDOS: Array<{ area: string; rotas: string[] }> = [
     rotas: [
       '/financeiro', '/contas', '/fluxo-caixa', '/precos-servicos',
       '/relatorios', '/relatorios/salvos', '/cobranca-inadimplentes', '/pagamentos',
+      '/faturamento-convenios',
     ],
   },
   {

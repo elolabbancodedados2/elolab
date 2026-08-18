@@ -138,6 +138,7 @@ export const menuGroups: MenuGroup[] = [
       { label: 'Visão Geral', icon: CircleDollarSign, href: '/financeiro' },
       { label: 'Contas', icon: BadgeDollarSign, href: '/contas' },
       { label: 'Fluxo de Caixa', icon: PiggyBank, href: '/fluxo-caixa' },
+      { label: 'TISS & Glosas', icon: FileText, href: '/faturamento-convenios' },
       { label: 'Preços & Serviços', icon: CircleDollarSign, href: '/precos-servicos' },
       { label: 'Relatórios', icon: FileBarChart, href: '/relatorios' },
       { label: 'Relatórios Salvos', icon: FileBarChart, href: '/relatorios/salvos' },

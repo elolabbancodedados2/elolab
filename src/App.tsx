@@ -84,6 +84,7 @@ const LgpdPacientes = lazy(() => import("@/pages/LgpdPacientes"));
 const VitaisGraficos = lazy(() => import("@/pages/VitaisGraficos"));
 const AnalisePreditiva = lazy(() => import("@/pages/AnalisePreditiva"));
 const VerificarAssinatura = lazy(() => import("@/pages/VerificarAssinatura"));
+const FaturamentoConvenios = lazy(() => import("@/pages/FaturamentoConvenios"));
 import { useNotificationScheduler } from "@/hooks/useNotificationScheduler";
 import { CookieConsent } from "@/components/CookieConsent";
 import { ModoManutencao } from "@/components/ModoManutencao";
@@ -238,6 +239,7 @@ function App() {
                           <Route path="/salas" element={<Navigate to="/gestao-fluxo" replace />} />
                           <Route path="/estoque" element={<SupabaseProtectedRoute allowedRoles={['admin', 'enfermagem']}><Estoque /></SupabaseProtectedRoute>} />
                           <Route path="/convenios" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao']}><Convenios /></SupabaseProtectedRoute>} />
+                          <Route path="/faturamento-convenios" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><FaturamentoConvenios /></SupabaseProtectedRoute>} />
                           <Route path="/todos-templates" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico']}><TemplatesUnificado /></SupabaseProtectedRoute>} />
                           <Route path="/templates" element={<Navigate to="/todos-templates" replace />} />
                           <Route path="/lista-espera" element={<Navigate to="/gestao-fluxo" replace />} />
