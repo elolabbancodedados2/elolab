@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { ShieldCheck, KeyRound, AlertTriangle, CheckCircle2, Loader2, FileKey } from 'lucide-react';
+import { KeyRound, AlertTriangle, CheckCircle2, Loader2, FileKey, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -36,7 +36,8 @@ interface SignatureData {
   signerName: string;
   signerCRM?: string;
   hash: string;
-  method: 'icp-brasil' | 'eletronica-simples';
+  method: 'icp-brasil' | 'eletronica_simples';
+  verificationCode?: string;
 }
 
 export function DigitalSignature({
@@ -53,59 +54,29 @@ export function DigitalSignature({
   const [signing, setSigning] = useState(false);
   const [signed, setSigned] = useState(false);
   const [signatureData, setSignatureData] = useState<SignatureData | null>(null);
+  const [verificationCode, setVerificationCode] = useState<string | null>(null);
   const { toast } = useToast();
 
-  const handleSign = async (method: 'eletronica-simples') => {
+  useEffect(() => {
+    if (!alreadySigned || documentType !== 'prontuario') return;
+    (supabase as any).from('prontuario_assinaturas')
+      .select('codigo_verificacao').eq('prontuario_id', documentId).maybeSingle()
+      .then(({ data }: any) => setVerificationCode(data?.codigo_verificacao ?? null));
+  }, [alreadySigned, documentId, documentType]);
+
+  const handleSign = async () => {
     setSigning(true);
     try {
-      // Generate real SHA-256 hash of the document identity + timestamp (integrity fingerprint)
-      const payload = `${documentType}:${documentId}:${signerName}:${signerCRM || ''}:${new Date().toISOString()}`;
-      const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(payload));
-      const hash = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+      if (documentType !== 'prontuario') throw new Error('Assinatura verificável ainda não disponível para este documento.');
+      const { data, error } = await (supabase as any).rpc('assinar_prontuario_verificavel', { p_prontuario_id: documentId });
+      if (error) throw error;
+      const result = data as SignatureData;
+      setVerificationCode(result.verificationCode ?? null);
 
-      const data: SignatureData = {
-        signedAt: new Date().toISOString(),
-        signerName,
-        signerCRM,
-        hash,
-        method,
-      };
-
-      // For prontuários — mark as immutably signed at the database level (CFM Res. 1.821/2007)
-      if (documentType === 'prontuario') {
-        const { error: updErr } = await (supabase as any).from('prontuarios').update({
-          assinado: true,
-          assinado_em: data.signedAt,
-          assinado_por: signerName,
-          crm_assinante: signerCRM || null,
-          hash_conteudo: hash,
-          tipo_assinatura: method,
-        }).eq('id', documentId);
-        if (updErr) throw updErr;
-
-        // Access log — dedicated CFM audit table
-        await (supabase as any).from('prontuario_acessos').insert({
-          prontuario_id: documentId,
-          acao: 'assinatura',
-          user_nome: signerName,
-          user_crm: signerCRM || null,
-          justificativa: `Assinatura eletrônica simples • hash ${hash.substring(0, 16)}`,
-        });
-      }
-
-      // Log signature in audit trail
-      await supabase.from('audit_log').insert({
-        action: 'sign',
-        collection: documentType === 'prontuario' ? 'prontuarios' : `${documentType}s`,
-        record_id: documentId,
-        record_name: 'Assinatura eletrônica simples',
-        user_name: `${signerName}${signerCRM ? ` — CRM ${signerCRM}` : ''}`,
-      });
-
-      setSignatureData(data);
+      setSignatureData(result);
       setSigned(true);
       setIsDialogOpen(false);
-      onSigned?.(data);
+      onSigned?.(result);
 
       toast({
         title: 'Documento assinado',
@@ -136,6 +107,7 @@ export function DigitalSignature({
             {signerName}{signerCRM ? ` — CRM ${signerCRM}` : ''}
             {signedAt && ` • ${new Date(signedAt).toLocaleString('pt-BR')}`}
           </p>
+          {verificationCode && <VerificationLink code={verificationCode} />}
         </div>
       </motion.div>
     );
@@ -160,6 +132,7 @@ export function DigitalSignature({
             {signatureData.signerName} — {new Date(signatureData.signedAt).toLocaleString('pt-BR')}
             {' • Hash: '}{signatureData.hash.substring(0, 8)}...
           </p>
+          {verificationCode && <VerificationLink code={verificationCode} />}
         </div>
       </motion.div>
     );
@@ -211,7 +184,7 @@ export function DigitalSignature({
                 </div>
               </div>
               <Button
-                onClick={() => handleSign('eletronica-simples')}
+                onClick={handleSign}
                 disabled={signing}
                 className="w-full gap-2"
               >
@@ -237,5 +210,13 @@ export function DigitalSignature({
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+function VerificationLink({ code }: { code: string }) {
+  return (
+    <a href={`/verificar-assinatura/${code}`} target="_blank" rel="noopener noreferrer" className="mt-1 inline-flex items-center gap-1 text-[10px] font-medium text-primary hover:underline">
+      Verificar autenticidade <ExternalLink className="h-2.5 w-2.5" />
+    </a>
   );
 }

@@ -83,6 +83,7 @@ const Seguranca = lazy(() => import("@/pages/Seguranca"));
 const LgpdPacientes = lazy(() => import("@/pages/LgpdPacientes"));
 const VitaisGraficos = lazy(() => import("@/pages/VitaisGraficos"));
 const AnalisePreditiva = lazy(() => import("@/pages/AnalisePreditiva"));
+const VerificarAssinatura = lazy(() => import("@/pages/VerificarAssinatura"));
 import { useNotificationScheduler } from "@/hooks/useNotificationScheduler";
 import { CookieConsent } from "@/components/CookieConsent";
 import { ModoManutencao } from "@/components/ModoManutencao";
@@ -196,6 +197,7 @@ function App() {
                         <Route path="/termos-uso" element={<TermosUso />} />
                         <Route path="/portal-paciente" element={<PortalPaciente />} />
                         <Route path="/portal-guias/:token" element={<PortalGuias />} />
+                        <Route path="/verificar-assinatura/:codigo" element={<VerificarAssinatura />} />
                         <Route path="/painel-tv" element={<SupabaseProtectedRoute><PainelTV /></SupabaseProtectedRoute>} />
 
                         <Route
