@@ -342,6 +342,9 @@ export default function PortalPaciente() {
   const [prescricoes, setPrescricoes] = useState<any[]>([]);
   const [retornos, setRetornos] = useState<any[]>([]);
   const [ofertasEspera, setOfertasEspera] = useState<any[]>([]);
+  const [contactForm, setContactForm] = useState({ telefone: '', email: '' });
+  const [contactSaving, setContactSaving] = useState(false);
+  const [contactMessage, setContactMessage] = useState('');
 
   // Scheduling form state
   const [medicos, setMedicos] = useState<any[]>([]);
@@ -381,6 +384,7 @@ export default function PortalPaciente() {
         return;
       }
       setProfile(profileData);
+      setContactForm({ telefone: profileData.telefone || '', email: profileData.email || '' });
       setAuthenticated(true);
 
       const [ag, ex, pg, presc, docs, rets, ofertas] = await Promise.all([
@@ -470,6 +474,21 @@ export default function PortalPaciente() {
       console.error('Erro ao cancelar:', err);
     } finally {
       setActionLoading(false);
+    }
+  };
+
+  const handleUpdateContact = async () => {
+    setContactSaving(true);
+    setContactMessage('');
+    try {
+      const response = await fetchData(token, 'update_contact', contactForm);
+      if (response?.error) throw new Error(response.error);
+      setProfile(response.profile);
+      setContactMessage('Dados de contato atualizados.');
+    } catch (err: any) {
+      setContactMessage(err.message || 'Não foi possível atualizar seus dados.');
+    } finally {
+      setContactSaving(false);
     }
   };
 
@@ -1030,9 +1049,18 @@ export default function PortalPaciente() {
                       {profile?.sexo && (
                         <div><span className="text-muted-foreground text-xs">Sexo</span><p className="font-medium capitalize">{profile.sexo}</p></div>
                       )}
-                      {profile?.telefone && (
-                        <div><span className="text-muted-foreground text-xs">Telefone</span><p className="font-medium">{profile.telefone}</p></div>
-                      )}
+                    </div>
+                    <Separator />
+                    <div className="space-y-3">
+                      <div><p className="text-xs font-medium">Atualize seus contatos</p><p className="text-[11px] text-muted-foreground">A clínica usará estes dados para confirmações e avisos.</p></div>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div><label htmlFor="portal-telefone" className="text-xs text-muted-foreground">Telefone</label><Input id="portal-telefone" inputMode="tel" value={contactForm.telefone} onChange={e => setContactForm(form => ({ ...form, telefone: e.target.value }))} placeholder="(11) 99999-9999" /></div>
+                        <div><label htmlFor="portal-email" className="text-xs text-muted-foreground">E-mail</label><Input id="portal-email" type="email" value={contactForm.email} onChange={e => setContactForm(form => ({ ...form, email: e.target.value }))} placeholder="voce@exemplo.com" /></div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <Button size="sm" onClick={handleUpdateContact} disabled={contactSaving}>{contactSaving ? <RefreshCw className="mr-2 h-3.5 w-3.5 animate-spin" /> : null}Salvar contatos</Button>
+                        {contactMessage && <span className="text-xs text-muted-foreground" role="status">{contactMessage}</span>}
+                      </div>
                     </div>
                   </CardContent>
                 </Card>

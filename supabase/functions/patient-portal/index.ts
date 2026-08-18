@@ -121,6 +121,26 @@ Deno.serve(async (req) => {
         result = tokenData.pacientes;
         break;
 
+      case "update_contact": {
+        const telefone = String(body.telefone || "").trim();
+        const email = String(body.email || "").trim().toLowerCase();
+        const telefoneDigitos = telefone.replace(/\D/g, "");
+        if (telefone && (telefoneDigitos.length < 10 || telefoneDigitos.length > 13)) {
+          return new Response(JSON.stringify({ error: "Informe um telefone válido com DDD" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+        if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+          return new Response(JSON.stringify({ error: "Informe um e-mail válido" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+        const { data, error } = await supabase.from("pacientes")
+          .update({ telefone: telefone || null, email: email || null })
+          .eq("id", pacienteId).eq("clinica_id", pacienteClinicaId)
+          .select("id, nome, email, telefone, foto_url, cpf, data_nascimento, sexo, alergias, observacoes, clinica_id")
+          .single();
+        if (error) throw error;
+        result = { success: true, profile: data };
+        break;
+      }
+
       case "get_agendamentos": {
         const { data } = await supabase
           .from("agendamentos")
@@ -231,13 +251,24 @@ Deno.serve(async (req) => {
       }
 
       case "get_exames": {
-        const { data } = await supabase
+        const { data, error } = await supabase
           .from("exames")
-          .select("id, tipo_exame, status, data_solicitacao, data_realizacao, resultado, medicos:medico_solicitante_id(crm)")
+          .select("id, tipo_exame, status, data_solicitacao, data_realizacao, resultado, arquivo_resultado, medicos:medico_solicitante_id(crm)")
           .eq("paciente_id", pacienteId)
           .order("data_solicitacao", { ascending: false })
           .limit(30);
-        result = data || [];
+        if (error) throw error;
+        result = await Promise.all((data || []).map(async (exame: any) => {
+          if (!exame.arquivo_resultado) return exame;
+          if (/^https:\/\//i.test(exame.arquivo_resultado)) return exame;
+          const { data: signed, error: signError } = await supabase.storage
+            .from("medical-attachments").createSignedUrl(exame.arquivo_resultado, 300);
+          if (signError) {
+            console.error("Não foi possível assinar o laudo do portal", exame.id, signError.message);
+            return { ...exame, arquivo_resultado: null };
+          }
+          return { ...exame, arquivo_resultado: signed.signedUrl };
+        }));
         break;
       }
 
