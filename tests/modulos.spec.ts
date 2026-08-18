@@ -40,6 +40,7 @@ const MODULOS_PROTEGIDOS: Array<{ area: string; rotas: string[] }> = [
     rotas: [
       '/pacientes', '/retornos', '/convenios', '/prontuarios',
       '/documentos-clinicos', '/exames', '/vitais-graficos',
+      '/interoperabilidade',
     ],
   },
   {

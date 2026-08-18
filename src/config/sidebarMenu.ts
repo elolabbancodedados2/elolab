@@ -111,6 +111,7 @@ export const menuGroups: MenuGroup[] = [
       { label: 'Prontuários', icon: ScrollText, href: '/prontuarios', roles: ['admin', 'medico'] },
       { label: 'Documentos Clínicos', icon: BookMarked, href: '/documentos-clinicos', roles: ['admin', 'medico'] },
       { label: 'Exames', icon: Microscope, href: '/exames', roles: ['admin', 'medico', 'enfermagem'] },
+      { label: 'Interoperabilidade', icon: FileText, href: '/interoperabilidade', roles: ['admin', 'medico'] },
     ],
   },
   {

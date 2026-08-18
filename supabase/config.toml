@@ -74,3 +74,6 @@ verify_jwt = true
 # Vigilância de disponibilidade. Disparada pelo agendador, com x-cron-secret.
 [functions.monitor-app]
 verify_jwt = true
+
+[functions.fhir-export]
+verify_jwt = true
