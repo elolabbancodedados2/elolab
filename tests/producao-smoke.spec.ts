@@ -44,16 +44,33 @@ test.describe('Produção — smoke', () => {
     // No primeiro acesso a um commit novo, main.tsx limpa o service worker e
     // faz um redirect com cache_reset=1. Aguardar esse ciclo evita classificar
     // o estado transitório "Carregando..." como tela branca.
-    await expect.poll(async () => ((await page.textContent('body')) ?? '').trim().length, {
-      message: 'produção renderizou tela em branco', timeout: 15_000,
-    }).toBeGreaterThan(200);
+    const manutencao = page.getByRole('alertdialog');
+    if (await manutencao.isVisible()) {
+      await expect(manutencao.getByRole('heading')).toContainText(/manutenção/i);
+      await expect(manutencao).toContainText(/dados|sistema|retorno/i);
+    } else {
+      await expect.poll(async () => ((await page.textContent('body')) ?? '').trim().length, {
+        message: 'produção renderizou tela em branco', timeout: 15_000,
+      }).toBeGreaterThan(200);
+    }
   });
 
   test('a tela de login carrega e aceita digitação', async ({ page }) => {
     await page.goto(`${PRODUCAO_URL}/auth`, { waitUntil: 'networkidle' });
 
     const email = page.locator('input[type="email"]').first();
-    await expect(email, 'campo de e-mail não apareceu na tela de login').toBeVisible({ timeout: 15000 });
+    const manutencao = page.getByRole('alertdialog');
+    const estado = await Promise.race([
+      email.waitFor({ state: 'visible', timeout: 15_000 }).then(() => 'login' as const),
+      manutencao.waitFor({ state: 'visible', timeout: 15_000 }).then(() => 'manutencao' as const),
+    ]);
+
+    // Manutenção é um estado operacional legítimo, não tela branca. Ainda
+    // exigimos conteúdo e acessibilidade para não mascarar um deploy quebrado.
+    if (estado === 'manutencao') {
+      await expect(manutencao.getByRole('heading')).toContainText(/manutenção/i);
+      return;
+    }
 
     // Prova que o React hidratou: campo que não responde é bundle quebrado.
     await email.fill('teste@exemplo.com');
