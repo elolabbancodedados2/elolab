@@ -133,6 +133,23 @@ export function useWhatsAppMutations() {
     },
   });
 
+  const updateConversationStatus = useMutation({
+    mutationFn: async ({ conversationId, status }: { conversationId: string; status: string }) => {
+      if (!profile?.clinica_id) throw new Error('Clínica não identificada.');
+      const { error } = await supabase
+        .from('whatsapp_conversations')
+        .update({ status })
+        .eq('id', conversationId)
+        .eq('clinica_id', profile.clinica_id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['whatsapp-conversations'] });
+      toast.success('Responsável pelo atendimento atualizado.');
+    },
+    onError: (error) => toast.error('Não foi possível atualizar a conversa: ' + error.message),
+  });
+
   return {
     createAgent,
     updateAgent,
@@ -142,5 +159,6 @@ export function useWhatsAppMutations() {
     checkStatus,
     deleteSession,
     linkAgentToSession,
+    updateConversationStatus,
   };
 }

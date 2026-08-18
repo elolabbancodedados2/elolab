@@ -31,6 +31,7 @@ export default function AgenteIA() {
     checkStatus,
     deleteSession,
     linkAgentToSession,
+    updateConversationStatus,
   } = useWhatsAppMutations();
 
   if (planLoading) {
@@ -98,7 +99,11 @@ export default function AgenteIA() {
         </TabsContent>
 
         <TabsContent value="conversations">
-          <ConversationsTab conversations={conversations} />
+          <ConversationsTab
+            conversations={conversations}
+            onStatusChange={(conversationId, status) => updateConversationStatus.mutate({ conversationId, status })}
+            isUpdating={updateConversationStatus.isPending}
+          />
         </TabsContent>
       </Tabs>
     </div>

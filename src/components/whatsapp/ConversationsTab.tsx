@@ -8,12 +8,15 @@ import { MessageSquare, User, Search, Clock, CheckCircle2, AlertCircle } from 'l
 import { format, formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { WhatsAppConversation } from './types';
+import { Button } from '@/components/ui/button';
 
 interface ConversationsTabProps {
   conversations: WhatsAppConversation[];
+  onStatusChange: (conversationId: string, status: string) => void;
+  isUpdating: boolean;
 }
 
-export function ConversationsTab({ conversations }: ConversationsTabProps) {
+export function ConversationsTab({ conversations, onStatusChange, isUpdating }: ConversationsTabProps) {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('todos');
 
@@ -28,14 +31,15 @@ export function ConversationsTab({ conversations }: ConversationsTabProps) {
 
   const stats = useMemo(() => ({
     ativas: conversations.filter(c => c.status === 'ativo').length,
-    aguardando: conversations.filter(c => c.status === 'aguardando').length,
+    aguardando: conversations.filter(c => c.status === 'aguardando_humano').length,
     encerradas: conversations.filter(c => c.status === 'encerrado').length,
   }), [conversations]);
 
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'ativo': return <CheckCircle2 className="h-3 w-3 text-green-500" />;
-      case 'aguardando': return <Clock className="h-3 w-3 text-amber-500" />;
+      case 'aguardando_humano': return <Clock className="h-3 w-3 text-amber-500" />;
+      case 'em_atendimento_humano': return <User className="h-3 w-3 text-blue-500" />;
       case 'encerrado': return <AlertCircle className="h-3 w-3 text-muted-foreground" />;
       default: return null;
     }
@@ -45,8 +49,10 @@ export function ConversationsTab({ conversations }: ConversationsTabProps) {
     switch (status) {
       case 'ativo':
         return <Badge className="bg-green-500/10 text-green-700 border-green-200 text-[10px]">Ativa</Badge>;
-      case 'aguardando':
-        return <Badge className="bg-amber-500/10 text-amber-700 border-amber-200 text-[10px]">Aguardando</Badge>;
+      case 'aguardando_humano':
+        return <Badge className="bg-amber-500/10 text-amber-700 border-amber-200 text-[10px]">Aguardando humano</Badge>;
+      case 'em_atendimento_humano':
+        return <Badge className="bg-blue-500/10 text-blue-700 border-blue-200 text-[10px]">Com atendente</Badge>;
       case 'encerrado':
         return <Badge variant="outline" className="text-[10px]">Encerrada</Badge>;
       default:
@@ -60,7 +66,7 @@ export function ConversationsTab({ conversations }: ConversationsTabProps) {
       <div className="grid grid-cols-3 gap-3">
         {[
           { label: 'Ativas', value: stats.ativas, color: 'text-green-600 bg-green-500/10', filter: 'ativo' },
-          { label: 'Aguardando', value: stats.aguardando, color: 'text-amber-600 bg-amber-500/10', filter: 'aguardando' },
+          { label: 'Aguardando', value: stats.aguardando, color: 'text-amber-600 bg-amber-500/10', filter: 'aguardando_humano' },
           { label: 'Encerradas', value: stats.encerradas, color: 'text-muted-foreground bg-muted', filter: 'encerrado' },
         ].map(s => (
           <button
@@ -139,6 +145,23 @@ export function ConversationsTab({ conversations }: ConversationsTabProps) {
                       <div className="text-right flex-shrink-0 space-y-1">
                         {getStatusBadge(conv.status)}
                         <p className="text-[10px] text-muted-foreground">{timeAgo}</p>
+                        <div className="flex justify-end gap-1 pt-1">
+                          {conv.status === 'aguardando_humano' && (
+                            <Button size="sm" variant="outline" disabled={isUpdating} onClick={() => onStatusChange(conv.id, 'em_atendimento_humano')}>
+                              Assumir
+                            </Button>
+                          )}
+                          {conv.status === 'em_atendimento_humano' && (
+                            <Button size="sm" variant="outline" disabled={isUpdating} onClick={() => onStatusChange(conv.id, 'ativo')}>
+                              Devolver à IA
+                            </Button>
+                          )}
+                          {conv.status !== 'encerrado' && (
+                            <Button size="sm" variant="ghost" disabled={isUpdating} onClick={() => onStatusChange(conv.id, 'encerrado')}>
+                              Encerrar
+                            </Button>
+                          )}
+                        </div>
                       </div>
                     </motion.div>
                   );
