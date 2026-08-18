@@ -29,6 +29,12 @@ function addMinutes(time: string, minutes: number): string {
   return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
 }
 
+async function sha256Hex(value: string): Promise<string> {
+  const bytes = new TextEncoder().encode(value);
+  const hash = await crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(hash), byte => byte.toString(16).padStart(2, '0')).join('');
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -65,14 +71,29 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Validate token
-    const { data: tokenData, error: tokenError } = await supabase
+    // O segredo bruto nunca fica no banco; comparamos apenas sua impressão.
+    const tokenHash = await sha256Hex(String(token));
+    let { data: tokenData, error: tokenError } = await supabase
       .from("paciente_portal_tokens")
       .select("*, pacientes(id, nome, email, telefone, foto_url, cpf, data_nascimento, sexo, alergias, observacoes, clinica_id)")
-      .eq("token", token)
+      .eq("token", tokenHash)
       .eq("ativo", true)
       .gte("expires_at", new Date().toISOString())
       .single();
+
+    // Compatibilidade durante o deploy: a Edge Function entra antes da
+    // migration. Enquanto a tabela ainda tiver os três tokens legados em
+    // texto puro, eles continuam aceitos; após o UPDATE, este ramo não acha
+    // mais nenhuma linha e pode ser removido numa migração futura.
+    if (!tokenData) {
+      ({ data: tokenData, error: tokenError } = await supabase
+        .from("paciente_portal_tokens")
+        .select("*, pacientes(id, nome, email, telefone, foto_url, cpf, data_nascimento, sexo, alergias, observacoes, clinica_id)")
+        .eq("token", String(token))
+        .eq("ativo", true)
+        .gte("expires_at", new Date().toISOString())
+        .single());
+    }
 
     if (tokenError || !tokenData) {
       return new Response(JSON.stringify({ error: "Token inválido ou expirado" }), {

@@ -823,14 +823,12 @@ export default function Pacientes() {
 
   const handleGeneratePortalLink = async (pacienteId: string, pacienteNome: string) => {
     try {
-      const { data, error } = await supabase
-        .from('paciente_portal_tokens')
-        .insert({ paciente_id: pacienteId, clinica_id: authProfile?.clinica_id || null })
-        .select('token')
-        .single();
+      const { data, error } = await supabase.rpc('link_portal_paciente', {
+        p_paciente_id: pacienteId,
+      });
       if (error) throw error;
-      const portalUrl = `${window.location.origin}/portal-paciente?token=${data.token}`;
-      await navigator.clipboard.writeText(portalUrl);
+      if (!data) throw new Error('Paciente não encontrado');
+      await navigator.clipboard.writeText(data);
       toast.success('Link copiado!', { description: `Link do portal de ${pacienteNome} copiado.` });
     } catch (e) {
       toast.error('Erro ao gerar link do portal', { description: mensagemDeErro(e) });
