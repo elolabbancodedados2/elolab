@@ -161,7 +161,7 @@ Deno.serve(async (req) => {
             .select('*')
             .eq('session_id', session.id)
             .eq('remote_jid', remoteJid)
-            .in('status', ['ativo', 'aguardando_humano', 'em_atendimento_humano'])
+            .in('status', ['ativo', 'aguardando_humano', 'em_atendimento_humano', 'aguardando_avaliacao'])
             .order('created_at', { ascending: false })
             .limit(1)
             .maybeSingle()
@@ -216,6 +216,24 @@ Deno.serve(async (req) => {
           await supabase.rpc('incrementar_whatsapp_nao_lidas', {
             _conversation_id: conversation.id,
           })
+
+          if (conversation.status === 'aguardando_avaliacao') {
+            const ratingMatch = messageContent.trim().match(/^[1-5]$/)
+            const thankYou = ratingMatch
+              ? 'Obrigado pela sua avaliação! Ela nos ajuda a melhorar continuamente.'
+              : 'Para registrar sua avaliação, responda somente com um número de 1 a 5.'
+            if (ratingMatch) {
+              await supabase.from('whatsapp_conversations').update({
+                status: 'encerrado', satisfacao_nota: Number(ratingMatch[0]), nao_lidas: 0,
+              }).eq('id', conversation.id).eq('clinica_id', session.clinica_id)
+            }
+            await sendWhatsAppMessage(evolutionApiUrl, evolutionApiKey, instanceName, remoteJid, thankYou)
+            await supabase.from('whatsapp_messages').insert({
+              conversation_id: conversation.id, clinica_id: session.clinica_id || null,
+              direcao: 'saida', tipo: 'texto', conteudo: thankYou,
+            })
+            continue
+          }
 
           // Processar com IA se tiver agente configurado
           if (session.agent_id && session.whatsapp_agents?.ativo) {
@@ -368,6 +386,10 @@ DADOS DO PACIENTE:
                   tipo: 'texto',
                   conteudo: responseText,
                 })
+              await supabase.from('whatsapp_conversations')
+                .update({ primeira_resposta_em: new Date().toISOString() })
+                .eq('id', conversation.id)
+                .is('primeira_resposta_em', null)
             }
 
             if (legacyDeepSeekDisabled()) {

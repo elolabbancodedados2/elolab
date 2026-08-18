@@ -6,12 +6,15 @@ const corsHeaders = {
 }
 
 interface EvolutionRequest {
-  action: 'create_instance' | 'get_qr_code' | 'check_status' | 'send_message' | 'generate_summary' | 'delete_instance' | 'list_instances'
+  action: 'create_instance' | 'get_qr_code' | 'check_status' | 'send_message' | 'send_media' | 'generate_summary' | 'request_satisfaction' | 'delete_instance' | 'list_instances'
   instance_name?: string
   session_id?: string
   conversation_id?: string
   to?: string
   message?: string
+  media_base64?: string
+  mime_type?: string
+  file_name?: string
 }
 
 function extractQrCode(payload: any): string | null {
@@ -80,7 +83,7 @@ Deno.serve(async (req) => {
       .from('user_roles').select('role').eq('user_id', user.id).eq('role', 'admin').maybeSingle()
 
     const body: EvolutionRequest = await req.json()
-    const { action, instance_name, session_id, conversation_id, to, message } = body
+    const { action, instance_name, session_id, conversation_id, to, message, media_base64, mime_type, file_name } = body
 
     const ACOES_DE_ADMIN = new Set(['create_instance', 'delete_instance', 'get_qr_code'])
     if (ACOES_DE_ADMIN.has(action) && !ehAdmin) {
@@ -399,10 +402,82 @@ Deno.serve(async (req) => {
           })
           if (messageError) console.error('[Supabase] Sent message audit error:', messageError)
           await supabase.from('whatsapp_conversations')
-            .update({ ultima_mensagem_at: new Date().toISOString() })
+            .update({ ultima_mensagem_at: new Date().toISOString(), primeira_resposta_em: new Date().toISOString() })
             .eq('id', conversa.id)
             .eq('clinica_id', clinicaId)
         }
+        break
+      }
+
+      case 'send_media': {
+        if (!session_id || !conversation_id || !to || !media_base64 || !mime_type || !file_name) {
+          throw new Error('session_id, conversation_id, to, media_base64, mime_type e file_name são obrigatórios')
+        }
+        const allowedMime = /^(image\/(jpeg|png|webp)|audio\/(mpeg|ogg|mp4)|application\/pdf)$/
+        if (!allowedMime.test(mime_type)) throw new Error('Tipo de arquivo não permitido')
+        if (media_base64.length > 11_000_000) throw new Error('Arquivo maior que 8 MB')
+        const instanceName = await resolverInstanciaDaClinica()
+        if (!instanceName) return naoEncontrada()
+        const { data: conversa } = await supabase.from('whatsapp_conversations')
+          .select('id, remote_jid, status').eq('id', conversation_id)
+          .eq('clinica_id', clinicaId).eq('session_id', session_id).maybeSingle()
+        if (!conversa || String((conversa as any).remote_jid).replace(/\D/g, '') !== String(to).replace(/\D/g, '')) return naoEncontrada()
+        if ((conversa as any).status !== 'em_atendimento_humano') {
+          return new Response(JSON.stringify({ error: 'Assuma a conversa antes de enviar um anexo.' }), { status: 409, headers: corsHeaders })
+        }
+        const isAudio = mime_type.startsWith('audio/')
+        const mediaEndpoint = isAudio ? 'message/sendWhatsAppAudio' : 'message/sendMedia'
+        const cleanBase64 = media_base64.replace(/^data:[^;]+;base64,/, '')
+        const payload = isAudio
+          ? { number: to, audio: cleanBase64 }
+          : {
+              number: to,
+              mediatype: mime_type.startsWith('image/') ? 'image' : 'document',
+              mimetype: mime_type,
+              media: cleanBase64,
+              fileName: file_name.slice(0, 150),
+              caption: message?.trim() || undefined,
+            }
+        const mediaResponse = await fetch(`${evolutionApiUrl}/${mediaEndpoint}/${instanceName}`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json', apikey: evolutionApiKey }, body: JSON.stringify(payload),
+        })
+        if (!mediaResponse.ok) throw new Error(`Erro ao enviar anexo: ${(await mediaResponse.text()).slice(0, 300)}`)
+        const mediaResult = await mediaResponse.json()
+        await supabase.from('whatsapp_messages').insert({
+          conversation_id, clinica_id: clinicaId, message_id: mediaResult?.key?.id || null,
+          direcao: 'saida', tipo: isAudio ? 'audio' : mime_type.startsWith('image/') ? 'imagem' : 'documento',
+          conteudo: message?.trim() || file_name, status: 'enviado',
+          metadata: { origem: 'atendente', usuario_id: user.id, nome_arquivo: file_name, mime_type },
+        })
+        await supabase.from('whatsapp_conversations').update({ primeira_resposta_em: new Date().toISOString(), ultima_mensagem_at: new Date().toISOString() })
+          .eq('id', conversation_id).eq('clinica_id', clinicaId)
+        result = mediaResult
+        break
+      }
+
+      case 'request_satisfaction': {
+        if (!session_id || !conversation_id || !to) throw new Error('session_id, conversation_id e to são obrigatórios')
+        const instanceName = await resolverInstanciaDaClinica()
+        if (!instanceName) return naoEncontrada()
+        const { data: conversa } = await supabase.from('whatsapp_conversations')
+          .select('id, remote_jid, status, responsavel_id').eq('id', conversation_id)
+          .eq('clinica_id', clinicaId).eq('session_id', session_id).maybeSingle()
+        if (!conversa || String((conversa as any).remote_jid).replace(/\D/g, '') !== String(to).replace(/\D/g, '')) return naoEncontrada()
+        if ((conversa as any).responsavel_id !== user.id && !ehAdmin) {
+          return new Response(JSON.stringify({ error: 'Somente o responsável ou administrador pode encerrar.' }), { status: 403, headers: corsHeaders })
+        }
+        const survey = 'Atendimento encerrado. De 1 a 5, como você avalia nosso atendimento? Responda somente com um número. Obrigado!'
+        const surveyResponse = await fetch(`${evolutionApiUrl}/message/sendText/${instanceName}`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json', apikey: evolutionApiKey },
+          body: JSON.stringify({ number: to, text: survey }),
+        })
+        if (!surveyResponse.ok) throw new Error(`Erro ao solicitar avaliação: ${(await surveyResponse.text()).slice(0, 300)}`)
+        const surveyResult = await surveyResponse.json()
+        await supabase.from('whatsapp_messages').insert({ conversation_id, clinica_id: clinicaId,
+          message_id: surveyResult?.key?.id || null, direcao: 'saida', tipo: 'texto', conteudo: survey, status: 'enviado' })
+        await supabase.from('whatsapp_conversations').update({ status: 'aguardando_avaliacao', encerrada_em: new Date().toISOString() })
+          .eq('id', conversation_id).eq('clinica_id', clinicaId)
+        result = { requested: true }
         break
       }
 

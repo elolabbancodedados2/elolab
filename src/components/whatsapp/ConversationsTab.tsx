@@ -1,10 +1,10 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { motion } from 'framer-motion';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { MessageSquare, User, Search, Clock, CheckCircle2, AlertCircle, Send, X, StickyNote } from 'lucide-react';
+import { MessageSquare, User, Search, Clock, CheckCircle2, AlertCircle, Send, X, StickyNote, Paperclip } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { WhatsAppConversation } from './types';
@@ -24,14 +24,18 @@ interface ConversationsTabProps {
   onPriorityChange: (conversationId: string, priority: string) => void;
   onGenerateSummary: (conversationId: string) => void;
   isGeneratingSummary: boolean;
+  onSendMedia: (conversation: WhatsAppConversation, file: File) => Promise<void>;
+  isSendingMedia: boolean;
+  onCloseConversation: (conversation: WhatsAppConversation) => void;
 }
 
-export function ConversationsTab({ conversations, onStatusChange, isUpdating, onSendMessage, isSending, onMarkRead, onAddInternalNote, isAddingNote, onPriorityChange, onGenerateSummary, isGeneratingSummary }: ConversationsTabProps) {
+export function ConversationsTab({ conversations, onStatusChange, isUpdating, onSendMessage, isSending, onMarkRead, onAddInternalNote, isAddingNote, onPriorityChange, onGenerateSummary, isGeneratingSummary, onSendMedia, isSendingMedia, onCloseConversation }: ConversationsTabProps) {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('todos');
   const [selected, setSelected] = useState<WhatsAppConversation | null>(null);
   const [reply, setReply] = useState('');
   const [note, setNote] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const { data: messages = [], isLoading: loadingMessages } = useWhatsAppMessages(selected?.id || null);
   const { data: notes = [] } = useWhatsAppInternalNotes(selected?.id || null);
 
@@ -65,7 +69,7 @@ export function ConversationsTab({ conversations, onStatusChange, isUpdating, on
   const stats = useMemo(() => ({
     ativas: conversations.filter(c => c.status === 'ativo').length,
     aguardando: conversations.filter(c => c.status === 'aguardando_humano').length,
-    encerradas: conversations.filter(c => c.status === 'encerrado').length,
+    encerradas: conversations.filter(c => c.status === 'encerrado' || c.status === 'aguardando_avaliacao').length,
   }), [conversations]);
 
   const getStatusIcon = (status: string) => {
@@ -73,6 +77,7 @@ export function ConversationsTab({ conversations, onStatusChange, isUpdating, on
       case 'ativo': return <CheckCircle2 className="h-3 w-3 text-green-500" />;
       case 'aguardando_humano': return <Clock className="h-3 w-3 text-amber-500" />;
       case 'em_atendimento_humano': return <User className="h-3 w-3 text-blue-500" />;
+      case 'aguardando_avaliacao': return <Clock className="h-3 w-3 text-violet-500" />;
       case 'encerrado': return <AlertCircle className="h-3 w-3 text-muted-foreground" />;
       default: return null;
     }
@@ -86,6 +91,8 @@ export function ConversationsTab({ conversations, onStatusChange, isUpdating, on
         return <Badge className="bg-amber-500/10 text-amber-700 border-amber-200 text-[10px]">Aguardando humano</Badge>;
       case 'em_atendimento_humano':
         return <Badge className="bg-blue-500/10 text-blue-700 border-blue-200 text-[10px]">Com atendente</Badge>;
+      case 'aguardando_avaliacao':
+        return <Badge className="bg-violet-500/10 text-violet-700 border-violet-200 text-[10px]">Aguardando avaliação</Badge>;
       case 'encerrado':
         return <Badge variant="outline" className="text-[10px]">Encerrada</Badge>;
       default:
@@ -179,6 +186,9 @@ export function ConversationsTab({ conversations, onStatusChange, isUpdating, on
                         <p className="text-[10px] text-muted-foreground">
                           {conv.profiles?.nome ? `Responsável: ${conv.profiles.nome}` : 'Sem responsável'} · Prioridade {conv.prioridade}
                         </p>
+                        {conv.sla_limite_em && !conv.primeira_resposta_em && new Date(conv.sla_limite_em) < new Date() && (
+                          <p className="text-[10px] font-medium text-destructive">SLA de resposta vencido</p>
+                        )}
                       </div>
                       <div className="text-right flex-shrink-0 space-y-1">
                         {getStatusBadge(conv.status)}
@@ -194,8 +204,8 @@ export function ConversationsTab({ conversations, onStatusChange, isUpdating, on
                               Devolver à IA
                             </Button>
                           )}
-                          {conv.status !== 'encerrado' && (
-                            <Button size="sm" variant="ghost" disabled={isUpdating} onClick={(event) => { event.stopPropagation(); onStatusChange(conv.id, 'encerrado'); }}>
+                          {conv.status === 'em_atendimento_humano' && (
+                            <Button size="sm" variant="ghost" disabled={isUpdating} onClick={(event) => { event.stopPropagation(); onCloseConversation(conv); }}>
                               Encerrar
                             </Button>
                           )}
@@ -270,6 +280,13 @@ export function ConversationsTab({ conversations, onStatusChange, isUpdating, on
             </ScrollArea>
             {selected.status === 'em_atendimento_humano' ? (
               <div className="flex gap-2">
+                <input ref={fileInputRef} className="hidden" type="file" accept="image/jpeg,image/png,image/webp,audio/mpeg,audio/ogg,audio/mp4,application/pdf" onChange={event => {
+                  const file = event.target.files?.[0];
+                  if (file) void onSendMedia(selected, file).finally(() => { event.target.value = ''; });
+                }} />
+                <Button type="button" size="icon" variant="outline" aria-label="Enviar anexo" disabled={isSendingMedia} onClick={() => fileInputRef.current?.click()}>
+                  <Paperclip className="h-4 w-4" />
+                </Button>
                 <Input
                   value={reply}
                   maxLength={4000}

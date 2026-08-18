@@ -209,6 +209,45 @@ export function useWhatsAppMutations() {
     onError: (error) => toast.error('Falha ao resumir a conversa: ' + error.message),
   });
 
+  const sendHumanMedia = useMutation({
+    mutationFn: async ({ conversationId, sessionId, to, file }: { conversationId: string; sessionId: string; to: string; file: File }) => {
+      if (file.size > 8 * 1024 * 1024) throw new Error('O arquivo deve ter no máximo 8 MB.');
+      const allowed = ['image/jpeg', 'image/png', 'image/webp', 'audio/mpeg', 'audio/ogg', 'audio/mp4', 'application/pdf'];
+      if (!allowed.includes(file.type)) throw new Error('Envie JPG, PNG, WebP, MP3, OGG, M4A ou PDF.');
+      const mediaBase64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = () => reject(new Error('Não foi possível ler o arquivo.'));
+        reader.readAsDataURL(file);
+      });
+      const { data, error } = await supabase.functions.invoke('whatsapp-evolution', {
+        body: { action: 'send_media', conversation_id: conversationId, session_id: sessionId, to, media_base64: mediaBase64, mime_type: file.type, file_name: file.name },
+      });
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || 'Falha ao enviar anexo.');
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['whatsapp-messages'], exact: false });
+      toast.success('Anexo enviado pelo WhatsApp.');
+    },
+    onError: (error) => toast.error('Não foi possível enviar o anexo: ' + error.message),
+  });
+
+  const requestSatisfaction = useMutation({
+    mutationFn: async ({ conversationId, sessionId, to }: { conversationId: string; sessionId: string; to: string }) => {
+      const { data, error } = await supabase.functions.invoke('whatsapp-evolution', {
+        body: { action: 'request_satisfaction', conversation_id: conversationId, session_id: sessionId, to },
+      });
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || 'Falha ao encerrar atendimento.');
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['whatsapp-conversations'], exact: false });
+      toast.success('Atendimento encerrado e avaliação solicitada.');
+    },
+    onError: (error) => toast.error('Não foi possível encerrar: ' + error.message),
+  });
+
   const sendHumanMessage = useMutation({
     mutationFn: async ({ conversationId, sessionId, to, message }: { conversationId: string; sessionId: string; to: string; message: string }) => {
       const cleanMessage = message.trim();
@@ -243,5 +282,7 @@ export function useWhatsAppMutations() {
     addInternalNote,
     updateConversationPriority,
     generateConversationSummary,
+    sendHumanMedia,
+    requestSatisfaction,
   };
 }

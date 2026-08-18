@@ -37,6 +37,8 @@ export default function AgenteIA() {
     addInternalNote,
     updateConversationPriority,
     generateConversationSummary,
+    sendHumanMedia,
+    requestSatisfaction,
   } = useWhatsAppMutations();
 
   if (planLoading) {
@@ -121,6 +123,9 @@ export default function AgenteIA() {
             onPriorityChange={(conversationId, priority) => updateConversationPriority.mutate({ conversationId, priority })}
             onGenerateSummary={(conversationId) => generateConversationSummary.mutate(conversationId)}
             isGeneratingSummary={generateConversationSummary.isPending}
+            onSendMedia={(conversation, file) => sendHumanMedia.mutateAsync({ conversationId: conversation.id, sessionId: conversation.session_id, to: conversation.remote_jid, file })}
+            isSendingMedia={sendHumanMedia.isPending}
+            onCloseConversation={(conversation) => requestSatisfaction.mutate({ conversationId: conversation.id, sessionId: conversation.session_id, to: conversation.remote_jid })}
           />
         </TabsContent>
       </Tabs>
