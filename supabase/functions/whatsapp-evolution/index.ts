@@ -9,6 +9,7 @@ interface EvolutionRequest {
   action: 'create_instance' | 'get_qr_code' | 'check_status' | 'send_message' | 'delete_instance' | 'list_instances'
   instance_name?: string
   session_id?: string
+  conversation_id?: string
   to?: string
   message?: string
 }
@@ -79,7 +80,7 @@ Deno.serve(async (req) => {
       .from('user_roles').select('role').eq('user_id', user.id).eq('role', 'admin').maybeSingle()
 
     const body: EvolutionRequest = await req.json()
-    const { action, instance_name, session_id, to, message } = body
+    const { action, instance_name, session_id, conversation_id, to, message } = body
 
     const ACOES_DE_ADMIN = new Set(['create_instance', 'delete_instance', 'get_qr_code'])
     if (ACOES_DE_ADMIN.has(action) && !ehAdmin) {
@@ -302,8 +303,8 @@ Deno.serve(async (req) => {
       }
 
       case 'send_message': {
-        if ((!instance_name && !session_id) || !to || !message) {
-          throw new Error('instance_name (ou session_id), to e message são obrigatórios')
+        if ((!instance_name && !session_id) || !conversation_id || !to || !message) {
+          throw new Error('session_id, conversation_id, to e message são obrigatórios')
         }
 
         // O `instance_name` vinha do corpo e ia direto para a Evolution API:
@@ -311,6 +312,23 @@ Deno.serve(async (req) => {
         // mensagem em nome dela, para os pacientes dela.
         const instanceName = await resolverInstanciaDaClinica()
         if (!instanceName) return naoEncontrada()
+
+        const { data: conversa } = await supabase
+          .from('whatsapp_conversations')
+          .select('id, remote_jid, session_id, status')
+          .eq('id', conversation_id)
+          .eq('clinica_id', clinicaId)
+          .eq('session_id', session_id!)
+          .maybeSingle()
+        const destinoNormalizado = String(to).replace(/\D/g, '')
+        const conversaNormalizada = String((conversa as any)?.remote_jid || '').replace(/\D/g, '')
+        if (!conversa || destinoNormalizado !== conversaNormalizada) return naoEncontrada()
+        if ((conversa as any).status !== 'em_atendimento_humano') {
+          return new Response(
+            JSON.stringify({ error: 'Assuma a conversa antes de enviar uma resposta humana.' }),
+            { status: 409, headers: corsHeaders },
+          )
+        }
 
         const sendResponse = await fetch(`${evolutionApiUrl}/message/sendText/${instanceName}`, {
           method: 'POST',
@@ -330,6 +348,25 @@ Deno.serve(async (req) => {
         }
 
         result = await sendResponse.json()
+
+        if (conversa) {
+          const providerMessageId = result?.key?.id || result?.messageId || null
+          const { error: messageError } = await supabase.from('whatsapp_messages').insert({
+            conversation_id: conversa.id,
+            clinica_id: clinicaId,
+            message_id: providerMessageId,
+            direcao: 'saida',
+            tipo: 'texto',
+            conteudo: message.trim(),
+            status: 'enviado',
+            metadata: { origem: 'atendente', usuario_id: user.id },
+          })
+          if (messageError) console.error('[Supabase] Sent message audit error:', messageError)
+          await supabase.from('whatsapp_conversations')
+            .update({ ultima_mensagem_at: new Date().toISOString() })
+            .eq('id', conversa.id)
+            .eq('clinica_id', clinicaId)
+        }
         break
       }
 

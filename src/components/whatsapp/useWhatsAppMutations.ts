@@ -150,6 +150,25 @@ export function useWhatsAppMutations() {
     onError: (error) => toast.error('Não foi possível atualizar a conversa: ' + error.message),
   });
 
+  const sendHumanMessage = useMutation({
+    mutationFn: async ({ conversationId, sessionId, to, message }: { conversationId: string; sessionId: string; to: string; message: string }) => {
+      const cleanMessage = message.trim();
+      if (!cleanMessage) throw new Error('Digite uma mensagem.');
+      if (cleanMessage.length > 4000) throw new Error('A mensagem deve ter no máximo 4.000 caracteres.');
+      const { data, error } = await supabase.functions.invoke('whatsapp-evolution', {
+        body: { action: 'send_message', conversation_id: conversationId, session_id: sessionId, to, message: cleanMessage },
+      });
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || 'Falha ao enviar mensagem.');
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['whatsapp-messages'], exact: false });
+      queryClient.invalidateQueries({ queryKey: ['whatsapp-conversations'], exact: false });
+      toast.success('Mensagem enviada pelo WhatsApp.');
+    },
+    onError: (error) => toast.error('Não foi possível enviar: ' + error.message),
+  });
+
   return {
     createAgent,
     updateAgent,
@@ -160,5 +179,6 @@ export function useWhatsAppMutations() {
     deleteSession,
     linkAgentToSession,
     updateConversationStatus,
+    sendHumanMessage,
   };
 }

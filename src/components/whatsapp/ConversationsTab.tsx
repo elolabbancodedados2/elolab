@@ -1,24 +1,42 @@
-import { useState, useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { motion } from 'framer-motion';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { MessageSquare, User, Search, Clock, CheckCircle2, AlertCircle } from 'lucide-react';
+import { MessageSquare, User, Search, Clock, CheckCircle2, AlertCircle, Send, X } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { WhatsAppConversation } from './types';
 import { Button } from '@/components/ui/button';
+import { useWhatsAppMessages } from './useWhatsAppQueries';
 
 interface ConversationsTabProps {
   conversations: WhatsAppConversation[];
   onStatusChange: (conversationId: string, status: string) => void;
   isUpdating: boolean;
+  onSendMessage: (conversation: WhatsAppConversation, message: string) => Promise<void>;
+  isSending: boolean;
 }
 
-export function ConversationsTab({ conversations, onStatusChange, isUpdating }: ConversationsTabProps) {
+export function ConversationsTab({ conversations, onStatusChange, isUpdating, onSendMessage, isSending }: ConversationsTabProps) {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('todos');
+  const [selected, setSelected] = useState<WhatsAppConversation | null>(null);
+  const [reply, setReply] = useState('');
+  const { data: messages = [], isLoading: loadingMessages } = useWhatsAppMessages(selected?.id || null);
+
+  useEffect(() => {
+    if (!selected) return;
+    const updated = conversations.find(conversation => conversation.id === selected.id);
+    if (updated && updated.status !== selected.status) setSelected(updated);
+  }, [conversations, selected]);
+
+  const handleSend = async () => {
+    if (!selected || !reply.trim()) return;
+    await onSendMessage(selected, reply);
+    setReply('');
+  };
 
   const filtered = useMemo(() => {
     return conversations.filter(c => {
@@ -124,6 +142,7 @@ export function ConversationsTab({ conversations, onStatusChange, isUpdating }: 
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: i * 0.03 }}
                       className="flex items-center gap-3 px-4 py-3 hover:bg-muted/40 transition-colors cursor-pointer"
+                      onClick={() => setSelected(conv)}
                     >
                       <div className="relative">
                         <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center">
@@ -147,17 +166,17 @@ export function ConversationsTab({ conversations, onStatusChange, isUpdating }: 
                         <p className="text-[10px] text-muted-foreground">{timeAgo}</p>
                         <div className="flex justify-end gap-1 pt-1">
                           {conv.status === 'aguardando_humano' && (
-                            <Button size="sm" variant="outline" disabled={isUpdating} onClick={() => onStatusChange(conv.id, 'em_atendimento_humano')}>
+                            <Button size="sm" variant="outline" disabled={isUpdating} onClick={(event) => { event.stopPropagation(); onStatusChange(conv.id, 'em_atendimento_humano'); }}>
                               Assumir
                             </Button>
                           )}
                           {conv.status === 'em_atendimento_humano' && (
-                            <Button size="sm" variant="outline" disabled={isUpdating} onClick={() => onStatusChange(conv.id, 'ativo')}>
+                            <Button size="sm" variant="outline" disabled={isUpdating} onClick={(event) => { event.stopPropagation(); onStatusChange(conv.id, 'ativo'); }}>
                               Devolver à IA
                             </Button>
                           )}
                           {conv.status !== 'encerrado' && (
-                            <Button size="sm" variant="ghost" disabled={isUpdating} onClick={() => onStatusChange(conv.id, 'encerrado')}>
+                            <Button size="sm" variant="ghost" disabled={isUpdating} onClick={(event) => { event.stopPropagation(); onStatusChange(conv.id, 'encerrado'); }}>
                               Encerrar
                             </Button>
                           )}
@@ -168,6 +187,63 @@ export function ConversationsTab({ conversations, onStatusChange, isUpdating }: 
                 })}
               </div>
             </ScrollArea>
+          </CardContent>
+        </Card>
+      )}
+
+      {selected && (
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+            <div>
+              <CardTitle className="text-base">{selected.pacientes?.nome || selected.remote_jid.replace('@s.whatsapp.net', '')}</CardTitle>
+              <p className="text-xs text-muted-foreground">Histórico do atendimento</p>
+            </div>
+            <Button size="icon" variant="ghost" aria-label="Fechar conversa" onClick={() => setSelected(null)}>
+              <X className="h-4 w-4" />
+            </Button>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <ScrollArea className="h-[380px] rounded-lg border bg-muted/20 p-3">
+              {loadingMessages ? (
+                <p className="text-sm text-muted-foreground">Carregando mensagens...</p>
+              ) : messages.length === 0 ? (
+                <p className="py-12 text-center text-sm text-muted-foreground">Nenhuma mensagem registrada.</p>
+              ) : (
+                <div className="space-y-2 pr-3">
+                  {messages.map(message => (
+                    <div key={message.id} className={`flex ${message.direcao === 'saida' ? 'justify-end' : 'justify-start'}`}>
+                      <div className={`max-w-[82%] rounded-2xl px-3 py-2 text-sm ${message.direcao === 'saida' ? 'rounded-br-sm bg-primary text-primary-foreground' : 'rounded-bl-sm border bg-background'}`}>
+                        <p className="whitespace-pre-wrap break-words">{message.conteudo}</p>
+                        <p className={`mt-1 text-[10px] ${message.direcao === 'saida' ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
+                          {message.created_at ? format(new Date(message.created_at), 'dd/MM HH:mm') : ''}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </ScrollArea>
+            {selected.status === 'em_atendimento_humano' ? (
+              <div className="flex gap-2">
+                <Input
+                  value={reply}
+                  maxLength={4000}
+                  placeholder="Digite a resposta do atendente..."
+                  onChange={event => setReply(event.target.value)}
+                  onKeyDown={event => {
+                    if (event.key === 'Enter' && !event.shiftKey) {
+                      event.preventDefault();
+                      void handleSend();
+                    }
+                  }}
+                />
+                <Button disabled={isSending || !reply.trim()} onClick={() => void handleSend()}>
+                  <Send className="mr-2 h-4 w-4" />Enviar
+                </Button>
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">Assuma a conversa para responder como atendente.</p>
+            )}
           </CardContent>
         </Card>
       )}

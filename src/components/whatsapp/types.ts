@@ -30,10 +30,20 @@ export interface WhatsAppSession {
 
 export interface WhatsAppConversation {
   id: string;
+  session_id: string;
   remote_jid: string;
   status: string;
   ultima_mensagem_at: string;
   pacientes?: { nome: string } | null;
+}
+
+export interface WhatsAppMessage {
+  id: string;
+  direcao: string;
+  conteudo: string | null;
+  status: string | null;
+  created_at: string | null;
+  metadata: Record<string, unknown> | null;
 }
 
 export interface WhatsAppStats {

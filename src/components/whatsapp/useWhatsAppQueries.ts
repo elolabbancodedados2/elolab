@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { WhatsAppAgent, WhatsAppSession, WhatsAppConversation, WhatsAppStats } from './types';
+import { WhatsAppAgent, WhatsAppSession, WhatsAppConversation, WhatsAppMessage, WhatsAppStats } from './types';
 import { todayDateOnly } from '@/lib/dateOnly';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 
@@ -56,6 +56,27 @@ export function useWhatsAppConversations() {
       return data as WhatsAppConversation[];
     },
     enabled: !!profile?.clinica_id,
+  });
+}
+
+export function useWhatsAppMessages(conversationId: string | null) {
+  const { profile } = useSupabaseAuth();
+  return useQuery({
+    queryKey: ['whatsapp-messages', profile?.clinica_id, conversationId],
+    queryFn: async () => {
+      if (!profile?.clinica_id || !conversationId) return [] as WhatsAppMessage[];
+      const { data, error } = await supabase
+        .from('whatsapp_messages')
+        .select('id, direcao, conteudo, status, created_at, metadata')
+        .eq('clinica_id', profile.clinica_id)
+        .eq('conversation_id', conversationId)
+        .order('created_at', { ascending: true })
+        .limit(200);
+      if (error) throw error;
+      return data as WhatsAppMessage[];
+    },
+    enabled: !!profile?.clinica_id && !!conversationId,
+    refetchInterval: conversationId ? 3000 : false,
   });
 }
 

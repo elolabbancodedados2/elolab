@@ -32,6 +32,7 @@ export default function AgenteIA() {
     deleteSession,
     linkAgentToSession,
     updateConversationStatus,
+    sendHumanMessage,
   } = useWhatsAppMutations();
 
   if (planLoading) {
@@ -103,6 +104,13 @@ export default function AgenteIA() {
             conversations={conversations}
             onStatusChange={(conversationId, status) => updateConversationStatus.mutate({ conversationId, status })}
             isUpdating={updateConversationStatus.isPending}
+            onSendMessage={(conversation, message) => sendHumanMessage.mutateAsync({
+              conversationId: conversation.id,
+              sessionId: conversation.session_id,
+              to: conversation.remote_jid,
+              message,
+            })}
+            isSending={sendHumanMessage.isPending}
           />
         </TabsContent>
       </Tabs>
