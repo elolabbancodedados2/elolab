@@ -5405,42 +5405,79 @@ export type Database = {
       }
       whatsapp_conversations: {
         Row: {
+          atendimento_humano_em: string | null
           clinica_id: string | null
           contexto: Json | null
           created_at: string | null
+          encerrada_em: string | null
           id: string
+          nao_lidas: number
           paciente_id: string | null
+          primeira_resposta_em: string | null
+          prioridade: string
           remote_jid: string
+          responsavel_id: string | null
+          resumo_ia: string | null
+          satisfacao_comentario: string | null
+          satisfacao_nota: number | null
           session_id: string | null
+          sla_limite_em: string | null
           status: string | null
           ultima_mensagem_at: string | null
           updated_at: string | null
         }
         Insert: {
+          atendimento_humano_em?: string | null
           clinica_id?: string | null
           contexto?: Json | null
           created_at?: string | null
+          encerrada_em?: string | null
           id?: string
+          nao_lidas?: number
           paciente_id?: string | null
+          primeira_resposta_em?: string | null
+          prioridade?: string
           remote_jid: string
+          responsavel_id?: string | null
+          resumo_ia?: string | null
+          satisfacao_comentario?: string | null
+          satisfacao_nota?: number | null
           session_id?: string | null
+          sla_limite_em?: string | null
           status?: string | null
           ultima_mensagem_at?: string | null
           updated_at?: string | null
         }
         Update: {
+          atendimento_humano_em?: string | null
           clinica_id?: string | null
           contexto?: Json | null
           created_at?: string | null
+          encerrada_em?: string | null
           id?: string
+          nao_lidas?: number
           paciente_id?: string | null
+          primeira_resposta_em?: string | null
+          prioridade?: string
           remote_jid?: string
+          responsavel_id?: string | null
+          resumo_ia?: string | null
+          satisfacao_comentario?: string | null
+          satisfacao_nota?: number | null
           session_id?: string | null
+          sla_limite_em?: string | null
           status?: string | null
           ultima_mensagem_at?: string | null
           updated_at?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "whatsapp_conversations_responsavel_id_fkey"
+            columns: ["responsavel_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "whatsapp_conversations_clinica_id_fkey"
             columns: ["clinica_id"]
