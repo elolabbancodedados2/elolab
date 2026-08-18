@@ -66,4 +66,12 @@ jobs:
       - name: Verify production after deploy
         env:
           PRODUCAO_URL: https://app.elolab.com.br
-        run: npx playwright test tests/producao-smoke.spec.ts --reporter=line
+        run: |
+          # Cloudflare Pages pode servir o HTML novo antes de todos os POPs
+          # enxergarem os chunks correspondentes. Revalidar após um intervalo
+          # distingue propagação eventual de uma regressão persistente.
+          for tentativa in 1 2 3; do
+            npx playwright test tests/producao-smoke.spec.ts --reporter=line && exit 0
+            [ "$tentativa" -eq 3 ] && exit 1
+            sleep 15
+          done
