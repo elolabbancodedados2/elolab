@@ -168,7 +168,7 @@ export const menuGroups: MenuGroup[] = [
       { label: 'Meu Plano', icon: CreditCard, href: '/planos', roles: ['admin'] },
       { label: 'Analytics', icon: ActivitySquare, href: '/analytics' },
       { label: 'Automações', icon: Sparkles, href: '/automacoes' },
-      { label: 'Agente IA WhatsApp', icon: BotMessageSquare, href: '/agente-ia', badge: 'Em breve' },
+      { label: 'Agente IA', icon: BotMessageSquare, href: '/agente-ia' },
       { label: 'Configurações', icon: Settings2, href: '/configuracoes' },
       { label: 'Configurações Avançadas', icon: Gauge, href: '/configuracoes-avancadas' },
       { label: 'Direitos LGPD', icon: ScrollText, href: '/lgpd-pacientes' },

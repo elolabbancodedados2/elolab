@@ -41,6 +41,15 @@ jobs:
       - name: Dependency audit
         run: npm audit --audit-level=high
 
+      - name: Install E2E browser
+        run: npx playwright install --with-deps chromium
+
+      - name: End-to-end tests
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+        run: npm run test:e2e -- --workers=4
+
       - name: Build
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
@@ -53,9 +62,6 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: pages deploy dist --project-name=elolab-app --branch=main --commit-dirty=true
-
-      - name: Install smoke-test browser
-        run: npx playwright install --with-deps chromium
 
       - name: Verify production after deploy
         env:
