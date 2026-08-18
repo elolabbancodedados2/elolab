@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { Wrench, Clock, ShieldAlert } from 'lucide-react';
+import { useLocation } from 'react-router-dom';
 import logoIcon from '@/assets/logo-elolab-icon.png';
 
 export interface EstadoDaPlataforma {
@@ -73,10 +74,14 @@ export function useEstadoDaPlataforma() {
 export function ModoManutencao({ children }: { children: React.ReactNode }) {
   const estado = useEstadoDaPlataforma();
   const { isPlatformAdmin, isLoading } = useSupabaseAuth();
+  const { pathname } = useLocation();
 
   const emManutencao = estado?.manutencao === true;
 
-  if (!emManutencao || isLoading) return <>{children}</>;
+  // O login precisa continuar disponível para o dono da plataforma recuperar
+  // acesso. Isso não libera módulos: depois de autenticar, usuários comuns
+  // voltam a cair nesta tela e só platform_admin atravessa a proteção.
+  if (!emManutencao || isLoading || pathname === '/auth' || pathname === '/redefinir-senha') return <>{children}</>;
 
   if (isPlatformAdmin) {
     return (
