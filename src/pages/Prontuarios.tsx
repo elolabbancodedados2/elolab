@@ -32,6 +32,7 @@ import {
   ReturnScheduler, DischargeReport, AnexosProntuario,
   VitalSignsChart, PatientTimeline, PatientPhoto, DigitalSignature,
   DrugInteractionChecker, ProcedimentosDoAtendimento,
+  ClinicalSafetyPanel,
 } from '@/components/clinical';
 import { ProntuarioAdendos } from '@/components/clinical/ProntuarioAdendos';
 import { usePacientes, useMedicos, useAgendamentos, useSupabaseQuery } from '@/hooks/useSupabaseData';
@@ -1157,6 +1158,8 @@ export default function Prontuarios() {
             <>
               {/* Patient file card */}
               <FichaPaciente paciente={selectedPaciente} convenioNome={getConvenioNome(selectedPaciente.convenio_id)} />
+
+              <ClinicalSafetyPanel pacienteId={selectedPacienteId!} alergias={selectedPaciente.alergias} />
 
               {/* Actions bar */}
               <div className="flex items-center gap-2">

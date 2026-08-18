@@ -9,6 +9,7 @@ export { ClinicalProtocols } from './ClinicalProtocols';
 export { ReturnScheduler } from './ReturnScheduler';
 export { VitalSignsChart } from './VitalSignsChart';
 export { DrugInteractionChecker } from './DrugInteractionChecker';
+export { ClinicalSafetyPanel } from './ClinicalSafetyPanel';
 export { DischargeReport } from './DischargeReport';
 export { DigitalSignature } from './DigitalSignature';
 export { ProcedimentosDoAtendimento } from './ProcedimentosDoAtendimento';
