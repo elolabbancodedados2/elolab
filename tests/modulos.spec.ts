@@ -106,6 +106,16 @@ test.describe('Módulos — nenhum quebra ao carregar', () => {
         expect(resposta?.status(), `${rota} respondeu ${resposta?.status()}`).toBeLessThan(500);
         await page.waitForLoadState('networkidle');
 
+        // A autenticação consulta o Supabase de forma assíncrona. Em CI, quatro
+        // workers podem concluir `networkidle` antes de o provider terminar de
+        // resolver a sessão; aguardar a URL evita confundir latência externa
+        // com uma rota pública. Se o redirect realmente não ocorrer, o timeout
+        // continua falhando o teste.
+        await page.waitForURL(
+          url => ['/auth', '/', '/login'].includes(url.pathname),
+          { timeout: 15_000 },
+        );
+
         expect(excecoes, `${rota} estourou exceção: ${excecoes.join(' | ')}`).toHaveLength(0);
 
         // Sem sessão o destino tem que ser a tela de login ou a landing —
