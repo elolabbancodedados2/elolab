@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
-import { Wrench, Clock, ShieldAlert } from 'lucide-react';
+import { DatabaseZap, Clock, ShieldAlert } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import logoIcon from '@/assets/logo-elolab-icon.png';
 
@@ -117,15 +117,15 @@ export function ModoManutencao({ children }: { children: React.ReactNode }) {
         </div>
 
         <div className="mx-auto mb-5 flex h-11 w-11 items-center justify-center rounded-full bg-warning/15">
-          <Wrench className="h-5 w-5 text-warning" />
+          <DatabaseZap className="h-5 w-5 text-warning" />
         </div>
 
         <h1 id="manutencao-titulo" className="mb-3 text-2xl font-bold tracking-tight">
-          {estado?.titulo || 'Estamos em manutenção'}
+          {estado?.titulo || 'Banco de dados desconectado'}
         </h1>
 
         <p id="manutencao-mensagem" className="text-sm leading-relaxed text-muted-foreground">
-          {estado?.mensagem}
+          {estado?.mensagem || 'Não foi possível conectar ao banco de dados. O sistema tentará novamente automaticamente.'}
         </p>
 
         {previsao && (
