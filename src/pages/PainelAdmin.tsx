@@ -33,6 +33,7 @@ import { cn } from '@/lib/utils';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { parseDateOnly } from '@/lib/dateOnly';
 import { Progress } from '@/components/ui/progress';
+import { downloadStringAsFile } from '@/lib/auditExport';
 
 const SUPER_ADMIN_EMAIL = import.meta.env.VITE_SUPER_ADMIN_EMAIL || 'contato@elolab.com.br';
 
@@ -94,6 +95,7 @@ export default function PainelAdmin() {
   const [editFormData, setEditFormData] = useState<any>({});
   const [isSaving, setIsSaving] = useState(false);
   const [contaEmFerramentas, setContaEmFerramentas] = useState<any>(null);
+  const [auditSearch, setAuditSearch] = useState('');
 
   const isSuperAdmin = user?.email === SUPER_ADMIN_EMAIL;
 
@@ -163,6 +165,21 @@ export default function PainelAdmin() {
       }[];
     },
   });
+
+  const { data: auditoriaUniversal = [], isLoading: carregandoAuditoriaUniversal } = useQuery({
+    queryKey: ['admin-auditoria-universal'],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('audit_log').select('*').order('timestamp', { ascending: false }).limit(1000);
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  const auditoriaUniversalFiltrada = useMemo(() => {
+    const termo = auditSearch.trim().toLowerCase();
+    if (!termo) return auditoriaUniversal;
+    return auditoriaUniversal.filter((item: any) => [item.collection, item.action, item.record_name, item.user_name, item.clinica_id].some(valor => String(valor || '').toLowerCase().includes(termo)));
+  }, [auditoriaUniversal, auditSearch]);
 
   const { data: saudePlataforma } = useQuery({
     queryKey: ['admin-saude-plataforma'],
@@ -838,6 +855,14 @@ export default function PainelAdmin() {
 
         {/* Auditoria */}
         <TabsContent value="auditoria" className="space-y-4">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="relative max-w-md flex-1"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"/><Input className="pl-9" value={auditSearch} onChange={e => setAuditSearch(e.target.value)} placeholder="Buscar tabela, ação, pessoa ou clínica..."/></div>
+            <Button variant="outline" onClick={() => downloadStringAsFile({ content: JSON.stringify(auditoriaUniversalFiltrada, null, 2), filename: `auditoria-elolab-${new Date().toISOString().slice(0,10)}.json`, mimeType: 'application/json;charset=utf-8' })}>Exportar trilha</Button>
+          </div>
+          <Card>
+            <CardHeader><CardTitle className="text-base">Trilha universal</CardTitle><CardDescription>Alterações clínicas, financeiras e administrativas registradas automaticamente pelo banco. Somente leitura.</CardDescription></CardHeader>
+            <CardContent className="p-0"><div className="max-h-[480px] overflow-auto"><Table><TableHeader><TableRow><TableHead>Quando</TableHead><TableHead>Ação</TableHead><TableHead>Módulo</TableHead><TableHead>Registro</TableHead><TableHead>Responsável</TableHead><TableHead>Clínica</TableHead></TableRow></TableHeader><TableBody>{carregandoAuditoriaUniversal ? <TableRow><TableCell colSpan={6}><Skeleton className="h-24 w-full"/></TableCell></TableRow> : auditoriaUniversalFiltrada.map((item: any) => <TableRow key={item.id}><TableCell className="text-xs whitespace-nowrap">{item.timestamp ? new Date(item.timestamp).toLocaleString('pt-BR') : '—'}</TableCell><TableCell><Badge variant="outline">{item.action}</Badge></TableCell><TableCell className="text-xs">{item.collection}</TableCell><TableCell className="text-xs">{item.record_name || item.record_id}</TableCell><TableCell className="text-xs">{item.user_name || item.user_id || 'Sistema'}</TableCell><TableCell className="text-xs">{item.clinica_id || '—'}</TableCell></TableRow>)}</TableBody></Table></div></CardContent>
+          </Card>
           <Card>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
