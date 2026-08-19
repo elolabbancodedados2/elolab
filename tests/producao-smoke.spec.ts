@@ -44,20 +44,17 @@ test.describe('Produção — smoke', () => {
     // No primeiro acesso a um commit novo, main.tsx limpa o service worker e
     // faz um redirect com cache_reset=1. Aguardar esse ciclo evita classificar
     // o estado transitório "Carregando..." como tela branca.
-    const bloqueio = page.getByRole('alertdialog');
-    await expect(bloqueio).toBeVisible();
-    await expect(bloqueio.getByRole('heading')).toContainText(/migração para SQL/i);
-    await expect(bloqueio).toContainText(/temporariamente indisponível/i);
+    await expect.poll(async () => ((await page.textContent('body')) ?? '').trim().length, {
+      message: 'produção renderizou tela em branco', timeout: 15_000,
+    }).toBeGreaterThan(200);
   });
 
-  test('o bloqueio impede acesso a todas as rotas principais', async ({ page }) => {
-    for (const rota of ['/auth', '/dashboard', '/admin']) {
-      await page.goto(`${PRODUCAO_URL}${rota}`, { waitUntil: 'networkidle' });
-      const bloqueio = page.getByRole('alertdialog');
-      await expect(bloqueio).toBeVisible();
-      await expect(bloqueio.getByRole('heading')).toContainText(/migração para SQL/i);
-      await expect(page.locator('input[type="email"]')).toHaveCount(0);
-    }
+  test('a tela de login carrega e aceita digitação', async ({ page }) => {
+    await page.goto(`${PRODUCAO_URL}/auth`, { waitUntil: 'networkidle' });
+    const email = page.locator('input[type="email"]').first();
+    await expect(email).toBeVisible();
+    await email.fill('teste@exemplo.com');
+    await expect(email).toHaveValue('teste@exemplo.com');
   });
 
   test('o bundle e o service worker são servidos com o cache certo', async ({ request }) => {
