@@ -111,11 +111,13 @@ Deno.serve(async (req) => {
       "";
     console.log("Webhook recebido:", JSON.stringify(data));
 
+    const internalSecret = req.headers.get('x-elolab-internal');
+    const trustedInternal = !!internalSecret && internalSecret === Deno.env.get('CRON_SECRET');
     // Validate signature — MERCADOPAGO_WEBHOOK_SECRET é obrigatório.
     // Se ausente, recusamos webhooks para impedir spoofing (ativar conta de graça
     // sem ter pago). Configure em Supabase Dashboard → Edge Functions → Secrets.
     const mpWebhookSecret = Deno.env.get("MERCADOPAGO_WEBHOOK_SECRET");
-    if (!mpWebhookSecret) {
+    if (!trustedInternal && !mpWebhookSecret) {
       console.error("MERCADOPAGO_WEBHOOK_SECRET not configured — webhook rejected");
       return new Response(
         JSON.stringify({ error: "Webhook validation not configured. Contact admin." }),
@@ -126,7 +128,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    const isValid = await validateMercadoPagoSignature(req, dataId, mpWebhookSecret);
+    const isValid = trustedInternal || await validateMercadoPagoSignature(req, dataId, mpWebhookSecret!);
     if (!isValid) {
       console.error("Invalid webhook signature");
       return new Response(JSON.stringify({ error: "Invalid signature" }), {

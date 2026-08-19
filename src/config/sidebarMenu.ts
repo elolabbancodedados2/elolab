@@ -204,6 +204,7 @@ export const menuGroups: MenuGroup[] = [
       { label: 'Histórico Financeiro', icon: PiggyBank, href: '/admin/historico-financeiro', superAdminOnly: true },
       { label: 'Acesso Assistido', icon: Shield, href: '/admin/acesso-assistido', superAdminOnly: true },
       { label: 'Integrações por Clínica', icon: Gauge, href: '/admin/integracoes', superAdminOnly: true },
+      { label: 'Filas e Webhooks', icon: ActivitySquare, href: '/admin/filas', superAdminOnly: true },
       { label: 'Documentação', icon: BookMarked, href: '/documentacao', superAdminOnly: true },
     ],
   },
