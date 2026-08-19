@@ -176,6 +176,7 @@ export const menuGroups: MenuGroup[] = [
       { label: 'Configurações', icon: Settings2, href: '/configuracoes' },
       { label: 'Configurações Avançadas', icon: Gauge, href: '/configuracoes-avancadas' },
       { label: 'Direitos LGPD', icon: ScrollText, href: '/lgpd-pacientes' },
+      { label: 'Suporte', icon: MessageCircle, href: '/suporte' },
     ],
   },
   {
@@ -189,6 +190,7 @@ export const menuGroups: MenuGroup[] = [
       { label: 'CRM', icon: Building2, href: '/admin/crm', superAdminOnly: true },
       { label: 'Clínicas', icon: Building2, href: '/admin/clinicas', superAdminOnly: true },
       { label: 'Painel Admin', icon: Shield, href: '/painel-admin', superAdminOnly: true },
+      { label: 'Central de Suporte', icon: MessageCircle, href: '/admin/suporte', superAdminOnly: true },
       { label: 'Documentação', icon: BookMarked, href: '/documentacao', superAdminOnly: true },
     ],
   },
