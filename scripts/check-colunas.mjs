@@ -25,6 +25,27 @@ function registrarValores(tabela, coluna, lista) {
 const migDir = 'supabase/migrations';
 const schema = new Map();
 
+/** Separa definições por vírgulas externas, sem quebrar CHECKs e tipos parametrizados. */
+function separarDefinicoes(corpo) {
+  const partes = [];
+  let atual = '', nivel = 0, aspas = null;
+  for (let i = 0; i < corpo.length; i++) {
+    const ch = corpo[i];
+    if (aspas) {
+      atual += ch;
+      if (ch === aspas && corpo[i - 1] !== '\\') aspas = null;
+      continue;
+    }
+    if (ch === "'" || ch === '"') { aspas = ch; atual += ch; continue; }
+    if (ch === '(' || ch === '[') nivel++;
+    if (ch === ')' || ch === ']') nivel--;
+    if (ch === ',' && nivel === 0) { partes.push(atual); atual = ''; continue; }
+    atual += ch;
+  }
+  if (atual.trim()) partes.push(atual);
+  return partes;
+}
+
 for (const f of fs.readdirSync(migDir).filter(f => f.endsWith('.sql')).sort()) {
   const sql = fs.readFileSync(path.join(migDir, f), 'utf8');
 
@@ -40,7 +61,7 @@ for (const f of fs.readdirSync(migDir).filter(f => f.endsWith('.sql')).sort()) {
   while ((m = createRe.exec(sql))) {
     const tabela = m[1];
     const cols = schema.get(tabela) || new Set();
-    for (const linha of m[2].split('\n')) {
+    for (const linha of separarDefinicoes(m[2].replace(/--.*$/gm, ''))) {
       const c = linha.trim().match(new RegExp(`^(${ID})\\s+[A-Za-z]`, 'i'));
       if (!c || /^(constraint|primary|foreign|unique|check|references)$/i.test(c[1])) continue;
       cols.add(c[1]);
@@ -56,6 +77,24 @@ for (const f of fs.readdirSync(migDir).filter(f => f.endsWith('.sql')).sort()) {
       if (tipo && enums.has(tipo[1])) {
         registrarValores(tabela, c[1], [...enums.get(tipo[1])]);
       }
+    }
+    schema.set(tabela, cols);
+  }
+
+  // Migrations compactadas também são válidas. O parser histórico exigia uma
+  // quebra antes de `);` e por isso ignorava silenciosamente a tabela inteira.
+  const compactCreateRe = /CREATE TABLE (?:IF NOT EXISTS )?(?:public\.)?([a-z_0-9]+)\s*\(([^\r\n]*)\);/gi;
+  while ((m = compactCreateRe.exec(sql))) {
+    const tabela = m[1];
+    const cols = schema.get(tabela) || new Set();
+    for (const linha of separarDefinicoes(m[2])) {
+      const c = linha.trim().match(new RegExp(`^(${ID})\\s+[A-Za-z]`, 'i'));
+      if (!c || /^(constraint|primary|foreign|unique|check|references)$/i.test(c[1])) continue;
+      cols.add(c[1]);
+      const chk = linha.match(new RegExp(`CHECK\\s*\\(\\s*${c[1]}\\s+IN\\s*\\(([^)]*)\\)`, 'i'));
+      if (chk) registrarValores(tabela, c[1], [...chk[1].matchAll(/'([^']*)'/g)].map(x => x[1]));
+      const tipo = linha.trim().match(new RegExp(`^${c[1]}\\s+(?:public\\.)?([a-z_0-9]+)`, 'i'));
+      if (tipo && enums.has(tipo[1])) registrarValores(tabela, c[1], [...enums.get(tipo[1])]);
     }
     schema.set(tabela, cols);
   }
