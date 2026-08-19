@@ -205,6 +205,7 @@ export const menuGroups: MenuGroup[] = [
       { label: 'Acesso Assistido', icon: Shield, href: '/admin/acesso-assistido', superAdminOnly: true },
       { label: 'Integrações por Clínica', icon: Gauge, href: '/admin/integracoes', superAdminOnly: true },
       { label: 'Filas e Webhooks', icon: ActivitySquare, href: '/admin/filas', superAdminOnly: true },
+      { label: 'Incidentes', icon: ActivitySquare, href: '/admin/incidentes', superAdminOnly: true },
       { label: 'Documentação', icon: BookMarked, href: '/documentacao', superAdminOnly: true },
     ],
   },
