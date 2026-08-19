@@ -78,6 +78,7 @@ const PlatformBackups = lazy(() => import("@/pages/PlatformBackups"));
 const PlatformRelatorioExecutivo = lazy(() => import("@/pages/PlatformRelatorioExecutivo"));
 const PlatformCobrancas = lazy(() => import("@/pages/PlatformCobrancas"));
 const PlatformHistoricoFinanceiro = lazy(() => import("@/pages/PlatformHistoricoFinanceiro"));
+const AcessoAssistido = lazy(() => import("@/pages/AcessoAssistido"));
 const TiposConsulta = lazy(() => import("@/pages/TiposConsulta"));
 const RecepcaoCaixa = lazy(() => import("@/pages/RecepcaoCaixa"));
 const ChatInterno = lazy(() => import("@/pages/ChatInterno"));
@@ -294,6 +295,8 @@ function App() {
                           <Route path="/admin/relatorio-executivo" element={<SupabaseProtectedRoute somentePlataforma><PlatformRelatorioExecutivo /></SupabaseProtectedRoute>} />
                           <Route path="/admin/cobrancas" element={<SupabaseProtectedRoute somentePlataforma><PlatformCobrancas /></SupabaseProtectedRoute>} />
                           <Route path="/admin/historico-financeiro" element={<SupabaseProtectedRoute somentePlataforma><PlatformHistoricoFinanceiro /></SupabaseProtectedRoute>} />
+                          <Route path="/admin/acesso-assistido" element={<SupabaseProtectedRoute somentePlataforma><AcessoAssistido /></SupabaseProtectedRoute>} />
+                          <Route path="/acesso-assistido" element={<SupabaseProtectedRoute allowedRoles={['admin']}><AcessoAssistido /></SupabaseProtectedRoute>} />
                           <Route path="/seguranca" element={<SupabaseProtectedRoute><Seguranca /></SupabaseProtectedRoute>} />
                           <Route path="/lgpd-pacientes" element={<SupabaseProtectedRoute allowedRoles={['admin']}><LgpdPacientes /></SupabaseProtectedRoute>} />
                           <Route path="/vitais-graficos" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico', 'enfermagem']}><VitaisGraficos /></SupabaseProtectedRoute>} />

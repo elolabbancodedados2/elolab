@@ -201,6 +201,7 @@ export const menuGroups: MenuGroup[] = [
       { label: 'Relatório Executivo', icon: FileBarChart, href: '/admin/relatorio-executivo', superAdminOnly: true },
       { label: 'Cobranças SaaS', icon: CreditCard, href: '/admin/cobrancas', superAdminOnly: true },
       { label: 'Histórico Financeiro', icon: PiggyBank, href: '/admin/historico-financeiro', superAdminOnly: true },
+      { label: 'Acesso Assistido', icon: Shield, href: '/admin/acesso-assistido', superAdminOnly: true },
       { label: 'Documentação', icon: BookMarked, href: '/documentacao', superAdminOnly: true },
     ],
   },
