@@ -210,6 +210,7 @@ export const menuGroups: MenuGroup[] = [
       { label: 'Limites e Consumo', icon: Gauge, href: '/admin/consumo', superAdminOnly: true },
       { label: 'Onboarding', icon: Building2, href: '/admin/onboarding', superAdminOnly: true },
       { label: 'Domínios e DNS', icon: Gauge, href: '/admin/dominios', superAdminOnly: true },
+      { label: 'Relatórios Agendados', icon: FileBarChart, href: '/admin/relatorios-agendados', superAdminOnly: true },
       { label: 'Documentação', icon: BookMarked, href: '/documentacao', superAdminOnly: true },
     ],
   },
