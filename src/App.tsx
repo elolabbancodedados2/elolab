@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider, QueryCache } from "@tanstack/react-qu
 import { toast } from "sonner";
 import { friendlyErrorMessage } from "@/components/ErrorState";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BloqueioMigracao } from "@/components/BloqueioMigracao";
 import { SupabaseAuthProvider } from "@/contexts/SupabaseAuthContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { SupabaseProtectedRoute } from "@/components/SupabaseProtectedRoute";
@@ -89,7 +90,6 @@ const RepassesMedicos = lazy(() => import("@/pages/RepassesMedicos"));
 const Interoperabilidade = lazy(() => import("@/pages/Interoperabilidade"));
 import { useNotificationScheduler } from "@/hooks/useNotificationScheduler";
 import { CookieConsent } from "@/components/CookieConsent";
-import { ModoManutencao } from "@/components/ModoManutencao";
 
 const queryClient = new QueryClient({
   // Falha de carregamento nunca deve virar tela em branco silenciosa:
@@ -152,6 +152,11 @@ function getRoutingMode(): 'landing' | 'app' {
 function App() {
   const mode = getRoutingMode();
 
+  // Bloqueio total solicitado para a janela de migração. O restante da árvore
+  // (autenticação, consultas, rotas e módulos) não é montado, impedindo uso ou
+  // chamadas de dados enquanto a conversão estiver em andamento.
+  return <ThemeProvider><BloqueioMigracao /></ThemeProvider>;
+
   // Nota: o antigo autoSetupDatabase() rodava a cada carregamento da aplicação e
   // chamava a edge function auto-migrate (DDL com service_role, sem checagem de
   // papel). Removido — migrações passam pelo fluxo normal do Supabase.
@@ -165,11 +170,6 @@ function App() {
             <Sonner />
             <BrowserRouter>
               <SupabaseAuthProvider>
-                {/* Dentro do provedor de autenticação porque precisa saber se
-                    quem está na tela é o dono da plataforma — ele não pode ser
-                    bloqueado, é quem desliga o aviso. Envolve as rotas para
-                    valer em todas as telas, inclusive a de login. */}
-                <ModoManutencao>
                 <AppInitializer>
                 <NotificationBanner />
                 <Suspense fallback={<RouteFallback />}>
@@ -290,7 +290,6 @@ function App() {
                 <InstallPWA />
                 <CookieConsent />
                 </AppInitializer>
-                </ModoManutencao>
               </SupabaseAuthProvider>
             </BrowserRouter>
           </TooltipProvider>
