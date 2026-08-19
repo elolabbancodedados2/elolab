@@ -35,6 +35,7 @@ import {
   CalendarCheck,
   UsersRound,
   FileText,
+  DatabaseBackup,
 } from 'lucide-react';
 import { AppRole } from '@/contexts/SupabaseAuthContext';
 
@@ -196,6 +197,7 @@ export const menuGroups: MenuGroup[] = [
       { label: 'Controle Operacional', icon: Gauge, href: '/admin/operacoes', superAdminOnly: true },
       { label: 'LGPD da Plataforma', icon: ScrollText, href: '/admin/lgpd', superAdminOnly: true },
       { label: 'Logs e Erros', icon: ActivitySquare, href: '/admin/erros', superAdminOnly: true },
+      { label: 'Backups', icon: DatabaseBackup, href: '/admin/backups', superAdminOnly: true },
       { label: 'Documentação', icon: BookMarked, href: '/documentacao', superAdminOnly: true },
     ],
   },

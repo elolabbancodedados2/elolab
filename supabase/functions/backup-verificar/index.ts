@@ -36,7 +36,19 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   if (!cronSecretOk(req)) {
-    return responder({ error: 'não autorizado' }, 401)
+    const authHeader = req.headers.get('Authorization') ?? ''
+    const userClient = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_ANON_KEY')!,
+      { global: { headers: { Authorization: authHeader } } },
+    )
+    const { data: { user }, error: userError } = await userClient.auth.getUser()
+    const { data: isPlatformAdmin } = user
+      ? await userClient.rpc('is_platform_admin')
+      : { data: false }
+    if (userError || !user || !isPlatformAdmin) {
+      return responder({ error: 'não autorizado' }, 401)
+    }
   }
 
   const supabase = createClient(
