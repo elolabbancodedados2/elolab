@@ -32,6 +32,7 @@ import { mensagemDeErro } from '@/lib/erros';
 import { cn } from '@/lib/utils';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { parseDateOnly } from '@/lib/dateOnly';
+import { Progress } from '@/components/ui/progress';
 
 const SUPER_ADMIN_EMAIL = import.meta.env.VITE_SUPER_ADMIN_EMAIL || 'contato@elolab.com.br';
 
@@ -180,6 +181,15 @@ export default function PainelAdmin() {
         agendamentos_no_mes: number | null;
         audits_ultimos_7d: number | null;
       } | null;
+    },
+  });
+
+  const { data: migracoes = [] } = useQuery({
+    queryKey: ['admin-migracoes'],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).from('platform_migration_runs').select('*').order('atualizada_em', { ascending: false });
+      if (error) throw error;
+      return data || [];
     },
   });
 
@@ -468,6 +478,7 @@ export default function PainelAdmin() {
           <TabsTrigger value="subscriptions" className="gap-2"><CreditCard className="h-4 w-4" />Assinaturas</TabsTrigger>
           <TabsTrigger value="metrics" className="gap-2"><BarChart3 className="h-4 w-4" />Métricas</TabsTrigger>
           <TabsTrigger value="auditoria" className="gap-2"><ScrollText className="h-4 w-4" />Auditoria</TabsTrigger>
+          <TabsTrigger value="migrations" className="gap-2"><RefreshCw className="h-4 w-4" />Migrações</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6">
@@ -501,6 +512,11 @@ export default function PainelAdmin() {
               </CardContent>
             </Card>
           </div>
+        </TabsContent>
+
+        <TabsContent value="migrations" className="space-y-4">
+          {migracoes.map((m: any) => <Card key={m.id}><CardHeader><div className="flex items-center justify-between gap-3"><CardTitle className="text-base">{m.nome}</CardTitle><Badge variant={m.status === 'falhou' ? 'destructive' : 'outline'}>{m.status}</Badge></div><CardDescription>{m.mensagem || 'Sem mensagem operacional.'}</CardDescription></CardHeader><CardContent className="space-y-3"><Progress value={m.progresso}/><div className="flex justify-between text-sm"><span>{m.etapa_atual || 'Aguardando próxima etapa'}</span><strong>{m.progresso}%</strong></div><p className="text-xs text-muted-foreground">{m.etapas_concluidas} de {m.total_etapas} etapas concluídas · Atualizado em {new Date(m.atualizada_em).toLocaleString('pt-BR')}</p></CardContent></Card>)}
+          {migracoes.length === 0 && <Card><CardContent className="py-10 text-center text-muted-foreground">Nenhuma migração registrada.</CardContent></Card>}
         </TabsContent>
 
         {/* Users Tab */}
