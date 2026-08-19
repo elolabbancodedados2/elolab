@@ -44,3 +44,6 @@ schema-real.json
 # Artefatos de execução do Playwright
 playwright-report/
 .playwright-cli/
+
+# Credenciais isoladas deste projeto (GitHub/Cloudflare). Nunca versionar.
+.project-auth/
