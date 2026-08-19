@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArchiveRestore, CheckCircle2, DatabaseBackup, FileJson, RefreshCw, ShieldAlert } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -19,6 +19,7 @@ function tamanho(bytes: number) {
 }
 
 export default function PlatformBackups() {
+  const queryClient = useQueryClient();
   const overview = useQuery({
     queryKey: ['platform-backup-overview'],
     queryFn: async () => {
@@ -42,6 +43,9 @@ export default function PlatformBackups() {
   };
 
   const arquivos = overview.data?.files || [];
+  const restores = useQuery({ queryKey:['platform-restores'], queryFn: async()=>{ const {data,error}=await (supabase as any).from('platform_restore_requests').select('*').order('requested_at',{ascending:false}).limit(30); if(error) throw error; return data as Array<{id:string;backup_name:string;reason:string;scope:string;status:string;requested_at:string}>; } });
+  const solicitar = async (name:string) => { const reason=window.prompt('Justifique a restauração (mínimo de 20 caracteres):'); if(!reason)return; const{error}=await(supabase as any).rpc('platform_request_restore',{p_backup_name:name,p_reason:reason,p_scope:'full',p_scope_ref:null}); if(error)return toast.error('Solicitação recusada',{description:error.message});toast.success('Solicitação criada; outro administrador deve aprovar');queryClient.invalidateQueries({queryKey:['platform-restores']}); };
+  const decidir = async(id:string,approve:boolean)=>{const{error}=await(supabase as any).rpc('platform_decide_restore',{p_id:id,p_approve:approve});if(error)return toast.error('Decisão recusada',{description:error.message});toast.success(approve?'Restauração aprovada para execução operacional':'Solicitação rejeitada');queryClient.invalidateQueries({queryKey:['platform-restores']});};
   const logs = overview.data?.logs || [];
   const ultimoBackup = logs.find((log) => log.tipo === 'backup');
   const ultimaVerificacao = logs.find((log) => log.tipo === 'backup-verificar');
@@ -76,10 +80,11 @@ export default function PlatformBackups() {
       <Card>
         <CardHeader><CardTitle>Arquivos privados recentes</CardTitle><CardDescription>Somente metadados operacionais; o conteúdo clínico nunca é exposto ao navegador.</CardDescription></CardHeader>
         <CardContent className="space-y-2">
-          {arquivos.slice(0, 15).map((arquivo) => <div key={arquivo.name} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3"><div><p className="flex items-center gap-2 text-sm font-medium"><FileJson className="h-4 w-4" />{arquivo.name}</p><p className="text-xs text-muted-foreground">{new Date(arquivo.created_at).toLocaleString('pt-BR')}</p></div><Badge variant="secondary">{tamanho(Number(arquivo.size_bytes))}</Badge></div>)}
+          {arquivos.slice(0, 15).map((arquivo) => <div key={arquivo.name} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3"><div><p className="flex items-center gap-2 text-sm font-medium"><FileJson className="h-4 w-4" />{arquivo.name}</p><p className="text-xs text-muted-foreground">{new Date(arquivo.created_at).toLocaleString('pt-BR')}</p></div><div className="flex gap-2"><Badge variant="secondary">{tamanho(Number(arquivo.size_bytes))}</Badge><Button size="sm" variant="outline" onClick={()=>solicitar(arquivo.name)}><ArchiveRestore className="mr-1 h-3 w-3"/>Solicitar restauração</Button></div></div>)}
           {!arquivos.length && <p className="py-4 text-center text-sm text-muted-foreground">Nenhum arquivo de backup encontrado.</p>}
         </CardContent>
       </Card>
+      <Card><CardHeader><CardTitle>Restaurações controladas</CardTitle><CardDescription>Exigem justificativa e aprovação por um segundo administrador. A execução ocorre somente no ambiente operacional protegido.</CardDescription></CardHeader><CardContent className="space-y-2">{(restores.data||[]).map(r=><div key={r.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3"><div><p className="text-sm font-medium">{r.backup_name}</p><p className="text-xs text-muted-foreground">{r.reason} · {new Date(r.requested_at).toLocaleString('pt-BR')}</p></div><div className="flex gap-2"><Badge variant={r.status==='rejected'?'destructive':'outline'}>{r.status}</Badge>{r.status==='requested'&&<><Button size="sm" variant="outline" onClick={()=>decidir(r.id,false)}>Rejeitar</Button><Button size="sm" onClick={()=>decidir(r.id,true)}>Aprovar</Button></>}</div></div>)}{!restores.data?.length&&<p className="py-4 text-center text-sm text-muted-foreground">Nenhuma restauração solicitada.</p>}</CardContent></Card>
 
       <Card>
         <CardHeader><CardTitle>Histórico operacional</CardTitle></CardHeader>
