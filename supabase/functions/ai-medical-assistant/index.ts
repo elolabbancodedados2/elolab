@@ -43,13 +43,16 @@ Deno.serve(async (req) => {
 
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const openaiApiKey = Deno.env.get('OPENAI_API_KEY')
-    const openaiModel = Deno.env.get('OPENAI_MODEL') || 'gpt-4o-mini'
+    const defaultOpenaiModel = Deno.env.get('OPENAI_MODEL') || 'gpt-4o-mini'
 
     if (!openaiApiKey) {
       throw new Error('OPENAI_API_KEY não configurada')
     }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
+    const { data: aiConfig } = await supabase.from('platform_ai_config').select('*').eq('id', true).maybeSingle()
+    if (aiConfig && !aiConfig.ativo) return new Response(JSON.stringify({ error: 'Assistente de IA temporariamente desativado.' }), { status: 503, headers: corsHeaders })
+    const openaiModel = aiConfig?.modelo_principal || defaultOpenaiModel
 
     // ─── Autorização ──────────────────────────────────────────────────────
     // A checagem anterior parava na validade do JWT. Como o texto enviado aqui
@@ -189,10 +192,10 @@ Sugira os medicamentos mais apropriados.`
       },
       body: JSON.stringify({
         model: openaiModel,
-        instructions: systemPrompt,
+        instructions: `${aiConfig?.prompt_base || ''}\n\n${systemPrompt}`,
         input: [{ role: 'user', content: userPrompt }],
-        max_output_tokens: 2000,
-        temperature: 0.3,
+        max_output_tokens: aiConfig?.max_tokens || 2000,
+        temperature: Number(aiConfig?.temperatura ?? 0.3),
         store: false,
         safety_identifier: safetyIdentifier,
       }),
@@ -210,6 +213,8 @@ Sugira os medicamentos mais apropriados.`
     const suggestion = aiResult.choices?.[0]?.message?.content || 'Não foi possível gerar sugestão'
 
     const duration = Date.now() - startTime
+    const inputTokens = Number(aiResult.usage?.input_tokens || 0), outputTokens = Number(aiResult.usage?.output_tokens || 0)
+    await supabase.from('platform_ai_usage').insert({ clinica_id: clinicaId, user_id: user.id, operacao: action, modelo: openaiModel, input_tokens: inputTokens, output_tokens: outputTokens, custo_estimado: inputTokens * 0.00000015 + outputTokens * 0.0000006, duracao_ms: duration, sucesso: true })
 
     // Log da automação
     await supabase.from('automation_logs').insert({
