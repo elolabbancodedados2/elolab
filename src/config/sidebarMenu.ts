@@ -199,6 +199,7 @@ export const menuGroups: MenuGroup[] = [
       { label: 'Logs e Erros', icon: ActivitySquare, href: '/admin/erros', superAdminOnly: true },
       { label: 'Backups', icon: DatabaseBackup, href: '/admin/backups', superAdminOnly: true },
       { label: 'Relatório Executivo', icon: FileBarChart, href: '/admin/relatorio-executivo', superAdminOnly: true },
+      { label: 'Cobranças SaaS', icon: CreditCard, href: '/admin/cobrancas', superAdminOnly: true },
       { label: 'Documentação', icon: BookMarked, href: '/documentacao', superAdminOnly: true },
     ],
   },
