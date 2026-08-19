@@ -19,7 +19,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -100,6 +100,17 @@ export default function PlatformSaude() {
     enabled: isPlatformAdmin,
   });
 
+  const integracoes = useQuery({
+    queryKey: ['platform-integration-health'],
+    queryFn: async () => {
+      const { data, error } = await supabase.functions.invoke('integration-health');
+      if (error) throw error;
+      return data as { checked_at: string; overall: string; checks: Array<{ id: string; nome: string; status: 'ok'|'warning'|'error'; detalhe: string; latencia_ms?: number }> };
+    },
+    enabled: isPlatformAdmin,
+    refetchInterval: 60_000,
+  });
+
   const filtradas = useMemo(() => {
     const busca = search.trim().toLowerCase();
     let lista = clinicas.data ?? [];
@@ -134,11 +145,19 @@ export default function PlatformSaude() {
           </h1>
           <p className="text-muted-foreground">Como o SaaS está agora, e como cada clínica está usando</p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => { agregada.refetch(); clinicas.refetch(); }}>
-          <RefreshCw className={cn('h-4 w-4 mr-2', (agregada.isFetching || clinicas.isFetching) && 'animate-spin')} />
+        <Button variant="outline" size="sm" onClick={() => { agregada.refetch(); clinicas.refetch(); integracoes.refetch(); }}>
+          <RefreshCw className={cn('h-4 w-4 mr-2', (agregada.isFetching || clinicas.isFetching || integracoes.isFetching) && 'animate-spin')} />
           Atualizar
         </Button>
       </div>
+
+      <Card>
+        <CardHeader><CardTitle className="text-base">Integrações e serviços</CardTitle></CardHeader>
+        <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {(integracoes.data?.checks ?? []).map(check => <div key={check.id} className="rounded-lg border p-3"><div className="flex items-center justify-between gap-2"><p className="text-sm font-medium">{check.nome}</p><Badge variant={check.status === 'error' ? 'destructive' : 'outline'} className={cn(check.status === 'ok' && 'text-success border-success/30', check.status === 'warning' && 'text-warning border-warning/30')}>{check.status}</Badge></div><p className="mt-1 text-xs text-muted-foreground">{check.detalhe}</p>{check.latencia_ms != null && <p className="mt-1 text-[10px] text-muted-foreground">{check.latencia_ms} ms</p>}</div>)}
+          {integracoes.isError && <p className="text-sm text-destructive">Não foi possível executar o diagnóstico das integrações.</p>}
+        </CardContent>
+      </Card>
 
       {/* ─── Cards agregados ─── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
