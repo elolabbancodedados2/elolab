@@ -209,6 +209,7 @@ export const menuGroups: MenuGroup[] = [
       { label: 'Central de Segurança', icon: Shield, href: '/admin/seguranca', superAdminOnly: true },
       { label: 'Limites e Consumo', icon: Gauge, href: '/admin/consumo', superAdminOnly: true },
       { label: 'Onboarding', icon: Building2, href: '/admin/onboarding', superAdminOnly: true },
+      { label: 'Domínios e DNS', icon: Gauge, href: '/admin/dominios', superAdminOnly: true },
       { label: 'Documentação', icon: BookMarked, href: '/documentacao', superAdminOnly: true },
     ],
   },
