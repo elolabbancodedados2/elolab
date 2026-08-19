@@ -153,7 +153,13 @@ export default function PainelAdmin() {
     queryFn: async () => {
       const { data, error } = await (supabase as any).rpc('admin_situacao_contas');
       if (error) throw error;
-      return (data || []) as { user_id: string; bloqueado: boolean; ultimo_login: string | null }[];
+      return (data || []) as {
+        user_id: string;
+        bloqueado: boolean;
+        ultimo_login: string | null;
+        sessoes_abertas: number;
+        email_confirmado: boolean;
+      }[];
     },
   });
 
@@ -182,6 +188,9 @@ export default function PainelAdmin() {
     return profiles.map(p => ({
       ...p,
       bloqueado: situacoes.find(s => s.user_id === p.id)?.bloqueado ?? false,
+      ultimoLogin: situacoes.find(s => s.user_id === p.id)?.ultimo_login ?? null,
+      sessoesAbertas: situacoes.find(s => s.user_id === p.id)?.sessoes_abertas ?? 0,
+      emailConfirmado: situacoes.find(s => s.user_id === p.id)?.email_confirmado ?? false,
       roles: userRoles.filter(r => r.user_id === p.id).map(r => r.role),
       subscription: subscriptions.find((s: any) => s.user_id === p.id),
     }));
@@ -501,6 +510,8 @@ export default function PainelAdmin() {
                       <TableHead>Funções</TableHead>
                       <TableHead>Plano</TableHead>
                       <TableHead>Cadastro</TableHead>
+                      <TableHead>Segurança</TableHead>
+                      <TableHead>Último acesso</TableHead>
                       <TableHead>Acesso</TableHead>
                       <TableHead className="text-right">Ações</TableHead>
                     </TableRow>
@@ -508,7 +519,7 @@ export default function PainelAdmin() {
                   <TableBody>
                     {filtered.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                        <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
                           Nenhum usuário encontrado
                         </TableCell>
                       </TableRow>
@@ -541,6 +552,17 @@ export default function PainelAdmin() {
                               )}
                             </TableCell>
                             <TableCell className="text-sm">{formatDate(u.created_at)}</TableCell>
+                            <TableCell>
+                              <div className="flex flex-col gap-1">
+                                <Badge variant={u.emailConfirmado ? 'outline' : 'destructive'} className="w-fit text-xs">
+                                  {u.emailConfirmado ? 'E-mail confirmado' : 'E-mail pendente'}
+                                </Badge>
+                                <span className="text-xs text-muted-foreground">{u.sessoesAbertas} sessão(ões)</span>
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-xs whitespace-nowrap">
+                              {u.ultimoLogin ? new Date(u.ultimoLogin).toLocaleString('pt-BR') : 'Nunca acessou'}
+                            </TableCell>
                             <TableCell>
                               <div className="flex items-center gap-2">
                                 <Switch
