@@ -121,11 +121,11 @@ export function ModoManutencao({ children }: { children: React.ReactNode }) {
         </div>
 
         <h1 id="manutencao-titulo" className="mb-3 text-2xl font-bold tracking-tight">
-          {estado?.titulo || 'Banco de dados desconectado'}
+          {estado?.titulo || 'Banco de dados Supabase não suportado'}
         </h1>
 
         <p id="manutencao-mensagem" className="text-sm leading-relaxed text-muted-foreground">
-          {estado?.mensagem || 'Não foi possível conectar ao banco de dados. O sistema tentará novamente automaticamente.'}
+          {estado?.mensagem || 'Entre em contato com o suporte para atualizar para a nova versão e aplicar o SQL necessário.'}
         </p>
 
         {previsao && (
