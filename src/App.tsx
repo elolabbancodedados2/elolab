@@ -12,6 +12,7 @@ import { SupabaseProtectedRoute } from "@/components/SupabaseProtectedRoute";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { NotificationBanner } from "@/components/NotificationBanner";
+import { PlatformAnnouncements } from "@/components/PlatformAnnouncements";
 import { InstallPWA } from "@/components/InstallPWA";
 import { SubscriptionGuard } from "@/components/SubscriptionGuard";
 const LandingPage = lazy(() => import("@/pages/LandingPage"));
@@ -68,6 +69,7 @@ const PlatformCRM = lazy(() => import("@/pages/PlatformCRM"));
 const PlatformSaude = lazy(() => import("@/pages/PlatformSaude"));
 const CentralSuporte = lazy(() => import("@/pages/CentralSuporte"));
 const PlatformIA = lazy(() => import("@/pages/PlatformIA"));
+const PlatformComunicacao = lazy(() => import("@/pages/PlatformComunicacao"));
 const TiposConsulta = lazy(() => import("@/pages/TiposConsulta"));
 const RecepcaoCaixa = lazy(() => import("@/pages/RecepcaoCaixa"));
 const ChatInterno = lazy(() => import("@/pages/ChatInterno"));
@@ -168,6 +170,7 @@ function App() {
               <SupabaseAuthProvider>
                 <AppInitializer>
                 <NotificationBanner />
+                <PlatformAnnouncements />
                 <Suspense fallback={<RouteFallback />}>
                   <Routes>
                     {mode === 'landing' ? (
@@ -275,6 +278,7 @@ function App() {
                           <Route path="/suporte" element={<SupabaseProtectedRoute allowedRoles={['admin']}><CentralSuporte /></SupabaseProtectedRoute>} />
                           <Route path="/admin/suporte" element={<SupabaseProtectedRoute somentePlataforma><CentralSuporte /></SupabaseProtectedRoute>} />
                           <Route path="/admin/ia" element={<SupabaseProtectedRoute somentePlataforma><PlatformIA /></SupabaseProtectedRoute>} />
+                          <Route path="/admin/comunicacao" element={<SupabaseProtectedRoute somentePlataforma><PlatformComunicacao /></SupabaseProtectedRoute>} />
                           <Route path="/seguranca" element={<SupabaseProtectedRoute><Seguranca /></SupabaseProtectedRoute>} />
                           <Route path="/lgpd-pacientes" element={<SupabaseProtectedRoute allowedRoles={['admin']}><LgpdPacientes /></SupabaseProtectedRoute>} />
                           <Route path="/vitais-graficos" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico', 'enfermagem']}><VitaisGraficos /></SupabaseProtectedRoute>} />

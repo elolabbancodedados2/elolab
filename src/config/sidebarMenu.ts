@@ -192,6 +192,7 @@ export const menuGroups: MenuGroup[] = [
       { label: 'Painel Admin', icon: Shield, href: '/painel-admin', superAdminOnly: true },
       { label: 'Central de Suporte', icon: MessageCircle, href: '/admin/suporte', superAdminOnly: true },
       { label: 'Governança da IA', icon: BotMessageSquare, href: '/admin/ia', superAdminOnly: true },
+      { label: 'Comunicação Global', icon: MessageCircle, href: '/admin/comunicacao', superAdminOnly: true },
       { label: 'Documentação', icon: BookMarked, href: '/documentacao', superAdminOnly: true },
     ],
   },
