@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth, AppRole } from '@/contexts/SupabaseAuthContext';
-import { Navigate } from 'react-router-dom';
+import { Link, Navigate } from 'react-router-dom';
 import {
   Shield, Users, CreditCard, Activity, Search, Edit, TrendingUp, TrendingDown,
   UserCheck, UserX, Loader2, Crown, Clock, Ban, CheckCircle2,
@@ -446,6 +446,11 @@ export default function PainelAdmin() {
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6">
+          <div className="flex flex-wrap gap-2">
+            <Button asChild><Link to="/admin/clinicas"><Building2 className="mr-2 h-4 w-4" />Gerenciar clínicas</Link></Button>
+            <Button variant="outline" asChild><Link to="/admin/crm"><Users className="mr-2 h-4 w-4" />CRM da plataforma</Link></Button>
+            <Button variant="outline" asChild><Link to="/admin/saude"><Activity className="mr-2 h-4 w-4" />Saúde do sistema</Link></Button>
+          </div>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <Card><CardContent className="pt-6"><p className="text-sm text-muted-foreground">Clínicas ativas</p><p className="text-3xl font-bold">{saudePlataforma?.clinicas_ativas ?? 0}</p><p className="text-xs text-muted-foreground">de {saudePlataforma?.total_clinicas ?? 0} cadastradas</p></CardContent></Card>
             <Card><CardContent className="pt-6"><p className="text-sm text-muted-foreground">Pacientes na plataforma</p><p className="text-3xl font-bold">{saudePlataforma?.total_pacientes ?? 0}</p><p className="text-xs text-muted-foreground">isolados por clínica</p></CardContent></Card>
