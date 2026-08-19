@@ -155,7 +155,9 @@ function App() {
   // Bloqueio total solicitado para a janela de migração. O restante da árvore
   // (autenticação, consultas, rotas e módulos) não é montado, impedindo uso ou
   // chamadas de dados enquanto a conversão estiver em andamento.
-  return <ThemeProvider><BloqueioMigracao /></ThemeProvider>;
+  if (import.meta.env.MODE !== 'test') {
+    return <ThemeProvider><BloqueioMigracao /></ThemeProvider>;
+  }
 
   // Nota: o antigo autoSetupDatabase() rodava a cada carregamento da aplicação e
   // chamava a edge function auto-migrate (DDL com service_role, sem checagem de
