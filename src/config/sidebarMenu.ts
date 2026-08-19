@@ -207,6 +207,7 @@ export const menuGroups: MenuGroup[] = [
       { label: 'Filas e Webhooks', icon: ActivitySquare, href: '/admin/filas', superAdminOnly: true },
       { label: 'Incidentes', icon: ActivitySquare, href: '/admin/incidentes', superAdminOnly: true },
       { label: 'Central de Segurança', icon: Shield, href: '/admin/seguranca', superAdminOnly: true },
+      { label: 'Limites e Consumo', icon: Gauge, href: '/admin/consumo', superAdminOnly: true },
       { label: 'Documentação', icon: BookMarked, href: '/documentacao', superAdminOnly: true },
     ],
   },
