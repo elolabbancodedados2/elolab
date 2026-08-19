@@ -340,6 +340,22 @@ export default function PainelAdmin() {
     toast.success('Assinatura cancelada.');
   };
 
+  const handleChangePlan = async (subId: string, planoId: string) => {
+    const plano = (planos as any[]).find(p => p.id === planoId);
+    if (!plano) return;
+    const { error } = await supabase.from('assinaturas_plano').update({
+      plano_id: plano.id,
+      plano_slug: plano.slug,
+      updated_at: new Date().toISOString(),
+    }).eq('id', subId);
+    if (error) {
+      toast.error('Não foi possível trocar o plano.', { description: mensagemDeErro(error) });
+      return;
+    }
+    queryClient.invalidateQueries({ queryKey: ['admin-subscriptions'] });
+    toast.success(`Plano alterado para ${plano.nome}.`);
+  };
+
   const formatDate = (d: string | null) => {
     if (!d) return '—';
     return new Date(d).toLocaleDateString('pt-BR');
@@ -618,6 +634,11 @@ export default function PainelAdmin() {
 
         {/* Subscriptions Tab */}
         <TabsContent value="subscriptions" className="space-y-4">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            {Object.entries(STATUS_MAP).map(([status, info]) => (
+              <Card key={status}><CardContent className="pt-4"><p className="text-xs text-muted-foreground">{info.label}</p><p className="text-2xl font-bold">{subscriptions.filter((s: any) => s.status === status).length}</p></CardContent></Card>
+            ))}
+          </div>
           <Card>
             <CardHeader>
               <CardTitle>Todas as Assinaturas</CardTitle>
@@ -657,8 +678,11 @@ export default function PainelAdmin() {
                                 <p className="text-xs text-muted-foreground">{owner?.email}</p>
                               </div>
                             </TableCell>
-                            <TableCell>
-                              <Badge variant="outline">{sub.planos?.nome || sub.plano_slug}</Badge>
+                            <TableCell className="min-w-[170px]">
+                              <Select value={sub.plano_id || ''} onValueChange={value => handleChangePlan(sub.id, value)}>
+                                <SelectTrigger aria-label={`Plano de ${owner?.nome || 'usuário'}`}><SelectValue placeholder={sub.planos?.nome || sub.plano_slug} /></SelectTrigger>
+                                <SelectContent>{(planos as any[]).map(plano => <SelectItem key={plano.id} value={plano.id}>{plano.nome}</SelectItem>)}</SelectContent>
+                              </Select>
                             </TableCell>
                             <TableCell>
                               <Badge className={cn('gap-1', statusInfo.color)}>
