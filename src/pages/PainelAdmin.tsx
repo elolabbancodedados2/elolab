@@ -6,7 +6,7 @@ import { Navigate } from 'react-router-dom';
 import {
   Shield, Users, CreditCard, Activity, Search, Edit, TrendingUp, TrendingDown,
   UserCheck, UserX, Loader2, Crown, Clock, Ban, CheckCircle2,
-  BarChart3, Building2, RefreshCw, ShieldAlert, ScrollText, Lock,
+  BarChart3, Building2, RefreshCw, ShieldAlert, ScrollText, Lock, AlertTriangle,
 } from 'lucide-react';
 import { FerramentasDeConta } from '@/components/admin/FerramentasDeConta';
 import { chamarAdminContas } from '@/lib/adminContas';
@@ -154,6 +154,26 @@ export default function PainelAdmin() {
       const { data, error } = await (supabase as any).rpc('admin_situacao_contas');
       if (error) throw error;
       return (data || []) as { user_id: string; bloqueado: boolean; ultimo_login: string | null }[];
+    },
+  });
+
+  const { data: saudePlataforma } = useQuery({
+    queryKey: ['admin-saude-plataforma'],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from('platform_saude_agregada')
+        .select('*')
+        .maybeSingle();
+      if (error) throw error;
+      return data as {
+        total_clinicas: number | null;
+        clinicas_ativas: number | null;
+        clinicas_arquivadas: number | null;
+        clinicas_em_trial: number | null;
+        total_pacientes: number | null;
+        agendamentos_no_mes: number | null;
+        audits_ultimos_7d: number | null;
+      } | null;
     },
   });
 
@@ -355,6 +375,7 @@ export default function PainelAdmin() {
             queryClient.invalidateQueries({ queryKey: ['admin-profiles'] });
             queryClient.invalidateQueries({ queryKey: ['admin-user-roles'] });
             queryClient.invalidateQueries({ queryKey: ['admin-subscriptions'] });
+            queryClient.invalidateQueries({ queryKey: ['admin-saude-plataforma'] });
           }}
           className="gap-2"
         >
@@ -415,13 +436,42 @@ export default function PainelAdmin() {
       </div>
 
       {/* Tabs */}
-      <Tabs defaultValue="users">
-        <TabsList>
+      <Tabs defaultValue="overview">
+        <TabsList className="h-auto flex-wrap justify-start">
+          <TabsTrigger value="overview" className="gap-2"><Activity className="h-4 w-4" />Visão geral</TabsTrigger>
           <TabsTrigger value="users" className="gap-2"><Users className="h-4 w-4" />Usuários</TabsTrigger>
           <TabsTrigger value="subscriptions" className="gap-2"><CreditCard className="h-4 w-4" />Assinaturas</TabsTrigger>
           <TabsTrigger value="metrics" className="gap-2"><BarChart3 className="h-4 w-4" />Métricas</TabsTrigger>
           <TabsTrigger value="auditoria" className="gap-2"><ScrollText className="h-4 w-4" />Auditoria</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="overview" className="space-y-6">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <Card><CardContent className="pt-6"><p className="text-sm text-muted-foreground">Clínicas ativas</p><p className="text-3xl font-bold">{saudePlataforma?.clinicas_ativas ?? 0}</p><p className="text-xs text-muted-foreground">de {saudePlataforma?.total_clinicas ?? 0} cadastradas</p></CardContent></Card>
+            <Card><CardContent className="pt-6"><p className="text-sm text-muted-foreground">Pacientes na plataforma</p><p className="text-3xl font-bold">{saudePlataforma?.total_pacientes ?? 0}</p><p className="text-xs text-muted-foreground">isolados por clínica</p></CardContent></Card>
+            <Card><CardContent className="pt-6"><p className="text-sm text-muted-foreground">Agendamentos no mês</p><p className="text-3xl font-bold">{saudePlataforma?.agendamentos_no_mes ?? 0}</p><p className="text-xs text-muted-foreground">atividade assistencial</p></CardContent></Card>
+            <Card><CardContent className="pt-6"><p className="text-sm text-muted-foreground">Eventos auditados (7 dias)</p><p className="text-3xl font-bold">{saudePlataforma?.audits_ultimos_7d ?? 0}</p><p className="text-xs text-muted-foreground">rastreabilidade ativa</p></CardContent></Card>
+          </div>
+          <div className="grid gap-4 lg:grid-cols-2">
+            <Card>
+              <CardHeader><CardTitle className="text-base">Situação comercial</CardTitle><CardDescription>Indicadores calculados diretamente das assinaturas.</CardDescription></CardHeader>
+              <CardContent className="grid grid-cols-2 gap-4">
+                <div><p className="text-sm text-muted-foreground">Receita recorrente</p><p className="text-2xl font-bold text-success">R$ {revenue.toFixed(2)}</p></div>
+                <div><p className="text-sm text-muted-foreground">Conversão</p><p className="text-2xl font-bold">{conversionRate}%</p></div>
+                <div><p className="text-sm text-muted-foreground">Em trial</p><p className="text-2xl font-bold">{saudePlataforma?.clinicas_em_trial ?? trialSubs}</p></div>
+                <div><p className="text-sm text-muted-foreground">Churn acumulado</p><p className="text-2xl font-bold text-warning">{churnRate}%</p></div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader><CardTitle className="text-base">Alertas da plataforma</CardTitle><CardDescription>Condições que exigem acompanhamento administrativo.</CardDescription></CardHeader>
+              <CardContent className="space-y-3">
+                {(saudePlataforma?.clinicas_arquivadas ?? 0) > 0 && <div className="flex gap-3 rounded-lg border p-3"><AlertTriangle className="h-5 w-5 text-warning shrink-0"/><div><p className="font-medium">Clínicas arquivadas</p><p className="text-sm text-muted-foreground">{saudePlataforma?.clinicas_arquivadas} cadastro(s) fora de operação.</p></div></div>}
+                {(expiredSubs + cancelledSubs) > 0 && <div className="flex gap-3 rounded-lg border p-3"><CreditCard className="h-5 w-5 text-destructive shrink-0"/><div><p className="font-medium">Assinaturas inativas</p><p className="text-sm text-muted-foreground">{expiredSubs + cancelledSubs} assinatura(s) expirada(s) ou cancelada(s).</p></div></div>}
+                {(saudePlataforma?.clinicas_arquivadas ?? 0) === 0 && (expiredSubs + cancelledSubs) === 0 && <div className="flex gap-3 rounded-lg border border-success/30 bg-success/5 p-3"><CheckCircle2 className="h-5 w-5 text-success shrink-0"/><div><p className="font-medium">Nenhum alerta comercial</p><p className="text-sm text-muted-foreground">Os indicadores principais estão dentro do esperado.</p></div></div>}
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
 
         {/* Users Tab */}
         <TabsContent value="users" className="space-y-4">
