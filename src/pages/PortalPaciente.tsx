@@ -405,7 +405,11 @@ export default function PortalPaciente() {
       setRetornos(rets || []);
       setOfertasEspera(ofertas || []);
     } catch (err: any) {
-      setError(err.message || 'Erro ao acessar portal');
+      // A resposta técnica da Edge Function (status, nome da função etc.) não
+      // ajuda o paciente e revela detalhes internos. Para autenticação por
+      // token, toda falha deve ser indistinguível de token ausente/revogado.
+      if (import.meta.env.DEV) console.error('Falha ao validar acesso do portal:', err);
+      setError('Token inválido ou expirado');
     } finally {
       setLoading(false);
     }

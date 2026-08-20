@@ -40,6 +40,7 @@ import {
   History,
   SlidersHorizontal,
   MessageSquarePlus,
+  GraduationCap,
 } from 'lucide-react';
 import { AppRole } from '@/contexts/SupabaseAuthContext';
 
@@ -75,6 +76,7 @@ export const menuGroups: MenuGroup[] = [
       { label: 'Meu Histórico', icon: History, href: '/meu-historico' },
       { label: 'Enviar Feedback', icon: MessageSquarePlus, href: '/feedback' },
       { label: 'Meus Indicadores', icon: ActivitySquare, href: '/indicadores' },
+      { label: 'Treinamento', icon: GraduationCap, href: '/treinamento' },
       { label: 'Agenda', icon: CalendarRange, href: '/agenda' },
       { label: 'Chat Interno', icon: MessageCircle, href: '/chat' },
       // `medico` faltava aqui, mas a rota de /tarefas já o libera — o médico

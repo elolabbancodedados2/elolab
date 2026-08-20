@@ -96,6 +96,7 @@ const MeuHistorico = lazy(() => import("@/pages/MeuHistorico"));
 const PreferenciasPessoais = lazy(() => import("@/pages/PreferenciasPessoais"));
 const FeedbackProduto = lazy(() => import("@/pages/FeedbackProduto"));
 const IndicadoresProdutividade = lazy(() => import("@/pages/IndicadoresProdutividade"));
+const Treinamento = lazy(() => import("@/pages/Treinamento"));
 const TemplatesEmail = lazy(() => import("@/pages/TemplatesEmail"));
 const Auth = lazy(() => import("@/pages/Auth"));
 const AceitarConvite = lazy(() => import("@/pages/AceitarConvite"));
@@ -241,6 +242,7 @@ function App() {
                           <Route path="/preferencias" element={<PreferenciasPessoais />} />
                           <Route path="/feedback" element={<FeedbackProduto />} />
                           <Route path="/indicadores" element={<IndicadoresProdutividade />} />
+                          <Route path="/treinamento" element={<Treinamento />} />
                           <Route path="/agenda" element={<Agenda />} />
                           <Route path="/prontuarios" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico']}><Prontuarios /></SupabaseProtectedRoute>} />
                           <Route path="/documentos-clinicos" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico']}><DocumentosClinicos /></SupabaseProtectedRoute>} />
