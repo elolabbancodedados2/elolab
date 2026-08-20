@@ -36,6 +36,7 @@ import {
   UsersRound,
   FileText,
   DatabaseBackup,
+  Bell,
 } from 'lucide-react';
 import { AppRole } from '@/contexts/SupabaseAuthContext';
 
@@ -66,6 +67,7 @@ export const menuGroups: MenuGroup[] = [
     color: '#6366f1',
     items: [
       { label: 'Dashboard', icon: LayoutDashboard, href: '/dashboard' },
+      { label: 'NotificaÃ§Ãµes', icon: Bell, href: '/notificacoes' },
       { label: 'Agenda', icon: CalendarRange, href: '/agenda' },
       { label: 'Chat Interno', icon: MessageCircle, href: '/chat' },
       // `medico` faltava aqui, mas a rota de /tarefas já o libera — o médico
@@ -171,6 +173,7 @@ export const menuGroups: MenuGroup[] = [
     roles: ['admin'],
     items: [
       { label: 'Meu Plano', icon: CreditCard, href: '/planos', roles: ['admin'] },
+      { label: 'Primeiros Passos', icon: ListChecks, href: '/onboarding', roles: ['admin'] },
       { label: 'Analytics', icon: ActivitySquare, href: '/analytics' },
       { label: 'Automações', icon: Sparkles, href: '/automacoes' },
       { label: 'Agente IA', icon: BotMessageSquare, href: '/agente-ia' },

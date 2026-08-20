@@ -34,6 +34,7 @@ const routeLabels: Record<string, string> = {
   laboratorio: 'Laboratório',
   'precos-exames': 'Preços de Exames',
   tarefas: 'Tarefas',
+  notificacoes: 'NotificaÃ§Ãµes',
 };
 
 export function Breadcrumbs() {

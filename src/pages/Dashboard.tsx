@@ -210,6 +210,33 @@ function ActivityItem({ icon: Icon, title, subtitle, time, color }: {
   );
 }
 
+const roleWorkspaces = {
+  admin: { title: 'Visão da administração', description: 'Acompanhe operação, equipe e resultados da clínica.', actions: [
+    { label: 'Analytics', href: '/analytics', icon: BarChart3 }, { label: 'Equipe', href: '/equipe', icon: Users }, { label: 'Configurações', href: '/configuracoes', icon: ShieldCheck },
+  ] },
+  recepcao: { title: 'Seu turno na recepção', description: 'Priorize chegada, agenda e comunicação com pacientes.', actions: [
+    { label: 'Abrir recepção', href: '/recepcao', icon: ClipboardList }, { label: 'Agenda de hoje', href: '/agenda', icon: Calendar }, { label: 'Fila de atendimento', href: '/fila', icon: Timer },
+  ] },
+  enfermagem: { title: 'Cuidados e laboratório', description: 'Acesse triagem, coletas e resultados pendentes.', actions: [
+    { label: 'Triagem', href: '/triagem', icon: HeartPulse }, { label: 'Mapa de coleta', href: '/mapa-coleta', icon: ClipboardList }, { label: 'Laboratório', href: '/laboratorio', icon: Activity },
+  ] },
+  financeiro: { title: 'Rotina financeira', description: 'Concilie recebimentos, vencimentos e caixa.', actions: [
+    { label: 'Financeiro', href: '/financeiro', icon: Wallet }, { label: 'Contas', href: '/contas', icon: FileText }, { label: 'Inadimplentes', href: '/cobranca-inadimplentes', icon: AlertTriangle },
+  ] },
+} as const;
+
+function RoleWorkspace({ roles }: { roles: string[] }) {
+  const role = (['recepcao', 'enfermagem', 'financeiro', 'admin'] as const).find(item => roles.includes(item));
+  if (!role) return null;
+  const workspace = roleWorkspaces[role];
+  return <section aria-labelledby="role-workspace-title" className="rounded-2xl border border-primary/15 bg-primary/[0.03] p-4 md:p-5">
+    <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+      <div><h2 id="role-workspace-title" className="font-semibold">{workspace.title}</h2><p className="text-sm text-muted-foreground">{workspace.description}</p></div>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">{workspace.actions.map(({ label, href, icon: Icon }) => <Button key={href} asChild variant="outline" className="min-h-11 justify-start bg-background"><Link to={href}><Icon className="mr-2 h-4 w-4" />{label}</Link></Button>)}</div>
+    </div>
+  </section>;
+}
+
 // ─── Main Dashboard ────────────────────────────────────────
 export default function Dashboard() {
   const { profile: user, isAdmin } = useSupabaseAuth();
@@ -398,6 +425,7 @@ export default function Dashboard() {
   return (
     <div className="space-y-6 pb-10">
       <OnboardingWizard />
+      <RoleWorkspace roles={user?.roles || []} />
       
 
       <motion.div variants={stagger} initial="hidden" animate="visible" className="space-y-6">

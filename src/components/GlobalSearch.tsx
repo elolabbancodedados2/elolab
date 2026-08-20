@@ -1,257 +1,89 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import {
-  CommandDialog,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-  CommandSeparator,
-} from '@/components/ui/command';
+import { AlertCircle, Calendar, ClipboardList, FileText, FlaskConical, Search, Users, Wallet } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import {
-  Users, Calendar, FileText, DollarSign, Stethoscope, Package,
-  LayoutDashboard, ClipboardList, BarChart3, Settings, FlaskConical,
-  Wallet, Search, UserCheck, Bot, Zap, ListTodo, TestTube,
-} from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator } from '@/components/ui/command';
+import { useSupabaseAuth, type AppRole } from '@/contexts/SupabaseAuthContext';
 import { supabase } from '@/integrations/supabase/client';
-import { format } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
-import { parseDateOnly } from '@/lib/dateOnly';
 
-const PAGES = [
-  { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, group: 'Navegação' },
-  { label: 'Recepção', href: '/recepcao', icon: UserCheck, group: 'Navegação' },
-  { label: 'Agenda', href: '/agenda', icon: Calendar, group: 'Navegação' },
-  { label: 'Pacientes', href: '/pacientes', icon: Users, group: 'Navegação' },
-  { label: 'Fila / Triagem', href: '/fila', icon: ClipboardList, group: 'Navegação' },
-  { label: 'Caixa Diário', href: '/caixa', icon: DollarSign, group: 'Navegação' },
-  { label: 'Tarefas', href: '/tarefas', icon: ListTodo, group: 'Navegação' },
-  { label: 'Prontuários', href: '/prontuarios', icon: FileText, group: 'Clínica' },
-  { label: 'Prescrições', href: '/prescricoes', icon: FileText, group: 'Clínica' },
-  { label: 'Atestados', href: '/atestados', icon: FileText, group: 'Clínica' },
-  { label: 'Encaminhamentos', href: '/encaminhamentos', icon: FileText, group: 'Clínica' },
-  { label: 'Exames', href: '/exames', icon: FlaskConical, group: 'Clínica' },
-  { label: 'Triagem', href: '/triagem', icon: Stethoscope, group: 'Clínica' },
-  { label: 'Retornos', href: '/retornos', icon: Calendar, group: 'Clínica' },
-  { label: 'Médicos', href: '/medicos', icon: Stethoscope, group: 'Operacional' },
-  { label: 'Funcionários', href: '/funcionarios', icon: UserCheck, group: 'Operacional' },
-  { label: 'Salas', href: '/salas', icon: Package, group: 'Operacional' },
-  { label: 'Estoque', href: '/estoque', icon: Package, group: 'Operacional' },
-  { label: 'Convênios', href: '/convenios', icon: DollarSign, group: 'Operacional' },
-  { label: 'Templates', href: '/templates', icon: FileText, group: 'Operacional' },
-  { label: 'Lista de Espera', href: '/lista-espera', icon: ClipboardList, group: 'Operacional' },
-  { label: 'Laboratório', href: '/laboratorio', icon: TestTube, group: 'Laboratório' },
-  { label: 'Mapa de Coleta', href: '/mapa-coleta', icon: TestTube, group: 'Laboratório' },
-  { label: 'Laudos', href: '/laudos-lab', icon: FileText, group: 'Laboratório' },
-  { label: 'Financeiro', href: '/financeiro', icon: DollarSign, group: 'Financeiro' },
-  { label: 'Contas a Receber', href: '/contas-receber', icon: Wallet, group: 'Financeiro' },
-  { label: 'Contas a Pagar', href: '/contas-pagar', icon: Wallet, group: 'Financeiro' },
-  { label: 'Fluxo de Caixa', href: '/fluxo-caixa', icon: Wallet, group: 'Financeiro' },
-  { label: 'Tabela de Preços', href: '/precos-exames', icon: DollarSign, group: 'Financeiro' },
-  { label: 'Tipos de Consulta', href: '/tipos-consulta', icon: Stethoscope, group: 'Financeiro' },
-  { label: 'Relatórios', href: '/relatorios', icon: BarChart3, group: 'Financeiro' },
-  { label: 'Painel Admin', href: '/painel-admin', icon: Settings, group: 'Admin' },
-  { label: 'Analytics', href: '/analytics', icon: BarChart3, group: 'Admin' },
-  { label: 'Agente IA', href: '/agente-ia', icon: Bot, group: 'Admin' },
-  { label: 'Automações', href: '/automacoes', icon: Zap, group: 'Admin' },
-  { label: 'Planos', href: '/planos', icon: DollarSign, group: 'Admin' },
-  { label: 'Documentação', href: '/documentacao', icon: FileText, group: 'Admin' },
-  { label: 'Configurações', href: '/configuracoes', icon: Settings, group: 'Admin' },
+type SearchType = 'paciente' | 'consulta' | 'exame' | 'pagamento' | 'tarefa' | 'documento';
+type Result = { tipo: SearchType; id: string; titulo: string; subtitulo: string | null; href: string; data_referencia: string | null };
+
+const TYPE_META: Record<SearchType, { label: string; icon: typeof Users }> = {
+  paciente: { label: 'Pacientes', icon: Users }, consulta: { label: 'Consultas', icon: Calendar },
+  exame: { label: 'Exames', icon: FlaskConical }, pagamento: { label: 'Pagamentos', icon: Wallet },
+  tarefa: { label: 'Tarefas', icon: ClipboardList }, documento: { label: 'Documentos', icon: FileText },
+};
+
+const PAGES: Array<{ label: string; href: string; roles: AppRole[] }> = [
+  { label: 'Dashboard', href: '/dashboard', roles: ['admin', 'medico', 'recepcao', 'enfermagem', 'financeiro'] },
+  { label: 'Agenda', href: '/agenda', roles: ['admin', 'medico', 'recepcao', 'enfermagem'] },
+  { label: 'Pacientes', href: '/pacientes', roles: ['admin', 'recepcao', 'enfermagem'] },
+  { label: 'Fila e triagem', href: '/fila', roles: ['admin', 'medico', 'recepcao', 'enfermagem'] },
+  { label: 'Tarefas', href: '/tarefas', roles: ['admin', 'medico', 'recepcao', 'enfermagem', 'financeiro'] },
+  { label: 'Notificações', href: '/notificacoes', roles: ['admin', 'medico', 'recepcao', 'enfermagem', 'financeiro'] },
+  { label: 'Documentos clínicos', href: '/documentos-clinicos', roles: ['admin', 'medico'] },
+  { label: 'Exames', href: '/exames', roles: ['admin', 'medico', 'enfermagem'] },
+  { label: 'Pagamentos', href: '/pagamentos', roles: ['admin', 'financeiro'] },
+  { label: 'Financeiro', href: '/financeiro', roles: ['admin', 'financeiro'] },
+  { label: 'Configurações', href: '/configuracoes', roles: ['admin'] },
 ];
 
-interface PacienteResult {
-  id: string;
-  nome: string;
-  cpf: string | null;
-  data_nascimento: string | null;
-  telefone: string | null;
-}
-
-interface MedicoResult {
-  id: string;
-  crm: string;
-  especialidade: string | null;
-  telefone: string | null;
-}
-
 export function GlobalSearch() {
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState('');
-  const [pacientes, setPacientes] = useState<PacienteResult[]>([]);
-  const [medicos, setMedicos] = useState<MedicoResult[]>([]);
-  const [searching, setSearching] = useState(false);
+  const [open, setOpen] = useState(false), [query, setQuery] = useState(''), [results, setResults] = useState<Result[]>([]);
+  const [searching, setSearching] = useState(false), [error, setError] = useState(false);
+  const { profile } = useSupabaseAuth();
   const navigate = useNavigate();
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const requestRef = useRef(0);
+  const normalized = query.trim();
 
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-        e.preventDefault();
-        setOpen(prev => !prev);
-      }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); setOpen(value => !value); }
     };
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
   }, []);
 
-  const searchSupabase = useCallback(async (q: string) => {
-    if (!q.trim() || q.length < 2) {
-      setPacientes([]);
-      setMedicos([]);
-      return;
-    }
-    setSearching(true);
-    try {
-      const [pacResult, medResult] = await Promise.all([
-        supabase
-          .from('pacientes')
-          .select('id, nome, cpf, data_nascimento, telefone')
-          .or(`nome.ilike.%${q}%,cpf.ilike.%${q}%`)
-          .limit(5),
-        supabase
-          .from('medicos')
-          .select('id, crm, especialidade, telefone')
-          .or(`crm.ilike.%${q}%,especialidade.ilike.%${q}%`)
-          .limit(3),
-      ]);
-      setPacientes((pacResult.data ?? []) as PacienteResult[]);
-      setMedicos((medResult.data ?? []) as MedicoResult[]);
-    } catch {
-      // silently fail
-    } finally {
-      setSearching(false);
-    }
+  const search = useCallback(async (term: string) => {
+    const request = ++requestRef.current;
+    if (term.length < 2) { setResults([]); setError(false); setSearching(false); return; }
+    setSearching(true); setError(false);
+    const { data, error: rpcError } = await (supabase as any).rpc('busca_global', { p_termo: term, p_limite: 5 });
+    if (request !== requestRef.current) return;
+    setSearching(false);
+    if (rpcError) { setResults([]); setError(true); return; }
+    setResults((data ?? []) as Result[]);
   }, []);
 
   useEffect(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => searchSupabase(query), 300);
-    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
-  }, [query, searchSupabase]);
+    const timer = window.setTimeout(() => void search(normalized), 250);
+    return () => window.clearTimeout(timer);
+  }, [normalized, search]);
 
-  const handleSelect = (href: string) => {
-    setOpen(false);
-    setQuery('');
-    navigate(href);
-  };
+  const pages = useMemo(() => PAGES.filter(page => page.roles.some(role => profile?.roles.includes(role)))
+    .filter(page => !normalized || page.label.toLocaleLowerCase('pt-BR').includes(normalized.toLocaleLowerCase('pt-BR')))
+    .slice(0, normalized ? 6 : 5), [normalized, profile?.roles]);
+  const grouped = useMemo(() => Object.entries(TYPE_META).map(([type, meta]) => ({ type: type as SearchType, ...meta, items: results.filter(item => item.tipo === type) })).filter(group => group.items.length), [results]);
+  const select = (href: string) => { setOpen(false); setQuery(''); setResults([]); navigate(href); };
+  const close = (value: boolean) => { setOpen(value); if (!value) { requestRef.current++; setQuery(''); setResults([]); setError(false); } };
 
-  const filteredPages = query.trim().length > 0
-    ? PAGES.filter(p => p.label.toLowerCase().includes(query.toLowerCase()))
-    : PAGES.slice(0, 8);
-
-  const showResults = query.trim().length >= 2;
-  const hasAnyResult = filteredPages.length > 0 || pacientes.length > 0 || medicos.length > 0;
-
-  return (
-    <>
-      <button
-        onClick={() => setOpen(true)}
-        className="group flex items-center gap-2.5 rounded-xl border border-border/50 bg-accent/30 px-3.5 py-2 text-sm text-muted-foreground/70 transition-all duration-200 hover:bg-accent/60 hover:text-muted-foreground hover:border-border/80 focus:outline-none focus:ring-2 focus:ring-ring md:w-56 lg:w-72"
-        aria-label="Abrir busca global (⌘K)"
-      >
-        <Search className="h-4 w-4 shrink-0 opacity-50 group-hover:opacity-80 transition-opacity" />
-        <span className="hidden sm:inline flex-1 text-left text-[13px]">Buscar...</span>
-        <kbd className="hidden sm:inline-flex h-5 select-none items-center gap-1 rounded-md border border-border/50 bg-muted/50 px-1.5 font-mono text-[10px] font-medium opacity-50 group-hover:opacity-80 transition-opacity">
-          <span className="text-xs">⌘</span>K
-        </kbd>
-      </button>
-
-      <CommandDialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) setQuery(''); }}>
-        <CommandInput
-          placeholder="Buscar pacientes, médicos, páginas..."
-          value={query}
-          onValueChange={setQuery}
-        />
-        <CommandList>
-          {searching && (
-            <div className="py-3 px-4 text-sm text-muted-foreground flex items-center gap-2">
-              <div className="h-3 w-3 rounded-full border-2 border-primary border-t-transparent animate-spin" />
-              Buscando...
-            </div>
-          )}
-          {!hasAnyResult && !searching && <CommandEmpty>Nenhum resultado encontrado.</CommandEmpty>}
-
-          {showResults && pacientes.length > 0 && (
-            <CommandGroup heading="Pacientes">
-              {pacientes.map((p) => (
-                <CommandItem
-                  key={p.id}
-                  value={`paciente-${p.id}-${p.nome}`}
-                  onSelect={() => handleSelect('/pacientes')}
-                  className="flex items-center gap-3 py-2.5 rounded-lg"
-                >
-                  <div className="h-8 w-8 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
-                    <Users className="h-4 w-4 text-primary" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-sm truncate">{p.nome}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {p.cpf ? `CPF: ${p.cpf}` : ''}
-                      {p.data_nascimento ? ` · ${format(parseDateOnly(p.data_nascimento)!, 'dd/MM/yyyy', { locale: ptBR })}` : ''}
-                    </p>
-                  </div>
-                  <Badge variant="secondary" className="text-[10px] shrink-0 rounded-lg">Paciente</Badge>
-                </CommandItem>
-              ))}
-            </CommandGroup>
-          )}
-
-          {showResults && pacientes.length > 0 && medicos.length > 0 && <CommandSeparator />}
-
-          {showResults && medicos.length > 0 && (
-            <CommandGroup heading="Médicos">
-              {medicos.map((m) => (
-                <CommandItem
-                  key={m.id}
-                  value={`medico-${m.id}-${m.crm}`}
-                  onSelect={() => handleSelect('/medicos')}
-                  className="flex items-center gap-3 py-2.5 rounded-lg"
-                >
-                  <div className="h-8 w-8 rounded-xl bg-info/10 flex items-center justify-center shrink-0">
-                    <Stethoscope className="h-4 w-4 text-info" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-sm truncate">CRM: {m.crm}</p>
-                    <p className="text-xs text-muted-foreground">{m.especialidade ?? 'Sem especialidade'}</p>
-                  </div>
-                  <Badge variant="secondary" className="text-[10px] shrink-0 rounded-lg">Médico</Badge>
-                </CommandItem>
-              ))}
-            </CommandGroup>
-          )}
-
-          {(showResults && (pacientes.length > 0 || medicos.length > 0)) && filteredPages.length > 0 && <CommandSeparator />}
-
-          {filteredPages.length > 0 && (
-            <CommandGroup heading="Páginas">
-              {filteredPages.map((page) => {
-                const Icon = page.icon;
-                return (
-                  <CommandItem
-                    key={page.href}
-                    value={`page-${page.href}-${page.label}`}
-                    onSelect={() => handleSelect(page.href)}
-                    className="flex items-center gap-3 py-2 rounded-lg"
-                  >
-                    <div className="h-7 w-7 rounded-lg bg-accent/60 flex items-center justify-center shrink-0">
-                      <Icon className="h-3.5 w-3.5 text-muted-foreground" />
-                    </div>
-                    <span className="flex-1 text-sm">{page.label}</span>
-                    <span className="text-[10px] text-muted-foreground/50">{page.group}</span>
-                  </CommandItem>
-                );
-              })}
-            </CommandGroup>
-          )}
-        </CommandList>
-        <div className="border-t border-border/40 px-3 py-2 flex items-center gap-3 text-[11px] text-muted-foreground/60">
-          <span><kbd className="font-mono rounded border border-border/30 px-1">↑↓</kbd> navegar</span>
-          <span><kbd className="font-mono rounded border border-border/30 px-1">↵</kbd> abrir</span>
-          <span><kbd className="font-mono rounded border border-border/30 px-1">Esc</kbd> fechar</span>
-        </div>
-      </CommandDialog>
-    </>
-  );
+  return <>
+    <button type="button" onClick={() => setOpen(true)} className="group flex min-h-10 items-center gap-2 rounded-xl border border-border/50 bg-accent/30 px-3 text-sm text-muted-foreground transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:w-56 lg:w-72" aria-label="Abrir busca global, atalho Control K">
+      <Search className="h-4 w-4 shrink-0" aria-hidden="true"/><span className="hidden flex-1 text-left sm:inline">Buscar no sistema...</span><kbd className="hidden rounded border px-1.5 font-mono text-[10px] sm:inline">Ctrl K</kbd>
+    </button>
+    <CommandDialog open={open} onOpenChange={close}>
+      <CommandInput placeholder="Nome, CPF, telefone, exame, tarefa..." value={query} onValueChange={setQuery}/>
+      <CommandList className="max-h-[min(65vh,32rem)]">
+        {normalized.length === 1 && <p className="px-4 py-3 text-sm text-muted-foreground">Digite pelo menos 2 caracteres.</p>}
+        {searching && <p className="flex items-center gap-2 px-4 py-3 text-sm text-muted-foreground" role="status"><span className="h-3 w-3 animate-spin rounded-full border-2 border-primary border-t-transparent"/>Buscando com segurança...</p>}
+        {error && <div className="flex items-center justify-between gap-3 px-4 py-3" role="alert"><span className="flex items-center gap-2 text-sm text-destructive"><AlertCircle className="h-4 w-4"/>Não foi possível buscar.</span><Button size="sm" variant="outline" onClick={() => void search(normalized)}>Tentar novamente</Button></div>}
+        {!searching && !error && normalized.length >= 2 && !results.length && !pages.length && <CommandEmpty>Nenhum resultado encontrado nesta clínica.</CommandEmpty>}
+        {grouped.map((group, index) => <div key={group.type}>{index > 0 && <CommandSeparator/>}<CommandGroup heading={group.label}>{group.items.map(item => { const Icon = group.icon; return <CommandItem key={`${item.tipo}-${item.id}`} value={`${item.tipo}-${item.id}-${item.titulo}`} onSelect={() => select(item.href)} className="gap-3 py-2.5"><span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10"><Icon className="h-4 w-4 text-primary"/></span><span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium">{item.titulo}</span>{item.subtitulo && <span className="block truncate text-xs text-muted-foreground">{item.subtitulo}</span>}</span><Badge variant="secondary" className="hidden shrink-0 text-[10px] sm:inline-flex">{group.label.slice(0, -1)}</Badge></CommandItem>})}</CommandGroup></div>)}
+        {pages.length > 0 && <><CommandSeparator/><CommandGroup heading="Páginas">{pages.map(page => <CommandItem key={page.href} value={`pagina-${page.label}`} onSelect={() => select(page.href)} className="gap-3"><Search className="h-4 w-4 text-muted-foreground"/><span>{page.label}</span></CommandItem>)}</CommandGroup></>}
+      </CommandList>
+      <div className="flex flex-wrap gap-x-4 gap-y-1 border-t px-3 py-2 text-[11px] text-muted-foreground"><span>↑↓ navegar</span><span>Enter abrir</span><span>Esc fechar</span><span className="ml-auto hidden sm:inline">Resultados limitados à sua clínica e função</span></div>
+    </CommandDialog>
+  </>;
 }
