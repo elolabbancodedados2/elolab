@@ -248,8 +248,8 @@ export function AgendaPage() {
   };
 
   return (
-    <div className="flex gap-0 h-full">
-      <div className="flex-1 min-w-0 space-y-4 p-4">
+    <div className="flex min-w-0 gap-0">
+      <div className="min-w-0 flex-1 space-y-4 px-0 py-2 sm:p-4">
         <AgendaHeader
           date={date}
           view={view}

@@ -64,8 +64,8 @@ export function WaitingListSidebar({ open, onToggle, items }: Props) {
   return (
     <div
       className={cn(
-        'shrink-0 border-l border-border bg-card/60 backdrop-blur transition-all duration-300',
-        open ? 'w-72' : 'w-10'
+        'hidden shrink-0 border-l border-border bg-card/60 backdrop-blur transition-all duration-300 lg:block',
+        open ? 'lg:w-72' : 'lg:w-11'
       )}
     >
       <div className="sticky top-0">
@@ -77,7 +77,7 @@ export function WaitingListSidebar({ open, onToggle, items }: Props) {
               <Badge variant="secondary" className="text-[10px]">{items.length}</Badge>
             </div>
           )}
-          <Button variant="ghost" size="icon" className="h-7 w-7" aria-label={open ? 'Recolher lista de espera' : 'Expandir lista de espera'} onClick={onToggle}>
+          <Button variant="ghost" size="icon" className="h-11 w-11" aria-label={open ? 'Recolher lista de espera' : 'Expandir lista de espera'} onClick={onToggle}>
             <ChevronLeft className={cn('h-4 w-4 transition-transform', !open && 'rotate-180')} />
           </Button>
         </div>

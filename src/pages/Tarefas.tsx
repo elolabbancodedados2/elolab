@@ -115,7 +115,7 @@ function KanbanCard({ tarefa, onUpdate, onDelete, onDragStart }: {
               </p>
             )}
           </div>
-          <Button size="sm" variant="ghost" className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 text-destructive shrink-0" onClick={() => onDelete(tarefa.id)}>
+          <Button size="icon" variant="ghost" className="h-11 w-11 shrink-0 p-0 text-destructive opacity-100 md:opacity-0 md:group-hover:opacity-100" onClick={() => onDelete(tarefa.id)} aria-label={`Excluir tarefa ${tarefa.titulo}`}>
             <Trash2 className="h-3 w-3" />
           </Button>
         </div>
@@ -152,7 +152,7 @@ function TarefaCard({ tarefa, onUpdate, onDelete }: {
                 else if (tarefa.status === 'em_andamento') onUpdate({ id: tarefa.id, status: 'concluida' });
               }}
               className={cn(
-                'mt-0.5 h-6 w-6 rounded-full border-2 flex items-center justify-center shrink-0 transition-all',
+                'mt-0.5 h-11 w-11 rounded-full border-2 flex items-center justify-center shrink-0 transition-all sm:h-8 sm:w-8',
                 tarefa.status === 'concluida'
                   ? 'bg-success border-success text-success-foreground'
                   : 'border-border hover:border-primary hover:bg-primary/5',
@@ -190,18 +190,18 @@ function TarefaCard({ tarefa, onUpdate, onDelete }: {
                 )}
               </div>
             </div>
-            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+            <div className="flex shrink-0 items-center gap-1 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100">
               {tarefa.status === 'pendente' && (
-                <Button size="sm" variant="ghost" className="h-7 text-xs gap-1" onClick={() => onUpdate({ id: tarefa.id, status: 'em_andamento' })}>
+                <Button size="sm" variant="ghost" className="h-11 text-xs gap-1" onClick={() => onUpdate({ id: tarefa.id, status: 'em_andamento' })}>
                   <Clock className="h-3 w-3" /> Iniciar
                 </Button>
               )}
               {tarefa.status === 'em_andamento' && (
-                <Button size="sm" variant="ghost" className="h-7 text-xs gap-1 text-success" onClick={() => onUpdate({ id: tarefa.id, status: 'concluida' })}>
+                <Button size="sm" variant="ghost" className="h-11 text-xs gap-1 text-success" onClick={() => onUpdate({ id: tarefa.id, status: 'concluida' })}>
                   <CheckCircle2 className="h-3 w-3" /> Concluir
                 </Button>
               )}
-              <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive" onClick={() => onDelete(tarefa.id)}>
+              <Button size="icon" variant="ghost" className="h-11 w-11 p-0 text-destructive" onClick={() => onDelete(tarefa.id)} aria-label={`Excluir tarefa ${tarefa.titulo}`}>
                 <Trash2 className="h-3.5 w-3.5" />
               </Button>
             </div>
@@ -373,31 +373,31 @@ export default function Tarefas() {
           </h1>
           <p className="text-sm text-muted-foreground mt-1">Gerencie e acompanhe tarefas da equipe</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="grid w-full grid-cols-[auto_1fr] items-center gap-2 sm:flex sm:w-auto">
           <div className="flex rounded-lg border overflow-hidden">
             <Button
               variant={viewMode === 'kanban' ? 'default' : 'ghost'}
-              size="sm" className="h-8 gap-1.5 rounded-none border-0 text-xs"
+              size="sm" className="h-11 gap-1.5 rounded-none border-0 px-3 text-xs"
               onClick={() => setViewMode('kanban')}
             >
               <LayoutGrid className="h-3.5 w-3.5" /> Kanban
             </Button>
             <Button
               variant={viewMode === 'list' ? 'default' : 'ghost'}
-              size="sm" className="h-8 gap-1.5 rounded-none border-0 border-l text-xs"
+              size="sm" className="h-11 gap-1.5 rounded-none border-0 border-l px-3 text-xs"
               onClick={() => setViewMode('list')}
             >
               <LayoutList className="h-3.5 w-3.5" /> Lista
             </Button>
           </div>
-          <Button onClick={() => setShowNew(true)} className="gap-2 shadow-lg shadow-primary/20">
+          <Button onClick={() => setShowNew(true)} className="h-11 gap-2 shadow-lg shadow-primary/20">
             <Plus className="h-4 w-4" /> Nova Tarefa
           </Button>
         </div>
       </div>
 
       {/* Stats */}
-      <motion.div variants={stagger} initial="hidden" animate="visible" className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+      <motion.div variants={stagger} initial="hidden" animate="visible" className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         {[
           { label: 'Total', value: stats.total, icon: ListTodo, color: 'text-primary', bg: 'bg-primary/10', filter: 'all' },
           { label: 'Pendentes', value: stats.pendentes, icon: Circle, color: 'text-warning', bg: 'bg-warning/10', filter: 'pendente' },
@@ -409,7 +409,7 @@ export default function Tarefas() {
             <button
               onClick={() => s.filter !== 'all' ? setFilterStatus(s.filter) : setFilterStatus('all')}
               className={cn(
-                'w-full rounded-xl border bg-card px-4 py-3 flex items-center gap-3 transition-all hover:shadow-md hover:-translate-y-0.5 text-left',
+                'min-h-11 w-full rounded-xl border bg-card px-3 py-3 flex items-center gap-2 transition-all hover:shadow-md hover:-translate-y-0.5 text-left sm:gap-3 sm:px-4',
                 filterStatus === s.filter && s.filter !== 'all' && 'ring-2 ring-primary/30 shadow-md',
               )}
             >
@@ -427,13 +427,13 @@ export default function Tarefas() {
 
       {/* Filters */}
       <div className="flex gap-3 flex-wrap items-center">
-        <div className="relative flex-1 max-w-md">
+        <div className="relative w-full flex-1 sm:max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Buscar tarefas..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-10" />
+          <Input placeholder="Buscar tarefas..." value={search} onChange={(e) => setSearch(e.target.value)} className="h-11 pl-10" />
         </div>
         {viewMode === 'list' && (
           <Select value={filterStatus} onValueChange={setFilterStatus}>
-            <SelectTrigger className="w-[180px]"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="h-11 w-full sm:w-[180px]"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Todos os status</SelectItem>
               {Object.entries(statusConfig).map(([k, v]) => <SelectItem key={k} value={k}>{v.label}</SelectItem>)}
@@ -545,7 +545,7 @@ export default function Tarefas() {
 
       {/* Dialog Nova Tarefa */}
       <Dialog open={showNew} onOpenChange={setShowNew}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-h-[100dvh] w-full max-w-lg overflow-y-auto rounded-none pb-[calc(1rem+env(safe-area-inset-bottom))] sm:max-h-[90vh] sm:w-[calc(100%-2rem)] sm:rounded-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Plus className="h-5 w-5 text-primary" /> Nova Tarefa

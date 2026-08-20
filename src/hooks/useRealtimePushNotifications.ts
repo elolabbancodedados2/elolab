@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { usePushNotifications } from './usePushNotifications';
@@ -8,11 +8,32 @@ import { usePushNotifications } from './usePushNotifications';
  * native browser notifications for important changes.
  */
 export function useRealtimePushNotifications() {
-  const { user } = useSupabaseAuth();
+  const { user, profile } = useSupabaseAuth();
   const { permission, sendLocalNotification } = usePushNotifications();
+  const [enabled, setEnabled] = useState(true);
 
   useEffect(() => {
-    if (!user || permission !== 'granted') return;
+    if (!user?.id || !profile?.clinica_id) return;
+    let active = true;
+    void (supabase as any).from('user_preferences').select('browser_notifications')
+      .eq('user_id', user.id).eq('clinica_id', profile.clinica_id).maybeSingle()
+      .then(({ data }: { data: { browser_notifications?: boolean } | null }) => {
+        if (active) setEnabled(data?.browser_notifications !== false);
+      });
+    return () => { active = false; };
+  }, [user?.id, profile?.clinica_id]);
+
+  useEffect(() => {
+    const onChange = (event: Event) => {
+      const detail = (event as CustomEvent<{ browser_notifications?: boolean }>).detail;
+      if (detail) setEnabled(detail.browser_notifications !== false);
+    };
+    window.addEventListener('elolab:preferences-changed', onChange);
+    return () => window.removeEventListener('elolab:preferences-changed', onChange);
+  }, []);
+
+  useEffect(() => {
+    if (!user || !enabled || permission !== 'granted') return;
 
     const channel = supabase
       .channel('push-notifications')
@@ -86,5 +107,5 @@ export function useRealtimePushNotifications() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user, permission, sendLocalNotification]);
+  }, [user, permission, sendLocalNotification, enabled]);
 }

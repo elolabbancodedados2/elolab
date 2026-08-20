@@ -77,22 +77,22 @@ export function Navbar({ onMenuClick }: NavbarProps) {
   return (
     <>
     <KeyboardShortcutsDialog />
-    <header className="sticky top-0 z-30 flex h-14 items-center border-b border-border/25 bg-background/75 backdrop-blur-2xl px-3 md:px-5">
+    <header className="sticky top-0 z-30 flex min-h-14 items-center border-b border-border/25 bg-background/75 px-2 pt-[env(safe-area-inset-top)] backdrop-blur-2xl sm:px-3 md:px-5">
       {/* Left: Hamburger */}
-      <Button variant="ghost" size="icon" className="md:hidden h-9 w-9 rounded-xl" aria-label="Abrir menu de navegação" onClick={onMenuClick}>
+      <Button variant="ghost" size="icon" className="h-11 w-11 shrink-0 rounded-xl md:hidden" aria-label="Abrir menu de navegação" onClick={onMenuClick}>
         <Menu className="h-5 w-5" />
       </Button>
 
       {/* Left: Search */}
-      <div className="max-w-sm">
+      <div className="min-w-0 flex-1 sm:max-w-sm sm:flex-none">
         <GlobalSearch />
       </div>
 
       {/* Spacer */}
-      <div className="flex-1" />
+      <div className="hidden flex-1 sm:block" />
 
       {/* Right actions */}
-      <div className="flex items-center gap-1">
+      <div className="flex shrink-0 items-center gap-0.5 sm:gap-1">
         <ContextualHelp />
         {/* Quick Add */}
         <DropdownMenu>
@@ -151,7 +151,8 @@ export function Navbar({ onMenuClick }: NavbarProps) {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="relative h-9 w-9 rounded-xl text-muted-foreground hover:text-foreground hover:bg-accent/60 transition-all duration-200"
+                  className="relative h-11 w-11 rounded-xl text-muted-foreground hover:text-foreground hover:bg-accent/60 transition-all duration-200"
+                  aria-label="Abrir notificações"
                 >
                   <Bell className="h-[17px] w-[17px]" />
                   {totalUnread > 0 && (
@@ -167,7 +168,7 @@ export function Navbar({ onMenuClick }: NavbarProps) {
               </TooltipContent>
             </Tooltip>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-96 rounded-xl p-0" onCloseAutoFocus={(e) => e.preventDefault()}>
+          <DropdownMenuContent align="end" className="w-[min(24rem,calc(100vw-1rem))] rounded-xl p-0" onCloseAutoFocus={(e) => e.preventDefault()}>
             <Tabs defaultValue="alertas" className="w-full">
               <div className="px-3 pt-3 pb-0">
                 <TabsList className="w-full grid grid-cols-2 h-9">
@@ -258,7 +259,7 @@ export function Navbar({ onMenuClick }: NavbarProps) {
         {/* User */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button className="flex items-center gap-2 pl-1 pr-2 py-1 rounded-xl hover:bg-accent/50 transition-all duration-200 outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            <button className="flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-xl px-1 py-1 outline-none transition-all hover:bg-accent/50 focus-visible:ring-2 focus-visible:ring-ring md:justify-start md:pr-2">
               <Avatar className="h-8 w-8 ring-2 ring-primary/20">
                 <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-primary-foreground text-xs font-bold">
                   {profile?.nome ? getInitials(profile.nome) : 'U'}

@@ -38,6 +38,7 @@ import {
   DatabaseBackup,
   Bell,
   History,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { AppRole } from '@/contexts/SupabaseAuthContext';
 
@@ -68,6 +69,7 @@ export const menuGroups: MenuGroup[] = [
     color: '#6366f1',
     items: [
       { label: 'Dashboard', icon: LayoutDashboard, href: '/dashboard' },
+      { label: 'Minhas Preferências', icon: SlidersHorizontal, href: '/preferencias' },
       { label: 'NotificaÃ§Ãµes', icon: Bell, href: '/notificacoes' },
       { label: 'Meu Histórico', icon: History, href: '/meu-historico' },
       { label: 'Agenda', icon: CalendarRange, href: '/agenda' },

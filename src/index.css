@@ -106,6 +106,11 @@
 
 }
 
+/* Preferência pessoal de densidade: reduz espaços sem comprometer alvos de toque. */
+html[data-density='compact'] main .space-y-6 > :not([hidden]) ~ :not([hidden]) {
+  margin-top: 1rem;
+}
+
 @layer base {
   * {
     @apply border-border;

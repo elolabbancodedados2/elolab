@@ -4,8 +4,9 @@ import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { Sidebar } from './Sidebar';
 import { RodapeLegal } from './RodapeLegal';
 import { Navbar } from './Navbar';
-import { Sheet, SheetContent } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet';
 import { SkipLink } from '@/components/ui/skip-link';
+import { RouteAccessibility } from '@/components/RouteAccessibility';
 import { Breadcrumbs } from '@/components/Breadcrumbs';
 import { OfflineIndicator } from '@/components/OfflineIndicator';
 import { useSessionTimeout } from '@/hooks/useSessionTimeout';
@@ -13,6 +14,7 @@ import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 import { useRealtimePushNotifications } from '@/hooks/useRealtimePushNotifications';
 import { ChatPanel } from '@/components/chat/ChatPanel';
 import { ImpersonationBanner } from '@/components/ImpersonationBanner';
+import { usePersonalPreferences } from '@/hooks/usePersonalPreferences';
 
 export function MainLayout() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -20,10 +22,12 @@ export function MainLayout() {
   useSessionTimeout();
   useRealtimeSubscription();
   useRealtimePushNotifications();
+  usePersonalPreferences();
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
+    <div className="flex h-[100dvh] min-h-[100svh] overflow-hidden bg-background">
       <SkipLink targetId="main-content" />
+      <RouteAccessibility />
 
       {/* Desktop Sidebar */}
       <nav className="hidden md:block" aria-label="Menu principal">
@@ -32,7 +36,11 @@ export function MainLayout() {
 
       {/* Mobile Sidebar */}
       <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
-        <SheetContent side="left" className="p-0 w-[260px] border-r-0">
+        <SheetContent side="left" className="w-[min(86vw,320px)] border-r-0 p-0 pt-[env(safe-area-inset-top)]">
+          <SheetTitle className="sr-only">Menu principal</SheetTitle>
+          <SheetDescription className="sr-only">
+            Navegue entre os módulos da clínica.
+          </SheetDescription>
           <nav aria-label="Menu principal mobile">
             <Sidebar />
           </nav>
@@ -45,11 +53,11 @@ export function MainLayout() {
         <ImpersonationBanner />
         <main 
           id="main-content" 
-          className="flex-1 overflow-auto overscroll-contain"
+          className="flex-1 overflow-x-hidden overflow-y-auto overscroll-contain scroll-pt-20"
           role="main"
           tabIndex={-1}
         >
-          <div className="container mx-auto p-3 sm:p-4 md:p-6 lg:p-8 max-w-7xl">
+          <div className="container mx-auto max-w-7xl px-3 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-3 sm:p-4 md:p-6 lg:p-8">
             <Breadcrumbs />
             <div className="animate-fade-in">
               {/* Barreira POR TELA. Havia só um ErrorBoundary no topo do App,

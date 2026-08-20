@@ -27,7 +27,48 @@ export const PatientListTable = memo(function PatientListTable({
   podeGerarLinkPortal = true, getConvenioNome, calcularIdade,
 }: PatientListTableProps) {
   return (
-    <div className="overflow-x-auto">
+    <div>
+      <div className="divide-y sm:hidden">
+        {pacientes.length === 0 ? (
+          <div className="px-4 py-12 text-center text-muted-foreground">
+            <Users className="mx-auto mb-2 h-8 w-8 opacity-40" />
+            Nenhum paciente encontrado
+          </div>
+        ) : pacientes.map((paciente) => {
+          const idade = calcularIdade(paciente.data_nascimento);
+          return (
+            <article key={paciente.id} className="p-4">
+              <button type="button" className="flex min-h-11 w-full items-start gap-3 rounded-lg text-left outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => onView(paciente)}>
+                <PatientPhoto pacienteId={paciente.id} pacienteNome={paciente.nome} currentPhotoUrl={paciente.foto_url} size="sm" editable={false} />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-medium">{paciente.nome}</span>
+                  <span className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                    {paciente.data_nascimento && <span>{idade} anos</span>}
+                    <Badge variant="outline" className="max-w-full truncate text-[10px]">{getConvenioNome(paciente.convenio_id)}</Badge>
+                  </span>
+                  {paciente.telefone && <span className="mt-1.5 flex items-center gap-1.5 text-xs text-muted-foreground"><Phone className="h-3 w-3" />{paciente.telefone}</span>}
+                </span>
+                <Eye className="mt-2 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+              </button>
+              {paciente.alergias?.length > 0 && <AllergyAlert alergias={paciente.alergias} compact className="mt-2" />}
+              <div className="mt-3 flex gap-2" onClick={(e) => e.stopPropagation()}>
+                {podeGerarLinkPortal && (
+                  <Button variant="outline" onClick={() => onGeneratePortalLink(paciente.id, paciente.nome)} className="h-11 min-w-0 flex-1 gap-1 px-2 text-xs" aria-label={`Gerar link do portal para ${paciente.nome}`}>
+                    <Link className="h-4 w-4" /> Portal
+                  </Button>
+                )}
+                <Button variant="outline" onClick={() => onEdit(paciente)} className="h-11 min-w-0 flex-1 gap-1 px-2 text-xs" aria-label={`Editar ${paciente.nome}`}>
+                  <Edit className="h-4 w-4" /> Editar
+                </Button>
+                <Button variant="outline" onClick={() => onDelete(paciente)} className="h-11 min-w-0 flex-1 gap-1 px-2 text-xs text-destructive" aria-label={`Excluir ${paciente.nome}`}>
+                  <Trash2 className="h-4 w-4" /> Excluir
+                </Button>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+      <div className="hidden overflow-x-auto sm:block">
       <Table>
         <TableHeader>
           <TableRow>
@@ -105,24 +146,24 @@ export const PatientListTable = memo(function PatientListTable({
                   <TableCell className="text-right" onClick={e => e.stopPropagation()}>
                     <div className="flex justify-end gap-1.5">
                       <motion.div whileHover={{ scale: 1.15 }} whileTap={{ scale: 0.9 }} transition={{ type: "spring", stiffness: 500, damping: 15 }}>
-                        <Button variant="ghost" size="icon" onClick={() => onView(paciente)} title="Ver detalhes" className="rounded-xl hover:bg-primary/10 hover:text-primary">
+                        <Button variant="ghost" size="icon" onClick={() => onView(paciente)} title="Ver detalhes" aria-label={`Ver detalhes de ${paciente.nome}`} className="h-11 w-11 rounded-xl hover:bg-primary/10 hover:text-primary">
                           <Eye className="h-4 w-4" />
                         </Button>
                       </motion.div>
                       {podeGerarLinkPortal && (
                         <motion.div whileHover={{ scale: 1.15 }} whileTap={{ scale: 0.9 }} transition={{ type: "spring", stiffness: 500, damping: 15 }}>
-                          <Button variant="ghost" size="icon" onClick={() => onGeneratePortalLink(paciente.id, paciente.nome)} title="Link do portal" className="rounded-xl hover:bg-accent/60">
+                          <Button variant="ghost" size="icon" onClick={() => onGeneratePortalLink(paciente.id, paciente.nome)} title="Link do portal" aria-label={`Gerar link do portal para ${paciente.nome}`} className="h-11 w-11 rounded-xl hover:bg-accent/60">
                             <Link className="h-4 w-4" />
                           </Button>
                         </motion.div>
                       )}
                       <motion.div whileHover={{ scale: 1.15 }} whileTap={{ scale: 0.9 }} transition={{ type: "spring", stiffness: 500, damping: 15 }}>
-                        <Button variant="ghost" size="icon" onClick={() => onEdit(paciente)} title="Editar" className="rounded-xl hover:bg-accent/60">
+                        <Button variant="ghost" size="icon" onClick={() => onEdit(paciente)} title="Editar" aria-label={`Editar ${paciente.nome}`} className="h-11 w-11 rounded-xl hover:bg-accent/60">
                           <Edit className="h-4 w-4" />
                         </Button>
                       </motion.div>
                       <motion.div whileHover={{ scale: 1.15, rotate: 5 }} whileTap={{ scale: 0.9 }} transition={{ type: "spring", stiffness: 500, damping: 15 }}>
-                        <Button variant="ghost" size="icon" onClick={() => onDelete(paciente)} title="Excluir" className="rounded-xl hover:bg-destructive/10">
+                        <Button variant="ghost" size="icon" onClick={() => onDelete(paciente)} title="Excluir" aria-label={`Excluir ${paciente.nome}`} className="h-11 w-11 rounded-xl hover:bg-destructive/10">
                           <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
                       </motion.div>
@@ -134,6 +175,7 @@ export const PatientListTable = memo(function PatientListTable({
           )}
         </TableBody>
       </Table>
+      </div>
     </div>
   );
 });

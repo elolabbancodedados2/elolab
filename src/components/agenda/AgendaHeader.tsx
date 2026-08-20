@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AgendaView } from './AgendaPage';
+import { Link } from 'react-router-dom';
 
 interface Props {
   date: string;
@@ -66,18 +67,20 @@ export function AgendaHeader(p: Props) {
   return (
     <div className="flex flex-col gap-3 pb-3 border-b border-border/60">
       {/* Row 1: title + nav + view + primary actions */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3 min-w-0">
-          <h1 className="text-xl font-semibold capitalize truncate">{label}</h1>
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+        <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+          <div className="flex min-w-0 items-center gap-2">
+          <h1 className="truncate text-lg font-semibold capitalize sm:text-xl">{label}</h1>
           {isToday && p.view === 'daily' && <Badge variant="secondary" className="text-[10px]">HOJE</Badge>}
-          <div className="flex items-center rounded-md border shrink-0">
-            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => nav(-1)} aria-label="Anterior">
+          </div>
+          <div className="flex w-full items-center rounded-md border sm:w-auto sm:shrink-0">
+            <Button variant="ghost" size="icon" className="h-11 w-11 shrink-0 sm:h-9 sm:w-9" onClick={() => nav(-1)} aria-label="Anterior">
               <ChevronLeft className="h-4 w-4" />
             </Button>
-            <Button variant="ghost" size="sm" className="h-8 px-2 text-xs font-medium" onClick={() => p.onDateChange(format(new Date(), 'yyyy-MM-dd'))}>
+            <Button variant="ghost" size="sm" className="h-11 px-3 text-xs font-medium sm:h-9" onClick={() => p.onDateChange(format(new Date(), 'yyyy-MM-dd'))}>
               Hoje
             </Button>
-            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => nav(1)} aria-label="Próximo">
+            <Button variant="ghost" size="icon" className="h-11 w-11 shrink-0 sm:h-9 sm:w-9" onClick={() => nav(1)} aria-label="Próximo">
               <ChevronRight className="h-4 w-4" />
             </Button>
             <div className="w-px h-5 bg-border" />
@@ -85,33 +88,39 @@ export function AgendaHeader(p: Props) {
               type="date"
               value={p.date}
               onChange={(e) => p.onDateChange(e.target.value)}
-              className="h-8 w-32 border-0 focus-visible:ring-0 text-sm"
+              className="h-11 min-w-0 flex-1 border-0 text-sm focus-visible:ring-0 sm:h-9 sm:w-32"
             />
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex w-full items-center gap-2 overflow-x-auto pb-1 sm:w-auto sm:overflow-visible sm:pb-0">
           <div className="flex items-center gap-0.5 rounded-md border p-0.5">
-            <Button variant={p.view === 'daily' ? 'default' : 'ghost'} size="sm" className="h-7 px-2.5" onClick={() => p.onViewChange('daily')}>
+            <Button variant={p.view === 'daily' ? 'default' : 'ghost'} size="sm" className="h-11 px-3 sm:h-9" onClick={() => p.onViewChange('daily')} aria-label="Visualização diária">
               <List className="h-3.5 w-3.5 md:mr-1" /> <span className="hidden md:inline">Dia</span>
             </Button>
-            <Button variant={p.view === 'weekly' ? 'default' : 'ghost'} size="sm" className="h-7 px-2.5" onClick={() => p.onViewChange('weekly')}>
+            <Button variant={p.view === 'weekly' ? 'default' : 'ghost'} size="sm" className="h-11 px-3 sm:h-9" onClick={() => p.onViewChange('weekly')} aria-label="Visualização semanal">
               <LayoutGrid className="h-3.5 w-3.5 md:mr-1" /> <span className="hidden md:inline">Semana</span>
             </Button>
-            <Button variant={p.view === 'monthly' ? 'default' : 'ghost'} size="sm" className="h-7 px-2.5" onClick={() => p.onViewChange('monthly')}>
+            <Button variant={p.view === 'monthly' ? 'default' : 'ghost'} size="sm" className="h-11 px-3 sm:h-9" onClick={() => p.onViewChange('monthly')} aria-label="Visualização mensal">
               <CalendarDays className="h-3.5 w-3.5 md:mr-1" /> <span className="hidden md:inline">Mês</span>
             </Button>
           </div>
 
-          <Button variant="outline" size="sm" onClick={p.onToggleWaiting} className="h-8">
+          <Button variant="outline" size="sm" onClick={p.onToggleWaiting} className="hidden h-9 lg:inline-flex">
             <Users2 className="h-4 w-4 md:mr-1.5" />
             <span className="hidden md:inline">Espera</span>
             {p.waitingCount > 0 && <Badge variant="secondary" className="ml-1.5 h-5 px-1.5 text-[10px]">{p.waitingCount}</Badge>}
           </Button>
+          <Button asChild variant="outline" size="icon" className="h-11 w-11 shrink-0 lg:hidden">
+            <Link to="/lista-espera" aria-label={`Abrir lista de espera${p.waitingCount ? `, ${p.waitingCount} pacientes` : ''}`} title="Abrir lista de espera">
+              <Users2 className="h-4 w-4" />
+              <span className="sr-only">Abrir lista de espera</span>
+            </Link>
+          </Button>
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="icon" className="h-8 w-8" aria-label="Mais opções da agenda"><MoreHorizontal className="h-4 w-4" /></Button>
+              <Button variant="outline" size="icon" className="h-11 w-11 shrink-0 sm:h-9 sm:w-9" aria-label="Mais opções da agenda"><MoreHorizontal className="h-4 w-4" /></Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
               <DropdownMenuItem onSelect={p.onNewBlock}><Ban className="mr-2 h-4 w-4" /> Bloquear horário</DropdownMenuItem>
@@ -131,7 +140,7 @@ export function AgendaHeader(p: Props) {
             </DropdownMenuContent>
           </DropdownMenu>
 
-          <Button size="sm" onClick={p.onNewAppointment} className="h-8 shadow-sm">
+          <Button size="sm" onClick={p.onNewAppointment} className="h-11 shrink-0 shadow-sm sm:h-9">
             <Plus className="h-4 w-4 md:mr-1" /> <span className="hidden md:inline">Nova consulta</span>
           </Button>
         </div>
@@ -139,19 +148,19 @@ export function AgendaHeader(p: Props) {
 
       {/* Row 2: search + filters + totals */}
       <div className="flex flex-wrap items-center gap-2">
-        <div className="relative flex-1 min-w-[180px] max-w-sm">
+        <div className="relative w-full min-w-0 sm:max-w-sm sm:flex-1">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
           <Input
             placeholder="Buscar paciente, CPF, telefone..."
             value={p.search}
             onChange={(e) => p.onSearchChange(e.target.value)}
-            className="pl-8 h-8 text-sm"
+            className="h-11 pl-8 text-sm sm:h-9"
           />
         </div>
 
         <Popover>
           <PopoverTrigger asChild>
-            <Button variant="outline" size="sm" className="h-8">
+            <Button variant="outline" size="sm" className="h-11 sm:h-9">
               <Filter className="h-3.5 w-3.5 mr-1.5" /> Médicos
               {p.medicoFilter.length > 0 && <Badge variant="secondary" className="ml-1.5 h-4 px-1 text-[10px]">{p.medicoFilter.length}</Badge>}
             </Button>
@@ -179,7 +188,7 @@ export function AgendaHeader(p: Props) {
 
         <Popover>
           <PopoverTrigger asChild>
-            <Button variant="outline" size="sm" className="h-8">
+            <Button variant="outline" size="sm" className="h-11 sm:h-9">
               <Filter className="h-3.5 w-3.5 mr-1.5" /> Status
               {p.statusFilter.length > 0 && <Badge variant="secondary" className="ml-1.5 h-4 px-1 text-[10px]">{p.statusFilter.length}</Badge>}
             </Button>
@@ -211,7 +220,7 @@ export function AgendaHeader(p: Props) {
           }}>Limpar filtros</Button>
         )}
 
-        <div className="ml-auto flex items-center gap-1.5 text-xs">
+        <div className="-mx-1 flex w-[calc(100%+0.5rem)] items-center gap-1.5 overflow-x-auto px-1 pb-1 text-xs sm:ml-auto sm:w-auto sm:overflow-visible sm:pb-0">
           <Stat label="Total" value={p.totals.total} />
           <Stat label="Conf." value={p.totals.confirmados} tone="success" />
           <Stat label="Aguard." value={p.totals.aguardando} tone="warning" />
@@ -225,7 +234,7 @@ export function AgendaHeader(p: Props) {
 function Stat({ label, value, tone }: { label: string; value: number; tone?: 'success' | 'warning' | 'destructive' }) {
   return (
     <div className={cn(
-      'flex items-center gap-1.5 rounded-md border px-2 py-1',
+      'flex min-h-11 shrink-0 items-center gap-1.5 rounded-md border px-2 py-1 sm:min-h-0',
       tone === 'success' && 'border-success/30 bg-success/5',
       tone === 'warning' && 'border-warning/30 bg-warning/5',
       tone === 'destructive' && 'border-destructive/30 bg-destructive/5',

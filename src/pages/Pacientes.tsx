@@ -861,7 +861,7 @@ export default function Pacientes() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5 sm:space-y-6">
       {/* Header */}
       <motion.div
         className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4"
@@ -870,16 +870,16 @@ export default function Pacientes() {
         transition={{ duration: 0.4 }}
       >
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Pacientes</h1>
+          <h1 className="text-2xl font-bold text-foreground sm:text-3xl">Pacientes</h1>
           <p className="text-muted-foreground">Gestão completa do cadastro de pacientes</p>
         </div>
-        <div className="flex flex-wrap gap-3">
+        <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:gap-3">
           <motion.div whileHover={{ scale: 1.04, y: -2 }} whileTap={{ scale: 0.96 }} transition={{ type: "spring", stiffness: 400, damping: 17 }}>
             <Button
               variant="outline"
               size="lg"
               onClick={() => setIsEtiquetaOpen(true)}
-              className="gap-2 rounded-xl border-2 border-border/60 shadow-sm hover:shadow-md hover:border-primary/40 transition-all duration-200 text-sm font-semibold px-5"
+              className="h-11 w-full gap-2 rounded-xl border-2 border-border/60 px-3 text-sm font-semibold shadow-sm transition-all duration-200 hover:border-primary/40 hover:shadow-md sm:w-auto sm:px-5"
             >
               <Tag className="h-4 w-4" />
               Etiquetas
@@ -889,7 +889,7 @@ export default function Pacientes() {
             <Button
               size="lg"
               onClick={handleNew}
-              className="gap-2 rounded-xl shadow-md hover:shadow-lg transition-all duration-200 text-sm font-semibold px-6"
+              className="h-11 w-full gap-2 rounded-xl px-3 text-sm font-semibold shadow-md transition-all duration-200 hover:shadow-lg sm:w-auto sm:px-6"
             >
               <Plus className="h-5 w-5" />
               Novo Paciente
@@ -916,14 +916,15 @@ export default function Pacientes() {
                   placeholder="Buscar nome, CPF, telefone, email..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-9"
+                className="h-11 pl-9"
                 />
               </div>
               <Button
                 variant={showFilters ? 'default' : 'outline'}
                 size="icon"
                 onClick={() => setShowFilters(!showFilters)}
-                className="relative"
+                className="relative h-11 w-11 shrink-0"
+                aria-label={showFilters ? 'Ocultar filtros' : 'Mostrar filtros'}
               >
                 <Filter className="h-4 w-4" />
                 {activeFilters > 0 && (
@@ -936,11 +937,11 @@ export default function Pacientes() {
           </div>
 
           {showFilters && (
-            <div className="flex flex-wrap gap-3 pt-3 border-t mt-3">
+            <div className="grid grid-cols-1 gap-3 border-t pt-3 sm:flex sm:flex-wrap">
               <div className="space-y-1">
                 <Label className="text-xs">Sexo</Label>
                 <Select value={filterSexo} onValueChange={setFilterSexo}>
-                  <SelectTrigger className="w-32 h-8 text-xs"><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="h-11 w-full text-xs sm:w-32"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="todos">Todos</SelectItem>
                     {SEXO_OPTIONS.map(s => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
@@ -950,7 +951,7 @@ export default function Pacientes() {
               <div className="space-y-1">
                 <Label className="text-xs">Convênio</Label>
                 <Select value={filterConvenio} onValueChange={setFilterConvenio}>
-                  <SelectTrigger className="w-40 h-8 text-xs"><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="h-11 w-full text-xs sm:w-40"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="todos">Todos</SelectItem>
                     <SelectItem value="particular">Particular</SelectItem>
@@ -961,7 +962,7 @@ export default function Pacientes() {
               <div className="space-y-1">
                 <Label className="text-xs">Faixa Etária</Label>
                 <Select value={filterIdade} onValueChange={setFilterIdade}>
-                  <SelectTrigger className="w-36 h-8 text-xs"><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="h-11 w-full text-xs sm:w-36"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="todos">Todas</SelectItem>
                     <SelectItem value="crianca">Criança (0-11)</SelectItem>
@@ -973,7 +974,7 @@ export default function Pacientes() {
               </div>
               {activeFilters > 0 && (
                 <div className="flex items-end">
-                  <Button variant="ghost" size="sm" className="text-xs h-8 gap-1" onClick={() => { setFilterSexo('todos'); setFilterConvenio('todos'); setFilterIdade('todos'); }}>
+                  <Button variant="ghost" size="sm" className="h-11 text-xs gap-1" onClick={() => { setFilterSexo('todos'); setFilterConvenio('todos'); setFilterIdade('todos'); }}>
                     <X className="h-3 w-3" /> Limpar
                   </Button>
                 </div>
@@ -997,7 +998,7 @@ export default function Pacientes() {
 
       {/* ─── Form Dialog ─── */}
       <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-h-[100dvh] w-full max-w-3xl overflow-y-auto rounded-none pb-[calc(1rem+env(safe-area-inset-bottom))] sm:max-h-[90vh] sm:w-[calc(100%-2rem)] sm:rounded-lg">
           <DialogHeader>
             <DialogTitle>{selectedPacienteId ? 'Editar Paciente' : 'Novo Paciente'}</DialogTitle>
           </DialogHeader>
