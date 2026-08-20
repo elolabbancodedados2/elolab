@@ -22,6 +22,7 @@ import { GlobalSearch } from '@/components/GlobalSearch';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { ContextualHelp } from '@/components/ContextualHelp';
 
 interface NavbarProps {
   onMenuClick?: () => void;
@@ -92,6 +93,7 @@ export function Navbar({ onMenuClick }: NavbarProps) {
 
       {/* Right actions */}
       <div className="flex items-center gap-1">
+        <ContextualHelp />
         {/* Quick Add */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

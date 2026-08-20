@@ -37,6 +37,7 @@ import {
   FileText,
   DatabaseBackup,
   Bell,
+  History,
 } from 'lucide-react';
 import { AppRole } from '@/contexts/SupabaseAuthContext';
 
@@ -68,6 +69,7 @@ export const menuGroups: MenuGroup[] = [
     items: [
       { label: 'Dashboard', icon: LayoutDashboard, href: '/dashboard' },
       { label: 'NotificaÃ§Ãµes', icon: Bell, href: '/notificacoes' },
+      { label: 'Meu Histórico', icon: History, href: '/meu-historico' },
       { label: 'Agenda', icon: CalendarRange, href: '/agenda' },
       { label: 'Chat Interno', icon: MessageCircle, href: '/chat' },
       // `medico` faltava aqui, mas a rota de /tarefas já o libera — o médico

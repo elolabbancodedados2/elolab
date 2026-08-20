@@ -22,6 +22,9 @@ import {
   Loader2, CalendarClock, User2, LayoutGrid, LayoutList, GripVertical,
 } from 'lucide-react';
 import { parseDateOnly } from '@/lib/dateOnly';
+import { useRecoverableDraft } from '@/hooks/useRecoverableDraft';
+import { DraftRecoveryNotice } from '@/components/DraftRecoveryNotice';
+import { withSafeRetry } from '@/lib/retry';
 
 // ─── Config ────────────────────────────────────────────────
 const statusConfig: Record<string, { label: string; icon: typeof Circle; colorClasses: string }> = {
@@ -219,6 +222,7 @@ export default function Tarefas() {
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
   const [deleteTaskId, setDeleteTaskId] = useState<string | null>(null);
   const queryClient = useQueryClient();
+  const emptyForm = useMemo(() => ({ titulo: '', descricao: '', prioridade: 'media', responsavel_id: '', data_vencimento: '', categoria: '' }), []);
 
   const { data: profiles } = useQuery({
     queryKey: ['profiles-tarefas', profile?.clinica_id],
@@ -237,15 +241,11 @@ export default function Tarefas() {
   const { data: tarefas, isLoading } = useQuery({
     queryKey: ['tarefas', profile?.clinica_id],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('tarefas')
-        .select('*')
-        .order('created_at', { ascending: false });
-      if (error) {
-        if (import.meta.env.DEV) console.error('Erro ao buscar tarefas:', error);
-        toast.error('Erro ao carregar tarefas: ' + error.message);
-        throw error;
-      }
+      const data = await withSafeRetry(async () => {
+        const result = await supabase.from('tarefas').select('*').order('created_at', { ascending: false });
+        if (result.error) throw result.error;
+        return result.data;
+      });
       if (import.meta.env.DEV) console.log('Tarefas carregadas:', data?.length || 0);
       return data || [];
     },
@@ -263,6 +263,8 @@ export default function Tarefas() {
       queryClient.invalidateQueries({ queryKey: ['tarefas'] });
       toast.success('Tarefa criada!');
       setShowNew(false);
+      setForm(emptyForm);
+      draft.clear();
     },
     onError: (err: any) => {
       if (import.meta.env.DEV) console.error('Erro ao criar tarefa:', err);
@@ -324,6 +326,14 @@ export default function Tarefas() {
   const [form, setForm] = useState({
     titulo: '', descricao: '', prioridade: 'media', responsavel_id: '',
     data_vencimento: '', categoria: '',
+  });
+  const draft = useRecoverableDraft({
+    key: `elolab:draft:task:${profile?.clinica_id || 'unknown'}:${user?.id || 'unknown'}`,
+    value: form,
+    initialValue: emptyForm,
+    onRestore: setForm,
+    storage: 'session',
+    enabled: showNew && !!profile?.clinica_id && !!user?.id,
   });
 
   // ─── Drag & Drop Handlers ───────────────────────────────
@@ -550,8 +560,14 @@ export default function Tarefas() {
               data_vencimento: form.data_vencimento || null,
               categoria: form.categoria || null,
             });
-            setForm({ titulo: '', descricao: '', prioridade: 'media', responsavel_id: '', data_vencimento: '', categoria: '' });
           }} className="space-y-4">
+            {draft.restorable && (
+              <DraftRecoveryNotice
+                savedAt={draft.restorable.savedAt}
+                onRestore={draft.restore}
+                onDiscard={draft.discard}
+              />
+            )}
             <div className="space-y-2">
               <Label>Título *</Label>
               <Input value={form.titulo} onChange={(e) => setForm(p => ({ ...p, titulo: e.target.value }))} placeholder="O que precisa ser feito?" autoFocus />
@@ -603,6 +619,9 @@ export default function Tarefas() {
               </div>
             </div>
             <DialogFooter>
+              <span className="mr-auto self-center text-xs text-muted-foreground" aria-live="polite">
+                {draft.savedAt ? `Rascunho salvo às ${draft.savedAt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}` : draft.dirty ? 'Salvando rascunho…' : 'Sem alterações'}
+              </span>
               <Button variant="outline" type="button" onClick={() => setShowNew(false)}>Cancelar</Button>
               <Button type="submit" className="gap-2" disabled={!form.titulo.trim() || createTarefa.isPending}>
                 {createTarefa.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
