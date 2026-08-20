@@ -19,7 +19,7 @@ interface HistoryEvent { event_id:string; action:Action; resource:string; occurr
 const PAGE_SIZE=20;
 const actions:Record<Action,string>={create:'Criou',update:'Atualizou',delete:'Excluiu',access:'Acessou',sign:'Assinou',edit_request:'Solicitou edição'};
 const resources:Record<string,string>={pacientes:'Paciente',agendamentos:'Agendamento',prontuarios:'Prontuário',prescricoes:'Prescrição',atestados:'Atestado',exames:'Exame',tarefas:'Tarefa',contas_receber:'Conta a receber',contas_pagar:'Conta a pagar',support_access:'Acesso de suporte'};
-const resourceLabel=(value:string)=>resources[value]??value.replaceAll('_',' ').replace(/^./,l=>l.toUpperCase());
+const resourceLabel=(value:string)=>resources[value]??value.split('_').join(' ').replace(/^./,l=>l.toUpperCase());
 
 export default function MeuHistorico(){
  const {user,clinicaId}=useSupabaseAuth(); const[action,setAction]=useState('all'); const[resource,setResource]=useState('all');
