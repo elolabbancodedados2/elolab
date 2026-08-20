@@ -35,6 +35,7 @@ const routeLabels: Record<string, string> = {
   'precos-exames': 'Preços de Exames',
   tarefas: 'Tarefas',
   'meu-historico': 'Meu histórico',
+  indicadores: 'Indicadores de produtividade',
   notificacoes: 'NotificaÃ§Ãµes',
 };
 

@@ -14,6 +14,7 @@ import {
   Star, MessageSquare, CheckCircle2, HeartHandshake, Clock,
   Activity, FileText, Phone, Shield, Sparkles, ChevronRight,
   Heart, Pill, AlertTriangle, Download, RefreshCw,
+  LogOut,
 } from 'lucide-react';
 import { format, isPast, isToday, isFuture, parseISO, differenceInDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -477,6 +478,19 @@ export default function PortalPaciente() {
     }
   };
 
+  const handleLogout = () => {
+    setAuthenticated(false);
+    setToken('');
+    setProfile(null);
+    setAgendamentos([]);
+    setExames([]);
+    setPagamentos([]);
+    setPrescricoes([]);
+    setRetornos([]);
+    setOfertasEspera([]);
+    setError('');
+  };
+
   const handleUpdateContact = async () => {
     setContactSaving(true);
     setContactMessage('');
@@ -589,6 +603,10 @@ export default function PortalPaciente() {
             <div className="p-2 rounded-full bg-primary/10">
               <User className="h-4 w-4 text-primary" />
             </div>
+            <Button variant="ghost" size="sm" onClick={handleLogout} className="gap-2" aria-label="Sair do portal do paciente">
+              <LogOut className="h-4 w-4" />
+              <span className="hidden sm:inline">Sair</span>
+            </Button>
           </div>
         </div>
       </header>

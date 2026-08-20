@@ -10,6 +10,7 @@ const ROUTE_LABELS: Record<string, string> = {
   '/financeiro': 'Financeiro',
   '/notificacoes': 'Central de notificações',
   '/meu-historico': 'Meu histórico',
+  '/indicadores': 'Indicadores de produtividade',
   '/configuracoes': 'Configurações',
 };
 

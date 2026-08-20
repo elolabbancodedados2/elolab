@@ -146,6 +146,7 @@ Deno.serve(async (req) => {
           .from("agendamentos")
           .select("id, data, hora_inicio, hora_fim, tipo, status, medicos(nome, crm, especialidade)")
           .eq("paciente_id", pacienteId)
+          .eq("clinica_id", pacienteClinicaId)
           .order("data", { ascending: false })
           .limit(50);
         result = data || [];
@@ -157,6 +158,7 @@ Deno.serve(async (req) => {
           .from("agendamentos")
           .select("id, data, hora_inicio, tipo, status, medicos(crm, especialidade)")
           .eq("paciente_id", pacienteId)
+          .eq("clinica_id", pacienteClinicaId)
           .lt("data", new Date().toISOString().split("T")[0])
           .order("data", { ascending: false })
           .limit(50);
@@ -167,7 +169,7 @@ Deno.serve(async (req) => {
       case "get_retornos": {
         const { data, error } = await supabase.from("retornos")
           .select("id, data_retorno_prevista, motivo, tipo_retorno, status, confirmado_em, agendamento_retorno_id, created_at, medicos(nome, especialidade)")
-          .eq("paciente_id", pacienteId).order("data_retorno_prevista", { ascending: false }).limit(50);
+          .eq("paciente_id", pacienteId).eq("clinica_id", pacienteClinicaId).order("data_retorno_prevista", { ascending: false }).limit(50);
         if (error) throw error;
         result = data || [];
         break;
@@ -176,13 +178,13 @@ Deno.serve(async (req) => {
       case "get_waitlist_offers": {
         const { data: ofertas, error } = await supabase.from("lista_espera")
           .select("id, oferta_agendamento_id, oferta_expira_em, prioridade, motivo")
-          .eq("paciente_id", pacienteId).eq("status", "notificado").gt("oferta_expira_em", new Date().toISOString());
+          .eq("paciente_id", pacienteId).eq("clinica_id", pacienteClinicaId).eq("status", "notificado").gt("oferta_expira_em", new Date().toISOString());
         if (error) throw error;
         const completas = [];
         for (const oferta of ofertas || []) {
           const { data: vaga } = await supabase.from("agendamentos")
             .select("id, data, hora_inicio, hora_fim, tipo, medicos(nome, especialidade)")
-            .eq("id", oferta.oferta_agendamento_id).eq("status", "cancelado").maybeSingle();
+            .eq("id", oferta.oferta_agendamento_id).eq("clinica_id", pacienteClinicaId).eq("status", "cancelado").maybeSingle();
           if (vaga) completas.push({ ...oferta, vaga });
         }
         result = completas;
@@ -202,12 +204,12 @@ Deno.serve(async (req) => {
       case "confirm_retorno": {
         const { retorno_id } = body;
         if (!retorno_id) return new Response(JSON.stringify({ error: "retorno_id é obrigatório" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-        const { data: atual } = await supabase.from("retornos").select("historico").eq("id", retorno_id).eq("paciente_id", pacienteId).single();
+        const { data: atual } = await supabase.from("retornos").select("historico").eq("id", retorno_id).eq("paciente_id", pacienteId).eq("clinica_id", pacienteClinicaId).single();
         const historico = Array.isArray(atual?.historico) ? atual.historico : [];
         const confirmadoEm = new Date().toISOString();
         const { data, error } = await supabase.from("retornos").update({ status: "confirmado", confirmado_em: confirmadoEm,
           historico: [...historico, { evento: "confirmado_pelo_paciente", em: confirmadoEm }] })
-          .eq("id", retorno_id).eq("paciente_id", pacienteId).select("id").single();
+          .eq("id", retorno_id).eq("paciente_id", pacienteId).eq("clinica_id", pacienteClinicaId).select("id").single();
         if (error || !data) return new Response(JSON.stringify({ error: "Retorno não encontrado" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         result = { success: true, message: "Retorno confirmado" };
         break;
@@ -217,11 +219,11 @@ Deno.serve(async (req) => {
         const { retorno_id, nova_data } = body;
         if (!retorno_id || !nova_data || nova_data < todayISO()) return new Response(JSON.stringify({ error: "Informe uma data futura válida" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         const { data: retorno, error: retornoError } = await supabase.from("retornos").select("id, data_retorno_prevista, historico")
-          .eq("id", retorno_id).eq("paciente_id", pacienteId).single();
+          .eq("id", retorno_id).eq("paciente_id", pacienteId).eq("clinica_id", pacienteClinicaId).single();
         if (retornoError || !retorno) return new Response(JSON.stringify({ error: "Retorno não encontrado" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         const historico = Array.isArray(retorno.historico) ? retorno.historico : [];
         const { error } = await supabase.from("retornos").update({ data_retorno_prevista: nova_data, status: "pendente", confirmado_em: null, lembrete_enviado: false,
-          historico: [...historico, { evento: "remarcado_pelo_paciente", de: retorno.data_retorno_prevista, para: nova_data, em: new Date().toISOString() }] }).eq("id", retorno_id).eq("paciente_id", pacienteId);
+          historico: [...historico, { evento: "remarcado_pelo_paciente", de: retorno.data_retorno_prevista, para: nova_data, em: new Date().toISOString() }] }).eq("id", retorno_id).eq("paciente_id", pacienteId).eq("clinica_id", pacienteClinicaId);
         if (error) throw error;
         result = { success: true, message: "Retorno remarcado" };
         break;
@@ -231,7 +233,7 @@ Deno.serve(async (req) => {
         const nota = Number(body.nota); const comentario = String(body.comentario || "").trim().slice(0, 2000);
         if (!Number.isInteger(nota) || nota < 1 || nota > 5) return new Response(JSON.stringify({ error: "A nota deve estar entre 1 e 5" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         const { data: atendimento } = await supabase.from("agendamentos").select("id, medico_id, clinica_id")
-          .eq("paciente_id", pacienteId).in("status", ["finalizado", "aguardando_pagamento_adicional"]).order("data", { ascending: false }).limit(1).maybeSingle();
+          .eq("paciente_id", pacienteId).eq("clinica_id", pacienteClinicaId).in("status", ["finalizado", "aguardando_pagamento_adicional"]).order("data", { ascending: false }).limit(1).maybeSingle();
         if (!atendimento) return new Response(JSON.stringify({ error: "Nenhum atendimento concluído para avaliar" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         const { error } = await supabase.from("feedbacks_nps").insert({ paciente_id: pacienteId, agendamento_id: atendimento.id, medico_id: atendimento.medico_id,
           clinica_id: atendimento.clinica_id, nota, comentario: comentario || null, categoria: "geral" });
@@ -255,10 +257,16 @@ Deno.serve(async (req) => {
           .from("exames")
           .select("id, tipo_exame, status, data_solicitacao, data_realizacao, resultado, arquivo_resultado, medicos:medico_solicitante_id(crm)")
           .eq("paciente_id", pacienteId)
+          .eq("clinica_id", pacienteClinicaId)
           .order("data_solicitacao", { ascending: false })
           .limit(30);
         if (error) throw error;
         result = await Promise.all((data || []).map(async (exame: any) => {
+          // Conteúdo clínico e arquivo só podem sair depois da liberação.
+          // Antes disso o portal mostra apenas que o exame está em andamento.
+          if (exame.status !== "laudo_disponivel") {
+            return { ...exame, resultado: null, arquivo_resultado: null };
+          }
           if (!exame.arquivo_resultado) return exame;
           if (/^https:\/\//i.test(exame.arquivo_resultado)) return exame;
           const { data: signed, error: signError } = await supabase.storage
@@ -277,6 +285,7 @@ Deno.serve(async (req) => {
           .from("pagamentos_mercadopago")
           .select("id, descricao, valor, status, checkout_url, created_at, metodo_pagamento")
           .eq("paciente_id", pacienteId)
+          .eq("clinica_id", pacienteClinicaId)
           .order("created_at", { ascending: false })
           .limit(20);
         result = data || [];
@@ -288,6 +297,7 @@ Deno.serve(async (req) => {
           .from("prescricoes")
           .select("id, medicamento, dosagem, posologia, quantidade, duracao, observacoes, tipo, data_emissao, medicos:medico_id(nome, especialidade)")
           .eq("paciente_id", pacienteId)
+          .eq("clinica_id", pacienteClinicaId)
           .order("data_emissao", { ascending: false })
           .limit(50);
         result = data || [];
@@ -318,6 +328,19 @@ Deno.serve(async (req) => {
           );
         }
 
+        const { data: medicoDaClinica } = await supabase.from("medicos")
+          .select("id")
+          .eq("id", medico_id)
+          .eq("clinica_id", pacienteClinicaId)
+          .eq("ativo", true)
+          .maybeSingle();
+        if (!medicoDaClinica) {
+          return new Response(JSON.stringify({ error: "Médico não encontrado ou inativo" }), {
+            status: 404,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+
         // Get doctor availability for this day of week
         const appointmentDate = new Date(data_inicio);
         const dayOfWeek = appointmentDate.getDay(); // 0 = Sunday, 1 = Monday, etc.
@@ -343,6 +366,7 @@ Deno.serve(async (req) => {
           .from("agendamentos")
           .select("hora_inicio, hora_fim")
           .eq("medico_id", medico_id)
+          .eq("clinica_id", pacienteClinicaId)
           .eq("data", data_inicio)
           .not("status", "in", '("cancelado")');
 
@@ -478,6 +502,7 @@ Deno.serve(async (req) => {
           .select("id, data, paciente_id")
           .eq("id", agendamento_id)
           .eq("paciente_id", pacienteId)
+          .eq("clinica_id", pacienteClinicaId)
           .single();
 
         if (fetchError || !agendamento) {
@@ -504,7 +529,9 @@ Deno.serve(async (req) => {
             nota_cancelamento: motivo || "Cancelado pelo paciente",
             data_cancelamento: new Date().toISOString(),
           })
-          .eq("id", agendamento_id);
+          .eq("id", agendamento_id)
+          .eq("paciente_id", pacienteId)
+          .eq("clinica_id", pacienteClinicaId);
 
         if (updateError) throw updateError;
         result = { success: true, message: "Agendamento cancelado com sucesso" };
@@ -517,6 +544,7 @@ Deno.serve(async (req) => {
         const { data: confirmado, error } = await supabase.from("agendamentos")
           .update({ status: "confirmado" })
           .eq("id", agendamento_id).eq("paciente_id", pacienteId)
+          .eq("clinica_id", pacienteClinicaId)
           .gte("data", todayISO()).eq("status", "agendado")
           .select("id").maybeSingle();
         if (error) throw error;
@@ -540,6 +568,7 @@ Deno.serve(async (req) => {
           .select("id, medico_id, data, paciente_id, tipo")
           .eq("id", agendamento_id)
           .eq("paciente_id", pacienteId)
+          .eq("clinica_id", pacienteClinicaId)
           .single();
 
         if (fetchError || !agendamento) {
@@ -586,7 +615,9 @@ Deno.serve(async (req) => {
             hora_fim: endTime,
             status: "pendente",
           })
-          .eq("id", agendamento_id);
+          .eq("id", agendamento_id)
+          .eq("paciente_id", pacienteId)
+          .eq("clinica_id", pacienteClinicaId);
 
         if (updateError) throw updateError;
         result = { success: true, message: "Agendamento remarcado com sucesso" };
