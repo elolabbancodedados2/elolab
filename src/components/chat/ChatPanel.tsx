@@ -508,7 +508,7 @@ export function ChatPanel() {
   return (
     <>
       {/* Floating Button */}
-      <div className="fixed bottom-6 right-6 z-50">
+      <div className="fixed bottom-6 right-6 z-50 hidden lg:block">
         <Button
           size="icon"
           className={cn(

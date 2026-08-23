@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Shield, ChevronDown, ChevronUp, Cookie } from 'lucide-react';
@@ -12,6 +12,7 @@ import {
 } from '@/lib/cookies';
 
 export function CookieConsent() {
+  const location = useLocation();
   const [visible, setVisible] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
   const [preferences, setPreferences] = useState({
@@ -29,6 +30,10 @@ export function CookieConsent() {
 
   if (!visible) return null;
 
+  const isTaskFirstRoute = ['/auth', '/redefinir-senha', '/aceitar-convite'].some(
+    (route) => location.pathname.startsWith(route),
+  );
+
   const handleAcceptAll = () => {
     acceptAllCookies();
     setVisible(false);
@@ -45,9 +50,12 @@ export function CookieConsent() {
   };
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-[9999] p-3 sm:p-4 animate-fade-in">
+    <div className={isTaskFirstRoute
+      ? 'relative z-10 px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:px-4 sm:pb-4 animate-fade-in'
+      : 'fixed bottom-0 left-0 right-0 z-[9999] max-h-[70dvh] overflow-y-auto p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:p-4 animate-fade-in'
+    }>
       <div className="mx-auto max-w-3xl rounded-xl border border-border bg-card shadow-2xl">
-        <div className="p-4 sm:p-6">
+        <div className="p-3 sm:p-5">
           {/* Header */}
           <div className="flex items-start gap-3 mb-3">
             <div className="p-2 rounded-lg bg-primary/10">
@@ -66,7 +74,7 @@ export function CookieConsent() {
           </div>
 
           {/* Links */}
-          <div className="flex flex-wrap gap-3 text-xs mb-4">
+          <div className="flex flex-wrap gap-x-3 gap-y-2 text-xs mb-3 sm:mb-4">
             <Link to="/politica-privacidade" className="text-primary hover:underline flex items-center gap-1">
               <Shield className="h-3 w-3" /> Política de Privacidade
             </Link>
@@ -81,7 +89,7 @@ export function CookieConsent() {
           {/* Expandable Details */}
           <button
             onClick={() => setShowDetails(!showDetails)}
-            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground mb-3 transition-colors"
+            className="flex min-h-11 items-center gap-1 text-xs text-muted-foreground hover:text-foreground mb-2 sm:mb-3 transition-colors"
           >
             {showDetails ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
             {showDetails ? 'Ocultar detalhes' : 'Personalizar cookies'}
@@ -113,7 +121,7 @@ export function CookieConsent() {
           )}
 
           {/* Actions */}
-          <div className="flex flex-col sm:flex-row gap-2">
+          <div className="grid grid-cols-2 gap-2">
             <Button onClick={handleAcceptAll} size="sm" className="flex-1">
               Aceitar Todos
             </Button>

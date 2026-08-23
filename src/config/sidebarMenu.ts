@@ -72,7 +72,7 @@ export const menuGroups: MenuGroup[] = [
     items: [
       { label: 'Dashboard', icon: LayoutDashboard, href: '/dashboard' },
       { label: 'Minhas Preferências', icon: SlidersHorizontal, href: '/preferencias' },
-      { label: 'NotificaÃ§Ãµes', icon: Bell, href: '/notificacoes' },
+      { label: 'Notificações', icon: Bell, href: '/notificacoes' },
       { label: 'Meu Histórico', icon: History, href: '/meu-historico' },
       { label: 'Enviar Feedback', icon: MessageSquarePlus, href: '/feedback' },
       { label: 'Meus Indicadores', icon: ActivitySquare, href: '/indicadores' },

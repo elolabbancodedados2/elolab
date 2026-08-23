@@ -30,7 +30,7 @@ export function MainLayout() {
       <RouteAccessibility />
 
       {/* Desktop Sidebar */}
-      <nav className="hidden md:block" aria-label="Menu principal">
+      <nav className="hidden lg:block" aria-label="Menu principal">
         <Sidebar />
       </nav>
 
@@ -57,7 +57,7 @@ export function MainLayout() {
           role="main"
           tabIndex={-1}
         >
-          <div className="container mx-auto max-w-7xl px-3 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-3 sm:p-4 md:p-6 lg:p-8">
+          <div className="container mx-auto max-w-7xl px-3 pb-[calc(1.5rem+env(safe-area-inset-bottom))] pt-3 sm:p-4 md:p-6 lg:p-8">
             <Breadcrumbs />
             <div className="animate-fade-in">
               {/* Barreira POR TELA. Havia só um ErrorBoundary no topo do App,
