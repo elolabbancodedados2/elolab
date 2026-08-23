@@ -21,6 +21,15 @@ export interface PagamentoParaRpc {
   valor: number;
 }
 
+export function calcularSaldoPagamento(
+  valor: number,
+  desconto = 0,
+  acrescimo = 0,
+  valorPago = 0,
+): number {
+  return Math.max(0, (emCentavos(valor) - emCentavos(desconto) + emCentavos(acrescimo) - emCentavos(valorPago)) / 100);
+}
+
 /** Centavos, para não somar float. */
 function emCentavos(v: number): number {
   return Math.round((Number(v) || 0) * 100);

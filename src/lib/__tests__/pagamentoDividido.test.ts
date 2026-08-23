@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { montarPagamentos, somaDasExtras } from '@/lib/pagamentoDividido';
+import { calcularSaldoPagamento, montarPagamentos, somaDasExtras } from '@/lib/pagamentoDividido';
 
 /**
  * Aritmética de dinheiro no caminho do caixa. Um centavo errado aqui aparece
@@ -80,6 +80,16 @@ describe('montarPagamentos', () => {
     // negativa — seria recusada pelo CHECK `valor > 0` da tabela.
     const r = montarPagamentos('pix', [{ forma: 'dinheiro', valor: 600 }], 500);
     expect(r.every(p => p.valor > 0)).toBe(true);
+  });
+});
+
+describe('calcularSaldoPagamento', () => {
+  it('cobra somente o restante de uma conta parcialmente paga', () => {
+    expect(calcularSaldoPagamento(500, 20, 10, 200)).toBe(290);
+  });
+
+  it('não devolve saldo negativo por diferença de centavos', () => {
+    expect(calcularSaldoPagamento(100, 0, 0, 100.01)).toBe(0);
   });
 });
 

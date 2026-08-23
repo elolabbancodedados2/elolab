@@ -38,7 +38,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { todayDateOnly } from '@/lib/dateOnly';
 import { pacienteCorresponde, normalizarTexto } from '@/lib/buscaPaciente';
-import { montarPagamentos, somaDasExtras } from '@/lib/pagamentoDividido';
+import { calcularSaldoPagamento, montarPagamentos, somaDasExtras } from '@/lib/pagamentoDividido';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
@@ -521,8 +521,8 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
       setSelectedLancamento(lancamentoSelecionado);
      setSelectedPacienteBalcao(pac);
      setFormaPagamento('');
-     setDesconto(0);
-     setAcrescimo(0);
+     setDesconto(Number(lancamentoSelecionado.desconto || 0));
+     setAcrescimo(Number(lancamentoSelecionado.acrescimo || 0));
      setObsPagamento('');
      setFormasExtras([]);
      // Uma chave por ABERTURA do diálogo. Se o operador confirmar duas vezes,
@@ -628,10 +628,22 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
 
     // Pagamento dividido: as formas extras não podem somar mais que o devido,
     // senão a primeira ficaria com valor negativo.
-    const devido = Number((valorBase - desconto + acrescimo).toFixed(2));
-    if (somaDasExtras(formasExtras) > devido) {
+    const jaPago = Number(selectedLancamento.valor_pago || 0);
+    const totalAjustado = Number((valorBase - desconto + acrescimo).toFixed(2));
+    if (totalAjustado + 0.009 < jaPago) {
+      toast.error('O desconto deixa a conta menor que o valor já recebido.', {
+        description: `Já foram recebidos R$ ${jaPago.toFixed(2)}. Ajuste o desconto ou faça o estorno antes.`,
+      });
+      return;
+    }
+    const saldoReceber = calcularSaldoPagamento(valorBase, desconto, acrescimo, jaPago);
+    if (saldoReceber <= 0) {
+      toast.info('Esta cobrança já está quitada.');
+      return;
+    }
+    if (somaDasExtras(formasExtras) > saldoReceber) {
       toast.error('As formas de pagamento somam mais que o valor devido.', {
-        description: `Informado R$ ${somaDasExtras(formasExtras).toFixed(2)} para uma conta de R$ ${devido.toFixed(2)}.`,
+        description: `Informado R$ ${somaDasExtras(formasExtras).toFixed(2)} para um saldo de R$ ${saldoReceber.toFixed(2)}.`,
       });
       return;
     }
@@ -651,7 +663,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
       // A tela de Contas a Receber já gravava do jeito certo. O mesmo evento de
       // negócio era registrado de duas formas conforme a tela usada, e o
       // relatório mudava de número por causa disso.
-      const valorFinal = Number((valorBase - desconto + acrescimo).toFixed(2));
+      const valorFinal = saldoReceber;
 
       // Uma chamada só, no banco, em transação: grava os pagamentos, aplica
       // desconto e acréscimo, recalcula o saldo e avança o agendamento. Antes
@@ -670,19 +682,22 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
       });
       if (error) throw error;
 
-      if (resultado?.repetido) {
+      const pagamentoRepetido = Boolean(resultado?.repetido);
+      if (pagamentoRepetido) {
         toast.info('Este pagamento já havia sido registrado.', {
           description: 'Nada foi cobrado de novo.',
         });
       }
 
       // Send payment receipt to patient
-      try {
-        await supabase.functions.invoke('payment-receipt', {
-          body: { lancamento_id: selectedLancamento.id }
-        });
-      } catch (e) {
-        if (import.meta.env.DEV) console.log('Payment receipt notification skipped:', e);
+      if (!pagamentoRepetido) {
+        try {
+          await supabase.functions.invoke('payment-receipt', {
+            body: { lancamento_id: selectedLancamento.id }
+          });
+        } catch (e) {
+          if (import.meta.env.DEV) console.log('Payment receipt notification skipped:', e);
+        }
       }
 
       await queryClient.invalidateQueries({ queryKey: ['lancamentos_hoje'] });
@@ -693,11 +708,13 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
       setShowPagamento(false);
       setSelectedLancamento(null);
       setSelectedPacienteBalcao(null);
-      toast.success(`Pagamento de R$ ${valorFinal.toFixed(2)} confirmado!`);
+      if (!pagamentoRepetido) toast.success(`Pagamento de R$ ${valorFinal.toFixed(2)} confirmado!`);
 
       // Emit receipt automatically - find medico from enriched data
-      const matchedItem = enriched.find(e => e.lanc?.id === selectedLancamento.id);
-      gerarComprovante(selectedLancamento, selectedPacienteBalcao, formaPagamento, valorFinal, matchedItem?.med);
+      if (!pagamentoRepetido) {
+        const matchedItem = enriched.find(e => e.lanc?.id === selectedLancamento.id);
+        gerarComprovante(selectedLancamento, selectedPacienteBalcao, formaPagamento, valorFinal, matchedItem?.med);
+      }
     } catch (err: any) {
       toast.error('Erro ao confirmar pagamento: ' + (err?.message || 'Erro desconhecido'));
     }
@@ -983,7 +1000,12 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
                                         className="gap-1.5 bg-success hover:bg-success/90 text-success-foreground"
                                       >
                                         <DollarSign className="h-3.5 w-3.5" />
-                                        Receber R$ {Number(lanc.valor || 0).toFixed(2)}
+                                        Receber R$ {calcularSaldoPagamento(
+                                          Number(lanc.valor || 0),
+                                          Number(lanc.desconto || 0),
+                                          Number(lanc.acrescimo || 0),
+                                          Number(lanc.valor_pago || 0),
+                                        ).toFixed(2)}
                                       </Button>
                                     )}
                                   </div>
@@ -1046,6 +1068,17 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
                                       )}
                                     </div>
                                     <div className="flex flex-wrap gap-1.5">
+                                      {lanc && lanc.status !== 'pago' && calcularSaldoPagamento(
+                                        Number(lanc.valor || 0),
+                                        Number(lanc.desconto || 0),
+                                        Number(lanc.acrescimo || 0),
+                                        Number(lanc.valor_pago || 0),
+                                      ) > 0 && (
+                                        <Button size="sm" className="gap-1 text-xs h-7 bg-success hover:bg-success/90 text-success-foreground"
+                                          onClick={() => openPagamento(lanc, pac)} disabled={isProcessing}>
+                                          <DollarSign className="h-3 w-3" /> Receber saldo
+                                        </Button>
+                                      )}
                                       <Button size="sm" variant="ghost" className="gap-1 text-xs h-7"
                                         onClick={() => navigate(`/agenda?reagendar=${ag.paciente_id}`)}>
                                         <CalendarPlus className="h-3 w-3" /> Reagendar
@@ -1062,7 +1095,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
                                         onClick={() => navigate(`/prontuarios?paciente=${ag.paciente_id}`)}>
                                         <ClipboardList className="h-3 w-3" /> Prontuário
                                       </Button>
-                                      {fila && (
+                                      {fila && (!lanc || lanc.status === 'pago') && (
                                         <Button size="sm" className="gap-1 text-xs h-7 bg-success hover:bg-success/90 text-success-foreground ml-auto"
                                           onClick={() => handleConcluir(ag.id, fila.id)}
                                           disabled={isProcessing}>
@@ -1125,7 +1158,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
                 const bruto = Number(selectedLancamento.valor || 0);
                 const devido = Number((bruto - desconto + acrescimo).toFixed(2));
                 const jaPago = Number(selectedLancamento.valor_pago || 0);
-                const saldo = Number((devido - jaPago).toFixed(2));
+                const saldo = calcularSaldoPagamento(bruto, desconto, acrescimo, jaPago);
                 return (
                   <div className="rounded-xl bg-muted/50 p-4 space-y-2">
                     <p className="text-sm font-medium">{selectedLancamento.descricao}</p>
