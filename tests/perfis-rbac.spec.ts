@@ -14,12 +14,12 @@ function anonKey(): string {
 }
 
 const ANON_KEY = anonKey();
-const perfis: Array<{ role: Role; permitida: string; menu: string; negada: string }> = [
-  { role: 'admin', permitida: '/configuracoes', menu: '/equipe', negada: '/painel-admin' },
-  { role: 'medico', permitida: '/prontuarios', menu: '/documentos-clinicos', negada: '/financeiro' },
-  { role: 'recepcao', permitida: '/pacientes', menu: '/recepcao', negada: '/prontuarios' },
-  { role: 'enfermagem', permitida: '/mapa-coleta', menu: '/estoque', negada: '/financeiro' },
-  { role: 'financeiro', permitida: '/financeiro', menu: '/contas', negada: '/pacientes' },
+const perfis: Array<{ role: Role; permitida: string; menu: string; menuLabel: string; negada: string }> = [
+  { role: 'admin', permitida: '/configuracoes', menu: '/equipe', menuLabel: 'Equipe', negada: '/painel-admin' },
+  { role: 'medico', permitida: '/prontuarios', menu: '/documentos-clinicos', menuLabel: 'Documentos Clínicos', negada: '/financeiro' },
+  { role: 'recepcao', permitida: '/pacientes', menu: '/recepcao', menuLabel: 'Recepção', negada: '/prontuarios' },
+  { role: 'enfermagem', permitida: '/mapa-coleta', menu: '/estoque', menuLabel: 'Estoque', negada: '/financeiro' },
+  { role: 'financeiro', permitida: '/financeiro', menu: '/contas', menuLabel: 'Contas', negada: '/pacientes' },
 ];
 
 function credenciais(role: Role) {
@@ -55,7 +55,10 @@ test.describe('RBAC real por perfil', () => {
 
       await page.goto('/dashboard');
       await expect(page).toHaveURL(/\/dashboard/);
-      await expect(page.locator(`a[href="${perfil.menu}"]`).first()).toBeVisible();
+      const buscaMenu = page.getByPlaceholder('Buscar...').first();
+      await expect(buscaMenu).toBeVisible({ timeout: 15_000 });
+      await buscaMenu.fill(perfil.menuLabel);
+      await expect(page.locator(`a[href="${perfil.menu}"]`).first()).toBeVisible({ timeout: 10_000 });
 
       await page.goto(perfil.permitida);
       await expect(page.getByRole('heading', { name: 'Acesso Negado' })).toHaveCount(0);

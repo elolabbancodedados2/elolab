@@ -96,9 +96,9 @@ export function Navbar({ onMenuClick }: NavbarProps) {
         <ContextualHelp />
         {/* Quick Add */}
         <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Tooltip>
-              <TooltipTrigger asChild>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <DropdownMenuTrigger asChild>
                 <Button
                   variant="ghost"
                   size="icon"
@@ -107,10 +107,10 @@ export function Navbar({ onMenuClick }: NavbarProps) {
                 >
                   <Plus className="h-4 w-4" strokeWidth={2.5} />
                 </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom" className="text-xs">Ação rápida</TooltipContent>
-            </Tooltip>
-          </DropdownMenuTrigger>
+              </DropdownMenuTrigger>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="text-xs">Ação rápida</TooltipContent>
+          </Tooltip>
           <DropdownMenuContent align="end" className="w-56 rounded-xl p-1.5">
             <DropdownMenuLabel className="text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-[0.1em] px-2">
               Ações Rápidas
@@ -145,9 +145,9 @@ export function Navbar({ onMenuClick }: NavbarProps) {
 
         {/* Unified Notification Center */}
         <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Tooltip>
-              <TooltipTrigger asChild>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <DropdownMenuTrigger asChild>
                 <Button
                   variant="ghost"
                   size="icon"
@@ -162,12 +162,12 @@ export function Navbar({ onMenuClick }: NavbarProps) {
                     </span>
                   )}
                 </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom" className="text-xs">
-                {totalUnread > 0 ? `${totalUnread} notificações` : 'Notificações'}
-              </TooltipContent>
-            </Tooltip>
-          </DropdownMenuTrigger>
+              </DropdownMenuTrigger>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="text-xs">
+              {totalUnread > 0 ? `${totalUnread} notificações` : 'Notificações'}
+            </TooltipContent>
+          </Tooltip>
           <DropdownMenuContent align="end" className="w-[min(24rem,calc(100vw-1rem))] rounded-xl p-0" onCloseAutoFocus={(e) => e.preventDefault()}>
             <Tabs defaultValue="alertas" className="w-full">
               <div className="px-3 pt-3 pb-0">
