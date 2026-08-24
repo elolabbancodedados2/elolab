@@ -246,7 +246,7 @@ export function AppointmentDialog({ open, onOpenChange, initial, pacientes, medi
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-h-[100dvh] w-full max-w-lg overflow-y-auto rounded-none pb-[calc(1rem+env(safe-area-inset-bottom))] sm:max-h-[90vh] sm:w-[calc(100%-2rem)] sm:rounded-lg">
         <DialogHeader>
           <DialogTitle>{editing ? 'Editar consulta' : 'Nova consulta'}</DialogTitle>
           <DialogDescription>
@@ -270,7 +270,7 @@ export function AppointmentDialog({ open, onOpenChange, initial, pacientes, medi
                   {paciente ? (paciente.nome_social || paciente.nome) : 'Nome, CPF ou telefone...'}
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="p-0 w-[420px]" align="start">
+              <PopoverContent className="w-[min(420px,calc(100vw-2rem))] p-0" align="start">
                 <Command shouldFilter={false}>
                   <CommandInput placeholder="Buscar..." value={pacSearch} onValueChange={setPacSearch} />
                   <CommandList>

@@ -1189,13 +1189,13 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
 
               <div className="space-y-2">
                 <Label className="text-xs font-medium">Forma de Pagamento</Label>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                   {FORMAS_PAGAMENTO.map(fp => (
                     <button
                       key={fp.value}
                       onClick={() => setFormaPagamento(fp.value)}
                       className={cn(
-                        'flex flex-col items-center gap-1 p-3 rounded-xl border-2 transition-all text-xs font-medium',
+                        'flex min-h-16 flex-col items-center justify-center gap-1 rounded-xl border-2 p-3 text-xs font-medium transition-all',
                         formaPagamento === fp.value
                           ? 'border-primary bg-primary/5 text-primary'
                           : 'border-border hover:border-primary/30 text-muted-foreground'

@@ -52,19 +52,20 @@ export function NotificationBanner() {
   }
 
   return (
-    <div className="bg-primary/10 border-b border-primary/20 px-4 py-2">
-      <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <Bell className="h-5 w-5 text-primary" />
-          <p className="text-sm">
-            Ative as notificações para receber lembretes de consultas
+    <div className="border-b border-primary/20 bg-primary/10 px-2 py-1.5 sm:px-4 sm:py-2">
+      <div className="mx-auto flex max-w-7xl items-center justify-between gap-2 sm:gap-4">
+        <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+          <Bell className="h-4 w-4 shrink-0 text-primary sm:h-5 sm:w-5" />
+          <p className="min-w-0 text-xs leading-tight sm:text-sm">
+            <span className="sm:hidden">Ative os lembretes de consultas</span>
+            <span className="hidden sm:inline">Ative as notificações para receber lembretes de consultas</span>
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button size="sm" onClick={handleEnable}>
+        <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+          <Button size="sm" className="h-11 px-3 sm:h-9" onClick={handleEnable}>
             Ativar
           </Button>
-          <Button size="sm" variant="ghost" onClick={handleDismiss}>
+          <Button size="icon" variant="ghost" className="h-11 w-11 sm:h-9 sm:w-9" aria-label="Dispensar aviso de notificações" onClick={handleDismiss}>
             <X className="h-4 w-4" />
           </Button>
         </div>
