@@ -15,6 +15,7 @@ import { useRealtimePushNotifications } from '@/hooks/useRealtimePushNotificatio
 import { ChatPanel } from '@/components/chat/ChatPanel';
 import { ImpersonationBanner } from '@/components/ImpersonationBanner';
 import { usePersonalPreferences } from '@/hooks/usePersonalPreferences';
+import { useOperationalEvents } from '@/hooks/useOperationalEvents';
 
 export function MainLayout() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -22,6 +23,7 @@ export function MainLayout() {
   useSessionTimeout();
   useRealtimeSubscription();
   useRealtimePushNotifications();
+  useOperationalEvents();
   usePersonalPreferences();
 
   return (
