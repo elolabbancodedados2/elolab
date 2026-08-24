@@ -9,7 +9,8 @@ import {
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
-import { autoCheckin, autoIniciarAtendimento, autoFinalizarAtendimento } from '@/lib/workflowAutomation';
+import { autoFinalizarAtendimento } from '@/lib/workflowAutomation';
+import { atomicCheckin as autoCheckin, atomicStartAppointment as autoIniciarAtendimento } from '@/lib/operationalTransitions';
 import { mensagemDeErro } from '@/lib/erros';
 import { useQueryClient } from '@tanstack/react-query';
 
