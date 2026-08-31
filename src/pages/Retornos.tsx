@@ -19,6 +19,7 @@ import {
 import { Label } from '@/components/ui/label';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useSupabaseQuery } from '@/hooks/useSupabaseData';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -26,7 +27,7 @@ import { mensagemDeErro } from '@/lib/erros';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   CalendarClock, AlertTriangle, CheckCircle2, Phone, Clock, Filter, Search,
-  CalendarPlus, CalendarDays, TrendingUp, Loader2, CalendarIcon,
+  CalendarPlus, CalendarDays, TrendingUp, Loader2, CalendarIcon, RefreshCw, Ban,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -42,6 +43,8 @@ interface Retorno {
   lembrete_enviado: boolean | null;
   observacoes: string | null;
   agendamento_id: string | null;
+  agendamento_retorno_id: string | null;
+  clinica_id: string;
 }
 
 export default function RetornosControl() {
@@ -52,6 +55,8 @@ export default function RetornosControl() {
   const [dataAgendamento, setDataAgendamento] = useState<Date>();
   const [horaAgendamento, setHoraAgendamento] = useState('09:00');
   const [isAgendando, setIsAgendando] = useState(false);
+  const [cancelando, setCancelando] = useState<Retorno | null>(null);
+  const [isCancelando, setIsCancelando] = useState(false);
   const queryClient = useQueryClient();
 
   const { data: retornos = [], isLoading: loadingRetornos } = useSupabaseQuery<Retorno>('retornos', {
@@ -139,6 +144,52 @@ export default function RetornosControl() {
     setAgendarDialogOpen(true);
   };
 
+  const handleRemarcarRetorno = async (retorno: Retorno) => {
+    if (!retorno.agendamento_retorno_id) return;
+    setIsAgendando(true);
+    try {
+      const { data: agendamento, error } = await supabase
+        .from('agendamentos')
+        .select('data, hora_inicio')
+        .eq('id', retorno.agendamento_retorno_id)
+        .single();
+      if (error) throw error;
+      setRetornoParaAgendar(retorno);
+      setDataAgendamento(parseISO(agendamento.data));
+      setHoraAgendamento(agendamento.hora_inicio?.slice(0, 5) || '09:00');
+      setAgendarDialogOpen(true);
+    } catch (error) {
+      toast.error('Erro ao carregar o agendamento.', { description: mensagemDeErro(error) });
+    } finally {
+      setIsAgendando(false);
+    }
+  };
+
+  const cancelarRetorno = async () => {
+    if (!cancelando) return;
+    setIsCancelando(true);
+    try {
+      if (cancelando.agendamento_retorno_id) {
+        const { error } = await supabase.from('agendamentos')
+          .update({ status: 'cancelado' })
+          .eq('id', cancelando.agendamento_retorno_id);
+        if (error) throw error;
+      }
+      const { error } = await supabase.from('retornos')
+        .update({ status: 'cancelado' } as any)
+        .eq('id', cancelando.id);
+      if (error) throw error;
+      queryClient.invalidateQueries({ queryKey: ['retornos'] });
+      queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
+      setCancelando(null);
+      toast.success('Retorno cancelado');
+    } catch (error) {
+      toast.error('Erro ao cancelar retorno.', { description: mensagemDeErro(error) });
+    } finally {
+      setIsCancelando(false);
+    }
+  };
+
   const confirmarAgendamento = async () => {
     if (!retornoParaAgendar || !dataAgendamento) {
       toast.error('Selecione uma data para o agendamento.');
@@ -147,6 +198,25 @@ export default function RetornosControl() {
 
     setIsAgendando(true);
     try {
+      if (retornoParaAgendar.agendamento_retorno_id) {
+        const { error } = await supabase.from('agendamentos').update({
+          data: format(dataAgendamento, 'yyyy-MM-dd'),
+          hora_inicio: horaAgendamento,
+          status: 'agendado',
+        }).eq('id', retornoParaAgendar.agendamento_retorno_id);
+        if (error) throw error;
+        const { error: retornoError } = await supabase.from('retornos').update({
+          data_retorno_prevista: format(dataAgendamento, 'yyyy-MM-dd'),
+          status: 'agendado',
+        } as any).eq('id', retornoParaAgendar.id);
+        if (retornoError) throw retornoError;
+        queryClient.invalidateQueries({ queryKey: ['retornos'] });
+        queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
+        setAgendarDialogOpen(false);
+        toast.success(`Retorno remarcado para ${format(dataAgendamento, 'dd/MM/yyyy')} às ${horaAgendamento}`);
+        return;
+      }
+
       const { data: agendamento, error } = await supabase
         .from('agendamentos')
         .insert({
@@ -157,17 +227,27 @@ export default function RetornosControl() {
           tipo: 'retorno',
           observacoes: `Retorno: ${retornoParaAgendar.motivo || 'Consulta de retorno'}`,
           status: 'agendado',
+          clinica_id: retornoParaAgendar.clinica_id,
         })
         .select('id')
         .single();
 
       if (error) throw error;
 
-      // Vincular agendamento ao retorno
-      await supabase
+      // Preserve agendamento_id (consulta de origem) e vincule o novo horário
+      // na coluna própria do agendamento de retorno.
+      const { error: vinculoError } = await supabase
         .from('retornos')
-        .update({ agendamento_id: agendamento.id, status: 'agendado' } as any)
+        .update({ agendamento_retorno_id: agendamento.id, status: 'agendado' } as any)
         .eq('id', retornoParaAgendar.id);
+      if (vinculoError) {
+        // Evita deixar um agendamento órfão se o segundo passo falhar.
+        const { error: limpezaError } = await supabase.from('agendamentos').delete().eq('id', agendamento.id);
+        if (limpezaError && import.meta.env.DEV) {
+          console.error('Falha ao remover agendamento órfão:', limpezaError);
+        }
+        throw vinculoError;
+      }
 
       queryClient.invalidateQueries({ queryKey: ['retornos'] });
       queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
@@ -247,6 +327,7 @@ export default function RetornosControl() {
               <SelectItem value="pendente">Pendentes</SelectItem>
               <SelectItem value="proximos7">Próximos 7 dias</SelectItem>
               <SelectItem value="realizado">Realizados</SelectItem>
+              <SelectItem value="cancelado">Cancelados</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -334,15 +415,25 @@ export default function RetornosControl() {
                         </TableCell>
                         <TableCell>{getStatusBadge(r.statusCalculado)}</TableCell>
                         <TableCell className="text-right">
-                          <div className="flex gap-1 justify-end">
-                            {(r.statusCalculado === 'pendente' || r.statusCalculado === 'atrasado') && !r.agendamento_id && (
+                          <div className="flex flex-wrap gap-1 justify-end">
+                            {(r.statusCalculado === 'pendente' || r.statusCalculado === 'atrasado') && !r.agendamento_retorno_id && (
                               <Button size="sm" variant="outline" onClick={() => handleAgendarRetorno(r)} className="gap-1 text-primary border-primary/30 hover:bg-primary/5">
                                 <CalendarPlus className="h-3 w-3" /> Agendar
                               </Button>
                             )}
-                            {r.statusCalculado !== 'realizado' && (
+                            {r.statusCalculado === 'agendado' && r.agendamento_retorno_id && (
+                              <Button size="sm" variant="outline" onClick={() => handleRemarcarRetorno(r)} className="gap-1">
+                                <RefreshCw className="h-3 w-3" /> Remarcar
+                              </Button>
+                            )}
+                            {!['realizado', 'cancelado'].includes(r.statusCalculado) && (
                               <Button size="sm" variant="outline" onClick={() => marcarRealizado(r.id)} className="gap-1">
                                 <CheckCircle2 className="h-3 w-3" /> Realizado
+                              </Button>
+                            )}
+                            {!['realizado', 'cancelado'].includes(r.statusCalculado) && (
+                              <Button size="sm" variant="ghost" onClick={() => setCancelando(r)} className="gap-1 text-destructive hover:text-destructive" aria-label="Cancelar retorno">
+                                <Ban className="h-3 w-3" /> Cancelar
                               </Button>
                             )}
                             {getPacienteTelefone(r.paciente_id) && (
@@ -370,7 +461,7 @@ export default function RetornosControl() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <CalendarPlus className="h-5 w-5 text-primary" />
-              Agendar Retorno
+              {retornoParaAgendar?.agendamento_retorno_id ? 'Remarcar Retorno' : 'Agendar Retorno'}
             </DialogTitle>
           </DialogHeader>
           {retornoParaAgendar && (
@@ -415,11 +506,22 @@ export default function RetornosControl() {
             </Button>
             <Button onClick={confirmarAgendamento} disabled={isAgendando} className="gap-2">
               {isAgendando ? <Loader2 className="h-4 w-4 animate-spin" /> : <CalendarPlus className="h-4 w-4" />}
-              Confirmar Agendamento
+              {retornoParaAgendar?.agendamento_retorno_id ? 'Confirmar Remarcação' : 'Confirmar Agendamento'}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={Boolean(cancelando)}
+        onOpenChange={(open) => !open && setCancelando(null)}
+        title="Cancelar retorno"
+        description={`Cancelar o retorno de ${cancelando ? getPacienteNome(cancelando.paciente_id) : 'paciente'}? O horário vinculado também será cancelado.`}
+        confirmLabel="Cancelar retorno"
+        variant="destructive"
+        onConfirm={cancelarRetorno}
+        isLoading={isCancelando}
+      />
     </div>
   );
 }

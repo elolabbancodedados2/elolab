@@ -218,6 +218,22 @@ describe('faturamento automático — uma cobrança por agendamento', () => {
     ).toBe(false);
   });
 
+  it('consulta de retorno usa o item Retorno do catálogo', async () => {
+    mockAtual = criarSupabaseMock({
+      'lancamentos.select': { data: [], error: null },
+      'tipos_consulta.select': { data: { id: 't-retorno', nome: 'Retorno', valor_particular: 0 }, error: null },
+    });
+
+    const { createAutoBilling } = await import('@/lib/autoBilling');
+    const criou = await createAutoBilling({
+      agendamentoId: 'ag-retorno-1', pacienteId: 'pac-1', pacienteNome: 'Maria',
+      tipoConsulta: 'Consulta de retorno', data: '2026-08-26', clinicaId: 'cli-1',
+    });
+
+    expect(criou).toBe(false);
+    expect(mockAtual.chamadas.some(c => c.tabela === 'lancamentos' && c.op === 'insert')).toBe(false);
+  });
+
   it('tipo ausente do catálogo continua sendo erro de preço não cadastrado', async () => {
     mockAtual = criarSupabaseMock({
       'lancamentos.select': { data: [], error: null },

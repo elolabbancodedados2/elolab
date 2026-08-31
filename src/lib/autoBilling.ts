@@ -24,6 +24,13 @@ function isGenericExamType(value?: string | null): boolean {
   return GENERIC_EXAM_TYPES.has((value || '').trim().toLocaleLowerCase('pt-BR'));
 }
 
+function isReturnConsultationType(value?: string | null): boolean {
+  const normalized = normalizeServiceName(value);
+  return normalized === 'retorno' ||
+    normalized === 'consulta retorno' ||
+    normalized === 'consulta de retorno';
+}
+
 function toMoney(value: unknown): number {
   const normalized = typeof value === 'string'
     ? value.trim().replace(/\s/g, '').includes(',')
@@ -265,6 +272,9 @@ export async function createAutoBilling(params: AutoBillingParams): Promise<bool
 
   // Try to find price from tipos_consulta
   if (tipoConsulta && !isExam) {
+    // The return workflow may store "consulta de retorno", while the standard
+    // catalog entry is simply named "Retorno". They are the same service.
+    const catalogName = isReturnConsultationType(tipoConsulta) ? 'Retorno' : tipoConsulta;
     let tcQuery = (supabase as any)
       .from('tipos_consulta')
       .select('id, nome, valor_particular')
@@ -272,7 +282,7 @@ export async function createAutoBilling(params: AutoBillingParams): Promise<bool
       // agendamento guarda o tipo em minúsculas ("retorno") e o catálogo tem
       // "Retorno" — com `eq` a busca não achava nada, e os 17 agendamentos de
       // retorno caíam no erro de "preço não cadastrado".
-      .ilike('nome', tipoConsulta)
+      .ilike('nome', catalogName)
       .eq('ativo', true);
     if (resolvedClinicaId) tcQuery = tcQuery.eq('clinica_id', resolvedClinicaId);
     const { data: tc, error: tcError } = await tcQuery.limit(1).maybeSingle();
