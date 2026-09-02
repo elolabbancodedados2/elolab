@@ -225,6 +225,11 @@ const roleWorkspaces = {
   ] },
 } as const;
 
+export function getDashboardLinksForRoles(roles: string[]): string[] {
+  const role = (['recepcao', 'enfermagem', 'financeiro', 'admin'] as const).find(item => roles.includes(item));
+  return role ? roleWorkspaces[role].actions.map(action => action.href) : [];
+}
+
 function RoleWorkspace({ roles }: { roles: string[] }) {
   const role = (['recepcao', 'enfermagem', 'financeiro', 'admin'] as const).find(item => roles.includes(item));
   if (!role) return null;
@@ -235,6 +240,26 @@ function RoleWorkspace({ roles }: { roles: string[] }) {
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">{workspace.actions.map(({ label, href, icon: Icon }) => <Button key={href} asChild variant="outline" className="min-h-11 justify-start bg-background"><Link to={href}><Icon className="mr-2 h-4 w-4" />{label}</Link></Button>)}</div>
     </div>
   </section>;
+}
+
+function OperationalDashboard({ roles, nome }: { roles: string[]; nome?: string | null }) {
+  const agora = new Date();
+  const hora = agora.getHours();
+  const saudacao = hora < 12 ? 'Bom dia' : hora < 18 ? 'Boa tarde' : 'Boa noite';
+  return <div className="space-y-6">
+    <Card className="overflow-hidden border-primary/15 bg-gradient-to-br from-primary/[0.06] via-card to-card">
+      <CardContent className="p-6 md:p-8">
+        <p className="text-sm font-medium text-primary">{saudacao}</p>
+        <h1 className="mt-1 text-2xl font-bold tracking-tight md:text-3xl">{nome?.split(' ')[0] || 'Olá'}</h1>
+        <p className="mt-2 text-sm capitalize text-muted-foreground">{format(agora, "EEEE, d 'de' MMMM", { locale: ptBR })}</p>
+      </CardContent>
+    </Card>
+    <RoleWorkspace roles={roles} />
+    <Card>
+      <CardHeader><CardTitle className="text-base">Seu espaço de trabalho</CardTitle><CardDescription>Os atalhos exibidos respeitam as permissões atribuídas ao seu perfil.</CardDescription></CardHeader>
+      <CardContent className="flex items-start gap-3 text-sm text-muted-foreground"><ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-success" />Você verá apenas os módulos necessários para sua função. Se precisar de outro acesso, solicite ao administrador da clínica.</CardContent>
+    </Card>
+  </div>;
 }
 
 // ─── Main Dashboard ────────────────────────────────────────
@@ -417,6 +442,12 @@ export default function Dashboard() {
   // Doctor-specific dashboard
   if (isMedicoOnly) {
     return <DoctorDashboard userName={user?.nome || 'Doutor(a)'} />;
+  }
+
+  // O dashboard administrativo contém números financeiros e atalhos de todos
+  // os setores. Perfis operacionais recebem somente o espaço do próprio papel.
+  if (!isAdmin) {
+    return <OperationalDashboard roles={user?.roles || []} nome={user?.nome} />;
   }
 
   const hasData = pacientes.length > 0 || agendamentos.length > 0 || lancamentos.length > 0;

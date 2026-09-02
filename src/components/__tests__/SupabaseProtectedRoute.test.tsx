@@ -23,6 +23,7 @@ const renderWithRouter = (ui: React.ReactElement) =>
       <Routes>
         <Route path="/protegido" element={ui} />
         <Route path="/auth" element={<div>Tela de login</div>} />
+        <Route path="/dashboard" element={<div>Painel da clínica</div>} />
       </Routes>
     </MemoryRouter>
   );
@@ -117,6 +118,43 @@ describe('SupabaseProtectedRoute', () => {
         <div>Protected</div>
       </SupabaseProtectedRoute>
     );
+    expect(screen.getByText('Protected')).toBeInTheDocument();
+  });
+
+  it('impede admin de clínica de acessar rota exclusiva da plataforma', () => {
+    mockUseSupabaseAuth.mockReturnValue({
+      user: { id: '1', email: 'clinica@test.com' },
+      profile: { roles: ['admin'] },
+      isLoading: false,
+      isPlatformAdmin: false,
+      hasAnyRole: () => true,
+    });
+
+    renderWithRouter(
+      <SupabaseProtectedRoute somentePlataforma>
+        <div>Protected</div>
+      </SupabaseProtectedRoute>
+    );
+
+    expect(screen.queryByText('Protected')).not.toBeInTheDocument();
+    expect(screen.getByText('Painel da clínica')).toBeInTheDocument();
+  });
+
+  it('permite administrador da plataforma mesmo sem papel de clínica', () => {
+    mockUseSupabaseAuth.mockReturnValue({
+      user: { id: '2', email: 'plataforma@test.com' },
+      profile: { roles: [] },
+      isLoading: false,
+      isPlatformAdmin: true,
+      hasAnyRole: () => false,
+    });
+
+    renderWithRouter(
+      <SupabaseProtectedRoute somentePlataforma>
+        <div>Protected</div>
+      </SupabaseProtectedRoute>
+    );
+
     expect(screen.getByText('Protected')).toBeInTheDocument();
   });
 });

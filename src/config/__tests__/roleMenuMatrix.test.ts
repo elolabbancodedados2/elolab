@@ -23,4 +23,17 @@ describe('matriz operacional do menu por perfil', () => {
       for (const rota of caso.negadas) expect(menu, `vazou ${rota}`).not.toContain(rota);
     });
   }
+
+  it('assinante admin não recebe nenhum item da plataforma', () => {
+    const menu = getFilteredMenuGroups(['admin'], true, false, true);
+    expect(menu.some((grupo) => grupo.superAdminOnly)).toBe(false);
+    expect(menu.flatMap((grupo) => grupo.items).some((item) => item.superAdminOnly)).toBe(false);
+  });
+
+  it('dono da plataforma sem clínica recebe somente ferramentas da plataforma', () => {
+    const menu = getFilteredMenuGroups([], false, true, false);
+    expect(menu.length).toBeGreaterThan(0);
+    expect(menu.every((grupo) => grupo.superAdminOnly)).toBe(true);
+    expect(menu.flatMap((grupo) => grupo.items).every((item) => item.superAdminOnly)).toBe(true);
+  });
 });

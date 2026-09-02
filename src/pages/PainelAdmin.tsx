@@ -88,7 +88,7 @@ interface UserRole {
 }
 
 export default function PainelAdmin() {
-  const { user, profile } = useSupabaseAuth();
+  const { user, profile, isPlatformAdmin } = useSupabaseAuth();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [editUser, setEditUser] = useState<any>(null);
@@ -96,8 +96,6 @@ export default function PainelAdmin() {
   const [isSaving, setIsSaving] = useState(false);
   const [contaEmFerramentas, setContaEmFerramentas] = useState<any>(null);
   const [auditSearch, setAuditSearch] = useState('');
-
-  const isSuperAdmin = user?.email === SUPER_ADMIN_EMAIL;
 
   // Queries
   const { data: profiles = [], isLoading: loadingProfiles } = useQuery({
@@ -389,7 +387,7 @@ export default function PainelAdmin() {
   };
 
   // Guard: only super admin
-  if (!isSuperAdmin) {
+  if (!isPlatformAdmin) {
     return <Navigate to="/dashboard" replace />;
   }
 
