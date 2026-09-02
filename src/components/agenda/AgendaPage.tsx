@@ -27,6 +27,7 @@ import {
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { AgendaSkeleton } from '@/components/ui/loading-skeleton';
 import { pacienteCorresponde } from '@/lib/buscaPaciente';
+import { normalizeAgendaDate } from '@/lib/agendaDate';
 
 export type AgendaView = 'daily' | 'weekly' | 'monthly';
 
@@ -38,7 +39,7 @@ function toMinutes(t: string) {
 export function AgendaPage() {
   const queryClient = useQueryClient();
   const { medicoId: myMedicoId, isMedicoOnly } = useCurrentMedico();
-  const [date, setDate] = useState(() => sessionStorage.getItem('agenda:date') || format(new Date(), 'yyyy-MM-dd'));
+  const [date, setDate] = useState(() => normalizeAgendaDate(sessionStorage.getItem('agenda:date')));
   const [view, setView] = useState<AgendaView>(() => (sessionStorage.getItem('agenda:view') as AgendaView) || 'daily');
   const { defaultView, setDefaultView, loaded: defaultViewLoaded } = useAgendaDefaultView();
   const [viewTouched, setViewTouched] = useState(() => !!sessionStorage.getItem('agenda:view'));

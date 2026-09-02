@@ -15,6 +15,8 @@ import {
 import { cn } from '@/lib/utils';
 import { AgendaView } from './AgendaPage';
 import { Link } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { isValidAgendaDate, normalizeAgendaDate } from '@/lib/agendaDate';
 
 interface Props {
   date: string;
@@ -49,7 +51,10 @@ const STATUSES: [string, string][] = [
 ];
 
 export function AgendaHeader(p: Props) {
-  const d = parseISO(p.date);
+  const safeDate = normalizeAgendaDate(p.date);
+  const [dateDraft, setDateDraft] = useState(safeDate);
+  useEffect(() => setDateDraft(safeDate), [safeDate]);
+  const d = parseISO(safeDate);
   const label = p.view === 'monthly'
     ? format(d, "MMMM 'de' yyyy", { locale: ptBR })
     : p.view === 'weekly'
@@ -61,7 +66,7 @@ export function AgendaHeader(p: Props) {
     p.onDateChange(format(next, 'yyyy-MM-dd'));
   };
 
-  const isToday = p.date === format(new Date(), 'yyyy-MM-dd');
+  const isToday = safeDate === format(new Date(), 'yyyy-MM-dd');
   const activeFilters = p.medicoFilter.length + p.statusFilter.length + (p.search ? 1 : 0);
 
   return (
@@ -86,8 +91,16 @@ export function AgendaHeader(p: Props) {
             <div className="w-px h-5 bg-border" />
             <Input
               type="date"
-              value={p.date}
-              onChange={(e) => p.onDateChange(e.target.value)}
+              value={dateDraft}
+              onChange={(e) => {
+                const value = e.target.value;
+                setDateDraft(value);
+                if (isValidAgendaDate(value)) p.onDateChange(value);
+              }}
+              onBlur={() => {
+                if (!isValidAgendaDate(dateDraft)) setDateDraft(safeDate);
+              }}
+              aria-label="Data da agenda"
               className="h-11 min-w-0 flex-1 border-0 text-sm focus-visible:ring-0 sm:h-9 sm:w-32"
             />
           </div>
