@@ -203,6 +203,7 @@ export const menuGroups: MenuGroup[] = [
       { label: 'Saúde da Plataforma', icon: ActivitySquare, href: '/admin/saude', superAdminOnly: true },
       { label: 'CRM', icon: Building2, href: '/admin/crm', superAdminOnly: true },
       { label: 'Clínicas', icon: Building2, href: '/admin/clinicas', superAdminOnly: true },
+      { label: 'Usuários', icon: Users, href: '/usuarios', superAdminOnly: true },
       { label: 'Painel Admin', icon: Shield, href: '/painel-admin', superAdminOnly: true },
       { label: 'Central de Suporte', icon: MessageCircle, href: '/admin/suporte', superAdminOnly: true },
       { label: 'Feedbacks do Produto', icon: MessageSquarePlus, href: '/feedback', superAdminOnly: true },

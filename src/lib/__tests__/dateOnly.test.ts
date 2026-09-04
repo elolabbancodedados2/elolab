@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { parseDateOnly, todayDateOnly, toDateOnly, daysBetweenDateOnly } from '@/lib/dateOnly';
+import { ageFromDateOnly, parseDateOnly, todayDateOnly, toDateOnly, daysBetweenDateOnly } from '@/lib/dateOnly';
 
 /**
  * Estes testes existem por causa de um bug real: colunas DATE do Postgres
@@ -131,5 +131,17 @@ describe('daysBetweenDateOnly', () => {
   it('atravessa mudança de horário de verão sem perder um dia', () => {
     // Brasil não usa mais DST, mas o cálculo precisa ser robusto de qualquer forma
     expect(daysBetweenDateOnly('2026-02-14', '2026-02-22')).toBe(8);
+  });
+});
+
+describe('ageFromDateOnly', () => {
+  it('não antecipa o aniversário por causa do parsing UTC', () => {
+    const referenceDate = new Date(2026, 8, 1, 8, 0, 0);
+    expect(ageFromDateOnly('2008-09-02', referenceDate)).toBe(17);
+  });
+
+  it('muda a idade exatamente no aniversário local', () => {
+    const referenceDate = new Date(2026, 8, 2, 0, 0, 0);
+    expect(ageFromDateOnly('2008-09-02', referenceDate)).toBe(18);
   });
 });

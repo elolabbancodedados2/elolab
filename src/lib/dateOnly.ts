@@ -54,6 +54,20 @@ export function todayDateOnly(): string {
   return toDateOnly(new Date());
 }
 
+/** Idade completa, preservando o dia civil de nascimento vindo de uma coluna DATE. */
+export function ageFromDateOnly(value: string, referenceDate: Date = new Date()): number {
+  const birthDate = parseDateOnly(value);
+  let age = referenceDate.getFullYear() - birthDate.getFullYear();
+  const monthDifference = referenceDate.getMonth() - birthDate.getMonth();
+  if (
+    monthDifference < 0 ||
+    (monthDifference === 0 && referenceDate.getDate() < birthDate.getDate())
+  ) {
+    age--;
+  }
+  return age;
+}
+
 /** Dias inteiros entre duas datas-only. Positivo = `fim` no futuro. */
 export function daysBetweenDateOnly(inicio: string, fim: string): number {
   const a = parseDateOnly(inicio);

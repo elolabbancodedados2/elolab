@@ -14,7 +14,7 @@ import {
 } from '@/components/ui/dialog';
 import { Separator } from '@/components/ui/separator';
 import type jsPDF from 'jspdf';
-import { parseDateOnly } from '@/lib/dateOnly';
+import { ageFromDateOnly, parseDateOnly } from '@/lib/dateOnly';
 
 interface DischargeReportProps {
   isOpen: boolean;
@@ -65,14 +65,7 @@ export function DischargeReport({
 }: DischargeReportProps) {
   const calcularIdade = (dataNascimento?: string) => {
     if (!dataNascimento) return null;
-    const hoje = new Date();
-    const nascimento = new Date(dataNascimento);
-    let idade = hoje.getFullYear() - nascimento.getFullYear();
-    const m = hoje.getMonth() - nascimento.getMonth();
-    if (m < 0 || (m === 0 && hoje.getDate() < nascimento.getDate())) {
-      idade--;
-    }
-    return idade;
+    return ageFromDateOnly(dataNascimento);
   };
 
   const drawHeader = (doc: jsPDF, pageWidth: number): number => {

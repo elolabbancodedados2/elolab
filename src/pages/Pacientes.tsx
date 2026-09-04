@@ -45,7 +45,7 @@ import { cn, sanitizeText } from '@/lib/utils';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { useCurrentMedico } from '@/hooks/useCurrentMedico';
 import { gerarProntuarioPDF, downloadPDF, openPDF } from '@/lib/pdfGenerator';
-import { parseDateOnly, todayDateOnly } from '@/lib/dateOnly';
+import { ageFromDateOnly, parseDateOnly, todayDateOnly } from '@/lib/dateOnly';
 import { pacienteCorresponde } from '@/lib/buscaPaciente';
 import { logAudit } from '@/lib/auditTrail';
 
@@ -118,22 +118,12 @@ const ESTADOS_BR = [
 
 const isMinor = (dataNascimento: string): boolean => {
   if (!dataNascimento) return false;
-  const birth = new Date(dataNascimento);
-  const today = new Date();
-  let age = today.getFullYear() - birth.getFullYear();
-  const m = today.getMonth() - birth.getMonth();
-  if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
-  return age < 18;
+  return ageFromDateOnly(dataNascimento) < 18;
 };
 
 const calcularIdade = (dataNascimento: string | null) => {
   if (!dataNascimento) return 0;
-  const hoje = new Date();
-  const nascimento = new Date(dataNascimento);
-  let idade = hoje.getFullYear() - nascimento.getFullYear();
-  const m = hoje.getMonth() - nascimento.getMonth();
-  if (m < 0 || (m === 0 && hoje.getDate() < nascimento.getDate())) idade--;
-  return idade;
+  return ageFromDateOnly(dataNascimento);
 };
 
 export default function Pacientes() {

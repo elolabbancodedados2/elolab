@@ -156,7 +156,7 @@ export async function exportarPacientes(
   const data = pacientes.map((p) => ({
     nome: p.nome,
     cpf: p.cpf,
-    dataNascimento: p.dataNascimento ? format(new Date(p.dataNascimento), 'dd/MM/yyyy') : '',
+    dataNascimento: p.dataNascimento ? format(parseDateOnly(p.dataNascimento), 'dd/MM/yyyy') : '',
     telefone: p.telefone,
     email: p.email || '',
     sexo: p.sexo === 'M' ? 'Masculino' : p.sexo === 'F' ? 'Feminino' : 'Outro',

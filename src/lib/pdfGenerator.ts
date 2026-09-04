@@ -7,6 +7,7 @@ import { ptBR } from 'date-fns/locale';
 import QRCode from 'qrcode';
 
 import { supabase } from '@/integrations/supabase/client';
+import { parseDateOnly } from '@/lib/dateOnly';
 
 /**
  * Carrega jsPDF e jspdf-autotable só quando alguém vai realmente gerar um PDF.
@@ -211,7 +212,7 @@ export async function gerarReceita(
   doc.text(`Nome: ${paciente.nome}`, 20, 82);
   if (paciente.cpf) doc.text(`CPF: ${paciente.cpf}`, 120, 82);
   if (paciente.dataNascimento) {
-    doc.text(`Data Nasc.: ${format(new Date(paciente.dataNascimento), 'dd/MM/yyyy')}`, 20, 89);
+    doc.text(`Data Nasc.: ${format(parseDateOnly(paciente.dataNascimento), 'dd/MM/yyyy')}`, 20, 89);
   }
 
   // Linha separadora
@@ -496,7 +497,7 @@ export async function gerarEtiquetaPaciente(
     doc.setFontSize(size.fontSize);
     doc.setFont('helvetica', 'normal');
     doc.text(`CPF: ${paciente.cpf}`, 3, 14);
-    doc.text(`Nasc: ${format(new Date(paciente.dataNascimento), 'dd/MM/yyyy')}`, 3, 19);
+    doc.text(`Nasc: ${format(parseDateOnly(paciente.dataNascimento), 'dd/MM/yyyy')}`, 3, 19);
     doc.text(`Tel: ${paciente.telefone}`, 3, 24);
 
     if (paciente.convenio) {
@@ -916,7 +917,7 @@ function isResultadoAlterado(resultado: { resultado: string; valorReferenciaMin?
 
 function calcularIdade(dataNascimento: string): string {
   try {
-    const nasc = new Date(dataNascimento);
+    const nasc = parseDateOnly(dataNascimento);
     const hoje = new Date();
     let anos = hoje.getFullYear() - nasc.getFullYear();
     let meses = hoje.getMonth() - nasc.getMonth();
@@ -985,7 +986,7 @@ export async function gerarLaudoPDF(dados: LaudoData): Promise<jsPDF> {
 
   const infoLines: string[] = [];
   if (dados.pacienteDataNascimento) {
-    const nascFormatado = format(new Date(dados.pacienteDataNascimento), 'dd/MM/yyyy');
+    const nascFormatado = format(parseDateOnly(dados.pacienteDataNascimento), 'dd/MM/yyyy');
     const idade = calcularIdade(dados.pacienteDataNascimento);
     const sexo = formatSexo(dados.pacienteSexo);
     infoLines.push(`Nasc: ${nascFormatado} - Idade: ${idade}${sexo ? ` - Sexo: ${sexo}` : ''}`);
