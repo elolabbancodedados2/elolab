@@ -7,11 +7,11 @@ export default function TermosUso() {
   return (
     <div className="min-h-screen bg-background">
       <div className="container mx-auto max-w-3xl px-4 py-8 sm:py-12">
-        <Link to="/">
-          <Button variant="ghost" size="sm" className="mb-6">
+        <Button asChild variant="ghost" size="sm" className="mb-6">
+          <Link to="/">
             <ArrowLeft className="h-4 w-4 mr-2" /> Voltar
-          </Button>
-        </Link>
+          </Link>
+        </Button>
 
         <div className="flex items-center gap-3 mb-8">
           <FileText className="h-8 w-8 text-primary" />

@@ -59,6 +59,7 @@ function tagDeAbertura(texto, inicio) {
 }
 
 const achados = [];
+const interativosAninhados = [];
 
 for (const caminho of arquivos(RAIZ)) {
   const texto = readFileSync(caminho, 'utf8');
@@ -83,13 +84,22 @@ for (const caminho of arquivos(RAIZ)) {
       icone,
     });
   }
+
+  // Link envolvendo Button produz dois controles para uma única ação.
+  const aninhado = /<(a|Link)\b[^>]*>\s*<Button\b/g;
+  while ((m = aninhado.exec(texto)) !== null) {
+    interativosAninhados.push({
+      arquivo: relative('.', caminho).replace(/\\/g, '/'),
+      linha: texto.slice(0, m.index).split('\n').length,
+    });
+  }
 }
 
 const argTeto = process.argv.indexOf('--teto');
 const teto = argTeto !== -1 ? Number(process.argv[argTeto + 1]) : 0;
 
-if (achados.length === 0) {
-  console.log('OK — todo botão de ícone tem nome acessível.');
+if (achados.length === 0 && interativosAninhados.length === 0) {
+  console.log('OK — controles têm nome acessível e não há interativos aninhados.');
   process.exit(0);
 }
 
@@ -98,13 +108,19 @@ for (const a of achados) {
   console.log(`  ${a.arquivo}:${a.linha}  <${a.icone} />`);
 }
 
+if (interativosAninhados.length > 0) {
+  console.log(`\n${interativosAninhados.length} link(s) envolvendo botão — controle interativo aninhado:`);
+  for (const a of interativosAninhados) console.log(`  ${a.arquivo}:${a.linha}`);
+}
+
 console.log(
   `\nCada um é anunciado apenas como "botão" por leitor de tela.` +
   `\nAdicione aria-label descrevendo a AÇÃO ("Excluir paciente", não "lixeira").`,
 );
 
-if (achados.length > teto) {
-  console.log(`\nFALHOU: ${achados.length} achado(s), teto de ${teto}.`);
+const total = achados.length + interativosAninhados.length;
+if (total > teto) {
+  console.log(`\nFALHOU: ${total} achado(s), teto de ${teto}.`);
   process.exit(1);
 }
 

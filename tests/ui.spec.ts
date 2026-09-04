@@ -22,9 +22,8 @@ test.describe('UI integrity', () => {
     await page.goto('/auth');
     await page.waitForLoadState('networkidle');
 
-    // Should have at least one input
-    const inputs = await page.locator('input').count();
-    expect(inputs).toBeGreaterThan(0);
+    // Aguarda a hidratação da tela em vez de consultar cedo demais.
+    await expect(page.locator('input').first()).toBeVisible();
   });
 
   test('landing page tem conteúdo visível', async ({ page }) => {

@@ -1004,12 +1004,12 @@ export default function LandingPage() {
                     style={{ color: 'hsl(215,75%,30%)' }}>
                     Criar minha conta grátis <ArrowRight className="w-4 h-4 ml-2" />
                   </Button>
-                  <a href="https://wa.me/5511937687369" target="_blank" rel="noopener noreferrer">
-                    <Button size="lg" variant="ghost"
-                      className="rounded-full px-10 text-base font-bold text-white border-2 border-white/30 hover:bg-white/10 transition-all w-full">
+                  <Button asChild size="lg" variant="ghost"
+                    className="rounded-full px-10 text-base font-bold text-white border-2 border-white/30 hover:bg-white/10 transition-all w-full">
+                    <a href="https://wa.me/5511937687369" target="_blank" rel="noopener noreferrer">
                       <Headphones className="w-4 h-4 mr-2" /> Falar com um especialista
-                    </Button>
-                  </a>
+                    </a>
+                  </Button>
                 </div>
                 <div className="mt-8 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-xs font-medium text-white/50">
                   <span className="flex items-center gap-1.5"><Lock className="w-3.5 h-3.5" /> Dados criptografados</span>
@@ -1030,10 +1030,12 @@ export default function LandingPage() {
                 <p className="text-sm text-white/50 leading-relaxed">A plataforma completa que organiza, automatiza e faz crescer clínicas médicas e laboratórios.</p>
                 <div className="mt-4 flex gap-3">
                   <a href="https://wa.me/5511937687369" target="_blank" rel="noopener noreferrer"
+                    aria-label="Falar com o EloLab pelo WhatsApp"
                     className="w-9 h-9 rounded-lg flex items-center justify-center bg-white/10 hover:bg-white/20 transition-colors">
                     <Phone className="w-4 h-4 text-white/70" />
                   </a>
                   <a href="mailto:suporte@elolab.com.br"
+                    aria-label="Enviar e-mail para o suporte do EloLab"
                     className="w-9 h-9 rounded-lg flex items-center justify-center bg-white/10 hover:bg-white/20 transition-colors">
                     <Mail className="w-4 h-4 text-white/70" />
                   </a>

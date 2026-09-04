@@ -36,7 +36,7 @@ const routeLabels: Record<string, string> = {
   tarefas: 'Tarefas',
   'meu-historico': 'Meu histórico',
   indicadores: 'Indicadores de produtividade',
-  notificacoes: 'NotificaÃ§Ãµes',
+  notificacoes: 'Notificações',
 };
 
 export function Breadcrumbs() {
@@ -49,7 +49,7 @@ export function Breadcrumbs() {
 
   return (
     <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-sm text-muted-foreground mb-4">
-      <Link to="/dashboard" className="flex items-center gap-1 hover:text-foreground transition-colors">
+      <Link to="/dashboard" aria-label="Voltar ao painel" className="flex items-center gap-1 hover:text-foreground transition-colors">
         <Home className="h-3.5 w-3.5" />
       </Link>
       {segments.map((segment, i) => {
