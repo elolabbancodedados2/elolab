@@ -618,7 +618,7 @@ export default function Funcionarios() {
                             {!func.user_id && func.email && (
                               <Tooltip>
                                 <TooltipTrigger asChild>
-                                  <Button size="icon" variant="ghost" onClick={() => handleSendInvitation(func)} disabled={inviteMutation.isPending}>
+                                  <Button aria-label="Enviar convite por e-mail" size="icon" variant="ghost" onClick={() => handleSendInvitation(func)} disabled={inviteMutation.isPending}>
                                     {inviteMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4 text-primary" />}
                                   </Button>
                                 </TooltipTrigger>

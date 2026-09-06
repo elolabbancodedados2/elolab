@@ -10,12 +10,12 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from 'sonner';
+import { todayDateOnly, toDateOnly } from '@/lib/dateOnly';
 
 type TipoRepasse = 'percentual' | 'fixo';
 interface MedicoRepasse { id: string; nome: string | null; crm: string; tipo_repasse: TipoRepasse | null; percentual_repasse: number | null; valor_repasse_fixo: number | null }
 interface Repasse { id: string; valor_base: number; valor_repasse: number; percentual: number; tipo_calculo: TipoRepasse; valor_configurado: number | null; status: string; medicos?: { nome: string | null; crm: string } | null }
 
-const competenciaAtual = new Date().toISOString().slice(0, 7);
 const moeda = (valor: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valor || 0);
 
 function ConfiguracaoMedico({ medico, onSaved }: { medico: MedicoRepasse; onSaved: () => void }) {
@@ -30,7 +30,7 @@ function ConfiguracaoMedico({ medico, onSaved }: { medico: MedicoRepasse; onSave
 
   const salvar = async () => {
     const numero = Number(valor);
-    if (!Number.isFinite(numero) || numero < 0 || (tipo === 'percentual' && numero > 100)) {
+    if (!valor.trim() || !Number.isFinite(numero) || numero < 0 || (tipo === 'percentual' && numero > 100)) {
       toast.error(tipo === 'percentual' ? 'Informe um percentual entre 0 e 100.' : 'Informe um valor fixo válido.');
       return;
     }
@@ -55,15 +55,16 @@ function ConfiguracaoMedico({ medico, onSaved }: { medico: MedicoRepasse; onSave
 
 export default function RepassesMedicos() {
   const queryClient = useQueryClient();
-  const [competencia, setCompetencia] = useState(competenciaAtual);
+  const [competencia, setCompetencia] = useState(() => todayDateOnly().slice(0, 7));
+  const competenciaValida = /^\d{4}-(0[1-9]|1[0-2])$/.test(competencia);
   const [processing, setProcessing] = useState(false);
   const { data: medicos = [] } = useQuery({ queryKey: ['medicos-repasse'], queryFn: async () => {
     const { data, error } = await (supabase as any).from('medicos').select('id,nome,crm,tipo_repasse,percentual_repasse,valor_repasse_fixo').eq('ativo', true).order('nome');
     if (error) throw error; return (data ?? []) as MedicoRepasse[];
   }});
-  const { data: repasses = [], isLoading } = useQuery({ queryKey: ['repasses-medicos', competencia], queryFn: async () => {
+  const { data: repasses = [], isLoading } = useQuery({ queryKey: ['repasses-medicos', competencia], enabled: competenciaValida, queryFn: async () => {
     const inicio = `${competencia}-01`;
-    const fim = new Date(Number(competencia.slice(0, 4)), Number(competencia.slice(5, 7)), 1).toISOString().slice(0, 10);
+    const fim = toDateOnly(new Date(Number(competencia.slice(0, 4)), Number(competencia.slice(5, 7)), 1));
     const { data, error } = await (supabase as any).from('repasses_medicos').select('*,medicos(nome,crm)').gte('competencia', inicio).lt('competencia', fim).order('created_at');
     if (error) throw error; return (data ?? []) as Repasse[];
   }});
@@ -74,6 +75,7 @@ export default function RepassesMedicos() {
   }), [repasses]);
 
   const gerar = async () => {
+    if (!competenciaValida) { toast.error('Informe uma competência válida.'); return; }
     setProcessing(true);
     const { data, error } = await (supabase as any).rpc('gerar_repasses_medicos', { p_competencia: `${competencia}-01` });
     setProcessing(false);

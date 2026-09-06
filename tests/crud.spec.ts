@@ -1,27 +1,17 @@
 import { test, expect } from '@playwright/test';
-
-test.describe('CRUD operations', () => {
-  test('formulário vazio exibe validação', async ({ page }) => {
+test.describe('Validação de entrada e proteção de pacientes', () => {
+  test('formulário vazio exibe erros de email e senha', async ({ page }) => {
     await page.goto('/auth');
-    await page.waitForLoadState('networkidle');
-
-    // Try submitting empty form
-    const submitBtn = page.locator('button[type="submit"]').first();
-    if (await submitBtn.isVisible()) {
-      await submitBtn.click();
-      await page.waitForTimeout(1000);
-      // Check for validation messages or HTML5 validation
-      const invalidInputs = await page.locator('input:invalid').count();
-      // Either custom errors or HTML5 validation should trigger
-      expect(invalidInputs).toBeGreaterThanOrEqual(0);
-    }
+    const submit = page.locator('form button[type="submit"]').first();
+    await expect(submit).toBeVisible();
+    await submit.click();
+    await expect(page.getByText('Email inválido', { exact: true })).toBeVisible();
+    await expect(page.getByText('Senha é obrigatória', { exact: true })).toBeVisible();
+    await expect(page).toHaveURL(/\/auth/);
   });
-
-  test('página de pacientes carrega (se autenticado)', async ({ page }) => {
+  test('pacientes exige login sem uma sessão', async ({ page }) => {
     await page.goto('/pacientes');
-    await page.waitForLoadState('networkidle');
-    // Will redirect to auth if not logged in
-    const url = page.url();
-    expect(url).toBeTruthy();
+    await expect(page).toHaveURL(/\/auth/);
+    await expect(page.locator('input[type="email"]').first()).toBeVisible();
   });
 });

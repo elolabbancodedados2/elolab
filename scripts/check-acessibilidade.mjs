@@ -22,6 +22,19 @@
 
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import ts from 'typescript';
+
+function textoVisivel(conteudo) {
+  const source = ts.createSourceFile('control.tsx', `const control = <>${conteudo}</>;`, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  let found = false;
+  function visit(node) {
+    if (ts.isJsxText(node) && node.text.trim()) found = true;
+    if (ts.isJsxExpression(node) && node.expression && ts.isStringLiteral(node.expression) && node.expression.text.trim()) found = true;
+    ts.forEachChild(node, visit);
+  }
+  visit(source);
+  return found;
+}
 
 const RAIZ = 'src';
 
@@ -74,7 +87,7 @@ for (const caminho of arquivos(RAIZ)) {
     // O conteúdo do botão: se tiver texto visível, o nome acessível já existe.
     const depois = texto.slice(m.index + tag.length, m.index + tag.length + 400);
     const conteudo = depois.split('</Button>')[0] ?? '';
-    const temTextoVisivel = /[A-Za-zÀ-ÿ]{3,}/.test(conteudo.replace(/<[^>]*>/g, '').trim());
+    const temTextoVisivel = textoVisivel(conteudo);
     if (temTextoVisivel) continue;
 
     const icone = conteudo.match(/<([A-Z][A-Za-z0-9]+)[\s/]/)?.[1] ?? '?';

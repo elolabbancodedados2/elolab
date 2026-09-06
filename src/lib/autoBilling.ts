@@ -312,7 +312,7 @@ export async function createAutoBilling(params: AutoBillingParams): Promise<bool
   }
 
   // Fallback: use convenio default value
-  if (valor === 0 && convenioId) {
+  if (valor === 0 && convenioId && !precoCadastrado) {
     const { data: conv, error: convError } = await supabase
       .from('convenios')
       .select('valor_consulta')

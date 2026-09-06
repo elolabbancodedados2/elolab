@@ -234,6 +234,21 @@ describe('faturamento automático — uma cobrança por agendamento', () => {
     expect(mockAtual.chamadas.some(c => c.tabela === 'lancamentos' && c.op === 'insert')).toBe(false);
   });
 
+  it('preserva preço zero explícito mesmo com valor padrão do convênio', async () => {
+    mockAtual = criarSupabaseMock({
+      'lancamentos.select': { data: [], error: null },
+      'tipos_consulta.select': { data: { id: 'retorno', nome: 'Retorno', valor_particular: 0 }, error: null },
+      'precos_consulta_convenio.select': { data: { valor: 0 }, error: null },
+      'convenios.select': { data: { valor_consulta: 150 }, error: null },
+    });
+    const { createAutoBilling } = await import('@/lib/autoBilling');
+    expect(await createAutoBilling({
+      agendamentoId: 'ag-gratis', pacienteId: 'pac-1', pacienteNome: 'Teste',
+      tipoConsulta: 'Retorno', data: '2026-09-06', clinicaId: 'cli-1', convenioId: 'conv-1',
+    })).toBe(false);
+    expect(mockAtual.chamadas.some(c => c.tabela === 'lancamentos' && c.op === 'insert')).toBe(false);
+  });
+
   it('tipo ausente do catálogo continua sendo erro de preço não cadastrado', async () => {
     mockAtual = criarSupabaseMock({
       'lancamentos.select': { data: [], error: null },

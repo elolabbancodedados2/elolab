@@ -465,6 +465,7 @@ function ViewConversa({
                 ? 'bg-primary text-primary-foreground scale-100'
                 : 'bg-muted text-muted-foreground scale-95',
             )}
+            aria-label="Enviar mensagem"
             onClick={handleEnviar}
             disabled={!texto.trim() || enviando}
           >

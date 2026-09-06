@@ -557,6 +557,7 @@ function ConversaView({
               'h-10 w-10 shrink-0 rounded-full transition-all',
               texto.trim() ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground',
             )}
+            aria-label="Enviar mensagem"
             onClick={handleEnviar}
             disabled={!texto.trim() || enviando}
           >

@@ -193,6 +193,7 @@ export default function RedefinirSenha() {
                     variant="ghost"
                     size="icon"
                     className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
+                    aria-label={mostrarSenha ? 'Ocultar senha' : 'Mostrar senha'}
                     onClick={() => setMostrarSenha(!mostrarSenha)}
                   >
                     {mostrarSenha
