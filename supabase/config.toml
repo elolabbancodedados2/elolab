@@ -34,7 +34,9 @@ verify_jwt = true
 verify_jwt = true
 
 [functions.patient-portal]
-verify_jwt = true
+# O portal autentica pelo token de acesso do paciente, nÃ£o por JWT de usuÃ¡rio
+# Supabase. A prÃ³pria funÃ§Ã£o valida hash, ativo, expiraÃ§Ã£o e rate limit.
+verify_jwt = false
 
 # Webhooks — external callbacks, must remain public
 [functions.whatsapp-webhook]
@@ -44,6 +46,16 @@ verify_jwt = false
 verify_jwt = false
 
 # Public endpoints — unauthenticated access needed
+[functions.accept-invite]
+# O aceite acontece antes do login; o token de convite é a credencial deste fluxo.
+# A Edge Function valida existência, expiração e uso único antes de criar a conta.
+verify_jwt = false
+
+[functions.client-telemetry]
+# Erros também precisam ser registrados quando a sessão expirou ou o visitante
+# ainda não fez login; a função aceita autenticação opcional e sanitiza o payload.
+verify_jwt = false
+
 [functions.mercadopago-checkout]
 verify_jwt = false
 

@@ -60,8 +60,17 @@ Deno.serve(async (req) => {
 
     const clinicaNome = clinicConfig?.nome_fantasia || 'Clínica Médica'
     const clinicaEndereco = clinicConfig ? `${clinicConfig.endereco || ''}` : 'Clínica'
-    const medicoNome = agendamento.medicos.nome ? `Dr(a). ${agendamento.medicos.nome}` : `Dr(a). CRM ${agendamento.medicos.crm}`
-    const paciente = agendamento.pacientes
+    // Relações do PostgREST podem chegar como objeto ou lista dependendo da
+    // inferência do relacionamento. Normalize antes de montar as mensagens.
+    const medico = Array.isArray(agendamento.medicos) ? agendamento.medicos[0] : agendamento.medicos
+    const paciente = Array.isArray(agendamento.pacientes) ? agendamento.pacientes[0] : agendamento.pacientes
+    if (!medico || !paciente) {
+      return new Response(
+        JSON.stringify({ error: 'Dados do paciente ou médico não encontrados' }),
+        { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+    const medicoNome = medico.nome ? `Dr(a). ${medico.nome}` : `Dr(a). CRM ${medico.crm}`
     const portalLink = `${appUrl}/portal-paciente?agendamento_id=${agendamento_id}`
 
     // Fetch email template

@@ -119,6 +119,9 @@ export default function Planos() {
         },
       });
       if (error) throw error;
+      if (data?.error || data?.success === false) {
+        throw new Error(data.error || 'Não foi possível iniciar a assinatura');
+      }
       return data;
     },
     onSuccess: (data: any) => {

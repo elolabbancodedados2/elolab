@@ -335,7 +335,14 @@ export default function Pacientes() {
   const handleOpenProntuario = async (pront: any) => {
     setProntuarioForm(pront);
     setProntuarioSinais(pront.sinais_vitais || {});
-    const { data: prescs } = await supabase.from('prescricoes').select('*').eq('prontuario_id', pront.id);
+    const { data: prescs, error: prescsError } = await supabase
+      .from('prescricoes')
+      .select('*')
+      .eq('prontuario_id', pront.id);
+    if (prescsError) {
+      toast.error('Não foi possível carregar as prescrições.', { description: mensagemDeErro(prescsError) });
+      return;
+    }
     setProntuarioPrescricoes((prescs || []).map((p: any) => ({
       medicamento: p.medicamento, dosagem: p.dosagem || '', posologia: p.posologia || '',
       duracao: p.duracao || '', quantidade: p.quantidade || '', observacoes: p.observacoes || '',

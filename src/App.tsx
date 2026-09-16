@@ -47,7 +47,6 @@ const Encaminhamentos = lazy(() => import("@/pages/Encaminhamentos"));
 const Automacoes = lazy(() => import("@/pages/Automacoes"));
 const AgenteIA = lazy(() => import("@/pages/AgenteIA"));
 const Analytics = lazy(() => import("@/pages/Analytics"));
-const Pagamentos = lazy(() => import("@/pages/Pagamentos"));
 const Planos = lazy(() => import("@/pages/Planos"));
 const Laboratorio = lazy(() => import("@/pages/Laboratorio"));
 const PrecosExames = lazy(() => import("@/pages/PrecosExames"));
@@ -153,7 +152,7 @@ function RouteFallback() {
           <div className="absolute inset-0 rounded-full border-2 border-primary/15" />
           <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-primary animate-spin" />
         </div>
-        <p className="text-sm font-medium text-muted-foreground animate-pulse">Carregando...</p>
+        <p className="text-sm font-medium text-muted-foreground animate-pulse">Carregando…</p>
       </div>
     </div>
   );
@@ -275,17 +274,21 @@ function App() {
                           <Route path="/interoperabilidade" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico']}><Interoperabilidade /></SupabaseProtectedRoute>} />
                           <Route path="/todos-templates" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico']}><TemplatesUnificado /></SupabaseProtectedRoute>} />
                           <Route path="/templates" element={<Navigate to="/todos-templates" replace />} />
-                          <Route path="/lista-espera" element={<Navigate to="/gestao-fluxo" replace />} />
+                          <Route path="/lista-espera" element={<Navigate to="/gestao-fluxo?tab=espera" replace />} />
                           <Route path="/tarefas" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'financeiro', 'medico']}><Tarefas /></SupabaseProtectedRoute>} />
                           <Route path="/recepcao" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'financeiro']}><RecepcaoCaixa /></SupabaseProtectedRoute>} />
-                          <Route path="/caixa" element={<Navigate to="/recepcao" replace />} />
-                          <Route path="/caixa-diario" element={<Navigate to="/recepcao" replace />} />
+                          <Route path="/caixa" element={<Navigate to="/recepcao?tab=caixa" replace />} />
+                          <Route path="/caixa-diario" element={<Navigate to="/recepcao?tab=caixa" replace />} />
                           <Route path="/financeiro" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><Financeiro /></SupabaseProtectedRoute>} />
                           <Route path="/contas" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><ContasPage /></SupabaseProtectedRoute>} />
-                          <Route path="/contas-receber" element={<Navigate to="/contas" replace />} />
-                          <Route path="/contas-pagar" element={<Navigate to="/contas" replace />} />
+                          <Route path="/contas-receber" element={<Navigate to="/contas?tab=receber" replace />} />
+                          <Route path="/contas-pagar" element={<Navigate to="/contas?tab=pagar" replace />} />
                           <Route path="/fluxo-caixa" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><FluxoCaixa /></SupabaseProtectedRoute>} />
-                          <Route path="/pagamentos" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><Pagamentos /></SupabaseProtectedRoute>} />
+                          {/* A tela legada usava pagamentos_mercadopago (checkout online),
+                              enquanto o financeiro da clínica usa Contas + pagamentos.
+                              Mantemos o endereço antigo como alias para não deixar
+                              links salvos abrirem dados incompletos. */}
+                          <Route path="/pagamentos" element={<Navigate to="/contas" replace />} />
                           <Route path="/precos-servicos" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><PrecosServicos /></SupabaseProtectedRoute>} />
                           <Route path="/precos-exames" element={<Navigate to="/precos-servicos" replace />} />
                           <Route path="/tipos-consulta" element={<Navigate to="/precos-servicos" replace />} />

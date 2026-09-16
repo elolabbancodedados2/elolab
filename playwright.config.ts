@@ -1,5 +1,8 @@
 import { defineConfig, devices } from '@playwright/test';
 
+const e2ePort = Number(process.env.PLAYWRIGHT_PORT ?? 4173);
+const e2eBaseURL = `http://127.0.0.1:${e2ePort}`;
+
 export default defineConfig({
   testDir: './tests',
   fullyParallel: true,
@@ -9,7 +12,7 @@ export default defineConfig({
   reporter: 'html',
   timeout: 30000,
   use: {
-    baseURL: 'http://localhost:8080',
+    baseURL: e2eBaseURL,
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
@@ -33,8 +36,10 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'npm run dev -- --mode test',
-    url: 'http://localhost:8080',
-    reuseExistingServer: !process.env.CI,
+    command: `npm run dev -- --mode test --host 127.0.0.1 --port ${e2ePort}`,
+    url: e2eBaseURL,
+    // Nunca reutilizar um servidor arbitrário: outra aplicação pode estar
+    // ocupando a porta padrão e produzir falsos 404/erros nos testes.
+    reuseExistingServer: false,
   },
 });

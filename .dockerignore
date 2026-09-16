@@ -1,0 +1,13 @@
+.git
+.github
+node_modules
+dist
+dist-ssr
+test-results
+playwright-report
+output
+*.log
+.env*
+!.env.example
+schema-real.json
+supabase/.temp

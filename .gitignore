@@ -46,5 +46,9 @@ playwright-report/
 .playwright-cli/
 output/
 
+# Pacotes locais gerados para upload manual no painel
+app-deploy-*.zip
+supabase/.temp/
+
 # Credenciais isoladas deste projeto (GitHub/Cloudflare). Nunca versionar.
 .project-auth/

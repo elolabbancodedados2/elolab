@@ -375,14 +375,30 @@ export default function Fila() {
         horario_chegada: new Date().toISOString(),
       };
       if (profile?.clinica_id) payload.clinica_id = profile.clinica_id;
-      const { error } = await supabase.from('fila_atendimento').insert(payload);
+      const { data: filaCriada, error } = await supabase
+        .from('fila_atendimento')
+        .insert(payload)
+        .select('id')
+        .single();
       if (error) throw error;
       // Falha aqui deixa o paciente na fila mas com o agendamento em outro
       // estado — a Recepção e o Painel TV passam a discordar da Fila.
       const { error: agErr } = await supabase
         .from('agendamentos').update({ status: 'aguardando' }).eq('id', selectedAgendamento);
       if (agErr) {
-        toast.warning('Paciente na fila, mas o status do agendamento não mudou.');
+        if (filaCriada?.id) {
+          const { error: rollbackError } = await supabase
+            .from('fila_atendimento')
+            .delete()
+            .eq('id', filaCriada.id);
+          if (rollbackError) {
+            toast.error('Não foi possível concluir a entrada na fila.', {
+              description: `${agErr.message}. Falha ao desfazer a fila: ${rollbackError.message}`,
+            });
+            return;
+          }
+        }
+        throw agErr;
       }
       refresh();
       setIsAddOpen(false);

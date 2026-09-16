@@ -1,1 +1,85 @@
-import{createClient}from'https://esm.sh/@supabase/supabase-js@2';const h={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'authorization, apikey, content-type','Content-Type':'application/json'};const out=(b:unknown,s=200)=>new Response(JSON.stringify(b),{status:s,headers:h});Deno.serve(async req=>{if(req.method==='OPTIONS')return new Response('ok',{headers:h});try{const admin=createClient(Deno.env.get('SUPABASE_URL')!,Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);const token=(req.headers.get('Authorization')||'').replace(/^Bearer\s+/i,'');const{data:u}=await admin.auth.getUser(token);if(!u.user)return out({error:'Não autenticado'},401);const{data:pa}=await admin.from('platform_admins').select('user_id').eq('user_id',u.user.id).eq('ativo',true).maybeSingle();if(!pa)return out({error:'Acesso restrito'},403);const{id}=await req.json();const{data:d,error}=await admin.from('platform_domains').select('*').eq('id',id).single();if(error)throw error;if(!/^[a-z0-9.-]+$/.test(d.domain))return out({error:'Domínio inválido'},400);const query=async(type:string)=>{const r=await fetch(`https://dns.google/resolve?name=${encodeURIComponent(d.domain)}&type=${type}`,{headers:{Accept:'application/dns-json'}});return await r.json()};const[a,txt,mx]=await Promise.all([query('A'),query('TXT'),query('MX')]);const txtValues=(txt.Answer||[]).map((x:{data:string})=>x.data);const result={a:!!a.Answer?.length,mx:!!mx.Answer?.length,spf:txtValues.some((x:string)=>x.includes('v=spf1')),dmarc:false,checked_at:new Date().toISOString()};const dm=await fetch(`https://dns.google/resolve?name=${encodeURIComponent('_dmarc.'+d.domain)}&type=TXT`,{headers:{Accept:'application/dns-json'}}).then(r=>r.json());result.dmarc=(dm.Answer||[]).some((x:{data:string})=>x.data.includes('v=DMARC1'));const verified=d.purpose==='app'?result.a:result.mx&&result.spf;await admin.from('platform_domains').update({dns_result:result,checked_at:result.checked_at,status:verified?'verified':'error'}).eq('id',id);return out({success:true,verified,result})}catch(e){return out({error:e instanceof Error?e.message:String(e)},500)}});
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+const headers = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, apikey, content-type',
+  'Content-Type': 'application/json',
+};
+
+const reply = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), { status, headers });
+
+Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') return new Response('ok', { headers });
+  if (req.method !== 'POST') return reply({ error: 'Método não permitido' }, 405);
+
+  try {
+    const admin = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+    );
+    const token = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
+    const { data: auth } = await admin.auth.getUser(token);
+    if (!auth.user) return reply({ error: 'Não autenticado' }, 401);
+
+    const { data: platformAdmin, error: adminError } = await admin
+      .from('platform_admins')
+      .select('user_id')
+      .eq('user_id', auth.user.id)
+      .eq('ativo', true)
+      .maybeSingle();
+    if (adminError) throw adminError;
+    if (!platformAdmin) return reply({ error: 'Acesso restrito' }, 403);
+
+    const body = await req.json().catch(() => null);
+    const id = typeof body?.id === 'string' ? body.id.trim() : '';
+    if (!id) return reply({ error: 'Domínio não informado' }, 400);
+
+    const { data: domain, error: domainError } = await admin
+      .from('platform_domains')
+      .select('id, domain, purpose')
+      .eq('id', id)
+      .single();
+    if (domainError || !domain) return reply({ error: 'Domínio não encontrado' }, 404);
+    if (!/^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/.test(domain.domain)) {
+      return reply({ error: 'Domínio inválido' }, 400);
+    }
+
+    const queryDns = async (type: string) => {
+      const response = await fetch(
+        `https://dns.google/resolve?name=${encodeURIComponent(domain.domain)}&type=${type}`,
+        { headers: { Accept: 'application/dns-json' } },
+      );
+      if (!response.ok) throw new Error('Falha na consulta DNS');
+      return await response.json();
+    };
+
+    const [a, txt, mx] = await Promise.all([queryDns('A'), queryDns('TXT'), queryDns('MX')]);
+    const txtValues = (txt.Answer || []).map((item: { data?: string }) => item.data || '');
+    const result = {
+      a: !!a.Answer?.length,
+      mx: !!mx.Answer?.length,
+      spf: txtValues.some((value: string) => value.includes('v=spf1')),
+      dmarc: false,
+      checked_at: new Date().toISOString(),
+    };
+    const dmarc = await fetch(
+      `https://dns.google/resolve?name=${encodeURIComponent(`_dmarc.${domain.domain}`)}&type=TXT`,
+      { headers: { Accept: 'application/dns-json' } },
+    );
+    if (!dmarc.ok) throw new Error('Falha na consulta DNS');
+    const dmarcJson = await dmarc.json();
+    result.dmarc = (dmarcJson.Answer || []).some((item: { data?: string }) =>
+      (item.data || '').includes('v=DMARC1'));
+
+    const verified = domain.purpose === 'app' ? result.a : result.mx && result.spf;
+    const { error: updateError } = await admin
+      .from('platform_domains')
+      .update({ dns_result: result, checked_at: result.checked_at, status: verified ? 'verified' : 'error' })
+      .eq('id', domain.id);
+    if (updateError) throw updateError;
+    return reply({ success: true, verified, result });
+  } catch {
+    return reply({ error: 'Não foi possível verificar o domínio agora' }, 502);
+  }
+});

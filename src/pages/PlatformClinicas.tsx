@@ -143,7 +143,12 @@ export default function PlatformClinicas() {
       const r = data as any;
       if (!r?.success) throw new Error(r?.error || 'Falha');
       // Trigger email through reconcile function immediately for this record
-      await supabase.functions.invoke('reconcile-pending-registrations');
+      const { data: reconcileData, error: resendError } = await supabase.functions.invoke('reconcile-pending-registrations');
+      if (resendError) throw resendError;
+      const reconcileResult = reconcileData as any;
+      if (reconcileResult?.success === false || reconcileResult?.error) {
+        throw new Error(reconcileResult.error || 'Falha ao reenviar o código');
+      }
       toast.success(`Código reenviado para ${email}`);
       refetchOrfaos();
     } catch (e: any) {

@@ -271,7 +271,7 @@ Deno.serve(async (req) => {
 // emitido continua valendo até expirar (1 h no padrão do Supabase) — quem
 // estiver com a tela aberta segue até lá. Por isso o bloqueio não é
 // instantâneo, e a tela diz isso.
-async function encerrarSessoes(service: ReturnType<typeof createClient>, alvoId: string) {
+async function encerrarSessoes(service: any, alvoId: string) {
   try {
     await service.rpc("admin_encerrar_sessoes", { p_user_id: alvoId });
   } catch (e) {
@@ -294,7 +294,7 @@ interface Previa {
 
 /** O que existe na conta hoje, e o que a exclusão levaria junto. */
 async function levantarPrevia(
-  service: ReturnType<typeof createClient>,
+  service: any,
   alvoId: string,
   alvo: { email?: string; banned_until?: string; email_confirmed_at?: string; last_sign_in_at?: string },
 ): Promise<Previa> {

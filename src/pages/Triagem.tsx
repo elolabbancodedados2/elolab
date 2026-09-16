@@ -236,6 +236,18 @@ export default function TriagemPage() {
   };
 
   const handleSave = async () => {
+    if (!formData.paciente_id || !formData.pressao_arterial || !formData.queixa_principal.trim()) {
+      toast.error('Preencha paciente, pressao arterial e queixa principal.'); return;
+    }
+    if (!user?.id || !profile?.clinica_id) {
+      toast.error('Sua sessao clinica nao esta pronta. Atualize a pagina e tente novamente.'); return;
+    }
+    if (formData.agendamento_id) {
+      const agendamento = agendamentos.find((a: any) => a.id === formData.agendamento_id);
+      if (!agendamento || agendamento.paciente_id !== formData.paciente_id) {
+        toast.error('O agendamento selecionado nao pertence a este paciente.'); return;
+      }
+    }
     if (!formData.paciente_id || !formData.pressao_arterial) {
       toast.error('Preencha paciente e pressão arterial.'); return;
     }
@@ -253,37 +265,42 @@ export default function TriagemPage() {
       toast.error('A pressão diastólica deve ser menor que a sistólica.'); return;
     }
 
-    // Validate vital signs ranges if provided
-    const fc = parseInt(formData.frequencia_cardiaca);
-    if (formData.frequencia_cardiaca && (fc < 20 || fc > 300)) {
+    // Number('abc') vira NaN; sem testar isso, texto invalido era salvo como NULL.
+    const parseOptionalNumber = (value: string) => {
+      if (!value.trim()) return null;
+      const parsed = Number(value.replace(',', '.'));
+      return Number.isFinite(parsed) ? parsed : Number.NaN;
+    };
+    const fc = parseOptionalNumber(formData.frequencia_cardiaca);
+    if (Number.isNaN(fc) || (fc !== null && (!Number.isInteger(fc) || fc < 20 || fc > 300))) {
       toast.error('Frequência cardíaca fora da faixa (20-300 bpm).'); return;
     }
-    const fr = parseInt(formData.frequencia_respiratoria);
-    if (formData.frequencia_respiratoria && (fr < 4 || fr > 60)) {
+    const fr = parseOptionalNumber(formData.frequencia_respiratoria);
+    if (Number.isNaN(fr) || (fr !== null && (!Number.isInteger(fr) || fr < 4 || fr > 60))) {
       toast.error('Frequência respiratória fora da faixa (4-60 irpm).'); return;
     }
-    const temp = parseFloat(formData.temperatura);
-    if (formData.temperatura && (temp < 30 || temp > 45)) {
+    const temp = parseOptionalNumber(formData.temperatura);
+    if (Number.isNaN(temp) || (temp !== null && (temp < 30 || temp > 45))) {
       toast.error('Temperatura fora da faixa (30-45 °C).'); return;
     }
-    const sat = parseFloat(formData.saturacao);
-    if (formData.saturacao && (sat < 50 || sat > 100)) {
+    const sat = parseOptionalNumber(formData.saturacao);
+    if (Number.isNaN(sat) || (sat !== null && (sat < 50 || sat > 100))) {
       toast.error('Saturação fora da faixa (50-100%).'); return;
     }
-    const peso = parseFloat(formData.peso);
-    if (formData.peso && (peso < 0.5 || peso > 500)) {
+    const peso = parseOptionalNumber(formData.peso);
+    if (Number.isNaN(peso) || (peso !== null && (peso < 0.5 || peso > 500))) {
       toast.error('Peso fora da faixa aceitável (0.5-500 kg).'); return;
     }
-    const altura = parseFloat(formData.altura);
-    if (formData.altura && (altura < 20 || altura > 250)) {
+    const altura = parseOptionalNumber(formData.altura);
+    if (Number.isNaN(altura) || (altura !== null && (altura < 20 || altura > 250))) {
       toast.error('Altura fora da faixa aceitável (20-250 cm).'); return;
     }
-    const glic = parseFloat(formData.glicemia);
-    if (formData.glicemia && (glic < 10 || glic > 900)) {
+    const glic = parseOptionalNumber(formData.glicemia);
+    if (Number.isNaN(glic) || (glic !== null && (glic < 10 || glic > 900))) {
       toast.error('Glicemia fora da faixa (10-900 mg/dL).'); return;
     }
-    const dor = parseInt(formData.dor_escala);
-    if (formData.dor_escala && (dor < 0 || dor > 10)) {
+    const dor = parseOptionalNumber(formData.dor_escala);
+    if (Number.isNaN(dor) || (dor !== null && (!Number.isInteger(dor) || dor < 0 || dor > 10))) {
       toast.error('Escala de dor deve estar entre 0 e 10.'); return;
     }
 
@@ -295,15 +312,15 @@ export default function TriagemPage() {
         agendamento_id: formData.agendamento_id || null,
         enfermeiro_id: user?.id || '',
         pressao_arterial: formData.pressao_arterial,
-        frequencia_cardiaca: parseInt(formData.frequencia_cardiaca) || null,
-        frequencia_respiratoria: parseInt(formData.frequencia_respiratoria) || null,
-        temperatura: parseFloat(formData.temperatura) || null,
-        saturacao: parseFloat(formData.saturacao) || null,
-        peso: parseFloat(formData.peso) || null,
-        altura: parseFloat(formData.altura) || null,
+        frequencia_cardiaca: fc,
+        frequencia_respiratoria: fr,
+        temperatura: temp,
+        saturacao: sat,
+        peso,
+        altura,
         imc: imc,
-        glicemia: parseFloat(formData.glicemia) || null,
-        dor_escala: parseInt(formData.dor_escala) || null,
+        glicemia: glic,
+        dor_escala: dor,
         queixa_principal: formData.queixa_principal,
         classificacao_risco: formData.classificacao_risco,
         observacoes: formData.observacoes || null,

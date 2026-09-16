@@ -75,6 +75,13 @@ Vá em **Settings → Secrets and variables → Actions** do repositório e adic
 | `VITE_SUPABASE_URL` | URL do projeto Supabase |
 | `VITE_SUPABASE_ANON_KEY` | Chave anon/publishable do Supabase |
 
+### Deploy na VPS
+
+O workflow de publicação valida a imagem Docker do frontend. O Easypanel faz o
+deploy após o webhook do repositório. Configure nele `VITE_SUPABASE_URL` e
+`VITE_SUPABASE_PUBLISHABLE_KEY` como build arguments; o procedimento completo
+está em [`docs/EASYPANEL-VPS.md`](docs/EASYPANEL-VPS.md).
+
 ### Pipeline
 
 1. **unit-tests**: `npm ci` → `npm run test:run`

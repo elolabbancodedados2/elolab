@@ -12,6 +12,12 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
+  if (req.method !== "POST") {
+    return new Response(JSON.stringify({ error: "MÃ©todo nÃ£o permitido" }), {
+      status: 405,
+      headers: { ...corsHeaders, "Content-Type": "application/json", Allow: "POST, OPTIONS" },
+    });
+  }
 
   try {
     // Auth
@@ -55,7 +61,10 @@ Deno.serve(async (req) => {
     const { action } = body;
 
     if (action === "create_preference") {
-      return await createPreference(body, mpToken, supabase, corsHeaders);
+      // Esse fluxo antigo aceitava valor e referências vindas do navegador e
+      // não é usado pelo app. Mantê-lo ativo permitiria criar cobranças
+      // arbitrárias; assinaturas usam exclusivamente o plano lido do banco.
+      return json({ error: "Fluxo de preferência desativado" }, 410, corsHeaders);
     } else if (action === "create_subscription") {
       return await createSubscription(body, mpToken, adminSupabase, corsHeaders, user);
     } else if (action === "get_payment") {

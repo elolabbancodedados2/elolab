@@ -144,7 +144,10 @@ export function Sidebar() {
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-sidebar-foreground/25" />
             <Input
-              placeholder="Buscar..."
+              aria-label="Buscar no menu"
+              name="menu-search"
+              autoComplete="off"
+              placeholder="Buscar…"
               value={search}
               onChange={e => setSearch(e.target.value)}
               className="h-8 pl-8 text-xs bg-sidebar-accent/40 border-sidebar-border/30 rounded-lg placeholder:text-sidebar-foreground/20 focus-visible:ring-sidebar-primary/25 focus-visible:bg-sidebar-accent/70"

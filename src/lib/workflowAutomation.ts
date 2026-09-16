@@ -49,12 +49,15 @@ export async function autoCheckin(
 
   try {
     // Check if already in queue
-    const { data: existing } = await supabase
+    let existingQuery = supabase
       .from('fila_atendimento')
       .select('id')
       .eq('agendamento_id', agendamentoId)
       .neq('status', 'finalizado')
       .limit(1);
+    if (clinicaId) existingQuery = existingQuery.eq('clinica_id', clinicaId);
+    const { data: existing, error: existingError } = await existingQuery;
+    if (existingError) throw existingError;
 
     if (existing && existing.length > 0) {
       return { success: true, message: 'Paciente já está na fila', actions: [] };
@@ -69,11 +72,14 @@ export async function autoCheckin(
     // nada mudou. Se o status falhar depois, desfazemos a entrada na fila.
 
     // Get next position
-    const { data: lastFila } = await supabase
+    let lastFilaQuery = supabase
       .from('fila_atendimento')
       .select('posicao')
       .order('posicao', { ascending: false })
       .limit(1);
+    if (clinicaId) lastFilaQuery = lastFilaQuery.eq('clinica_id', clinicaId);
+    const { data: lastFila, error: lastFilaError } = await lastFilaQuery;
+    if (lastFilaError) throw lastFilaError;
     const nextPos = (lastFila?.[0]?.posicao || 0) + 1;
 
     // Add to queue
@@ -292,11 +298,12 @@ export async function autoCreateColeta(params: {
     const jejumNecessario = jejumExames.some(kw => tipoLower.includes(kw));
 
     // Check if coleta already exists
-    const { data: existingColeta } = await supabase
+    const { data: existingColeta, error: existingColetaError } = await supabase
       .from('coletas_laboratorio')
       .select('id')
       .eq('exame_id', params.exameId)
       .limit(1);
+    if (existingColetaError) throw existingColetaError;
 
     if (existingColeta && existingColeta.length > 0) {
       return { success: true, message: 'Coleta já registrada', actions: [] };
@@ -347,7 +354,7 @@ export async function autoDispensarMedicamentos(params: {
       const qty = parseInt(med.quantidade) || 1;
 
       // Find in stock by name match
-      const { data: stockItem } = await supabase
+      const { data: stockItem, error: stockError } = await supabase
         .from('estoque')
         .select('id, quantidade, nome, quantidade_minima')
         .ilike('nome', `%${med.nome.split(' ')[0]}%`)
@@ -355,6 +362,7 @@ export async function autoDispensarMedicamentos(params: {
         .order('validade', { ascending: true }) // Use closest to expiry first (FEFO)
         .limit(1)
         .maybeSingle();
+      if (stockError) throw stockError;
 
       if (!stockItem) {
         alertas.push(`${med.nome}: não encontrado no estoque`);
@@ -409,11 +417,12 @@ export async function autoNotificarRetornos(): Promise<WorkflowResult> {
     amanha.setDate(amanha.getDate() + 1);
     const amanhaStr = format(amanha, 'yyyy-MM-dd');
 
-    const { data: retornos } = await supabase
+    const { data: retornos, error: retornosError } = await supabase
       .from('retornos')
       .select('*, pacientes(nome, email, telefone)')
       .eq('data_retorno_prevista', amanhaStr)
       .eq('status', 'pendente');
+    if (retornosError) throw retornosError;
 
     if (!retornos || retornos.length === 0) {
       return { success: true, message: 'Sem retornos para amanhã', actions: [] };
@@ -471,7 +480,8 @@ export async function autoBillingExame(params: {
       .eq('categoria', 'exame')
       .ilike('descricao', `%${params.exameId.slice(0, 8)}%`);
     if (clinicaId) existingQuery = existingQuery.eq('clinica_id', clinicaId);
-    const { data: existing } = await existingQuery.limit(1);
+    const { data: existing, error: existingError } = await existingQuery.limit(1);
+    if (existingError) throw existingError;
 
     if (existing && existing.length > 0) {
       return { success: true, message: 'Exame já faturado', actions: [] };
@@ -540,12 +550,13 @@ export async function autoTriagemParaFila(params: {
     };
 
     // Check if already in queue
-    const { data: existing } = await supabase
+    const { data: existing, error: existingError } = await supabase
       .from('fila_atendimento')
       .select('id, prioridade')
       .eq('agendamento_id', params.agendamentoId)
       .neq('status', 'finalizado')
       .limit(1);
+    if (existingError) throw existingError;
 
     const novaPrioridade = prioridadeMap[params.classificacaoRisco];
 
@@ -560,17 +571,27 @@ export async function autoTriagemParaFila(params: {
       return { success: true, message: 'Prioridade atualizada na fila', actions };
     }
 
-    // Add to queue
-    const { data: lastFila } = await supabase
+    // Add to queue. Urgentes precisam de posições distintas: usar sempre 0
+    // criava empates e deixava a ordem entre dois pacientes críticos ao acaso.
+    const { data: lastFila, error: lastFilaError } = await supabase
       .from('fila_atendimento')
       .select('posicao')
       .order('posicao', { ascending: false })
       .limit(1);
+    if (lastFilaError) throw lastFilaError;
     const nextPos = (lastFila?.[0]?.posicao || 0) + 1;
 
-    // Urgent patients go to front
     const isUrgent = params.classificacaoRisco === 'vermelho' || params.classificacaoRisco === 'laranja';
-    const posicao = isUrgent ? 0 : nextPos;
+    let posicao = nextPos;
+    if (isUrgent) {
+      const { data: firstFila, error: firstFilaError } = await supabase
+        .from('fila_atendimento')
+        .select('posicao')
+        .order('posicao', { ascending: true })
+        .limit(1);
+      if (firstFilaError) throw firstFilaError;
+      posicao = (firstFila?.[0]?.posicao ?? 0) - 1;
+    }
 
     const { data: filaCriada, error: filaError } = await supabase
       .from('fila_atendimento')

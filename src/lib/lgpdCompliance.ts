@@ -26,6 +26,14 @@ export interface PatientDataExport {
   prescricoes: any[];
   exames: any[];
   triagens: any[];
+  atestados: any[];
+  encaminhamentos: any[];
+  lancamentos: any[];
+  retornos: any[];
+  lista_espera: any[];
+  paciente_comorbidades: any[];
+  prontuario_adendos: any[];
+  lgpd_access_request_log: any[];
   attachments: any[];
   audit_log: any[];
   consent_log: any[];
@@ -35,53 +43,77 @@ export interface PatientDataExport {
  * Exportar todos os dados de um paciente (direito à portabilidade)
  */
 export async function exportPatientData(pacienteId: string): Promise<PatientDataExport> {
-  const tables = [
-    'pacientes',
-    'agendamentos',
-    'prontuarios',
-    'prescricoes',
-    'exames',
-    'triagens',
-    'anexos_prontuario',
-  ];
-
-  const data: any = {};
-
   try {
-    // Paciente base
-    const { data: paciente } = await supabase
+    const { data: paciente, error: pacienteError } = await supabase
       .from('pacientes')
       .select('*')
       .eq('id', pacienteId)
       .single();
+    if (pacienteError) throw pacienteError;
 
-    data.paciente = paciente;
-
-    // Todos os registros relacionados
-    for (const table of tables) {
-      const { data: records } = await db
-        .from(table)
+    const data: any = { paciente };
+    const buscar = async (chave: string, tabela: string, coluna: string) => {
+      const { data: registros, error } = await db
+        .from(tabela)
         .select('*')
-        .eq('paciente_id', pacienteId);
+        .eq(coluna, pacienteId);
+      if (error) throw new Error(`Falha ao exportar ${chave}: ${error.message}`);
+      data[chave] = registros || [];
+      return registros || [];
+    };
 
-      data[table] = records || [];
-    }
+    await buscar('agendamentos', 'agendamentos', 'paciente_id');
+    const prontuarios = await buscar('prontuarios', 'prontuarios', 'paciente_id');
+    await buscar('exames', 'exames', 'paciente_id');
+    await buscar('triagens', 'triagens', 'paciente_id');
+    await buscar('atestados', 'atestados', 'paciente_id');
+    await buscar('encaminhamentos', 'encaminhamentos', 'paciente_id');
+    await buscar('lancamentos', 'lancamentos', 'paciente_id');
+    await buscar('retornos', 'retornos', 'paciente_id');
+    await buscar('lista_espera', 'lista_espera', 'paciente_id');
+    await buscar('paciente_comorbidades', 'paciente_comorbidades', 'paciente_id');
+
+    const prontuarioIds = (prontuarios as Array<{ id: string }>).map((p) => p.id);
+    const buscarPorProntuarios = async (chave: string, tabela: string) => {
+      if (prontuarioIds.length === 0) {
+        data[chave] = [];
+        return;
+      }
+      const { data: registros, error } = await db
+        .from(tabela)
+        .select('*')
+        .in('prontuario_id', prontuarioIds);
+      if (error) throw new Error(`Falha ao exportar ${chave}: ${error.message}`);
+      data[chave] = registros || [];
+    };
+    await buscarPorProntuarios('prescricoes', 'prescricoes');
+    await buscarPorProntuarios('attachments', 'anexos_prontuario');
+    await buscarPorProntuarios('prontuario_adendos', 'prontuario_adendos');
 
     // Audit log do paciente
-    const { data: auditLog } = await supabase
+    const { data: auditLog, error: auditError } = await supabase
       .from('audit_log')
       .select('*')
       .eq('record_id', pacienteId);
+    if (auditError) throw auditError;
 
     data.audit_log = auditLog || [];
 
     // Consentimentos LGPD
-    const { data: consentLog } = await db
+    const { data: consentLog, error: consentError } = await db
       .from('lgpd_consent_log')
       .select('*')
       .eq('paciente_id', pacienteId);
+    if (consentError) throw consentError;
 
     data.consent_log = consentLog || [];
+
+    const { data: accessRequests, error: accessError } = await db
+      .from('lgpd_access_request_log')
+      .select('*')
+      .eq('paciente_id', pacienteId);
+    if (accessError) throw accessError;
+    data.lgpd_access_request_log = accessRequests || [];
 
     return data;
   } catch (error) {
@@ -188,18 +220,17 @@ export async function logLGPDConsent(
  * Obter histórico de consentimentos
  */
 export async function getConsentHistory(pacienteId: string) {
-  try {
-    const { data } = await db
-      .from('lgpd_consent_log')
-      .select('*')
-      .eq('paciente_id', pacienteId)
-      .order('timestamp', { ascending: false });
+  const { data, error } = await db
+    .from('lgpd_consent_log')
+    .select('*')
+    .eq('paciente_id', pacienteId)
+    .order('timestamp', { ascending: false });
 
-    return data || [];
-  } catch (error) {
+  if (error) {
     console.error('Error fetching consent history:', error);
     throw error;
   }
+  return data || [];
 }
 
 /**
@@ -255,10 +286,11 @@ export async function correctPatientData(
     if (auditError) throw auditError;
 
     // Aplicar correção
-    await db
+    const { error: updateError } = await db
       .from('pacientes')
       .update(updates)
       .eq('id', pacienteId);
+    if (updateError) throw updateError;
   } catch (error) {
     console.error('Error correcting patient data:', error);
     throw error;
@@ -270,15 +302,21 @@ export async function correctPatientData(
  */
 export async function generateLGPDComplianceReport(clinicaId: string) {
   try {
-    const { data: deletionLogs } = await db
+    if (!clinicaId) throw new Error('Clínica obrigatória para gerar relatório LGPD');
+
+    const { data: deletionLogs, error: deletionError } = await db
       .from('lgpd_deletion_log')
       .select('*')
+      .eq('clinica_id', clinicaId)
       .order('deleted_at', { ascending: false });
+    if (deletionError) throw deletionError;
 
-    const { data: consentLogs } = await db
+    const { data: consentLogs, error: consentError } = await db
       .from('lgpd_consent_log')
       .select('*')
+      .eq('clinica_id', clinicaId)
       .order('timestamp', { ascending: false });
+    if (consentError) throw consentError;
 
     return {
       totalDeletionRequests: deletionLogs?.length || 0,

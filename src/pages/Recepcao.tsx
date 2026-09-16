@@ -377,13 +377,16 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
         } catch (billingError) {
           // autoCheckin reports actions only when it inserted a new queue row.
           if (result.actions.length > 0) {
-            await supabase.from('fila_atendimento')
+            const { error: rollbackFilaError } = await supabase.from('fila_atendimento')
               .delete()
               .eq('agendamento_id', agId)
               .neq('status', 'finalizado');
-            await supabase.from('agendamentos')
+            const { error: rollbackAgError } = await supabase.from('agendamentos')
               .update({ status: 'confirmado' })
               .eq('id', agId);
+            if ((rollbackFilaError || rollbackAgError) && import.meta.env.DEV) {
+              console.error('Falha ao desfazer check-in após erro de cobrança:', rollbackFilaError || rollbackAgError);
+            }
           }
           throw billingError;
         }
@@ -693,9 +696,12 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
       // Send payment receipt to patient
       if (!pagamentoRepetido) {
         try {
-          await supabase.functions.invoke('payment-receipt', {
+          const { error: receiptError } = await supabase.functions.invoke('payment-receipt', {
             body: { lancamento_id: selectedLancamento.id }
           });
+          if (receiptError && import.meta.env.DEV) {
+            console.warn('Comprovante não enviado:', receiptError.message);
+          }
         } catch (e) {
           if (import.meta.env.DEV) console.log('Payment receipt notification skipped:', e);
         }
@@ -743,7 +749,14 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
         .from('agendamentos')
         .update({ status: 'finalizado' })
         .eq('id', agId!);
-      if (agErr) throw agErr;
+      if (agErr) {
+        const { error: rollbackErr } = await supabase
+          .from('fila_atendimento')
+          .update({ status: 'aguardando' })
+          .eq('id', filaId!);
+        if (rollbackErr && import.meta.env.DEV) console.error('Falha no rollback da fila:', rollbackErr);
+        throw agErr;
+      }
 
       await queryClient.invalidateQueries({ queryKey: ['fila_atendimento'] });
       await queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
@@ -764,11 +777,12 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
     setIsProcessing(true);
     try {
       // Check if triagem already exists for this agendamento
-      const { data: existing } = await supabase
+      const { data: existing, error: existingError } = await supabase
         .from('triagens')
         .select('id')
         .eq('agendamento_id', agId)
         .limit(1);
+      if (existingError) throw existingError;
       if (existing && existing.length > 0) {
         toast.info('Triagem já registrada para este agendamento');
         navigate('/triagem');

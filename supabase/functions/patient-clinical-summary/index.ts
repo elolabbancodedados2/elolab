@@ -9,6 +9,11 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
+    if (req.method !== "POST") {
+      return new Response(JSON.stringify({ error: "Método não permitido" }), {
+        status: 405, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
     const { paciente_id } = await req.json();
     if (!paciente_id) {
       return new Response(JSON.stringify({ error: "paciente_id obrigatório" }), {
@@ -17,21 +22,55 @@ Deno.serve(async (req) => {
     }
 
     const authHeader = req.headers.get("Authorization") ?? "";
+    if (!authHeader.startsWith("Bearer ")) {
+      return new Response(JSON.stringify({ error: "Não autenticado" }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const authClient = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_ANON_KEY")!,
+      { global: { headers: { Authorization: authHeader } } },
+    );
+    const { data: { user }, error: authError } = await authClient.auth.getUser();
+    if (authError || !user) {
+      return new Response(JSON.stringify({ error: "Sessão inválida" }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-      { global: { headers: { Authorization: authHeader } } }
     );
+
+    const [{ data: profile }, { data: roles }] = await Promise.all([
+      supabase.from("profiles").select("clinica_id").eq("id", user.id).maybeSingle(),
+      supabase.from("user_roles").select("role").eq("user_id", user.id),
+    ]);
+    const clinicaId = (profile as { clinica_id?: string | null } | null)?.clinica_id;
+    const podeAcessar = (roles || []).some((role: { role: string }) => ["admin", "medico"].includes(role.role));
+    if (!clinicaId || !podeAcessar) {
+      return new Response(JSON.stringify({ error: "Acesso não autorizado" }), {
+        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     // Coletar dados clínicos
     const [pac, pront, presc, exam, atest, comorb] = await Promise.all([
-      supabase.from("pacientes").select("nome, data_nascimento, sexo, alergias, observacoes").eq("id", paciente_id).maybeSingle(),
-      supabase.from("prontuarios").select("data, queixa_principal, hipotese_diagnostica, conduta").eq("paciente_id", paciente_id).order("data", { ascending: false }).limit(20),
-      supabase.from("prescricoes").select("data_emissao, medicamento, dosagem, posologia").eq("paciente_id", paciente_id).order("data_emissao", { ascending: false }).limit(20),
-      supabase.from("exames").select("data_solicitacao, tipo_exame, resultado, status").eq("paciente_id", paciente_id).order("data_solicitacao", { ascending: false }).limit(20),
-      supabase.from("atestados").select("data_emissao, motivo, dias").eq("paciente_id", paciente_id).order("data_emissao", { ascending: false }).limit(10),
-      (supabase as any).from("paciente_comorbidades").select("codigo_cid, descricao, ativo").eq("paciente_id", paciente_id),
+      supabase.from("pacientes").select("nome, data_nascimento, sexo, alergias, observacoes").eq("id", paciente_id).eq("clinica_id", clinicaId).maybeSingle(),
+      supabase.from("prontuarios").select("data, queixa_principal, hipotese_diagnostica, conduta").eq("paciente_id", paciente_id).eq("clinica_id", clinicaId).order("data", { ascending: false }).limit(20),
+      supabase.from("prescricoes").select("data_emissao, medicamento, dosagem, posologia").eq("paciente_id", paciente_id).eq("clinica_id", clinicaId).order("data_emissao", { ascending: false }).limit(20),
+      supabase.from("exames").select("data_solicitacao, tipo_exame, resultado, status").eq("paciente_id", paciente_id).eq("clinica_id", clinicaId).order("data_solicitacao", { ascending: false }).limit(20),
+      supabase.from("atestados").select("data_emissao, motivo, dias").eq("paciente_id", paciente_id).eq("clinica_id", clinicaId).order("data_emissao", { ascending: false }).limit(10),
+      (supabase as any).from("paciente_comorbidades").select("codigo_cid, descricao, ativo").eq("paciente_id", paciente_id).eq("clinica_id", clinicaId),
     ]);
+
+    if (!pac.data) {
+      return new Response(JSON.stringify({ error: "Paciente não encontrado" }), {
+        status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     const ctx = {
       paciente: pac.data,

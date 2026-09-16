@@ -31,6 +31,12 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
+function somarMinutos(horario: string, minutos: number) {
+  const [hora, minuto] = horario.split(':').map(Number);
+  const total = hora * 60 + minuto + minutos;
+  return `${String(Math.floor((total % 1440) / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}:00`;
+}
+
 interface Retorno {
   id: string;
   paciente_id: string;
@@ -195,6 +201,10 @@ export default function RetornosControl() {
       toast.error('Selecione uma data para o agendamento.');
       return;
     }
+    if (!horaAgendamento) {
+      toast.error('Informe um horário para o agendamento.');
+      return;
+    }
 
     setIsAgendando(true);
     try {
@@ -202,6 +212,7 @@ export default function RetornosControl() {
         const { error } = await supabase.from('agendamentos').update({
           data: format(dataAgendamento, 'yyyy-MM-dd'),
           hora_inicio: horaAgendamento,
+          hora_fim: somarMinutos(horaAgendamento, 30),
           status: 'agendado',
         }).eq('id', retornoParaAgendar.agendamento_retorno_id);
         if (error) throw error;
@@ -224,6 +235,7 @@ export default function RetornosControl() {
           medico_id: retornoParaAgendar.medico_id,
           data: format(dataAgendamento, 'yyyy-MM-dd'),
           hora_inicio: horaAgendamento,
+          hora_fim: somarMinutos(horaAgendamento, 30),
           tipo: 'retorno',
           observacoes: `Retorno: ${retornoParaAgendar.motivo || 'Consulta de retorno'}`,
           status: 'agendado',

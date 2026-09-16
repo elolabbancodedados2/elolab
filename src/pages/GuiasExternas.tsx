@@ -455,8 +455,7 @@ function DetalheGuiaDialog({ guia, open, onClose, onChanged }: any) {
 
       // Cria registros em exames + adiciona à fila de coleta
       const exames = Array.isArray(guia.exames_solicitados) ? guia.exames_solicitados : [];
-      for (const ex of exames) {
-        await (supabase as any).from('exames').insert({
+      const exameRows = exames.map((ex: any) => ({
           paciente_id: pacienteId,
           tipo_exame: ex.nome || ex.tipo || 'Exame',
           descricao: ex.descricao || guia.observacoes,
@@ -464,12 +463,16 @@ function DetalheGuiaDialog({ guia, open, onClose, onChanged }: any) {
           data_solicitacao: new Date().toISOString().slice(0, 10),
           categoria: 'laboratorio',
           clinica_id: profile?.clinica_id,
-        });
+        }));
+      if (exameRows.length > 0) {
+        const { error: exameError } = await (supabase as any).from('exames').insert(exameRows);
+        if (exameError) throw exameError;
       }
 
-      await (supabase as any).from('guias_externas')
+      const { error: guiaError } = await (supabase as any).from('guias_externas')
         .update({ status: 'encaminhada_fila', paciente_id: pacienteId })
         .eq('id', guia.id);
+      if (guiaError) throw guiaError;
     },
     onSuccess: () => { onChanged(); toast.success('Guia enviada para a fila de coleta'); onClose(); },
     onError: (e: any) => toast.error(e.message),
@@ -519,9 +522,17 @@ function DetalheGuiaDialog({ guia, open, onClose, onChanged }: any) {
 
   const openAnexo = async () => {
     if (!guia.anexo_url) return;
-    const { data } = await supabase.storage.from('guias-externas').createSignedUrl(guia.anexo_url, 300);
-    if (data?.signedUrl && !abrirUrlSegura(data.signedUrl, storageUrlSeguro)) {
-      toast.error('O arquivo retornou um endereço não confiável');
+    try {
+      const { data, error } = await supabase.storage
+        .from('guias-externas')
+        .createSignedUrl(guia.anexo_url, 300);
+      if (error) throw error;
+      if (!data?.signedUrl || !abrirUrlSegura(data.signedUrl, storageUrlSeguro)) {
+        throw new Error('O arquivo retornou um endereço não confiável');
+      }
+      window.open(data.signedUrl, '_blank', 'noopener,noreferrer');
+    } catch (e) {
+      toast.error('Não foi possível abrir o anexo.', { description: e instanceof Error ? e.message : String(e) });
     }
   };
 

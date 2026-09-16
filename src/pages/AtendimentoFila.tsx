@@ -1,4 +1,4 @@
-import { useState, lazy, Suspense } from 'react';
+import { lazy, Suspense } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { ClipboardCheck, Activity } from 'lucide-react';
@@ -22,10 +22,9 @@ export default function AtendimentoFila() {
   const [searchParams, setSearchParams] = useSearchParams();
   // Permite abrir direto na triagem (ex.: /fila?tab=triagem), que é para onde
   // a antiga rota /triagem redireciona.
-  const [tab, setTab] = useState(searchParams.get('tab') === 'triagem' ? 'triagem' : 'fila');
+  const tab = searchParams.get('tab') === 'triagem' ? 'triagem' : 'fila';
 
   const handleTabChange = (value: string) => {
-    setTab(value);
     setSearchParams(value === 'triagem' ? { tab: 'triagem' } : {}, { replace: true });
   };
 

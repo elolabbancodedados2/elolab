@@ -572,6 +572,8 @@ export default function Medicos() {
               });
               if (inviteError) {
                 toast.info('Médico cadastrado, mas o convite não pôde ser enviado.');
+              } else if (inviteData?.success === false || inviteData?.error) {
+                toast.info('Médico cadastrado, mas o convite não pôde ser enviado.');
               } else {
                 const codigo = inviteData?.inviteCode || inviteData?.token;
                 toast.success(codigo

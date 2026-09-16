@@ -160,7 +160,7 @@ export default function RedefinirSenha() {
               </div>
               <Button type="submit" className="w-full" disabled={enviando}>
                 {enviando
-                  ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Enviando...</>
+                  ? <><Loader2 aria-hidden="true" className="mr-2 h-4 w-4 animate-spin" />Enviando…</>
                   : 'Enviar link'}
               </Button>
               <Link
@@ -225,7 +225,7 @@ export default function RedefinirSenha() {
 
               <Button type="submit" className="w-full" disabled={enviando}>
                 {enviando
-                  ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Salvando...</>
+                  ? <><Loader2 aria-hidden="true" className="mr-2 h-4 w-4 animate-spin" />Salvando…</>
                   : 'Salvar nova senha'}
               </Button>
             </form>

@@ -207,7 +207,7 @@ html[data-density='compact'] main .space-y-6 > :not([hidden]) ~ :not([hidden]) {
   .stat-card {
     @apply relative overflow-hidden rounded-2xl border border-border/30 bg-card p-6;
     box-shadow: var(--shadow-sm), inset 0 1px 0 0 hsl(0 0% 100% / 0.05);
-    transition: all 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+    transition: box-shadow 0.35s cubic-bezier(0.22, 1, 0.36, 1), transform 0.35s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.3s;
   }
   .stat-card:hover {
     box-shadow: var(--shadow-lg);

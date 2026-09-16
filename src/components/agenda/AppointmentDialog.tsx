@@ -96,8 +96,20 @@ export function AppointmentDialog({ open, onOpenChange, initial, pacientes, medi
         return Number.isFinite(h) && Number.isFinite(m) ? h * 60 + m : null;
       };
       const DURACAO_PADRAO = 30;
-      const novoInicio = toMin(form.hora_inicio)!;
-      const novoFim = toMin(form.hora_fim) ?? novoInicio + DURACAO_PADRAO;
+      const novoInicio = toMin(form.hora_inicio);
+      const novoFimInformado = toMin(form.hora_fim);
+
+      const dataValida = /^\d{4}-\d{2}-\d{2}$/.test(form.data) && !Number.isNaN(Date.parse(`${form.data}T12:00:00`));
+      if (!dataValida || novoInicio === null || novoInicio < 0 || novoInicio >= 24 * 60) {
+        toast.error('Informe uma data e um horário de início válidos.');
+        setTab('consulta'); setSaving(false); return;
+      }
+      if (form.hora_fim && (novoFimInformado === null || novoFimInformado < 0 || novoFimInformado >= 24 * 60)) {
+        toast.error('Informe um horário de término válido.');
+        setTab('consulta'); setSaving(false); return;
+      }
+
+      const novoFim = novoFimInformado ?? novoInicio + DURACAO_PADRAO;
 
       if (novoFim <= novoInicio) {
         toast.error('O horário de término deve ser após o início.');
@@ -236,10 +248,13 @@ export function AppointmentDialog({ open, onOpenChange, initial, pacientes, medi
 
   const handleDelete = async () => {
     if (!editing) return;
-    if (!confirm('Cancelar esta consulta?')) return;
-    const { error } = await (supabase.from('agendamentos').delete().eq('id', initial.id) as any);
-    if (error) return toast.error('Erro ao remover', { description: mensagemDeErro(error) });
-    toast.success('Consulta removida');
+    if (!confirm('Cancelar esta consulta? O histórico será preservado.')) return;
+    const { error } = await (supabase
+      .from('agendamentos')
+      .update({ status: 'cancelado' })
+      .eq('id', initial.id) as any);
+    if (error) return toast.error('Erro ao cancelar', { description: mensagemDeErro(error) });
+    toast.success('Consulta cancelada');
     queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
     onOpenChange(false);
   };

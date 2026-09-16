@@ -190,6 +190,7 @@ Deno.serve(async (req) => {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+    if (!logId) throw new Error("Webhook sem registro de auditoria");
 
     // Process payment notification (payment.created, payment.updated)
     if (

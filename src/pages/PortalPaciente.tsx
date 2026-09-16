@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
@@ -116,6 +116,9 @@ function LoginScreen({ token, setToken, onLogin, loading, error }: {
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
+                  aria-label="Código de acesso do paciente"
+                  name="patient-access-token"
+                  autoComplete="off"
                   placeholder="Digite seu código de acesso"
                   value={token}
                   onChange={(e) => setToken(e.target.value)}
@@ -152,7 +155,7 @@ function LoginScreen({ token, setToken, onLogin, loading, error }: {
               ) : (
                 <Sparkles className="h-4 w-4" />
               )}
-              {loading ? 'Verificando...' : 'Acessar Portal'}
+              {loading ? 'Verificando…' : 'Acessar Portal'}
             </Button>
 
             <div className="flex items-center gap-2 justify-center text-xs text-muted-foreground pt-2">
@@ -285,7 +288,9 @@ function NPSSurvey({ token }: { token: string }) {
               whileHover={{ scale: 1.15 }}
               whileTap={{ scale: 0.9 }}
               onClick={() => setNota(n)}
-              className={`w-9 h-9 rounded-lg text-sm font-semibold transition-all ${
+              aria-label={`Avaliação ${n} de 5`}
+              aria-pressed={nota === n}
+              className={`w-9 h-9 rounded-lg text-sm font-semibold transition-[background-color,color,box-shadow,transform] ${
                 nota === n
                   ? 'bg-primary text-primary-foreground shadow-md'
                   : nota !== null && n <= nota
@@ -310,7 +315,8 @@ function NPSSurvey({ token }: { token: string }) {
               className="space-y-3"
             >
               <Textarea
-                placeholder="Conte-nos mais sobre sua experiência (opcional)..."
+                aria-label="Comentário opcional sobre a experiência"
+                placeholder="Conte-nos mais sobre sua experiência (opcional)…"
                 value={comentario}
                 onChange={e => setComentario(e.target.value)}
                 rows={2}
@@ -319,7 +325,7 @@ function NPSSurvey({ token }: { token: string }) {
               {submitError && <p className="text-xs text-destructive" role="alert">{submitError}</p>}
               <Button onClick={handleSubmit} disabled={sending} className="w-full gap-2" size="sm">
                 <Star className="h-3.5 w-3.5" />
-                {sending ? 'Enviando...' : 'Enviar Avaliação'}
+                {sending ? 'Enviando…' : 'Enviar Avaliação'}
               </Button>
             </motion.div>
           )}
@@ -332,6 +338,7 @@ function NPSSurvey({ token }: { token: string }) {
 // ─── Main Portal ───────────────────────────────────────────
 export default function PortalPaciente() {
   const [searchParams] = useSearchParams();
+  const autoLoginAttempted = useRef(false);
   const [token, setToken] = useState(searchParams.get('token') || '');
   const [authenticated, setAuthenticated] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -373,13 +380,13 @@ export default function PortalPaciente() {
     return data;
   };
 
-  const handleLogin = async () => {
-    if (!token.trim()) return;
+  const handleLogin = async (accessToken = token) => {
+    if (!accessToken.trim()) return;
     setLoading(true);
     setError('');
 
     try {
-      const profileData = await fetchData(token, 'get_profile');
+      const profileData = await fetchData(accessToken, 'get_profile');
       if (!profileData || profileData.error) {
         setError(profileData?.error || 'Token inválido ou expirado');
         return;
@@ -389,13 +396,13 @@ export default function PortalPaciente() {
       setAuthenticated(true);
 
       const [ag, ex, pg, presc, docs, rets, ofertas] = await Promise.all([
-        fetchData(token, 'get_agendamentos'),
-        fetchData(token, 'get_exames'),
-        fetchData(token, 'get_pagamentos'),
-        fetchData(token, 'get_prescricoes').catch(() => []),
-        fetchData(token, 'get_medicos'),
-        fetchData(token, 'get_retornos').catch(() => []),
-        fetchData(token, 'get_waitlist_offers').catch(() => []),
+        fetchData(accessToken, 'get_agendamentos'),
+        fetchData(accessToken, 'get_exames'),
+        fetchData(accessToken, 'get_pagamentos'),
+        fetchData(accessToken, 'get_prescricoes').catch(() => []),
+        fetchData(accessToken, 'get_medicos'),
+        fetchData(accessToken, 'get_retornos').catch(() => []),
+        fetchData(accessToken, 'get_waitlist_offers').catch(() => []),
       ]);
       setAgendamentos(ag || []);
       setExames(ex || []);
@@ -450,6 +457,10 @@ export default function PortalPaciente() {
         tipo: schedulingForm.tipo,
       });
 
+      if (!result?.success) {
+        throw new Error(result?.error || 'Não foi possível concluir o agendamento');
+      }
+
       if (result?.success) {
         // Reload agendamentos to show the new one
         const updatedAgendamentos = await fetchData(token, 'get_agendamentos');
@@ -476,7 +487,7 @@ export default function PortalPaciente() {
       setAgendamentos(updatedAgendamentos || []);
       setCancelMotivo('');
     } catch (err: any) {
-      console.error('Erro ao cancelar:', err);
+      setError(err.message || 'Não foi possível cancelar a consulta');
     } finally {
       setActionLoading(false);
     }
@@ -540,7 +551,7 @@ export default function PortalPaciente() {
       setRescheduleModal(null);
       setRescheduleForm({ data: '', hora_inicio: '' });
     } catch (err: any) {
-      console.error('Erro ao remarcar:', err);
+      setError(err.message || 'Não foi possível remarcar a consulta');
     } finally {
       setActionLoading(false);
     }
@@ -548,7 +559,8 @@ export default function PortalPaciente() {
 
   useEffect(() => {
     const urlToken = searchParams.get('token');
-    if (urlToken) {
+    if (urlToken && !autoLoginAttempted.current) {
+      autoLoginAttempted.current = true;
       // O link pode chegar por e-mail/WhatsApp, mas o segredo não deve
       // permanecer no histórico, em screenshots ou no Referer de navegação.
       // O estado React mantém o token apenas em memória durante esta sessão.
@@ -556,7 +568,7 @@ export default function PortalPaciente() {
       sanitizedUrl.searchParams.delete('token');
       window.history.replaceState({}, '', `${sanitizedUrl.pathname}${sanitizedUrl.search}${sanitizedUrl.hash}`);
       setToken(urlToken);
-      handleLogin();
+      void handleLogin(urlToken);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only run on mount when URL has token
   }, []);
@@ -768,7 +780,7 @@ export default function PortalPaciente() {
                               <button
                                 key={slot}
                                 onClick={() => setSchedulingForm(f => ({ ...f, hora_inicio: slot }))}
-                                className={`py-2 px-3 rounded-lg text-sm font-medium transition-all ${
+                                className={`py-2 px-3 rounded-lg text-sm font-medium transition-[background-color,color,box-shadow,transform] ${
                                   schedulingForm.hora_inicio === slot
                                     ? 'bg-primary text-primary-foreground'
                                     : 'bg-muted hover:bg-muted/80 text-foreground'
@@ -803,7 +815,7 @@ export default function PortalPaciente() {
                       className="w-full gap-2"
                     >
                       <Calendar className="h-4 w-4" />
-                      {schedulingLoading ? 'Agendando...' : 'Confirmar Agendamento'}
+                      {schedulingLoading ? 'Agendando…' : 'Confirmar Agendamento'}
                     </Button>
                   </CardContent>
                 </Card>
@@ -824,7 +836,7 @@ export default function PortalPaciente() {
                         animate={{ opacity: 1, x: 0 }}
                         transition={{ delay: i * 0.05 }}
                       >
-                        <Card className={`transition-all hover:shadow-md ${passado ? 'opacity-60' : ''}`}>
+                        <Card className={`transition-[background-color,border-color,box-shadow,transform] hover:shadow-md ${passado ? 'opacity-60' : ''}`}>
                           <CardContent className="p-4">
                             <div className="space-y-3">
                               <div className="flex items-center justify-between">
@@ -911,7 +923,7 @@ export default function PortalPaciente() {
                         animate={{ opacity: 1, x: 0 }}
                         transition={{ delay: i * 0.05 }}
                       >
-                        <Card className={`transition-all hover:shadow-md ${isLaudo ? 'border-green-300' : ''}`}>
+                        <Card className={`transition-[background-color,border-color,box-shadow,transform] hover:shadow-md ${isLaudo ? 'border-green-300' : ''}`}>
                           <CardContent className="p-4">
                             <div className="flex items-center justify-between">
                               <div className="flex items-start gap-3">
@@ -933,7 +945,7 @@ export default function PortalPaciente() {
                                   </p>
                                   {e.resultado && (
                                     <p className="text-xs text-foreground mt-1 bg-muted/50 px-2 py-1 rounded">
-                                      {e.resultado.length > 120 ? e.resultado.slice(0, 120) + '...' : e.resultado}
+                                      {e.resultado.length > 120 ? e.resultado.slice(0, 120) + '…' : e.resultado}
                                     </p>
                                   )}
                                 </div>
@@ -973,7 +985,7 @@ export default function PortalPaciente() {
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: i * 0.05 }}
                     >
-                      <Card className="transition-all hover:shadow-md">
+                      <Card className="transition-[background-color,border-color,box-shadow,transform] hover:shadow-md">
                         <CardContent className="p-4">
                           <div className="flex items-start gap-3">
                             <div className="p-2.5 rounded-xl bg-primary/10">
@@ -1172,7 +1184,7 @@ export default function PortalPaciente() {
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: i * 0.05 }}
                     >
-                      <Card className="transition-all hover:shadow-md">
+                      <Card className="transition-[background-color,border-color,box-shadow,transform] hover:shadow-md">
                         <CardContent className="p-4">
                           <div className="flex items-center justify-between">
                             <div className="flex items-start gap-3">
@@ -1275,7 +1287,7 @@ export default function PortalPaciente() {
                       disabled={!rescheduleForm.data || !rescheduleForm.hora_inicio || actionLoading}
                       className="flex-1"
                     >
-                      {actionLoading ? 'Remarcando...' : 'Confirmar'}
+                      {actionLoading ? 'Remarcando…' : 'Confirmar'}
                     </Button>
                   </div>
                 </motion.div>

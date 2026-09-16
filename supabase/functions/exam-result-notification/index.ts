@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { cronForbidden, cronOrUserOk, clinicaDoChamador } from '../_shared/cronAuth.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -9,6 +10,7 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
+  if (req.method !== 'POST' || !cronOrUserOk(req)) return cronForbidden(corsHeaders)
 
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
@@ -16,6 +18,8 @@ Deno.serve(async (req) => {
     const brevoApiKey = Deno.env.get('BREVO_API_KEY')
     const appUrl = Deno.env.get('APP_URL') || 'https://app.elolab.com.br'
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
+    const clinicaDoUsuario = await clinicaDoChamador(req, supabase)
+    if (!clinicaDoUsuario) return cronForbidden(corsHeaders)
 
     const { resultado_id } = await req.json()
 
@@ -39,6 +43,7 @@ Deno.serve(async (req) => {
         tipos_exame_custom!inner(nome)
       `)
       .eq('id', resultado_id)
+      .eq('coletas_laboratorio.clinica_id', clinicaDoUsuario)
       .single()
 
     if (resultError || !resultado) {
@@ -48,9 +53,13 @@ Deno.serve(async (req) => {
       )
     }
 
-    const coleta = resultado.coletas_laboratorio
-    const paciente = coleta.pacientes
-    const tipoExame = resultado.tipos_exame_custom.nome
+    const coleta = Array.isArray(resultado.coletas_laboratorio) ? resultado.coletas_laboratorio[0] : resultado.coletas_laboratorio
+    const paciente = coleta && (Array.isArray(coleta.pacientes) ? coleta.pacientes[0] : coleta.pacientes)
+    const tipoExameRel = Array.isArray(resultado.tipos_exame_custom) ? resultado.tipos_exame_custom[0] : resultado.tipos_exame_custom
+    if (!coleta || !paciente || !tipoExameRel) {
+      return new Response(JSON.stringify({ error: 'Dados do resultado incompletos' }), { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    }
+    const tipoExame = tipoExameRel.nome
     const clinicaId = coleta.clinica_id
 
     // Fetch clinic config
@@ -138,6 +147,7 @@ Deno.serve(async (req) => {
             .from('whatsapp_sessions')
             .select('instance_name')
             .eq('status', 'connected')
+            .eq('clinica_id', clinicaId)
             .limit(1)
             .single()
 

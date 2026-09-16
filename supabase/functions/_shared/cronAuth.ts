@@ -8,16 +8,14 @@
  *
  * Agora o cron manda um cabeçalho x-cron-secret com um segredo privado.
  *
- * Falha aberta de propósito: enquanto CRON_SECRET não estiver configurado nos
- * secrets das edge functions, nada é bloqueado. Isso permite configurar o
- * segredo e reagendar o cron sem janela de indisponibilidade. Depois de rodar
- * a migration 20260727235000, confirme que o segredo está setado.
+ * Falha fechada: sem CRON_SECRET configurado, chamadas do cron são recusadas.
+ * Rotinas privilegiadas não podem ficar abertas durante o provisionamento.
  */
 export function cronSecretOk(req: Request): boolean {
   const expected = Deno.env.get('CRON_SECRET');
 
-  // Ainda não configurado → não bloqueia (ver comentário acima)
-  if (!expected) return true;
+  // Sem segredo, nenhuma chamada pode se passar pelo agendador.
+  if (!expected) return false;
 
   const provided = req.headers.get('x-cron-secret');
   if (!provided) return false;

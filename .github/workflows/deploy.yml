@@ -1,4 +1,4 @@
-name: Deploy to Cloudflare Pages
+name: Validate image for Easypanel
 
 on:
   push:
@@ -56,22 +56,15 @@ jobs:
           VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
         run: npm run build
 
-      - name: Publish to Cloudflare Pages
-        uses: cloudflare/wrangler-action@v4
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy dist --project-name=elolab-app --branch=main --commit-dirty=true
-
-      - name: Verify production after deploy
+      - name: Build Docker image
         env:
-          PRODUCAO_URL: https://app.elolab.com.br
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY || secrets.VITE_SUPABASE_ANON_KEY }}
         run: |
-          # Cloudflare Pages pode servir o HTML novo antes de todos os POPs
-          # enxergarem os chunks correspondentes. Revalidar após um intervalo
-          # distingue propagação eventual de uma regressão persistente.
-          for tentativa in 1 2 3; do
-            npx playwright test tests/producao-smoke.spec.ts --reporter=line && exit 0
-            [ "$tentativa" -eq 3 ] && exit 1
-            sleep 15
-          done
+          docker build \
+            --build-arg VITE_SUPABASE_URL="$VITE_SUPABASE_URL" \
+            --build-arg VITE_SUPABASE_PUBLISHABLE_KEY="$VITE_SUPABASE_PUBLISHABLE_KEY" \
+            -t elolab-frontend:ci .
+
+      # O deploy de produção é disparado pelo webhook Git do Easypanel. Isso
+      # mantém o workflow sem credenciais da VPS e sem dependência de CDN.

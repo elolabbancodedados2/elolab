@@ -1,6 +1,6 @@
 // Utility functions for formatting and masking
 
-import { toDateOnly } from './dateOnly';
+import { parseDateOnly, toDateOnly } from './dateOnly';
 
 export function formatCPF(value: string): string {
   const digits = value.replace(/\D/g, '').slice(0, 11);
@@ -94,7 +94,7 @@ export function formatTime(date: Date | string): string {
 
 export function calculateAge(birthDate: string): number {
   const today = new Date();
-  const birth = new Date(birthDate);
+  const birth = parseDateOnly(birthDate);
   let age = today.getFullYear() - birth.getFullYear();
   const monthDiff = today.getMonth() - birth.getMonth();
   
@@ -102,7 +102,9 @@ export function calculateAge(birthDate: string): number {
     age--;
   }
   
-  return age;
+  // Dados recém-cadastrados podem chegar com a data UTC do próximo dia;
+  // idade negativa nunca é uma saída válida para a interface clínica.
+  return Math.max(0, age);
 }
 
 export function getInitials(name: string): string {

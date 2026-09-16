@@ -102,8 +102,10 @@ npm run lint
 
 O CI roda typecheck, lint e testes a cada push em `dev` e PR para `main`.
 
-O deploy é automatizado por `.github/workflows/deploy.yml` — cada push na
-`main` gera um novo bundle no Cloudflare Pages (`app.elolab.com.br`).
+O frontend é empacotado pelo `Dockerfile` e publicado pelo Easypanel na VPS. O
+workflow `.github/workflows/deploy.yml` valida a imagem; o deploy de produção é
+disparado pelo webhook do Easypanel. A configuração completa, incluindo o
+Supabase auto-hospedado, está em [`docs/EASYPANEL-VPS.md`](docs/EASYPANEL-VPS.md).
 
 **Isolamento entre clínicas** tem suíte própria, que só roda com duas contas
 reais em clínicas diferentes — sem elas os testes são pulados, nunca passam em
@@ -124,7 +126,8 @@ Chromium já instalado com `PLAYWRIGHT_CHROMIUM_PATH=/caminho/para/chrome`.
 - **Papéis** (`admin`, `medico`, `recepcao`, `enfermagem`, `financeiro`) ficam em
   tabela separada (`user_roles`), consultada por funções `SECURITY DEFINER`.
 - **2FA** usa o MFA nativo do Supabase (validação no servidor, fator no JWT).
-- **Cabeçalhos HTTP** (CSP, HSTS, `frame-ancestors: none`) configurados em `public/_headers` — o Cloudflare Pages serve estes cabeçalhos em cada resposta.
+- **Cabeçalhos HTTP** (CSP, HSTS, `frame-ancestors: none`) configurados em
+  `public/_headers` e replicados no Nginx da imagem Docker.
 - **Assinatura vencida** deixa o sistema em modo somente leitura, aplicado por
   trigger no banco — não apenas no navegador.
 - Nunca comite o `.env`. Se uma chave vazar, rotacione em

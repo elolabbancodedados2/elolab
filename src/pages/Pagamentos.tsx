@@ -23,6 +23,7 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { printReceiptPdf, downloadReceiptPdf, ReceiptData } from '@/lib/pdfReceipt';
 import { todayDateOnly, toDateOnly } from '@/lib/dateOnly';
+import { parcelarCobranca } from '@/lib/parcelamentoCobranca';
 
 const statusColors: Record<string, string> = {
   pendente: 'bg-warning/10 text-warning',
@@ -310,7 +311,7 @@ export default function Pagamentos() {
 }
 
 /* ── Nova Cobrança Direta ── */
-function NewDirectBillingForm({ pacientes, onSuccess, onCancel }: { pacientes: any[]; onSuccess: () => void; onCancel: () => void }) {
+export function NewDirectBillingForm({ pacientes, onSuccess, onCancel }: { pacientes: any[]; onSuccess: () => void; onCancel: () => void }) {
   const [form, setForm] = useState({
     paciente_id: '', descricao: '', valor: '', metodo_pagamento: 'dinheiro',
     numero_parcelas: '1', intervalo_parcelas: '30', conta_destino: 'caixa_interno',
@@ -319,27 +320,39 @@ function NewDirectBillingForm({ pacientes, onSuccess, onCancel }: { pacientes: a
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const valorFinal = (parseFloat(form.valor) || 0) - (parseFloat(form.desconto) || 0) + (parseFloat(form.acrescimo) || 0);
-  const valorParcela = form.numero_parcelas ? valorFinal / parseInt(form.numero_parcelas) : valorFinal;
+  const valor = Number(form.valor);
+  const desconto = Number(form.desconto);
+  const acrescimo = Number(form.acrescimo);
+  const valorFinal = (Math.round(valor * 100) - Math.round(desconto * 100) + Math.round(acrescimo * 100)) / 100;
+  let parcelas: number[] = [];
+  try { parcelas = parcelarCobranca(valorFinal, Number(form.numero_parcelas)); } catch { /* Formulário ainda incompleto. */ }
 
   const handleSave = async () => {
-    if (!form.descricao || !form.valor || parseFloat(form.valor) <= 0) {
+    if (isSubmitting) return;
+    if (!form.descricao.trim() || !Number.isFinite(valor) || valor <= 0) {
       toast.error('Preencha descrição e valor.'); return;
     }
     setIsSubmitting(true);
     try {
-      const numParcelas = parseInt(form.numero_parcelas) || 1;
-      const intervalo = parseInt(form.intervalo_parcelas) || 30;
+      if (![desconto, acrescimo].every(v => Number.isFinite(v) && v >= 0) || desconto > valor) {
+        throw new Error('Informe desconto e acréscimo válidos; o desconto não pode superar o valor.');
+      }
+      const valores = parcelarCobranca(valorFinal, Number(form.numero_parcelas));
+      const numParcelas = valores.length;
+      const intervalo = Number(form.intervalo_parcelas);
+      if (!Number.isSafeInteger(intervalo) || intervalo < 1) throw new Error('Informe um intervalo inteiro maior que zero.');
+      if (form.marcar_pago && !form.data_recebimento) throw new Error('Informe a data do recebimento.');
 
-      for (let i = 0; i < numParcelas; i++) {
+      const payload = valores.map((valorParcela, i) => {
         const vencimento = new Date();
         vencimento.setDate(vencimento.getDate() + (intervalo * i));
+        if (!Number.isFinite(vencimento.getTime())) throw new Error('Intervalo de vencimento inválido.');
 
-        const payload: any = {
+        return {
           tipo: 'cobranca',
           descricao: numParcelas > 1 ? `${form.descricao} (${i + 1}/${numParcelas})` : form.descricao,
-          valor: valorFinal / numParcelas,
-          valor_pago: form.marcar_pago ? valorFinal / numParcelas : null,
+          valor: valorParcela,
+          valor_pago: form.marcar_pago ? valorParcela : null,
           status: form.marcar_pago ? 'aprovado' : 'pendente',
           paciente_id: form.paciente_id || null,
           metodo_pagamento: form.metodo_pagamento,
@@ -355,10 +368,11 @@ function NewDirectBillingForm({ pacientes, onSuccess, onCancel }: { pacientes: a
           data_recebimento: form.marcar_pago ? form.data_recebimento : null,
           data_criacao: new Date().toISOString(),
         };
+      });
 
-        const { error } = await supabase.from('pagamentos_mercadopago' as any).insert(payload);
-        if (error) throw error;
-      }
+      // Um único INSERT: todas as parcelas são gravadas ou nenhuma é gravada.
+      const { error } = await supabase.from('pagamentos_mercadopago' as any).insert(payload);
+      if (error) throw error;
 
       toast.success(numParcelas > 1 ? `${numParcelas} parcelas geradas!` : 'Cobrança cadastrada!');
       onSuccess();
@@ -450,9 +464,9 @@ function NewDirectBillingForm({ pacientes, onSuccess, onCancel }: { pacientes: a
                 onChange={e => setForm({ ...form, intervalo_parcelas: e.target.value })} />
             </div>
           </div>
-          {parseInt(form.numero_parcelas) > 1 && valorFinal > 0 && (
+          {parcelas.length > 1 && (
             <p className="text-xs text-muted-foreground mt-2">
-              {form.numero_parcelas}x de <span className="font-medium tabular-nums">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valorParcela)}</span> a cada {form.intervalo_parcelas} dias
+              Parcelas: <span className="font-medium tabular-nums">{parcelas.map(v => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)).join(' + ')}</span> a cada {form.intervalo_parcelas} dias
             </p>
           )}
         </div>

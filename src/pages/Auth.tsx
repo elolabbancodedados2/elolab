@@ -539,7 +539,7 @@ export default function Auth() {
                       className="w-full h-11 font-bold rounded-xl text-sm shadow-md shadow-primary/15 hover:shadow-lg hover:shadow-primary/25 transition-all"
                       disabled={isLoading}
                     >
-                      {isLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Entrando...</> : 'Entrar'}
+                      {isLoading ? <><Loader2 aria-hidden="true" className="mr-2 h-4 w-4 animate-spin" />Entrando…</> : 'Entrar'}
                     </Button>
                     {/* Até aqui não havia saída para quem esquecia a senha: o app
                         não tinha nenhuma chamada de recuperação. */}
@@ -733,7 +733,7 @@ export default function Auth() {
                         className="w-full h-11 font-bold rounded-xl text-sm shadow-md shadow-primary/15 hover:shadow-lg hover:shadow-primary/25 transition-all"
                         disabled={isLoading}
                       >
-                        {isLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Criando...</> : 'Criar conta e ativar'}
+                        {isLoading ? <><Loader2 aria-hidden="true" className="mr-2 h-4 w-4 animate-spin" />Criando…</> : 'Criar conta e ativar'}
                       </Button>
                       <Button
                         type="button"

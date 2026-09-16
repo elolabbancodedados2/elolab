@@ -9,6 +9,7 @@ const corsHeaders = {
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+  if (req.method !== "POST") return json({ error: "Metodo nao permitido" }, 405);
 
   try {
     const supabase = createClient(
@@ -26,10 +27,11 @@ Deno.serve(async (req) => {
     if (limitado) return json({ error: "Muitas tentativas — aguarde alguns segundos e tente de novo." }, 429);
 
     const url = new URL(req.url);
-    const action = url.searchParams.get("action") || "submit";
+    const body = await req.json();
+    const action = url.searchParams.get("action") || body.action || "submit";
 
     if (action === "validate") {
-      const token = url.searchParams.get("token") || req.headers.get("x-portal-token");
+      const token = body.token || url.searchParams.get("token") || req.headers.get("x-portal-token");
       if (!token) return json({ valid: false, error: "Token ausente" }, 400);
       const { data } = await supabase
         .from("portal_guias_tokens")
@@ -45,7 +47,6 @@ Deno.serve(async (req) => {
 
     if (req.method !== "POST") return json({ error: "Método não permitido" }, 405);
 
-    const body = await req.json();
     const token = body.token || req.headers.get("x-portal-token");
     if (!token) return json({ error: "Token obrigatório" }, 401);
 
@@ -65,6 +66,12 @@ Deno.serve(async (req) => {
     }
     if (!Array.isArray(body.exames_solicitados) || body.exames_solicitados.length === 0) {
       return json({ error: "Informe ao menos um exame" }, 400);
+    }
+    if (body.exames_solicitados.length > 50 || body.exames_solicitados.some((ex: unknown) => {
+      const nome = ex && typeof ex === "object" ? (ex as Record<string, unknown>).nome : null;
+      return typeof nome !== "string" || nome.trim().length === 0 || nome.length > 200;
+    })) {
+      return json({ error: "A lista de exames é inválida ou excede o limite permitido" }, 400);
     }
 
     const { data: inserted, error: insErr } = await supabase
@@ -87,17 +94,20 @@ Deno.serve(async (req) => {
         convenio_nome: body.convenio_nome || null,
         numero_autorizacao: body.numero_autorizacao || null,
         validade_autorizacao: body.validade_autorizacao || null,
-        exames_solicitados: body.exames_solicitados,
+        exames_solicitados: body.exames_solicitados.map((ex: { nome: string }) => ({ nome: ex.nome.trim() })),
         observacoes: body.observacoes || null,
-        anexo_url: body.anexo_url || null,
-        anexo_nome: body.anexo_nome || null,
+        // O portal público não faz upload. Nunca aceite um caminho de storage
+        // vindo do cliente, pois isso poderia apontar a clínica para outro
+        // arquivo quando a guia fosse aberta internamente.
+        anexo_url: null,
+        anexo_nome: null,
       })
       .select("id")
       .single();
 
     if (insErr) {
       console.error("Erro ao salvar guia externa:", insErr);
-      return json({ error: insErr.message }, 500);
+      return json({ error: "Não foi possível receber a guia. Tente novamente mais tarde." }, 500);
     }
 
     await supabase
@@ -108,7 +118,7 @@ Deno.serve(async (req) => {
     return json({ success: true, id: inserted.id, message: "Guia recebida com sucesso" });
   } catch (e: any) {
     console.error("Erro public-guias-externas:", e);
-    return json({ error: e.message || "Erro interno" }, 500);
+    return json({ error: "Não foi possível processar a solicitação. Tente novamente mais tarde." }, 500);
   }
 });
 

@@ -1,5 +1,6 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
 import { User, Session } from '@supabase/supabase-js';
+import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { limparAuditoriaPendente } from '@/lib/auditTrail';
 
@@ -53,12 +54,24 @@ interface SupabaseAuthContextType {
 const SupabaseAuthContext = createContext<SupabaseAuthContextType | undefined>(undefined);
 
 export function SupabaseAuthProvider({ children }: { children: ReactNode }) {
+  const queryClient = useQueryClient();
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<UserWithRole | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [platformAdminLevel, setPlatformAdminLevel] = useState<PlatformAdminLevel | null>(null);
   const [isClinicaOwner, setIsClinicaOwner] = useState(false);
+  const previousDataScope = useRef<string | null>(null);
+
+  // Impersonação troca a clínica sem trocar o usuário. Limpar o cache nesse
+  // momento evita que uma tela renderize por alguns instantes dados da clínica
+  // anterior enquanto as consultas protegidas por RLS são refeitas.
+  useEffect(() => {
+    const scope = user ? `${user.id}:${profile?.clinica_id || 'platform'}` : null;
+    const previous = previousDataScope.current;
+    if (previous !== null && previous !== scope) queryClient.clear();
+    previousDataScope.current = scope;
+  }, [user?.id, profile?.clinica_id, queryClient]);
 
   const fetchProfile = async (userId: string) => {
     try {
@@ -93,8 +106,25 @@ export function SupabaseAuthProvider({ children }: { children: ReactNode }) {
 
       let clinicaId = (profileData as any).clinica_id as string | undefined;
 
-      // Auto-create clinica for admins who don't have one
+      // A conta dona da plataforma pode ter o papel `admin` por legado, mas
+      // não pertence a uma clínica. Consulte a autoridade de plataforma antes
+      // do provisionamento automático para não criar uma clínica fantasma para
+      // suporte/dono do produto.
+      let isPlatformAccount = false;
       if (!clinicaId && roles.includes('admin')) {
+        const { data: platformAdmin, error: platformAdminError } = await (supabase as any)
+          .from('platform_admins')
+          .select('user_id')
+          .eq('user_id', userId)
+          .eq('ativo', true)
+          .maybeSingle();
+        // Em caso de falha na consulta, não faça uma mutação irreversível por
+        // engano. O próximo refresh poderá tentar o provisionamento novamente.
+        isPlatformAccount = Boolean(platformAdmin) || Boolean(platformAdminError);
+      }
+
+      // Auto-create clinica for admins who don't have one
+      if (!clinicaId && roles.includes('admin') && !isPlatformAccount) {
         try {
           const { data: newClinica } = await supabase
             .from('clinicas')
@@ -297,6 +327,10 @@ export function SupabaseAuthProvider({ children }: { children: ReactNode }) {
       console.error('Error signing out:', error);
     } finally {
       await clearClinicalCaches();
+      // O React Query mantinha respostas clínicas em memória mesmo depois do
+      // logout. Limpar o cache evita que a próxima conta veja dados da sessão
+      // anterior enquanto as consultas ainda estão sendo refeitas.
+      queryClient.clear();
       // A fila de auditoria pendente também precisa sair: em computador de
       // recepção compartilhado, o próximo turno herdaria registros do anterior.
       limparAuditoriaPendente();

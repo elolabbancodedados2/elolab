@@ -112,14 +112,15 @@ export default function Analytics() {
     },
   });
 
-  const { data: prevAgendamentos = [] } = useQuery({
+  const { data: prevAgendamentos = [], error: errorPrevAg } = useQuery({
     queryKey: ['analytics-ag-prev', prevRange.from.toISOString(), prevRange.to.toISOString()],
     enabled: showComparison,
     queryFn: async () => {
-      const { data } = await supabase.from('agendamentos')
+      const { data, error } = await supabase.from('agendamentos')
         .select('*')
         .gte('data', format(prevRange.from, 'yyyy-MM-dd'))
         .lte('data', format(prevRange.to, 'yyyy-MM-dd'));
+      if (error) throw error;
       return data || [];
     },
   });
@@ -136,30 +137,32 @@ export default function Analytics() {
     },
   });
 
-  const { data: prevLancamentos = [] } = useQuery({
+  const { data: prevLancamentos = [], error: errorPrevLanc } = useQuery({
     queryKey: ['analytics-lanc-prev', prevRange.from.toISOString(), prevRange.to.toISOString()],
     enabled: showComparison,
     queryFn: async () => {
-      const { data } = await supabase.from('lancamentos')
+      const { data, error } = await supabase.from('lancamentos')
         .select('*')
         .gte('data', format(prevRange.from, 'yyyy-MM-dd'))
         .lte('data', format(prevRange.to, 'yyyy-MM-dd'));
+      if (error) throw error;
       return data || [];
     },
   });
 
-  const { data: triagens = [] } = useQuery({
+  const { data: triagens = [], error: errorTri } = useQuery({
     queryKey: ['analytics-tri', range.from.toISOString(), range.to.toISOString()],
     queryFn: async () => {
-      const { data } = await supabase.from('triagens')
+      const { data, error } = await supabase.from('triagens')
         .select('*')
         .gte('created_at', range.from.toISOString())
         .lte('created_at', range.to.toISOString());
+      if (error) throw error;
       return data || [];
     },
   });
 
-  const { data: feedbacks = [] } = useQuery({
+  const { data: feedbacks = [], error: errorFeedback } = useQuery({
     queryKey: ['analytics-feedback', range.from.toISOString(), range.to.toISOString()],
     queryFn: async () => {
       const { data, error } = await supabase.from('feedbacks_nps')
@@ -259,7 +262,7 @@ export default function Analytics() {
   }, [lancamentos, days, chartInterval]);
 
   const isLoadingDados = loadingAg || loadingLanc;
-  const erroDados = errorAg || errorLanc;
+  const erroDados = errorAg || errorLanc || errorPrevAg || errorPrevLanc || errorTri || errorFeedback;
 
   if (isLoadingDados) {
     return (

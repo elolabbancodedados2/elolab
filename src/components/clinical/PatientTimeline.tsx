@@ -64,19 +64,20 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
   const [aiOpen, setAiOpen] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
 
-  const { data: events, isLoading } = useQuery({
+  const { data: events, isLoading, error } = useQuery({
     queryKey: ['patient-timeline', pacienteId],
     queryFn: async () => {
       const allEvents: TimelineEvent[] = [];
       const lim = Math.max(maxItems, 100);
 
       // Fetch prontuários
-      const { data: prontuarios } = await supabase
+      const { data: prontuarios, error: prontuariosError } = await supabase
         .from('prontuarios')
         .select('id, data, queixa_principal, hipotese_diagnostica, conduta, medicos(nome)')
         .eq('paciente_id', pacienteId)
         .order('data', { ascending: false })
         .limit(lim);
+      if (prontuariosError) throw prontuariosError;
 
       prontuarios?.forEach(p => {
         allEvents.push({
@@ -90,18 +91,19 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
       });
 
       // Fetch prescrições
-      const { data: prescricoes } = await supabase
+      const { data: prescricoes, error: prescricoesError } = await supabase
         .from('prescricoes')
         .select('id, data_emissao, medicamento, dosagem, posologia, tipo, medicos(nome)')
         .eq('paciente_id', pacienteId)
         .order('data_emissao', { ascending: false })
         .limit(lim);
+      if (prescricoesError) throw prescricoesError;
 
       prescricoes?.forEach(p => {
         allEvents.push({
           id: p.id,
           type: 'prescricao',
-          date: new Date(p.data_emissao || new Date()),
+          date: parseDateOnly(p.data_emissao) || new Date(),
           title: 'Prescrição',
           description: `${p.medicamento}${p.dosagem ? ` - ${p.dosagem}` : ''}${p.posologia ? ` (${p.posologia})` : ''}`,
           status: p.tipo || 'simples',
@@ -110,18 +112,19 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
       });
 
       // Fetch exames
-      const { data: exames } = await supabase
+      const { data: exames, error: examesError } = await supabase
         .from('exames')
         .select('id, data_solicitacao, data_realizacao, tipo_exame, status, resultado, medicos(nome)')
         .eq('paciente_id', pacienteId)
         .order('data_solicitacao', { ascending: false })
         .limit(lim);
+      if (examesError) throw examesError;
 
       exames?.forEach(e => {
         allEvents.push({
           id: e.id,
           type: 'exame',
-          date: new Date(e.data_realizacao || e.data_solicitacao || new Date()),
+          date: parseDateOnly(e.data_realizacao || e.data_solicitacao) || new Date(),
           title: 'Exame',
           description: `${e.tipo_exame}${e.resultado ? ' • Resultado disponível' : ''}`,
           status: e.status || 'solicitado',
@@ -130,18 +133,19 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
       });
 
       // Fetch atestados
-      const { data: atestados } = await supabase
+      const { data: atestados, error: atestadosError } = await supabase
         .from('atestados')
         .select('id, data_emissao, tipo, dias, motivo, medicos(nome)')
         .eq('paciente_id', pacienteId)
         .order('data_emissao', { ascending: false })
         .limit(lim);
+      if (atestadosError) throw atestadosError;
 
       atestados?.forEach(a => {
         allEvents.push({
           id: a.id,
           type: 'atestado',
-          date: new Date(a.data_emissao || new Date()),
+          date: parseDateOnly(a.data_emissao) || new Date(),
           title: 'Atestado',
           description: a.dias ? `${a.dias} dia(s) - ${a.motivo || a.tipo}` : a.motivo || a.tipo || 'Emitido',
           medicoNome: (a.medicos as any)?.nome,
@@ -149,18 +153,19 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
       });
 
       // Fetch encaminhamentos
-      const { data: encaminhamentos } = await supabase
+      const { data: encaminhamentos, error: encaminhamentosError } = await supabase
         .from('encaminhamentos')
         .select('id, data_encaminhamento, especialidade_destino, motivo, status, medicos(nome)')
         .eq('paciente_id', pacienteId)
         .order('data_encaminhamento', { ascending: false })
         .limit(lim);
+      if (encaminhamentosError) throw encaminhamentosError;
 
       encaminhamentos?.forEach(e => {
         allEvents.push({
           id: e.id,
           type: 'encaminhamento',
-          date: new Date(e.data_encaminhamento || new Date()),
+          date: parseDateOnly(e.data_encaminhamento) || new Date(),
           title: 'Encaminhamento',
           description: `${e.especialidade_destino} - ${e.motivo}`,
           status: e.status || 'pendente',
@@ -169,12 +174,13 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
       });
 
       // Fetch agendamentos
-      const { data: agendamentos } = await (supabase as any)
+      const { data: agendamentos, error: agendamentosError } = await (supabase as any)
         .from('agendamentos')
         .select('id, data, hora_inicio, tipo, status, observacoes, medicos(nome)')
         .eq('paciente_id', pacienteId)
         .order('data', { ascending: false })
         .limit(lim);
+      if (agendamentosError) throw agendamentosError;
 
       agendamentos?.forEach((a: any) => {
         if (!a.data) return;
@@ -190,12 +196,13 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
       });
 
       // Fetch pagamentos (lançamentos financeiros)
-      const { data: lancamentos } = await (supabase as any)
+      const { data: lancamentos, error: lancamentosError } = await (supabase as any)
         .from('lancamentos')
         .select('id, tipo, categoria, descricao, valor, data, data_pagamento, status, forma_pagamento')
         .eq('paciente_id', pacienteId)
         .order('data', { ascending: false })
         .limit(lim);
+      if (lancamentosError) throw lancamentosError;
 
       lancamentos?.forEach((l: any) => {
         const valorFmt = Number(l.valor || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -203,7 +210,7 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
         allEvents.push({
           id: `lan-${l.id}`,
           type: 'pagamento',
-          date: new Date(l.data_pagamento || l.data || new Date()),
+          date: parseDateOnly(l.data_pagamento || l.data) || new Date(),
           title: `${l.tipo === 'receita' ? 'Receita' : 'Despesa'} - ${valorFmt}`,
           description: `${l.descricao || l.categoria || '-'}${l.forma_pagamento ? ` • ${l.forma_pagamento}` : ''}`,
           status: statusLabel,
@@ -212,7 +219,7 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
       });
 
       // Fetch triagens
-      const { data: triagens } = await (supabase as any)
+      const { data: triagens, error: triagensError } = await (supabase as any)
         .from('triagens')
         // As colunas são `saturacao` e `queixa_principal`. Com os nomes errados
         // o PostgREST rejeitava a consulta inteira e a triagem nunca aparecia
@@ -221,6 +228,7 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
         .eq('paciente_id', pacienteId)
         .order('data_hora', { ascending: false })
         .limit(lim);
+      if (triagensError) throw triagensError;
 
       triagens?.forEach((t: any) => {
         const vitals = [
@@ -240,13 +248,14 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
       });
 
       // Fetch anexos
-      const { data: anexos } = await (supabase as any)
+      const { data: anexos, error: anexosError } = await (supabase as any)
         .from('anexos_prontuario')
         // A coluna é `tipo_arquivo`.
         .select('id, nome_arquivo, tipo_arquivo, descricao, created_at, prontuarios!inner(paciente_id)')
         .eq('prontuarios.paciente_id', pacienteId)
         .order('created_at', { ascending: false })
         .limit(lim);
+      if (anexosError) throw anexosError;
 
       anexos?.forEach((a: any) => {
         allEvents.push({
@@ -259,7 +268,7 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
       });
 
       // Fetch retornos
-      const { data: retornos } = await (supabase as any)
+      const { data: retornos, error: retornosError } = await (supabase as any)
         .from('retornos')
         // A coluna em `retornos` é `data_retorno_prevista`. `data_retorno`
         // pertence a `retornos_agendados`, que é outra tabela.
@@ -267,6 +276,7 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
         .eq('paciente_id', pacienteId)
         .order('data_retorno_prevista', { ascending: false })
         .limit(lim);
+      if (retornosError) throw retornosError;
 
       retornos?.forEach((r: any) => {
         allEvents.push({
@@ -281,18 +291,19 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
       });
 
       // Fetch comorbidades
-      const { data: comorb } = await (supabase as any)
+      const { data: comorb, error: comorbError } = await (supabase as any)
         .from('paciente_comorbidades')
         .select('id, codigo_cid, descricao, data_diagnostico, ativo')
         .eq('paciente_id', pacienteId)
         .order('data_diagnostico', { ascending: false })
         .limit(lim);
+      if (comorbError) throw comorbError;
 
       comorb?.forEach((c: any) => {
         allEvents.push({
           id: `co-${c.id}`,
           type: 'comorbidade',
-          date: new Date(c.data_diagnostico || new Date()),
+          date: parseDateOnly(c.data_diagnostico) || new Date(),
           title: `${c.codigo_cid || 'CID'} - ${c.descricao}`,
           description: c.ativo ? 'Condição ativa' : 'Condição inativa',
         });
@@ -420,6 +431,24 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
               </div>
             ))}
           </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (error) {
+    return (
+      <Card className={className}>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Clock className="h-5 w-5" />
+            Histórico Completo do Paciente
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p role="alert" className="text-sm text-destructive">
+            Não foi possível carregar o histórico clínico. Tente novamente.
+          </p>
         </CardContent>
       </Card>
     );

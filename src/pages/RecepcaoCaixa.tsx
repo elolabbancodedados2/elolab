@@ -1,11 +1,15 @@
-import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { MonitorSmartphone, HandCoins } from 'lucide-react';
 import Recepcao from './Recepcao';
 import CaixaDiario from './CaixaDiario';
 
 export default function RecepcaoCaixa() {
-  const [activeTab, setActiveTab] = useState('recepcao');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab = searchParams.get('tab') === 'caixa' ? 'caixa' : 'recepcao';
+  const setActiveTab = (value: string) => {
+    setSearchParams(value === 'caixa' ? { tab: 'caixa' } : {}, { replace: true });
+  };
 
   return (
     <div className="space-y-4">

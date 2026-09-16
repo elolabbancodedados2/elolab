@@ -21,7 +21,10 @@ export function storageUrlSeguro(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   try {
     const url = new URL(value);
-    const supabaseUrl = new URL(import.meta.env.VITE_SUPABASE_URL || 'https://gebygucrpipaufrlyqqj.supabase.co');
+    const configuredSupabaseUrl = import.meta.env.VITE_SUPABASE_URL ||
+      (import.meta.env.MODE === 'test' ? 'https://gebygucrpipaufrlyqqj.supabase.co' : '');
+    if (!configuredSupabaseUrl) return null;
+    const supabaseUrl = new URL(configuredSupabaseUrl);
     return url.protocol === 'https:' && url.hostname === supabaseUrl.hostname ? url.href : null;
   } catch {
     return null;

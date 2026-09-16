@@ -4,6 +4,7 @@ import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 import {
   Calendar, Users, FileText, BarChart3, Stethoscope,
   ArrowRight, CheckCircle2, Sparkles, Rocket
@@ -61,13 +62,17 @@ export function OnboardingWizard() {
     if (localStorage.getItem(localKey) === 'true') return;
 
     const checkOnboarding = async () => {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('configuracoes_clinica')
         .select('valor')
         .eq('chave', 'onboarding_completed')
         .eq('user_id', profile.id)
         .maybeSingle();
 
+      if (error) {
+        if (import.meta.env.DEV) console.error('Falha ao consultar onboarding:', error);
+        return;
+      }
       if (data) {
         // Already completed — cache locally so we never ask again
         localStorage.setItem(localKey, 'true');
@@ -81,12 +86,17 @@ export function OnboardingWizard() {
   const handleComplete = async () => {
     if (profile) {
       const localKey = `onboarding_done_${profile.id}`;
-      localStorage.setItem(localKey, 'true');
-      await supabase.from('configuracoes_clinica').upsert({
+      const { error } = await supabase.from('configuracoes_clinica').upsert({
         chave: 'onboarding_completed',
         user_id: profile.id,
         valor: new Date().toISOString() as any,
       }, { onConflict: 'user_id,chave' });
+      if (error) {
+        if (import.meta.env.DEV) console.error('Falha ao salvar onboarding:', error);
+        toast.error('Não foi possível salvar a conclusão do tour', { description: 'Tente novamente.' });
+        return;
+      }
+      localStorage.setItem(localKey, 'true');
     }
     setOpen(false);
   };

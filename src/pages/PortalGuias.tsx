@@ -7,7 +7,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
 export default function PortalGuias() {
@@ -28,18 +27,19 @@ export default function PortalGuias() {
   useEffect(() => {
     (async () => {
       try {
-        const { data, error } = await supabase.functions.invoke('public-guias-externas', {
-          method: 'GET' as any,
-          body: undefined,
-          headers: { 'x-portal-token': token || '' },
-        } as any);
-        // Fallback: call via fetch with action=validate
         const resp = await fetch(
-          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/public-guias-externas?action=validate&token=${encodeURIComponent(token || '')}`,
-          { headers: { apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY } as any }
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/public-guias-externas`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+            },
+            body: JSON.stringify({ action: 'validate', token: token || '' }),
+          }
         );
         const json = await resp.json();
-        if (json.valid) {
+        if (resp.ok && json.valid) {
           setValid(true);
           setClinicaNome(json.clinica_nome || '');
         }

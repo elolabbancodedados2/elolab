@@ -2,14 +2,20 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 
-// O .env do projeto define VITE_SUPABASE_PUBLISHABLE_KEY; versões antigas deste
-// arquivo liam apenas VITE_SUPABASE_ANON_KEY, então a variável era ignorada e o
-// fallback embutido sempre vencia. Aceitamos os dois nomes.
-export const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "https://gebygucrpipaufrlyqqj.supabase.co";
+// Em produção, as duas variáveis são obrigatórias. O fallback só existe no
+// ambiente de testes, para que os testes unitários não dependam de um backend.
+// Nunca deixar o frontend cair silenciosamente no Supabase Cloud: isso pode
+// mascarar uma configuração incompleta do Coolify.
+const isTest = import.meta.env.MODE === "test";
+export const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || (isTest ? "https://gebygucrpipaufrlyqqj.supabase.co" : "");
 export const SUPABASE_PUBLISHABLE_KEY =
   import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
   import.meta.env.VITE_SUPABASE_ANON_KEY ||
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdlYnlndWNycGlwYXVmcmx5cXFqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk4MTQ2ODAsImV4cCI6MjA4NTM5MDY4MH0.WURCBXjBiAZpk-Qyb3SMu3XQGVvRG07BuCJSURbmouI";
+  (isTest ? "test-publishable-key" : "");
+
+if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
+  throw new Error("VITE_SUPABASE_URL e VITE_SUPABASE_PUBLISHABLE_KEY são obrigatórias para executar o EloLab.");
+}
 
 // Import the supabase client like this:
 // import { supabase } from "@/integrations/supabase/client";

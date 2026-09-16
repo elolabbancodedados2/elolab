@@ -131,7 +131,7 @@ export default function Laboratorio() {
       return Number(data ?? 0);
     },
     onSuccess: (n) => {
-      queryClient.invalidateQueries({ queryKey: ['coletas-laboratorio'] });
+      queryClient.invalidateQueries({ queryKey: ['coletas-laboratorio', profile?.clinica_id] });
       queryClient.invalidateQueries({ queryKey: ['preview-limpar-fila-lab'] });
       setShowLimparFila(false);
       setLimparMotivo('');
@@ -141,48 +141,58 @@ export default function Laboratorio() {
   });
 
   const { data: pacientes } = useQuery({
-    queryKey: ['pacientes-lab'],
+    queryKey: ['pacientes-lab', profile?.clinica_id],
     queryFn: async () => {
-      const { data } = await supabase.from('pacientes').select('id, nome, cpf').order('nome');
+      const { data, error } = await supabase.from('pacientes').select('id, nome, cpf').order('nome');
+      if (error) throw error;
       return data || [];
     },
+    enabled: !!profile?.clinica_id,
   });
 
   const { data: medicos } = useQuery({
-    queryKey: ['medicos-lab'],
+    queryKey: ['medicos-lab', profile?.clinica_id],
     queryFn: async () => {
-      const { data } = await supabase.from('medicos').select('id, nome, crm, especialidade').order('nome');
+      const { data, error } = await supabase.from('medicos').select('id, nome, crm, especialidade').order('nome');
+      if (error) throw error;
       return data || [];
     },
+    enabled: !!profile?.clinica_id,
   });
 
   const { data: funcionarios } = useQuery({
-    queryKey: ['funcionarios-lab'],
+    queryKey: ['funcionarios-lab', profile?.clinica_id],
     queryFn: async () => {
-      const { data } = await supabase.from('profiles').select('id, nome').order('nome');
+      const { data, error } = await supabase.from('profiles').select('id, nome').order('nome');
+      if (error) throw error;
       return data || [];
     },
+    enabled: !!profile?.clinica_id,
   });
 
   const { data: convenios } = useQuery({
-    queryKey: ['convenios-lab'],
+    queryKey: ['convenios-lab', profile?.clinica_id],
     queryFn: async () => {
-      const { data } = await supabase.from('convenios').select('id, nome, codigo').eq('ativo', true).order('nome');
+      const { data, error } = await supabase.from('convenios').select('id, nome, codigo').eq('ativo', true).order('nome');
+      if (error) throw error;
       return data || [];
     },
+    enabled: !!profile?.clinica_id,
   });
 
   const { data: examesPendentes } = useQuery({
-    queryKey: ['exames-pendentes-lab'],
+    queryKey: ['exames-pendentes-lab', profile?.clinica_id],
     queryFn: async () => {
-      const { data } = await supabase.from('exames').select('id, tipo_exame, paciente_id, pacientes(nome)')
+      const { data, error } = await supabase.from('exames').select('id, tipo_exame, paciente_id, pacientes(nome)')
         .in('status', ['solicitado', 'agendado']).order('data_solicitacao', { ascending: false }).limit(200);
+      if (error) throw error;
       return data || [];
     },
+    enabled: !!profile?.clinica_id,
   });
 
   const { data: coletas, isLoading } = useQuery({
-    queryKey: ['coletas-laboratorio'],
+    queryKey: ['coletas-laboratorio', profile?.clinica_id],
     queryFn: async () => {
       // Sem `.limit()` o PostgREST aplica o teto padrão (1.000 linhas) e corta
       // em silêncio: passado esse ponto, amostras antigas simplesmente somem da
@@ -209,20 +219,22 @@ export default function Laboratorio() {
       }
       return linhas;
     },
+    enabled: !!profile?.clinica_id,
   });
 
   const { data: resultados } = useQuery({
-    queryKey: ['resultados-laboratorio', showResultados],
+    queryKey: ['resultados-laboratorio', profile?.clinica_id, showResultados],
     queryFn: async () => {
       if (!showResultados) return [];
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('resultados_laboratorio')
         .select('*')
         .eq('coleta_id', showResultados)
         .order('parametro');
+      if (error) throw error;
       return data || [];
     },
-    enabled: !!showResultados,
+    enabled: !!profile?.clinica_id && !!showResultados,
   });
 
   const createColeta = useMutation({
@@ -235,8 +247,8 @@ export default function Laboratorio() {
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['coletas-laboratorio'] });
-      queryClient.invalidateQueries({ queryKey: ['exames-pendentes-lab'] });
+      queryClient.invalidateQueries({ queryKey: ['coletas-laboratorio', profile?.clinica_id] });
+      queryClient.invalidateQueries({ queryKey: ['exames-pendentes-lab', profile?.clinica_id] });
       toast.success('Coleta registrada com sucesso!');
       setShowNewColeta(false);
     },
@@ -251,7 +263,7 @@ export default function Laboratorio() {
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['coletas-laboratorio'] });
+      queryClient.invalidateQueries({ queryKey: ['coletas-laboratorio', profile?.clinica_id] });
       toast.success('Status atualizado');
     },
     // Sem `onError` o botão parecia não fazer nada: o técnico seguia
@@ -267,7 +279,7 @@ export default function Laboratorio() {
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['resultados-laboratorio'] });
+      queryClient.invalidateQueries({ queryKey: ['resultados-laboratorio', profile?.clinica_id] });
       toast.success('Resultado adicionado!');
     },
     onError: (e) => toast.error('Erro ao adicionar resultado', { description: mensagemDeErro(e) }),

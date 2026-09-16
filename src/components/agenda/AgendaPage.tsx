@@ -337,7 +337,12 @@ export function AgendaPage() {
         onSaved={async () => {
           const w = dialogState.initial?._waiting_id;
           if (w) {
-            await (supabase.from('lista_espera' as any).update({ status: 'agendado' }).eq('id', w) as any);
+            const { error } = await (supabase.from('lista_espera' as any).update({ status: 'agendado' }).eq('id', w) as any);
+            if (error) {
+              toast.error('Consulta salva, mas não foi possível atualizar a lista de espera.', {
+                description: error.message,
+              });
+            }
             queryClient.invalidateQueries({ queryKey: ['lista_espera'] });
           }
         }}

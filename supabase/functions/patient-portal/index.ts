@@ -35,9 +35,101 @@ async function sha256Hex(value: string): Promise<string> {
   return Array.from(new Uint8Array(hash), byte => byte.toString(16).padStart(2, '0')).join('');
 }
 
+function timeToMinutes(value: unknown): number | null {
+  const match = String(value ?? '').match(/^(\d{2}):(\d{2})(?::\d{2})?$/);
+  if (!match) return null;
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  return hour >= 0 && hour < 24 && minute >= 0 && minute < 60 ? hour * 60 + minute : null;
+}
+
+/** Confere formato, jornada, bloqueio e sobreposição antes de criar/remarcar. */
+async function validatePortalSlot(
+  db: any,
+  clinicId: string | null,
+  medicoId: string,
+  date: string,
+  startTime: string,
+  ignoreAppointmentId?: string,
+): Promise<{ error: string | null; duration: number }> {
+  const dateObject = new Date(`${date}T12:00:00Z`);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(dateObject.getTime()) || dateObject.toISOString().slice(0, 10) !== date) {
+    return { error: 'Informe uma data vÃ¡lida.', duration: 30 };
+  }
+  const start = timeToMinutes(startTime);
+  if (start === null) return { error: 'Informe um horÃ¡rio vÃ¡lido.', duration: 30 };
+
+  const dayOfWeek = new Date(`${date}T12:00:00Z`).getUTCDay();
+  const { data: availability, error: availabilityError } = await db
+    .from('medico_disponibilidade')
+    .select('hora_inicio, hora_fim, duracao_consulta, intervalo_consultas')
+    .eq('medico_id', medicoId)
+    .eq('dia_semana', dayOfWeek)
+    .eq('ativo', true)
+    .limit(1)
+    .maybeSingle();
+  if (availabilityError || !availability) {
+    return { error: 'O mÃ©dico nÃ£o tem disponibilidade neste dia.', duration: 30 };
+  }
+
+  const duration = Number(availability.duracao_consulta) || 30;
+  const end = start + duration;
+  const availableStart = timeToMinutes(availability.hora_inicio);
+  const availableEnd = timeToMinutes(availability.hora_fim);
+  if (availableStart === null || availableEnd === null || start < availableStart || end > availableEnd) {
+    return { error: 'O horÃ¡rio estÃ¡ fora da disponibilidade do mÃ©dico.', duration };
+  }
+  const interval = Number(availability.intervalo_consultas) || 0;
+  const step = duration + interval;
+  if (step <= 0 || (start - availableStart) % step !== 0) {
+    return { error: 'Escolha um horÃ¡rio disponÃ­vel na agenda.', duration };
+  }
+
+  const { data: blocks, error: blocksError } = await db
+    .from('bloqueios_agenda')
+    .select('hora_inicio, hora_fim, dia_inteiro')
+    .eq('medico_id', medicoId)
+    .lte('data_inicio', date)
+    .gte('data_fim', date);
+  if (blocksError) throw blocksError;
+  if ((blocks || []).some((block: any) => {
+    if (block.dia_inteiro) return true;
+    const blockStart = timeToMinutes(block.hora_inicio);
+    const blockEnd = timeToMinutes(block.hora_fim);
+    return blockStart !== null && blockEnd !== null && blockStart < end && blockEnd > start;
+  })) {
+    return { error: 'O horÃ¡rio estÃ¡ bloqueado para este mÃ©dico.', duration };
+  }
+
+  const { data: appointments, error: appointmentsError } = await db
+    .from('agendamentos')
+    .select('id, hora_inicio, hora_fim, status')
+    .eq('medico_id', medicoId)
+    .eq('clinica_id', clinicId ?? '')
+    .eq('data', date)
+    .not('status', 'in', '("cancelado")');
+  if (appointmentsError) throw appointmentsError;
+  const conflict = (appointments || []).some((appointment: any) => {
+    if (appointment.id === ignoreAppointmentId) return false;
+    const appointmentStart = timeToMinutes(appointment.hora_inicio);
+    if (appointmentStart === null) return false;
+    const appointmentEnd = timeToMinutes(appointment.hora_fim) ?? appointmentStart + 30;
+    return appointmentStart < end && appointmentEnd > start;
+  });
+  return conflict
+    ? { error: 'Este horÃ¡rio jÃ¡ estÃ¡ ocupado.', duration }
+    : { error: null, duration };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
+  }
+  if (req.method !== "POST") {
+    return new Response(JSON.stringify({ error: "MÃ©todo nÃ£o permitido" }), {
+      status: 405,
+      headers: { ...corsHeaders, "Content-Type": "application/json", Allow: "POST, OPTIONS" },
+    });
   }
 
   try {
@@ -107,6 +199,12 @@ Deno.serve(async (req) => {
     // com médicos de outras clínicas.
     const pacienteClinicaId =
       (tokenData as any).pacientes?.clinica_id ?? (tokenData as any).clinica_id ?? null;
+    if (!pacienteId || !pacienteClinicaId || pacienteClinicaId !== (tokenData as any).clinica_id) {
+      return new Response(JSON.stringify({ error: "Token invÃ¡lido" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     // Update last access
     await supabase
@@ -142,19 +240,20 @@ Deno.serve(async (req) => {
       }
 
       case "get_agendamentos": {
-        const { data } = await supabase
+        const { data, error } = await supabase
           .from("agendamentos")
           .select("id, data, hora_inicio, hora_fim, tipo, status, medicos(nome, crm, especialidade)")
           .eq("paciente_id", pacienteId)
           .eq("clinica_id", pacienteClinicaId)
           .order("data", { ascending: false })
           .limit(50);
+        if (error) throw error;
         result = data || [];
         break;
       }
 
       case "get_historico": {
-        const { data } = await supabase
+        const { data, error } = await supabase
           .from("agendamentos")
           .select("id, data, hora_inicio, tipo, status, medicos(crm, especialidade)")
           .eq("paciente_id", pacienteId)
@@ -162,6 +261,7 @@ Deno.serve(async (req) => {
           .lt("data", new Date().toISOString().split("T")[0])
           .order("data", { ascending: false })
           .limit(50);
+        if (error) throw error;
         result = data || [];
         break;
       }
@@ -182,9 +282,10 @@ Deno.serve(async (req) => {
         if (error) throw error;
         const completas = [];
         for (const oferta of ofertas || []) {
-          const { data: vaga } = await supabase.from("agendamentos")
+          const { data: vaga, error: vagaError } = await supabase.from("agendamentos")
             .select("id, data, hora_inicio, hora_fim, tipo, medicos(nome, especialidade)")
             .eq("id", oferta.oferta_agendamento_id).eq("clinica_id", pacienteClinicaId).eq("status", "cancelado").maybeSingle();
+          if (vagaError) throw vagaError;
           if (vaga) completas.push({ ...oferta, vaga });
         }
         result = completas;
@@ -232,8 +333,9 @@ Deno.serve(async (req) => {
       case "submit_feedback": {
         const nota = Number(body.nota); const comentario = String(body.comentario || "").trim().slice(0, 2000);
         if (!Number.isInteger(nota) || nota < 1 || nota > 5) return new Response(JSON.stringify({ error: "A nota deve estar entre 1 e 5" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-        const { data: atendimento } = await supabase.from("agendamentos").select("id, medico_id, clinica_id")
+        const { data: atendimento, error: atendimentoError } = await supabase.from("agendamentos").select("id, medico_id, clinica_id")
           .eq("paciente_id", pacienteId).eq("clinica_id", pacienteClinicaId).in("status", ["finalizado", "aguardando_pagamento_adicional"]).order("data", { ascending: false }).limit(1).maybeSingle();
+        if (atendimentoError) throw atendimentoError;
         if (!atendimento) return new Response(JSON.stringify({ error: "Nenhum atendimento concluído para avaliar" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         const { error } = await supabase.from("feedbacks_nps").insert({ paciente_id: pacienteId, agendamento_id: atendimento.id, medico_id: atendimento.medico_id,
           clinica_id: atendimento.clinica_id, nota, comentario: comentario || null, categoria: "geral" });
@@ -281,25 +383,27 @@ Deno.serve(async (req) => {
       }
 
       case "get_pagamentos": {
-        const { data } = await supabase
+        const { data, error } = await supabase
           .from("pagamentos_mercadopago")
           .select("id, descricao, valor, status, checkout_url, created_at, metodo_pagamento")
           .eq("paciente_id", pacienteId)
           .eq("clinica_id", pacienteClinicaId)
           .order("created_at", { ascending: false })
           .limit(20);
+        if (error) throw error;
         result = data || [];
         break;
       }
 
       case "get_prescricoes": {
-        const { data } = await supabase
+        const { data, error } = await supabase
           .from("prescricoes")
           .select("id, medicamento, dosagem, posologia, quantidade, duracao, observacoes, tipo, data_emissao, medicos:medico_id(nome, especialidade)")
           .eq("paciente_id", pacienteId)
           .eq("clinica_id", pacienteClinicaId)
           .order("data_emissao", { ascending: false })
           .limit(50);
+        if (error) throw error;
         result = data || [];
         break;
       }
@@ -309,12 +413,13 @@ Deno.serve(async (req) => {
           result = [];
           break;
         }
-        const { data } = await supabase
+        const { data, error } = await supabase
           .from("medicos")
           .select("id, nome, crm, especialidade, foto_url")
           .eq("ativo", true)
           .eq("clinica_id", pacienteClinicaId)
           .order("nome");
+        if (error) throw error;
         result = data || [];
         break;
       }
@@ -326,6 +431,13 @@ Deno.serve(async (req) => {
             JSON.stringify({ error: "medico_id e data_inicio são obrigatórios" }),
             { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
+        }
+        const requestedDate = new Date(`${data_inicio}T12:00:00Z`);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(String(data_inicio)) || Number.isNaN(requestedDate.getTime()) || requestedDate.toISOString().slice(0, 10) !== data_inicio || data_inicio < todayISO()) {
+          return new Response(JSON.stringify({ error: "Informe uma data vÃ¡lida, hoje ou futura" }), {
+            status: 400,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
         }
 
         const { data: medicoDaClinica } = await supabase.from("medicos")
@@ -342,8 +454,11 @@ Deno.serve(async (req) => {
         }
 
         // Get doctor availability for this day of week
-        const appointmentDate = new Date(data_inicio);
-        const dayOfWeek = appointmentDate.getDay(); // 0 = Sunday, 1 = Monday, etc.
+        // `data_inicio` Ã© uma data sem horÃ¡rio. Usar getDay() em um Date
+        // parseado como UTC desloca o dia no fuso do Brasil (ex.: segunda vira
+        // domingo); UTC preserva o calendÃ¡rio informado pelo paciente.
+        const appointmentDate = new Date(`${data_inicio}T12:00:00Z`);
+        const dayOfWeek = appointmentDate.getUTCDay(); // 0 = Sunday, 1 = Monday, etc.
 
         const { data: disponibilidade, error: dispError } = await supabase
           .from("medico_disponibilidade")
@@ -362,13 +477,14 @@ Deno.serve(async (req) => {
         }
 
         // Get all appointments for this doctor on this date (excluding cancelled)
-        const { data: agendados } = await supabase
+        const { data: agendados, error: agendadosError } = await supabase
           .from("agendamentos")
           .select("hora_inicio, hora_fim")
           .eq("medico_id", medico_id)
           .eq("clinica_id", pacienteClinicaId)
           .eq("data", data_inicio)
           .not("status", "in", '("cancelado")');
+        if (agendadosError) throw agendadosError;
 
         // Generate slots based on doctor's availability
         const slots = [];
@@ -421,6 +537,13 @@ Deno.serve(async (req) => {
             { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
+        const requestedDate = new Date(`${data}T12:00:00Z`);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(String(data)) || Number.isNaN(requestedDate.getTime()) || requestedDate.toISOString().slice(0, 10) !== data || data < todayISO()) {
+          return new Response(JSON.stringify({ error: "Informe uma data vÃ¡lida, hoje ou futura" }), {
+            status: 400,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
 
         // Validate doctor exists, is active AND belongs to the patient's clinic
         const { data: medico, error: medicoError } = await supabase
@@ -444,6 +567,14 @@ Deno.serve(async (req) => {
           );
         }
 
+        const slot = await validatePortalSlot(supabase, pacienteClinicaId, medico_id, data, hora_inicio);
+        if (slot.error) {
+          return new Response(JSON.stringify({ error: slot.error }), {
+            status: 409,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+
         // Check for existing appointment at the same time
         const { data: existingAppointment } = await supabase
           .from("agendamentos")
@@ -461,7 +592,7 @@ Deno.serve(async (req) => {
           );
         }
 
-        const endTime = addMinutes(hora_inicio, 30);
+        const endTime = addMinutes(hora_inicio, slot.duration);
 
         const { data: newAgendamento, error: insertError } = await supabase
           .from("agendamentos")
@@ -586,16 +717,34 @@ Deno.serve(async (req) => {
           );
         }
 
+        const slot = await validatePortalSlot(
+          supabase,
+          pacienteClinicaId,
+          agendamento.medico_id,
+          nova_data,
+          novo_horario,
+          agendamento_id,
+        );
+        if (slot.error) {
+          return new Response(JSON.stringify({ error: slot.error }), {
+            status: 409,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+
         // Check no double-booking at new time
-        const { data: conflictingSlots } = await supabase
+        const { data: conflictingSlots, error: conflictError } = await supabase
           .from("agendamentos")
           .select("id")
           .eq("medico_id", agendamento.medico_id)
+          .eq("clinica_id", pacienteClinicaId)
           .eq("data", nova_data)
           .eq("hora_inicio", novo_horario)
           .not("status", "in", '("cancelado")')
           .neq("id", agendamento_id)
           .limit(1);
+
+        if (conflictError) throw conflictError;
 
         if (conflictingSlots && conflictingSlots.length > 0) {
           return new Response(
@@ -604,7 +753,7 @@ Deno.serve(async (req) => {
           );
         }
 
-        const endTime = addMinutes(novo_horario, 30);
+        const endTime = addMinutes(novo_horario, slot.duration);
 
         // Update appointment
         const { error: updateError } = await supabase
@@ -637,7 +786,7 @@ Deno.serve(async (req) => {
     });
   } catch (error: any) {
     console.error("Erro portal:", error);
-    return new Response(JSON.stringify({ error: error.message }), {
+    return new Response(JSON.stringify({ error: "Não foi possível processar a solicitação. Tente novamente mais tarde." }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

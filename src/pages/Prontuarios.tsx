@@ -547,6 +547,7 @@ export default function Prontuarios() {
   useEffect(() => {
     if (!selectedPacienteId) { setHistoricoEvolucoes([]); return; }
     setLoadingHistorico(true);
+    let active = true;
     let query = supabase
       .from('prontuarios')
       .select('id, data, queixa_principal, historia_doenca_atual, exames_fisicos, hipotese_diagnostica, conduta, sinais_vitais, diagnostico_principal, plano_terapeutico, assinado, assinado_em, assinado_por, crm_assinante, medicos(nome, crm, especialidade)')
@@ -554,7 +555,17 @@ export default function Prontuarios() {
       .order('data', { ascending: false })
       .limit(50);
     if (isMedicoOnly && medicoId) query = query.eq('medico_id', medicoId);
-    query.then(({ data }) => { setHistoricoEvolucoes(data ?? []); setLoadingHistorico(false); });
+    query.then(({ data, error }) => {
+      if (!active) return;
+      if (error) {
+        setHistoricoEvolucoes([]);
+        toast.error('NÃ£o foi possÃ­vel carregar o histÃ³rico clÃ­nico.', { description: error.message });
+      } else {
+        setHistoricoEvolucoes(data ?? []);
+      }
+      setLoadingHistorico(false);
+    });
+    return () => { active = false; };
   }, [selectedPacienteId, isMedicoOnly, medicoId]);
 
   // Filtra por paciente NO SERVIDOR. Antes esta query trazia a coleção inteira
@@ -636,7 +647,14 @@ export default function Prontuarios() {
   const handleViewProntuario = async (prontuario: Record<string, any>) => {
     setCurrentProntuario(prontuario);
     setSinaisVitais({ ...emptySinaisVitais, ...(prontuario.sinais_vitais || {}) });
-    const { data } = await supabase.from('prescricoes').select('*').eq('prontuario_id', prontuario.id);
+    const { data, error } = await supabase
+      .from('prescricoes')
+      .select('*')
+      .eq('prontuario_id', prontuario.id);
+    if (error) {
+      toast.error('Não foi possível carregar as prescrições.', { description: error.message });
+      return;
+    }
     setPrescricoes((data || []).map((p: any) => ({
       medicamento: p.medicamento, dosagem: p.dosagem || '', posologia: p.posologia || '',
       duracao: p.duracao || '', quantidade: p.quantidade || '', observacoes: p.observacoes || '',

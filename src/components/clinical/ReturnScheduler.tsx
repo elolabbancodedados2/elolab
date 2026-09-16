@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { format, addDays, addWeeks, addMonths } from 'date-fns';
+import { format, addDays, addWeeks, addMonths, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { 
   CalendarCheck, 
@@ -47,13 +47,15 @@ interface Return {
   id: string;
   paciente_id: string;
   prontuario_id: string | null;
-  medico_id: string;
+  medico_id: string | null;
   data_consulta_origem: string;
   data_retorno_prevista: string;
   motivo: string | null;
   tipo_retorno: string;
   status: string;
   agendamento_id: string | null;
+  agendamento_retorno_id: string | null;
+  clinica_id: string | null;
   lembrete_enviado: boolean;
   observacoes: string | null;
 }
@@ -101,29 +103,36 @@ export function ReturnScheduler({
   const queryClient = useQueryClient();
 
   const { data: returns, isLoading } = useQuery({
-    queryKey: ['patient-returns', pacienteId],
+    queryKey: ['patient-returns', profile?.clinica_id, pacienteId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('retornos')
         .select('*')
         .eq('paciente_id', pacienteId)
+        .eq('clinica_id', profile!.clinica_id!)
         .order('data_retorno_prevista', { ascending: true });
 
       if (error) throw error;
       return data as Return[];
     },
-    enabled: !!pacienteId,
+    enabled: !!pacienteId && !!profile?.clinica_id,
   });
 
   const createReturn = useMutation({
     mutationFn: async () => {
       let dataRetorno: Date;
+
+      if (!profile?.clinica_id) {
+        throw new Error('Clínica ativa não encontrada');
+      }
       
       if (selectedPreset) {
         const preset = RETURN_PRESETS.find(p => p.value === selectedPreset);
         dataRetorno = preset?.calc() || new Date();
       } else if (customDate) {
-        dataRetorno = new Date(customDate);
+        // `new Date('YYYY-MM-DD')` interpreta a data em UTC e, no Brasil,
+        // pode salvar o dia anterior. Datas de calendário devem ser locais.
+        dataRetorno = parseISO(customDate);
       } else {
         throw new Error('Selecione uma data de retorno');
       }
@@ -142,7 +151,7 @@ export function ReturnScheduler({
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['patient-returns', pacienteId] });
+      queryClient.invalidateQueries({ queryKey: ['patient-returns', profile?.clinica_id, pacienteId] });
       toast.success('Retorno agendado com sucesso!');
       resetForm();
       setIsOpen(false);
@@ -163,7 +172,7 @@ export function ReturnScheduler({
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['patient-returns', pacienteId] });
+      queryClient.invalidateQueries({ queryKey: ['patient-returns', profile?.clinica_id, pacienteId] });
       toast.success('Status atualizado!');
     },
     onError: (e) => {

@@ -200,10 +200,13 @@ export function AppointmentCard({ agendamento, color, minutesToPx, onClick, conv
     }
   };
   const remove = async () => {
-    if (!confirm('Remover esta consulta?')) return;
-    const { error } = await (supabase.from('agendamentos').delete().eq('id', agendamento.id) as any);
-    if (error) return toast.error('Erro ao remover', { description: mensagemDeErro(error) });
-    toast.success('Consulta removida');
+    if (!confirm('Cancelar esta consulta? O histórico será preservado.')) return;
+    const { error } = await (supabase
+      .from('agendamentos')
+      .update({ status: 'cancelado' })
+      .eq('id', agendamento.id) as any);
+    if (error) return toast.error('Erro ao cancelar', { description: mensagemDeErro(error) });
+    toast.success('Consulta cancelada');
     queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
   };
 

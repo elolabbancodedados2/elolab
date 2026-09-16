@@ -218,6 +218,9 @@ export default function Automacoes() {
       const { data, error } = await supabase.functions.invoke(endpoint);
 
       if (error) throw error;
+      if (data?.error || data?.success === false) {
+        throw new Error(data.error || 'A automação foi recusada pelo servidor.');
+      }
 
       toast.success('Automação executada', { description: `A automação foi executada com sucesso.` });
       refetchLogs();

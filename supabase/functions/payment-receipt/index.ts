@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { cronForbidden, cronOrUserOk, clinicaDoChamador } from '../_shared/cronAuth.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -9,12 +10,15 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
+  if (req.method !== 'POST' || !cronOrUserOk(req)) return cronForbidden(corsHeaders)
 
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const brevoApiKey = Deno.env.get('BREVO_API_KEY')
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
+    const clinicaDoUsuario = await clinicaDoChamador(req, supabase)
+    if (!clinicaDoUsuario) return cronForbidden(corsHeaders)
 
     const { lancamento_id } = await req.json()
 
@@ -34,6 +38,7 @@ Deno.serve(async (req) => {
         pacientes!inner(nome, email)
       `)
       .eq('id', lancamento_id)
+      .eq('clinica_id', clinicaDoUsuario)
       .single()
 
     if (lancError || !lancamento) {
@@ -51,7 +56,10 @@ Deno.serve(async (req) => {
       )
     }
 
-    const paciente = lancamento.pacientes
+    const paciente = Array.isArray(lancamento.pacientes) ? lancamento.pacientes[0] : lancamento.pacientes
+    if (!paciente) {
+      return new Response(JSON.stringify({ success: true, message: 'Paciente não encontrado' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    }
     if (!paciente?.email) {
       return new Response(
         JSON.stringify({ success: true, message: 'Paciente sem email configurado' }),

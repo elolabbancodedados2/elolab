@@ -137,7 +137,11 @@ export default function AceitarConvite() {
         if (data && (data as any).success === false) throw new Error((data as any).error);
 
         // Faz login automático
-        await supabase.auth.signInWithPassword({ email: invitation.email, password });
+        const { error: signInError } = await supabase.auth.signInWithPassword({
+          email: invitation.email,
+          password,
+        });
+        if (signInError) throw signInError;
         toast.success('Conta criada! Redirecionando...');
         navigate('/dashboard');
         return;

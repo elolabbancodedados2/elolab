@@ -58,7 +58,7 @@ export function ErrorState({
           className
         )}
       >
-        <Icon className="h-5 w-5 text-destructive shrink-0" />
+        <Icon aria-hidden="true" className="h-5 w-5 text-destructive shrink-0" />
         <p className="text-sm text-foreground flex-1">{message}</p>
         {onRetry && (
           <Button size="sm" variant="outline" onClick={onRetry} className="shrink-0">
@@ -74,7 +74,7 @@ export function ErrorState({
     <Card role="alert" className={cn('p-8 md:p-12 animate-fade-in', className)}>
       <div className="flex flex-col items-center justify-center text-center space-y-5">
         <div className="h-16 w-16 rounded-2xl bg-destructive/10 flex items-center justify-center">
-          <Icon className="h-8 w-8 text-destructive" />
+          <Icon aria-hidden="true" className="h-8 w-8 text-destructive" />
         </div>
         <div className="space-y-2 max-w-md">
           <h2 className="text-lg font-semibold font-display">{title}</h2>

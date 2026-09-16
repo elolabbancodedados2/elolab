@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { checarRateLimit, clientIp } from "../_shared/rateLimit.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -8,11 +9,20 @@ const corsHeaders = {
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method !== "POST") return json({ success: false, error: "Método não permitido." }, 405);
 
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const service = createClient(supabaseUrl, serviceKey);
+
+    if (await checarRateLimit(service, {
+      chave: `accept-invite:${clientIp(req)}`,
+      limite: 20,
+      janelaSegundos: 60,
+    })) {
+      return json({ success: false, error: "Muitas tentativas. Aguarde alguns segundos." }, 429);
+    }
 
     const body = await req.json().catch(() => ({}));
     const action = String(body.action || "accept"); // "lookup" | "accept"
