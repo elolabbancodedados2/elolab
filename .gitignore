@@ -52,3 +52,7 @@ supabase/.temp/
 
 # Credenciais isoladas deste projeto (GitHub/Cloudflare). Nunca versionar.
 .project-auth/
+
+# Backups do banco (dados de pacientes) e instalador do Postgres local.
+# Nunca versionar: contém PHI e binários grandes.
+backups/
