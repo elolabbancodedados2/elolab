@@ -40,6 +40,7 @@ import { useUserPlan, usePlanos } from '@/hooks/useSubscriptionPlan';
 import { useNavigate } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
 import { abrirUrlSegura, checkoutUrlSeguro } from '@/lib/safeUrl';
+import { clearClinicaInfoCache } from '@/lib/pdfGenerator';
 
 
 
@@ -478,6 +479,7 @@ export default function Configuracoes() {
           { onConflict: 'user_id,chave' }
         );
       if (error) throw error;
+      if (chave === 'config_clinica') clearClinicaInfoCache();
       setIsCloudSynced(true);
       toast.success(`${label} salvas na nuvem!`);
     } catch (error: any) {

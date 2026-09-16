@@ -57,6 +57,11 @@ const DEFAULT_CLINICA: ClinicaInfo = {
 let _cachedClinica: ClinicaInfo | null = null;
 let _cacheTime = 0;
 
+export function clearClinicaInfoCache() {
+  _cachedClinica = null;
+  _cacheTime = 0;
+}
+
 export async function getClinicaInfo(): Promise<ClinicaInfo> {
   // Cache for 5 minutes
   if (_cachedClinica && Date.now() - _cacheTime < 5 * 60 * 1000) {
@@ -67,19 +72,21 @@ export async function getClinicaInfo(): Promise<ClinicaInfo> {
     const { data: configs } = await supabase
       .from('configuracoes_clinica')
       .select('chave, valor')
-      .in('chave', ['clinica_info', 'clinica_logo']);
+      .in('chave', ['clinica_info', 'clinica_logo', 'config_clinica']);
 
     if (configs && configs.length > 0) {
       const infoConfig = configs.find(c => c.chave === 'clinica_info');
       const logoConfig = configs.find(c => c.chave === 'clinica_logo');
+      const clinicConfig = configs.find(c => c.chave === 'config_clinica');
       
       const info = infoConfig?.valor as any;
+      const clinic = clinicConfig?.valor as any;
       _cachedClinica = {
-        nome: info?.nome || DEFAULT_CLINICA.nome,
-        endereco: info?.endereco || DEFAULT_CLINICA.endereco,
-        telefone: info?.telefone || DEFAULT_CLINICA.telefone,
-        cnpj: info?.cnpj || DEFAULT_CLINICA.cnpj,
-        logoUrl: (logoConfig?.valor as any)?.url || info?.logoUrl || undefined,
+        nome: clinic?.nomeClinica || info?.nome || DEFAULT_CLINICA.nome,
+        endereco: clinic?.endereco || info?.endereco || DEFAULT_CLINICA.endereco,
+        telefone: clinic?.telefone || info?.telefone || DEFAULT_CLINICA.telefone,
+        cnpj: clinic?.cnpj || info?.cnpj || DEFAULT_CLINICA.cnpj,
+        logoUrl: clinic?.logoUrl || (logoConfig?.valor as any)?.url || info?.logoUrl || undefined,
       };
     } else {
       _cachedClinica = { ...DEFAULT_CLINICA };

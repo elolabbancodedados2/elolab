@@ -29,6 +29,23 @@ import { consolidateAlerts, ClinicalAlert } from '@/lib/clinicalAlerts';
 import { parseDateOnly } from '@/lib/dateOnly';
 import { LoadingButton } from '@/components/ui/loading-button';
 
+async function imageToDataUrl(url?: string): Promise<string | null> {
+  if (!url) return null;
+  try {
+    const response = await fetch(url);
+    if (!response.ok) return null;
+    const blob = await response.blob();
+    return await new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : null);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return null;
+  }
+}
+
 /* ─── PDF Builder ─── */
 async function buildReceitaPdf(data: {
   pacienteNome: string;
@@ -42,6 +59,13 @@ async function buildReceitaPdf(data: {
   clinicaEndereco?: string;
   clinicaTelefone?: string;
   clinicaCnpj?: string;
+  clinicaCnes?: string;
+  logoUrl?: string;
+  cabecalhoReceita?: string;
+  rodapeReceita?: string;
+  mostrarLogo?: boolean;
+  mostrarCRM?: boolean;
+  mostrarCNES?: boolean;
 }): Promise<jsPDF> {
   // Carrega as ~660 KB do jsPDF só quando o médico gera a receita,
   // em vez de ao abrir a tela.
@@ -49,6 +73,11 @@ async function buildReceitaPdf(data: {
   const doc = new JsPDF({ unit: 'mm', format: 'a4' });
   const w = 210;
   const margin = 20;
+
+  const logoDataUrl = data.mostrarLogo === false ? null : await imageToDataUrl(data.logoUrl);
+  if (logoDataUrl) {
+    try { doc.addImage(logoDataUrl, 'PNG', margin, 14, 24, 24, undefined, 'FAST'); } catch { /* logo opcional */ }
+  }
 
   // ── Border ──
   doc.setDrawColor(0, 102, 204);
@@ -64,6 +93,9 @@ async function buildReceitaPdf(data: {
   doc.setTextColor(120);
   doc.text(data.clinicaEndereco || 'Endereço da clínica', w / 2, 31, { align: 'center' });
   doc.text(`Tel: ${data.clinicaTelefone || '(00) 0000-0000'} | CNPJ: ${data.clinicaCnpj || '00.000.000/0001-00'}`, w / 2, 36, { align: 'center' });
+  if (data.mostrarCNES && data.clinicaCnes) {
+    doc.text(`CNES: ${data.clinicaCnes}`, w / 2, 40, { align: 'center' });
+  }
 
   doc.setDrawColor(0, 102, 204);
   doc.setLineWidth(0.4);
@@ -141,6 +173,10 @@ async function buildReceitaPdf(data: {
   const footerY = 280;
   doc.setFontSize(7);
   doc.setTextColor(130);
+  if (data.rodapeReceita?.trim()) {
+    const customFooter = doc.splitTextToSize(data.rodapeReceita.trim(), w - margin * 2).slice(0, 2);
+    customFooter.forEach((line: string, index: number) => doc.text(line, w / 2, footerY - 8 + index * 3, { align: 'center' }));
+  }
   doc.text(
     'Documento sem assinatura digital. Assine no portal gov.br ou de próprio punho para ter validade.',
     w / 2, footerY, { align: 'center' },
@@ -175,12 +211,13 @@ export default function Prescricoes() {
         .from('configuracoes_clinica')
         .select('chave, valor')
         .eq('clinica_id', profile.clinica_id)
-        .in('chave', ['config_clinica', 'clinica_info'])
+        .in('chave', ['config_clinica', 'clinica_info', 'config_impressao'])
         .limit(10);
 
       const configRows = data ?? [];
       const configClinica = configRows.find((row) => row.chave === 'config_clinica')?.valor as Record<string, string> | undefined;
       const clinicaInfo = configRows.find((row) => row.chave === 'clinica_info')?.valor as Record<string, string> | undefined;
+      const impressao = configRows.find((row) => row.chave === 'config_impressao')?.valor as Record<string, any> | undefined;
 
       return {
         nome_fantasia: configClinica?.nomeClinica || clinicaInfo?.nome || 'Clínica Médica',
@@ -189,6 +226,13 @@ export default function Prescricoes() {
         uf: configClinica?.estado || clinicaInfo?.uf || '',
         telefone: configClinica?.telefone || clinicaInfo?.telefone || '(00) 0000-0000',
         cnpj: configClinica?.cnpj || clinicaInfo?.cnpj || '00.000.000/0001-00',
+        cnes: configClinica?.cnes || '',
+        logoUrl: configClinica?.logoUrl || '',
+        cabecalhoReceita: impressao?.cabecalhoReceita || '',
+        rodapeReceita: impressao?.rodapeReceita || '',
+        mostrarLogo: impressao?.mostrarLogo !== false,
+        mostrarCRM: impressao?.mostrarCRM !== false,
+        mostrarCNES: impressao?.mostrarCNES === true,
       };
     },
     enabled: !!profile?.clinica_id,
@@ -352,6 +396,13 @@ export default function Prescricoes() {
       clinicaEndereco: clinicConfig ? `${clinicConfig.endereco || ''} — ${clinicConfig.cidade || ''}/${clinicConfig.uf || ''}` : 'Endereço da clínica',
       clinicaTelefone: clinicConfig?.telefone || '(00) 0000-0000',
       clinicaCnpj: clinicConfig?.cnpj || '00.000.000/0001-00',
+      clinicaCnes: clinicConfig?.cnes || '',
+      logoUrl: clinicConfig?.logoUrl || '',
+      cabecalhoReceita: clinicConfig?.cabecalhoReceita || '',
+      rodapeReceita: clinicConfig?.rodapeReceita || '',
+      mostrarLogo: clinicConfig?.mostrarLogo,
+      mostrarCRM: clinicConfig?.mostrarCRM,
+      mostrarCNES: clinicConfig?.mostrarCNES,
     });
 
     const blob = doc.output('blob');
