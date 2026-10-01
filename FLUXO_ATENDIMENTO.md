@@ -1,265 +1,98 @@
-# 📋 Fluxo Completo de Atendimento - EloLab
+# Fluxo de Atendimento — EloLab
 
-## 🚀 5 Passos do Atendimento
+> Este documento descreve o fluxo **implementado e ativo** no código. O fluxo
+> antigo (pagamento após a consulta, status `pagamento_confirmado`) foi
+> substituído pelo pagamento antecipado; este arquivo é a fonte atual.
+
+## Visão geral
+
+O pagamento acontece **antes** da consulta. Cada transição relevante é feita por
+RPC atômica no banco (`realizar_checkin`, `registrar_pagamento`,
+`iniciar_atendimento_atomico`, `finalizar_atendimento_atomico`) — idempotentes e
+com `FOR UPDATE`, para que clique duplo, refresh no meio ou duas recepcionistas
+simultâneas não corrompam o estado.
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│  PACIENTE CHEGA NA CLÍNICA                                      │
-└─────────────────────────────────────────────────────────────────┘
-                           ↓
-┌─────────────────────────────────────────────────────────────────┐
-│  PASSO 1: CHECK-IN ✅ (Recepção)                               │
-│  • Receptionist registra chegada do paciente                    │
-│  • Sistema add paciente à fila                                  │
-│  • Paciente recebe número (posição na fila)                     │
-│  • Mostra no painel quando é a vez                              │
-└─────────────────────────────────────────────────────────────────┘
-                           ↓
-         Paciente vê no PAINEL TV: "Maria, dirija-se ao balcão"
-                           ↓
-┌─────────────────────────────────────────────────────────────────┐
-│  PASSO 2: BALCÃO / PAGAMENTO 💳 (Caixa)                         │
-│  • Receptionist chama paciente ao balcão                        │
-│  • Confirma dados e tipo de serviço                             │
-│  • Registra forma de pagamento                                  │
-│  • Gera RECIBO (impresso ou PDF)                                │
-│  • Registra lançamento em Lancamentos                           │
-│  • Status muda para "PAGAMENTO CONFIRMADO"                      │
-└─────────────────────────────────────────────────────────────────┘
-                           ↓
-       Sistema chama automaticamente: "Maria, dirija-se à Sala 1"
-                           ↓
-┌─────────────────────────────────────────────────────────────────┐
-│  PASSO 3: CHAMADA PARA SALA DE ATENDIMENTO 🏥                  │
-│  • Painel TV: "MARIA - SALA 1"                                 │
-│  • Som de alerta/campainha                                      │
-│  • Luz pisca acima da porta da sala                             │
-│  • Médico/Enfermeiro aguarda                                    │
-│  • Status muda para "EM ATENDIMENTO"                            │
-└─────────────────────────────────────────────────────────────────┘
-                           ↓
-        Médico realiza atendimento/consulta
-                           ↓
-┌─────────────────────────────────────────────────────────────────┐
-│  PASSO 4: FINALIZADO 📝 (Sala de Atendimento)                  │
-│  • Médico finaliza atendimento                                  │
-│  • Registra observações/prescrição se necessário                │
-│  • Clica "Finalizar Atendimento"                                │
-│  • Sistema registra: hora fim, duração, observações             │
-│  • Status muda para "FINALIZADO"                                │
-└─────────────────────────────────────────────────────────────────┘
-                           ↓
-        Sistema registra encerramento no banco
-                           ↓
-┌─────────────────────────────────────────────────────────────────┐
-│  PASSO 5: CONCLUÍDO / SAÍDA 👋                                  │
-│  • Paciente liberado                                            │
-│  • Removido da fila                                             │
-│  • Se necessário: agendamento de retorno                        │
-│  • Feedback/avaliação (opcional)                                │
-└─────────────────────────────────────────────────────────────────┘
+PACIENTE CHEGA
+      │
+      ├─ tem agendamento ──────────────┐
+      │                                ▼
+      │   PASSO 1 — CHECK-IN (Recepção)
+      │   • RPC realizar_checkin: fila_atendimento('aguardando') +
+      │     agendamento → 'aguardando' e prioridade da fila, na mesma transação
+      │   • cria a cobrança pendente (preço do tipo de consulta/exame)
+      │   • Recepção, Fila e Agenda compartilham a confirmação da cobrança;
+      │     se uma nova cobrança falhar, o check-in é desfeito
+      │   • requer caixa aberto
+      │
+      └─ sem agendamento ── ENCAIXE (Recepção)
+          • "Encaixe sem agendamento": busca o paciente, médico e tipo,
+            cria a consulta de hoje/agora e faz o check-in na sequência
+
+      ▼
+PASSO 2 — BALCÃO / PAGAMENTO (Recepção)
+  • RPC registrar_pagamento: transação única, idempotente por tentativa
+  • Valor / Já pago / Saldo na tela; pagamento dividido e parcial aceitos
+  • Parcial NÃO libera a consulta: o saldo fica visível
+  • "Chamar ao Balcão" grava status 'chamado' na fila → o Painel TV
+    anuncia na sala de espera (chime + voz)
+  • Quitado → agendamento 'pago'
+      ▼
+[TRIAGEM — opcional por clínica, desligada por padrão]
+  • clinicas.exigir_triagem;Manchester com prazo-alvo visível (30 min...)
+  • urgente entra no topo da fila; trigger exige triagem antes do atendimento
+      ▼
+PASSO 3 — FILA DO PROFISSIONAL (Fila de Atendimento)
+  • Quem deve/pede triagem aparece em seção própria com o motivo — não some
+  • Chamar → grava status 'chamado' + sala_id (do agendamento) →
+    Painel TV anuncia "Maria S., dirija-se à Sala 1"
+  • Iniciar → RPC iniciar_atendimento_atomico → 'em_atendimento'
+  • EMERGÊNCIA COM SALDO? "Liberar" com justificativa obrigatória
+    (grava liberado_sem_pagamento com autor e horário)
+      ▼
+PASSO 4 — ATENDIMENTO (Prontuários)
+  • SOAP, CID-10, prescrição, procedimentos
+  • Procedimento lançado na consulta vira item da conta; se a clínica usa a
+    trava, o fechamento deixa saldo a cobrar no balcão
+      ▼
+PASSO 5 — FINALIZAÇÃO (com pergunta de retorno)
+  • RPC finalizar_atendimento_atomico: faturamento + fila + retorno
+    na MESMA transação
+  • "Este paciente volta?" — perguntado em TODAS as vias de finalização:
+    Fila, Recepção, Agenda e AtendimentosEmAberto
+      ▼
+PASSO 6 — PÓS-CONSULTA (Balcão / Recepção)
+  • Saldo adicional, reagendamento, retorno, exames, prontuário
+  • "Concluir" encerra o ciclo (fila → 'concluido')
 ```
 
----
+## Responsabilidades por tela
 
-## 🎯 Responsabilidades por Tela
+| Tela | Papel |
+|---|---|
+| **Recepção** | Check-in, encaixe sem agendamento, pagamento, chamar ao balcão, pós-consulta, concluir |
+| **Fila de Atendimento** | Visão do profissional: chamar, iniciar, finalizar (com retorno), liberar com justificativa |
+| **Triagem** | Sinais vitais, Manchester, IMC — quando a clínica ligar |
+| **Painel TV** | Chamadas em tempo real (nome reduzido — LGPD), fila de espera, mídia institucional |
+| **Agenda** | Criar/reagendar/cancelar (cancelar remove a fila), iniciar e finalizar pela via da agenda |
+| **Retornos** | KPIs, agendar/remarcar/realizar (com confirmação e reabertura), lembretes 7 e 1 dia antes |
 
-### **1. RECEPCAO.tsx** (Check-in & Balcão)
-```
-├─ Check-in
-│  ├─ Pesquisar paciente por nome/CPF
-│  ├─ Confirmar agendamento
-│  └─ ADD à fila de atendimento
-│
-├─ Balcão (Pagamento)
-│  ├─ Listar pacientes aguardando pagamento
-│  ├─ Confirmar forma de pagamento
-│  ├─ Gerar recibo
-│  └─ Liberar para atendimento
-│
-└─ Fila Visual
-   ├─ Mostrar posição na fila
-   ├─ Tempo de espera
-   └─ Status do paciente
-```
+## Estados do agendamento (produzidos pelo fluxo)
 
-### **2. PAINEL TV** (Chamadas)
-```
-├─ Mostra em tempo real:
-│  ├─ Próximo paciente a chamar
-│  ├─ Sala designada
-│  ├─ Nome e número
-│  └─ Efeito sonoro/visual
-│
-└─ Atualiza automaticamente cada 10s
-```
+`agendado → confirmado → aguardando (check-in) → pago → em_atendimento →
+finalizado → (concluido na fila)` · cancelado / faltou por desistência ·
+`aguardando_pagamento_adicional` quando a trava está ligada e ficou saldo —
+pagar o adicional devolve o agendamento a `finalizado`.
 
-### **3. FILA.tsx** (Gerenciamento)
-```
-├─ Visualizar toda fila
-├─ Chamar paciente para:
-│  ├─ Balcão (se não pagou)
-│  └─ Sala (se pagou)
-├─ Iniciar atendimento
-├─ Finalizar atendimento
-└─ Remover da fila (se necessário)
-```
+## Liberação excepcional (trava ligada)
 
-### **4. SALA DE ATENDIMENTO** (Consulta/Atendimento)
-```
-├─ Médico vê paciente
-├─ Registra:
-│  ├─ Queixa/sintomas
-│  ├─ Observações
-│  ├─ Prescrição
-│  └─ Próximos passos
-│
-└─ Clica "Finalizar Atendimento"
-```
+Emergência sem pagamento ou sem triagem: botão **Liberar** na seção
+correspondente da Fila, com justificativa obrigatória (mín. 5 caracteres).
+Fica registrado quem liberou, quando e por quê — o banco exige
+(migration 20260814210000).
 
----
+## Configuração
 
-## 💾 Registros Criados em Cada Passo
-
-### **Passo 1: CHECK-IN**
-```sql
-INSERT INTO fila_atendimento (
-  agendamento_id, paciente_id, status, posicao, criado_em
-) VALUES (...)
--- Status: 'aguardando'
-```
-
-### **Passo 2: PAGAMENTO**
-```sql
-INSERT INTO lancamentos (
-  paciente_id, descricao, valor, forma_pagamento, status
-) VALUES (...)
--- Cria recibo PDF
--- Atualiza fila_atendimento status para 'pagamento_confirmado'
-```
-
-### **Passo 3: CHAMADA PARA SALA**
-```sql
-UPDATE fila_atendimento SET 
-  sala_id = '...', 
-  status = 'em_atendimento',
-  hora_chamada = now()
-WHERE id = '...'
-```
-
-### **Passo 4: FINALIZADO**
-```sql
-UPDATE fila_atendimento SET 
-  status = 'finalizado',
-  hora_finalizacao = now(),
-  duracao_minutos = (now() - hora_inicio)
-WHERE id = '...'
-
-INSERT INTO prontuario_consulta (
-  paciente_id, medico_id, observacoes, ...
-) VALUES (...)
-```
-
----
-
-## 🔄 Automações Ativas
-
-### 1. **Auto Check-in** (Se agendado)
-```
-Quando paciente clica "Cheguei" no portal
-→ Sistema faz check-in automático
-→ Add à fila
-```
-
-### 2. **Auto Pagamento** 
-```
-Quando pagamento confirmado
-→ Status muda automaticamente
-→ Paciente chamado para sala
-```
-
-### 3. **Auto Chamada Painel**
-```
-Status = 'pagamento_confirmado'
-→ Painel exibe nome + sala
-→ Toca alerta sonoro
-→ Blink luz da sala
-```
-
-### 4. **Auto Registro Prontuário**
-```
-Quando atendimento finalizado
-→ Salva automaticamente no prontuário
-→ Cria registro de consulta
-→ Calcula duração
-```
-
----
-
-## 📊 Visualização em Tempo Real
-
-### **Painel TV (PainelTV.tsx)**
-```
-┌────────────────────────────────────┐
-│                                    │
-│    PRÓXIMA CHAMADA:                │
-│    ┌──────────────────────────┐   │
-│    │                          │   │
-│    │    MARIA DOS SANTOS      │   │
-│    │    SALA 1                │   │
-│    │                          │   │
-│    └──────────────────────────┘   │
-│                                    │
-│    ⏱️  Tempo de espera: 12 min      │
-│    👥 Fila: 3 pessoas antes        │
-│                                    │
-└────────────────────────────────────┘
-```
-
-### **Dashboard (Dashboard.tsx)**
-```
-┌─ Resumo do Dia
-├─ Total check-ins: 24
-├─ Aguardando pagamento: 3
-├─ Em atendimento: 2
-├─ Finalizados: 19
-└─ Tempo médio espera: 18min
-```
-
----
-
-## ⚙️ Configurações Necessárias
-
-### **Salas** (Configuracoes.tsx)
-- Nome: "Sala 1", "Sala 2", etc
-- Tipo: Consulta, Triagem, Procedimento
-- Equipamentos (opcional)
-
-### **Painel TV** (PainelTV.tsx)
-- URL: `http://clinica-ip:3000/painel-tv`
-- Tamanho full-screen
-- Atualização automática
-- Alerta sonoro (opcional)
-
----
-
-## 🎙️ Voz de Chamada
-
-Sistema usa síntese de voz para chamar:
-```
-"Paciente Maria dos Santos, por favor dirija-se à Sala 1"
-```
-
-Pode ser customizado em `Fila.tsx` função `chamarPacienteVoz()`
-
----
-
-## 📈 KPIs Rastreados
-
-- ⏱️ Tempo médio de espera
-- 🏥 Ocupação de salas
-- 👥 Taxa de no-show
-- 💰 Total coletado
-- 📊 Tempo médio de atendimento por médico
-- 🎯 Satisfação do paciente
-
+**Configurações → Fluxo do Atendimento** (somente o titular da conta):
+- `exigir_pagamento_previo` — trava de pagamento antes da consulta
+- `exigir_triagem` — triagem obrigatória entre balcão e fila

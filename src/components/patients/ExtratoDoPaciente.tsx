@@ -22,6 +22,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { supabase } from '@/integrations/supabase/client';
 import { formatCurrency } from '@/lib/formatters';
 import { saldoDevedor } from '@/lib/liberacaoAtendimento';
+import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 
 interface Props {
   pacienteId: string;
@@ -56,13 +57,14 @@ function faltaNesta(c: Cobranca): number {
 }
 
 export function ExtratoDoPaciente({ pacienteId }: Props) {
+  const { user, profile } = useSupabaseAuth();
   // Uma cobrança por vez: abrir todas encheria a ficha de detalhe que ninguém
   // pediu.
   const [aberta, setAberta] = useState<string | null>(null);
 
   const { data: cobrancas = [], isLoading, error } = useQuery({
-    queryKey: ['extrato-paciente', pacienteId],
-    enabled: !!pacienteId,
+    queryKey: ['extrato-paciente', user?.id ?? null, profile?.clinica_id ?? null, pacienteId],
+    enabled: !!pacienteId && !!user && !!profile?.clinica_id,
     queryFn: async (): Promise<Cobranca[]> => {
       const { data, error } = await supabase
         .from('lancamentos')

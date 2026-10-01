@@ -1,6 +1,10 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { corsPadrao } from '../_shared/cors.ts';
 
-const cors = { 'Access-Control-Allow-Origin':'*', 'Access-Control-Allow-Headers':'authorization, apikey, content-type, x-client-info' }
+// Atribuído em cada request (reflete a origem permitida). Helpers
+// top-level (json/reply) capturam esta variável por closure.
+let cors: Record<string, string> = {};
+
 const json = (body:unknown,status=200) => new Response(JSON.stringify(body),{status,headers:{...cors,'Content-Type':'application/json'}})
 type Check = { id:string; nome:string; status:'ok'|'warning'|'error'; detalhe:string; latencia_ms?:number }
 
@@ -13,6 +17,7 @@ async function external(id:string,nome:string,url:string,headers:Record<string,s
 }
 
 Deno.serve(async req=>{
+  cors = { ...corsPadrao(req),};
   if(req.method==='OPTIONS') return new Response('ok',{headers:cors})
   const auth=req.headers.get('authorization'); if(!auth) return json({error:'Sessão obrigatória'},401)
   const url=Deno.env.get('SUPABASE_URL')!, anon=Deno.env.get('SUPABASE_ANON_KEY')!, serviceKey=Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!

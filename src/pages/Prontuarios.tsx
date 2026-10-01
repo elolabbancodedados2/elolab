@@ -1,3 +1,4 @@
+import { nomeMedico } from '@/lib/formatters';
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -44,6 +45,7 @@ import { parseDateOnly, todayDateOnly } from '@/lib/dateOnly';
 import { pacienteCorresponde } from '@/lib/buscaPaciente';
 import { useSearchParams } from 'react-router-dom';
 import { logAudit } from '@/lib/auditTrail';
+import { UnsavedChangesDialog } from '@/components/ConfirmDialog';
 
 // ─── Types ─────────────────────────────────────────────────
 interface PrescricaoForm {
@@ -559,7 +561,7 @@ export default function Prontuarios() {
       if (!active) return;
       if (error) {
         setHistoricoEvolucoes([]);
-        toast.error('NÃ£o foi possÃ­vel carregar o histÃ³rico clÃ­nico.', { description: error.message });
+        toast.error('Não foi possível carregar o histórico clínico.', { description: error.message });
       } else {
         setHistoricoEvolucoes(data ?? []);
       }
@@ -973,11 +975,22 @@ export default function Prontuarios() {
     }
   };
 
+  // Trava de duplo clique no salvar: sem ela, dois cliques rápidos inseriam a
+  // evolução duas vezes (o id só é conhecido depois do primeiro insert).
+  const [salvandoProntuario, setSalvandoProntuario] = useState(false);
+  /** Confirmação antes de descartar a evolução não salva. */
+  const [perguntandoDescartar, setPerguntandoDescartar] = useState(false);
   const handleSave = async () => {
-    const id = await performSave(false);
-    if (id) {
-      setIsProntuarioOpen(false);
-      toast.success('Prontuário salvo', { description: 'Registro salvo com sucesso.' });
+    if (salvandoProntuario) return;
+    setSalvandoProntuario(true);
+    try {
+      const id = await performSave(false);
+      if (id) {
+        setIsProntuarioOpen(false);
+        toast.success('Prontuário salvo', { description: 'Registro salvo com sucesso.' });
+      }
+    } finally {
+      setSalvandoProntuario(false);
     }
   };
 
@@ -1010,7 +1023,12 @@ export default function Prontuarios() {
   }, [hasUnsavedChanges]);
 
   const handleProntuarioOpenChange = (open: boolean) => {
-    if (!open && hasUnsavedChanges && !window.confirm('Há alterações ainda não salvas. Deseja fechar e descartá-las?')) return;
+    // Confirmação visual no lugar do window.confirm nativo — o mesmo padrão do
+    // resto do app, acessível com teclado e leitor de tela.
+    if (!open && hasUnsavedChanges) {
+      setPerguntandoDescartar(true);
+      return;
+    }
     setIsProntuarioOpen(open);
   };
 
@@ -1458,7 +1476,7 @@ export default function Prontuarios() {
           <ScrollArea className="flex-1 pr-4">
             <fieldset disabled={isReadOnly} className="contents">
               <Tabs defaultValue="anamnese" className="w-full">
-                <TabsList className="grid w-full grid-cols-9 mb-3 h-auto p-0.5 bg-muted/40 rounded-xl">
+                <TabsList className="mb-3 flex h-auto w-full justify-start gap-0.5 overflow-x-auto rounded-xl bg-muted/40 p-0.5">
                   {[
                     { val: 'anamnese', icon: ClipboardList, label: 'Anamnese' },
                     { val: 'exame', icon: Stethoscope, label: 'Exame' },
@@ -1470,8 +1488,8 @@ export default function Prontuarios() {
             { val: 'adendos', icon: ScrollText, label: 'Adendos' },
                     { val: 'auditoria', icon: Shield, label: 'Auditoria' },
                   ].map(t => (
-                    <TabsTrigger key={t.val} value={t.val} className="text-[10px] gap-1 rounded-lg py-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm">
-                      <t.icon className="h-3 w-3" />{t.label}
+                    <TabsTrigger key={t.val} value={t.val} className="shrink-0 gap-1.5 rounded-lg px-3 py-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm">
+                      <t.icon className="h-3.5 w-3.5" />{t.label}
                     </TabsTrigger>
                   ))}
                 </TabsList>
@@ -1731,7 +1749,7 @@ export default function Prontuarios() {
                               <Badge className="bg-primary/10 text-primary border-primary/20 text-[10px] font-bold px-1.5 py-0">
                                 {format(parseDateOnly(ev.data)!, 'dd/MM/yyyy', { locale: ptBR })}
                               </Badge>
-                              {ev.medicos && <span className="text-[10px] text-muted-foreground">Dr(a). {ev.medicos.nome || ev.medicos.crm}</span>}
+                              {ev.medicos && <span className="text-[10px] text-muted-foreground">{nomeMedico(ev.medicos.nome || ev.medicos.crm)}</span>}
                               {ev.diagnostico_principal && <Badge variant="secondary" className="text-[9px] px-1.5 py-0">{ev.diagnostico_principal}</Badge>}
                             </div>
                             <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/40 group-hover:text-primary transition-colors flex-shrink-0" />
@@ -1834,9 +1852,20 @@ export default function Prontuarios() {
                 </Button>
                 <Button variant="outline" onClick={() => setIsProntuarioOpen(false)} size="sm" className="rounded-xl text-xs">Cancelar</Button>
                 {!isReadOnly && (
-                  <Button onClick={handleSave} size="sm" className="gap-1.5 rounded-xl text-xs"><Save className="h-3.5 w-3.5" />Salvar Prontuário</Button>
+                  <Button onClick={handleSave} size="sm" className="gap-1.5 rounded-xl text-xs" disabled={salvandoProntuario}><Save className="h-3.5 w-3.5" />Salvar Prontuário</Button>
                 )}
               </div>
+
+              {/* Confirmação antes de fechar com evolução não salva — antes
+                  era um window.confirm nativo, fora do padrão do app. */}
+              <UnsavedChangesDialog
+                open={perguntandoDescartar}
+                onOpenChange={(o) => { if (!o) setPerguntandoDescartar(false); }}
+                onConfirm={() => {
+                  setPerguntandoDescartar(false);
+                  setIsProntuarioOpen(false);
+                }}
+              />
             </div>
           </DialogFooter>
         </DialogContent>

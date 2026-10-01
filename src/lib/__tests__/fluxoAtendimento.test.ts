@@ -44,7 +44,9 @@ function criarSupabaseMock(respostas: Record<string, any>) {
       }),
       rpc: (nome: string, payload: any) => {
         chamadas.push({ tabela: `rpc:${nome}`, op: 'call', payload });
-        return Promise.resolve(respostas[`rpc.${nome}`] ?? { data: null, error: null });
+        return Promise.resolve(respostas[`rpc.${nome}`] ?? (nome === 'criar_cobranca_checkin_atomica'
+          ? { data: 'created', error: null }
+          : { data: null, error: null }));
       },
     },
   };
@@ -170,6 +172,54 @@ describe('faturamento automático — uma cobrança por agendamento', () => {
     expect(mockAtual.chamadas.some(c => c.tabela === 'lancamentos' && c.op === 'insert')).toBe(false);
   });
 
+  it('não permite reutilizar uma cobrança cancelada como cobrança válida', async () => {
+    mockAtual = criarSupabaseMock({
+      'lancamentos.select': { data: [{ id: 'lanc-cancelado', valor: 100, status: 'cancelado' }], error: null },
+    });
+    const { createAutoBillingDetailed } = await import('@/lib/autoBilling');
+
+    await expect(createAutoBillingDetailed({
+      agendamentoId: 'ag-1', pacienteId: 'pac-1', pacienteNome: 'Maria',
+      tipoConsulta: 'Consulta', data: '2026-08-14', clinicaId: 'cli-1',
+    })).rejects.toThrow(/cobrança anterior.*cancelada ou estornada/i);
+  });
+
+  it('repara exame legado pela RPC protegida e confirma a linha alterada', async () => {
+    mockAtual = criarSupabaseMock({
+      'lancamentos.select': { data: [{ id: 'lanc-zero', valor: 0, categoria: 'exame', status: 'pendente' }], error: null },
+      'configuracoes_clinica.select': {
+        data: [{ valor: [{ nome: 'Hemograma completo', valor: 89.9 }] }], error: null,
+      },
+      'rpc.reparar_cobranca_exame_atomica': { data: true, error: null },
+    });
+
+    const { createAutoBillingDetailed } = await import('@/lib/autoBilling');
+    const result = await createAutoBillingDetailed({
+      agendamentoId: 'ag-1', pacienteId: 'pac-1', pacienteNome: 'Maria',
+      tipoConsulta: 'exame', tipoExame: 'Hemograma completo', clinicaId: 'cli-1',
+    });
+
+    expect(result).toBe('repaired');
+    expect(mockAtual.chamadas.find(c => c.tabela === 'rpc:reparar_cobranca_exame_atomica')?.payload)
+      .toMatchObject({ p_lancamento_id: 'lanc-zero', p_clinica_id: 'cli-1', p_valor: 89.9 });
+  });
+
+  it('não relata exame legado corrigido se a RPC não alterou nenhuma cobrança', async () => {
+    mockAtual = criarSupabaseMock({
+      'lancamentos.select': { data: [{ id: 'lanc-zero', valor: 0, categoria: 'exame', status: 'pendente' }], error: null },
+      'configuracoes_clinica.select': {
+        data: [{ valor: [{ nome: 'Hemograma completo', valor: 89.9 }] }], error: null,
+      },
+      'rpc.reparar_cobranca_exame_atomica': { data: false, error: null },
+    });
+
+    const { createAutoBillingDetailed } = await import('@/lib/autoBilling');
+    await expect(createAutoBillingDetailed({
+      agendamentoId: 'ag-1', pacienteId: 'pac-1', pacienteNome: 'Maria',
+      tipoConsulta: 'exame', tipoExame: 'Hemograma completo', clinicaId: 'cli-1',
+    })).rejects.toThrow(/cobrança do exame mudou ou não pode ser corrigida/i);
+  });
+
   it('perder a corrida para outro atendente (23505) não é tratado como erro', async () => {
     // Dois atendentes fazendo check-in ao mesmo tempo: os dois consultam, os
     // dois não acham nada, e os dois inserem. O índice único
@@ -178,7 +228,7 @@ describe('faturamento automático — uma cobrança por agendamento', () => {
     mockAtual = criarSupabaseMock({
       'lancamentos.select': { data: [], error: null },
       'tipos_consulta.select': { data: { id: 'tipo-1', nome: 'Consulta', valor_particular: 100 }, error: null },
-      'lancamentos.insert': { data: null, error: { code: '23505', message: 'duplicate key' } },
+      'rpc.criar_cobranca_checkin_atomica': { data: 'already_exists', error: null },
     });
 
     const { createAutoBilling } = await import('@/lib/autoBilling');
@@ -205,12 +255,14 @@ describe('faturamento automático — uma cobrança por agendamento', () => {
       'tipos_consulta.select': { data: { id: 't-retorno', nome: 'Retorno', valor_particular: 0 }, error: null },
     });
 
-    const { createAutoBilling } = await import('@/lib/autoBilling');
-    const criou = await createAutoBilling({
+    const { createAutoBilling, createAutoBillingDetailed } = await import('@/lib/autoBilling');
+    const params = {
       agendamentoId: 'ag-1', pacienteId: 'pac-1', pacienteNome: 'Maria',
       tipoConsulta: 'retorno', data: '2026-08-14', clinicaId: 'cli-1',
-    });
+    };
 
+    expect(await createAutoBillingDetailed(params)).toBe('free');
+    const criou = await createAutoBilling(params);
     expect(criou).toBe(false);
     expect(
       mockAtual.chamadas.some(c => c.tabela === 'lancamentos' && c.op === 'insert'),
@@ -284,8 +336,8 @@ describe('faturamento automático — uma cobrança por agendamento', () => {
     });
 
     expect(criou).toBe(true);
-    const insercao = mockAtual.chamadas.find(c => c.tabela === 'lancamentos' && c.op === 'insert');
-    expect(insercao?.payload).toMatchObject({ categoria: 'exame', valor: 89.9 });
+    const insercao = mockAtual.chamadas.find(c => c.tabela === 'rpc:criar_cobranca_checkin_atomica' && c.op === 'call');
+    expect(insercao?.payload).toMatchObject({ p_categoria: 'exame', p_valor: 89.9 });
   });
 
   it('recusa exame sem preço em vez de enviar R$ 0,00 ao balcão', async () => {
@@ -331,8 +383,8 @@ describe('faturamento automático — uma cobrança por agendamento', () => {
     });
 
     expect(criou).toBe(true);
-    const insercao = mockAtual.chamadas.find(c => c.tabela === 'lancamentos' && c.op === 'insert');
-    expect(insercao?.payload).toMatchObject({ categoria: 'exame', valor: 75 });
+    const insercao = mockAtual.chamadas.find(c => c.tabela === 'rpc:criar_cobranca_checkin_atomica' && c.op === 'call');
+    expect(insercao?.payload).toMatchObject({ p_categoria: 'exame', p_valor: 75 });
   });
 
   it('recusa consulta sem preço em vez de criar lançamento zerado', async () => {
@@ -394,6 +446,53 @@ describe('finalizacao - retorno e estados operacionais', () => {
     expect(mockAtual.chamadas.some(c => c.tabela === 'agendamentos' && c.op === 'update')).toBe(false);
     expect(mockAtual.chamadas.some(c => c.tabela === 'fila_atendimento' && c.op === 'update')).toBe(false);
     expect(mockAtual.chamadas.some(c => c.tabela === 'retornos' && c.op === 'insert')).toBe(false);
+  });
+
+  it('escapes the patient name in the completion email and includes clinic scope', async () => {
+    mockAtual = criarSupabaseMock({
+      'rpc.finalizar_atendimento_atomico': {
+        data: [{ status_agendamento: 'finalizado', retorno_id: null, cobranca_criada: false }], error: null,
+      },
+      'pacientes.select': { data: { email: 'ana@example.test' }, error: null },
+      'notification_queue.insert': { data: null, error: null },
+    });
+
+    const { autoFinalizarAtendimento } = await import('@/lib/workflowAutomation');
+    await autoFinalizarAtendimento({
+      agendamentoId: 'ag-1',
+      pacienteId: 'pac-1',
+      pacienteNome: '<img src=x onerror=alert(1)>',
+      medicoId: 'med-1',
+      clinicaId: 'cli-1',
+    });
+
+    const notificacao = mockAtual.chamadas.find(c => c.tabela === 'notification_queue' && c.op === 'insert');
+    expect(notificacao?.payload).toMatchObject({
+      clinica_id: 'cli-1',
+      conteudo: expect.stringContaining('&lt;img src=x onerror=alert(1)&gt;'),
+    });
+  });
+
+  it('treats duplicate finalization as a no-op and does not send a second email', async () => {
+    mockAtual = criarSupabaseMock({
+      'rpc.finalizar_atendimento_atomico': {
+        data: [{ status_agendamento: 'finalizado', retorno_id: null, cobranca_criada: false, repetido: true }], error: null,
+      },
+    });
+
+    const { autoFinalizarAtendimento } = await import('@/lib/workflowAutomation');
+    const resultado = await autoFinalizarAtendimento({
+      agendamentoId: 'ag-1',
+      pacienteId: 'pac-1',
+      pacienteNome: 'Ana',
+      medicoId: 'med-1',
+      clinicaId: 'cli-1',
+    });
+
+    expect(resultado.success).toBe(true);
+    expect(resultado.message).toContain('já estava finalizado');
+    expect(mockAtual.chamadas.some(c => c.tabela === 'notification_queue')).toBe(false);
+    expect(mockAtual.chamadas.some(c => c.tabela === 'pacientes')).toBe(false);
   });
 });
 

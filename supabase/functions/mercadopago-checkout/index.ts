@@ -1,19 +1,21 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { corsPadrao } from '../_shared/cors.ts';
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-};
+// Atribuído em cada request (reflete a origem permitida). Helpers
+// top-level (json/reply) capturam esta variável por closure.
+let corsHeaders: Record<string, string> = {};
+
+;
 
 const MP_API_BASE = "https://api.mercadopago.com";
 
 Deno.serve(async (req) => {
+  corsHeaders = { ...corsPadrao(req),};
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
   if (req.method !== "POST") {
-    return new Response(JSON.stringify({ error: "MÃ©todo nÃ£o permitido" }), {
+    return new Response(JSON.stringify({ error: "Método não permitido" }), {
       status: 405,
       headers: { ...corsHeaders, "Content-Type": "application/json", Allow: "POST, OPTIONS" },
     });
@@ -61,9 +63,10 @@ Deno.serve(async (req) => {
     const { action } = body;
 
     if (action === "create_preference") {
-      // Esse fluxo antigo aceitava valor e referências vindas do navegador e
-      // não é usado pelo app. Mantê-lo ativo permitiria criar cobranças
-      // arbitrárias; assinaturas usam exclusivamente o plano lido do banco.
+      // Fluxo antigo desativado por segurança (aceitava valor e referências
+      // vindos do navegador). A implementação foi removida; quem restaurar a
+      // necessidade deve criar a preferência a partir de um registro do banco,
+      // nunca de input livre.
       return json({ error: "Fluxo de preferência desativado" }, 410, corsHeaders);
     } else if (action === "create_subscription") {
       return await createSubscription(body, mpToken, adminSupabase, corsHeaders, user);
@@ -92,98 +95,6 @@ Deno.serve(async (req) => {
   }
 });
 
-async function createPreference(
-  body: any,
-  mpToken: string,
-  supabase: any,
-  headers: Record<string, string>
-) {
-  const { paciente_id, lancamento_id, agendamento_id, descricao, valor, parcelas_max, payer_email, payer_name } = body;
-  const valorNumerico = Number(valor);
-  const parcelas = Number(parcelas_max || 1);
-
-  if (!Number.isFinite(valorNumerico) || valorNumerico <= 0) {
-    return json({ error: "O valor da cobrança deve ser maior que zero" }, 400, headers);
-  }
-  if (typeof descricao !== "string" || !descricao.trim()) {
-    return json({ error: "A descrição da cobrança é obrigatória" }, 400, headers);
-  }
-  if (!Number.isInteger(parcelas) || parcelas < 1 || parcelas > 12) {
-    return json({ error: "O número de parcelas deve estar entre 1 e 12" }, 400, headers);
-  }
-
-  const externalReference = crypto.randomUUID();
-  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-  const webhookUrl = `${supabaseUrl}/functions/v1/mercadopago-webhook`;
-
-  // POST /checkout/preferences per MP API docs
-  const preference = {
-    items: [
-      {
-        title: descricao || "Consulta Médica - EloLab",
-        quantity: 1,
-        unit_price: valorNumerico,
-        currency_id: "BRL",
-      },
-    ],
-    payer: {
-      ...(payer_name && { name: payer_name }),
-      ...(payer_email && { email: payer_email }),
-    },
-    external_reference: externalReference,
-    payment_methods: {
-      installments: parcelas,
-    },
-    back_urls: {
-      success: `${supabaseUrl}/functions/v1/mercadopago-webhook?status=success`,
-      failure: `${supabaseUrl}/functions/v1/mercadopago-webhook?status=failure`,
-      pending: `${supabaseUrl}/functions/v1/mercadopago-webhook?status=pending`,
-    },
-    auto_return: "approved",
-    notification_url: webhookUrl,
-    statement_descriptor: "ELOLAB",
-  };
-
-  const response = await callMercadoPagoWithRetry(
-    `${MP_API_BASE}/checkout/preferences`,
-    "POST",
-    preference,
-    mpToken
-  );
-
-  // Save to DB
-  const { data: pagamento, error } = await supabase
-    .from("pagamentos_mercadopago")
-    .insert({
-      paciente_id,
-      lancamento_id,
-      agendamento_id,
-      mp_preference_id: response.id,
-      mp_external_reference: externalReference,
-      valor: valorNumerico,
-      descricao: descricao.trim(),
-      tipo: "pagamento",
-      checkout_url: response.init_point,
-      parcelas,
-    })
-    .select()
-    .single();
-
-  if (error) {
-    console.error("Erro ao salvar pagamento:", error);
-    throw new Error("Erro ao registrar pagamento no banco");
-  }
-
-  return new Response(
-    JSON.stringify({
-      checkout_url: response.init_point,
-      sandbox_url: response.sandbox_init_point,
-      preference_id: response.id,
-      pagamento_id: pagamento.id,
-    }),
-    { status: 200, headers: { ...headers, "Content-Type": "application/json" } }
-  );
-}
 
 async function createSubscription(
   body: any,

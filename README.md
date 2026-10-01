@@ -94,13 +94,19 @@ VITE_SUPABASE_PUBLISHABLE_KEY=
 ## ✅ Qualidade
 
 ```bash
-npm run test:run     # 440 testes unitários e de integração
+npm run test:run     # testes unitários e de integração
 npm run test:e2e     # Playwright: RLS, autorização das edge functions e varredura dos módulos
 npx tsc --noEmit -p tsconfig.app.json
 npm run lint
 ```
 
 O CI roda typecheck, lint e testes a cada push em `dev` e PR para `main`.
+
+Para executar os fluxos autenticados no CI, configure como segredos do GitHub
+contas exclusivas de homologação para `E2E_ADMIN_EMAIL/SENHA`,
+`E2E_MEDICO_EMAIL/SENHA`, `E2E_RECEPCAO_EMAIL/SENHA`,
+`E2E_ENFERMAGEM_EMAIL/SENHA` e `E2E_FINANCEIRO_EMAIL/SENHA`. O teste do portal
+usa `E2E_PACIENTE_TOKEN`. Nunca use contas ou tokens de pacientes reais.
 
 O frontend é empacotado pelo `Dockerfile` e publicado pelo Easypanel na VPS. O
 workflow `.github/workflows/deploy.yml` valida a imagem; o deploy de produção é
@@ -144,13 +150,15 @@ Chromium já instalado com `PLAYWRIGHT_CHROMIUM_PATH=/caminho/para/chrome`.
   assinatura do **prontuário** existe e funciona, mas é eletrônica simples (fecha
   para edição e registra autor, CRM, data e hash), o que atende a CFM 1.821/07 —
   não é ICP-Brasil.
-- **A IA usa OpenAI** (`api.openai.com`), tanto no apoio à decisão clínica quanto
-  no agente de WhatsApp. Conteúdo de conversas e texto clínico sai para um
+- **A IA usa OpenAI** (`api.openai.com`) no agente de WhatsApp
+  (`whatsapp-evolution`). A edge function `ai-medical-assistant` (apoio à
+  decisão clínica) existe, valida papel de médico, restringe por clínica e
+  registra auditoria, **mas nenhuma tela do app a invoca hoje** — não há IA
+  clínica ativa no produto. Conteúdo de conversas de WhatsApp sai para um
   provedor no exterior — sob a LGPD isso é transferência internacional de dado
-  sensível de saúde e exige base legal e cláusulas contratuais próprias. O
-  endpoint clínico agora exige papel de médico, restringe por clínica e registra
-  cada envio na auditoria, mas isso não substitui o DPA. Avalie com o jurídico
-  antes de divulgar.
+  sensível de saúde e exige base legal e cláusulas contratuais próprias (o
+  registro em auditoria não substitui o DPA). Avalie com o jurídico antes de
+  divulgar.
 - **O sistema não emite nota fiscal.** A NF da clínica sai pelo contador. O
   módulo que existia era apenas um registro manual, sem envio à SEFAZ, e foi
   removido para não gerar digitação duplicada.

@@ -89,3 +89,11 @@ verify_jwt = true
 
 [functions.fhir-export]
 verify_jwt = true
+
+[functions.public-booking]
+# Link público de agendamento: sem login. A função confere se a clínica ativou
+# o recurso, aplica rate limit por IP e por CPF e valida cada horário.
+verify_jwt = false
+
+[functions.clinic-integrations]
+verify_jwt = true

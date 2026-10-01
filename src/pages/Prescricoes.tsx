@@ -1,3 +1,8 @@
+import { nomeMedico } from '@/lib/formatters';
+import { Link } from 'react-router-dom';
+import { PacienteCombobox } from '@/components/patients/PacienteCombobox';
+import { textoDoModelo } from '@/lib/templatesPrescricao';
+import { normalizarTexto } from '@/lib/buscaPaciente';
 import { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { format } from 'date-fns';
@@ -20,7 +25,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import { usePacientes, useMedicos, useSupabaseQuery } from '@/hooks/useSupabaseData';
+import { useMedicos, useSupabaseQuery } from '@/hooks/useSupabaseData';
 import { useCurrentMedico } from '@/hooks/useCurrentMedico';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -91,8 +96,9 @@ async function buildReceitaPdf(data: {
 
   doc.setFontSize(9);
   doc.setTextColor(120);
-  doc.text(data.clinicaEndereco || 'Endereço da clínica', w / 2, 31, { align: 'center' });
-  doc.text(`Tel: ${data.clinicaTelefone || '(00) 0000-0000'} | CNPJ: ${data.clinicaCnpj || '00.000.000/0001-00'}`, w / 2, 36, { align: 'center' });
+  if (data.clinicaEndereco) doc.text(data.clinicaEndereco, w / 2, 31, { align: 'center' });
+  const contato = [data.clinicaTelefone && `Tel: ${data.clinicaTelefone}`, data.clinicaCnpj && `CNPJ: ${data.clinicaCnpj}`].filter(Boolean).join(' | ');
+  if (contato) doc.text(contato, w / 2, 36, { align: 'center' });
   if (data.mostrarCNES && data.clinicaCnes) {
     doc.text(`CNES: ${data.clinicaCnes}`, w / 2, 40, { align: 'center' });
   }
@@ -194,11 +200,11 @@ async function buildReceitaPdf(data: {
 export default function Prescricoes() {
   const { profile } = useSupabaseAuth();
 
-  const { data: pacientes = [], isLoading: loadingPac } = usePacientes();
   const { data: medicos = [], isLoading: loadingMed } = useMedicos();
   const { medicoId, isMedicoOnly } = useCurrentMedico();
 
   const { data: prescricoes = [], isLoading: loadingPresc, refetch } = useSupabaseQuery<Record<string, any>>('prescricoes', {
+    select: '*, pacientes(nome)',
     orderBy: { column: 'created_at', ascending: false },
     ...(isMedicoOnly && medicoId ? { filters: [{ column: 'medico_id', operator: 'eq', value: medicoId }] } : {}),
   });
@@ -224,8 +230,8 @@ export default function Prescricoes() {
         endereco: configClinica?.endereco || clinicaInfo?.endereco || '',
         cidade: configClinica?.cidade || clinicaInfo?.cidade || '',
         uf: configClinica?.estado || clinicaInfo?.uf || '',
-        telefone: configClinica?.telefone || clinicaInfo?.telefone || '(00) 0000-0000',
-        cnpj: configClinica?.cnpj || clinicaInfo?.cnpj || '00.000.000/0001-00',
+        telefone: configClinica?.telefone || clinicaInfo?.telefone || '',
+        cnpj: configClinica?.cnpj || clinicaInfo?.cnpj || '',
         cnes: configClinica?.cnes || '',
         logoUrl: configClinica?.logoUrl || '',
         cabecalhoReceita: impressao?.cabecalhoReceita || '',
@@ -255,16 +261,34 @@ export default function Prescricoes() {
     medicamentos_texto: '',
   });
 
-  const selectedPaciente = useMemo(() => pacientes.find(p => p.id === form.paciente_id), [pacientes, form.paciente_id]);
+  // Ficha completa do paciente escolhido (alergias, comorbidades, dados do PDF).
+  const { data: selectedPaciente } = useQuery({
+    queryKey: ['prescricao-paciente', profile?.id ?? null, profile?.clinica_id ?? null, form.paciente_id],
+    enabled: !!form.paciente_id && !!profile?.clinica_id,
+    queryFn: async () => {
+      const { data, error } = await supabase.from('pacientes').select('*').eq('id', form.paciente_id).eq('clinica_id', profile?.clinica_id ?? '').maybeSingle();
+      if (error) throw error;
+      return data as any;
+    },
+  });
+
+  const { data: modelos = [] } = useSupabaseQuery<any>('templates_prescricao', {
+    orderBy: { column: 'nome', ascending: true },
+  });
+  const aplicarModelo = (id: string) => {
+    const modelo = (modelos as any[]).find(m => m.id === id);
+    if (!modelo) return;
+    const texto = textoDoModelo(modelo);
+    if (!texto) { toast.error('Este modelo não tem medicamentos cadastrados.'); return; }
+    // Acrescenta em vez de substituir: o médico pode combinar modelos.
+    setForm(f => ({ ...f, medicamentos_texto: f.medicamentos_texto.trim() ? `${f.medicamentos_texto.trim()}\n${texto}` : texto }));
+  };
 
   const filteredPrescricoes = useMemo(() => {
     if (!searchTerm) return prescricoes;
     const lower = searchTerm.toLowerCase();
-    return prescricoes.filter(p => {
-      const pac = pacientes.find(x => x.id === p.paciente_id);
-      return pac?.nome?.toLowerCase().includes(lower);
-    });
-  }, [prescricoes, pacientes, searchTerm]);
+    return prescricoes.filter(p => normalizarTexto(p.pacientes?.nome).includes(normalizarTexto(lower)));
+  }, [prescricoes, searchTerm]);
 
   const handleOpen = () => {
     setForm({ paciente_id: '', medico_id: medicoId || '', data_emissao: format(new Date(), 'yyyy-MM-dd'), medicamentos_texto: '' });
@@ -279,7 +303,7 @@ export default function Prescricoes() {
 
     setGerando(true);
 
-    const paciente = pacientes.find(p => p.id === form.paciente_id);
+    const paciente = selectedPaciente;
     const medico = medicos.find(m => m.id === form.medico_id);
     if (!paciente || !medico) {
       setGerando(false);
@@ -393,9 +417,9 @@ export default function Prescricoes() {
       especialidade: medico.especialidade || '',
       medicamentosTexto: form.medicamentos_texto,
       clinicaNome: clinicConfig?.nome_fantasia || 'Clínica Médica',
-      clinicaEndereco: clinicConfig ? `${clinicConfig.endereco || ''} — ${clinicConfig.cidade || ''}/${clinicConfig.uf || ''}` : 'Endereço da clínica',
-      clinicaTelefone: clinicConfig?.telefone || '(00) 0000-0000',
-      clinicaCnpj: clinicConfig?.cnpj || '00.000.000/0001-00',
+      clinicaEndereco: [clinicConfig?.endereco, [clinicConfig?.cidade, clinicConfig?.uf].filter(Boolean).join('/')].filter(Boolean).join(' — '),
+      clinicaTelefone: clinicConfig?.telefone || '',
+      clinicaCnpj: clinicConfig?.cnpj || '',
       clinicaCnes: clinicConfig?.cnes || '',
       logoUrl: clinicConfig?.logoUrl || '',
       cabecalhoReceita: clinicConfig?.cabecalhoReceita || '',
@@ -420,7 +444,7 @@ export default function Prescricoes() {
   // Chamado pelo dialog de alertas quando o médico confirma prescrever apesar dos avisos
   const handleConfirmDespiteAlerts = async () => {
     setGerando(true);
-    const paciente = pacientes.find(p => p.id === form.paciente_id);
+    const paciente = selectedPaciente;
     const medico = medicos.find(m => m.id === form.medico_id);
     if (!paciente || !medico) {
       setGerando(false);
@@ -443,10 +467,10 @@ export default function Prescricoes() {
     window.open('https://assinaturadigital.iti.gov.br/', '_blank');
   };
 
-  const getPacienteNome = (id: string) => pacientes.find(p => p.id === id)?.nome || '—';
-  const getMedicoNome = (id: string) => { const m = medicos.find(x => x.id === id); return m ? `Dr(a). ${m.nome || m.crm}` : '—'; };
+  const getPacienteNome = (id: string) => (prescricoes as any[]).find(p => p.paciente_id === id)?.pacientes?.nome || '—';
+  const getMedicoNome = (id: string) => { const m = medicos.find(x => x.id === id); return m ? `${nomeMedico(m.nome || m.crm)}` : '—'; };
 
-  if (loadingPac || loadingMed || loadingPresc) {
+  if (loadingMed || loadingPresc) {
     return <div className="space-y-4"><Skeleton className="h-10 w-64" /><Skeleton className="h-96" /></div>;
   }
 
@@ -540,14 +564,7 @@ export default function Prescricoes() {
           <div className="space-y-4">
             <div className="space-y-2">
               <Label>Paciente *</Label>
-              <Select value={form.paciente_id} onValueChange={v => setForm(f => ({ ...f, paciente_id: v }))}>
-                <SelectTrigger><SelectValue placeholder="Selecione o paciente" /></SelectTrigger>
-                <SelectContent>
-                  {pacientes.map(p => (
-                    <SelectItem key={p.id} value={p.id}>{p.nome}{p.cpf ? ` — ${p.cpf}` : ''}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <PacienteCombobox value={form.paciente_id} onChange={v => setForm(f => ({ ...f, paciente_id: v }))} />
               {selectedPaciente?.cpf && (
                 <p className="text-xs text-muted-foreground">CPF: {selectedPaciente.cpf}</p>
               )}
@@ -571,7 +588,19 @@ export default function Prescricoes() {
             </div>
 
             <div className="space-y-2">
-              <Label>Medicamentos e Posologia *</Label>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <Label>Medicamentos e Posologia *</Label>
+                {(modelos as any[]).length > 0 ? (
+                  <Select value="" onValueChange={aplicarModelo}>
+                    <SelectTrigger className="h-8 w-56 text-xs"><SelectValue placeholder="Usar modelo..." /></SelectTrigger>
+                    <SelectContent>
+                      {(modelos as any[]).map(m => <SelectItem key={m.id} value={m.id}>{m.nome}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Link to="/todos-templates" className="text-xs text-primary hover:underline">Criar modelos de prescrição</Link>
+                )}
+              </div>
               <Textarea
                 placeholder={`1) Amoxicilina 500mg — Tomar 1 cápsula de 8/8h por 7 dias\n2) Ibuprofeno 400mg — Tomar 1 comprimido de 12/12h por 5 dias\n3) Omeprazol 20mg — Tomar 1 cápsula em jejum por 30 dias`}
                 value={form.medicamentos_texto}

@@ -1,3 +1,4 @@
+import { nomeMedico } from '@/lib/formatters';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -37,7 +38,7 @@ export function ColorSchemeDialog({ open, onOpenChange, scheme, onSave, medicos,
   const options: { key: string; label: string }[] = (() => {
     switch (criterion) {
       case 'status': return STATUS_KEYS.map(([k, l]) => ({ key: k, label: l }));
-      case 'medico': return medicos.map(m => ({ key: m.id, label: `Dr(a). ${m.nome || m.crm}` }));
+      case 'medico': return medicos.map(m => ({ key: m.id, label: `${nomeMedico(m.nome || m.crm)}` }));
       case 'convenio': return [{ key: 'particular', label: 'Particular' }, ...convenios.map(c => ({ key: c.id, label: c.nome }))];
       case 'tipo': return tipos.map(t => ({ key: t.nome, label: t.nome }));
     }

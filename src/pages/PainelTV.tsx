@@ -1,3 +1,4 @@
+import { nomeMedico } from '@/lib/formatters';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { format } from 'date-fns';
@@ -5,6 +6,7 @@ import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
+import { ordenarFilaPorPrioridade } from '@/lib/filaPrioridade';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -35,6 +37,7 @@ import {
   VolumeX,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { canalUnico } from '@/lib/realtimeCanal';
 
 interface FilaItem {
   id: string;
@@ -116,6 +119,9 @@ export default function PainelTV() {
   const [pacientes, setPacientes] = useState<Record<string, string>>({});
   const [medicos, setMedicos] = useState<Record<string, string>>({});
   const [salas, setSalas] = useState<Record<string, string>>({});
+  const [filaErro, setFilaErro] = useState<string | null>(null);
+  const [filaCarregando, setFilaCarregando] = useState(true);
+  const filaCarregadaUmaVez = useRef(false);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [chamadoAtual, setChamadoAtual] = useState<string | null>(null);
   const [somAtivo, setSomAtivo] = useState(true);
@@ -130,6 +136,16 @@ export default function PainelTV() {
   const [isPlaying, setIsPlaying] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
   const [uploading, setUploading] = useState(false);
+
+  // Nome reduzido: primeiro nome + inicial do último sobrenome para preservar
+  // a privacidade do paciente no telão da sala de espera.
+  const getPacienteNome = useCallback((agendamentoId: string) => {
+    const nome = pacientes[agendamentoId];
+    if (!nome) return 'Paciente';
+    const partes = nome.trim().split(/\s+/);
+    if (partes.length === 1) return partes[0];
+    return `${partes[0]} ${partes[partes.length - 1][0].toUpperCase()}.`;
+  }, [pacientes]);
 
   // Load data
   useEffect(() => {
@@ -154,7 +170,7 @@ export default function PainelTV() {
   // Realtime subscription for instant updates
   useEffect(() => {
     const channel = supabase
-      .channel('painel-tv-fila')
+      .channel(canalUnico('painel-tv-fila'))
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'fila_atendimento' },
@@ -197,7 +213,8 @@ export default function PainelTV() {
         announcedCallsRef.current.add(chamado.id);
         setChamadoAtual(chamado.id);
         
-        const nome = pacientes[chamado.agendamento_id] || 'Paciente';
+        // Nome reduzido igual ao telão: o som alcança a sala inteira.
+        const nome = getPacienteNome(chamado.agendamento_id);
         const sala = chamado.sala_id ? (salas[chamado.sala_id] || 'Sala') : 'Recepção';
         
         playNotificationChime().then(() => {
@@ -211,81 +228,85 @@ export default function PainelTV() {
     announcedCallsRef.current.forEach(id => {
       if (!currentIds.has(id)) announcedCallsRef.current.delete(id);
     });
-  }, [fila, pacientes, salas, somAtivo]);
+  }, [fila, getPacienteNome, salas, somAtivo]);
 
   const loadFila = async () => {
+    if (!filaCarregadaUmaVez.current) setFilaCarregando(true);
     try {
-      const { data: filaData } = await supabase
+      const { data: filaData, error: filaError } = await supabase
         .from('fila_atendimento')
         .select('*')
         .in('status', ['aguardando', 'chamado', 'em_atendimento'])
         .order('posicao');
+      if (filaError) throw filaError;
 
-      if (filaData) {
-        setFila(filaData);
-
-        const agendamentoIds = filaData.map((f) => f.agendamento_id);
-        if (agendamentoIds.length > 0) {
-          const { data: agendamentos } = await supabase
+      const linhasFila = (filaData ?? []) as FilaItem[];
+      const agendamentoIds = linhasFila.map((f) => f.agendamento_id);
+      let agendamentos: Array<{ id: string; paciente_id: string; medico_id: string | null; sala_id: string | null }> = [];
+      if (agendamentoIds.length > 0) {
+          const { data, error } = await supabase
             .from('agendamentos')
             .select('id, paciente_id, medico_id, sala_id')
             .in('id', agendamentoIds);
-
-          if (agendamentos) {
-            const pacienteIds = [...new Set(agendamentos.map((a) => a.paciente_id))];
-            const medicoIds = [...new Set(agendamentos.map((a) => a.medico_id))];
-            const filaSalaIds = filaData.map((f) => f.sala_id).filter(Boolean) as string[];
-            const agSalaIds = agendamentos.map((a) => a.sala_id).filter(Boolean) as string[];
-            const allSalaIds = [...new Set([...filaSalaIds, ...agSalaIds])];
-
-            if (pacienteIds.length > 0) {
-              const { data: pacientesData } = await supabase
-                .from('pacientes')
-                .select('id, nome')
-                .in('id', pacienteIds);
-              if (pacientesData) {
-                const map: Record<string, string> = {};
-                agendamentos.forEach((a) => {
-                  const p = pacientesData.find((p) => p.id === a.paciente_id);
-                  if (p) map[a.id] = p.nome;
-                });
-                setPacientes(map);
-              }
-            }
-
-            if (medicoIds.length > 0) {
-              const { data: medicosData } = await supabase
-                .from('medicos')
-                .select('id, nome, crm, especialidade')
-                .in('id', medicoIds);
-              if (medicosData) {
-                const map: Record<string, string> = {};
-                agendamentos.forEach((a) => {
-                  const m = medicosData.find((m) => m.id === a.medico_id);
-                  if (m) {
-                    map[a.id] = m.nome ? `Dr(a). ${m.nome}` : `Dr(a). CRM ${m.crm}`;
-                  }
-                });
-                setMedicos(map);
-              }
-            }
-
-            if (allSalaIds.length > 0) {
-              const { data: salasData } = await supabase
-                .from('salas')
-                .select('id, nome')
-                .in('id', allSalaIds);
-              if (salasData) {
-                const map: Record<string, string> = {};
-                salasData.forEach((s) => { map[s.id] = s.nome; });
-                setSalas(map);
-              }
-            }
-          }
-        }
+          if (error) throw error;
+          agendamentos = data ?? [];
       }
+
+      const pacienteIds = [...new Set(agendamentos.map((a) => a.paciente_id))];
+      const medicoIds = [...new Set(agendamentos.map((a) => a.medico_id).filter(Boolean))] as string[];
+      const filaSalaIds = linhasFila.map((f) => f.sala_id).filter(Boolean) as string[];
+      const agSalaIds = agendamentos.map((a) => a.sala_id).filter(Boolean) as string[];
+      const allSalaIds = [...new Set([...filaSalaIds, ...agSalaIds])];
+
+      const mapaPacientes: Record<string, string> = {};
+      if (pacienteIds.length > 0) {
+        const { data, error } = await supabase
+          .from('pacientes')
+          .select('id, nome')
+          .in('id', pacienteIds);
+        if (error) throw error;
+        agendamentos.forEach((a) => {
+          const paciente = data?.find((p) => p.id === a.paciente_id);
+          if (paciente) mapaPacientes[a.id] = paciente.nome;
+        });
+      }
+
+      const mapaMedicos: Record<string, string> = {};
+      if (medicoIds.length > 0) {
+        const { data, error } = await supabase
+          .from('medicos')
+          .select('id, nome, crm, especialidade')
+          .in('id', medicoIds);
+        if (error) throw error;
+        agendamentos.forEach((a) => {
+          const medico = data?.find((m) => m.id === a.medico_id);
+          if (medico) mapaMedicos[a.id] = medico.nome ? `${nomeMedico(medico.nome)}` : `Dr(a). CRM ${medico.crm}`;
+        });
+      }
+
+      const mapaSalas: Record<string, string> = {};
+      if (allSalaIds.length > 0) {
+        const { data, error } = await supabase
+          .from('salas')
+          .select('id, nome')
+          .in('id', allSalaIds);
+        if (error) throw error;
+        data?.forEach((sala) => { mapaSalas[sala.id] = sala.nome; });
+      }
+
+      setFila(linhasFila);
+      setPacientes(mapaPacientes);
+      setMedicos(mapaMedicos);
+      setSalas(mapaSalas);
+      filaCarregadaUmaVez.current = true;
+      setFilaErro(null);
     } catch (error) {
+      setFilaErro(filaCarregadaUmaVez.current
+        ? 'Não foi possível atualizar a fila. Exibindo os últimos dados carregados.'
+        : 'Não foi possível carregar a fila. Tente novamente ou aguarde a próxima atualização automática.');
       if (import.meta.env.DEV) console.error('Erro ao carregar fila:', error);
+    } finally {
+      setFilaCarregando(false);
     }
   };
 
@@ -388,14 +409,13 @@ export default function PainelTV() {
     toast.info(`Chamando novamente: ${nome}`);
   };
 
-  const getPacienteNome = (agendamentoId: string) => pacientes[agendamentoId] || 'Paciente';
   const getMedicoNome = (agendamentoId: string) => medicos[agendamentoId] || '';
   const getSalaNome = (salaId: string | null) => {
     if (!salaId) return 'Recepção';
     return salas[salaId] || 'Sala';
   };
 
-  const filaAguardando = fila.filter((f) => f.status === 'aguardando').sort((a, b) => a.posicao - b.posicao);
+  const filaAguardando = ordenarFilaPorPrioridade(fila.filter((f) => f.status === 'aguardando'));
   const emAtendimento = fila.filter((f) => f.status === 'em_atendimento').sort((a, b) => a.posicao - b.posicao);
   const chamados = fila.filter((f) => f.status === 'chamado');
   const currentMedia = mediaItems[currentMediaIndex];
@@ -433,6 +453,29 @@ export default function PainelTV() {
             </p>
           </div>
         </header>
+
+        {filaCarregando && !filaErro && (
+          <div role="status" className="mb-4 rounded-xl border border-white/15 bg-white/10 px-4 py-3 text-center text-white/80">
+            <Loader2 aria-hidden="true" className="mr-2 inline h-4 w-4 animate-spin" />
+            Carregando a fila de atendimento…
+          </div>
+        )}
+        {filaErro && (
+          <div role="alert" className="mb-4 flex flex-wrap items-center justify-center gap-3 rounded-xl border border-amber-300/40 bg-amber-950/80 px-4 py-3 text-center text-amber-50">
+            <span>{filaErro}</span>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="border-white/30 bg-white/10 text-white hover:bg-white/20"
+              disabled={filaCarregando}
+              onClick={() => { setFilaCarregando(true); void loadFila(); }}
+            >
+              {filaCarregando ? <Loader2 aria-hidden="true" className="mr-2 h-4 w-4 animate-spin" /> : null}
+              {filaCarregando ? 'Atualizando…' : 'Tentar novamente'}
+            </Button>
+          </div>
+        )}
 
         {/* Admin Controls */}
         {isAdmin() && (
@@ -621,7 +664,11 @@ export default function PainelTV() {
               <h2 className="text-xl md:text-2xl font-bold font-display">Aguardando</h2>
             </div>
             <div className="p-4 md:p-6">
-              {filaAguardando.length === 0 ? (
+              {fila.length === 0 && filaErro ? (
+                <p className="text-center text-amber-100/80 py-8 text-lg">A lista de espera está indisponível.</p>
+              ) : fila.length === 0 && filaCarregando ? (
+                <p className="text-center text-white/50 py-8 text-lg">Carregando a lista de espera…</p>
+              ) : filaAguardando.length === 0 ? (
                 <p className="text-center text-white/50 py-8 text-lg">Nenhum paciente aguardando</p>
               ) : (
                 <div className="space-y-2">
@@ -640,7 +687,7 @@ export default function PainelTV() {
                           'w-8 h-8 md:w-10 md:h-10 rounded-full flex items-center justify-center font-bold text-sm md:text-base',
                           index === 0 ? 'bg-yellow-500 text-slate-900' : 'bg-white/10'
                         )}>
-                          {item.posicao}
+                          {index + 1}
                         </span>
                         <div>
                           <p className="text-base md:text-lg font-medium">{getPacienteNome(item.agendamento_id)}</p>

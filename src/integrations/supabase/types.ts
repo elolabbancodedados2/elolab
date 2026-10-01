@@ -830,6 +830,79 @@ export type Database = {
           },
         ]
       }
+      caixa_diario_eventos: {
+        Row: {
+          caixa_id: string
+          clinica_id: string
+          fechamento_anterior_em: string | null
+          fechamento_anterior_observacoes: string | null
+          fechamento_anterior_operador: string | null
+          fechamento_anterior_valor: number | null
+          created_at: string
+          id: string
+          motivo: string | null
+          tipo: string
+          user_id: string | null
+          user_nome: string | null
+          valor_apurado: number | null
+          valor_informado: number | null
+        }
+        Insert: {
+          caixa_id: string
+          clinica_id: string
+          fechamento_anterior_em?: string | null
+          fechamento_anterior_observacoes?: string | null
+          fechamento_anterior_operador?: string | null
+          fechamento_anterior_valor?: number | null
+          created_at?: string
+          id?: string
+          motivo?: string | null
+          tipo: string
+          user_id?: string | null
+          user_nome?: string | null
+          valor_apurado?: number | null
+          valor_informado?: number | null
+        }
+        Update: {
+          caixa_id?: string
+          clinica_id?: string
+          fechamento_anterior_em?: string | null
+          fechamento_anterior_observacoes?: string | null
+          fechamento_anterior_operador?: string | null
+          fechamento_anterior_valor?: number | null
+          created_at?: string
+          id?: string
+          motivo?: string | null
+          tipo?: string
+          user_id?: string | null
+          user_nome?: string | null
+          valor_apurado?: number | null
+          valor_informado?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "caixa_diario_eventos_caixa_id_fkey"
+            columns: ["caixa_id"]
+            isOneToOne: false
+            referencedRelation: "caixa_diario"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "caixa_diario_eventos_clinica_id_fkey"
+            columns: ["clinica_id"]
+            isOneToOne: false
+            referencedRelation: "clinicas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "caixa_diario_eventos_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       chat_conversations: {
         Row: {
           clinica_id: string | null
@@ -1940,6 +2013,7 @@ export type Database = {
       fila_atendimento: {
         Row: {
           agendamento_id: string
+          cobranca_estado: string
           clinica_id: string | null
           created_at: string | null
           horario_chegada: string | null
@@ -1952,6 +2026,7 @@ export type Database = {
         }
         Insert: {
           agendamento_id: string
+          cobranca_estado?: string
           clinica_id?: string | null
           created_at?: string | null
           horario_chegada?: string | null
@@ -1964,6 +2039,7 @@ export type Database = {
         }
         Update: {
           agendamento_id?: string
+          cobranca_estado?: string
           clinica_id?: string | null
           created_at?: string | null
           horario_chegada?: string | null
@@ -5779,6 +5855,7 @@ export type Database = {
       can_access_clinical: { Args: { _user_id: string }; Returns: boolean }
       can_access_financial: { Args: { _user_id: string }; Returns: boolean }
       can_manage_data: { Args: { _user_id: string }; Returns: boolean }
+      abrir_caixa_diario: { Args: { p_valor_abertura: number }; Returns: Json }
       cancelar_coletas_pendentes_antigas: {
         Args: { p_dias: number; p_motivo: string }
         Returns: number
@@ -5795,6 +5872,26 @@ export type Database = {
         Returns: boolean
       }
       enfileirar_lembretes_retorno: { Args: never; Returns: number }
+      fechar_caixa_diario: {
+        Args: { p_caixa_id: string; p_observacoes?: string | null; p_valor_contado: number }
+        Returns: Json
+      }
+      movimentos_caixa_diario: {
+        Args: { p_data: string }
+        Returns: {
+          categoria: string
+          created_at: string
+          data: string
+          descricao: string
+          forma_pagamento: string
+          id: string
+          origem_pagamento: boolean
+          paciente_id: string | null
+          paciente_nome: string | null
+          tipo: string
+          valor: number
+        }[]
+      }
       estornar_pagamento: {
         Args: { p_motivo: string; p_pagamento_id: string }
         Returns: Json
@@ -5812,6 +5909,7 @@ export type Database = {
         }
         Returns: {
           cobranca_criada: boolean
+          repetido: boolean
           retorno_id: string
           status_agendamento: string
         }[]
@@ -5988,6 +6086,7 @@ export type Database = {
         }
         Returns: Json
       }
+      reabrir_caixa_diario: { Args: { p_motivo: string }; Returns: Json }
       reivindicar_notificacoes: {
         Args: { p_clinica_id?: string; p_limite?: number }
         Returns: {
@@ -6060,6 +6159,10 @@ export type Database = {
       user_in_same_clinica: {
         Args: { _target_user_id: string }
         Returns: boolean
+      }
+      verificar_pagamento_fila: {
+        Args: { p_agendamento_ids: string[] }
+        Returns: { agendamento_id: string; pode_atender: boolean }[]
       }
       validate_invitation_token: { Args: { _token: string }; Returns: Json }
       validate_invite_code: { Args: { _codigo: string }; Returns: Json }

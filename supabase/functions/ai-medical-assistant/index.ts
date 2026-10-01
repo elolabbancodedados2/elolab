@@ -1,9 +1,10 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { tokensIaNoLimite } from '../_shared/limitesClinica.ts'
+import { corsPadrao } from '../_shared/cors.ts';
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
-}
+// Atribuído em cada request (reflete a origem permitida). Helpers
+// top-level (json/reply) capturam esta variável por closure.
+let corsHeaders: Record<string, string> = {};
 
 interface MedicalAssistantRequest {
   action: 'suggest_diagnosis' | 'check_interactions' | 'fill_prescription'
@@ -18,6 +19,7 @@ interface MedicalAssistantRequest {
 }
 
 Deno.serve(async (req) => {
+  corsHeaders = { ...corsPadrao(req),};
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
@@ -81,6 +83,14 @@ Deno.serve(async (req) => {
       return new Response(
         JSON.stringify({ error: 'Apoio à decisão clínica é restrito a médicos.' }),
         { status: 403, headers: corsHeaders },
+      )
+    }
+
+    const cotaIa = await tokensIaNoLimite(supabase, clinicaId)
+    if (cotaIa.atingido) {
+      return new Response(
+        JSON.stringify({ error: `A clínica atingiu o limite mensal de uso da IA (${cotaIa.limite.toLocaleString('pt-BR')} tokens). Fale com o suporte para ampliar.` }),
+        { status: 429, headers: corsHeaders },
       )
     }
 

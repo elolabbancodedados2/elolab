@@ -23,6 +23,7 @@ import { format, formatDistanceToNow, isToday } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { gerarLaudoPDF, downloadLaudoPDF, LaudoData } from '@/lib/pdfGenerator';
+import { canalUnico } from '@/lib/realtimeCanal';
 
 /**
  * Teto da worklist do laboratório.
@@ -436,7 +437,7 @@ export default function LaudosLab() {
 
   useEffect(() => {
     fetchLaudos();
-    const channel = supabase.channel('laudos-rt')
+    const channel = supabase.channel(canalUnico('laudos-rt'))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'resultados_laboratorio' }, fetchLaudos)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'coletas_laboratorio' }, fetchLaudos)
       .subscribe();

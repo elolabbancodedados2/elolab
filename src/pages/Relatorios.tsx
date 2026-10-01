@@ -30,7 +30,8 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { usePacientes, useAgendamentos, useLancamentos, useMedicos, useEstoque } from '@/hooks/useSupabaseData';
+import { usePacientes, useAgendamentosPeriodo, useSupabaseQuery, useMedicos, useEstoque } from '@/hooks/useSupabaseData';
+import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { exportarFinanceiro, exportarPacientes, exportarAgendamentos, exportarEstoque } from '@/lib/excelExporter';
 import { gerarRelatorioFinanceiro, gerarRelatorioAtendimentos, openPDF } from '@/lib/pdfGenerator';
@@ -57,14 +58,8 @@ const CHART_COLORS = ['hsl(var(--primary))', 'hsl(var(--success))', 'hsl(var(--w
 
 export default function Relatorios() {
   const [periodo, setPeriodo] = useState('mes_atual');
-
-  const { data: pacientes = [], isLoading: loadingPacientes } = usePacientes();
-  const { data: agendamentos = [], isLoading: loadingAgendamentos } = useAgendamentos();
-  const { data: lancamentos = [], isLoading: loadingLancamentos } = useLancamentos();
-  const { data: medicos = [], isLoading: loadingMedicos } = useMedicos();
-  const { data: estoque = [], isLoading: loadingEstoque } = useEstoque();
-
-  const isLoading = loadingPacientes || loadingAgendamentos || loadingLancamentos || loadingMedicos || loadingEstoque;
+  const [customInicio, setCustomInicio] = useState(() => format(startOfMonth(new Date()), 'yyyy-MM-dd'));
+  const [customFim, setCustomFim] = useState(() => format(new Date(), 'yyyy-MM-dd'));
 
   const periodoRange = useMemo(() => {
     const now = new Date();
@@ -72,6 +67,21 @@ export default function Relatorios() {
     let end: Date = endOfMonth(now);
 
     switch (periodo) {
+      case 'este_ano':
+        start = new Date(now.getFullYear(), 0, 1);
+        end = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999);
+        break;
+      case 'ultimos_12_meses':
+        start = startOfMonth(subMonths(now, 11));
+        break;
+      case 'personalizado': {
+        const ini = parseISO(customInicio);
+        const fim = parseISO(customFim);
+        start = isNaN(ini.getTime()) ? startOfMonth(now) : ini;
+        end = isNaN(fim.getTime()) ? endOfMonth(now) : new Date(fim.getFullYear(), fim.getMonth(), fim.getDate(), 23, 59, 59, 999);
+        if (start > end) [start, end] = [new Date(end.getFullYear(), end.getMonth(), end.getDate()), new Date(start.getFullYear(), start.getMonth(), start.getDate(), 23, 59, 59, 999)];
+        break;
+      }
       case 'mes_atual':
         start = startOfMonth(now);
         break;
@@ -90,7 +100,26 @@ export default function Relatorios() {
     }
 
     return { start, end };
-  }, [periodo]);
+  }, [periodo, customInicio, customFim]);
+
+  // Agenda e lançamentos vêm do servidor já recortados pelo período; antes a
+  // tela baixava o histórico inteiro e filtrava no navegador.
+  const inicioStr = format(periodoRange.start, 'yyyy-MM-dd');
+  const fimStr = format(periodoRange.end, 'yyyy-MM-dd');
+  const { data: pacientes = [], isLoading: loadingPacientes } = usePacientes();
+  const { data: agendamentos = [], isLoading: loadingAgendamentos } = useAgendamentosPeriodo(inicioStr, fimStr, { keepPrevious: true });
+  const { data: lancamentos = [], isLoading: loadingLancamentos } = useSupabaseQuery<any>('lancamentos', {
+    orderBy: { column: 'data', ascending: false },
+    filters: [
+      { column: 'data', operator: 'gte', value: inicioStr },
+      { column: 'data', operator: 'lte', value: fimStr },
+    ],
+    keepPrevious: true,
+  });
+  const { data: medicos = [], isLoading: loadingMedicos } = useMedicos();
+  const { data: estoque = [], isLoading: loadingEstoque } = useEstoque();
+
+  const isLoading = loadingPacientes || loadingAgendamentos || loadingLancamentos || loadingMedicos || loadingEstoque;
 
   // Filtrar dados pelo período
   const agendamentosFiltrados = useMemo(() => {
@@ -348,8 +377,18 @@ export default function Relatorios() {
               <SelectItem value="mes_anterior">Mês Anterior</SelectItem>
               <SelectItem value="ultimos_3_meses">Últimos 3 Meses</SelectItem>
               <SelectItem value="ultimos_6_meses">Últimos 6 Meses</SelectItem>
+              <SelectItem value="ultimos_12_meses">Últimos 12 Meses</SelectItem>
+              <SelectItem value="este_ano">Este Ano</SelectItem>
+              <SelectItem value="personalizado">Personalizado...</SelectItem>
             </SelectContent>
           </Select>
+          {periodo === 'personalizado' && (
+            <div className="flex items-center gap-1.5">
+              <Input type="date" aria-label="Data inicial" className="w-40" value={customInicio} max={customFim || undefined} onChange={e => setCustomInicio(e.target.value)} />
+              <span className="text-sm text-muted-foreground">até</span>
+              <Input type="date" aria-label="Data final" className="w-40" value={customFim} min={customInicio || undefined} onChange={e => setCustomFim(e.target.value)} />
+            </div>
+          )}
           <Button variant="outline" onClick={handleExportExcel} className="gap-2" aria-label="Exportar financeiro para Excel">
             <FileSpreadsheet className="h-4 w-4" />
             Excel

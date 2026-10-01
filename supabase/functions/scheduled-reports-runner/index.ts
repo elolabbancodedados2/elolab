@@ -1,10 +1,12 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { cronOrUserOk, cronForbidden, clinicaDoChamador } from "../_shared/cronAuth.ts";
+import { corsPadrao } from '../_shared/cors.ts';
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+// Atribuído em cada request (reflete a origem permitida). Helpers
+// top-level (json/reply) capturam esta variável por closure.
+let corsHeaders: Record<string, string> = {};
+
+;
 
 const DATASET_TABLES: Record<string, { table: string; dateField: string }> = {
   pacientes: { table: "pacientes", dateField: "created_at" },
@@ -43,6 +45,7 @@ function csvEscape(v: any) {
 }
 
 Deno.serve(async (req) => {
+  corsHeaders = { ...corsPadrao(req),};
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   // Sem guarda, qualquer visitante com a chave pública `anon` disparava a

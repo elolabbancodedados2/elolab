@@ -145,3 +145,20 @@ export function validateEmail(email: string): boolean {
   const regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   return regex.test(email);
 }
+
+const TITULO_MEDICO = /^(dr|dra|dr\(a\))\.?(\s+|$)/i;
+
+/**
+ * Nome do profissional com título, sem duplicar: o cadastro costuma já trazer
+ * "Dr."/"Dra." no nome, e prefixar "Dr(a)." produzia "Dr(a). Dra. Júlia".
+ */
+export function nomeMedico(nome: string | null | undefined): string {
+  const n = (nome ?? '').trim();
+  if (!n) return 'Médico(a)';
+  return TITULO_MEDICO.test(n) ? n : `Dr(a). ${n}`;
+}
+
+/** Primeiro nome sem o título ("Dra. Júlia Pediatra" → "Júlia"). */
+export function primeiroNome(nome: string | null | undefined): string {
+  return (nome ?? '').trim().replace(TITULO_MEDICO, '').split(/\s+/)[0] || '';
+}

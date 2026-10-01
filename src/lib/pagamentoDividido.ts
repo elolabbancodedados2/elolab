@@ -21,6 +21,15 @@ export interface PagamentoParaRpc {
   valor: number;
 }
 
+/** Returns the entered installment when it is a valid portion of the balance. */
+export function validarValorRecebido(valor: string, saldo: number): number | null {
+  if (!valor.trim()) return null;
+  const centavos = Math.round(Number(valor) * 100);
+  const saldoCentavos = emCentavos(saldo);
+  if (!Number.isFinite(centavos) || centavos <= 0 || centavos > saldoCentavos) return null;
+  return centavos / 100;
+}
+
 export function calcularSaldoPagamento(
   valor: number,
   desconto = 0,
@@ -62,4 +71,15 @@ export function montarPagamentos(
 /** Soma das formas adicionais, para a tela avisar antes de mandar. */
 export function somaDasExtras(extras: FormaExtra[]): number {
   return extras.reduce((s, f) => s + emCentavos(f.valor), 0) / 100;
+}
+
+/** Human-readable receipt detail for every tender in a split payment. */
+export function resumirPagamentos(
+  pagamentos: PagamentoParaRpc[],
+  rotulos: Record<string, string> = {},
+): string {
+  const moeda = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
+  return pagamentos
+    .map((pagamento) => `${rotulos[pagamento.forma_pagamento] || pagamento.forma_pagamento}: ${moeda.format(pagamento.valor)}`)
+    .join(' + ');
 }

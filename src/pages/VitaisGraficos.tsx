@@ -46,7 +46,7 @@ export default function VitaisGraficos() {
   });
 
   const { data: vitais = [], isLoading: loadingVitais } = useQuery({
-    queryKey: ['vitais_triagens', selectedPacienteId],
+    queryKey: ['vitais_triagens', profile?.clinica_id ?? null, selectedPacienteId],
     queryFn: async () => {
       if (!selectedPacienteId) return [];
       // Antes esta tela lia `vitais_historico`, uma tabela que nunca existiu no

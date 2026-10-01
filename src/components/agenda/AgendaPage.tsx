@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { addDays, addMonths, addWeeks, format, parseISO } from 'date-fns';
+import { addDays, addMonths, addWeeks, format, parseISO, startOfMonth, startOfWeek } from 'date-fns';
 import {
   DndContext, DragEndEvent, DragOverlay, DragStartEvent, MouseSensor,
   TouchSensor, useSensor, useSensors,
@@ -8,7 +8,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 
-import { useAgendamentos, useMedicos, usePacientes, useSupabaseQuery } from '@/hooks/useSupabaseData';
+import { useAgendamentosPeriodo, useMedicos, useSupabaseQuery } from '@/hooks/useSupabaseData';
 import { useAgendaColorScheme } from './hooks/useAgendaColorScheme';
 import { useAgendaDefaultView } from './hooks/useAgendaDefaultView';
 import { useCurrentMedico } from '@/hooks/useCurrentMedico';
@@ -65,22 +65,37 @@ export function AgendaPage() {
       const tag = (e.target as HTMLElement)?.tagName;
       if (['INPUT', 'TEXTAREA', 'SELECT'].includes(tag) || (e.target as HTMLElement)?.isContentEditable) return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
+      // Com um modal aberto, as setas e letras pertencem a ele, não à agenda atrás.
+      if (document.querySelector('[role="dialog"], [role="alertdialog"]')) return;
       const d = parseISO(date);
       const step = view === 'monthly' ? addMonths : view === 'weekly' ? addWeeks : addDays;
       if (e.key === 'ArrowLeft') { setDate(format(step(d, -1), 'yyyy-MM-dd')); e.preventDefault(); }
       else if (e.key === 'ArrowRight') { setDate(format(step(d, 1), 'yyyy-MM-dd')); e.preventDefault(); }
       else if (e.key.toLowerCase() === 't') { setDate(format(new Date(), 'yyyy-MM-dd')); }
       else if (e.key.toLowerCase() === 'n') { setDialogState({ open: true, initial: { data: date } }); e.preventDefault(); }
-      else if (e.key.toLowerCase() === 'd') setView('daily');
-      else if (e.key.toLowerCase() === 'w') setView('weekly');
-      else if (e.key.toLowerCase() === 'm') setView('monthly');
+      else if (e.key.toLowerCase() === 'd') handleViewChange('daily');
+      else if (e.key.toLowerCase() === 'w') handleViewChange('weekly');
+      else if (e.key.toLowerCase() === 'm') handleViewChange('monthly');
       else if (e.key === '/') { setSearch(''); (document.querySelector('input[placeholder*="Buscar paciente"]') as HTMLInputElement)?.focus(); e.preventDefault(); }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [date, view]);
 
-  const { data: allAppts = [], isLoading } = useAgendamentos();
+  // Só o período que a visão mostra. Antes a agenda baixava o histórico
+  // inteiro da clínica (com paciente e médico de cada consulta) a cada abertura.
+  const periodo = useMemo(() => {
+    const d = parseISO(date);
+    if (view === 'daily') return { inicio: date, fim: date };
+    if (view === 'weekly') {
+      const ini = startOfWeek(d, { weekStartsOn: 1 });
+      return { inicio: format(ini, 'yyyy-MM-dd'), fim: format(addDays(ini, 6), 'yyyy-MM-dd') };
+    }
+    // Mesma grade de 6 semanas que a MonthlyView desenha.
+    const ini = startOfWeek(startOfMonth(d), { weekStartsOn: 1 });
+    return { inicio: format(ini, 'yyyy-MM-dd'), fim: format(addDays(ini, 41), 'yyyy-MM-dd') };
+  }, [date, view]);
+  const { data: allAppts = [], isLoading } = useAgendamentosPeriodo(periodo.inicio, periodo.fim);
   const { data: medicos = [] } = useMedicos();
 
   // Isolamento por profissional: um médico só vê a própria agenda; admin/recepção veem todos.
@@ -98,9 +113,12 @@ export function AgendaPage() {
     return map;
   }, [medicos]);
 
-  const { data: pacientes = [] } = usePacientes();
   const { data: bloqueios = [] } = useSupabaseQuery<any>('bloqueios_agenda', {
     orderBy: { column: 'data_inicio', ascending: true },
+    filters: [
+      { column: 'data_fim', operator: 'gte', value: periodo.inicio },
+      { column: 'data_inicio', operator: 'lte', value: periodo.fim },
+    ],
   });
   const { data: waiting = [] } = useSupabaseQuery<any>('lista_espera', {
     select: '*, pacientes(nome, nome_social, telefone)',
@@ -330,8 +348,7 @@ export function AgendaPage() {
         open={dialogState.open}
         onOpenChange={(o) => setDialogState({ open: o, initial: o ? dialogState.initial : null })}
         initial={dialogState.initial}
-         pacientes={pacientes}
-         medicos={visibleMedicos}
+        medicos={visibleMedicos}
         tipos={tipos}
         salas={salas}
         onSaved={async () => {

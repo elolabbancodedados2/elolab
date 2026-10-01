@@ -29,7 +29,8 @@ test.describe('Produção — smoke', () => {
     page.on('response', r => {
       // 4xx/5xx em asset próprio é o que produz tela branca. Chamadas ao
       // Supabase sem sessão respondem 401/403 e são esperadas aqui.
-      if (r.status() >= 400 && new URL(r.url()).host === new URL(PRODUCAO_URL!).host) {
+      const host = new URL(r.url()).host;
+      if (r.status() >= 400 && new Set([new URL(PRODUCAO_URL!).host, 'api.elolab.com.br']).has(host)) {
         requisicoesQuebradas.push(`${r.status()} ${r.url()}`);
       }
     });
@@ -39,6 +40,13 @@ test.describe('Produção — smoke', () => {
 
     expect(excecoes, `exceção não capturada em produção: ${excecoes.join(' | ')}`).toHaveLength(0);
     expect(requisicoesQuebradas, `asset quebrado: ${requisicoesQuebradas.join(' | ')}`).toHaveLength(0);
+    const errosDeConsoleReais = errosDeConsole.filter(
+      (erro) => !erro.includes('net::') && !erro.includes('CORS') && !erro.includes('Failed to fetch'),
+    );
+    expect(
+      errosDeConsoleReais,
+      `erro no console em producao: ${errosDeConsoleReais.join(' | ')}`,
+    ).toHaveLength(0);
 
     // Tela branca responde 200 e passaria num teste de status.
     // No primeiro acesso a um commit novo, main.tsx limpa o service worker e

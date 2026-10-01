@@ -2,13 +2,16 @@
 // que ainda não viraram conta (user_id NULL). Também expira registros vencidos.
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { cronSecretOk, cronForbidden } from "../_shared/cronAuth.ts";
+import { corsPadrao } from '../_shared/cors.ts';
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+// Atribuído em cada request (reflete a origem permitida). Helpers
+// top-level (json/reply) capturam esta variável por closure.
+let corsHeaders: Record<string, string> = {};
+
+;
 
 Deno.serve(async (req) => {
+  corsHeaders = { ...corsPadrao(req),};
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   // Só o agendador. Antes a chave anon, que é pública, bastava para disparar.

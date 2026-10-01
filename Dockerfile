@@ -9,6 +9,8 @@ COPY . .
 
 # Vite incorpora estas variáveis no bundle durante o build. A chave é a
 # publishable/anon (pública); nunca passe SERVICE_ROLE_KEY para esta imagem.
+# Padrões públicos de produção (URL e chave anon já estão no site); o Easypanel
+# pode sobrescrever via build args.
 ARG VITE_SUPABASE_URL=https://api.elolab.com.br
 ARG VITE_SUPABASE_PUBLISHABLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlIiwiYXVkIjoiYXV0aGVudGljYXRlZCIsImlhdCI6MTc4OTU1NTE0MiwiZXhwIjoyMTA0OTE1MTQyfQ.wTvxTu0DmOI0XHjBskLKSqE9Sw3f1PWkBwX3KIw2LPM
 ARG VITE_SUPABASE_ANON_KEY=$VITE_SUPABASE_PUBLISHABLE_KEY

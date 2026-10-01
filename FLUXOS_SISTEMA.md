@@ -169,17 +169,13 @@ Melhorias possíveis:
 
 ## 🚀 FLUXOS NOVOS QUE PODEM SER ADICIONADOS
 
-### 1. **FLUXO DE TELEMEDICINA** 📱
+### 1. **TELEMEDICINA / TELECONSULTA** 📱
 ```
-Status: NÃO IMPLEMENTADO
+Status: FORA DO ESCOPO — decisão do negócio
 
-O que fazer:
-├─ Agendamento de consulta online
-├─ Sala de videoconferência integrada
-├─ Receita digital
-├─ Pagamento online
-├─ Prontuário compartilhado
-└─ Integração com WhatsApp/Telegram para links
+O EloLab não oferece teleconsulta. O tipo de agendamento "telemedicina", que
+existia só como rótulo, foi removido do app e do banco (agendamentos antigos
+com esse tipo viraram "consulta").
 ```
 
 ### 2. **FLUXO DE NOTA FISCAL** 🧾
@@ -283,7 +279,6 @@ O que fazer:
 - [ ] QR Code em Receita
 
 ### **PRIORIDADE 3 (Nice to Have)** 🟡
-- [ ] Telemedicina
 - [ ] Análise Preditiva
 - [ ] Integração com dispositivos (pressão, oxímetro)
 - [ ] Portal de Fornecedor (compras automáticas)

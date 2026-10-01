@@ -27,16 +27,16 @@ export default function FaturamentoConvenios() {
   const [lotForm, setLotForm] = useState({ convenio_id: '', competencia: hoje.slice(0, 7) + '-01', numero_lote: '', quantidade_guias: 0, valor_apresentado: 0 });
   const [glosaForm, setGlosaForm] = useState({ lote_id: '', codigo_glosa: '', motivo: '', guia_referencia: '', valor_glosado: 0 });
 
-  const { data: convenios = [] } = useQuery({ queryKey: ['convenios-faturamento'], queryFn: async () => {
-    const { data, error } = await supabase.from('convenios').select('id,nome,versao_tiss').eq('ativo', true).order('nome');
+  const { data: convenios = [] } = useQuery({ queryKey: ['convenios-faturamento', profile?.clinica_id ?? null], enabled: !!profile?.clinica_id, queryFn: async () => {
+    const { data, error } = await supabase.from('convenios').select('id,nome,versao_tiss').eq('clinica_id', profile?.clinica_id ?? '').eq('ativo', true).order('nome');
     if (error) throw error; return data ?? [];
   }});
-  const { data: lotes = [], isLoading } = useQuery({ queryKey: ['lotes-tiss'], queryFn: async () => {
-    const { data, error } = await (supabase as any).from('lotes_tiss').select('*,convenios(nome,registro_ans)').order('competencia', { ascending: false });
+  const { data: lotes = [], isLoading } = useQuery({ queryKey: ['lotes-tiss', profile?.clinica_id ?? null], enabled: !!profile?.clinica_id, queryFn: async () => {
+    const { data, error } = await (supabase as any).from('lotes_tiss').select('*,convenios(nome,registro_ans)').eq('clinica_id', profile?.clinica_id ?? '').order('competencia', { ascending: false });
     if (error) throw error; return data ?? [];
   }});
-  const { data: glosas = [] } = useQuery({ queryKey: ['glosas-convenio'], queryFn: async () => {
-    const { data, error } = await (supabase as any).from('glosas_convenio').select('*,lotes_tiss(numero_lote,convenios(nome))').order('created_at', { ascending: false });
+  const { data: glosas = [] } = useQuery({ queryKey: ['glosas-convenio', profile?.clinica_id ?? null], enabled: !!profile?.clinica_id, queryFn: async () => {
+    const { data, error } = await (supabase as any).from('glosas_convenio').select('*,lotes_tiss(numero_lote,convenios(nome))').eq('clinica_id', profile?.clinica_id ?? '').order('created_at', { ascending: false });
     if (error) throw error; return data ?? [];
   }});
 

@@ -10,9 +10,12 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { autoFinalizarAtendimento } from '@/lib/workflowAutomation';
-import { atomicCheckin as autoCheckin, atomicStartAppointment as autoIniciarAtendimento } from '@/lib/operationalTransitions';
+import { checkinComCobranca } from '@/lib/checkinWithBilling';
+import { atomicStartAppointment as autoIniciarAtendimento } from '@/lib/operationalTransitions';
 import { mensagemDeErro } from '@/lib/erros';
 import { useQueryClient } from '@tanstack/react-query';
+import { FinalizarAtendimentoDialog } from '@/components/fila/FinalizarAtendimentoDialog';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 
 interface Props {
   agendamento: any;
@@ -64,7 +67,7 @@ function toMinutes(t: string) {
 
 const TIPO_LABEL: Record<string, string> = {
   consulta: 'Consulta', retorno: 'Retorno', exame: 'Exame', procedimento: 'Procedimento',
-  telemedicina: 'Telemed.', checkup: 'Check-up', avaliacao: 'Avaliação', cirurgia: 'Cirurgia',
+  checkup: 'Check-up', avaliacao: 'Avaliação', cirurgia: 'Cirurgia',
   triagem: 'Triagem', coleta: 'Coleta', enfermagem: 'Enfermagem', vacina: 'Vacina', curativo: 'Curativo',
 };
 
@@ -108,10 +111,24 @@ export function AppointmentCard({ agendamento, color, minutesToPx, onClick, conv
    * meses, cinco delas numa clínica em operação.
    */
   const [ocupado, setOcupado] = useState(false);
+  /** Finalização esperando a resposta sobre o retorno (mesma pergunta da Fila). */
+  const [finalizandoCard, setFinalizandoCard] = useState(false);
+  /** Confirmação antes de cancelar/remover a consulta. */
+  const [cancelandoCard, setCancelandoCard] = useState(false);
 
   const setStatus = async (status: any) => {
     const { error } = await (supabase.from('agendamentos').update({ status }).eq('id', agendamento.id) as any);
     if (error) return toast.error('Erro ao atualizar', { description: mensagemDeErro(error) });
+    // Cancelar sem limpar a fila deixava o card fantasma do paciente na Fila
+    // (e no Painel TV) mesmo com a consulta cancelada.
+    if (status === 'cancelado' || status === 'faltou') {
+      const { error: filaErr } = await supabase
+        .from('fila_atendimento')
+        .delete()
+        .eq('agendamento_id', agendamento.id)
+        .neq('status', 'finalizado');
+      if (!filaErr) queryClient.invalidateQueries({ queryKey: ['fila_atendimento'] });
+    }
     toast.success('Status atualizado');
     queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
   };
@@ -130,7 +147,17 @@ export function AppointmentCard({ agendamento, color, minutesToPx, onClick, conv
   const iniciarAtendimento = async () => {
     setOcupado(true);
     try {
-      const checkin = await autoCheckin(agendamento.id, profile?.clinica_id);
+      const checkin = await checkinComCobranca({
+        agendamentoId: agendamento.id,
+        pacienteId: agendamento.paciente_id,
+        pacienteNome: agendamento.pacientes?.nome ?? patientName ?? 'Paciente',
+        convenioId: agendamento.pacientes?.convenio_id,
+        tipoConsulta: agendamento.tipo,
+        tipoExame: ['exame', 'exames'].includes(String(agendamento.tipo || '').toLocaleLowerCase('pt-BR'))
+          ? agendamento.observacoes
+          : null,
+        clinicaId: profile?.clinica_id,
+      });
       if (!checkin.success) throw new Error(checkin.message);
 
       const { data: item, error: erroFila } = await supabase
@@ -167,7 +194,7 @@ export function AppointmentCard({ agendamento, color, minutesToPx, onClick, conv
    * virava dinheiro. Agora passa pela finalização de verdade, que fatura e
    * fecha a fila junto.
    */
-  const finalizarAtendimento = async () => {
+  const finalizarAtendimento = async (diasRetorno: number | null) => {
     setOcupado(true);
     try {
       const { data: item } = await supabase
@@ -186,6 +213,10 @@ export function AppointmentCard({ agendamento, color, minutesToPx, onClick, conv
         medicoId: agendamento.medico_id,
         tipoConsulta: agendamento.tipo,
         clinicaId: profile?.clinica_id,
+        // Retorno perguntado aqui também: antes só a Fila perguntava, e toda
+        // finalização pela Agenda nascia sem retorno marcado.
+        agendarRetorno: diasRetorno !== null,
+        diasRetorno: diasRetorno ?? undefined,
       });
       if (!r.success) throw new Error(r.message);
 
@@ -197,15 +228,25 @@ export function AppointmentCard({ agendamento, color, minutesToPx, onClick, conv
       toast.error('Não foi possível finalizar', { description: mensagemDeErro(e) });
     } finally {
       setOcupado(false);
+      setFinalizandoCard(false);
     }
   };
   const remove = async () => {
-    if (!confirm('Cancelar esta consulta? O histórico será preservado.')) return;
+    // Cancela e remove a fila junto — a confirmação é o ConfirmDialog abaixo
+    // (antes era window.confirm nativo, fora do padrão do app).
     const { error } = await (supabase
       .from('agendamentos')
       .update({ status: 'cancelado' })
       .eq('id', agendamento.id) as any);
     if (error) return toast.error('Erro ao cancelar', { description: mensagemDeErro(error) });
+    // A fila guardava o item do paciente mesmo com a consulta cancelada —
+    // ele continuava aparecendo na Fila e no Painel TV.
+    const { error: filaErr } = await supabase
+      .from('fila_atendimento')
+      .delete()
+      .eq('agendamento_id', agendamento.id)
+      .neq('status', 'finalizado');
+    if (!filaErr) queryClient.invalidateQueries({ queryKey: ['fila_atendimento'] });
     toast.success('Consulta cancelada');
     queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
   };
@@ -240,6 +281,11 @@ export function AppointmentCard({ agendamento, color, minutesToPx, onClick, conv
             <span className="tabular-nums">{agendamento.hora_inicio.slice(0, 5)}</span>
             {agendamento.hora_fim && duration >= 30 && (
               <span className="text-muted-foreground text-[10px]">–{agendamento.hora_fim.slice(0, 5)}</span>
+            )}
+            {String(agendamento.observacoes || '').includes('[agendamento online]') && agendamento.status === 'agendado' && (
+              <span className="ml-1 shrink-0 rounded bg-info/15 px-1 text-[9px] font-semibold uppercase text-info" title="Marcado pelo paciente no link online — confirme com ele">
+                Online
+              </span>
             )}
             <span className={cn('ml-auto h-1.5 w-1.5 rounded-full shrink-0', STATUS_DOT[agendamento.status] || 'bg-muted')} />
           </div>
@@ -277,13 +323,30 @@ export function AppointmentCard({ agendamento, color, minutesToPx, onClick, conv
         <ContextMenuItem onSelect={() => setStatus('confirmado')}><CheckCircle2 className="mr-2 h-4 w-4" /> Confirmar</ContextMenuItem>
         <ContextMenuItem onSelect={() => setStatus('aguardando')}>Marcar como aguardando</ContextMenuItem>
         <ContextMenuItem disabled={ocupado} onSelect={iniciarAtendimento}><PlayCircle className="mr-2 h-4 w-4" /> Iniciar atendimento</ContextMenuItem>
-        <ContextMenuItem disabled={ocupado} onSelect={finalizarAtendimento}>Finalizar</ContextMenuItem>
+        {agendamento.status === 'em_atendimento' && (
+          <ContextMenuItem disabled={ocupado} onSelect={() => setFinalizandoCard(true)}>Finalizar</ContextMenuItem>
+        )}
         <ContextMenuSeparator />
         <ContextMenuItem onSelect={() => setStatus('faltou')} className="text-warning"><Ban className="mr-2 h-4 w-4" /> Marcar faltou</ContextMenuItem>
         <ContextMenuItem onSelect={() => setStatus('cancelado')} className="text-destructive">Cancelar consulta</ContextMenuItem>
         <ContextMenuSeparator />
-        <ContextMenuItem onSelect={remove} className="text-destructive"><Trash2 className="mr-2 h-4 w-4" /> Remover</ContextMenuItem>
+        <ContextMenuItem onSelect={() => setCancelandoCard(true)} className="text-destructive"><Trash2 className="mr-2 h-4 w-4" /> Remover</ContextMenuItem>
       </ContextMenuContent>
+      <FinalizarAtendimentoDialog
+        open={finalizandoCard}
+        pacienteNome={patientName}
+        onClose={() => setFinalizandoCard(false)}
+        onConfirm={finalizarAtendimento}
+      />
+      <ConfirmDialog
+        open={cancelandoCard}
+        onOpenChange={(o) => { if (!o) setCancelandoCard(false); }}
+        title="Cancelar esta consulta?"
+        description="O histórico do paciente é preservado; o horário volta a ficar disponível e o paciente sai da fila de atendimento."
+        confirmLabel="Cancelar consulta"
+        variant="destructive"
+        onConfirm={() => { setCancelandoCard(false); remove(); }}
+      />
     </ContextMenu>
   );
 }

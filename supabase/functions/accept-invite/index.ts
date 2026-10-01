@@ -1,13 +1,16 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { usuariosNoLimite } from "../_shared/limitesClinica.ts";
 import { checarRateLimit, clientIp } from "../_shared/rateLimit.ts";
+import { corsPadrao } from '../_shared/cors.ts';
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
-};
+// Atribuído em cada request (reflete a origem permitida). Helpers
+// top-level (json/reply) capturam esta variável por closure.
+let corsHeaders: Record<string, string> = {};
+
+;
 
 Deno.serve(async (req) => {
+  corsHeaders = { ...corsPadrao(req),};
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ success: false, error: "Método não permitido." }, 405);
 
@@ -64,9 +67,18 @@ Deno.serve(async (req) => {
     }
 
     const email = (invite as any).email as string;
+    // ILIKE trata "_" e "%" como curinga; e-mail com "_" casaria outro usuário.
+    const emailPadrao = email.replace(/[\\%_]/g, (c) => `\\${c}`);
     const nome = (invite as any).nome as string;
     const clinicaId = (invite as any).clinica_id as string;
     const roles = (invite as any).roles as string[];
+
+    // Limite de usuários definido pela plataforma (Limites e Consumo): o convite
+    // pode ter sido enviado quando ainda havia vaga.
+    const cotaUsuarios = await usuariosNoLimite(service, clinicaId);
+    if (cotaUsuarios.atingido) {
+      return json({ success: false, error: `A clínica atingiu o limite de ${cotaUsuarios.limite} usuários ativos. Peça ao administrador para liberar uma vaga.` }, 403);
+    }
 
     // Cria ou recupera usuário
     let userId: string | null = null;
@@ -78,13 +90,22 @@ Deno.serve(async (req) => {
     });
 
     if (createErr) {
-      // Pode já existir → procurar
-      const { data: list } = await service.auth.admin.listUsers();
-      const existing = list?.users?.find((u) => u.email?.toLowerCase() === email.toLowerCase());
-      if (!existing) {
+      // Pode já existir → procurar. `listUsers()` sem paginação só devolve os
+      // primeiros 50 usuários da plataforma; procuramos primeiro pelo perfil
+      // e depois percorremos as páginas.
+      const { data: perfil } = await service
+        .from("profiles").select("id").ilike("email", emailPadrao).maybeSingle();
+      let existingId: string | null = (perfil as any)?.id ?? null;
+      for (let page = 1; !existingId && page <= 50; page++) {
+        const { data: list } = await service.auth.admin.listUsers({ page, perPage: 1000 });
+        const users = list?.users ?? [];
+        existingId = users.find((u) => u.email?.toLowerCase() === email.toLowerCase())?.id ?? null;
+        if (users.length < 1000) break;
+      }
+      if (!existingId) {
         return json({ success: false, error: createErr.message }, 400);
       }
-      userId = existing.id;
+      userId = existingId;
     } else {
       userId = created.user?.id ?? null;
     }
@@ -120,7 +141,7 @@ Deno.serve(async (req) => {
       .from("funcionarios")
       .select("id, user_id")
       .eq("clinica_id", clinicaId)
-      .ilike("email", email)
+      .ilike("email", emailPadrao)
       .maybeSingle();
 
     if (fichaExistente) {
@@ -154,7 +175,7 @@ Deno.serve(async (req) => {
           .from("medicos")
           .select("id")
           .eq("clinica_id", clinicaId)
-          .ilike("email", email)
+          .ilike("email", emailPadrao)
           .limit(1)
           .maybeSingle();
         if (medByEmail) {

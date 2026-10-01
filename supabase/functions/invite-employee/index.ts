@@ -1,10 +1,12 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { usuariosNoLimite } from "../_shared/limitesClinica.ts";
+import { corsPadrao } from '../_shared/cors.ts';
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
-};
+// Atribuído em cada request (reflete a origem permitida). Helpers
+// top-level (json/reply) capturam esta variável por closure.
+let corsHeaders: Record<string, string> = {};
+
+;
 
 const ROLE_LABELS: Record<string, string> = {
   admin: "Administrador",
@@ -17,6 +19,7 @@ const ROLE_LABELS: Record<string, string> = {
 const ALLOWED_ROLES = new Set(["admin", "medico", "recepcao", "enfermagem", "financeiro"]);
 
 Deno.serve(async (req) => {
+  corsHeaders = { ...corsPadrao(req),};
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
@@ -92,6 +95,12 @@ Deno.serve(async (req) => {
           return json({ success: false, error: `Limite de médicos do plano ${plano.nome} atingido.` }, 403);
         }
       }
+    }
+
+    // Limite de usuários definido pela plataforma (Limites e Consumo).
+    const cotaUsuarios = await usuariosNoLimite(service, clinicaId);
+    if (cotaUsuarios.atingido) {
+      return json({ success: false, error: `A clínica atingiu o limite de ${cotaUsuarios.limite} usuários ativos. Desative alguém ou fale com o suporte para ampliar.` }, 403);
     }
 
     // Cria convite

@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { supabase } from '@/integrations/supabase/client';
+import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 
 interface ClinicalSafetyPanelProps {
   pacienteId: string;
@@ -43,8 +44,9 @@ function splitMedications(value?: string | null): string[] {
 }
 
 export function ClinicalSafetyPanel({ pacienteId, alergias = [] }: ClinicalSafetyPanelProps) {
+  const { user, profile } = useSupabaseAuth();
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['clinical-safety-panel', pacienteId],
+    queryKey: ['clinical-safety-panel', user?.id ?? null, profile?.clinica_id ?? null, pacienteId],
     queryFn: async () => {
       const [conditionsResult, recordResult, examsResult, triageResult] = await Promise.all([
         supabase.from('paciente_comorbidades').select('id, codigo_cid, descricao').eq('paciente_id', pacienteId).eq('ativo', true).order('data_diagnostico', { ascending: false }),
@@ -72,7 +74,7 @@ export function ClinicalSafetyPanel({ pacienteId, alergias = [] }: ClinicalSafet
         vitalWarnings: getVitalWarnings(triageVitals ?? recordVitals),
       };
     },
-    enabled: Boolean(pacienteId),
+    enabled: Boolean(pacienteId && user && profile?.clinica_id),
     staleTime: 30_000,
   });
 

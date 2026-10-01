@@ -1,3 +1,4 @@
+import { formatCurrency } from '@/lib/formatters';
 import { useState, useMemo, useEffect } from 'react';
 import { printReceiptPdf, type ReceiptData } from '@/lib/pdfReceipt';
 import { useNavigate } from 'react-router-dom';
@@ -8,10 +9,14 @@ import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { createAutoBilling } from '@/lib/autoBilling';
 import { autoFinalizarAtendimento, autoConfirmarPagamento } from '@/lib/workflowAutomation';
-import { atomicCheckin as autoCheckin, atomicStartAppointment as autoIniciarAtendimento } from '@/lib/operationalTransitions';
+import { checkinComCobranca } from '@/lib/checkinWithBilling';
+import { atomicConcludeQueue, atomicStartAppointment as autoIniciarAtendimento } from '@/lib/operationalTransitions';
 import { PainelDoDia } from '@/components/recepcao/PainelDoDia';
 import { AtendimentosEmAberto } from '@/components/recepcao/AtendimentosEmAberto';
-import { useAgendamentos, usePacientes, useMedicos, useSalas } from '@/hooks/useSupabaseData';
+import { FinalizarAtendimentoDialog } from '@/components/fila/FinalizarAtendimentoDialog';
+import { useAgendamentosPeriodo, useMedicos, useSalas } from '@/hooks/useSupabaseData';
+import { usePacienteResumo } from '@/hooks/useBuscaPacientes';
+import { PacienteCombobox } from '@/components/patients/PacienteCombobox';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { toast } from 'sonner';
 import { mensagemDeErro } from '@/lib/erros';
@@ -22,6 +27,7 @@ import {
   DollarSign, ArrowRight, Loader2, CheckCircle2, AlertTriangle,
   Timer, Phone, XCircle, Receipt, Eye, CalendarPlus, FileText,
   FlaskConical, RotateCcw, ClipboardList, Lock as LockIcon, LockOpen, Activity,
+  UserPlus,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -39,10 +45,12 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { todayDateOnly } from '@/lib/dateOnly';
 import { pacienteCorresponde, normalizarTexto } from '@/lib/buscaPaciente';
-import { calcularSaldoPagamento, montarPagamentos, somaDasExtras } from '@/lib/pagamentoDividido';
+import { calcularSaldoPagamento, montarPagamentos, resumirPagamentos, somaDasExtras, validarValorRecebido } from '@/lib/pagamentoDividido';
+import { patientStep } from '@/lib/receptionWorkflow';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
+import { canalUnico } from '@/lib/realtimeCanal';
 
 // ─── Constants ──────────────────────────────────────────
 const FORMAS_PAGAMENTO = [
@@ -102,27 +110,6 @@ function corEspera(ts: string | null): string {
   return 'text-destructive';
 }
 
-// New flow: Check-in(0) → Balcão/Pagamento(1) → Atendimento(2) → Finalizado(3) → Concluído(4)
-// Patient pays BEFORE entering the consultation room
-function patientStep(ag: any, filaItem: any, lancamento: any): number {
-  // Consulta terminou mas ficou saldo — um procedimento lançado durante o
-  // atendimento. Nunca é "concluído": tem dinheiro a receber no balcão.
-  if (ag.status === 'aguardando_pagamento_adicional') return 3;
-  // Concluído: explicitly marked as concluded in the queue
-  if ((ag.status === 'finalizado' || ag.status === 'atendimento_finalizado') && filaItem?.status === 'concluido') return 4;
-  // Finalizado: consultation done — show post-consultation actions (regardless of payment)
-  if (ag.status === 'finalizado' || ag.status === 'atendimento_finalizado') return 3;
-  // Em atendimento: in consultation
-  if (ag.status === 'em_atendimento') return 2;
-  // Already paid, waiting to be called for consultation
-  if (filaItem && lancamento?.status === 'pago') return 2;
-  // Balcão: checked in (in queue), waiting to pay before consultation
-  if (filaItem && lancamento?.status !== 'pago') return 1;
-  // Check-in: just arrived
-  if (ag.status === 'confirmado' || ag.status === 'aguardando' || ag.status === 'agendado') return 0;
-  return -1;
-}
-
 const fadeUp = {
   hidden: { opacity: 0, y: 12 },
   visible: { opacity: 1, y: 0, transition: { duration: 0.35 } },
@@ -145,6 +132,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
    const [formaPagamento, setFormaPagamento] = useState('');
    const [desconto, setDesconto] = useState(0);
    const [acrescimo, setAcrescimo] = useState(0);
+   const [valorReceberAgora, setValorReceberAgora] = useState('');
    /**
     * Formas ADICIONAIS, para o pagamento dividido.
     *
@@ -163,9 +151,26 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
     */
    const [chaveIdempotencia, setChaveIdempotencia] = useState('');
    const [obsPagamento, setObsPagamento] = useState('');
-  const [now, setNow] = useState(Date.now());
-  const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
-  const [pendingAction, setPendingAction] = useState<{type: string; agId?: string; filaId?: string} | null>(null);
+   const [now, setNow] = useState(Date.now());
+   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
+   const [pendingAction, setPendingAction] = useState<{type: string; agId?: string; filaId?: string} | null>(null);
+   /**
+    * Finalização pela Recepção esperando a resposta sobre retorno — mesma
+    * pergunta da Fila, agora pela via da recepção (antes só a Fila
+    * perguntava, e o retorno era esquecido nas outras vias).
+    */
+   const [finalizandoRecepcao, setFinalizandoRecepcao] = useState<{ agId: string; filaId: string; nome: string } | null>(null);
+   /**
+    * Encaixe: paciente que chegou sem agendamento. Antes a recepcionista
+    * tinha que ir até a Agenda, criar a consulta e voltar para fazer o
+    * check-in — três navegações no meio de um balcão cheio. Aqui o caminho
+    * é um só: busca, médico, tipo e pronto.
+    */
+   const [encaixeOpen, setEncaixeOpen] = useState(false);
+   const [encaixePacienteId, setEncaixePacienteId] = useState('');
+   const [encaixeMedicoId, setEncaixeMedicoId] = useState('');
+   const [encaixeTipo, setEncaixeTipo] = useState('');
+   const [salvandoEncaixe, setSalvandoEncaixe] = useState(false);
 
   // Refresh timer every 30s
   useEffect(() => {
@@ -174,13 +179,15 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
   }, []);
 
   // Data
-  const { data: agendamentos = [], isLoading: loadingAg } = useAgendamentos();
-  const { data: pacientes = [] } = usePacientes();
+  // Só o dia de hoje: a recepção não usa o histórico, e o realtime refaz esta
+  // consulta a cada mudança na agenda — antes era a tabela inteira, com joins.
+  const { data: agendamentos = [], isLoading: loadingAg } = useAgendamentosPeriodo(today, today);
+  const { data: pacienteEncaixe } = usePacienteResumo(encaixePacienteId);
   const { data: medicos = [] } = useMedicos();
   const { data: salas = [] } = useSalas();
 
   const { data: filaItems = [] } = useQuery({
-    queryKey: ['fila_atendimento'],
+    queryKey: ['fila_atendimento', profile?.id ?? null, profile?.clinica_id ?? null],
     queryFn: async () => {
       if (!profile?.clinica_id) {
         console.warn('Clinic ID not found - cannot fetch fila_atendimento');
@@ -195,42 +202,45 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
     },
   });
 
-  const { data: lancamentos = [] } = useQuery({
-    queryKey: ['lancamentos_hoje'],
+  const agendamentoIdsHoje = useMemo(() => agendamentos.map((ag: any) => ag.id), [agendamentos]);
+  const {
+    data: lancamentos = [],
+    isSuccess: lancamentosResolvidos,
+    isError: lancamentosErro,
+  } = useQuery({
+    queryKey: ['lancamentos_hoje', profile?.id ?? null, profile?.clinica_id ?? null, today, agendamentoIdsHoje],
     queryFn: async () => {
-      if (!profile?.clinica_id) {
-        console.warn('Clinic ID not found - cannot fetch lancamentos');
+      if (!profile?.clinica_id || agendamentoIdsHoje.length === 0) {
         return [];
       }
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('lancamentos')
         .select('*')
         .eq('clinica_id', profile.clinica_id)
-        .eq('data', today)
-        .eq('tipo', 'receita');
+        .eq('tipo', 'receita')
+        .in('agendamento_id', agendamentoIdsHoje);
+      if (error) throw error;
       return data || [];
     },
   });
 
   // Check if caixa is open — single source of truth: caixa_diario table
-  const { data: caixaAberto = false, refetch: refetchCaixa } = useQuery({
+  const { refetch: refetchCaixa } = useQuery({
     queryKey: ['caixa-estado-recepcao', profile?.clinica_id],
     initialData: () => Boolean(readCaixaEstadoLocal(profile?.id, profile?.clinica_id)),
     queryFn: async () => {
       if (!profile?.clinica_id) return false;
       const todayStr = format(new Date(), 'yyyy-MM-dd');
 
-      // 1. Check localStorage first (instant)
-      const localEstado = readCaixaEstadoLocal(profile.id, profile.clinica_id, todayStr);
-      if (isCaixaAbertoHoje(localEstado, todayStr)) return true;
-
-      // 2. Check caixa_diario table (source of truth)
-      const { data: caixa } = await supabase
+      // localStorage is an initial display hint only. Every action re-reads the
+      // database so a close from another terminal takes effect immediately.
+      const { data: caixa, error } = await supabase
         .from('caixa_diario')
         .select('id, aberto, data')
         .eq('data', todayStr)
         .eq('clinica_id', profile.clinica_id)
         .maybeSingle();
+      if (error) throw error;
 
       if (caixa?.aberto) {
         // Sync to localStorage for fast reads
@@ -253,8 +263,15 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
     refetchInterval: 10000,
   });
 
-  function checkCaixaAberto(): boolean {
-    if (!caixaAberto) {
+  async function checkCaixaAberto(): Promise<boolean> {
+    const resultado = await refetchCaixa();
+    if (resultado.error) {
+      toast.error('Não foi possível confirmar o estado do caixa', {
+        description: 'Confira sua conexão e tente novamente.',
+      });
+      return false;
+    }
+    if (!resultado.data) {
       toast.error('Caixa fechado!', {
         description: 'Abra o Caixa Diário antes de realizar pagamentos.',
         action: {
@@ -268,11 +285,28 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
     return true;
   }
 
+  // Tipos de consulta ativos — usados pelo encaixe (o preço é resolvido no
+  // check-in pelo createAutoBilling, igual ao fluxo agendado).
+  const { data: tiposConsulta = [] } = useQuery({
+    queryKey: ['tipos-consulta-encaixe', profile?.clinica_id],
+    enabled: !!profile?.clinica_id && encaixeOpen,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('tipos_consulta')
+        .select('id, nome, valor_particular')
+        .eq('clinica_id', profile!.clinica_id!)
+        .eq('ativo', true)
+        .order('nome');
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
 
   // Realtime subscriptions
   useEffect(() => {
     const ch = supabase
-      .channel('recepcao-realtime')
+      .channel(canalUnico('recepcao-realtime'))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'agendamentos' }, () => {
         queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
       })
@@ -299,15 +333,15 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
 
   const enriched = useMemo(() =>
     todayAgendamentos.map((ag: any) => {
-      const pac = pacientes.find((p: any) => p.id === ag.paciente_id);
+      const pac = ag.pacientes;
       const med = medicos.find((m: any) => m.id === ag.medico_id);
       const sala = ag.sala_id ? salas.find((s: any) => s.id === ag.sala_id) : null;
       const fila = filaItems.find((f: any) => f.agendamento_id === ag.id);
       const lanc = lancamentos.find((l: any) => l.agendamento_id === ag.id);
-      const step = patientStep(ag, fila, lanc);
+      const step = patientStep(ag, fila, lanc, lancamentosResolvidos);
       return { ag, pac, med, sala, fila, lanc, step };
     }),
-    [todayAgendamentos, pacientes, medicos, salas, filaItems, lancamentos]
+    [todayAgendamentos, medicos, salas, filaItems, lancamentos, lancamentosResolvidos]
   );
 
    // Filter
@@ -338,65 +372,48 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
    }), [enriched]);
 
   // ─── Actions ──────────────────────────────────────────
-  async function handleCheckin(agId: string) {
-     if (!checkCaixaAberto()) return;
-     setIsProcessing(true);
-     try {
-       const result = await autoCheckin(agId, profile?.clinica_id);
-       if (!result.success) throw new Error(result.message);
-
-        // Generate billing entry at check-in so price is ready at the counter.
-        // If this is a new check-in and the billing row was not created, undo
-        // the queue transition instead of leaving a patient unable to pay.
-        const item = enriched.find(e => e.ag.id === agId);
+  async function handleCheckin(agId: string, itemForcado?: { ag: any; pac: any; med: any }) {
+      setIsProcessing(true);
+      try {
+        // O encaixe passa o item na mão: o agendamento acabou de ser criado e
+        // ainda não passou pelo cache da lista.
+        const item = itemForcado ?? enriched.find(e => e.ag.id === agId);
         if (!item) throw new Error('Agendamento não encontrado');
-        try {
-          const billingCreated = await createAutoBilling({
-            agendamentoId: agId,
-            pacienteId: item.ag.paciente_id,
-            pacienteNome: item.pac?.nome || 'Paciente',
-            convenioId: item.pac?.convenio_id,
-            tipoConsulta: item.ag.tipo,
-            tipoExame: ['exame', 'exames'].includes(String(item.ag.tipo || '').toLocaleLowerCase('pt-BR'))
-              ? item.ag.observacoes
-              : null,
-            clinicaId: profile?.clinica_id,
-          });
-
-          if (!billingCreated) {
-            const { data: existingBilling, error: billingLookupError } = await supabase
-              .from('lancamentos')
-              .select('id')
-              .eq('agendamento_id', agId)
-              .eq('clinica_id', profile?.clinica_id || '')
-              .limit(1)
-              .maybeSingle();
-            if (billingLookupError) throw billingLookupError;
-            if (!existingBilling) throw new Error('A cobrança não foi gerada para este atendimento.');
-          }
-        } catch (billingError) {
-          // autoCheckin reports actions only when it inserted a new queue row.
-          if (result.actions.length > 0) {
-            const { error: rollbackFilaError } = await supabase.from('fila_atendimento')
-              .delete()
-              .eq('agendamento_id', agId)
-              .neq('status', 'finalizado');
-            const { error: rollbackAgError } = await supabase.from('agendamentos')
-              .update({ status: 'confirmado' })
-              .eq('id', agId);
-            if ((rollbackFilaError || rollbackAgError) && import.meta.env.DEV) {
-              console.error('Falha ao desfazer check-in após erro de cobrança:', rollbackFilaError || rollbackAgError);
-            }
-          }
-          throw billingError;
-        }
+        const result = await checkinComCobranca({
+          agendamentoId: agId,
+          pacienteId: item.ag.paciente_id,
+          pacienteNome: item.pac?.nome || 'Paciente',
+          convenioId: item.pac?.convenio_id,
+          tipoConsulta: item.ag.tipo,
+          tipoExame: ['exame', 'exames'].includes(String(item.ag.tipo || '').toLocaleLowerCase('pt-BR'))
+            ? item.ag.observacoes
+            : null,
+          clinicaId: profile?.clinica_id,
+        });
+        if (!result.success) throw new Error(result.message);
 
        queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
        queryClient.invalidateQueries({ queryKey: ['fila_atendimento'] });
        queryClient.invalidateQueries({ queryKey: ['lancamentos_hoje'] });
-       toast.success('Check-in realizado!', { description: 'Paciente encaminhado ao balcão para pagamento' });
+       if (result.actions.length === 0) {
+         toast.info('Este agendamento já estava na fila.', {
+           description: result.billingOutcome === 'free'
+             ? 'Atendimento gratuito confirmado; paciente continua na fila.'
+             : 'A situação da cobrança foi conferida no financeiro.',
+         });
+       } else if (result.billingOutcome === 'free') {
+         toast.success('Check-in realizado!', {
+           description: 'Atendimento sem cobrança. Paciente pronto para ser chamado.',
+         });
+       } else {
+         toast.success('Check-in realizado!', {
+           description: result.billingOutcome === 'already_exists'
+             ? 'Cobrança existente conferida no financeiro.'
+             : 'Paciente encaminhado ao balcão para pagamento.',
+         });
+       }
      } catch (err: any) {
-       toast.error('Erro ao realizar check-in: ' + err.message);
+       toast.error('Erro ao realizar check-in', { description: mensagemDeErro(err) });
      }
      setIsProcessing(false);
    }
@@ -436,7 +453,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
     setIsProcessing(false);
   }
 
-  async function handleFinalizarAtendimento(agId: string, filaId: string) {
+  async function handleFinalizarAtendimento(agId: string, filaId: string, diasRetorno: number | null) {
     setIsProcessing(true);
     try {
       const item = enriched.find(e => e.ag.id === agId);
@@ -453,6 +470,9 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
           ? item.ag.observacoes
           : null,
         clinicaId: profile?.clinica_id,
+        // Pergunta do retorno, respondida no diálogo — mesma pergunta da Fila.
+        agendarRetorno: diasRetorno !== null,
+        diasRetorno: diasRetorno ?? undefined,
       });
       if (!result.success) throw new Error(result.message);
 
@@ -472,7 +492,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
   }
 
    async function openPagamento(lanc: any, pac: any) {
-     if (!checkCaixaAberto()) return;
+     if (!(await checkCaixaAberto())) return;
 
      // Compatibilidade com cobranças de exames criadas pela versão antiga,
      // que podia salvar valor zero antes de consultar o catálogo.
@@ -526,7 +546,13 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
      setSelectedPacienteBalcao(pac);
      setFormaPagamento('');
      setDesconto(Number(lancamentoSelecionado.desconto || 0));
-     setAcrescimo(Number(lancamentoSelecionado.acrescimo || 0));
+      setAcrescimo(Number(lancamentoSelecionado.acrescimo || 0));
+     setValorReceberAgora(calcularSaldoPagamento(
+       Number(lancamentoSelecionado.valor || 0),
+       Number(lancamentoSelecionado.desconto || 0),
+       Number(lancamentoSelecionado.acrescimo || 0),
+       Number(lancamentoSelecionado.valor_pago || 0),
+     ).toFixed(2));
      setObsPagamento('');
      setFormasExtras([]);
      // Uma chave por ABERTURA do diálogo. Se o operador confirmar duas vezes,
@@ -535,46 +561,63 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
      setShowPagamento(true);
    }
 
-   async function handleChamarBalcao(lanc: any, pac: any) {
-     setIsProcessing(true);
-     try {
-       // Play a chime sound
-       try {
-         const ctx = new AudioContext();
-         const osc = ctx.createOscillator();
-         const gain = ctx.createGain();
-         osc.connect(gain);
-         gain.connect(ctx.destination);
-         osc.frequency.value = 880;
-         gain.gain.value = 0.3;
-         osc.start();
-         osc.stop(ctx.currentTime + 0.3);
-        } catch {
-          console.warn('Não foi possível reproduzir o alerta sonoro.');
+    async function handleChamarBalcao(lanc: any, pac: any) {
+      setIsProcessing(true);
+      try {
+        // Gravar a chamada na fila: antes o chime e a voz tocavam SÓ na
+        // máquina da recepção — o paciente na sala de espera não via nem
+        // ouvia nada. Com status 'chamado' o Painel TV anuncia em tempo real
+        // (chamado sem sala => "Recepção", que é exatamente o destino aqui).
+        const agId = lanc?.agendamento_id;
+        if (agId) {
+          const fila = (filaItems as any[]).find(f => f.agendamento_id === agId);
+          if (fila) {
+            const { error: filaErr } = await supabase
+              .from('fila_atendimento')
+              .update({ status: 'chamado' })
+              .eq('id', fila.id);
+            if (filaErr) throw filaErr;
+            queryClient.invalidateQueries({ queryKey: ['fila_atendimento'] });
+          }
         }
 
-       // Announce via TTS
-       if ('speechSynthesis' in window) {
-         const utter = new SpeechSynthesisUtterance(
-           `${pac?.nome || 'Paciente'}, por favor dirija-se ao balcão para pagamento.`
-         );
-         utter.lang = 'pt-BR';
-         utter.rate = 0.9;
-         window.speechSynthesis.speak(utter);
-       }
+        // Play a chime sound
+        try {
+          const ctx = new AudioContext();
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.frequency.value = 880;
+          gain.gain.value = 0.3;
+          osc.start();
+          osc.stop(ctx.currentTime + 0.3);
+         } catch {
+           console.warn('Não foi possível reproduzir o alerta sonoro.');
+         }
 
-       toast.success(`${pac?.nome} chamado ao balcão!`, {
-         description: 'Aguardando paciente no balcão para pagamento',
-         action: {
-           label: 'Receber agora',
-           onClick: () => openPagamento(lanc, pac),
-         },
-       });
-     } catch (e) {
-       toast.error('Erro ao chamar paciente', { description: mensagemDeErro(e) });
-     }
-     setIsProcessing(false);
-   }
+        // Announce via TTS
+        if ('speechSynthesis' in window) {
+          const utter = new SpeechSynthesisUtterance(
+            `${pac?.nome || 'Paciente'}, por favor dirija-se ao balcão para pagamento.`
+          );
+          utter.lang = 'pt-BR';
+          utter.rate = 0.9;
+          window.speechSynthesis.speak(utter);
+        }
+
+        toast.success(`${pac?.nome} chamado ao balcão!`, {
+          description: 'Chamado no painel da sala de espera',
+          action: {
+            label: 'Receber agora',
+            onClick: () => openPagamento(lanc, pac),
+          },
+        });
+      } catch (e) {
+        toast.error('Erro ao chamar paciente', { description: mensagemDeErro(e) });
+      }
+      setIsProcessing(false);
+    }
 
   function gerarComprovante(lanc: any, pac: any, forma: string, valorFinal: number, med?: any) {
     const formaLabel = FORMAS_PAGAMENTO.find(f => f.value === forma)?.label || forma;
@@ -614,7 +657,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
       return;
     }
     if (desconto > valorBase) {
-      toast.error(`Desconto não pode ser maior que o valor da consulta (R$ ${valorBase.toFixed(2)})`);
+      toast.error(`Desconto não pode ser maior que o valor da consulta (${formatCurrency(valorBase)})`);
       return;
     }
 
@@ -636,7 +679,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
     const totalAjustado = Number((valorBase - desconto + acrescimo).toFixed(2));
     if (totalAjustado + 0.009 < jaPago) {
       toast.error('O desconto deixa a conta menor que o valor já recebido.', {
-        description: `Já foram recebidos R$ ${jaPago.toFixed(2)}. Ajuste o desconto ou faça o estorno antes.`,
+        description: `Já foram recebidos ${formatCurrency(jaPago)}. Ajuste o desconto ou faça o estorno antes.`,
       });
       return;
     }
@@ -645,9 +688,16 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
       toast.info('Esta cobrança já está quitada.');
       return;
     }
-    if (somaDasExtras(formasExtras) > saldoReceber) {
-      toast.error('As formas de pagamento somam mais que o valor devido.', {
-        description: `Informado R$ ${somaDasExtras(formasExtras).toFixed(2)} para um saldo de R$ ${saldoReceber.toFixed(2)}.`,
+    const valorFinal = validarValorRecebido(valorReceberAgora, saldoReceber);
+    if (valorFinal === null) {
+      toast.error('Informe um valor maior que zero e até o saldo devedor.', {
+        description: `Saldo atual: ${formatCurrency(saldoReceber)}.`,
+      });
+      return;
+    }
+    if (somaDasExtras(formasExtras) > valorFinal) {
+      toast.error('As formas de pagamento somam mais que o valor recebido agora.', {
+        description: `Informado ${formatCurrency(somaDasExtras(formasExtras))} para um recebimento de ${formatCurrency(valorFinal)}.`,
       });
       return;
     }
@@ -655,6 +705,8 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
       toast.error('Preencha forma e valor em cada linha do pagamento dividido.');
       return;
     }
+
+    if (!(await checkCaixaAberto())) return;
 
     setIsProcessing(true);
     try {
@@ -667,8 +719,6 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
       // A tela de Contas a Receber já gravava do jeito certo. O mesmo evento de
       // negócio era registrado de duas formas conforme a tela usada, e o
       // relatório mudava de número por causa disso.
-      const valorFinal = saldoReceber;
-
       // Uma chamada só, no banco, em transação: grava os pagamentos, aplica
       // desconto e acréscimo, recalcula o saldo e avança o agendamento. Antes
       // eram passos soltos aqui no navegador — se a rede caísse no meio, o
@@ -676,9 +726,10 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
       //
       // A chave de idempotência faz a segunda chamada devolver o estado atual
       // em vez de cobrar de novo.
+      const pagamentos = montarPagamentos(formaPagamento, formasExtras, valorFinal);
       const { data: resultado, error } = await (supabase as any).rpc('registrar_pagamento', {
         p_lancamento_id: selectedLancamento.id,
-        p_pagamentos: montarPagamentos(formaPagamento, formasExtras, valorFinal),
+        p_pagamentos: pagamentos,
         p_desconto: Number(desconto.toFixed(2)),
         p_acrescimo: Number(acrescimo.toFixed(2)),
         p_chave_idempotencia: chaveIdempotencia || null,
@@ -712,15 +763,18 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
       queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
       queryClient.invalidateQueries({ queryKey: ['lancamentos', 'receita'] });
       queryClient.invalidateQueries({ queryKey: ['lancamentos-caixa'] });
+      // Card "Recebido hoje" do painel: sem isto ficava em R$ 0,00 até recarregar.
+      queryClient.invalidateQueries({ queryKey: ['pagamentos-do-dia'] });
       setShowPagamento(false);
       setSelectedLancamento(null);
       setSelectedPacienteBalcao(null);
-      if (!pagamentoRepetido) toast.success(`Pagamento de R$ ${valorFinal.toFixed(2)} confirmado!`);
+      if (!pagamentoRepetido) toast.success(`Pagamento de ${valorFinal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} confirmado!`);
 
       // Emit receipt automatically - find medico from enriched data
       if (!pagamentoRepetido) {
         const matchedItem = enriched.find(e => e.lanc?.id === selectedLancamento.id);
-        gerarComprovante(selectedLancamento, selectedPacienteBalcao, formaPagamento, valorFinal, matchedItem?.med);
+        const rotulos = Object.fromEntries(FORMAS_PAGAMENTO.map((forma) => [forma.value, forma.label]));
+        gerarComprovante(selectedLancamento, selectedPacienteBalcao, resumirPagamentos(pagamentos, rotulos), valorFinal, matchedItem?.med);
       }
     } catch (err: any) {
       toast.error('Erro ao confirmar pagamento: ' + (err?.message || 'Erro desconhecido'));
@@ -739,24 +793,8 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
 
     setIsProcessing(true);
     try {
-      const { error: filaErr } = await supabase
-        .from('fila_atendimento')
-        .update({ status: 'concluido' })
-        .eq('id', filaId!);
-      if (filaErr) throw filaErr;
-
-      const { error: agErr } = await supabase
-        .from('agendamentos')
-        .update({ status: 'finalizado' })
-        .eq('id', agId!);
-      if (agErr) {
-        const { error: rollbackErr } = await supabase
-          .from('fila_atendimento')
-          .update({ status: 'aguardando' })
-          .eq('id', filaId!);
-        if (rollbackErr && import.meta.env.DEV) console.error('Falha no rollback da fila:', rollbackErr);
-        throw agErr;
-      }
+      const result = await atomicConcludeQueue(agId!, filaId!);
+      if (!result.success) throw new Error(result.message);
 
       await queryClient.invalidateQueries({ queryKey: ['fila_atendimento'] });
       await queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
@@ -796,6 +834,54 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
       navigate(`/triagem`);
     } catch (e) { toast.error('Erro ao encaminhar', { description: mensagemDeErro(e) }); }
     setIsProcessing(false);
+  }
+
+  /**
+   * Encaixe: cria o agendamento de hoje, agora, e faz o check-in na sequência
+   * (fila + cobrança) pelo mesmo caminho do agendado — sem navegar até a
+   * Agenda. O caixa sÃ³ Ã© exigido quando a equipe for receber o pagamento.
+   */
+  async function handleEncaixe() {
+    if (!encaixePacienteId || !encaixeMedicoId || !encaixeTipo) {
+      toast.error('Selecione paciente, médico e tipo de consulta.');
+      return;
+    }
+    setSalvandoEncaixe(true);
+    try {
+      const agora = new Date();
+      const fim = new Date(agora.getTime() + 30 * 60000);
+      const hhmm = (d: Date) =>
+        `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+      const { data: novo, error } = await supabase
+        .from('agendamentos')
+        .insert({
+          paciente_id: encaixePacienteId,
+          medico_id: encaixeMedicoId,
+          tipo: encaixeTipo,
+          data: today,
+          hora_inicio: hhmm(agora),
+          hora_fim: hhmm(fim),
+          status: 'aguardando',
+          clinica_id: profile?.clinica_id,
+        })
+        .select('id, paciente_id, medico_id, tipo')
+        .single();
+      if (error) throw error;
+
+      const pac = pacienteEncaixe;
+      setEncaixeOpen(false);
+      setEncaixePacienteId('');
+      setEncaixeMedicoId('');
+      setEncaixeTipo('');
+
+      // O check-in (fila + cobrança) segue o mesmo caminho do agendado, com o
+      // item passado na mão porque a lista ainda não tem o agendamento novo.
+      await handleCheckin(novo.id, { ag: novo, pac, med: null });
+    } catch (e) {
+      toast.error('Não foi possível criar o encaixe', { description: mensagemDeErro(e) });
+    } finally {
+      setSalvandoEncaixe(false);
+    }
   }
 
   // ─── Render ───────────────────────────────────────────
@@ -838,6 +924,12 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
             className="pl-9"
           />
         </div>
+        <Button
+          variant="outline" size="sm" className="gap-1.5 shrink-0"
+          onClick={() => setEncaixeOpen(true)}
+        >
+          <UserPlus className="h-4 w-4" /> Encaixe sem agendamento
+        </Button>
       </motion.div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
@@ -998,6 +1090,28 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
                                 {/* Step 1: Balcão — patient pays before consultation */}
                                 {step === 1 && (
                                   <div className="flex flex-wrap gap-1.5">
+                                    {lancamentosErro && (
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => queryClient.invalidateQueries({ queryKey: ['lancamentos_hoje'] })}
+                                        className="gap-1"
+                                      >
+                                        <RotateCcw className="h-3.5 w-3.5" /> Tentar carregar cobrança
+                                      </Button>
+                                    )}
+                                    {fila?.cobranca_estado === 'pendente' && (
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => handleCheckin(ag.id)}
+                                        disabled={isProcessing}
+                                        className="gap-1"
+                                      >
+                                        <RotateCcw className="h-3.5 w-3.5" />
+                                        {lanc ? 'Confirmar cobrança' : 'Retomar cobrança'}
+                                      </Button>
+                                    )}
                                     <Button
                                       size="sm"
                                       variant="outline"
@@ -1015,12 +1129,12 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
                                         className="gap-1.5 bg-success hover:bg-success/90 text-success-foreground"
                                       >
                                         <DollarSign className="h-3.5 w-3.5" />
-                                        Receber R$ {calcularSaldoPagamento(
+                                        Receber {formatCurrency(calcularSaldoPagamento(
                                           Number(lanc.valor || 0),
                                           Number(lanc.desconto || 0),
                                           Number(lanc.acrescimo || 0),
                                           Number(lanc.valor_pago || 0),
-                                        ).toFixed(2)}
+                                        ))}
                                       </Button>
                                     )}
                                   </div>
@@ -1059,7 +1173,11 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
                                       <Button
                                         size="sm"
                                         variant="default"
-                                        onClick={() => handleFinalizarAtendimento(ag.id, fila.id)}
+                                        onClick={() => setFinalizandoRecepcao({
+                                          agId: ag.id,
+                                          filaId: fila.id,
+                                          nome: (pac as any)?.nome_social || pac?.nome || 'Paciente',
+                                        })}
                                         disabled={isProcessing}
                                         className="gap-1"
                                       >
@@ -1179,23 +1297,23 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
                     <p className="text-sm font-medium">{selectedLancamento.descricao}</p>
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">Valor</span>
-                      <span className="tabular-nums">R$ {devido.toFixed(2)}</span>
+                      <span className="tabular-nums">{formatCurrency(devido)}</span>
                     </div>
                     {jaPago > 0 && (
                       <div className="flex justify-between text-sm">
                         <span className="text-muted-foreground">Já pago</span>
-                        <span className="tabular-nums text-success">− R$ {jaPago.toFixed(2)}</span>
+                        <span className="tabular-nums text-success">− {formatCurrency(jaPago)}</span>
                       </div>
                     )}
                     <div className="flex justify-between items-baseline border-t pt-2">
                       <span className="text-sm font-medium">Saldo a receber</span>
-                      <span className="font-bold text-lg tabular-nums">R$ {saldo.toFixed(2)}</span>
+                      <span className="font-bold text-lg tabular-nums">{formatCurrency(saldo)}</span>
                     </div>
                     {(desconto > 0 || acrescimo > 0) && (
                       <div className="text-xs text-muted-foreground">
-                        Original: R$ {bruto.toFixed(2)}
-                        {desconto > 0 && ` • Desc: -R$ ${desconto.toFixed(2)}`}
-                        {acrescimo > 0 && ` • Acrés: +R$ ${acrescimo.toFixed(2)}`}
+                        Original: {formatCurrency(bruto)}
+                        {desconto > 0 && ` • Desc: -${formatCurrency(desconto)}`}
+                        {acrescimo > 0 && ` • Acrés: +${formatCurrency(acrescimo)}`}
                       </div>
                     )}
                   </div>
@@ -1223,10 +1341,36 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
                 </div>
               </div>
 
+              <div className="space-y-1.5">
+                <Label htmlFor="valor-recebido-agora" className="text-xs font-medium">Valor recebido agora (R$)</Label>
+                <Input
+                  id="valor-recebido-agora"
+                  type="number"
+                  min="0.01"
+                  max={(() => {
+                    const bruto = Number(selectedLancamento.valor || 0);
+                    return calcularSaldoPagamento(bruto, desconto, acrescimo, Number(selectedLancamento.valor_pago || 0));
+                  })()}
+                  step="0.01"
+                  value={valorReceberAgora}
+                  onChange={event => setValorReceberAgora(event.target.value)}
+                  aria-describedby="saldo-apos-recebimento"
+                />
+                {(() => {
+                  const bruto = Number(selectedLancamento.valor || 0);
+                  const saldo = calcularSaldoPagamento(bruto, desconto, acrescimo, Number(selectedLancamento.valor_pago || 0));
+                  const recebido = validarValorRecebido(valorReceberAgora, saldo);
+                  return (
+                    <p id="saldo-apos-recebimento" className="text-xs text-muted-foreground" aria-live="polite">
+                      {recebido === null ? `Saldo atual: ${formatCurrency(saldo)}.` : `Ficará pendente: ${formatCurrency((saldo - recebido))}.`}
+                    </p>
+                  );
+                })()}
+              </div>
+
               {/* ─── Pagamento dividido ───
-                  A primeira forma (acima) fica com o RESTANTE. Aqui entram as
-                  outras: "R$ 200 no Pix" numa conta de R$ 500 deixa R$ 300 na
-                  primeira, sem o operador precisar calcular. */}
+                  As formas informadas dividem o valor recebido nesta etapa; a
+                  primeira forma escolhida absorve o restante. */}
               {formasExtras.length > 0 && (
                 <div className="space-y-2">
                   <Label className="text-xs font-medium">Dividir com outra forma</Label>
@@ -1305,10 +1449,16 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
           )}
 
           <DialogFooter>
+            {!formaPagamento && (
+              <p className="mr-auto self-center text-xs text-muted-foreground" role="status">Escolha a forma de pagamento para confirmar.</p>
+            )}
             <Button variant="outline" onClick={() => setShowPagamento(false)}>Cancelar</Button>
             <Button
               onClick={handleConfirmarPagamento}
-              disabled={!formaPagamento || isProcessing}
+              disabled={!formaPagamento || isProcessing || !selectedLancamento || validarValorRecebido(
+                valorReceberAgora,
+                calcularSaldoPagamento(Number(selectedLancamento.valor || 0), desconto, acrescimo, Number(selectedLancamento.valor_pago || 0)),
+              ) === null}
               className="gap-1.5 bg-success hover:bg-success/90 text-success-foreground"
             >
               {isProcessing ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
@@ -1342,6 +1492,81 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* ─── Finalização com pergunta de retorno ───
+          Mesma pergunta da Fila, agora também na via da recepção. Sem isto,
+          o retorno era esquecido em toda finalização que não passasse pela
+          Fila — e "retorno esquecido" é paciente que não volta. */}
+      <FinalizarAtendimentoDialog
+        open={!!finalizandoRecepcao}
+        pacienteNome={finalizandoRecepcao?.nome ?? ''}
+        onClose={() => setFinalizandoRecepcao(null)}
+        onConfirm={async dias => {
+          if (!finalizandoRecepcao) return;
+          const { agId, filaId } = finalizandoRecepcao;
+          setFinalizandoRecepcao(null);
+          await handleFinalizarAtendimento(agId, filaId, dias);
+        }}
+      />
+
+      {/* ─── Encaixe (walk-in) ─── */}
+      <Dialog open={encaixeOpen} onOpenChange={a => { if (!a && !salvandoEncaixe) setEncaixeOpen(false); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <UserPlus className="h-5 w-5 text-primary" /> Encaixe sem agendamento
+            </DialogTitle>
+            <DialogDescription>
+              Paciente que chegou sem consulta marcada. Cria o atendimento para
+              agora e faz o check-in na sequência.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Paciente</Label>
+              <PacienteCombobox value={encaixePacienteId} onChange={(id) => setEncaixePacienteId(id)} />
+              <p className="text-xs text-muted-foreground">
+                Não encontrou? Cadastre em Pacientes primeiro e volte aqui para o encaixe.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label>Médico</Label>
+              <Select value={encaixeMedicoId} onValueChange={setEncaixeMedicoId}>
+                <SelectTrigger><SelectValue placeholder="Selecionar médico..." /></SelectTrigger>
+                <SelectContent>
+                  {(medicos as any[]).map(m => (
+                    <SelectItem key={m.id} value={m.id}>{m.nome || m.crm}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Tipo de consulta</Label>
+              <Select value={encaixeTipo} onValueChange={setEncaixeTipo}>
+                <SelectTrigger><SelectValue placeholder="Selecionar tipo..." /></SelectTrigger>
+                <SelectContent>
+                  {(tiposConsulta as any[]).map(t => (
+                    <SelectItem key={t.id} value={t.nome}>{t.nome}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" disabled={salvandoEncaixe} onClick={() => setEncaixeOpen(false)}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleEncaixe}
+              disabled={salvandoEncaixe || !encaixePacienteId || !encaixeMedicoId || !encaixeTipo}
+              className="gap-1.5"
+            >
+              {salvandoEncaixe ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserCheck className="h-4 w-4" />}
+              Criar e fazer check-in
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

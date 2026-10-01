@@ -1,3 +1,4 @@
+import { nomeMedico } from '@/lib/formatters';
 import { format, addDays, addWeeks, addMonths, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Button } from '@/components/ui/button';
@@ -193,7 +194,7 @@ export function AgendaHeader(p: Props) {
                     ? [...p.medicoFilter, m.id]
                     : p.medicoFilter.filter(x => x !== m.id))}
                 />
-                <span className="text-sm">Dr(a). {m.nome || m.crm}</span>
+                <span className="text-sm">{nomeMedico(m.nome || m.crm)}</span>
               </label>
             ))}
           </PopoverContent>

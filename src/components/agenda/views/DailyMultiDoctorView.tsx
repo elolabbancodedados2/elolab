@@ -1,3 +1,4 @@
+import { nomeMedico } from '@/lib/formatters';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import { format, isToday, parseISO } from 'date-fns';
@@ -55,7 +56,7 @@ function DoctorColumn({
             <User className="h-4 w-4" />
           </div>
           <div className="min-w-0 flex-1">
-            <div className="text-sm font-semibold truncate">Dr(a). {medico.nome || medico.crm}</div>
+            <div className="text-sm font-semibold truncate">{nomeMedico(medico.nome || medico.crm)}</div>
             <div className="text-[11px] text-muted-foreground truncate">{medico.especialidade || 'Clínico Geral'}</div>
           </div>
           {total > 0 && (

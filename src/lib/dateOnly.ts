@@ -54,6 +54,43 @@ export function todayDateOnly(): string {
   return toDateOnly(new Date());
 }
 
+/** Civil date for a business timezone, independent of the device timezone. */
+export function dateOnlyInTimeZone(instant: Date, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(instant);
+  const get = (type: string) => parts.find(part => part.type === type)?.value ?? '';
+  return `${get('year')}-${get('month')}-${get('day')}`;
+}
+
+/** Today at the clinic's fixed business timezone, São Paulo. */
+export function todaySaoPauloDateOnly(instant: Date = new Date()): string {
+  return dateOnlyInTimeZone(instant, 'America/Sao_Paulo');
+}
+
+/** Whether a clinic appointment start is in the past, using São Paulo time. */
+export function appointmentStartHasPassed(date: string, time: string, instant: Date = new Date()): boolean {
+  const parsedDate = new Date(`${date}T12:00:00Z`);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(parsedDate.getTime()) || parsedDate.toISOString().slice(0, 10) !== date) return true;
+
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false,
+  }).formatToParts(instant);
+  const get = (type: string) => parts.find((part) => part.type === type)?.value ?? '00';
+  const today = `${get('year')}-${get('month')}-${get('day')}`;
+  const nowMinutes = (Number(get('hour')) % 24) * 60 + Number(get('minute'));
+  if (date < today) return true;
+  if (date > today || !time) return false;
+  const match = /^(\d{2}):(\d{2})(?::\d{2})?$/.exec(time);
+  if (!match || Number(match[1]) > 23 || Number(match[2]) > 59) return true;
+  const startMinutes = Number(match[1]) * 60 + Number(match[2]);
+  return startMinutes <= nowMinutes;
+}
+
 /** Idade completa, preservando o dia civil de nascimento vindo de uma coluna DATE. */
 export function ageFromDateOnly(value: string, referenceDate: Date = new Date()): number {
   const birthDate = parseDateOnly(value);

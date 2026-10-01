@@ -24,6 +24,7 @@ import { ptBR } from 'date-fns/locale';
 import { printReceiptPdf, downloadReceiptPdf, ReceiptData } from '@/lib/pdfReceipt';
 import { todayDateOnly, toDateOnly } from '@/lib/dateOnly';
 import { parcelarCobranca } from '@/lib/parcelamentoCobranca';
+import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 
 const statusColors: Record<string, string> = {
   pendente: 'bg-warning/10 text-warning',
@@ -60,6 +61,7 @@ const CONTAS_DESTINO = [
 
 export default function Pagamentos() {
   const queryClient = useQueryClient();
+  const { user, profile } = useSupabaseAuth();
   const [showNewPayment, setShowNewPayment] = useState(false);
   const [showBaixar, setShowBaixar] = useState(false);
   const [selectedCobranca, setSelectedCobranca] = useState<any>(null);
@@ -67,24 +69,27 @@ export default function Pagamentos() {
   const [filterStatus, setFilterStatus] = useState('todos');
 
   const { data: pagamentos, isLoading } = useQuery({
-    queryKey: ['pagamentos_mercadopago'],
+    queryKey: ['pagamentos_mercadopago', user?.id ?? null, profile?.clinica_id ?? null],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('pagamentos_mercadopago' as any)
         .select('*, pacientes(nome)')
+        .eq('clinica_id', profile?.clinica_id ?? '')
         .order('created_at', { ascending: false });
       if (error) throw error;
       return data as any[];
     },
+    enabled: !!user && !!profile?.clinica_id,
   });
 
   const { data: pacientes } = useQuery({
-    queryKey: ['pacientes_select'],
+    queryKey: ['pacientes_select', user?.id ?? null, profile?.clinica_id ?? null],
     queryFn: async () => {
-      const { data, error } = await supabase.from('pacientes').select('id, nome').order('nome');
+      const { data, error } = await supabase.from('pacientes').select('id, nome').eq('clinica_id', profile?.clinica_id ?? '').order('nome');
       if (error) throw error;
       return data;
     },
+    enabled: !!user && !!profile?.clinica_id,
   });
 
   const filteredPagamentos = useMemo(() => {

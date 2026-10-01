@@ -1,10 +1,11 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { clinicaDoChamador, cronForbidden, cronOrUserOk, cronSecretOk } from '../_shared/cronAuth.ts'
+import { corsPadrao } from '../_shared/cors.ts';
+import { consumoNotificacoes } from '../_shared/limitesClinica.ts';
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-cron-secret',
-}
+// Atribuído em cada request (reflete a origem permitida). Helpers
+// top-level (json/reply) capturam esta variável por closure.
+let corsHeaders: Record<string, string> = {};
 
 interface NotificationItem {
   id: string; tipo: string; destinatario_email: string | null
@@ -14,6 +15,7 @@ interface NotificationItem {
 }
 
 Deno.serve(async (req) => {
+  corsHeaders = { ...corsPadrao(req),};
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
   if (!cronOrUserOk(req)) return cronForbidden(corsHeaders)
   const startTime = Date.now()
@@ -42,12 +44,27 @@ Deno.serve(async (req) => {
         ...(!terminal ? { agendado_para: new Date(Date.now() + minutos * 60_000).toISOString() } : {}),
       }).eq('id', notif.id)
     }
-    const concluir = async (id: string) => supabase.from('notification_queue').update({
-      status: 'enviado', enviado_em: new Date().toISOString(), iniciado_em: null, erro_mensagem: null,
-    }).eq('id', id)
+    // Limite mensal de envios por clínica (Limites e Consumo). Contado uma vez
+    // por clínica nesta execução e incrementado a cada envio bem-sucedido.
+    const consumo = new Map<string, { usados: number; limite: number }>()
+    const concluir = async (id: string, clinica: string | null) => {
+      if (clinica && consumo.has(clinica)) consumo.get(clinica)!.usados++
+      return supabase.from('notification_queue').update({
+        status: 'enviado', enviado_em: new Date().toISOString(), iniciado_em: null, erro_mensagem: null,
+      }).eq('id', id)
+    }
 
     for (const notif of pendentes as NotificationItem[]) {
       try {
+        if (notif.clinica_id) {
+          if (!consumo.has(notif.clinica_id)) consumo.set(notif.clinica_id, await consumoNotificacoes(supabase, notif.clinica_id))
+          const c = consumo.get(notif.clinica_id)!
+          if (c.usados >= c.limite) {
+            await falhar(notif, `Limite mensal de ${c.limite} notificações da clínica atingido. Fale com o suporte para ampliar.`, false)
+            errorCount++
+            continue
+          }
+        }
         if (notif.tipo === 'email' && notif.destinatario_email) {
           const key = Deno.env.get('BREVO_API_KEY')
           if (!key) throw new Error('BREVO_API_KEY não configurada')
@@ -58,7 +75,7 @@ Deno.serve(async (req) => {
               subject: notif.assunto || 'Notificação EloLab', htmlContent: notif.conteudo.replace(/\n/g, '<br>') }),
           })
           if (!res.ok) { await falhar(notif, `Brevo ${res.status}: ${(await res.text()).slice(0, 700)}`); errorCount++; continue }
-          await concluir(notif.id); successCount++
+          await concluir(notif.id, notif.clinica_id); successCount++
         } else if (notif.tipo === 'whatsapp' && notif.destinatario_telefone) {
           const url = (Deno.env.get('EVOLUTION_API_URL') || '').replace(/\/+$/, '')
           const key = Deno.env.get('EVOLUTION_API_KEY')
@@ -72,7 +89,7 @@ Deno.serve(async (req) => {
             body: JSON.stringify({ number: digits.length >= 10 ? digits : `55${digits}`, text: notif.conteudo }),
           })
           if (!res.ok) { await falhar(notif, `Evolution ${res.status}: ${(await res.text()).slice(0, 700)}`); errorCount++; continue }
-          await concluir(notif.id); successCount++
+          await concluir(notif.id, notif.clinica_id); successCount++
         } else {
           await falhar(notif, `Canal "${notif.tipo}" sem destinatário válido ou não suportado`, false); errorCount++
         }

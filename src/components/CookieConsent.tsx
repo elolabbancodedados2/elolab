@@ -30,8 +30,8 @@ export function CookieConsent() {
 
   if (!visible) return null;
 
-  const isTaskFirstRoute = ['/auth', '/redefinir-senha', '/aceitar-convite'].some(
-    (route) => location.pathname.startsWith(route),
+  const isTaskFirstRoute = ['/auth', '/redefinir-senha', '/aceitar-convite', '/agendar'].some(
+    (route) => location.pathname === route || location.pathname.startsWith(`${route}/`),
   );
 
   const handleAcceptAll = () => {

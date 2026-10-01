@@ -1,6 +1,12 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-const h={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'authorization, apikey, content-type, x-cron-secret','Content-Type':'application/json'}
-Deno.serve(async req=>{if(req.method==='OPTIONS')return new Response('ok',{headers:h});const db=createClient(Deno.env.get('SUPABASE_URL')!,Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);try{
+import { corsPadrao } from '../_shared/cors.ts';
+
+// Atribuído em cada request (reflete a origem permitida). Helpers
+// top-level (json/reply) capturam esta variável por closure.
+let h: Record<string, string> = {};
+
+Deno.serve(async req=>{
+  h = { ...corsPadrao(req), 'Content-Type': 'application/json' };if(req.method==='OPTIONS')return new Response('ok',{headers:h});const db=createClient(Deno.env.get('SUPABASE_URL')!,Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);try{
  const provided=req.headers.get('x-cron-secret'),expected=Deno.env.get('CRON_SECRET');const cron=!!provided&&!!expected&&provided===expected;if(provided&&!cron)return new Response(JSON.stringify({error:'Credencial do agendador inválida'}),{status:403,headers:h});
  if(!cron){const token=(req.headers.get('Authorization')||'').replace(/^Bearer\s+/i,'');const{data:u}=await db.auth.getUser(token);const{data:a}=u.user?await db.from('platform_admins').select('id').eq('user_id',u.user.id).eq('ativo',true).maybeSingle():{data:null};if(!a)return new Response(JSON.stringify({error:'Acesso restrito'}),{status:403,headers:h})}
  let body:any={};try{body=await req.json()}catch{/* Corpo vazio e valido para execucao agendada. */}let q=db.from('platform_report_schedules').select('*').eq('active',true);if(body.id)q=q.eq('id',body.id);else q=q.lte('next_run_at',new Date().toISOString());const{data:schedules,error}=await q;if(error)throw error;const{data:report,error:reportError}=await db.rpc('platform_executive_report',{p_days:30});if(reportError)throw reportError;

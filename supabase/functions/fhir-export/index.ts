@@ -1,14 +1,15 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { corsPadrao } from '../_shared/cors.ts';
 
-const cors = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, apikey, content-type, x-client-info',
-  'Content-Type': 'application/fhir+json; charset=utf-8',
-}
+// Atribuído em cada request (reflete a origem permitida). Helpers
+// top-level (json/reply) capturam esta variável por closure.
+let cors: Record<string, string> = {};
+
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const ref = (type: string, id: string) => ({ reference: `${type}/${id}` })
 
 Deno.serve(async (req) => {
+  cors = { ...corsPadrao(req), 'Content-Type': 'application/fhir+json; charset=utf-8' };
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
   if (req.method !== 'POST') return new Response(JSON.stringify({ error: 'Método não permitido' }), { status: 405, headers: cors })
   try {

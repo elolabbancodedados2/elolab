@@ -18,6 +18,7 @@ import {
 } from 'recharts';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
+import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 
 interface VitalSignsChartProps {
   pacienteId: string;
@@ -37,8 +38,9 @@ interface TriagemData {
 }
 
 export function VitalSignsChart({ pacienteId, className }: VitalSignsChartProps) {
+  const { user, profile } = useSupabaseAuth();
   const { data: triagens, isLoading } = useQuery({
-    queryKey: ['patient-vital-signs', pacienteId],
+    queryKey: ['patient-vital-signs', user?.id ?? null, profile?.clinica_id ?? null, pacienteId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('triagens')
@@ -50,7 +52,7 @@ export function VitalSignsChart({ pacienteId, className }: VitalSignsChartProps)
       if (error) throw error;
       return data as TriagemData[];
     },
-    enabled: !!pacienteId,
+    enabled: !!pacienteId && !!user && !!profile?.clinica_id,
   });
 
   const chartData = triagens?.map((t) => {

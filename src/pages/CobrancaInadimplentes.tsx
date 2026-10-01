@@ -25,10 +25,12 @@ export default function CobrancaInadimplentes() {
       const hoje = new Date().toISOString().slice(0, 10);
       const { data, error } = await (supabase as any)
         .from('lancamentos')
-        .select('id, descricao, valor, data_vencimento, paciente_id, pacientes(nome, telefone)')
+        .select('id, descricao, valor, valor_pago, status, data_vencimento, paciente_id, pacientes(nome, telefone)')
         .eq('clinica_id', clinicaId)
         .eq('tipo', 'receita')
-        .eq('status', 'pendente')
+        // Pagamento parcial vencido também é inadimplência (o painel de saúde já
+        // contava os três estados; esta tela só via 'pendente').
+        .in('status', ['pendente', 'parcial', 'atrasado'])
         .lt('data_vencimento', hoje)
         .not('paciente_id', 'is', null)
         .order('data_vencimento', { ascending: true })
@@ -54,7 +56,8 @@ export default function CobrancaInadimplentes() {
     }
   };
 
-  const totalDevido = (data || []).reduce((a: number, l: any) => a + Number(l.valor || 0), 0);
+  const saldo = (l: any) => Math.max(0, Number(l.valor || 0) - Number(l.valor_pago || 0));
+  const totalDevido = (data || []).reduce((a: number, l: any) => a + saldo(l), 0);
 
   return (
     <div className="space-y-4 p-4 md:p-6">
@@ -114,7 +117,7 @@ export default function CobrancaInadimplentes() {
                       <TableRow key={l.id}>
                         <TableCell className="font-medium">{l.pacientes?.nome || '—'}</TableCell>
                         <TableCell className="text-sm">{l.descricao || '—'}</TableCell>
-                        <TableCell>{Number(l.valor || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</TableCell>
+                        <TableCell>{saldo(l).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}{l.status === 'parcial' && <span className="ml-1 text-xs text-muted-foreground">(saldo)</span>}</TableCell>
                         <TableCell>{format(parseDateOnly(l.data_vencimento)!, 'dd/MM/yyyy')}</TableCell>
                         <TableCell>
                           <Badge variant={dias > 30 ? 'destructive' : 'secondary'}>{dias} dias</Badge>

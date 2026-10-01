@@ -137,6 +137,7 @@ export function ConsentimentoLGPD({
     }
 
     setLoading(true);
+    const tiposPersistidos: string[] = [];
     try {
       const now = new Date().toISOString();
       
@@ -145,7 +146,7 @@ export function ConsentimentoLGPD({
         const existente = consentimentos.find(c => c.tipo_consentimento === tipo && !c.revogado);
         
         if (existente) {
-          await supabase
+          const { data, error } = await supabase
             .from('consentimentos_lgpd')
             .update({
               aceito: true,
@@ -154,9 +155,13 @@ export function ConsentimentoLGPD({
               data_revogacao: null,
               motivo_revogacao: null,
             })
-            .eq('id', existente.id);
+            .eq('id', existente.id)
+            .select('id')
+            .maybeSingle();
+          if (error) throw error;
+          if (!data) throw new Error('Não foi possível confirmar a gravação do consentimento.');
         } else {
-          await supabase
+          const { data, error } = await supabase
             .from('consentimentos_lgpd')
             .insert({
               paciente_id: pacienteId,
@@ -164,8 +169,13 @@ export function ConsentimentoLGPD({
               versao_termo: '1.0',
               aceito: true,
               data_aceite: now,
-            });
+            })
+            .select('id')
+            .single();
+          if (error) throw error;
+          if (!data) throw new Error('Não foi possível confirmar a gravação do consentimento.');
         }
+        tiposPersistidos.push(tipo);
       }
 
       toast({
@@ -179,10 +189,18 @@ export function ConsentimentoLGPD({
     } catch (error) {
       console.error('Erro ao registrar consentimento:', error);
       toast({
-        title: 'Erro',
-        description: 'Não foi possível registrar o consentimento.',
+        title: tiposPersistidos.length ? 'Registro parcial' : 'Erro',
+        description: tiposPersistidos.length
+          ? 'Alguns consentimentos foram registrados e já foram atualizados na lista. Confirme os itens restantes antes de continuar.'
+          : 'Não foi possível registrar o consentimento. Nenhum aceite foi confirmado.',
         variant: 'destructive',
       });
+      if (tiposPersistidos.length) {
+        setAceites((anteriores) => Object.fromEntries(
+          Object.entries(anteriores).filter(([tipo]) => !tiposPersistidos.includes(tipo)),
+        ));
+        onConsentimentoRegistrado();
+      }
     } finally {
       setLoading(false);
     }
@@ -204,26 +222,30 @@ export function ConsentimentoLGPD({
         c => c.tipo_consentimento === selectedTipo && c.aceito && !c.revogado
       );
 
-      if (consentimento) {
-        await supabase
-          .from('consentimentos_lgpd')
-          .update({
-            revogado: true,
-            data_revogacao: new Date().toISOString(),
-            motivo_revogacao: motivoRevogacao,
-          })
-          .eq('id', consentimento.id);
+      if (!consentimento) throw new Error('Este consentimento não está mais ativo. Atualize a lista e tente novamente.');
 
-        toast({
-          title: 'Consentimento revogado',
-          description: 'A revogação foi registrada com sucesso.',
-        });
-        
-        setIsRevokeOpen(false);
-        setSelectedTipo(null);
-        setMotivoRevogacao('');
-        onConsentimentoRegistrado();
-      }
+      const { data, error } = await supabase
+        .from('consentimentos_lgpd')
+        .update({
+          revogado: true,
+          data_revogacao: new Date().toISOString(),
+          motivo_revogacao: motivoRevogacao.trim(),
+        })
+        .eq('id', consentimento.id)
+        .select('id')
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) throw new Error('Não foi possível confirmar a revogação. Atualize a lista e tente novamente.');
+
+      toast({
+        title: 'Consentimento revogado',
+        description: 'A revogação foi registrada com sucesso.',
+      });
+      
+      setIsRevokeOpen(false);
+      setSelectedTipo(null);
+      setMotivoRevogacao('');
+      onConsentimentoRegistrado();
     } catch (error) {
       console.error('Erro ao revogar consentimento:', error);
       toast({

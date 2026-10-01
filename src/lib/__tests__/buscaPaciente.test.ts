@@ -118,6 +118,10 @@ describe('normalizarTexto', () => {
     expect(normalizarTexto(null)).toBe('');
     expect(normalizarTexto(undefined)).toBe('');
   });
+
+  it('colapsa espaços internos repetidos', () => {
+    expect(normalizarTexto('Maria   Silva')).toBe('maria silva');
+  });
 });
 
 describe('apenasDigitos', () => {

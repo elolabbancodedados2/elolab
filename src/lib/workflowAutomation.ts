@@ -1,3 +1,5 @@
+import { nomeMedico } from '@/lib/formatters';
+import { formatCurrency } from '@/lib/formatters';
 /**
  * Centralized Workflow Automation Engine
  * Handles automated transitions across all clinical flows:
@@ -17,6 +19,12 @@ interface WorkflowResult {
   success: boolean;
   message: string;
   actions: string[]; // list of automated actions taken
+}
+
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, char => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  })[char] ?? char);
 }
 
 /**
@@ -181,6 +189,8 @@ export async function autoFinalizarAtendimento(params: {
   clinicaId?: string | null;
   agendarRetorno?: boolean;
   diasRetorno?: number;
+  /** Older operational recovery must not send a misleading "today" completion email. */
+  notificarPaciente?: boolean;
 }): Promise<WorkflowResult> {
   const actions: string[] = [];
 
@@ -197,6 +207,14 @@ export async function autoFinalizarAtendimento(params: {
     );
     if (finalizacaoError) throw finalizacaoError;
 
+    if (finalizacao?.[0]?.repetido) {
+      return {
+        success: true,
+        message: 'Atendimento já estava finalizado. A fila foi sincronizada.',
+        actions: ['Agendamento e fila já estavam finalizados'],
+      };
+    }
+
     const statusFinal = finalizacao?.[0]?.status_agendamento || 'finalizado';
     if (finalizacao?.[0]?.cobranca_criada) actions.push('Cobrança gerada atomicamente');
     actions.push(
@@ -211,30 +229,34 @@ export async function autoFinalizarAtendimento(params: {
       actions.push(`Retorno agendado para ${format(dataRetorno, 'dd/MM/yyyy')}`);
     }
 
-    // Auto-queue notification
-    const pac = await supabase
-      .from('pacientes')
-      .select('email, telefone')
-      .eq('id', params.pacienteId)
-      .maybeSingle();
+    if (params.notificarPaciente !== false && params.clinicaId) {
+      // Auto-queue notification. Scope it to the appointment's clinic and
+      // escape the patient controlled name because the worker renders HTML.
+      const pac = await supabase
+        .from('pacientes')
+        .select('email, telefone')
+        .eq('id', params.pacienteId)
+        .maybeSingle();
 
-    if (pac.data?.email) {
-      const { error: notificationError } = await supabase.from('notification_queue').insert({
-        tipo: 'email',
-        destinatario_id: params.pacienteId,
-        destinatario_email: pac.data.email,
-        destinatario_nome: params.pacienteNome,
-        assunto: 'Consulta finalizada — Resumo do atendimento',
-        conteudo: `Olá ${params.pacienteNome}, seu atendimento foi concluído. Caso tenha receitas ou exames, eles já estão disponíveis no seu portal.`,
-        status: 'pendente',
-      });
-      // Notificação é efeito secundário: a fila clínica e a cobrança já foram
-      // concluídas. A RLS pode bloquear este insert para médico/recepção sem
-      // transformar uma consulta finalizada em erro falso.
-      if (notificationError) {
-        console.warn('Notificação de conclusão não enfileirada:', notificationError.message);
-      } else {
-        actions.push('Notificação de conclusão enviada');
+      if (pac.data?.email) {
+        const { error: notificationError } = await supabase.from('notification_queue').insert({
+          tipo: 'email',
+          destinatario_id: params.pacienteId,
+          destinatario_email: pac.data.email,
+          destinatario_nome: params.pacienteNome,
+          assunto: 'Consulta finalizada — Resumo do atendimento',
+          conteudo: `Olá ${escapeHtml(params.pacienteNome)}, seu atendimento foi concluído. Caso tenha receitas ou exames, eles já estão disponíveis no seu portal.`,
+          status: 'pendente',
+          clinica_id: params.clinicaId,
+        });
+        // Notificação é efeito secundário: a fila clínica e a cobrança já foram
+        // concluídas. A RLS pode bloquear este insert sem transformar consulta
+        // finalizada em erro falso.
+        if (notificationError) {
+          console.warn('Notificação de conclusão não enfileirada:', notificationError.message);
+        } else {
+          actions.push('Notificação de conclusão enviada');
+        }
       }
     }
 
@@ -506,7 +528,7 @@ export async function autoBillingExame(params: {
       paciente_id: params.pacienteId,
       clinica_id: clinicaId,
     }));
-    actions.push(`Cobrança de R$ ${valor.toFixed(2)} gerada`);
+    actions.push(`Cobrança de ${formatCurrency(valor)} gerada`);
 
     // Notify patient about result availability
     const { data: pac } = await supabase
@@ -676,7 +698,7 @@ export async function autoConfirmarPagamento(params: {
         desconto: params.desconto || 0,
         acrescimo: params.acrescimo || 0,
       } as any));
-      actions.push(`Registro de pagamento: R$ ${valorFinal.toFixed(2)}`);
+      actions.push(`Registro de pagamento: ${formatCurrency(valorFinal)}`);
     }
 
     return { success: true, message: 'Pagamento processado com sucesso', actions };
@@ -720,7 +742,7 @@ export async function autoConfirmarAgendamento(agendamentoId: string): Promise<W
           destinatario_email: pac.email,
           destinatario_nome: pac.nome,
           assunto: `Consulta confirmada — ${format(new Date(ag.data + 'T12:00:00'), 'dd/MM/yyyy')}`,
-          conteudo: `Olá ${pac.nome}, sua consulta com Dr(a). ${med?.nome || 'médico'} no dia ${format(new Date(ag.data + 'T12:00:00'), 'dd/MM/yyyy')} às ${ag.hora_inicio?.slice(0, 5)} está confirmada.`,
+          conteudo: `Olá ${pac.nome}, sua consulta com ${nomeMedico(med?.nome || 'médico')} no dia ${format(new Date(ag.data + 'T12:00:00'), 'dd/MM/yyyy')} às ${ag.hora_inicio?.slice(0, 5)} está confirmada.`,
           status: 'pendente',
         }));
         actions.push('Notificação de confirmação enviada por e-mail');
@@ -733,7 +755,7 @@ export async function autoConfirmarAgendamento(agendamentoId: string): Promise<W
           destinatario_telefone: pac.telefone,
           destinatario_nome: pac.nome,
           assunto: 'Confirmação de Consulta',
-          conteudo: `Olá ${pac.nome}! Sua consulta do dia ${format(new Date(ag.data + 'T12:00:00'), 'dd/MM/yyyy')} às ${ag.hora_inicio?.slice(0, 5)} com Dr(a). ${med?.nome || ''} está confirmada. ✅`,
+          conteudo: `Olá ${pac.nome}! Sua consulta do dia ${format(new Date(ag.data + 'T12:00:00'), 'dd/MM/yyyy')} às ${ag.hora_inicio?.slice(0, 5)} com ${nomeMedico(med?.nome || '')} está confirmada. ✅`,
           status: 'pendente',
         }));
         actions.push('Notificação WhatsApp enfileirada');
@@ -795,7 +817,7 @@ export async function autoCancelarAgendamento(params: {
               .eq('id', ag.medico_id)
               .maybeSingle();
 
-            const msg = `Olá ${pacEspera.nome}! Uma vaga abriu na agenda de Dr(a). ${med?.nome || ''} para o dia ${format(new Date(ag.data + 'T12:00:00'), 'dd/MM/yyyy')} às ${ag.hora_inicio?.slice(0, 5)}. Deseja agendar? Responda SIM para confirmar.`;
+            const msg = `Olá ${pacEspera.nome}! Uma vaga abriu na agenda de ${nomeMedico(med?.nome || '')} para o dia ${format(new Date(ag.data + 'T12:00:00'), 'dd/MM/yyyy')} às ${ag.hora_inicio?.slice(0, 5)}. Deseja agendar? Responda SIM para confirmar.`;
 
             if (pacEspera.telefone) {
               await must(supabase.from('notification_queue').insert({
@@ -985,7 +1007,7 @@ export async function autoNotificarMedico(params: {
         destinatario_email: med.email,
         destinatario_nome: med.nome || 'Médico',
         assunto: `Paciente pronto: ${params.pacienteNome}`,
-        conteudo: `Dr(a). ${med.nome}, o paciente ${params.pacienteNome} está pronto para atendimento. ${params.motivo}${params.sala ? ` Sala: ${params.sala}.` : ''}`,
+        conteudo: `${nomeMedico(med.nome)}, o paciente ${params.pacienteNome} está pronto para atendimento. ${params.motivo}${params.sala ? ` Sala: ${params.sala}.` : ''}`,
         status: 'pendente',
       }));
       actions.push(`Médico ${med.nome} notificado por e-mail`);
@@ -1048,7 +1070,7 @@ export async function autoAgendarListaEspera(params: {
         destinatario_email: pac.email,
         destinatario_nome: pac.nome,
         assunto: 'Sua consulta foi agendada!',
-        conteudo: `Olá ${pac.nome}! Sua consulta com Dr(a). ${med?.nome || ''} foi agendada para ${format(new Date(params.data + 'T12:00:00'), 'dd/MM/yyyy')} às ${params.horaInicio.slice(0, 5)}. Nos vemos lá! 🎉`,
+        conteudo: `Olá ${pac.nome}! Sua consulta com ${nomeMedico(med?.nome || '')} foi agendada para ${format(new Date(params.data + 'T12:00:00'), 'dd/MM/yyyy')} às ${params.horaInicio.slice(0, 5)}. Nos vemos lá! 🎉`,
         status: 'pendente',
       }));
       actions.push('Paciente notificado por e-mail');

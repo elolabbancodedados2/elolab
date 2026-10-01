@@ -1,3 +1,4 @@
+import { nomeMedico } from '@/lib/formatters';
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { format, parseISO } from 'date-fns';
@@ -73,7 +74,7 @@ export function BloqueioAgenda({ medicoIdFilter }: BloqueioAgendaProps) {
 
   const getMedicoLabel = (id: string) => {
     const m = medicos.find(m => m.id === id);
-    return m ? `Dr(a). ${m.nome || m.crm} - ${m.especialidade || 'Geral'}` : id;
+    return m ? `${nomeMedico(m.nome || m.crm)} - ${m.especialidade || 'Geral'}` : id;
   };
 
   const handleSave = async () => {
@@ -198,7 +199,7 @@ export function BloqueioAgenda({ medicoIdFilter }: BloqueioAgendaProps) {
                   <SelectTrigger><SelectValue placeholder="Selecione o médico" /></SelectTrigger>
                   <SelectContent>
                     {medicos.filter(m => m.ativo).map((m) => (
-                      <SelectItem key={m.id} value={m.id}>Dr(a). {m.crm} - {m.especialidade || 'Geral'}</SelectItem>
+                      <SelectItem key={m.id} value={m.id}>{nomeMedico(m.crm)} - {m.especialidade || 'Geral'}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>

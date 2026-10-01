@@ -65,7 +65,7 @@ export interface Agendamento {
   data: string;
   horaInicio: string;
   horaFim: string;
-  tipo: 'consulta' | 'retorno' | 'exame' | 'procedimento' | 'telemedicina';
+  tipo: 'consulta' | 'retorno' | 'exame' | 'procedimento';
   status: StatusAgendamento;
   observacoes?: string;
   sala?: string;
@@ -79,6 +79,7 @@ export interface FilaAtendimento {
   agendamento?: Agendamento;
   posicao: number;
   horarioChegada: string;
+  cobrancaEstado?: 'pendente' | 'confirmada' | 'gratuita';
   status: 'aguardando' | 'chamado' | 'em_atendimento' | 'finalizado';
   sala?: string;
   prioridade?: 'normal' | 'preferencial' | 'urgente';

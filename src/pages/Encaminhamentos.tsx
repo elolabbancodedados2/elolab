@@ -1,3 +1,4 @@
+import { nomeMedico } from '@/lib/formatters';
 import { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import {
@@ -28,6 +29,7 @@ import { Separator } from '@/components/ui/separator';
 import { supabase } from '@/integrations/supabase/client';
 import { usePacientes, useMedicos } from '@/hooks/useSupabaseData';
 import { useCurrentMedico } from '@/hooks/useCurrentMedico';
+import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
 import { EncaminhamentoMedico } from '@/components/clinical/EncaminhamentoMedico';
@@ -82,20 +84,23 @@ export default function Encaminhamentos() {
   const [isUpdating, setIsUpdating] = useState(false);
 
   const queryClient = useQueryClient();
+  const { user, profile } = useSupabaseAuth();
   const { medicoId } = useCurrentMedico();
   const { data: pacientes = [], isLoading: loadingPacientes } = usePacientes();
   const { data: medicos = [], isLoading: loadingMedicos } = useMedicos();
 
   const { data: encaminhamentos = [], isLoading: loadingEnc } = useQuery({
-    queryKey: ['encaminhamentos'],
+    queryKey: ['encaminhamentos', user?.id ?? null, profile?.clinica_id ?? null],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('encaminhamentos')
         .select(`*, paciente:pacientes(nome), medico_origem:medicos!encaminhamentos_medico_origem_id_fkey(nome, crm)`)
+        .eq('clinica_id', profile?.clinica_id ?? '')
         .order('created_at', { ascending: false });
       if (error) throw error;
       return (data || []) as EncaminhamentoData[];
     },
+    enabled: !!user && !!profile?.clinica_id,
   });
 
   const isLoading = loadingEnc || loadingPacientes || loadingMedicos;
@@ -103,7 +108,7 @@ export default function Encaminhamentos() {
   const getPacienteNome = (id: string) => pacientes.find(p => p.id === id)?.nome || '—';
   const getMedicoNome = (id: string) => {
     const m = medicos.find(m => m.id === id);
-    return m ? `Dr(a). ${m.nome || m.crm}` : '—';
+    return m ? `${nomeMedico(m.nome || m.crm)}` : '—';
   };
 
   const filteredEncaminhamentos = useMemo(() => {
@@ -381,7 +386,7 @@ export default function Encaminhamentos() {
                           </div>
                         </TableCell>
                         <TableCell className="hidden md:table-cell text-sm">
-                          {enc.medico_origem?.nome ? `Dr(a). ${enc.medico_origem.nome}` : getMedicoNome(enc.medico_origem_id)}
+                          {enc.medico_origem?.nome ? `${nomeMedico(enc.medico_origem.nome)}` : getMedicoNome(enc.medico_origem_id)}
                         </TableCell>
                         <TableCell className="hidden md:table-cell">
                           <Badge className={cn(urgCfg.className)}>{urgCfg.label}</Badge>

@@ -1,3 +1,4 @@
+import { menuGroups } from '@/config/sidebarMenu';
 import { useLocation, Link } from 'react-router-dom';
 import { ChevronRight, Home } from 'lucide-react';
 
@@ -39,6 +40,26 @@ const routeLabels: Record<string, string> = {
   notificacoes: 'Notificações',
 };
 
+// Rótulo pelo caminho completo, vindo do menu lateral: assim rotas novas não
+// aparecem como slug cru ("recepcao", "gestao-fluxo") no topo da tela.
+const rotulosDoMenu: Record<string, string> = Object.fromEntries(
+  menuGroups.flatMap((g) => g.items.map((i) => [i.href, i.label] as const)),
+);
+const rotulosExtras: Record<string, string> = {
+  '/preferencias': 'Minhas preferências',
+  '/seguranca': 'Segurança da conta',
+  '/feedback': 'Enviar feedback',
+  '/treinamento': 'Treinamento',
+  '/vitais-graficos': 'Sinais vitais',
+  '/analise-preditiva': 'Análise preditiva',
+  '/admin': 'Plataforma',
+};
+
+function rotuloDaRota(path: string, segmento: string): string {
+  return rotulosExtras[path] || rotulosDoMenu[path] || routeLabels[segmento]
+    || segmento.replace(/-/g, ' ').replace(/^./, (c) => c.toUpperCase());
+}
+
 export function Breadcrumbs() {
   const location = useLocation();
   const segments = location.pathname.split('/').filter(Boolean);
@@ -54,7 +75,7 @@ export function Breadcrumbs() {
       </Link>
       {segments.map((segment, i) => {
         const path = '/' + segments.slice(0, i + 1).join('/');
-        const label = routeLabels[segment] || segment;
+        const label = rotuloDaRota(path, segment);
         const isLast = i === segments.length - 1;
 
         return (

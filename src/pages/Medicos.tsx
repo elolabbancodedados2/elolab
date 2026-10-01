@@ -1,3 +1,4 @@
+import { nomeMedico } from '@/lib/formatters';
 import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -164,10 +165,10 @@ function EspecialidadeCombobox({ value, onChange, especialidadesExtras }: { valu
 // ─── Doctor Profile Panel ───
 function MedicoProfilePanel({ medico, onClose, onEdit }: { medico: any; onClose: () => void; onEdit: () => void }) {
   const navigate = useNavigate();
-  const { user } = useSupabaseAuth();
+  const { user, profile } = useSupabaseAuth();
 
   const { data: agendamentos = [] } = useQuery({
-    queryKey: ['medico-agendamentos', medico.id],
+    queryKey: ['medico-agendamentos', user?.id ?? null, profile?.clinica_id ?? null, medico.id],
     queryFn: async () => {
       const { data, error } = await supabase.from('agendamentos')
         .select('*, pacientes(nome, telefone)')
@@ -176,11 +177,11 @@ function MedicoProfilePanel({ medico, onClose, onEdit }: { medico: any; onClose:
       if (error) throw error;
       return data || [];
     },
-    enabled: !!user,
+    enabled: !!user && !!profile?.clinica_id,
   });
 
   const { data: prontuarios = [] } = useQuery({
-    queryKey: ['medico-prontuarios', medico.id],
+    queryKey: ['medico-prontuarios', user?.id ?? null, profile?.clinica_id ?? null, medico.id],
     queryFn: async () => {
       const { data, error } = await supabase.from('prontuarios')
         .select('id, data, queixa_principal, diagnostico_principal, pacientes(nome)')
@@ -188,11 +189,11 @@ function MedicoProfilePanel({ medico, onClose, onEdit }: { medico: any; onClose:
       if (error) throw error;
       return data || [];
     },
-    enabled: !!user,
+    enabled: !!user && !!profile?.clinica_id,
   });
 
   const { data: prescricoes = [] } = useQuery({
-    queryKey: ['medico-prescricoes', medico.id],
+    queryKey: ['medico-prescricoes', user?.id ?? null, profile?.clinica_id ?? null, medico.id],
     queryFn: async () => {
       const { data, error } = await supabase.from('prescricoes')
         .select('id, medicamento, dosagem, data_emissao, pacientes(nome)')
@@ -200,11 +201,11 @@ function MedicoProfilePanel({ medico, onClose, onEdit }: { medico: any; onClose:
       if (error) throw error;
       return data || [];
     },
-    enabled: !!user,
+    enabled: !!user && !!profile?.clinica_id,
   });
 
   const { data: atestados = [] } = useQuery({
-    queryKey: ['medico-atestados', medico.id],
+    queryKey: ['medico-atestados', user?.id ?? null, profile?.clinica_id ?? null, medico.id],
     queryFn: async () => {
       const { data, error } = await supabase.from('atestados')
         .select('id, tipo, dias, data_emissao, motivo, pacientes(nome)')
@@ -212,7 +213,7 @@ function MedicoProfilePanel({ medico, onClose, onEdit }: { medico: any; onClose:
       if (error) throw error;
       return data || [];
     },
-    enabled: !!user,
+    enabled: !!user && !!profile?.clinica_id,
   });
 
   const today = format(new Date(), 'yyyy-MM-dd');
@@ -248,7 +249,7 @@ function MedicoProfilePanel({ medico, onClose, onEdit }: { medico: any; onClose:
               </AvatarFallback>
             </Avatar>
             <div className="flex-1 min-w-0">
-              <h2 className="text-xl font-bold text-foreground truncate">Dr(a). {medico.nome || medico.crm}</h2>
+              <h2 className="text-xl font-bold text-foreground truncate">{nomeMedico(medico.nome || medico.crm)}</h2>
               <p className="text-sm text-muted-foreground">{medico.especialidade || 'Clínico Geral'}</p>
               <div className="flex flex-wrap gap-2 mt-2">
                  <Badge variant="outline" className="text-[11px] gap-1">
@@ -304,7 +305,7 @@ function MedicoProfilePanel({ medico, onClose, onEdit }: { medico: any; onClose:
                     const portalUrl = `${window.location.origin}/auth`;
                     const subject = encodeURIComponent('Seu acesso ao Portal do Médico — EloLab');
                     const body = encodeURIComponent(
-                      `Olá Dr(a). ${medico.nome || ''},\n\n` +
+                      `Olá ${nomeMedico(medico.nome || '')},\n\n` +
                       `Você possui acesso ao Portal do Médico na plataforma EloLab.\n\n` +
                       `Para acessar seu portal exclusivo, entre pelo link abaixo com suas credenciais:\n\n` +
                       `🔗 ${portalUrl}\n\n` +
@@ -724,7 +725,7 @@ export default function Medicos() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0">
-                            <h3 className="font-semibold text-foreground truncate text-base">Dr(a). {medico.nome || medico.crm}</h3>
+                            <h3 className="font-semibold text-foreground truncate text-base">{nomeMedico(medico.nome || medico.crm)}</h3>
                             <p className="text-sm text-muted-foreground">{medico.especialidade || 'Clínico Geral'}</p>
                           </div>
                           <Badge className={`text-[10px] shrink-0 ${medico.ativo ? 'bg-success/10 text-success border-success/20' : 'bg-muted text-muted-foreground'}`}>

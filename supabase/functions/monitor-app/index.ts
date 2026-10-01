@@ -13,17 +13,18 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { cronSecretOk, cronForbidden } from '../_shared/cronAuth.ts'
+import { corsPadrao } from '../_shared/cors.ts';
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+// Atribuído em cada request (reflete a origem permitida). Helpers
+// top-level (json/reply) capturam esta variável por closure.
+let corsHeaders: Record<string, string> = {};
 
 const ALVO = Deno.env.get('APP_URL') ?? 'https://app.elolab.com.br'
 const AVISAR = Deno.env.get('MONITOR_EMAIL') ?? 'contato@elolab.com.br'
 const TIMEOUT_MS = 15_000
 
 Deno.serve(async (req) => {
+  corsHeaders = { ...corsPadrao(req),};
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
   if (!cronSecretOk(req)) return cronForbidden(corsHeaders)
 

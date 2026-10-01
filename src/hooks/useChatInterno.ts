@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { canalUnico } from '@/lib/realtimeCanal';
 
 export interface ChatUsuario {
   id: string;
@@ -283,7 +284,7 @@ export function useChatInterno() {
   useEffect(() => {
     if (!user) return;
 
-    const channelName = `chat-realtime-${Date.now()}`;
+    const channelName = canalUnico('chat-realtime');
     const channel = supabase
       .channel(channelName)
       .on(

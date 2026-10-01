@@ -1,4 +1,5 @@
-import { Bell, Menu, LogOut, User, Settings, Plus, CalendarPlus, UserPlus, FileText, FlaskConical, Mail, MessageSquare } from 'lucide-react';
+import { primeiroNome } from '@/lib/formatters';
+import { Bell, Menu, LogOut, User, Settings, Plus, CalendarPlus, UserPlus, FileText, FlaskConical, Mail, MessageSquare, Shield, History, Activity, GraduationCap, MessageSquarePlus } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import {
@@ -29,7 +30,7 @@ interface NavbarProps {
 }
 
 export function Navbar({ onMenuClick }: NavbarProps) {
-  const { profile, signOut } = useSupabaseAuth();
+  const { profile, signOut, isAdmin } = useSupabaseAuth();
   const navigate = useNavigate();
   const { notifications: systemNotifications, unreadCount: systemUnread } = useRealtimeNotifications();
 
@@ -266,7 +267,7 @@ export function Navbar({ onMenuClick }: NavbarProps) {
                 </AvatarFallback>
               </Avatar>
               <div className="hidden md:flex flex-col items-start">
-                <span className="text-[13px] font-semibold leading-tight">{profile?.nome?.split(' ')[0]}</span>
+                <span className="text-[13px] font-semibold leading-tight">{primeiroNome(profile?.nome)}</span>
                 <span className="flex items-center gap-1 text-[10px] text-primary font-medium leading-tight">
                   <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
                   Online
@@ -291,12 +292,28 @@ export function Navbar({ onMenuClick }: NavbarProps) {
               </div>
             </div>
             <DropdownMenuSeparator />
-            <DropdownMenuItem asChild className="rounded-lg gap-2.5 py-2.5 mt-1">
-              <Link to="/configuracoes"><User className="h-4 w-4 text-primary" />Meu Perfil</Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem asChild className="rounded-lg gap-2.5 py-2.5">
-              <Link to="/configuracoes"><Settings className="h-4 w-4 text-muted-foreground" />Configurações</Link>
-            </DropdownMenuItem>
+            {/* "Meu Perfil" e "Configurações" apontavam para /configuracoes, que é
+                só de admin: quem não era admin clicava e recebia "sem permissão". */}
+            {[
+              { to: '/preferencias', icon: User, label: 'Minhas preferências' },
+              { to: '/seguranca', icon: Shield, label: 'Segurança da conta' },
+              { to: '/meu-historico', icon: History, label: 'Meu histórico' },
+              { to: '/indicadores', icon: Activity, label: 'Meus indicadores' },
+              { to: '/treinamento', icon: GraduationCap, label: 'Treinamento' },
+              { to: '/feedback', icon: MessageSquarePlus, label: 'Enviar feedback' },
+            ].map(({ to, icon: Icon, label }, i) => (
+              <DropdownMenuItem key={to} asChild className={cn('rounded-lg gap-2.5 py-2', i === 0 && 'mt-1')}>
+                <Link to={to}><Icon className="h-4 w-4 text-muted-foreground" />{label}</Link>
+              </DropdownMenuItem>
+            ))}
+            {isAdmin() && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem asChild className="rounded-lg gap-2.5 py-2">
+                  <Link to="/configuracoes"><Settings className="h-4 w-4 text-muted-foreground" />Configurações da clínica</Link>
+                </DropdownMenuItem>
+              </>
+            )}
             <DropdownMenuSeparator />
             <DropdownMenuItem
               onClick={handleLogout}

@@ -1,3 +1,70 @@
-import{useQuery,useQueryClient}from'@tanstack/react-query';import{supabase}from'@/integrations/supabase/client';import{AlertTriangle,CheckCircle2,Info,X}from'lucide-react';import{Button}from'@/components/ui/button';import{cn}from'@/lib/utils';
-export function PlatformAnnouncements(){const qc=useQueryClient();const q=useQuery({queryKey:['meus-comunicados'],queryFn:async()=>{const{data,error}=await(supabase as any).rpc('meus_comunicados');if(error)throw error;return(data||[]).filter((x:any)=>!x.lido)},refetchInterval:60000});const a=q.data?.[0];if(!a)return null;const Icon=a.tipo==='critico'||a.tipo==='atencao'?AlertTriangle:a.tipo==='sucesso'?CheckCircle2:Info;const fechar=async()=>{const u=(await supabase.auth.getUser()).data.user;await(supabase as any).from('platform_announcement_reads').upsert({announcement_id:a.id,user_id:u?.id});qc.invalidateQueries({queryKey:['meus-comunicados']})};return <div role="status" className={cn('flex items-start gap-3 border-b px-4 py-3',a.tipo==='critico'&&'bg-destructive/10 text-destructive',a.tipo==='atencao'&&'bg-warning/10',a.tipo==='sucesso'&&'bg-success/10',a.tipo==='info'&&'bg-info/10')}><Icon className="mt-0.5 h-5 w-5"/><div className="flex-1"><p className="font-semibold">{a.titulo}</p><p className="text-sm">{a.mensagem}</p></div><Button variant="ghost" size="icon" onClick={fechar} aria-label="Marcar comunicado como lido"><X className="h-4 w-4"/></Button></div>}
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
+import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
+import { AlertTriangle, CheckCircle2, Info, X } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
+import { mensagemDeErro } from '@/lib/erros';
 
+export function PlatformAnnouncements() {
+  const queryClient = useQueryClient();
+  const { user } = useSupabaseAuth();
+  const query = useQuery({
+    queryKey: ['meus-comunicados', user?.id],
+    enabled: !!user,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).rpc('meus_comunicados');
+      if (error) throw error;
+      return (data || []).filter((announcement: any) => !announcement.lido);
+    },
+    refetchInterval: 60000,
+  });
+
+  const announcement = query.data?.[0];
+  if (!announcement) return null;
+
+  const Icon = announcement.tipo === 'critico' || announcement.tipo === 'atencao'
+    ? AlertTriangle
+    : announcement.tipo === 'sucesso' ? CheckCircle2 : Info;
+
+  const dismiss = async () => {
+    const currentUser = (await supabase.auth.getUser()).data.user;
+    if (!currentUser) return;
+    const { error } = await (supabase as any).from('platform_announcement_reads').upsert({
+      announcement_id: announcement.id,
+      user_id: currentUser.id,
+    });
+    // Antes o erro era descartado: o clique parecia morto e o banner voltava a
+    // cada carregamento de página, sem explicar por quê.
+    if (error) {
+      toast.error('Não foi possível marcar o comunicado como lido.', {
+        description: mensagemDeErro(error),
+      });
+      return;
+    }
+    queryClient.invalidateQueries({ queryKey: ['meus-comunicados', currentUser.id] });
+  };
+
+  return (
+    <div
+      role="status"
+      className={cn(
+        'flex items-start gap-3 border-b px-4 py-3',
+        announcement.tipo === 'critico' && 'bg-destructive/10 text-destructive',
+        announcement.tipo === 'atencao' && 'bg-warning/10',
+        announcement.tipo === 'sucesso' && 'bg-success/10',
+        announcement.tipo === 'info' && 'bg-info/10',
+      )}
+    >
+      <Icon className="mt-0.5 h-5 w-5" />
+      <div className="flex-1">
+        <p className="font-semibold">{announcement.titulo}</p>
+        <p className="text-sm">{announcement.mensagem}</p>
+      </div>
+      <Button variant="ghost" size="icon" onClick={dismiss} aria-label="Marcar comunicado como lido">
+        <X className="h-4 w-4" />
+      </Button>
+    </div>
+  );
+}

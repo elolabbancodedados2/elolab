@@ -47,14 +47,26 @@ interface ClinicaInfo {
   logoUrl?: string;
 }
 
+/**
+ * Sem dados configurados, o documento sai SEM esses campos — nunca com valores
+ * inventados. Antes o padrão era "EloLab Clínica Médica, Av. Principal, 1000 —
+ * São Paulo/SP, CNPJ 00.000.000/0001-00": receita e prontuário de qualquer
+ * clínica podiam sair com endereço e CNPJ que não são dela.
+ */
 const DEFAULT_CLINICA: ClinicaInfo = {
-  nome: 'EloLab Clínica Médica',
-  endereco: 'Av. Principal, 1000 - Centro - São Paulo/SP',
-  telefone: '(11) 3000-0000',
-  cnpj: '00.000.000/0001-00',
+  nome: '',
+  endereco: '',
+  telefone: '',
+  cnpj: '',
 };
 
+/** "Tel: X | CNPJ: Y", omitindo o que não estiver preenchido. */
+export function linhaContatoClinica(info: Pick<ClinicaInfo, 'telefone' | 'cnpj'>): string {
+  return [info.telefone && `Tel: ${info.telefone}`, info.cnpj && `CNPJ: ${info.cnpj}`].filter(Boolean).join(' | ');
+}
+
 let _cachedClinica: ClinicaInfo | null = null;
+let _cachedClinicaId: string | null = null;
 let _cacheTime = 0;
 
 export function clearClinicaInfoCache() {
@@ -62,9 +74,29 @@ export function clearClinicaInfoCache() {
   _cacheTime = 0;
 }
 
+/** Clínica do usuário logado (a da impersonação, quando houver). */
+async function clinicaAtualId(): Promise<string | null> {
+  const { data: sessao } = await supabase.auth.getSession();
+  const userId = sessao.session?.user?.id;
+  if (!userId) return null;
+  const { data } = await (supabase as any).from('profiles').select('clinica_id').eq('id', userId).maybeSingle();
+  return data?.clinica_id ?? null;
+}
+
 export async function getClinicaInfo(): Promise<ClinicaInfo> {
-  // Cache for 5 minutes
-  if (_cachedClinica && Date.now() - _cacheTime < 5 * 60 * 1000) {
+  // O filtro por clínica é explícito: o superadmin enxerga todas pela política
+  // de acesso, e sem ele o cabeçalho podia sair com os dados de outra clínica.
+  const clinicaId = await clinicaAtualId();
+
+  // Cache for 5 minutes, por clínica
+  if (_cachedClinica && _cachedClinicaId === clinicaId && Date.now() - _cacheTime < 5 * 60 * 1000) {
+    return _cachedClinica;
+  }
+  _cachedClinicaId = clinicaId;
+
+  if (!clinicaId) {
+    _cachedClinica = { ...DEFAULT_CLINICA };
+    _cacheTime = Date.now();
     return _cachedClinica;
   }
 
@@ -72,7 +104,12 @@ export async function getClinicaInfo(): Promise<ClinicaInfo> {
     const { data: configs } = await supabase
       .from('configuracoes_clinica')
       .select('chave, valor')
+      .eq('clinica_id', clinicaId)
       .in('chave', ['clinica_info', 'clinica_logo', 'config_clinica']);
+
+    // O nome cadastrado da clínica é o último recurso para o cabeçalho.
+    const { data: clinicaRow } = await (supabase as any).from('clinicas').select('nome').eq('id', clinicaId).maybeSingle();
+    const nomeCadastro: string = clinicaRow?.nome || '';
 
     if (configs && configs.length > 0) {
       const infoConfig = configs.find(c => c.chave === 'clinica_info');
@@ -82,14 +119,14 @@ export async function getClinicaInfo(): Promise<ClinicaInfo> {
       const info = infoConfig?.valor as any;
       const clinic = clinicConfig?.valor as any;
       _cachedClinica = {
-        nome: clinic?.nomeClinica || info?.nome || DEFAULT_CLINICA.nome,
+        nome: clinic?.nomeClinica || info?.nome || nomeCadastro,
         endereco: clinic?.endereco || info?.endereco || DEFAULT_CLINICA.endereco,
         telefone: clinic?.telefone || info?.telefone || DEFAULT_CLINICA.telefone,
         cnpj: clinic?.cnpj || info?.cnpj || DEFAULT_CLINICA.cnpj,
         logoUrl: clinic?.logoUrl || (logoConfig?.valor as any)?.url || info?.logoUrl || undefined,
       };
     } else {
-      _cachedClinica = { ...DEFAULT_CLINICA };
+      _cachedClinica = { ...DEFAULT_CLINICA, nome: nomeCadastro };
     }
   } catch {
     _cachedClinica = { ...DEFAULT_CLINICA };
@@ -138,8 +175,9 @@ async function addHeader(doc: jsPDF, titulo: string, clinica?: ClinicaInfo) {
 
   doc.setFontSize(10);
   doc.setTextColor(100, 100, 100);
-  doc.text(info.endereco, 105, startY + 8, { align: 'center' });
-  doc.text(`Tel: ${info.telefone} | CNPJ: ${info.cnpj}`, 105, startY + 14, { align: 'center' });
+  if (info.endereco) doc.text(info.endereco, 105, startY + 8, { align: 'center' });
+  const contato = linhaContatoClinica(info);
+  if (contato) doc.text(contato, 105, startY + 14, { align: 'center' });
 
   doc.setDrawColor(0, 102, 204);
   doc.setLineWidth(0.5);
@@ -569,13 +607,17 @@ export async function gerarProntuarioPDF(
   doc.setFontSize(16);
   doc.setTextColor(0, 102, 68);
   doc.setFont('helvetica', 'bold');
-  doc.text(DEFAULT_CLINICA.nome, pageWidth / 2, 18, { align: 'center' });
+  // Antes este cabeçalho usava sempre DEFAULT_CLINICA: todo prontuário saía
+  // com o nome e endereço fictícios, qualquer que fosse a clínica.
+  const clinica = await getClinicaInfo();
+  doc.text(clinica.nome || 'Prontuário', pageWidth / 2, 18, { align: 'center' });
 
   doc.setFontSize(8);
   doc.setTextColor(120, 120, 120);
   doc.setFont('helvetica', 'normal');
-  doc.text(DEFAULT_CLINICA.endereco, pageWidth / 2, 24, { align: 'center' });
-  doc.text(`Tel: ${DEFAULT_CLINICA.telefone} | CNPJ: ${DEFAULT_CLINICA.cnpj}`, pageWidth / 2, 29, { align: 'center' });
+  if (clinica.endereco) doc.text(clinica.endereco, pageWidth / 2, 24, { align: 'center' });
+  const contatoClinica = linhaContatoClinica(clinica);
+  if (contatoClinica) doc.text(contatoClinica, pageWidth / 2, 29, { align: 'center' });
 
   // Title bar
   doc.setFillColor(240, 248, 245);
@@ -799,7 +841,7 @@ export async function gerarProntuarioPDF(
     doc.setFontSize(7);
     doc.setTextColor(150, 150, 150);
     doc.text(
-      `Gerado em ${format(new Date(), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })} — Prontuário digital ${DEFAULT_CLINICA.nome} — Pág. ${i}/${totalPages}`,
+      `Gerado em ${format(new Date(), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })} — Prontuário digital${clinica.nome ? ` ${clinica.nome}` : ''} — Pág. ${i}/${totalPages}`,
       pageWidth / 2,
       pageHeight - 6,
       { align: 'center' }
@@ -972,8 +1014,8 @@ export async function gerarLaudoPDF(dados: LaudoData): Promise<jsPDF> {
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(60, 60, 60);
   if (dados.email) doc.text(`E-mail: ${dados.email}`, pageWidth / 2, y + 10, { align: 'center' });
-  doc.text(clinica.endereco, pageWidth / 2, y + 14, { align: 'center' });
-  doc.text(`Telefone: ${clinica.telefone}`, pageWidth / 2, y + 18, { align: 'center' });
+  if (clinica.endereco) doc.text(clinica.endereco, pageWidth / 2, y + 14, { align: 'center' });
+  if (clinica.telefone) doc.text(`Telefone: ${clinica.telefone}`, pageWidth / 2, y + 18, { align: 'center' });
 
   y += 30;
   doc.setDrawColor(0, 0, 0);
@@ -1222,7 +1264,7 @@ export function sharePDFWhatsApp(doc: jsPDF, filename: string, telefone?: string
 
   // Build WhatsApp message
   const msg = encodeURIComponent(
-    `📋 *Prontuário Digital - ${DEFAULT_CLINICA.nome}*\n\nOlá! Segue em anexo o prontuário do atendimento.\n\n_Documento gerado digitalmente pelo sistema EloLab._`
+    `📋 *Prontuário Digital${_cachedClinica?.nome ? ` - ${_cachedClinica.nome}` : ''}*\n\nOlá! Segue em anexo o prontuário do atendimento.\n\n_Documento gerado digitalmente pelo sistema EloLab._`
   );
 
   const phone = telefone?.replace(/\D/g, '') || '';

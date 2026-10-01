@@ -1,3 +1,4 @@
+import { nomeMedico } from '@/lib/formatters';
 import { useMemo } from 'react';
 import { addDays, format, isWeekend, parseISO, startOfWeek } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -96,7 +97,7 @@ export function WeeklyView({ date, agendamentos, colorFor, medicoById = {}, onDa
                     </div>
                     {medicoById[a.medico_id] && (
                       <div className="truncate text-[10px] text-muted-foreground/80 mt-0.5">
-                        Dr(a). {medicoById[a.medico_id].nome || medicoById[a.medico_id].crm}
+                        {nomeMedico(medicoById[a.medico_id].nome || medicoById[a.medico_id].crm)}
                       </div>
                     )}
                   </button>

@@ -12,6 +12,9 @@ import { logAudit as registrarAuditoria } from '@/lib/auditTrail';
  */
 const MAX_LINHAS_AUTO = 20000;
 
+/** Maior bloco que o PostgREST devolve numa resposta (max_rows padrão). */
+const BLOCO_SERVIDOR = 1000;
+
 // Generic hook for fetching data from a table
 export function useSupabaseQuery<T>(
   tableName: string,
@@ -23,88 +26,97 @@ export function useSupabaseQuery<T>(
     staleTime?: number;
     limit?: number;
     page?: number;
+    /** Mantém os dados anteriores enquanto um novo filtro carrega (evita piscar a tela inteira). */
+    keepPrevious?: boolean;
   }
 ) {
-  const { user } = useSupabaseAuth();
-  const limit = options?.limit ?? 5000;
+  const { user, profile } = useSupabaseAuth();
+  const limit = options?.limit ?? MAX_LINHAS_AUTO;
   const page = options?.page ?? 0;
 
   return useQuery({
-    queryKey: [tableName, options],
+    // A limpeza do cache na troca de conta/clínica não cancela requisições que
+    // já estavam em andamento. Incluir o escopo na chave impede que a resposta
+    // antiga seja reutilizada ou sobrescreva a consulta da clínica atual.
+    queryKey: [tableName, user?.id ?? null, profile?.clinica_id ?? null, options],
     queryFn: async () => {
-      let query = supabase
-        .from(tableName as any)
-        .select(options?.select || '*');
+      const montar = () => {
+        let query = supabase
+          .from(tableName as any)
+          .select(options?.select || '*');
 
-      if (options?.filters) {
-        for (const filter of options.filters) {
-          query = query.filter(filter.column, filter.operator, filter.value);
-        }
-      }
-
-      if (options?.orderBy) {
-        query = query.order(options.orderBy.column, {
-          ascending: options.orderBy.ascending ?? true,
-        });
-      }
-
-      // Server-side pagination
-      const from = page * limit;
-      const to = from + limit - 1;
-      query = query.range(from, to);
-
-      const { data, error } = await query;
-
-      if (error) {
-        console.error(`Error fetching ${tableName}:`, error);
-        throw error;
-      }
-
-      // Truncagem silenciosa: devolver exatamente o limite quase sempre
-      // significa que há mais registros e a tela está exibindo um recorte sem
-      // avisar. Numa clínica grande isso aparece como "o paciente sumiu do
-      // sistema". Quando a página não foi pedida explicitamente, buscamos o
-      // restante em blocos em vez de cortar em silêncio.
-      let rows = (data ?? []) as T[];
-
-      if (rows.length === limit && options?.page === undefined) {
-        let proximaPagina = 1;
-        while (proximaPagina * limit < MAX_LINHAS_AUTO) {
-          const inicio = proximaPagina * limit;
-
-          let q = supabase.from(tableName as any).select(options?.select || '*');
-          if (options?.filters) {
-            for (const f of options.filters) q = q.filter(f.column, f.operator, f.value);
+        if (options?.filters) {
+          for (const filter of options.filters) {
+            query = query.filter(filter.column, filter.operator, filter.value);
           }
-          if (options?.orderBy) {
-            q = q.order(options.orderBy.column, { ascending: options.orderBy.ascending ?? true });
-          }
-          q = q.range(inicio, inicio + limit - 1);
-
-          const { data: extra, error: erroExtra } = await q;
-          if (erroExtra) {
-            console.error(`Erro ao paginar ${tableName}:`, erroExtra);
-            break;
-          }
-          if (!extra || extra.length === 0) break;
-
-          rows = rows.concat(extra as T[]);
-          if (extra.length < limit) break;
-          proximaPagina++;
         }
 
-        if (rows.length >= MAX_LINHAS_AUTO) {
-          console.warn(
-            `[${tableName}] atingiu o teto de ${MAX_LINHAS_AUTO} registros carregados de uma vez. ` +
-            `Esta tela precisa de paginação ou filtro por período.`
-          );
+        if (options?.orderBy) {
+          query = query.order(options.orderBy.column, {
+            ascending: options.orderBy.ascending ?? true,
+          });
         }
+        // Desempate estável: sem ele, paginar por uma coluna repetida (nome,
+        // hora) pode repetir ou pular registros na fronteira entre blocos.
+        if (options?.orderBy?.column !== 'id') {
+          query = query.order('id', { ascending: true });
+        }
+        return query;
+      };
+
+      // Página explícita: o chamador controla a paginação.
+      if (options?.page !== undefined) {
+        const from = page * limit;
+        const { data, error } = await montar().range(from, from + limit - 1);
+        if (error) {
+          console.error(`Error fetching ${tableName}:`, error);
+          throw error;
+        }
+        return (data ?? []) as T[];
+      }
+
+      // Sem página: carregamos em blocos até `limit`. O bloco não pode passar
+      // de BLOCO_SERVIDOR porque o PostgREST corta cada resposta no max_rows
+      // dele (1000 por padrão). Antes o bloco era de 5000: o servidor devolvia
+      // 1000, a checagem "veio cheio?" comparava com 5000 e parava — toda
+      // clínica com mais de 1000 pacientes perdia o restante em silêncio.
+      const teto = Math.min(limit, MAX_LINHAS_AUTO);
+      const bloco = Math.min(teto, BLOCO_SERVIDOR);
+      let rows: T[] = [];
+
+      while (rows.length < teto) {
+        const inicio = rows.length;
+        const fim = Math.min(inicio + bloco, teto) - 1;
+        const { data, error } = await montar().range(inicio, fim);
+        if (error) {
+          console.error(`Error fetching ${tableName}:`, error);
+          // Falhar em vez de devolver um recorte que parece a lista completa.
+          throw error;
+        }
+        const extra = (data ?? []) as T[];
+        rows = rows.concat(extra);
+        if (extra.length < fim - inicio + 1) break;
+      }
+
+      if (rows.length >= MAX_LINHAS_AUTO) {
+        console.warn(
+          `[${tableName}] atingiu o teto de ${MAX_LINHAS_AUTO} registros carregados de uma vez. ` +
+          `Esta tela precisa de paginação ou filtro por período.`
+        );
       }
 
       return rows;
     },
     enabled: options?.enabled !== false && !!user,
     ...(options?.staleTime !== undefined ? { staleTime: options.staleTime } : {}),
+    ...(options?.keepPrevious ? {
+      placeholderData: (previousData: T[] | undefined, previousQuery: { queryKey: readonly unknown[] } | undefined) => {
+        const previousKey = previousQuery?.queryKey;
+        return previousKey?.[1] === (user?.id ?? null) && previousKey?.[2] === (profile?.clinica_id ?? null)
+          ? previousData
+          : undefined;
+      },
+    } : {}),
   });
 }
 
@@ -340,6 +352,23 @@ export function useAgendamentos(date?: string) {
   });
 }
 
+/**
+ * Agendamentos entre duas datas (inclusive). Use no lugar de
+ * `useAgendamentos()` sem data, que traz o histórico inteiro da clínica.
+ */
+export function useAgendamentosPeriodo(inicio: string, fim: string, options?: { enabled?: boolean; keepPrevious?: boolean }) {
+  return useSupabaseQuery<any>('agendamentos', {
+    select: '*, pacientes(*), medicos(*)',
+    orderBy: { column: 'hora_inicio', ascending: true },
+    filters: [
+      { column: 'data', operator: 'gte', value: inicio },
+      { column: 'data', operator: 'lte', value: fim },
+    ],
+    enabled: options?.enabled,
+    keepPrevious: options?.keepPrevious,
+  });
+}
+
 export function useLancamentos() {
   return useSupabaseQuery<{
     id: string;
@@ -413,10 +442,19 @@ export function useFilaAtendimento() {
     posicao: number;
     horario_chegada: string;
     status: string;
+    cobranca_estado: 'pendente' | 'confirmada' | 'gratuita';
     sala_id: string | null;
     prioridade: string;
     created_at: string;
     updated_at: string;
+    agendamentos: {
+      data: string;
+      status: string;
+      paciente_id: string;
+      medico_id: string;
+      pacientes: { nome: string | null } | null;
+      medicos: { nome: string | null; crm: string | null } | null;
+    } | null;
   }>('fila_atendimento', {
     select: '*, agendamentos(*, pacientes(*), medicos(*))',
     orderBy: { column: 'posicao', ascending: true },

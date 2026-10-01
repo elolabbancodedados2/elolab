@@ -102,6 +102,7 @@ const AceitarConvite = lazy(() => import("@/pages/AceitarConvite"));
 const RedefinirSenha = lazy(() => import("@/pages/RedefinirSenha"));
 const PainelTV = lazy(() => import("@/pages/PainelTV"));
 const PortalPaciente = lazy(() => import("@/pages/PortalPaciente"));
+const AgendamentoOnline = lazy(() => import("@/pages/AgendamentoOnline"));
 const NotFound = lazy(() => import("@/pages/NotFound"));
 const PoliticaPrivacidade = lazy(() => import("@/pages/PoliticaPrivacidade"));
 const PoliticaCookies = lazy(() => import("@/pages/PoliticaCookies"));
@@ -221,6 +222,7 @@ function App() {
                         <Route path="/politica-cookies" element={<PoliticaCookies />} />
                         <Route path="/termos-uso" element={<TermosUso />} />
                         <Route path="/portal-paciente" element={<PortalPaciente />} />
+                        <Route path="/agendar/:clinicaId" element={<AgendamentoOnline />} />
                         <Route path="/portal-guias/:token" element={<PortalGuias />} />
                         <Route path="/verificar-assinatura/:codigo" element={<VerificarAssinatura />} />
                         <Route path="/painel-tv" element={<SupabaseProtectedRoute><PainelTV /></SupabaseProtectedRoute>} />

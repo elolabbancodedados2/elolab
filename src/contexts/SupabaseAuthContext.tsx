@@ -334,6 +334,14 @@ export function SupabaseAuthProvider({ children }: { children: ReactNode }) {
       // A fila de auditoria pendente também precisa sair: em computador de
       // recepção compartilhado, o próximo turno herdaria registros do anterior.
       limparAuditoriaPendente();
+      // O estado de abertura/fechamento de caixa vive em chaves
+      // `caixa_estado_*` do localStorage: o próximo turno não pode herdar o
+      // estado financeiro do anterior no PC compartilhado da recepção.
+      try {
+        Object.keys(localStorage)
+          .filter(k => k.startsWith('caixa_estado_'))
+          .forEach(k => localStorage.removeItem(k));
+      } catch { /* storage indisponível neste contexto */ }
       setUser(null);
       setSession(null);
       setProfile(null);

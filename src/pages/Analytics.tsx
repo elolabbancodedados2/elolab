@@ -1,3 +1,4 @@
+import { nomeMedico } from '@/lib/formatters';
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
@@ -25,6 +26,7 @@ import { valorRealizado } from '@/lib/lancamentos';
 import { DashboardSkeleton } from '@/components/ui/loading-skeleton';
 import { ErrorState } from '@/components/ErrorState';
 import { EmptyState } from '@/components/EmptyState';
+import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 
 const COLORS = ['hsl(var(--primary))', 'hsl(var(--success))', 'hsl(var(--warning))', 'hsl(var(--info))', 'hsl(var(--destructive))'];
 
@@ -87,6 +89,8 @@ function KPICard({ title, value, change, icon, description }: KPICardProps) {
 }
 
 export default function Analytics() {
+  const { user, profile } = useSupabaseAuth();
+  const scopeKey = [user?.id ?? null, profile?.clinica_id ?? null] as const;
   const [periodPreset, setPeriodPreset] = useState('30d');
   const [customFrom, setCustomFrom] = useState<Date | undefined>();
   const [customTo, setCustomTo] = useState<Date | undefined>();
@@ -101,7 +105,7 @@ export default function Analytics() {
 
   // ─── Data queries ───────────────────────────────────────
   const { data: agendamentos = [], isLoading: loadingAg, error: errorAg, refetch: refetchAg } = useQuery({
-    queryKey: ['analytics-ag', range.from.toISOString(), range.to.toISOString()],
+    queryKey: ['analytics-ag', ...scopeKey, range.from.toISOString(), range.to.toISOString()],
     queryFn: async () => {
       const { data, error } = await supabase.from('agendamentos')
         .select('*, medicos(nome, especialidade)')
@@ -113,8 +117,8 @@ export default function Analytics() {
   });
 
   const { data: prevAgendamentos = [], error: errorPrevAg } = useQuery({
-    queryKey: ['analytics-ag-prev', prevRange.from.toISOString(), prevRange.to.toISOString()],
-    enabled: showComparison,
+    queryKey: ['analytics-ag-prev', ...scopeKey, prevRange.from.toISOString(), prevRange.to.toISOString()],
+    enabled: showComparison && !!profile?.clinica_id,
     queryFn: async () => {
       const { data, error } = await supabase.from('agendamentos')
         .select('*')
@@ -126,7 +130,7 @@ export default function Analytics() {
   });
 
   const { data: lancamentos = [], isLoading: loadingLanc, error: errorLanc, refetch: refetchLanc } = useQuery({
-    queryKey: ['analytics-lanc', range.from.toISOString(), range.to.toISOString()],
+    queryKey: ['analytics-lanc', ...scopeKey, range.from.toISOString(), range.to.toISOString()],
     queryFn: async () => {
       const { data, error } = await supabase.from('lancamentos')
         .select('*')
@@ -138,8 +142,8 @@ export default function Analytics() {
   });
 
   const { data: prevLancamentos = [], error: errorPrevLanc } = useQuery({
-    queryKey: ['analytics-lanc-prev', prevRange.from.toISOString(), prevRange.to.toISOString()],
-    enabled: showComparison,
+    queryKey: ['analytics-lanc-prev', ...scopeKey, prevRange.from.toISOString(), prevRange.to.toISOString()],
+    enabled: showComparison && !!profile?.clinica_id,
     queryFn: async () => {
       const { data, error } = await supabase.from('lancamentos')
         .select('*')
@@ -151,7 +155,7 @@ export default function Analytics() {
   });
 
   const { data: triagens = [], error: errorTri } = useQuery({
-    queryKey: ['analytics-tri', range.from.toISOString(), range.to.toISOString()],
+    queryKey: ['analytics-tri', ...scopeKey, range.from.toISOString(), range.to.toISOString()],
     queryFn: async () => {
       const { data, error } = await supabase.from('triagens')
         .select('*')
@@ -163,7 +167,7 @@ export default function Analytics() {
   });
 
   const { data: feedbacks = [], error: errorFeedback } = useQuery({
-    queryKey: ['analytics-feedback', range.from.toISOString(), range.to.toISOString()],
+    queryKey: ['analytics-feedback', ...scopeKey, range.from.toISOString(), range.to.toISOString()],
     queryFn: async () => {
       const { data, error } = await supabase.from('feedbacks_nps')
         .select('id, nota, comentario, created_at, pacientes(nome), medicos(nome)')
@@ -508,7 +512,7 @@ export default function Analytics() {
                           {i + 1}º
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="font-semibold text-sm truncate">Dr(a). {med.nome}</p>
+                          <p className="font-semibold text-sm truncate">{nomeMedico(med.nome)}</p>
                           <p className="text-xs text-muted-foreground">{med.especialidade}</p>
                         </div>
                         <div className="text-right shrink-0">

@@ -87,17 +87,18 @@ function TabelaExamesConvenio({ convenioId }: { convenioId: string }) {
   const [deleteExameId, setDeleteExameId] = useState<string | null>(null);
 
   const { data: exames = [], isLoading } = useQuery({
-    queryKey: ['precos-exames-convenio', convenioId],
+    queryKey: ['precos-exames-convenio', profile?.id ?? null, profile?.clinica_id ?? null, convenioId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('precos_exames_convenio')
         .select('*')
         .eq('convenio_id', convenioId)
+        .eq('clinica_id', profile?.clinica_id ?? '')
         .order('tipo_exame');
       if (error) throw error;
       return data || [];
     },
-    enabled: !!convenioId,
+    enabled: !!convenioId && !!profile?.clinica_id,
   });
 
   const filteredExames = useMemo(() =>
@@ -154,7 +155,7 @@ function TabelaExamesConvenio({ convenioId }: { convenioId: string }) {
         if (error) throw error;
         toast.success('Exame adicionado à tabela!');
       }
-      queryClient.invalidateQueries({ queryKey: ['precos-exames-convenio', convenioId] });
+      queryClient.invalidateQueries({ queryKey: ['precos-exames-convenio'] });
       setIsExameFormOpen(false);
     } catch (err: any) {
       toast.error(err.message || 'Erro ao salvar exame.');
@@ -168,7 +169,7 @@ function TabelaExamesConvenio({ convenioId }: { convenioId: string }) {
       if (error) throw error;
       if (!data || data.length === 0) { toast.error('Sem permissão para excluir.'); return; }
       toast.success('Exame removido da tabela.');
-      queryClient.invalidateQueries({ queryKey: ['precos-exames-convenio', convenioId] });
+      queryClient.invalidateQueries({ queryKey: ['precos-exames-convenio'] });
     } catch (err: any) {
       toast.error(err.message || 'Erro ao excluir.');
     } finally { setDeleteExameId(null); }

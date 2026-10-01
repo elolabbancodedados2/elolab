@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from 'sonner';
 import { todayDateOnly, toDateOnly } from '@/lib/dateOnly';
+import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 
 type TipoRepasse = 'percentual' | 'fixo';
 interface MedicoRepasse { id: string; nome: string | null; crm: string; tipo_repasse: TipoRepasse | null; percentual_repasse: number | null; valor_repasse_fixo: number | null }
@@ -55,17 +56,18 @@ function ConfiguracaoMedico({ medico, onSaved }: { medico: MedicoRepasse; onSave
 
 export default function RepassesMedicos() {
   const queryClient = useQueryClient();
+  const { user, profile } = useSupabaseAuth();
   const [competencia, setCompetencia] = useState(() => todayDateOnly().slice(0, 7));
   const competenciaValida = /^\d{4}-(0[1-9]|1[0-2])$/.test(competencia);
   const [processing, setProcessing] = useState(false);
-  const { data: medicos = [] } = useQuery({ queryKey: ['medicos-repasse'], queryFn: async () => {
-    const { data, error } = await (supabase as any).from('medicos').select('id,nome,crm,tipo_repasse,percentual_repasse,valor_repasse_fixo').eq('ativo', true).order('nome');
+  const { data: medicos = [] } = useQuery({ queryKey: ['medicos-repasse', profile?.clinica_id ?? null], enabled: !!user && !!profile?.clinica_id, queryFn: async () => {
+    const { data, error } = await (supabase as any).from('medicos').select('id,nome,crm,tipo_repasse,percentual_repasse,valor_repasse_fixo').eq('clinica_id', profile?.clinica_id ?? '').eq('ativo', true).order('nome');
     if (error) throw error; return (data ?? []) as MedicoRepasse[];
   }});
-  const { data: repasses = [], isLoading } = useQuery({ queryKey: ['repasses-medicos', competencia], enabled: competenciaValida, queryFn: async () => {
+  const { data: repasses = [], isLoading } = useQuery({ queryKey: ['repasses-medicos', profile?.clinica_id ?? null, competencia], enabled: competenciaValida && !!user && !!profile?.clinica_id, queryFn: async () => {
     const inicio = `${competencia}-01`;
     const fim = toDateOnly(new Date(Number(competencia.slice(0, 4)), Number(competencia.slice(5, 7)), 1));
-    const { data, error } = await (supabase as any).from('repasses_medicos').select('*,medicos(nome,crm)').gte('competencia', inicio).lt('competencia', fim).order('created_at');
+    const { data, error } = await (supabase as any).from('repasses_medicos').select('*,medicos(nome,crm)').eq('clinica_id', profile?.clinica_id ?? '').gte('competencia', inicio).lt('competencia', fim).order('created_at');
     if (error) throw error; return (data ?? []) as Repasse[];
   }});
   const totais = useMemo(() => ({

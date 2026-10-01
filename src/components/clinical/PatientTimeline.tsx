@@ -1,3 +1,4 @@
+import { nomeMedico } from '@/lib/formatters';
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
@@ -20,6 +21,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import type jsPDF from 'jspdf';
 
 import { parseDateOnly } from '@/lib/dateOnly';
+import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 
 interface PatientTimelineProps {
   pacienteId: string;
@@ -57,6 +59,7 @@ const TYPE_META: Record<EventType, { label: string; color: string; icon: JSX.Ele
 };
 
 export function PatientTimeline({ pacienteId, className, maxItems = 50 }: PatientTimelineProps) {
+  const { user, profile } = useSupabaseAuth();
   const [search, setSearch] = useState('');
   const [activeFilter, setActiveFilter] = useState<EventType | 'todos'>('todos');
   const [aiLoading, setAiLoading] = useState(false);
@@ -65,7 +68,7 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
   const [pdfLoading, setPdfLoading] = useState(false);
 
   const { data: events, isLoading, error } = useQuery({
-    queryKey: ['patient-timeline', pacienteId],
+    queryKey: ['patient-timeline', user?.id ?? null, profile?.clinica_id ?? null, pacienteId, maxItems],
     queryFn: async () => {
       const allEvents: TimelineEvent[] = [];
       const lim = Math.max(maxItems, 100);
@@ -311,7 +314,7 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
 
       return allEvents.sort((a, b) => b.date.getTime() - a.date.getTime());
     },
-    enabled: !!pacienteId,
+    enabled: !!pacienteId && !!user && !!profile?.clinica_id,
   });
 
   const counts = useMemo(() => {
@@ -370,7 +373,7 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
         format(e.date, 'dd/MM/yyyy HH:mm', { locale: ptBR }),
         TYPE_META[e.type].label,
         e.title,
-        [e.description, e.medicoNome && `Dr(a). ${e.medicoNome}`, e.status].filter(Boolean).join(' | '),
+        [e.description, e.medicoNome && `${nomeMedico(e.medicoNome)}`, e.status].filter(Boolean).join(' | '),
       ]);
 
       autoTable(doc, {
@@ -548,7 +551,7 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
                             <Calendar className="h-3 w-3" />
                             {format(event.date, "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
                           </span>
-                          {event.medicoNome && <span>• Dr(a). {event.medicoNome}</span>}
+                          {event.medicoNome && <span>• {nomeMedico(event.medicoNome)}</span>}
                         </p>
                       </div>
                     </div>

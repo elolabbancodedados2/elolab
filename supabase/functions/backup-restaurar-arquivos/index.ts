@@ -18,11 +18,11 @@
  */
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { cronSecretOk } from '../_shared/cronAuth.ts'
+import { corsPadrao } from '../_shared/cors.ts';
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-cron-secret',
-}
+// Atribuído em cada request (reflete a origem permitida). Helpers
+// top-level (json/reply) capturam esta variável por closure.
+let corsHeaders: Record<string, string> = {};
 
 const responder = (corpo: unknown, status = 200) =>
   new Response(JSON.stringify(corpo), {
@@ -40,6 +40,7 @@ interface Pedido {
 }
 
 Deno.serve(async (req) => {
+  corsHeaders = { ...corsPadrao(req),};
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
   if (!cronSecretOk(req)) return responder({ error: 'não autorizado' }, 401)
 

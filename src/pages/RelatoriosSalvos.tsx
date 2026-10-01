@@ -10,21 +10,25 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { mensagemDeErro } from '@/lib/erros';
 import { ListSkeleton } from '@/components/ui/loading-skeleton';
+import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 
 export default function RelatoriosSalvos() {
+  const { user, profile } = useSupabaseAuth();
   const qc = useQueryClient();
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const { data: items = [], isLoading } = useQuery({
-    queryKey: ['relatorios-salvos'],
+    queryKey: ['relatorios-salvos', user?.id ?? null, profile?.clinica_id ?? null],
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from('relatorios_salvos')
         .select('*')
+        .eq('clinica_id', profile?.clinica_id ?? '')
         .order('created_at', { ascending: false });
       if (error) throw error;
       return data || [];
     },
+    enabled: !!user && !!profile?.clinica_id,
   });
 
   const runNow = async (id: string) => {

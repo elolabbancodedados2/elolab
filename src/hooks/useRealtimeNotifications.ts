@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { canalUnico } from '@/lib/realtimeCanal';
 
 export interface AppNotification {
   id: string;
@@ -79,7 +80,7 @@ export function useRealtimeNotifications() {
     if (!user) return;
 
     const channel = supabase
-      .channel('notifications-realtime')
+      .channel(canalUnico('notifications-realtime'))
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'notification_queue' },

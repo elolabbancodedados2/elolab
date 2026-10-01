@@ -1,5 +1,19 @@
 import { describe, it, expect } from 'vitest';
-import { calcularSaldoPagamento, montarPagamentos, somaDasExtras } from '@/lib/pagamentoDividido';
+import { calcularSaldoPagamento, montarPagamentos, resumirPagamentos, somaDasExtras, validarValorRecebido } from '@/lib/pagamentoDividido';
+
+describe('validarValorRecebido', () => {
+  it('accepts a partial installment and the exact remaining balance', () => {
+    expect(validarValorRecebido('25.50', 100)).toBe(25.5);
+    expect(validarValorRecebido('100', 100)).toBe(100);
+  });
+
+  it('rejects empty, zero, invalid and over-balance amounts', () => {
+    expect(validarValorRecebido('', 100)).toBeNull();
+    expect(validarValorRecebido('0', 100)).toBeNull();
+    expect(validarValorRecebido('abc', 100)).toBeNull();
+    expect(validarValorRecebido('100.01', 100)).toBeNull();
+  });
+});
 
 /**
  * Aritmética de dinheiro no caminho do caixa. Um centavo errado aqui aparece
@@ -7,6 +21,13 @@ import { calcularSaldoPagamento, montarPagamentos, somaDasExtras } from '@/lib/p
  * procurando um erro que está no código.
  */
 describe('montarPagamentos', () => {
+  it('lista todas as formas e valores no resumo do comprovante', () => {
+    expect(resumirPagamentos([
+      { forma_pagamento: 'pix', valor: 120 },
+      { forma_pagamento: 'credito', valor: 80 },
+    ], { pix: 'PIX', credito: 'Crédito' })).toBe('PIX: R$ 120,00 + Crédito: R$ 80,00');
+  });
+
   it('sem divisão, a forma principal leva tudo', () => {
     expect(montarPagamentos('pix', [], 500)).toEqual([
       { forma_pagamento: 'pix', valor: 500 },
@@ -86,6 +107,15 @@ describe('montarPagamentos', () => {
 describe('calcularSaldoPagamento', () => {
   it('cobra somente o restante de uma conta parcialmente paga', () => {
     expect(calcularSaldoPagamento(500, 20, 10, 200)).toBe(290);
+  });
+
+  it('divide somente o valor recebido nesta etapa, sem cobrar o saldo inteiro', () => {
+    const etapa = validarValorRecebido('25.50', 100);
+    expect(etapa).toBe(25.5);
+    expect(montarPagamentos('credito', [{ forma: 'pix', valor: 10 }], etapa!)).toEqual([
+      { forma_pagamento: 'credito', valor: 15.5 },
+      { forma_pagamento: 'pix', valor: 10 },
+    ]);
   });
 
   it('não devolve saldo negativo por diferença de centavos', () => {

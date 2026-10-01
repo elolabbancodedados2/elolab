@@ -1,10 +1,15 @@
+import { Switch } from '@/components/ui/switch';
+import { useCurrentMedico } from '@/hooks/useCurrentMedico';
+import { nomeMedico } from '@/lib/formatters';
+import { formatCurrency } from '@/lib/formatters';
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   UserPlus, Play, Check, Loader2, Clock, ArrowUp, ArrowDown,
   Users, CheckCircle2, Bell, XCircle, Stethoscope, AlertTriangle,
-  RefreshCw, Timer,
+  RefreshCw, Timer, LockOpen,
+  FileText,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -13,21 +18,26 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { FinalizarAtendimentoDialog } from '@/components/fila/FinalizarAtendimentoDialog';
 import { toast } from 'sonner';
 import { mensagemDeErro } from '@/lib/erros';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
-import { createAutoBilling } from '@/lib/autoBilling';
+import { checkinComCobranca } from '@/lib/checkinWithBilling';
 import { autoFinalizarAtendimento } from '@/lib/workflowAutomation';
 import { atomicStartAppointment as autoIniciarAtendimento } from '@/lib/operationalTransitions';
 import { useFilaAtendimento, useAgendamentos, usePacientes, useMedicos, useSalas } from '@/hooks/useSupabaseData';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { podeAtender, saldoDevedor } from '@/lib/liberacaoAtendimento';
 import { passouPelaTriagem } from '@/lib/liberacaoTriagem';
+import { ordenarFilaPorPrioridade } from '@/lib/filaPrioridade';
+import { podeIniciarAgendamento, separarFilaAtivaPorData } from '@/lib/filaPorData';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { format, formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { ListSkeleton } from '@/components/ui/loading-skeleton';
+import { canalUnico } from '@/lib/realtimeCanal';
 
 // ─── Helpers ───────────────────────────────────────────────
 function calcularEspera(horarioChegada: string | null): string {
@@ -67,9 +77,12 @@ const cardAnim = {
 };
 
 // ─── Queue Card ────────────────────────────────────────────
-function FilaCard({ item, pos, pacienteNome, medicoNome, salaNome, onIniciar, onFinalizar, onChamar, onRemover, now }: {
+function FilaCard({ item, pos, pacienteNome, medicoNome, salaNome, canRemove, onIniciar, onFinalizar, onChamar, onRemover, onAbrirProntuario, now }: {
   item: any; pos: number; pacienteNome: string; medicoNome: string; salaNome: string;
+  canRemove: boolean;
   onIniciar: () => void; onFinalizar: () => void; onChamar: () => void; onRemover: () => void;
+  /** Volta ao prontuário de quem já está em atendimento (aba fechada, recarga). */
+  onAbrirProntuario?: () => void;
   now: number;
 }) {
   const status = item.status as keyof typeof STATUS_CONFIG;
@@ -148,14 +161,21 @@ function FilaCard({ item, pos, pacienteNome, medicoNome, salaNome, onIniciar, on
                 <Play className="h-3.5 w-3.5" /> Iniciar Atendimento
               </Button>
             )}
+            {status === 'em_atendimento' && onAbrirProntuario && (
+              <Button size="sm" variant="outline" className="gap-1.5 h-7 text-xs" onClick={onAbrirProntuario}>
+                <FileText className="h-3.5 w-3.5" /> Abrir prontuário
+              </Button>
+            )}
             {status === 'em_atendimento' && (
               <Button size="sm" variant="default" className="gap-1.5 h-7 text-xs bg-success text-white hover:bg-success/90" onClick={onFinalizar}>
                 <CheckCircle2 className="h-3.5 w-3.5" /> Finalizar
               </Button>
             )}
-            <Button size="sm" variant="ghost" className="gap-1.5 h-7 text-xs text-destructive ml-auto" onClick={onRemover}>
-              <XCircle className="h-3.5 w-3.5" />
-            </Button>
+            {canRemove && (
+              <Button size="sm" variant="ghost" className="gap-1.5 h-7 text-xs text-destructive ml-auto" onClick={onRemover} aria-label="Remover da fila">
+                <XCircle className="h-3.5 w-3.5" />
+              </Button>
+            )}
           </div>
         )}
       </div>
@@ -180,11 +200,28 @@ export default function Fila() {
    * em 18 atendimentos finalizados.
    */
   const [finalizando, setFinalizando] = useState<{ filaId: string; agendamentoId: string; nome: string } | null>(null);
+  /**
+   * Liberação excepcional da trava de pagamento/triagem.
+   *
+   * O banco aceita `liberado_sem_pagamento`/`liberado_sem_triagem` com
+   * justificativa obrigatória desde a migration 20260814210000 — a escapatória
+   * para emergência, idoso sem cartão, paciente antigo sem a carteira — mas
+   * NENHUMA tela gravava esses campos. Com a trava ligada, a única saída era
+   * desligar a trava da clínica inteira. Este dialog é o botão que faltava.
+   */
+  const [liberando, setLiberando] = useState<{ tipo: 'pagamento' | 'triagem'; agendamentoId: string; nome: string } | null>(null);
+  const [motivoLiberacao, setMotivoLiberacao] = useState('');
+  const [salvandoLiberacao, setSalvandoLiberacao] = useState(false);
   const [now, setNow] = useState(Date.now());
 
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { profile, hasAnyRole } = useSupabaseAuth();
+  const { medicoId: meuMedicoId, isMedicoOnly } = useCurrentMedico();
+  const [apenasMeusEscolhido, setApenasMeus] = useState<boolean | null>(null);
+  const apenasMeus = apenasMeusEscolhido ?? isMedicoOnly;
+  const canRemoveFromQueue = hasAnyRole(['admin', 'recepcao']);
+  const podeVerValorCobranca = hasAnyRole(['admin', 'recepcao']);
   const today = format(new Date(), 'yyyy-MM-dd');
 
   const { data: fila = [], isLoading: loadingFila } = useFilaAtendimento();
@@ -192,6 +229,7 @@ export default function Fila() {
   const { data: pacientes = [] } = usePacientes();
   const { data: medicos = [] } = useMedicos();
   const { data: salas = [] } = useSalas();
+  const idsAgendamentosHoje = agendamentos.map(ag => ag.id);
 
   /**
    * Saldo devedor dos atendimentos do dia.
@@ -200,30 +238,35 @@ export default function Fila() {
    * se o paciente passou pelo balcão, e "Iniciar" chamava qualquer um.
    */
   const { data: cobrancas = [] } = useQuery({
-    queryKey: ['fila-cobrancas', profile?.clinica_id],
+    queryKey: ['fila-cobrancas', profile?.clinica_id, idsAgendamentosHoje],
+    staleTime: 15_000,
+    refetchInterval: 15_000,
+    refetchIntervalInBackground: false,
     queryFn: async () => {
-      if (!profile?.clinica_id) return [];
+      if (!profile?.clinica_id || idsAgendamentosHoje.length === 0) return [];
       const { data, error } = await supabase
         .from('lancamentos')
         .select('agendamento_id, valor, valor_pago, desconto, acrescimo')
         .eq('clinica_id', profile.clinica_id)
         .eq('tipo', 'receita')
-        .not('agendamento_id', 'is', null)
+        .in('agendamento_id', idsAgendamentosHoje)
         .not('status', 'in', '("cancelado","estornado")');
       if (error) throw error;
       return data ?? [];
     },
-    enabled: !!profile?.clinica_id,
+    enabled: !!profile?.clinica_id && idsAgendamentosHoje.length > 0 && podeVerValorCobranca,
   });
 
   /** A clínica ligou a trava de pagamento e/ou a de triagem? */
-  const { data: clinicaConfig } = useQuery({
+  const { data: clinicaConfig, isLoading: carregandoRegrasClinica, isError: erroRegrasClinica } = useQuery({
     queryKey: ['clinica-exige-pagamento', profile?.clinica_id],
+    staleTime: 30_000,
     queryFn: async () => {
       if (!profile?.clinica_id) return null;
-      const { data } = await (supabase as any)
+      const { data, error } = await (supabase as any)
         .from('clinicas').select('exigir_pagamento_previo, exigir_triagem')
         .eq('id', profile.clinica_id).maybeSingle();
+      if (error) throw error;
       return data;
     },
     enabled: !!profile?.clinica_id,
@@ -233,11 +276,35 @@ export default function Fila() {
   const triagemLigada = Boolean(clinicaConfig?.exigir_triagem);
 
   /**
+   * O RLS financeiro oculta cobranÃ§as de consulta de mÃ©dicos e enfermagem.
+   * A RPC retorna apenas a decisÃ£o de liberaÃ§Ã£o, sem expor valores ou itens
+   * financeiros, e usa as mesmas regras do bloqueio no banco.
+   */
+  const { data: liberacoesPagamento = [], isLoading: verificandoPagamento, isError: erroVerificacaoPagamento } = useQuery({
+    queryKey: ['fila-liberacao-pagamento', profile?.clinica_id, idsAgendamentosHoje],
+    queryFn: async () => {
+      if (!profile?.clinica_id || idsAgendamentosHoje.length === 0) return [];
+      const { data, error } = await supabase.rpc('verificar_pagamento_fila', {
+        p_agendamento_ids: idsAgendamentosHoje,
+      });
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: !!profile?.clinica_id && travaLigada && idsAgendamentosHoje.length > 0,
+    staleTime: 15_000,
+    refetchInterval: 15_000,
+    refetchIntervalInBackground: false,
+  });
+
+  /**
    * Quem já tem triagem hoje. Só busca quando a clínica usa triagem — nas
    * outras a consulta seria peso morto em toda abertura da fila.
    */
   const { data: triagensFeitas = [] } = useQuery({
     queryKey: ['fila-triagens', profile?.clinica_id],
+    staleTime: 15_000,
+    refetchInterval: 15_000,
+    refetchIntervalInBackground: false,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('triagens')
@@ -259,13 +326,20 @@ export default function Fila() {
     saldoDevedor(agendamentoId, cobrancas as any);
 
   /** Espelha o trigger do banco; ver src/lib/liberacaoAtendimento.ts. */
-  const podeAtenderAgendamento = (agendamentoId: string) =>
-    podeAtender(
+  const podeAtenderAgendamento = (agendamentoId: string) => {
+    const filaItem = fila.find(f => f.agendamento_id === agendamentoId && f.status !== 'finalizado');
+    if (filaItem?.cobranca_estado === 'pendente') return false;
+    if (carregandoRegrasClinica || erroRegrasClinica) return false;
+    if (travaLigada) {
+      return liberacoesPagamento.some(l => l.agendamento_id === agendamentoId && l.pode_atender);
+    }
+    return podeAtender(
       agendamentoId,
       agendamentos.find(a => a.id === agendamentoId) as any,
       cobrancas as any,
       travaLigada,
     );
+  };
 
   /** Espelha o trigger da triagem; ver src/lib/liberacaoTriagem.ts. */
   const passouPelaTriagemAgendamento = (agendamentoId: string) =>
@@ -276,17 +350,25 @@ export default function Fila() {
       triagemLigada,
     );
 
-  const isLoading = loadingFila || loadingAgendamentos;
+  const isLoading = loadingFila || loadingAgendamentos || carregandoRegrasClinica;
 
   // Realtime subscription for instant queue updates
   useEffect(() => {
     const channel = supabase
-      .channel('fila-realtime')
+      .channel(canalUnico('fila-realtime'))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'fila_atendimento' }, () => {
         queryClient.invalidateQueries({ queryKey: ['fila_atendimento'] });
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'agendamentos' }, () => {
         queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
+        queryClient.invalidateQueries({ queryKey: ['fila-liberacao-pagamento', profile?.clinica_id] });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'lancamentos' }, () => {
+        queryClient.invalidateQueries({ queryKey: ['fila-cobrancas', profile?.clinica_id] });
+        queryClient.invalidateQueries({ queryKey: ['fila-liberacao-pagamento', profile?.clinica_id] });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'triagens' }, () => {
+        queryClient.invalidateQueries({ queryKey: ['fila-triagens', profile?.clinica_id] });
       })
       .subscribe();
 
@@ -297,16 +379,34 @@ export default function Fila() {
       clearInterval(interval);
       supabase.removeChannel(channel);
     };
-  }, [queryClient]);
+  }, [queryClient, profile?.clinica_id]);
 
   const agendamentosDisponiveis = agendamentos.filter(ag =>
     ['confirmado', 'agendado', 'aguardando'].includes(ag.status || '') &&
     !fila.some(f => f.agendamento_id === ag.id)
   );
 
-  const filaAtivaCompleta = fila
-    .filter(f => f.status !== 'finalizado')
-    .sort((a, b) => a.posicao - b.posicao);
+  // 'concluido' é o pós-consulta fechado na Recepção: não é ninguém
+  // "aguardando". Antes o filtro só excluía 'finalizado' e concluídos de
+  // QUALQUER dia voltavam como cards fantasma com o badge "Aguardando".
+  const dataPorAgendamento = new Map(agendamentos.map(ag => [ag.id, ag.data]));
+  // Médico vê, por padrão, só os próprios pacientes; admin/recepção/enfermagem
+  // veem a fila da clínica. Antes o médico via a fila de todos os colegas.
+  const medicoDoItem = (item: any) =>
+    (agendamentos.find(a => a.id === item.agendamento_id) as any)?.medico_id ?? item.agendamentos?.medico_id ?? null;
+  const filaVisivel = apenasMeus && meuMedicoId ? fila.filter(f => medicoDoItem(f) === meuMedicoId) : fila;
+  const filaPorData = separarFilaAtivaPorData(filaVisivel, today, dataPorAgendamento);
+  const dataDoAgendamentoNaFila = (item: (typeof fila)[number]) =>
+    item.agendamentos?.data ?? dataPorAgendamento.get(item.agendamento_id);
+  const statusAgendamentoNaFila = (item: (typeof fila)[number]) =>
+    item.agendamentos?.status ?? agendamentos.find(a => a.id === item.agendamento_id)?.status;
+  const filaHojeEncerrada = filaPorData.hoje.filter(item =>
+    !podeIniciarAgendamento(statusAgendamentoNaFila(item)),
+  );
+  const filaParaRevisar = [...filaPorData.outrosDias, ...filaHojeEncerrada];
+  const filaAtivaCompleta = ordenarFilaPorPrioridade(
+    filaPorData.hoje.filter(item => podeIniciarAgendamento(statusAgendamentoNaFila(item))),
+  );
 
   /**
    * A lista de trabalho do profissional: só quem pode ser chamado.
@@ -328,20 +428,27 @@ export default function Fila() {
     f => podeAtenderAgendamento(f.agendamento_id) && passouPelaTriagemAgendamento(f.agendamento_id)
   );
 
-  const filaFinalizada = fila
-    .filter(f => f.status === 'finalizado')
+  // Só os finalizados HOJE: ordenar por updated_at sem filtro de data trazia
+  // os cinco últimos de qualquer dia — semana passada incluso.
+  const inicioDoDia = new Date(); inicioDoDia.setHours(0, 0, 0, 0);
+  const filaFinalizada = filaVisivel
+    .filter(f => f.status === 'finalizado' && new Date(f.updated_at || f.created_at || 0) >= inicioDoDia)
     .sort((a, b) => new Date(b.updated_at || 0).getTime() - new Date(a.updated_at || 0).getTime())
     .slice(0, 5);
 
   const getPacienteNome = (agId: string) => {
     const ag = agendamentos.find(a => a.id === agId) as any;
-    return ag?.pacientes?.nome ?? pacientes.find(p => p.id === ag?.paciente_id)?.nome ?? 'Desconhecido';
+    const agDaFila = fila.find(f => f.agendamento_id === agId)?.agendamentos;
+    return ag?.pacientes?.nome ?? agDaFila?.pacientes?.nome ??
+      pacientes.find(p => p.id === (ag?.paciente_id ?? agDaFila?.paciente_id))?.nome ?? 'Desconhecido';
   };
 
   const getMedicoNome = (agId: string) => {
     const ag = agendamentos.find(a => a.id === agId) as any;
-    const med = ag?.medicos ?? medicos.find(m => m.id === ag?.medico_id);
-    return med ? `Dr(a). ${med.nome || med.crm}` : '—';
+    const agDaFila = fila.find(f => f.agendamento_id === agId)?.agendamentos;
+    const med = ag?.medicos ?? agDaFila?.medicos ??
+      medicos.find(m => m.id === (ag?.medico_id ?? agDaFila?.medico_id));
+    return med ? `${nomeMedico(med.nome || med.crm)}` : '—';
   };
 
   const getSalaNome = (salaId: string | null) =>
@@ -350,61 +457,48 @@ export default function Fila() {
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ['fila_atendimento'] });
     queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
+    queryClient.invalidateQueries({ queryKey: ['fila-cobrancas', profile?.clinica_id] });
+    queryClient.invalidateQueries({ queryKey: ['fila-triagens', profile?.clinica_id] });
+    queryClient.invalidateQueries({ queryKey: ['clinica-exige-pagamento', profile?.clinica_id] });
+    queryClient.invalidateQueries({ queryKey: ['fila-liberacao-pagamento', profile?.clinica_id] });
   };
 
   const handleAddToFila = async () => {
     if (!selectedAgendamento) { toast.error('Selecione um agendamento.'); return; }
 
-    // Check for duplicate entry in active queue
-    const jaExiste = fila.find(
-      (f: any) => f.agendamento_id === selectedAgendamento && f.status !== 'finalizado'
-    );
-    if (jaExiste) {
-      toast.error('Este agendamento já está na fila de atendimento.');
-      return;
-    }
-
     setIsSaving(true);
     try {
-      const maxPos = Math.max(0, ...fila.map(f => f.posicao));
-      const payload: any = {
-        agendamento_id: selectedAgendamento,
-        posicao: maxPos + 1,
-        status: 'aguardando',
-        prioridade: selectedPrioridade,
-        horario_chegada: new Date().toISOString(),
-      };
-      if (profile?.clinica_id) payload.clinica_id = profile.clinica_id;
-      const { data: filaCriada, error } = await supabase
-        .from('fila_atendimento')
-        .insert(payload)
-        .select('id')
-        .single();
-      if (error) throw error;
-      // Falha aqui deixa o paciente na fila mas com o agendamento em outro
-      // estado — a Recepção e o Painel TV passam a discordar da Fila.
-      const { error: agErr } = await supabase
-        .from('agendamentos').update({ status: 'aguardando' }).eq('id', selectedAgendamento);
-      if (agErr) {
-        if (filaCriada?.id) {
-          const { error: rollbackError } = await supabase
-            .from('fila_atendimento')
-            .delete()
-            .eq('id', filaCriada.id);
-          if (rollbackError) {
-            toast.error('Não foi possível concluir a entrada na fila.', {
-              description: `${agErr.message}. Falha ao desfazer a fila: ${rollbackError.message}`,
-            });
-            return;
-          }
-        }
-        throw agErr;
+      const agendamento = agendamentos.find((item) => item.id === selectedAgendamento);
+      const paciente = agendamento && pacientes.find((item) => item.id === agendamento.paciente_id);
+      if (!agendamento || !paciente) {
+        throw new Error('Não foi possível carregar os dados do agendamento. Atualize a tela e tente novamente.');
       }
+      const prioridade = ['normal', 'preferencial', 'urgente'].includes(selectedPrioridade)
+        ? selectedPrioridade as 'normal' | 'preferencial' | 'urgente'
+        : 'normal';
+      const result = await checkinComCobranca({
+        agendamentoId: agendamento.id,
+        pacienteId: agendamento.paciente_id,
+        pacienteNome: paciente.nome || 'Paciente',
+        convenioId: paciente.convenio_id,
+        tipoConsulta: agendamento.tipo,
+        tipoExame: ['exame', 'exames'].includes(String(agendamento.tipo || '').toLocaleLowerCase('pt-BR'))
+          ? agendamento.observacoes
+          : null,
+        clinicaId: profile?.clinica_id,
+      }, prioridade);
+      if (!result.success) throw new Error(result.message);
       refresh();
       setIsAddOpen(false);
       setSelectedAgendamento('');
       setSelectedPrioridade('normal');
-      toast.success('Paciente adicionado à fila!');
+      if (result.actions.length === 0) {
+        toast.info('Este agendamento já estava na fila.');
+      } else {
+        toast.success('Paciente adicionado à fila!', {
+          description: prioridade === 'normal' ? undefined : `Prioridade ${prioridade} aplicada.`,
+        });
+      }
     } catch (e: any) {
       toast.error('Erro: ' + e.message);
     } finally {
@@ -475,19 +569,32 @@ export default function Fila() {
   const updateStatus = async (id: string, status: string, agendamentoId?: string) => {
     // Voice call when chamado
     if (status === 'chamado' && agendamentoId) {
-      // Os erros eram ignorados: se a atualização falhasse, a voz chamava o
-      // paciente e a tela dizia "Paciente chamado!" enquanto a fila continuava
-      // parada e o Painel TV não exibia nada.
-      const { error: errFila } = await supabase
-        .from('fila_atendimento').update({ status }).eq('id', id);
+      const ag = agendamentos.find(a => a.id === agendamentoId) as any;
+      if (!ag || !podeIniciarAgendamento(ag.status) || ag.status === 'em_atendimento') {
+        refresh();
+        toast.error('Este agendamento está encerrado ou não está disponível para chamada.');
+        return;
+      }
+      // A sala vem do agendamento (definida na Agenda). Gravá-la na fila aqui
+      // faz o Painel TV anunciar "Maria, Sala 1" — antes a coluna sala_id da
+      // fila nunca era escrita por ninguém e a TV sempre dizia "Recepção".
+      const { data: chamadaAtualizada, error: errFila } = await supabase
+        .from('fila_atendimento').update({ status, sala_id: ag?.sala_id ?? null })
+        .eq('id', id).eq('status', 'aguardando').select('id');
       if (errFila) {
         toast.error('Não foi possível chamar o paciente. Tente novamente.', { description: mensagemDeErro(errFila) });
         return;
       }
 
+      if (!chamadaAtualizada?.length) {
+        refresh();
+        toast.warning('A fila mudou. Atualize a tela antes de chamar este paciente.');
+        return;
+      }
+
       const item = fila.find(f => f.id === id);
       const nome = getPacienteNome(agendamentoId);
-      const sala = getSalaNome(item?.sala_id ?? null);
+      const sala = getSalaNome(ag?.sala_id ?? item?.sala_id ?? null);
       chamarPacienteVoz(nome, sala);
       refresh();
       toast.success('📢 Paciente chamado!');
@@ -557,20 +664,103 @@ export default function Fila() {
   };
 
   const handleRemover = async (id: string) => {
-    const { data, error } = await supabase.from('fila_atendimento').delete().eq('id', id).select('id');
+    const item = fila.find(f => f.id === id);
+    const { data, error } = await supabase.from('fila_atendimento').delete()
+      .eq('id', id)
+      .eq('status', String(item?.status ?? ''))
+      .select('id');
     setRemoveId(null);
-    if (error || !data || data.length === 0) {
-      toast.error('Não foi possível remover da fila (sem permissão).');
+    if (error) {
+      toast.error('Falha ao remover da fila', { description: mensagemDeErro(error) });
       return;
     }
+    if (!data?.length) {
+      refresh();
+      toast.warning(canRemoveFromQueue
+        ? 'O estado do paciente mudou. A fila foi atualizada.'
+        : 'Seu perfil nao pode remover itens da fila.');
+      return;
+    }
+    // Remover durante o chamado ou o atendimento deixava o agendamento preso
+    // em 'em_atendimento' para sempre: o card sumia da fila, não aparecia em
+    // AtendimentosEmAberto (que só lista dias anteriores) e não podia ser
+    // re-adicionado. Voltar a 'aguardando' dá saída: o paciente pode ser
+    // re-chamado, ou cancelado na Agenda se foi embora.
+    if (item?.status === 'em_atendimento' && item.agendamento_id) {
+      const { data: agAtualizado, error: agErr } = await supabase
+        .from('agendamentos').update({ status: 'aguardando' })
+        .eq('id', item.agendamento_id).eq('status', 'em_atendimento').select('id');
+      if (agErr) {
+        toast.warning('A fila removeu o item, mas o agendamento continuou em andamento.', {
+          description: `${mensagemDeErro(agErr)} Verifique a agenda deste paciente.`,
+        });
+      } else if (!agAtualizado?.length) {
+        toast.warning('A fila foi removida, mas o agendamento mudou durante a operacao. Atualize a agenda.');
+      } else {
+        toast.info('Paciente removido da fila', {
+          description: 'O agendamento voltou a "aguardando" — pode ser re-chamado ou cancelado na Agenda.',
+        });
+      }
+    } else {
+      toast.info('Paciente removido da fila');
+    }
     refresh();
-    toast.info('Paciente removido da fila');
+  };
+
+  /**
+   * Grava a liberação excepcional da trava (pagamento ou triagem) com
+   * justificativa — espelhando as colunas e a constraint do banco
+   * (migration 20260814210000 / 20260814250000).
+   */
+  const handleLiberar = async () => {
+    if (!liberando) return;
+    const motivo = motivoLiberacao.trim();
+    if (motivo.length < 5) {
+      toast.error('Descreva o motivo da liberação (mínimo 5 caracteres).');
+      return;
+    }
+    setSalvandoLiberacao(true);
+    try {
+      const { error } = liberando.tipo === 'pagamento'
+        ? await supabase
+            .from('agendamentos')
+            .update({
+              liberado_sem_pagamento: true,
+              liberado_sem_pagamento_por: profile?.id,
+              liberado_sem_pagamento_em: new Date().toISOString(),
+              motivo_liberacao: motivo,
+            })
+            .eq('id', liberando.agendamentoId)
+        : await supabase
+            .from('agendamentos')
+            .update({
+              liberado_sem_triagem: true,
+              liberado_sem_triagem_por: profile?.id,
+              liberado_sem_triagem_em: new Date().toISOString(),
+              liberado_sem_triagem_motivo: motivo,
+            })
+            .eq('id', liberando.agendamentoId);
+      if (error) throw error;
+      toast.success(`${liberando.nome} liberado${liberando.tipo === 'pagamento' ? ' do pagamento' : ' da triagem'}.`, {
+        description: 'A liberação fica registrada com autor, data e justificativa.',
+      });
+      setLiberando(null);
+      setMotivoLiberacao('');
+      refresh();
+      queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
+    } catch (e: any) {
+      toast.error('Não foi possível liberar.', { description: mensagemDeErro(e) });
+    } finally {
+      setSalvandoLiberacao(false);
+    }
   };
 
   // Stats
   const stats = {
-    aguardando: filaAtiva.filter(f => f.status === 'aguardando').length,
-    emAtendimento: filaAtiva.filter(f => f.status === 'em_atendimento' || f.status === 'chamado').length,
+    // "Chamado" ainda não entrou no consultório: conta como aguardando, senão
+    // o número não bate com os cards da tela (achado de UX).
+    aguardando: filaAtiva.filter(f => f.status === 'aguardando' || f.status === 'chamado').length,
+    emAtendimento: filaAtiva.filter(f => f.status === 'em_atendimento').length,
     finalizadosHoje: filaFinalizada.length,
     urgentes: filaAtiva.filter(f => f.prioridade === 'urgente').length,
   };
@@ -586,7 +776,13 @@ export default function Fila() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" className="gap-2" onClick={refresh}>
+          {meuMedicoId && (
+            <label className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Switch checked={apenasMeus} onCheckedChange={(v) => setApenasMeus(v)} aria-label="Mostrar só meus pacientes" />
+              Só meus pacientes
+            </label>
+          )}
+          <Button variant="outline" size="sm" className="gap-2" onClick={refresh} aria-label="Atualizar fila">
             <RefreshCw className="h-4 w-4" />
           </Button>
           <Button className="gap-2" onClick={() => setIsAddOpen(true)}>
@@ -643,15 +839,59 @@ export default function Fila() {
                 pacienteNome={getPacienteNome(item.agendamento_id)}
                 medicoNome={getMedicoNome(item.agendamento_id)}
                 salaNome={getSalaNome(item.sala_id)}
+                canRemove={canRemoveFromQueue}
                 now={now}
                 onChamar={() => updateStatus(item.id, 'chamado', item.agendamento_id)}
                 onIniciar={() => updateStatus(item.id, 'em_atendimento', item.agendamento_id)}
                 onFinalizar={() => updateStatus(item.id, 'finalizado', item.agendamento_id)}
                 onRemover={() => setRemoveId(item.id)}
+                onAbrirProntuario={(() => {
+                  const ag = agendamentos.find(a => a.id === item.agendamento_id);
+                  return ag?.paciente_id && hasAnyRole(['admin', 'medico'])
+                    ? () => navigate(`/prontuarios?paciente=${ag.paciente_id}&agendamento=${item.agendamento_id}`)
+                    : undefined;
+                })()}
               />
             ))}
           </AnimatePresence>
         </motion.div>
+      )}
+
+      {filaParaRevisar.length > 0 && (
+        <section aria-labelledby="fila-fora-do-dia" className="rounded-xl border border-warning/30 bg-warning/5 p-4 space-y-3">
+          <div>
+            <h2 id="fila-fora-do-dia" className="text-sm font-semibold">Itens fora da fila ativa</h2>
+            <p className="text-xs text-muted-foreground mt-1">
+              Agendamentos de outros dias ou já encerrados não entram na chamada de hoje. Revise-os com a recepção.
+            </p>
+          </div>
+          <ul className="space-y-2">
+            {filaParaRevisar.map(item => {
+              const dataAgendamento = dataDoAgendamentoNaFila(item);
+              return (
+                <li key={item.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-background/70 px-3 py-2">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">{getPacienteNome(item.agendamento_id)}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {dataAgendamento ? format(new Date(`${dataAgendamento}T12:00:00`), 'dd/MM/yyyy') : 'Agendamento sem data'}
+                      {' · Agenda: '}{statusAgendamentoNaFila(item) ?? 'indisponível'}
+                      {' · Fila: '}{STATUS_CONFIG[item.status as keyof typeof STATUS_CONFIG]?.label ?? item.status}
+                    </p>
+                  </div>
+                  {canRemoveFromQueue && (
+                    <Button
+                      size="sm" variant="outline" className="min-h-9 gap-1.5 text-destructive"
+                      onClick={() => setRemoveId(item.id)}
+                      aria-label={`Remover ${getPacienteNome(item.agendamento_id)} da fila`}
+                    >
+                      <XCircle className="h-4 w-4" /> Remover
+                    </Button>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </section>
       )}
 
       {/* ─── Aguardando pagamento ───
@@ -663,13 +903,32 @@ export default function Fila() {
           <p className="text-xs font-medium text-warning flex items-center gap-2">
             <AlertTriangle className="h-3.5 w-3.5" />
             {filaAguardandoPagamento.length === 1
-              ? '1 paciente aguardando pagamento'
-              : `${filaAguardandoPagamento.length} pacientes aguardando pagamento`}
+              ? (filaAguardandoPagamento[0].cobranca_estado === 'pendente'
+                ? '1 paciente aguardando confirmação da cobrança ou pagamento'
+                : '1 paciente aguardando pagamento')
+              : `${filaAguardandoPagamento.length} pacientes aguardando cobrança ou pagamento`}
           </p>
           <p className="text-[11px] text-muted-foreground">
-            Não podem ser chamados até passarem pelo balcão. A recepção resolve em
-            Recepção &rarr; Balcão.
+            {erroRegrasClinica
+              ? 'Não é possível validar as regras da clínica; atualize antes de continuar.'
+              : erroVerificacaoPagamento
+                ? 'Não é possível confirmar o pagamento agora. Tente atualizar a fila.'
+                : <>Não podem ser chamados até passarem pelo balcão. A recepção resolve em
+                    Recepção &rarr; Balcão{hasAnyRole(['admin', 'medico']) && ', ou um médico libera com justificativa'}.</>}
           </p>
+          {erroRegrasClinica && (
+            <p className="text-xs text-destructive" role="alert">
+              Não foi possível carregar as regras de liberação. Atualize antes de iniciar atendimentos.
+            </p>
+          )}
+          {verificandoPagamento && (
+            <p className="text-xs text-muted-foreground" role="status">Verificando a liberação dos atendimentos...</p>
+          )}
+          {erroVerificacaoPagamento && (
+            <p className="text-xs text-destructive" role="alert">
+              Não foi possível validar o pagamento agora. Atualize a fila antes de tentar novamente.
+            </p>
+          )}
           <div className="space-y-1.5 pt-1">
             {filaAguardandoPagamento.map(item => (
               <div key={item.id} className="flex items-center justify-between gap-3 text-sm bg-background/60 rounded-lg px-3 py-2">
@@ -680,8 +939,29 @@ export default function Fila() {
                     {calcularEspera(item.horario_chegada)}
                   </span>
                   <Badge variant="outline" className="text-[10px] border-warning/40 text-warning tabular-nums">
-                    R$ {saldoDoAgendamento(item.agendamento_id).toFixed(2)}
+                    {item.cobranca_estado === 'pendente'
+                      ? 'Confirmando cobrança'
+                      : verificandoPagamento
+                        ? 'Verificando pagamento'
+                        : erroVerificacaoPagamento
+                          ? 'Validação indisponível'
+                          : podeVerValorCobranca
+                            ? `${formatCurrency(saldoDoAgendamento(item.agendamento_id))}`
+                            : 'Pendente no balcão'}
                   </Badge>
+                  {item.cobranca_estado !== 'pendente' && hasAnyRole(['admin', 'medico']) && (
+                    <Button
+                      size="sm" variant="outline" className="h-6 gap-1 px-2 text-[10px]"
+                      disabled={salvandoLiberacao}
+                      onClick={() => setLiberando({
+                        tipo: 'pagamento',
+                        agendamentoId: item.agendamento_id,
+                        nome: getPacienteNome(item.agendamento_id),
+                      })}
+                    >
+                      <LockOpen className="h-3 w-3" /> Liberar
+                    </Button>
+                  )}
                 </div>
               </div>
             ))}
@@ -702,16 +982,31 @@ export default function Fila() {
           </p>
           <p className="text-[11px] text-muted-foreground">
             Já pagaram. A enfermagem registra os sinais vitais em Triagem e eles
-            entram na fila de chamada.
+            entram na fila de chamada{hasAnyRole(['admin', 'medico']) && ' — ou um médico libera com justificativa'}.
           </p>
           <div className="space-y-1.5 pt-1">
             {filaAguardandoTriagem.map(item => (
               <div key={item.id} className="flex items-center justify-between gap-3 text-sm bg-background/60 rounded-lg px-3 py-2">
                 <span className="font-medium truncate">{getPacienteNome(item.agendamento_id)}</span>
-                <span className={cn('text-xs tabular-nums shrink-0', corEspera(item.horario_chegada))}>
-                  <Timer className="h-3 w-3 inline mr-1" />
-                  {calcularEspera(item.horario_chegada)}
-                </span>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className={cn('text-xs tabular-nums', corEspera(item.horario_chegada))}>
+                    <Timer className="h-3 w-3 inline mr-1" />
+                    {calcularEspera(item.horario_chegada)}
+                  </span>
+                  {hasAnyRole(['admin', 'medico']) && (
+                    <Button
+                      size="sm" variant="outline" className="h-6 gap-1 px-2 text-[10px]"
+                      disabled={salvandoLiberacao}
+                      onClick={() => setLiberando({
+                        tipo: 'triagem',
+                        agendamentoId: item.agendamento_id,
+                        nome: getPacienteNome(item.agendamento_id),
+                      })}
+                    >
+                      <LockOpen className="h-3 w-3" /> Liberar
+                    </Button>
+                  )}
+                </div>
               </div>
             ))}
           </div>
@@ -808,31 +1103,56 @@ export default function Fila() {
           Perguntado no fechamento porque é aqui que o profissional sabe se o
           paciente volta. A tela de retorno existia no prontuário, numa aba que
           é preciso lembrar de abrir — e o resultado foi zero retornos em 18
-          atendimentos. */}
-      <Dialog open={!!finalizando} onOpenChange={a => !a && setFinalizando(null)}>
-        <DialogContent className="sm:max-w-sm">
+          atendimentos. Agora é o componente compartilhado, com trava de duplo
+          clique, e usado por TODAS as vias de finalização. */}
+      <FinalizarAtendimentoDialog
+        open={!!finalizando}
+        pacienteNome={finalizando?.nome ?? ''}
+        onClose={() => setFinalizando(null)}
+        onConfirm={confirmarFinalizacao}
+      />
+
+      {/* ─── Liberação excepcional ───
+          Emergência, idoso sem cartão, paciente antigo: com a trava ligada,
+          não havia saída sem desligar a trava da clínica inteira. O banco
+          já aceitava a liberação com justificativa — faltava o botão. */}
+      <Dialog open={!!liberando} onOpenChange={a => { if (!a && !salvandoLiberacao) { setLiberando(null); setMotivoLiberacao(''); } }}>
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Finalizar — {finalizando?.nome}</DialogTitle>
+            <DialogTitle>
+              Liberar {liberando?.tipo === 'pagamento' ? 'do pagamento' : 'da triagem'} — {liberando?.nome}
+            </DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
-            <p className="text-sm text-muted-foreground">Este paciente volta?</p>
-            <div className="grid grid-cols-3 gap-2">
-              {[7, 15, 30].map(d => (
-                <Button key={d} variant="outline" onClick={() => confirmarFinalizacao(d)}>
-                  {d} dias
-                </Button>
-              ))}
-              {[60, 90, 180].map(d => (
-                <Button key={d} variant="outline" onClick={() => confirmarFinalizacao(d)}>
-                  {d === 180 ? '6 meses' : `${d} dias`}
-                </Button>
-              ))}
+            <p className="text-sm text-muted-foreground">
+              O paciente poderá ser chamado mesmo {liberando?.tipo === 'pagamento' ? 'com saldo em aberto' : 'sem passar pela enfermagem'}.
+              A justificativa fica registrada com autor e horário — é o que impede a liberação de virar rotina.
+            </p>
+            <div className="space-y-1">
+              <Label htmlFor="motivo-liberacao">Justificativa (obrigatória)</Label>
+              <Textarea
+                id="motivo-liberacao"
+                placeholder="Ex.: paciente idoso sem cartão na emergência"
+                value={motivoLiberacao}
+                onChange={e => setMotivoLiberacao(e.target.value)}
+                rows={3}
+              />
+              {motivoLiberacao.trim().length > 0 && motivoLiberacao.trim().length < 5 && (
+                <p className="text-xs text-destructive">Mínimo de 5 caracteres.</p>
+              )}
             </div>
           </div>
-          <DialogFooter className="sm:justify-between">
-            <Button variant="ghost" onClick={() => setFinalizando(null)}>Cancelar</Button>
-            <Button onClick={() => confirmarFinalizacao(null)}>
-              Sem retorno — finalizar
+          <DialogFooter>
+            <Button variant="outline" disabled={salvandoLiberacao} onClick={() => { setLiberando(null); setMotivoLiberacao(''); }}>
+              Cancelar
+            </Button>
+            <Button
+              disabled={salvandoLiberacao || motivoLiberacao.trim().length < 5}
+              onClick={handleLiberar}
+              className="gap-1.5"
+            >
+              {salvandoLiberacao && <Loader2 className="h-4 w-4 animate-spin" />}
+              Liberar
             </Button>
           </DialogFooter>
         </DialogContent>

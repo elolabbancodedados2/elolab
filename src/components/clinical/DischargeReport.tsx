@@ -1,3 +1,4 @@
+import { nomeMedico } from '@/lib/formatters';
 import { format } from 'date-fns';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ptBR } from 'date-fns/locale';
@@ -151,7 +152,7 @@ export function DischargeReport({
         doc.setFontSize(9);
         doc.setFont('helvetica', 'normal');
         doc.setTextColor(60, 60, 60);
-        doc.text(`Dr(a). ${data.medico.nome}`, pageWidth / 2, sigY + 5, { align: 'center' });
+        doc.text(`${nomeMedico(data.medico.nome)}`, pageWidth / 2, sigY + 5, { align: 'center' });
         if (data.medico.crm) {
           doc.text(`CRM ${data.medico.crm}`, pageWidth / 2, sigY + 9, { align: 'center' });
         }
@@ -206,7 +207,7 @@ export function DischargeReport({
     doc.setFont('helvetica', 'normal');
     doc.text(`Data: ${format(parseDateOnly(data.consulta.data)!, "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}`, 22, y);
     y += 5;
-    doc.text(`Médico: Dr(a). ${data.medico.nome}${data.medico.crm ? ` - CRM ${data.medico.crm}` : ''}`, 22, y);
+    doc.text(`Médico: ${nomeMedico(data.medico.nome)}${data.medico.crm ? ` - CRM ${data.medico.crm}` : ''}`, 22, y);
     y += 5;
     if (data.medico.especialidade) {
       doc.text(`Especialidade: ${data.medico.especialidade}`, 22, y);
@@ -333,7 +334,7 @@ export function DischargeReport({
               <div className="flex justify-between">
                 <span className="text-sm">Médico:</span>
                 <span className="font-medium">
-                  Dr(a). {data.medico.nome}
+                  {nomeMedico(data.medico.nome)}
                   {data.medico.crm && <span className="text-muted-foreground ml-1">(CRM {data.medico.crm})</span>}
                 </span>
               </div>

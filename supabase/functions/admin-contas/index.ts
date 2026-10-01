@@ -11,12 +11,13 @@
 // admin_acoes, dê certo ou não.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { corsPadrao } from '../_shared/cors.ts';
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Content-Type": "application/json",
-};
+// Atribuído em cada request (reflete a origem permitida). Helpers
+// top-level (json/reply) capturam esta variável por closure.
+let corsHeaders: Record<string, string> = {};
+
+;
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: corsHeaders });
@@ -31,6 +32,7 @@ const SENHA_MINIMA = 10;
 const TETO_POR_MINUTO = 20;
 
 Deno.serve(async (req) => {
+  corsHeaders = { ...corsPadrao(req), 'Content-Type': "application/json" };
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   const url = Deno.env.get("SUPABASE_URL")!;

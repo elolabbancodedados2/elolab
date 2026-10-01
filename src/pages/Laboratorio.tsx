@@ -1,3 +1,5 @@
+import { nomeMedico } from '@/lib/formatters';
+import { PacienteCombobox } from '@/components/patients/PacienteCombobox';
 import { motion, AnimatePresence } from 'framer-motion';
 import React, { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -140,15 +142,6 @@ export default function Laboratorio() {
     onError: (e) => toast.error('Não foi possível cancelar em lote', { description: mensagemDeErro(e) }),
   });
 
-  const { data: pacientes } = useQuery({
-    queryKey: ['pacientes-lab', profile?.clinica_id],
-    queryFn: async () => {
-      const { data, error } = await supabase.from('pacientes').select('id, nome, cpf').order('nome');
-      if (error) throw error;
-      return data || [];
-    },
-    enabled: !!profile?.clinica_id,
-  });
 
   const { data: medicos } = useQuery({
     queryKey: ['medicos-lab', profile?.clinica_id],
@@ -606,7 +599,7 @@ export default function Laboratorio() {
                             {coleta.tubo && <span>• {coleta.tubo}</span>}
                             {coleta.volume_ml && <span>• {coleta.volume_ml}mL</span>}
                             {coleta.sitio_coleta && <span>• {coleta.sitio_coleta}</span>}
-                            {coleta.medicos?.nome && <span>• Dr(a). {coleta.medicos.nome}</span>}
+                            {coleta.medicos?.nome && <span>• {nomeMedico(coleta.medicos.nome)}</span>}
                             {(coleta as any).cid && <span>• CID: {(coleta as any).cid}</span>}
                             {coleta.created_at && (
                               <span className={cn('flex items-center gap-1', getSLAColor(coleta.created_at))}>
@@ -766,10 +759,7 @@ export default function Laboratorio() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Paciente *</Label>
-                <Select value={newColetaForm.paciente_id} onValueChange={v => setNewColetaForm(p => ({ ...p, paciente_id: v, exame_id: '' }))}>
-                  <SelectTrigger><SelectValue placeholder="Selecione o paciente" /></SelectTrigger>
-                  <SelectContent>{pacientes?.map((p: any) => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}</SelectContent>
-                </Select>
+                <PacienteCombobox value={newColetaForm.paciente_id} onChange={v => setNewColetaForm(p => ({ ...p, paciente_id: v, exame_id: '' }))} />
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Médico Solicitante</Label>

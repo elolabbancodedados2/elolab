@@ -113,7 +113,7 @@ export function HealthCheckTab() {
 
   useEffect(() => {
     checkHealth();
-  }, []);
+  }, [checkHealth]);
 
   const StatusBadge = ({ status }: { status: 'ok' | 'warning' | 'error' }) => {
     const variants: Record<string, { bg: string; text: string; icon: any }> = {
@@ -217,8 +217,10 @@ export function HealthCheckTab() {
 
 /* ─── 2. INTEGRAÇÕES ─── */
 export function IntegracoesTab() {
+  const { user, profile } = useSupabaseAuth();
   const { data, isLoading, error, refetch, isFetching } = useQuery({
-    queryKey: ['integration-health'],
+    queryKey: ['integration-health', user?.id ?? null, profile?.clinica_id ?? null],
+    enabled: !!user,
     queryFn: async () => {
       const { data, error } = await supabase.functions.invoke('integration-health');
       if (error) throw error;
@@ -395,17 +397,19 @@ export function LGPDAvancadoTab() {
   });
 
   const { data: savedConfig, refetch: refetchConfig } = useQuery({
-    queryKey: ['lgpd-config'],
+    queryKey: ['lgpd-config', profile?.id ?? null, profile?.clinica_id ?? null],
+    enabled: !!profile?.clinica_id,
     queryFn: async () => {
-      const { data, error } = await supabase.from('automation_settings').select('id,valor').eq('chave', 'lgpd_config').maybeSingle();
+      const { data, error } = await supabase.from('automation_settings').select('id,valor').eq('clinica_id', profile?.clinica_id ?? '').eq('chave', 'lgpd_config').maybeSingle();
       if (error) throw error; return data;
     },
   });
 
   const { data: requests = [] } = useQuery({
-    queryKey: ['lgpd-access-requests'],
+    queryKey: ['lgpd-access-requests', profile?.id ?? null, profile?.clinica_id ?? null],
+    enabled: !!profile?.clinica_id,
     queryFn: async () => {
-      const { data, error } = await supabase.from('lgpd_access_request_log').select('id,request_type,status,requested_at,pacientes(nome)').eq('status','pending').order('requested_at',{ascending:true});
+      const { data, error } = await supabase.from('lgpd_access_request_log').select('id,request_type,status,requested_at,pacientes(nome)').eq('clinica_id', profile?.clinica_id ?? '').eq('status','pending').order('requested_at',{ascending:true});
       if (error) throw error; return data ?? [];
     },
   });

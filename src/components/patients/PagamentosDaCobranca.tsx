@@ -24,6 +24,7 @@ import {
 } from '@/components/ui/dialog';
 import { supabase } from '@/integrations/supabase/client';
 import { formatCurrency } from '@/lib/formatters';
+import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 
 interface Props {
   lancamentoId: string;
@@ -48,14 +49,15 @@ const FORMA: Record<string, string> = {
 };
 
 export function PagamentosDaCobranca({ lancamentoId, pacienteId }: Props) {
+  const { user, profile } = useSupabaseAuth();
   const queryClient = useQueryClient();
   const [alvo, setAlvo] = useState<Pagamento | null>(null);
   const [motivo, setMotivo] = useState('');
   const [estornando, setEstornando] = useState(false);
 
   const { data: pagamentos = [], isLoading } = useQuery({
-    queryKey: ['pagamentos-da-cobranca', lancamentoId],
-    enabled: !!lancamentoId,
+    queryKey: ['pagamentos-da-cobranca', user?.id ?? null, profile?.clinica_id ?? null, lancamentoId],
+    enabled: !!lancamentoId && !!user && !!profile?.clinica_id,
     queryFn: async (): Promise<Pagamento[]> => {
       const { data, error } = await (supabase as any)
         .from('pagamentos')
@@ -88,8 +90,8 @@ export function PagamentosDaCobranca({ lancamentoId, pacienteId }: Props) {
         description: `A cobrança voltou para "${(data as any).conta_status}".`,
       });
       setAlvo(null); setMotivo('');
-      queryClient.invalidateQueries({ queryKey: ['pagamentos-da-cobranca', lancamentoId] });
-      queryClient.invalidateQueries({ queryKey: ['extrato-paciente', pacienteId] });
+      queryClient.invalidateQueries({ queryKey: ['pagamentos-da-cobranca'] });
+      queryClient.invalidateQueries({ queryKey: ['extrato-paciente'] });
       queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
     } catch (e: any) {
       toast.error('Não foi possível estornar', { description: e?.message });

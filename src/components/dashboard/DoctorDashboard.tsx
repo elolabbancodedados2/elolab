@@ -15,12 +15,11 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
 import { useCurrentMedico } from '@/hooks/useCurrentMedico';
-import {
-  useAgendamentos, usePacientes, useProntuarios,
-  usePrescricoes, useAtestados, useExames, useEncaminhamentos,
-} from '@/hooks/useSupabaseData';
-import { parseDateOnly } from '@/lib/dateOnly';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
+import { useAgendamentosPeriodo } from '@/hooks/useSupabaseData';
 import { StorageAvatarImage } from '@/components/StorageImage';
+import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 
 // ─── Animations ────────────────────────────────────────────
 const fadeUp = {
@@ -41,86 +40,103 @@ function LiveClockComponent() {
   return <span className="tabular-nums font-semibold text-lg tracking-tight">{format(time, 'HH:mm')}</span>;
 }
 
+/** Pacientes distintos já atendidos/agendados com o médico. Lê só a coluna paciente_id, em blocos. */
+async function contarPacientesDoMedico(medicoId: string): Promise<number> {
+  const ids = new Set<string>();
+  const BLOCO = 1000;
+  for (let inicio = 0; inicio < 50_000; inicio += BLOCO) {
+    const { data, error } = await (supabase as any).from('agendamentos').select('paciente_id')
+      .eq('medico_id', medicoId).order('id').range(inicio, inicio + BLOCO - 1);
+    if (error) throw error;
+    for (const r of data ?? []) if (r.paciente_id) ids.add(r.paciente_id);
+    if (!data || data.length < BLOCO) break;
+  }
+  return ids.size;
+}
+
 interface DoctorDashboardProps {
   userName: string;
 }
 
 export function DoctorDashboard({ userName }: DoctorDashboardProps) {
   const { currentMedico, medicoId } = useCurrentMedico();
-  const { data: agendamentos = [] } = useAgendamentos();
-  const { data: pacientes = [] } = usePacientes();
-  const { data: prontuarios = [] } = useProntuarios();
-  const { data: prescricoes = [] } = usePrescricoes();
-  const { data: atestados = [] } = useAtestados(medicoId || undefined);
-  const { data: exames = [] } = useExames(medicoId || undefined);
-  const { data: encaminhamentos = [] } = useEncaminhamentos(medicoId || undefined);
-
+  const { user, profile } = useSupabaseAuth();
   const hoje = format(new Date(), 'yyyy-MM-dd');
+  const amanha = format(new Date(Date.now() + 86400000), 'yyyy-MM-dd');
+  const inicioMes = format(new Date(), 'yyyy-MM-01');
+
+  // Só hoje e amanhã, já com o paciente. Antes o painel baixava a agenda,
+  // o cadastro de pacientes, prontuários e prescrições da clínica inteira
+  // para filtrar o médico no navegador.
+  const { data: agendamentos = [] } = useAgendamentosPeriodo(hoje, amanha, { enabled: !!medicoId });
+
+  const { data: contagens } = useQuery({
+    queryKey: ['doctor-dashboard-contagens', user?.id ?? null, profile?.clinica_id ?? null, medicoId, inicioMes],
+    enabled: !!medicoId && !!user && !!profile?.clinica_id,
+    staleTime: 60_000,
+    queryFn: async () => {
+      const contar = async (tabela: string, colunaMedico: string, colunaData: string, extra?: (q: any) => any) => {
+        let q = (supabase as any).from(tabela).select('id', { count: 'exact', head: true })
+          .eq(colunaMedico, medicoId).gte(colunaData, inicioMes);
+        if (extra) q = extra(q);
+        const { count, error } = await q;
+        if (error) throw error;
+        return count ?? 0;
+      };
+      const [prontuariosMes, prescricoesMes, atestadosMes, examesMes, encaminhamentosMes, atendimentosMes, pacientesRes] = await Promise.all([
+        contar('prontuarios', 'medico_id', 'data'),
+        contar('prescricoes', 'medico_id', 'data_emissao'),
+        contar('atestados', 'medico_id', 'data_emissao'),
+        contar('exames', 'medico_solicitante_id', 'data_solicitacao'),
+        contar('encaminhamentos', 'medico_origem_id', 'data_encaminhamento'),
+        contar('agendamentos', 'medico_id', 'data', (q) => q.eq('status', 'finalizado').lte('data', hoje)),
+        contarPacientesDoMedico(medicoId as string),
+      ]);
+      return {
+        prontuariosMes, prescricoesMes, atestadosMes, examesMes, encaminhamentosMes, atendimentosMes,
+        meusPacientes: pacientesRes,
+      };
+    },
+  });
   const hojeFormatado = format(new Date(), "EEEE, d 'de' MMMM", { locale: ptBR });
   const horaAtual = new Date().getHours();
   const saudacao = horaAtual < 12 ? 'Bom dia' : horaAtual < 18 ? 'Boa tarde' : 'Boa noite';
   const SaudacaoIcon = horaAtual < 12 ? Sun : horaAtual < 18 ? Sunset : Moon;
-  const firstName = userName?.split(' ')[0] || 'Doutor(a)';
+  // O nome cadastrado costuma trazer o título ("Dr. Carlos"): sem tirá-lo, a
+  // saudação virava "Dr(a). Dr.".
+  const firstName = userName?.replace(/^(dr|dra|dr\(a\))\.?\s+/i, '').split(' ')[0] || 'Doutor(a)';
 
   const stats = useMemo(() => {
-    const myAgendamentos = medicoId ? agendamentos.filter(a => a.medico_id === medicoId) : agendamentos;
-    const consultasHoje = myAgendamentos.filter(a => a.data === hoje);
-    const confirmadas = consultasHoje.filter(a => a.status === 'confirmado').length;
-    const agendadas = consultasHoje.filter(a => a.status === 'agendado').length;
-    const finalizadas = consultasHoje.filter(a => a.status === 'finalizado').length;
-    const emAtendimento = consultasHoje.filter(a => a.status === 'em_atendimento').length;
+    const consultasHoje = agendamentos.filter((a: any) => a.data === hoje && a.medico_id === medicoId);
+    const confirmadas = consultasHoje.filter((a: any) => a.status === 'confirmado').length;
+    const agendadas = consultasHoje.filter((a: any) => a.status === 'agendado').length;
+    const finalizadas = consultasHoje.filter((a: any) => a.status === 'finalizado').length;
+    const emAtendimento = consultasHoje.filter((a: any) => a.status === 'em_atendimento').length;
     const totalHoje = consultasHoje.length;
 
-    const mesAtual = new Date().getMonth();
-    const anoAtual = new Date().getFullYear();
-
-    const myProntuarios = medicoId ? prontuarios.filter(p => p.medico_id === medicoId) : prontuarios;
-    const prontuariosMes = myProntuarios.filter(p => {
-      const d = parseDateOnly(p.data)!;
-      return d.getMonth() === mesAtual && d.getFullYear() === anoAtual;
-    }).length;
-
-    const myPrescricoes = medicoId ? prescricoes.filter(p => p.medico_id === medicoId) : prescricoes;
-    const prescricoesMes = myPrescricoes.filter(p => {
-      if (!p.data_emissao) return false;
-      const d = parseDateOnly(p.data_emissao)!;
-      return d.getMonth() === mesAtual && d.getFullYear() === anoAtual;
-    }).length;
-
-    const atendimentosMes = myAgendamentos.filter(a => {
-      const d = parseDateOnly(a.data)!;
-      return a.status === 'finalizado' && d.getMonth() === mesAtual && d.getFullYear() === anoAtual;
-    }).length;
-
-    // Unique patients from this doctor's appointments
-    const myPacienteIds = new Set(myAgendamentos.map(a => a.paciente_id));
-    const meusPacientes = pacientes.filter(p => myPacienteIds.has(p.id));
-
-    // Próximas consultas today ordered by time
     const proximasHoje = consultasHoje
-      .filter(a => a.status !== 'finalizado' && a.status !== 'cancelado' && a.status !== 'faltou')
-      .sort((a, b) => a.hora_inicio.localeCompare(b.hora_inicio));
+      .filter((a: any) => a.status !== 'finalizado' && a.status !== 'cancelado' && a.status !== 'faltou')
+      .sort((a: any, b: any) => a.hora_inicio.localeCompare(b.hora_inicio));
 
-    // Tomorrow's schedule
-    const amanha = format(new Date(Date.now() + 86400000), 'yyyy-MM-dd');
-    const consultasAmanha = myAgendamentos.filter(a => a.data === amanha).length;
+    const consultasAmanha = agendamentos.filter((a: any) => a.data === amanha && a.medico_id === medicoId && a.status !== 'cancelado').length;
 
-    // Next appointment
     const proximaConsulta = proximasHoje[0] || null;
-    const proximoPaciente = proximaConsulta ? pacientes.find(p => p.id === proximaConsulta.paciente_id) : null;
+    const proximoPaciente = proximaConsulta?.pacientes ?? null;
 
     return {
       totalHoje, confirmadas, agendadas, finalizadas, emAtendimento,
-      prontuariosMes, prescricoesMes, atendimentosMes,
-      meusPacientes: meusPacientes.length,
-      atestadosMes: atestados.length,
-      examesMes: exames.length,
-      encaminhamentosMes: encaminhamentos.length,
+      prontuariosMes: contagens?.prontuariosMes ?? 0,
+      prescricoesMes: contagens?.prescricoesMes ?? 0,
+      atendimentosMes: contagens?.atendimentosMes ?? 0,
+      meusPacientes: contagens?.meusPacientes ?? 0,
+      atestadosMes: contagens?.atestadosMes ?? 0,
+      examesMes: contagens?.examesMes ?? 0,
+      encaminhamentosMes: contagens?.encaminhamentosMes ?? 0,
       proximasHoje, consultasAmanha,
       proximaConsulta, proximoPaciente,
       consultasHoje,
     };
-  }, [agendamentos, pacientes, prontuarios, prescricoes, atestados, exames, encaminhamentos, medicoId, hoje]);
+  }, [agendamentos, contagens, medicoId, hoje, amanha]);
 
   const getAge = (dob: string | null) => {
     if (!dob) return null;
@@ -128,7 +144,7 @@ export function DoctorDashboard({ userName }: DoctorDashboardProps) {
   };
 
   const getPacienteNome = (pacienteId: string) => {
-    const p = pacientes.find(p => p.id === pacienteId);
+    const p = agendamentos.find((a: any) => a.paciente_id === pacienteId)?.pacientes;
     return p?.nome || 'Paciente';
   };
 
@@ -364,7 +380,7 @@ export function DoctorDashboard({ userName }: DoctorDashboardProps) {
                   {stats.consultasHoje
                     .sort((a, b) => a.hora_inicio.localeCompare(b.hora_inicio))
                     .map((ag, idx) => {
-                      const paciente = pacientes.find(p => p.id === ag.paciente_id);
+                      const paciente = (ag as any).pacientes;
                       const age = paciente ? getAge(paciente.data_nascimento) : null;
                       const hasAlergias = paciente?.alergias && paciente.alergias.length > 0;
                       const isCurrent = ag.status === 'em_atendimento';

@@ -85,28 +85,30 @@ export default function TiposConsulta() {
   const { data: convenios = [] } = useConvenios();
 
   const { data: tipos = [], isLoading } = useQuery({
-    queryKey: ['tipos_consulta'],
+    queryKey: ['tipos_consulta', user?.id ?? null, profile?.clinica_id ?? null],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('tipos_consulta')
         .select('*')
+        .eq('clinica_id', profile?.clinica_id ?? '')
         .order('nome');
       if (error) throw error;
       return data as TipoConsulta[];
     },
-    enabled: !!user,
+    enabled: !!user && !!profile?.clinica_id,
   });
 
   const { data: precos = [] } = useQuery({
-    queryKey: ['precos_consulta_convenio'],
+    queryKey: ['precos_consulta_convenio', user?.id ?? null, profile?.clinica_id ?? null],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('precos_consulta_convenio')
-        .select('*');
+        .select('*')
+        .eq('clinica_id', profile?.clinica_id ?? '');
       if (error) throw error;
       return data as PrecoConvenio[];
     },
-    enabled: !!user,
+    enabled: !!user && !!profile?.clinica_id,
   });
 
   const filtered = useMemo(() => {

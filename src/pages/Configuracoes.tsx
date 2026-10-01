@@ -6,6 +6,7 @@ import {
   Key, RefreshCw, CloudOff, Cloud,
   DollarSign, Printer, MapPin, Phone, FileText, Users, Plus, Trash2, Edit,
   CreditCard, Receipt, Loader2, Hash, Clipboard, Image, Workflow,
+  PlugZap,
 } from 'lucide-react';
 import { FluxoDoAtendimento } from '@/components/configuracoes/FluxoDoAtendimento';
 import { Button } from '@/components/ui/button';
@@ -41,6 +42,9 @@ import { useNavigate } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
 import { abrirUrlSegura, checkoutUrlSeguro } from '@/lib/safeUrl';
 import { clearClinicaInfoCache } from '@/lib/pdfGenerator';
+import { IntegracoesClinica } from '@/components/configuracoes/IntegracoesClinica';
+import { AgendamentoOnlineConfig } from '@/components/configuracoes/AgendamentoOnlineConfig';
+import { chaveDaClinica, lerConfigsClinica, salvarConfigClinica } from '@/lib/configClinica';
 
 
 
@@ -194,11 +198,13 @@ function SalasManager() {
   const [saving, setSaving] = useState(false);
 
   const { data: salas = [], isLoading } = useQuery({
-    queryKey: ['salas-config'],
+    queryKey: ['salas-config', profile?.id ?? null, profile?.clinica_id ?? null],
     queryFn: async () => {
-      const { data } = await supabase.from('salas').select('*').order('nome');
+      if (!profile?.clinica_id) return [];
+      const { data } = await supabase.from('salas').select('*').eq('clinica_id', profile.clinica_id).order('nome');
       return data || [];
     },
+    enabled: !!profile?.clinica_id,
   });
 
   const handleSave = async () => {
@@ -406,10 +412,15 @@ export default function Configuracoes() {
     setLoadingConfig(true);
     try {
       const [configResult, clinicaResult] = await Promise.all([
-        supabase
-          .from('configuracoes_clinica')
-          .select('chave, valor')
-          .eq('user_id', user.id),
+        // Chaves da clínica vêm da linha compartilhada da clínica; antes a
+        // leitura era só das linhas do próprio usuário, e um segundo admin
+        // abria esta tela vazia.
+        profile?.clinica_id
+          ? lerConfigsClinica(profile.clinica_id).then(
+              (mapa) => ({ data: Object.entries(mapa).map(([chave, valor]) => ({ chave, valor })), error: null }),
+              (error) => ({ data: [] as Array<{ chave: string; valor: any }>, error }),
+            )
+          : Promise.resolve({ data: [] as Array<{ chave: string; valor: any }>, error: null }),
         profile?.clinica_id
           ? supabase
               .from('clinicas')
@@ -466,19 +477,23 @@ export default function Configuracoes() {
         if (clinicError) throw clinicError;
       }
 
-      const { error } = await supabase
-        .from('configuracoes_clinica')
-        .upsert(
-          {
-            user_id: user.id,
-            clinica_id: profile?.clinica_id ?? null,
-            chave,
-            valor,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: 'user_id,chave' }
-        );
-      if (error) throw error;
+      if (profile?.clinica_id && chaveDaClinica(chave)) {
+        await salvarConfigClinica({ clinicaId: profile.clinica_id, userId: user.id, chave, valor });
+      } else {
+        const { error } = await supabase
+          .from('configuracoes_clinica')
+          .upsert(
+            {
+              user_id: user.id,
+              clinica_id: profile?.clinica_id ?? null,
+              chave,
+              valor,
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: 'user_id,chave' }
+          );
+        if (error) throw error;
+      }
       if (chave === 'config_clinica') clearClinicaInfoCache();
       setIsCloudSynced(true);
       toast.success(`${label} salvas na nuvem!`);
@@ -524,10 +539,11 @@ export default function Configuracoes() {
   const tabItems = [
     { value: 'clinica', icon: Building, label: 'Clínica' },
     { value: 'plano', icon: CreditCard, label: 'Meu Plano' },
-    { value: 'horarios', icon: Clock, label: 'Horários' },
+    { value: 'horarios', icon: Clock, label: 'Horários e Agenda Online' },
     { value: 'salas', icon: MapPin, label: 'Salas' },
     { value: 'financeiro', icon: DollarSign, label: 'Financeiro' },
     { value: 'notificacoes', icon: Bell, label: 'Notificações' },
+    { value: 'integracoes', icon: PlugZap, label: 'Integrações' },
     { value: 'impressao', icon: Printer, label: 'Impressão' },
     { value: 'seguranca', icon: Shield, label: 'Segurança' },
     { value: 'backup', icon: Download, label: 'Backup' },
@@ -827,7 +843,8 @@ export default function Configuracoes() {
         </TabsContent>
 
         {/* ─── Horários ─── */}
-        <TabsContent value="horarios">
+        <TabsContent value="horarios" className="space-y-6">
+          <AgendamentoOnlineConfig />
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
             <Card>
               <CardHeader>
@@ -1008,6 +1025,10 @@ export default function Configuracoes() {
         </TabsContent>
 
         {/* ─── Notificações ─── */}
+        <TabsContent value="integracoes">
+          <IntegracoesClinica />
+        </TabsContent>
+
         <TabsContent value="notificacoes">
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
             <Card>

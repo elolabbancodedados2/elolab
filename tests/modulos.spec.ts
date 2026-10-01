@@ -33,14 +33,18 @@ const ROTAS_PUBLICAS = [
 const MODULOS_PROTEGIDOS: Array<{ area: string; rotas: string[] }> = [
   {
     area: 'Atendimento',
-    rotas: ['/dashboard', '/agenda', '/fila', '/recepcao', '/gestao-fluxo', '/chat'],
+    rotas: [
+      '/dashboard', '/preferencias', '/notificacoes', '/meu-historico', '/feedback',
+      '/indicadores', '/treinamento', '/agenda', '/fila', '/recepcao',
+      '/gestao-fluxo', '/chat', '/painel-tv', '/caixa', '/caixa-diario',
+    ],
   },
   {
     area: 'Pacientes e clínica',
     rotas: [
       '/pacientes', '/retornos', '/convenios', '/prontuarios',
-      '/documentos-clinicos', '/exames', '/vitais-graficos',
-      '/interoperabilidade',
+      '/documentos-clinicos', '/prescricoes', '/atestados', '/encaminhamentos',
+      '/exames', '/vitais-graficos', '/interoperabilidade',
     ],
   },
   {
@@ -50,18 +54,27 @@ const MODULOS_PROTEGIDOS: Array<{ area: string; rotas: string[] }> = [
   {
     area: 'Financeiro',
     rotas: [
-      '/financeiro', '/contas', '/fluxo-caixa', '/precos-servicos',
-      '/relatorios', '/relatorios/salvos', '/cobranca-inadimplentes', '/pagamentos',
-      '/faturamento-convenios',
-      '/repasses-medicos',
+      '/financeiro', '/contas', '/contas-receber', '/contas-pagar', '/fluxo-caixa',
+      '/precos-servicos', '/precos-exames', '/tipos-consulta', '/relatorios',
+      '/relatorios/salvos', '/cobranca-inadimplentes', '/pagamentos',
+      '/faturamento-convenios', '/repasses-medicos',
     ],
   },
   {
     area: 'Operacional e administração',
     rotas: [
-      '/equipe', '/estoque', '/todos-templates', '/tarefas', '/analytics',
-      '/analise-preditiva', '/agente-ia', '/automacoes', '/configuracoes',
-      '/configuracoes-avancadas', '/lgpd-pacientes', '/seguranca',
+      '/equipe', '/medicos', '/funcionarios', '/estoque', '/todos-templates',
+      '/templates', '/tarefas', '/analytics', '/analise-preditiva', '/agente-ia',
+      '/automacoes', '/configuracoes', '/onboarding', '/configuracoes-avancadas',
+      '/templates-email', '/acesso-assistido', '/suporte', '/seguranca',
+      '/lgpd-pacientes', '/usuarios', '/documentacao', '/painel-admin',
+      '/admin/clinicas', '/admin/crm', '/admin/saude', '/admin/suporte',
+      '/admin/ia', '/admin/comunicacao', '/admin/operacoes', '/admin/lgpd',
+      '/admin/erros', '/admin/backups', '/admin/relatorio-executivo',
+      '/admin/cobrancas', '/admin/historico-financeiro', '/admin/acesso-assistido',
+      '/admin/integracoes', '/admin/filas', '/admin/incidentes', '/admin/seguranca',
+      '/admin/consumo', '/admin/onboarding', '/admin/dominios',
+      '/admin/relatorios-agendados',
     ],
   },
 ];

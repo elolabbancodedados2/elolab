@@ -1,3 +1,4 @@
+import { nomeMedico } from '@/lib/formatters';
 import { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import {
@@ -374,7 +375,7 @@ export default function Salas() {
                                   {medNome && (
                                     <span className="text-xs text-muted-foreground flex items-center gap-1">
                                       <Users className="h-3 w-3 text-primary" />
-                                      Dr(a). {medNome}{medEsp ? ` — ${medEsp}` : ''}
+                                      {nomeMedico(medNome)}{medEsp ? ` — ${medEsp}` : ''}
                                     </span>
                                   )}
                                   <Badge variant="secondary" className="text-[9px] w-fit">
@@ -387,7 +388,7 @@ export default function Salas() {
                         )}
 
                         <div className="text-xs text-muted-foreground space-y-0.5">
-                          <p>Cap: {sala.capacidade} {medicoNome && `· Dr(a). ${medicoNome}`}</p>
+                          <p>Cap: {sala.capacidade} {medicoNome && `· ${nomeMedico(medicoNome)}`}</p>
                           {sala.horario_inicio && sala.horario_fim && (
                             <p className="flex items-center gap-1">
                               <Clock className="h-3 w-3" />{sala.horario_inicio?.slice(0, 5)} — {sala.horario_fim?.slice(0, 5)}

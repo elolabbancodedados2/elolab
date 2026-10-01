@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { usePushNotifications } from './usePushNotifications';
+import { canalUnico } from '@/lib/realtimeCanal';
 
 /**
  * Listens to Supabase Realtime events on critical tables and fires
@@ -36,7 +37,7 @@ export function useRealtimePushNotifications() {
     if (!user || !enabled || permission !== 'granted') return;
 
     const channel = supabase
-      .channel('push-notifications')
+      .channel(canalUnico('push-notifications'))
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'agendamentos' },

@@ -1,0 +1,12 @@
+-- `registrar_pagamento` (SECURITY INVOKER) trava a linha do caixa do dia com
+-- `SELECT ... FOR SHARE`. O PostgreSQL exige privilégio de UPDATE em pelo
+-- menos uma coluna para FOR SHARE/FOR UPDATE. A migração 20261001200000
+-- revogou INSERT/UPDATE/DELETE de `caixa_diario` para `authenticated` (as
+-- escritas passam pelas funções de abrir/fechar/reabrir), e com isso TODO
+-- recebimento no balcão passou a falhar com
+-- "permission denied for table caixa_diario".
+--
+-- Concede UPDATE só em `updated_at`: basta para a trava e não reabre a edição
+-- de valores, abertura ou fechamento do caixa (a política de UPDATE continua
+-- restringindo a recepção/financeiro/admin da mesma clínica).
+GRANT UPDATE (updated_at) ON public.caixa_diario TO authenticated;

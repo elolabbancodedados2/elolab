@@ -21,6 +21,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/integrations/supabase/client';
 import { formatCurrency } from '@/lib/formatters';
+import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 
 interface Props {
   agendamentoId: string;
@@ -40,14 +41,15 @@ interface ItemLancado {
 
 export function ProcedimentosDoAtendimento({ agendamentoId, prontuarioId, podeLancar = true }: Props) {
   const queryClient = useQueryClient();
+  const { user, profile } = useSupabaseAuth();
   const [descricao, setDescricao] = useState('');
   const [valor, setValor] = useState('');
   const [quantidade, setQuantidade] = useState('1');
   const [salvando, setSalvando] = useState(false);
 
   const { data: itens = [], isLoading } = useQuery({
-    queryKey: ['procedimentos-atendimento', agendamentoId],
-    enabled: !!agendamentoId,
+    queryKey: ['procedimentos-atendimento', user?.id ?? null, profile?.clinica_id ?? null, agendamentoId],
+    enabled: !!agendamentoId && !!user && !!profile?.clinica_id,
     queryFn: async (): Promise<ItemLancado[]> => {
       const { data: conta, error: erroConta } = await supabase
         .from('lancamentos')
@@ -102,7 +104,7 @@ export function ProcedimentosDoAtendimento({ agendamentoId, prontuarioId, podeLa
       setDescricao('');
       setValor('');
       setQuantidade('1');
-      queryClient.invalidateQueries({ queryKey: ['procedimentos-atendimento', agendamentoId] });
+      queryClient.invalidateQueries({ queryKey: ['procedimentos-atendimento'] });
       queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
       toast.success('Procedimento lançado', {
         description: saldo > 0
@@ -125,7 +127,7 @@ export function ProcedimentosDoAtendimento({ agendamentoId, prontuarioId, podeLa
     try {
       const { error } = await supabase.from('lancamento_itens').delete().eq('id', item.id);
       if (error) throw error;
-      queryClient.invalidateQueries({ queryKey: ['procedimentos-atendimento', agendamentoId] });
+      queryClient.invalidateQueries({ queryKey: ['procedimentos-atendimento'] });
       queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
       toast.success('Procedimento removido');
     } catch (e: any) {

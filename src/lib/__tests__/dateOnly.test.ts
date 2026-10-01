@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { ageFromDateOnly, parseDateOnly, todayDateOnly, toDateOnly, daysBetweenDateOnly } from '@/lib/dateOnly';
+import { ageFromDateOnly, appointmentStartHasPassed, parseDateOnly, todayDateOnly, todaySaoPauloDateOnly, dateOnlyInTimeZone, toDateOnly, daysBetweenDateOnly } from '@/lib/dateOnly';
 
 /**
  * Estes testes existem por causa de um bug real: colunas DATE do Postgres
@@ -131,6 +131,33 @@ describe('daysBetweenDateOnly', () => {
   it('atravessa mudança de horário de verão sem perder um dia', () => {
     // Brasil não usa mais DST, mas o cálculo precisa ser robusto de qualquer forma
     expect(daysBetweenDateOnly('2026-02-14', '2026-02-22')).toBe(8);
+  });
+});
+
+describe('business timezone dates', () => {
+  it('uses São Paulo date independently of the device timezone', () => {
+    expect(dateOnlyInTimeZone(new Date('2026-10-01T01:00:00.000Z'), 'America/Sao_Paulo')).toBe('2026-09-30');
+    expect(todaySaoPauloDateOnly(new Date('2026-10-01T01:00:00.000Z'))).toBe('2026-09-30');
+  });
+
+  it('crosses to the new São Paulo business date at local midnight', () => {
+    expect(todaySaoPauloDateOnly(new Date('2026-10-01T03:00:00.000Z'))).toBe('2026-10-01');
+  });
+});
+
+describe('appointmentStartHasPassed', () => {
+  const instant = new Date('2026-10-02T00:30:00.000Z'); // 21:30 em São Paulo no dia 01/10
+
+  it('compara horário e data no fuso da clínica, mesmo após a virada UTC', () => {
+    expect(appointmentStartHasPassed('2026-10-01', '21:00', instant)).toBe(true);
+    expect(appointmentStartHasPassed('2026-10-01', '22:00', instant)).toBe(false);
+    expect(appointmentStartHasPassed('2026-10-01', '', instant)).toBe(false);
+    expect(appointmentStartHasPassed('2026-10-02', '08:00', instant)).toBe(false);
+  });
+
+  it('trata data ou hora inválida como não acionável', () => {
+    expect(appointmentStartHasPassed('2026-02-31', '09:00', instant)).toBe(true);
+    expect(appointmentStartHasPassed('2026-10-01', '25:00', instant)).toBe(true);
   });
 });
 

@@ -1,3 +1,4 @@
+import { nomeMedico, primeiroNome } from '@/lib/formatters';
 import { useMemo } from 'react';
 import {
   addDays, eachDayOfInterval, endOfMonth, format, getDay, isSameMonth, isWeekend,
@@ -74,7 +75,7 @@ export function MonthlyView({ date, agendamentos, colorFor, medicoById = {}, onD
                     <span className="truncate text-muted-foreground">
                       {a.pacientes?.nome_social || a.pacientes?.nome || ''}
                       {medicoById[a.medico_id] && (
-                        <span className="text-muted-foreground/60"> · Dr(a). {medicoById[a.medico_id].nome?.split(' ')[0] || medicoById[a.medico_id].crm}</span>
+                        <span className="text-muted-foreground/60"> · {nomeMedico(primeiroNome(medicoById[a.medico_id].nome) || medicoById[a.medico_id].crm)}</span>
                       )}
                     </span>
                   </div>

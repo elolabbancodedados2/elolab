@@ -1,3 +1,4 @@
+import { nomeMedico } from '@/lib/formatters';
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useSearchParams } from 'react-router-dom';
@@ -5,9 +6,16 @@ import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from '@/components/ui/dialog';
 import { Separator } from '@/components/ui/separator';
 import {
   Calendar, FlaskConical, CreditCard, User, ExternalLink, Lock,
@@ -16,9 +24,9 @@ import {
   Heart, Pill, AlertTriangle, Download, RefreshCw,
   LogOut,
 } from 'lucide-react';
-import { format, isPast, isToday, isFuture, parseISO, differenceInDays } from 'date-fns';
+import { format, isToday, isFuture, parseISO, differenceInDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { todayDateOnly } from '@/lib/dateOnly';
+import { appointmentStartHasPassed, todayDateOnly } from '@/lib/dateOnly';
 import { abrirUrlSegura, checkoutUrlSeguro, storageUrlSeguro } from '@/lib/safeUrl';
 
 // ─── Status helpers ────────────────────────────────────────
@@ -35,6 +43,12 @@ const statusConfig: Record<string, { bg: string; label: string }> = {
   em_andamento: { bg: 'bg-blue-500/10 text-blue-700', label: 'Em Andamento' },
   pago: { bg: 'bg-green-500/10 text-green-700', label: 'Pago' },
 };
+
+/** "2099-10-15" → "15/10/2099", sem passar por Date (evita deslocamento de fuso). */
+function formatarDataIso(iso: string): string {
+  const [ano, mes, dia] = iso.split('-');
+  return `${dia}/${mes}/${ano}`;
+}
 
 function StatusBadge({ status }: { status: string }) {
   const cfg = statusConfig[status] || { bg: 'bg-muted text-muted-foreground', label: status };
@@ -214,7 +228,7 @@ function NextAppointmentHero({ agendamentos }: { agendamentos: any[] }) {
                 </span>
                 <span>{proxima.tipo || 'Consulta'}</span>
                 {proxima.medicos?.nome && (
-                  <span>Dr(a). {proxima.medicos.nome}</span>
+                  <span>{nomeMedico(proxima.medicos.nome)}</span>
                 )}
               </div>
             </div>
@@ -369,16 +383,90 @@ export default function PortalPaciente() {
   // Reschedule/cancel state
   const [rescheduleModal, setRescheduleModal] = useState<any>(null);
   const [rescheduleForm, setRescheduleForm] = useState({ data: '', hora_inicio: '' });
-  const [cancelMotivo, setCancelMotivo] = useState('');
+  const [rescheduleSlots, setRescheduleSlots] = useState<string[]>([]);
+  const [rescheduleSlotsLoading, setRescheduleSlotsLoading] = useState(false);
+  const [rescheduleError, setRescheduleError] = useState('');
+  const [rescheduleSubmitError, setRescheduleSubmitError] = useState('');
+  const [rescheduleStateStale, setRescheduleStateStale] = useState(false);
+  // Último dia aceito para remarcar, calculado no servidor. Só orienta o campo
+  // de data; a recusa de fato continua no servidor.
+  const [rescheduleLimite, setRescheduleLimite] = useState<{ agendamentoId: string; limite: string } | null>(null);
+  const rescheduleLookupRef = useRef(0);
+  const rescheduleTriggersRef = useRef(new Map<string, HTMLButtonElement>());
+  const cancelTriggersRef = useRef(new Map<string, HTMLButtonElement>());
+  const rescheduleCardsRef = useRef(new Map<string, HTMLDivElement>());
+  const lastRescheduleTriggerIdRef = useRef<string | null>(null);
+  const lastCancelTriggerIdRef = useRef<string | null>(null);
+  const [cancelError, setCancelError] = useState('');
+  const [cancelStateStale, setCancelStateStale] = useState(false);
+  const cancelExpectedAppointmentRef = useRef<{ data: string; hora_inicio: string | null } | null>(null);
+  const [actionNotice, setActionNotice] = useState('');
+  const [actionError, setActionError] = useState('');
+  // Aviso operacional separado do sucesso: a ação valeu, mas algo à parte
+  // (ex.: e-mail automático à clínica) não aconteceu.
+  const [actionWarning, setActionWarning] = useState('');
+  const [agendamentoParaCancelar, setAgendamentoParaCancelar] = useState<string | null>(null);
+  const [retornoRemarcar, setRetornoRemarcar] = useState<any>(null);
+  const [novaDataRetorno, setNovaDataRetorno] = useState('');
+  const [erroRemarcarRetorno, setErroRemarcarRetorno] = useState('');
+  const [erroConfirmarRetorno, setErroConfirmarRetorno] = useState('');
+  const [retornoConfirmandoId, setRetornoConfirmandoId] = useState<string | null>(null);
+  const [erroAceitarOferta, setErroAceitarOferta] = useState('');
+  const [ofertaAceitandoId, setOfertaAceitandoId] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
+
+  const closeRescheduleDialog = () => {
+    if (actionLoading) return;
+    rescheduleLookupRef.current += 1;
+    setRescheduleSlotsLoading(false);
+    setRescheduleModal(null);
+  };
 
   const fetchData = async (accessToken: string, action: string, bodyData?: any) => {
     const { data, error } = await supabase.functions.invoke('patient-portal', {
       body: { action, token: accessToken, ...bodyData },
     });
-    if (error) throw error;
+    if (error) {
+      let message = error.message;
+      let code: string | undefined;
+      const context = (error as { context?: Response }).context;
+      if (context && typeof context.json === 'function') {
+        try {
+          const payload = await context.json();
+          if (payload?.error) message = String(payload.error);
+          if (payload?.code) code = String(payload.code);
+        } catch {
+          // Preserve Supabase's message if the response body is not JSON.
+        }
+      }
+      const enrichedError = new Error(message) as Error & { status?: number; code?: string };
+      if (context && typeof context.status === 'number') enrichedError.status = context.status;
+      if (code) enrichedError.code = code;
+      throw enrichedError;
+    }
+    if (data && typeof data === 'object' && 'error' in data && data.error) {
+      throw new Error(String(data.error));
+    }
     return data;
   };
+
+  useEffect(() => {
+    if (rescheduleModal || !lastRescheduleTriggerIdRef.current) return;
+    const triggerId = lastRescheduleTriggerIdRef.current;
+    lastRescheduleTriggerIdRef.current = null;
+    const trigger = rescheduleTriggersRef.current.get(triggerId);
+    if (trigger?.isConnected) trigger.focus({ preventScroll: true });
+    else rescheduleCardsRef.current.get(triggerId)?.focus({ preventScroll: true });
+  }, [rescheduleModal]);
+
+  useEffect(() => {
+    if (agendamentoParaCancelar || !lastCancelTriggerIdRef.current) return;
+    const triggerId = lastCancelTriggerIdRef.current;
+    lastCancelTriggerIdRef.current = null;
+    const trigger = cancelTriggersRef.current.get(triggerId);
+    if (trigger?.isConnected) trigger.focus({ preventScroll: true });
+    else rescheduleCardsRef.current.get(triggerId)?.focus({ preventScroll: true });
+  }, [agendamentoParaCancelar]);
 
   const handleLogin = async (accessToken = token) => {
     if (!accessToken.trim()) return;
@@ -427,17 +515,80 @@ export default function PortalPaciente() {
     try {
       setSchedulingLoading(true);
       setSchedulingError('');
+      setAvailableSlots([]);
       const slots = await fetchData(token, 'get_available_slots', {
         medico_id,
         data_inicio: data,
         data_fim: data,
       });
-      setAvailableSlots(slots || []);
+      if (!Array.isArray(slots)) throw new Error(slots?.error || 'Nenhum horário disponível nesta data.');
+      setAvailableSlots(slots);
       setSchedulingForm(f => ({ ...f, hora_inicio: '' }));
     } catch (err: any) {
+      setAvailableSlots([]);
       setSchedulingError(err.message || 'Erro ao carregar horários disponíveis');
     } finally {
       setSchedulingLoading(false);
+    }
+  };
+
+  const handleRescheduleStateChanged = async (message: string) => {
+    setRescheduleStateStale(true);
+    setRescheduleSubmitError(`${message} Feche esta janela para ver a situação atual.`);
+    setRescheduleSlots([]);
+    setRescheduleForm((form) => ({ ...form, hora_inicio: '' }));
+    try {
+      setAgendamentos(await fetchData(token, 'get_agendamentos'));
+    } catch {
+      setRescheduleSubmitError(`${message} A lista não foi atualizada; feche a janela e tente recarregar os dados.`);
+    }
+  };
+
+  const loadRescheduleLimite = async (agendamentoId: string) => {
+    try {
+      const resposta = await fetchData(token, 'get_remarcacao_limite');
+      const limite = resposta?.limite;
+      if (typeof limite === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(limite)) {
+        setRescheduleLimite({ agendamentoId, limite });
+      }
+    } catch {
+      // Sem o limite o campo fica sem máximo; o servidor ainda recusa datas além dele.
+    }
+  };
+
+  const loadRescheduleSlots = async (data: string) => {
+    const medicoId = rescheduleModal?.medico_id;
+    const lookupId = ++rescheduleLookupRef.current;
+    setRescheduleForm((form) => ({ ...form, data, hora_inicio: '' }));
+    setRescheduleSlots([]);
+    setRescheduleError('');
+    if (!data || !medicoId) {
+      setRescheduleSlotsLoading(false);
+      return;
+    }
+
+    setRescheduleSlotsLoading(true);
+    try {
+      const slots = await fetchData(token, 'get_available_slots', {
+        medico_id: medicoId,
+        data_inicio: data,
+        data_fim: data,
+        agendamento_id: rescheduleModal.id,
+      });
+      if (lookupId !== rescheduleLookupRef.current) return;
+      if (!Array.isArray(slots)) throw new Error(slots?.error || 'Não foi possível carregar os horários.');
+      setRescheduleSlots(slots);
+    } catch (err: any) {
+      if (lookupId === rescheduleLookupRef.current) {
+        if (err.code === 'appointment_state_changed') {
+          await handleRescheduleStateChanged(err.message || 'Esta consulta foi atualizada.');
+        } else {
+          setRescheduleSlots([]);
+          setRescheduleError(err.message || 'Não foi possível carregar os horários. Tente novamente.');
+        }
+      }
+    } finally {
+      if (lookupId === rescheduleLookupRef.current) setRescheduleSlotsLoading(false);
     }
   };
 
@@ -469,6 +620,7 @@ export default function PortalPaciente() {
         setAvailableSlots([]);
       }
     } catch (err: any) {
+      setAvailableSlots([]);
       setSchedulingError(err.message || 'Erro ao agendar consulta');
     } finally {
       setSchedulingLoading(false);
@@ -478,18 +630,100 @@ export default function PortalPaciente() {
   const handleCancelAppointment = async (agendamento_id: string) => {
     try {
       setActionLoading(true);
+      setActionNotice('');
+      setActionWarning('');
+      setActionError('');
       await fetchData(token, 'cancel_agendamento', {
         agendamento_id,
-        motivo: cancelMotivo || 'Cancelado pelo paciente',
+        motivo: 'Cancelado pelo paciente',
+        expected_data: cancelExpectedAppointmentRef.current?.data,
+        expected_hora_inicio: cancelExpectedAppointmentRef.current?.hora_inicio,
       });
-      // Reload agendamentos
-      const updatedAgendamentos = await fetchData(token, 'get_agendamentos');
-      setAgendamentos(updatedAgendamentos || []);
-      setCancelMotivo('');
+      setAgendamentos((current) => current.map((appointment: any) =>
+        appointment.id === agendamento_id ? { ...appointment, status: 'cancelado' } : appointment,
+      ));
+      setCancelError('');
+      setActionNotice('Consulta cancelada.');
+      try {
+        setAgendamentos((await fetchData(token, 'get_agendamentos')) || []);
+      } catch {
+        setActionError('Consulta cancelada, mas não foi possível atualizar a lista. Atualize a página para ver a situação atual.');
+      }
+      return true;
     } catch (err: any) {
-      setError(err.message || 'Não foi possível cancelar a consulta');
+      const message = err.message || 'Não foi possível cancelar a consulta. Tente novamente.';
+      if (err.code === 'appointment_state_changed') {
+        setCancelStateStale(true);
+        try {
+          setAgendamentos(await fetchData(token, 'get_agendamentos'));
+          setCancelError(`${message} A lista foi atualizada. Feche esta janela para ver a situação atual.`);
+        } catch {
+          setCancelError(`${message} Feche esta janela e tente atualizar a lista.`);
+        }
+      } else {
+        setCancelError(message);
+      }
+      return false;
     } finally {
       setActionLoading(false);
+    }
+  };
+
+  const handleRescheduleReturn = async () => {
+    if (!retornoRemarcar || !novaDataRetorno) return;
+    if (novaDataRetorno < todayDateOnly()) {
+      setErroRemarcarRetorno('Escolha hoje ou uma data futura.');
+      return;
+    }
+
+    setActionLoading(true);
+    setErroRemarcarRetorno('');
+    try {
+      await fetchData(token, 'reschedule_retorno', {
+        retorno_id: retornoRemarcar.id,
+        nova_data: novaDataRetorno,
+      });
+      setRetornos(await fetchData(token, 'get_retornos'));
+      setRetornoRemarcar(null);
+    } catch (err: any) {
+      setErroRemarcarRetorno(err.message || 'Não foi possível remarcar o retorno. Tente novamente.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleConfirmReturn = async (retornoId: string) => {
+    setActionLoading(true);
+    setRetornoConfirmandoId(retornoId);
+    setErroConfirmarRetorno('');
+    try {
+      await fetchData(token, 'confirm_retorno', { retorno_id: retornoId });
+      setRetornos(await fetchData(token, 'get_retornos'));
+    } catch (err: any) {
+      setErroConfirmarRetorno(err.message || 'Não foi possível confirmar o retorno. Tente novamente.');
+    } finally {
+      setActionLoading(false);
+      setRetornoConfirmandoId(null);
+    }
+  };
+
+  const handleAcceptWaitlistOffer = async (ofertaId: string) => {
+    setActionLoading(true);
+    setOfertaAceitandoId(ofertaId);
+    setErroAceitarOferta('');
+    try {
+      await fetchData(token, 'accept_waitlist_offer', { lista_espera_id: ofertaId });
+      const [agendamentosAtualizados, ofertasAtualizadas] = await Promise.all([
+        fetchData(token, 'get_agendamentos'),
+        fetchData(token, 'get_waitlist_offers'),
+      ]);
+      setAgendamentos(agendamentosAtualizados || []);
+      setOfertasEspera(ofertasAtualizadas || []);
+    } catch (err: any) {
+      setErroAceitarOferta(err.message || 'Não foi possível aceitar a vaga. Atualize a lista e tente novamente.');
+    } finally {
+      setActionLoading(false);
+      setOfertaAceitandoId(null);
     }
   };
 
@@ -521,13 +755,38 @@ export default function PortalPaciente() {
     }
   };
 
-  const handleConfirmAppointment = async (agendamento_id: string) => {
+  const handleConfirmAppointment = async (agendamento_id: string, expectedData: string, expectedHoraInicio: string | null) => {
     try {
       setActionLoading(true);
-      await fetchData(token, 'confirm_agendamento', { agendamento_id });
-      setAgendamentos(await fetchData(token, 'get_agendamentos'));
+      setActionError('');
+      setActionNotice('');
+      setActionWarning('');
+      await fetchData(token, 'confirm_agendamento', {
+        agendamento_id,
+        expected_data: expectedData,
+        expected_hora_inicio: expectedHoraInicio,
+      });
+      setAgendamentos((current) => current.map((appointment: any) =>
+        appointment.id === agendamento_id ? { ...appointment, status: 'confirmado' } : appointment,
+      ));
+      setActionNotice('Consulta confirmada.');
+      try {
+        setAgendamentos(await fetchData(token, 'get_agendamentos'));
+      } catch {
+        setActionError('Consulta confirmada, mas não foi possível atualizar a lista. Atualize a página para ver a situação atual.');
+      }
     } catch (err: any) {
-      setError(err.message || 'Erro ao confirmar consulta');
+      const message = err.message || 'Não foi possível confirmar a consulta. Tente novamente.';
+      if (err.code === 'appointment_state_changed') {
+        try {
+          setAgendamentos(await fetchData(token, 'get_agendamentos'));
+          setActionError(`${message} A lista foi atualizada.`);
+        } catch {
+          setActionError(`${message} Atualize a lista para ver a situação atual.`);
+        }
+      } else {
+        setActionError(message);
+      }
     } finally {
       setActionLoading(false);
     }
@@ -540,18 +799,44 @@ export default function PortalPaciente() {
 
     try {
       setActionLoading(true);
-      await fetchData(token, 'reschedule_agendamento', {
+      setActionNotice('');
+      setActionWarning('');
+      setActionError('');
+      setRescheduleError('');
+      setRescheduleSubmitError('');
+      const resposta = await fetchData(token, 'reschedule_agendamento', {
         agendamento_id: rescheduleModal.id,
         nova_data: rescheduleForm.data,
         novo_horario: rescheduleForm.hora_inicio,
       });
-      // Reload agendamentos
-      const updatedAgendamentos = await fetchData(token, 'get_agendamentos');
-      setAgendamentos(updatedAgendamentos || []);
+      setAgendamentos((current) => current.map((appointment: any) =>
+        appointment.id === rescheduleModal.id
+          // O servidor volta a consulta para "agendado" ao remarcar: a
+          // confirmação anterior não vale para o novo horário.
+          ? { ...appointment, data: rescheduleForm.data, hora_inicio: rescheduleForm.hora_inicio, status: 'agendado' }
+          : appointment,
+      ));
       setRescheduleModal(null);
       setRescheduleForm({ data: '', hora_inicio: '' });
+      const [year, month, day] = rescheduleForm.data.split('-');
+      setActionNotice(`Consulta remarcada para ${day}/${month}/${year} às ${rescheduleForm.hora_inicio}.`);
+      // A remarcação valeu; `aviso` só diz que a clínica não recebeu o e-mail automático.
+      if (typeof resposta?.aviso === 'string' && resposta.aviso) setActionWarning(resposta.aviso);
+      try {
+        setAgendamentos((await fetchData(token, 'get_agendamentos')) || []);
+      } catch {
+        setActionError('Consulta remarcada, mas não foi possível atualizar a lista. Atualize a página para ver a situação atual.');
+      }
     } catch (err: any) {
-      setError(err.message || 'Não foi possível remarcar a consulta');
+      const message = err.message || 'Não foi possível remarcar a consulta. Tente novamente.';
+      const stateChanged = err.code === 'appointment_state_changed';
+      if (stateChanged) {
+        await handleRescheduleStateChanged(message);
+        return;
+      }
+      setRescheduleSubmitError(message);
+      setRescheduleForm((form) => ({ ...form, hora_inicio: '' }));
+      void loadRescheduleSlots(rescheduleForm.data);
     } finally {
       setActionLoading(false);
     }
@@ -584,6 +869,10 @@ export default function PortalPaciente() {
   const examesPendentes = exames.filter(e => e.status === 'solicitado' || e.status === 'em_andamento').length;
   const laudosDisponiveis = exames.filter(e => e.status === 'laudo_disponivel').length;
   const idade = calcularIdade(profile?.data_nascimento);
+  // Ignora um limite que chegou para outra consulta (diálogo reaberto antes da resposta).
+  const limiteRemarcacao = rescheduleLimite && rescheduleLimite.agendamentoId === rescheduleModal?.id
+    ? rescheduleLimite.limite
+    : undefined;
 
   const containerVariants = {
     hidden: { opacity: 0 },
@@ -596,6 +885,75 @@ export default function PortalPaciente() {
 
   return (
     <div className="min-h-screen bg-background">
+      <AlertDialog
+        open={agendamentoParaCancelar !== null}
+        onOpenChange={(open) => {
+          if (!open && !actionLoading) {
+            lastCancelTriggerIdRef.current = agendamentoParaCancelar;
+            setAgendamentoParaCancelar(null);
+            setCancelStateStale(false);
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancelar esta consulta?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Essa ação não pode ser desfeita. Se precisar de outro horário, você poderá solicitar um novo agendamento depois.
+            </AlertDialogDescription>
+            {cancelError && <p role="alert" className="text-sm text-destructive">{cancelError}</p>}
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={actionLoading}>{cancelStateStale ? 'Fechar' : 'Manter consulta'}</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={actionLoading || cancelStateStale}
+              onClick={(event) => {
+                event.preventDefault();
+                if (!agendamentoParaCancelar) return;
+                void handleCancelAppointment(agendamentoParaCancelar).then((cancelado) => {
+                  if (cancelado) setAgendamentoParaCancelar(null);
+                });
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {actionLoading ? 'Cancelando…' : 'Confirmar cancelamento'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <Dialog
+        open={retornoRemarcar !== null}
+        onOpenChange={(open) => {
+          if (!open && !actionLoading) setRetornoRemarcar(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Remarcar retorno</DialogTitle>
+            <DialogDescription>Escolha uma nova data para seu retorno. A clínica poderá confirmar o horário.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <label htmlFor="nova-data-retorno" className="text-sm font-medium">Nova data</label>
+            <Input
+              id="nova-data-retorno"
+              type="date"
+              min={todayDateOnly()}
+              value={novaDataRetorno}
+              onChange={(event) => setNovaDataRetorno(event.target.value)}
+              disabled={actionLoading}
+              aria-invalid={Boolean(erroRemarcarRetorno)}
+              aria-describedby={erroRemarcarRetorno ? 'erro-remarcar-retorno' : undefined}
+            />
+            {erroRemarcarRetorno && <p id="erro-remarcar-retorno" role="alert" className="text-sm text-destructive">{erroRemarcarRetorno}</p>}
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setRetornoRemarcar(null)} disabled={actionLoading}>Voltar</Button>
+            <Button type="button" onClick={handleRescheduleReturn} disabled={actionLoading || !novaDataRetorno}>
+              {actionLoading ? 'Remarcando…' : 'Confirmar nova data'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       {/* ─── Header ─── */}
       <header className="sticky top-0 z-50 border-b bg-card/80 backdrop-blur-xl px-4 py-3">
         <div className="max-w-5xl mx-auto flex items-center justify-between">
@@ -646,6 +1004,15 @@ export default function PortalPaciente() {
           </motion.div>
 
           {/* ─── Next Appointment ─── */}
+          <p role="status" aria-live="polite" aria-atomic="true" className={actionNotice ? 'rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-sm' : 'sr-only'}>{actionNotice}</p>
+          {actionWarning && (
+            <div role="alert" className="flex items-start gap-2 rounded-md border border-warning/50 bg-warning/10 px-3 py-2 text-sm text-foreground">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" aria-hidden="true" />
+              <p><span className="font-medium">Atenção: </span>{actionWarning}</p>
+            </div>
+          )}
+          {actionError && <p role="alert" className="rounded-md border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive">{actionError}</p>}
+
           <motion.div variants={itemVariants}>
             <NextAppointmentHero agendamentos={agendamentos} />
           </motion.div>
@@ -745,7 +1112,7 @@ export default function PortalPaciente() {
                         <option value="">Selecione um médico</option>
                         {medicos.map(m => (
                           <option key={m.id} value={m.id}>
-                            Dr(a). {m.nome} {m.especialidade && `— ${m.especialidade}`}
+                            {nomeMedico(m.nome)} {m.especialidade && `— ${m.especialidade}`}
                           </option>
                         ))}
                       </select>
@@ -828,10 +1195,15 @@ export default function PortalPaciente() {
                 ) : (
                   agendamentos.map((a: any, i: number) => {
                     const dataAg = parseISO(a.data);
-                    const passado = isPast(dataAg) && !isToday(dataAg);
+                    const passado = appointmentStartHasPassed(a.data, a.hora_inicio);
                     return (
-                      <motion.div
-                        key={a.id}
+                    <motion.div
+                      key={a.id}
+                      ref={(element) => {
+                        if (element) rescheduleCardsRef.current.set(a.id, element);
+                        else rescheduleCardsRef.current.delete(a.id);
+                      }}
+                      tabIndex={-1}
                         initial={{ opacity: 0, x: -10 }}
                         animate={{ opacity: 1, x: 0 }}
                         transition={{ delay: i * 0.05 }}
@@ -845,17 +1217,17 @@ export default function PortalPaciente() {
                                     <Calendar className={`h-4 w-4 ${isToday(dataAg) ? 'text-primary' : 'text-muted-foreground'}`} />
                                   </div>
                                   <div className="space-y-0.5">
-                                    <p className="font-semibold text-sm">
+                                    <div className="flex items-center font-semibold text-sm">
                                       {a.tipo || 'Consulta'}
                                       {isToday(dataAg) && <Badge className="ml-2 bg-primary text-primary-foreground text-[9px]">HOJE</Badge>}
-                                    </p>
+                                    </div>
                                     <p className="text-sm text-muted-foreground">
                                       {format(dataAg, "dd 'de' MMM, yyyy", { locale: ptBR })}
                                       {a.hora_inicio && ` às ${a.hora_inicio.slice(0, 5)}`}
                                     </p>
                                     {a.medicos?.nome && (
                                       <p className="text-xs text-muted-foreground">
-                                        Dr(a). {a.medicos.nome}
+                                        {nomeMedico(a.medicos.nome)}
                                         {a.medicos.especialidade && ` — ${a.medicos.especialidade}`}
                                       </p>
                                     )}
@@ -865,19 +1237,32 @@ export default function PortalPaciente() {
                               </div>
 
                               {/* Action buttons for future appointments */}
-                              {!passado && a.status !== 'cancelado' && (
+                              {!passado && ['agendado', 'confirmado'].includes(a.status) && (
                                 <div className="flex gap-2 pt-2 border-t">
                                   {!['confirmado', 'em_atendimento', 'finalizado'].includes(a.status) && (
-                                    <Button size="sm" onClick={() => handleConfirmAppointment(a.id)} disabled={actionLoading} className="flex-1 text-xs">
+                                    <Button size="sm" onClick={() => handleConfirmAppointment(a.id, a.data, a.hora_inicio ?? null)} disabled={actionLoading} className="flex-1 text-xs">
                                       <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> Confirmar
                                     </Button>
                                   )}
                                   <Button
                                     size="sm"
                                     variant="outline"
+                                    ref={(element) => {
+                                      if (element) rescheduleTriggersRef.current.set(a.id, element);
+                                      else rescheduleTriggersRef.current.delete(a.id);
+                                    }}
                                     onClick={() => {
+                                      lastRescheduleTriggerIdRef.current = a.id;
+                                      rescheduleLookupRef.current += 1;
+                                      setRescheduleSlotsLoading(false);
+                                      setRescheduleError('');
+                                      setRescheduleSubmitError('');
+                                      setRescheduleStateStale(false);
+                                      setRescheduleSlots([]);
+                                      setRescheduleForm({ data: '', hora_inicio: '' });
+                                      setRescheduleLimite(null);
                                       setRescheduleModal(a);
-                                      setRescheduleForm({ data: a.data, hora_inicio: a.hora_inicio });
+                                      void loadRescheduleLimite(a.id);
                                     }}
                                     disabled={actionLoading}
                                     className="flex-1 text-xs"
@@ -889,9 +1274,15 @@ export default function PortalPaciente() {
                                     size="sm"
                                     variant="outline"
                                     onClick={() => {
-                                      if (window.confirm('Deseja cancelar esta consulta?')) {
-                                        handleCancelAppointment(a.id);
-                                      }
+                                      setCancelError('');
+                                      setCancelStateStale(false);
+                                      cancelExpectedAppointmentRef.current = { data: a.data, hora_inicio: a.hora_inicio ?? null };
+                                      lastCancelTriggerIdRef.current = a.id;
+                                      setAgendamentoParaCancelar(a.id);
+                                    }}
+                                    ref={(element) => {
+                                      if (element) cancelTriggersRef.current.set(a.id, element);
+                                      else cancelTriggersRef.current.delete(a.id);
                                     }}
                                     disabled={actionLoading}
                                     className="flex-1 text-xs text-destructive hover:text-destructive"
@@ -1004,7 +1395,7 @@ export default function PortalPaciente() {
                               )}
                               <p className="text-[11px] text-muted-foreground">
                                 {p.data_emissao ? format(parseISO(p.data_emissao), 'dd/MM/yyyy') : ''}
-                                {p.medicos?.nome && ` — Dr(a). ${p.medicos.nome}`}
+                                {p.medicos?.nome && ` — ${nomeMedico(p.medicos.nome)}`}
                               </p>
                             </div>
                             <Badge variant="outline" className="text-[10px]">
@@ -1153,7 +1544,7 @@ export default function PortalPaciente() {
                                   <p className="font-medium">{a.tipo || 'Consulta'}</p>
                                   <p className="text-xs text-muted-foreground">
                                     {format(parseISO(a.data), "dd/MM/yyyy")}
-                                    {a.medicos?.nome && ` — Dr(a). ${a.medicos.nome}`}
+                                    {a.medicos?.nome && ` — ${nomeMedico(a.medicos.nome)}`}
                                   </p>
                                 </div>
                               </div>
@@ -1226,74 +1617,89 @@ export default function PortalPaciente() {
             </Tabs>
           </motion.div>
 
-          {/* ─── Reschedule Modal ─── */}
-          <AnimatePresence>
-            {rescheduleModal && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"
-                onClick={() => setRescheduleModal(null)}
-              >
-                <motion.div
-                  initial={{ scale: 0.95, y: 20 }}
-                  animate={{ scale: 1, y: 0 }}
-                  exit={{ scale: 0.95, y: 20 }}
-                  onClick={(e) => e.stopPropagation()}
-                  className="bg-card rounded-xl border p-6 max-w-sm w-full space-y-4 shadow-lg"
-                >
-                  <div>
-                    <h3 className="font-semibold text-lg">Remarcar Consulta</h3>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      Médico: Dr(a). {rescheduleModal.medicos?.nome}
+          <Dialog
+            open={Boolean(rescheduleModal)}
+            onOpenChange={(open) => {
+              if (!open) closeRescheduleDialog();
+            }}
+          >
+            <DialogContent className="max-w-sm">
+              <DialogHeader>
+                <DialogTitle>Remarcar consulta</DialogTitle>
+                <DialogDescription>
+                  Médico: {nomeMedico(rescheduleModal?.medicos?.nome || 'seu médico')}. Escolha uma data e um horário livre.
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-4">
+                {rescheduleModal?.data && (
+                  <p className="rounded-lg border bg-muted/40 px-3 py-2 text-sm" data-testid="reschedule-current">
+                    <span className="text-muted-foreground">Consulta atual: </span>
+                    <span className="font-medium">
+                      {formatarDataIso(rescheduleModal.data)}
+                      {rescheduleModal.hora_inicio ? ` às ${String(rescheduleModal.hora_inicio).slice(0, 5)}` : ''}
+                    </span>
+                  </p>
+                )}
+                <div className="space-y-2">
+                  <label htmlFor="reschedule-date" className="text-sm font-medium">Nova data *</label>
+                  <input
+                    id="reschedule-date"
+                    type="date"
+                    value={rescheduleForm.data}
+                    onChange={(event) => {
+                      setRescheduleSubmitError('');
+                      void loadRescheduleSlots(event.target.value);
+                    }}
+                    min={todayDateOnly()}
+                    max={limiteRemarcacao}
+                    aria-describedby={limiteRemarcacao ? 'reschedule-date-limit' : undefined}
+                    disabled={actionLoading || rescheduleStateStale}
+                    className="w-full px-3 py-2 border rounded-lg bg-background text-foreground disabled:opacity-60"
+                  />
+                  {limiteRemarcacao && (
+                    <p id="reschedule-date-limit" className="text-xs text-muted-foreground">
+                      É possível remarcar pelo portal até {formatarDataIso(limiteRemarcacao)}.
                     </p>
-                  </div>
+                  )}
+                </div>
 
-                  <div className="space-y-4">
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium">Nova Data *</label>
-                      <input
-                        type="date"
-                        value={rescheduleForm.data}
-                        onChange={(e) => setRescheduleForm(f => ({ ...f, data: e.target.value }))}
-                        min={todayDateOnly()}
-                        className="w-full px-3 py-2 border rounded-lg bg-background text-foreground"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium">Novo Horário *</label>
-                      <input
-                        type="time"
-                        value={rescheduleForm.hora_inicio}
-                        onChange={(e) => setRescheduleForm(f => ({ ...f, hora_inicio: e.target.value }))}
-                        className="w-full px-3 py-2 border rounded-lg bg-background text-foreground"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="flex gap-2 pt-2 border-t">
-                    <Button
-                      variant="outline"
-                      onClick={() => setRescheduleModal(null)}
-                      disabled={actionLoading}
-                      className="flex-1"
-                    >
-                      Voltar
+                <div className="space-y-2">
+                  <label htmlFor="reschedule-time" className="text-sm font-medium">Horário disponível *</label>
+                  <select
+                    id="reschedule-time"
+                    value={rescheduleForm.hora_inicio}
+                    onChange={(event) => setRescheduleForm((form) => ({ ...form, hora_inicio: event.target.value }))}
+                    disabled={actionLoading || rescheduleStateStale || rescheduleSlotsLoading || rescheduleSlots.length === 0}
+                    className="w-full px-3 py-2 border rounded-lg bg-background text-foreground disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <option value="">{rescheduleSlotsLoading ? 'Buscando horários…' : 'Selecione um horário'}</option>
+                    {rescheduleSlots.map((slot) => <option key={slot} value={slot}>{slot}</option>)}
+                  </select>
+                  {rescheduleError && <p role="alert" className="text-sm text-destructive">{rescheduleError}</p>}
+                  <p className="text-sm text-muted-foreground" role="status" aria-live="polite">
+                        {rescheduleSlotsLoading ? 'Buscando horários livres…' : !rescheduleStateStale && !rescheduleError && rescheduleForm.data && rescheduleSlots.length === 0 ? 'Nenhum horário disponível nesta data. Escolha outra data.' : ''}
+                  </p>
+                  {rescheduleError && rescheduleForm.data && (
+                    <Button type="button" variant="ghost" size="sm" onClick={() => void loadRescheduleSlots(rescheduleForm.data)} disabled={rescheduleSlotsLoading}>
+                      Tentar carregar novamente
                     </Button>
-                    <Button
-                      onClick={handleRescheduleAppointment}
-                      disabled={!rescheduleForm.data || !rescheduleForm.hora_inicio || actionLoading}
-                      className="flex-1"
-                    >
-                      {actionLoading ? 'Remarcando…' : 'Confirmar'}
-                    </Button>
-                  </div>
-                </motion.div>
-              </motion.div>
-            )}
-          </AnimatePresence>
+                  )}
+                </div>
+              </div>
+
+              {rescheduleSubmitError && <p role="alert" className="text-sm text-destructive">{rescheduleSubmitError}</p>}
+              <DialogFooter>
+                <Button variant="outline" onClick={closeRescheduleDialog} disabled={actionLoading}>Voltar</Button>
+                <Button
+                  onClick={handleRescheduleAppointment}
+                  disabled={rescheduleStateStale || !rescheduleForm.data || !rescheduleForm.hora_inicio || actionLoading || rescheduleSlotsLoading}
+                >
+                  {actionLoading ? 'Remarcando…' : 'Confirmar'}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
 
           {/* ─── NPS Survey ─── */}
           {ofertasEspera.length > 0 && (
@@ -1301,18 +1707,15 @@ export default function PortalPaciente() {
               <Card className="border-primary/40 bg-primary/5">
                 <CardHeader><CardTitle className="text-base">Vaga disponível para você</CardTitle><CardDescription>A reserva expira automaticamente; confirme para garantir o horário.</CardDescription></CardHeader>
                 <CardContent className="space-y-3">
+                  {erroAceitarOferta && <p role="alert" className="text-sm text-destructive">{erroAceitarOferta}</p>}
                   {ofertasEspera.map(oferta => (
                     <div key={oferta.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-background p-3">
                       <div><p className="font-medium">{format(new Date(`${oferta.vaga.data}T12:00:00`), 'dd/MM/yyyy')} às {oferta.vaga.hora_inicio?.slice(0, 5)}</p>
-                        <p className="text-xs text-muted-foreground">Dr(a). {oferta.vaga.medicos?.nome || 'Médico'} · expira {format(new Date(oferta.oferta_expira_em), 'HH:mm')}</p></div>
-                      <Button disabled={actionLoading} onClick={async () => {
-                        try {
-                          setActionLoading(true);
-                          await fetchData(token, 'accept_waitlist_offer', { lista_espera_id: oferta.id });
-                          const [ag, ofertas] = await Promise.all([fetchData(token, 'get_agendamentos'), fetchData(token, 'get_waitlist_offers')]);
-                          setAgendamentos(ag || []); setOfertasEspera(ofertas || []);
-                        } finally { setActionLoading(false); }
-                      }}><CheckCircle2 className="mr-2 h-4 w-4" />Aceitar vaga</Button>
+                        <p className="text-xs text-muted-foreground">{nomeMedico(oferta.vaga.medicos?.nome || 'Médico')} · expira {format(new Date(oferta.oferta_expira_em), 'HH:mm')}</p></div>
+                      <Button disabled={actionLoading} onClick={() => void handleAcceptWaitlistOffer(oferta.id)}>
+                        <CheckCircle2 className="mr-2 h-4 w-4" />
+                        {ofertaAceitandoId === oferta.id ? 'Reservando…' : 'Aceitar vaga'}
+                      </Button>
                     </div>
                   ))}
                 </CardContent>
@@ -1325,6 +1728,7 @@ export default function PortalPaciente() {
               <Card>
                 <CardHeader><CardTitle className="text-base">Seus retornos</CardTitle></CardHeader>
                 <CardContent className="space-y-3">
+                  {erroConfirmarRetorno && <p role="alert" className="text-sm text-destructive">{erroConfirmarRetorno}</p>}
                   {retornos.slice(0, 5).map(retorno => (
                     <div key={retorno.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3">
                       <div>
@@ -1333,15 +1737,13 @@ export default function PortalPaciente() {
                       </div>
                       {['pendente', 'agendado'].includes(retorno.status) && (
                         <div className="flex gap-2">
-                          <Button size="sm" onClick={async () => {
-                            await fetchData(token, 'confirm_retorno', { retorno_id: retorno.id });
-                            setRetornos(await fetchData(token, 'get_retornos'));
-                          }}>Confirmar</Button>
-                          <Button size="sm" variant="outline" onClick={async () => {
-                            const novaData = window.prompt('Nova data do retorno (AAAA-MM-DD):', retorno.data_retorno_prevista);
-                            if (!novaData) return;
-                            await fetchData(token, 'reschedule_retorno', { retorno_id: retorno.id, nova_data: novaData });
-                            setRetornos(await fetchData(token, 'get_retornos'));
+                          <Button size="sm" disabled={actionLoading} onClick={() => void handleConfirmReturn(retorno.id)}>
+                            {retornoConfirmandoId === retorno.id ? 'Confirmando…' : 'Confirmar'}
+                          </Button>
+                          <Button size="sm" variant="outline" disabled={actionLoading} onClick={() => {
+                            setErroRemarcarRetorno('');
+                            setNovaDataRetorno(retorno.data_retorno_prevista);
+                            setRetornoRemarcar(retorno);
                           }}>Remarcar</Button>
                         </div>
                       )}

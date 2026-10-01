@@ -112,17 +112,18 @@ export default function ListaEspera() {
   const { data: medicos = [], isLoading: loadingMedicos } = useMedicos();
 
   const { data: lista = [], isLoading: loadingLista } = useQuery({
-    queryKey: ['lista_espera'],
+    queryKey: ['lista_espera', user?.id ?? null, profile?.clinica_id ?? null],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('lista_espera')
         .select('*, pacientes(nome, telefone), medicos(crm, especialidade)')
+        .eq('clinica_id', profile?.clinica_id ?? '')
         .order('data_cadastro', { ascending: true });
 
       if (error) throw error;
       return data;
     },
-    enabled: !!user,
+    enabled: !!user && !!profile?.clinica_id,
   });
 
   const isLoading = loadingLista || loadingPacientes || loadingMedicos;

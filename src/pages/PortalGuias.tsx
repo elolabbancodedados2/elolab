@@ -34,8 +34,11 @@ export default function PortalGuias() {
             headers: {
               'Content-Type': 'application/json',
               apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+              // Token no header, não no corpo: body atravessa logs de proxy e
+              // CDN; header de autorização é o lugar de credencial.
+              'x-portal-token': token || '',
             },
-            body: JSON.stringify({ action: 'validate', token: token || '' }),
+            body: JSON.stringify({ action: 'validate' }),
           }
         );
         const json = await resp.json();
@@ -60,8 +63,12 @@ export default function PortalGuias() {
     try {
       const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/public-guias-externas`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY } as any,
-        body: JSON.stringify({ token, ...form, exames_solicitados: examesValidos }),
+        headers: {
+          'Content-Type': 'application/json',
+          apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+          'x-portal-token': token,
+        } as any,
+        body: JSON.stringify({ ...form, exames_solicitados: examesValidos }),
       });
       const json = await resp.json();
       if (!resp.ok) throw new Error(json.error || 'Erro ao enviar');

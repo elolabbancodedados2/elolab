@@ -1,3 +1,4 @@
+import { buscarEmBlocos } from '@/lib/buscarEmBlocos';
 import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -31,7 +32,7 @@ import { Database } from '@/integrations/supabase/types';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell,
 } from 'recharts';
-import { parseDateOnly, todayDateOnly } from '@/lib/dateOnly';
+import { parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { valorRealizado } from '@/lib/lancamentos';
 
 type StatusPagamento = Database['public']['Enums']['status_pagamento'];
@@ -139,15 +140,16 @@ export default function ContasReceber() {
   const { data: pacientes = [], isLoading: loadingPacientes } = usePacientes();
 
   const { data: contas = [], isLoading: loadingContas } = useQuery({
-    queryKey: ['lancamentos', 'receita'],
+    queryKey: ['lancamentos', 'receita', user?.id ?? null, profile?.clinica_id ?? null],
     queryFn: async () => {
-      const { data, error } = await supabase
+      // Em blocos: sem paginar, o servidor devolvia só as 1000 primeiras contas.
+      const data = await buscarEmBlocos<any>(() => supabase
         .from('lancamentos')
         .select('*, pacientes(nome)')
         .eq('tipo', 'receita')
-        .order('created_at', { ascending: false });
-      if (error) throw error;
-      const today = todayDateOnly();
+        .order('created_at', { ascending: false })
+        .order('id', { ascending: true }));
+      const today = todaySaoPauloDateOnly();
       return data.map(conta => {
         if (conta.status === 'pendente' && conta.data_vencimento && conta.data_vencimento < today) {
           return { ...conta, status: 'atrasado' as StatusPagamento };
@@ -155,7 +157,7 @@ export default function ContasReceber() {
         return conta;
       });
     },
-    enabled: !!user,
+    enabled: !!user && !!profile?.clinica_id,
   });
 
   const isLoading = loadingContas || loadingPacientes;
@@ -261,7 +263,7 @@ export default function ContasReceber() {
         categoria: formData.categoria,
         descricao: formData.descricao,
         valor: formData.valor,
-        data: todayDateOnly(),
+        data: todaySaoPauloDateOnly(),
         data_vencimento: formData.data_vencimento,
         status: 'pendente' as StatusPagamento,
         paciente_id: formData.paciente_id || null,
@@ -319,7 +321,7 @@ export default function ContasReceber() {
         valor_pago: Number(valorFinal.toFixed(2)),
         desconto: Number((baixaData.desconto || 0).toFixed(2)),
         acrescimo: Number((baixaData.acrescimo || 0).toFixed(2)),
-        data_pagamento: baixaData.data_recebimento || todayDateOnly(),
+        data_pagamento: baixaData.data_recebimento || todaySaoPauloDateOnly(),
         observacoes: [
           selectedConta.observacoes, baixaData.observacoes,
         ].filter(Boolean).join(' | ') || null,

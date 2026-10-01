@@ -1,21 +1,12 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { checarRateLimit, clientIp } from "../_shared/rateLimit.ts";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-  // Respostas contêm dados clínicos e financeiros. Proxies, service workers e
-  // navegadores compartilhados não podem armazená-las.
-  "Cache-Control": "no-store, no-cache, must-revalidate, private",
-  "Pragma": "no-cache",
-  "Referrer-Policy": "no-referrer",
-  "X-Content-Type-Options": "nosniff",
-};
+import { corsPadrao } from '../_shared/cors.ts';
+import { horariosLivres, validarHorario as validatePortalSlot, agoraEmBrasilia, horarioConsultaPassou } from '../_shared/horarios.ts';
+import { limiteDataRemarcacao, recusarDataAlemDoLimite, remarcarAgendamento } from './remarcacao.ts';
 
 /** Data de hoje em "YYYY-MM-DD", para comparar com colunas `date` do Postgres. */
 function todayISO(): string {
-  return new Date().toISOString().split("T")[0];
+  return agoraEmBrasilia().data;
 }
 
 /**
@@ -35,98 +26,13 @@ async function sha256Hex(value: string): Promise<string> {
   return Array.from(new Uint8Array(hash), byte => byte.toString(16).padStart(2, '0')).join('');
 }
 
-function timeToMinutes(value: unknown): number | null {
-  const match = String(value ?? '').match(/^(\d{2}):(\d{2})(?::\d{2})?$/);
-  if (!match) return null;
-  const hour = Number(match[1]);
-  const minute = Number(match[2]);
-  return hour >= 0 && hour < 24 && minute >= 0 && minute < 60 ? hour * 60 + minute : null;
-}
-
-/** Confere formato, jornada, bloqueio e sobreposição antes de criar/remarcar. */
-async function validatePortalSlot(
-  db: any,
-  clinicId: string | null,
-  medicoId: string,
-  date: string,
-  startTime: string,
-  ignoreAppointmentId?: string,
-): Promise<{ error: string | null; duration: number }> {
-  const dateObject = new Date(`${date}T12:00:00Z`);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(dateObject.getTime()) || dateObject.toISOString().slice(0, 10) !== date) {
-    return { error: 'Informe uma data vÃ¡lida.', duration: 30 };
-  }
-  const start = timeToMinutes(startTime);
-  if (start === null) return { error: 'Informe um horÃ¡rio vÃ¡lido.', duration: 30 };
-
-  const dayOfWeek = new Date(`${date}T12:00:00Z`).getUTCDay();
-  const { data: availability, error: availabilityError } = await db
-    .from('medico_disponibilidade')
-    .select('hora_inicio, hora_fim, duracao_consulta, intervalo_consultas')
-    .eq('medico_id', medicoId)
-    .eq('dia_semana', dayOfWeek)
-    .eq('ativo', true)
-    .limit(1)
-    .maybeSingle();
-  if (availabilityError || !availability) {
-    return { error: 'O mÃ©dico nÃ£o tem disponibilidade neste dia.', duration: 30 };
-  }
-
-  const duration = Number(availability.duracao_consulta) || 30;
-  const end = start + duration;
-  const availableStart = timeToMinutes(availability.hora_inicio);
-  const availableEnd = timeToMinutes(availability.hora_fim);
-  if (availableStart === null || availableEnd === null || start < availableStart || end > availableEnd) {
-    return { error: 'O horÃ¡rio estÃ¡ fora da disponibilidade do mÃ©dico.', duration };
-  }
-  const interval = Number(availability.intervalo_consultas) || 0;
-  const step = duration + interval;
-  if (step <= 0 || (start - availableStart) % step !== 0) {
-    return { error: 'Escolha um horÃ¡rio disponÃ­vel na agenda.', duration };
-  }
-
-  const { data: blocks, error: blocksError } = await db
-    .from('bloqueios_agenda')
-    .select('hora_inicio, hora_fim, dia_inteiro')
-    .eq('medico_id', medicoId)
-    .lte('data_inicio', date)
-    .gte('data_fim', date);
-  if (blocksError) throw blocksError;
-  if ((blocks || []).some((block: any) => {
-    if (block.dia_inteiro) return true;
-    const blockStart = timeToMinutes(block.hora_inicio);
-    const blockEnd = timeToMinutes(block.hora_fim);
-    return blockStart !== null && blockEnd !== null && blockStart < end && blockEnd > start;
-  })) {
-    return { error: 'O horÃ¡rio estÃ¡ bloqueado para este mÃ©dico.', duration };
-  }
-
-  const { data: appointments, error: appointmentsError } = await db
-    .from('agendamentos')
-    .select('id, hora_inicio, hora_fim, status')
-    .eq('medico_id', medicoId)
-    .eq('clinica_id', clinicId ?? '')
-    .eq('data', date)
-    .not('status', 'in', '("cancelado")');
-  if (appointmentsError) throw appointmentsError;
-  const conflict = (appointments || []).some((appointment: any) => {
-    if (appointment.id === ignoreAppointmentId) return false;
-    const appointmentStart = timeToMinutes(appointment.hora_inicio);
-    if (appointmentStart === null) return false;
-    const appointmentEnd = timeToMinutes(appointment.hora_fim) ?? appointmentStart + 30;
-    return appointmentStart < end && appointmentEnd > start;
-  });
-  return conflict
-    ? { error: 'Este horÃ¡rio jÃ¡ estÃ¡ ocupado.', duration }
-    : { error: null, duration };
-}
-
 Deno.serve(async (req) => {
+  const corsHeaders = { ...corsPadrao(req), 'Cache-Control': "no-store, no-cache, must-revalidate, private", 'Pragma': "no-cache", 'Referrer-Policy': "no-referrer", 'X-Content-Type-Options': "nosniff" };
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
   if (req.method !== "POST") {
-    return new Response(JSON.stringify({ error: "MÃ©todo nÃ£o permitido" }), {
+    return new Response(JSON.stringify({ error: "Método não permitido" }), {
       status: 405,
       headers: { ...corsHeaders, "Content-Type": "application/json", Allow: "POST, OPTIONS" },
     });
@@ -200,7 +106,7 @@ Deno.serve(async (req) => {
     const pacienteClinicaId =
       (tokenData as any).pacientes?.clinica_id ?? (tokenData as any).clinica_id ?? null;
     if (!pacienteId || !pacienteClinicaId || pacienteClinicaId !== (tokenData as any).clinica_id) {
-      return new Response(JSON.stringify({ error: "Token invÃ¡lido" }), {
+      return new Response(JSON.stringify({ error: "Token inválido" }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -242,7 +148,7 @@ Deno.serve(async (req) => {
       case "get_agendamentos": {
         const { data, error } = await supabase
           .from("agendamentos")
-          .select("id, data, hora_inicio, hora_fim, tipo, status, medicos(nome, crm, especialidade)")
+          .select("id, medico_id, data, hora_inicio, hora_fim, tipo, status, medicos(nome, crm, especialidade)")
           .eq("paciente_id", pacienteId)
           .eq("clinica_id", pacienteClinicaId)
           .order("data", { ascending: false })
@@ -258,7 +164,7 @@ Deno.serve(async (req) => {
           .select("id, data, hora_inicio, tipo, status, medicos(crm, especialidade)")
           .eq("paciente_id", pacienteId)
           .eq("clinica_id", pacienteClinicaId)
-          .lt("data", new Date().toISOString().split("T")[0])
+          .lt("data", todayISO())
           .order("data", { ascending: false })
           .limit(50);
         if (error) throw error;
@@ -318,14 +224,21 @@ Deno.serve(async (req) => {
 
       case "reschedule_retorno": {
         const { retorno_id, nova_data } = body;
-        if (!retorno_id || !nova_data || nova_data < todayISO()) return new Response(JSON.stringify({ error: "Informe uma data futura válida" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-        const { data: retorno, error: retornoError } = await supabase.from("retornos").select("id, data_retorno_prevista, historico")
+        const dataSolicitada = new Date(`${nova_data}T12:00:00Z`);
+        if (!retorno_id || !/^\d{4}-\d{2}-\d{2}$/.test(String(nova_data)) || Number.isNaN(dataSolicitada.getTime()) || dataSolicitada.toISOString().slice(0, 10) !== nova_data || nova_data < todayISO()) {
+          return new Response(JSON.stringify({ error: "Informe hoje ou uma data futura válida" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+        const { data: retorno, error: retornoError } = await supabase.from("retornos").select("id, data_retorno_prevista, historico, status")
           .eq("id", retorno_id).eq("paciente_id", pacienteId).eq("clinica_id", pacienteClinicaId).single();
         if (retornoError || !retorno) return new Response(JSON.stringify({ error: "Retorno não encontrado" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        if (!["pendente", "agendado"].includes(retorno.status)) {
+          return new Response(JSON.stringify({ error: "Este retorno não pode mais ser remarcado pelo portal" }), { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
         const historico = Array.isArray(retorno.historico) ? retorno.historico : [];
-        const { error } = await supabase.from("retornos").update({ data_retorno_prevista: nova_data, status: "pendente", confirmado_em: null, lembrete_enviado: false,
-          historico: [...historico, { evento: "remarcado_pelo_paciente", de: retorno.data_retorno_prevista, para: nova_data, em: new Date().toISOString() }] }).eq("id", retorno_id).eq("paciente_id", pacienteId).eq("clinica_id", pacienteClinicaId);
+        const { data: remarcado, error } = await supabase.from("retornos").update({ data_retorno_prevista: nova_data, status: "pendente", confirmado_em: null, lembrete_enviado: false,
+          historico: [...historico, { evento: "remarcado_pelo_paciente", de: retorno.data_retorno_prevista, para: nova_data, em: new Date().toISOString() }] }).eq("id", retorno_id).eq("paciente_id", pacienteId).eq("clinica_id", pacienteClinicaId).in("status", ["pendente", "agendado"]).select("id").maybeSingle();
         if (error) throw error;
+        if (!remarcado) return new Response(JSON.stringify({ error: "O retorno foi atualizado. Recarregue a página e tente novamente." }), { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         result = { success: true, message: "Retorno remarcado" };
         break;
       }
@@ -425,7 +338,7 @@ Deno.serve(async (req) => {
       }
 
       case "get_available_slots": {
-        const { medico_id, data_inicio } = body;
+        const { medico_id, data_inicio, agendamento_id } = body;
         if (!medico_id || !data_inicio) {
           return new Response(
             JSON.stringify({ error: "medico_id e data_inicio são obrigatórios" }),
@@ -434,7 +347,7 @@ Deno.serve(async (req) => {
         }
         const requestedDate = new Date(`${data_inicio}T12:00:00Z`);
         if (!/^\d{4}-\d{2}-\d{2}$/.test(String(data_inicio)) || Number.isNaN(requestedDate.getTime()) || requestedDate.toISOString().slice(0, 10) !== data_inicio || data_inicio < todayISO()) {
-          return new Response(JSON.stringify({ error: "Informe uma data vÃ¡lida, hoje ou futura" }), {
+          return new Response(JSON.stringify({ error: "Informe uma data válida, hoje ou futura" }), {
             status: 400,
             headers: { ...corsHeaders, "Content-Type": "application/json" },
           });
@@ -453,68 +366,37 @@ Deno.serve(async (req) => {
           });
         }
 
-        // Get doctor availability for this day of week
-        // `data_inicio` Ã© uma data sem horÃ¡rio. Usar getDay() em um Date
-        // parseado como UTC desloca o dia no fuso do Brasil (ex.: segunda vira
-        // domingo); UTC preserva o calendÃ¡rio informado pelo paciente.
-        const appointmentDate = new Date(`${data_inicio}T12:00:00Z`);
-        const dayOfWeek = appointmentDate.getUTCDay(); // 0 = Sunday, 1 = Monday, etc.
-
-        const { data: disponibilidade, error: dispError } = await supabase
-          .from("medico_disponibilidade")
-          .select("hora_inicio, hora_fim, duracao_consulta, intervalo_consultas")
-          .eq("medico_id", medico_id)
-          .eq("dia_semana", dayOfWeek)
-          .eq("ativo", true)
-          .single();
-
-        if (dispError || !disponibilidade) {
-          // No availability configured for this day
-          return new Response(
-            JSON.stringify({ error: "O médico não tem agendamentos disponíveis neste dia" }),
-            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
-        }
-
-        // Get all appointments for this doctor on this date (excluding cancelled)
-        const { data: agendados, error: agendadosError } = await supabase
-          .from("agendamentos")
-          .select("hora_inicio, hora_fim")
-          .eq("medico_id", medico_id)
-          .eq("clinica_id", pacienteClinicaId)
-          .eq("data", data_inicio)
-          .not("status", "in", '("cancelado")');
-        if (agendadosError) throw agendadosError;
-
-        // Generate slots based on doctor's availability
-        const slots = [];
-        const [startHour, startMin] = disponibilidade.hora_inicio.split(":").map(Number);
-        const [endHour, endMin] = disponibilidade.hora_fim.split(":").map(Number);
-        const duration = disponibilidade.duracao_consulta; // in minutes
-        const interval = disponibilidade.intervalo_consultas; // in minutes
-        const slotDuration = duration + interval;
-
-        let currentMinutes = startHour * 60 + startMin;
-        const endMinutes = endHour * 60 + endMin;
-
-        while (currentMinutes + duration <= endMinutes) {
-          const hour = Math.floor(currentMinutes / 60);
-          const min = currentMinutes % 60;
-          const slotTime = `${String(hour).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
-
-          // Check if slot is booked
-          const isBooked = agendados?.some(
-            a => a.hora_inicio && a.hora_inicio.slice(0, 5) === slotTime
-          );
-
-          if (!isBooked) {
-            slots.push(slotTime);
+        // Mesma regra da confirmação (jornada, bloqueios, sobreposição e
+        // horário já passado), para a lista não oferecer o que será recusado.
+        let ignoreAppointmentId: string | undefined;
+        if (agendamento_id) {
+          const { data: consulta, error: consultaError } = await supabase.from("agendamentos")
+            .select("id, medico_id, data, hora_inicio")
+            .eq("id", agendamento_id)
+            .eq("paciente_id", pacienteId)
+            .eq("clinica_id", pacienteClinicaId)
+            .in("status", ["agendado", "confirmado"])
+            .maybeSingle();
+          if (consultaError) throw consultaError;
+          if (!consulta || consulta.medico_id !== medico_id || horarioConsultaPassou(consulta.data, consulta.hora_inicio)) {
+            return new Response(JSON.stringify({ error: "Consulta não encontrada", code: "appointment_state_changed" }), {
+              status: 404,
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            });
           }
-
-          currentMinutes += slotDuration;
+          ignoreAppointmentId = consulta.id;
+          // Mesmo limite que a remarcação aplica: não oferecer data que será recusada.
+          const alemDoLimite = await recusarDataAlemDoLimite(supabase, pacienteClinicaId, data_inicio);
+          if (alemDoLimite) {
+            return new Response(JSON.stringify(alemDoLimite.body), {
+              status: alemDoLimite.status,
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            });
+          }
         }
+        const slots = await horariosLivres(supabase, pacienteClinicaId, medico_id, data_inicio, ignoreAppointmentId);
 
-        result = slots.length > 0 ? slots : { error: "Nenhum horário disponível neste dia" };
+        result = slots;
         break;
       }
 
@@ -527,19 +409,10 @@ Deno.serve(async (req) => {
           );
         }
 
-        // Validate date is in the future or today
-        const appointmentDate = new Date(data);
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        if (appointmentDate < today) {
-          return new Response(
-            JSON.stringify({ error: "A data do agendamento não pode ser no passado" }),
-            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
-        }
+        // Date-only values use the Brasília calendar, not the Edge host's UTC date.
         const requestedDate = new Date(`${data}T12:00:00Z`);
         if (!/^\d{4}-\d{2}-\d{2}$/.test(String(data)) || Number.isNaN(requestedDate.getTime()) || requestedDate.toISOString().slice(0, 10) !== data || data < todayISO()) {
-          return new Response(JSON.stringify({ error: "Informe uma data vÃ¡lida, hoje ou futura" }), {
+          return new Response(JSON.stringify({ error: "Informe uma data válida, hoje ou futura" }), {
             status: 400,
             headers: { ...corsHeaders, "Content-Type": "application/json" },
           });
@@ -619,7 +492,7 @@ Deno.serve(async (req) => {
       }
 
       case "cancel_agendamento": {
-        const { agendamento_id, motivo } = body;
+        const { agendamento_id, motivo, expected_data, expected_hora_inicio } = body;
         if (!agendamento_id) {
           return new Response(
             JSON.stringify({ error: "agendamento_id é obrigatório" }),
@@ -630,7 +503,7 @@ Deno.serve(async (req) => {
         // Check appointment belongs to this patient
         const { data: agendamento, error: fetchError } = await supabase
           .from("agendamentos")
-          .select("id, data, paciente_id")
+          .select("id, data, hora_inicio, paciente_id, status")
           .eq("id", agendamento_id)
           .eq("paciente_id", pacienteId)
           .eq("clinica_id", pacienteClinicaId)
@@ -643,133 +516,136 @@ Deno.serve(async (req) => {
           );
         }
 
-        // Cannot cancel past appointments. `data` has no time component, so
-        // comparing it against `now` used to block same-day cancellations.
-        if (agendamento.data < todayISO()) {
+        // A consulta pode ter mudado depois da leitura inicial. Cancelamento
+        // só pode substituir estados que ainda permitem ação do paciente.
+        if (agendamento.status === "cancelado") {
+          result = { success: true, message: "Agendamento já estava cancelado" };
+          break;
+        }
+        if (!['agendado', 'confirmado'].includes(agendamento.status)) {
           return new Response(
-            JSON.stringify({ error: "Não é possível cancelar agendamentos passados" }),
-            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            JSON.stringify({ error: "Esta consulta não pode mais ser cancelada pelo portal", code: "appointment_state_changed" }),
+            { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const hasExpectedState = typeof expected_data === "string" && Object.prototype.hasOwnProperty.call(body, "expected_hora_inicio");
+        const expectedDate = hasExpectedState ? expected_data : agendamento.data;
+        const expectedHour = hasExpectedState ? expected_hora_inicio : agendamento.hora_inicio;
+        if (hasExpectedState && (agendamento.data !== expectedDate || agendamento.hora_inicio !== expectedHour)) {
+          return new Response(
+            JSON.stringify({ error: "A consulta foi remarcada. Confira a data e o horário atualizados antes de cancelar.", code: "appointment_state_changed" }),
+            { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        if (horarioConsultaPassou(agendamento.data, agendamento.hora_inicio)) {
+          return new Response(
+            JSON.stringify({ error: "O horário desta consulta já passou; fale com a clínica para atualizar o agendamento.", code: "appointment_state_changed" }),
+            { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
 
         // Update appointment status
-        const { error: updateError } = await supabase
+        let cancelQuery = supabase
           .from("agendamentos")
           .update({
             status: "cancelado",
-            nota_cancelamento: motivo || "Cancelado pelo paciente",
+            nota_cancelamento: String(motivo || "Cancelado pelo paciente").slice(0, 300),
             data_cancelamento: new Date().toISOString(),
           })
           .eq("id", agendamento_id)
           .eq("paciente_id", pacienteId)
-          .eq("clinica_id", pacienteClinicaId);
+          .eq("clinica_id", pacienteClinicaId)
+          .eq("data", expectedDate)
+          .in("status", ["agendado", "confirmado"])
+        cancelQuery = expectedHour === null
+          ? cancelQuery.is("hora_inicio", null)
+          : cancelQuery.eq("hora_inicio", expectedHour);
+        const { data: cancelado, error: updateError } = await cancelQuery.select("id").maybeSingle();
 
         if (updateError) throw updateError;
+        if (!cancelado) {
+          return new Response(
+            JSON.stringify({ error: "A consulta foi atualizada. Recarregue a página e tente novamente.", code: "appointment_state_changed" }),
+            { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
         result = { success: true, message: "Agendamento cancelado com sucesso" };
         break;
       }
 
       case "confirm_agendamento": {
-        const { agendamento_id } = body;
+        const { agendamento_id, expected_data, expected_hora_inicio } = body;
         if (!agendamento_id) return new Response(JSON.stringify({ error: "agendamento_id é obrigatório" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-        const { data: confirmado, error } = await supabase.from("agendamentos")
+        const { data: consulta, error: fetchError } = await supabase.from("agendamentos")
+          .select("id, data, hora_inicio, status")
+          .eq("id", agendamento_id).eq("paciente_id", pacienteId).eq("clinica_id", pacienteClinicaId)
+          .maybeSingle();
+        if (fetchError) throw fetchError;
+        if (consulta?.status === "confirmado") {
+          result = { success: true, message: "Consulta já estava confirmada" };
+          break;
+        }
+        if (!consulta || consulta.status !== "agendado") {
+          return new Response(JSON.stringify({ error: "A consulta foi atualizada e não pode mais ser confirmada.", code: "appointment_state_changed" }), { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+        const hasExpectedState = typeof expected_data === "string" && Object.prototype.hasOwnProperty.call(body, "expected_hora_inicio");
+        if (hasExpectedState && (consulta.data !== expected_data || consulta.hora_inicio !== expected_hora_inicio)) {
+          return new Response(JSON.stringify({ error: "A consulta foi remarcada. Confira a data e o horário atualizados antes de confirmar.", code: "appointment_state_changed" }), { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+        if (horarioConsultaPassou(consulta.data, consulta.hora_inicio)) {
+          return new Response(JSON.stringify({ error: "O horário desta consulta já passou e ela não pode mais ser confirmada.", code: "appointment_state_changed" }), { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+
+        let confirmQuery = supabase.from("agendamentos")
           .update({ status: "confirmado" })
           .eq("id", agendamento_id).eq("paciente_id", pacienteId)
           .eq("clinica_id", pacienteClinicaId)
-          .gte("data", todayISO()).eq("status", "agendado")
-          .select("id").maybeSingle();
+          .eq("data", hasExpectedState ? expected_data : consulta.data).eq("status", "agendado");
+        const expectedHour = hasExpectedState ? expected_hora_inicio : consulta.hora_inicio;
+        confirmQuery = expectedHour === null
+          ? confirmQuery.is("hora_inicio", null)
+          : confirmQuery.eq("hora_inicio", expectedHour);
+        const { data: confirmado, error } = await confirmQuery.select("id").maybeSingle();
         if (error) throw error;
-        if (!confirmado) return new Response(JSON.stringify({ error: "Consulta não encontrada ou não pode mais ser confirmada" }), { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        if (!confirmado) {
+          const { data: estadoAtual, error: estadoError } = await supabase.from("agendamentos")
+            .select("status")
+            .eq("id", agendamento_id).eq("paciente_id", pacienteId).eq("clinica_id", pacienteClinicaId)
+            .maybeSingle();
+          if (estadoError) throw estadoError;
+          if (estadoAtual?.status === "confirmado") {
+            result = { success: true, message: "Consulta já estava confirmada" };
+            break;
+          }
+          return new Response(JSON.stringify({ error: "A consulta foi atualizada e não pode mais ser confirmada.", code: "appointment_state_changed" }), { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
         result = { success: true, message: "Consulta confirmada" };
         break;
       }
 
+      case "get_remarcacao_limite": {
+        // Só informativo para o portal (max do campo de data). A recusa de
+        // fato continua em remarcarAgendamento, com o mesmo cálculo.
+        result = { limite: await limiteDataRemarcacao(supabase, pacienteClinicaId) };
+        break;
+      }
+
       case "reschedule_agendamento": {
-        const { agendamento_id, nova_data, novo_horario } = body;
-        if (!agendamento_id || !nova_data || !novo_horario) {
-          return new Response(
-            JSON.stringify({ error: "agendamento_id, nova_data, novo_horario são obrigatórios" }),
-            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
-        }
-
-        // Fetch original appointment
-        const { data: agendamento, error: fetchError } = await supabase
-          .from("agendamentos")
-          .select("id, medico_id, data, paciente_id, tipo")
-          .eq("id", agendamento_id)
-          .eq("paciente_id", pacienteId)
-          .eq("clinica_id", pacienteClinicaId)
-          .single();
-
-        if (fetchError || !agendamento) {
-          return new Response(
-            JSON.stringify({ error: "Agendamento não encontrado" }),
-            { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
-        }
-
-        // Validate new date is not in past (date-only comparison, see above)
-        if (nova_data < todayISO()) {
-          return new Response(
-            JSON.stringify({ error: "A nova data não pode ser no passado" }),
-            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
-        }
-
-        const slot = await validatePortalSlot(
+        const resposta = await remarcarAgendamento(
           supabase,
-          pacienteClinicaId,
-          agendamento.medico_id,
-          nova_data,
-          novo_horario,
-          agendamento_id,
+          { pacienteId, clinicaId: pacienteClinicaId },
+          body,
+          { validarSlot: validatePortalSlot },
         );
-        if (slot.error) {
-          return new Response(JSON.stringify({ error: slot.error }), {
-            status: 409,
+        if (resposta.status !== 200) {
+          return new Response(JSON.stringify(resposta.body), {
+            status: resposta.status,
             headers: { ...corsHeaders, "Content-Type": "application/json" },
           });
         }
-
-        // Check no double-booking at new time
-        const { data: conflictingSlots, error: conflictError } = await supabase
-          .from("agendamentos")
-          .select("id")
-          .eq("medico_id", agendamento.medico_id)
-          .eq("clinica_id", pacienteClinicaId)
-          .eq("data", nova_data)
-          .eq("hora_inicio", novo_horario)
-          .not("status", "in", '("cancelado")')
-          .neq("id", agendamento_id)
-          .limit(1);
-
-        if (conflictError) throw conflictError;
-
-        if (conflictingSlots && conflictingSlots.length > 0) {
-          return new Response(
-            JSON.stringify({ error: "Este horário já está ocupado na nova data" }),
-            { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
-        }
-
-        const endTime = addMinutes(novo_horario, slot.duration);
-
-        // Update appointment
-        const { error: updateError } = await supabase
-          .from("agendamentos")
-          .update({
-            data: nova_data,
-            hora_inicio: novo_horario,
-            hora_fim: endTime,
-            status: "pendente",
-          })
-          .eq("id", agendamento_id)
-          .eq("paciente_id", pacienteId)
-          .eq("clinica_id", pacienteClinicaId);
-
-        if (updateError) throw updateError;
-        result = { success: true, message: "Agendamento remarcado com sucesso" };
+        result = resposta.body;
         break;
       }
 
@@ -786,6 +662,12 @@ Deno.serve(async (req) => {
     });
   } catch (error: any) {
     console.error("Erro portal:", error);
+    if (error?.code === "23P01") {
+      return new Response(JSON.stringify({ error: "Esse horário acabou de ser ocupado. Escolha outro horário disponível." }), {
+        status: 409,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
     return new Response(JSON.stringify({ error: "Não foi possível processar a solicitação. Tente novamente mais tarde." }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },

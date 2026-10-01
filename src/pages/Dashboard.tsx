@@ -1,3 +1,4 @@
+import { nomeMedico } from '@/lib/formatters';
 import { useState, useMemo, useEffect } from 'react';
 import { DoctorDashboard } from '@/components/dashboard/DoctorDashboard';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -8,7 +9,9 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
-import { usePacientes, useAgendamentos, useLancamentos, useEstoque, useMedicos, useFilaAtendimento } from '@/hooks/useSupabaseData';
+import { useAgendamentosPeriodo, useSupabaseQuery, useEstoque, useMedicos, useFilaAtendimento } from '@/hooks/useSupabaseData';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
 import { useCurrentMedico } from '@/hooks/useCurrentMedico';
 import {
   Users, Calendar, Clock, UserPlus, CalendarPlus, ArrowRight, ArrowUpRight,
@@ -265,17 +268,75 @@ function OperationalDashboard({ roles, nome }: { roles: string[]; nome?: string 
 // ─── Main Dashboard ────────────────────────────────────────
 export default function Dashboard() {
   const { profile: user, isAdmin } = useSupabaseAuth();
-  const { data: pacientes = [], isLoading: loadingPacientes } = usePacientes();
-  const { data: agendamentos = [], isLoading: loadingAgendamentos } = useAgendamentos();
-  const { data: lancamentos = [], isLoading: loadingLancamentos } = useLancamentos();
+  const { isMedicoOnly } = useCurrentMedico();
+
+  // Decide o painel ANTES de carregar dados. Antes, médico e recepção baixavam
+  // pacientes, agenda, lançamentos e estoque da clínica inteira só para depois
+  // verem um painel que não usa nada disso.
+  if (isMedicoOnly) {
+    return <DoctorDashboard userName={user?.nome || 'Doutor(a)'} />;
+  }
+  if (!isAdmin()) {
+    return <OperationalDashboard roles={user?.roles || []} nome={user?.nome} />;
+  }
+  return <AdminDashboard />;
+}
+
+/** Primeiro dia do mês, `n` meses atrás, como yyyy-MM-dd. */
+function inicioDoMes(mesesAtras: number) {
+  const d = new Date();
+  return format(new Date(d.getFullYear(), d.getMonth() - mesesAtras, 1), 'yyyy-MM-dd');
+}
+
+function AdminDashboard() {
+  const { profile: user } = useSupabaseAuth();
+  const hoje = format(new Date(), 'yyyy-MM-dd');
+  // Gráficos e indicadores cobrem os últimos 6 meses; "próximos" olha 60 dias à frente.
+  const seisMeses = inicioDoMes(5);
+  const daquiA60 = format(new Date(Date.now() + 60 * 86400000), 'yyyy-MM-dd');
+
+  const { data: agendamentos = [], isLoading: loadingAgendamentos } = useAgendamentosPeriodo(seisMeses, daquiA60);
+  const { data: lancamentos = [], isLoading: loadingLancamentos } = useSupabaseQuery<any>('lancamentos', {
+    orderBy: { column: 'data', ascending: false },
+    filters: [{ column: 'data', operator: 'gte', value: seisMeses }],
+  });
   const { data: medicos = [], isLoading: loadingMedicos } = useMedicos();
   const { data: estoque = [], isLoading: loadingEstoque } = useEstoque();
   const { data: fila = [] } = useFilaAtendimento();
-  const { medicoId, isMedicoOnly } = useCurrentMedico();
 
-  const isLoading = loadingPacientes || loadingAgendamentos || loadingLancamentos || loadingMedicos || loadingEstoque;
+  const { data: resumo, isLoading: loadingResumo } = useQuery({
+    queryKey: ['dashboard-admin-resumo', user?.clinica_id, seisMeses],
+    enabled: !!user?.clinica_id,
+    staleTime: 60_000,
+    queryFn: async () => {
+      const db = supabase as any;
+      const [totalPac, pacRecentes, totalAg, totalLanc, vencidos] = await Promise.all([
+        db.from('pacientes').select('id', { count: 'exact', head: true }),
+        db.from('pacientes').select('id, nome, created_at').gte('created_at', seisMeses + 'T00:00:00')
+          .order('created_at', { ascending: false }).limit(1000),
+        db.from('agendamentos').select('id', { count: 'exact', head: true }),
+        db.from('lancamentos').select('id', { count: 'exact', head: true }),
+        // Mesma regra de Contas a Receber: "atrasado", ou pendente com vencimento
+        // passado. ("vencido" não existe no enum status_pagamento — a consulta
+        // anterior falhava e o indicador ficava sempre zerado.)
+        db.from('lancamentos').select('valor, valor_pago').eq('tipo', 'receita')
+          .or(`status.eq.atrasado,and(status.in.(pendente,parcial),data_vencimento.lt.${hoje})`).limit(1000),
+      ]);
+      for (const r of [totalPac, pacRecentes, totalAg, totalLanc, vencidos]) if (r.error) throw r.error;
+      return {
+        totalPacientes: totalPac.count ?? 0,
+        pacientesRecentes: (pacRecentes.data ?? []) as Array<{ id: string; nome: string; created_at: string | null }>,
+        totalAgendamentos: totalAg.count ?? 0,
+        totalLancamentos: totalLanc.count ?? 0,
+        inadimplente: (vencidos.data ?? []).reduce((acc: number, l: any) => acc + Math.max(0, Number(l.valor || 0) - Number(l.valor_pago || 0)), 0),
+      };
+    },
+  });
+  const pacientes = resumo?.pacientesRecentes ?? [];
+  const totalPacientes = resumo?.totalPacientes ?? 0;
 
-  const hoje = format(new Date(), 'yyyy-MM-dd');
+  const isLoading = loadingResumo || loadingAgendamentos || loadingLancamentos || loadingMedicos || loadingEstoque;
+
   const hojeFormatado = format(new Date(), "EEEE, d 'de' MMMM", { locale: ptBR });
   const horaAtual = new Date().getHours();
   const saudacao = horaAtual < 12 ? 'Bom dia' : horaAtual < 18 ? 'Boa tarde' : 'Boa noite';
@@ -284,10 +345,7 @@ export default function Dashboard() {
   const mesAtual = new Date().getMonth();
   const anoAtual = new Date().getFullYear();
 
-  const baseAgendamentos = useMemo(() =>
-    isMedicoOnly && medicoId ? agendamentos.filter(a => a.medico_id === medicoId) : agendamentos,
-    [agendamentos, isMedicoOnly, medicoId]
-  );
+  const baseAgendamentos = agendamentos;
 
   // Consultas de hoje
   const consultasStats = useMemo(() => {
@@ -329,7 +387,7 @@ export default function Dashboard() {
 
     const receitasMes = filterByMonth('receita', 'pago');
     const aReceber = filterByMonth('receita', 'pendente');
-    const inadimplente = lancamentos.filter(l => l.tipo === 'receita' && l.status === 'vencido').reduce((acc, l) => acc + Number(l.valor), 0);
+    const inadimplente = resumo?.inadimplente ?? 0;
     const despesas = filterByMonth('despesa', 'pago');
     const saldoLiquido = receitasMes - despesas;
 
@@ -363,7 +421,7 @@ export default function Dashboard() {
     const ticketMedio = atendimentosFinalizadosMes > 0 ? receitasMes / atendimentosFinalizadosMes : 0;
 
     return { receitasMes, aReceber, inadimplente, despesas, saldoLiquido, trendReceita, receitaDia, monthlyChartData, sparkReceitas, atendimentosFinalizadosMes, ticketMedio };
-  }, [lancamentos, baseAgendamentos, hoje, mesAtual, anoAtual]);
+  }, [lancamentos, baseAgendamentos, resumo, hoje, mesAtual, anoAtual]);
 
   // Operacional e sparklines
   const operacionalStats = useMemo(() => {
@@ -400,7 +458,7 @@ export default function Dashboard() {
       .slice(0, 6);
 
     const recentActivities = [
-      ...pacientes.slice(-3).map(p => ({
+      ...pacientes.slice(0, 3).map(p => ({
         icon: UserPlus,
         title: `Paciente cadastrado: ${p.nome}`,
         subtitle: 'Novo cadastro',
@@ -430,27 +488,17 @@ export default function Dashboard() {
 
   const setupSteps = useMemo(() => [
     { label: 'Cadastrar médicos', done: medicos.length > 0, icon: Stethoscope, href: '/medicos', color: 'text-info' },
-    { label: 'Cadastrar pacientes', done: pacientes.length > 0, icon: Users, href: '/pacientes', color: 'text-primary' },
-    { label: 'Agendar consulta', done: agendamentos.length > 0, icon: Calendar, href: '/agenda', color: 'text-success' },
-    { label: 'Registrar financeiro', done: lancamentos.length > 0, icon: Wallet, href: '/financeiro', color: 'text-warning' },
-  ], [medicos, pacientes, agendamentos, lancamentos]);
+    { label: 'Cadastrar pacientes', done: totalPacientes > 0, icon: Users, href: '/pacientes', color: 'text-primary' },
+    { label: 'Agendar consulta', done: (resumo?.totalAgendamentos ?? 0) > 0, icon: Calendar, href: '/agenda', color: 'text-success' },
+    { label: 'Registrar financeiro', done: (resumo?.totalLancamentos ?? 0) > 0, icon: Wallet, href: '/financeiro', color: 'text-warning' },
+  ], [medicos, totalPacientes, resumo]);
 
   const setupProgress = Math.round((setupSteps.filter(s => s.done).length / setupSteps.length) * 100);
 
   if (isLoading) return <DashboardSkeleton />;
 
-  // Doctor-specific dashboard
-  if (isMedicoOnly) {
-    return <DoctorDashboard userName={user?.nome || 'Doutor(a)'} />;
-  }
 
-  // O dashboard administrativo contém números financeiros e atalhos de todos
-  // os setores. Perfis operacionais recebem somente o espaço do próprio papel.
-  if (!isAdmin) {
-    return <OperationalDashboard roles={user?.roles || []} nome={user?.nome} />;
-  }
-
-  const hasData = pacientes.length > 0 || agendamentos.length > 0 || lancamentos.length > 0;
+  const hasData = totalPacientes > 0 || (resumo?.totalAgendamentos ?? 0) > 0 || (resumo?.totalLancamentos ?? 0) > 0;
   const firstName = user?.nome?.split(' ')[0] || 'Usuário';
 
   return (
@@ -670,7 +718,7 @@ export default function Dashboard() {
           <>
             {/* ─── KPI Cards ─── */}
             <motion.div variants={stagger} className="grid gap-4 grid-cols-2 lg:grid-cols-4">
-              <KPICard title="Total Pacientes" value={pacientes.length}
+              <KPICard title="Total Pacientes" value={totalPacientes}
                 subtitle={stats.novosPacientesMes > 0 ? `+${stats.novosPacientesMes} este mês` : `${stats.medicosAtivos} médicos ativos`}
                 icon={Users} color="primary" href="/pacientes" delay={0}
                 sparkData={stats.sparkPacientes} />
@@ -848,7 +896,7 @@ export default function Dashboard() {
                                   {medicoNome && (
                                     <>
                                       <span className="text-border">•</span>
-                                      <span>Dr(a). {medicoNome}</span>
+                                      <span>{nomeMedico(medicoNome)}</span>
                                     </>
                                   )}
                                   {ag.tipo && ag.tipo !== 'consulta' && (
@@ -918,7 +966,7 @@ export default function Dashboard() {
                     <div className="flex items-center justify-between text-xs">
                       <span className="text-muted-foreground">Pacientes</span>
                       <Badge variant="secondary" className="text-[10px] tabular-nums">
-                        {pacientes.length}
+                        {totalPacientes}
                       </Badge>
                     </div>
                   </div>

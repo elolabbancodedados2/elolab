@@ -37,10 +37,7 @@ import {
   FileText,
   DatabaseBackup,
   Bell,
-  History,
-  SlidersHorizontal,
   MessageSquarePlus,
-  GraduationCap,
 } from 'lucide-react';
 import { AppRole } from '@/contexts/SupabaseAuthContext';
 
@@ -70,19 +67,16 @@ export const menuGroups: MenuGroup[] = [
     icon: Gauge,
     color: '#6366f1',
     items: [
+      // Preferências, histórico, indicadores, treinamento, feedback e segurança
+      // da conta ficam no menu do avatar (Navbar): são da pessoa, não do fluxo
+      // de trabalho, e lotavam o grupo com 11 itens.
       { label: 'Dashboard', icon: LayoutDashboard, href: '/dashboard' },
-      { label: 'Minhas Preferências', icon: SlidersHorizontal, href: '/preferencias' },
-      { label: 'Notificações', icon: Bell, href: '/notificacoes' },
-      { label: 'Meu Histórico', icon: History, href: '/meu-historico' },
-      { label: 'Enviar Feedback', icon: MessageSquarePlus, href: '/feedback' },
-      { label: 'Meus Indicadores', icon: ActivitySquare, href: '/indicadores' },
-      { label: 'Treinamento', icon: GraduationCap, href: '/treinamento' },
       { label: 'Agenda', icon: CalendarRange, href: '/agenda' },
+      { label: 'Notificações', icon: Bell, href: '/notificacoes' },
       { label: 'Chat Interno', icon: MessageCircle, href: '/chat' },
       // `medico` faltava aqui, mas a rota de /tarefas já o libera — o médico
       // tinha acesso e nenhum caminho para chegar.
       { label: 'Tarefas', icon: ListChecks, href: '/tarefas', roles: ['admin', 'recepcao', 'enfermagem', 'financeiro', 'medico'] },
-      { label: 'Segurança da Conta', icon: Shield, href: '/seguranca' },
     ],
   },
   {
@@ -188,9 +182,9 @@ export const menuGroups: MenuGroup[] = [
       { label: 'Agente IA', icon: BotMessageSquare, href: '/agente-ia' },
       { label: 'Configurações', icon: Settings2, href: '/configuracoes' },
       { label: 'Configurações Avançadas', icon: Gauge, href: '/configuracoes-avancadas' },
-      { label: 'Acesso de Suporte', icon: Shield, href: '/acesso-assistido', roles: ['admin'] },
+      { label: 'Liberar Acesso ao Suporte', icon: Shield, href: '/acesso-assistido', roles: ['admin'] },
       { label: 'Direitos LGPD', icon: ScrollText, href: '/lgpd-pacientes' },
-      { label: 'Suporte', icon: MessageCircle, href: '/suporte' },
+      { label: 'Falar com o Suporte', icon: MessageCircle, href: '/suporte' },
     ],
   },
   {

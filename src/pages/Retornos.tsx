@@ -1,3 +1,4 @@
+import { nomeMedico } from '@/lib/formatters';
 import { useState, useMemo, useCallback } from 'react';
 import { format, parseISO, isPast, differenceInDays, addDays, isWithinInterval, startOfDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -28,6 +29,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import {
   CalendarClock, AlertTriangle, CheckCircle2, Phone, Clock, Filter, Search,
   CalendarPlus, CalendarDays, TrendingUp, Loader2, CalendarIcon, RefreshCw, Ban,
+  RotateCcw,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -62,6 +64,9 @@ export default function RetornosControl() {
   const [horaAgendamento, setHoraAgendamento] = useState('09:00');
   const [isAgendando, setIsAgendando] = useState(false);
   const [cancelando, setCancelando] = useState<Retorno | null>(null);
+  /** Confirmação antes de marcar realizado — antes era 1 clique sem volta. */
+  const [realizando, setRealizando] = useState<Retorno | null>(null);
+  const [isRealizando, setIsRealizando] = useState(false);
   const [isCancelando, setIsCancelando] = useState(false);
   const queryClient = useQueryClient();
 
@@ -83,7 +88,7 @@ export default function RetornosControl() {
   const getPacienteTelefone = useCallback((id: string) => pacientes.find(p => p.id === id)?.telefone || null, [pacientes]);
   const getMedicoNome = useCallback((id: string) => {
     const m = medicos.find(m => m.id === id);
-    return m ? `Dr(a). ${m.nome || m.crm}` : 'Médico';
+    return m ? `${nomeMedico(m.nome || m.crm)}` : 'Médico';
   }, [medicos]);
 
   const hoje = useMemo(() => new Date(), []);
@@ -130,15 +135,35 @@ export default function RetornosControl() {
     : 0;
 
   const marcarRealizado = async (id: string) => {
+    setIsRealizando(true);
+    try {
+      const { error } = await supabase
+        .from('retornos')
+        .update({ status: 'realizado' } as any)
+        .eq('id', id);
+
+      if (error) {
+        toast.error('Erro ao atualizar retorno', { description: mensagemDeErro(error) });
+      } else {
+        toast.success('Retorno marcado como realizado');
+        queryClient.invalidateQueries({ queryKey: ['retornos'] });
+      }
+    } finally {
+      setIsRealizando(false);
+      setRealizando(null);
+    }
+  };
+
+  /** Desfazer um "realizado" marcado por engano — antes não havia como voltar. */
+  const desfazerRealizado = async (r: Retorno) => {
     const { error } = await supabase
       .from('retornos')
-      .update({ status: 'realizado' } as any)
-      .eq('id', id);
-
+      .update({ status: 'pendente' } as any)
+      .eq('id', r.id);
     if (error) {
-      toast.error('Erro ao atualizar retorno', { description: mensagemDeErro(error) });
+      toast.error('Erro ao reabrir retorno', { description: mensagemDeErro(error) });
     } else {
-      toast.success('Retorno marcado como realizado');
+      toast.info('Retorno reaberto como pendente');
       queryClient.invalidateQueries({ queryKey: ['retornos'] });
     }
   };
@@ -300,11 +325,14 @@ export default function RetornosControl() {
     );
   }
 
+  // Classes completas: Tailwind compila classes estáticas — o template
+  // `text-${kpi.color}` gerava classe inexistente e "Atrasados" nunca ficava
+  // vermelho.
   const kpis = [
-    { key: 'atrasado', label: 'Atrasados', value: atrasados, icon: AlertTriangle, color: 'destructive' as const, ring: 'ring-destructive' },
-    { key: 'pendente', label: 'Pendentes', value: pendentes, icon: CalendarClock, color: 'warning' as const, ring: 'ring-warning' },
-    { key: 'proximos7', label: 'Próximos 7 dias', value: proximos7, icon: CalendarDays, color: 'primary' as const, ring: 'ring-primary' },
-    { key: 'realizado', label: 'Realizados', value: realizados, icon: CheckCircle2, color: 'success' as const, ring: 'ring-success', extra: `${taxaComparecimento}% comparecimento` },
+    { key: 'atrasado', label: 'Atrasados', value: atrasados, icon: AlertTriangle, text: 'text-destructive', bg: 'bg-destructive/10', ring: 'ring-destructive' },
+    { key: 'pendente', label: 'Pendentes', value: pendentes, icon: CalendarClock, text: 'text-warning', bg: 'bg-warning/10', ring: 'ring-warning' },
+    { key: 'proximos7', label: 'Próximos 7 dias', value: proximos7, icon: CalendarDays, text: 'text-primary', bg: 'bg-primary/10', ring: 'ring-primary' },
+    { key: 'realizado', label: 'Realizados', value: realizados, icon: CheckCircle2, text: 'text-success', bg: 'bg-success/10', ring: 'ring-success', extra: `${taxaComparecimento}% comparecimento` },
   ];
 
   return (
@@ -357,11 +385,11 @@ export default function RetornosControl() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-xs font-medium text-muted-foreground uppercase">{kpi.label}</p>
-                    <p className={cn("text-3xl font-bold tabular-nums", `text-${kpi.color}`)}>{kpi.value}</p>
+                    <p className={cn("text-3xl font-bold tabular-nums", kpi.text)}>{kpi.value}</p>
                     {kpi.extra && <p className="text-[11px] text-muted-foreground mt-0.5 flex items-center gap-1"><TrendingUp className="h-3 w-3" />{kpi.extra}</p>}
                   </div>
-                  <div className={cn("h-11 w-11 rounded-xl flex items-center justify-center", `bg-${kpi.color}/10`)}>
-                    <kpi.icon className={cn("h-5 w-5", `text-${kpi.color}`)} />
+                  <div className={cn("h-11 w-11 rounded-xl flex items-center justify-center", kpi.bg)}>
+                    <kpi.icon className={cn("h-5 w-5", kpi.text)} />
                   </div>
                 </div>
               </CardContent>
@@ -439,8 +467,17 @@ export default function RetornosControl() {
                               </Button>
                             )}
                             {!['realizado', 'cancelado'].includes(r.statusCalculado) && (
-                              <Button size="sm" variant="outline" onClick={() => marcarRealizado(r.id)} className="gap-1">
+                              <Button size="sm" variant="outline" onClick={() => setRealizando(r)} className="gap-1">
                                 <CheckCircle2 className="h-3 w-3" /> Realizado
+                              </Button>
+                            )}
+                            {r.statusCalculado === 'realizado' && (
+                              <Button
+                                size="sm" variant="ghost" className="gap-1 text-muted-foreground"
+                                aria-label="Reabrir retorno marcado como realizado"
+                                onClick={() => desfazerRealizado(r)}
+                              >
+                                <RotateCcw className="h-3 w-3" /> Reabrir
                               </Button>
                             )}
                             {!['realizado', 'cancelado'].includes(r.statusCalculado) && (
@@ -533,6 +570,18 @@ export default function RetornosControl() {
         variant="destructive"
         onConfirm={cancelarRetorno}
         isLoading={isCancelando}
+      />
+
+      <ConfirmDialog
+        open={Boolean(realizando)}
+        onOpenChange={(open) => !open && setRealizando(null)}
+        title="Marcar retorno como realizado"
+        description={`Confirmar que ${realizando ? getPacienteNome(realizando.paciente_id) : 'paciente'} compareceu ao retorno${
+          realizando ? ` previsto para ${format(parseISO(realizando.data_retorno_prevista), 'dd/MM/yyyy')}` : ''
+        }?`}
+        confirmLabel="Sim, foi realizado"
+        onConfirm={() => realizando && marcarRealizado(realizando.id)}
+        isLoading={isRealizando}
       />
     </div>
   );

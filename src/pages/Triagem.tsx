@@ -31,6 +31,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { pacienteCorresponde } from '@/lib/buscaPaciente';
+import { canalUnico } from '@/lib/realtimeCanal';
 
 // ─── Manchester Triage Colors ──────────────────────────────
 const RISCO = {
@@ -191,7 +192,7 @@ export default function TriagemPage() {
   // Realtime subscription for triagens
   React.useEffect(() => {
     const ch = supabase
-      .channel('triagem-realtime')
+      .channel(canalUnico('triagem-realtime'))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'triagens' }, () => {
         queryClient.invalidateQueries({ queryKey: ['triagens'] });
       })
@@ -237,15 +238,15 @@ export default function TriagemPage() {
 
   const handleSave = async () => {
     if (!formData.paciente_id || !formData.pressao_arterial || !formData.queixa_principal.trim()) {
-      toast.error('Preencha paciente, pressao arterial e queixa principal.'); return;
+      toast.error('Preencha paciente, pressão arterial e queixa principal.'); return;
     }
     if (!user?.id || !profile?.clinica_id) {
-      toast.error('Sua sessao clinica nao esta pronta. Atualize a pagina e tente novamente.'); return;
+      toast.error('Sua sessão clínica não está pronta. Atualize a página e tente novamente.'); return;
     }
     if (formData.agendamento_id) {
       const agendamento = agendamentos.find((a: any) => a.id === formData.agendamento_id);
       if (!agendamento || agendamento.paciente_id !== formData.paciente_id) {
-        toast.error('O agendamento selecionado nao pertence a este paciente.'); return;
+        toast.error('O agendamento selecionado não pertence a este paciente.'); return;
       }
     }
     if (!formData.paciente_id || !formData.pressao_arterial) {
@@ -701,6 +702,11 @@ export default function TriagemPage() {
                   >
                     <span className={cn('h-2.5 w-2.5 rounded-full', cfg.dot)} />
                     {cfg.label}
+                    {/* Prazo-alvo do protocolo: o enfermeiro classifica com o
+                        relógio na mão, não decorado. */}
+                    <span className="text-[11px] font-normal opacity-80">
+                      ({cfg.sublabel})
+                    </span>
                   </button>
                 ))}
               </div>

@@ -170,7 +170,9 @@ export async function resolveExamPrice(params: {
   throw new Error(`Não há preço cadastrado para o exame "${examName}". Cadastre o valor antes do check-in.`);
 }
 
-export async function createAutoBilling(params: AutoBillingParams): Promise<boolean> {
+export type AutoBillingOutcome = 'created' | 'repaired' | 'already_exists' | 'free';
+
+export async function createAutoBillingDetailed(params: AutoBillingParams): Promise<AutoBillingOutcome> {
   const {
     agendamentoId,
     pacienteId,
@@ -202,7 +204,7 @@ export async function createAutoBilling(params: AutoBillingParams): Promise<bool
   // Check if lancamento already exists for this agendamento (bypass RLS issue by also checking without clinica filter)
   let existingQuery = (supabase as any)
     .from('lancamentos')
-    .select('id, valor, categoria')
+    .select('id, valor, categoria, status')
     .eq('agendamento_id', agendamentoId);
   if (resolvedClinicaId) existingQuery = existingQuery.eq('clinica_id', resolvedClinicaId);
   const { data: existing, error: existingError } = await existingQuery.limit(1);
@@ -210,6 +212,9 @@ export async function createAutoBilling(params: AutoBillingParams): Promise<bool
 
   if (existing && existing.length > 0) {
     const existingBilling = existing[0];
+    if (['cancelado', 'estornado'].includes(String(existingBilling.status))) {
+      throw new Error('A cobrança anterior deste agendamento foi cancelada ou estornada. Regularize-a no financeiro antes do check-in.');
+    }
     const existingIsExam = Boolean(tipoExame?.trim()) || isGenericExamType(tipoConsulta);
 
     // Repair rows created by the old flow, which inserted an exam with zero
@@ -225,21 +230,18 @@ export async function createAutoBilling(params: AutoBillingParams): Promise<bool
         clinicaId: resolvedClinicaId,
         userId: authUserId,
       });
-      let repairQuery = (supabase as any)
-        .from('lancamentos')
-        .update({
-          categoria: 'exame',
-          descricao: `Exame: ${examName} - ${pacienteNome}`,
-          valor: examValue,
-        })
-        .eq('id', existingBilling.id);
-      if (resolvedClinicaId) repairQuery = repairQuery.eq('clinica_id', resolvedClinicaId);
-      const { error: repairError } = await repairQuery;
+      const { data: repaired, error: repairError } = await (supabase as any).rpc('reparar_cobranca_exame_atomica', {
+        p_lancamento_id: existingBilling.id,
+        p_clinica_id: resolvedClinicaId,
+        p_descricao: `Exame: ${examName} - ${pacienteNome}`,
+        p_valor: examValue,
+      });
       if (repairError) throw repairError;
-      return true;
+      if (repaired !== true) throw new Error('A cobrança do exame mudou ou não pode ser corrigida. Atualize o financeiro e tente novamente.');
+      return 'repaired';
     }
 
-    return false; // Already billed
+    return 'already_exists';
   }
 
   let valor = 0;
@@ -338,7 +340,7 @@ export async function createAutoBilling(params: AutoBillingParams): Promise<bool
       // Sem cobrança e sem erro. Como não há lançamento, também não há saldo
       // devedor — é assim que retorno gratuito atravessa a trava de pagamento
       // da etapa 4 sem precisar de exceção escrita em lugar nenhum.
-      return false;
+      return 'free';
     }
     throw new Error(
       isExam
@@ -352,31 +354,28 @@ export async function createAutoBilling(params: AutoBillingParams): Promise<bool
     ? `${descricao} - ${pacienteNome} - ${tipoConsulta}`
     : `${descricao} — ${pacienteNome}`;
 
-  const { error } = await (supabase as any).from('lancamentos').insert({
-    tipo: 'receita',
-    categoria,
-    descricao: fullDescricao,
-    valor,
-    data,
-    data_vencimento: data,
-    status: 'pendente',
-    paciente_id: pacienteId,
-    agendamento_id: agendamentoId,
-    forma_pagamento: null,
-    clinica_id: resolvedClinicaId,
+  const { data: billingResult, error } = await (supabase as any).rpc('criar_cobranca_checkin_atomica', {
+    p_agendamento_id: agendamentoId,
+    p_clinica_id: resolvedClinicaId,
+    p_paciente_id: pacienteId,
+    p_categoria: categoria,
+    p_descricao: fullDescricao,
+    p_valor: valor,
+    p_data: data,
   });
 
   if (error) {
-    // 23505 = unique_violation. O índice lancamentos_um_por_agendamento
-    // (migration 20260812130000) fecha a corrida entre dois atendentes fazendo
-    // check-in ao mesmo tempo. Perder essa corrida não é erro: significa que a
-    // cobrança já foi criada pelo outro, que é exatamente o resultado desejado.
-    if ((error as any).code === '23505') {
-      return false;
-    }
     console.error('Auto-billing insert error:', error);
     throw error;
   }
+  if (billingResult === 'already_exists') return 'already_exists';
+  if (billingResult !== 'created') throw new Error('Não foi possível confirmar a criação da cobrança.');
 
-  return true;
+  return 'created';
+}
+
+/** Backward-compatible boolean result for existing callers outside check-in. */
+export async function createAutoBilling(params: AutoBillingParams): Promise<boolean> {
+  const outcome = await createAutoBillingDetailed(params);
+  return outcome === 'created' || outcome === 'repaired';
 }

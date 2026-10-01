@@ -21,6 +21,7 @@ import { format, differenceInMinutes } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { escapeHtml } from '@/lib/html';
+import { canalUnico } from '@/lib/realtimeCanal';
 
 const TUBOS = [
   { color: 'bg-purple-500', label: 'EDTA (Roxo)', nome: 'Roxo', volume: '4mL' },
@@ -101,7 +102,7 @@ export default function MapaColeta() {
 
   useEffect(() => {
     fetchColetas();
-    const channel = supabase.channel('mapa-coleta-rt')
+    const channel = supabase.channel(canalUnico('mapa-coleta-rt'))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'coletas_laboratorio' }, fetchColetas)
       .subscribe();
     return () => { supabase.removeChannel(channel); };

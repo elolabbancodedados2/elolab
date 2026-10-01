@@ -21,6 +21,7 @@ export function normalizarTexto(valor: string | null | undefined): string {
     .toLowerCase()
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '') // marcas de acento, já separadas pelo NFD
+    .replace(/\s+/g, ' ')
     .trim();
 }
 
@@ -36,15 +37,15 @@ export interface PacienteBuscavel {
   cpf?: string | null;
   telefone?: string | null;
   email?: string | null;
-  cartao_sus?: string | null;
 }
 
 /**
  * O paciente corresponde ao termo digitado?
  *
- * Casa por nome (e nome social), CPF, telefone, e-mail e cartão do SUS,
- * ignorando acento, caixa e máscara. Um termo só de dígitos é procurado nos
- * campos numéricos; um termo com letras, nos campos de texto.
+ * Casa por nome (e nome social), CPF, telefone e e-mail, ignorando acento,
+ * caixa e máscara. Um termo com 3+ dígitos é procurado em CPF e telefone; a
+ * busca textual roda sempre. (Não há cartão do SUS: `pacientes` não tem essa
+ * coluna, então prometer essa busca só enganaria quem lê o código.)
  */
 export function pacienteCorresponde(paciente: PacienteBuscavel, termo: string): boolean {
   const busca = termo.trim();
@@ -52,11 +53,10 @@ export function pacienteCorresponde(paciente: PacienteBuscavel, termo: string): 
 
   const digitos = apenasDigitos(busca);
 
-  // Termo numérico: CPF, telefone ou cartão do SUS, sem depender da máscara.
+  // Termo numérico: CPF ou telefone, sem depender da máscara.
   if (digitos.length >= 3) {
     if (apenasDigitos(paciente.cpf).includes(digitos)) return true;
     if (apenasDigitos(paciente.telefone).includes(digitos)) return true;
-    if (apenasDigitos(paciente.cartao_sus).includes(digitos)) return true;
   }
 
   // A busca textual roda SEMPRE, inclusive para termo só de dígitos.

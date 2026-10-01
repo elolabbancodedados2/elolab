@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { queryRootsForOperationalEvent } from '@/lib/operationalEvents';
+import { canalUnico } from '@/lib/realtimeCanal';
 
 type OperationalEventRow = { aggregate_type?: string };
 
@@ -14,7 +15,7 @@ export function useOperationalEvents() {
     if (!clinicaId) return;
 
     const channel = supabase
-      .channel(`operational-events:${clinicaId}`)
+      .channel(canalUnico(`operational-events:${clinicaId}`))
       .on(
         'postgres_changes',
         {

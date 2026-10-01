@@ -2,6 +2,7 @@ import { useEffect, useRef, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
+import { canalUnico } from '@/lib/realtimeCanal';
 
 const CRITICAL_TABLES = [
   { table: 'agendamentos', queryKey: 'agendamentos' },
@@ -42,7 +43,7 @@ export function useRealtimeSubscription() {
     lastRealtimeEventRef.current = Date.now();
 
     // Primary: Realtime subscription
-    let channel = supabase.channel('global-realtime');
+    let channel = supabase.channel(canalUnico('global-realtime'));
 
     CRITICAL_TABLES.forEach(({ table, queryKey }) => {
       channel = channel.on(

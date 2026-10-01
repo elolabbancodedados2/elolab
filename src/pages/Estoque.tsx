@@ -22,6 +22,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import { useEstoque } from '@/hooks/useSupabaseData';
+import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { useQueryClient } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
 import { CardGridSkeleton, TableSkeleton } from '@/components/ui/loading-skeleton';
@@ -81,12 +82,13 @@ export default function Estoque() {
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
 
   const queryClient = useQueryClient();
+  const { user, profile } = useSupabaseAuth();
   const { data: estoque = [], isLoading } = useEstoque();
 
   // Movement timeline query
   const { data: movimentacoes = [] } = useQuery({
-    queryKey: ['movimentacoes-timeline', timelineItemId],
-    enabled: !!timelineItemId,
+    queryKey: ['movimentacoes-timeline', user?.id ?? null, profile?.clinica_id ?? null, timelineItemId],
+    enabled: !!timelineItemId && !!user && !!profile?.clinica_id,
     queryFn: async () => {
       const { data } = await supabase
         .from('movimentacoes_estoque')

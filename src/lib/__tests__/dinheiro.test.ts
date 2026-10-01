@@ -1,5 +1,23 @@
 import { describe, it, expect } from 'vitest';
-import { emCentavos, mesmoValor, diferencaEmReais, arredondarReais } from '@/lib/dinheiro';
+import { emCentavos, mesmoValor, diferencaEmReais, arredondarReais, parseValorContado } from '@/lib/dinheiro';
+
+describe('parseValorContado', () => {
+  it('requires a value and accepts an explicitly counted zero', () => {
+    expect(parseValorContado('')).toBeNull();
+    expect(parseValorContado('   ')).toBeNull();
+    expect(parseValorContado('0')).toBe(0);
+  });
+
+  it('rejects invalid, infinite and negative values', () => {
+    expect(parseValorContado('abc')).toBeNull();
+    expect(parseValorContado('Infinity')).toBeNull();
+    expect(parseValorContado('-0.01')).toBeNull();
+  });
+
+  it('rounds valid amounts to cents', () => {
+    expect(parseValorContado('10.005')).toBe(10.01);
+  });
+});
 
 /**
  * O fechamento de caixa comparava `parseFloat(valorContado) === totais.final`.

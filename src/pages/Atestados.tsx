@@ -1,3 +1,4 @@
+import { nomeMedico } from '@/lib/formatters';
 import { useState, useMemo, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import {
@@ -272,7 +273,7 @@ export default function Atestados() {
   const getPacienteNome = (id: string) => pacientes.find(p => p.id === id)?.nome || 'Desconhecido';
   const getMedicoNome = (id: string) => {
     const m = medicos.find(m => m.id === id);
-    return m ? `Dr(a). ${m.nome || m.crm}` : 'Desconhecido';
+    return m ? `${nomeMedico(m.nome || m.crm)}` : 'Desconhecido';
   };
   const getTipoLabel = (tipo: string | null) => TIPOS_ATESTADO.find(t => t.value === tipo)?.label || tipo;
   const getTipoBadge = (tipo: string | null) => {

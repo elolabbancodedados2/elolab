@@ -1,3 +1,4 @@
+import { nomeMedico } from '@/lib/formatters';
 import { useEffect, useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -7,37 +8,35 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from '@/components/ui/command';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Search, Trash2, Loader2, MessageCircle } from 'lucide-react';
+import { PacienteCombobox } from '@/components/patients/PacienteCombobox';
+import { usePacienteResumo } from '@/hooks/useBuscaPacientes';
+import { Trash2, Loader2, MessageCircle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { mensagemDeErro } from '@/lib/erros';
 import { useQueryClient } from '@tanstack/react-query';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { todayDateOnly } from '@/lib/dateOnly';
-import { pacienteCorresponde } from '@/lib/buscaPaciente';
 
 interface Props {
   open: boolean;
   onOpenChange: (o: boolean) => void;
   initial: any | null;
-  pacientes: any[];
   medicos: any[];
   tipos: any[];
   salas: any[];
   onSaved?: () => void;
 }
 
-export function AppointmentDialog({ open, onOpenChange, initial, pacientes, medicos, tipos, salas, onSaved }: Props) {
+export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos, salas, onSaved }: Props) {
   const queryClient = useQueryClient();
   const { profile } = useSupabaseAuth() as any;
   const editing = !!initial?.id;
   const [tab, setTab] = useState('paciente');
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState<any>({});
-  const [pacSearch, setPacSearch] = useState('');
-  const [pacOpen, setPacOpen] = useState(false);
+  const [foraExpediente, setForaExpediente] = useState<string | null>(null);
 
   useEffect(() => {
     if (open) {
@@ -54,19 +53,12 @@ export function AppointmentDialog({ open, onOpenChange, initial, pacientes, medi
         send_whatsapp: false,
       });
       setTab('paciente');
-      setPacSearch('');
     }
   }, [open, initial]);
 
-  const paciente = pacientes.find(p => p.id === form.paciente_id);
-  // Ignora acento, caixa e máscara (ver src/lib/buscaPaciente.ts): marcar
-  // consulta é o momento em que a recepcionista tem o paciente na frente e o
-  // CPF na mão, digitado sem pontos.
-  const filteredPacs = pacSearch
-    ? pacientes.filter(p => pacienteCorresponde(p, pacSearch)).slice(0, 20)
-    : pacientes.slice(0, 20);
+  const { data: paciente } = usePacienteResumo(form.paciente_id);
 
-  const handleSave = async () => {
+  const handleSave = async (confirmouForaExpediente = false) => {
     if (!form.paciente_id) { toast.error('Selecione um paciente'); setTab('paciente'); return; }
     if (!form.medico_id) { toast.error('Selecione um médico'); setTab('consulta'); return; }
     if (!form.hora_inicio) { toast.error('Informe o horário'); setTab('consulta'); return; }
@@ -95,7 +87,8 @@ export function AppointmentDialog({ open, onOpenChange, initial, pacientes, medi
         const [h, m] = t.split(':').map(Number);
         return Number.isFinite(h) && Number.isFinite(m) ? h * 60 + m : null;
       };
-      const DURACAO_PADRAO = 30;
+      const tipoEscolhido = (tipos as any[]).find((t: any) => String(t.nome || '').toLocaleLowerCase('pt-BR') === String(form.tipo || '').toLocaleLowerCase('pt-BR'));
+      const DURACAO_PADRAO = Number(tipoEscolhido?.duracao_minutos) > 0 ? Number(tipoEscolhido.duracao_minutos) : 30;
       const novoInicio = toMin(form.hora_inicio);
       const novoFimInformado = toMin(form.hora_fim);
 
@@ -180,12 +173,32 @@ export function AppointmentDialog({ open, onOpenChange, initial, pacientes, medi
         setTab('consulta'); setSaving(false); return;
       }
 
+      // Fora do expediente cadastrado do médico: não bloqueia (encaixe antes da
+      // abertura é comum), mas pede confirmação. Antes salvava calado.
+      if (!confirmouForaExpediente) {
+        const diaSemana = new Date(`${form.data}T12:00:00`).getDay();
+        const { data: jornada } = await (supabase.from('medico_disponibilidade' as any)
+          .select('hora_inicio, hora_fim')
+          .eq('medico_id', form.medico_id).eq('dia_semana', diaSemana).eq('ativo', true) as any);
+        const dentro = ((jornada as any[]) || []).some((j) => {
+          const ji = toMin(j.hora_inicio); const jf = toMin(j.hora_fim);
+          return ji !== null && jf !== null && novoInicio >= ji && novoFim <= jf;
+        });
+        if (!dentro) {
+          const faixa = ((jornada as any[]) || []).map((j) => `${String(j.hora_inicio).slice(0, 5)}–${String(j.hora_fim).slice(0, 5)}`).join(', ');
+          setForaExpediente(faixa ? `O expediente do médico neste dia é ${faixa}.` : 'O médico não tem expediente cadastrado neste dia da semana.');
+          setSaving(false); return;
+        }
+      }
+
       const payload: any = {
         paciente_id: form.paciente_id,
         medico_id: form.medico_id,
         data: form.data,
         hora_inicio: form.hora_inicio.length === 5 ? form.hora_inicio + ':00' : form.hora_inicio,
-        hora_fim: form.hora_fim ? (form.hora_fim.length === 5 ? form.hora_fim + ':00' : form.hora_fim) : null,
+        hora_fim: form.hora_fim
+          ? (form.hora_fim.length === 5 ? form.hora_fim + ':00' : form.hora_fim)
+          : `${String(Math.floor(novoFim / 60)).padStart(2, '0')}:${String(novoFim % 60).padStart(2, '0')}:00`,
         tipo: form.tipo,
         status: form.status,
         sala_id: form.sala_id || null,
@@ -278,36 +291,7 @@ export function AppointmentDialog({ open, onOpenChange, initial, pacientes, medi
 
           <TabsContent value="paciente" className="space-y-3 mt-4">
             <Label>Buscar paciente</Label>
-            <Popover open={pacOpen} onOpenChange={setPacOpen}>
-              <PopoverTrigger asChild>
-                <Button variant="outline" className="w-full justify-start font-normal">
-                  <Search className="mr-2 h-4 w-4" />
-                  {paciente ? (paciente.nome_social || paciente.nome) : 'Nome, CPF ou telefone...'}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-[min(420px,calc(100vw-2rem))] p-0" align="start">
-                <Command shouldFilter={false}>
-                  <CommandInput placeholder="Buscar..." value={pacSearch} onValueChange={setPacSearch} />
-                  <CommandList>
-                    <CommandEmpty>Nenhum paciente encontrado.</CommandEmpty>
-                    <CommandGroup>
-                      {filteredPacs.map(p => (
-                        <CommandItem key={p.id} value={p.id} onSelect={() => {
-                          setForm({ ...form, paciente_id: p.id }); setPacOpen(false);
-                        }}>
-                          <div>
-                            <div className="font-medium">{p.nome_social || p.nome}</div>
-                            <div className="text-xs text-muted-foreground">
-                              {p.cpf && `CPF ${p.cpf}`} {p.telefone && `· ${p.telefone}`}
-                            </div>
-                          </div>
-                        </CommandItem>
-                      ))}
-                    </CommandGroup>
-                  </CommandList>
-                </Command>
-              </PopoverContent>
-            </Popover>
+            <PacienteCombobox value={form.paciente_id} onChange={(id) => setForm((f: any) => ({ ...f, paciente_id: id }))} />
             {paciente && (
               <div className="rounded-md border p-3 text-sm space-y-1">
                 <div className="font-medium">{paciente.nome_social || paciente.nome}</div>
@@ -327,7 +311,7 @@ export function AppointmentDialog({ open, onOpenChange, initial, pacientes, medi
                 <SelectTrigger><SelectValue placeholder="Selecione o médico" /></SelectTrigger>
                 <SelectContent>
                   {medicos.filter(m => m.ativo !== false).map(m => (
-                    <SelectItem key={m.id} value={m.id}>Dr(a). {m.nome || m.crm} · {m.especialidade || 'Geral'}</SelectItem>
+                    <SelectItem key={m.id} value={m.id}>{nomeMedico(m.nome || m.crm)} · {m.especialidade || 'Geral'}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -368,12 +352,14 @@ export function AppointmentDialog({ open, onOpenChange, initial, pacientes, medi
                     <SelectItem value="agendado">Agendado</SelectItem>
                     <SelectItem value="confirmado">Confirmado</SelectItem>
                     <SelectItem value="aguardando">Aguardando</SelectItem>
-                    <SelectItem value="em_atendimento">Em atendimento</SelectItem>
-                    <SelectItem value="finalizado">Finalizado</SelectItem>
                     <SelectItem value="cancelado">Cancelado</SelectItem>
                     <SelectItem value="faltou">Faltou</SelectItem>
                   </SelectContent>
                 </Select>
+                {/* 'em_atendimento' e 'finalizado' saíram do select manual:
+                    são estados OPERACIONAIS, que nascem da fila e da
+                    finalização com faturamento. Marcá-los à mão burlava o
+                    fluxo e deixava consulta sem cobrança. */}
               </div>
             </div>
             {salas.length > 0 && (
@@ -417,13 +403,25 @@ export function AppointmentDialog({ open, onOpenChange, initial, pacientes, medi
           </div>
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
-            <Button onClick={handleSave} disabled={saving}>
+            <Button onClick={() => handleSave()} disabled={saving}>
               {saving && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
               {editing ? 'Salvar' : 'Agendar'}
             </Button>
           </div>
         </DialogFooter>
       </DialogContent>
+      <AlertDialog open={!!foraExpediente} onOpenChange={(o) => !o && setForaExpediente(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Fora do expediente do médico</AlertDialogTitle>
+            <AlertDialogDescription>{foraExpediente} Deseja agendar mesmo assim?</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Escolher outro horário</AlertDialogCancel>
+            <AlertDialogAction onClick={() => { setForaExpediente(null); void handleSave(true); }}>Agendar mesmo assim</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   );
 }

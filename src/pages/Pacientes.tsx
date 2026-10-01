@@ -1,3 +1,4 @@
+import { nomeMedico } from '@/lib/formatters';
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -1595,7 +1596,7 @@ export default function Pacientes() {
                                   <p className="text-xs font-semibold">
                                     {format(new Date(a.data + 'T12:00'), 'dd/MM/yyyy', { locale: ptBR })} às {a.hora_inicio?.slice(0, 5)}
                                   </p>
-                                  {a.medicos && <p className="text-[11px] text-muted-foreground">Dr(a). {a.medicos.nome || a.medicos.crm}</p>}
+                                  {a.medicos && <p className="text-[11px] text-muted-foreground">{nomeMedico(a.medicos.nome || a.medicos.crm)}</p>}
                                   {a.observacoes && <p className="text-[11px] text-muted-foreground line-clamp-1">{a.observacoes}</p>}
                                 </div>
                               </div>
@@ -1704,7 +1705,7 @@ export default function Pacientes() {
                                   </span>
                                 </div>
                                 <p className="text-xs font-semibold">{ex.tipo_exame}</p>
-                                {ex.medicos && <p className="text-[11px] text-muted-foreground">Solicitante: Dr(a). {ex.medicos.nome || ex.medicos.crm}</p>}
+                                {ex.medicos && <p className="text-[11px] text-muted-foreground">Solicitante: {nomeMedico(ex.medicos.nome || ex.medicos.crm)}</p>}
                                 {ex.resultado && <p className="text-[11px] text-success">Resultado: {ex.resultado.substring(0, 80)}...</p>}
                                 {ex.observacoes && <p className="text-[11px] text-muted-foreground line-clamp-1">{ex.observacoes}</p>}
                               </div>
@@ -1760,7 +1761,7 @@ export default function Pacientes() {
                                         <Badge variant="secondary" className="text-[10px] px-1.5 py-0">{p.diagnostico_principal}</Badge>
                                       )}
                                       {p.medicos && (
-                                        <span className="text-[10px] text-muted-foreground">Dr(a). {p.medicos.nome || p.medicos.crm}</span>
+                                        <span className="text-[10px] text-muted-foreground">{nomeMedico(p.medicos.nome || p.medicos.crm)}</span>
                                       )}
                                     </div>
                                     <p className="text-xs font-semibold text-foreground truncate">{p.queixa_principal}</p>

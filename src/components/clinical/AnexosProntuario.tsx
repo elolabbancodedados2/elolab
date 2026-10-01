@@ -58,14 +58,19 @@ function storagePath(stored: string): string {
 
 /** Gera um link temporário (1h) para visualizar ou baixar o anexo. */
 async function signedUrlFor(stored: string): Promise<string | null> {
-  const { data, error } = await supabase.storage
-    .from(BUCKET)
-    .createSignedUrl(storagePath(stored), 3600);
-  if (error) {
+  try {
+    const { data, error } = await supabase.storage
+      .from(BUCKET)
+      .createSignedUrl(storagePath(stored), 3600);
+    if (error) {
+      console.error('Erro ao gerar link do anexo:', error);
+      return null;
+    }
+    return data?.signedUrl ?? null;
+  } catch (error) {
     console.error('Erro ao gerar link do anexo:', error);
     return null;
   }
-  return data?.signedUrl ?? null;
 }
 
 interface Anexo {
@@ -155,16 +160,19 @@ export function AnexosProntuario({
     }
 
     setUploading(true);
+    let uploadedPath: string | null = null;
+    let cleanupFailed = false;
     try {
       const fileExt = selectedFile.name.split('.').pop();
       const fileName = `${prontuarioId}/${Date.now()}.${fileExt}`;
 
       // Upload to Supabase Storage
       const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('medical-attachments')
+        .from(BUCKET)
         .upload(fileName, selectedFile);
 
       if (uploadError) throw uploadError;
+      uploadedPath = uploadData?.path || fileName;
 
       // Get current user
       const { data: { user } } = await supabase.auth.getUser();
@@ -199,10 +207,24 @@ export function AnexosProntuario({
       setDescricao('');
       onAnexoAdicionado();
     } catch (error) {
+      if (uploadedPath) {
+        try {
+          const { error: cleanupError } = await supabase.storage.from(BUCKET).remove([uploadedPath]);
+          if (cleanupError) {
+            cleanupFailed = true;
+            console.error('Falha ao limpar arquivo após erro no upload:', cleanupError);
+          }
+        } catch (cleanupError) {
+          cleanupFailed = true;
+          console.error('Falha ao limpar arquivo após erro no upload:', cleanupError);
+        }
+      }
       console.error('Erro ao fazer upload:', error);
       toast({
         title: 'Erro no upload',
-        description: 'Não foi possível enviar o arquivo.',
+        description: cleanupFailed
+          ? 'Não foi possível salvar os dados do anexo nem remover o arquivo temporário. Entre em contato com o suporte.'
+          : 'Não foi possível enviar o arquivo. O arquivo selecionado continua disponível para tentar novamente.',
         variant: 'destructive',
       });
     } finally {
@@ -216,9 +238,10 @@ export function AnexosProntuario({
     setLoading(true);
     try {
       // Delete from storage
-      await supabase.storage
-        .from('medical-attachments')
+      const { error: storageError } = await supabase.storage
+        .from(BUCKET)
         .remove([storagePath(anexo.url_arquivo)]);
+      if (storageError) throw storageError;
 
       // Delete from database
       const { error } = await supabase
@@ -262,8 +285,14 @@ export function AnexosProntuario({
   };
 
   const handleDownload = async (anexo: Anexo) => {
+    // Abra a aba durante o gesto do clique. Abrir depois do await costuma ser
+    // bloqueado pelo navegador como pop-up não solicitado.
+    const aba = window.open('about:blank', '_blank');
+    if (aba) aba.opener = null;
+
     const url = await signedUrlFor(anexo.url_arquivo);
     if (!url) {
+      aba?.close();
       toast({
         title: 'Erro',
         description: 'Não foi possível baixar o anexo.',
@@ -271,7 +300,15 @@ export function AnexosProntuario({
       });
       return;
     }
-    window.open(url, '_blank', 'noopener,noreferrer');
+    if (!aba) {
+      toast({
+        title: 'Download bloqueado',
+        description: 'Permita a abertura de uma nova aba para baixar este anexo.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    aba.location.replace(url);
   };
 
   const formatFileSize = (bytes: number | null) => {
@@ -397,8 +434,9 @@ export function AnexosProntuario({
 
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label>Arquivo *</Label>
+              <Label htmlFor="medical-attachment-file">Arquivo *</Label>
               <Input
+                id="medical-attachment-file"
                 type="file"
                 accept="image/jpeg,image/png,image/gif,image/webp,application/pdf"
                 onChange={handleFileSelect}

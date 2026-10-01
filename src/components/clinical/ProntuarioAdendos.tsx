@@ -1,3 +1,4 @@
+import { nomeMedico } from '@/lib/formatters';
 import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { FileEdit, Plus, Lock, Loader2, ScrollText } from 'lucide-react';
@@ -178,7 +179,7 @@ export function ProntuarioAdendos({ prontuarioId, medicoId, medicoNome, crm, dis
                       {format(new Date(a.created_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
                     </span>
                     <span className="text-[10px] text-muted-foreground">
-                      • Dr(a). {a.medico_nome} — CRM {a.crm}
+                      • {nomeMedico(a.medico_nome)} — CRM {a.crm}
                     </span>
                   </div>
                   <Badge variant="outline" className="text-[9px] px-1.5 py-0 font-mono">

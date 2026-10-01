@@ -1,3 +1,4 @@
+import { formatCurrency } from '@/lib/formatters';
 import { useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -465,7 +466,7 @@ export default function PainelAdmin() {
               <div className="p-2 rounded-lg bg-warning/10"><Crown className="h-5 w-5 text-warning" /></div>
               <div>
                 <p className="text-sm text-muted-foreground">Receita Recorrente</p>
-                <p className="text-2xl font-bold">R$ {revenue.toFixed(2)}</p>
+                <p className="text-2xl font-bold">{formatCurrency(revenue)}</p>
                 <p className="text-xs text-muted-foreground">/mês</p>
               </div>
             </div>
@@ -512,7 +513,7 @@ export default function PainelAdmin() {
             <Card>
               <CardHeader><CardTitle className="text-base">Situação comercial</CardTitle><CardDescription>Indicadores calculados diretamente das assinaturas.</CardDescription></CardHeader>
               <CardContent className="grid grid-cols-2 gap-4">
-                <div><p className="text-sm text-muted-foreground">Receita recorrente</p><p className="text-2xl font-bold text-success">R$ {revenue.toFixed(2)}</p></div>
+                <div><p className="text-sm text-muted-foreground">Receita recorrente</p><p className="text-2xl font-bold text-success">{formatCurrency(revenue)}</p></div>
                 <div><p className="text-sm text-muted-foreground">Conversão</p><p className="text-2xl font-bold">{conversionRate}%</p></div>
                 <div><p className="text-sm text-muted-foreground">Em trial</p><p className="text-2xl font-bold">{saudePlataforma?.clinicas_em_trial ?? trialSubs}</p></div>
                 <div><p className="text-sm text-muted-foreground">Churn acumulado</p><p className="text-2xl font-bold text-warning">{churnRate}%</p></div>
@@ -815,7 +816,7 @@ export default function PainelAdmin() {
                     <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                     <XAxis dataKey="month" className="text-xs" />
                     <YAxis className="text-xs" tickFormatter={(v) => `R$${v}`} />
-                    <Tooltip formatter={(value: number) => [`R$ ${value.toFixed(2)}`, 'MRR']} />
+                    <Tooltip formatter={(value: number) => [`${formatCurrency(value)}`, 'MRR']} />
                     <Area type="monotone" dataKey="mrr" stroke="hsl(var(--success))" fill="hsl(var(--success))" fillOpacity={0.15} strokeWidth={2} />
                   </AreaChart>
                 </ResponsiveContainer>

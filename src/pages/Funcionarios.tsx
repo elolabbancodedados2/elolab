@@ -110,7 +110,7 @@ const initialFormData: FormDataType = {
 };
 
 export default function Funcionarios() {
-  const { profile } = useSupabaseAuth();
+  const { user, profile } = useSupabaseAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -235,11 +235,12 @@ export default function Funcionarios() {
 
 
   const { data: funcionarios = [], isLoading } = useQuery({
-    queryKey: ['funcionarios-with-roles'],
+    queryKey: ['funcionarios-with-roles', user?.id ?? null, profile?.clinica_id ?? null],
     queryFn: async () => {
       const { data: funcs, error: funcsError } = await supabase
         .from('funcionarios')
         .select('*')
+        .eq('clinica_id', profile?.clinica_id ?? '')
         .order('nome');
       if (funcsError) throw funcsError;
 
@@ -249,6 +250,7 @@ export default function Funcionarios() {
       });
       return funcionariosWithRoles;
     },
+    enabled: !!user && !!profile?.clinica_id,
   });
 
   const createMutation = useMutation({

@@ -1,3 +1,4 @@
+import { salvarConfigClinica } from '@/lib/configClinica';
 import React, { useState, useMemo, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -311,14 +312,19 @@ function PrecosInternos() {
 
   const saveAll = async (list: any[]) => {
     if (!user?.id) throw new Error('Usuário não identificado');
-    const { error } = await supabase.from('configuracoes_clinica').upsert({
-      chave: 'precos_exames_internos',
-      user_id: user.id,
-      clinica_id: profile?.clinica_id ?? null,
-      valor: list as any,
-      updated_at: new Date().toISOString(),
-    }, { onConflict: 'user_id,chave' });
-    if (error) throw error;
+    if (profile?.clinica_id) {
+      // Tabela de preços é da clínica: uma linha só, compartilhada pela equipe.
+      await salvarConfigClinica({ clinicaId: profile.clinica_id, userId: user.id, chave: 'precos_exames_internos', valor: list });
+    } else {
+      const { error } = await supabase.from('configuracoes_clinica').upsert({
+        chave: 'precos_exames_internos',
+        user_id: user.id,
+        clinica_id: null,
+        valor: list as any,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'user_id,chave' });
+      if (error) throw error;
+    }
     queryClient.invalidateQueries({ queryKey: ['precos-exames-internos'] });
   };
 
@@ -530,7 +536,7 @@ function PrecosConvenio() {
   const queryClient = useQueryClient();
 
   const { data: convenios } = useQuery({
-    queryKey: ['convenios-precos'],
+    queryKey: ['convenios-precos', profile?.clinica_id ?? null],
     queryFn: async () => {
       let query = supabase.from('convenios').select('id, nome, codigo').eq('ativo', true).order('nome');
       if (profile?.clinica_id) query = query.eq('clinica_id', profile.clinica_id);

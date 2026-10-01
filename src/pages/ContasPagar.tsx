@@ -1,3 +1,4 @@
+import { buscarEmBlocos } from '@/lib/buscarEmBlocos';
 import { useState, useMemo } from 'react';
 import {
   Plus, Search, Check, DollarSign, AlertCircle, Calendar, FileText,
@@ -22,7 +23,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { Database } from '@/integrations/supabase/types';
-import { parseDateOnly, todayDateOnly } from '@/lib/dateOnly';
+import { parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { valorRealizado } from '@/lib/lancamentos';
 
 type StatusPagamento = Database['public']['Enums']['status_pagamento'];
@@ -104,15 +105,16 @@ export default function ContasPagar() {
   const queryClient = useQueryClient();
 
   const { data: contas = [], isLoading } = useQuery({
-    queryKey: ['lancamentos', 'despesa'],
+    queryKey: ['lancamentos', 'despesa', user?.id ?? null, profile?.clinica_id ?? null],
     queryFn: async () => {
-      const { data, error } = await supabase
+      // Em blocos: sem paginar, o servidor devolvia só as 1000 primeiras contas.
+      const data = await buscarEmBlocos<any>(() => supabase
         .from('lancamentos')
         .select('*')
         .eq('tipo', 'despesa')
-        .order('data_vencimento', { ascending: true });
-      if (error) throw error;
-      const today = todayDateOnly();
+        .order('data_vencimento', { ascending: true })
+        .order('id', { ascending: true }));
+      const today = todaySaoPauloDateOnly();
       return data.map(conta => {
         if (conta.status === 'pendente' && conta.data_vencimento && conta.data_vencimento < today) {
           return { ...conta, status: 'atrasado' as StatusPagamento };
@@ -120,7 +122,7 @@ export default function ContasPagar() {
         return conta;
       });
     },
-    enabled: !!user,
+    enabled: !!user && !!profile?.clinica_id,
   });
 
   const filteredContas = useMemo(() =>
@@ -147,7 +149,7 @@ export default function ContasPagar() {
   const handleSave = async () => {
     if (!formData.descricao || !formData.valor) { toast.error('Preencha descrição e valor.'); return; }
     if (formData.valor <= 0) { toast.error('O valor deve ser maior que zero.'); return; }
-    if (formData.data_vencimento && formData.data_vencimento < todayDateOnly() && !selectedId) {
+    if (formData.data_vencimento && formData.data_vencimento < todaySaoPauloDateOnly() && !selectedId) {
       toast.error('A data de vencimento não pode ser no passado.'); return;
     }
     setIsSubmitting(true);
@@ -157,7 +159,8 @@ export default function ContasPagar() {
         categoria: formData.categoria,
         descricao: formData.descricao,
         valor: formData.valor,
-        data: todayDateOnly(),
+        data: todaySaoPauloDateOnly(),
+        data_pagamento: formData.marcar_pago ? todaySaoPauloDateOnly() : null,
         data_vencimento: formData.data_vencimento,
         status: formData.marcar_pago ? 'pago' as StatusPagamento : 'pendente' as StatusPagamento,
         forma_pagamento: formData.forma_pagamento || null,
@@ -197,6 +200,7 @@ export default function ContasPagar() {
         .from('lancamentos')
         .update({
           status: 'pago' as StatusPagamento,
+          data_pagamento: todaySaoPauloDateOnly(),
           forma_pagamento: pagamentoData.forma_pagamento,
           observacoes: [
             contas.find(c => c.id === selectedId)?.observacoes,

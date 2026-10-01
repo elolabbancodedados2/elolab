@@ -24,6 +24,7 @@ import {
 } from '@/components/ui/collapsible';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
+import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 
 interface ProtocolStep {
   ordem: number;
@@ -53,21 +54,24 @@ interface ClinicalProtocolsProps {
 }
 
 export function ClinicalProtocols({ onSelectProtocol, className }: ClinicalProtocolsProps) {
+  const { user, profile } = useSupabaseAuth();
   const [search, setSearch] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const { data: protocols, isLoading } = useQuery({
-    queryKey: ['clinical-protocols'],
+    queryKey: ['clinical-protocols', user?.id ?? null, profile?.clinica_id ?? null],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('protocolos_clinicos')
         .select('*')
+        .eq('clinica_id', profile?.clinica_id ?? '')
         .eq('ativo', true)
         .order('nome');
 
       if (error) throw error;
       return (data || []) as unknown as Protocol[];
     },
+    enabled: !!user && !!profile?.clinica_id,
   });
 
   const filteredProtocols = protocols?.filter(p =>

@@ -1,8 +1,9 @@
+import { medicamentosParaLinhas, textoParaMedicamentos } from '@/lib/templatesPrescricao';
 import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Plus, FileText, Pill, Edit, Trash2, Copy, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Dialog,
@@ -84,6 +85,7 @@ export default function Templates() {
   const [isSaving, setIsSaving] = useState(false);
 
   const queryClient = useQueryClient();
+  const [medicamentosTexto, setMedicamentosTexto] = useState('');
 
   const { data: prescriptionTemplates = [], isLoading: loadingPrescriptions } = useSupabaseQuery<PrescriptionTemplate>('templates_prescricao', {
     orderBy: { column: 'nome', ascending: true },
@@ -100,6 +102,11 @@ export default function Templates() {
       toast.error('Preencha os campos obrigatórios');
       return;
     }
+    const medicamentos = textoParaMedicamentos(medicamentosTexto);
+    if (medicamentos.length === 0) {
+      toast.error('Informe ao menos um medicamento no modelo');
+      return;
+    }
 
     setIsSaving(true);
     try {
@@ -110,7 +117,7 @@ export default function Templates() {
             nome: prescriptionForm.nome,
             tipo: prescriptionForm.tipo,
             observacoes_gerais: prescriptionForm.observacoes_gerais,
-            medicamentos: (prescriptionForm.medicamentos || []) as any, // Cast to any to satisfy Json type
+            medicamentos: medicamentos as any,
           })
           .eq('id', prescriptionForm.id);
 
@@ -123,7 +130,7 @@ export default function Templates() {
             nome: prescriptionForm.nome,
             tipo: prescriptionForm.tipo,
             observacoes_gerais: prescriptionForm.observacoes_gerais,
-            medicamentos: (prescriptionForm.medicamentos || []) as any, // Cast to any to satisfy Json type
+            medicamentos: medicamentos as any,
           });
 
         if (error) throw error;
@@ -258,7 +265,7 @@ export default function Templates() {
 
         <TabsContent value="prescriptions" className="space-y-4">
           <div className="flex justify-end">
-            <Button onClick={() => { setPrescriptionForm({}); setIsPrescriptionFormOpen(true); }}>
+            <Button onClick={() => { setPrescriptionForm({}); setMedicamentosTexto(''); setIsPrescriptionFormOpen(true); }}>
               <Plus className="mr-2 h-4 w-4" />
               Novo Template
             </Button>
@@ -280,17 +287,17 @@ export default function Templates() {
                     <div className="flex items-start justify-between">
                       <div>
                         <CardTitle className="text-lg">{template.nome}</CardTitle>
-                        <CardDescription>
+                        <div className="text-sm text-muted-foreground">
                           <Badge variant="outline" className="mt-1">
                             {PRESCRIPTION_TYPES[template.tipo || 'simples']}
                           </Badge>
-                        </CardDescription>
+                        </div>
                       </div>
                       <div className="flex gap-1">
                         <Button aria-label={`Duplicar modelo ${template.nome}`} size="icon" variant="ghost" onClick={() => duplicateTemplate(template, 'prescription')}>
                           <Copy className="h-4 w-4" />
                         </Button>
-                        <Button aria-label={`Editar modelo ${template.nome}`} size="icon" variant="ghost" onClick={() => { setPrescriptionForm(template); setIsPrescriptionFormOpen(true); }}>
+                        <Button aria-label={`Editar modelo ${template.nome}`} size="icon" variant="ghost" onClick={() => { setPrescriptionForm(template); setMedicamentosTexto(medicamentosParaLinhas(template.medicamentos).join('\n')); setIsPrescriptionFormOpen(true); }}>
                           <Edit className="h-4 w-4" />
                         </Button>
                         <Button aria-label={`Excluir modelo ${template.nome}`} size="icon" variant="ghost" onClick={() => setDeleteDialog({ open: true, type: 'prescription', id: template.id })}>
@@ -301,7 +308,7 @@ export default function Templates() {
                   </CardHeader>
                   <CardContent>
                     <p className="text-sm text-muted-foreground">
-                      {Array.isArray(template.medicamentos) ? template.medicamentos.length : 0} medicamento(s)
+                      {medicamentosParaLinhas(template.medicamentos).length} medicamento(s)
                     </p>
                   </CardContent>
                 </Card>
@@ -334,11 +341,11 @@ export default function Templates() {
                     <div className="flex items-start justify-between">
                       <div>
                         <CardTitle className="text-lg">{template.nome}</CardTitle>
-                        <CardDescription>
+                        <div className="text-sm text-muted-foreground">
                           <Badge variant="outline" className="mt-1">
                             {CERTIFICATE_TYPES[template.tipo || 'comparecimento']}
                           </Badge>
-                        </CardDescription>
+                        </div>
                       </div>
                       <div className="flex gap-1">
                         <Button aria-label={`Duplicar modelo ${template.nome}`} size="icon" variant="ghost" onClick={() => duplicateTemplate(template, 'certificate')}>
@@ -397,6 +404,17 @@ export default function Templates() {
                   </SelectContent>
                 </Select>
               </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Medicamentos e posologia *</Label>
+              <Textarea
+                value={medicamentosTexto}
+                onChange={(e) => setMedicamentosTexto(e.target.value)}
+                placeholder={`Um medicamento por linha. Ex.:\nAmoxicilina 500mg — 1 cápsula de 8/8h por 7 dias\nIbuprofeno 400mg — 1 comprimido de 12/12h por 5 dias`}
+                rows={6}
+                className="font-mono text-sm"
+              />
+              <p className="text-xs text-muted-foreground">Ao usar o modelo numa prescrição, estas linhas entram já numeradas.</p>
             </div>
             <div className="space-y-2">
               <Label>Observações Gerais</Label>

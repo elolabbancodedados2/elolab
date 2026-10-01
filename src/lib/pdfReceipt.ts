@@ -1,3 +1,4 @@
+import { formatCurrency } from '@/lib/formatters';
 /**
  * PDF Receipt/Cupom generator using jsPDF
  * Replaces all text/HTML-based receipt generation
@@ -80,15 +81,15 @@ async function buildPdf(data: ReceiptData): Promise<jsPDF> {
   doc.line(margin, y, w - margin, y);
   y += 4;
 
-  addRow('Valor original:', `R$ ${data.valorOriginal.toFixed(2)}`);
+  addRow('Valor original:', `${formatCurrency(data.valorOriginal)}`);
   if (data.desconto && data.desconto > 0) {
     doc.setTextColor(22, 163, 74);
-    addRow('Desconto:', `- R$ ${data.desconto.toFixed(2)}`);
+    addRow('Desconto:', `- ${formatCurrency(data.desconto)}`);
     doc.setTextColor(0);
   }
   if (data.acrescimo && data.acrescimo > 0) {
     doc.setTextColor(220, 38, 38);
-    addRow('Acréscimo:', `+ R$ ${data.acrescimo.toFixed(2)}`);
+    addRow('Acréscimo:', `+ ${formatCurrency(data.acrescimo)}`);
     doc.setTextColor(0);
   }
 
@@ -100,7 +101,7 @@ async function buildPdf(data: ReceiptData): Promise<jsPDF> {
   doc.setFontSize(11);
   doc.setFont('helvetica', 'bold');
   doc.text('TOTAL PAGO:', margin, y);
-  doc.text(`R$ ${data.valorFinal.toFixed(2)}`, w - margin, y, { align: 'right' });
+  doc.text(`${formatCurrency(data.valorFinal)}`, w - margin, y, { align: 'right' });
   y += 6;
 
   doc.setLineDashPattern([1, 1], 0);
@@ -156,10 +157,10 @@ export function getReceiptWhatsAppText(data: ReceiptData): string {
     data.categoria ? `📂 ${data.categoria}` : '',
     `💳 ${data.formaPagamento}`,
     '',
-    `💰 Valor: R$ ${data.valorOriginal.toFixed(2)}`,
-    data.desconto && data.desconto > 0 ? `🟢 Desconto: - R$ ${data.desconto.toFixed(2)}` : '',
-    data.acrescimo && data.acrescimo > 0 ? `🔴 Acréscimo: + R$ ${data.acrescimo.toFixed(2)}` : '',
-    `✅ *TOTAL PAGO: R$ ${data.valorFinal.toFixed(2)}*`,
+    `💰 Valor: ${formatCurrency(data.valorOriginal)}`,
+    data.desconto && data.desconto > 0 ? `🟢 Desconto: - ${formatCurrency(data.desconto)}` : '',
+    data.acrescimo && data.acrescimo > 0 ? `🔴 Acréscimo: + ${formatCurrency(data.acrescimo)}` : '',
+    `✅ *TOTAL PAGO: ${formatCurrency(data.valorFinal)}*`,
     '',
     data.operador ? `Recebido por: ${data.operador}` : '',
     '_Documento sem valor fiscal_',

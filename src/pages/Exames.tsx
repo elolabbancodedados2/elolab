@@ -1,3 +1,4 @@
+import { formatCurrency } from '@/lib/formatters';
 import { useState, useMemo, useRef } from 'react';
 import {
   Plus, Search, Eye, FileText, Loader2, PlusCircle, X, Printer,
@@ -319,9 +320,9 @@ export default function Exames() {
   const { medicoId, isMedicoOnly } = useCurrentMedico();
 
   const { data: customTypesFromDB = [] } = useQuery({
-    queryKey: ['tipos_exame_custom'],
+    queryKey: ['tipos_exame_custom', user?.id ?? null],
     queryFn: async () => {
-      const { data, error } = await supabase.from('tipos_exame_custom' as any).select('*').order('nome');
+      const { data, error } = await supabase.from('tipos_exame_custom' as any).select('*').eq('user_id', user?.id ?? '').order('nome');
       if (error) throw error;
       return data as any[];
     },
@@ -382,11 +383,12 @@ export default function Exames() {
   }, [examSearch, examesSelecionados]);
 
   const { data: exames = [], isLoading: loadingExames } = useQuery({
-    queryKey: ['exames', isMedicoOnly, medicoId],
+    queryKey: ['exames', user?.id ?? null, profile?.clinica_id ?? null, isMedicoOnly, medicoId],
     queryFn: async () => {
       let query = supabase
         .from('exames')
         .select('*, pacientes(nome), medicos(crm, especialidade, nome)')
+        .eq('clinica_id', profile?.clinica_id ?? '')
         .order('data_solicitacao', { ascending: false });
       if (isMedicoOnly && medicoId) {
         query = query.eq('medico_solicitante_id', medicoId);
@@ -395,7 +397,7 @@ export default function Exames() {
       if (error) throw error;
       return data;
     },
-    enabled: !!user,
+    enabled: !!user && !!profile?.clinica_id,
   });
 
   const isLoading = loadingExames || loadingPacientes || loadingMedicos;
@@ -1108,7 +1110,7 @@ export default function Exames() {
               {formData.preco_custo && formData.preco_venda && (
                 <div className="mt-3 p-3 bg-success/5 border border-success/20 rounded-lg">
                   <p className="text-sm text-success">
-                    💰 Margem: <span className="font-bold">R$ {(formData.preco_venda - formData.preco_custo).toFixed(2)}</span> ({(((formData.preco_venda - formData.preco_custo) / formData.preco_custo) * 100).toFixed(0)}%)
+                    💰 Margem: <span className="font-bold">{formatCurrency((formData.preco_venda - formData.preco_custo))}</span> ({(((formData.preco_venda - formData.preco_custo) / formData.preco_custo) * 100).toFixed(0)}%)
                   </p>
                 </div>
               )}

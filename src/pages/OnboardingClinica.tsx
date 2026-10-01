@@ -10,7 +10,9 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
+import { ErrorState } from '@/components/ErrorState';
 import { supabase } from '@/integrations/supabase/client';
+import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 
 type StepKey = 'team' | 'schedule' | 'services' | 'whatsapp' | 'appointment';
 type ApiStep = { key: StepKey; complete: boolean; count: number };
@@ -30,17 +32,17 @@ const definitions = {
   },
   schedule: {
     title: 'Configure os horários',
-    description: 'Defina dias de funcionamento, abertura, fechamento e duração das consultas.',
-    action: 'Configurar horários', href: '/configuracoes', icon: Clock3,
+    description: 'Defina o horário de funcionamento e a disponibilidade semanal de pelo menos um profissional.',
+    action: 'Configurar horário da clínica', href: '/configuracoes', icon: Clock3,
   },
   services: {
     title: 'Cadastre seus serviços',
     description: 'Crie ao menos um tipo de consulta ativo com duração e valor.',
-    action: 'Cadastrar serviço', href: '/precos-servicos', icon: Stethoscope,
+    action: 'Cadastrar serviço', href: '/precos-servicos?tab=tipos', icon: Stethoscope,
   },
   whatsapp: {
     title: 'Conecte o WhatsApp',
-    description: 'Crie uma sessão para centralizar conversas e preparar o atendimento automatizado.',
+    description: 'Conecte uma sessão para centralizar conversas e preparar o atendimento automatizado.',
     action: 'Conectar WhatsApp', href: '/agente-ia', icon: MessageCircle,
   },
   appointment: {
@@ -51,8 +53,10 @@ const definitions = {
 } satisfies Record<StepKey, { title: string; description: string; action: string; href: string; icon: typeof UsersRound }>;
 
 export default function OnboardingClinica() {
+  const { user, profile, isLoading: authLoading, refreshProfile } = useSupabaseAuth();
   const query = useQuery({
-    queryKey: ['clinic-onboarding'],
+    queryKey: ['clinic-onboarding', user?.id ?? null, profile?.clinica_id ?? null],
+    enabled: !!user && !!profile?.clinica_id,
     queryFn: async () => {
       const { data, error } = await (supabase as any).rpc('clinic_onboarding_overview');
       if (error) throw error;
@@ -61,16 +65,33 @@ export default function OnboardingClinica() {
     staleTime: 0,
   });
 
-  if (query.isLoading) {
-    return <div className="space-y-5" aria-label="Carregando onboarding">
+  if (authLoading || (!!profile?.clinica_id && query.isLoading)) {
+    return <div className="space-y-5" role="status" aria-live="polite" aria-busy="true" aria-label="Carregando onboarding">
       <Skeleton className="h-24 w-full" />
       <Skeleton className="h-52 w-full" />
       <Skeleton className="h-52 w-full" />
     </div>;
   }
 
+  if (query.isError) {
+    return <ErrorState
+      title="Não foi possível carregar o onboarding"
+      error={query.error}
+      onRetry={() => void query.refetch()}
+    />;
+  }
+
   const overview = query.data;
-  if (!overview) return null;
+  if (!overview) {
+    return <ErrorState
+      title="Progresso do onboarding indisponível"
+      description={profile?.clinica_id
+        ? 'Não encontramos os dados de configuração da clínica. Atualize para tentar novamente.'
+        : 'Esta conta ainda não está vinculada a uma clínica. Atualize o perfil ou peça ao administrador para verificar o vínculo.'}
+      onRetry={profile?.clinica_id ? () => void query.refetch() : () => void refreshProfile()}
+      retryLabel={profile?.clinica_id ? 'Tentar novamente' : 'Atualizar perfil'}
+    />;
+  }
 
   return <div className="mx-auto max-w-5xl space-y-6 pb-10">
     <header className="space-y-3">
@@ -108,6 +129,13 @@ export default function OnboardingClinica() {
       {overview.steps.map((step, index) => {
         const definition = definitions[step.key];
         const Icon = definition.icon;
+        const countLabel = {
+          team: step.count === 1 ? '1 pessoa ativa' : `${step.count} pessoas ativas`,
+          schedule: step.count === 1 ? '1 profissional com horários disponíveis' : `${step.count} profissionais com horários disponíveis`,
+          services: step.count === 1 ? '1 serviço ativo' : `${step.count} serviços ativos`,
+          whatsapp: step.count === 1 ? '1 sessão conectada' : `${step.count} sessões conectadas`,
+          appointment: step.count === 1 ? '1 agendamento cadastrado' : `${step.count} agendamentos cadastrados`,
+        }[step.key];
         return <Card key={step.key} className={step.complete ? 'border-emerald-500/40' : ''}>
           <CardHeader className="pb-3">
             <div className="flex items-start gap-3">
@@ -124,13 +152,19 @@ export default function OnboardingClinica() {
             </div>
           </CardHeader>
           <CardContent>
+            {step.count > 0 && <p className="mb-3 text-sm text-muted-foreground">{countLabel}</p>}
             <Button asChild variant={step.complete ? 'outline' : 'default'} className="w-full sm:w-auto">
               <Link to={definition.href}>{step.complete ? 'Revisar' : definition.action}<ArrowRight className="ml-2 h-4 w-4" /></Link>
             </Button>
+            {step.key === 'schedule' && <Button asChild variant="link" className="ml-0 mt-2 w-full sm:ml-2 sm:mt-0 sm:w-auto">
+              <Link to="/equipe">Configurar disponibilidade dos profissionais<ArrowRight className="ml-2 h-4 w-4" /></Link>
+            </Button>}
+            {step.key === 'schedule' && !step.complete && <p className="mt-2 text-xs text-muted-foreground">
+              Ao cadastrar um profissional novo, salve o cadastro e depois edite-o para incluir os horários disponíveis.
+            </p>}
           </CardContent>
         </Card>;
       })}
     </section>
   </div>;
 }
-

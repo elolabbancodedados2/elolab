@@ -43,3 +43,11 @@ export function diferencaEmReais(a: number, b: number): number {
 export function arredondarReais(valor: number): number {
   return emCentavos(valor) / 100;
 }
+
+/** Parses a counted cash amount. Blank or invalid values are not zero. */
+export function parseValorContado(valor: string): number | null {
+  if (!valor.trim()) return null;
+  const parsed = Number(valor);
+  if (!Number.isFinite(parsed) || parsed < 0) return null;
+  return arredondarReais(parsed);
+}
