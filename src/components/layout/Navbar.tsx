@@ -1,5 +1,5 @@
 import { primeiroNome } from '@/lib/formatters';
-import { Bell, Menu, LogOut, User, Settings, Plus, CalendarPlus, UserPlus, FileText, FlaskConical, Mail, MessageSquare, Shield, History, Activity, GraduationCap, MessageSquarePlus } from 'lucide-react';
+import { Bell, Menu, LogOut, User, Settings, Plus, CalendarPlus, UserPlus, FileText, FlaskConical, Mail, MessageSquare, Shield, History, Activity, MessageSquarePlus } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import {
@@ -299,7 +299,6 @@ export function Navbar({ onMenuClick }: NavbarProps) {
               { to: '/seguranca', icon: Shield, label: 'Segurança da conta' },
               { to: '/meu-historico', icon: History, label: 'Meu histórico' },
               { to: '/indicadores', icon: Activity, label: 'Meus indicadores' },
-              { to: '/treinamento', icon: GraduationCap, label: 'Treinamento' },
               { to: '/feedback', icon: MessageSquarePlus, label: 'Enviar feedback' },
             ].map(({ to, icon: Icon, label }, i) => (
               <DropdownMenuItem key={to} asChild className={cn('rounded-lg gap-2.5 py-2', i === 0 && 'mt-1')}>

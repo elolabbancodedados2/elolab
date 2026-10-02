@@ -22,6 +22,7 @@ export function SidebarNavItem({ item, collapsed, groupColor, onNavigate }: Side
   const linkContent = (
     <NavLink
       to={item.href}
+      end={item.exact}
       target={item.external ? '_blank' : undefined}
       rel={item.external ? 'noopener noreferrer' : undefined}
       onClick={onNavigate}

@@ -18,7 +18,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 
 const STORAGE_KEY = 'elolab_sidebar_collapsed';
 const GROUPS_KEY = 'elolab_sidebar_groups';
-const DEFAULT_OPEN_GROUPS = ['Principal', 'Clínica'];
+const DEFAULT_OPEN_GROUPS = ['Início', 'Atendimento'];
 
 interface SidebarProps {
   forceExpanded?: boolean;
