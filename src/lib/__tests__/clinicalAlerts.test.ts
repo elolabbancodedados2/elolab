@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { toDateOnly } from '@/lib/dateOnly';
 import {
   checkAllergyAlerts,
   checkAgeAndReproductiveAlerts,
@@ -127,7 +128,7 @@ describe('checkAgeAndReproductiveAlerts', () => {
     const nasc = new Date();
     nasc.setMonth(nasc.getMonth() - 6);
     const alerts = checkAgeAndReproductiveAlerts('Ibuprofeno', {
-      dataNascimento: nasc.toISOString().slice(0, 10),
+      dataNascimento: toDateOnly(nasc),
     });
     expect(alerts.some(a => a.id === 'age-too-young')).toBe(false);
   });
@@ -141,7 +142,7 @@ describe('checkAgeAndReproductiveAlerts', () => {
     const nasc = new Date();
     nasc.setMonth(nasc.getMonth() - 1);
     const alerts = checkAgeAndReproductiveAlerts('Ibuprofeno', {
-      dataNascimento: nasc.toISOString().slice(0, 10),
+      dataNascimento: toDateOnly(nasc),
     });
     expect(alerts.some(a => a.id === 'age-too-young')).toBe(true);
   });
@@ -157,7 +158,7 @@ describe('checkAgeAndReproductiveAlerts', () => {
     nasc.setDate(1);
     nasc.setMonth(nasc.getMonth() - 2);
     const alerts = checkAgeAndReproductiveAlerts('Doxiciclina', {
-      dataNascimento: nasc.toISOString().slice(0, 10),
+      dataNascimento: toDateOnly(nasc),
     });
     const alerta = alerts.find(a => a.id === 'age-too-young');
     expect(alerta?.message).toContain('meses');
@@ -174,7 +175,7 @@ describe('checkAgeAndReproductiveAlerts', () => {
     nasc.setMonth(nasc.getMonth() - 8); // 1 ano e 8 meses
     const alerts = checkAgeAndReproductiveAlerts('Enalapril', {
       idade: 2, // o que a tela calculava errado
-      dataNascimento: nasc.toISOString().slice(0, 10),
+      dataNascimento: toDateOnly(nasc),
     });
     // Enalapril: mínimo 2 anos. Com 1a8m o alerta precisa disparar.
     expect(alerts.some(a => a.id === 'age-too-young')).toBe(true);
@@ -208,7 +209,7 @@ describe('checkAgeAndReproductiveAlerts', () => {
   it('calcula idade a partir de dataNascimento se idade não fornecida', () => {
     const fiveYearsAgo = new Date();
     fiveYearsAgo.setFullYear(fiveYearsAgo.getFullYear() - 5);
-    const dataNasc = fiveYearsAgo.toISOString().slice(0, 10);
+    const dataNasc = toDateOnly(fiveYearsAgo);
     const alerts = checkAgeAndReproductiveAlerts('Doxiciclina', { dataNascimento: dataNasc });
     // Doxiciclina ageMin: 8 → bloqueia <8 anos
     expect(alerts.some(a => a.id === 'age-too-young')).toBe(true);
@@ -279,7 +280,7 @@ describe('consolidateAlerts', () => {
     const nasc = new Date();
     nasc.setMonth(nasc.getMonth() - 1); // 1 mês de vida
     const alerts = consolidateAlerts('Ibuprofeno 100mg/ml', {
-      dataNascimento: nasc.toISOString().slice(0, 10),
+      dataNascimento: toDateOnly(nasc),
       alergias: ['Penicilina'],
       comorbidades: ['Asma grave'],
     });

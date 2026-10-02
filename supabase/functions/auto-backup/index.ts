@@ -130,6 +130,7 @@ Deno.serve(async (req) => {
     const carimbo = new Date().toISOString().replace(/[:.]/g, '-')
     const arquivos: Array<{ bucket: string; caminho: string; bytes: number }> = []
     const falhasDeArquivo: string[] = []
+    let limiteArquivosAtingido = false
 
     try {
       const { data: buckets } = await supabase.storage.listBuckets()
@@ -138,7 +139,11 @@ Deno.serve(async (req) => {
         if (b.id === 'backups' || b.id === 'backups-arquivos') continue
 
         const paraVisitar: string[] = ['']
-        while (paraVisitar.length > 0 && arquivos.length < TETO_DE_ARQUIVOS) {
+        while (paraVisitar.length > 0) {
+          if (arquivos.length >= TETO_DE_ARQUIVOS) {
+            limiteArquivosAtingido = true
+            break
+          }
           const pasta = paraVisitar.shift()!
           const { data: itens, error } = await supabase.storage
             .from(b.id).list(pasta, { limit: 1000 })
@@ -148,7 +153,10 @@ Deno.serve(async (req) => {
             const caminho = pasta ? `${pasta}/${item.name}` : item.name
             // Sem metadata é pasta: entra na fila para ser visitada.
             if (!item.metadata) { paraVisitar.push(caminho); continue }
-            if (arquivos.length >= TETO_DE_ARQUIVOS) break
+            if (arquivos.length >= TETO_DE_ARQUIVOS) {
+              limiteArquivosAtingido = true
+              break
+            }
 
             const { data: blob, error: erroBaixa } = await supabase.storage
               .from(b.id).download(caminho)
@@ -185,10 +193,13 @@ Deno.serve(async (req) => {
       pasta: carimbo,
       total: arquivos.length,
       bytes: arquivos.reduce((s, a) => s + a.bytes, 0),
+      limite_arquivos_atingido: limiteArquivosAtingido,
       falhas: falhasDeArquivo,
       lista: arquivos,
     }
-    if (falhasDeArquivo.length > 0) (backup as Record<string, unknown>).completo = false
+    if (falhasDeArquivo.length > 0 || limiteArquivosAtingido) {
+      (backup as Record<string, unknown>).completo = false
+    }
 
     const nome = `backup-auto-${carimbo}.json`
     const corpo = JSON.stringify(backup)

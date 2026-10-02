@@ -22,7 +22,7 @@ RUN test -n "$VITE_SUPABASE_URL" && \
     test -n "$VITE_SUPABASE_PUBLISHABLE_KEY$VITE_SUPABASE_ANON_KEY" && \
     npm run build
 
-FROM nginx:1.27-alpine
+FROM nginx:1.30.5-alpine
 
 COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
 COPY docker/security-headers.conf /etc/nginx/security-headers.conf

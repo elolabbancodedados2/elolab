@@ -121,7 +121,7 @@ function KPICard({ title, value, subtitle, icon: Icon, color, href, delay = 0, s
         <CardContent className="pt-5 pb-4">
           <div className="flex items-start justify-between mb-2">
             <div className="space-y-1 flex-1 min-w-0">
-              <p className="text-[10.5px] font-semibold text-muted-foreground/60 uppercase tracking-[0.08em]">{title}</p>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-[0.06em]">{title}</p>
               <div className="flex items-baseline gap-2">
                 <p className="text-[26px] font-bold font-display tracking-tight tabular-nums truncate">{value}</p>
                 {trend !== undefined && trend !== 0 && (
@@ -133,7 +133,7 @@ function KPICard({ title, value, subtitle, icon: Icon, color, href, delay = 0, s
                   </span>
                 )}
               </div>
-              {subtitle && <p className="text-[11px] text-muted-foreground/60 truncate">{subtitle}</p>}
+              {subtitle && <p className="text-xs text-muted-foreground truncate">{subtitle}</p>}
             </div>
             <div className={cn('h-11 w-11 rounded-xl flex items-center justify-center ring-1 shrink-0 transition-all duration-300 group-hover:scale-110 group-hover:rotate-3 group-hover:shadow-md', c.bg, c.ring)}>
               <Icon className={cn('h-5 w-5', c.text)} />
