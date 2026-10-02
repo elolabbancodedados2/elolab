@@ -20,7 +20,12 @@ const STORAGE_KEY = 'elolab_sidebar_collapsed';
 const GROUPS_KEY = 'elolab_sidebar_groups';
 const DEFAULT_OPEN_GROUPS = ['Principal', 'Clínica'];
 
-export function Sidebar() {
+interface SidebarProps {
+  forceExpanded?: boolean;
+  onNavigate?: () => void;
+}
+
+export function Sidebar({ forceExpanded = false, onNavigate }: SidebarProps) {
   const { profile, isAdmin, isSuperAdmin } = useSupabaseAuth();
   const location = useLocation();
   const [search, setSearch] = useState('');
@@ -42,6 +47,7 @@ export function Sidebar() {
       return DEFAULT_OPEN_GROUPS;
     }
   });
+  const isCollapsed = collapsed && !forceExpanded;
 
   const filteredMenuGroups = getFilteredMenuGroups(
     profile?.roles || [],
@@ -94,16 +100,16 @@ export function Sidebar() {
       className={cn(
         'flex h-screen flex-col transition-all duration-300 ease-out',
         'bg-sidebar border-r border-sidebar-border/40',
-        collapsed ? 'w-[66px]' : 'w-[252px]'
+        isCollapsed ? 'w-[66px]' : 'w-[252px]'
       )}
       style={{ background: 'var(--gradient-sidebar)' }}
     >
       {/* ─── Header ─── */}
       <div className={cn(
         'flex items-center shrink-0',
-        collapsed ? 'justify-center px-2 h-16' : 'justify-between px-4 h-16'
+        isCollapsed ? 'justify-center px-2 h-16' : 'justify-between px-4 h-16'
       )}>
-        {!collapsed ? (
+        {!isCollapsed ? (
           <div className="flex items-center gap-2.5">
             <div className="relative flex h-9 w-9 items-center justify-center rounded-xl shrink-0 overflow-hidden bg-gradient-to-br from-primary/15 to-primary/5 ring-1 ring-primary/15">
               <img src={logoIcon} alt="EloLab" className="h-7 w-7 object-contain" />
@@ -125,7 +131,7 @@ export function Sidebar() {
           </div>
         )}
 
-        {!collapsed && (
+        {!isCollapsed && (
           <Button
             variant="ghost"
             size="icon"
@@ -139,7 +145,7 @@ export function Sidebar() {
       </div>
 
       {/* ─── Search ─── */}
-      {!collapsed && (
+      {!isCollapsed && (
         <div className="px-3 pb-2">
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-sidebar-foreground/25" />
@@ -157,7 +163,7 @@ export function Sidebar() {
       )}
 
       {/* ─── Expand trigger (collapsed) ─── */}
-      {collapsed && (
+      {isCollapsed && (
         <div className="px-2 pb-1">
           <Tooltip>
             <TooltipTrigger asChild>
@@ -183,17 +189,18 @@ export function Sidebar() {
             <SidebarMenuGroup
               key={group.label}
               group={group}
-              collapsed={collapsed}
+              collapsed={isCollapsed}
               isOpen={openGroups.includes(group.label) || !!search.trim()}
               onToggle={() => toggleGroup(group.label)}
               currentPath={location.pathname}
+              onNavigate={onNavigate}
             />
           ))}
         </nav>
       </ScrollArea>
 
       {/* ─── Footer ─── */}
-      {!collapsed && (
+      {!isCollapsed && (
         <div className="shrink-0 border-t border-sidebar-border/20 px-4 py-2">
           <p className="text-[9px] text-sidebar-foreground/15 text-center font-medium tracking-widest uppercase">
             v2.0 • EloLab
@@ -212,9 +219,10 @@ interface SidebarMenuGroupProps {
   isOpen: boolean;
   onToggle: () => void;
   currentPath: string;
+  onNavigate?: () => void;
 }
 
-function SidebarMenuGroup({ group, collapsed, isOpen, onToggle, currentPath }: SidebarMenuGroupProps) {
+function SidebarMenuGroup({ group, collapsed, isOpen, onToggle, currentPath, onNavigate }: SidebarMenuGroupProps) {
   const GroupIcon = group.icon;
   const hasActiveChild = group.items.some(item => item.href === currentPath);
 
@@ -228,10 +236,10 @@ function SidebarMenuGroup({ group, collapsed, isOpen, onToggle, currentPath }: S
             whileTap={{ scale: 0.97 }}
             transition={{ type: 'spring', stiffness: 400, damping: 20 }}
             className={cn(
-              'w-full flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-[10px] font-bold uppercase tracking-[0.12em] transition-all duration-200',
+              'w-full flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[10px] font-bold uppercase tracking-[0.12em] transition-colors duration-200',
               collapsed && 'justify-center',
               hasActiveChild
-                ? 'text-sidebar-foreground/70 bg-sidebar-accent/30'
+                ? 'text-sidebar-foreground/90 bg-sidebar-accent/55'
                 : 'text-sidebar-foreground/30 hover:text-sidebar-foreground/55 hover:bg-sidebar-accent/20',
             )}
           >
@@ -293,7 +301,7 @@ function SidebarMenuGroup({ group, collapsed, isOpen, onToggle, currentPath }: S
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: idx * 0.03, duration: 0.2 }}
                 >
-                  <SidebarNavItem item={item} collapsed={collapsed} groupColor={group.color} />
+                  <SidebarNavItem item={item} collapsed={collapsed} groupColor={group.color} onNavigate={onNavigate} />
                 </motion.div>
               ))}
             </div>
@@ -304,7 +312,7 @@ function SidebarMenuGroup({ group, collapsed, isOpen, onToggle, currentPath }: S
       {collapsed && (
         <div className="space-y-px mt-0.5">
           {group.items.map((item) => (
-            <SidebarNavItem key={item.href} item={item} collapsed={collapsed} groupColor={group.color} />
+            <SidebarNavItem key={item.href} item={item} collapsed={collapsed} groupColor={group.color} onNavigate={onNavigate} />
           ))}
         </div>
       )}

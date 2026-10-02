@@ -44,7 +44,7 @@ export function MainLayout() {
             Navegue entre os módulos da clínica.
           </SheetDescription>
           <nav aria-label="Menu principal mobile">
-            <Sidebar />
+            <Sidebar forceExpanded onNavigate={() => setMobileMenuOpen(false)} />
           </nav>
         </SheetContent>
       </Sheet>

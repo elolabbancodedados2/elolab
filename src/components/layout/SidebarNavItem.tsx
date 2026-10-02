@@ -13,9 +13,10 @@ interface SidebarNavItemProps {
   item: MenuItem;
   collapsed: boolean;
   groupColor?: string;
+  onNavigate?: () => void;
 }
 
-export function SidebarNavItem({ item, collapsed, groupColor }: SidebarNavItemProps) {
+export function SidebarNavItem({ item, collapsed, groupColor, onNavigate }: SidebarNavItemProps) {
   const Icon = item.icon;
 
   const linkContent = (
@@ -23,6 +24,7 @@ export function SidebarNavItem({ item, collapsed, groupColor }: SidebarNavItemPr
       to={item.href}
       target={item.external ? '_blank' : undefined}
       rel={item.external ? 'noopener noreferrer' : undefined}
+      onClick={onNavigate}
       style={({ isActive }: { isActive: boolean }) =>
         isActive && !item.external && groupColor
           ? { backgroundColor: `${groupColor}12`, '--active-color': groupColor } as React.CSSProperties
@@ -30,9 +32,9 @@ export function SidebarNavItem({ item, collapsed, groupColor }: SidebarNavItemPr
       }
       className={({ isActive }) =>
         cn(
-          'group relative flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-[13px] font-medium transition-all duration-200',
-          'text-sidebar-foreground/55 hover:text-sidebar-foreground/90 hover:bg-sidebar-accent/60',
-          isActive && !item.external && 'font-semibold text-sidebar-foreground/95 shadow-sm',
+          'group relative flex min-h-10 items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-[13px] font-medium transition-colors duration-150',
+          'text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/60',
+          isActive && !item.external && 'font-semibold text-sidebar-foreground shadow-sm ring-1 ring-black/[0.04]',
           collapsed && 'justify-center px-2',
           !collapsed && 'ml-1'
         )
@@ -107,9 +109,6 @@ export function SidebarNavItem({ item, collapsed, groupColor }: SidebarNavItemPr
           )}
 
           {/* Hover shine effect */}
-          {!collapsed && (
-            <div className="absolute inset-0 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none bg-gradient-to-r from-transparent via-sidebar-accent/20 to-transparent" />
-          )}
         </>
       )}
     </NavLink>
