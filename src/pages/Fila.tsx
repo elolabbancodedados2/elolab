@@ -614,13 +614,14 @@ export default function Fila() {
         toast.error('Não foi possível iniciar o atendimento', { description: result.message });
         return;
       }
-      toast.success('▶ Atendimento iniciado', { description: result.actions.join(' • ') });
       // Somente perfil clínico deve abrir/editar o prontuário. Recepção e
       // enfermagem apenas movem o paciente no fluxo operacional.
       if (ag?.paciente_id && hasAnyRole(['admin', 'medico'])) {
         navigate(`/prontuarios?paciente=${ag.paciente_id}&agendamento=${agendamentoId}`);
       } else if (ag?.paciente_id) {
         toast.info('Atendimento iniciado. O médico responsável deve abrir o prontuário.');
+      } else {
+        toast.success('▶ Atendimento iniciado', { description: result.actions.join(' • ') });
       }
       return;
     }
