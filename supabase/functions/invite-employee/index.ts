@@ -1,5 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { usuariosNoLimite } from "../_shared/limitesClinica.ts";
+import { usuariosNoLimite, validarLimitesDeEquipe } from "../_shared/limitesClinica.ts";
 import { corsPadrao } from '../_shared/cors.ts';
 
 // Atribuído em cada request (reflete a origem permitida). Helpers
@@ -54,48 +54,30 @@ Deno.serve(async (req) => {
     const service = createClient(supabaseUrl, serviceKey);
 
     // Caller deve ter clinica + role admin
-    const { data: profile } = await service
+    const { data: profile, error: profileError } = await service
       .from("profiles").select("clinica_id, nome").eq("id", user.id).maybeSingle();
+    if (profileError) throw new Error("Não foi possível validar a clínica da conta.");
     const clinicaId = (profile as any)?.clinica_id;
     if (!clinicaId) return json({ success: false, error: "Sem clínica associada." }, 403);
 
-    const { data: adminRole } = await service
+    const { data: adminRole, error: roleError } = await service
       .from("user_roles").select("role").eq("user_id", user.id).eq("role", "admin").maybeSingle();
+    if (roleError) throw new Error("Não foi possível validar as permissões da conta.");
     if (!adminRole) return json({ success: false, error: "Apenas admins podem convidar." }, 403);
 
     // E-mail já em outra clínica?
-    const { data: existingProfile } = await service
+    const { data: existingProfile, error: existingProfileError } = await service
       .from("profiles").select("clinica_id").eq("email", email).maybeSingle();
+    if (existingProfileError) throw new Error("Não foi possível verificar o e-mail informado.");
     if (existingProfile && (existingProfile as any).clinica_id && (existingProfile as any).clinica_id !== clinicaId) {
       return json({ success: false, error: "E-mail já está vinculado a outra clínica." }, 409);
     }
 
-    // Limites do plano
-    const { data: clinica } = await service
-      .from("clinicas").select("plano_id, nome").eq("id", clinicaId).maybeSingle();
-    let plano: any = null;
-    if ((clinica as any)?.plano_id) {
-      const { data: p } = await service
-        .from("planos")
-        .select("nome, max_medicos, max_recepcao, max_funcionarios_total")
-        .eq("id", (clinica as any).plano_id).maybeSingle();
-      plano = p;
-    }
-
-    if (plano) {
-      const { count: totalFunc } = await service
-        .from("funcionarios").select("id", { count: "exact", head: true }).eq("clinica_id", clinicaId);
-      if ((totalFunc ?? 0) >= (plano.max_funcionarios_total ?? 9999)) {
-        return json({ success: false, error: `Limite de funcionários do plano ${plano.nome} atingido.` }, 403);
-      }
-      if (roles.includes("medico")) {
-        const { count: medicosCount } = await service
-          .from("medicos").select("id", { count: "exact", head: true }).eq("clinica_id", clinicaId).eq("ativo", true);
-        if ((medicosCount ?? 0) >= (plano.max_medicos ?? 9999)) {
-          return json({ success: false, error: `Limite de médicos do plano ${plano.nome} atingido.` }, 403);
-        }
-      }
-    }
+    const { data: clinica, error: clinicaError } = await service
+      .from("clinicas").select("nome").eq("id", clinicaId).maybeSingle();
+    if (clinicaError || !clinica) throw new Error("Não foi possível validar o plano da clínica.");
+    const erroLimitePlano = await validarLimitesDeEquipe(service, clinicaId, roles);
+    if (erroLimitePlano) return json({ success: false, error: erroLimitePlano }, 403);
 
     // Limite de usuários definido pela plataforma (Limites e Consumo).
     const cotaUsuarios = await usuariosNoLimite(service, clinicaId);

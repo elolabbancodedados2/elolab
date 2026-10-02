@@ -1,5 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { usuariosNoLimite } from "../_shared/limitesClinica.ts";
+import { usuariosNoLimite, validarLimitesDeEquipe } from "../_shared/limitesClinica.ts";
 import { checarRateLimit, clientIp } from "../_shared/rateLimit.ts";
 import { corsPadrao } from '../_shared/cors.ts';
 
@@ -72,6 +72,9 @@ Deno.serve(async (req) => {
     const nome = (invite as any).nome as string;
     const clinicaId = (invite as any).clinica_id as string;
     const roles = (invite as any).roles as string[];
+
+    const erroLimitePlano = await validarLimitesDeEquipe(service, clinicaId, roles);
+    if (erroLimitePlano) return json({ success: false, error: erroLimitePlano }, 403);
 
     // Limite de usuários definido pela plataforma (Limites e Consumo): o convite
     // pode ter sido enviado quando ainda havia vaga.
