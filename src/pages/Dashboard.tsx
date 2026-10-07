@@ -590,6 +590,28 @@ function AdminDashboard() {
           </div>
         </motion.div>
 
+        {hasData && setupProgress < 100 && (
+          <motion.div variants={fadeUp}>
+            <Card className="border-primary/20 bg-primary/[0.02]">
+              <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0 flex-1">
+                  <div className="mb-1 flex flex-wrap items-center gap-2">
+                    <p className="text-sm font-semibold">Continue a configuração da clínica</p>
+                    <Badge variant="secondary">{setupProgress}%</Badge>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    Há etapas iniciais pendentes. Você pode continuar usando o sistema e concluir a configuração quando quiser.
+                  </p>
+                  <Progress value={setupProgress} className="mt-3 h-1.5" />
+                </div>
+                <Button asChild variant="outline" className="shrink-0">
+                  <Link to="/onboarding">Ver primeiros passos <ArrowRight className="ml-2 h-4 w-4" /></Link>
+                </Button>
+              </CardContent>
+            </Card>
+          </motion.div>
+        )}
+
         {!hasData ? (
           <>
             {/* ─── Setup Progress Card ─── */}
@@ -658,61 +680,15 @@ function AdminDashboard() {
                       </Link>
                     ))}
                   </div>
-                </CardContent>
-              </Card>
-            </motion.div>
-
-            {/* ─── Feature Highlights ─── */}
-            <motion.div variants={stagger} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {[
-                { icon: Calendar, title: 'Agenda Inteligente', desc: 'Gerencie agendamentos, bloqueios e salas com visão completa.', href: '/agenda', color: 'bg-primary/10 text-primary' },
-                { icon: FileText, title: 'Prontuário Eletrônico', desc: 'Registros clínicos completos com timeline e anexos.', href: '/prontuarios', color: 'bg-info/10 text-info' },
-                { icon: Wallet, title: 'Gestão Financeira', desc: 'Controle receitas, despesas e fluxo de caixa.', href: '/financeiro', color: 'bg-success/10 text-success' },
-                { icon: HeartPulse, title: 'Laboratório', desc: 'Coletas, resultados e laudos laboratoriais.', href: '/laboratorio', color: 'bg-destructive/10 text-destructive' },
-                { icon: BarChart3, title: 'Relatórios & Analytics', desc: 'KPIs clínicos e financeiros com exportação PDF/Excel.', href: '/relatorios', color: 'bg-warning/10 text-warning' },
-                { icon: Bell, title: 'Notificações', desc: 'WhatsApp, e-mail e lembretes automáticos.', href: '/automacoes', color: 'bg-accent text-accent-foreground' },
-              ].map((feat, i) => (
-                <motion.div key={i} variants={fadeUp} custom={i}>
-                  <Link to={feat.href}>
-                    <Card className="group h-full hover:shadow-lg hover:-translate-y-1 transition-all duration-300 cursor-pointer border-border/40">
-                      <CardContent className="pt-6">
-                        <div className={cn('h-12 w-12 rounded-xl flex items-center justify-center mb-4 transition-transform group-hover:scale-110 group-hover:rotate-3', feat.color)}>
-                          <feat.icon className="h-6 w-6" />
-                        </div>
-                        <h3 className="font-semibold font-display mb-1 group-hover:text-primary transition-colors">{feat.title}</h3>
-                        <p className="text-sm text-muted-foreground leading-relaxed">{feat.desc}</p>
-                      </CardContent>
-                    </Card>
-                  </Link>
-                </motion.div>
-              ))}
-            </motion.div>
-
-            {/* ─── Quick Access Grid ─── */}
-            <motion.div variants={fadeUp}>
-              <Card className="border-border/40">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base">Acesso Rápido</CardTitle>
-                  <CardDescription>Navegue pelos módulos do sistema</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-1">
-                    <QuickActionBtn icon={Calendar} label="Agenda" href="/agenda" color="bg-primary/10 text-primary" />
-                    <QuickActionBtn icon={Users} label="Pacientes" href="/pacientes" color="bg-primary/10 text-primary" />
-                    <QuickActionBtn icon={Stethoscope} label="Médicos" href="/medicos" color="bg-info/10 text-info" />
-                    <QuickActionBtn icon={ClipboardList} label="Fila" href="/fila" color="bg-success/10 text-success" />
-                    <QuickActionBtn icon={FileText} label="Prontuários" href="/prontuarios" color="bg-info/10 text-info" />
-                    <QuickActionBtn icon={Wallet} label="Financeiro" href="/financeiro" color="bg-warning/10 text-warning" />
-                    <QuickActionBtn icon={HeartPulse} label="Laboratório" href="/laboratorio" color="bg-destructive/10 text-destructive" />
-                    <QuickActionBtn icon={Package} label="Estoque" href="/estoque" color="bg-muted text-muted-foreground" />
-                    <QuickActionBtn icon={BarChart3} label="Relatórios" href="/relatorios" color="bg-accent text-accent-foreground" />
-                    <QuickActionBtn icon={Bell} label="Automações" href="/automacoes" color="bg-warning/10 text-warning" />
-                    <QuickActionBtn icon={ShieldCheck} label="Configurações" href="/configuracoes" color="bg-muted text-muted-foreground" />
-                    <QuickActionBtn icon={Eye} label="Painel TV" href="/painel-tv" color="bg-primary/10 text-primary" />
+                  <div className="mt-4 flex justify-end">
+                    <Button asChild variant="outline">
+                      <Link to="/onboarding">Abrir checklist completo <ArrowRight className="ml-2 h-4 w-4" /></Link>
+                    </Button>
                   </div>
                 </CardContent>
               </Card>
             </motion.div>
+
           </>
         ) : (
           <>
