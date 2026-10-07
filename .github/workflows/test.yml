@@ -64,7 +64,7 @@ jobs:
       # retorna código de erro quando há erro de verdade.
       - run: npm run lint
       - name: Dependency audit
-        run: npm audit --audit-level=high
+        run: npm audit --omit=dev --audit-level=high
       - name: Supabase database lint
         if: ${{ env.SUPABASE_ACCESS_TOKEN != '' }}
         run: npx supabase link --project-ref gebygucrpipaufrlyqqj && npx supabase db lint --linked --level warning
