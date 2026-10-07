@@ -366,7 +366,7 @@ export async function getStorageStats(): Promise<{ used: string; collections: Re
   return { used: `${total.toLocaleString('pt-BR')} registros`, collections: collectionCounts };
 }
 
-export interface PreviaDaTabela {
+interface PreviaDaTabela {
   tabela: string;
   novos: number;
   sobrescritos: number;

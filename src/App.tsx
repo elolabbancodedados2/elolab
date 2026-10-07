@@ -115,7 +115,6 @@ const VerificarAssinatura = lazy(() => import("@/pages/VerificarAssinatura"));
 const FaturamentoConvenios = lazy(() => import("@/pages/FaturamentoConvenios"));
 const RepassesMedicos = lazy(() => import("@/pages/RepassesMedicos"));
 const Interoperabilidade = lazy(() => import("@/pages/Interoperabilidade"));
-import { useNotificationScheduler } from "@/hooks/useNotificationScheduler";
 import { CookieConsent } from "@/components/CookieConsent";
 
 const queryClient = new QueryClient({
@@ -141,7 +140,6 @@ const queryClient = new QueryClient({
  * Renders nothing — children are passed through.
  */
 function AppInitializer({ children }: { children: React.ReactNode }) {
-  useNotificationScheduler();
   return <>{children}</>;
 }
 
@@ -207,7 +205,7 @@ function App() {
                         <Route path="/politica-privacidade" element={<PoliticaPrivacidade />} />
                         <Route path="/politica-cookies" element={<PoliticaCookies />} />
                         <Route path="/termos-uso" element={<TermosUso />} />
-                        <Route path="/planos" element={<Planos />} />
+                        <Route path="/planos" element={<Navigate to="/#planos" replace />} />
                         <Route path="*" element={<Navigate to="/" replace />} />
                       </>
                     ) : (

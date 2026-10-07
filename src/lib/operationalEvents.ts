@@ -1,4 +1,4 @@
-export type OperationalAggregate =
+type OperationalAggregate =
   | 'agendamento'
   | 'fila'
   | 'triagem'

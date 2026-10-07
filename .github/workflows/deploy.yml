@@ -1,20 +1,21 @@
 name: Validate image for Easypanel
 
 on:
+  pull_request:
+    branches: [main]
   push:
     branches: [main]
   workflow_dispatch:
 
 concurrency:
-  group: production-deploy
+  group: validate-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  deploy:
+  validate:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      deployments: write
     steps:
       - uses: actions/checkout@v6
 
@@ -39,32 +40,7 @@ jobs:
         run: npm run test:run
 
       - name: Dependency audit
-        run: npm audit --audit-level=high
-
-      - name: Install E2E browser
-        run: npx playwright install --with-deps chromium
-
-      - name: End-to-end tests
-        env:
-          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
-          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
-          CLINICA_A_EMAIL: ${{ secrets.CLINICA_A_EMAIL }}
-          CLINICA_A_SENHA: ${{ secrets.CLINICA_A_SENHA }}
-          CLINICA_B_EMAIL: ${{ secrets.CLINICA_B_EMAIL }}
-          CLINICA_B_SENHA: ${{ secrets.CLINICA_B_SENHA }}
-          E2E_ADMIN_EMAIL: ${{ secrets.E2E_ADMIN_EMAIL }}
-          E2E_ADMIN_SENHA: ${{ secrets.E2E_ADMIN_SENHA }}
-          E2E_MEDICO_EMAIL: ${{ secrets.E2E_MEDICO_EMAIL }}
-          E2E_MEDICO_SENHA: ${{ secrets.E2E_MEDICO_SENHA }}
-          E2E_RECEPCAO_EMAIL: ${{ secrets.E2E_RECEPCAO_EMAIL }}
-          E2E_RECEPCAO_SENHA: ${{ secrets.E2E_RECEPCAO_SENHA }}
-          E2E_ENFERMAGEM_EMAIL: ${{ secrets.E2E_ENFERMAGEM_EMAIL }}
-          E2E_ENFERMAGEM_SENHA: ${{ secrets.E2E_ENFERMAGEM_SENHA }}
-          E2E_FINANCEIRO_EMAIL: ${{ secrets.E2E_FINANCEIRO_EMAIL }}
-          E2E_FINANCEIRO_SENHA: ${{ secrets.E2E_FINANCEIRO_SENHA }}
-          E2E_PACIENTE_TOKEN: ${{ secrets.E2E_PACIENTE_TOKEN }}
-          PRODUCAO_URL: https://app.elolab.com.br
-        run: npm run test:e2e -- --workers=4
+        run: npm audit --omit=dev --audit-level=high
 
       - name: Build
         env:
@@ -82,5 +58,6 @@ jobs:
             --build-arg VITE_SUPABASE_PUBLISHABLE_KEY="$VITE_SUPABASE_PUBLISHABLE_KEY" \
             -t elolab-frontend:ci .
 
-      # O deploy de produção é disparado pelo webhook Git do Easypanel. Isso
-      # mantém o workflow sem credenciais da VPS e sem dependência de CDN.
+      # Este workflow valida a imagem; não publica na VPS. O webhook Git do
+      # Easypanel é independente e precisa de branch protection para não
+      # iniciar deploy antes dos checks terminarem.

@@ -21,7 +21,7 @@ function asNumber(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-export function getVitalWarnings(vitals: Record<string, unknown> | null | undefined): VitalWarning[] {
+function getVitalWarnings(vitals: Record<string, unknown> | null | undefined): VitalWarning[] {
   if (!vitals) return [];
   const warnings: VitalWarning[] = [];
   const sistolica = asNumber(vitals.pressao_sistolica);

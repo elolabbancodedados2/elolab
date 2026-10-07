@@ -3,7 +3,7 @@ import { test, expect } from '@playwright/test';
 /**
  * Smoke test contra o ambiente PUBLICADO, não contra o servidor de dev.
  *
- * O deploy é Cloudflare Pages (`app.elolab.com.br`). Um push com CI verde não
+ * O deploy é feito pelo Easypanel na VPS (`app.elolab.com.br`). Um push com CI verde não
  * prova que o que chegou lá funciona: build passa, deploy passa, e a página
  * pode abrir em branco por um asset que não subiu, uma CSP que bloqueia o
  * próprio bundle, ou um service worker servindo cache velho.
@@ -88,9 +88,8 @@ test.describe('Produção — smoke', () => {
     const resposta = await request.get(PRODUCAO_URL!);
     const headers = resposta.headers();
 
-    // Estão declarados em vercel.json, mas o deploy é Cloudflare Pages — que
-    // ignora esse arquivo. Este teste existe para revelar essa discrepância em
-    // vez de deixá-la passar como se estivesse configurada.
+    // O frontend é servido pelo Nginx da imagem Docker no Easypanel. Este teste
+    // verifica os cabeçalhos que essa configuração precisa entregar.
     const esperados = [
       'content-security-policy',
       'x-content-type-options',
@@ -102,7 +101,7 @@ test.describe('Produção — smoke', () => {
     expect(
       ausentes,
       `cabeçalhos de segurança ausentes em produção: ${ausentes.join(', ')}. ` +
-      'Estão em vercel.json, mas o deploy é Cloudflare Pages — precisa de _headers ou wrangler.toml.',
+      'Confira os cabeçalhos definidos em docker/security-headers.conf e no Nginx da imagem.',
     ).toHaveLength(0);
 
     expect(headers['content-security-policy'], 'CSP precisa permitir a busca de CEP').toContain('https://viacep.com.br');

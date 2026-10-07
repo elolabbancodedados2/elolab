@@ -19,7 +19,7 @@ export default function TermosUso() {
         </div>
 
         <div className="prose prose-sm max-w-none space-y-6 text-muted-foreground">
-          <p className="text-xs">Última atualização: {new Date().toLocaleDateString('pt-BR')}</p>
+          <p className="text-xs">Última atualização: 7 de outubro de 2026</p>
 
           <section>
             <h2 className="text-lg font-semibold text-foreground">1. Aceitação dos Termos</h2>
@@ -55,8 +55,8 @@ export default function TermosUso() {
               <li>O acesso é oferecido mediante assinatura mensal ou anual</li>
               <li>Pagamentos são processados via Mercado Pago</li>
               <li>O período de teste (trial) é gratuito e configurável por plano</li>
-              <li>Após <strong>2 dias de inadimplência</strong>, o acesso será suspenso automaticamente</li>
-              <li>A reativação ocorre após regularização do pagamento</li>
+              <li>Em caso de inadimplência, eventuais restrições de acesso seguem o status da cobrança, a carência e as condições informadas no plano contratado</li>
+              <li>A reativação ocorre após confirmação da regularização do pagamento</li>
               <li>Cancelamentos podem ser feitos a qualquer momento pelo painel</li>
             </ul>
           </section>
@@ -76,10 +76,10 @@ export default function TermosUso() {
           <section>
             <h2 className="text-lg font-semibold text-foreground">6. Responsabilidades da EloLab</h2>
             <ul>
-              <li>Manter infraestrutura segura com criptografia e controle de acesso</li>
-              <li>Realizar backups automáticos semanais dos dados</li>
-              <li>Disponibilizar suporte técnico em horário comercial</li>
-              <li>Notificar sobre manutenções programadas com antecedência</li>
+              <li>Aplicar controles técnicos e organizacionais compatíveis com o serviço contratado</li>
+              <li>Informar, antes da contratação, a frequência, retenção e condições de recuperação dos backups disponíveis</li>
+              <li>Disponibilizar os canais, horários e prazos de suporte informados na proposta comercial</li>
+              <li>Comunicar manutenções programadas quando possível</li>
               <li>Manter conformidade com LGPD e regulamentações de saúde</li>
             </ul>
           </section>
@@ -90,7 +90,7 @@ export default function TermosUso() {
               <li>Prontuários são armazenados por no mínimo <strong>20 anos</strong> (Resolução CFM nº 1.821/2007)</li>
               <li>Alterações em registros clínicos são rastreadas via audit trail</li>
               <li>A EloLab atua como <strong>Operadora</strong> dos dados; a clínica é a <strong>Controladora</strong></li>
-              <li>Dados clínicos são criptografados e protegidos por RLS (Row Level Security)</li>
+              <li>O sistema aplica controles de acesso por clínica e perfil; a clínica continua responsável por definir quem pode acessar dados de saúde</li>
             </ul>
           </section>
 
@@ -104,7 +104,7 @@ export default function TermosUso() {
             <ul>
               <li>O EloLab é uma ferramenta de apoio à gestão e <strong>não substitui o julgamento clínico</strong></li>
               <li>Não nos responsabilizamos por decisões médicas baseadas no uso do sistema</li>
-              <li>Não garantimos disponibilidade ininterrupta (SLA de 99,5%)</li>
+              <li>As condições de disponibilidade, manutenção e suporte são as informadas na proposta comercial vigente</li>
               <li>Força maior e caso fortuito excluem responsabilidade</li>
             </ul>
           </section>

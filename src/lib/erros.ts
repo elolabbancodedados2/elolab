@@ -11,7 +11,7 @@
  */
 
 /** Formato de erro do supabase-js/PostgREST. */
-export interface ErroApi {
+interface ErroApi {
   code?: string;
   message?: string;
   details?: string | null;

@@ -266,5 +266,3 @@ export function DailyMultiDoctorView({
     </div>
   );
 }
-
-export const DAILY_CONSTS = { START_HOUR, END_HOUR, SLOT_MINUTES, SLOT_PX };

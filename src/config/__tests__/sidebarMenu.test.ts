@@ -17,20 +17,22 @@ const itens = (gs: ReturnType<typeof getFilteredMenuGroups>, grupo: string) =>
   gs.find((g) => g.label === grupo)?.items.map((i) => i.href) ?? [];
 
 describe('menu do dono da plataforma', () => {
-  it('sem clínica, mostra apenas o grupo Plataforma', () => {
+  it('sem clínica, mostra apenas grupos de operação da plataforma', () => {
     const g = getFilteredMenuGroups([], false, true, false);
-    expect(nomes(g)).toEqual(['Plataforma']);
+    expect(g.length).toBeGreaterThan(0);
+    expect(g.every((grupo) => grupo.superAdminOnly)).toBe(true);
+    expect(nomes(g)).toContain('SaaS · Clientes');
   });
 
   it('ao entrar numa clínica (impersonação), recupera as telas de clínica', () => {
     const g = getFilteredMenuGroups([], false, true, true);
     expect(nomes(g)).toContain('Pacientes');
-    expect(nomes(g)).toContain('Plataforma');
+    expect(nomes(g)).toContain('SaaS · Clientes');
   });
 
   it('o CRM só existe para ele', () => {
     const dono = getFilteredMenuGroups([], false, true, false);
-    expect(itens(dono, 'Plataforma')).toContain('/admin/crm');
+    expect(itens(dono, 'SaaS · Clientes')).toContain('/admin/crm');
   });
 });
 
@@ -38,7 +40,7 @@ describe('menu do administrador de clínica', () => {
   const adminClinica = () => getFilteredMenuGroups(['admin'], true, false, true);
 
   it('não enxerga o grupo Plataforma', () => {
-    expect(nomes(adminClinica())).not.toContain('Plataforma');
+    expect(nomes(adminClinica()).some((nome) => nome.startsWith('SaaS ·'))).toBe(false);
   });
 
   it('nenhuma tela de plataforma escapa por outro grupo', () => {

@@ -73,7 +73,6 @@ export default function Planos() {
   const { data: planos, isLoading } = usePlanos();
   const { planSlug, hasActivePlan, isTrial, trialEnd, trialDaysLeft } = useUserPlan();
   const createPlatformSubscription = useCreatePlatformSubscription();
-  const startTrialWithPayment = createPlatformSubscription;
   const { user } = useSupabaseAuth();
   const queryClient = useQueryClient();
 
@@ -314,7 +313,7 @@ export default function Planos() {
                         disabled={createPlatformSubscription.isPending}
                       >
                         <Gift className="h-4 w-4 mr-2" />
-                        {startTrialWithPayment.isPending ? 'Ativando...' : `Testar Grátis ${plano.trial_dias || 3} Dias`}
+                        {createPlatformSubscription.isPending ? 'Abrindo checkout...' : `Testar Grátis ${plano.trial_dias || 3} Dias`}
                       </Button>
                     )}
                     <Button
@@ -350,7 +349,6 @@ export default function Planos() {
         </div>
       </div>
 
-      {/* Payment Method Dialog */}
       {/* Cancel Subscription Dialog */}
       <AlertDialog open={showCancelDialog} onOpenChange={setShowCancelDialog}>
         <AlertDialogContent>

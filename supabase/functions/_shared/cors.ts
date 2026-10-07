@@ -17,6 +17,8 @@
  */
 
 const DEFAULT_ORIGINS = [
+  'https://elolab.com.br',
+  'https://www.elolab.com.br',
   'https://app.elolab.com.br',
   'http://localhost:5173',
   'http://127.0.0.1:5173',

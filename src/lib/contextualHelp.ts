@@ -1,6 +1,6 @@
 import type { AppRole } from '@/contexts/SupabaseAuthContext';
 
-export interface ContextualHelpLink {
+interface ContextualHelpLink {
   label: string;
   href: string;
   roles?: AppRole[];

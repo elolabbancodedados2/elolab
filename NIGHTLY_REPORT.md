@@ -1,5 +1,9 @@
 # Relatório da sessão autônoma — 13/08/2026
 
+> **Relatório histórico.** O diagnóstico de infraestrutura desta sessão indica
+> frontend e Supabase auto-hospedado no Easypanel da VPS; informações de
+> hospedagem e bloqueios abaixo refletem 13/08/2026 e não são atuais.
+
 Sessão de estabilização com revisão cruzada Claude ↔ Codex. Tudo verificável:
 cada afirmação abaixo tem commit, número de teste ou comando que a comprova.
 
@@ -28,7 +32,7 @@ corrigido em `6702a7c`.
 ## Estado inicial
 
 - Árvore limpa, `main` em `80dd9a0`, PR #27 já mergeado e deployado.
-- CI passando; deploy é **Cloudflare Pages**, não Vercel (o `vercel.json` está
+- CI passando; deploy era **Cloudflare Pages**, não Vercel (o `vercel.json` estava
   no repo mas não é o que publica).
 - Zero TODO/FIXME, zero `@ts-ignore`, zero botão fictício no código.
 - 4 migrations e 2 edge functions aguardando deploy desde a sessão anterior.

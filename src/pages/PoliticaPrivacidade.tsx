@@ -19,7 +19,7 @@ export default function PoliticaPrivacidade() {
         </div>
 
         <div className="prose prose-sm max-w-none space-y-6 text-muted-foreground">
-          <p className="text-xs">Última atualização: {new Date().toLocaleDateString('pt-BR')}</p>
+          <p className="text-xs">Última atualização: 7 de outubro de 2026</p>
 
           <section>
             <h2 className="text-lg font-semibold text-foreground">1. Introdução</h2>
@@ -28,7 +28,7 @@ export default function PoliticaPrivacidade() {
 
           <section>
             <h2 className="text-lg font-semibold text-foreground">2. Controlador e Encarregado (DPO)</h2>
-            <p><strong>Controlador:</strong> EloLab Tecnologia em Saúde LTDA.</p>
+            <p><strong>Controlador:</strong> EloLab. A razão social e o CNPJ da entidade contratante devem constar na proposta e no contrato de serviço.</p>
             <p><strong>Encarregado de Proteção de Dados (DPO):</strong> Para exercer seus direitos ou esclarecer dúvidas, entre em contato pelo e-mail: <strong>privacidade@elolab.com.br</strong></p>
           </section>
 
@@ -81,9 +81,12 @@ export default function PoliticaPrivacidade() {
             <h2 className="text-lg font-semibold text-foreground">6. Compartilhamento de Dados</h2>
             <p>Seus dados podem ser compartilhados com:</p>
             <ul>
-              <li><strong>Supabase (infraestrutura):</strong> Armazenamento seguro em nuvem com criptografia</li>
+              <li><strong>Hostinger:</strong> infraestrutura da VPS onde estão hospedados o frontend e o Supabase auto-hospedado do EloLab.</li>
+              <li><strong>Supabase:</strong> software de banco, autenticação e armazenamento operado na VPS contratada pelo EloLab.</li>
               <li><strong>Mercado Pago:</strong> Processamento de pagamentos e assinaturas</li>
               <li><strong>Brevo:</strong> Envio de e-mails transacionais</li>
+              <li><strong>Evolution API:</strong> conexão com o WhatsApp para envio e recebimento de mensagens, quando a clínica habilita a integração.</li>
+              <li><strong>OpenAI:</strong> processamento de mensagens e contexto da conversa para gerar respostas do agente de IA, quando habilitado pela clínica.</li>
               <li><strong>Órgãos reguladores:</strong> Quando exigido por lei (ANS, Anvisa, CFM)</li>
             </ul>
             <p>Não vendemos, alugamos ou compartilhamos seus dados com terceiros para fins de marketing.</p>
@@ -102,13 +105,13 @@ export default function PoliticaPrivacidade() {
           <section>
             <h2 className="text-lg font-semibold text-foreground">8. Segurança dos Dados</h2>
             <ul>
-              <li>Criptografia em trânsito (TLS/HTTPS) e em repouso</li>
-              <li>Row Level Security (RLS) em todas as tabelas do banco de dados</li>
+              <li>Conexões HTTPS/TLS para o acesso web e às APIs</li>
+              <li>Políticas de acesso por clínica no banco de dados; a configuração efetiva é revisada na operação do serviço</li>
               <li>Autenticação multifator disponível</li>
               <li>Timeout automático de sessão por inatividade (30 minutos)</li>
               <li>Controle de acesso por perfis (RBAC)</li>
               <li>Audit trail completo com registro de todas as alterações</li>
-              <li>Backups automáticos semanais criptografados</li>
+              <li>Frequência, retenção e possibilidade de restauração de backups devem ser informadas na proposta antes da contratação</li>
             </ul>
           </section>
 
@@ -135,7 +138,7 @@ export default function PoliticaPrivacidade() {
 
           <section>
             <h2 className="text-lg font-semibold text-foreground">11. Transferência Internacional</h2>
-            <p>Os dados são armazenados em servidores da AWS (Supabase) que podem estar localizados fora do Brasil. A transferência é realizada com garantias adequadas conforme Art. 33 da LGPD.</p>
+            <p>O frontend e o banco de dados do serviço estão hospedados em uma VPS da Hostinger com Supabase auto-hospedado. Alguns recursos enviam dados aos fornecedores externos listados nesta política; esses fornecedores podem processá-los fora do Brasil. O local de processamento e o mecanismo aplicável à transferência devem ser confirmados nas condições e contratos vigentes de cada fornecedor antes de habilitar integrações com dados de saúde. A ANPD regulamenta transferências internacionais na Resolução CD/ANPD nº 19/2024.</p>
           </section>
 
           <section>

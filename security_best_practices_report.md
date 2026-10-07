@@ -2,6 +2,11 @@
 
 ## Atualização final — 17/08/2026
 
+> **Relatório histórico.** As conclusões abaixo valiam para a árvore e a
+> infraestrutura revisadas em 17/08/2026. Não são uma aprovação de segurança
+> do deploy atual. A produção está no Easypanel da VPS e precisa de uma revisão
+> atualizada após as correções e migrações deste repositório.
+
 Todas as pendências deste relatório foram migradas:
 
 - `xlsx@0.18.5` foi removido e substituído por `read-excel-file` e `write-excel-file`;

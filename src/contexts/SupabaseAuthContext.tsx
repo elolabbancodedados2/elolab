@@ -8,7 +8,7 @@ export type AppRole = 'admin' | 'medico' | 'recepcao' | 'enfermagem' | 'financei
 
 export type PlatformAdminLevel = 'owner' | 'support' | 'finance';
 
-export interface Clinica {
+interface Clinica {
   id: string;
   nome: string;
   cnpj?: string;

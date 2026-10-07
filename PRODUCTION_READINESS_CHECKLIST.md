@@ -1,6 +1,9 @@
-# ✅ EloLab — Production Readiness Checklist 2026-04-13
+# EloLab — Checklist histórico de prontidão para produção (13/04/2026)
 
-## 🎯 Status: COMPLETE & READY FOR DEPLOYMENT
+> **Obsoleto.** Este checklist descreve uma revisão antiga e não comprova o
+> estado atual da produção. A aplicação está no Easypanel da VPS; consulte
+> [`docs/EASYPANEL-VPS.md`](docs/EASYPANEL-VPS.md) e a revisão atual antes de
+> qualquer deploy.
 
 ---
 

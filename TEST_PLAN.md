@@ -62,9 +62,9 @@
 
 ## CI/CD (GitHub Actions)
 
-Arquivo: `.github/workflows/test.yml`
+Arquivo: [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml)
 
-**Triggers:** push em `dev`, PRs para `main`
+**Triggers:** PRs para `main`, push em `main` e execução manual.
 
 ### Secrets necessários no GitHub
 
@@ -73,20 +73,20 @@ Vá em **Settings → Secrets and variables → Actions** do repositório e adic
 | Secret | Valor |
 |--------|-------|
 | `VITE_SUPABASE_URL` | URL do projeto Supabase |
-| `VITE_SUPABASE_ANON_KEY` | Chave anon/publishable do Supabase |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` ou `VITE_SUPABASE_ANON_KEY` | Chave pública do Supabase |
 
 ### Deploy na VPS
 
-O workflow de publicação valida a imagem Docker do frontend. O Easypanel faz o
-deploy após o webhook do repositório. Configure nele `VITE_SUPABASE_URL` e
-`VITE_SUPABASE_PUBLISHABLE_KEY` como build arguments; o procedimento completo
-está em [`docs/EASYPANEL-VPS.md`](docs/EASYPANEL-VPS.md).
+O workflow valida a imagem Docker, mas não publica nem controla o Easypanel.
+O webhook Git do painel pode começar o deploy antes do CI terminar. Proteja
+`main` e exija o check antes de habilitar deploy automático; consulte
+[`docs/EASYPANEL-VPS.md`](docs/EASYPANEL-VPS.md).
 
 ### Pipeline
 
-1. **unit-tests**: `npm ci` → `npm run test:run`
-2. **e2e-tests** (após unit): `npm ci` → instala Playwright chromium → `npm run test:e2e`
-3. Em caso de falha E2E, o relatório é salvo como artefato por 7 dias.
+O CI executa `npm ci`, typecheck, verificações estáticas, testes unitários e de
+integração, auditoria de dependências e build Docker. E2E não roda no workflow
+atual; execute localmente somente contra ambiente de homologação.
 
 ---
 

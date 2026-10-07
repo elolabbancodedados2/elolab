@@ -1,6 +1,6 @@
 import { supabase } from '@/integrations/supabase/client';
 
-export type AcaoDeConta =
+type AcaoDeConta =
   | 'previa'
   | 'bloquear'
   | 'desbloquear'
