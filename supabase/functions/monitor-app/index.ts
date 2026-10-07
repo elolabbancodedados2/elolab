@@ -95,10 +95,8 @@ Deno.serve(async (req) => {
            <p><b>Endereço:</b> ${ALVO}<br>
               <b>Resultado:</b> ${erro ?? 'sem resposta'}<br>
               <b>Momento:</b> ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}</p>
-           <p>Enquanto isso o sistema segue acessível em
-              <a href="https://elolab.pages.dev">elolab.pages.dev</a>.</p>
-           <p>Onde olhar: Cloudflare → Workers e Páginas → elolab → Domínios personalizados,
-              e o registro <code>app</code> em DNS.</p>`
+           <p>Verifique o serviço <code>elolab/app</code> no Easypanel da VPS,
+              os logs do container e o estado do servidor.</p>`
         : `<p>O app voltou a responder normalmente.</p>
            <p><b>Endereço:</b> ${ALVO}<br>
               <b>Resposta:</b> ${statusCode} em ${ms} ms<br>

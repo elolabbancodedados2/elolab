@@ -100,7 +100,9 @@ npx tsc --noEmit -p tsconfig.app.json
 npm run lint
 ```
 
-O CI roda typecheck, lint e testes a cada push em `dev` e PR para `main`.
+O workflow `Validate image for Easypanel` roda nas PRs para `main` e em pushes
+para `main`. Ele executa typecheck, verificações estáticas, testes, auditoria
+de dependências e build da imagem.
 
 Para executar os fluxos autenticados no CI, configure como segredos do GitHub
 contas exclusivas de homologação para `E2E_ADMIN_EMAIL/SENHA`,
@@ -108,10 +110,11 @@ contas exclusivas de homologação para `E2E_ADMIN_EMAIL/SENHA`,
 `E2E_ENFERMAGEM_EMAIL/SENHA` e `E2E_FINANCEIRO_EMAIL/SENHA`. O teste do portal
 usa `E2E_PACIENTE_TOKEN`. Nunca use contas ou tokens de pacientes reais.
 
-O frontend é empacotado pelo `Dockerfile` e publicado pelo Easypanel na VPS. O
-workflow `.github/workflows/deploy.yml` valida a imagem; o deploy de produção é
-disparado pelo webhook do Easypanel. A configuração completa, incluindo o
-Supabase auto-hospedado, está em [`docs/EASYPANEL-VPS.md`](docs/EASYPANEL-VPS.md).
+O frontend roda no Easypanel da VPS. O workflow `.github/workflows/deploy.yml`
+valida a imagem, mas não publica nem coordena o deploy da VPS. O webhook do
+Easypanel pode iniciar um deploy antes do CI terminar; proteja `main` e exija o
+check de validação antes de habilitar deploy automático. A configuração está
+em [`docs/EASYPANEL-VPS.md`](docs/EASYPANEL-VPS.md).
 
 **Isolamento entre clínicas** tem suíte própria, que só roda com duas contas
 reais em clínicas diferentes — sem elas os testes são pulados, nunca passam em
@@ -143,13 +146,14 @@ Chromium já instalado com `PLAYWRIGHT_CHROMIUM_PATH=/caminho/para/chrome`.
 
 - **O sistema não assina documento digitalmente.** Receita, atestado e guia de
   exame saem sem assinatura — o médico assina de próprio punho após imprimir, ou
-  assina o PDF no assinador gov.br. Não há integração com ICP-Brasil nem Memed.
+  assina o PDF no assinador gov.br. O código da integração Memed está em uma
+  alteração local, mas ainda não foi configurado nem publicado em produção.
   A tela dizia o contrário: o atestado se declarava "assinado digitalmente via
   Memed" e havia um botão que pedia o PIN do certificado do médico, descartava o
   PIN e marcava o documento como assinado por certificado. Foi removido. A
   assinatura do **prontuário** existe e funciona, mas é eletrônica simples (fecha
-  para edição e registra autor, CRM, data e hash), o que atende a CFM 1.821/07 —
-  não é ICP-Brasil.
+  para edição e registra autor, CRM, data e hash). Isso não equivale a
+  certificação ICP-Brasil nem substitui uma avaliação jurídica/regulatória.
 - **A IA usa OpenAI** (`api.openai.com`) no agente de WhatsApp
   (`whatsapp-evolution`). A edge function `ai-medical-assistant` (apoio à
   decisão clínica) existe, valida papel de médico, restringe por clínica e
