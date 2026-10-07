@@ -4,7 +4,7 @@ import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { toast } from 'sonner';
 import { redirecionarParaCheckout } from '@/lib/safeUrl';
 
-export interface Plano {
+interface Plano {
   id: string;
   nome: string;
   slug: string;
@@ -18,7 +18,7 @@ export interface Plano {
   trial_dias: number;
 }
 
-export interface AssinaturaPlano {
+interface AssinaturaPlano {
   plano_slug: string;
   plano_nome: string;
   status: string;
@@ -117,42 +117,6 @@ export function useUserPlan() {
   };
 }
 
-export function useStartTrial() {
-  const { user } = useSupabaseAuth();
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: async (planoSlug: string) => {
-      if (!user) throw new Error('Usuário não autenticado');
-      const { data, error } = await supabase.rpc('start_free_trial' as any, {
-        _user_id: user.id,
-        _plano_slug: planoSlug,
-      });
-      if (error) throw error;
-      const result = data as unknown as { success: boolean; error?: string; plano_nome?: string; trial_end?: string };
-      if (!result.success) throw new Error(result.error || 'Erro ao iniciar trial');
-      return result;
-    },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['user_plan'] });
-      toast.success(`Teste grátis ativado! ${data.plano_nome} por 3 dias.`);
-    },
-    onError: (err: any) => {
-      toast.error(err.message || 'Erro ao iniciar período de teste');
-    },
-  });
-}
-
-export interface TrialWithPaymentData {
-  plano_slug: string;
-  plano_nome: string;
-  plano_valor: number;
-  trial_dias: number;
-  payment_method: 'credit_card' | 'pix_recurring';
-  payer_email: string;
-  payer_name: string;
-}
-
 export interface PlatformSubscriptionData {
   plano_slug: string;
   trial_dias?: number;
@@ -182,46 +146,6 @@ export function useCreatePlatformSubscription() {
     },
     onError: (err: any) => {
       toast.error(err.message || 'Erro ao abrir o checkout da assinatura');
-    },
-  });
-}
-
-export function useStartTrialWithPayment() {
-  const { user } = useSupabaseAuth();
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: async (data: TrialWithPaymentData) => {
-      if (!user?.email) throw new Error('Usuário não autenticado');
-
-      const { data: response, error } = await supabase.functions.invoke('mercadopago-checkout', {
-        body: {
-          action: 'create_subscription',
-          plano_slug: data.plano_slug,
-          trial_dias: data.trial_dias,
-        },
-      });
-
-      if (error) throw error;
-      if (response?.error) throw new Error(response.error);
-      if (!response?.checkout_url) throw new Error('O Mercado Pago não retornou o checkout da assinatura');
-      return response as unknown as {
-        success: boolean;
-        checkout_url: string;
-        preapproval_id: string;
-        trial_id: string;
-        trial_end: string;
-        charge_date: string;
-        message: string;
-      };
-    },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['user_plan'] });
-      redirecionarParaCheckout(data.checkout_url);
-      toast.success(data.message || 'Período de teste iniciado com sucesso!');
-    },
-    onError: (err: any) => {
-      toast.error(err.message || 'Erro ao iniciar período de teste');
     },
   });
 }

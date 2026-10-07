@@ -14,27 +14,15 @@ interface State {
   errorInfo?: React.ErrorInfo;
 }
 
-// Simple error reporter — stores recent errors for debugging
-const errorLog: Array<{ message: string; stack?: string; timestamp: string; componentStack?: string }> = [];
-
 function reportError(error: Error, errorInfo?: React.ErrorInfo) {
-  const entry = {
-    message: error.message,
-    stack: error.stack,
-    timestamp: new Date().toISOString(),
-    componentStack: errorInfo?.componentStack || undefined,
-  };
-  errorLog.push(entry);
-  // Keep only last 20
-  if (errorLog.length > 20) errorLog.shift();
-  
   if (import.meta.env.DEV) {
-    console.error('[ErrorBoundary]', entry);
+    console.error('[ErrorBoundary]', {
+      message: error.message,
+      stack: error.stack,
+      timestamp: new Date().toISOString(),
+      componentStack: errorInfo?.componentStack || undefined,
+    });
   }
-}
-
-export function getErrorLog() {
-  return [...errorLog];
 }
 
 export class ErrorBoundary extends Component<Props, State> {

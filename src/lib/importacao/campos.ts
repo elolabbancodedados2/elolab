@@ -13,12 +13,12 @@
 
 import { normalizarTexto } from '@/lib/buscaPaciente';
 
-export type CampoDePaciente =
+type CampoDePaciente =
   | 'nome' | 'cpf' | 'data_nascimento' | 'telefone' | 'email' | 'sexo'
   | 'cep' | 'logradouro' | 'numero' | 'complemento' | 'bairro' | 'cidade' | 'estado'
   | 'nome_responsavel' | 'cpf_responsavel' | 'numero_carteira' | 'observacoes';
 
-export type CampoDeAgendamento =
+type CampoDeAgendamento =
   | 'paciente_nome' | 'paciente_cpf' | 'paciente_nascimento'
   | 'data' | 'hora_inicio' | 'medico_nome' | 'tipo' | 'status' | 'observacoes';
 

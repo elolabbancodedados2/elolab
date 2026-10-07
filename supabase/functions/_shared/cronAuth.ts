@@ -53,7 +53,7 @@ function jwtRole(req: Request): string | null {
 /**
  * Para funções que o cron dispara MAS que a interface também chama de propósito
  * — send-appointment-reminder (ao criar agendamento) e process-notification-queue
- * (hook useNotificationScheduler).
+ * (chamada manual por usuário autenticado).
  *
  * Aceita duas origens: o agendador, com o segredo; ou um usuário autenticado.
  * A chave `anon` sozinha não passa, que é justamente o buraco original.

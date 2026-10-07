@@ -1,6 +1,6 @@
 import { ReactNode } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { LucideIcon, FileQuestion, Users, Calendar, FileText, Package, SearchX } from 'lucide-react';
+import { LucideIcon, FileQuestion, Users, Package, SearchX } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
@@ -78,36 +78,6 @@ export function EmptyPatients({ onAdd }: { onAdd: () => void }) {
         label: 'Cadastrar Paciente',
         onClick: onAdd,
         icon: Users,
-      }}
-    />
-  );
-}
-
-export function EmptyAgendamentos({ onAdd }: { onAdd: () => void }) {
-  return (
-    <EmptyState
-      icon={Calendar}
-      title="Nenhum agendamento"
-      description="A agenda está vazia. Clique em um horário disponível para criar um novo agendamento."
-      action={{
-        label: 'Novo Agendamento',
-        onClick: onAdd,
-        icon: Calendar,
-      }}
-    />
-  );
-}
-
-export function EmptyProntuarios({ onAdd }: { onAdd: () => void }) {
-  return (
-    <EmptyState
-      icon={FileText}
-      title="Nenhum prontuário"
-      description="Não há prontuários registrados. Crie um novo prontuário após uma consulta."
-      action={{
-        label: 'Novo Prontuário',
-        onClick: onAdd,
-        icon: FileText,
       }}
     />
   );

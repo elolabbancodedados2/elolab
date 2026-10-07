@@ -1,5 +1,6 @@
 export * from './types';
-export * from './useWhatsAppData';
+export * from './useWhatsAppQueries';
+export * from './useWhatsAppMutations';
 export * from './StatsCards';
 export * from './SessionsTab';
 export * from './AgentsTab';

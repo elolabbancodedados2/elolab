@@ -8,7 +8,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { AlertTriangle, Trash2, LogOut, Save } from 'lucide-react';
+import { AlertTriangle, Trash2, Save } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface ConfirmDialogProps {
@@ -106,28 +106,6 @@ export function DeleteConfirmDialog({
       variant="destructive"
       onConfirm={onConfirm}
       isLoading={isLoading}
-    />
-  );
-}
-
-export function LogoutConfirmDialog({
-  open,
-  onOpenChange,
-  onConfirm,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  onConfirm: () => void;
-}) {
-  return (
-    <ConfirmDialog
-      open={open}
-      onOpenChange={onOpenChange}
-      title="Sair do Sistema"
-      description="Tem certeza que deseja sair? Você precisará fazer login novamente para acessar o sistema."
-      confirmLabel="Sair"
-      variant="warning"
-      onConfirm={onConfirm}
     />
   );
 }

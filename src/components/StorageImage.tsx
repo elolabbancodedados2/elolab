@@ -18,7 +18,7 @@ import { supabase } from '@/integrations/supabase/client';
  * seguem sendo usados como estão (deixarão de funcionar quando o bucket for
  * fechado, e a foto pode ser reenviada pela tela).
  */
-export function useStorageUrl(bucket: string, value?: string | null): string | undefined {
+function useStorageUrl(bucket: string, value?: string | null): string | undefined {
   const [url, setUrl] = useState<string | undefined>(undefined);
 
   useEffect(() => {
