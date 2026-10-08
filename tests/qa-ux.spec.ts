@@ -118,7 +118,7 @@ test.describe('QA visual — UX, frontend e design', () => {
     expect(runtimeErrors, `erros de execução: ${runtimeErrors.join(' | ')}`).toHaveLength(0);
   });
 
-  test('login: validação vazia é clara e não envia o formulário', async ({ page }) => {
+  test('login: validação vazia é clara e não envia o formulário', async ({ page }, testInfo) => {
     let requestsToAuth = 0;
     page.on('request', (request) => {
       if (/\/auth\/v1\/token/.test(request.url())) requestsToAuth += 1;

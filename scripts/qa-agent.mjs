@@ -5,6 +5,7 @@ import { resolve } from 'node:path';
 import process from 'node:process';
 
 const baseURL = process.env.QA_BASE_URL?.replace(/\/$/, '');
+const visualOnly = process.argv.includes('--visual-only');
 const fail = (message) => {
   process.stderr.write(`QA não iniciado: ${message}\n`);
   process.exit(1);
@@ -23,7 +24,7 @@ if (target.hostname === 'app.elolab.com.br' && process.env.QA_ALLOW_PRODUCTION !
   fail('para testar produção, defina QA_ALLOW_PRODUCTION=1 depois de confirmar o deploy.');
 }
 
-if (process.env.QA_DEDICATED_CLINIC !== '1') {
+if (!visualOnly && process.env.QA_DEDICATED_CLINIC !== '1') {
   fail('use uma clínica vazia e exclusiva para QA e confirme isso com QA_DEDICATED_CLINIC=1.');
 }
 
@@ -32,7 +33,7 @@ const missing = requiredAccounts.flatMap((role) =>
   ['EMAIL', 'SENHA'].filter((suffix) => !process.env[`E2E_${role}_${suffix}`])
     .map((suffix) => `E2E_${role}_${suffix}`),
 );
-if (missing.length) fail(`faltam contas de teste para cobrir todos os perfis: ${missing.join(', ')}.`);
+if (!visualOnly && missing.length) fail(`faltam contas de teste para cobrir todos os perfis: ${missing.join(', ')}.`);
 
 let localVersion;
 try {
@@ -55,17 +56,21 @@ if (!localVersion.build_id || deployedVersion.build_id !== localVersion.build_id
 }
 
 process.stdout.write(`Versão confirmada: ${localVersion.build_id.slice(0, 16)}\n`);
-process.stdout.write('Clínica de QA confirmada. Rodando navegador real e verificações dos cinco perfis.\n');
+process.stdout.write(visualOnly
+  ? 'Agente visual: páginas públicas, sem login e sem alterações de dados.\n'
+  : 'Clínica de QA confirmada. Rodando navegador real e verificações dos cinco perfis.\n');
 
 const cli = resolve('node_modules/@playwright/test/cli.js');
-const specs = [
-  'tests/producao-smoke.spec.ts',
-  'tests/qa-ux.spec.ts',
-  'tests/qa-real-user.spec.ts',
-  'tests/navigation.spec.ts',
-  'tests/modulos.spec.ts',
-  'tests/perfis-rbac.spec.ts',
-];
+const specs = visualOnly
+  ? ['tests/producao-smoke.spec.ts', 'tests/qa-ux.spec.ts']
+  : [
+      'tests/producao-smoke.spec.ts',
+      'tests/qa-ux.spec.ts',
+      'tests/qa-real-user.spec.ts',
+      'tests/navigation.spec.ts',
+      'tests/modulos.spec.ts',
+      'tests/perfis-rbac.spec.ts',
+    ];
 const result = spawnSync(process.execPath, [cli, 'test', ...specs, '--workers=1'], {
   stdio: 'inherit',
   env: {

@@ -11,6 +11,8 @@ O agente usa Playwright para avaliar o frontend do ponto de vista de quem usa o 
 
 O runner interrompe a bateria se a versão publicada e a versão local não forem iguais. As contas e senhas são lidas só do ambiente; não entram no Git nem nos relatórios. O agente exige uma clínica vazia e exclusiva para QA para não abrir dados reais de pacientes.
 
+Para executar apenas a revisão de frontend/UX, sem login ou contas de QA, use `npm run qa:ux` depois do deploy e da confirmação do `build_id`. Essa modalidade acessa somente páginas públicas e não grava dados.
+
 ## Configuração local
 
 No PowerShell, defina as variáveis na sessão atual. Use cinco contas de teste da mesma clínica: uma administradora e uma para cada perfil. Não salve senhas em arquivo do projeto.
