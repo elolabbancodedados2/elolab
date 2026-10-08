@@ -151,19 +151,73 @@ Deno.serve(async (req) => {
 
     if (!userId) return json({ success: false, error: "Falha ao criar usuário." }, 500);
 
+    const { data: perfilAtual, error: perfilLookupError } = await service
+      .from("profiles")
+      .select("clinica_id, email")
+      .eq("id", userId)
+      .maybeSingle();
+    throwDatabaseError(perfilLookupError, "Não foi possível validar o perfil da conta.");
+    if (perfilAtual?.clinica_id && perfilAtual.clinica_id !== clinicaId) {
+      return json({ success: false, error: "Esta conta já pertence a outra clínica." }, 409);
+    }
+    if (perfilAtual?.email && perfilAtual.email.toLowerCase() !== email.toLowerCase()) {
+      return json({ success: false, error: "O e-mail do perfil não corresponde ao convite. Peça ao administrador para corrigir o cadastro." }, 409);
+    }
+
+    // Confira os vínculos antes de gravar o perfil e as permissões. Um convite
+    // não pode tomar uma ficha que já pertence a outra conta.
+    const { data: fichaExistente, error: fichaLookupError } = await service
+      .from("funcionarios")
+      .select("id, user_id")
+      .eq("clinica_id", clinicaId)
+      .ilike("email", emailPadrao)
+      .maybeSingle();
+    throwDatabaseError(fichaLookupError, "Não foi possível validar a ficha do funcionário.");
+    if (fichaExistente?.user_id && fichaExistente.user_id !== userId) {
+      return json({ success: false, error: "A ficha deste funcionário já está vinculada a outra conta. Peça ao administrador para corrigir o vínculo." }, 409);
+    }
+
+    let medicoExistente: { id: string; user_id: string | null; clinica_id: string } | null = null;
+    if (roles.includes("medico")) {
+      const { data: medicoDaConta, error: medicoLookupError } = await service
+        .from("medicos").select("id, user_id, clinica_id").eq("user_id", userId).maybeSingle();
+      throwDatabaseError(medicoLookupError, "Não foi possível validar o cadastro médico.");
+      if (medicoDaConta && medicoDaConta.clinica_id !== clinicaId) {
+        return json({ success: false, error: "O cadastro médico desta conta já pertence a outra clínica." }, 409);
+      }
+      medicoExistente = medicoDaConta;
+
+      if (!medicoExistente) {
+        const { data: medicoPorEmail, error: medicoEmailError } = await service
+          .from("medicos")
+          .select("id, user_id, clinica_id")
+          .eq("clinica_id", clinicaId)
+          .ilike("email", emailPadrao)
+          .limit(1)
+          .maybeSingle();
+        throwDatabaseError(medicoEmailError, "Não foi possível validar o cadastro médico.");
+        if (medicoPorEmail?.user_id && medicoPorEmail.user_id !== userId) {
+          return json({ success: false, error: "O cadastro médico deste e-mail já está vinculado a outra conta. Peça ao administrador para corrigir o vínculo." }, 409);
+        }
+        medicoExistente = medicoPorEmail;
+      }
+    }
+
     // Upsert profile com clinica_id
-    await service.from("profiles").upsert({
+    const { error: profileSaveError } = await service.from("profiles").upsert({
       id: userId,
       nome,
       email,
       ...(telefone ? { telefone } : {}),
       clinica_id: clinicaId,
     } as any, { onConflict: "id" });
+    throwDatabaseError(profileSaveError, "Não foi possível vincular o perfil à clínica.");
 
     // Roles
     if (roles.length > 0) {
       const rows = roles.map((role) => ({ user_id: userId, role }));
-      await service.from("user_roles").upsert(rows as any, { onConflict: "user_id,role" });
+      const { error: rolesSaveError } = await service.from("user_roles").upsert(rows as any, { onConflict: "user_id,role" });
+      throwDatabaseError(rolesSaveError, "Não foi possível atribuir os papéis do convite.");
     }
 
     // Vincula o cadastro de funcionário à conta criada.
@@ -173,22 +227,20 @@ Deno.serve(async (req) => {
     //
     // Casa pelo e-mail dentro da MESMA clínica. Se não houver ficha, cria —
     // convidar alguém já é a decisão de que essa pessoa faz parte da equipe.
-    const { data: fichaExistente } = await service
-      .from("funcionarios")
-      .select("id, user_id")
-      .eq("clinica_id", clinicaId)
-      .ilike("email", emailPadrao)
-      .maybeSingle();
-
     if (fichaExistente) {
       if (!(fichaExistente as any).user_id) {
-        await service
+        const { data: linkedEmployee, error: linkError } = await service
           .from("funcionarios")
           .update({ user_id: userId })
-          .eq("id", (fichaExistente as any).id);
+          .eq("id", (fichaExistente as any).id)
+          .is("user_id", null)
+          .select("id")
+          .maybeSingle();
+        throwDatabaseError(linkError, "Não foi possível vincular a ficha do funcionário.");
+        if (!linkedEmployee) return json({ success: false, error: "A ficha do funcionário mudou durante o aceite. Peça ao administrador para verificar o vínculo." }, 409);
       }
     } else {
-      await service.from("funcionarios").insert({
+      const { error: employeeInsertError } = await service.from("funcionarios").insert({
         nome,
         email,
         user_id: userId,
@@ -198,41 +250,44 @@ Deno.serve(async (req) => {
         // lê para reenviar convite, e vazio ali gera convite que não dá acesso.
         pending_roles: roles,
       } as any);
+      throwDatabaseError(employeeInsertError, "Não foi possível criar a ficha do funcionário.");
     }
 
     // Se médico, garantir registro em medicos
     if (roles.includes("medico")) {
-      const { data: existsMed } = await service
-        .from("medicos").select("id").eq("user_id", userId).maybeSingle();
-      if (!existsMed) {
-        // Ficha criada anteriormente pela clínica pode ainda não ter user_id.
-        // Vincule-a por e-mail antes de criar uma segunda ficha médica.
-        const { data: medByEmail } = await service
-          .from("medicos")
-          .select("id")
-          .eq("clinica_id", clinicaId)
-          .ilike("email", emailPadrao)
-          .limit(1)
-          .maybeSingle();
-        if (medByEmail) {
-          await service.from("medicos").update({ user_id: userId }).eq("id", medByEmail.id);
-        } else {
-          await service.from("medicos").insert({
-            nome,
-            email,
-            crm: "PENDENTE",
-            user_id: userId,
-            ativo: true,
-            clinica_id: clinicaId,
-          } as any);
+      if (medicoExistente) {
+        // Ficha criada anteriormente pode ainda não ter user_id.
+        if (!medicoExistente.user_id) {
+          const { data: linkedDoctor, error: doctorLinkError } = await service.from("medicos")
+            .update({ user_id: userId })
+            .eq("id", medicoExistente.id)
+            .select("id")
+            .maybeSingle();
+          throwDatabaseError(doctorLinkError, "Não foi possível vincular o cadastro médico.");
+          if (!linkedDoctor) throw new Error("O cadastro médico mudou durante o aceite. Tente novamente.");
         }
+      } else {
+        const { error: doctorInsertError } = await service.from("medicos").insert({
+          nome,
+          email,
+          crm: "PENDENTE",
+          user_id: userId,
+          ativo: true,
+          clinica_id: clinicaId,
+        } as any);
+        throwDatabaseError(doctorInsertError, "Não foi possível criar o cadastro médico.");
       }
     }
 
     // Marca convite aceito
-    await service.from("convites_funcionario")
+    const { data: inviteUpdated, error: inviteUpdateError } = await service.from("convites_funcionario")
       .update({ accepted_at: new Date().toISOString(), accepted_by: userId })
-      .eq("id", (invite as any).id);
+      .eq("id", (invite as any).id)
+      .is("accepted_at", null)
+      .select("id")
+      .maybeSingle();
+    throwDatabaseError(inviteUpdateError, "Não foi possível concluir o aceite do convite.");
+    if (!inviteUpdated) return json({ success: false, error: "O convite foi utilizado por outra tentativa. Entre novamente para conferir o acesso." }, 409);
 
     return json({ success: true, user_id: userId, clinica_id: clinicaId });
   } catch (e: any) {
@@ -246,4 +301,10 @@ function json(payload: unknown, status = 200) {
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
+}
+
+function throwDatabaseError(error: { message?: string } | null, message: string): void {
+  if (!error) return;
+  console.error("accept-invite database operation failed:", error.message ?? "unknown error");
+  throw new Error(message);
 }
