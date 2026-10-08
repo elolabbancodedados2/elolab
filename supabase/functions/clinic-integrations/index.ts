@@ -59,6 +59,9 @@ Deno.serve(async (req) => {
     const provedor = String(body.provedor || '');
     const integracao = integracaoDoCatalogo(provedor);
     if (!integracao) return json({ error: 'Integração não disponível.' }, 404);
+    if (provedor === 'mercado_pago' && action === 'connect') {
+      return json({ error: 'Conecte sua conta pelo fluxo seguro de autorização do Mercado Pago.' }, 400);
+    }
 
     const referenciaId = body.referencia_id ? String(body.referencia_id) : null;
     if (integracao.escopo === 'profissional') {

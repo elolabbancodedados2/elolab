@@ -48,6 +48,7 @@ const Automacoes = lazy(() => import("@/pages/Automacoes"));
 const AgenteIA = lazy(() => import("@/pages/AgenteIA"));
 const Analytics = lazy(() => import("@/pages/Analytics"));
 const Planos = lazy(() => import("@/pages/Planos"));
+const PlanoCheckout = lazy(() => import("@/pages/PlanoCheckout"));
 const Laboratorio = lazy(() => import("@/pages/Laboratorio"));
 const PrecosExames = lazy(() => import("@/pages/PrecosExames"));
 const PrecosServicos = lazy(() => import("@/pages/PrecosServicos"));
@@ -117,6 +118,7 @@ const RepassesMedicos = lazy(() => import("@/pages/RepassesMedicos"));
 const Interoperabilidade = lazy(() => import("@/pages/Interoperabilidade"));
 import { CookieConsent } from "@/components/CookieConsent";
 import { MaintenanceAnnouncement } from "@/components/MaintenanceAnnouncement";
+import { BrandLoadingScreen } from "@/components/BrandLoadingScreen";
 
 const queryClient = new QueryClient({
   // Falha de carregamento nunca deve virar tela em branco silenciosa:
@@ -152,17 +154,7 @@ function RedirecionarTriagem() {
 }
 
 function RouteFallback() {
-  return (
-    <div className="flex min-h-[60vh] items-center justify-center bg-background">
-      <div className="flex flex-col items-center gap-4">
-        <div className="relative h-12 w-12">
-          <div className="absolute inset-0 rounded-full border-2 border-primary/15" />
-          <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-primary animate-spin" />
-        </div>
-        <p className="text-sm font-medium text-muted-foreground animate-pulse">Carregando…</p>
-      </div>
-    </div>
-  );
+  return <BrandLoadingScreen message="Abrindo seu ambiente" detail="Estamos carregando esta área do EloLab." />;
 }
 
 /**
@@ -313,6 +305,7 @@ function App() {
                           <Route path="/agente-ia" element={<SupabaseProtectedRoute allowedRoles={['admin']}><AgenteIA /></SupabaseProtectedRoute>} />
                           <Route path="/analytics" element={<SupabaseProtectedRoute allowedRoles={['admin']}><Analytics /></SupabaseProtectedRoute>} />
                           <Route path="/planos" element={<SupabaseProtectedRoute allowedRoles={['admin']}><Planos /></SupabaseProtectedRoute>} />
+                          <Route path="/planos/checkout/:slug" element={<SupabaseProtectedRoute allowedRoles={['admin']}><PlanoCheckout /></SupabaseProtectedRoute>} />
                           <Route path="/documentacao" element={<SupabaseProtectedRoute somentePlataforma><Documentacao /></SupabaseProtectedRoute>} />
                           <Route path="/painel-admin" element={<SupabaseProtectedRoute somentePlataforma><PainelAdmin /></SupabaseProtectedRoute>} />
                           <Route path="/admin/clinicas" element={<SupabaseProtectedRoute somentePlataforma><PlatformClinicas /></SupabaseProtectedRoute>} />

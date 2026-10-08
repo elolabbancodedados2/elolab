@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
@@ -10,12 +11,12 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Check, Crown, Sparkles, Zap, Clock, Gift, ArrowRight, Shield, Headphones, XCircle } from 'lucide-react';
-import { useUserPlan, usePlanos, useCreatePlatformSubscription } from '@/hooks/useSubscriptionPlan';
+import { useUserPlan, usePlanos } from '@/hooks/useSubscriptionPlan';
+import { useBillingStatus } from '@/hooks/usePlanCheckout';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { redirecionarParaCheckout } from '@/lib/safeUrl';
 import { ErrorState } from '@/components/ErrorState';
 
 const planConfig: Record<string, {
@@ -71,10 +72,15 @@ const featureLabels: Record<string, string> = {
 const premiumFeatures = ['agente_ia', 'chatbot_whatsapp'];
 
 export default function Planos() {
-  const { data: planos, isLoading: loadingPlanos, isError: erroAoCarregarPlanos, error: erroPlanos, refetch: refetchPlanos } = usePlanos();
+  const { user, isPlatformAdmin } = useSupabaseAuth();
+  const { data: planos, isLoading: loadingPlanos, isError: erroAoCarregarPlanos, error: erroPlanos, refetch: refetchPlanos } = usePlanos(!isPlatformAdmin);
   const { planSlug, hasActivePlan, isTrial, trialEnd, trialDaysLeft, isLoading: loadingAssinatura, isError: erroAoConsultarAssinatura, error: erroAssinatura, refetch: refetchAssinatura } = useUserPlan();
-  const createPlatformSubscription = useCreatePlatformSubscription();
-  const { user } = useSupabaseAuth();
+  const { data: billing } = useBillingStatus(undefined, !isPlatformAdmin);
+  const navigate = useNavigate();
+  const irParaCheckout = (slug: string, params = '') => navigate(`/planos/checkout/${slug}${params}`);
+  const prePago = billing?.assinatura?.modalidade === 'pre_pago' ? billing.assinatura : null;
+  const prePagoFim = prePago?.data_fim ? new Date(prePago.data_fim) : null;
+  const diasParaVencer = prePagoFim ? Math.ceil((prePagoFim.getTime() - Date.now()) / 86400000) : null;
   const queryClient = useQueryClient();
 
   const [showCancelDialog, setShowCancelDialog] = useState(false);
@@ -103,32 +109,19 @@ export default function Planos() {
     onError: (err: any) => toast.error(err.message || 'Erro ao cancelar assinatura'),
   });
 
-  const upgradeMutation = useMutation({
-    mutationFn: async (plano: any) => {
-      if (!user?.email) throw new Error('Faça login novamente para continuar');
-
-      const { data, error } = await supabase.functions.invoke('mercadopago-checkout', {
-        body: {
-          action: 'create_subscription',
-          plano_slug: plano.slug,
-          trial_dias: 0,
-        },
-      });
-      if (error) throw error;
-      if (data?.error || data?.success === false) {
-        throw new Error(data.error || 'Não foi possível iniciar a assinatura');
-      }
-      return data;
-    },
-    onSuccess: (data: any) => {
-      if (data?.checkout_url) {
-        toast.success('Redirecionando para o Mercado Pago...', { duration: 4000 });
-        redirecionarParaCheckout(data.checkout_url);
-      }
-      queryClient.invalidateQueries({ queryKey: ['user_plan'] });
-    },
-    onError: (err: any) => toast.error(err.message || 'Erro ao processar upgrade'),
-  });
+  if (isPlatformAdmin) {
+    return (
+      <div className="mx-auto max-w-2xl py-16">
+        <div className="rounded-2xl border bg-card p-8 text-center shadow-sm">
+          <Shield className="mx-auto mb-4 h-10 w-10 text-primary" />
+          <h1 className="text-2xl font-semibold">Acesso da plataforma</h1>
+          <p className="mt-3 text-muted-foreground">
+            Esta conta administra o EloLab e também pode acessar o app. Ela é isenta dos planos de cliente e não gera cobranças de assinatura.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   if (loadingPlanos || loadingAssinatura) {
     return (
@@ -170,7 +163,7 @@ export default function Planos() {
         {!hasActivePlan && (
           <div className="inline-flex items-center gap-2 bg-warning/10 text-warning rounded-full px-5 py-2.5 text-sm font-medium border border-warning/20">
             <Gift className="h-4 w-4" />
-            Teste grátis disponível em planos elegíveis — cartão ou PIX recorrente necessário
+            Teste grátis disponível em planos elegíveis, com cartão de crédito
           </div>
         )}
       </div>
@@ -192,16 +185,37 @@ export default function Planos() {
             </div>
           </div>
           <Button
-            onClick={() => {
-              const currentPlano = planos?.find(p => p.slug === planSlug);
-              if (currentPlano) upgradeMutation.mutate(currentPlano);
-            }}
-            disabled={upgradeMutation.isPending}
+            onClick={() => { if (planSlug) irParaCheckout(planSlug); }}
             className="gap-2 shrink-0"
           >
-            {upgradeMutation.isPending ? 'Processando...' : 'Assinar Agora'}
+            Assinar Agora
             <ArrowRight className="h-4 w-4" />
           </Button>
+        </div>
+      )}
+
+      {/* Período pré-pago (Pix/boleto) */}
+      {prePago && prePagoFim && (
+        <div className={`rounded-xl border p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 ${diasParaVencer !== null && diasParaVencer <= 7 ? 'border-warning/40 bg-warning/5' : 'border-primary/20 bg-gradient-to-r from-primary/5 to-transparent'}`}>
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-lg bg-primary/10">
+              <Clock className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <p className="font-semibold text-foreground">
+                {prePago.status === 'ativa' ? 'Plano pago por período' : 'Período pago encerrado'}
+              </p>
+              <p className="text-sm text-muted-foreground">
+                {prePago.status === 'ativa'
+                  ? `Acesso liberado até ${format(prePagoFim, "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}. Não renova automaticamente.`
+                  : 'Pague um novo período ou assine no cartão para voltar a usar todos os recursos.'}
+              </p>
+            </div>
+          </div>
+          <div className="flex gap-2 shrink-0">
+            <Button variant="outline" onClick={() => irParaCheckout(prePago.plano_slug, '?metodo=pix')}>Pagar próximo período</Button>
+            <Button onClick={() => irParaCheckout(prePago.plano_slug)} className="gap-2">Assinar no cartão <ArrowRight className="h-4 w-4" /></Button>
+          </div>
         </div>
       )}
 
@@ -301,7 +315,10 @@ export default function Planos() {
                       <Shield className="h-4 w-4 mr-2" />
                       {isTrial ? 'Em Período de Teste' : 'Seu Plano Atual'}
                     </Button>
-                    {!isTrial && (
+                    {prePago && (
+                      <p className="text-center text-xs text-muted-foreground">Sem renovação automática — nada a cancelar.</p>
+                    )}
+                    {!isTrial && !prePago && (
                       <Button
                         variant="ghost"
                         size="sm"
@@ -320,20 +337,18 @@ export default function Planos() {
                       <Button
                         className={`w-full h-12 text-base font-semibold ${isHighlighted ? config.btnClass : ''}`}
                         variant={isHighlighted ? 'default' : 'outline'}
-                        onClick={() => createPlatformSubscription.mutate({ plano_slug: plano.slug, trial_dias: plano.trial_dias || 3 })}
-                        disabled={createPlatformSubscription.isPending}
+                        onClick={() => irParaCheckout(plano.slug, '?trial=1')}
                       >
                         <Gift className="h-4 w-4 mr-2" />
-                        {createPlatformSubscription.isPending ? 'Abrindo checkout...' : `Testar Grátis ${plano.trial_dias || 3} Dias`}
+                        {`Testar Grátis ${plano.trial_dias || 3} Dias`}
                       </Button>
                     )}
                     <Button
                       className="w-full h-12 text-base"
                       variant={hasActivePlan && isHighlighted ? 'default' : 'ghost'}
-                      onClick={() => upgradeMutation.mutate(plano)}
-                      disabled={upgradeMutation.isPending}
+                      onClick={() => irParaCheckout(plano.slug)}
                     >
-                      {upgradeMutation.isPending ? 'Processando...' : hasActivePlan ? (isUpgrade ? 'Fazer upgrade' : 'Mudar para este plano') : 'Assinar Direto'}
+                      {hasActivePlan ? (isUpgrade ? 'Fazer upgrade' : 'Mudar para este plano') : 'Assinar agora'}
                       <ArrowRight className="h-4 w-4 ml-2" />
                     </Button>
                   </>

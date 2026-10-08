@@ -33,6 +33,14 @@ export interface IntegracaoDisponivel {
 }
 
 export const CATALOGO_INTEGRACOES: IntegracaoDisponivel[] = [
+  {
+    id: 'mercado_pago',
+    nome: 'Mercado Pago',
+    descricao: 'Conecte opcionalmente a conta da clínica para usar terminais Point e consultar vendas. A conta não é necessária para usar o financeiro do EloLab.',
+    escopo: 'clinica',
+    campos: [],
+    documentacao: 'https://www.mercadopago.com.br/developers/pt/docs/security/oauth/creation',
+  },
   // A primeira integração entra aqui assim que houver credencial de parceiro
   // (ex.: Memed — escopo 'profissional', token do prescritor gerado pelo
   // servidor a partir do cadastro do médico).

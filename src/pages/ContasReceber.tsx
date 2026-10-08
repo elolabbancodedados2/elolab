@@ -38,6 +38,7 @@ import { valorRecebidoDaConta } from '@/lib/contasReceber';
 import { ErrorState } from '@/components/ErrorState';
 import { pacienteCorresponde } from '@/lib/buscaPaciente';
 import { mensagemDeErro } from '@/lib/erros';
+import { MercadoPagoPointPayment } from '@/components/financeiro/MercadoPagoPointPayment';
 
 type StatusPagamento = Database['public']['Enums']['status_pagamento'];
 
@@ -175,6 +176,7 @@ export default function ContasReceber() {
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [baixaIncerta, setBaixaIncerta] = useState(false);
+  const [pointBlocksManual, setPointBlocksManual] = useState(false);
   const submissionLock = useRef(false);
   const estornoSubmissionLock = useRef(false);
   const cancelamentoSubmissionLock = useRef(false);
@@ -395,6 +397,7 @@ export default function ContasReceber() {
 
   const handleDarBaixa = (conta: any) => {
     setBaixaIncerta(false);
+    setPointBlocksManual(false);
     setSelectedConta(conta);
     setChavesBaixa(keys => ({ ...keys, [conta.id]: keys[conta.id] || crypto.randomUUID() }));
     setBaixaData({
@@ -1133,6 +1136,19 @@ export default function ContasReceber() {
                 </div>}
               </div>
 
+              <MercadoPagoPointPayment
+                clinicId={profile?.clinica_id}
+                lancamentoId={selectedConta.id}
+                open={isPagamentoOpen}
+                disabled={isSubmitting || baixaIncerta
+                  || parseMoneyInput(baixaData.desconto) === null
+                  || parseMoneyInput(baixaData.acrescimo) === null
+                  || Number(parseMoneyInput(baixaData.desconto) ?? 0) !== Number(selectedConta.desconto ?? 0)
+                  || Number(parseMoneyInput(baixaData.acrescimo) ?? 0) !== Number(selectedConta.acrescimo ?? 0)}
+                saldo={Math.max(0, saldoDevedorConta(selectedConta))}
+                onPendingChange={setPointBlocksManual}
+              />
+
               <div className="space-y-1.5">
                 <Label className="text-xs font-semibold uppercase tracking-wider">Forma de Pagamento *</Label>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
@@ -1208,7 +1224,7 @@ export default function ContasReceber() {
           )}
           <DialogFooter className="gap-2 sm:gap-0">
             <Button variant="outline" onClick={() => setIsPagamentoOpen(false)} disabled={isSubmitting || baixaIncerta}>Cancelar</Button>
-            <Button onClick={handleConfirmarBaixa} disabled={isSubmitting || pagamentoBaixaInvalido || descontoBaixa === null || acrescimoBaixa === null}
+            <Button onClick={handleConfirmarBaixa} disabled={isSubmitting || pointBlocksManual || pagamentoBaixaInvalido || descontoBaixa === null || acrescimoBaixa === null}
               className="gap-2 bg-success hover:bg-success/90 text-success-foreground font-bold shadow-lg shadow-success/25">
               {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-5 w-5" />} {baixaIncerta ? 'Confirmar novamente' : 'Confirmar'}
             </Button>

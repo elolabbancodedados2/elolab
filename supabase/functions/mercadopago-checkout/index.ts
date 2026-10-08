@@ -1,5 +1,21 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsPadrao } from '../_shared/cors.ts';
+import {
+  billingStatus,
+  cancelPlanOrder,
+  createCardSubscription,
+  createPlanOrder,
+  getPlanOrder,
+} from './planCheckoutActions.ts';
+
+// Checkout transparente dos planos (cartão recorrente, Pix e boleto).
+const planCheckoutActions = {
+  billing_status: billingStatus,
+  create_card_subscription: createCardSubscription,
+  create_plan_order: createPlanOrder,
+  get_plan_order: getPlanOrder,
+  cancel_plan_order: cancelPlanOrder,
+} as const;
 
 // Atribuído em cada request (reflete a origem permitida). Helpers
 // top-level (json/reply) capturam esta variável por closure.
@@ -51,6 +67,27 @@ Deno.serve(async (req) => {
       });
     }
 
+    const body = await req.json();
+    const { action } = body;
+
+    // A conta proprietária administra a plataforma e não é assinante do SaaS.
+    // Esta checagem no servidor também impede cobrança via chamada direta à Edge Function.
+    const { data: platformAdmin, error: platformAdminError } = await adminSupabase
+      .from("platform_admins")
+      .select("nivel")
+      .eq("user_id", user.id)
+      .eq("ativo", true)
+      .maybeSingle();
+    if (platformAdminError) throw platformAdminError;
+    const isPlatformAdmin = Boolean(platformAdmin);
+
+    if (isPlatformAdmin && action === "billing_status") {
+      return json({ public_key: null, sandbox: false, plano: null, assinatura: null, pedido_aberto: null }, 200, corsHeaders);
+    }
+    if (isPlatformAdmin && ["create_subscription", "create_card_subscription", "create_plan_order"].includes(action)) {
+      return json({ error: "A conta administradora da plataforma é isenta e não pode contratar um plano de cliente." }, 403, corsHeaders);
+    }
+
     const mpToken = Deno.env.get("MERCADOPAGO_ACCESS_TOKEN");
     if (!mpToken) {
       return new Response(
@@ -59,15 +96,19 @@ Deno.serve(async (req) => {
       );
     }
 
-    const body = await req.json();
-    const { action } = body;
-
     if (action === "create_preference") {
       // Fluxo antigo desativado por segurança (aceitava valor e referências
       // vindos do navegador). A implementação foi removida; quem restaurar a
       // necessidade deve criar a preferência a partir de um registro do banco,
       // nunca de input livre.
       return json({ error: "Fluxo de preferência desativado" }, 410, corsHeaders);
+    } else if (typeof action === "string" && Object.hasOwn(planCheckoutActions, action)) {
+      return await planCheckoutActions[action as keyof typeof planCheckoutActions](body, {
+        supabase: adminSupabase,
+        user,
+        mpToken,
+        headers: corsHeaders,
+      });
     } else if (action === "create_subscription") {
       return await createSubscription(body, mpToken, adminSupabase, corsHeaders, user);
     } else if (action === "get_payment") {
@@ -322,12 +363,12 @@ async function cancelSubscription(
     );
   }
 
-  // O Mercado Pago usa o valor `canceled` para cancelar o preapproval.
+  // O Mercado Pago só aceita `cancelled` (dois "l"); `canceled` volta HTTP 400 (validado no sandbox em 08/10/2026).
   try {
     await callMercadoPagoWithRetry(
       `${MP_API_BASE}/preapproval/${mp_preapproval_id}`,
       "PUT",
-      { status: "canceled" },
+      { status: "cancelled" },
       mpToken
     );
   } catch (err) {

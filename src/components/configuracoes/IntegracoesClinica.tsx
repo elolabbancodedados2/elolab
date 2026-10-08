@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ExternalLink, KeyRound, Loader2, PlugZap, Unplug } from 'lucide-react';
 import { toast } from 'sonner';
@@ -24,8 +25,8 @@ interface Conexao {
   config: Record<string, string>; segredo_dica: string | null; ultimo_erro: string | null; conectado_em: string; updated_at: string;
 }
 
-async function chamar<T>(body: Record<string, unknown>): Promise<T> {
-  const { data, error } = await supabase.functions.invoke('clinic-integrations', { body });
+async function chamar<T>(body: Record<string, unknown>, funcao = 'clinic-integrations'): Promise<T> {
+  const { data, error } = await supabase.functions.invoke(funcao, { body });
   if (error) {
     let msg = 'Não foi possível concluir agora.';
     try { msg = (await (error as any)?.context?.json())?.error || msg; } catch { /* corpo não-JSON */ }
@@ -55,6 +56,7 @@ const formatarDataConexao = (valor: string | null | undefined) => {
  */
 export function IntegracoesClinica() {
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user, profile } = useSupabaseAuth();
   const medicosQuery = useMedicos();
   const medicos = medicosQuery.data ?? [];
@@ -66,6 +68,22 @@ export function IntegracoesClinica() {
   const [aberta, setAberta] = useState<{ integracao: Integracao; referencia_id: string | null; versaoEsperada: string | null } | null>(null);
   const [valores, setValores] = useState<Record<string, string>>({});
   const [salvando, setSalvando] = useState(false);
+
+  useEffect(() => {
+    const retornoOAuth = searchParams.get('mercado_pago');
+    if (!retornoOAuth) return;
+    if (retornoOAuth === 'conectado') {
+      toast.success('Conta Mercado Pago conectada');
+      void queryClient.invalidateQueries({ queryKey: ['integracoes-clinica'] });
+    } else if (retornoOAuth === 'cancelado') {
+      toast.info('Conexão cancelada. Você pode continuar usando o EloLab normalmente.');
+    } else {
+      toast.error('Não foi possível conectar a conta Mercado Pago. Tente novamente.');
+    }
+    const next = new URLSearchParams(searchParams);
+    next.delete('mercado_pago');
+    setSearchParams(next, { replace: true });
+  }, [queryClient, searchParams, setSearchParams]);
 
   const conexao = (provedor: string, ref: string | null) =>
     query.data?.conexoes.find((c) => c.provedor === provedor && (c.referencia_id ?? null) === ref);
@@ -87,6 +105,21 @@ export function IntegracoesClinica() {
     } catch (e: any) {
       toast.error('Não foi possível conectar', { description: e.message });
     } finally {
+      setSalvando(false);
+    }
+  };
+
+  const conectarMercadoPago = async () => {
+    setSalvando(true);
+    try {
+      const result = await chamar<{ authorization_url: string }>({ action: 'start' }, 'mercadopago-oauth');
+      const authorizationUrl = new URL(result.authorization_url);
+      if (authorizationUrl.protocol !== 'https:' || !['auth.mercadopago.com', 'auth.mercadopago.com.br'].includes(authorizationUrl.hostname)) {
+        throw new Error('O endereço de autorização retornado não é válido.');
+      }
+      window.location.assign(authorizationUrl.toString());
+    } catch (e: any) {
+      toast.error('Não foi possível iniciar a conexão', { description: e.message });
       setSalvando(false);
     }
   };
@@ -118,14 +151,16 @@ export function IntegracoesClinica() {
         <div className="min-w-0">
           <p className="truncate font-medium">{titulo ?? integracao.nome}</p>
           <p className="text-xs text-muted-foreground">
-            {ativa ? <>Credencial {c.segredo_dica ?? 'salva'} · desde {formatarDataConexao(c.conectado_em)}</> : 'Não conectado'}
+          {ativa ? <>{integracao.id === 'mercado_pago' && c.config.nickname ? `Conta ${c.config.nickname} · ` : ''}{integracao.id === 'mercado_pago' ? 'conectada' : `Credencial ${c.segredo_dica ?? 'salva'}`} · desde {formatarDataConexao(c.conectado_em)}</> : 'Opcional · não conectado'}
           </p>
           {c?.status === 'erro' && c.ultimo_erro && <p className="mt-1 text-xs text-destructive">{c.ultimo_erro}</p>}
         </div>
         <div className="flex items-center gap-2">
-          {c && <Badge variant={STATUS[c.status].variante}>{STATUS[c.status].rotulo}</Badge>}
-          <Button size="sm" variant={ativa ? 'outline' : 'default'} onClick={() => abrir(integracao, referencia_id)}>
-            <KeyRound className="mr-1.5 h-3.5 w-3.5" />{ativa ? 'Trocar credencial' : 'Conectar'}
+          {c && <Badge variant={STATUS[c.status].variante}>{integracao.id === 'mercado_pago' && c.status === 'conectado' ? 'Conta conectada' : STATUS[c.status].rotulo}</Badge>}
+          <Button size="sm" variant={ativa ? 'outline' : 'default'} disabled={salvando}
+            onClick={() => integracao.id === 'mercado_pago' ? void conectarMercadoPago() : abrir(integracao, referencia_id)}>
+            {integracao.id === 'mercado_pago' ? <ExternalLink className="mr-1.5 h-3.5 w-3.5" /> : <KeyRound className="mr-1.5 h-3.5 w-3.5" />}
+            {integracao.id === 'mercado_pago' ? (ativa ? 'Trocar conta' : 'Conectar Mercado Pago') : (ativa ? 'Trocar credencial' : 'Conectar')}
           </Button>
           {ativa && (
             <Button size="sm" variant="ghost" onClick={() => desconectar(integracao, referencia_id)} aria-label={`Desconectar ${integracao.nome}`}>
@@ -145,6 +180,7 @@ export function IntegracoesClinica() {
           <CardDescription>
             Serviços que a clínica conecta com a própria conta. As credenciais são guardadas cifradas no servidor e nunca
             são exibidas de novo — só os últimos caracteres, para você reconhecer qual está salva.
+            {' '}Conectar o Mercado Pago é opcional; sem a conexão, o financeiro e os resumos internos do EloLab continuam disponíveis.
           </CardDescription>
         </CardHeader>
         {catalogo.length === 0 && (

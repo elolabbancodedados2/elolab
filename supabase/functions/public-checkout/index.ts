@@ -213,7 +213,7 @@ Deno.serve(async (req) => {
             await fetch(`${MP_API_BASE}/preapproval/${preapprovalData.id}`, {
               method: 'PUT',
               headers: { Authorization: `Bearer ${mpAccessToken}`, 'Content-Type': 'application/json' },
-              body: JSON.stringify({ status: 'canceled' }),
+              body: JSON.stringify({ status: 'cancelled' }),
             })
             throw new Error('Não foi possível registrar a assinatura. Tente novamente.')
           }

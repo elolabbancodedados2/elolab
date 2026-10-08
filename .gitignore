@@ -32,6 +32,7 @@ audit-final.json
 .env.test.local
 .env.production.local
 .env*.local
+supabase/functions/.env.production.runtime
 test-results/
 
 # Dump do schema de produção (gerado por npm run schema:real). Fica desatualizado
@@ -40,6 +41,7 @@ schema-real.json
 
 # Config local do MCP (Claude Code)
 .mcp.json
+.codex/
 
 # Artefatos de execução do Playwright
 playwright-report/

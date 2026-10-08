@@ -1,0 +1,6 @@
+{
+  "nodeModulesDir": "auto",
+  "imports": {
+    "mercadopago": "npm:mercadopago@3.6.1"
+  }
+}

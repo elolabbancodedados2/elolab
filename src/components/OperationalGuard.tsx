@@ -1,9 +1,10 @@
 import { ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { AlertTriangle, Loader2, Lock, RefreshCw } from 'lucide-react';
+import { AlertTriangle, Lock, RefreshCw } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { Button } from '@/components/ui/button';
+import { BrandLoadingScreen } from '@/components/BrandLoadingScreen';
 
 type OperationalState = {
   bloqueio_emergencial: boolean;
@@ -11,13 +12,25 @@ type OperationalState = {
   mensagem: string | null;
 };
 
+const OPERATIONAL_CHECK_TIMEOUT_MS = 12_000;
+
 export function OperationalGuard({ children }: { children: ReactNode }) {
   const { user, isLoading: authLoading, isPlatformAdmin } = useSupabaseAuth();
   const query = useQuery({
     queryKey: ['estado-operacional'],
     enabled: !!user && !authLoading,
     queryFn: async () => {
-      const { data, error } = await (supabase as any).rpc('estado_operacional');
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const timeout = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('A verificação operacional demorou mais que o esperado.')), OPERATIONAL_CHECK_TIMEOUT_MS);
+      });
+      let result: any;
+      try {
+        result = await Promise.race([(supabase as any).rpc('estado_operacional'), timeout]);
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
+      const { data, error } = result;
       if (error) throw error;
       if (!data || typeof data !== 'object') throw new Error('Estado operacional indisponível.');
       if (typeof data.bloqueio_emergencial !== 'boolean' || typeof data.somente_leitura !== 'boolean') {
@@ -26,24 +39,31 @@ export function OperationalGuard({ children }: { children: ReactNode }) {
       return data as OperationalState;
     },
     refetchInterval: 30_000,
+    retry: false,
   });
 
   if (!user) return <>{children}</>;
 
   if (authLoading) {
-    return <main className="grid min-h-screen place-items-center p-6"><div role="status" className="text-center"><Loader2 className="mx-auto h-10 w-10 animate-spin text-primary" /><p className="mt-4 text-muted-foreground">Verificando sua sessão e o estado da plataforma…</p></div></main>;
+    return <BrandLoadingScreen message="Verificando sua sessão" detail="Estamos preparando seu acesso ao EloLab." />;
   }
 
-  if (!isPlatformAdmin && (query.isLoading || query.isError || !query.data)) {
+  if (!isPlatformAdmin && query.isLoading) {
+    return <BrandLoadingScreen message="Confirmando o estado da plataforma" detail="Isso leva só um instante." />;
+  }
+
+  if (!isPlatformAdmin && !query.isError && !query.data) {
+    return <BrandLoadingScreen message="Confirmando o estado da plataforma" detail="Isso leva só um instante." />;
+  }
+
+  if (!isPlatformAdmin && query.isError) {
     return (
       <main className="grid min-h-screen place-items-center p-6">
-        <div role={query.isError ? 'alert' : 'status'} className="max-w-lg text-center">
-          {query.isError ? <Lock className="mx-auto h-12 w-12 text-destructive" /> : <Loader2 className="mx-auto h-10 w-10 animate-spin text-primary" />}
-          <h1 className="mt-4 text-2xl font-bold">{query.isError ? 'Acesso temporariamente suspenso' : 'Verificando o estado da plataforma'}</h1>
+        <div role="alert" className="max-w-lg text-center">
+          <Lock className="mx-auto h-12 w-12 text-destructive" />
+          <h1 className="mt-4 text-2xl font-bold">Acesso temporariamente suspenso</h1>
           <p className="mt-2 text-muted-foreground">
-            {query.isError
-              ? 'Não foi possível confirmar se a plataforma está liberada. Tente novamente em instantes.'
-              : 'Aguarde enquanto confirmamos se a plataforma está disponível.'}
+            Não foi possível confirmar se a plataforma está liberada. Tente novamente em instantes.
           </p>
           {query.isError && <Button className="mt-4" variant="outline" onClick={() => void query.refetch()} disabled={query.isFetching}>
             <RefreshCw className={`mr-2 h-4 w-4 ${query.isFetching ? 'animate-spin' : ''}`} />Tentar novamente

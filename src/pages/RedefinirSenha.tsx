@@ -26,7 +26,6 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Loader2, Mail, Lock, CheckCircle2, ArrowLeft, Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
 import { validatePassword, PASSWORD_MIN_LENGTH } from '@/lib/passwordPolicy';
-import { mensagemDeErro } from '@/lib/erros';
 
 type Etapa = 'pedir' | 'definir' | 'enviado';
 
@@ -72,7 +71,7 @@ export default function RedefinirSenha() {
     }
 
     if (error) {
-      toast.error('Não foi possível enviar o e-mail.', { description: mensagemDeErro(error) });
+      toast.error('Não foi possível enviar o e-mail. Tente novamente.');
       return;
     }
 
@@ -105,7 +104,7 @@ export default function RedefinirSenha() {
     }
 
     if (error) {
-      toast.error('Não foi possível salvar a nova senha.', { description: mensagemDeErro(error) });
+      toast.error('Não foi possível salvar a nova senha. Tente novamente.');
       return;
     }
 
@@ -124,7 +123,7 @@ export default function RedefinirSenha() {
           </CardTitle>
           <CardDescription>
             {etapa === 'pedir' && 'Informe seu e-mail e enviaremos um link para criar uma nova senha.'}
-            {etapa === 'enviado' && 'Verifique sua caixa de entrada.'}
+            {etapa === 'enviado' && 'Confira seu e-mail em até 5 minutos.'}
             {etapa === 'definir' && 'Escolha uma senha que você ainda não usou em outro serviço.'}
           </CardDescription>
         </CardHeader>
@@ -135,8 +134,8 @@ export default function RedefinirSenha() {
               <Alert className="border-primary/20 bg-primary/5">
                 <CheckCircle2 className="h-4 w-4 text-primary" />
                 <AlertDescription>
-                  Se existir uma conta com <strong>{email}</strong>, o link chegou por e-mail.
-                  Ele vale por uma hora. Confira também o lixo eletrônico.
+                  Se este e-mail estiver cadastrado, o link para redefinir sua senha chegará em até 5 minutos.
+                  Confira a caixa de entrada e o spam.
                 </AlertDescription>
               </Alert>
               <Button variant="outline" className="w-full" onClick={() => navigate('/auth')}>

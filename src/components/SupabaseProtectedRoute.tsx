@@ -1,6 +1,6 @@
 import { Navigate, useLocation } from 'react-router-dom';
 import { useSupabaseAuth, AppRole } from '@/contexts/SupabaseAuthContext';
-import { Loader2 } from 'lucide-react';
+import { BrandLoadingScreen } from '@/components/BrandLoadingScreen';
 
 interface SupabaseProtectedRouteProps {
   children: React.ReactNode;
@@ -23,11 +23,7 @@ export function SupabaseProtectedRoute({
   const location = useLocation();
 
   if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
+    return <BrandLoadingScreen message="Verificando seu acesso" detail="Estamos preparando seu espaço de trabalho." />;
   }
 
   if (!user) {

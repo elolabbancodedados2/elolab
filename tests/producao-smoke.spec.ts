@@ -75,6 +75,15 @@ test.describe('Produção — smoke', () => {
     const js = await request.get(`${PRODUCAO_URL}${asset}`);
     expect(js.status(), `bundle ${asset} não foi servido`).toBe(200);
 
+    const version = await request.get(`${PRODUCAO_URL}/version.json`, { headers: { 'Cache-Control': 'no-cache' } });
+    expect(version.status(), 'version.json ausente; não é possível confirmar qual build está no ar').toBe(200);
+    const deployed = await version.json();
+    expect(deployed.build_id).toBeTruthy();
+    if (process.env.QA_EXPECTED_BUILD_ID) {
+      expect(deployed.build_id, 'a versão publicada não é o build aprovado para este QA')
+        .toBe(process.env.QA_EXPECTED_BUILD_ID);
+    }
+
     // O sw.js precisa ser revalidado sempre; se for cacheado por um ano, o
     // usuário fica preso numa versão antiga do app para sempre.
     const sw = await request.get(`${PRODUCAO_URL}/sw.js`);

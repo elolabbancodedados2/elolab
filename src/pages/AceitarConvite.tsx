@@ -8,7 +8,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { validatePassword } from '@/lib/passwordPolicy';
-import { mensagemDeErro } from '@/lib/erros';
 import clinicBackground from '@/assets/clinic-background.jpg';
 
 interface InvitationData {
@@ -40,7 +39,7 @@ export default function AceitarConvite() {
 
   useEffect(() => {
     if (!token) {
-      setError('Token de convite inválido');
+      setError('Este link está incompleto. Peça um novo convite ao administrador da clínica.');
       setLoading(false);
       return;
     }
@@ -69,7 +68,10 @@ export default function AceitarConvite() {
         const response = (newError as { context?: unknown } | null)?.context;
         if (response instanceof Response && response.status === 410) {
           const body = await response.clone().json().catch(() => null);
-          setError(typeof body?.error === 'string' ? body.error : 'Este convite expirou ou já foi utilizado.');
+          const expired = /expir|expired/i.test(String(body?.error || ''));
+          setError(expired
+            ? 'Este convite expirou. Peça um novo link ao administrador da clínica.'
+            : 'Este convite já foi usado ou expirou. Peça um novo link ao administrador da clínica.');
           setLoading(false);
           return;
         }
@@ -86,11 +88,11 @@ export default function AceitarConvite() {
 
         if (!parsed || !parsed.success) {
           const errorMap: Record<string, string> = {
-            not_found: 'Convite não encontrado ou já foi utilizado',
-            already_used: 'Este convite já foi utilizado',
-            expired: 'Este convite expirou',
+            not_found: 'Este convite não foi encontrado ou já foi usado. Peça um novo link ao administrador da clínica.',
+            already_used: 'Este convite já foi usado. Se ainda precisar de acesso, peça outro ao administrador da clínica.',
+            expired: 'Este convite expirou. Peça um novo link ao administrador da clínica.',
           };
-          setError(errorMap[parsed?.error] || 'Convite inválido');
+          setError(errorMap[parsed?.error] || 'Este convite não é válido. Peça um novo link ao administrador da clínica.');
           setLoading(false);
           return;
         }
@@ -111,7 +113,7 @@ export default function AceitarConvite() {
         // "Erro ao validar convite" não dizia se o link expirou, se já foi
         // usado ou se a internet caiu — e quem recebe o convite não tem como
         // descobrir sozinho.
-        setError(mensagemDeErro(err));
+        setError('Não foi possível verificar este convite. Confira sua conexão ou peça um novo link ao administrador da clínica.');
         setLoading(false);
       }
     };
@@ -260,9 +262,14 @@ export default function AceitarConvite() {
       navigate('/auth');
     } catch (err: any) {
       if (import.meta.env.DEV) console.error('Error creating account:', err);
-      toast.error('Não foi possível concluir o convite', {
-        description: mensagemDeErro(err),
-      });
+      const message = String(err?.message || '').toLowerCase();
+      if (message.includes('senha')) {
+        toast.error('Senha incorreta. Confira e tente de novo.');
+      } else if (message.includes('conta do e-mail')) {
+        toast.error('Entre com a conta do e-mail que recebeu o convite.');
+      } else {
+        toast.error('Não foi possível aceitar o convite. Tente novamente ou peça ajuda ao administrador da clínica.');
+      }
     } finally {
       setSubmitting(false);
     }
@@ -310,9 +317,9 @@ export default function AceitarConvite() {
         <Card className="relative z-10 w-full max-w-md bg-card/95 backdrop-blur-sm">
           <CardContent className="flex flex-col items-center justify-center py-12 text-center">
             <XCircle className="h-16 w-16 text-destructive mb-4" />
-            <h2 className="text-xl font-semibold mb-2">Convite Inválido</h2>
+            <h2 className="text-xl font-semibold mb-2">Não foi possível abrir o convite</h2>
             <p className="text-muted-foreground mb-6">{error}</p>
-            <Button onClick={() => navigate('/auth')}>Ir para Login</Button>
+            <Button onClick={() => navigate('/auth')}>Ir para o login</Button>
           </CardContent>
         </Card>
       </div>
@@ -348,7 +355,7 @@ export default function AceitarConvite() {
             )}
             {existingAccount
               ? 'Entre com sua senha atual para aceitar o convite'
-              : 'Crie sua senha para acessar o sistema'}
+              : 'Crie uma senha para entrar na clínica.'}
           </CardDescription>
         </CardHeader>
         <CardContent>

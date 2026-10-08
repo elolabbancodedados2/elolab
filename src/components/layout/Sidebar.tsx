@@ -3,7 +3,7 @@ import { useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { ChevronLeft, ChevronDown, PanelLeftOpen, Search } from 'lucide-react';
-import logoIcon from '@/assets/logo-elolab-icon.png';
+import logoIcon from '@/assets/elolab-symbol-v2.png';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';

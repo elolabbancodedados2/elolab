@@ -108,6 +108,11 @@ verify_jwt = false
 [functions.clinic-integrations]
 verify_jwt = true
 
+# OAuth callback is public by protocol; the function validates a one-time,
+# expiring state issued only to authenticated clinic administrators.
+[functions.mercadopago-oauth]
+verify_jwt = false
+
 [functions.memed-prescription]
 verify_jwt = true
 

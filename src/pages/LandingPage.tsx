@@ -1,6 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { redirecionarParaCheckout } from '@/lib/safeUrl';
 import {
   Calendar, Users, FileText, Shield, BarChart3, Stethoscope,
   MessageSquare, ArrowRight, Check,
@@ -8,16 +7,12 @@ import {
   Clock, Activity, Pill, ClipboardList, Building2, MonitorPlay,
   BellRing, FileBarChart, Warehouse, CreditCard, UserCheck,
   Microscope, HeartPulse, QrCode, Globe, SmartphoneNfc,
-  Crown, Loader2, ChevronDown, Headphones
+  Crown, ChevronDown, Headphones
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { supabase } from '@/integrations/supabase/client';
 import { usePlanos } from '@/hooks/useSubscriptionPlan';
-import { toast } from 'sonner';
 import { GlowingEffect } from '@/components/ui/glowing-effect';
-import elolabLogo from '@/assets/elolab-logo.png';
+import elolabLogo from '@/assets/elolab-logo-v2.png';
 import landingHero from '@/assets/landing-hero.webp';
 import landingEfficiency from '@/assets/landing-efficiency.webp';
 import landingNoshow from '@/assets/landing-noshow.webp';
@@ -198,8 +193,8 @@ const faqItems = [
     a: 'Sim. O EloLab funciona em celular, tablet e computador direto pelo navegador, sem baixar nada na loja de aplicativos. Você ainda pode instalá-lo na tela inicial e usar como um app comum.',
   },
   {
-    q: 'Preciso cadastrar cartão para testar?',
-    a: 'Não. O teste público não exige cartão: informe seus dados, confirme o código enviado por e-mail e conclua o cadastro. O plano pago é escolhido depois do teste.',
+    q: 'Como funciona o teste grátis?',
+    a: 'Crie sua conta, confirme o e-mail e cadastre o cartão no checkout do EloLab. O cartão permite a renovação automática; o valor e a data da primeira cobrança aparecem antes de confirmar. Você não precisa sair do EloLab para pagar.',
   },
   {
     q: 'Os dados dos meus pacientes ficam seguros?',
@@ -255,9 +250,6 @@ export default function LandingPage() {
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [checkoutMode, setCheckoutMode] = useState<'trial' | 'buy'>('trial');
   const [selectedPlan, setSelectedPlan] = useState<PublicPlan | null>(null);
-  const [formData, setFormData] = useState({ nome: '', email: '', telefone: '', clinica: '' });
-  const [loading, setLoading] = useState(false);
-  const [trialActivation, setTrialActivation] = useState<{ code: string; message: string } | null>(null);
 
   const plans = useMemo<PublicPlan[]>(() => {
     if (!catalogPlans) return [];
@@ -289,52 +281,16 @@ export default function LandingPage() {
     setCheckoutOpen(true);
   };
 
-  const handleCheckout = async () => {
-    if (!formData.nome || !formData.email || !selectedPlan) {
-      toast.error('Preencha nome e e-mail');
-      return;
-    }
-    setLoading(true);
-    try {
-      const { data, error } = await supabase.functions.invoke('public-checkout', {
-        body: {
-          plano_slug: selectedPlan.slug,
-          nome: formData.nome,
-          email: formData.email,
-          telefone: formData.telefone,
-          clinica: formData.clinica,
-          mode: checkoutMode,
-        },
-      });
-
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
-
-      if (checkoutMode === 'buy') {
-        if (!data?.checkout_url) throw new Error('Não foi possível iniciar o pagamento. Tente novamente ou fale com a equipe.');
-        toast.success('Redirecionando para pagamento...');
-        redirecionarParaCheckout(data.checkout_url);
-      } else if (data?.success) {
-        if (data.invite_code) {
-          setTrialActivation({
-            code: String(data.invite_code),
-            message: data.email_sent === false
-              ? 'Seu cadastro foi criado, mas o e-mail com o código não pôde ser enviado. Use o código abaixo para continuar.'
-              : data.message || 'Seu cadastro de teste foi criado. Use o código para concluir a criação da conta.',
-          });
-        } else {
-          toast.success(data.message || 'Verifique seu e-mail para o código de ativação.');
-        }
-        setCheckoutOpen(false);
-        setFormData({ nome: '', email: '', telefone: '', clinica: '' });
-      } else {
-        throw new Error(data?.message || 'Não foi possível concluir seu cadastro. Tente novamente.');
-      }
-    } catch (err: unknown) {
-      console.error('Checkout error:', err);
-      toast.error(err instanceof Error ? err.message : 'Erro ao processar. Tente novamente.');
-    } finally {
-      setLoading(false);
+  const handleCheckout = () => {
+    if (!selectedPlan) return;
+    const params = new URLSearchParams({ cadastro: '1', plano: selectedPlan.slug, modo: checkoutMode });
+    const next = `/auth?${params.toString()}`;
+    const host = window.location.hostname;
+    setCheckoutOpen(false);
+    if (host === 'elolab.com.br' || host === 'www.elolab.com.br') {
+      window.location.assign(`https://app.elolab.com.br${next}`);
+    } else {
+      navigate(next);
     }
   };
 
@@ -484,7 +440,7 @@ export default function LandingPage() {
                   <span className="flex items-center gap-1.5"><Lock className="w-3.5 h-3.5" /> LGPD</span>
                   <span className="flex items-center gap-1.5"><Clock className="w-3.5 h-3.5" /> {plans.length ? `${plans[0].trialDays} dias grátis` : 'Teste gratuito'}</span>
                   <span className="flex items-center gap-1.5"><Shield className="w-3.5 h-3.5" /> Acesso por perfil</span>
-                  <span className="flex items-center gap-1.5"><CreditCard className="w-3.5 h-3.5" /> Sem cartão de crédito</span>
+                  <span className="flex items-center gap-1.5"><CreditCard className="w-3.5 h-3.5" /> Renovação automática</span>
                 </div>
               </div>
 
@@ -771,52 +727,16 @@ export default function LandingPage() {
           </div>
         </section>
 
-        <Dialog open={!!trialActivation} onOpenChange={(open) => {
-          if (!open && trialActivation?.code) {
-            navigate(`/auth?codigo=${encodeURIComponent(trialActivation.code)}`);
-            setTrialActivation(null);
-          }
-        }}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Seu teste foi registrado</DialogTitle>
-              <DialogDescription>{trialActivation?.message}</DialogDescription>
-            </DialogHeader>
-            <div className="space-y-2 rounded-lg border bg-muted/40 p-4 text-center">
-              <p className="text-xs text-muted-foreground">Código de ativação</p>
-              <code className="block select-all break-all text-xl font-bold tracking-wider">{trialActivation?.code}</code>
-              <Button type="button" variant="outline" size="sm" onClick={async () => {
-                if (!trialActivation?.code) return;
-                try {
-                  await navigator.clipboard.writeText(trialActivation.code);
-                  toast.success('Código copiado');
-                } catch {
-                  toast.info('Selecione o código acima e copie manualmente.');
-                }
-              }}>Copiar código</Button>
-            </div>
-            <p className="text-xs text-muted-foreground">O código expira em 7 dias. Na próxima etapa, ele já estará preenchido.</p>
-            <DialogFooter>
-              <Button type="button" onClick={() => {
-                if (!trialActivation?.code) return;
-                const code = trialActivation.code;
-                setTrialActivation(null);
-                navigate(`/auth?codigo=${encodeURIComponent(code)}`);
-              }}>Continuar para criar conta</Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
         {/* ══ CHECKOUT MODAL ══ */}
         {checkoutOpen && selectedPlan && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" onClick={() => !loading && setCheckoutOpen(false)}>
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" onClick={() => setCheckoutOpen(false)}>
             <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
             <div
               className="relative w-full max-w-md bg-white rounded-3xl p-8 shadow-2xl animate-fade-in"
               onClick={(e) => e.stopPropagation()}
             >
               <button
-                onClick={() => !loading && setCheckoutOpen(false)}
+                onClick={() => setCheckoutOpen(false)}
                 className="absolute top-4 right-4 p-1.5 rounded-full hover:bg-gray-100 transition-colors"
                 aria-label="Fechar"
               >
@@ -841,65 +761,26 @@ export default function LandingPage() {
                 </p>
               </div>
 
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-xs font-semibold mb-1.5" style={{ color: C.text }}>Nome completo *</label>
-                  <Input
-                    value={formData.nome}
-                    onChange={(e) => setFormData(p => ({ ...p, nome: e.target.value }))}
-                    placeholder="Seu nome"
-                    className="rounded-xl"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold mb-1.5" style={{ color: C.text }}>E-mail *</label>
-                  <Input
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) => setFormData(p => ({ ...p, email: e.target.value }))}
-                    placeholder="seu@email.com"
-                    className="rounded-xl"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold mb-1.5" style={{ color: C.text }}>Telefone</label>
-                  <Input
-                    value={formData.telefone}
-                    onChange={(e) => setFormData(p => ({ ...p, telefone: e.target.value }))}
-                    placeholder="(00) 00000-0000"
-                    className="rounded-xl"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold mb-1.5" style={{ color: C.text }}>Nome da Clínica</label>
-                  <Input
-                    value={formData.clinica}
-                    onChange={(e) => setFormData(p => ({ ...p, clinica: e.target.value }))}
-                    placeholder="Sua clínica"
-                    className="rounded-xl"
-                  />
-                </div>
+              <div className="rounded-2xl border p-4 text-sm leading-relaxed" style={{ color: C.text }}>
+                Primeiro você cria sua conta e confirma o e-mail. Para o teste, cadastre o cartão no checkout do EloLab; para assinar, escolha a forma de pagamento disponível.
               </div>
 
               <Button
                 onClick={handleCheckout}
-                disabled={loading}
                 className="w-full mt-6 rounded-full py-3 font-bold text-white border-0 transition-all hover:scale-[1.02]"
                 style={{ background: C.grad }}
               >
-                {loading ? (
-                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Processando...</>
-                ) : checkoutMode === 'trial' ? (
+                {checkoutMode === 'trial' ? (
                   <>Liberar meu acesso grátis <ArrowRight className="w-4 h-4 ml-2" /></>
                 ) : (
-                  <>Ir para o pagamento seguro <ArrowRight className="w-4 h-4 ml-2" /></>
+                  <>Criar conta e continuar <ArrowRight className="w-4 h-4 ml-2" /></>
                 )}
               </Button>
 
               <p className="text-center text-xs mt-4" style={{ color: C.textL }}>
                 {checkoutMode === 'trial'
-                  ? 'Sem cartão de crédito e sem compromisso. Ao final do teste, você decide se continua.'
-                  : 'Pagamento processado pelo Mercado Pago. Consulte as condições de cancelamento antes de concluir.'}
+                  ? 'Sem código de convite. O cartão fica salvo para renovar a assinatura quando o período grátis terminar.'
+                  : 'O pagamento será feito na sua conta após a criação e confirmação do acesso.'}
               </p>
             </div>
           </div>
@@ -980,7 +861,7 @@ export default function LandingPage() {
                   Conheça os fluxos do EloLab para a sua clínica
                 </h2>
                 <p className="mt-4 text-lg text-white/70 max-w-xl mx-auto">
-                  Consulte os planos atuais e inicie um teste gratuito sem cadastrar cartão de crédito.
+                  Consulte os planos e inicie o teste com renovação automática configurada no EloLab.
                 </p>
                 <div className="mt-10 flex flex-col sm:flex-row gap-4 justify-center">
                   <Button size="lg" onClick={() => scrollTo('planos')}
@@ -998,7 +879,7 @@ export default function LandingPage() {
                 <div className="mt-8 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-xs font-medium text-white/50">
                   <span className="flex items-center gap-1.5"><Lock className="w-3.5 h-3.5" /> Controle de acesso</span>
                   <span className="flex items-center gap-1.5"><Shield className="w-3.5 h-3.5" /> Recursos de privacidade</span>
-                  <span className="flex items-center gap-1.5"><CreditCard className="w-3.5 h-3.5" /> Sem cartão</span>
+                  <span className="flex items-center gap-1.5"><CreditCard className="w-3.5 h-3.5" /> Renovação automática</span>
                 </div>
               </div>
             </div>

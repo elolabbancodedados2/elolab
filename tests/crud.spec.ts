@@ -5,8 +5,8 @@ test.describe('Validação de entrada e proteção de pacientes', () => {
     const submit = page.locator('form button[type="submit"]').first();
     await expect(submit).toBeVisible();
     await submit.click();
-    await expect(page.getByText('Email inválido', { exact: true })).toBeVisible();
-    await expect(page.getByText('Senha é obrigatória', { exact: true })).toBeVisible();
+    await expect(page.getByText('Informe seu e-mail.', { exact: true })).toBeVisible();
+    await expect(page.getByText('Informe sua senha.', { exact: true })).toBeVisible();
     await expect(page).toHaveURL(/\/auth/);
   });
   test('pacientes exige login sem uma sessão', async ({ page }) => {

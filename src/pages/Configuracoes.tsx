@@ -39,7 +39,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { ErrorState } from '@/components/ErrorState';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useUserPlan, usePlanos } from '@/hooks/useSubscriptionPlan';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
 import { abrirUrlSegura, checkoutUrlSeguro } from '@/lib/safeUrl';
 import { clearClinicaInfoCache } from '@/lib/pdfGenerator';
@@ -366,9 +366,10 @@ function SalasManager() {
 export default function Configuracoes() {
   const { theme, setTheme } = useTheme();
   const { user, profile } = useSupabaseAuth();
+  const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
-  const { planName, planSlug, hasActivePlan, isTrial, trialEnd, trialDaysLeft, isLoading: loadingPlanoAtual, isError: erroPlanoAtual, error: erroConsultaPlano, refetch: recarregarPlanoAtual } = useUserPlan();
-  const { data: planos, isLoading: carregandoPlanos, isError: erroAoCarregarPlanos, error: erroListaPlanos } = usePlanos();
+  const { planName, planSlug, hasActivePlan, isExempt: isPlanExempt, isTrial, trialEnd, trialDaysLeft, isLoading: loadingPlanoAtual, isError: erroPlanoAtual, error: erroConsultaPlano, refetch: recarregarPlanoAtual } = useUserPlan();
+  const { data: planos, isLoading: carregandoPlanos, isError: erroAoCarregarPlanos, error: erroListaPlanos } = usePlanos(!isPlanExempt);
   const navigate = useNavigate();
   const [showFaturas, setShowFaturas] = useState(false);
   const [showCancelPlan, setShowCancelPlan] = useState(false);
@@ -606,6 +607,8 @@ export default function Configuracoes() {
     { value: 'backup', icon: Download, label: 'Backup' },
     { value: 'historico', icon: History, label: 'Auditoria' },
   ];
+  const requestedTab = searchParams.get('tab');
+  const initialSettingsTab = tabItems.some(tab => tab.value === requestedTab) ? requestedTab! : 'clinica';
 
   const LazyFallback = (
     <div className="space-y-4 p-6">
@@ -639,7 +642,7 @@ export default function Configuracoes() {
         </Badge>
       </div>
 
-      <Tabs defaultValue="clinica" className="space-y-6">
+      <Tabs defaultValue={initialSettingsTab} className="space-y-6">
         <div className="-mx-1 overflow-x-auto pb-1 sm:mx-0 sm:overflow-visible">
           <TabsList className="flex h-auto w-max min-w-full flex-nowrap gap-1 bg-muted/50 p-1 sm:w-full sm:flex-wrap">
             {tabItems.map(tab => (
@@ -745,6 +748,14 @@ export default function Configuracoes() {
                   <p role="status" className="py-8 text-center text-sm text-muted-foreground">Consultando sua assinatura…</p>
                 ) : erroPlanoAtual ? (
                   <ErrorState compact title="Não foi possível confirmar seu plano" error={erroConsultaPlano} onRetry={() => void recarregarPlanoAtual()} />
+                ) : isPlanExempt ? (
+                  <div className="rounded-xl border border-primary/20 bg-primary/5 p-6 text-center">
+                    <Shield className="mx-auto mb-3 h-8 w-8 text-primary" />
+                    <p className="font-semibold">Acesso da plataforma</p>
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      Esta conta administra o EloLab e está isenta dos planos de cliente. Nenhuma assinatura ou cobrança é necessária.
+                    </p>
+                  </div>
                 ) : !hasActivePlan ? (
                   <div className="text-center py-8 space-y-4">
                     <p className="text-muted-foreground">Você não possui um plano ativo</p>
