@@ -20,6 +20,9 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAgendamentosPeriodo } from '@/hooks/useSupabaseData';
 import { StorageAvatarImage } from '@/components/StorageImage';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
+import { DashboardSkeleton } from '@/components/ui/loading-skeleton';
+import { ErrorState } from '@/components/ErrorState';
+import { parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 
 // ─── Animations ────────────────────────────────────────────
 const fadeUp = {
@@ -37,16 +40,19 @@ function LiveClockComponent() {
     const timer = setInterval(() => setTime(new Date()), 60_000);
     return () => clearInterval(timer);
   }, []);
-  return <span className="tabular-nums font-semibold text-lg tracking-tight">{format(time, 'HH:mm')}</span>;
+  const hora = new Intl.DateTimeFormat('pt-BR', {
+    timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  }).format(time);
+  return <span className="tabular-nums font-semibold text-lg tracking-tight">{hora}</span>;
 }
 
 /** Pacientes distintos já atendidos/agendados com o médico. Lê só a coluna paciente_id, em blocos. */
-async function contarPacientesDoMedico(medicoId: string): Promise<number> {
+async function contarPacientesDoMedico(medicoId: string, clinicaId: string): Promise<number> {
   const ids = new Set<string>();
   const BLOCO = 1000;
   for (let inicio = 0; inicio < 50_000; inicio += BLOCO) {
     const { data, error } = await (supabase as any).from('agendamentos').select('paciente_id')
-      .eq('medico_id', medicoId).order('id').range(inicio, inicio + BLOCO - 1);
+      .eq('clinica_id', clinicaId).eq('medico_id', medicoId).order('id').range(inicio, inicio + BLOCO - 1);
     if (error) throw error;
     for (const r of data ?? []) if (r.paciente_id) ids.add(r.paciente_id);
     if (!data || data.length < BLOCO) break;
@@ -61,23 +67,26 @@ interface DoctorDashboardProps {
 export function DoctorDashboard({ userName }: DoctorDashboardProps) {
   const { currentMedico, medicoId } = useCurrentMedico();
   const { user, profile } = useSupabaseAuth();
-  const hoje = format(new Date(), 'yyyy-MM-dd');
-  const amanha = format(new Date(Date.now() + 86400000), 'yyyy-MM-dd');
-  const inicioMes = format(new Date(), 'yyyy-MM-01');
+  const hoje = todaySaoPauloDateOnly();
+  const amanhaDate = new Date(`${hoje}T00:00:00Z`);
+  amanhaDate.setUTCDate(amanhaDate.getUTCDate() + 1);
+  const amanha = amanhaDate.toISOString().slice(0, 10);
+  const inicioMes = `${hoje.slice(0, 7)}-01`;
 
   // Só hoje e amanhã, já com o paciente. Antes o painel baixava a agenda,
   // o cadastro de pacientes, prontuários e prescrições da clínica inteira
   // para filtrar o médico no navegador.
-  const { data: agendamentos = [] } = useAgendamentosPeriodo(hoje, amanha, { enabled: !!medicoId });
+  const agendamentosQuery = useAgendamentosPeriodo(hoje, amanha, { enabled: !!medicoId });
+  const { data: agendamentos = [] } = agendamentosQuery;
 
-  const { data: contagens } = useQuery({
+  const contagensQuery = useQuery({
     queryKey: ['doctor-dashboard-contagens', user?.id ?? null, profile?.clinica_id ?? null, medicoId, inicioMes],
     enabled: !!medicoId && !!user && !!profile?.clinica_id,
     staleTime: 60_000,
     queryFn: async () => {
       const contar = async (tabela: string, colunaMedico: string, colunaData: string, extra?: (q: any) => any) => {
         let q = (supabase as any).from(tabela).select('id', { count: 'exact', head: true })
-          .eq(colunaMedico, medicoId).gte(colunaData, inicioMes);
+          .eq('clinica_id', profile!.clinica_id!).eq(colunaMedico, medicoId).gte(colunaData, inicioMes);
         if (extra) q = extra(q);
         const { count, error } = await q;
         if (error) throw error;
@@ -89,8 +98,8 @@ export function DoctorDashboard({ userName }: DoctorDashboardProps) {
         contar('atestados', 'medico_id', 'data_emissao'),
         contar('exames', 'medico_solicitante_id', 'data_solicitacao'),
         contar('encaminhamentos', 'medico_origem_id', 'data_encaminhamento'),
-        contar('agendamentos', 'medico_id', 'data', (q) => q.eq('status', 'finalizado').lte('data', hoje)),
-        contarPacientesDoMedico(medicoId as string),
+        contar('agendamentos', 'medico_id', 'data', (q) => q.in('status', ['finalizado', 'atendimento_finalizado']).lte('data', hoje)),
+        contarPacientesDoMedico(medicoId as string, profile!.clinica_id!),
       ]);
       return {
         prontuariosMes, prescricoesMes, atestadosMes, examesMes, encaminhamentosMes, atendimentosMes,
@@ -98,8 +107,11 @@ export function DoctorDashboard({ userName }: DoctorDashboardProps) {
       };
     },
   });
-  const hojeFormatado = format(new Date(), "EEEE, d 'de' MMMM", { locale: ptBR });
-  const horaAtual = new Date().getHours();
+  const { data: contagens } = contagensQuery;
+  const hojeFormatado = format(parseDateOnly(hoje)!, "EEEE, d 'de' MMMM", { locale: ptBR });
+  const horaAtual = Number(new Intl.DateTimeFormat('pt-BR', {
+    timeZone: 'America/Sao_Paulo', hour: '2-digit', hourCycle: 'h23',
+  }).format(new Date()));
   const saudacao = horaAtual < 12 ? 'Bom dia' : horaAtual < 18 ? 'Boa tarde' : 'Boa noite';
   const SaudacaoIcon = horaAtual < 12 ? Sun : horaAtual < 18 ? Sunset : Moon;
   // O nome cadastrado costuma trazer o título ("Dr. Carlos"): sem tirá-lo, a
@@ -110,12 +122,13 @@ export function DoctorDashboard({ userName }: DoctorDashboardProps) {
     const consultasHoje = agendamentos.filter((a: any) => a.data === hoje && a.medico_id === medicoId);
     const confirmadas = consultasHoje.filter((a: any) => a.status === 'confirmado').length;
     const agendadas = consultasHoje.filter((a: any) => a.status === 'agendado').length;
-    const finalizadas = consultasHoje.filter((a: any) => a.status === 'finalizado').length;
+    const finalizadas = consultasHoje.filter((a: any) => a.status === 'finalizado' || a.status === 'atendimento_finalizado').length;
     const emAtendimento = consultasHoje.filter((a: any) => a.status === 'em_atendimento').length;
-    const totalHoje = consultasHoje.length;
+    const canceladasHoje = consultasHoje.filter((a: any) => a.status === 'cancelado').length;
+    const totalHoje = consultasHoje.length - canceladasHoje;
 
     const proximasHoje = consultasHoje
-      .filter((a: any) => a.status !== 'finalizado' && a.status !== 'cancelado' && a.status !== 'faltou')
+      .filter((a: any) => !['finalizado', 'atendimento_finalizado', 'cancelado', 'faltou'].includes(a.status))
       .sort((a: any, b: any) => a.hora_inicio.localeCompare(b.hora_inicio));
 
     const consultasAmanha = agendamentos.filter((a: any) => a.data === amanha && a.medico_id === medicoId && a.status !== 'cancelado').length;
@@ -124,7 +137,7 @@ export function DoctorDashboard({ userName }: DoctorDashboardProps) {
     const proximoPaciente = proximaConsulta?.pacientes ?? null;
 
     return {
-      totalHoje, confirmadas, agendadas, finalizadas, emAtendimento,
+      totalHoje, canceladasHoje, confirmadas, agendadas, finalizadas, emAtendimento,
       prontuariosMes: contagens?.prontuariosMes ?? 0,
       prescricoesMes: contagens?.prescricoesMes ?? 0,
       atendimentosMes: contagens?.atendimentosMes ?? 0,
@@ -153,11 +166,15 @@ export function DoctorDashboard({ userName }: DoctorDashboardProps) {
     confirmado: 'bg-success/10 text-success border-success/20',
     em_atendimento: 'bg-primary/10 text-primary border-primary/20',
     aguardando: 'bg-warning/10 text-warning border-warning/20',
+    aguardando_triagem: 'bg-warning/10 text-warning border-warning/20',
+    em_triagem: 'bg-info/10 text-info border-info/20',
     finalizado: 'bg-muted text-muted-foreground',
     aguardando_pagamento: 'bg-warning/10 text-warning border-warning/20',
     pago: 'bg-success/10 text-success border-success/20',
     atendimento_finalizado: 'bg-muted text-muted-foreground',
     aguardando_pagamento_adicional: 'bg-destructive/10 text-destructive border-destructive/20',
+    cancelado: 'bg-muted text-muted-foreground line-through',
+    faltou: 'bg-destructive/10 text-destructive border-destructive/20',
   };
 
   const statusLabel: Record<string, string> = {
@@ -165,6 +182,8 @@ export function DoctorDashboard({ userName }: DoctorDashboardProps) {
     confirmado: 'Confirmado',
     em_atendimento: 'Em Atendimento',
     aguardando: 'Aguardando',
+    aguardando_triagem: 'Aguardando triagem',
+    em_triagem: 'Em triagem',
     finalizado: 'Finalizado',
     cancelado: 'Cancelado',
     faltou: 'Faltou',
@@ -173,6 +192,19 @@ export function DoctorDashboard({ userName }: DoctorDashboardProps) {
     atendimento_finalizado: 'Atendimento finalizado',
     aguardando_pagamento_adicional: 'Falta pagar o adicional',
   };
+
+  if (agendamentosQuery.isError || contagensQuery.isError) {
+    const error = agendamentosQuery.error || contagensQuery.error;
+    return (
+      <ErrorState
+        title="Não foi possível carregar o painel médico"
+        error={error}
+        onRetry={() => { void Promise.all([agendamentosQuery.refetch(), contagensQuery.refetch()]); }}
+      />
+    );
+  }
+
+  if (agendamentosQuery.isLoading || contagensQuery.isLoading) return <DashboardSkeleton />;
 
   return (
     <div className="space-y-6 pb-10">
@@ -312,7 +344,7 @@ export function DoctorDashboard({ userName }: DoctorDashboardProps) {
                     </div>
                   </div>
                   <Button asChild className="rounded-full gap-2 shrink-0">
-                    <Link to="/prontuarios">
+                    <Link to={`/prontuarios?paciente=${encodeURIComponent(stats.proximaConsulta.paciente_id)}&agendamento=${encodeURIComponent(stats.proximaConsulta.id)}`}>
                       <FileText className="h-4 w-4" />Atender
                     </Link>
                   </Button>
@@ -367,7 +399,10 @@ export function DoctorDashboard({ userName }: DoctorDashboardProps) {
                     <Calendar className="h-4 w-4 text-primary" />
                     Agenda de Hoje
                   </CardTitle>
-                  <CardDescription>{stats.totalHoje} consulta{stats.totalHoje !== 1 ? 's' : ''} agendada{stats.totalHoje !== 1 ? 's' : ''}</CardDescription>
+                  <CardDescription>
+                    {stats.totalHoje} consulta{stats.totalHoje !== 1 ? 's' : ''} ativa{stats.totalHoje !== 1 ? 's' : ''}
+                    {stats.canceladasHoje > 0 && ` · ${stats.canceladasHoje} cancelada${stats.canceladasHoje !== 1 ? 's' : ''}`}
+                  </CardDescription>
                 </div>
                 <Button variant="ghost" size="sm" asChild className="text-xs gap-1">
                   <Link to="/agenda">Ver completa <ArrowRight className="h-3 w-3" /></Link>
@@ -436,9 +471,9 @@ export function DoctorDashboard({ userName }: DoctorDashboardProps) {
                             <Badge variant="outline" className={cn('text-[10px] capitalize', statusColor[ag.status] || '')}>
                               {statusLabel[ag.status] || ag.status}
                             </Badge>
-                            {ag.status !== 'finalizado' && ag.status !== 'cancelado' && (
+                            {!['finalizado', 'atendimento_finalizado', 'cancelado', 'faltou'].includes(ag.status) && ag.paciente_id && (
                                <Button variant="ghost" size="icon" aria-label="Abrir prontuário" className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity" asChild>
-                                <Link to="/prontuarios">
+                                <Link to={`/prontuarios?paciente=${encodeURIComponent(ag.paciente_id)}&agendamento=${encodeURIComponent(ag.id)}`}>
                                   <FileText className="h-4 w-4" />
                                 </Link>
                               </Button>

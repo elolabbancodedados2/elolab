@@ -1,5 +1,6 @@
 import { nomeMedico } from '@/lib/formatters';
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   Plus, Search, Eye, Printer, FileText, Loader2, Star,
@@ -21,15 +22,20 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
 import { mensagemDeErro } from '@/lib/erros';
-import { usePacientes, useMedicos, useSupabaseQuery } from '@/hooks/useSupabaseData';
+import { useMedicos, useSupabaseQuery } from '@/hooks/useSupabaseData';
 import { useCurrentMedico } from '@/hooks/useCurrentMedico';
 import { supabase } from '@/integrations/supabase/client';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
 import { gerarAtestado, openPDF } from '@/lib/pdfGenerator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Cid10Search } from '@/components/clinical';
-import { parseDateOnly } from '@/lib/dateOnly';
+import { parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
+import { ErrorState } from '@/components/ErrorState';
+import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
+import { pacienteCorresponde } from '@/lib/buscaPaciente';
+import { PacienteCombobox } from '@/components/patients/PacienteCombobox';
+import { usePacienteResumo } from '@/hooks/useBuscaPacientes';
 
 interface Atestado {
   id: string;
@@ -44,6 +50,7 @@ interface Atestado {
   cid: string | null;
   observacoes: string | null;
   created_at: string | null;
+  pacientes?: { nome: string; nome_social?: string | null; cpf?: string | null; telefone?: string | null } | null;
 }
 
 interface FormDataType {
@@ -63,13 +70,13 @@ interface FormDataType {
   hora_fim: string;
 }
 
-const emptyForm: FormDataType = {
+const novoFormulario = (today: string): FormDataType => ({
   tipo: 'comparecimento', paciente_id: '', medico_id: '',
-  data_emissao: format(new Date(), 'yyyy-MM-dd'),
-  data_inicio: format(new Date(), 'yyyy-MM-dd'), data_fim: '',
+  data_emissao: today,
+  data_inicio: today, data_fim: '',
   dias: null, cid: '', incluirCid: false, motivo: '',
   observacoes: '', finalidade: '', hora_inicio: '', hora_fim: '',
-};
+});
 
 const TIPOS_ATESTADO = [
   { value: 'comparecimento', label: 'Atestado de Comparecimento', icon: Clock },
@@ -78,40 +85,71 @@ const TIPOS_ATESTADO = [
   { value: 'acompanhante', label: 'Declaração de Acompanhante', icon: FileText },
 ];
 
+const FINALIDADES_APTIDAO = [
+  'Apto para prática de atividades físicas moderadas',
+  'Apto para prática de atividades físicas intensas',
+  'Apto para concurso público',
+  'Apto para atividades laborais',
+  'Apto para viagem',
+];
+
 export default function Atestados() {
+  const [today, setToday] = useState(() => todaySaoPauloDateOnly());
+  useEffect(() => {
+    const timer = window.setInterval(() => setToday(todaySaoPauloDateOnly()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
   const [searchTerm, setSearchTerm] = useState('');
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isViewOpen, setIsViewOpen] = useState(false);
   const [isTemplateOpen, setIsTemplateOpen] = useState(false);
   const [selectedAtestado, setSelectedAtestado] = useState<Atestado | null>(null);
-  const [formData, setFormData] = useState<FormDataType>({ ...emptyForm });
+  const [formData, setFormData] = useState<FormDataType>(() => novoFormulario(today));
   const [isSaving, setIsSaving] = useState(false);
-  const [templates, setTemplates] = useState<Record<string, any>[]>([]);
+  const saveLock = useRef(false);
+  const { profile } = useSupabaseAuth();
 
   const queryClient = useQueryClient();
-  const { medicoId, isMedicoOnly } = useCurrentMedico();
-  const { data: atestados = [], isLoading: loadingAtestados } = useSupabaseQuery<Atestado>('atestados', {
+  const { currentMedico, medicoId, isMedicoOnly } = useCurrentMedico();
+  const atestadosQuery = useSupabaseQuery<Atestado>('atestados', {
+    select: '*, pacientes(nome,nome_social,cpf,telefone)',
     orderBy: { column: 'created_at', ascending: false },
-    ...(isMedicoOnly && medicoId ? { filters: [{ column: 'medico_id', operator: 'eq', value: medicoId }] } : {}),
+    filters: [
+      ...(profile?.clinica_id ? [{ column: 'clinica_id', operator: 'eq', value: profile.clinica_id }] : []),
+      ...(isMedicoOnly && medicoId ? [{ column: 'medico_id', operator: 'eq', value: medicoId }] : []),
+    ],
+    enabled: !!profile?.clinica_id && (!isMedicoOnly || !!medicoId),
   });
-  const { data: pacientes = [], isLoading: loadingPacientes } = usePacientes();
-  const { data: medicos = [], isLoading: loadingMedicos } = useMedicos();
+  const medicosQuery = useMedicos();
+  const templatesQuery = useQuery({
+    queryKey: ['atestados-templates', profile?.clinica_id, profile?.id],
+    enabled: !!profile?.clinica_id,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).from('templates_atestado')
+        .select('*')
+        .or(`clinica_id.eq.${profile!.clinica_id},clinica_id.is.null`)
+        .order('nome');
+      if (error) throw error;
+      return (data || []) as Record<string, any>[];
+    },
+  });
+  const atestados = atestadosQuery.data || [];
+  const medicos = medicosQuery.data || [];
+  const pacienteSelecionadoQuery = usePacienteResumo(formData.paciente_id);
+  const pacienteSelecionado = pacienteSelecionadoQuery.data;
+  const templates = templatesQuery.data || [];
+  const medicosAtivos = medicos.filter(m => m.ativo !== false);
+  const medicosDisponiveis = isMedicoOnly && medicoId
+    ? medicosAtivos.filter(m => m.id === medicoId)
+    : medicosAtivos;
 
-  // Load templates
-  useEffect(() => {
-    supabase.from('templates_atestado').select('*').order('nome').then(({ data }) => {
-      setTemplates(data || []);
-    });
-  }, []);
-
-  const isLoading = loadingAtestados || loadingPacientes || loadingMedicos;
+  const isLoading = atestadosQuery.isLoading || medicosQuery.isLoading;
 
   const filteredAtestados = useMemo(() => {
     return atestados.filter(a => {
-      const paciente = pacientes.find(p => p.id === a.paciente_id);
-      return paciente?.nome.toLowerCase().includes(searchTerm.toLowerCase());
+      return pacienteCorresponde(a.pacientes || {}, searchTerm);
     });
-  }, [atestados, pacientes, searchTerm]);
+  }, [atestados, searchTerm]);
 
   // Auto-calculate end date
   const updateDias = (dias: number) => {
@@ -129,40 +167,52 @@ export default function Atestados() {
   };
 
   const handleNew = () => {
+    if (!medicosDisponiveis.length) {
+      toast.error('Não há médicos ativos para emitir atestados.');
+      return;
+    }
     setSelectedAtestado(null);
-    setFormData({ ...emptyForm, medico_id: medicoId || '' });
+    setFormData({ ...novoFormulario(today), medico_id: medicoId || '' });
     setIsFormOpen(true);
   };
 
   const handleNewWithType = (tipo: string) => {
+    if (!medicosDisponiveis.length) {
+      toast.error('Não há médicos ativos para emitir atestados.');
+      return;
+    }
     setSelectedAtestado(null);
-    setFormData({ ...emptyForm, tipo, medico_id: medicoId || '' });
+    setFormData({ ...novoFormulario(today), tipo, medico_id: medicoId || '' });
     setIsFormOpen(true);
   };
 
   const handleLoadTemplate = (template: Record<string, any>) => {
+    const diasDoTemplate = Number(template.dias_afastamento ?? template.diasAfastamento);
+    const diasValidos = Number.isInteger(diasDoTemplate) && diasDoTemplate > 0 ? diasDoTemplate : null;
     setFormData(prev => ({
       ...prev,
       tipo: template.tipo || prev.tipo,
       observacoes: template.conteudo || prev.observacoes,
-      dias: template.diasAfastamento || prev.dias,
+      dias: diasValidos ?? prev.dias,
       cid: template.cid || prev.cid,
-      incluirCid: !!template.cid,
+      // Um CID salvo no modelo não substitui a autorização expressa do paciente
+      // para esta emissão específica.
+      incluirCid: false,
     }));
-    if (template.diasAfastamento) updateDias(template.diasAfastamento);
+    if (diasValidos) updateDias(diasValidos);
     setIsTemplateOpen(false);
     toast.success(`Modelo "${template.nome}" carregado.`);
   };
 
   // Replace template variables
   const processTemplateText = (text: string): string => {
-    const paciente = pacientes.find(p => p.id === formData.paciente_id);
+    const paciente = pacienteSelecionado;
     const medico = medicos.find(m => m.id === formData.medico_id);
     return text
       .replace(/\{\{nome_paciente\}\}/gi, paciente?.nome || '_______________')
       .replace(/\{\{cpf_paciente\}\}/gi, paciente?.cpf || '_______________')
       .replace(/\{\{data_emissao\}\}/gi, formData.data_emissao ? format(new Date(formData.data_emissao + 'T12:00'), 'dd/MM/yyyy') : '__/__/____')
-      .replace(/\{\{data_atual\}\}/gi, format(new Date(), 'dd/MM/yyyy'))
+      .replace(/\{\{data_atual\}\}/gi, format(parseDateOnly(today)!, 'dd/MM/yyyy'))
       .replace(/\{\{dias\}\}/gi, formData.dias?.toString() || '___')
       .replace(/\{\{data_inicio\}\}/gi, formData.data_inicio ? format(new Date(formData.data_inicio + 'T12:00'), 'dd/MM/yyyy') : '__/__/____')
       .replace(/\{\{data_fim\}\}/gi, formData.data_fim ? format(new Date(formData.data_fim + 'T12:00'), 'dd/MM/yyyy') : '__/__/____')
@@ -170,23 +220,76 @@ export default function Atestados() {
       .replace(/\{\{hora_fim\}\}/gi, formData.hora_fim || '__:__')
       .replace(/\{\{medico_nome\}\}/gi, medico?.nome || medico?.crm || '_______________')
       .replace(/\{\{medico_crm\}\}/gi, medico?.crm || '_______________')
-      .replace(/\{\{cid\}\}/gi, formData.cid || '___');
+      .replace(/\{\{cid\}\}/gi, formData.incluirCid ? formData.cid || '___' : '___');
   };
 
   const handleSave = async () => {
+    if (saveLock.current) return;
+    if (!profile?.clinica_id) {
+      toast.error('Clínica não identificada. O atestado não foi salvo.');
+      return;
+    }
     if (!formData.paciente_id || !formData.medico_id) {
       toast.error('Preencha paciente e médico.');
       return;
     }
-    if (formData.tipo === 'afastamento' && (!formData.dias || formData.dias < 1)) {
+    if (pacienteSelecionadoQuery.isFetching) {
+      toast.info('Aguarde o carregamento dos dados do paciente.');
+      return;
+    }
+    if (pacienteSelecionadoQuery.isError || !pacienteSelecionado) {
+      toast.error('Não foi possível carregar o paciente selecionado.', {
+        description: 'Busque o paciente novamente antes de emitir o atestado.',
+      });
+      return;
+    }
+    if (formData.tipo === 'afastamento' && (!Number.isInteger(formData.dias) || !formData.dias || formData.dias < 1)) {
       toast.error('Informe a quantidade de dias de afastamento.');
       return;
+    }
+    if (isMedicoOnly && formData.medico_id !== medicoId) {
+      toast.error('Seu perfil só pode emitir documentos em seu próprio nome.');
+      return;
+    }
+    const medicoSelecionado = medicos.find(m => m.id === formData.medico_id);
+    if (!medicoSelecionado || medicoSelecionado.ativo === false) {
+      toast.error('Médico emissor indisponível', {
+        description: 'Selecione um médico ativo da clínica antes de emitir o atestado.',
+      });
+      return;
+    }
+    if (formData.tipo === 'aptidao' && (!formData.finalidade || (formData.finalidade === 'custom' && !formData.motivo.trim()))) {
+      toast.error('Informe a finalidade do atestado de aptidão.');
+      return;
+    }
+    const isValidDateOnly = (value: string) => {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+      const date = new Date(`${value}T12:00:00`);
+      return !Number.isNaN(date.getTime()) && format(date, 'yyyy-MM-dd') === value;
+    };
+    const dataEmissaoValida = isValidDateOnly(formData.data_emissao) && formData.data_emissao <= today;
+    if (!dataEmissaoValida) {
+      toast.error('Informe uma data de emissão válida, igual ou anterior a hoje.');
+      return;
+    }
+    if (formData.tipo === 'afastamento') {
+      const inicioValido = isValidDateOnly(formData.data_inicio);
+      const fimValido = isValidDateOnly(formData.data_fim);
+      if (!inicioValido || !fimValido || formData.data_fim < formData.data_inicio) {
+        toast.error('Confira as datas do afastamento.', { description: 'A data final deve ser igual ou posterior à data inicial.' });
+        return;
+      }
     }
     if (formData.tipo === 'comparecimento' && (!formData.hora_inicio || !formData.hora_fim)) {
       toast.error('Informe o horário de início e fim para atestado de comparecimento.');
       return;
     }
+    if (formData.tipo === 'comparecimento' && formData.hora_fim <= formData.hora_inicio) {
+      toast.error('O horário final deve ser posterior ao horário inicial.');
+      return;
+    }
 
+    saveLock.current = true;
     setIsSaving(true);
     try {
       const observacoesProcessadas = processTemplateText(formData.observacoes);
@@ -197,10 +300,12 @@ export default function Atestados() {
         motivo = `Esteve presente das ${formData.hora_inicio} às ${formData.hora_fim}. ${motivo}`.trim();
       }
       if (formData.tipo === 'aptidao' && formData.finalidade) {
-        motivo = `Finalidade: ${formData.finalidade}. ${motivo}`.trim();
+        const finalidade = formData.finalidade === 'custom' ? formData.motivo.trim() : formData.finalidade;
+        motivo = `Finalidade: ${finalidade}.`;
       }
 
       const { error } = await supabase.from('atestados').insert({
+        clinica_id: profile.clinica_id,
         tipo: formData.tipo,
         paciente_id: formData.paciente_id,
         medico_id: formData.medico_id,
@@ -222,28 +327,48 @@ export default function Atestados() {
       if (import.meta.env.DEV) console.error('Error saving atestado:', error);
       toast.error('Erro ao emitir atestado.', { description: mensagemDeErro(error) });
     } finally {
+      saveLock.current = false;
       setIsSaving(false);
     }
   };
 
   const handleDuplicate = (atestado: Atestado) => {
+    const tipo = atestado.tipo || 'comparecimento';
+    const motivoOriginal = atestado.motivo || '';
+    const comparecimento = tipo === 'comparecimento'
+      ? motivoOriginal.match(/^Esteve presente das (\d{2}:\d{2}) às (\d{2}:\d{2})\.\s*(.*)$/i)
+      : null;
+    const finalidadeAptidao = tipo === 'aptidao'
+      ? (motivoOriginal.match(/^Finalidade:\s*(.*?)\.?$/i)?.[1] || motivoOriginal).trim()
+      : '';
+    const finalidadePredefinida = FINALIDADES_APTIDAO.includes(finalidadeAptidao);
     setSelectedAtestado(null);
     setFormData({
-      ...emptyForm,
-      tipo: atestado.tipo || 'comparecimento',
+      ...novoFormulario(today),
+      tipo,
       paciente_id: atestado.paciente_id,
       medico_id: atestado.medico_id || medicoId || '',
       dias: atestado.dias,
       cid: atestado.cid || '',
-      incluirCid: !!atestado.cid,
-      motivo: atestado.motivo || '',
+      // Duplicar o documento não reaproveita a autorização de CID da emissão anterior.
+      incluirCid: false,
+      motivo: tipo === 'comparecimento'
+        ? comparecimento?.[3] || (comparecimento ? '' : motivoOriginal)
+        : tipo === 'aptidao'
+          ? (finalidadePredefinida ? '' : finalidadeAptidao)
+          : motivoOriginal,
       observacoes: atestado.observacoes || '',
-      data_emissao: format(new Date(), 'yyyy-MM-dd'),
-      data_inicio: format(new Date(), 'yyyy-MM-dd'),
+      data_emissao: today,
+      data_inicio: today,
       data_fim: '',
+      finalidade: tipo === 'aptidao'
+        ? (finalidadePredefinida ? finalidadeAptidao : finalidadeAptidao ? 'custom' : '')
+        : '',
+      hora_inicio: comparecimento?.[1] || '',
+      hora_fim: comparecimento?.[2] || '',
     });
     if (atestado.dias && atestado.dias > 0) {
-      const dataFim = format(addDays(new Date(), atestado.dias - 1), 'yyyy-MM-dd');
+      const dataFim = format(addDays(new Date(`${today}T12:00`), atestado.dias - 1), 'yyyy-MM-dd');
       setFormData(prev => ({ ...prev, data_fim: dataFim }));
     }
     setIsFormOpen(true);
@@ -253,24 +378,44 @@ export default function Atestados() {
   const handleView = (atestado: Atestado) => { setSelectedAtestado(atestado); setIsViewOpen(true); };
 
   const handlePrint = async (atestado: Atestado) => {
-    const paciente = pacientes.find(p => p.id === atestado.paciente_id);
+    const paciente = atestado.pacientes;
     const medico = medicos.find(m => m.id === atestado.medico_id);
     if (!paciente || !medico) { toast.error('Dados não encontrados.'); return; }
-    const doc = await gerarAtestado(
-      { nome: paciente.nome, cpf: paciente.cpf || '' },
-      { nome: medico.nome || medico.crm, crm: medico.crm, especialidade: medico.especialidade || '' },
-      {
-        tipo: atestado.tipo as any,
-        dataAtendimento: atestado.data_emissao || '',
-        diasAfastamento: atestado.dias || undefined,
-        cid: atestado.cid || undefined,
-        observacoes: atestado.observacoes || '',
-      }
-    );
-    openPDF(doc);
+    try {
+      const horario = atestado.tipo === 'comparecimento'
+        ? atestado.motivo?.match(/das (\d{2}:\d{2}) às (\d{2}:\d{2})/i)
+        : null;
+      const finalidade = atestado.tipo === 'aptidao'
+        ? atestado.motivo?.replace(/^Finalidade:\s*/i, '').replace(/\.$/, '')
+        : undefined;
+      const motivoAdicional = atestado.tipo === 'comparecimento'
+        ? atestado.motivo?.replace(/^Esteve presente das \d{2}:\d{2} às \d{2}:\d{2}\.\s*/i, '')
+        : atestado.tipo !== 'aptidao' ? atestado.motivo : null;
+      const doc = await gerarAtestado(
+        { nome: paciente.nome, cpf: paciente.cpf || '' },
+        { nome: medico.nome || medico.crm, crm: medico.crm, especialidade: medico.especialidade || '' },
+        {
+          tipo: atestado.tipo as any,
+          dataAtendimento: atestado.data_emissao || '',
+          dataInicio: atestado.data_inicio || undefined,
+          dataFim: atestado.data_fim || undefined,
+          horarioInicio: horario?.[1],
+          horarioFim: horario?.[2],
+          finalidade,
+          diasAfastamento: atestado.dias || undefined,
+          cid: atestado.cid || undefined,
+          observacoes: [motivoAdicional, atestado.observacoes].filter(Boolean).join('\n'),
+        }
+      );
+      openPDF(doc);
+    } catch (error) {
+      toast.error('Não foi possível preparar o atestado para impressão.', { description: mensagemDeErro(error) });
+    }
   };
 
-  const getPacienteNome = (id: string) => pacientes.find(p => p.id === id)?.nome || 'Desconhecido';
+  const getPacienteNome = (paciente?: Atestado['pacientes']) => {
+    return (paciente as any)?.nome_social || paciente?.nome || 'Desconhecido';
+  };
   const getMedicoNome = (id: string) => {
     const m = medicos.find(m => m.id === id);
     return m ? `${nomeMedico(m.nome || m.crm)}` : 'Desconhecido';
@@ -287,6 +432,19 @@ export default function Atestados() {
   };
 
   if (isLoading) return <div className="space-y-6"><Skeleton className="h-10 w-64" /><Skeleton className="h-96" /></div>;
+  const atestadoQueries = [atestadosQuery, medicosQuery];
+  const failedAtestadoQuery = atestadoQueries.find(query => query.isError);
+  if (failedAtestadoQuery) {
+    return <ErrorState title="Não foi possível carregar atestados e documentos" error={failedAtestadoQuery.error} onRetry={() => { for (const query of atestadoQueries) void query.refetch(); }} />;
+  }
+  if (isMedicoOnly && (!medicoId || currentMedico?.ativo === false)) {
+    return <ErrorState
+      title={currentMedico?.ativo === false ? 'Cadastro médico inativo' : 'Perfil médico sem vínculo'}
+      description={currentMedico?.ativo === false
+        ? 'Seu cadastro médico foi inativado. Peça ao administrador para revisar seu acesso antes de emitir documentos.'
+        : 'Seu usuário não está vinculado a um cadastro médico ativo da clínica. Peça ao administrador para revisar esse vínculo antes de emitir documentos.'}
+    />;
+  }
 
   return (
     <div className="space-y-6">
@@ -304,9 +462,17 @@ export default function Atestados() {
             <FileSignature className="h-3.5 w-3.5 text-muted-foreground" />
             Assinatura manual
           </Badge>
-          <Button onClick={handleNew} className="gap-2"><Plus className="h-4 w-4" />Novo Atestado</Button>
+          <Button onClick={handleNew} className="gap-2" disabled={!medicosDisponiveis.length}>
+            <Plus className="h-4 w-4" />Novo Atestado
+          </Button>
         </div>
       </div>
+
+      {!medicosDisponiveis.length && (
+        <div role="alert" className="rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm text-warning-foreground">
+          Não há médicos ativos para emitir atestados. <Link to="/equipe" className="font-medium underline">Gerenciar equipe</Link>.
+        </div>
+      )}
 
       {/* Quick Actions */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -316,8 +482,22 @@ export default function Atestados() {
           return (
             <Card
               key={tipo.value}
-              className="cursor-pointer card-interactive hover:border-primary transition-colors"
-              onClick={() => handleNewWithType(tipo.value)}
+              className={cn(
+                'card-interactive transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                medicosDisponiveis.length ? 'cursor-pointer hover:border-primary' : 'cursor-not-allowed opacity-60',
+              )}
+              role="button"
+              tabIndex={medicosDisponiveis.length ? 0 : -1}
+              aria-disabled={!medicosDisponiveis.length}
+              aria-label={`Emitir ${tipo.label}`}
+              onClick={() => medicosDisponiveis.length && handleNewWithType(tipo.value)}
+              onKeyDown={(event) => {
+                if (!medicosDisponiveis.length) return;
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  handleNewWithType(tipo.value);
+                }
+              }}
             >
               <CardContent className="p-4 flex flex-col items-center text-center gap-2">
                 <Icon className="h-8 w-8 text-primary" />
@@ -336,7 +516,7 @@ export default function Atestados() {
             <CardTitle>Documentos Emitidos ({filteredAtestados.length})</CardTitle>
             <div className="relative w-full sm:w-72">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input placeholder="Buscar por paciente..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="pl-9" />
+                <Input placeholder="Buscar por nome, CPF ou telefone..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="pl-9" />
             </div>
           </div>
         </CardHeader>
@@ -361,9 +541,9 @@ export default function Atestados() {
                         <div className="h-16 w-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
                           <FileText className="h-8 w-8 text-primary" />
                         </div>
-                        <p className="font-semibold text-foreground">Nenhum atestado encontrado</p>
-                        <p className="text-sm text-muted-foreground mt-1">Emita o primeiro atestado para o paciente</p>
-                        <Button className="mt-4 gap-2" onClick={handleNew}><Plus className="h-4 w-4" />Novo Atestado</Button>
+                        <p className="font-semibold text-foreground">{atestados.length === 0 ? 'Nenhum atestado encontrado' : 'Nenhum resultado para essa busca'}</p>
+                        <p className="text-sm text-muted-foreground mt-1">{atestados.length === 0 ? 'Emita o primeiro atestado para o paciente' : 'Tente outro nome ou limpe a busca.'}</p>
+                        {atestados.length === 0 ? <Button className="mt-4 gap-2" onClick={handleNew}><Plus className="h-4 w-4" />Novo Atestado</Button> : <Button variant="link" size="sm" onClick={() => setSearchTerm('')}>Limpar busca</Button>}
                       </div>
                     </TableCell>
                   </TableRow>
@@ -372,7 +552,7 @@ export default function Atestados() {
                     <TableRow key={atestado.id}>
                       <TableCell>{atestado.data_emissao ? format(parseDateOnly(atestado.data_emissao)!, 'dd/MM/yyyy') : '—'}</TableCell>
                       <TableCell><Badge className={cn(getTipoBadge(atestado.tipo))}>{getTipoLabel(atestado.tipo)}</Badge></TableCell>
-                      <TableCell className="font-medium">{getPacienteNome(atestado.paciente_id)}</TableCell>
+                      <TableCell className="font-medium">{getPacienteNome(atestado.pacientes)}</TableCell>
                       <TableCell className="hidden md:table-cell">{getMedicoNome(atestado.medico_id)}</TableCell>
                       <TableCell className="hidden sm:table-cell text-sm text-muted-foreground">
                         {atestado.dias && <span>{atestado.dias} dia(s)</span>}
@@ -395,7 +575,7 @@ export default function Atestados() {
       </Card>
 
       {/* ─── Form Dialog ─── */}
-      <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
+      <Dialog open={isFormOpen} onOpenChange={(open) => { if (open || !isSaving) setIsFormOpen(open); }}>
         <DialogContent className="max-w-2xl max-h-[95vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -407,7 +587,7 @@ export default function Atestados() {
             </DialogTitle>
           </DialogHeader>
 
-          <div className="flex-1 overflow-y-auto space-y-5 pr-2">
+          <fieldset disabled={isSaving} className="flex-1 overflow-y-auto space-y-5 pr-2 min-w-0">
             {/* Tipo + Template */}
             <div className="flex gap-3 items-end">
               <div className="flex-1 space-y-1.5">
@@ -428,19 +608,28 @@ export default function Atestados() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Paciente *</Label>
-                <Select value={formData.paciente_id} onValueChange={v => setFormData({ ...formData, paciente_id: v })}>
-                  <SelectTrigger><SelectValue placeholder="Selecione o paciente" /></SelectTrigger>
-                  <SelectContent>
-                    {pacientes.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+                <PacienteCombobox
+                  value={formData.paciente_id}
+                  onChange={id => setFormData(prev => ({ ...prev, paciente_id: id }))}
+                />
+                {pacienteSelecionadoQuery.isFetching && formData.paciente_id && (
+                  <p className="text-xs text-muted-foreground" role="status">Carregando dados do paciente…</p>
+                )}
+                {pacienteSelecionadoQuery.isError && formData.paciente_id && (
+                  <ErrorState
+                    compact
+                    title="Não foi possível carregar o paciente selecionado"
+                    error={pacienteSelecionadoQuery.error}
+                    onRetry={() => void pacienteSelecionadoQuery.refetch()}
+                  />
+                )}
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Médico *</Label>
-                <Select value={formData.medico_id} onValueChange={v => setFormData({ ...formData, medico_id: v })}>
+                <Select value={formData.medico_id} disabled={isMedicoOnly} onValueChange={v => setFormData({ ...formData, medico_id: v })}>
                   <SelectTrigger><SelectValue placeholder="Selecione o médico" /></SelectTrigger>
                   <SelectContent>
-                    {medicos.map(m => <SelectItem key={m.id} value={m.id}>{m.nome || m.crm} — {m.especialidade || 'CRM: ' + m.crm}</SelectItem>)}
+                    {medicosDisponiveis.map(m => <SelectItem key={m.id} value={m.id}>{m.nome || m.crm} — {m.especialidade || 'CRM: ' + m.crm}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
@@ -451,7 +640,7 @@ export default function Atestados() {
               <Label className="text-xs font-medium flex items-center gap-1">
                 <Calendar className="h-3 w-3" /> Data de Emissão
               </Label>
-              <Input type="date" value={formData.data_emissao} onChange={e => setFormData({ ...formData, data_emissao: e.target.value })} className="w-48" />
+              <Input type="date" max={today} required value={formData.data_emissao} onChange={e => setFormData({ ...formData, data_emissao: e.target.value })} className="w-48" />
             </div>
 
             <Separator />
@@ -492,8 +681,8 @@ export default function Atestados() {
                       min={1}
                       value={formData.dias ?? ''}
                       onChange={e => {
-                        const d = parseInt(e.target.value);
-                        if (d > 0) updateDias(d);
+                        const d = Number(e.target.value);
+                        if (Number.isInteger(d) && d > 0) updateDias(d);
                         else setFormData(prev => ({ ...prev, dias: null, data_fim: '' }));
                       }}
                       placeholder="Ex: 3"
@@ -530,11 +719,9 @@ export default function Atestados() {
                   <Select value={formData.finalidade} onValueChange={v => setFormData({ ...formData, finalidade: v })}>
                     <SelectTrigger><SelectValue placeholder="Selecione a finalidade" /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="Apto para prática de atividades físicas moderadas">Atividades físicas moderadas</SelectItem>
-                      <SelectItem value="Apto para prática de atividades físicas intensas">Atividades físicas intensas</SelectItem>
-                      <SelectItem value="Apto para concurso público">Concurso público</SelectItem>
-                      <SelectItem value="Apto para atividades laborais">Atividades laborais</SelectItem>
-                      <SelectItem value="Apto para viagem">Viagem</SelectItem>
+                      {FINALIDADES_APTIDAO.map(finalidade => (
+                        <SelectItem key={finalidade} value={finalidade}>{finalidade.replace(/^Apto para /, '')}</SelectItem>
+                      ))}
                       <SelectItem value="custom">Outro (especificar)</SelectItem>
                     </SelectContent>
                   </Select>
@@ -559,7 +746,7 @@ export default function Atestados() {
                   onCheckedChange={checked => setFormData({ ...formData, incluirCid: checked as boolean })}
                 />
                 <Label htmlFor="incluirCid" className="text-sm cursor-pointer">
-                  Incluir CID-10 no atestado
+                  O paciente autorizou expressamente a inclusão do CID-10 neste atestado
                 </Label>
               </div>
               {formData.incluirCid && (
@@ -616,11 +803,15 @@ export default function Atestados() {
                 </p>
               </div>
             </div>
-          </div>
+          </fieldset>
 
           <DialogFooter className="flex-shrink-0 pt-4 border-t">
             <Button variant="outline" onClick={() => setIsFormOpen(false)} disabled={isSaving}>Cancelar</Button>
-            <Button onClick={handleSave} disabled={isSaving} className="gap-2">
+            <Button
+              onClick={handleSave}
+              disabled={isSaving || pacienteSelecionadoQuery.isFetching || !!formData.paciente_id && pacienteSelecionadoQuery.isError}
+              className="gap-2"
+            >
               {isSaving && <Loader2 className="h-4 w-4 animate-spin" />}
               <FileSignature className="h-4 w-4" />Emitir atestado
             </Button>
@@ -637,7 +828,16 @@ export default function Atestados() {
               Modelos de Atestado
             </DialogTitle>
           </DialogHeader>
-          {templates.length === 0 ? (
+          {templatesQuery.isError ? (
+            <ErrorState
+              compact
+              title="Não foi possível carregar os modelos de atestado"
+              error={templatesQuery.error}
+              onRetry={() => void templatesQuery.refetch()}
+            />
+          ) : templatesQuery.isLoading ? (
+            <p className="py-12 text-center text-sm text-muted-foreground" role="status">Carregando modelos…</p>
+          ) : templates.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               <Star className="h-10 w-10 mx-auto mb-2 opacity-30" />
               <p className="text-sm">Nenhum modelo cadastrado</p>
@@ -656,7 +856,7 @@ export default function Atestados() {
                       <p className="font-medium">{t.nome}</p>
                       <p className="text-xs text-muted-foreground">
                         {getTipoLabel(t.tipo)}
-                        {t.diasAfastamento && ` • ${t.diasAfastamento} dias`}
+                        {(t.dias_afastamento ?? t.diasAfastamento) && ` • ${t.dias_afastamento ?? t.diasAfastamento} dias`}
                       </p>
                     </div>
                     <Button variant="ghost" size="sm" className="gap-1"><Clipboard className="h-3.5 w-3.5" />Aplicar</Button>
@@ -685,7 +885,7 @@ export default function Atestados() {
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Paciente</p>
-                  <p className="font-medium">{getPacienteNome(selectedAtestado.paciente_id)}</p>
+                  <p className="font-medium">{getPacienteNome(selectedAtestado.pacientes)}</p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Médico</p>

@@ -41,7 +41,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { mensagemDeErro } from '@/lib/erros';
 import { cn } from '@/lib/utils';
-import { parseDateOnly } from '@/lib/dateOnly';
+import { parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 
 interface Return {
   id: string;
@@ -69,12 +69,12 @@ interface ReturnSchedulerProps {
 }
 
 const RETURN_PRESETS = [
-  { label: '7 dias', value: '7d', calc: () => addDays(new Date(), 7) },
-  { label: '15 dias', value: '15d', calc: () => addDays(new Date(), 15) },
-  { label: '30 dias', value: '30d', calc: () => addDays(new Date(), 30) },
-  { label: '2 meses', value: '2m', calc: () => addMonths(new Date(), 2) },
-  { label: '3 meses', value: '3m', calc: () => addMonths(new Date(), 3) },
-  { label: '6 meses', value: '6m', calc: () => addMonths(new Date(), 6) },
+  { label: '7 dias', value: '7d', calc: () => addDays(parseDateOnly(todaySaoPauloDateOnly())!, 7) },
+  { label: '15 dias', value: '15d', calc: () => addDays(parseDateOnly(todaySaoPauloDateOnly())!, 15) },
+  { label: '30 dias', value: '30d', calc: () => addDays(parseDateOnly(todaySaoPauloDateOnly())!, 30) },
+  { label: '2 meses', value: '2m', calc: () => addMonths(parseDateOnly(todaySaoPauloDateOnly())!, 2) },
+  { label: '3 meses', value: '3m', calc: () => addMonths(parseDateOnly(todaySaoPauloDateOnly())!, 3) },
+  { label: '6 meses', value: '6m', calc: () => addMonths(parseDateOnly(todaySaoPauloDateOnly())!, 6) },
 ];
 
 const RETURN_TYPES = [
@@ -102,7 +102,7 @@ export function ReturnScheduler({
 
   const queryClient = useQueryClient();
 
-  const { data: returns, isLoading } = useQuery({
+  const { data: returns, isLoading, isError: returnsError, error: returnsLoadError, refetch: refetchReturns } = useQuery({
     queryKey: ['patient-returns', profile?.clinica_id, pacienteId],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -128,7 +128,7 @@ export function ReturnScheduler({
       
       if (selectedPreset) {
         const preset = RETURN_PRESETS.find(p => p.value === selectedPreset);
-        dataRetorno = preset?.calc() || new Date();
+        dataRetorno = preset?.calc() || parseDateOnly(todaySaoPauloDateOnly())!;
       } else if (customDate) {
         // `new Date('YYYY-MM-DD')` interpreta a data em UTC e, no Brasil,
         // pode salvar o dia anterior. Datas de calendário devem ser locais.
@@ -163,13 +163,19 @@ export function ReturnScheduler({
   });
 
   const updateReturnStatus = useMutation({
-    mutationFn: async ({ id, status }: { id: string; status: string }) => {
-      const { error } = await supabase
+    mutationFn: async ({ id, status, expectedStatus }: { id: string; status: string; expectedStatus: string }) => {
+      if (!profile?.clinica_id) throw new Error('Clínica ativa não encontrada. Atualize a sessão e tente novamente.');
+      const { data, error } = await supabase
         .from('retornos')
         .update({ status })
-        .eq('id', id);
+        .eq('id', id)
+        .eq('clinica_id', profile.clinica_id)
+        .eq('status', expectedStatus)
+        .select('id')
+        .maybeSingle();
 
       if (error) throw error;
+      if (!data) throw new Error('O status deste retorno mudou em outra sessão. Atualize a lista antes de tentar novamente.');
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['patient-returns', profile?.clinica_id, pacienteId] });
@@ -209,6 +215,12 @@ export function ReturnScheduler({
   if (compact) {
     return (
       <div className={cn("flex items-center gap-2", className)}>
+        {returnsError && (
+          <div role="alert" className="text-xs text-destructive">
+            Não foi possível carregar os retornos.{' '}
+            <Button variant="link" size="sm" className="h-auto p-0 text-xs" onClick={() => void refetchReturns()}>Tentar novamente</Button>
+          </div>
+        )}
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
           <DialogTrigger asChild>
             <Button variant="outline" size="sm">
@@ -267,7 +279,7 @@ export function ReturnScheduler({
                     setCustomDate(e.target.value);
                     setSelectedPreset('');
                   }}
-                  min={format(new Date(), 'yyyy-MM-dd')}
+                  min={todaySaoPauloDateOnly()}
                   className="mt-1"
                 />
               </div>
@@ -409,7 +421,7 @@ export function ReturnScheduler({
                     setCustomDate(e.target.value);
                     setSelectedPreset('');
                   }}
-                  min={format(new Date(), 'yyyy-MM-dd')}
+                  min={todaySaoPauloDateOnly()}
                   className="mt-1"
                 />
               </div>
@@ -470,7 +482,13 @@ export function ReturnScheduler({
       </CardHeader>
       <CardContent>
         <ScrollArea className="h-[300px]">
-          {pendingReturns.length === 0 && completedReturns.length === 0 ? (
+          {returnsError ? (
+            <div role="alert" className="flex flex-col items-center gap-2 py-8 text-center">
+              <p className="text-sm text-destructive">Não foi possível carregar os retornos.</p>
+              <p className="text-xs text-muted-foreground">{mensagemDeErro(returnsLoadError)}</p>
+              <Button variant="outline" size="sm" onClick={() => void refetchReturns()}>Tentar novamente</Button>
+            </div>
+          ) : pendingReturns.length === 0 && completedReturns.length === 0 ? (
             <p className="text-center text-muted-foreground py-8">
               Nenhum retorno agendado.
             </p>
@@ -507,7 +525,8 @@ export function ReturnScheduler({
                             variant="ghost"
                             className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-50"
                             aria-label="Marcar retorno como concluído"
-                            onClick={() => updateReturnStatus.mutate({ id: ret.id, status: 'concluido' })}
+                            disabled={updateReturnStatus.isPending}
+                            onClick={() => updateReturnStatus.mutate({ id: ret.id, status: 'concluido', expectedStatus: ret.status })}
                           >
                             <Check className="h-4 w-4" />
                           </Button>
@@ -516,7 +535,8 @@ export function ReturnScheduler({
                             variant="ghost"
                             className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50"
                             aria-label="Cancelar retorno"
-                            onClick={() => updateReturnStatus.mutate({ id: ret.id, status: 'cancelado' })}
+                            disabled={updateReturnStatus.isPending}
+                            onClick={() => updateReturnStatus.mutate({ id: ret.id, status: 'cancelado', expectedStatus: ret.status })}
                           >
                             <X className="h-4 w-4" />
                           </Button>

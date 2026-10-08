@@ -6,12 +6,14 @@
  * aviso. `montar` deve devolver a consulta já filtrada e ordenada (de
  * preferência com um desempate estável, como `id`), sem `.range()`.
  */
+export const LIMITE_BUSCA_EM_BLOCOS = 20_000;
+
 export async function buscarEmBlocos<T>(
   montar: () => any,
   opcoes: { bloco?: number; teto?: number } = {},
 ): Promise<T[]> {
   const bloco = opcoes.bloco ?? 1000;
-  const teto = opcoes.teto ?? 20000;
+  const teto = opcoes.teto ?? LIMITE_BUSCA_EM_BLOCOS;
   const linhas: T[] = [];
   while (linhas.length < teto) {
     const inicio = linhas.length;

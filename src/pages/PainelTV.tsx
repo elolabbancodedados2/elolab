@@ -47,6 +47,7 @@ interface FilaItem {
   sala_id: string | null;
   horario_chegada: string;
   prioridade: string | null;
+  updated_at: string | null;
 }
 
 interface MediaItem {
@@ -60,27 +61,50 @@ interface MediaItem {
 }
 
 // ─── TTS Helper ────────────────────────────────────────────
-function chamarPacienteVoz(pacienteNome: string, salaNome: string, repetir = 2) {
-  if (!('speechSynthesis' in window)) return;
-  
-  window.speechSynthesis.cancel();
-  
+function chamarPacienteVoz(pacienteNome: string, salaNome: string, repetir = 2): Promise<void> {
+  if (!('speechSynthesis' in window)) return Promise.resolve();
+
   const texto = `Paciente ${pacienteNome}, por favor dirija-se ${salaNome === 'Recepção' ? 'à Recepção' : `à ${salaNome}`}.`;
-  
-  for (let i = 0; i < repetir; i++) {
-    const utterance = new SpeechSynthesisUtterance(texto);
-    utterance.lang = 'pt-BR';
-    utterance.rate = 0.9;
-    utterance.pitch = 1.0;
-    utterance.volume = 1.0;
-    
-    // Try to use a Brazilian Portuguese voice
-    const voices = window.speechSynthesis.getVoices();
-    const ptVoice = voices.find(v => v.lang.startsWith('pt-BR')) || voices.find(v => v.lang.startsWith('pt'));
-    if (ptVoice) utterance.voice = ptVoice;
-    
-    window.speechSynthesis.speak(utterance);
-  }
+  return new Promise(resolve => {
+    let terminou = false;
+    const finalizar = () => {
+      if (terminou) return;
+      terminou = true;
+      clearTimeout(fallback);
+      resolve();
+    };
+    const fallback = setTimeout(finalizar, 20000);
+    for (let i = 0; i < repetir; i++) {
+      const utterance = new SpeechSynthesisUtterance(texto);
+      utterance.lang = 'pt-BR';
+      utterance.rate = 0.9;
+      utterance.pitch = 1.0;
+      utterance.volume = 1.0;
+
+      // Try to use a Brazilian Portuguese voice
+      const voices = window.speechSynthesis.getVoices();
+      const ptVoice = voices.find(v => v.lang.startsWith('pt-BR')) || voices.find(v => v.lang.startsWith('pt'));
+      if (ptVoice) utterance.voice = ptVoice;
+      if (i === repetir - 1) {
+        utterance.onend = finalizar;
+        utterance.onerror = finalizar;
+      }
+      window.speechSynthesis.speak(utterance);
+    }
+  });
+}
+
+function criarFilaDeChamadas() {
+  let fila = Promise.resolve();
+  return (pacienteNome: string, salaNome: string) => {
+    fila = fila
+      .catch(() => undefined)
+      .then(async () => {
+        await playNotificationChime();
+        await chamarPacienteVoz(pacienteNome, salaNome);
+      });
+    return fila;
+  };
 }
 
 // Play a notification chime before TTS
@@ -122,12 +146,18 @@ export default function PainelTV() {
   const [filaErro, setFilaErro] = useState<string | null>(null);
   const [filaCarregando, setFilaCarregando] = useState(true);
   const filaCarregadaUmaVez = useRef(false);
+  const filaLoadSequence = useRef(0);
+  const mediaLoadSequence = useRef(0);
+  const clinicaAtualRef = useRef<string | null>(profile?.clinica_id ?? null);
+  clinicaAtualRef.current = profile?.clinica_id ?? null;
   const [currentTime, setCurrentTime] = useState(new Date());
   const [chamadoAtual, setChamadoAtual] = useState<string | null>(null);
   const [somAtivo, setSomAtivo] = useState(true);
   
   // Track which calls we've already announced
   const announcedCallsRef = useRef<Set<string>>(new Set());
+  const enfileirarChamadaRef = useRef<((pacienteNome: string, salaNome: string) => Promise<void>) | null>(null);
+  if (!enfileirarChamadaRef.current) enfileirarChamadaRef.current = criarFilaDeChamadas();
 
   // Media state
   const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
@@ -149,9 +179,27 @@ export default function PainelTV() {
 
   // Load data
   useEffect(() => {
-    loadFila();
-    loadMedia();
-    
+    if (!profile?.clinica_id) {
+      filaLoadSequence.current += 1;
+      filaCarregadaUmaVez.current = false;
+      setFila([]);
+      setPacientes({});
+      setMedicos({});
+      setSalas({});
+      setFilaCarregando(false);
+      setFilaErro('Clínica não identificada. Atualize a sessão para carregar o painel.');
+      return;
+    }
+    filaCarregadaUmaVez.current = false;
+    setFila([]);
+    setPacientes({});
+    setMedicos({});
+    setSalas({});
+    setFilaCarregando(true);
+    setFilaErro(null);
+    void loadFila();
+    void loadMedia();
+
     // Preload voices
     if ('speechSynthesis' in window) {
       window.speechSynthesis.getVoices();
@@ -165,17 +213,18 @@ export default function PainelTV() {
       clearInterval(timeInterval);
       clearInterval(dataInterval);
     };
-  }, []);
+  }, [profile?.clinica_id]);
 
   // Realtime subscription for instant updates
   useEffect(() => {
+    if (!profile?.clinica_id) return;
     const channel = supabase
       .channel(canalUnico('painel-tv-fila'))
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'fila_atendimento' },
+        { event: '*', schema: 'public', table: 'fila_atendimento', filter: `clinica_id=eq.${profile.clinica_id}` },
         () => {
-          loadFila();
+          void loadFila();
         }
       )
       .subscribe();
@@ -183,7 +232,7 @@ export default function PainelTV() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [profile?.clinica_id]);
 
   // Media carousel timer
   useEffect(() => {
@@ -198,6 +247,10 @@ export default function PainelTV() {
     return () => clearTimeout(timer);
   }, [currentMediaIndex, isPlaying, mediaItems]);
 
+  useEffect(() => {
+    setCurrentMediaIndex((index) => mediaItems.length ? index % mediaItems.length : 0);
+  }, [mediaItems.length]);
+
   const handleVideoEnded = useCallback(() => {
     setCurrentMediaIndex((prev) => (prev + 1) % mediaItems.length);
   }, [mediaItems.length]);
@@ -209,33 +262,40 @@ export default function PainelTV() {
     const chamados = fila.filter((f) => f.status === 'chamado');
     
     for (const chamado of chamados) {
-      if (!announcedCallsRef.current.has(chamado.id)) {
-        announcedCallsRef.current.add(chamado.id);
+      const chaveChamada = `${chamado.id}:${chamado.updated_at || chamado.horario_chegada}`;
+      if (!announcedCallsRef.current.has(chaveChamada)) {
+        announcedCallsRef.current.add(chaveChamada);
         setChamadoAtual(chamado.id);
         
         // Nome reduzido igual ao telão: o som alcança a sala inteira.
         const nome = getPacienteNome(chamado.agendamento_id);
         const sala = chamado.sala_id ? (salas[chamado.sala_id] || 'Sala') : 'Recepção';
         
-        playNotificationChime().then(() => {
-          chamarPacienteVoz(nome, sala);
-        });
+        void enfileirarChamadaRef.current?.(nome, sala);
       }
     }
     
     // Clean up old announced calls
-    const currentIds = new Set(fila.map(f => f.id));
+    const currentIds = new Set(chamados.map(f => `${f.id}:${f.updated_at || f.horario_chegada}`));
     announcedCallsRef.current.forEach(id => {
       if (!currentIds.has(id)) announcedCallsRef.current.delete(id);
     });
   }, [fila, getPacienteNome, salas, somAtivo]);
 
   const loadFila = async () => {
+    const clinicaId = profile?.clinica_id;
+    const requestSequence = ++filaLoadSequence.current;
+    if (!clinicaId) {
+      setFila([]);
+      setFilaCarregando(false);
+      return;
+    }
     if (!filaCarregadaUmaVez.current) setFilaCarregando(true);
     try {
       const { data: filaData, error: filaError } = await supabase
         .from('fila_atendimento')
         .select('*')
+        .eq('clinica_id', clinicaId)
         .in('status', ['aguardando', 'chamado', 'em_atendimento'])
         .order('posicao');
       if (filaError) throw filaError;
@@ -247,6 +307,7 @@ export default function PainelTV() {
           const { data, error } = await supabase
             .from('agendamentos')
             .select('id, paciente_id, medico_id, sala_id')
+            .eq('clinica_id', clinicaId)
             .in('id', agendamentoIds);
           if (error) throw error;
           agendamentos = data ?? [];
@@ -263,6 +324,7 @@ export default function PainelTV() {
         const { data, error } = await supabase
           .from('pacientes')
           .select('id, nome')
+          .eq('clinica_id', clinicaId)
           .in('id', pacienteIds);
         if (error) throw error;
         agendamentos.forEach((a) => {
@@ -276,6 +338,7 @@ export default function PainelTV() {
         const { data, error } = await supabase
           .from('medicos')
           .select('id, nome, crm, especialidade')
+          .eq('clinica_id', clinicaId)
           .in('id', medicoIds);
         if (error) throw error;
         agendamentos.forEach((a) => {
@@ -289,11 +352,13 @@ export default function PainelTV() {
         const { data, error } = await supabase
           .from('salas')
           .select('id, nome')
+          .eq('clinica_id', clinicaId)
           .in('id', allSalaIds);
         if (error) throw error;
         data?.forEach((sala) => { mapaSalas[sala.id] = sala.nome; });
       }
 
+      if (requestSequence !== filaLoadSequence.current) return;
       setFila(linhasFila);
       setPacientes(mapaPacientes);
       setMedicos(mapaMedicos);
@@ -301,26 +366,37 @@ export default function PainelTV() {
       filaCarregadaUmaVez.current = true;
       setFilaErro(null);
     } catch (error) {
+      if (requestSequence !== filaLoadSequence.current) return;
       setFilaErro(filaCarregadaUmaVez.current
         ? 'Não foi possível atualizar a fila. Exibindo os últimos dados carregados.'
         : 'Não foi possível carregar a fila. Tente novamente ou aguarde a próxima atualização automática.');
       if (import.meta.env.DEV) console.error('Erro ao carregar fila:', error);
     } finally {
-      setFilaCarregando(false);
+      if (requestSequence === filaLoadSequence.current) setFilaCarregando(false);
     }
   };
 
   const loadMedia = async () => {
+    const clinicaId = profile?.clinica_id;
+    const requestSequence = ++mediaLoadSequence.current;
+    if (!clinicaId) {
+      setAllMediaItems([]);
+      setMediaItems([]);
+      return;
+    }
     try {
       const { data: allData, error: allError } = await supabase
         .from('tv_panel_media')
         .select('*')
+        .eq('clinica_id', clinicaId)
         .order('ordem');
       if (allError) throw allError;
+      if (requestSequence !== mediaLoadSequence.current || clinicaAtualRef.current !== clinicaId) return;
       setAllMediaItems((allData as MediaItem[]) || []);
       const activeItems = (allData as MediaItem[])?.filter(m => m.ativo) || [];
       setMediaItems(activeItems);
     } catch (error) {
+      if (requestSequence !== mediaLoadSequence.current || clinicaAtualRef.current !== clinicaId) return;
       if (import.meta.env.DEV) console.error('Erro ao carregar mídias:', error);
     }
   };
@@ -335,6 +411,7 @@ export default function PainelTV() {
       return;
     }
     setUploading(true);
+    let arquivoEnviado: string | null = null;
     try {
       // O arquivo passa a ficar numa pasta por clínica. Antes ia para a raiz do
       // bucket, o que tornava impossível escopar a listagem por clínica — uma
@@ -347,8 +424,10 @@ export default function PainelTV() {
       const fileName = `${profile.clinica_id}/${Date.now()}.${fileExt}`;
       const { error: uploadError } = await supabase.storage.from('tv-panel-media').upload(fileName, file);
       if (uploadError) throw uploadError;
+      arquivoEnviado = fileName;
       const { data: urlData } = supabase.storage.from('tv-panel-media').getPublicUrl(fileName);
       const { error: dbError } = await supabase.from('tv_panel_media').insert({
+        clinica_id: profile.clinica_id,
         tipo: isVideo ? 'video' : 'imagem',
         nome: file.name,
         url: urlData.publicUrl,
@@ -357,10 +436,21 @@ export default function PainelTV() {
         ativo: true,
       });
       if (dbError) throw dbError;
+      arquivoEnviado = null;
       toast.success('Mídia adicionada com sucesso!');
       loadMedia();
     } catch (error: any) {
       if (import.meta.env.DEV) console.error('Erro no upload:', error);
+      if (arquivoEnviado) {
+        try {
+          const { error: cleanupError } = await supabase.storage.from('tv-panel-media').remove([arquivoEnviado]);
+          if (cleanupError) throw cleanupError;
+        } catch (cleanupError: any) {
+          toast.warning('O cadastro da mídia falhou e o arquivo temporário não pôde ser removido.', {
+            description: cleanupError?.message || 'Verifique o armazenamento do painel.',
+          });
+        }
+      }
       toast.error(error.message || 'Erro ao fazer upload');
     } finally {
       setUploading(false);
@@ -370,6 +460,12 @@ export default function PainelTV() {
 
   const handleDeleteMedia = async (media: MediaItem) => {
     try {
+      if (!profile?.clinica_id) throw new Error('Clínica não identificada. Atualize a sessão e tente novamente.');
+      const { data, error } = await supabase.from('tv_panel_media').delete()
+        .eq('id', media.id).eq('clinica_id', profile.clinica_id).select('id');
+      if (error) throw error;
+      if (!data || data.length === 0) { toast.error('Sem permissão para remover esta mídia.'); return; }
+
       // A URL agora contém a pasta da clínica; pegar só o último segmento
       // apagaria o caminho errado (ou nada). Extraímos tudo após o bucket.
       const depoisDoBucket = media.url.split('/tv-panel-media/')[1];
@@ -377,11 +473,17 @@ export default function PainelTV() {
         ? decodeURIComponent(depoisDoBucket.split('?')[0])
         : media.url.split('/').pop();
       if (caminho) {
-        await supabase.storage.from('tv-panel-media').remove([caminho]);
+        try {
+          const { error: storageError } = await supabase.storage.from('tv-panel-media').remove([caminho]);
+          if (storageError) throw storageError;
+        } catch (storageError: any) {
+          toast.warning('A mídia saiu do painel, mas o arquivo não foi removido do Storage.', {
+            description: storageError?.message || 'Verifique o armazenamento do painel.',
+          });
+          loadMedia();
+          return;
+        }
       }
-      const { data, error } = await supabase.from('tv_panel_media').delete().eq('id', media.id).select('id');
-      if (error) throw error;
-      if (!data || data.length === 0) { toast.error('Sem permissão para remover esta mídia.'); return; }
       toast.success('Mídia removida');
       loadMedia();
     } catch (error: any) {
@@ -391,9 +493,12 @@ export default function PainelTV() {
 
   const toggleMediaActive = async (media: MediaItem) => {
     try {
-      const { error } = await supabase.from('tv_panel_media').update({ ativo: !media.ativo }).eq('id', media.id);
+      if (!profile?.clinica_id) throw new Error('Clínica não identificada. Atualize a sessão e tente novamente.');
+      const { data, error } = await supabase.from('tv_panel_media').update({ ativo: !media.ativo })
+        .eq('id', media.id).eq('clinica_id', profile.clinica_id).select('id').maybeSingle();
       if (error) throw error;
-      loadMedia();
+      if (!data) throw new Error('A mídia não pertence à clínica atual ou já foi removida.');
+      void loadMedia();
     } catch (error: any) {
       toast.error(error.message || 'Erro ao atualizar mídia');
     }
@@ -401,11 +506,9 @@ export default function PainelTV() {
 
   // Re-call patient manually (click on call banner)
   const rechamarPaciente = (chamado: FilaItem) => {
-    const nome = pacientes[chamado.agendamento_id] || 'Paciente';
+    const nome = getPacienteNome(chamado.agendamento_id);
     const sala = chamado.sala_id ? (salas[chamado.sala_id] || 'Sala') : 'Recepção';
-    playNotificationChime().then(() => {
-      chamarPacienteVoz(nome, sala);
-    });
+    void enfileirarChamadaRef.current?.(nome, sala);
     toast.info(`Chamando novamente: ${nome}`);
   };
 

@@ -15,13 +15,15 @@ import { supabase } from '@/integrations/supabase/client';
  * Na prática: resultado liberado, paciente nunca avisado, e ninguém ficava
  * sabendo. Num laboratório isso é resultado parado esperando alguém ligar.
  */
-export async function notificarResultadoLiberado(resultadoId: string): Promise<boolean> {
+export type ResultadoNotificacao = 'enviada' | 'enfileirada' | 'falhou';
+
+export async function notificarResultadoLiberado(resultadoId: string): Promise<ResultadoNotificacao> {
   for (let tentativa = 0; tentativa < 2; tentativa++) {
     try {
       const { error } = await supabase.functions.invoke('exam-result-notification', {
         body: { resultado_id: resultadoId },
       });
-      if (!error) return true;
+      if (!error) return 'enviada';
       // erro devolvido (não lançado) — tenta de novo e, na última, enfileira
     } catch {
       // falha de rede: mesmo tratamento
@@ -38,9 +40,10 @@ export async function notificarResultadoLiberado(resultadoId: string): Promise<b
       assunto: 'Seu resultado de exame está disponível',
     });
     if (error) throw error;
+    return 'enfileirada';
   } catch (e) {
     console.error('Falha ao enfileirar notificação do resultado', resultadoId, e);
   }
 
-  return false;
+  return 'falhou';
 }

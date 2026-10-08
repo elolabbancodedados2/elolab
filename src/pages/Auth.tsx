@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -65,6 +65,9 @@ export default function Auth() {
   const [activeTab, setActiveTab] = useState<'login' | 'signup'>('login');
   const [direction, setDirection] = useState(0);
   const [signupSuccess, setSignupSuccess] = useState(false);
+  const [activationStatus, setActivationStatus] = useState<'idle' | 'waiting_email' | 'activating' | 'active' | 'failed'>('idle');
+  const [activationCode, setActivationCode] = useState('');
+  const activationRequests = useRef(new Map<string, Promise<boolean>>());
   /** Fator TOTP a confirmar: senha aceita, sessão ainda em AAL1. */
   const [pendingFactorId, setPendingFactorId] = useState<string | null>(null);
 
@@ -106,8 +109,9 @@ export default function Auth() {
   }, []);
 
   useEffect(() => {
-    if (!authLoading && user && profile) navigate('/dashboard');
-  }, [user, profile, authLoading, navigate]);
+    const activationFinished = activationStatus === 'active' || (activationStatus === 'idle' && !urlCodigo);
+    if (!authLoading && user && profile && activationFinished) navigate('/dashboard');
+  }, [user, profile, authLoading, navigate, activationStatus, urlCodigo]);
 
   const loginForm = useForm<LoginForm>({
     resolver: zodResolver(loginSchema),
@@ -121,6 +125,7 @@ export default function Auth() {
       codigoConvite: urlCodigo || '',
     },
   });
+  const resetSignupForm = signupForm.reset;
 
   const handleTabChange = (tab: 'login' | 'signup') => {
     setDirection(tab === 'signup' ? 1 : -1);
@@ -199,36 +204,54 @@ export default function Auth() {
     toast.info('Login cancelado');
   };
 
-  const activateSubscription = async (userId: string, codigoConvite: string) => {
-    try {
-      const { data: result, error: rpcError } = await supabase.rpc(
-        'activate_public_registration' as any,
-        { _user_id: userId, _codigo_convite: codigoConvite }
-      );
+  const activateSubscription = useCallback(async (userId: string, codigoConvite: string): Promise<boolean> => {
+    const key = `${userId}:${codigoConvite}`;
+    const existingRequest = activationRequests.current.get(key);
+    if (existingRequest) return existingRequest;
 
-      if (rpcError) {
-        if (import.meta.env.DEV) console.error('Erro ao ativar registro:', rpcError);
-        toast.error('Erro ao ativar sua assinatura. Tente fazer login novamente.');
-        return;
-      }
+    const request = (async () => {
+      try {
+        const { data: result, error: rpcError } = await supabase.rpc(
+          'activate_public_registration' as any,
+          { _user_id: userId, _codigo_convite: codigoConvite }
+        );
 
-      const res = result as any;
-      if (!res?.success) {
-        toast.error(res?.error || 'Erro ao ativar assinatura.');
-        return;
-      }
+        if (rpcError) throw rpcError;
+        const res = result as any;
+        if (!res?.success) throw new Error(res?.error || 'Não foi possível ativar o plano.');
 
-      if (res.mode === 'paid') {
-        toast.success(`Plano ${res.plano_nome} ativado! 🎉`);
-      } else if (res.mode === 'trial') {
-        toast.success(`Teste grátis ativado! ${res.plano_nome} por 3 dias. 🎉`);
-      } else {
-        toast.success(`Plano ${res.plano_nome} ativado!`);
+        if (res.mode === 'paid') toast.success(`Plano ${res.plano_nome} ativado! 🎉`);
+        else if (res.mode === 'trial') toast.success(`Teste grátis ativado! Plano ${res.plano_nome}. 🎉`);
+        else toast.success(`Plano ${res.plano_nome} ativado!`);
+        return true;
+      } catch (err) {
+        if (import.meta.env.DEV) console.error('Erro ao ativar assinatura:', err);
+        toast.error('A conta foi criada, mas o plano ainda não foi ativado.', { description: mensagemDeErro(err) });
+        return false;
       }
-    } catch (err) {
-      if (import.meta.env.DEV) console.error('Erro ao ativar assinatura:', err);
-    }
-  };
+    })();
+
+    activationRequests.current.set(key, request);
+    const activated = await request;
+    if (!activated) activationRequests.current.delete(key);
+    return activated;
+  }, []);
+
+  useEffect(() => {
+    if (!user?.id || !urlCodigo || authLoading) return;
+    let active = true;
+    setActivationCode(urlCodigo);
+    setActivationStatus('activating');
+    void activateSubscription(user.id, urlCodigo).then((activated) => {
+      if (!active) return;
+      setActivationStatus(activated ? 'active' : 'failed');
+      if (activated) {
+        setSignupSuccess(true);
+        resetSignupForm();
+      }
+    });
+    return () => { active = false; };
+  }, [user?.id, urlCodigo, authLoading, activateSubscription, resetSignupForm]);
 
   const onSignup = async (data: SignupForm) => {
     const rateKey = `signup:${data.email.toLowerCase()}`;
@@ -259,18 +282,37 @@ export default function Auth() {
         return;
       }
 
-      const result = await signUp(data.email, data.password, data.nome, data.telefone, data.cpfCnpj);
+      setActivationCode(data.codigoConvite);
+      setActivationStatus('activating');
+      const activationRedirect = new URL('https://app.elolab.com.br/auth');
+      activationRedirect.searchParams.set('codigo', data.codigoConvite);
+      const result = await signUp(data.email, data.password, data.nome, data.telefone, data.cpfCnpj, activationRedirect.toString());
       if (result.error) {
+        setActivationStatus('idle');
         if (result.error.message.includes('User already registered')) toast.error('Este email já está cadastrado');
         else toast.error(result.error.message || 'Erro ao criar conta');
       } else {
         const userId = result.data?.user?.id;
-        if (userId) await activateSubscription(userId, data.codigoConvite);
-        setSignupSuccess(true);
-        toast.success('Conta criada com sucesso!');
-        signupForm.reset();
+        if (!userId) {
+          setActivationStatus('failed');
+          toast.error('O cadastro foi enviado, mas não recebemos a confirmação da conta. Confira seu e-mail e tente entrar.');
+          return;
+        }
+
+        if (result.data?.session) {
+          const activated = await activateSubscription(userId, data.codigoConvite);
+          setActivationStatus(activated ? 'active' : 'failed');
+          setSignupSuccess(activated);
+          if (activated) signupForm.reset();
+        } else {
+          setActivationStatus('waiting_email');
+          setSignupSuccess(true);
+          signupForm.reset();
+          toast.success('Conta criada. Confirme seu e-mail para ativar o plano.');
+        }
       }
     } catch (e) {
+      setActivationStatus('idle');
       toast.error('Erro ao criar conta', { description: mensagemDeErro(e) });
     } finally {
       setIsLoading(false);
@@ -567,11 +609,31 @@ export default function Auth() {
                     <Alert className="border-primary/20 bg-primary/5">
                       <CheckCircle2 className="h-4 w-4 text-primary" />
                       <AlertDescription>
-                        Conta criada e plano ativado! Faça login para acessar.
+                        {activationStatus === 'waiting_email'
+                          ? 'Conta criada. Confirme o endereço pelo link enviado por e-mail. Depois da confirmação, seu plano será ativado automaticamente.'
+                          : activationStatus === 'activating'
+                            ? 'Conta criada. Estamos ativando seu plano…'
+                            : 'Conta criada e plano ativado! Faça login para acessar.'}
                       </AlertDescription>
                     </Alert>
                   </motion.div>
                 ) : (
+                  <>
+                  {activationStatus === 'failed' && (
+                    <Alert variant="destructive" className="mb-3">
+                      <AlertDescription className="space-y-3">
+                        A conta existe, mas a ativação do plano ainda não foi concluída. Tente novamente; seu código foi mantido.
+                        {user?.id && activationCode && (
+                          <Button type="button" variant="outline" size="sm" onClick={async () => {
+                            setActivationStatus('activating');
+                            const activated = await activateSubscription(user.id, activationCode);
+                            setActivationStatus(activated ? 'active' : 'failed');
+                            if (activated) { setSignupSuccess(true); resetSignupForm(); }
+                          }}>Tentar ativar plano</Button>
+                        )}
+                      </AlertDescription>
+                    </Alert>
+                  )}
                   <Form {...signupForm}>
                     <form onSubmit={signupForm.handleSubmit(onSignup)} className="space-y-3.5">
                       <FormField
@@ -746,6 +808,7 @@ export default function Auth() {
                       </Button>
                     </form>
                   </Form>
+                  </>
                 )}
               </motion.div>
             )}

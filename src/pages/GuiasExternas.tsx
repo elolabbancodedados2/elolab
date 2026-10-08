@@ -1,9 +1,9 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   FileText, Plus, Upload, Search, ExternalLink, Loader2, Trash2, Eye,
-  ArrowRight, CalendarPlus, CheckCircle2, X, Link2, Copy, Hash, FlaskConical,
+  ArrowRight, CalendarPlus, CheckCircle2, X, Link2, Copy, Hash, FlaskConical, AlertTriangle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -17,12 +17,32 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Skeleton } from '@/components/ui/skeleton';
+import { ErrorState } from '@/components/ErrorState';
 import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
 import { abrirUrlSegura, storageUrlSeguro } from '@/lib/safeUrl';
+import { todaySaoPauloDateOnly } from '@/lib/dateOnly';
+import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
+import { mensagemDeErro } from '@/lib/erros';
+import { formatCPF, validateCPF } from '@/lib/formatters';
+
+const FORMATADOR_DATA_HORA = new Intl.DateTimeFormat('pt-BR', {
+  timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', year: '2-digit',
+  hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+});
+const FORMATADOR_DATA_HORA_LONGA = new Intl.DateTimeFormat('pt-BR', {
+  timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', year: 'numeric',
+  hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+});
+
+function formatarDataHoraSaoPaulo(value?: string | null, longo = false): string {
+  if (!value) return '—';
+  const instante = new Date(value);
+  if (!Number.isFinite(instante.getTime())) return '—';
+  return (longo ? FORMATADOR_DATA_HORA_LONGA : FORMATADOR_DATA_HORA).format(instante);
+}
 
 const STATUS_LABEL: Record<string, { label: string; variant: any }> = {
   recebida: { label: 'Recebida', variant: 'secondary' },
@@ -40,6 +60,53 @@ const ORIGEM_LABEL: Record<string, string> = {
   api: 'API',
 };
 
+async function obterOuCriarPacienteDaGuia(guia: any, clinicaId: string | null | undefined): Promise<string> {
+  if (guia.paciente_id) return guia.paciente_id;
+  if (!clinicaId) throw new Error('Clínica não identificada. Atualize a sessão e tente novamente.');
+
+  const cpfOriginal = String(guia.paciente_cpf || '').trim();
+  const cpfDigitos = cpfOriginal.replace(/\D/g, '');
+  const cpfsPossiveis = new Set<string>(cpfOriginal ? [cpfOriginal] : []);
+  if (cpfDigitos.length === 11) {
+    cpfsPossiveis.add(cpfDigitos);
+    cpfsPossiveis.add(`${cpfDigitos.slice(0, 3)}.${cpfDigitos.slice(3, 6)}.${cpfDigitos.slice(6, 9)}-${cpfDigitos.slice(9)}`);
+  }
+
+  const buscarPacientePorCpf = async () => {
+    if (cpfDigitos.length !== 11 || cpfsPossiveis.size === 0) return null;
+    const { data, error } = await supabase.from('pacientes')
+      .select('id')
+      .eq('clinica_id', clinicaId)
+      .in('cpf', [...cpfsPossiveis])
+      .maybeSingle();
+    if (error) throw error;
+    return data?.id ?? null;
+  };
+
+  const pacienteExistente = await buscarPacientePorCpf();
+  if (pacienteExistente) return pacienteExistente;
+
+  const { data, error } = await (supabase as any).from('pacientes').insert({
+    nome: guia.paciente_nome,
+    cpf: cpfOriginal || null,
+    data_nascimento: guia.paciente_nascimento || null,
+    telefone: guia.paciente_telefone || null,
+    email: guia.paciente_email || null,
+    sexo: guia.paciente_sexo || null,
+    clinica_id: clinicaId,
+  }).select('id').single();
+  if (!error && data?.id) return data.id;
+
+  // A unicidade do CPF é por clínica e sem máscara. Se outra operação criou o
+  // paciente entre a busca e o INSERT, reaproveitamos o cadastro existente.
+  if ((error as any)?.code === '23505' && cpfDigitos.length === 11) {
+    const pacienteConcorrente = await buscarPacientePorCpf();
+    if (pacienteConcorrente) return pacienteConcorrente;
+  }
+  if (error) throw error;
+  throw new Error('Não foi possível vincular ou criar o cadastro do paciente.');
+}
+
 export default function GuiasExternas() {
   const { profile, user } = useSupabaseAuth();
   const queryClient = useQueryClient();
@@ -49,16 +116,16 @@ export default function GuiasExternas() {
   const [detailId, setDetailId] = useState<string | null>(null);
   const [showTokens, setShowTokens] = useState(false);
 
-  const { data: guias = [], isLoading } = useQuery({
+  const { data: guias = [], isLoading, error: guiasError, refetch: refetchGuias } = useQuery({
     queryKey: ['guias_externas', profile?.clinica_id],
     enabled: !!profile?.clinica_id,
     queryFn: async () => {
-      const { data, error } = await (supabase as any)
+      return buscarEmBlocos<any>(() => (supabase as any)
         .from('guias_externas')
         .select('*')
-        .order('data_recebimento', { ascending: false });
-      if (error) throw error;
-      return data || [];
+        .eq('clinica_id', profile!.clinica_id)
+        .order('data_recebimento', { ascending: false })
+        .order('id', { ascending: true }));
     },
   });
 
@@ -156,13 +223,26 @@ export default function GuiasExternas() {
           </div>
         </CardHeader>
         <CardContent>
+          {guias.length >= LIMITE_BUSCA_EM_BLOCOS && (
+            <div role="alert" className="mb-4 flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm text-warning-foreground">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+              <p>A lista atingiu o limite de {LIMITE_BUSCA_EM_BLOCOS.toLocaleString('pt-BR')} guias. Guias mais antigas podem não aparecer; refine a busca ou o status.</p>
+            </div>
+          )}
           {isLoading ? (
             <Skeleton className="h-40 w-full" />
+          ) : guiasError ? (
+            <ErrorState compact title="Não foi possível carregar as guias externas" error={guiasError} onRetry={() => void refetchGuias()} />
           ) : filtered.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               <FileText className="h-10 w-10 mx-auto mb-3 opacity-30" />
-              <p className="font-medium">Nenhuma guia externa registrada</p>
-              <p className="text-sm mt-1">Clique em "Nova guia" para começar.</p>
+              <p className="font-medium">{search || filterStatus !== 'todos' ? 'Nenhuma guia corresponde aos filtros' : 'Nenhuma guia externa registrada'}</p>
+              <p className="text-sm mt-1">{search || filterStatus !== 'todos' ? 'Altere ou limpe a busca e o status selecionado.' : 'Clique em "Nova guia" para começar.'}</p>
+              {(search || filterStatus !== 'todos') && (
+                <Button variant="outline" size="sm" className="mt-3" onClick={() => { setSearch(''); setFilterStatus('todos'); }}>
+                  Limpar filtros
+                </Button>
+              )}
             </div>
           ) : (
             <div className="rounded-md border overflow-x-auto">
@@ -204,7 +284,7 @@ export default function GuiasExternas() {
                       </TableCell>
                       <TableCell><Badge variant="secondary" className="text-xs">{ORIGEM_LABEL[g.origem] || g.origem}</Badge></TableCell>
                       <TableCell className="text-xs text-muted-foreground">
-                        {format(new Date(g.data_recebimento), "dd/MM/yy HH:mm", { locale: ptBR })}
+                        {formatarDataHoraSaoPaulo(g.data_recebimento)}
                       </TableCell>
                       <TableCell>
                         <Badge variant={STATUS_LABEL[g.status]?.variant || 'secondary'}>
@@ -257,6 +337,7 @@ export default function GuiasExternas() {
 /* ─── Form de criação manual ─── */
 function GuiaFormDialog({ open, onClose, clinicaId, userId, onSaved }: any) {
   const [saving, setSaving] = useState(false);
+  const saveLock = useRef(false);
   const [uploading, setUploading] = useState(false);
   const [form, setForm] = useState({
     paciente_nome: '',
@@ -277,14 +358,38 @@ function GuiaFormDialog({ open, onClose, clinicaId, userId, onSaved }: any) {
   });
 
   const handleUpload = async (file: File) => {
+    const tiposAceitos = new Set(['application/pdf', 'image/jpeg', 'image/png', 'image/webp']);
+    if (!tiposAceitos.has(file.type)) {
+      toast.error('Use um arquivo PDF, JPG, PNG ou WebP.');
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('O anexo deve ter no máximo 10 MB.');
+      return;
+    }
+    if (!clinicaId) {
+      toast.error('Clínica não identificada. Atualize a sessão e tente novamente.');
+      return;
+    }
     setUploading(true);
     try {
       const ext = file.name.split('.').pop();
       const path = `${clinicaId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
       const { error } = await supabase.storage.from('guias-externas').upload(path, file);
       if (error) throw error;
+      const anexoAnterior = form.anexo_url;
       setForm((f) => ({ ...f, anexo_url: path, anexo_nome: file.name }));
       toast.success('Anexo enviado');
+      if (anexoAnterior && anexoAnterior !== path) {
+        try {
+          const { error: erroRemocao } = await supabase.storage.from('guias-externas').remove([anexoAnterior]);
+          if (erroRemocao) throw erroRemocao;
+        } catch (erroRemocao) {
+          toast.warning('O novo anexo foi enviado, mas o arquivo anterior não pôde ser removido.', {
+            description: mensagemDeErro(erroRemocao),
+          });
+        }
+      }
     } catch (e: any) {
       toast.error(e.message || 'Erro no upload');
     } finally {
@@ -292,13 +397,45 @@ function GuiaFormDialog({ open, onClose, clinicaId, userId, onSaved }: any) {
     }
   };
 
+  const handleClose = async () => {
+    if (saveLock.current || saving || uploading) return;
+    if (form.anexo_url) {
+      try {
+        const { error } = await supabase.storage.from('guias-externas').remove([form.anexo_url]);
+        if (error) toast.warning('O formulário foi fechado, mas não foi possível remover o anexo temporário.', { description: error.message });
+      } catch (error) {
+        toast.warning('O formulário foi fechado, mas não foi possível remover o anexo temporário.', { description: mensagemDeErro(error) });
+      }
+    }
+    onClose();
+  };
+
   const handleSave = async () => {
+    if (uploading || saving) {
+      toast.info('Aguarde o envio do anexo terminar antes de registrar a guia.');
+      return;
+    }
+    if (saveLock.current) return;
+    if (!clinicaId) { toast.error('Clínica não identificada. Atualize a sessão e tente novamente.'); return; }
     if (!form.paciente_nome.trim()) { toast.error('Nome do paciente é obrigatório'); return; }
+    const cpfDigitos = form.paciente_cpf.replace(/\D/g, '');
+    if (cpfDigitos && !validateCPF(cpfDigitos)) { toast.error('CPF inválido. Confira os números digitados.'); return; }
+    if (form.paciente_nascimento) {
+      const nascimento = /^\d{4}-\d{2}-\d{2}$/.test(form.paciente_nascimento)
+        ? new Date(`${form.paciente_nascimento}T12:00:00`)
+        : new Date(Number.NaN);
+      const nascimentoValido = /^\d{4}-\d{2}-\d{2}$/.test(form.paciente_nascimento)
+        && Number.isFinite(nascimento.getTime())
+        && format(nascimento, 'yyyy-MM-dd') === form.paciente_nascimento
+        && form.paciente_nascimento <= todaySaoPauloDateOnly();
+      if (!nascimentoValido) { toast.error('Informe uma data de nascimento válida, que não esteja no futuro.'); return; }
+    }
     const exames = form.exames_texto
       .split('\n').map((l) => l.trim()).filter(Boolean)
       .map((nome) => ({ nome }));
     if (exames.length === 0) { toast.error('Liste ao menos um exame'); return; }
 
+    saveLock.current = true;
     setSaving(true);
     try {
       const { error } = await (supabase as any).from('guias_externas').insert({
@@ -306,7 +443,7 @@ function GuiaFormDialog({ open, onClose, clinicaId, userId, onSaved }: any) {
         origem: 'manual',
         status: 'recebida',
         paciente_nome: form.paciente_nome.trim(),
-        paciente_cpf: form.paciente_cpf || null,
+        paciente_cpf: cpfDigitos || null,
         paciente_nascimento: form.paciente_nascimento || null,
         paciente_telefone: form.paciente_telefone || null,
         medico_externo_nome: form.medico_externo_nome || null,
@@ -328,18 +465,20 @@ function GuiaFormDialog({ open, onClose, clinicaId, userId, onSaved }: any) {
     } catch (e: any) {
       toast.error(e.message || 'Erro ao salvar');
     } finally {
+      saveLock.current = false;
       setSaving(false);
     }
   };
 
   return (
-    <Dialog open={open} onOpenChange={onClose}>
+    <Dialog open={open} onOpenChange={(value) => { if (!value) void handleClose(); }}>
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Nova guia externa</DialogTitle>
           <DialogDescription>Registre um pedido de exames recebido de fora da clínica.</DialogDescription>
         </DialogHeader>
 
+        <fieldset disabled={saving || uploading} className="contents">
         <Tabs defaultValue="paciente" className="mt-2">
           <TabsList className="grid grid-cols-2 sm:grid-cols-4 w-full h-auto">
             <TabsTrigger value="paciente">Paciente</TabsTrigger>
@@ -351,7 +490,7 @@ function GuiaFormDialog({ open, onClose, clinicaId, userId, onSaved }: any) {
           <TabsContent value="paciente" className="space-y-3 pt-3">
             <div><Label>Nome completo *</Label><Input value={form.paciente_nome} onChange={(e) => setForm({ ...form, paciente_nome: e.target.value })} /></div>
             <div className="grid grid-cols-2 gap-3">
-              <div><Label>CPF</Label><Input value={form.paciente_cpf} onChange={(e) => setForm({ ...form, paciente_cpf: e.target.value })} /></div>
+              <div><Label>CPF</Label><Input inputMode="numeric" autoComplete="off" placeholder="000.000.000-00" value={form.paciente_cpf} onChange={(e) => setForm({ ...form, paciente_cpf: formatCPF(e.target.value) })} /></div>
               <div><Label>Data nascimento</Label><Input type="date" value={form.paciente_nascimento} onChange={(e) => setForm({ ...form, paciente_nascimento: e.target.value })} /></div>
             </div>
             <div><Label>Telefone</Label><Input value={form.paciente_telefone} onChange={(e) => setForm({ ...form, paciente_telefone: e.target.value })} /></div>
@@ -376,7 +515,7 @@ function GuiaFormDialog({ open, onClose, clinicaId, userId, onSaved }: any) {
             <div className="pt-2">
               <Label>Anexo da guia (PDF/imagem)</Label>
               <div className="flex items-center gap-2 mt-1">
-                <Input type="file" accept="application/pdf,image/*" onChange={(e) => e.target.files?.[0] && handleUpload(e.target.files[0])} disabled={uploading} />
+                <Input type="file" accept="application/pdf,image/jpeg,image/png,image/webp" onChange={(e) => e.target.files?.[0] && handleUpload(e.target.files[0])} disabled={uploading || saving} />
                 {uploading && <Loader2 className="h-4 w-4 animate-spin" />}
               </div>
               {form.anexo_nome && (
@@ -403,10 +542,11 @@ function GuiaFormDialog({ open, onClose, clinicaId, userId, onSaved }: any) {
             </div>
           </TabsContent>
         </Tabs>
+        </fieldset>
 
         <DialogFooter className="mt-4">
-          <Button variant="outline" onClick={onClose}>Cancelar</Button>
-          <Button onClick={handleSave} disabled={saving}>
+          <Button variant="outline" onClick={() => void handleClose()} disabled={saving || uploading}>Cancelar</Button>
+          <Button onClick={handleSave} disabled={saving || uploading}>
             {saving && <Loader2 className="h-4 w-4 animate-spin mr-1.5" />}
             Registrar guia
           </Button>
@@ -425,8 +565,11 @@ function DetalheGuiaDialog({ guia, open, onClose, onChanged }: any) {
 
   const updateStatus = useMutation({
     mutationFn: async (patch: any) => {
-      const { error } = await (supabase as any).from('guias_externas').update(patch).eq('id', guia.id);
+      if (!profile?.clinica_id) throw new Error('Clínica não identificada.');
+      const { data, error } = await (supabase as any).from('guias_externas').update(patch)
+        .eq('id', guia.id).eq('clinica_id', profile.clinica_id).eq('status', guia.status).select('id').maybeSingle();
       if (error) throw error;
+      if (!data) throw new Error('A guia mudou de estado ou não pertence à clínica atual. Atualize a lista.');
     },
     onSuccess: () => { onChanged(); toast.success('Atualizado'); },
     onError: (e: any) => toast.error(e.message),
@@ -434,45 +577,17 @@ function DetalheGuiaDialog({ guia, open, onClose, onChanged }: any) {
 
   const enviarParaFila = useMutation({
     mutationFn: async () => {
-      // Garante paciente vinculado: cria avulso se necessário
-      let pacienteId = guia.paciente_id;
-      if (!pacienteId) {
-        const { data: p, error: pErr } = await (supabase as any)
-          .from('pacientes')
-          .insert({
-            nome: guia.paciente_nome,
-            cpf: guia.paciente_cpf || null,
-            data_nascimento: guia.paciente_nascimento || null,
-            telefone: guia.paciente_telefone || null,
-            email: guia.paciente_email || null,
-            sexo: guia.paciente_sexo || null,
-            clinica_id: profile?.clinica_id,
-          })
-          .select('id').single();
-        if (pErr) throw pErr;
-        pacienteId = p.id;
+      if (!profile?.clinica_id) throw new Error('Clínica não identificada.');
+      if (!['recebida', 'em_analise', 'agendada'].includes(guia.status)) {
+        throw new Error('Esta guia já foi encaminhada ou não aceita envio para a fila. Atualize a lista.');
       }
-
-      // Cria registros em exames + adiciona à fila de coleta
-      const exames = Array.isArray(guia.exames_solicitados) ? guia.exames_solicitados : [];
-      const exameRows = exames.map((ex: any) => ({
-          paciente_id: pacienteId,
-          tipo_exame: ex.nome || ex.tipo || 'Exame',
-          descricao: ex.descricao || guia.observacoes,
-          status: 'solicitado',
-          data_solicitacao: new Date().toISOString().slice(0, 10),
-          categoria: 'laboratorio',
-          clinica_id: profile?.clinica_id,
-        }));
-      if (exameRows.length > 0) {
-        const { error: exameError } = await (supabase as any).from('exames').insert(exameRows);
-        if (exameError) throw exameError;
-      }
-
-      const { error: guiaError } = await (supabase as any).from('guias_externas')
-        .update({ status: 'encaminhada_fila', paciente_id: pacienteId })
-        .eq('id', guia.id);
-      if (guiaError) throw guiaError;
+      const pacienteId = await obterOuCriarPacienteDaGuia(guia, profile?.clinica_id);
+      const { error } = await (supabase as any).rpc('encaminhar_guia_externa_para_fila', {
+        p_guia_id: guia.id,
+        p_clinica_id: profile.clinica_id,
+        p_paciente_id: pacienteId,
+      });
+      if (error) throw error;
     },
     onSuccess: () => { onChanged(); toast.success('Guia enviada para a fila de coleta'); onClose(); },
     onError: (e: any) => toast.error(e.message),
@@ -480,41 +595,21 @@ function DetalheGuiaDialog({ guia, open, onClose, onChanged }: any) {
 
   const gerarAgendamento = useMutation({
     mutationFn: async () => {
-      if (!dataAg || !horaAg) throw new Error('Informe data e hora');
-      let pacienteId = guia.paciente_id;
-      if (!pacienteId) {
-        const { data: p, error: pErr } = await (supabase as any)
-          .from('pacientes').insert({
-            nome: guia.paciente_nome,
-            cpf: guia.paciente_cpf || null,
-            data_nascimento: guia.paciente_nascimento || null,
-            telefone: guia.paciente_telefone || null,
-            clinica_id: profile?.clinica_id,
-          }).select('id').single();
-        if (pErr) throw pErr;
-        pacienteId = p.id;
-      }
-      const { data: ag, error: agErr } = await (supabase as any).from('agendamentos').insert({
-        paciente_id: pacienteId,
-        data: dataAg,
-        hora_inicio: horaAg,
-        tipo: 'coleta',
-        status: 'agendado',
-        observacoes: `Guia externa #${guia.id.slice(0, 8)} — ${guia.medico_externo_nome || ''}`,
-        clinica_id: profile?.clinica_id,
-      }).select('id').single();
-      if (agErr) throw agErr;
-
-      // Sem checar o erro, o agendamento era criado mas a guia continuava como
-      // não agendada — a coleta existia na agenda e sumia do fluxo de guias.
-      const { error: guiaErr } = await (supabase as any).from('guias_externas').update({
-        status: 'agendada',
-        paciente_id: pacienteId,
-        agendamento_id: ag.id,
-        data_agendamento: dataAg,
-        hora_agendamento: horaAg,
-      }).eq('id', guia.id);
-      if (guiaErr) throw guiaErr;
+      if (!profile?.clinica_id) throw new Error('Clínica não identificada.');
+      if (!['recebida', 'em_analise'].includes(guia.status)) throw new Error('Esta guia já foi agendada ou encaminhada. Atualize a lista.');
+      const dataValida = /^\d{4}-\d{2}-\d{2}$/.test(dataAg)
+        && !Number.isNaN(new Date(`${dataAg}T12:00:00`).getTime())
+        && format(new Date(`${dataAg}T12:00:00`), 'yyyy-MM-dd') === dataAg;
+      if (!dataValida || !/^([01]\d|2[0-3]):[0-5]\d$/.test(horaAg)) throw new Error('Informe uma data e hora válidas.');
+      const pacienteId = await obterOuCriarPacienteDaGuia(guia, profile?.clinica_id);
+      const { error } = await (supabase as any).rpc('agendar_guia_externa', {
+        p_guia_id: guia.id,
+        p_clinica_id: profile.clinica_id,
+        p_paciente_id: pacienteId,
+        p_data: dataAg,
+        p_hora: horaAg,
+      });
+      if (error) throw error;
     },
     onSuccess: () => { onChanged(); toast.success('Coleta agendada'); setAgendando(false); onClose(); },
     onError: (e: any) => toast.error(e.message),
@@ -530,14 +625,13 @@ function DetalheGuiaDialog({ guia, open, onClose, onChanged }: any) {
       if (!data?.signedUrl || !abrirUrlSegura(data.signedUrl, storageUrlSeguro)) {
         throw new Error('O arquivo retornou um endereço não confiável');
       }
-      window.open(data.signedUrl, '_blank', 'noopener,noreferrer');
     } catch (e) {
       toast.error('Não foi possível abrir o anexo.', { description: e instanceof Error ? e.message : String(e) });
     }
   };
 
   return (
-    <Dialog open={open} onOpenChange={onClose}>
+      <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -545,7 +639,7 @@ function DetalheGuiaDialog({ guia, open, onClose, onChanged }: any) {
             Guia externa — {guia.paciente_nome}
           </DialogTitle>
           <DialogDescription>
-            Recebida em {format(new Date(guia.data_recebimento), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })} · {ORIGEM_LABEL[guia.origem]}
+            Recebida em {formatarDataHoraSaoPaulo(guia.data_recebimento, true)} · {ORIGEM_LABEL[guia.origem]}
           </DialogDescription>
         </DialogHeader>
 
@@ -591,8 +685,8 @@ function DetalheGuiaDialog({ guia, open, onClose, onChanged }: any) {
                   <div><Label>Hora</Label><Input type="time" value={horaAg} onChange={(e) => setHoraAg(e.target.value)} /></div>
                 </div>
                 <div className="flex gap-2 justify-end">
-                  <Button variant="ghost" size="sm" onClick={() => setAgendando(false)}>Cancelar</Button>
-                  <Button size="sm" onClick={() => gerarAgendamento.mutate()} disabled={gerarAgendamento.isPending}>
+                  <Button variant="ghost" size="sm" onClick={() => setAgendando(false)} disabled={gerarAgendamento.isPending}>Cancelar</Button>
+                  <Button size="sm" onClick={() => gerarAgendamento.mutate()} disabled={gerarAgendamento.isPending || enviarParaFila.isPending || updateStatus.isPending}>
                     {gerarAgendamento.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />}
                     Confirmar agendamento
                   </Button>
@@ -603,17 +697,17 @@ function DetalheGuiaDialog({ guia, open, onClose, onChanged }: any) {
         </div>
 
         <DialogFooter className="mt-4 flex-wrap gap-2">
-          {guia.status !== 'cancelada' && guia.status !== 'finalizada' && (
+          {guia.status !== 'cancelada' && guia.status !== 'finalizada' && guia.status !== 'encaminhada_fila' && (
             <>
-              <Button variant="outline" onClick={() => updateStatus.mutate({ status: 'cancelada' })}>
+              <Button variant="outline" onClick={() => updateStatus.mutate({ status: 'cancelada' })} disabled={updateStatus.isPending || enviarParaFila.isPending || gerarAgendamento.isPending}>
                 <X className="h-4 w-4 mr-1" /> Cancelar guia
               </Button>
-              {!agendando && (
-                <Button variant="outline" onClick={() => setAgendando(true)} className="gap-1.5">
+              {!agendando && ['recebida', 'em_analise'].includes(guia.status) && (
+                <Button variant="outline" onClick={() => setAgendando(true)} disabled={updateStatus.isPending || enviarParaFila.isPending || gerarAgendamento.isPending} className="gap-1.5">
                   <CalendarPlus className="h-4 w-4" /> Agendar coleta
                 </Button>
               )}
-              <Button onClick={() => enviarParaFila.mutate()} disabled={enviarParaFila.isPending} className="gap-1.5">
+              <Button onClick={() => enviarParaFila.mutate()} disabled={enviarParaFila.isPending || gerarAgendamento.isPending || updateStatus.isPending} className="gap-1.5">
                 {enviarParaFila.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
                 Enviar para fila de coleta
               </Button>
@@ -639,13 +733,14 @@ function TokensPortalDialog({ open, onClose, clinicaId, userId }: any) {
   const queryClient = useQueryClient();
   const [descricao, setDescricao] = useState('');
 
-  const { data: tokens = [], isLoading } = useQuery({
+  const { data: tokens = [], isLoading, error: tokensError, refetch: refetchTokens } = useQuery({
     queryKey: ['portal_guias_tokens', clinicaId],
     enabled: !!clinicaId && open,
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from('portal_guias_tokens')
         .select('*')
+        .eq('clinica_id', clinicaId)
         .order('created_at', { ascending: false });
       if (error) throw error;
       return data || [];
@@ -654,6 +749,7 @@ function TokensPortalDialog({ open, onClose, clinicaId, userId }: any) {
 
   const criarToken = useMutation({
     mutationFn: async () => {
+      if (!clinicaId || !userId) throw new Error('Clínica ou usuário não identificado. Atualize a sessão e tente novamente.');
       const { error } = await (supabase as any).from('portal_guias_tokens').insert({
         clinica_id: clinicaId, descricao: descricao.trim() || null, criado_por: userId,
       });
@@ -665,19 +761,36 @@ function TokensPortalDialog({ open, onClose, clinicaId, userId }: any) {
 
   const toggleAtivo = useMutation({
     mutationFn: async ({ id, ativo }: any) => {
-      const { error } = await (supabase as any).from('portal_guias_tokens').update({ ativo }).eq('id', id);
+      if (!clinicaId) throw new Error('Clínica não identificada.');
+      const { data, error } = await (supabase as any).from('portal_guias_tokens').update({ ativo })
+        .eq('id', id).eq('clinica_id', clinicaId).select('id').maybeSingle();
       if (error) throw error;
+      if (!data) throw new Error('Este link não pertence à clínica atual ou já foi removido.');
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['portal_guias_tokens'] }),
+    onError: (error: any) => toast.error('Não foi possível atualizar o link', { description: error.message }),
   });
 
   const deletarToken = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await (supabase as any).from('portal_guias_tokens').delete().eq('id', id);
+      if (!clinicaId) throw new Error('Clínica não identificada.');
+      const { data, error } = await (supabase as any).from('portal_guias_tokens').delete()
+        .eq('id', id).eq('clinica_id', clinicaId).select('id').maybeSingle();
       if (error) throw error;
+      if (!data) throw new Error('Este link não pertence à clínica atual ou já foi removido.');
     },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['portal_guias_tokens'] }); toast.success('Removido'); },
+    onError: (error: any) => toast.error('Não foi possível remover o link', { description: error.message }),
   });
+
+  const copiarLink = async (url: string) => {
+    try {
+      await navigator.clipboard.writeText(url);
+      toast.success('Link copiado.');
+    } catch {
+      toast.error('Não foi possível copiar automaticamente. Selecione e copie o endereço manualmente.');
+    }
+  };
 
   const baseUrl = window.location.origin;
 
@@ -703,6 +816,7 @@ function TokensPortalDialog({ open, onClose, clinicaId, userId }: any) {
 
         <div className="space-y-2 mt-3 max-h-[400px] overflow-y-auto">
           {isLoading ? <Skeleton className="h-20 w-full" /> :
+            tokensError ? <ErrorState compact error={tokensError} onRetry={() => void refetchTokens()} /> :
             tokens.length === 0 ? <p className="text-sm text-muted-foreground text-center py-6">Nenhum link gerado.</p> :
             tokens.map((t: any) => {
               const url = `${baseUrl}/portal-guias/${t.token}`;
@@ -713,19 +827,19 @@ function TokensPortalDialog({ open, onClose, clinicaId, userId }: any) {
                       <div className="min-w-0">
                         <p className="font-medium text-sm truncate">{t.descricao || 'Link genérico'}</p>
                         <p className="text-xs text-muted-foreground">
-                          {t.ultimo_uso ? `Último uso: ${format(new Date(t.ultimo_uso), "dd/MM/yy HH:mm", { locale: ptBR })}` : 'Nunca usado'}
+                          {t.ultimo_uso ? `Último uso: ${formatarDataHoraSaoPaulo(t.ultimo_uso)}` : 'Nunca usado'}
                         </p>
                       </div>
                       <div className="flex items-center gap-2">
-                        <Switch checked={t.ativo} onCheckedChange={(v) => toggleAtivo.mutate({ id: t.id, ativo: v })} />
-                        <Button aria-label={`Excluir link ${t.descricao || 'genérico'}`} size="icon" variant="ghost" className="h-8 w-8 text-destructive" onClick={() => deletarToken.mutate(t.id)}>
+                        <Switch checked={t.ativo} disabled={toggleAtivo.isPending || deletarToken.isPending} onCheckedChange={(v) => toggleAtivo.mutate({ id: t.id, ativo: v })} />
+                        <Button aria-label={`Excluir link ${t.descricao || 'genérico'}`} size="icon" variant="ghost" className="h-8 w-8 text-destructive" disabled={toggleAtivo.isPending || deletarToken.isPending} onClick={() => deletarToken.mutate(t.id)}>
                           <Trash2 className="h-3.5 w-3.5" />
                         </Button>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
                       <Input value={url} readOnly className="text-xs font-mono" />
-                      <Button aria-label="Copiar link da guia" size="icon" variant="outline" className="h-9 w-9 shrink-0" onClick={() => { navigator.clipboard.writeText(url); toast.success('Copiado!'); }}>
+                      <Button aria-label="Copiar link da guia" size="icon" variant="outline" className="h-9 w-9 shrink-0" onClick={() => void copiarLink(url)}>
                         <Copy className="h-3.5 w-3.5" />
                       </Button>
                     </div>

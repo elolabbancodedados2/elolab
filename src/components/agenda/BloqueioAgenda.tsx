@@ -33,6 +33,7 @@ import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { useQueryClient } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
 import { LoadingButton } from '@/components/ui/loading-button';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 
 interface Bloqueio {
   id: string;
@@ -64,13 +65,17 @@ export function BloqueioAgenda({ medicoIdFilter }: BloqueioAgendaProps) {
   });
 
   const [salvando, setSalvando] = useState(false);
+  const [bloqueioParaRemover, setBloqueioParaRemover] = useState<Bloqueio | null>(null);
+  const [removendoId, setRemovendoId] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const { profile } = useSupabaseAuth();
-  const { data: medicos = [] } = useMedicos();
-  const { data: bloqueios = [], isLoading } = useSupabaseQuery<Bloqueio>('bloqueios_agenda', {
+  const medicosQuery = useMedicos();
+  const { data: medicos = [] } = medicosQuery;
+  const bloqueiosQuery = useSupabaseQuery<Bloqueio>('bloqueios_agenda', {
     orderBy: { column: 'data_inicio', ascending: true },
     ...(medicoIdFilter ? { filters: [{ column: 'medico_id', operator: 'eq', value: medicoIdFilter }] } : {}),
   });
+  const { data: bloqueios = [], isLoading } = bloqueiosQuery;
 
   const getMedicoLabel = (id: string) => {
     const m = medicos.find(m => m.id === id);
@@ -83,40 +88,78 @@ export function BloqueioAgenda({ medicoIdFilter }: BloqueioAgendaProps) {
       return;
     }
 
-    setSalvando(true);
-    const { error } = await supabase.from('bloqueios_agenda' as any).insert({
-      medico_id: form.medico_id,
-      data_inicio: form.data_inicio,
-      data_fim: form.data_fim,
-      hora_inicio: form.dia_inteiro ? null : form.hora_inicio || null,
-      hora_fim: form.dia_inteiro ? null : form.hora_fim || null,
-      dia_inteiro: form.dia_inteiro,
-      motivo: form.motivo || null,
-      tipo: form.tipo,
-      clinica_id: profile?.clinica_id || null,
-    });
+    const dataValida = (value: string) => {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+      const parsed = new Date(`${value}T12:00:00Z`);
+      return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+    };
+    if (!dataValida(form.data_inicio) || !dataValida(form.data_fim) || form.data_fim < form.data_inicio) {
+      toast.error('Informe um período válido', { description: 'A data final deve ser igual ou posterior à data inicial.' });
+      return;
+    }
 
-    if (error) {
-      toast.error('Erro ao criar bloqueio', { description: mensagemDeErro(error) });
-      console.error(error);
-    } else {
+    if (!form.dia_inteiro) {
+      const horaValida = (value: string) => /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value);
+      if (!horaValida(form.hora_inicio) || !horaValida(form.hora_fim)) {
+        toast.error('Informe o horário inicial e final do bloqueio.');
+        return;
+      }
+      if (form.hora_fim <= form.hora_inicio) {
+        toast.error('O horário final deve ser posterior ao horário inicial.');
+        return;
+      }
+    }
+
+    setSalvando(true);
+    try {
+      const { error } = await supabase.from('bloqueios_agenda' as any).insert({
+        medico_id: form.medico_id,
+        data_inicio: form.data_inicio,
+        data_fim: form.data_fim,
+        hora_inicio: form.dia_inteiro ? null : form.hora_inicio,
+        hora_fim: form.dia_inteiro ? null : form.hora_fim,
+        dia_inteiro: form.dia_inteiro,
+        motivo: form.motivo.trim() || null,
+        tipo: form.tipo,
+        clinica_id: profile?.clinica_id || null,
+      });
+
+      if (error) throw error;
       toast.success('Horário bloqueado com sucesso');
-      queryClient.invalidateQueries({ queryKey: ['bloqueios_agenda'] });
+      void queryClient.invalidateQueries({ queryKey: ['bloqueios_agenda'] });
       setDialogOpen(false);
       setForm({ medico_id: medicoIdFilter || '', data_inicio: '', data_fim: '', hora_inicio: '', hora_fim: '', dia_inteiro: true, motivo: '', tipo: 'bloqueio' });
+    } catch (error) {
+      toast.error('Erro ao criar bloqueio', { description: mensagemDeErro(error) });
+    } finally {
+      setSalvando(false);
     }
-    setSalvando(false);
   };
 
   const handleDelete = async (id: string) => {
-    const { data, error } = await (supabase.from('bloqueios_agenda' as any).delete().eq('id', id).select('id') as any);
-    if (error) {
+    if (!profile?.clinica_id) {
+      toast.error('Clínica não identificada. Atualize a página e tente novamente.');
+      return;
+    }
+    setRemovendoId(id);
+    try {
+      const { data, error } = await (supabase.from('bloqueios_agenda' as any)
+        .delete()
+        .eq('id', id)
+        .eq('clinica_id', profile.clinica_id)
+        .select('id') as any);
+      if (error) throw error;
+      if (!data || data.length === 0) {
+        toast.error('Bloqueio não encontrado ou sem permissão para remover.');
+        return;
+      }
+      toast.success('Bloqueio removido. Novos agendamentos podem ocupar esse período.');
+      void queryClient.invalidateQueries({ queryKey: ['bloqueios_agenda'] });
+      setBloqueioParaRemover(null);
+    } catch (error) {
       toast.error('Erro ao remover bloqueio', { description: mensagemDeErro(error) });
-    } else if (!data || data.length === 0) {
-      toast.error('Sem permissão para remover este bloqueio.');
-    } else {
-      toast.success('Bloqueio removido');
-      queryClient.invalidateQueries({ queryKey: ['bloqueios_agenda'] });
+    } finally {
+      setRemovendoId(null);
     }
   };
 
@@ -150,7 +193,14 @@ export function BloqueioAgenda({ medicoIdFilter }: BloqueioAgendaProps) {
           </Button>
         </CardHeader>
         <CardContent>
-          {bloqueios.length === 0 ? (
+          {isLoading ? (
+            <p className="text-sm text-muted-foreground text-center py-4">Carregando bloqueios…</p>
+          ) : bloqueiosQuery.isError ? (
+            <div className="space-y-2 text-center py-4">
+              <p className="text-sm text-destructive">Não foi possível carregar os bloqueios.</p>
+              <Button size="sm" variant="outline" onClick={() => void bloqueiosQuery.refetch()}>Tentar novamente</Button>
+            </div>
+          ) : bloqueios.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-4">Nenhum bloqueio cadastrado</p>
           ) : (
             <div className="space-y-2">
@@ -176,7 +226,7 @@ export function BloqueioAgenda({ medicoIdFilter }: BloqueioAgendaProps) {
                       </p>
                     </div>
                   </div>
-                  <Button variant="ghost" size="icon" aria-label="Remover bloqueio" onClick={() => handleDelete(b.id)}>
+                  <Button variant="ghost" size="icon" aria-label={`Remover bloqueio de ${getMedicoLabel(b.medico_id)}`} onClick={() => setBloqueioParaRemover(b)} disabled={!!removendoId}>
                     <Trash2 className="h-4 w-4 text-destructive" />
                   </Button>
                 </div>
@@ -221,11 +271,11 @@ export function BloqueioAgenda({ medicoIdFilter }: BloqueioAgendaProps) {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label>Data Início *</Label>
-                <Input type="date" value={form.data_inicio} onChange={(e) => setForm({ ...form, data_inicio: e.target.value, data_fim: form.data_fim || e.target.value })} />
+                <Input type="date" required value={form.data_inicio} onChange={(e) => setForm({ ...form, data_inicio: e.target.value, data_fim: !form.data_fim || form.data_fim < e.target.value ? e.target.value : form.data_fim })} />
               </div>
               <div>
                 <Label>Data Fim *</Label>
-                <Input type="date" value={form.data_fim} onChange={(e) => setForm({ ...form, data_fim: e.target.value })} />
+                <Input type="date" required min={form.data_inicio || undefined} value={form.data_fim} onChange={(e) => setForm({ ...form, data_fim: e.target.value })} />
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -236,11 +286,11 @@ export function BloqueioAgenda({ medicoIdFilter }: BloqueioAgendaProps) {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <Label>Hora Início</Label>
-                  <Input type="time" value={form.hora_inicio} onChange={(e) => setForm({ ...form, hora_inicio: e.target.value })} />
+                  <Input type="time" required value={form.hora_inicio} onChange={(e) => setForm({ ...form, hora_inicio: e.target.value })} />
                 </div>
                 <div>
                   <Label>Hora Fim</Label>
-                  <Input type="time" value={form.hora_fim} onChange={(e) => setForm({ ...form, hora_fim: e.target.value })} />
+                  <Input type="time" required min={form.hora_inicio || undefined} value={form.hora_fim} onChange={(e) => setForm({ ...form, hora_fim: e.target.value })} />
                 </div>
               </div>
             )}
@@ -257,6 +307,20 @@ export function BloqueioAgenda({ medicoIdFilter }: BloqueioAgendaProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={!!bloqueioParaRemover}
+        onOpenChange={(open) => { if (!open && !removendoId) setBloqueioParaRemover(null); }}
+        title="Remover bloqueio da agenda?"
+        description={bloqueioParaRemover
+          ? `Após remover o bloqueio de ${getMedicoLabel(bloqueioParaRemover.medico_id)}, novos agendamentos poderão ocupar ${format(parseISO(bloqueioParaRemover.data_inicio), 'dd/MM/yyyy')}${bloqueioParaRemover.data_inicio !== bloqueioParaRemover.data_fim ? ` a ${format(parseISO(bloqueioParaRemover.data_fim), 'dd/MM/yyyy')}` : ''}${!bloqueioParaRemover.dia_inteiro && bloqueioParaRemover.hora_inicio && bloqueioParaRemover.hora_fim ? `, das ${bloqueioParaRemover.hora_inicio.slice(0, 5)} às ${bloqueioParaRemover.hora_fim.slice(0, 5)}` : ', durante o dia inteiro'}.`
+          : ''}
+        confirmLabel="Remover bloqueio"
+        variant="destructive"
+        isLoading={removendoId === bloqueioParaRemover?.id}
+        closeOnConfirm={false}
+        onConfirm={() => { if (bloqueioParaRemover) void handleDelete(bloqueioParaRemover.id); }}
+      />
     </>
   );
 }

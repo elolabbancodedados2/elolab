@@ -14,10 +14,12 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { useChatInterno, type ChatConversa, type ChatUsuario, type ChatMensagem } from '@/hooks/useChatInterno';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
+import { ErrorState } from '@/components/ErrorState';
 import { format, isToday, isYesterday, differenceInMinutes } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery } from '@tanstack/react-query';
+import { toast } from 'sonner';
 
 // ─── Helpers ───────────────────────────────────────────────
 const getInitials = (name: string) =>
@@ -313,9 +315,9 @@ function TeamMemberButton({ member, onSelect }: { member: TeamMember; onSelect: 
           )}
         </p>
       </div>
-      <Button size="sm" variant="ghost" className="h-7 text-xs px-2 shrink-0">
+      <span className="h-7 px-2 shrink-0 inline-flex items-center text-xs text-muted-foreground">
         Conversar
-      </Button>
+      </span>
     </button>
   );
 }
@@ -335,7 +337,7 @@ function ConversaView({
   currentUserId: string;
   loading: boolean;
   onBack: () => void;
-  onEnviar: (texto: string, urgente: boolean) => void;
+  onEnviar: (texto: string, urgente: boolean) => Promise<boolean>;
   teamMember?: TeamMember | null;
 }) {
   const [texto, setTexto] = useState('');
@@ -354,12 +356,20 @@ function ConversaView({
   const handleEnviar = async () => {
     if (!texto.trim() || enviando) return;
     setEnviando(true);
-    await onEnviar(texto.trim(), urgente);
-    setTexto('');
-    setUrgente(false);
-    setShowEmojis(false);
-    setEnviando(false);
-    inputRef.current?.focus();
+    try {
+      const enviado = await onEnviar(texto.trim(), urgente);
+      if (enviado) {
+        setTexto('');
+        setUrgente(false);
+        setShowEmojis(false);
+      }
+    } catch {
+      // Keep the draft so a transient failure does not erase the message.
+      toast.error('Não foi possível confirmar o envio. O rascunho foi mantido.');
+    } finally {
+      setEnviando(false);
+      inputRef.current?.focus();
+    }
   };
 
   const outroNome = conversa.outro_usuario?.nome ?? 'Usuário';
@@ -574,41 +584,45 @@ export default function ChatInterno() {
   const { user, profile } = useSupabaseAuth();
   const {
     usuarios, conversas, mensagens, conversaAtiva, setConversaAtiva,
-    loading, totalNaoLidas, iniciarConversa, enviarMensagem, fetchMensagens,
+    loading, totalNaoLidas, iniciarConversa, enviarMensagem, fetchMensagens, erroCarregamento, recarregar,
   } = useChatInterno();
 
   // Fetch team members with ultimo_acesso for online status
-  const { data: teamMembers = [] } = useQuery({
-    queryKey: ['team-members-chat', profile?.clinica_id],
+  const teamQuery = useQuery({
+    queryKey: ['team-members-chat', profile?.clinica_id, user?.id],
     queryFn: async () => {
       if (!user || !profile?.clinica_id) return [];
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('profiles')
         .select('id, nome, email, avatar, ultimo_acesso')
         .eq('clinica_id', profile.clinica_id)
         .eq('ativo', true)
         .neq('id', user.id)
         .order('nome');
+      if (error) throw error;
       return (data || []) as TeamMember[];
     },
     enabled: !!user && !!profile?.clinica_id,
     refetchInterval: 15000,
   });
+  const teamMembers = teamQuery.data || [];
 
   // Also fetch funcionarios to get cargo info
-  const { data: funcionarios = [] } = useQuery({
-    queryKey: ['funcionarios-chat', profile?.clinica_id],
+  const funcionariosQuery = useQuery({
+    queryKey: ['funcionarios-chat', profile?.clinica_id, user?.id],
     queryFn: async () => {
       if (!profile?.clinica_id) return [];
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('funcionarios')
         .select('user_id, cargo, tipo_funcionario')
         .eq('clinica_id', profile.clinica_id)
         .eq('ativo', true);
+      if (error) throw error;
       return data || [];
     },
     enabled: !!profile?.clinica_id,
   });
+  const funcionarios = funcionariosQuery.data || [];
 
   const enrichedTeamMembers: TeamMember[] = teamMembers.map(m => {
     const func = funcionarios.find((f: any) => f.user_id === m.id);
@@ -656,6 +670,17 @@ export default function ChatInterno() {
           )}
         </div>
       </div>
+
+      {(erroCarregamento || teamQuery.isError || funcionariosQuery.isError) && (
+        <div className="px-4 pt-3">
+          <ErrorState
+            compact
+            title="Parte do chat não foi carregada"
+            error={erroCarregamento || teamQuery.error || funcionariosQuery.error}
+            onRetry={() => { void recarregar(); void teamQuery.refetch(); void funcionariosQuery.refetch(); }}
+          />
+        </div>
+      )}
 
       {/* Content */}
       <div className="flex-1 flex overflow-hidden">

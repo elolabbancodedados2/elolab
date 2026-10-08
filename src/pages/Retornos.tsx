@@ -1,6 +1,7 @@
 import { nomeMedico } from '@/lib/formatters';
-import { useState, useMemo, useCallback } from 'react';
-import { format, parseISO, isPast, differenceInDays, addDays, isWithinInterval, startOfDay } from 'date-fns';
+import { useState, useMemo, useCallback, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { format, parseISO, isBefore, differenceInDays, addDays, isWithinInterval, startOfDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -8,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
+import { ErrorState } from '@/components/ErrorState';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
@@ -17,6 +19,10 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Label } from '@/components/ui/label';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -25,6 +31,8 @@ import { useSupabaseQuery } from '@/hooks/useSupabaseData';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { mensagemDeErro } from '@/lib/erros';
+import { normalizarTexto, pacienteCorresponde } from '@/lib/buscaPaciente';
+import { parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   CalendarClock, AlertTriangle, CheckCircle2, Phone, Clock, Filter, Search,
@@ -32,12 +40,6 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-
-function somarMinutos(horario: string, minutos: number) {
-  const [hora, minuto] = horario.split(':').map(Number);
-  const total = hora * 60 + minuto + minutos;
-  return `${String(Math.floor((total % 1440) / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}:00`;
-}
 
 interface Retorno {
   id: string;
@@ -55,7 +57,16 @@ interface Retorno {
   clinica_id: string;
 }
 
+function telefoneBrasileiroParaWhatsApp(telefone: string | null | undefined): string | null {
+  const digitos = String(telefone || '').replace(/\D/g, '');
+  const jaTemCodigoDoPais = digitos.startsWith('55') && [12, 13].includes(digitos.length);
+  const numero = jaTemCodigoDoPais ? digitos : `55${digitos}`;
+  return /^55\d{10,11}$/.test(numero) ? numero : null;
+}
+
 export default function RetornosControl() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const pacienteFiltroId = searchParams.get('paciente');
   const [searchTerm, setSearchTerm] = useState('');
   const [filtroStatus, setFiltroStatus] = useState<string>('todos');
   const [agendarDialogOpen, setAgendarDialogOpen] = useState(false);
@@ -63,47 +74,74 @@ export default function RetornosControl() {
   const [dataAgendamento, setDataAgendamento] = useState<Date>();
   const [horaAgendamento, setHoraAgendamento] = useState('09:00');
   const [isAgendando, setIsAgendando] = useState(false);
+  const [foraExpediente, setForaExpediente] = useState<string | null>(null);
   const [cancelando, setCancelando] = useState<Retorno | null>(null);
   /** Confirmação antes de marcar realizado — antes era 1 clique sem volta. */
   const [realizando, setRealizando] = useState<Retorno | null>(null);
   const [isRealizando, setIsRealizando] = useState(false);
   const [isCancelando, setIsCancelando] = useState(false);
+  const [agora, setAgora] = useState(() => new Date());
   const queryClient = useQueryClient();
 
-  const { data: retornos = [], isLoading: loadingRetornos } = useSupabaseQuery<Retorno>('retornos', {
+  const { data: retornos = [], isLoading: loadingRetornos, error: erroRetornos, refetch: refetchRetornos } = useSupabaseQuery<Retorno>('retornos', {
     orderBy: { column: 'data_retorno_prevista', ascending: true },
   });
 
-  const { data: pacientes = [], isLoading: loadingPacientes } = useSupabaseQuery<{ id: string; nome: string; telefone: string | null }>('pacientes', {
-    select: 'id, nome, telefone',
+  const { data: pacientes = [], isLoading: loadingPacientes, error: erroPacientes, refetch: refetchPacientes } = useSupabaseQuery<{
+    id: string;
+    nome: string;
+    nome_social: string | null;
+    cpf: string | null;
+    telefone: string | null;
+    email: string | null;
+  }>('pacientes', {
+    select: 'id, nome, nome_social, cpf, telefone, email',
   });
 
-  const { data: medicos = [], isLoading: loadingMedicos } = useSupabaseQuery<{ id: string; nome: string | null; crm: string; especialidade: string | null }>('medicos', {
+  const { data: medicos = [], isLoading: loadingMedicos, error: erroMedicos, refetch: refetchMedicos } = useSupabaseQuery<{ id: string; nome: string | null; crm: string; especialidade: string | null }>('medicos', {
     select: 'id, nome, crm, especialidade',
   });
 
   const isLoading = loadingRetornos || loadingPacientes || loadingMedicos;
 
-  const getPacienteNome = useCallback((id: string) => pacientes.find(p => p.id === id)?.nome || 'Paciente', [pacientes]);
+  useEffect(() => {
+    const timer = window.setInterval(() => setAgora(new Date()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const getPaciente = useCallback((id: string) => pacientes.find(p => p.id === id), [pacientes]);
+  const getPacienteNome = useCallback((id: string) => {
+    const paciente = getPaciente(id);
+    return paciente?.nome_social?.trim() || paciente?.nome || 'Paciente';
+  }, [getPaciente]);
   const getPacienteTelefone = useCallback((id: string) => pacientes.find(p => p.id === id)?.telefone || null, [pacientes]);
   const getMedicoNome = useCallback((id: string) => {
     const m = medicos.find(m => m.id === id);
     return m ? `${nomeMedico(m.nome || m.crm)}` : 'Médico';
   }, [medicos]);
 
-  const hoje = useMemo(() => new Date(), []);
+  // Retornos vencem por data civil. parseDateOnly ancora em meio-dia para
+  // evitar deslocamento de fuso, então normalizamos para meia-noite antes de
+  // comparar com os DATEs retornados pelo Postgres; sem isso, o próprio dia do
+  // vencimento era marcado como atrasado desde a abertura da tela.
+  const hoje = useMemo(() => startOfDay(parseDateOnly(todaySaoPauloDateOnly(agora))!), [agora]);
   const retornosComStatus = useMemo(() => retornos.map(r => {
     const dataRetorno = parseISO(r.data_retorno_prevista);
     const diasAtraso = differenceInDays(hoje, dataRetorno);
     let statusCalculado = r.status || 'pendente';
-    if (statusCalculado === 'pendente' && isPast(dataRetorno)) {
+    if (['pendente', 'agendado'].includes(statusCalculado) && isBefore(startOfDay(dataRetorno), hoje)) {
       statusCalculado = 'atrasado';
     }
     return { ...r, statusCalculado, diasAtraso, dataRetorno };
   }), [retornos, hoje]);
 
+  const retornosNoEscopo = useMemo(
+    () => pacienteFiltroId ? retornosComStatus.filter(r => r.paciente_id === pacienteFiltroId) : retornosComStatus,
+    [retornosComStatus, pacienteFiltroId],
+  );
+
   const filtrados = useMemo(() => {
-    return retornosComStatus.filter(r => {
+    return retornosNoEscopo.filter(r => {
       if (filtroStatus === 'proximos7') {
         const em7dias = addDays(startOfDay(hoje), 7);
         const dentroDe7 = isWithinInterval(r.dataRetorno, { start: startOfDay(hoje), end: em7dias });
@@ -112,59 +150,80 @@ export default function RetornosControl() {
         return false;
       }
       if (searchTerm.trim()) {
-        const nome = getPacienteNome(r.paciente_id).toLowerCase();
-        const medico = getMedicoNome(r.medico_id).toLowerCase();
-        const term = searchTerm.toLowerCase();
-        if (!nome.includes(term) && !medico.includes(term) && !(r.motivo || '').toLowerCase().includes(term)) return false;
+        const paciente = getPaciente(r.paciente_id);
+        const medico = normalizarTexto(getMedicoNome(r.medico_id));
+        const motivo = normalizarTexto(r.motivo);
+        const term = normalizarTexto(searchTerm);
+        if (!(paciente && pacienteCorresponde(paciente, searchTerm)) &&
+          !medico.includes(term) && !motivo.includes(term)) return false;
       }
       return true;
     });
-  }, [retornosComStatus, filtroStatus, searchTerm, getPacienteNome, getMedicoNome, hoje]);
+  }, [retornosNoEscopo, filtroStatus, searchTerm, getPaciente, getMedicoNome, hoje]);
+  const limparFiltros = () => {
+    setSearchTerm('');
+    setFiltroStatus('todos');
+  };
 
-  const pendentes = retornosComStatus.filter(r => r.statusCalculado === 'pendente').length;
-  const atrasados = retornosComStatus.filter(r => r.statusCalculado === 'atrasado').length;
-  const realizados = retornosComStatus.filter(r => r.statusCalculado === 'realizado').length;
-  const proximos7 = retornosComStatus.filter(r => {
+  const pendentes = retornosNoEscopo.filter(r => r.statusCalculado === 'pendente').length;
+  const atrasados = retornosNoEscopo.filter(r => r.statusCalculado === 'atrasado').length;
+  const realizados = retornosNoEscopo.filter(r => r.statusCalculado === 'realizado').length;
+  const proximos7 = retornosNoEscopo.filter(r => {
     const em7dias = addDays(startOfDay(hoje), 7);
     return isWithinInterval(r.dataRetorno, { start: startOfDay(hoje), end: em7dias }) &&
       r.statusCalculado !== 'realizado' && r.statusCalculado !== 'cancelado';
   }).length;
 
-  const taxaComparecimento = retornosComStatus.length > 0
-    ? Math.round((realizados / retornosComStatus.filter(r => r.statusCalculado !== 'cancelado').length) * 100) || 0
+  const retornosComPrazoVencido = retornosNoEscopo.filter(r => r.statusCalculado !== 'cancelado' && isBefore(startOfDay(r.dataRetorno), hoje));
+  const taxaComparecimento = retornosComPrazoVencido.length > 0
+    ? Math.round((retornosComPrazoVencido.filter(r => r.statusCalculado === 'realizado').length / retornosComPrazoVencido.length) * 100)
     : 0;
 
-  const marcarRealizado = async (id: string) => {
+  const marcarRealizado = async (retorno: Retorno) => {
+    if (isRealizando) return;
     setIsRealizando(true);
     try {
-      const { error } = await supabase
+      let updateQuery = supabase
         .from('retornos')
         .update({ status: 'realizado' } as any)
-        .eq('id', id);
+        .eq('id', retorno.id)
+        .eq('clinica_id', retorno.clinica_id);
+      updateQuery = retorno.status
+        ? updateQuery.eq('status', retorno.status)
+        : updateQuery.is('status', null);
+      const { data, error } = await updateQuery
+        .select('id')
+        .maybeSingle();
 
-      if (error) {
-        toast.error('Erro ao atualizar retorno', { description: mensagemDeErro(error) });
-      } else {
-        toast.success('Retorno marcado como realizado');
-        queryClient.invalidateQueries({ queryKey: ['retornos'] });
-      }
+      if (error) throw error;
+      if (!data) throw new Error('O retorno mudou desde que foi aberto. Atualize a lista antes de confirmar a presença.');
+      toast.success('Retorno marcado como realizado');
+      void queryClient.invalidateQueries({ queryKey: ['retornos'] });
+      setRealizando(null);
+    } catch (error) {
+      toast.error('Erro ao atualizar retorno', { description: mensagemDeErro(error) });
     } finally {
       setIsRealizando(false);
-      setRealizando(null);
     }
   };
 
   /** Desfazer um "realizado" marcado por engano — antes não havia como voltar. */
   const desfazerRealizado = async (r: Retorno) => {
-    const { error } = await supabase
-      .from('retornos')
-      .update({ status: 'pendente' } as any)
-      .eq('id', r.id);
-    if (error) {
-      toast.error('Erro ao reabrir retorno', { description: mensagemDeErro(error) });
-    } else {
+    try {
+      const { data, error } = await supabase
+        .from('retornos')
+        .update({ status: 'pendente' } as any)
+        .eq('id', r.id)
+        .eq('clinica_id', r.clinica_id)
+        .eq('status', 'realizado')
+        .select('id')
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) throw new Error('O retorno mudou desde que foi aberto. Atualize a lista antes de reabri-lo.');
       toast.info('Retorno reaberto como pendente');
-      queryClient.invalidateQueries({ queryKey: ['retornos'] });
+      void queryClient.invalidateQueries({ queryKey: ['retornos'] });
+    } catch (error) {
+      toast.error('Erro ao reabrir retorno', { description: mensagemDeErro(error) });
     }
   };
 
@@ -183,6 +242,7 @@ export default function RetornosControl() {
         .from('agendamentos')
         .select('data, hora_inicio')
         .eq('id', retorno.agendamento_retorno_id)
+        .eq('clinica_id', retorno.clinica_id)
         .single();
       if (error) throw error;
       setRetornoParaAgendar(retorno);
@@ -196,20 +256,87 @@ export default function RetornosControl() {
     }
   };
 
+  const conferirHorarioRetorno = async (retorno: Retorno, data: string, horario: string, verificarExpediente = true): Promise<string | null> => {
+    const toMinutos = (value?: string | null) => {
+      if (!value || !/^(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/.test(value)) return null;
+      const [hour, minute] = value.split(':').map(Number);
+      return hour * 60 + minute;
+    };
+    const inicio = toMinutos(horario);
+    const fim = inicio === null ? null : inicio + 30;
+    if (inicio === null || fim === null || fim >= 24 * 60) {
+      throw new Error('Informe um horário válido que termine antes da meia-noite.');
+    }
+
+    const { data: agendamentosDoDia, error: erroAgenda } = await supabase
+      .from('agendamentos')
+      .select('id, paciente_id, medico_id, hora_inicio, hora_fim, status')
+      .eq('clinica_id', retorno.clinica_id)
+      .eq('data', data);
+    if (erroAgenda) throw new Error(`Não foi possível conferir a agenda do médico: ${mensagemDeErro(erroAgenda)}`);
+
+    let conflitoMedico = false;
+    let conflitoPaciente = false;
+    for (const agendamento of (agendamentosDoDia || []) as any[]) {
+      if (['cancelado', 'faltou'].includes(agendamento.status) || agendamento.id === retorno.agendamento_retorno_id) continue;
+      const inicioExistente = toMinutos(agendamento.hora_inicio);
+      if (inicioExistente === null) continue;
+      const fimExistente = toMinutos(agendamento.hora_fim) ?? inicioExistente + 30;
+      if (inicioExistente >= fim || fimExistente <= inicio) continue;
+      if (agendamento.medico_id === retorno.medico_id) conflitoMedico = true;
+      if (agendamento.paciente_id === retorno.paciente_id) conflitoPaciente = true;
+    }
+    if (conflitoMedico) throw new Error('Este médico já tem uma consulta neste horário. Escolha outro horário.');
+    if (conflitoPaciente) throw new Error('Este paciente já tem outro atendimento neste horário. Escolha outro horário.');
+
+    const { data: bloqueios, error: erroBloqueios } = await (supabase
+      .from('bloqueios_agenda' as any)
+      .select('id, hora_inicio, hora_fim, dia_inteiro, motivo, tipo')
+      .eq('clinica_id', retorno.clinica_id)
+      .eq('medico_id', retorno.medico_id)
+      .lte('data_inicio', data)
+      .gte('data_fim', data) as any);
+    if (erroBloqueios) throw new Error(`Não foi possível conferir os bloqueios da agenda: ${mensagemDeErro(erroBloqueios)}`);
+
+    const bloqueio = (bloqueios || []).find((item: any) => {
+      if (item.dia_inteiro) return true;
+      const inicioBloqueio = toMinutos(item.hora_inicio);
+      const fimBloqueio = toMinutos(item.hora_fim);
+      return inicioBloqueio !== null && fimBloqueio !== null && inicioBloqueio < fim && fimBloqueio > inicio;
+    });
+    if (bloqueio) throw new Error(`Horário bloqueado para este médico${bloqueio.motivo ? `: ${bloqueio.motivo}` : bloqueio.tipo ? `: ${bloqueio.tipo}` : '.'}`);
+
+    if (!verificarExpediente) return null;
+    const diaSemana = new Date(`${data}T12:00:00Z`).getUTCDay();
+    const { data: jornada, error: erroJornada } = await (supabase.from('medico_disponibilidade' as any)
+      .select('hora_inicio, hora_fim')
+      .eq('medico_id', retorno.medico_id)
+      .eq('dia_semana', diaSemana)
+      .eq('ativo', true) as any);
+    if (erroJornada) throw new Error(`Não foi possível conferir o expediente do médico: ${mensagemDeErro(erroJornada)}`);
+    const dentroDoExpediente = ((jornada as any[]) || []).some(j => {
+      const inicioJornada = toMinutos(j.hora_inicio);
+      const fimJornada = toMinutos(j.hora_fim);
+      return inicioJornada !== null && fimJornada !== null && inicio >= inicioJornada && fim <= fimJornada;
+    });
+    if (dentroDoExpediente) return null;
+    const faixas = ((jornada as any[]) || [])
+      .map(j => `${String(j.hora_inicio).slice(0, 5)}–${String(j.hora_fim).slice(0, 5)}`)
+      .join(', ');
+    return faixas
+      ? `O expediente cadastrado do médico neste dia é ${faixas}.`
+      : 'O médico não tem expediente cadastrado neste dia da semana.';
+  };
+
   const cancelarRetorno = async () => {
     if (!cancelando) return;
     setIsCancelando(true);
     try {
-      if (cancelando.agendamento_retorno_id) {
-        const { error } = await supabase.from('agendamentos')
-          .update({ status: 'cancelado' })
-          .eq('id', cancelando.agendamento_retorno_id);
-        if (error) throw error;
-      }
-      const { error } = await supabase.from('retornos')
-        .update({ status: 'cancelado' } as any)
-        .eq('id', cancelando.id);
+      const { data, error } = await supabase.rpc('cancelar_retorno_atomico', {
+        p_retorno_id: cancelando.id,
+      });
       if (error) throw error;
+      if (!data) throw new Error('O retorno já foi realizado, cancelado ou não está disponível para alteração. Atualize a lista.');
       queryClient.invalidateQueries({ queryKey: ['retornos'] });
       queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
       setCancelando(null);
@@ -221,7 +348,7 @@ export default function RetornosControl() {
     }
   };
 
-  const confirmarAgendamento = async () => {
+  const confirmarAgendamento = async (confirmouForaExpediente = false) => {
     if (!retornoParaAgendar || !dataAgendamento) {
       toast.error('Selecione uma data para o agendamento.');
       return;
@@ -233,66 +360,28 @@ export default function RetornosControl() {
 
     setIsAgendando(true);
     try {
-      if (retornoParaAgendar.agendamento_retorno_id) {
-        const { error } = await supabase.from('agendamentos').update({
-          data: format(dataAgendamento, 'yyyy-MM-dd'),
-          hora_inicio: horaAgendamento,
-          hora_fim: somarMinutos(horaAgendamento, 30),
-          status: 'agendado',
-        }).eq('id', retornoParaAgendar.agendamento_retorno_id);
-        if (error) throw error;
-        const { error: retornoError } = await supabase.from('retornos').update({
-          data_retorno_prevista: format(dataAgendamento, 'yyyy-MM-dd'),
-          status: 'agendado',
-        } as any).eq('id', retornoParaAgendar.id);
-        if (retornoError) throw retornoError;
-        queryClient.invalidateQueries({ queryKey: ['retornos'] });
-        queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
-        setAgendarDialogOpen(false);
-        toast.success(`Retorno remarcado para ${format(dataAgendamento, 'dd/MM/yyyy')} às ${horaAgendamento}`);
+      const data = format(dataAgendamento, 'yyyy-MM-dd');
+      const avisoExpediente = await conferirHorarioRetorno(retornoParaAgendar, data, horaAgendamento, !confirmouForaExpediente);
+      if (avisoExpediente) {
+        setForaExpediente(avisoExpediente);
         return;
       }
-
-      const { data: agendamento, error } = await supabase
-        .from('agendamentos')
-        .insert({
-          paciente_id: retornoParaAgendar.paciente_id,
-          medico_id: retornoParaAgendar.medico_id,
-          data: format(dataAgendamento, 'yyyy-MM-dd'),
-          hora_inicio: horaAgendamento,
-          hora_fim: somarMinutos(horaAgendamento, 30),
-          tipo: 'retorno',
-          observacoes: `Retorno: ${retornoParaAgendar.motivo || 'Consulta de retorno'}`,
-          status: 'agendado',
-          clinica_id: retornoParaAgendar.clinica_id,
-        })
-        .select('id')
-        .single();
-
+      const { data: agendamentoId, error } = await supabase.rpc('agendar_retorno_atomico', {
+        p_retorno_id: retornoParaAgendar.id,
+        p_data: data,
+        p_hora: horaAgendamento,
+      });
       if (error) throw error;
-
-      // Preserve agendamento_id (consulta de origem) e vincule o novo horário
-      // na coluna própria do agendamento de retorno.
-      const { error: vinculoError } = await supabase
-        .from('retornos')
-        .update({ agendamento_retorno_id: agendamento.id, status: 'agendado' } as any)
-        .eq('id', retornoParaAgendar.id);
-      if (vinculoError) {
-        // Evita deixar um agendamento órfão se o segundo passo falhar.
-        const { error: limpezaError } = await supabase.from('agendamentos').delete().eq('id', agendamento.id);
-        if (limpezaError && import.meta.env.DEV) {
-          console.error('Falha ao remover agendamento órfão:', limpezaError);
-        }
-        throw vinculoError;
-      }
+      if (!agendamentoId) throw new Error('O retorno não foi vinculado a um horário. Atualize a lista e tente novamente.');
 
       queryClient.invalidateQueries({ queryKey: ['retornos'] });
       queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
       setAgendarDialogOpen(false);
-      toast.success(`Retorno agendado para ${format(dataAgendamento, 'dd/MM/yyyy')} às ${horaAgendamento}`);
+      setForaExpediente(null);
+      toast.success(`${retornoParaAgendar.agendamento_retorno_id ? 'Retorno remarcado' : 'Retorno agendado'} para ${format(dataAgendamento, 'dd/MM/yyyy')} às ${horaAgendamento}`);
     } catch (error) {
       if (import.meta.env.DEV) console.error(error);
-      toast.error('Erro ao criar agendamento de retorno.', { description: mensagemDeErro(error) });
+      toast.error('Não foi possível agendar o retorno.', { description: mensagemDeErro(error) });
     } finally {
       setIsAgendando(false);
     }
@@ -325,6 +414,13 @@ export default function RetornosControl() {
     );
   }
 
+  const erroDeCarga = erroRetornos || erroPacientes || erroMedicos;
+  if (erroDeCarga) return <ErrorState error={erroDeCarga} title="Não foi possível carregar o controle de retornos" onRetry={() => {
+    void refetchRetornos();
+    void refetchPacientes();
+    void refetchMedicos();
+  }} />;
+
   // Classes completas: Tailwind compila classes estáticas — o template
   // `text-${kpi.color}` gerava classe inexistente e "Atrasados" nunca ficava
   // vermelho.
@@ -346,18 +442,18 @@ export default function RetornosControl() {
           </h1>
           <p className="text-muted-foreground">Acompanhe retornos pendentes e atrasados</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Buscar paciente, médico..."
+              placeholder="Nome, CPF, telefone ou médico..."
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
-              className="pl-9 w-64"
+              className="h-11 w-full pl-9 sm:w-64"
             />
           </div>
           <Select value={filtroStatus} onValueChange={setFiltroStatus}>
-            <SelectTrigger className="w-44">
+            <SelectTrigger className="h-11 w-full sm:w-44">
               <Filter className="h-4 w-4 mr-2" />
               <SelectValue />
             </SelectTrigger>
@@ -373,13 +469,41 @@ export default function RetornosControl() {
         </div>
       </div>
 
+      {pacienteFiltroId && (
+        <div className="flex flex-col gap-2 rounded-lg border bg-muted/30 p-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm">
+            Exibindo retornos de <span className="font-medium">{getPacienteNome(pacienteFiltroId)}</span>.
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              const params = new URLSearchParams(searchParams);
+              params.delete('paciente');
+              setSearchParams(params, { replace: true });
+            }}
+          >
+            Mostrar todos os retornos
+          </Button>
+        </div>
+      )}
+
       {/* KPI Cards */}
       <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
         {kpis.map((kpi, i) => (
           <motion.div key={kpi.key} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}>
             <Card
               className={cn("cursor-pointer transition-all hover:shadow-md", filtroStatus === kpi.key && `ring-2 ${kpi.ring}`)}
+              role="button"
+              tabIndex={0}
+              aria-pressed={filtroStatus === kpi.key}
               onClick={() => setFiltroStatus(filtroStatus === kpi.key ? 'todos' : kpi.key)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  setFiltroStatus(filtroStatus === kpi.key ? 'todos' : kpi.key);
+                }
+              }}
             >
               <CardContent className="pt-5 pb-4">
                 <div className="flex items-center justify-between">
@@ -408,7 +532,16 @@ export default function RetornosControl() {
           {filtrados.length === 0 ? (
             <div className="text-center py-10 text-muted-foreground">
               <CalendarClock className="h-10 w-10 mx-auto mb-3 opacity-20" />
-              <p>Nenhum retorno encontrado</p>
+              <p>
+                {retornosNoEscopo.length === 0
+                  ? pacienteFiltroId
+                    ? `Nenhum retorno encontrado para ${getPacienteNome(pacienteFiltroId)}`
+                    : 'Ainda não há retornos cadastrados'
+                  : 'Nenhum retorno corresponde à busca e ao filtro selecionados'}
+              </p>
+              {retornosNoEscopo.length > 0 && (searchTerm.trim() || filtroStatus !== 'todos') && (
+                <Button variant="link" onClick={limparFiltros} className="mt-2 h-11">Limpar busca e filtro</Button>
+              )}
             </div>
           ) : (
             <div className="rounded-md border">
@@ -425,7 +558,10 @@ export default function RetornosControl() {
                 </TableHeader>
                 <TableBody>
                   <AnimatePresence>
-                    {filtrados.map((r) => (
+                    {filtrados.map((r) => {
+                      const whatsapp = telefoneBrasileiroParaWhatsApp(getPacienteTelefone(r.paciente_id));
+                      const dataRetornoFutura = isBefore(hoje, startOfDay(r.dataRetorno));
+                      return (
                       <motion.tr
                         key={r.id}
                         initial={{ opacity: 0 }}
@@ -461,15 +597,20 @@ export default function RetornosControl() {
                                 <CalendarPlus className="h-3 w-3" /> Agendar
                               </Button>
                             )}
-                            {r.statusCalculado === 'agendado' && r.agendamento_retorno_id && (
-                              <Button size="sm" variant="outline" onClick={() => handleRemarcarRetorno(r)} className="gap-1">
-                                <RefreshCw className="h-3 w-3" /> Remarcar
+                            {r.agendamento_retorno_id && !['realizado', 'cancelado'].includes(r.statusCalculado) && (
+                              <Button size="sm" variant="outline" onClick={() => handleRemarcarRetorno(r)} disabled={isAgendando} className="gap-1">
+                                {isAgendando ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />} Remarcar
                               </Button>
                             )}
-                            {!['realizado', 'cancelado'].includes(r.statusCalculado) && (
+                            {!['realizado', 'cancelado'].includes(r.statusCalculado) && !dataRetornoFutura && (
                               <Button size="sm" variant="outline" onClick={() => setRealizando(r)} className="gap-1">
                                 <CheckCircle2 className="h-3 w-3" /> Realizado
                               </Button>
+                            )}
+                            {!['realizado', 'cancelado'].includes(r.statusCalculado) && dataRetornoFutura && (
+                              <span className="inline-flex items-center gap-1 px-2 text-xs text-muted-foreground" role="status">
+                                <Clock className="h-3 w-3" /> Disponível na data prevista
+                              </span>
                             )}
                             {r.statusCalculado === 'realizado' && (
                               <Button
@@ -485,9 +626,9 @@ export default function RetornosControl() {
                                 <Ban className="h-3 w-3" /> Cancelar
                               </Button>
                             )}
-                            {getPacienteTelefone(r.paciente_id) && (
+                            {whatsapp && (
                               <Button size="sm" variant="ghost" asChild aria-label="Contatar via WhatsApp">
-                                <a href={`https://wa.me/55${getPacienteTelefone(r.paciente_id)?.replace(/\D/g, '')}`} target="_blank" rel="noopener">
+                                <a href={`https://wa.me/${whatsapp}`} target="_blank" rel="noopener noreferrer">
                                   <Phone className="h-3 w-3" />
                                 </a>
                               </Button>
@@ -495,7 +636,8 @@ export default function RetornosControl() {
                           </div>
                         </TableCell>
                       </motion.tr>
-                    ))}
+                      );
+                    })}
                   </AnimatePresence>
                 </TableBody>
               </Table>
@@ -505,7 +647,11 @@ export default function RetornosControl() {
       </Card>
 
       {/* Agendar Retorno Dialog */}
-      <Dialog open={agendarDialogOpen} onOpenChange={setAgendarDialogOpen}>
+      <Dialog open={agendarDialogOpen} onOpenChange={(open) => {
+        if (!open && isAgendando) return;
+        if (!open) setForaExpediente(null);
+        setAgendarDialogOpen(open);
+      }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -535,7 +681,7 @@ export default function RetornosControl() {
                       mode="single"
                       selected={dataAgendamento}
                       onSelect={setDataAgendamento}
-                      disabled={(date) => date < startOfDay(new Date())}
+                      disabled={(date) => date < startOfDay(hoje)}
                       initialFocus
                       className="p-3 pointer-events-auto"
                     />
@@ -553,7 +699,7 @@ export default function RetornosControl() {
             <Button variant="outline" onClick={() => setAgendarDialogOpen(false)} disabled={isAgendando}>
               Cancelar
             </Button>
-            <Button onClick={confirmarAgendamento} disabled={isAgendando} className="gap-2">
+            <Button onClick={() => void confirmarAgendamento()} disabled={isAgendando} className="gap-2">
               {isAgendando ? <Loader2 className="h-4 w-4 animate-spin" /> : <CalendarPlus className="h-4 w-4" />}
               {retornoParaAgendar?.agendamento_retorno_id ? 'Confirmar Remarcação' : 'Confirmar Agendamento'}
             </Button>
@@ -561,27 +707,49 @@ export default function RetornosControl() {
         </DialogContent>
       </Dialog>
 
+      <AlertDialog open={!!foraExpediente} onOpenChange={open => { if (!open) setForaExpediente(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Fora do expediente do médico</AlertDialogTitle>
+            <AlertDialogDescription>
+              {foraExpediente} O horário escolhido é {horaAgendamento}. Deseja agendar mesmo assim?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Escolher outro horário</AlertDialogCancel>
+            <AlertDialogAction onClick={() => {
+              setForaExpediente(null);
+              void confirmarAgendamento(true);
+            }}>
+              Agendar mesmo assim
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <ConfirmDialog
         open={Boolean(cancelando)}
-        onOpenChange={(open) => !open && setCancelando(null)}
+        onOpenChange={(open) => !open && !isCancelando && setCancelando(null)}
         title="Cancelar retorno"
         description={`Cancelar o retorno de ${cancelando ? getPacienteNome(cancelando.paciente_id) : 'paciente'}? O horário vinculado também será cancelado.`}
         confirmLabel="Cancelar retorno"
         variant="destructive"
         onConfirm={cancelarRetorno}
         isLoading={isCancelando}
+        closeOnConfirm={false}
       />
 
       <ConfirmDialog
         open={Boolean(realizando)}
-        onOpenChange={(open) => !open && setRealizando(null)}
+        onOpenChange={(open) => !open && !isRealizando && setRealizando(null)}
         title="Marcar retorno como realizado"
         description={`Confirmar que ${realizando ? getPacienteNome(realizando.paciente_id) : 'paciente'} compareceu ao retorno${
           realizando ? ` previsto para ${format(parseISO(realizando.data_retorno_prevista), 'dd/MM/yyyy')}` : ''
         }?`}
         confirmLabel="Sim, foi realizado"
-        onConfirm={() => realizando && marcarRealizado(realizando.id)}
+        onConfirm={() => realizando && void marcarRealizado(realizando)}
         isLoading={isRealizando}
+        closeOnConfirm={false}
       />
     </div>
   );

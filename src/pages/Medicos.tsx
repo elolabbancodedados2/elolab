@@ -1,12 +1,12 @@
-import { nomeMedico } from '@/lib/formatters';
-import React, { useState, useMemo } from 'react';
+import { nomeMedico, validateCPF } from '@/lib/formatters';
+import React, { useState, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Plus, Search, Pencil, Trash2, Stethoscope, Phone, Mail, BadgeCheck, Award,
+  Plus, Search, Pencil, Stethoscope, Phone, Mail, BadgeCheck, Award,
   FileText, Clock, User, Upload, Image, Calendar, ClipboardList, Pill,
   ChevronRight, X, Activity, Users, Eye, Filter, Heart, ShieldCheck,
-  ExternalLink, Copy, Send,
+  ExternalLink, Copy, Send, UserX,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -23,6 +23,7 @@ import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Skeleton } from '@/components/ui/skeleton';
+import { ErrorState } from '@/components/ErrorState';
 import { LoadingButton } from '@/components/ui/loading-button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -37,6 +38,8 @@ import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { MedicoAvailabilityManager } from '@/components/medicos/MedicoAvailabilityManager';
+import { normalizarTexto } from '@/lib/buscaPaciente';
+import { todaySaoPauloDateOnly, parseDateOnly } from '@/lib/dateOnly';
 
 const UFS = [
   'AC','AL','AM','AP','BA','CE','DF','ES','GO','MA','MG','MS','MT','PA',
@@ -76,12 +79,12 @@ function formatPhone(value: string): string {
 
 interface FormData {
    nome: string; email: string; crm: string; tipo_registro: string; crm_uf: string; cpf: string;
-  rqe: string; cns: string; especialidade: string; telefone: string;
+  data_nascimento: string; rqe: string; cns: string; especialidade: string; telefone: string;
   intervalo_consulta: number; ativo: boolean; foto_url: string; carimbo_url: string;
 }
 
 const initialFormData: FormData = {
-   nome: '', email: '', crm: '', tipo_registro: 'CRM', crm_uf: 'SP', cpf: '', rqe: '', cns: '',
+   nome: '', email: '', crm: '', tipo_registro: 'CRM', crm_uf: 'SP', cpf: '', data_nascimento: '', rqe: '', cns: '',
   especialidade: '', telefone: '', intervalo_consulta: 30, ativo: true,
   foto_url: '', carimbo_url: '',
 };
@@ -167,12 +170,12 @@ function MedicoProfilePanel({ medico, onClose, onEdit }: { medico: any; onClose:
   const navigate = useNavigate();
   const { user, profile } = useSupabaseAuth();
 
-  const { data: agendamentos = [] } = useQuery({
+  const agendamentosQuery = useQuery({
     queryKey: ['medico-agendamentos', user?.id ?? null, profile?.clinica_id ?? null, medico.id],
     queryFn: async () => {
       const { data, error } = await supabase.from('agendamentos')
         .select('*, pacientes(nome, telefone)')
-        .eq('medico_id', medico.id)
+        .eq('clinica_id', profile!.clinica_id!).eq('medico_id', medico.id)
         .order('data', { ascending: false }).order('hora_inicio', { ascending: true }).limit(50);
       if (error) throw error;
       return data || [];
@@ -180,43 +183,48 @@ function MedicoProfilePanel({ medico, onClose, onEdit }: { medico: any; onClose:
     enabled: !!user && !!profile?.clinica_id,
   });
 
-  const { data: prontuarios = [] } = useQuery({
+  const prontuariosQuery = useQuery({
     queryKey: ['medico-prontuarios', user?.id ?? null, profile?.clinica_id ?? null, medico.id],
     queryFn: async () => {
       const { data, error } = await supabase.from('prontuarios')
         .select('id, data, queixa_principal, diagnostico_principal, pacientes(nome)')
-        .eq('medico_id', medico.id).order('data', { ascending: false }).limit(30);
+        .eq('clinica_id', profile!.clinica_id!).eq('medico_id', medico.id).order('data', { ascending: false }).limit(30);
       if (error) throw error;
       return data || [];
     },
     enabled: !!user && !!profile?.clinica_id,
   });
 
-  const { data: prescricoes = [] } = useQuery({
+  const prescricoesQuery = useQuery({
     queryKey: ['medico-prescricoes', user?.id ?? null, profile?.clinica_id ?? null, medico.id],
     queryFn: async () => {
       const { data, error } = await supabase.from('prescricoes')
         .select('id, medicamento, dosagem, data_emissao, pacientes(nome)')
-        .eq('medico_id', medico.id).order('data_emissao', { ascending: false }).limit(30);
+        .eq('clinica_id', profile!.clinica_id!).eq('medico_id', medico.id).order('data_emissao', { ascending: false }).limit(30);
       if (error) throw error;
       return data || [];
     },
     enabled: !!user && !!profile?.clinica_id,
   });
 
-  const { data: atestados = [] } = useQuery({
+  const atestadosQuery = useQuery({
     queryKey: ['medico-atestados', user?.id ?? null, profile?.clinica_id ?? null, medico.id],
     queryFn: async () => {
       const { data, error } = await supabase.from('atestados')
         .select('id, tipo, dias, data_emissao, motivo, pacientes(nome)')
-        .eq('medico_id', medico.id).order('data_emissao', { ascending: false }).limit(20);
+        .eq('clinica_id', profile!.clinica_id!).eq('medico_id', medico.id).order('data_emissao', { ascending: false }).limit(20);
       if (error) throw error;
       return data || [];
     },
     enabled: !!user && !!profile?.clinica_id,
   });
 
-  const today = format(new Date(), 'yyyy-MM-dd');
+  const agendamentos = agendamentosQuery.data ?? [];
+  const prontuarios = prontuariosQuery.data ?? [];
+  const prescricoes = prescricoesQuery.data ?? [];
+  const atestados = atestadosQuery.data ?? [];
+
+  const today = todaySaoPauloDateOnly();
   const agendamentosHoje = agendamentos.filter((a: any) => a.data === today);
   const agendamentosFuturos = agendamentos.filter((a: any) => a.data > today);
   const totalPacientes = new Set(agendamentos.map((a: any) => a.paciente_id)).size;
@@ -288,10 +296,18 @@ function MedicoProfilePanel({ medico, onClose, onEdit }: { medico: any; onClose:
                 size="sm"
                 variant="outline"
                 className="gap-1.5 text-xs"
-                onClick={() => {
+                onClick={async () => {
                   const portalUrl = `${window.location.origin}/auth`;
-                  navigator.clipboard.writeText(portalUrl);
-                  toast.success('Link de acesso copiado!', { description: portalUrl });
+                  try {
+                    if (!navigator.clipboard?.writeText) throw new Error('Clipboard indisponível');
+                    await navigator.clipboard.writeText(portalUrl);
+                    toast.success('Link de acesso copiado!', { description: portalUrl });
+                  } catch {
+                    toast.error('Não foi possível copiar o link automaticamente', {
+                      description: `Copie o endereço do portal: ${portalUrl}`,
+                      duration: 10000,
+                    });
+                  }
                 }}
               >
                 <Copy className="h-3 w-3" /> Copiar Link
@@ -332,10 +348,10 @@ function MedicoProfilePanel({ medico, onClose, onEdit }: { medico: any; onClose:
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 px-4 py-3 border-b bg-muted/30">
           {[
-            { label: 'Hoje', value: agendamentosHoje.length, icon: Activity, color: 'text-primary' },
-            { label: 'Futuros', value: agendamentosFuturos.length, icon: Calendar, color: 'text-info' },
-            { label: 'Pacientes', value: totalPacientes, icon: Users, color: 'text-success' },
-            { label: 'Prontuários', value: prontuarios.length, icon: ClipboardList, color: 'text-warning' },
+            { label: 'Hoje', value: agendamentosQuery.isError ? '—' : agendamentosHoje.length, icon: Activity, color: 'text-primary' },
+            { label: 'Futuros', value: agendamentosQuery.isError ? '—' : agendamentosFuturos.length, icon: Calendar, color: 'text-info' },
+            { label: 'Pacientes', value: agendamentosQuery.isError ? '—' : totalPacientes, icon: Users, color: 'text-success' },
+            { label: 'Prontuários', value: prontuariosQuery.isError ? '—' : prontuarios.length, icon: ClipboardList, color: 'text-warning' },
           ].map(s => (
             <div key={s.label} className="text-center">
               <s.icon className={`h-4 w-4 mx-auto mb-0.5 ${s.color}`} />
@@ -355,9 +371,11 @@ function MedicoProfilePanel({ medico, onClose, onEdit }: { medico: any; onClose:
 
           <ScrollArea className="flex-1 px-4 pb-4">
             <TabsContent value="agenda" className="mt-3 space-y-2">
+              {agendamentosQuery.isError && <ErrorState compact title="Não foi possível carregar a agenda deste médico" error={agendamentosQuery.error} onRetry={() => { void agendamentosQuery.refetch(); }} />}
+              {agendamentosQuery.isLoading && <p className="py-8 text-center text-sm text-muted-foreground">Carregando agendamentos…</p>}
               {agendamentosHoje.length > 0 && (
                 <div className="mb-3">
-                  <p className="text-xs font-semibold text-primary mb-2">📅 Hoje — {format(new Date(), "dd 'de' MMMM", { locale: ptBR })}</p>
+                  <p className="text-xs font-semibold text-primary mb-2">📅 Hoje — {format(parseDateOnly(today)!, "dd 'de' MMMM", { locale: ptBR })}</p>
                   {agendamentosHoje.map((ag: any) => (
                     <motion.div key={ag.id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }}
                       className="flex items-center gap-3 p-2.5 rounded-lg border bg-card mb-1.5 hover:shadow-sm transition-shadow">
@@ -386,7 +404,7 @@ function MedicoProfilePanel({ medico, onClose, onEdit }: { medico: any; onClose:
                   ))}
                 </div>
               )}
-              {agendamentos.length === 0 && (
+              {!agendamentosQuery.isLoading && !agendamentosQuery.isError && agendamentos.length === 0 && (
                 <div className="text-center py-8 text-muted-foreground">
                   <Calendar className="h-8 w-8 mx-auto mb-2 opacity-40" />
                   <p className="text-sm">Nenhum agendamento encontrado</p>
@@ -395,6 +413,8 @@ function MedicoProfilePanel({ medico, onClose, onEdit }: { medico: any; onClose:
             </TabsContent>
 
             <TabsContent value="prontuarios" className="mt-3 space-y-2">
+              {prontuariosQuery.isError && <ErrorState compact title="Não foi possível carregar os prontuários deste médico" error={prontuariosQuery.error} onRetry={() => { void prontuariosQuery.refetch(); }} />}
+              {prontuariosQuery.isLoading && <p className="py-8 text-center text-sm text-muted-foreground">Carregando prontuários…</p>}
               {prontuarios.map((p: any) => (
                 <div key={p.id} className="p-3 rounded-lg border bg-card hover:shadow-sm transition-shadow">
                   <div className="flex justify-between items-start">
@@ -407,10 +427,12 @@ function MedicoProfilePanel({ medico, onClose, onEdit }: { medico: any; onClose:
                   {p.diagnostico_principal && <Badge variant="secondary" className="text-[10px] mt-1.5">{p.diagnostico_principal}</Badge>}
                 </div>
               ))}
-              {prontuarios.length === 0 && <div className="text-center py-8 text-muted-foreground"><ClipboardList className="h-8 w-8 mx-auto mb-2 opacity-40" /><p className="text-sm">Nenhum prontuário registrado</p></div>}
+              {!prontuariosQuery.isLoading && !prontuariosQuery.isError && prontuarios.length === 0 && <div className="text-center py-8 text-muted-foreground"><ClipboardList className="h-8 w-8 mx-auto mb-2 opacity-40" /><p className="text-sm">Nenhum prontuário registrado</p></div>}
             </TabsContent>
 
             <TabsContent value="prescricoes" className="mt-3 space-y-2">
+              {prescricoesQuery.isError && <ErrorState compact title="Não foi possível carregar as prescrições deste médico" error={prescricoesQuery.error} onRetry={() => { void prescricoesQuery.refetch(); }} />}
+              {prescricoesQuery.isLoading && <p className="py-8 text-center text-sm text-muted-foreground">Carregando prescrições…</p>}
               {prescricoes.map((rx: any) => (
                 <div key={rx.id} className="p-3 rounded-lg border bg-card">
                   <div className="flex justify-between items-start">
@@ -420,10 +442,12 @@ function MedicoProfilePanel({ medico, onClose, onEdit }: { medico: any; onClose:
                   {rx.dosagem && <p className="text-xs text-muted-foreground mt-1">{rx.dosagem}</p>}
                 </div>
               ))}
-              {prescricoes.length === 0 && <div className="text-center py-8 text-muted-foreground"><Pill className="h-8 w-8 mx-auto mb-2 opacity-40" /><p className="text-sm">Nenhuma prescrição emitida</p></div>}
+              {!prescricoesQuery.isLoading && !prescricoesQuery.isError && prescricoes.length === 0 && <div className="text-center py-8 text-muted-foreground"><Pill className="h-8 w-8 mx-auto mb-2 opacity-40" /><p className="text-sm">Nenhuma prescrição emitida</p></div>}
             </TabsContent>
 
             <TabsContent value="atestados" className="mt-3 space-y-2">
+              {atestadosQuery.isError && <ErrorState compact title="Não foi possível carregar os atestados deste médico" error={atestadosQuery.error} onRetry={() => { void atestadosQuery.refetch(); }} />}
+              {atestadosQuery.isLoading && <p className="py-8 text-center text-sm text-muted-foreground">Carregando atestados…</p>}
               {atestados.map((at: any) => (
                 <div key={at.id} className="p-3 rounded-lg border bg-card">
                   <div className="flex justify-between items-start">
@@ -434,7 +458,7 @@ function MedicoProfilePanel({ medico, onClose, onEdit }: { medico: any; onClose:
                   <p className="text-[10px] text-muted-foreground mt-1">{at.data_emissao ? format(parseISO(at.data_emissao), 'dd/MM/yyyy') : '-'}</p>
                 </div>
               ))}
-              {atestados.length === 0 && <div className="text-center py-8 text-muted-foreground"><FileText className="h-8 w-8 mx-auto mb-2 opacity-40" /><p className="text-sm">Nenhum atestado emitido</p></div>}
+              {!atestadosQuery.isLoading && !atestadosQuery.isError && atestados.length === 0 && <div className="text-center py-8 text-muted-foreground"><FileText className="h-8 w-8 mx-auto mb-2 opacity-40" /><p className="text-sm">Nenhum atestado emitido</p></div>}
             </TabsContent>
           </ScrollArea>
         </Tabs>
@@ -451,6 +475,7 @@ export default function Medicos() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingUpdatedAt, setEditingUpdatedAt] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [viewingMedico, setViewingMedico] = useState<any | null>(null);
   const [formData, setFormData] = useState<FormData>(initialFormData);
@@ -458,10 +483,13 @@ export default function Medicos() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [uploadingCarimbo, setUploadingCarimbo] = useState(false);
+  const saveLock = useRef(false);
 
   const queryClient = useQueryClient();
   const { profile } = useSupabaseAuth();
-  const { data: medicos = [], isLoading } = useMedicos();
+  const medicosQuery = useMedicos();
+  const medicos = medicosQuery.data ?? [];
+  const { isLoading } = medicosQuery;
 
   const especialidades = useMemo(() => {
     const set = new Set(medicos.map((m: any) => m.especialidade).filter(Boolean));
@@ -470,10 +498,8 @@ export default function Medicos() {
 
   const filteredMedicos = useMemo(() =>
     medicos.filter((m: any) => {
-      const matchSearch = (m.nome || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        m.crm.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (m.especialidade || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (m.email || '').toLowerCase().includes(searchTerm.toLowerCase());
+      const term = normalizarTexto(searchTerm.trim());
+      const matchSearch = !term || normalizarTexto(`${m.nome || ''} ${m.crm || ''} ${m.especialidade || ''} ${m.email || ''}`).includes(term);
       const matchEsp = filterEspecialidade === 'todas' || m.especialidade === filterEspecialidade;
       const matchStatus = filterStatus === 'todos' || (filterStatus === 'ativo' ? m.ativo : !m.ativo);
       return matchSearch && matchEsp && matchStatus;
@@ -487,15 +513,17 @@ export default function Medicos() {
   const handleOpenDialog = (medico?: any) => {
     if (medico) {
       setEditingId(medico.id);
+      setEditingUpdatedAt(medico.updated_at ?? null);
       setFormData({
          nome: medico.nome || '', email: medico.email || '', crm: medico.crm, tipo_registro: medico.tipo_registro || 'CRM',
-        crm_uf: medico.crm_uf || 'SP', cpf: medico.cpf || '', rqe: medico.rqe || '',
+        crm_uf: medico.crm_uf || 'SP', cpf: medico.cpf || '', data_nascimento: medico.data_nascimento || '', rqe: medico.rqe || '',
         cns: medico.cns || '', especialidade: medico.especialidade || '',
         telefone: medico.telefone || '', intervalo_consulta: medico.intervalo_consulta ?? 30,
         ativo: medico.ativo, foto_url: medico.foto_url || '', carimbo_url: medico.carimbo_url || '',
       });
     } else {
       setEditingId(null);
+      setEditingUpdatedAt(null);
       setFormData(initialFormData);
     }
     setIsDialogOpen(true);
@@ -520,17 +548,22 @@ export default function Medicos() {
   };
 
   const handleSave = async () => {
+    if (saveLock.current) return;
+    if (uploadingPhoto || uploadingCarimbo) {
+      toast.info('Aguarde o envio da foto ou do carimbo antes de salvar o médico.');
+      return;
+    }
+    if (!profile?.clinica_id) { toast.error('Clínica não identificada. Recarregue a página e tente novamente.'); return; }
      if (!formData.crm) { toast.error('O número do registro profissional é obrigatório.'); return; }
-    if (!formData.nome) { toast.error('Nome é obrigatório.'); return; }
+    if (!formData.nome.trim()) { toast.error('Nome é obrigatório.'); return; }
      if (formData.tipo_registro === 'CRM' && formData.crm && !/^\d{4,10}$/.test(formData.crm.replace(/\D/g, ''))) {
        toast.error('O CRM deve conter entre 4 e 10 dígitos.'); return;
     }
-    if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+    if (formData.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email.trim())) {
       toast.error('E-mail inválido.'); return;
     }
     if (formData.cpf) {
-      const cpfDigits = formData.cpf.replace(/\D/g, '');
-      if (cpfDigits.length !== 11 || /^(\d)\1+$/.test(cpfDigits)) {
+      if (!validateCPF(formData.cpf)) {
         toast.error('CPF inválido.'); return;
       }
     }
@@ -540,70 +573,122 @@ export default function Medicos() {
         toast.error('Telefone deve ter 10 ou 11 dígitos.'); return;
       }
     }
+    const registroNormalizado = formData.crm.trim().toUpperCase().replace(/\s+/g, '');
+    const ufNormalizada = formData.crm_uf.trim().toUpperCase();
+    const registroDuplicado = medicos.find((medico: any) =>
+      medico.id !== editingId
+      && String(medico.tipo_registro || 'CRM').toUpperCase() === formData.tipo_registro.toUpperCase()
+      && String(medico.crm || '').trim().toUpperCase().replace(/\s+/g, '') === registroNormalizado
+      && String(medico.crm_uf || '').trim().toUpperCase() === ufNormalizada
+    );
+    if (registroDuplicado) {
+      toast.error('Já existe um profissional com esse registro nesta clínica.', {
+        description: `${registroDuplicado.nome || registroDuplicado.crm} · ${formData.tipo_registro} ${formData.crm}/${ufNormalizada}`,
+      });
+      return;
+    }
+    if (medicosQuery.isError || medicosQuery.isLoading) {
+      toast.error('Não foi possível conferir os registros profissionais da clínica.', {
+        description: 'Atualize a lista de médicos antes de salvar para evitar cadastros duplicados.',
+      });
+      return;
+    }
+    saveLock.current = true;
     setIsSubmitting(true);
     try {
+      const email = formData.email.trim().toLocaleLowerCase('pt-BR');
+      const nome = formData.nome.trim();
       const payload = {
-         nome: formData.nome || null, email: formData.email || null, crm: formData.crm, tipo_registro: formData.tipo_registro,
-        crm_uf: formData.crm_uf || null, cpf: formData.cpf || null, rqe: formData.rqe || null,
+        nome: nome || null, email: email || null, crm: formData.crm.trim(), tipo_registro: formData.tipo_registro,
+        crm_uf: formData.crm_uf || null, cpf: formData.cpf || null, data_nascimento: formData.data_nascimento || null, rqe: formData.rqe || null,
         cns: formData.cns || null, especialidade: formData.especialidade || null,
         telefone: formData.telefone || null, intervalo_consulta: formData.intervalo_consulta,
         ativo: formData.ativo, foto_url: formData.foto_url || null, carimbo_url: formData.carimbo_url || null,
-        ...(!editingId && profile?.clinica_id ? { clinica_id: profile.clinica_id } : {}),
+        ...(!editingId ? { clinica_id: profile.clinica_id } : {}),
       };
 
       if (editingId) {
-        const { error } = await supabase.from('medicos').update(payload).eq('id', editingId);
+        let query = supabase.from('medicos').update(payload)
+          .eq('id', editingId).eq('clinica_id', profile.clinica_id);
+        query = editingUpdatedAt ? query.eq('updated_at', editingUpdatedAt) : query.is('updated_at', null);
+        const { data, error } = await query.select('id').maybeSingle();
         if (error) throw error;
+        if (!data) {
+          await queryClient.invalidateQueries({ queryKey: ['medicos'] });
+          throw new Error('Este cadastro foi alterado por outra pessoa ou removido. Atualize a lista e confira os dados antes de salvar novamente.');
+        }
         toast.success('Médico atualizado com sucesso!');
       } else {
         const { data: newMedico, error } = await supabase.from('medicos').insert(payload).select().single();
         if (error) throw error;
         toast.success('Médico cadastrado com sucesso!');
-        if (formData.email && newMedico) {
+        if (email && newMedico) {
           try {
             const { data: funcData, error: funcError } = await supabase.from('funcionarios')
-              .insert({ nome: formData.nome, email: formData.email, cargo: 'Médico', departamento: formData.especialidade || 'Clínico', ativo: true, clinica_id: profile?.clinica_id || null, pending_roles: ['medico'] } as any)
+              .insert({ nome, email, cargo: 'Médico', departamento: formData.especialidade || 'Clínico', ativo: formData.ativo, clinica_id: profile?.clinica_id || null, pending_roles: ['medico'] } as any)
               .select().single();
-            if (!funcError && funcData) {
-              // invite-employee é o caminho único de convite. O antigo
-              // send-employee-invitation gravava em outra tabela, com outro
-              // aceite, e travava quando a pessoa já tinha conta.
-              const { data: inviteData, error: inviteError } = await supabase.functions.invoke('invite-employee', {
-                body: { email: formData.email, nome: formData.nome, roles: ['medico'] },
+            if (funcError || !funcData) {
+              toast.info('Médico cadastrado, mas o vínculo de acesso não foi criado. Revise a aba Funcionários antes de convidar.', {
+                description: funcError?.message,
               });
-              if (inviteError) {
-                toast.info('Médico cadastrado, mas o convite não pôde ser enviado.');
-              } else if (inviteData?.success === false || inviteData?.error) {
-                toast.info('Médico cadastrado, mas o convite não pôde ser enviado.');
+            } else {
+              if (!formData.ativo) {
+                toast.info('Médico cadastrado como inativo. O convite não foi enviado.', {
+                  description: 'Ative o profissional na equipe antes de liberar o acesso ao sistema.',
+                });
               } else {
-                const codigo = inviteData?.inviteCode || inviteData?.token;
-                toast.success(codigo
-                  ? `Convite enviado para ${formData.email} (código: ${codigo})`
-                  : `Convite de acesso enviado para ${formData.email}`);
+                // invite-employee é o caminho único de convite. O antigo
+                // send-employee-invitation gravava em outra tabela, com outro
+                // aceite, e travava quando a pessoa já tinha conta.
+                const { data: inviteData, error: inviteError } = await supabase.functions.invoke('invite-employee', {
+                  body: { email, nome, roles: ['medico'] },
+                });
+                if (inviteError) {
+                  toast.info('Médico cadastrado, mas o convite não pôde ser enviado. O vínculo está disponível na aba Funcionários.', { description: inviteError.message });
+                } else if (inviteData?.success === false || inviteData?.error) {
+                  toast.info('Médico cadastrado, mas o convite não pôde ser enviado. O vínculo está disponível na aba Funcionários.', { description: inviteData?.error });
+                } else if (inviteData?.emailStatus === 'sent') {
+                  toast.success(`Convite enviado por e-mail para ${email}.`);
+                } else {
+                  toast.info('Médico cadastrado e convite criado, mas o e-mail não foi enviado.', {
+                    description: 'Acesse a lista de convites para copiar o link e compartilhar.',
+                  });
+                }
               }
             }
-          } catch { toast.info('Médico cadastrado. Convite pode ser enviado pela página de Funcionários.'); }
+          } catch (inviteFlowError: any) {
+            toast.info('Médico cadastrado, mas o acesso não foi preparado. Revise a aba Funcionários para concluir o convite.', {
+              description: inviteFlowError?.message,
+            });
+          }
         }
       }
       queryClient.invalidateQueries({ queryKey: ['medicos'] });
-      queryClient.invalidateQueries({ queryKey: ['funcionarios'] });
+      queryClient.invalidateQueries({ queryKey: ['funcionarios-with-roles'] });
+      queryClient.invalidateQueries({ queryKey: ['convites-list'] });
       setIsDialogOpen(false);
     } catch (error: any) {
-      toast.error(error.message || 'Erro ao salvar médico');
-    } finally { setIsSubmitting(false); }
+      if (error?.code === '23505' && error?.constraint === 'medicos_registro_clinica_unico') {
+        toast.error('Já existe um profissional com esse registro nesta clínica.');
+      } else {
+        toast.error(error.message || 'Erro ao salvar médico');
+      }
+    } finally {
+      saveLock.current = false;
+      setIsSubmitting(false);
+    }
   };
 
   const handleDelete = async () => {
     if (!selectedId) return;
     setIsDeleting(true);
     try {
-      const { data, error } = await supabase.from('medicos').delete().eq('id', selectedId).select('id');
+      if (!profile?.clinica_id) throw new Error('Clínica não identificada.');
+      const { data, error } = await supabase.from('medicos').update({ ativo: false })
+        .eq('id', selectedId).eq('clinica_id', profile.clinica_id).eq('ativo', true).select('id').maybeSingle();
       if (error) throw error;
-      if (!data || data.length === 0) {
-        toast.error('Sem permissão para excluir ou médico já removido.');
-        return;
-      }
-      toast.success('Médico excluído com sucesso!');
+      if (!data) throw new Error('O médico já foi inativado ou não pertence à clínica atual. Atualize a lista.');
+      toast.success('Médico inativado. O histórico e os vínculos foram preservados.');
       queryClient.invalidateQueries({ queryKey: ['medicos'] });
     } catch (error: any) {
       toast.error(error.message || 'Erro ao excluir médico');
@@ -622,6 +707,10 @@ export default function Medicos() {
         </div>
       </div>
     );
+  }
+
+  if (medicosQuery.isError) {
+    return <ErrorState title="Não foi possível carregar o corpo clínico" error={medicosQuery.error} onRetry={() => void medicosQuery.refetch()} />;
   }
 
   return (
@@ -771,15 +860,15 @@ export default function Medicos() {
                           </TooltipTrigger>
                           <TooltipContent>Editar</TooltipContent>
                         </Tooltip>
-                        <Tooltip>
+                        {medico.ativo && <Tooltip>
                           <TooltipTrigger asChild>
-                            <Button aria-label={`Excluir médico ${medico.nome}`} size="icon" variant="ghost" className="h-8 w-8 hover:bg-destructive/10"
+                            <Button aria-label={`Inativar médico ${medico.nome}`} size="icon" variant="ghost" className="h-8 w-8 hover:bg-destructive/10"
                               onClick={(e) => { e.stopPropagation(); handleDeleteClick(medico.id); }}>
-                              <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                              <UserX className="h-3.5 w-3.5 text-destructive" />
                             </Button>
                           </TooltipTrigger>
-                          <TooltipContent>Excluir</TooltipContent>
-                        </Tooltip>
+                          <TooltipContent>Inativar</TooltipContent>
+                        </Tooltip>}
                       </div>
                     </div>
                   </CardContent>
@@ -797,9 +886,11 @@ export default function Medicos() {
               </div>
               <h3 className="text-lg font-semibold text-foreground">Nenhum médico encontrado</h3>
               <p className="text-muted-foreground text-sm mt-1 max-w-sm mx-auto">
-                {searchTerm || filterEspecialidade !== 'todas' ? 'Tente ajustar os filtros de busca' : 'Cadastre o primeiro médico para começar'}
+                {searchTerm || filterEspecialidade !== 'todas' || filterStatus !== 'todos'
+                  ? 'Tente ajustar ou limpar os filtros para ver outros profissionais.'
+                  : 'Cadastre o primeiro médico para começar.'}
               </p>
-              {!searchTerm && filterEspecialidade === 'todas' && (
+              {!searchTerm && filterEspecialidade === 'todas' && filterStatus === 'todos' && (
                 <Button onClick={() => handleOpenDialog()} className="mt-4 gap-2">
                   <Plus className="h-4 w-4" /> Cadastrar Médico
                 </Button>
@@ -815,7 +906,9 @@ export default function Medicos() {
         )}
 
         {/* ─── Form Dialog ─── */}
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <Dialog open={isDialogOpen} onOpenChange={open => {
+          if (open || (!isSubmitting && !uploadingPhoto && !uploadingCarimbo)) setIsDialogOpen(open);
+        }}>
           <DialogContent className="max-w-2xl max-h-[95vh] overflow-hidden flex flex-col">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
@@ -824,6 +917,7 @@ export default function Medicos() {
               </DialogTitle>
             </DialogHeader>
 
+            <fieldset disabled={isSubmitting} className="contents">
             <div className="flex-1 overflow-y-auto space-y-5 pr-2">
               {/* Foto + Status side by side */}
               <div className="flex items-center justify-between gap-4">
@@ -872,11 +966,18 @@ export default function Medicos() {
                     )}
                   </div>
                   <div className="space-y-1.5">
+                    <Label className="text-xs">Data de nascimento (necessária para Memed)</Label>
+                    <Input type="date" value={formData.data_nascimento} onChange={e => setFormData(p => ({ ...p, data_nascimento: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1.5">
                     <Label className="text-xs">E-mail</Label>
                     <Input type="email" value={formData.email} onChange={e => setFormData(p => ({ ...p, email: e.target.value }))} placeholder="medico@email.com"
                       className={formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email) ? 'border-destructive/50' : ''} />
                     {!editingId && formData.email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email) && (
-                      <p className="text-[10px] text-emerald-600 flex items-center gap-1"><Mail className="h-3 w-3" /> Convite de acesso será enviado automaticamente</p>
+                      <p className={`text-[10px] flex items-center gap-1 ${formData.ativo ? 'text-emerald-600' : 'text-muted-foreground'}`}>
+                        <Mail className="h-3 w-3" />
+                        {formData.ativo ? 'Convite de acesso será enviado automaticamente' : 'Médico inativo: convite de acesso não será enviado'}
+                      </p>
                     )}
                     {formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email) && (
                       <p className="text-[10px] text-destructive">E-mail inválido</p>
@@ -985,10 +1086,11 @@ export default function Medicos() {
                 </div>
               </div>
             </div>
+            </fieldset>
 
             <DialogFooter className="flex-shrink-0 pt-4 border-t">
-              <Button variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isSubmitting}>Cancelar</Button>
-              <LoadingButton onClick={handleSave} isLoading={isSubmitting} loadingText="Salvando...">{editingId ? 'Salvar Alterações' : 'Cadastrar Médico'}</LoadingButton>
+              <Button variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isSubmitting || uploadingPhoto || uploadingCarimbo}>Cancelar</Button>
+              <LoadingButton onClick={handleSave} disabled={uploadingPhoto || uploadingCarimbo} isLoading={isSubmitting} loadingText="Salvando...">{editingId ? 'Salvar Alterações' : 'Cadastrar Médico'}</LoadingButton>
             </DialogFooter>
           </DialogContent>
         </Dialog>
@@ -997,13 +1099,13 @@ export default function Medicos() {
         <AlertDialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>Confirmar exclusão</AlertDialogTitle>
-              <AlertDialogDescription>Tem certeza que deseja excluir este médico? Esta ação não pode ser desfeita e removerá todos os vínculos de agenda.</AlertDialogDescription>
+              <AlertDialogTitle>Inativar médico</AlertDialogTitle>
+              <AlertDialogDescription>O médico deixará de aparecer como opção para novos atendimentos. O cadastro e o histórico de agenda, prontuários e prescrições serão preservados. Esta ação não revoga o acesso ao sistema; ajuste as permissões na aba Funcionários. Você poderá reativá-lo depois.</AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel disabled={isDeleting}>Cancelar</AlertDialogCancel>
               <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground" disabled={isDeleting}>
-                {isDeleting ? 'Excluindo...' : 'Excluir'}
+                {isDeleting ? 'Inativando...' : 'Inativar médico'}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

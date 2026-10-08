@@ -15,7 +15,7 @@ import { WhatsAppAgent, NewAgentForm, defaultAgentForm } from './types';
 interface AgentsTabProps {
   agents: WhatsAppAgent[];
   isLoading: boolean;
-  onCreateAgent: (agent: NewAgentForm) => void;
+  onCreateAgent: (agent: NewAgentForm) => Promise<unknown>;
   onUpdateAgent: (agent: Partial<WhatsAppAgent> & { id: string }) => void;
   onDeleteAgent: (id: string) => void;
   isCreating: boolean;
@@ -46,10 +46,14 @@ export function AgentsTab({
     }
   };
 
-  const handleCreate = () => {
-    onCreateAgent(newAgentForm);
-    setNewAgentForm(defaultAgentForm);
-    setIsCreatingAgent(false);
+  const handleCreate = async () => {
+    try {
+      await onCreateAgent(newAgentForm);
+      setNewAgentForm(defaultAgentForm);
+      setIsCreatingAgent(false);
+    } catch {
+      // Mantém o formulário preenchido para corrigir ou tentar novamente.
+    }
   };
 
   const handleUpdate = () => {

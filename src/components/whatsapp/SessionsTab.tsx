@@ -15,7 +15,7 @@ interface SessionsTabProps {
   sessions: WhatsAppSession[];
   agents: WhatsAppAgent[];
   isLoading: boolean;
-  onCreateSession: (instanceName: string) => void;
+  onCreateSession: (instanceName: string) => Promise<unknown>;
   onRefreshQR: (sessionId: string, instanceName: string) => void;
   onCheckStatus: (sessionId: string) => void;
   onDeleteSession: (sessionId: string) => void;
@@ -76,10 +76,14 @@ export function SessionsTab({
     return () => { active = false; };
   }, [sessions]);
 
-  const handleCreate = () => {
-    onCreateSession(newInstanceName);
-    setNewInstanceName('');
-    setIsOpen(false);
+  const handleCreate = async () => {
+    try {
+      await onCreateSession(newInstanceName);
+      setNewInstanceName('');
+      setIsOpen(false);
+    } catch {
+      // Mantém o nome digitado para permitir nova tentativa.
+    }
   };
 
   const getStatusBadge = (status: string) => {

@@ -34,14 +34,13 @@ Deno.serve(async (req) => {
 
     const { data: invite } = await service
       .from("convites_funcionario")
-      .select("id, clinica_id, email, nome, roles, expires_at, accepted_at")
+      .select("id, clinica_id, email, nome, roles, expires_at, accepted_at, accepted_by")
       .eq("token", token)
       .maybeSingle();
 
     if (!invite) return json({ success: false, error: "Convite inválido." }, 404);
-    if ((invite as any).accepted_at) return json({ success: false, error: "Convite já utilizado." }, 410);
-    if (new Date((invite as any).expires_at) < new Date()) {
-      return json({ success: false, error: "Convite expirado." }, 410);
+    if ((invite as any).accepted_at && action !== 'accept_authenticated') {
+      return json({ success: false, error: "Convite já utilizado." }, 410);
     }
 
     const { data: clinica } = await service
@@ -59,13 +58,6 @@ Deno.serve(async (req) => {
       });
     }
 
-    // action === "accept"
-    const password = String(body.password || "");
-    const telefone = body.telefone ? String(body.telefone) : null;
-    if (password.length < 8) {
-      return json({ success: false, error: "Senha deve ter pelo menos 8 caracteres." }, 400);
-    }
-
     const email = (invite as any).email as string;
     // ILIKE trata "_" e "%" como curinga; e-mail com "_" casaria outro usuário.
     const emailPadrao = email.replace(/[\\%_]/g, (c) => `\\${c}`);
@@ -80,36 +72,75 @@ Deno.serve(async (req) => {
     // pode ter sido enviado quando ainda havia vaga.
     const cotaUsuarios = await usuariosNoLimite(service, clinicaId);
     if (cotaUsuarios.atingido) {
-      return json({ success: false, error: `A clínica atingiu o limite de ${cotaUsuarios.limite} usuários ativos. Peça ao administrador para liberar uma vaga.` }, 403);
+      return json({ success: false, error: `A clínica atingiu o limite de ${cotaUsuarios.limite} assentos contabilizados. Fale com o suporte para revisar as contas consideradas ou solicitar ampliação do limite.` }, 403);
     }
 
-    // Cria ou recupera usuário
     let userId: string | null = null;
-    const { data: created, error: createErr } = await service.auth.admin.createUser({
-      email,
-      password,
-      email_confirm: true,
-      user_metadata: { nome, full_name: nome, telefone, invite_token: token },
-    });
+    const telefone = body.telefone ? String(body.telefone) : null;
+    if (action === 'accept_authenticated') {
+      const authorization = req.headers.get('Authorization') || '';
+      const accessToken = authorization.replace(/^Bearer\s+/i, '');
+      if (!accessToken) return json({ success: false, error: 'Entre na sua conta para aceitar este convite.' }, 401);
 
-    if (createErr) {
-      // Pode já existir → procurar. `listUsers()` sem paginação só devolve os
-      // primeiros 50 usuários da plataforma; procuramos primeiro pelo perfil
-      // e depois percorremos as páginas.
-      const { data: perfil } = await service
-        .from("profiles").select("id").ilike("email", emailPadrao).maybeSingle();
-      let existingId: string | null = (perfil as any)?.id ?? null;
-      for (let page = 1; !existingId && page <= 50; page++) {
-        const { data: list } = await service.auth.admin.listUsers({ page, perPage: 1000 });
-        const users = list?.users ?? [];
-        existingId = users.find((u) => u.email?.toLowerCase() === email.toLowerCase())?.id ?? null;
-        if (users.length < 1000) break;
+      const { data: authData, error: authError } = await service.auth.getUser(accessToken);
+      const authenticatedUser = authData?.user;
+      if (authError || !authenticatedUser) {
+        return json({ success: false, error: 'Sua sessão expirou. Entre novamente para aceitar o convite.' }, 401);
       }
-      if (!existingId) {
+      if (authenticatedUser.email?.toLowerCase() !== email.toLowerCase()) {
+        return json({ success: false, error: 'Entre com a conta do e-mail que recebeu o convite.' }, 403);
+      }
+
+      userId = authenticatedUser.id;
+      if ((invite as any).accepted_at) {
+        if ((invite as any).accepted_by === userId) {
+          return json({ success: true, user_id: userId, clinica_id: (invite as any).clinica_id, already_accepted: true });
+        }
+        return json({ success: false, error: 'Convite já utilizado.' }, 410);
+      }
+      if (new Date((invite as any).expires_at) < new Date()) {
+        return json({ success: false, error: 'Convite expirado.' }, 410);
+      }
+    } else {
+      if (action !== 'accept') return json({ success: false, error: 'Ação inválida.' }, 400);
+      if (new Date((invite as any).expires_at) < new Date()) {
+        return json({ success: false, error: 'Convite expirado.' }, 410);
+      }
+
+      const password = String(body.password || '');
+      if (password.length < 8) {
+        return json({ success: false, error: 'Senha deve ter pelo menos 8 caracteres.' }, 400);
+      }
+
+      const { data: created, error: createErr } = await service.auth.admin.createUser({
+        email,
+        password,
+        email_confirm: true,
+        user_metadata: { nome, full_name: nome, telefone, invite_token: token },
+      });
+
+      if (createErr) {
+        // Conta já existente: não consuma o convite nem altere seus papéis
+        // antes que a pessoa prove acesso com a senha da conta.
+        const { data: perfil } = await service
+          .from('profiles').select('id').ilike('email', emailPadrao).maybeSingle();
+        let existingId: string | null = (perfil as any)?.id ?? null;
+        for (let page = 1; !existingId && page <= 50; page++) {
+          const { data: list } = await service.auth.admin.listUsers({ page, perPage: 1000 });
+          const users = list?.users ?? [];
+          existingId = users.find((u) => u.email?.toLowerCase() === email.toLowerCase())?.id ?? null;
+          if (users.length < 1000) break;
+        }
+        if (existingId) {
+          return json({
+            success: false,
+            code: 'account_exists',
+            error: 'Este e-mail já tem uma conta. Entre com a senha existente para aceitar o convite.',
+          });
+        }
         return json({ success: false, error: createErr.message }, 400);
       }
-      userId = existingId;
-    } else {
+
       userId = created.user?.id ?? null;
     }
 
@@ -120,7 +151,7 @@ Deno.serve(async (req) => {
       id: userId,
       nome,
       email,
-      telefone,
+      ...(telefone ? { telefone } : {}),
       clinica_id: clinicaId,
     } as any, { onConflict: "id" });
 

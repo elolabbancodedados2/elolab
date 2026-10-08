@@ -32,25 +32,49 @@ Deno.serve(async (req) => {
     if (!brevoApiKey) throw new Error('BREVO_API_KEY nao configurada')
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
-    const { data: settings } = await supabase
+    const { data: settings, error: settingsError } = await supabase
       .from('automation_settings')
       .select('valor, ativo, clinica_id')
       .eq('chave', 'alerta_estoque_critico')
+    if (settingsError) throw new Error(`Erro ao carregar as configurações da automação: ${settingsError.message}`)
 
     // Disparo manual só alcança a clínica de quem clicou; o cron segue global.
     const clinicaAlvo = await clinicaDoChamador(req, supabase)
 
-    let consulta = supabase
-      .from('estoque')
-      .select('id, clinica_id, nome, quantidade, quantidade_minima, categoria, localizacao')
-      .not('quantidade_minima', 'is', null)
-    if (clinicaAlvo) consulta = consulta.eq('clinica_id', clinicaAlvo)
+    const limiteItens = 20_000
+    const tamanhoPagina = 1_000
+    const itensEstoque: EstoqueItem[] = []
+    while (itensEstoque.length < limiteItens) {
+      const inicio = itensEstoque.length
+      const fim = Math.min(inicio + tamanhoPagina, limiteItens) - 1
+      let consulta = supabase
+        .from('estoque')
+        .select('id, clinica_id, nome, quantidade, quantidade_minima, categoria, localizacao')
+        .not('quantidade_minima', 'is', null)
+        .order('clinica_id', { ascending: true })
+        .order('id', { ascending: true })
+        .range(inicio, fim)
+      if (clinicaAlvo) consulta = consulta.eq('clinica_id', clinicaAlvo)
 
-    const { data: itensCriticos, error: fetchError } = await consulta
+      const { data, error } = await consulta
+      if (error) throw new Error(`Erro ao buscar estoque: ${error.message}`)
+      const pagina = (data || []) as EstoqueItem[]
+      itensEstoque.push(...pagina)
+      if (pagina.length < fim - inicio + 1) break
+    }
 
-    if (fetchError) throw new Error(`Erro ao buscar estoque: ${fetchError.message}`)
+    if (itensEstoque.length === limiteItens) {
+      let consultaExtra = supabase.from('estoque').select('id')
+        .not('quantidade_minima', 'is', null)
+        .order('clinica_id', { ascending: true }).order('id', { ascending: true })
+        .range(limiteItens, limiteItens)
+      if (clinicaAlvo) consultaExtra = consultaExtra.eq('clinica_id', clinicaAlvo)
+      const { data: extra, error: extraError } = await consultaExtra
+      if (extraError) throw new Error(`Erro ao verificar o limite de estoque: ${extraError.message}`)
+      if (extra?.length) throw new Error(`A consulta de estoque excedeu o limite de ${limiteItens} itens. Use uma execução segmentada para evitar alertas incompletos.`)
+    }
 
-    const itensAlerta = ((itensCriticos || []) as EstoqueItem[]).filter((item) => (
+    const itensAlerta = itensEstoque.filter((item) => (
       Boolean(item.clinica_id)
       && isAutomationActive(settings || [], item.clinica_id)
       && item.quantidade <= (item.quantidade_minima || 0)
@@ -60,19 +84,21 @@ Deno.serve(async (req) => {
       return json({ success: true, message: 'Nenhum item critico', itens: 0 })
     }
 
-    const { data: adminRoles } = await supabase
+    const { data: adminRoles, error: adminRolesError } = await supabase
       .from('user_roles')
       .select('user_id')
       .eq('role', 'admin')
+    if (adminRolesError) throw new Error(`Erro ao consultar administradores: ${adminRolesError.message}`)
     const adminIds = (adminRoles || []).map((role) => role.user_id)
 
-    const { data: admins } = adminIds.length > 0
+    const { data: admins, error: adminsError } = adminIds.length > 0
       ? await supabase
         .from('profiles')
         .select('id, email, nome, clinica_id')
         .eq('ativo', true)
         .in('id', adminIds)
-      : { data: [] }
+      : { data: [], error: null }
+    if (adminsError) throw new Error(`Erro ao consultar contatos administrativos: ${adminsError.message}`)
 
     const clinicItems = groupByClinic(itensAlerta)
     let successCount = 0
@@ -82,7 +108,11 @@ Deno.serve(async (req) => {
     for (const [clinicId, items] of clinicItems) {
       const clinicAdmins = (admins || []).filter((admin) => admin.clinica_id === clinicId && admin.email)
       recipientCount += clinicAdmins.length
-      if (clinicAdmins.length === 0) continue
+      if (clinicAdmins.length === 0) {
+        errorCount++
+        console.error(`Clínica ${clinicId} tem itens críticos, mas nenhum administrador ativo com e-mail.`)
+        continue
+      }
 
       const rows = items.map((item) => `
         <tr>
@@ -125,7 +155,7 @@ Deno.serve(async (req) => {
     await supabase.from('automation_logs').insert({
       tipo: 'estoque',
       nome: 'Alerta de Estoque Critico',
-      status: errorCount === 0 ? 'sucesso' : 'parcial',
+      status: successCount === 0 && errorCount > 0 ? 'erro' : errorCount > 0 ? 'parcial' : 'sucesso',
       registros_processados: itensAlerta.length,
       registros_sucesso: successCount,
       registros_erro: errorCount,

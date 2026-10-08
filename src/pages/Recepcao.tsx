@@ -12,6 +12,7 @@ import { autoFinalizarAtendimento, autoConfirmarPagamento } from '@/lib/workflow
 import { checkinComCobranca } from '@/lib/checkinWithBilling';
 import { atomicConcludeQueue, atomicStartAppointment as autoIniciarAtendimento } from '@/lib/operationalTransitions';
 import { PainelDoDia } from '@/components/recepcao/PainelDoDia';
+import { ErrorState } from '@/components/ErrorState';
 import { AtendimentosEmAberto } from '@/components/recepcao/AtendimentosEmAberto';
 import { FinalizarAtendimentoDialog } from '@/components/fila/FinalizarAtendimentoDialog';
 import { useAgendamentosPeriodo, useMedicos, useSalas } from '@/hooks/useSupabaseData';
@@ -43,7 +44,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { todayDateOnly } from '@/lib/dateOnly';
+import { parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { pacienteCorresponde, normalizarTexto } from '@/lib/buscaPaciente';
 import { calcularSaldoPagamento, montarPagamentos, resumirPagamentos, somaDasExtras, validarValorRecebido } from '@/lib/pagamentoDividido';
 import { patientStep } from '@/lib/receptionWorkflow';
@@ -74,14 +75,26 @@ function isCaixaAbertoHoje(estado: CaixaEstadoPersistido | null | undefined, tod
   return Boolean(estado?.aberto === true && estado?.data === today);
 }
 
-function readCaixaEstadoLocal(userId?: string, clinicaId?: string, today = format(new Date(), 'yyyy-MM-dd')): CaixaEstadoPersistido | null {
+function lerCacheCaixa(chave: string): string | null {
+  try { return localStorage.getItem(chave); } catch { return null; }
+}
+
+function salvarCacheCaixa(chave: string, estado: CaixaEstadoPersistido): void {
+  try { localStorage.setItem(chave, JSON.stringify(estado)); } catch { /* cache opcional; o banco é a fonte de verdade */ }
+}
+
+function limparCacheCaixa(chave: string): void {
+  try { localStorage.removeItem(chave); } catch { /* cache opcional; o banco é a fonte de verdade */ }
+}
+
+function readCaixaEstadoLocal(userId?: string, clinicaId?: string, today = todaySaoPauloDateOnly()): CaixaEstadoPersistido | null {
   const keys = [
     userId ? `caixa_estado_${userId}` : null,
     clinicaId ? `caixa_estado_clinica_${clinicaId}` : null,
   ].filter(Boolean) as string[];
 
   for (const key of keys) {
-    const raw = localStorage.getItem(key);
+    const raw = lerCacheCaixa(key);
     if (!raw) continue;
     try {
       const estado = JSON.parse(raw) as CaixaEstadoPersistido;
@@ -110,6 +123,33 @@ function corEspera(ts: string | null): string {
   return 'text-destructive';
 }
 
+function horaDaClinica(instant: Date): string {
+  return new Intl.DateTimeFormat('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).format(instant);
+}
+
+function minutosDaHora(hora: string | null | undefined): number | null {
+  if (!hora || !/^(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/.test(hora)) return null;
+  const [h, m] = hora.split(':').map(Number);
+  return h * 60 + m;
+}
+
+function dataHoraDaClinica(instant: Date): string {
+  return new Intl.DateTimeFormat('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).format(instant).replace(',', ' às');
+}
+
 const fadeUp = {
   hidden: { opacity: 0, y: 12 },
   visible: { opacity: 1, y: 0, transition: { duration: 0.35 } },
@@ -122,7 +162,11 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { profile } = useSupabaseAuth();
-  const today = format(new Date(), 'yyyy-MM-dd');
+  const [today, setToday] = useState(() => todaySaoPauloDateOnly());
+  useEffect(() => {
+    const timer = window.setInterval(() => setToday(todaySaoPauloDateOnly()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
   const [search, setSearch] = useState('');
   const [activeTab, setActiveTab] = useState('todos');
   const [isProcessing, setIsProcessing] = useState(false);
@@ -181,32 +225,42 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
   // Data
   // Só o dia de hoje: a recepção não usa o histórico, e o realtime refaz esta
   // consulta a cada mudança na agenda — antes era a tabela inteira, com joins.
-  const { data: agendamentos = [], isLoading: loadingAg } = useAgendamentosPeriodo(today, today);
-  const { data: pacienteEncaixe } = usePacienteResumo(encaixePacienteId);
-  const { data: medicos = [] } = useMedicos();
+  const agendaHojeQuery = useAgendamentosPeriodo(today, today);
+  const { data: agendamentos = [], isLoading: loadingAg } = agendaHojeQuery;
+  const {
+    data: pacienteEncaixe,
+    isLoading: carregandoPacienteEncaixe,
+    isError: erroPacienteEncaixe,
+    refetch: recarregarPacienteEncaixe,
+  } = usePacienteResumo(encaixePacienteId);
+  const medicosQuery = useMedicos();
+  const { data: medicos = [] } = medicosQuery;
   const { data: salas = [] } = useSalas();
 
-  const { data: filaItems = [] } = useQuery({
+  const filaRecepcaoQuery = useQuery({
     queryKey: ['fila_atendimento', profile?.id ?? null, profile?.clinica_id ?? null],
     queryFn: async () => {
       if (!profile?.clinica_id) {
         console.warn('Clinic ID not found - cannot fetch fila_atendimento');
         return [];
       }
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('fila_atendimento')
         .select('*')
         .eq('clinica_id', profile.clinica_id)
         .order('posicao');
+      if (error) throw error;
       return data || [];
     },
   });
+  const filaItems = filaRecepcaoQuery.data ?? [];
 
   const agendamentoIdsHoje = useMemo(() => agendamentos.map((ag: any) => ag.id), [agendamentos]);
   const {
     data: lancamentos = [],
     isSuccess: lancamentosResolvidos,
     isError: lancamentosErro,
+    error: erroLancamentos,
   } = useQuery({
     queryKey: ['lancamentos_hoje', profile?.id ?? null, profile?.clinica_id ?? null, today, agendamentoIdsHoje],
     queryFn: async () => {
@@ -230,7 +284,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
     initialData: () => Boolean(readCaixaEstadoLocal(profile?.id, profile?.clinica_id)),
     queryFn: async () => {
       if (!profile?.clinica_id) return false;
-      const todayStr = format(new Date(), 'yyyy-MM-dd');
+      const todayStr = todaySaoPauloDateOnly();
 
       // localStorage is an initial display hint only. Every action re-reads the
       // database so a close from another terminal takes effect immediately.
@@ -247,16 +301,16 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
         const estado: CaixaEstadoPersistido = { aberto: true, data: todayStr, operador: profile?.nome };
         const clinicaKey = `caixa_estado_clinica_${profile.clinica_id}`;
         const userKey = `caixa_estado_${profile.id}`;
-        localStorage.setItem(clinicaKey, JSON.stringify(estado));
-        localStorage.setItem(userKey, JSON.stringify(estado));
+        salvarCacheCaixa(clinicaKey, estado);
+        salvarCacheCaixa(userKey, estado);
         return true;
       }
 
       // Caixa is closed — clear localStorage
       const clinicaKey = `caixa_estado_clinica_${profile.clinica_id}`;
       const userKey = `caixa_estado_${profile.id}`;
-      localStorage.removeItem(clinicaKey);
-      localStorage.removeItem(userKey);
+      limparCacheCaixa(clinicaKey);
+      limparCacheCaixa(userKey);
       return false;
     },
     enabled: !!profile?.clinica_id,
@@ -287,13 +341,13 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
 
   // Tipos de consulta ativos — usados pelo encaixe (o preço é resolvido no
   // check-in pelo createAutoBilling, igual ao fluxo agendado).
-  const { data: tiposConsulta = [] } = useQuery({
+  const tiposConsultaQuery = useQuery({
     queryKey: ['tipos-consulta-encaixe', profile?.clinica_id],
     enabled: !!profile?.clinica_id && encaixeOpen,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('tipos_consulta')
-        .select('id, nome, valor_particular')
+        .select('id, nome, valor_particular, duracao_minutos')
         .eq('clinica_id', profile!.clinica_id!)
         .eq('ativo', true)
         .order('nome');
@@ -301,11 +355,13 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
       return data ?? [];
     },
   });
+  const tiposConsulta = tiposConsultaQuery.data ?? [];
 
 
   // Realtime subscriptions
   useEffect(() => {
-    const ch = supabase
+    const clinicaId = profile?.clinica_id;
+    let channel = supabase
       .channel(canalUnico('recepcao-realtime'))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'agendamentos' }, () => {
         queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
@@ -318,10 +374,23 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'caixa_diario' }, () => {
         queryClient.invalidateQueries({ queryKey: ['caixa-estado-recepcao'] });
-      })
-      .subscribe();
+      });
+
+    // Recebimentos e estornos também podem ser registrados em outra tela ou
+    // por outro operador. Sem este evento, o resumo do balcão só se atualizava
+    // depois de uma ação local ou de recarregar a página.
+    if (clinicaId) {
+      channel = channel.on('postgres_changes', {
+        event: '*', schema: 'public', table: 'pagamentos',
+        filter: `clinica_id=eq.${clinicaId}`,
+      }, () => {
+        queryClient.invalidateQueries({ queryKey: ['pagamentos-do-dia', clinicaId] });
+      });
+    }
+
+    const ch = channel.subscribe();
     return () => { supabase.removeChannel(ch); };
-  }, [queryClient]);
+  }, [queryClient, profile?.clinica_id]);
 
   // Build unified patient list for today
   const todayAgendamentos = useMemo(() =>
@@ -351,6 +420,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
      if (activeTab === 'balcao') list = list.filter(e => e.step === 1);
      if (activeTab === 'atendimento') list = list.filter(e => e.step === 2 || e.step === 3);
      if (activeTab === 'concluido') list = list.filter(e => e.step === 4);
+     if (activeTab === 'faltou') list = list.filter(e => e.ag.status === 'faltou');
      if (search) {
        const q = normalizarTexto(search);
        list = list.filter(e =>
@@ -369,6 +439,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
      balcao: enriched.filter(e => e.step === 1).length,
      atendimento: enriched.filter(e => e.step === 2 || e.step === 3).length,
      concluido: enriched.filter(e => e.step === 4).length,
+     faltou: enriched.filter(e => e.ag.status === 'faltou').length,
    }), [enriched]);
 
   // ─── Actions ──────────────────────────────────────────
@@ -419,13 +490,24 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
    }
 
   async function handleChamar(filaId: string) {
+    if (!profile?.clinica_id) {
+      toast.error('Clínica não identificada. Atualize a sessão antes de chamar o paciente.');
+      return;
+    }
     setIsProcessing(true);
     try {
       // O erro era ignorado: a tela dizia "Paciente chamado!" enquanto a fila
       // continuava parada e o Painel TV não exibia nada.
-      const { error } = await supabase
-        .from('fila_atendimento').update({ status: 'chamado' }).eq('id', filaId);
+      const { data, error } = await supabase
+        .from('fila_atendimento').update({ status: 'chamado' }).eq('id', filaId)
+        .eq('clinica_id', profile.clinica_id)
+        .in('status', ['aguardando', 'chamado']).select('id').maybeSingle();
       if (error) throw error;
+      if (!data) {
+        queryClient.invalidateQueries({ queryKey: ['fila_atendimento'] });
+        toast.warning('A fila mudou antes da chamada.', { description: 'Atualize a tela e tente novamente.' });
+        return;
+      }
 
       queryClient.invalidateQueries({ queryKey: ['fila_atendimento'] });
       toast.success('Paciente chamado!');
@@ -433,8 +515,9 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
       const msg = err?.message || 'Erro desconhecido';
       console.error('handleChamar error:', err);
       toast.error('Erro ao chamar: ' + msg);
+    } finally {
+      setIsProcessing(false);
     }
-    setIsProcessing(false);
   }
 
   async function handleIniciarAtendimento(agId: string, filaId: string) {
@@ -562,6 +645,10 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
    }
 
     async function handleChamarBalcao(lanc: any, pac: any) {
+      if (!profile?.clinica_id) {
+        toast.error('Clínica não identificada. Atualize a sessão antes de chamar o paciente.');
+        return;
+      }
       setIsProcessing(true);
       try {
         // Gravar a chamada na fila: antes o chime e a voz tocavam SÓ na
@@ -571,14 +658,26 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
         const agId = lanc?.agendamento_id;
         if (agId) {
           const fila = (filaItems as any[]).find(f => f.agendamento_id === agId);
-          if (fila) {
-            const { error: filaErr } = await supabase
-              .from('fila_atendimento')
-              .update({ status: 'chamado' })
-              .eq('id', fila.id);
-            if (filaErr) throw filaErr;
+          if (!fila) {
             queryClient.invalidateQueries({ queryKey: ['fila_atendimento'] });
+            toast.warning('O paciente não está na fila de atendimento.', { description: 'Atualize a recepção antes de chamá-lo ao balcão.' });
+            return;
           }
+          const { data: chamada, error: filaErr } = await supabase
+            .from('fila_atendimento')
+            .update({ status: 'chamado' })
+            .eq('id', fila.id)
+            .eq('clinica_id', profile.clinica_id)
+            .in('status', ['aguardando', 'chamado'])
+            .select('id')
+            .maybeSingle();
+          if (filaErr) throw filaErr;
+          if (!chamada) {
+            queryClient.invalidateQueries({ queryKey: ['fila_atendimento'] });
+            toast.warning('A fila mudou antes da chamada.', { description: 'Atualize a tela e tente novamente.' });
+            return;
+          }
+          queryClient.invalidateQueries({ queryKey: ['fila_atendimento'] });
         }
 
         // Play a chime sound
@@ -607,7 +706,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
         }
 
         toast.success(`${pac?.nome} chamado ao balcão!`, {
-          description: 'Chamado no painel da sala de espera',
+          description: agId ? 'Chamado no painel da sala de espera' : 'Aviso sonoro reproduzido na recepção',
           action: {
             label: 'Receber agora',
             onClick: () => openPagamento(lanc, pac),
@@ -615,13 +714,14 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
         });
       } catch (e) {
         toast.error('Erro ao chamar paciente', { description: mensagemDeErro(e) });
+      } finally {
+        setIsProcessing(false);
       }
-      setIsProcessing(false);
     }
 
   function gerarComprovante(lanc: any, pac: any, forma: string, valorFinal: number, med?: any) {
     const formaLabel = FORMAS_PAGAMENTO.find(f => f.value === forma)?.label || forma;
-    const agora = format(new Date(), "dd/MM/yyyy 'às' HH:mm");
+    const agora = dataHoraDaClinica(new Date());
     printReceiptPdf({
       titulo: 'COMPROVANTE DE PAGAMENTO',
       dataHora: agora,
@@ -745,16 +845,21 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
       }
 
       // Send payment receipt to patient
+      let falhaNoRecibo: string | null = null;
       if (!pagamentoRepetido) {
         try {
-          const { error: receiptError } = await supabase.functions.invoke('payment-receipt', {
-            body: { lancamento_id: selectedLancamento.id }
+          const { data: recibo, error: receiptError } = await supabase.functions.invoke('payment-receipt', {
+            body: { lancamento_id: selectedLancamento.id, chave_idempotencia: chaveIdempotencia }
           });
-          if (receiptError && import.meta.env.DEV) {
-            console.warn('Comprovante não enviado:', receiptError.message);
+          if (receiptError) {
+            falhaNoRecibo = 'O pagamento foi confirmado, mas não foi possível enviar o recibo por e-mail.';
+            if (import.meta.env.DEV) console.warn('Comprovante não enviado:', receiptError.message);
+          } else if (['failed', 'not_configured'].includes(recibo?.emailStatus)) {
+            falhaNoRecibo = recibo?.message || 'O pagamento foi confirmado, mas o recibo não foi enviado por e-mail.';
           }
-        } catch (e) {
-          if (import.meta.env.DEV) console.log('Payment receipt notification skipped:', e);
+        } catch (erroRecibo) {
+          falhaNoRecibo = 'O pagamento foi confirmado, mas não foi possível confirmar o envio do recibo por e-mail.';
+          if (import.meta.env.DEV) console.log('Payment receipt notification skipped:', erroRecibo);
         }
       }
 
@@ -769,6 +874,12 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
       setSelectedLancamento(null);
       setSelectedPacienteBalcao(null);
       if (!pagamentoRepetido) toast.success(`Pagamento de ${valorFinal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} confirmado!`);
+      if (falhaNoRecibo) {
+        toast.warning('Pagamento confirmado; recibo não enviado', {
+          description: falhaNoRecibo,
+          duration: 10000,
+        });
+      }
 
       // Emit receipt automatically - find medico from enriched data
       if (!pagamentoRepetido) {
@@ -812,28 +923,34 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
   }
 
   async function handleEncaminharTriagem(agId: string, pacienteId: string) {
+    if (!profile?.clinica_id) {
+      toast.error('Não foi possível identificar a clínica para abrir a triagem. Atualize a sessão e tente novamente.');
+      return;
+    }
     setIsProcessing(true);
     try {
       // Check if triagem already exists for this agendamento
       const { data: existing, error: existingError } = await supabase
         .from('triagens')
         .select('id')
+        .eq('clinica_id', profile.clinica_id)
         .eq('agendamento_id', agId)
         .limit(1);
       if (existingError) throw existingError;
       if (existing && existing.length > 0) {
         toast.info('Triagem já registrada para este agendamento');
-        navigate('/triagem');
-        setIsProcessing(false);
+        navigate(`/triagem?${new URLSearchParams({ buscarPaciente: pacienteId }).toString()}`);
         return;
       }
       toast.success('Paciente encaminhado para triagem!', {
-        description: 'Acesse a página de Triagem para registrar os sinais vitais',
-        action: { label: 'Ir para Triagem', onClick: () => navigate('/triagem') },
+        description: 'A ficha será aberta com o paciente e o agendamento selecionados.',
       });
-      navigate(`/triagem`);
-    } catch (e) { toast.error('Erro ao encaminhar', { description: mensagemDeErro(e) }); }
-    setIsProcessing(false);
+      navigate(`/triagem?${new URLSearchParams({ paciente: pacienteId, agendamento: agId }).toString()}`);
+    } catch (e) {
+      toast.error('Erro ao encaminhar', { description: mensagemDeErro(e) });
+    } finally {
+      setIsProcessing(false);
+    }
   }
 
   /**
@@ -846,12 +963,93 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
       toast.error('Selecione paciente, médico e tipo de consulta.');
       return;
     }
+    if (carregandoPacienteEncaixe) {
+      toast.info('Aguarde o carregamento dos dados do paciente.');
+      return;
+    }
+    if (erroPacienteEncaixe) {
+      toast.error('Não foi possível confirmar os dados do paciente.', {
+        description: 'Tente carregar o paciente novamente antes de criar o encaixe.',
+      });
+      return;
+    }
+    if (!pacienteEncaixe) {
+      toast.error('Paciente não encontrado', {
+        description: 'Selecione novamente um paciente ativo da clínica.',
+      });
+      return;
+    }
+    if (!profile?.clinica_id) {
+      toast.error('Não foi possível identificar a clínica deste usuário.');
+      return;
+    }
+    if (medicosQuery.isError || tiposConsultaQuery.isError) {
+      toast.error('Não foi possível carregar os dados para o encaixe.', {
+        description: 'Atualize médicos e tipos de consulta antes de tentar novamente.',
+      });
+      return;
+    }
     setSalvandoEncaixe(true);
     try {
+      // A lista do diálogo pode ter ficado aberta enquanto o profissional era
+      // desativado em outra tela. Reconfirme no banco antes de criar o encaixe.
+      const { data: medicoAtivo, error: erroMedico } = await supabase
+        .from('medicos')
+        .select('id')
+        .eq('id', encaixeMedicoId)
+        .eq('clinica_id', profile.clinica_id)
+        .eq('ativo', true)
+        .maybeSingle();
+      if (erroMedico) throw erroMedico;
+      if (!medicoAtivo) throw new Error('Este médico foi desativado. Atualize a lista e selecione um profissional ativo.');
+
       const agora = new Date();
-      const fim = new Date(agora.getTime() + 30 * 60000);
-      const hhmm = (d: Date) =>
-        `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+      const tipoEscolhido = tiposConsulta.find((tipo: any) => tipo.nome === encaixeTipo);
+      const duracao = Number(tipoEscolhido?.duracao_minutos) > 0 ? Number(tipoEscolhido.duracao_minutos) : 30;
+      const fim = new Date(agora.getTime() + duracao * 60000);
+      const hhmm = (d: Date) => horaDaClinica(d);
+      const inicioMin = minutosDaHora(hhmm(agora));
+      const fimMin = minutosDaHora(hhmm(fim));
+      if (inicioMin === null || fimMin === null || fimMin <= inicioMin || fimMin >= 24 * 60) {
+        throw new Error('O encaixe precisa terminar antes da meia-noite.');
+      }
+
+      const [{ data: conflitos, error: erroConflitos }, { data: bloqueios, error: erroBloqueios }] = await Promise.all([
+        supabase.from('agendamentos')
+          .select('id, hora_inicio, hora_fim, status')
+          .eq('clinica_id', profile.clinica_id)
+          .eq('medico_id', encaixeMedicoId)
+          .eq('data', today),
+        (supabase.from('bloqueios_agenda' as any)
+          .select('id, hora_inicio, hora_fim, dia_inteiro, motivo, tipo')
+          .eq('clinica_id', profile.clinica_id)
+          .eq('medico_id', encaixeMedicoId)
+          .lte('data_inicio', today)
+          .gte('data_fim', today) as any),
+      ]);
+      if (erroConflitos) throw erroConflitos;
+      if (erroBloqueios) throw erroBloqueios;
+
+      const conflito = (conflitos || []).find((ag: any) => {
+        if (ag.status === 'cancelado' || ag.status === 'faltou') return false;
+        const inicioExistente = minutosDaHora(ag.hora_inicio);
+        const fimExistente = minutosDaHora(ag.hora_fim) ?? (inicioExistente === null ? null : inicioExistente + 30);
+        return inicioExistente !== null && fimExistente !== null && inicioExistente < fimMin && fimExistente > inicioMin;
+      });
+      if (conflito) {
+        throw new Error('Este médico já tem uma consulta neste horário. Atualize a agenda e escolha outro profissional.');
+      }
+
+      const bloqueio = (bloqueios || []).find((item: any) => {
+        if (item.dia_inteiro) return true;
+        const inicioBloqueio = minutosDaHora(item.hora_inicio);
+        const fimBloqueio = minutosDaHora(item.hora_fim);
+        return inicioBloqueio !== null && fimBloqueio !== null && inicioBloqueio < fimMin && fimBloqueio > inicioMin;
+      });
+      if (bloqueio) {
+        throw new Error(`Este médico está bloqueado neste horário${bloqueio.motivo ? `: ${bloqueio.motivo}` : bloqueio.tipo ? ` (${bloqueio.tipo})` : '.'}`);
+      }
+
       const { data: novo, error } = await supabase
         .from('agendamentos')
         .insert({
@@ -869,6 +1067,9 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
       if (error) throw error;
 
       const pac = pacienteEncaixe;
+      // A consulta já está persistida; mantê-la visível permite repetir o
+      // check-in se a criação da fila ou da cobrança falhar nesta etapa.
+      await queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
       setEncaixeOpen(false);
       setEncaixePacienteId('');
       setEncaixeMedicoId('');
@@ -878,7 +1079,12 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
       // item passado na mão porque a lista ainda não tem o agendamento novo.
       await handleCheckin(novo.id, { ag: novo, pac, med: null });
     } catch (e) {
-      toast.error('Não foi possível criar o encaixe', { description: mensagemDeErro(e) });
+      const mensagem = mensagemDeErro(e);
+      toast.error('Não foi possível criar o encaixe', {
+        description: (e as any)?.code === '23P01' || mensagem.includes('agendamentos_sem_sobreposicao')
+          ? 'O horário acabou de ser ocupado. Atualize a agenda e tente outro horário.'
+          : mensagem,
+      });
     } finally {
       setSalvandoEncaixe(false);
     }
@@ -891,7 +1097,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
       <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} className="space-y-1">
         <h1 className="text-2xl font-bold tracking-tight">Painel de Recepção</h1>
         <p className="text-muted-foreground text-sm">
-          {format(new Date(), "EEEE, d 'de' MMMM", { locale: ptBR })} — Fluxo completo do paciente
+          {format(parseDateOnly(today)!, "EEEE, d 'de' MMMM", { locale: ptBR })} — Fluxo completo do paciente
         </p>
       </motion.div>
 
@@ -955,11 +1161,20 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
             <TabsTrigger value="concluido" className="shrink-0 data-[state=active]:bg-background">
               <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> Concluído ({stats.concluido})
             </TabsTrigger>
+            <TabsTrigger value="faltou" className="shrink-0 data-[state=active]:bg-background">
+              <XCircle className="h-3.5 w-3.5 mr-1" /> Não compareceu ({stats.faltou})
+            </TabsTrigger>
           </TabsList>
         </div>
 
         <div className="mt-4">
-          {loadingAg ? (
+          {agendaHojeQuery.isError ? (
+            <ErrorState title="Não foi possível carregar a agenda de hoje" error={agendaHojeQuery.error} onRetry={() => void agendaHojeQuery.refetch()} />
+          ) : filaRecepcaoQuery.isError ? (
+            <ErrorState title="Não foi possível carregar a fila da recepção" description="O fluxo foi pausado para evitar registrar check-in ou pagamento com o estado errado." error={filaRecepcaoQuery.error} onRetry={() => void filaRecepcaoQuery.refetch()} />
+          ) : lancamentosErro ? (
+            <ErrorState title="Não foi possível carregar os lançamentos do dia" description="A recepção não consegue confirmar cobranças com segurança. Atualize antes de registrar pagamentos ou concluir o fluxo." error={erroLancamentos} onRetry={() => void queryClient.invalidateQueries({ queryKey: ['lancamentos_hoje'] })} />
+          ) : loadingAg || filaRecepcaoQuery.isLoading ? (
             <div className="flex items-center justify-center py-16">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
@@ -987,6 +1202,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
                        step === 2 && 'border-primary/30 shadow-md shadow-primary/5',
                        step === 3 && 'border-info/30 shadow-md shadow-info/5',
                        step === 4 && 'opacity-60',
+                       ag.status === 'faltou' && 'opacity-75',
                      )}>
                        <CardContent className="p-0">
                          <div className="flex items-stretch">
@@ -998,6 +1214,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
                              step === 2 && 'bg-primary',
                              step === 3 && 'bg-info',
                              step === 4 && 'bg-success',
+                             ag.status === 'faltou' && 'bg-muted-foreground/50',
                            )} />
 
                           <div className="flex-1 p-4">
@@ -1034,24 +1251,30 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
                                 </div>
                               </div>
 
-                              {/* Step progress pills */}
-                              <div className="hidden lg:flex items-center gap-1">
-                                {STEP_LABELS.map((label, i) => (
-                                  <div key={i} className="flex items-center gap-1">
-                                    <div className={cn(
-                                      'h-6 px-2.5 rounded-full flex items-center text-[10px] font-medium transition-colors',
-                                      i < step && 'bg-success/10 text-success',
-                                      i === step && 'bg-primary/10 text-primary ring-1 ring-primary/20',
-                                      i > step && 'bg-muted text-muted-foreground/50',
-                                    )}>
-                                      {i < step ? <Check className="h-3 w-3" /> : label}
+                              {/* Etapas ativas e estados terminais fora do fluxo */}
+                              {step >= 0 ? (
+                                <div className="hidden lg:flex items-center gap-1">
+                                  {STEP_LABELS.map((label, i) => (
+                                    <div key={i} className="flex items-center gap-1">
+                                      <div className={cn(
+                                        'h-6 px-2.5 rounded-full flex items-center text-[10px] font-medium transition-colors',
+                                        i < step && 'bg-success/10 text-success',
+                                        i === step && 'bg-primary/10 text-primary ring-1 ring-primary/20',
+                                        i > step && 'bg-muted text-muted-foreground/50',
+                                      )}>
+                                        {i < step ? <Check className="h-3 w-3" /> : label}
+                                      </div>
+                                      {i < STEP_LABELS.length - 1 && (
+                                        <ChevronRight className="h-3 w-3 text-muted-foreground/30" />
+                                      )}
                                     </div>
-                                    {i < STEP_LABELS.length - 1 && (
-                                      <ChevronRight className="h-3 w-3 text-muted-foreground/30" />
-                                    )}
-                                  </div>
-                                ))}
-                              </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <Badge variant="outline" className="shrink-0 text-muted-foreground">
+                                  {ag.status === 'faltou' ? 'Não compareceu' : 'Fora do fluxo'}
+                                </Badge>
+                              )}
 
                               {/* Wait time */}
                               {fila?.horario_chegada && step < 3 && (
@@ -1213,7 +1436,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
                                         </Button>
                                       )}
                                       <Button size="sm" variant="ghost" className="gap-1 text-xs h-7"
-                                        onClick={() => navigate(`/agenda?reagendar=${ag.paciente_id}`)}>
+                                        onClick={() => navigate(`/agenda?reagendar=${ag.id}`)}>
                                         <CalendarPlus className="h-3 w-3" /> Reagendar
                                       </Button>
                                       <Button size="sm" variant="ghost" className="gap-1 text-xs h-7"
@@ -1248,7 +1471,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
                                     </Badge>
                                     <div className="flex flex-wrap gap-1.5">
                                       <Button size="sm" variant="ghost" className="gap-1 text-xs h-7"
-                                        onClick={() => navigate(`/agenda?reagendar=${ag.paciente_id}`)}>
+                                        onClick={() => navigate(`/agenda?reagendar=${ag.id}`)}>
                                         <CalendarPlus className="h-3 w-3" /> Reagendar
                                       </Button>
                                       <Button size="sm" variant="ghost" className="gap-1 text-xs h-7"
@@ -1257,6 +1480,16 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
                                       </Button>
                                     </div>
                                   </div>
+                                )}
+                                {ag.status === 'faltou' && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="gap-1"
+                                    onClick={() => navigate(`/agenda?reagendar=${ag.id}`)}
+                                  >
+                                    <CalendarPlus className="h-3.5 w-3.5" /> Reagendar
+                                  </Button>
                                 )}
                               </div>
                             </div>
@@ -1273,7 +1506,9 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
       </Tabs>
 
       {/* Payment Dialog */}
-      <Dialog open={showPagamento} onOpenChange={setShowPagamento}>
+      <Dialog open={showPagamento} onOpenChange={open => {
+        if (open || !isProcessing) setShowPagamento(open);
+      }}>
         <DialogContent className="sm:max-w-md">
            <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -1325,8 +1560,10 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                   {FORMAS_PAGAMENTO.map(fp => (
                     <button
+                      type="button"
                       key={fp.value}
                       onClick={() => setFormaPagamento(fp.value)}
+                      aria-pressed={formaPagamento === fp.value}
                       className={cn(
                         'flex min-h-16 flex-col items-center justify-center gap-1 rounded-xl border-2 p-3 text-xs font-medium transition-all',
                         formaPagamento === fp.value
@@ -1389,12 +1626,13 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
                       </Select>
                       <Input
                         type="number" min={0} step="0.01" placeholder="R$"
+                        aria-label={`Valor da forma de pagamento adicional ${i + 1}`}
                         className="h-9 w-28"
                         value={extra.valor || ''}
                         onChange={e => setFormasExtras(fs => fs.map((f, j) => j === i ? { ...f, valor: Number(e.target.value) || 0 } : f))}
                       />
                       <Button
-                        variant="ghost" size="icon" aria-label="Remover forma de pagamento"
+                        type="button" variant="ghost" size="icon" aria-label={`Remover forma de pagamento adicional ${i + 1}`}
                         className="h-9 w-9 shrink-0 text-destructive"
                         onClick={() => setFormasExtras(fs => fs.filter((_, j) => j !== i))}
                       >
@@ -1407,7 +1645,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
 
               {formaPagamento && (
                 <Button
-                  variant="outline" size="sm" className="w-full gap-2 h-8 text-xs"
+                  type="button" variant="outline" size="sm" className="w-full gap-2 h-8 text-xs"
                   onClick={() => setFormasExtras(fs => [...fs, { forma: '', valor: 0 }])}
                 >
                   <DollarSign className="h-3.5 w-3.5" />
@@ -1452,7 +1690,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
             {!formaPagamento && (
               <p className="mr-auto self-center text-xs text-muted-foreground" role="status">Escolha a forma de pagamento para confirmar.</p>
             )}
-            <Button variant="outline" onClick={() => setShowPagamento(false)}>Cancelar</Button>
+            <Button type="button" variant="outline" disabled={isProcessing} onClick={() => setShowPagamento(false)}>Cancelar</Button>
             <Button
               onClick={handleConfirmarPagamento}
               disabled={!formaPagamento || isProcessing || !selectedLancamento || validarValorRecebido(
@@ -1525,31 +1763,49 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
             <div className="space-y-2">
               <Label>Paciente</Label>
               <PacienteCombobox value={encaixePacienteId} onChange={(id) => setEncaixePacienteId(id)} />
+              {encaixePacienteId && carregandoPacienteEncaixe && (
+                <p role="status" className="text-xs text-muted-foreground">Carregando os dados do paciente…</p>
+              )}
+              {encaixePacienteId && erroPacienteEncaixe && (
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p role="alert" className="text-xs text-destructive">Não foi possível confirmar os dados do paciente.</p>
+                  <Button type="button" variant="outline" size="sm" onClick={() => void recarregarPacienteEncaixe()} disabled={carregandoPacienteEncaixe}>
+                    Tentar novamente
+                  </Button>
+                </div>
+              )}
+              {encaixePacienteId && !carregandoPacienteEncaixe && !erroPacienteEncaixe && !pacienteEncaixe && (
+                <p role="alert" className="text-xs text-destructive">Paciente não encontrado nesta clínica. Selecione novamente.</p>
+              )}
               <p className="text-xs text-muted-foreground">
                 Não encontrou? Cadastre em Pacientes primeiro e volte aqui para o encaixe.
               </p>
             </div>
             <div className="space-y-2">
               <Label>Médico</Label>
-              <Select value={encaixeMedicoId} onValueChange={setEncaixeMedicoId}>
+              {medicosQuery.isError ? (
+                <ErrorState compact title="Não foi possível carregar os médicos" error={medicosQuery.error} onRetry={() => void medicosQuery.refetch()} />
+              ) : <Select value={encaixeMedicoId} onValueChange={setEncaixeMedicoId} disabled={medicosQuery.isLoading}>
                 <SelectTrigger><SelectValue placeholder="Selecionar médico..." /></SelectTrigger>
                 <SelectContent>
-                  {(medicos as any[]).map(m => (
+                  {(medicos as any[]).filter(m => m.ativo !== false).map(m => (
                     <SelectItem key={m.id} value={m.id}>{m.nome || m.crm}</SelectItem>
                   ))}
                 </SelectContent>
-              </Select>
+              </Select>}
             </div>
             <div className="space-y-2">
               <Label>Tipo de consulta</Label>
-              <Select value={encaixeTipo} onValueChange={setEncaixeTipo}>
+              {tiposConsultaQuery.isError ? (
+                <ErrorState compact title="Não foi possível carregar os tipos de consulta" error={tiposConsultaQuery.error} onRetry={() => void tiposConsultaQuery.refetch()} />
+              ) : <Select value={encaixeTipo} onValueChange={setEncaixeTipo} disabled={tiposConsultaQuery.isLoading}>
                 <SelectTrigger><SelectValue placeholder="Selecionar tipo..." /></SelectTrigger>
                 <SelectContent>
                   {(tiposConsulta as any[]).map(t => (
                     <SelectItem key={t.id} value={t.nome}>{t.nome}</SelectItem>
                   ))}
                 </SelectContent>
-              </Select>
+              </Select>}
             </div>
           </div>
           <DialogFooter>
@@ -1558,7 +1814,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
             </Button>
             <Button
               onClick={handleEncaixe}
-              disabled={salvandoEncaixe || !encaixePacienteId || !encaixeMedicoId || !encaixeTipo}
+              disabled={salvandoEncaixe || carregandoPacienteEncaixe || erroPacienteEncaixe || !pacienteEncaixe || medicosQuery.isLoading || tiposConsultaQuery.isLoading || medicosQuery.isError || tiposConsultaQuery.isError || !encaixePacienteId || !encaixeMedicoId || !encaixeTipo}
               className="gap-1.5"
             >
               {salvandoEncaixe ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserCheck className="h-4 w-4" />}

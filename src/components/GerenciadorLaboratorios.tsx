@@ -6,11 +6,13 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { Plus, Trash2, Edit2, Building2, Loader2 } from 'lucide-react';
 import { ListSkeleton } from '@/components/ui/loading-skeleton';
+import { ErrorState } from '@/components/ErrorState';
 
 interface Laboratorio {
   id: string;
@@ -30,6 +32,7 @@ export function GerenciadorLaboratorios() {
   const queryClient = useQueryClient();
   const [showDialog, setShowDialog] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [laboratorioParaExcluir, setLaboratorioParaExcluir] = useState<Laboratorio | null>(null);
   const [form, setForm] = useState({
     nome: '',
     cnpj: '',
@@ -38,19 +41,21 @@ export function GerenciadorLaboratorios() {
     endereco: '',
   });
 
-  const { data: laboratorios = [], isLoading } = useQuery({
+  const laboratoriosQuery = useQuery({
     queryKey: ['laboratorios', profile?.clinica_id],
     queryFn: async () => {
       if (!profile?.clinica_id) return [];
-      const { data } = await db
+      const { data, error } = await db
         .from('laboratorios')
         .select('*')
         .eq('clinica_id', profile.clinica_id)
         .order('nome');
+      if (error) throw error;
       return (data || []) as Laboratorio[];
     },
     enabled: !!profile?.clinica_id,
   });
+  const { data: laboratorios = [], isLoading } = laboratoriosQuery;
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -58,16 +63,23 @@ export function GerenciadorLaboratorios() {
       if (!form.nome.trim()) throw new Error('Nome obrigatório');
 
       if (editingId) {
-        const { error } = await db
+        const { data, error } = await db
           .from('laboratorios')
           .update(form)
-          .eq('id', editingId);
+          .eq('id', editingId)
+          .eq('clinica_id', profile.clinica_id)
+          .select('id')
+          .maybeSingle();
         if (error) throw error;
+        if (!data) throw new Error('Laboratório não encontrado na clínica atual. Atualize a lista e tente novamente.');
       } else {
-        const { error } = await db
+        const { data, error } = await db
           .from('laboratorios')
-          .insert({ ...form, clinica_id: profile.clinica_id });
+          .insert({ ...form, clinica_id: profile.clinica_id })
+          .select('id')
+          .single();
         if (error) throw error;
+        if (!data) throw new Error('O laboratório não foi confirmado pelo banco.');
       }
     },
     onSuccess: () => {
@@ -81,15 +93,21 @@ export function GerenciadorLaboratorios() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await db
+      if (!profile?.clinica_id) throw new Error('Clínica não identificada. Atualize a sessão e tente novamente.');
+      const { data, error } = await db
         .from('laboratorios')
         .delete()
-        .eq('id', id);
+        .eq('id', id)
+        .eq('clinica_id', profile.clinica_id)
+        .select('id')
+        .maybeSingle();
       if (error) throw error;
+      if (!data) throw new Error('O laboratório não foi encontrado na clínica atual. Atualize a lista.');
     },
     onSuccess: () => {
       toast.success('Laboratório removido!');
       queryClient.invalidateQueries({ queryKey: ['laboratorios'] });
+      setLaboratorioParaExcluir(null);
     },
     onError: (error: any) => toast.error(error.message),
   });
@@ -118,7 +136,9 @@ export function GerenciadorLaboratorios() {
           </Button>
         </div>
 
-        {isLoading ? (
+        {laboratoriosQuery.isError ? (
+          <ErrorState compact title="Não foi possível carregar os laboratórios" error={laboratoriosQuery.error} onRetry={() => void laboratoriosQuery.refetch()} />
+        ) : isLoading ? (
           <ListSkeleton items={3} />
         ) : laboratorios.length === 0 ? (
           <div className="text-center py-8 text-muted-foreground">
@@ -149,7 +169,7 @@ export function GerenciadorLaboratorios() {
                         <Button variant="ghost" size="icon" aria-label={`Editar laboratório ${lab.nome}`} onClick={() => handleEdit(lab)}>
                           <Edit2 className="h-4 w-4" />
                         </Button>
-                        <Button variant="ghost" size="icon" className="text-destructive" aria-label={`Excluir laboratório ${lab.nome}`} onClick={() => deleteMutation.mutate(lab.id)}>
+                        <Button variant="ghost" size="icon" className="text-destructive" aria-label={`Excluir laboratório ${lab.nome}`} onClick={() => setLaboratorioParaExcluir(lab)} disabled={deleteMutation.isPending}>
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
@@ -200,6 +220,28 @@ export function GerenciadorLaboratorios() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={!!laboratorioParaExcluir} onOpenChange={open => { if (!open && !deleteMutation.isPending) setLaboratorioParaExcluir(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir laboratório?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {laboratorioParaExcluir?.nome} será removido da lista. Os exames já vinculados permanecem no histórico, sem laboratório associado.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteMutation.isPending}>Manter laboratório</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={event => { event.preventDefault(); if (laboratorioParaExcluir) deleteMutation.mutate(laboratorioParaExcluir.id); }}
+              disabled={deleteMutation.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleteMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Confirmar exclusão
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

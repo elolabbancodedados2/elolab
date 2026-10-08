@@ -22,6 +22,9 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { ConvidarFuncionarioDialog } from '@/components/ConvidarFuncionarioDialog';
 import { SectionFallback } from '@/components/ui/loading-skeleton';
+import { ErrorState } from '@/components/ErrorState';
+import { normalizarTexto } from '@/lib/buscaPaciente';
+import { validateCPF } from '@/lib/formatters';
 
 interface FuncionarioWithRoles {
   id: string;
@@ -51,15 +54,6 @@ const DEFAULT_ROLE_CONFIG: { role: AppRole; label: string; description: string; 
   { role: 'recepcao', label: 'Recepção', description: 'Pacientes, agenda e fila', color: 'bg-accent text-accent-foreground', modules: ['Pacientes', 'Agenda', 'Fila', 'Lista de Espera'] },
   { role: 'enfermagem', label: 'Enfermagem', description: 'Triagem, sinais vitais e estoque', color: 'bg-success/10 text-success', modules: ['Triagem', 'Sinais Vitais', 'Estoque', 'Coletas'] },
   { role: 'financeiro', label: 'Financeiro', description: 'Contas, lançamentos e relatórios', color: 'bg-warning/10 text-warning', modules: ['Contas a Pagar', 'Contas a Receber', 'Caixa', 'Relatórios Financeiros'] },
-];
-
-const ALL_MODULES = [
-  'Prontuários', 'Prescrições', 'Atestados', 'Exames', 'Encaminhamentos',
-  'Pacientes', 'Agenda', 'Fila', 'Lista de Espera',
-  'Triagem', 'Sinais Vitais', 'Estoque', 'Coletas',
-  'Contas a Pagar', 'Contas a Receber', 'Caixa', 'Relatórios Financeiros',
-  'Laboratório', 'Laudos', 'Convênios', 'Chat Interno', 'Tarefas',
-  'Configurações', 'Funcionários', 'Salas', 'Analytics',
 ];
 
 const TIPO_FUNCIONARIO_CONFIG: { value: string; label: string; registroLabel?: string; registroTipo?: string }[] = [
@@ -124,20 +118,22 @@ export default function Funcionarios() {
   const queryClient = useQueryClient();
 
   // Load custom role config from configuracoes_clinica
-  const { data: savedRoleConfig } = useQuery({
+  const roleConfigQuery = useQuery({
     queryKey: ['role-customization', profile?.clinica_id],
     queryFn: async () => {
       if (!profile?.clinica_id) return null;
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('configuracoes_clinica')
         .select('valor')
         .eq('chave', 'role_customization')
         .eq('clinica_id', profile.clinica_id)
         .maybeSingle();
+      if (error) throw error;
       return data?.valor as unknown as RoleCustomizations | null;
     },
     enabled: !!profile?.clinica_id,
   });
+  const savedRoleConfig = roleConfigQuery.data;
 
   useEffect(() => {
     if (savedRoleConfig) {
@@ -160,19 +156,22 @@ export default function Funcionarios() {
   const saveCustomizationMutation = useMutation({
     mutationFn: async (customizations: RoleCustomizations) => {
       if (!profile?.id || !profile?.clinica_id) throw new Error('Sem perfil');
-      const { data: existing } = await supabase
+      if (roleConfigQuery.isError || roleConfigQuery.isLoading) throw new Error('Carregue a configuração atual antes de salvar.');
+      const { data: existing, error: readError } = await supabase
         .from('configuracoes_clinica')
         .select('id')
         .eq('chave', 'role_customization')
         .eq('clinica_id', profile.clinica_id)
         .maybeSingle();
+      if (readError) throw readError;
 
       if (existing) {
-        const { error } = await supabase
+        const { data, error } = await supabase
           .from('configuracoes_clinica')
           .update({ valor: customizations as any })
-          .eq('id', existing.id);
+          .eq('id', existing.id).eq('clinica_id', profile.clinica_id).select('id').maybeSingle();
         if (error) throw error;
+        if (!data) throw new Error('Configuração não encontrada ou sem permissão para alterar.');
       } else {
         const { error } = await supabase
           .from('configuracoes_clinica')
@@ -180,9 +179,10 @@ export default function Funcionarios() {
         if (error) throw error;
       }
     },
-    onSuccess: () => {
+    onSuccess: (_result, customizations) => {
+      setCustomRoles(customizations);
       queryClient.invalidateQueries({ queryKey: ['role-customization'] });
-      toast.success('Permissões personalizadas salvas!');
+      toast.success('Nomes e descrições dos perfis salvos!');
       setIsCustomizeOpen(false);
     },
     onError: (e: any) => toast.error('Erro ao salvar: ' + e.message),
@@ -204,7 +204,6 @@ export default function Funcionarios() {
   };
 
   const handleSaveCustomization = () => {
-    setCustomRoles(editingCustomRoles);
     saveCustomizationMutation.mutate(editingCustomRoles);
   };
 
@@ -221,20 +220,7 @@ export default function Funcionarios() {
     setEditingCustomRoles(reset);
   };
 
-  const toggleModule = (role: string, mod: string) => {
-    setEditingCustomRoles(prev => {
-      const current = prev[role];
-      if (!current) return prev;
-      const modules = current.modules.includes(mod)
-        ? current.modules.filter(m => m !== mod)
-        : [...current.modules, mod];
-      return { ...prev, [role]: { ...current, modules } };
-    });
-  };
-
-
-
-  const { data: funcionarios = [], isLoading } = useQuery({
+  const funcionariosQuery = useQuery({
     queryKey: ['funcionarios-with-roles', user?.id ?? null, profile?.clinica_id ?? null],
     queryFn: async () => {
       const { data: funcs, error: funcsError } = await supabase
@@ -252,19 +238,22 @@ export default function Funcionarios() {
     },
     enabled: !!user && !!profile?.clinica_id,
   });
+  const funcionarios = funcionariosQuery.data ?? [];
+  const { isLoading } = funcionariosQuery;
 
   const createMutation = useMutation({
     mutationFn: async (data: FormDataType) => {
+      if (!profile?.clinica_id) throw new Error('Clínica não identificada. Recarregue a página e tente novamente.');
       const { data: newFunc, error: funcError } = await supabase
         .from('funcionarios')
         .insert({
           nome: data.nome,
-          email: data.email,
+          email: data.email.trim().toLocaleLowerCase('pt-BR'),
           telefone: data.telefone || null,
           cargo: data.cargo || null,
           departamento: data.departamento || null,
           ativo: data.ativo,
-          clinica_id: profile?.clinica_id || null,
+          clinica_id: profile.clinica_id,
           tipo_funcionario: data.tipo_funcionario || 'atendente',
           registro_profissional: data.registro_profissional || null,
           tipo_registro: data.tipo_registro || null,
@@ -274,47 +263,35 @@ export default function Funcionarios() {
           cpf: data.cpf || null,
           carga_horaria: data.carga_horaria ? parseInt(data.carga_horaria) : null,
           turno: data.turno || 'integral',
-          pending_roles: data.selectedRoles,
         } as any)
         .select()
         .single();
       if (funcError) throw funcError;
 
-      // If employee already has an account, sync user_roles too
-      if (data.email) {
-        const { data: profiles } = await supabase
-          .from('profiles')
-          .select('id')
-          .eq('email', data.email)
-          .maybeSingle();
-        if (profiles?.id) {
-          // Vincula a conta existente ao funcionário recém-criado e define os
-          // papéis. Mesma proteção do fluxo de edição: se a reinserção falhar
-          // depois do delete, a pessoa fica sem nenhum acesso.
-          const { error: vincErr } = await supabase
-            .from('funcionarios').update({ user_id: profiles.id } as any).eq('id', newFunc.id);
-          if (vincErr) throw vincErr;
-
-          const { data: papeisAtuais } = await supabase
-            .from('user_roles').select('role').eq('user_id', profiles.id);
-
-          const { error: delErr } = await supabase
-            .from('user_roles').delete().eq('user_id', profiles.id);
-          if (delErr) throw delErr;
-
-          if (data.selectedRoles.length > 0) {
-            const { error: insErr } = await supabase
-              .from('user_roles')
-              .insert(data.selectedRoles.map(role => ({ user_id: profiles.id, role })));
-            if (insErr) {
-              if (papeisAtuais?.length) {
-                await supabase.from('user_roles')
-                  .insert(papeisAtuais.map(p => ({ user_id: profiles.id, role: p.role })));
-              }
-              throw insErr;
-            }
-          }
+      try {
+        // If employee already has an account, link it and sync its roles atomically.
+        let linkedUserId: string | null = null;
+        if (data.email) {
+          const { data: profiles, error: profileError } = await supabase
+            .from('profiles')
+            .select('id')
+            .eq('email', data.email.trim().toLocaleLowerCase('pt-BR'))
+            .eq('clinica_id', profile.clinica_id)
+            .maybeSingle();
+          if (profileError) throw profileError;
+          linkedUserId = profiles?.id ?? null;
         }
+        const { error: rolesError } = await supabase.rpc('sync_employee_roles' as any, {
+          _funcionario_id: newFunc.id,
+          _user_id: linkedUserId,
+          _roles: data.selectedRoles,
+          _ativo: data.ativo,
+        } as any);
+        if (rolesError) throw rolesError;
+      } catch (error) {
+        const partialError = new Error(error instanceof Error ? error.message : String(error)) as Error & { funcionarioCriado?: boolean };
+        partialError.funcionarioCriado = true;
+        throw partialError;
       }
       return newFunc;
     },
@@ -323,20 +300,28 @@ export default function Funcionarios() {
       toast.success('Funcionário cadastrado com sucesso!');
       setIsDialogOpen(false);
     },
-    onError: (error: any) => toast.error('Erro ao cadastrar: ' + error.message),
+    onError: (error: any) => {
+      if (error?.funcionarioCriado) {
+        queryClient.invalidateQueries({ queryKey: ['funcionarios-with-roles'] });
+        setIsDialogOpen(false);
+        toast.warning('Funcionário cadastrado, mas as permissões não foram sincronizadas.', {
+          description: 'O registro está na lista. Abra a edição e salve novamente para concluir o vínculo e as permissões.',
+        });
+      } else toast.error('Erro ao cadastrar: ' + error.message);
+    },
   });
 
   const updateMutation = useMutation({
     mutationFn: async ({ id, data, userId }: { id: string; data: FormDataType; userId: string | null }) => {
-      const { error: funcError } = await supabase
+      if (!profile?.clinica_id) throw new Error('Clínica não identificada.');
+      const { data: updatedFunc, error: funcError } = await supabase
         .from('funcionarios')
         .update({
           nome: data.nome,
-          email: data.email,
+          email: data.email.trim().toLocaleLowerCase('pt-BR'),
           telefone: data.telefone || null,
           cargo: data.cargo || null,
           departamento: data.departamento || null,
-          ativo: data.ativo,
           tipo_funcionario: data.tipo_funcionario || 'atendente',
           registro_profissional: data.registro_profissional || null,
           tipo_registro: data.tipo_registro || null,
@@ -346,42 +331,35 @@ export default function Funcionarios() {
           cpf: data.cpf || null,
           carga_horaria: data.carga_horaria ? parseInt(data.carga_horaria) : null,
           turno: data.turno || 'integral',
-          pending_roles: data.selectedRoles,
         } as any)
-        .eq('id', id);
+        .eq('id', id).eq('clinica_id', profile.clinica_id).select('id').maybeSingle();
       if (funcError) throw funcError;
+      if (!updatedFunc) throw new Error('Funcionário não encontrado ou sem permissão para alterar.');
 
-      // Sync user_roles if employee has an account
-      //
-      // Apaga tudo e reinsere. Os erros eram ignorados: se o insert falhasse
-      // depois do delete, a pessoa ficava SEM NENHUM papel — trancada para fora
-      // do sistema — e a tela anunciava sucesso. Num turno, isso é um médico
-      // perdendo acesso ao prontuário no meio do atendimento.
-      //
-      // Guardamos os papéis atuais antes de apagar, para restaurá-los se a
-      // reinserção falhar.
-      if (userId) {
-        const { data: papeisAtuais } = await supabase
-          .from('user_roles').select('role').eq('user_id', userId);
-
-        const { error: delErr } = await supabase
-          .from('user_roles').delete().eq('user_id', userId);
-        if (delErr) throw delErr;
-
-        if (data.selectedRoles.length > 0) {
-          const { error: insErr } = await supabase
-            .from('user_roles')
-            .insert(data.selectedRoles.map(role => ({ user_id: userId, role })));
-
-          if (insErr) {
-            // Devolve o que havia antes para não deixar a conta sem acesso
-            if (papeisAtuais?.length) {
-              await supabase.from('user_roles')
-                .insert(papeisAtuais.map(p => ({ user_id: userId, role: p.role })));
-            }
-            throw insErr;
-          }
+      try {
+        let linkedUserId = userId;
+        if (!linkedUserId && data.email) {
+          const { data: profiles, error: profileError } = await supabase
+            .from('profiles')
+            .select('id')
+            .eq('email', data.email.trim().toLocaleLowerCase('pt-BR'))
+            .eq('clinica_id', profile.clinica_id)
+            .maybeSingle();
+          if (profileError) throw profileError;
+          linkedUserId = profiles?.id ?? null;
         }
+        // O RPC troca os papéis numa única transação e preserva o último admin.
+        const { error: rolesError } = await supabase.rpc('sync_employee_roles' as any, {
+          _funcionario_id: id,
+          _user_id: linkedUserId,
+          _roles: data.selectedRoles,
+          _ativo: data.ativo,
+        } as any);
+        if (rolesError) throw rolesError;
+      } catch (error) {
+        const partialError = new Error(error instanceof Error ? error.message : String(error)) as Error & { funcionarioAtualizado?: boolean };
+        partialError.funcionarioAtualizado = true;
+        throw partialError;
       }
     },
     onSuccess: () => {
@@ -389,12 +367,22 @@ export default function Funcionarios() {
       toast.success('Funcionário atualizado com sucesso!');
       setIsDialogOpen(false);
     },
-    onError: (error: any) => toast.error('Erro ao atualizar: ' + error.message),
+    onError: (error: any) => {
+      if (error?.funcionarioAtualizado) {
+        queryClient.invalidateQueries({ queryKey: ['funcionarios-with-roles'] });
+        toast.warning('Dados atualizados, mas as permissões não foram sincronizadas.', {
+          description: 'Revise o funcionário na lista e salve novamente para concluir o vínculo e as permissões.',
+        });
+      } else toast.error('Erro ao atualizar: ' + error.message);
+    },
   });
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from('funcionarios').delete().eq('id', id);
+      if (!profile?.clinica_id) throw new Error('Clínica não identificada.');
+      const { error } = await supabase.rpc('excluir_funcionario_revogando_acesso' as any, {
+        p_funcionario_id: id,
+      } as any);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -407,6 +395,7 @@ export default function Funcionarios() {
 
   const inviteMutation = useMutation({
     mutationFn: async (func: FuncionarioWithRoles) => {
+      if (!func.ativo) throw new Error('Ative o funcionário antes de enviar o convite.');
       if (!func.email) throw new Error('Funcionário não possui e-mail cadastrado');
       if (!func.roles?.length) {
         throw new Error(
@@ -430,8 +419,14 @@ export default function Funcionarios() {
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['funcionarios-with-roles'] });
-      const codigo = data?.inviteCode || data?.token;
-      toast.success(codigo ? `Convite enviado! Código: ${codigo}` : 'Convite enviado com sucesso!');
+      queryClient.invalidateQueries({ queryKey: ['convites-list'] });
+      if (data?.emailStatus === 'sent') {
+        toast.success('Convite enviado por e-mail.');
+      } else {
+        toast.info('Convite criado, mas o e-mail não foi enviado.', {
+          description: 'Acesse a lista de convites para copiar o link e compartilhar.',
+        });
+      }
     },
     onError: (error: any) => toast.error('Erro ao enviar convite: ' + error.message),
   });
@@ -441,9 +436,11 @@ export default function Funcionarios() {
     inviteMutation.mutate(func);
   };
 
+  const salvandoFuncionario = createMutation.isPending || updateMutation.isPending;
+  const normalizedSearch = normalizarTexto(searchTerm.trim());
   const filteredFuncionarios = funcionarios.filter(f =>
-    f.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    f.email?.toLowerCase().includes(searchTerm.toLowerCase())
+    !normalizedSearch ||
+    normalizarTexto(`${f.nome} ${f.email || ''}`).includes(normalizedSearch)
   );
 
   const handleOpenDialog = (func?: FuncionarioWithRoles) => {
@@ -472,12 +469,23 @@ export default function Funcionarios() {
   };
 
   const handleSave = () => {
-    if (!formData.nome) { toast.error('Preencha o nome.'); return; }
-    if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) { toast.error('E-mail inválido.'); return; }
+    const normalizedData = {
+      ...formData,
+      nome: formData.nome.trim(),
+      email: formData.email.trim(),
+    };
+    if (!normalizedData.nome) { toast.error('Preencha o nome.'); return; }
+    if (normalizedData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedData.email)) { toast.error('E-mail inválido.'); return; }
+    if (normalizedData.cpf.trim() && !validateCPF(normalizedData.cpf)) { toast.error('CPF inválido.'); return; }
+    const registroExigido = TIPO_FUNCIONARIO_CONFIG.find(tipo => tipo.value === normalizedData.tipo_funcionario)?.registroLabel;
+    if (registroExigido && !normalizedData.registro_profissional.trim()) {
+      toast.error(`Informe o número do ${registroExigido}.`);
+      return;
+    }
     if (editingFunc) {
-      updateMutation.mutate({ id: editingFunc.id, data: formData, userId: editingFunc.user_id });
+      updateMutation.mutate({ id: editingFunc.id, data: normalizedData, userId: editingFunc.user_id });
     } else {
-      createMutation.mutate(formData);
+      createMutation.mutate(normalizedData);
     }
   };
 
@@ -498,6 +506,7 @@ export default function Funcionarios() {
     setFormData(prev => ({
       ...prev,
       tipo_funcionario: tipo,
+      registro_profissional: '',
       tipo_registro: config?.registroTipo || '',
       cargo: config?.label || prev.cargo,
     }));
@@ -512,6 +521,16 @@ export default function Funcionarios() {
 
   if (isLoading) {
     return <SectionFallback rows={6} />;
+  }
+  if (!profile?.clinica_id) {
+    return <ErrorState title="Clínica não identificada" description="Não é possível carregar ou alterar funcionários sem identificar a clínica atual." />;
+  }
+
+  if (funcionariosQuery.isError) {
+    return <ErrorState title="Não foi possível carregar a equipe" error={funcionariosQuery.error} onRetry={() => void funcionariosQuery.refetch()} />;
+  }
+  if (roleConfigQuery.isError) {
+    return <ErrorState title="Não foi possível carregar as configurações de função" description="A tela foi pausada para evitar salvar rótulos com base em uma configuração incompleta." error={roleConfigQuery.error} onRetry={() => void roleConfigQuery.refetch()} />;
   }
 
   return (
@@ -530,7 +549,7 @@ export default function Funcionarios() {
             }
           />
           <Button variant="outline" onClick={handleOpenCustomize} className="gap-2">
-            <Settings2 className="h-4 w-4" />Personalizar Permissões
+            <Settings2 className="h-4 w-4" />Personalizar perfis
           </Button>
           <Button onClick={() => handleOpenDialog()} className="gap-2">
             <Plus className="h-4 w-4" />Novo Funcionário
@@ -564,9 +583,21 @@ export default function Funcionarios() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredFuncionarios.length === 0 ? (
+              {filteredFuncionarios.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">Nenhum funcionário encontrado</TableCell>
+                    <TableCell colSpan={6} className="text-center py-8">
+                      {normalizedSearch ? (
+                        <div className="space-y-2">
+                          <p className="text-muted-foreground">Nenhum funcionário corresponde a “{searchTerm.trim()}”.</p>
+                          <Button type="button" variant="link" onClick={() => setSearchTerm('')}>Limpar busca</Button>
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          <p className="text-muted-foreground">Nenhum funcionário cadastrado nesta clínica.</p>
+                          <Button type="button" variant="link" onClick={() => handleOpenDialog()}>Cadastrar funcionário</Button>
+                        </div>
+                      )}
+                    </TableCell>
                   </TableRow>
                 ) : (
                   filteredFuncionarios.map((func) => {
@@ -617,14 +648,18 @@ export default function Funcionarios() {
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-1">
-                            {!func.user_id && func.email && (
+                            {!func.user_id && func.email && func.ativo && (
                               <Tooltip>
                                 <TooltipTrigger asChild>
-                                  <Button aria-label="Enviar convite por e-mail" size="icon" variant="ghost" onClick={() => handleSendInvitation(func)} disabled={inviteMutation.isPending}>
-                                    {inviteMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4 text-primary" />}
-                                  </Button>
+                                  <span className="inline-flex" tabIndex={func.roles.length === 0 ? 0 : undefined}>
+                                    <Button aria-label={func.roles.length > 0 ? 'Enviar convite por e-mail' : 'Defina uma função antes de enviar convite'} size="icon" variant="ghost" onClick={() => handleSendInvitation(func)} disabled={inviteMutation.isPending || func.roles.length === 0}>
+                                      {inviteMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4 text-primary" />}
+                                    </Button>
+                                  </span>
                                 </TooltipTrigger>
-                                <TooltipContent>Enviar convite por e-mail</TooltipContent>
+                                <TooltipContent>
+                                  {func.roles.length > 0 ? 'Enviar convite por e-mail' : 'Defina e salve ao menos uma função antes de enviar o convite.'}
+                                </TooltipContent>
                               </Tooltip>
                             )}
                             {func.user_id && (
@@ -652,7 +687,7 @@ export default function Funcionarios() {
       </Card>
 
       {/* Dialog de Cadastro/Edição */}
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+      <Dialog open={isDialogOpen} onOpenChange={open => { if (open || !salvandoFuncionario) setIsDialogOpen(open); }}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingFunc ? 'Editar Funcionário' : 'Novo Funcionário'}</DialogTitle>
@@ -661,6 +696,7 @@ export default function Funcionarios() {
             </DialogDescription>
           </DialogHeader>
 
+          <fieldset disabled={salvandoFuncionario} className="contents">
           <div className="space-y-6 py-4">
             {/* Tipo de Profissional */}
             <div className="space-y-2">
@@ -700,8 +736,13 @@ export default function Funcionarios() {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label className="text-xs">E-mail</Label>
+                  <Label className="text-xs">E-mail de contato / convite</Label>
                   <Input type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} placeholder="email@clinica.com" />
+                  {editingFunc?.user_id && (
+                    <p className="text-xs text-muted-foreground">
+                      Alterar este contato não troca o e-mail usado para entrar na conta vinculada.
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <Label className="text-xs">Telefone</Label>
@@ -820,11 +861,12 @@ export default function Funcionarios() {
               </div>
             </div>
           </div>
+          </fieldset>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsDialogOpen(false)}>Cancelar</Button>
-            <Button onClick={handleSave} disabled={createMutation.isPending || updateMutation.isPending}>
-              {(createMutation.isPending || updateMutation.isPending) && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+            <Button variant="outline" onClick={() => setIsDialogOpen(false)} disabled={salvandoFuncionario}>Cancelar</Button>
+            <Button onClick={handleSave} disabled={salvandoFuncionario}>
+              {salvandoFuncionario && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               {editingFunc ? 'Salvar' : 'Cadastrar'}
             </Button>
           </DialogFooter>
@@ -846,15 +888,15 @@ export default function Funcionarios() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Dialog Personalizar Permissões */}
+      {/* Dialog de rótulos e descrições dos perfis */}
       <Dialog open={isCustomizeOpen} onOpenChange={setIsCustomizeOpen}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Settings2 className="h-5 w-5" />Personalizar Permissões de Acesso
+              <Settings2 className="h-5 w-5" />Personalizar perfis
             </DialogTitle>
             <DialogDescription>
-              Edite os nomes, descrições e módulos de cada nível de permissão da sua clínica.
+              Personalize os nomes e as descrições dos perfis. O acesso efetivo continua definido pelas funções do sistema.
             </DialogDescription>
           </DialogHeader>
 
@@ -899,21 +941,7 @@ export default function Funcionarios() {
                     </div>
                   </div>
 
-                  <div className="space-y-2">
-                    <Label className="text-xs font-medium">Módulos com acesso</Label>
-                    <div className="flex flex-wrap gap-2">
-                      {ALL_MODULES.map(mod => (
-                        <Badge
-                          key={mod}
-                          variant={custom.modules.includes(mod) ? 'default' : 'outline'}
-                          className="cursor-pointer transition-all hover:scale-105 select-none"
-                          onClick={() => toggleModule(def.role, mod)}
-                        >
-                          {mod}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
+                  <p className="text-xs text-muted-foreground">As permissões de acesso são aplicadas pela função selecionada no cadastro do funcionário. Esta personalização não concede nem remove acesso a módulos.</p>
                 </motion.div>
               );
             })}
@@ -921,12 +949,12 @@ export default function Funcionarios() {
 
           <DialogFooter className="gap-2">
             <Button variant="ghost" onClick={handleResetCustomization} className="gap-2 mr-auto">
-              <RotateCcw className="h-4 w-4" />Restaurar Padrão
+              <RotateCcw className="h-4 w-4" />Restaurar nomes padrão
             </Button>
             <Button variant="outline" onClick={() => setIsCustomizeOpen(false)}>Cancelar</Button>
             <Button onClick={handleSaveCustomization} disabled={saveCustomizationMutation.isPending} className="gap-2">
               {saveCustomizationMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-              Salvar Personalização
+              Salvar nomes e descrições
             </Button>
           </DialogFooter>
         </DialogContent>

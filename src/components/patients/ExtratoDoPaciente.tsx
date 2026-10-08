@@ -15,7 +15,7 @@ import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Wallet, AlertTriangle, CheckCircle2, ChevronRight, ChevronDown } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { PagamentosDaCobranca } from './PagamentosDaCobranca';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -23,6 +23,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { formatCurrency } from '@/lib/formatters';
 import { saldoDevedor } from '@/lib/liberacaoAtendimento';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
+import { todaySaoPauloDateOnly } from '@/lib/dateOnly';
 
 interface Props {
   pacienteId: string;
@@ -58,6 +59,11 @@ function faltaNesta(c: Cobranca): number {
 
 export function ExtratoDoPaciente({ pacienteId }: Props) {
   const { user, profile } = useSupabaseAuth();
+  const [hoje, setHoje] = useState(() => todaySaoPauloDateOnly());
+  useEffect(() => {
+    const timer = window.setInterval(() => setHoje(todaySaoPauloDateOnly()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
   // Uma cobrança por vez: abrir todas encheria a ficha de detalhe que ninguém
   // pediu.
   const [aberta, setAberta] = useState<string | null>(null);
@@ -83,8 +89,6 @@ export function ExtratoDoPaciente({ pacienteId }: Props) {
   const emAberto = vivas.filter(c => faltaNesta(c) > 0.009);
   const totalDevido = emAberto.reduce((s, c) => s + faltaNesta(c), 0);
   const totalPago = vivas.reduce((s, c) => s + (Number(c.valor_pago) || 0), 0);
-
-  const hoje = new Date().toISOString().slice(0, 10);
 
   if (isLoading) return <Skeleton className="h-40" />;
 

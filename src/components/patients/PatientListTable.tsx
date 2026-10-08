@@ -1,6 +1,6 @@
 import { memo } from 'react';
 import { motion } from 'framer-motion';
-import { Eye, Edit, Trash2, Link, Phone, Mail, Users } from 'lucide-react';
+import { Eye, Edit, Trash2, Link, Phone, Mail, Users, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -8,9 +8,19 @@ import { PatientPhoto, AllergyAlert } from '@/components/clinical';
 
 interface PatientListTableProps {
   pacientes: any[];
+  totalPacientes: number | null;
+  totalPacientesCarregado: boolean;
+  hasFiltrosAtivos?: boolean;
+  pagina: number;
+  hasMore: boolean;
+  isLoading?: boolean;
+  hasError?: boolean;
+  onPaginaChange: (pagina: number) => void;
+  onLimparFiltros: () => void;
   onView: (paciente: any) => void;
   onEdit: (paciente: any) => void;
   onDelete: (paciente: any) => void;
+  podeExcluirPaciente?: boolean;
   onGeneratePortalLink: (id: string, nome: string) => void;
   /**
    * Gerar link do portal grava em paciente_portal_tokens, cujo RLS exige admin
@@ -23,18 +33,30 @@ interface PatientListTableProps {
 }
 
 export const PatientListTable = memo(function PatientListTable({
-  pacientes, onView, onEdit, onDelete, onGeneratePortalLink,
-  podeGerarLinkPortal = true, getConvenioNome, calcularIdade,
+  pacientes, totalPacientes, totalPacientesCarregado, hasFiltrosAtivos = false, onLimparFiltros, onView, onEdit, onDelete, onGeneratePortalLink,
+  podeGerarLinkPortal = true, podeExcluirPaciente = false, getConvenioNome, calcularIdade,
+  pagina, hasMore, isLoading = false, hasError = false, onPaginaChange,
 }: PatientListTableProps) {
+  const tamanhoPagina = 50;
+  const paginaAtual = pagina;
+  const pacientesVisiveis = pacientes;
+
   return (
     <div>
       <div className="divide-y sm:hidden">
-        {pacientes.length === 0 ? (
+        {isLoading ? <div className="px-4 py-12 text-center text-muted-foreground">Carregando pacientes…</div> : hasError ? <div className="px-4 py-12 text-center text-destructive">Não foi possível carregar esta página.</div> : pacientes.length === 0 ? (
           <div className="px-4 py-12 text-center text-muted-foreground">
             <Users className="mx-auto mb-2 h-8 w-8 opacity-40" />
-            Nenhum paciente encontrado
+            <p>{!totalPacientesCarregado
+              ? 'Verificando o cadastro de pacientes…'
+              : totalPacientes === 0
+                ? 'Ainda não há pacientes cadastrados'
+                : totalPacientes === null
+                  ? 'Não foi possível confirmar se há pacientes cadastrados. Atualize os indicadores e tente novamente.'
+                  : 'Nenhum paciente corresponde à busca e aos filtros atuais'}</p>
+            {hasFiltrosAtivos && totalPacientes !== 0 && <Button variant="link" onClick={onLimparFiltros} className="mt-2 h-11">Limpar busca e filtros</Button>}
           </div>
-        ) : pacientes.map((paciente) => {
+        ) : pacientesVisiveis.map((paciente) => {
           const idade = calcularIdade(paciente.data_nascimento);
           return (
             <article key={paciente.id} className="p-4">
@@ -43,7 +65,7 @@ export const PatientListTable = memo(function PatientListTable({
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-medium">{paciente.nome}</span>
                   <span className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                    {paciente.data_nascimento && <span>{idade} anos</span>}
+                    {paciente.data_nascimento && <span>{Number.isFinite(idade) && idade >= 0 ? `${idade} anos` : 'Nascimento inválido'}</span>}
                     <Badge variant="outline" className="max-w-full truncate text-[10px]">{getConvenioNome(paciente.convenio_id)}</Badge>
                   </span>
                   {paciente.telefone && <span className="mt-1.5 flex items-center gap-1.5 text-xs text-muted-foreground"><Phone className="h-3 w-3" />{paciente.telefone}</span>}
@@ -60,9 +82,11 @@ export const PatientListTable = memo(function PatientListTable({
                 <Button variant="outline" onClick={() => onEdit(paciente)} className="h-11 min-w-0 flex-1 gap-1 px-2 text-xs" aria-label={`Editar ${paciente.nome}`}>
                   <Edit className="h-4 w-4" /> Editar
                 </Button>
-                <Button variant="outline" onClick={() => onDelete(paciente)} className="h-11 min-w-0 flex-1 gap-1 px-2 text-xs text-destructive" aria-label={`Excluir ${paciente.nome}`}>
-                  <Trash2 className="h-4 w-4" /> Excluir
-                </Button>
+                {podeExcluirPaciente && (
+                  <Button variant="outline" onClick={() => onDelete(paciente)} className="h-11 min-w-0 flex-1 gap-1 px-2 text-xs text-destructive" aria-label={`Excluir ${paciente.nome}`}>
+                    <Trash2 className="h-4 w-4" /> Excluir
+                  </Button>
+                )}
               </div>
             </article>
           );
@@ -81,15 +105,26 @@ export const PatientListTable = memo(function PatientListTable({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {pacientes.length === 0 ? (
+          {isLoading ? (
+            <TableRow><TableCell colSpan={6} className="py-12 text-center text-muted-foreground">Carregando pacientes…</TableCell></TableRow>
+          ) : hasError ? (
+            <TableRow><TableCell colSpan={6} className="py-12 text-center text-destructive">Não foi possível carregar esta página.</TableCell></TableRow>
+          ) : pacientes.length === 0 ? (
             <TableRow>
               <TableCell colSpan={6} className="text-center py-12 text-muted-foreground">
                 <Users className="h-8 w-8 mx-auto mb-2 opacity-40" />
-                Nenhum paciente encontrado
+                <p>{!totalPacientesCarregado
+                  ? 'Verificando o cadastro de pacientes…'
+                  : totalPacientes === 0
+                    ? 'Ainda não há pacientes cadastrados'
+                    : totalPacientes === null
+                      ? 'Não foi possível confirmar se há pacientes cadastrados. Atualize os indicadores e tente novamente.'
+                      : 'Nenhum paciente corresponde à busca e aos filtros atuais'}</p>
+                {hasFiltrosAtivos && totalPacientes !== 0 && <Button variant="link" onClick={onLimparFiltros} className="mt-2 h-11">Limpar busca e filtros</Button>}
               </TableCell>
             </TableRow>
           ) : (
-            pacientes.map((paciente) => {
+            pacientesVisiveis.map((paciente) => {
               const idade = calcularIdade(paciente.data_nascimento);
               return (
                 <TableRow key={paciente.id} className="cursor-pointer hover:bg-muted/50" onClick={() => onView(paciente)}>
@@ -110,7 +145,7 @@ export const PatientListTable = memo(function PatientListTable({
                               {['M', 'masculino'].includes(paciente.sexo) ? 'M' : ['F', 'feminino'].includes(paciente.sexo) ? 'F' : 'O'}
                             </Badge>
                           )}
-                          {paciente.data_nascimento && idade < 18 && <Badge className="bg-amber-500/10 text-amber-700 text-[10px] px-1.5 py-0">Menor</Badge>}
+                          {paciente.data_nascimento && Number.isFinite(idade) && idade >= 0 && idade < 18 && <Badge className="bg-amber-500/10 text-amber-700 text-[10px] px-1.5 py-0">Menor</Badge>}
                         </div>
                         {paciente.alergias && paciente.alergias.length > 0 && (
                           <AllergyAlert alergias={paciente.alergias} compact className="mt-1" />
@@ -140,7 +175,9 @@ export const PatientListTable = memo(function PatientListTable({
                   </TableCell>
                   <TableCell className="hidden lg:table-cell">
                     <span className="text-sm tabular-nums">
-                      {paciente.data_nascimento ? `${idade} anos` : <span className="text-muted-foreground">N/I</span>}
+                      {paciente.data_nascimento
+                        ? Number.isFinite(idade) && idade >= 0 ? `${idade} anos` : <span className="text-muted-foreground">Data inválida</span>
+                        : <span className="text-muted-foreground">N/I</span>}
                     </span>
                   </TableCell>
                   <TableCell className="text-right" onClick={e => e.stopPropagation()}>
@@ -162,11 +199,13 @@ export const PatientListTable = memo(function PatientListTable({
                           <Edit className="h-4 w-4" />
                         </Button>
                       </motion.div>
-                      <motion.div whileHover={{ scale: 1.15, rotate: 5 }} whileTap={{ scale: 0.9 }} transition={{ type: "spring", stiffness: 500, damping: 15 }}>
-                        <Button variant="ghost" size="icon" onClick={() => onDelete(paciente)} title="Excluir" aria-label={`Excluir ${paciente.nome}`} className="h-11 w-11 rounded-xl hover:bg-destructive/10">
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </motion.div>
+                      {podeExcluirPaciente && (
+                        <motion.div whileHover={{ scale: 1.15, rotate: 5 }} whileTap={{ scale: 0.9 }} transition={{ type: "spring", stiffness: 500, damping: 15 }}>
+                          <Button variant="ghost" size="icon" onClick={() => onDelete(paciente)} title="Excluir ficha vazia" aria-label={`Excluir ${paciente.nome}`} className="h-11 w-11 rounded-xl hover:bg-destructive/10">
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </motion.div>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>
@@ -176,6 +215,38 @@ export const PatientListTable = memo(function PatientListTable({
         </TableBody>
       </Table>
       </div>
+      {(pagina > 0 || hasMore) && (
+        <nav aria-label="Paginação de pacientes" className="flex flex-col gap-2 border-t p-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-xs text-muted-foreground" aria-live="polite">
+            Mostrando {paginaAtual * tamanhoPagina + (pacientes.length ? 1 : 0)}–{paginaAtual * tamanhoPagina + pacientes.length} pacientes{hasMore ? ' (há mais)' : ''}
+          </p>
+          <div className="flex items-center justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-11 gap-1"
+              disabled={paginaAtual === 0}
+              onClick={() => onPaginaChange(paginaAtual - 1)}
+            >
+              <ChevronLeft className="h-4 w-4" /> Anterior
+            </Button>
+            <span className="min-w-20 text-center text-xs text-muted-foreground" aria-label={`Página ${paginaAtual + 1}`}>
+              Página {paginaAtual + 1}
+            </span>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-11 gap-1"
+              disabled={!hasMore}
+              onClick={() => onPaginaChange(paginaAtual + 1)}
+            >
+              Próxima <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </nav>
+      )}
     </div>
   );
 });

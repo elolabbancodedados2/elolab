@@ -44,7 +44,7 @@ export function usePlanos() {
 export function useUserPlan() {
   const { user } = useSupabaseAuth();
 
-  const { data: assinatura, isLoading } = useQuery({
+  const assinaturaQuery = useQuery({
     queryKey: ['user_plan', user?.id],
     queryFn: async () => {
       if (!user) return null;
@@ -52,20 +52,19 @@ export function useUserPlan() {
       const { data: activePlan, error: activeError } = await supabase.rpc('get_user_plan' as any, {
         _user_id: user.id,
       });
-      if (activeError) {
-        console.error('Erro ao buscar plano:', activeError);
-      }
+      if (activeError) throw activeError;
       const active = (activePlan as unknown as AssinaturaPlano[])?.[0] || null;
       if (active) return active;
 
       // If no active plan, check for expired/cancelled
-      const { data: expiredData } = await supabase
+      const { data: expiredData, error: expiredError } = await supabase
         .from('assinaturas_plano' as any)
         .select('plano_slug, status, em_trial, trial_fim, planos!inner(nome)')
         .eq('user_id', user.id)
         .in('status', ['expirada', 'cancelada'])
         .order('updated_at', { ascending: false })
         .limit(1);
+      if (expiredError) throw expiredError;
 
       if (expiredData && (expiredData as any[]).length > 0) {
         const exp = (expiredData as any[])[0];
@@ -82,6 +81,7 @@ export function useUserPlan() {
     },
     enabled: !!user,
   });
+  const assinatura = assinaturaQuery.data;
 
   const hasFeature = (feature: string): boolean => {
     if (!assinatura) return false;
@@ -104,7 +104,10 @@ export function useUserPlan() {
 
   return {
     plan: assinatura,
-    isLoading,
+    isLoading: assinaturaQuery.isLoading,
+    isError: assinaturaQuery.isError,
+    error: assinaturaQuery.error,
+    refetch: assinaturaQuery.refetch,
     hasFeature,
     isUltra,
     isMax,

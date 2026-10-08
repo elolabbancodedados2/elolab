@@ -1,11 +1,21 @@
 import { nomeMedico } from '@/lib/formatters';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useDroppable } from '@dnd-kit/core';
-import { format, isToday, parseISO } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Ban, User } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AppointmentCard } from '../AppointmentCard';
+import { todaySaoPauloDateOnly } from '@/lib/dateOnly';
+
+function minutesNowInSaoPaulo() {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  }).formatToParts(new Date());
+  const hour = Number(parts.find(part => part.type === 'hour')?.value || 0);
+  const minute = Number(parts.find(part => part.type === 'minute')?.value || 0);
+  return hour * 60 + minute;
+}
 
 const START_HOUR = 6;
 const END_HOUR = 22;
@@ -34,7 +44,7 @@ const HOURS = Array.from({ length: END_HOUR - START_HOUR }, (_, i) =>
 );
 
 function DoctorColumn({
-  medico, date, agendamentos, bloqueios, colorFor, onSlotClick, onCardClick, convenioById, columnIndex,
+  medico, date, agendamentos, bloqueios, colorFor, onSlotClick, onCardClick, convenioById, columnIndex, inactive = false,
 }: any) {
   const minutesToPx = (m: number) => (m / SLOT_MINUTES) * SLOT_PX;
   const columnRef = useRef<HTMLDivElement>(null);
@@ -42,7 +52,7 @@ function DoctorColumn({
   const sorted = [...agendamentos].sort((a: any, b: any) => a.hora_inicio.localeCompare(b.hora_inicio));
   const total = agendamentos.length;
   const confirmed = agendamentos.filter((a: any) => ['confirmado', 'em_atendimento', 'finalizado'].includes(a.status)).length;
-  const nowMin = new Date().getHours() * 60 + new Date().getMinutes();
+  const nowMin = minutesNowInSaoPaulo();
   const next = sorted.find((a: any) => toMinutes(a.hora_inicio) >= nowMin);
 
   return (
@@ -57,7 +67,9 @@ function DoctorColumn({
           </div>
           <div className="min-w-0 flex-1">
             <div className="text-sm font-semibold truncate">{nomeMedico(medico.nome || medico.crm)}</div>
-            <div className="text-[11px] text-muted-foreground truncate">{medico.especialidade || 'Clínico Geral'}</div>
+            <div className="text-[11px] text-muted-foreground truncate">
+              {inactive ? 'Inativo · sem novos horários' : medico.especialidade || 'Clínico Geral'}
+            </div>
           </div>
           {total > 0 && (
             <div className="text-right shrink-0">
@@ -118,7 +130,7 @@ function DoctorColumn({
         ))}
 
         {/* Fine-grained (5min) drop + click targets */}
-        {SLOTS.map((slot) => (
+        {!inactive && SLOTS.map((slot) => (
           <DropSlot
             key={slot}
             id={`slot:${medico.id}:${date}:${slot}`}
@@ -185,18 +197,24 @@ export function DailyMultiDoctorView({
   date, medicos, agendamentos, bloqueios, colorFor, onSlotClick, onCardClick, convenioById,
 }: any) {
   const activeDoctors = useMemo(() => medicos.filter((m: any) => m.ativo !== false), [medicos]);
+  // Keep existing bookings visible after a clinician is deactivated, but do not
+  // expose empty slots that could create new appointments for that clinician.
+  const inactiveDoctorsWithAppointments = useMemo(
+    () => medicos.filter((m: any) => m.ativo === false && agendamentos.some((a: any) => a.medico_id === m.id)),
+    [medicos, agendamentos],
+  );
+  const doctorsToShow = [
+    ...activeDoctors.map((medico: any) => ({ medico, inactive: false })),
+    ...inactiveDoctorsWithAppointments.map((medico: any) => ({ medico, inactive: true })),
+  ];
   const dayStr = format(parseISO(date), "EEEE, d 'de' MMMM", { locale: ptBR });
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [nowMin, setNowMin] = useState<number>(() => {
-    const n = new Date();
-    return n.getHours() * 60 + n.getMinutes();
-  });
-  const showNow = isToday(parseISO(date));
+  const [nowMin, setNowMin] = useState<number>(minutesNowInSaoPaulo);
+  const showNow = date === todaySaoPauloDateOnly();
 
   useEffect(() => {
     const t = setInterval(() => {
-      const n = new Date();
-      setNowMin(n.getHours() * 60 + n.getMinutes());
+      setNowMin(minutesNowInSaoPaulo());
     }, 60_000);
     return () => clearInterval(t);
   }, []);
@@ -242,19 +260,20 @@ export function DailyMultiDoctorView({
             ))}
           </div>
         </div>
-        {activeDoctors.length === 0 ? (
+        {doctorsToShow.length === 0 ? (
           <div className="flex-1 flex items-center justify-center py-16 text-sm text-muted-foreground">
             Nenhum médico ativo. Cadastre médicos em <span className="mx-1 font-medium">Equipe</span> para começar.
           </div>
         ) : (
-          activeDoctors.map((m: any, idx: number) => (
+          doctorsToShow.map(({ medico, inactive }: any, idx: number) => (
             <DoctorColumn
-              key={m.id}
-              medico={m}
+              key={medico.id}
+              medico={medico}
               date={date}
               columnIndex={idx}
-              agendamentos={agendamentos.filter((a: any) => a.medico_id === m.id)}
-              bloqueios={bloqueios.filter((b: any) => b.medico_id === m.id && date >= b.data_inicio && date <= b.data_fim)}
+              inactive={inactive}
+              agendamentos={agendamentos.filter((a: any) => a.medico_id === medico.id)}
+              bloqueios={bloqueios.filter((b: any) => b.medico_id === medico.id && date >= b.data_inicio && date <= b.data_fim)}
               colorFor={colorFor}
               convenioById={convenioById}
               onSlotClick={onSlotClick}

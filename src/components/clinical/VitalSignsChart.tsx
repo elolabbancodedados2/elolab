@@ -19,6 +19,7 @@ import {
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
+import { ErrorState } from '@/components/ErrorState';
 
 interface VitalSignsChartProps {
   pacienteId: string;
@@ -39,14 +40,15 @@ interface TriagemData {
 
 export function VitalSignsChart({ pacienteId, className }: VitalSignsChartProps) {
   const { user, profile } = useSupabaseAuth();
-  const { data: triagens, isLoading } = useQuery({
+  const { data: triagensRecentes, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['patient-vital-signs', user?.id ?? null, profile?.clinica_id ?? null, pacienteId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('triagens')
         .select('id, data_hora, pressao_arterial, frequencia_cardiaca, temperatura, peso, altura, saturacao, frequencia_respiratoria')
         .eq('paciente_id', pacienteId)
-        .order('data_hora', { ascending: true })
+        .eq('clinica_id', profile!.clinica_id!)
+        .order('data_hora', { ascending: false })
         .limit(20);
 
       if (error) throw error;
@@ -54,6 +56,9 @@ export function VitalSignsChart({ pacienteId, className }: VitalSignsChartProps)
     },
     enabled: !!pacienteId && !!user && !!profile?.clinica_id,
   });
+  // O servidor entrega primeiro as mais recentes; inverter preserva a ordem
+  // cronológica no gráfico sem sacrificar os dados atuais pelo limite de 20.
+  const triagens = [...(triagensRecentes ?? [])].reverse();
 
   const chartData = triagens?.map((t) => {
     // Parse blood pressure (systolic/diastolic)
@@ -90,16 +95,16 @@ export function VitalSignsChart({ pacienteId, className }: VitalSignsChartProps)
         if (value < 60 || value > 100) return 'text-amber-600';
         return 'text-green-600';
       case 'temperatura':
-        if (value < 36 || value > 37.5) return 'text-amber-600';
         if (value > 38) return 'text-red-600';
+        if (value < 36 || value > 37.5) return 'text-amber-600';
         return 'text-green-600';
       case 'saturacao':
-        if (value < 95) return 'text-amber-600';
         if (value < 90) return 'text-red-600';
+        if (value < 95) return 'text-amber-600';
         return 'text-green-600';
       case 'sistolica':
-        if (value > 140 || value < 90) return 'text-amber-600';
         if (value > 180 || value < 80) return 'text-red-600';
+        if (value > 140 || value < 90) return 'text-amber-600';
         return 'text-green-600';
       default:
         return 'text-foreground';
@@ -122,7 +127,20 @@ export function VitalSignsChart({ pacienteId, className }: VitalSignsChartProps)
     );
   }
 
-  if (!triagens || triagens.length === 0) {
+  if (isError) {
+    return (
+      <Card className={className}>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2"><Activity className="h-5 w-5" />Sinais Vitais</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ErrorState compact title="Não foi possível carregar os sinais vitais" error={error} onRetry={() => void refetch()} />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (triagens.length === 0) {
     return (
       <Card className={className}>
         <CardHeader>
@@ -147,7 +165,7 @@ export function VitalSignsChart({ pacienteId, className }: VitalSignsChartProps)
           <Activity className="h-5 w-5" />
           Evolução de Sinais Vitais
           <Badge variant="outline" className="ml-auto">
-            {triagens.length} registros
+            Últimos {triagens.length} registro(s)
           </Badge>
         </CardTitle>
       </CardHeader>

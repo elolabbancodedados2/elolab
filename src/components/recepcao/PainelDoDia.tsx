@@ -10,7 +10,7 @@
  *   4. Quem já pagou e está esperando ser chamado?
  *   5. Quem está em atendimento agora?
  *   6. Quem saiu da consulta devendo o procedimento adicional?
- *   7. Quanto entrou hoje, por forma, e quanto ainda falta receber?
+ *   7. Quanto entrou líquido hoje, por forma, e quanto ainda falta receber?
  *
  * Cada cartão que corresponde a uma aba filtra a lista abaixo ao ser clicado —
  * a pergunta e a resposta ficam no mesmo lugar.
@@ -24,7 +24,9 @@ import {
 import { supabase } from '@/integrations/supabase/client';
 import { formatCurrency } from '@/lib/formatters';
 import { saldoDevedor } from '@/lib/liberacaoAtendimento';
+import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
 import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
 
 type Aba = 'todos' | 'checkin' | 'balcao' | 'atendimento' | 'concluido';
 
@@ -47,7 +49,6 @@ const FORMA_LABEL: Record<string, string> = {
   boleto: 'Boleto',
   cheque: 'Cheque',
   convenio: 'Convênio',
-  credito_paciente: 'Crédito do paciente',
 };
 
 /**
@@ -69,8 +70,8 @@ export interface PagamentoDoDia {
 /**
  * As sete respostas, calculadas fora do componente para poderem ser testadas.
  *
- * `atendimentos` é o `enriched` da Recepção; `recebidos` são as linhas de
- * `pagamentos` do dia, já sem os estornos.
+ * `atendimentos` é o `enriched` da Recepção; `recebidos` são eventos de
+ * pagamento e estorno ocorridos no dia civil de São Paulo.
  */
 export function resumoDoDia(atendimentos: any[], recebidos: PagamentoDoDia[]) {
   const chegaram = atendimentos.filter(e => e.step >= 1);
@@ -86,10 +87,13 @@ export function resumoDoDia(atendimentos: any[], recebidos: PagamentoDoDia[]) {
   );
 
   const somar = (lista: any[]) => lista.reduce((s, e) => s + saldoDaConta(e.lanc), 0);
-  const recebidoTotal = recebidos.reduce((s, p) => s + (Number(p.valor) || 0), 0);
+  // Crédito já mantido na conta do paciente quita uma cobrança, mas não é
+  // dinheiro recebido hoje. O Caixa Diário segue a mesma regra.
+  const movimentosDeCaixa = recebidos.filter(p => p.forma_pagamento !== 'credito_paciente');
+  const recebidoTotal = movimentosDeCaixa.reduce((s, p) => s + (Number(p.valor) || 0), 0);
 
   const porForma = Object.entries(
-    recebidos.reduce((acc: Record<string, number>, p) => {
+    movimentosDeCaixa.reduce((acc: Record<string, number>, p) => {
       acc[p.forma_pagamento] = (acc[p.forma_pagamento] || 0) + (Number(p.valor) || 0);
       return acc;
     }, {})
@@ -114,24 +118,43 @@ export function resumoDoDia(atendimentos: any[], recebidos: PagamentoDoDia[]) {
 }
 
 export function PainelDoDia({ atendimentos, clinicaId, hoje, onFiltrar, abaAtiva }: Props) {
-  // Recebido hoje, por forma. Vem de `pagamentos` — a mesma tabela que registra
-  // o Pix de R$ 200 e o cartão de R$ 300 da mesma conta como duas linhas.
-  const { data: recebidos = [] } = useQuery({
+  // Datas locais de São Paulo, fim exclusivo. A coluna é timestamptz; usar
+  // `hojeT00:00:00` sem offset fazia o Postgres interpretar meia-noite UTC.
+  const amanha = new Date(`${hoje}T00:00:00Z`);
+  amanha.setUTCDate(amanha.getUTCDate() + 1);
+  const inicioLocal = `${hoje}T00:00:00-03:00`;
+  const fimLocalExclusivo = `${amanha.toISOString().slice(0, 10)}T00:00:00-03:00`;
+  const pagamentosQuery = useQuery({
     queryKey: ['pagamentos-do-dia', clinicaId, hoje],
     enabled: !!clinicaId,
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('pagamentos')
-        .select('forma_pagamento, valor, data_pagamento, estornado_em')
+      const selecionar = () => supabase.from('pagamentos')
+        .select('id, forma_pagamento, valor, data_pagamento, estornado_em')
         .eq('clinica_id', clinicaId!)
-        .is('estornado_em', null)
-        .gte('data_pagamento', `${hoje}T00:00:00`)
-        .lte('data_pagamento', `${hoje}T23:59:59`);
-      if (error) throw error;
-      return data ?? [];
+        .neq('forma_pagamento', 'credito_paciente')
+        .order('id', { ascending: true });
+      const [pagamentosDoDia, estornosDoDia] = await Promise.all([
+        buscarEmBlocos<any>(() => selecionar()
+          .gte('data_pagamento', inicioLocal)
+          .lt('data_pagamento', fimLocalExclusivo)),
+        buscarEmBlocos<any>(() => selecionar()
+          .not('estornado_em', 'is', null)
+          .gte('estornado_em', inicioLocal)
+          .lt('estornado_em', fimLocalExclusivo)),
+      ]);
+      const eventos = [
+        ...pagamentosDoDia.map(pagamento => ({ forma_pagamento: pagamento.forma_pagamento, valor: Number(pagamento.valor) })),
+        ...estornosDoDia.map(pagamento => ({ forma_pagamento: pagamento.forma_pagamento, valor: -Number(pagamento.valor) })),
+      ];
+      return {
+        eventos,
+        atingiuLimite: pagamentosDoDia.length >= LIMITE_BUSCA_EM_BLOCOS
+          || estornosDoDia.length >= LIMITE_BUSCA_EM_BLOCOS,
+      };
     },
   });
 
+  const recebidos = pagamentosQuery.data?.eventos ?? [];
   const n = useMemo(() => resumoDoDia(atendimentos, recebidos), [atendimentos, recebidos]);
 
   const cartoes: Array<{
@@ -177,17 +200,32 @@ export function PainelDoDia({ atendimentos, clinicaId, hoje, onFiltrar, abaAtiva
       aba: 'atendimento', tom: 'text-destructive', alerta: n.devendoAdicional > 0,
     },
     {
-      id: 'caixa', icone: Banknote, titulo: 'Recebido hoje',
-      valor: formatCurrency(n.recebidoTotal),
-      detalhe: n.aReceberTotal > 0
-        ? `Faltam ${formatCurrency(n.aReceberTotal)}`
-        : 'Nada em aberto no dia',
-      tom: 'text-success',
+      id: 'caixa', icone: Banknote, titulo: 'Recebido líquido',
+      valor: pagamentosQuery.isError ? '—' : pagamentosQuery.isLoading ? '…' : formatCurrency(n.recebidoTotal),
+      detalhe: pagamentosQuery.isError
+        ? 'Não foi possível carregar os recebimentos'
+        : pagamentosQuery.isLoading
+          ? 'Carregando recebimentos…'
+          : n.aReceberTotal > 0
+            ? `Faltam ${formatCurrency(n.aReceberTotal)}`
+            : 'Pagamentos menos estornos de hoje',
+      tom: n.recebidoTotal < 0 ? 'text-destructive' : 'text-success',
     },
   ];
 
   return (
     <div className="space-y-2">
+      {pagamentosQuery.isError && (
+        <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3">
+          <span className="text-xs text-destructive">Não foi possível atualizar os recebimentos do dia; o valor exibido foi ocultado.</span>
+          <Button size="sm" variant="outline" onClick={() => void pagamentosQuery.refetch()}>Tentar novamente</Button>
+        </div>
+      )}
+      {pagamentosQuery.data?.atingiuLimite && (
+        <div role="status" className="rounded-lg border border-warning/30 bg-warning/5 p-3 text-xs text-warning-foreground">
+          O histórico de pagamentos do dia atingiu {LIMITE_BUSCA_EM_BLOCOS.toLocaleString('pt-BR')} registros; o recebido líquido pode estar incompleto.
+        </div>
+      )}
       <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-2">
         {cartoes.map((c, i) => {
           const Icone = c.icone;
@@ -226,7 +264,7 @@ export function PainelDoDia({ atendimentos, clinicaId, hoje, onFiltrar, abaAtiva
 
       {n.porForma.length > 0 && (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-[10px] text-muted-foreground">
-          <span className="font-semibold uppercase tracking-wide">Entrou hoje:</span>
+          <span className="font-semibold uppercase tracking-wide">Movimentos líquidos hoje:</span>
           {n.porForma.map(([forma, valor]) => (
             <span key={forma} className="tabular-nums">
               {FORMA_LABEL[forma] ?? forma} <strong className="text-foreground">{formatCurrency(valor as number)}</strong>

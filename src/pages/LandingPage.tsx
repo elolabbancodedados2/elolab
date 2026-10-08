@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { supabase } from '@/integrations/supabase/client';
 import { usePlanos } from '@/hooks/useSubscriptionPlan';
 import { toast } from 'sonner';
@@ -256,6 +257,7 @@ export default function LandingPage() {
   const [selectedPlan, setSelectedPlan] = useState<PublicPlan | null>(null);
   const [formData, setFormData] = useState({ nome: '', email: '', telefone: '', clinica: '' });
   const [loading, setLoading] = useState(false);
+  const [trialActivation, setTrialActivation] = useState<{ code: string; message: string } | null>(null);
 
   const plans = useMemo<PublicPlan[]>(() => {
     if (!catalogPlans) return [];
@@ -308,13 +310,25 @@ export default function LandingPage() {
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
 
-      if (checkoutMode === 'buy' && data?.checkout_url) {
+      if (checkoutMode === 'buy') {
+        if (!data?.checkout_url) throw new Error('Não foi possível iniciar o pagamento. Tente novamente ou fale com a equipe.');
         toast.success('Redirecionando para pagamento...');
         redirecionarParaCheckout(data.checkout_url);
       } else if (data?.success) {
-        toast.success('Verifique seu e-mail para o código de ativação!');
+        if (data.invite_code) {
+          setTrialActivation({
+            code: String(data.invite_code),
+            message: data.email_sent === false
+              ? 'Seu cadastro foi criado, mas o e-mail com o código não pôde ser enviado. Use o código abaixo para continuar.'
+              : data.message || 'Seu cadastro de teste foi criado. Use o código para concluir a criação da conta.',
+          });
+        } else {
+          toast.success(data.message || 'Verifique seu e-mail para o código de ativação.');
+        }
         setCheckoutOpen(false);
         setFormData({ nome: '', email: '', telefone: '', clinica: '' });
+      } else {
+        throw new Error(data?.message || 'Não foi possível concluir seu cadastro. Tente novamente.');
       }
     } catch (err: unknown) {
       console.error('Checkout error:', err);
@@ -445,8 +459,7 @@ export default function LandingPage() {
                 </div>
                 <h1 className="text-4xl sm:text-5xl lg:text-[3.5rem] font-light leading-[1.15] tracking-tight text-white">
                   Organize a rotina da clínica<br />
-                  <span className="font-extrabold">em um só lugar</span><br />
-                  em um só lugar.
+                  <span className="font-extrabold">em um só lugar</span>
                 </h1>
                 <p className="mt-5 text-base md:text-lg text-white/70 max-w-lg leading-relaxed">
                   Agenda, prontuário, financeiro, laboratório e recursos de IA no WhatsApp, conforme as integrações habilitadas para a clínica.
@@ -757,6 +770,42 @@ export default function LandingPage() {
             </div>}
           </div>
         </section>
+
+        <Dialog open={!!trialActivation} onOpenChange={(open) => {
+          if (!open && trialActivation?.code) {
+            navigate(`/auth?codigo=${encodeURIComponent(trialActivation.code)}`);
+            setTrialActivation(null);
+          }
+        }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Seu teste foi registrado</DialogTitle>
+              <DialogDescription>{trialActivation?.message}</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-2 rounded-lg border bg-muted/40 p-4 text-center">
+              <p className="text-xs text-muted-foreground">Código de ativação</p>
+              <code className="block select-all break-all text-xl font-bold tracking-wider">{trialActivation?.code}</code>
+              <Button type="button" variant="outline" size="sm" onClick={async () => {
+                if (!trialActivation?.code) return;
+                try {
+                  await navigator.clipboard.writeText(trialActivation.code);
+                  toast.success('Código copiado');
+                } catch {
+                  toast.info('Selecione o código acima e copie manualmente.');
+                }
+              }}>Copiar código</Button>
+            </div>
+            <p className="text-xs text-muted-foreground">O código expira em 7 dias. Na próxima etapa, ele já estará preenchido.</p>
+            <DialogFooter>
+              <Button type="button" onClick={() => {
+                if (!trialActivation?.code) return;
+                const code = trialActivation.code;
+                setTrialActivation(null);
+                navigate(`/auth?codigo=${encodeURIComponent(code)}`);
+              }}>Continuar para criar conta</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {/* ══ CHECKOUT MODAL ══ */}
         {checkoutOpen && selectedPlan && (

@@ -14,13 +14,22 @@ import { AgentsTab } from '@/components/whatsapp/AgentsTab';
 import { ConversationsTab } from '@/components/whatsapp/ConversationsTab';
 import { FeatureGate } from '@/components/FeatureGate';
 import { useUserPlan } from '@/hooks/useSubscriptionPlan';
+import { ErrorState } from '@/components/ErrorState';
+import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 
 export default function AgenteIA() {
-  const { hasFeature, isLoading: planLoading } = useUserPlan();
-  const { data: agents = [], isLoading: loadingAgents } = useWhatsAppAgents();
-  const { data: sessions = [], isLoading: loadingSessions } = useWhatsAppSessions();
-  const { data: conversations = [] } = useWhatsAppConversations();
-  const { data: stats } = useWhatsAppStats();
+  const { profile } = useSupabaseAuth();
+  const { hasFeature, isLoading: planLoading, isError: planError, error: planQueryError, refetch: refetchPlan } = useUserPlan();
+  const acessoLiberado = !planLoading && hasFeature('agente_ia');
+  const agentsQuery = useWhatsAppAgents(acessoLiberado);
+  const sessionsQuery = useWhatsAppSessions(acessoLiberado);
+  const conversationsQuery = useWhatsAppConversations(acessoLiberado);
+  const statsQuery = useWhatsAppStats(acessoLiberado);
+  const agents = agentsQuery.data || [];
+  const sessions = sessionsQuery.data || [];
+  const conversations = conversationsQuery.data || [];
+  const stats = statsQuery.data;
+  const queries = [agentsQuery, sessionsQuery, conversationsQuery, statsQuery];
 
   const {
     createAgent,
@@ -43,6 +52,23 @@ export default function AgenteIA() {
 
   if (planLoading) {
     return <div className="p-6 text-muted-foreground">Verificando plano...</div>;
+  }
+
+  if (planError) {
+    return <ErrorState title="Não foi possível confirmar o acesso ao Agente IA" description="Atualize a assinatura antes de continuar. Nenhuma ação de contratação ou alteração será iniciada enquanto o plano não for confirmado." error={planQueryError} onRetry={() => void refetchPlan()} />;
+  }
+
+  if (!profile?.clinica_id) {
+    return <ErrorState title="Clínica não identificada" description="Vincule seu usuário a uma clínica para carregar as sessões, os agentes e as conversas." />;
+  }
+
+  if (queries.some(query => query.isLoading)) {
+    return <div className="p-6 text-muted-foreground" role="status">Carregando sessões, agentes e conversas...</div>;
+  }
+
+  const failedQuery = queries.find(query => query.isError);
+  if (failedQuery) {
+    return <ErrorState title="Não foi possível carregar o painel de WhatsApp" error={failedQuery.error} onRetry={() => { for (const query of queries) void query.refetch(); }} />;
   }
 
   return (
@@ -82,8 +108,8 @@ export default function AgenteIA() {
           <SessionsTab
             sessions={sessions}
             agents={agents}
-            isLoading={loadingSessions}
-            onCreateSession={(name) => createSession.mutate(name)}
+            isLoading={sessionsQuery.isLoading}
+            onCreateSession={(name) => createSession.mutateAsync(name)}
             onRefreshQR={(id, name) => refreshQR.mutate({ sessionId: id, instanceName: name })}
             onCheckStatus={(id) => checkStatus.mutate(id)}
             onDeleteSession={(id) => deleteSession.mutate(id)}
@@ -97,8 +123,8 @@ export default function AgenteIA() {
         <TabsContent value="agents">
           <AgentsTab
             agents={agents}
-            isLoading={loadingAgents}
-            onCreateAgent={(agent) => createAgent.mutate(agent)}
+            isLoading={agentsQuery.isLoading}
+            onCreateAgent={(agent) => createAgent.mutateAsync(agent)}
             onUpdateAgent={(agent) => updateAgent.mutate(agent)}
             onDeleteAgent={(id) => deleteAgent.mutate(id)}
             isCreating={createAgent.isPending}
@@ -110,12 +136,12 @@ export default function AgenteIA() {
             conversations={conversations}
             onStatusChange={(conversationId, status) => updateConversationStatus.mutate({ conversationId, status })}
             isUpdating={updateConversationStatus.isPending}
-            onSendMessage={(conversation, message) => sendHumanMessage.mutateAsync({
+            onSendMessage={async (conversation, message) => { await sendHumanMessage.mutateAsync({
               conversationId: conversation.id,
               sessionId: conversation.session_id,
               to: conversation.remote_jid,
               message,
-            })}
+            }); }}
             isSending={sendHumanMessage.isPending}
             onMarkRead={(conversationId) => markConversationRead.mutate(conversationId)}
             onAddInternalNote={(conversationId, content) => addInternalNote.mutateAsync({ conversationId, content })}
@@ -123,8 +149,9 @@ export default function AgenteIA() {
             onPriorityChange={(conversationId, priority) => updateConversationPriority.mutate({ conversationId, priority })}
             onGenerateSummary={(conversationId) => generateConversationSummary.mutate(conversationId)}
             isGeneratingSummary={generateConversationSummary.isPending}
-            onSendMedia={(conversation, file) => sendHumanMedia.mutateAsync({ conversationId: conversation.id, sessionId: conversation.session_id, to: conversation.remote_jid, file })}
+            onSendMedia={async (conversation, file) => { await sendHumanMedia.mutateAsync({ conversationId: conversation.id, sessionId: conversation.session_id, to: conversation.remote_jid, file }); }}
             isSendingMedia={sendHumanMedia.isPending}
+            isClosing={requestSatisfaction.isPending}
             onCloseConversation={(conversation) => requestSatisfaction.mutate({ conversationId: conversation.id, sessionId: conversation.session_id, to: conversation.remote_jid })}
           />
         </TabsContent>

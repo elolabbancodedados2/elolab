@@ -35,6 +35,13 @@ export function parseDateOnly(value: string | null | undefined): Date | null {
   return new Date(`${value}T12:00:00`);
 }
 
+/** Valida uma data civil no formato YYYY-MM-DD sem normalizar dias inexistentes. */
+export function isValidDateOnly(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00Z`);
+  return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+
 /**
  * Um `Date` como "YYYY-MM-DD" no fuso local (não em UTC).
  *
@@ -66,9 +73,108 @@ export function dateOnlyInTimeZone(instant: Date, timeZone: string): string {
   return `${get('year')}-${get('month')}-${get('day')}`;
 }
 
+/**
+ * Início do dia civil como instante ISO, respeitando as regras históricas do
+ * fuso (inclusive mudanças de horário de verão). Retorna o primeiro instante
+ * cujo dia local é igual ou posterior à data solicitada; isso também cobre
+ * fusos que avançaram o relógio à meia-noite.
+ */
+export function inicioDoDiaEmFusoIso(data: string, timeZone: string): string {
+  if (!isValidDateOnly(data)) throw new Error('Data civil inválida.');
+
+  const centro = Date.parse(`${data}T00:00:00Z`);
+  let inferior = centro - 36 * 60 * 60 * 1000;
+  let superior = centro + 36 * 60 * 60 * 1000;
+
+  while (superior - inferior > 1) {
+    const meio = Math.floor((inferior + superior) / 2);
+    const diaLocal = dateOnlyInTimeZone(new Date(meio), timeZone);
+    if (diaLocal >= data) superior = meio;
+    else inferior = meio;
+  }
+
+  return new Date(superior).toISOString();
+}
+
 /** Today at the clinic's fixed business timezone, São Paulo. */
 export function todaySaoPauloDateOnly(instant: Date = new Date()): string {
   return dateOnlyInTimeZone(instant, 'America/Sao_Paulo');
+}
+
+/** Format a timestamp in the clinic's business timezone, independent of device settings. */
+export function formatDateTimeSaoPaulo(value: string | Date | null | undefined, includeSeconds = false): string {
+  if (!value) return '—';
+  const instant = value instanceof Date ? value : new Date(value);
+  if (!Number.isFinite(instant.getTime())) return '—';
+
+  const parts = new Intl.DateTimeFormat('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
+    day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+    ...(includeSeconds ? { second: '2-digit' as const } : {}),
+    hourCycle: 'h23',
+  }).formatToParts(instant);
+  const get = (type: string) => parts.find(part => part.type === type)?.value ?? '';
+  const horario = `${get('hour')}:${get('minute')}${includeSeconds ? `:${get('second')}` : ''}`;
+  return `${get('day')}/${get('month')}/${get('year')} ${horario}`;
+}
+
+/** Próxima execução recorrente no horário civil de São Paulo. */
+export function proximaExecucaoSaoPaulo(
+  frequencia: 'diaria' | 'semanal' | 'mensal',
+  hora: string,
+  diaSemana = 1,
+  diaMes = 1,
+  agora = new Date(),
+): string {
+  const matchHora = hora.match(/^(\d{2}):(\d{2})$/);
+  if (!matchHora) throw new Error('Horário inválido para agendamento.');
+  const horaLocal = Number(matchHora[1]);
+  const minutoLocal = Number(matchHora[2]);
+  if (horaLocal > 23 || minutoLocal > 59) throw new Error('Horário inválido para agendamento.');
+  if (frequencia === 'semanal' && (!Number.isInteger(diaSemana) || diaSemana < 0 || diaSemana > 6)) {
+    throw new Error('Selecione um dia da semana válido.');
+  }
+  if (frequencia === 'mensal' && (!Number.isInteger(diaMes) || diaMes < 1 || diaMes > 28)) {
+    throw new Error('Selecione um dia do mês entre 1 e 28.');
+  }
+
+  const partes = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(agora);
+  const obter = (tipo: string) => Number(partes.find(parte => parte.type === tipo)?.value);
+  const atual = new Date(Date.UTC(obter('year'), obter('month') - 1, obter('day')));
+  if (frequencia === 'diaria') {
+    // A data de hoje fica e será avançada abaixo se o horário já passou.
+  } else if (frequencia === 'semanal') {
+    const diasAteExecucao = (diaSemana - atual.getUTCDay() + 7) % 7;
+    atual.setUTCDate(atual.getUTCDate() + diasAteExecucao);
+  } else {
+    atual.setUTCDate(diaMes);
+  }
+
+  const converterParaInstante = (dataLocal: Date) => {
+    const ano = dataLocal.getUTCFullYear();
+    const mes = dataLocal.getUTCMonth() + 1;
+    const dia = dataLocal.getUTCDate();
+    const comoUtc = Date.UTC(ano, mes - 1, dia, horaLocal, minutoLocal);
+    const representacao = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
+    }).formatToParts(new Date(comoUtc));
+    const parte = (tipo: string) => Number(representacao.find(item => item.type === tipo)?.value);
+    const comoHorarioLocalTratadoUtc = Date.UTC(parte('year'), parte('month') - 1, parte('day'), parte('hour'), parte('minute'), parte('second'));
+    return new Date(comoUtc - (comoHorarioLocalTratadoUtc - comoUtc));
+  };
+
+  let instante = converterParaInstante(atual);
+  if (instante <= agora) {
+    if (frequencia === 'diaria') atual.setUTCDate(atual.getUTCDate() + 1);
+    else if (frequencia === 'semanal') atual.setUTCDate(atual.getUTCDate() + 7);
+    else atual.setUTCMonth(atual.getUTCMonth() + 1);
+    instante = converterParaInstante(atual);
+  }
+  return instante.toISOString();
 }
 
 /** Whether a clinic appointment start is in the past, using São Paulo time. */

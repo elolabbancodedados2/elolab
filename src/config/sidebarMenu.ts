@@ -75,8 +75,7 @@ export const menuGroups: MenuGroup[] = [
       { label: 'Dashboard', icon: LayoutDashboard, href: '/dashboard' },
       { label: 'Central de notificações', icon: Bell, href: '/notificacoes' },
       { label: 'Chat Interno', icon: MessageCircle, href: '/chat' },
-      // `medico` faltava aqui, mas a rota de /tarefas já o libera — o médico
-      // tinha acesso e nenhum caminho para chegar.
+      { label: 'Primeiros passos', icon: ListChecks, href: '/onboarding', roles: ['admin'] },
       { label: 'Tarefas', icon: ListChecks, href: '/tarefas', roles: ['admin', 'recepcao', 'enfermagem', 'financeiro', 'medico'] },
     ],
   },
@@ -84,19 +83,13 @@ export const menuGroups: MenuGroup[] = [
     label: 'Atendimento',
     icon: MonitorSmartphone,
     color: '#0ea5e9',
-    // getFilteredMenuGroups filtra nos DOIS níveis: sem `medico` aqui, o grupo
-    // inteiro desaparece para o médico e o item Fila / Triagem nunca aparece,
-    // por mais que o item o inclua. `financeiro` pelo mesmo motivo, para
-    // Recepção & Caixa — a rota de /recepcao já o libera.
     roles: ['admin', 'recepcao', 'enfermagem', 'medico', 'financeiro'],
     items: [
       { label: 'Agenda', icon: CalendarRange, href: '/agenda' },
       { label: 'Recepção & Caixa', icon: MonitorSmartphone, href: '/recepcao', roles: ['admin', 'recepcao', 'financeiro'] },
-      // `medico` incluído: o painel do médico já oferecia um atalho para /fila
-      // (DoctorDashboard), mas a rota e este menu barravam o papel — o médico
-      // clicava e recebia "sem permissão". O banco sempre autorizou.
-      { label: 'Fila / Triagem', icon: ClipboardCheck, href: '/fila', roles: ['admin', 'recepcao', 'enfermagem', 'medico'] },
-      { label: 'Fluxo, salas e espera', icon: DoorOpen, href: '/gestao-fluxo', roles: ['admin', 'recepcao'] },
+      { label: 'Fila e triagem', icon: ClipboardCheck, href: '/fila', roles: ['admin', 'recepcao', 'enfermagem', 'medico'] },
+      { label: 'Risco de faltas', icon: ActivitySquare, href: '/analise-preditiva', roles: ['admin', 'recepcao'] },
+      { label: 'Salas e lista de espera', icon: DoorOpen, href: '/gestao-fluxo', roles: ['admin', 'recepcao'] },
     ],
   },
   {
@@ -120,8 +113,16 @@ export const menuGroups: MenuGroup[] = [
       { label: 'Prescrições e documentos', icon: BookMarked, href: '/documentos-clinicos', roles: ['admin', 'medico'] },
       { label: 'Sinais vitais', icon: ActivitySquare, href: '/vitais-graficos', roles: ['admin', 'medico', 'enfermagem'] },
       { label: 'Exames', icon: Microscope, href: '/exames', roles: ['admin', 'medico', 'enfermagem'] },
-      { label: 'Interoperabilidade', icon: FileText, href: '/interoperabilidade', roles: ['admin', 'medico'] },
       { label: 'Templates clínicos', icon: FolderKanban, href: '/todos-templates', roles: ['admin', 'medico'] },
+    ],
+  },
+  {
+    label: 'Integrações',
+    icon: FileText,
+    color: '#7c3aed',
+    roles: ['admin', 'medico'],
+    items: [
+      { label: 'Interoperabilidade FHIR', icon: FileText, href: '/interoperabilidade', roles: ['admin', 'medico'] },
     ],
   },
   {
@@ -135,7 +136,7 @@ export const menuGroups: MenuGroup[] = [
       // Sem `roles` o item vale para todos os papéis do grupo. Como /laboratorio
       // NÃO libera recepção, deixar implícito faria o item aparecer e negar no
       // clique — o defeito que esta revisão foi corrigir.
-      { label: 'Painel Lab', icon: FlaskConical, href: '/laboratorio', roles: ['admin', 'medico', 'enfermagem'] },
+      { label: 'Painel do laboratório', icon: FlaskConical, href: '/laboratorio', roles: ['admin', 'medico', 'enfermagem'] },
       { label: 'Mapa de Coleta', icon: MapPinned, href: '/mapa-coleta', roles: ['admin', 'enfermagem'] },
       { label: 'Guias Externas', icon: FileText, href: '/guias-externas', roles: ['admin', 'recepcao', 'enfermagem'] },
       { label: 'Laudos', icon: ScrollText, href: '/laudos-lab', roles: ['admin', 'medico', 'enfermagem'] },
@@ -147,42 +148,51 @@ export const menuGroups: MenuGroup[] = [
     color: '#f59e0b',
     roles: ['admin', 'financeiro'],
     items: [
-      { label: 'Visão Geral', icon: CircleDollarSign, href: '/financeiro' },
+      { label: 'Visão financeira', icon: CircleDollarSign, href: '/financeiro' },
       { label: 'Contas', icon: BadgeDollarSign, href: '/contas' },
       { label: 'Fluxo de Caixa', icon: PiggyBank, href: '/fluxo-caixa' },
       { label: 'TISS & Glosas', icon: FileText, href: '/faturamento-convenios' },
       { label: 'Repasses Médicos', icon: HandCoins, href: '/repasses-medicos' },
       { label: 'Preços & Serviços', icon: CircleDollarSign, href: '/precos-servicos' },
-      { label: 'Relatórios', icon: FileBarChart, href: '/relatorios', exact: true },
-      { label: 'Relatórios Salvos', icon: FileBarChart, href: '/relatorios/salvos' },
       { label: 'Cobrança Inadimplentes', icon: BadgeDollarSign, href: '/cobranca-inadimplentes' },
     ],
   },
   {
-    label: 'Equipe e operação',
-    icon: UsersRound,
-    color: '#ec4899',
-    // `enfermagem` e `medico` incluídos para que Estoque e Templates apareçam:
-    // as rotas dos dois já liberam esses papéis, mas o grupo derrubava os itens.
-    roles: ['admin', 'enfermagem', 'medico'],
+    label: 'Relatórios e indicadores',
+    icon: FileBarChart,
+    color: '#0891b2',
+    roles: ['admin', 'financeiro'],
     items: [
-      // Explícito porque /equipe é só de admin. Sem `roles`, o item herdaria o
-      // grupo inteiro e apareceria para enfermagem e médico, que a rota nega.
-      { label: 'Equipe', icon: UsersRound, href: '/equipe', roles: ['admin'] },
-      { label: 'Estoque', icon: PackageSearch, href: '/estoque', roles: ['admin', 'enfermagem'] },
-      { label: 'Automações', icon: Sparkles, href: '/automacoes', roles: ['admin'] },
+      { label: 'Relatórios', icon: FileBarChart, href: '/relatorios', exact: true, roles: ['admin', 'financeiro'] },
+      { label: 'Relatórios salvos', icon: FileBarChart, href: '/relatorios/salvos', roles: ['admin', 'financeiro'] },
+      { label: 'Indicadores da clínica', icon: ActivitySquare, href: '/analytics', roles: ['admin'] },
     ],
   },
   {
-    label: 'Gestão',
-    icon: Settings2,
-    color: '#ef4444',
-    roles: ['admin', 'recepcao'],
+    label: 'Equipe',
+    icon: UsersRound,
+    color: '#ec4899',
+    roles: ['admin'],
     items: [
-      { label: 'Meu Plano', icon: CreditCard, href: '/planos', roles: ['admin'] },
-      { label: 'Primeiros Passos', icon: ListChecks, href: '/onboarding', roles: ['admin'] },
-      { label: 'Analytics', icon: ActivitySquare, href: '/analytics', roles: ['admin'] },
-      { label: 'Análise preditiva', icon: ActivitySquare, href: '/analise-preditiva', roles: ['admin', 'recepcao'] },
+      { label: 'Médicos, funcionários e convites', icon: UsersRound, href: '/equipe', roles: ['admin'] },
+    ],
+  },
+  {
+    label: 'Suprimentos',
+    icon: PackageSearch,
+    color: '#ea580c',
+    roles: ['admin', 'enfermagem'],
+    items: [
+      { label: 'Estoque', icon: PackageSearch, href: '/estoque', roles: ['admin', 'enfermagem'] },
+    ],
+  },
+  {
+    label: 'Automação e IA',
+    icon: Sparkles,
+    color: '#db2777',
+    roles: ['admin'],
+    items: [
+      { label: 'Automações', icon: Sparkles, href: '/automacoes', roles: ['admin'] },
       { label: 'Agente IA', icon: BotMessageSquare, href: '/agente-ia', roles: ['admin'] },
     ],
   },
@@ -194,8 +204,9 @@ export const menuGroups: MenuGroup[] = [
     items: [
       { label: 'Configurações', icon: Settings2, href: '/configuracoes' },
       { label: 'Configurações Avançadas', icon: Gauge, href: '/configuracoes-avancadas' },
-      { label: 'Liberar Acesso ao Suporte', icon: Shield, href: '/acesso-assistido', roles: ['admin'] },
-      { label: 'Direitos LGPD', icon: ScrollText, href: '/lgpd-pacientes' },
+      { label: 'Alterar plano', icon: CreditCard, href: '/planos', roles: ['admin'] },
+      { label: 'Acesso assistido pelo suporte', icon: Shield, href: '/acesso-assistido', roles: ['admin'] },
+      { label: 'Solicitações LGPD de pacientes', icon: ScrollText, href: '/lgpd-pacientes' },
     ],
   },
   {

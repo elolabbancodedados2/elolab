@@ -40,7 +40,7 @@ describe('CentralSuporte', () => {
   it('diferencia uma fila vazia de um carregamento ou erro', () => {
     render(<CentralSuporte />);
     expect(screen.getByText('Nenhum chamado por aqui')).toBeVisible();
-    expect(screen.getByText('0 chamado(s)')).toBeVisible();
+    expect(screen.getByText(/0 de 0 nesta página/)).toBeVisible();
   });
 
   it('abre um chamado com os dados validados e a clínica atual', async () => {

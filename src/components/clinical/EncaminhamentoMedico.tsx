@@ -41,8 +41,11 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
+import { ErrorState } from '@/components/ErrorState';
+import { mensagemDeErro } from '@/lib/erros';
 import { Cid10Search } from './Cid10Search';
-import { parseDateOnly, todayDateOnly } from '@/lib/dateOnly';
+import { parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 
 interface Encaminhamento {
   id: string;
@@ -121,6 +124,10 @@ export function EncaminhamentoMedico({
   const [isContraReferenciaOpen, setIsContraReferenciaOpen] = useState(false);
   const [selectedEncaminhamento, setSelectedEncaminhamento] = useState<Encaminhamento | null>(null);
   const [medicos, setMedicos] = useState<Medico[]>([]);
+  const [isLoadingMedicos, setIsLoadingMedicos] = useState(false);
+  const [medicosError, setMedicosError] = useState<unknown>(null);
+  const medicoOrigemAtivo = medicos.some(medico => medico.id === medicoOrigemId);
+  const [medicosReloadKey, setMedicosReloadKey] = useState(0);
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     especialidade_destino: '',
@@ -136,27 +143,69 @@ export function EncaminhamentoMedico({
   });
   const [contraReferencia, setContraReferencia] = useState('');
   const { toast } = useToast();
+  const { profile } = useSupabaseAuth();
 
   useEffect(() => {
-    loadMedicos();
-  }, []);
+    let active = true;
+    setFormData(current => ({ ...current, medico_destino_id: '' }));
+    const loadMedicos = async () => {
+      if (!profile?.clinica_id) {
+        setMedicos([]);
+        setMedicosError(new Error('Clínica não identificada.'));
+        setIsLoadingMedicos(false);
+        return;
+      }
 
-  const loadMedicos = async () => {
-    const { data } = await supabase
-      .from('medicos')
-      .select('id, crm, especialidade')
-      .eq('ativo', true);
-    
-    if (data) setMedicos(data);
-  };
+      setIsLoadingMedicos(true);
+      setMedicosError(null);
+      const { data, error } = await supabase
+        .from('medicos')
+        .select('id, crm, especialidade')
+        .eq('clinica_id', profile.clinica_id)
+        .eq('ativo', true)
+        .order('crm');
+
+      if (!active) return;
+      if (error) {
+        setMedicosError(error);
+        setMedicos([]);
+      } else {
+        setMedicos(data || []);
+      }
+      setIsLoadingMedicos(false);
+    };
+
+    void loadMedicos();
+    return () => { active = false; };
+  }, [profile?.clinica_id, medicosReloadKey]);
 
   const handleCreate = async () => {
-    if (!formData.especialidade_destino || !formData.motivo) {
+    if (!formData.especialidade_destino || !formData.motivo.trim()) {
       toast({
         title: 'Campos obrigatórios',
         description: 'Preencha a especialidade e o motivo do encaminhamento.',
         variant: 'destructive',
       });
+      return;
+    }
+    if (!profile?.clinica_id) {
+      toast({ title: 'Clínica não identificada', description: 'Atualize a página e tente novamente.', variant: 'destructive' });
+      return;
+    }
+    if (!medicoOrigemId) {
+      toast({ title: 'Médico de origem não identificado', description: 'Vincule seu usuário a um médico antes de criar encaminhamentos.', variant: 'destructive' });
+      return;
+    }
+    if (!medicos.some(medico => medico.id === medicoOrigemId)) {
+      toast({
+        title: 'Médico de origem indisponível',
+        description: 'O profissional precisa estar ativo nesta clínica para emitir encaminhamentos.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    if (formData.motivo.trim().length > 10000) {
+      toast({ title: 'Motivo muito longo', description: 'Use no máximo 10.000 caracteres.', variant: 'destructive' });
       return;
     }
 
@@ -165,6 +214,7 @@ export function EncaminhamentoMedico({
       const { error } = await supabase
         .from('encaminhamentos')
         .insert({
+          clinica_id: profile.clinica_id,
           paciente_id: pacienteId,
           prontuario_id: prontuarioId || null,
           medico_origem_id: medicoOrigemId,
@@ -172,14 +222,14 @@ export function EncaminhamentoMedico({
           especialidade_destino: formData.especialidade_destino,
           tipo: formData.tipo,
           urgencia: formData.urgencia,
-          motivo: formData.motivo,
-          hipotese_diagnostica: formData.hipotese_diagnostica || null,
+          motivo: formData.motivo.trim(),
+          hipotese_diagnostica: formData.hipotese_diagnostica.trim() || null,
           cid_principal: formData.cid_principal || null,
-          exames_realizados: formData.exames_realizados || null,
-          tratamento_atual: formData.tratamento_atual || null,
-          informacoes_adicionais: formData.informacoes_adicionais || null,
+          exames_realizados: formData.exames_realizados.trim() || null,
+          tratamento_atual: formData.tratamento_atual.trim() || null,
+          informacoes_adicionais: formData.informacoes_adicionais.trim() || null,
           status: 'pendente',
-          data_encaminhamento: todayDateOnly(),
+          data_encaminhamento: todaySaoPauloDateOnly(),
         });
 
       if (error) throw error;
@@ -193,10 +243,9 @@ export function EncaminhamentoMedico({
       resetForm();
       onEncaminhamentoCriado();
     } catch (error) {
-      console.error('Erro ao criar encaminhamento:', error);
       toast({
         title: 'Erro',
-        description: 'Não foi possível criar o encaminhamento.',
+        description: mensagemDeErro(error),
         variant: 'destructive',
       });
     } finally {
@@ -213,20 +262,33 @@ export function EncaminhamentoMedico({
       });
       return;
     }
+    if (!profile?.clinica_id) {
+      toast({ title: 'Clínica não identificada', description: 'Atualize a página e tente novamente.', variant: 'destructive' });
+      return;
+    }
+    if (contraReferencia.trim().length > 10000) {
+      toast({ title: 'Texto muito longo', description: 'Use no máximo 10.000 caracteres.', variant: 'destructive' });
+      return;
+    }
 
     setLoading(true);
     try {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('encaminhamentos')
         .update({
-          contra_referencia: contraReferencia,
-          data_contra_referencia: todayDateOnly(),
+          contra_referencia: contraReferencia.trim(),
+          data_contra_referencia: todaySaoPauloDateOnly(),
           status: 'concluido',
-          data_atendimento: todayDateOnly(),
+          data_atendimento: selectedEncaminhamento.data_atendimento || todaySaoPauloDateOnly(),
         })
-        .eq('id', selectedEncaminhamento.id);
+        .eq('id', selectedEncaminhamento.id)
+        .eq('clinica_id', profile.clinica_id)
+        .in('status', ['pendente', 'em_andamento'])
+        .select('id')
+        .maybeSingle();
 
       if (error) throw error;
+      if (!data) throw new Error('Este encaminhamento já foi concluído ou atualizado. Recarregue a lista.');
 
       toast({
         title: 'Contra-referência registrada',
@@ -238,10 +300,9 @@ export function EncaminhamentoMedico({
       setSelectedEncaminhamento(null);
       onEncaminhamentoCriado();
     } catch (error) {
-      console.error('Erro ao registrar contra-referência:', error);
       toast({
         title: 'Erro',
-        description: 'Não foi possível registrar a contra-referência.',
+        description: mensagemDeErro(error),
         variant: 'destructive',
       });
     } finally {
@@ -284,8 +345,8 @@ export function EncaminhamentoMedico({
     return <Badge className={config.color}>{config.label}</Badge>;
   };
 
-  const referenciasEnviadas = encaminhamentos.filter(e => e.tipo === 'referencia');
-  const referenciasRecebidas = encaminhamentos.filter(e => e.tipo === 'contra_referencia');
+  const referenciasEnviadas = encaminhamentos.filter(e => e.medico_origem_id === medicoOrigemId);
+  const referenciasRecebidas = encaminhamentos.filter(e => e.medico_destino_id === medicoOrigemId);
 
   return (
     <div className="space-y-4">
@@ -299,7 +360,7 @@ export function EncaminhamentoMedico({
                 <Badge variant="secondary">{encaminhamentos.length}</Badge>
               )}
             </div>
-            <Button onClick={() => setIsOpen(true)} size="sm">
+            <Button onClick={() => setIsOpen(true)} size="sm" disabled={isLoadingMedicos || (!medicosError && !medicoOrigemAtivo)}>
               <Plus className="h-4 w-4 mr-2" />
               Novo Encaminhamento
             </Button>
@@ -307,6 +368,11 @@ export function EncaminhamentoMedico({
           <CardDescription>
             Referências e contra-referências para especialistas
           </CardDescription>
+          {!isLoadingMedicos && !medicosError && !medicoOrigemAtivo && (
+            <p role="alert" className="text-xs text-warning-foreground">
+              O médico de origem está inativo ou indisponível nesta clínica. Peça ao administrador para revisar o cadastro.
+            </p>
+          )}
         </CardHeader>
         <CardContent>
           <Tabs defaultValue="enviados" className="w-full">
@@ -360,13 +426,14 @@ export function EncaminhamentoMedico({
                           >
                             <Eye className="h-4 w-4" />
                           </Button>
-                          {enc.status !== 'concluido' && (
+                          {enc.status !== 'concluido' && enc.status !== 'cancelado' && (
                             <Button
                               variant="ghost"
                               size="icon"
                               aria-label={`Registrar contra-referência para ${enc.especialidade_destino}`}
                               onClick={() => {
                                 setSelectedEncaminhamento(enc);
+                                setContraReferencia(enc.contra_referencia || '');
                                 setIsContraReferenciaOpen(true);
                               }}
                             >
@@ -400,8 +467,40 @@ export function EncaminhamentoMedico({
               ) : (
                 <div className="space-y-3">
                   {referenciasRecebidas.map((enc) => (
-                    <div key={enc.id} className="border rounded-lg p-4">
-                      {/* Similar structure for received referrals */}
+                    <div key={enc.id} className="border rounded-lg p-4 hover:bg-muted/50 transition-colors">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="space-y-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="font-medium">{enc.especialidade_destino}</p>
+                            {getUrgenciaBadge(enc.urgencia)}
+                            {getStatusBadge(enc.status)}
+                          </div>
+                          <p className="text-sm text-muted-foreground">{enc.motivo}</p>
+                          {enc.data_encaminhamento && (
+                            <p className="text-xs text-muted-foreground">
+                              Recebido em: {format(parseDateOnly(enc.data_encaminhamento)!, 'dd/MM/yyyy')}
+                            </p>
+                          )}
+                        </div>
+                        <div className="flex shrink-0 gap-1">
+                          <Button variant="ghost" size="icon" aria-label="Ver encaminhamento recebido" onClick={() => {
+                            setSelectedEncaminhamento(enc);
+                            setIsViewOpen(true);
+                          }}>
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                          {enc.status !== 'concluido' && enc.status !== 'cancelado' && (
+                            <Button variant="ghost" size="icon" aria-label="Registrar contra-referência" onClick={() => {
+                              setSelectedEncaminhamento(enc);
+                              setContraReferencia(enc.contra_referencia || '');
+                              setIsContraReferenciaOpen(true);
+                            }}>
+                              <FileCheck className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                      {enc.contra_referencia && <p className="mt-3 rounded border border-green-200 bg-green-50 p-2 text-sm text-green-700">Contra-referência: {enc.contra_referencia}</p>}
                     </div>
                   ))}
                 </div>
@@ -424,7 +523,7 @@ export function EncaminhamentoMedico({
                 <Label>Especialidade *</Label>
                 <Select
                   value={formData.especialidade_destino}
-                  onValueChange={(v) => setFormData({ ...formData, especialidade_destino: v })}
+                  onValueChange={(v) => setFormData({ ...formData, especialidade_destino: v, medico_destino_id: '' })}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Selecione" />
@@ -457,12 +556,21 @@ export function EncaminhamentoMedico({
 
             <div className="space-y-2">
               <Label>Médico de Destino (opcional)</Label>
+              {medicosError && (
+                <ErrorState
+                  compact
+                  title="Não foi possível carregar médicos"
+                  error={medicosError}
+                  onRetry={() => setMedicosReloadKey(key => key + 1)}
+                />
+              )}
               <Select
                 value={formData.medico_destino_id}
+                disabled={isLoadingMedicos || !!medicosError || !profile?.clinica_id}
                 onValueChange={(v) => setFormData({ ...formData, medico_destino_id: v })}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Qualquer médico da especialidade" />
+                  <SelectValue placeholder={isLoadingMedicos ? 'Carregando médicos…' : 'Qualquer médico da especialidade'} />
                 </SelectTrigger>
                 <SelectContent>
                   {medicos
@@ -484,7 +592,9 @@ export function EncaminhamentoMedico({
                 onChange={(e) => setFormData({ ...formData, motivo: e.target.value })}
                 placeholder="Descreva o motivo do encaminhamento..."
                 rows={3}
+                maxLength={10000}
               />
+              <p className="text-right text-xs text-muted-foreground">{formData.motivo.length}/10.000</p>
             </div>
 
             <div className="space-y-2">
@@ -530,7 +640,7 @@ export function EncaminhamentoMedico({
             <Button variant="outline" onClick={() => setIsOpen(false)}>
               Cancelar
             </Button>
-            <Button onClick={handleCreate} disabled={loading}>
+            <Button onClick={handleCreate} disabled={loading || isLoadingMedicos || !!medicosError || !medicoOrigemAtivo}>
               {loading ? 'Criando...' : 'Criar Encaminhamento'}
             </Button>
           </DialogFooter>
@@ -613,14 +723,16 @@ export function EncaminhamentoMedico({
               onChange={(e) => setContraReferencia(e.target.value)}
               placeholder="Descreva o resultado do atendimento, diagnóstico, tratamento realizado e recomendações..."
               rows={6}
+              maxLength={10000}
             />
+            <p className="text-right text-xs text-muted-foreground">{contraReferencia.length}/10.000</p>
           </div>
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsContraReferenciaOpen(false)}>
               Cancelar
             </Button>
-            <Button onClick={handleAddContraReferencia} disabled={loading}>
+            <Button onClick={handleAddContraReferencia} disabled={loading || !contraReferencia.trim()}>
               {loading ? 'Registrando...' : 'Registrar'}
             </Button>
           </DialogFooter>

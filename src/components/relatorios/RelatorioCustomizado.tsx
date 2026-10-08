@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { format } from 'date-fns';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Filter, Download, Printer, Loader2, FileSpreadsheet, RefreshCw, Star, Calendar as CalendarIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -16,9 +17,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Textarea } from '@/components/ui/textarea';
 import { supabase } from '@/integrations/supabase/client';
 import { useMedicos, useConvenios } from '@/hooks/useSupabaseData';
+import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { exportToExcel } from '@/lib/excelExporter';
 import { toast } from 'sonner';
 import { escapeHtml } from '@/lib/html';
+import { parseDateOnly, proximaExecucaoSaoPaulo } from '@/lib/dateOnly';
 
 type DatasetKey =
   | 'pacientes' | 'agendamentos' | 'lancamentos' | 'exames'
@@ -255,7 +258,10 @@ function formatCell(val: any, fmt?: ColumnDef['format']): string {
   if (val === null || val === undefined || val === '') return '-';
   switch (fmt) {
     case 'date':
-      try { return format(new Date(val), 'dd/MM/yyyy'); } catch { return String(val); }
+      try {
+        const data = parseDateOnly(String(val).slice(0, 10));
+        return data && !Number.isNaN(data.getTime()) ? format(data, 'dd/MM/yyyy') : String(val);
+      } catch { return String(val); }
     case 'datetime':
       try { return format(new Date(val), 'dd/MM/yyyy HH:mm'); } catch { return String(val); }
     case 'currency':
@@ -268,6 +274,13 @@ function formatCell(val: any, fmt?: ColumnDef['format']): string {
 }
 
 export default function RelatorioCustomizado() {
+  const { profile, isLoading: authLoading } = useSupabaseAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const roles = new Set(profile?.roles ?? []);
+  const allowedDatasets: DatasetKey[] = roles.has('admin')
+    ? Object.keys(DATASETS) as DatasetKey[]
+    : ['pacientes', 'lancamentos', 'estoque'];
   const [dataset, setDataset] = useState<DatasetKey>('lancamentos');
   const cfg = DATASETS[dataset];
 
@@ -297,14 +310,25 @@ export default function RelatorioCustomizado() {
     dia_mes: '1',
     hora: '08:00',
     destinatarios: '',
-    formato: 'pdf',
+    formato: 'csv',
   });
   const [saving, setSaving] = useState(false);
+  const [executarAposRestauro, setExecutarAposRestauro] = useState(false);
+  const restauradoIdRef = useRef<string | null>(null);
+  const ignorarResetDatasetRef = useRef(false);
 
   const { data: medicos = [] } = useMedicos();
   const { data: convenios = [] } = useConvenios();
 
   useEffect(() => {
+    if (!allowedDatasets.includes(dataset)) setDataset(allowedDatasets[0] ?? 'lancamentos');
+  }, [dataset, profile?.roles?.join(',')]);
+
+  useEffect(() => {
+    if (ignorarResetDatasetRef.current) {
+      ignorarResetDatasetRef.current = false;
+      return;
+    }
     setVisibleCols(new Set(cfg.columns.map(c => c.key)));
     setStatusFilter('todos');
     setMedicoFilter('todos');
@@ -315,6 +339,10 @@ export default function RelatorioCustomizado() {
   }, [dataset]);
 
   const runQuery = async () => {
+    if (dataInicio && dataFim && dataInicio > dataFim) {
+      toast.error('Período inválido', { description: 'A data inicial deve ser anterior ou igual à data final.' });
+      return;
+    }
     setLoading(true);
     try {
       let q: any = (supabase as any).from(cfg.table).select(cfg.select);
@@ -348,6 +376,48 @@ export default function RelatorioCustomizado() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    const salvo = (location.state as any)?.relatorioSalvo;
+    if (authLoading || !salvo || restauradoIdRef.current === salvo.id) return;
+    restauradoIdRef.current = salvo.id;
+    const limparEstadoDaNavegacao = () => navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+    if (!DATASETS[salvo.dataset as DatasetKey] || !allowedDatasets.includes(salvo.dataset as DatasetKey)) {
+      toast.error('Não é possível abrir este relatório', { description: 'Sua função não tem acesso à fonte de dados salva.' });
+      limparEstadoDaNavegacao();
+      return;
+    }
+
+    const config = salvo.config && typeof salvo.config === 'object' ? salvo.config : {};
+    const novoDataset = salvo.dataset as DatasetKey;
+    if (novoDataset !== dataset) ignorarResetDatasetRef.current = true;
+    setDataset(novoDataset);
+    if (typeof config.dataInicio === 'string') setDataInicio(config.dataInicio);
+    if (typeof config.dataFim === 'string') setDataFim(config.dataFim);
+    if (typeof config.statusFilter === 'string') setStatusFilter(config.statusFilter);
+    if (typeof config.medicoFilter === 'string') setMedicoFilter(config.medicoFilter);
+    if (typeof config.convenioFilter === 'string') setConvenioFilter(config.convenioFilter);
+    if (typeof config.textoBusca === 'string') setTextoBusca(config.textoBusca);
+    const limiteSalvo = Number(config.limite);
+    if (Number.isFinite(limiteSalvo) && limiteSalvo >= 1) setLimite(String(limiteSalvo));
+    if (typeof config.valorMin === 'string') setValorMin(config.valorMin);
+    if (typeof config.valorMax === 'string') setValorMax(config.valorMax);
+    if (typeof config.tipoLancamento === 'string') setTipoLancamento(config.tipoLancamento);
+    if (typeof config.groupBy === 'string') setGroupBy(config.groupBy);
+    const colunasValidas = new Set(DATASETS[novoDataset].columns.map(coluna => coluna.key));
+    if (Array.isArray(config.colunas)) {
+      setVisibleCols(new Set(config.colunas.filter((coluna: unknown): coluna is string => typeof coluna === 'string' && colunasValidas.has(coluna))));
+    }
+    setRows([]);
+    setExecutarAposRestauro(true);
+    limparEstadoDaNavegacao();
+  }, [location.state, location.pathname, location.search, authLoading, dataset, profile?.roles?.join(','), navigate]);
+
+  useEffect(() => {
+    if (!executarAposRestauro) return;
+    setExecutarAposRestauro(false);
+    void runQuery();
+  }, [executarAposRestauro, dataset, dataInicio, dataFim, statusFilter, medicoFilter, convenioFilter, textoBusca, limite, valorMin, valorMax, tipoLancamento]);
 
   const visibleColumns = useMemo(
     () => cfg.columns.filter(c => visibleCols.has(c.key)),
@@ -447,7 +517,7 @@ export default function RelatorioCustomizado() {
               <Select value={dataset} onValueChange={(v) => setDataset(v as DatasetKey)}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {(Object.keys(DATASETS) as DatasetKey[]).map(k => (
+                  {allowedDatasets.map(k => (
                     <SelectItem key={k} value={k}>{DATASETS[k].label}</SelectItem>
                   ))}
                 </SelectContent>
@@ -637,6 +707,11 @@ export default function RelatorioCustomizado() {
             </CardTitle>
           </CardHeader>
           <CardContent>
+            {rows.length >= Number(limite) && (
+              <div role="status" className="mb-4 rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm text-warning-foreground">
+                A consulta chegou ao limite de {Number(limite).toLocaleString('pt-BR')} registros. Pode haver mais resultados; refine os filtros ou aumente o limite antes de exportar.
+              </div>
+            )}
             {grouped && (
               <div className="mb-6">
                 <h3 className="text-sm font-semibold mb-2">
@@ -756,9 +831,7 @@ export default function RelatorioCustomizado() {
                 <Select value={saveForm.formato} onValueChange={v => setSaveForm({ ...saveForm, formato: v })}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="pdf">PDF</SelectItem>
                     <SelectItem value="csv">CSV</SelectItem>
-                    <SelectItem value="excel">Excel</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -780,6 +853,9 @@ export default function RelatorioCustomizado() {
               onClick={async () => {
                 setSaving(true);
                 try {
+                  if (dataInicio && dataFim && dataInicio > dataFim) {
+                    throw new Error('A data inicial deve ser anterior ou igual à data final.');
+                  }
                   const { data: { user } } = await supabase.auth.getUser();
                   if (!user) throw new Error('Sem sessão');
                   const { data: prof } = await supabase.from('profiles').select('clinica_id').eq('id', user.id).maybeSingle();
@@ -789,6 +865,13 @@ export default function RelatorioCustomizado() {
                     tipoLancamento, groupBy, colunas: Array.from(visibleCols),
                   };
                   const dests = saveForm.destinatarios.split(',').map(s => s.trim()).filter(Boolean);
+                  const emailsInvalidos = dests.filter(email => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email));
+                  if (saveForm.frequencia !== 'nenhuma' && dests.length === 0) {
+                    throw new Error('Informe ao menos um e-mail para agendar o envio.');
+                  }
+                  if (emailsInvalidos.length > 0) {
+                    throw new Error(`Confira os e-mails: ${emailsInvalidos.join(', ')}`);
+                  }
                   const payload: any = {
                     user_id: user.id,
                     clinica_id: prof?.clinica_id,
@@ -805,17 +888,18 @@ export default function RelatorioCustomizado() {
                     payload.hora = saveForm.hora + ':00';
                     if (saveForm.frequencia === 'semanal') payload.dia_semana = Number(saveForm.dia_semana);
                     if (saveForm.frequencia === 'mensal') payload.dia_mes = Number(saveForm.dia_mes);
-                    // Calcular próxima execução simples (hoje + horário)
-                    const [h, m] = saveForm.hora.split(':').map(Number);
-                    const d = new Date(); d.setHours(h, m, 0, 0);
-                    if (d.getTime() <= Date.now()) d.setDate(d.getDate() + 1);
-                    payload.proxima_execucao = d.toISOString();
+                    payload.proxima_execucao = proximaExecucaoSaoPaulo(
+                      saveForm.frequencia as 'diaria' | 'semanal' | 'mensal',
+                      saveForm.hora,
+                      Number(saveForm.dia_semana),
+                      Number(saveForm.dia_mes),
+                    );
                   }
                   const { error } = await (supabase as any).from('relatorios_salvos').insert(payload);
                   if (error) throw error;
                   toast.success('Relatório salvo com sucesso');
                   setSaveOpen(false);
-                  setSaveForm({ nome: '', descricao: '', frequencia: 'nenhuma', dia_semana: '1', dia_mes: '1', hora: '08:00', destinatarios: '', formato: 'pdf' });
+                  setSaveForm({ nome: '', descricao: '', frequencia: 'nenhuma', dia_semana: '1', dia_mes: '1', hora: '08:00', destinatarios: '', formato: 'csv' });
                 } catch (e: any) {
                   toast.error(e.message || 'Erro ao salvar');
                 } finally {

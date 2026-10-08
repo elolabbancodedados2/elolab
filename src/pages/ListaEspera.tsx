@@ -34,12 +34,16 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { LoadingButton } from '@/components/ui/loading-button';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import { format, differenceInDays } from 'date-fns';
-import { usePacientes, useMedicos } from '@/hooks/useSupabaseData';
+import { format, differenceInCalendarDays } from 'date-fns';
+import { useMedicos } from '@/hooks/useSupabaseData';
+import { PacienteCombobox } from '@/components/patients/PacienteCombobox';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
-import { todayDateOnly } from '@/lib/dateOnly';
+import { parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
+import { pacienteCorresponde } from '@/lib/buscaPaciente';
+import { ErrorState } from '@/components/ErrorState';
 
 const STATUS_COLORS: Record<string, string> = {
   aguardando: 'bg-warning/10 text-warning',
@@ -105,18 +109,22 @@ export default function ListaEspera() {
   const [formData, setFormData] = useState<FormData>(initialFormData);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [removeId, setRemoveId] = useState<string | null>(null);
+  const [desistindo, setDesistindo] = useState<{ id: string; nome: string; status: string } | null>(null);
+  const [isRemoving, setIsRemoving] = useState(false);
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
 
   const { user, profile } = useSupabaseAuth();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { data: pacientes = [], isLoading: loadingPacientes } = usePacientes();
-  const { data: medicos = [], isLoading: loadingMedicos } = useMedicos();
+  const medicosQuery = useMedicos();
+  const { data: medicos = [], isLoading: loadingMedicos } = medicosQuery;
 
-  const { data: lista = [], isLoading: loadingLista } = useQuery({
+  const listaQuery = useQuery({
     queryKey: ['lista_espera', user?.id ?? null, profile?.clinica_id ?? null],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('lista_espera')
-        .select('*, pacientes(nome, telefone), medicos(crm, especialidade)')
+        .select('*, pacientes(nome, nome_social, cpf, telefone, email), medicos(crm, especialidade)')
         .eq('clinica_id', profile?.clinica_id ?? '')
         .order('data_cadastro', { ascending: true });
 
@@ -125,13 +133,14 @@ export default function ListaEspera() {
     },
     enabled: !!user && !!profile?.clinica_id,
   });
+  const lista = listaQuery.data ?? [];
 
-  const isLoading = loadingLista || loadingPacientes || loadingMedicos;
+  const isLoading = listaQuery.isLoading || loadingMedicos;
 
   const filteredLista = useMemo(() => {
     return lista.filter(item => {
       const paciente = (item as any).pacientes;
-      const matchesSearch = paciente?.nome?.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesSearch = pacienteCorresponde(paciente || {}, searchTerm);
       const matchesStatus = statusFilter === 'todos' || item.status === statusFilter;
       return matchesSearch && matchesStatus;
     });
@@ -147,9 +156,31 @@ export default function ListaEspera() {
       toast.error('Preencha os campos obrigatórios.');
       return;
     }
+    if (!profile?.clinica_id) {
+      toast.error('Clínica não identificada. Atualize a página e tente novamente.');
+      return;
+    }
 
     setIsSubmitting(true);
     try {
+      let duplicadoQuery = supabase.from('lista_espera')
+        .select('id, status')
+        .eq('clinica_id', profile.clinica_id)
+        .eq('paciente_id', formData.paciente_id)
+        .eq('especialidade', formData.especialidade)
+        .in('status', ['aguardando', 'notificado', 'confirmado']);
+      duplicadoQuery = formData.medico_id
+        ? duplicadoQuery.eq('medico_id', formData.medico_id)
+        : duplicadoQuery.is('medico_id', null);
+      const { data: existente, error: erroDuplicado } = await duplicadoQuery.limit(1).maybeSingle();
+      if (erroDuplicado) throw erroDuplicado;
+      if (existente) {
+        toast.error('Este pedido já está na lista de espera.', {
+          description: `Encontre a inscrição existente no filtro “Todos” (status: ${STATUS_LABELS[existente.status] || existente.status}).`,
+        });
+        return;
+      }
+
       const { error } = await supabase.from('lista_espera').insert({
         paciente_id: formData.paciente_id,
         medico_id: formData.medico_id || null,
@@ -159,8 +190,8 @@ export default function ListaEspera() {
         preferencia_horario: formData.preferencia_horario || null,
         observacoes: formData.observacoes || null,
         status: 'aguardando',
-        data_cadastro: todayDateOnly(),
-        clinica_id: profile?.clinica_id || null,
+        data_cadastro: todaySaoPauloDateOnly(),
+        clinica_id: profile.clinica_id,
       });
 
       if (error) throw error;
@@ -170,57 +201,103 @@ export default function ListaEspera() {
       setIsDialogOpen(false);
     } catch (error: any) {
       if (import.meta.env.DEV) console.error('Erro ao adicionar:', error);
-      toast.error(error.message || 'Erro ao adicionar à lista');
+      if (error?.code === '23505' && (
+        error?.constraint === 'lista_espera_pedido_ativo_unico' ||
+        String(error?.message || '').includes('já está na lista de espera')
+      )) {
+        void queryClient.invalidateQueries({ queryKey: ['lista_espera'] });
+        toast.error('Este pedido já está na lista de espera.', {
+          description: 'Outro usuário adicionou o mesmo pedido agora. A lista será atualizada para você localizá-lo.',
+        });
+      } else {
+        toast.error(error.message || 'Erro ao adicionar à lista');
+      }
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const handleUpdateStatus = async (id: string, newStatus: string) => {
+  const handleUpdateStatus = async (id: string, expectedStatus: string, newStatus: string) => {
+    if (!profile?.clinica_id) {
+      toast.error('Clínica não identificada. Atualize a página e tente novamente.');
+      return;
+    }
+    if (updatingId) return;
+    const transicoesPermitidas: Record<string, string[]> = {
+      aguardando: ['notificado', 'desistiu'],
+      notificado: ['confirmado', 'desistiu'],
+      confirmado: ['desistiu'],
+    };
+    if (!transicoesPermitidas[expectedStatus]?.includes(newStatus)) {
+      toast.error('Esta mudança de status não é permitida. Atualize a lista e tente novamente.');
+      return;
+    }
+    setUpdatingId(id);
     try {
-      const { error } = await supabase
+      const { data: atualizado, error } = await supabase
         .from('lista_espera')
         .update({ status: newStatus })
-        .eq('id', id);
+        .eq('id', id)
+        .eq('clinica_id', profile.clinica_id)
+        .eq('status', expectedStatus)
+        .select('id')
+        .maybeSingle();
 
       if (error) throw error;
+      if (!atualizado) throw new Error('O status foi alterado por outro fluxo. Atualize a lista antes de tentar novamente.');
       
       toast.success('Status atualizado!');
       queryClient.invalidateQueries({ queryKey: ['lista_espera'] });
     } catch (error: any) {
       if (import.meta.env.DEV) console.error('Erro ao atualizar:', error);
       toast.error(error.message || 'Erro ao atualizar status');
+    } finally {
+      setUpdatingId(null);
     }
   };
 
   const handleRemove = async (id: string) => {
+    if (isRemoving) return;
+    if (!profile?.clinica_id) {
+      toast.error('Clínica não identificada. Atualize a página e tente novamente.');
+      return;
+    }
+    setIsRemoving(true);
     try {
-      const { error } = await supabase
+      const { data: removido, error } = await supabase
         .from('lista_espera')
         .delete()
-        .eq('id', id);
+        .eq('id', id)
+        .eq('clinica_id', profile.clinica_id)
+        .select('id')
+        .maybeSingle();
 
       if (error) throw error;
+      if (!removido) throw new Error('Este registro não existe mais ou você não tem permissão para removê-lo.');
       
       toast.success('Removido da lista de espera!');
       queryClient.invalidateQueries({ queryKey: ['lista_espera'] });
+      setRemoveId(null);
     } catch (error: any) {
       if (import.meta.env.DEV) console.error('Erro ao remover:', error);
       toast.error(error.message || 'Erro ao remover');
+    } finally {
+      setIsRemoving(false);
     }
   };
 
   const getPacienteInfo = (item: any) => {
     const paciente = item.pacientes;
     return {
-      nome: paciente?.nome || 'Desconhecido',
+      nome: paciente?.nome_social || paciente?.nome || 'Desconhecido',
       telefone: paciente?.telefone || '-',
     };
   };
 
   const getDiasEspera = (dataCadastro: string | null) => {
     if (!dataCadastro) return 0;
-    return differenceInDays(new Date(), new Date(dataCadastro));
+    const data = parseDateOnly(dataCadastro);
+    return data ? Math.max(0, differenceInCalendarDays(parseDateOnly(todaySaoPauloDateOnly())!, data)) : 0;
   };
 
   if (isLoading) {
@@ -230,6 +307,13 @@ export default function ListaEspera() {
         <Skeleton className="h-96" />
       </div>
     );
+  }
+
+  if (listaQuery.isError) {
+    return <ErrorState title="Não foi possível carregar a lista de espera" error={listaQuery.error} onRetry={() => void listaQuery.refetch()} />;
+  }
+  if (medicosQuery.isError) {
+    return <ErrorState title="Não foi possível carregar os médicos para a lista de espera" error={medicosQuery.error} onRetry={() => void medicosQuery.refetch()} />;
   }
 
   return (
@@ -312,7 +396,7 @@ export default function ListaEspera() {
               <div className="relative w-full sm:w-72">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
-                  placeholder="Buscar paciente..."
+                  placeholder="Nome, CPF, telefone ou e-mail..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="pl-10"
@@ -339,7 +423,12 @@ export default function ListaEspera() {
                   <TableRow>
                     <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
                       <Clock className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                      <p>Nenhum paciente na lista de espera</p>
+                      <p>{lista.length === 0 ? 'Nenhum paciente na lista de espera' : 'Nenhum paciente corresponde à busca e ao status selecionado'}</p>
+                      {lista.length > 0 && (
+                        <Button size="sm" variant="outline" className="mt-2" onClick={() => { setSearchTerm(''); setStatusFilter('todos'); }}>
+                          Limpar filtros
+                        </Button>
+                      )}
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -382,34 +471,55 @@ export default function ListaEspera() {
                               <Button 
                                 variant="ghost" 
                                 size="sm"
-                                onClick={() => handleUpdateStatus(item.id, 'notificado')}
+                                title="Altera o status; não envia mensagem ao paciente."
+                                onClick={() => handleUpdateStatus(item.id, item.status || 'aguardando', 'notificado')}
+                                disabled={updatingId !== null}
                               >
-                                Notificar
+                                {updatingId === item.id ? 'Salvando...' : 'Marcar notificado'}
                               </Button>
                             )}
                             {item.status === 'notificado' && (
                               <Button 
                                 variant="ghost" 
                                 size="sm"
-                                onClick={() => handleUpdateStatus(item.id, 'confirmado')}
+                                onClick={() => handleUpdateStatus(item.id, item.status || 'aguardando', 'confirmado')}
+                                disabled={updatingId !== null}
                               >
-                                Confirmar
+                                {updatingId === item.id ? 'Salvando...' : 'Confirmar'}
                               </Button>
                             )}
                             {item.status === 'confirmado' && (
                               <Button 
                                 variant="ghost" 
                                 size="sm"
-                                onClick={() => handleUpdateStatus(item.id, 'agendado')}
+                                onClick={() => navigate(`/agenda?espera=${encodeURIComponent(item.id)}&paciente=${encodeURIComponent(item.paciente_id)}`)}
+                                disabled={updatingId !== null}
+                                title="Abre a agenda para criar a consulta; o status só muda após salvar."
                               >
-                                Agendar
+                                Agendar consulta
+                              </Button>
+                            )}
+                            {['aguardando', 'notificado', 'confirmado'].includes(item.status || '') && (
+                              <Button
+                                aria-label={`Marcar ${nome} como desistente`}
+                                title={`Marcar ${nome} como desistente`}
+                                variant="ghost"
+                                size="icon"
+                                className="h-11 w-11 shrink-0 text-muted-foreground"
+                                onClick={() => setDesistindo({ id: item.id, nome, status: item.status || 'aguardando' })}
+                                disabled={isRemoving || updatingId !== null}
+                              >
+                                <XCircle className="h-4 w-4" />
                               </Button>
                             )}
                             <Button 
-                              aria-label="Remover paciente da lista de espera"
+                              aria-label={`Remover ${nome} permanentemente da lista de espera`}
+                              title={`Remover ${nome} permanentemente`}
                               variant="ghost" 
                               size="icon"
+                              className="h-11 w-11 shrink-0"
                               onClick={() => setRemoveId(item.id)}
+                              disabled={isRemoving || updatingId !== null}
                             >
                               <XCircle className="h-4 w-4 text-destructive" />
                             </Button>
@@ -426,7 +536,7 @@ export default function ListaEspera() {
       </Card>
 
       {/* New Dialog */}
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+      <Dialog open={isDialogOpen} onOpenChange={(open) => { if (open || !isSubmitting) setIsDialogOpen(open); }}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>Adicionar à Lista de Espera</DialogTitle>
@@ -434,19 +544,12 @@ export default function ListaEspera() {
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <Label>Paciente *</Label>
-              <Select
-                value={formData.paciente_id}
-                onValueChange={(v) => setFormData({ ...formData, paciente_id: v })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione o paciente" />
-                </SelectTrigger>
-                <SelectContent>
-                  {pacientes.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <PacienteCombobox
+                value={formData.paciente_id || null}
+                onChange={(id) => setFormData((form) => ({ ...form, paciente_id: id }))}
+                placeholder="Buscar paciente por nome, CPF ou telefone..."
+                className="h-11"
+              />
             </div>
 
             <div className="space-y-2">
@@ -477,7 +580,7 @@ export default function ListaEspera() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__any__">Qualquer médico</SelectItem>
-                  {medicos.map((m) => (
+                  {medicos.filter((m) => m.ativo).map((m) => (
                     <SelectItem key={m.id} value={m.id}>
                       {m.nome || m.crm} - {m.especialidade || 'Clínico'}
                     </SelectItem>
@@ -553,8 +656,35 @@ export default function ListaEspera() {
         </DialogContent>
       </Dialog>
 
+      {/* Preserve the request in history when the patient declines. */}
+      <AlertDialog open={!!desistindo} onOpenChange={(open) => !open && !updatingId && setDesistindo(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Registrar desistência?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {desistindo?.nome} será marcado como desistente e permanecerá no histórico. O pedido deixará de contar como ativo.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={updatingId !== null}>Voltar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={!desistindo || updatingId !== null}
+              onClick={(event) => {
+                event.preventDefault();
+                if (!desistindo) return;
+                const pendente = desistindo;
+                setDesistindo(null);
+                void handleUpdateStatus(pendente.id, pendente.status, 'desistiu');
+              }}
+            >
+              Confirmar desistência
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* Confirm remove dialog */}
-      <AlertDialog open={!!removeId} onOpenChange={(open) => !open && setRemoveId(null)}>
+      <AlertDialog open={!!removeId} onOpenChange={(open) => !open && !isRemoving && setRemoveId(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Remover da lista de espera?</AlertDialogTitle>
@@ -563,9 +693,16 @@ export default function ListaEspera() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={() => { if (removeId) { handleRemove(removeId); setRemoveId(null); } }} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              Remover
+            <AlertDialogCancel disabled={isRemoving}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={isRemoving}
+              onClick={(event) => {
+                event.preventDefault();
+                if (removeId) void handleRemove(removeId);
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isRemoving ? 'Removendo...' : 'Remover'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

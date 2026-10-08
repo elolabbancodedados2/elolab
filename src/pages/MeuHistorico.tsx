@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -25,9 +25,10 @@ export default function MeuHistorico(){
  const {user,clinicaId}=useSupabaseAuth(); const[action,setAction]=useState('all'); const[resource,setResource]=useState('all');
  const[from,setFrom]=useState(''); const[to,setTo]=useState(''); const[page,setPage]=useState(1);
  const history=useQuery({queryKey:['meu-historico',user?.id,clinicaId,action,resource,from,to,page],enabled:Boolean(user&&clinicaId),queryFn:async()=>{
-  const{data,error}=await(supabase as any).rpc('meu_historico_acoes',{p_action:action==='all'?null:action,p_collection:resource==='all'?null:resource,p_from:from?`${from}T00:00:00`:null,p_to:to?`${to}T23:59:59.999`:null,p_page:page,p_page_size:PAGE_SIZE}); if(error)throw error; return(data??[])as HistoryEvent[];
+  const{data,error}=await(supabase as any).rpc('meu_historico_acoes',{p_action:action==='all'?null:action,p_collection:resource==='all'?null:resource,p_from:from?new Date(`${from}T00:00:00-03:00`).toISOString():null,p_to:to?new Date(`${to}T23:59:59.999-03:00`).toISOString():null,p_page:page,p_page_size:PAGE_SIZE}); if(error)throw error; return(data??[])as HistoryEvent[];
  }});
  const events=history.data??[]; const total=Number(events[0]?.total_count??0); const totalPages=Math.max(1,Math.ceil(total/PAGE_SIZE));
+ useEffect(()=>{if(history.isSuccess&&!history.isFetching&&events.length===0&&page>1)setPage(current=>Math.max(1,current-1))},[history.isSuccess,history.isFetching,events.length,page]);
  const filter=(setter:(v:string)=>void,value:string)=>{setter(value);setPage(1)};
  return <main className="space-y-6 p-2 sm:p-6" aria-labelledby="history-title">
   <header><h1 id="history-title" className="flex items-center gap-2 text-2xl font-bold tracking-tight sm:text-3xl"><History className="h-7 w-7 text-primary" aria-hidden="true"/>Meu histórico</h1><p className="mt-1 text-muted-foreground">Consulte as ações realizadas pela sua conta nesta clínica.</p></header>

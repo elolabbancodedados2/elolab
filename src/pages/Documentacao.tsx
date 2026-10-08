@@ -56,21 +56,22 @@ const docSections: DocSection[] = [
         title: 'Papéis de Usuário (Permissões)',
         description: 'O sistema possui um controle de acesso baseado em papéis (RBAC). Cada usuário pode ter um ou mais papéis que determinam quais módulos e funcionalidades ele pode acessar.',
         steps: [
-          'Admin — Acesso total a todos os módulos e configurações',
-          'Médico — Acesso a prontuários, prescrições, atestados, exames e encaminhamentos',
-          'Enfermagem — Acesso a triagem, sinais vitais, coletas e estoque',
-          'Recepção — Acesso a pacientes, agenda, fila e lista de espera',
-          'Financeiro — Acesso ao módulo financeiro completo (lançamentos, contas, relatórios)',
+          'Admin da clínica — Gerencia equipe, dados e configurações da clínica; recursos também dependem do plano contratado',
+          'Médico — Acessa os módulos clínicos liberados para a função e para a clínica',
+          'Enfermagem — Acessa os fluxos de triagem, sinais vitais, coleta e estoque conforme as permissões',
+          'Recepção — Acessa os fluxos administrativos liberados para agenda, pacientes, fila e espera',
+          'Financeiro — Acessa os recursos financeiros liberados para a função e para a clínica',
         ],
       },
       {
         title: 'Instalação como App (PWA)',
-        description: 'O EloLab pode ser instalado como um aplicativo no seu celular ou computador, funcionando com ícone na tela inicial e experiência nativa.',
+        description: 'Depois de entrar com uma conta autorizada, o EloLab pode mostrar um aviso flutuante de instalação quando o navegador e o dispositivo oferecem suporte. A instalação cria um atalho para abrir o sistema; os dados continuam dependendo de internet.',
         steps: [
-          'No navegador, acesse o sistema',
-          'Clique no botão "Instalar App" que aparece no rodapé da tela',
-          'Ou use o menu do navegador > "Instalar aplicativo" / "Adicionar à tela inicial"',
-          'O app ficará disponível como ícone no dispositivo',
+          'Entre no EloLab pelo navegador em um dispositivo compatível',
+          'Quando o aviso "Instalar EloLab" aparecer no canto inferior da tela, escolha "Instalar Agora"',
+          'No iPhone ou iPad, o botão abre as instruções para usar Compartilhar > Adicionar à Tela de Início no Safari',
+          'Se o aviso foi fechado, ele pode voltar depois de sete dias; também é possível procurar "Instalar aplicativo" ou "Adicionar à tela inicial" no menu do navegador',
+          'Abra pelo ícone criado no dispositivo; é necessária conexão com a internet para usar os dados e as telas',
         ],
       },
     ],
@@ -93,8 +94,8 @@ const docSections: DocSection[] = [
           'Gráfico de receita vs despesa',
         ],
         tips: [
-          'Os dados são atualizados em tempo real via Supabase Realtime',
-          'Os gráficos utilizam a biblioteca Recharts para visualizações interativas',
+          'Confira o período e os filtros antes de comparar indicadores',
+          'Atualize a tela quando precisar consultar os dados mais recentes',
         ],
       },
     ],
@@ -330,7 +331,7 @@ const docSections: DocSection[] = [
         tips: [
           'O catálogo inclui exames de: Hematologia, Bioquímica, Hormônios, Imagem, Cardiologia e mais',
           'É possível adicionar novos tipos de exame diretamente na interface',
-          'Quando o status muda para "Laudo Disponível", o paciente pode ser notificado automaticamente',
+          'A notificação automática após liberar o resultado ainda não está conectada; confirme a comunicação com o paciente pelo canal da clínica',
         ],
       },
     ],
@@ -461,11 +462,12 @@ const docSections: DocSection[] = [
         description: 'Visão do fluxo de entrada e saída de dinheiro por período, com gráfico de evolução e saldo acumulado.',
       },
       {
-        title: 'Faturamento Automático',
-        description: 'Quando um agendamento é marcado como "Finalizado", o sistema gera automaticamente um lançamento de receita com o valor do convênio ou valor padrão.',
-        tips: [
-          'Este processo é executado por um trigger no banco de dados (auto_billing_on_appointment_complete)',
-          'O valor é baseado no convênio do paciente, ou R$ 150,00 como padrão',
+        title: 'Fechamento do atendimento e cobrança',
+        description: 'A automação de faturamento não está disponível. Revise o atendimento e use o fluxo de finalização quando ele realmente ocorreu; atendimentos antigos em aberto exigem uma decisão da equipe antes de gerar cobrança.',
+        steps: [
+          'Confira paciente, profissional e atendimento antes de finalizar',
+          'Use a tela de atendimentos em aberto para decidir se o registro antigo foi realizado ou não',
+          'Confira o lançamento financeiro gerado antes de considerar a cobrança conciliada',
         ],
       },
       {
@@ -544,17 +546,16 @@ const docSections: DocSection[] = [
       },
       {
         title: 'Automações',
-        description: 'Sistema com 12 fluxos de automação divididos em categorias:',
+        description: 'Consulte a lista no módulo Automações: cada rotina informa se está conectada, permite ligar ou desligar quando aplicável e mostra motivo quando ainda não está disponível.',
         steps: [
-          'Atendimento — Confirmação de consultas, fluxo de chegada',
-          'Comunicação — Lembretes 24h/2h antes da consulta, notificação de resultados de exames, felicitações de aniversário',
-          'Financeiro — Faturamento automático pós-consulta, alertas de vencimento, relatórios mensais',
-          'Operacional — Alertas de estoque crítico, assistente de IA',
+          'Revise o estado da rotina antes de depender de um envio automático',
+          'Use a execução manual apenas quando a tela oferecer essa ação',
+          'Confira os registros de execução e a fila para identificar falhas ou itens pendentes',
         ],
       },
       {
         title: 'Planos e Assinaturas',
-        description: 'Gerenciamento dos planos de assinatura da plataforma: EloLab Max (R$ 299) e EloLab Ultra (R$ 399). Inclui controle de trial de 3 dias e integração com Mercado Pago.',
+        description: 'A página Planos consulta os nomes, preços, periodicidades, recursos e condições de teste atualmente cadastrados. Confira os valores e as condições no próprio checkout antes de contratar; eles podem mudar.',
       },
       {
         title: 'Configurações',
@@ -583,17 +584,23 @@ const docSections: DocSection[] = [
     content: [
       {
         title: 'Busca Global (Ctrl+K)',
-        description: 'Busca rápida em todo o sistema. Pressione Ctrl+K (ou Cmd+K no Mac) para abrir o campo de busca global. Pesquise pacientes, agendamentos, módulos e mais.',
+        description: 'Pressione Ctrl+K (ou Cmd+K no Mac) para abrir a busca. Ela consulta pacientes, consultas, exames, pagamentos, tarefas e documentos, além de atalhos para algumas páginas liberadas para sua função.',
       },
       {
         title: 'Atalhos de Teclado (Alt+)',
         description: 'Navegação rápida pelo teclado:',
         steps: [
-          'Alt+D — Dashboard',
+          'Alt+H — Dashboard',
           'Alt+P — Pacientes',
           'Alt+A — Agenda',
-          'Alt+F — Financeiro',
-          'Alt+K — Busca Global',
+          'Alt+F — Fila de atendimento',
+          'Alt+R — Prontuários',
+          'Alt+E — Prescrições',
+          'Alt+T — Atestados',
+          'Alt+X — Exames',
+          'Alt+I — Estoque',
+          'Alt+C — Financeiro',
+          'Alt+S — Configurações',
         ],
       },
       {
@@ -610,12 +617,13 @@ const docSections: DocSection[] = [
       },
       {
         title: 'Backup e Restauração',
-        description: 'Exportação completa dos dados do sistema em JSON e restauração a partir de um arquivo de backup.',
+        description: 'Baixe e restaure arquivos JSON com as tabelas disponíveis para backup. O arquivo informa quando está incompleto; contas, papéis e trilhas de auditoria não são restaurados.',
         steps: [
           'Acesse Configurações > Backup',
           'Clique em "Exportar Backup" para baixar o arquivo JSON',
           'Para restaurar, clique em "Importar Backup" e selecione o arquivo',
-          'O backup é sincronizado com o Supabase para portabilidade total',
+          'Confira o indicador de backup completo ou parcial; não use um arquivo parcial como cópia única',
+          'O arquivo fica no dispositivo usado para exportar. Guarde-o em um local protegido e confira a prévia antes de restaurar',
         ],
       },
       {
@@ -637,8 +645,8 @@ const docSections: DocSection[] = [
         description: 'Área de acesso restrito para pacientes consultarem seus agendamentos, resultados de exames e dados cadastrais via token de acesso.',
       },
       {
-        title: 'Notificações Push',
-        description: 'Notificações em tempo real para eventos importantes: novo agendamento, paciente na fila, alerta de estoque, etc.',
+        title: 'Notificações do navegador',
+        description: 'Com permissão concedida, o EloLab pode mostrar avisos em tempo real para agendamentos, fila prioritária e estoque enquanto o aplicativo está aberto. Os avisos do navegador não são entregues quando o aplicativo está fechado.',
       },
       {
         title: 'Tema Claro/Escuro',
@@ -658,15 +666,15 @@ const docSections: DocSection[] = [
       },
       {
         title: 'Row Level Security (RLS)',
-        description: 'Todas as tabelas possuem políticas de segurança em nível de linha (RLS), garantindo que cada usuário acesse apenas os dados permitidos pelo seu papel.',
+        description: 'O acesso aos dados combina políticas RLS no banco e permissões por papel e clínica. O que cada pessoa pode consultar ou alterar depende da função atribuída à conta.',
       },
       {
         title: 'LGPD',
-        description: 'Conformidade com a Lei Geral de Proteção de Dados através de: consentimento digital, mascaramento de CPF, controle de acesso por papéis e registro de auditoria.',
+        description: 'O EloLab oferece controles relacionados à privacidade, como permissões por papel, auditoria e ferramentas para solicitações de titulares. A configuração e o uso desses controles precisam refletir os processos da clínica; a presença dos recursos, sozinha, não garante conformidade legal.',
       },
       {
         title: 'Criptografia',
-        description: 'Comunicação criptografada via HTTPS. Senhas armazenadas com hash seguro via Supabase Auth. Dados sensíveis protegidos por RLS no PostgreSQL.',
+        description: 'A comunicação com o aplicativo usa HTTPS e o Supabase Auth gerencia as senhas. O acesso aos registros também é controlado por políticas RLS e permissões da aplicação.',
       },
     ],
   },
@@ -690,7 +698,7 @@ const docSections: DocSection[] = [
       },
       {
         title: 'PWA',
-        description: 'Progressive Web App com suporte a instalação, notificações push e funcionamento offline parcial.',
+        description: 'Você pode instalar o EloLab como aplicativo no celular ou tablet. O acesso aos dados e às telas operacionais depende de conexão com a internet; a instalação não habilita trabalho offline.',
       },
     ],
   },
@@ -700,19 +708,22 @@ export default function Documentacao() {
   const [activeSection, setActiveSection] = useState('visao-geral');
   const [searchTerm, setSearchTerm] = useState('');
 
-  const filteredSections = searchTerm
-    ? docSections.filter(
-        (s) =>
-          s.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          s.content.some(
-            (c) =>
-              c.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-              c.description.toLowerCase().includes(searchTerm.toLowerCase())
-          )
+  const normalizedSearch = searchTerm.trim().toLocaleLowerCase('pt-BR');
+  const filteredSections = normalizedSearch
+    ? docSections.filter((section) =>
+        section.title.toLocaleLowerCase('pt-BR').includes(normalizedSearch) ||
+        section.content.some((item) => [
+          item.title,
+          item.description,
+          ...(item.steps || []),
+          ...(item.tips || []),
+        ].some((text) => text.toLocaleLowerCase('pt-BR').includes(normalizedSearch)))
       )
     : docSections;
 
-  const currentSection = docSections.find((s) => s.id === activeSection);
+  // Se uma busca filtrar a seção ativa, exibe a primeira seção encontrada em
+  // vez de manter conteúdo que não corresponde aos resultados visíveis.
+  const currentSection = filteredSections.find((section) => section.id === activeSection) || filteredSections[0];
 
   return (
     <div className="space-y-6">
@@ -722,7 +733,7 @@ export default function Documentacao() {
           Documentação do Sistema
         </h1>
         <p className="text-muted-foreground mt-1">
-          Guia completo de todas as funcionalidades do EloLab
+          Orientações dos principais módulos e fluxos do EloLab
         </p>
       </div>
 
@@ -734,6 +745,7 @@ export default function Documentacao() {
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
+                  aria-label="Buscar em títulos, instruções e dicas da documentação"
                   placeholder="Buscar na documentação..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
@@ -751,8 +763,8 @@ export default function Documentacao() {
                         key={section.id}
                         onClick={() => {
                           setActiveSection(section.id);
-                          setSearchTerm('');
                         }}
+                        aria-current={currentSection?.id === section.id ? 'page' : undefined}
                         className={cn(
                           'flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium transition-all text-left w-full',
                           activeSection === section.id
@@ -770,6 +782,7 @@ export default function Documentacao() {
                       </button>
                     );
                   })}
+                  {filteredSections.length === 0 && <p className="px-3 py-4 text-sm text-muted-foreground">Nenhum resultado. Tente outro termo.</p>}
                 </nav>
               </ScrollArea>
             </CardContent>
@@ -865,6 +878,7 @@ export default function Documentacao() {
               </motion.div>
             )}
           </AnimatePresence>
+          {!currentSection && <Card><CardContent className="py-10 text-center text-sm text-muted-foreground">Nenhum conteúdo corresponde à busca. Tente outro termo.</CardContent></Card>}
         </div>
       </div>
     </div>

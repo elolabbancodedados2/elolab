@@ -1,13 +1,13 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { WhatsAppAgent, WhatsAppSession, WhatsAppConversation, WhatsAppInternalNote, WhatsAppMessage, WhatsAppStats } from './types';
-import { todayDateOnly } from '@/lib/dateOnly';
+import { todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 
-export function useWhatsAppAgents() {
+export function useWhatsAppAgents(allowed = true) {
   const { profile } = useSupabaseAuth();
   return useQuery({
-    queryKey: ['whatsapp-agents', profile?.clinica_id],
+    queryKey: ['whatsapp-agents', profile?.clinica_id, profile?.id],
     queryFn: async () => {
       if (!profile?.clinica_id) return [] as WhatsAppAgent[];
       const { data, error } = await supabase
@@ -18,14 +18,14 @@ export function useWhatsAppAgents() {
       if (error) throw error;
       return data as WhatsAppAgent[];
     },
-    enabled: !!profile?.clinica_id,
+    enabled: allowed && !!profile?.clinica_id,
   });
 }
 
-export function useWhatsAppSessions() {
+export function useWhatsAppSessions(allowed = true) {
   const { profile } = useSupabaseAuth();
   return useQuery({
-    queryKey: ['whatsapp-sessions', profile?.clinica_id],
+    queryKey: ['whatsapp-sessions', profile?.clinica_id, profile?.id],
     queryFn: async () => {
       if (!profile?.clinica_id) return [] as WhatsAppSession[];
       const { data, error } = await supabase
@@ -36,14 +36,14 @@ export function useWhatsAppSessions() {
       if (error) throw error;
       return data as WhatsAppSession[];
     },
-    enabled: !!profile?.clinica_id,
+    enabled: allowed && !!profile?.clinica_id,
   });
 }
 
-export function useWhatsAppConversations() {
+export function useWhatsAppConversations(allowed = true) {
   const { profile } = useSupabaseAuth();
   return useQuery({
-    queryKey: ['whatsapp-conversations', profile?.clinica_id],
+    queryKey: ['whatsapp-conversations', profile?.clinica_id, profile?.id],
     queryFn: async () => {
       if (!profile?.clinica_id) return [] as WhatsAppConversation[];
       const { data, error } = await supabase
@@ -55,14 +55,14 @@ export function useWhatsAppConversations() {
       if (error) throw error;
       return data as WhatsAppConversation[];
     },
-    enabled: !!profile?.clinica_id,
+    enabled: allowed && !!profile?.clinica_id,
   });
 }
 
 export function useWhatsAppInternalNotes(conversationId: string | null) {
   const { profile } = useSupabaseAuth();
   return useQuery({
-    queryKey: ['whatsapp-internal-notes', profile?.clinica_id, conversationId],
+    queryKey: ['whatsapp-internal-notes', profile?.clinica_id, profile?.id, conversationId],
     queryFn: async () => {
       if (!profile?.clinica_id || !conversationId) return [] as WhatsAppInternalNote[];
       const { data, error } = await (supabase as any)
@@ -81,7 +81,7 @@ export function useWhatsAppInternalNotes(conversationId: string | null) {
 export function useWhatsAppMessages(conversationId: string | null) {
   const { profile } = useSupabaseAuth();
   return useQuery({
-    queryKey: ['whatsapp-messages', profile?.clinica_id, conversationId],
+    queryKey: ['whatsapp-messages', profile?.clinica_id, profile?.id, conversationId],
     queryFn: async () => {
       if (!profile?.clinica_id || !conversationId) return [] as WhatsAppMessage[];
       const { data, error } = await supabase
@@ -89,41 +89,46 @@ export function useWhatsAppMessages(conversationId: string | null) {
         .select('id, direcao, conteudo, status, created_at, metadata')
         .eq('clinica_id', profile.clinica_id)
         .eq('conversation_id', conversationId)
-        .order('created_at', { ascending: true })
+        // Buscar as mais recentes; depois inverter para manter a ordem visual cronológica.
+        .order('created_at', { ascending: false })
         .limit(200);
       if (error) throw error;
-      return data as WhatsAppMessage[];
+      return (data || []).reverse() as WhatsAppMessage[];
     },
     enabled: !!profile?.clinica_id && !!conversationId,
     refetchInterval: conversationId ? 3000 : false,
   });
 }
 
-export function useWhatsAppStats() {
+export function useWhatsAppStats(allowed = true) {
   const { profile } = useSupabaseAuth();
   return useQuery({
-    queryKey: ['whatsapp-stats', profile?.clinica_id],
+    queryKey: ['whatsapp-stats', profile?.clinica_id, profile?.id],
     queryFn: async (): Promise<WhatsAppStats> => {
       if (!profile?.clinica_id) return { messages: 0, conversations: 0, actions: 0 };
-      const today = todayDateOnly();
+      const today = todaySaoPauloDateOnly();
+      const startOfToday = new Date(`${today}T00:00:00-03:00`).toISOString();
       
-      const { count: messagesCount } = await supabase
+      const { count: messagesCount, error: messagesError } = await supabase
         .from('whatsapp_messages')
         .select('*', { count: 'exact', head: true })
         .eq('clinica_id', profile.clinica_id)
-        .gte('created_at', today);
+        .gte('created_at', startOfToday);
+      if (messagesError) throw messagesError;
 
-      const { count: conversationsCount } = await supabase
+      const { count: conversationsCount, error: conversationsError } = await supabase
         .from('whatsapp_conversations')
         .select('*', { count: 'exact', head: true })
         .eq('clinica_id', profile.clinica_id)
-        .gte('created_at', today);
+        .gte('created_at', startOfToday);
+      if (conversationsError) throw conversationsError;
 
-      const { count: actionsCount } = await supabase
+      const { count: actionsCount, error: actionsError } = await supabase
         .from('whatsapp_agent_actions')
         .select('*', { count: 'exact', head: true })
         .eq('clinica_id', profile.clinica_id)
-        .gte('created_at', today);
+        .gte('created_at', startOfToday);
+      if (actionsError) throw actionsError;
 
       return {
         messages: messagesCount || 0,
@@ -131,6 +136,6 @@ export function useWhatsAppStats() {
         actions: actionsCount || 0,
       };
     },
-    enabled: !!profile?.clinica_id,
+    enabled: allowed && !!profile?.clinica_id,
   });
 }

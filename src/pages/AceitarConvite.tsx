@@ -36,6 +36,7 @@ export default function AceitarConvite() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [telefone, setTelefone] = useState('');
+  const [existingAccount, setExistingAccount] = useState(false);
 
   useEffect(() => {
     if (!token) {
@@ -113,15 +114,17 @@ export default function AceitarConvite() {
 
     // Mesma política do cadastro. Um convite pode conceder o papel `admin`, então
     // não faz sentido a conta mais poderosa da clínica aceitar a senha mais fraca.
-    const erroSenha = validatePassword(password);
-    if (erroSenha) {
-      toast.error(erroSenha);
-      return;
-    }
+    if (!existingAccount) {
+      const erroSenha = validatePassword(password);
+      if (erroSenha) {
+        toast.error(erroSenha);
+        return;
+      }
 
-    if (password !== confirmPassword) {
-      toast.error('As senhas não coincidem');
-      return;
+      if (password !== confirmPassword) {
+        toast.error('As senhas não coincidem');
+        return;
+      }
     }
 
     if (!invitation) return;
@@ -130,11 +133,49 @@ export default function AceitarConvite() {
 
     try {
       if (invitation.source === 'new') {
+        if (existingAccount) {
+          const { data: sessionData } = await supabase.auth.getUser();
+          const currentUser = sessionData.user;
+          let authenticatedEmail = currentUser?.email?.toLowerCase();
+
+          if (authenticatedEmail !== invitation.email.toLowerCase()) {
+            const { data: login, error: loginError } = await supabase.auth.signInWithPassword({
+              email: invitation.email,
+              password,
+            });
+            if (loginError) {
+              throw new Error('Senha incorreta. Use a senha atual da sua conta para aceitar o convite.');
+            }
+            authenticatedEmail = login.user.email?.toLowerCase();
+          }
+
+          if (authenticatedEmail !== invitation.email.toLowerCase()) {
+            throw new Error('Entre com a conta do e-mail que recebeu o convite.');
+          }
+
+          const { data, error } = await supabase.functions.invoke('accept-invite', {
+            body: { action: 'accept_authenticated', token },
+          });
+          if (error) throw error;
+          if (!data?.success) throw new Error(data?.error || 'Não foi possível aceitar o convite.');
+
+          toast.success('Convite aceito! Redirecionando...');
+          navigate('/dashboard');
+          return;
+        }
+
         const { data, error } = await supabase.functions.invoke('accept-invite', {
           body: { action: 'accept', token, password, telefone: telefone || null },
         });
         if (error) throw error;
-        if (data && (data as any).success === false) throw new Error((data as any).error);
+        if (data?.code === 'account_exists') {
+          setExistingAccount(true);
+          setPassword('');
+          setConfirmPassword('');
+          toast.info('Este e-mail já possui uma conta. Digite a senha atual para aceitar o convite.');
+          return;
+        }
+        if (!data?.success) throw new Error(data?.error || 'Não foi possível criar sua conta.');
 
         // Faz login automático
         const { error: signInError } = await supabase.auth.signInWithPassword({
@@ -295,7 +336,9 @@ export default function AceitarConvite() {
                 Clínica: <strong>{invitation.clinica_nome}</strong>
               </span>
             )}
-            Crie sua senha para acessar o sistema
+            {existingAccount
+              ? 'Entre com sua senha atual para aceitar o convite'
+              : 'Crie sua senha para acessar o sistema'}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -329,19 +372,19 @@ export default function AceitarConvite() {
             )}
 
             <div className="space-y-2">
-              <Label htmlFor="password">Senha</Label>
+              <Label htmlFor="password">{existingAccount ? 'Senha atual' : 'Senha'}</Label>
               <Input
                 id="password"
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder={invitation?.source === 'new' ? 'Mínimo 8 caracteres' : 'Mínimo 6 caracteres'}
+                placeholder={existingAccount ? 'Digite a senha da sua conta' : invitation?.source === 'new' ? 'Mínimo 8 caracteres' : 'Mínimo 6 caracteres'}
                 required
-                minLength={invitation?.source === 'new' ? 8 : 6}
+                minLength={existingAccount ? undefined : invitation?.source === 'new' ? 8 : 6}
               />
             </div>
 
-            <div className="space-y-2">
+            {!existingAccount && <div className="space-y-2">
               <Label htmlFor="confirmPassword">Confirmar Senha</Label>
               <Input
                 id="confirmPassword"
@@ -351,9 +394,9 @@ export default function AceitarConvite() {
                 placeholder="Digite a senha novamente"
                 required
               />
-            </div>
+            </div>}
 
-            {invitation?.source === 'new' && (
+            {invitation?.source === 'new' && !existingAccount && (
               <div className="space-y-2">
                 <Label htmlFor="telefone">Telefone (opcional)</Label>
                 <Input
@@ -370,10 +413,10 @@ export default function AceitarConvite() {
               {submitting ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Criando conta...
+                  {existingAccount ? 'Aceitando convite...' : 'Criando conta...'}
                 </>
               ) : (
-                'Criar Conta e Acessar'
+                existingAccount ? 'Entrar e Aceitar Convite' : 'Criar Conta e Acessar'
               )}
             </Button>
           </form>

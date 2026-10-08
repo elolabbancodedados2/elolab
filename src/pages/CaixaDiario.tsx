@@ -1,4 +1,4 @@
-import { useState, useMemo, lazy, Suspense, useEffect } from 'react';
+import { useState, useMemo, lazy, Suspense, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -43,6 +43,8 @@ import { SectionFallback } from '@/components/ui/loading-skeleton';
 import { todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { mesmoValor, diferencaEmReais, parseValorContado } from '@/lib/dinheiro';
 import { calcularSaldoGaveta, calcularTotaisCaixa, validarResultadoRpcCaixa } from '@/lib/caixaDiario';
+import { useBuscaPacientes } from '@/hooks/useBuscaPacientes';
+import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
 
 type LancamentoTipo = 'receita' | 'despesa' | 'sangria' | 'suprimento';
 type FormaPagamento = 'dinheiro' | 'pix' | 'credito' | 'debito' | 'cartao_credito' | 'cartao_debito' | 'cheque' | 'transferencia';
@@ -57,8 +59,83 @@ function toMoney(value: unknown): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function parseMoneyInput(value: string): number | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const compact = trimmed.replace(/\s/g, '');
+  const normalized = compact.includes(',')
+    ? compact.replace(/\./g, '').replace(',', '.')
+    : compact;
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function firstPositiveMoney(...values: unknown[]): number {
   return values.map(toMoney).find(value => value > 0) || 0;
+}
+
+function temPrecisaoDeCentavos(value: number): boolean {
+  return Math.abs(value * 100 - Math.round(value * 100)) <= 1e-7;
+}
+
+function novaChaveMovimentoCaixa(): string {
+  return typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID()
+    : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, caractere => {
+      const aleatorio = Math.floor(Math.random() * 16);
+      return (caractere === 'x' ? aleatorio : (aleatorio & 0x3) | 0x8).toString(16);
+    });
+}
+
+async function inserirMovimentoCaixaUmaVez(payload: Record<string, unknown>): Promise<void> {
+  const { error } = await (supabase.from('lancamentos') as any).insert(payload);
+  if (!error) return;
+
+  // Se a resposta da gravação se perdeu, a mesma chave (id) permite conferir
+  // se o banco já confirmou esse movimento antes de o usuário tentar de novo.
+  const { data: existente, error: erroLeitura } = await (supabase.from('lancamentos') as any)
+    .select('id, tipo, valor, descricao, forma_pagamento, categoria, data, data_vencimento, clinica_id')
+    .eq('id', payload.id)
+    .eq('clinica_id', payload.clinica_id)
+    .maybeSingle();
+
+  if (!erroLeitura && existente) {
+    const mesmoMovimento = existente.tipo === payload.tipo
+      && Number(existente.valor) === Number(payload.valor)
+      && existente.descricao === payload.descricao
+      && existente.forma_pagamento === payload.forma_pagamento
+      && existente.categoria === payload.categoria
+      && existente.data === payload.data
+      && existente.data_vencimento === payload.data_vencimento;
+    if (mesmoMovimento) return;
+    throw new Error('Já existe um lançamento associado a esta tentativa com outros dados. Atualize o caixa antes de registrar outro movimento.');
+  }
+
+  throw error;
+}
+
+function salvarEstadoLocalCaixa(estado: unknown, userId?: string | null, clinicaId?: string | null): boolean {
+  const registros = [
+    userId ? [`caixa_estado_${userId}`, estado] as const : null,
+    clinicaId ? [`caixa_estado_clinica_${clinicaId}`, estado] as const : null,
+  ].filter(Boolean) as Array<readonly [string, unknown]>;
+  let sucesso = true;
+  for (const [chave, valor] of registros) {
+    try { localStorage.setItem(chave, JSON.stringify(valor)); } catch { sucesso = false; }
+  }
+  return sucesso;
+}
+
+function limparEstadoLocalCaixa(userId?: string | null, clinicaId?: string | null): boolean {
+  const chaves = [
+    userId ? `caixa_estado_${userId}` : null,
+    clinicaId ? `caixa_estado_clinica_${clinicaId}` : null,
+  ].filter(Boolean) as string[];
+  let sucesso = true;
+  for (const chave of chaves) {
+    try { localStorage.removeItem(chave); } catch { sucesso = false; }
+  }
+  return sucesso;
 }
 
 interface Lancamento {
@@ -76,6 +153,8 @@ interface Lancamento {
   paciente_nome?: string | null;
   origem_pagamento?: boolean;
 }
+
+const SEM_LANCAMENTOS: Lancamento[] = [];
 
 interface CaixaDiarioType {
   id: string;
@@ -139,6 +218,7 @@ interface ProdutoCarrinho {
   nome: string;
   valor: number;
   quantidade: number;
+  quantidadeDisponivel?: number;
   origem: 'consulta' | 'exame' | 'produto' | 'manual';
 }
 
@@ -184,6 +264,9 @@ export default function CaixaDiario() {
   const [pacienteNome, setPacienteNome] = useState<string>('');
   const [pacienteSearch, setPacienteSearch] = useState('');
   const [pacientePopoverOpen, setPacientePopoverOpen] = useState(false);
+  const posIdempotenciaRef = useRef<{ fingerprint: string; chave: string } | null>(null);
+  const sangriaIdempotenciaRef = useRef<{ clinicaId: string; id: string } | null>(null);
+  const suprimentoIdempotenciaRef = useRef<{ clinicaId: string; id: string } | null>(null);
 
   const [lancamentoForm, setLancamentoForm] = useState({
     tipo: 'receita' as LancamentoTipo,
@@ -228,7 +311,7 @@ export default function CaixaDiario() {
   });
 
   const caixaEventosId = showDetalhesCaixa?.id || caixaHoje?.id;
-  const { data: eventosCaixa = [], isError: erroEventosCaixa, refetch: recarregarEventosCaixa } = useQuery({
+  const { data: eventosCaixa = [], isLoading: loadingEventosCaixa, isError: erroEventosCaixa, refetch: recarregarEventosCaixa } = useQuery({
     queryKey: ['caixa-diario-eventos', caixaEventosId],
     queryFn: async (): Promise<CaixaDiarioEvento[]> => {
       if (!caixaEventosId) return [];
@@ -244,61 +327,78 @@ export default function CaixaDiario() {
     refetchInterval: 30_000,
   });
 
-  const { data: lancamentos = [], isLoading: loadingLanc, isError: erroLancamentos, refetch: recarregarLancamentos } = useQuery({
+  const { data: lancamentosData, isLoading: loadingLanc, isError: erroLancamentos, refetch: recarregarLancamentos } = useQuery({
     queryKey: ['lancamentos-caixa', caixaHoje?.data, profile?.clinica_id],
-    queryFn: async () => {
-      if (!caixaHoje?.data || !profile?.clinica_id) return [];
-      const { data, error } = await supabase.rpc('movimentos_caixa_diario', { p_data: caixaHoje.data });
-      if (error) throw error;
-      return (data || []) as Lancamento[];
+    queryFn: async (): Promise<{ movimentos: Lancamento[]; excedeuLimite: boolean }> => {
+      if (!caixaHoje?.data || !profile?.clinica_id) return { movimentos: [], excedeuLimite: false };
+      const rows = await buscarEmBlocos<Lancamento>(
+        () => supabase.rpc('movimentos_caixa_diario', { p_data: caixaHoje.data })
+          .order('created_at', { ascending: true })
+          .order('id', { ascending: true }),
+        { teto: LIMITE_BUSCA_EM_BLOCOS + 1 },
+      );
+      return {
+        movimentos: rows.slice(0, LIMITE_BUSCA_EM_BLOCOS),
+        excedeuLimite: rows.length > LIMITE_BUSCA_EM_BLOCOS,
+      };
     },
     enabled: !!caixaHoje?.data && !!profile?.clinica_id,
     refetchInterval: 15_000,
   });
+  const lancamentos = lancamentosData?.movimentos ?? SEM_LANCAMENTOS;
+  const lancamentosExcederamLimite = Boolean(lancamentosData?.excedeuLimite);
 
   // Catálogo de tipos de consulta
-  const { data: tiposConsulta = [] } = useQuery({
+  const { data: tiposConsulta = [], isLoading: carregandoTiposConsulta, isError: erroTiposConsulta, refetch: recarregarTiposConsulta } = useQuery({
     queryKey: ['tipos-consulta-caixa', profile?.clinica_id],
     queryFn: async () => {
       if (!profile?.clinica_id) return [];
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('tipos_consulta')
         .select('id, nome, valor_particular')
         .eq('clinica_id', profile.clinica_id)
         .eq('ativo', true)
         .order('nome');
+      if (error) throw error;
       return data || [];
     },
-    enabled: !!profile?.clinica_id,
+    enabled: !!profile?.clinica_id && showLancamento,
   });
 
   // Catálogo de produtos (estoque com valor_venda)
-  const { data: produtosEstoque = [] } = useQuery({
+  const { data: produtosEstoque = [], isLoading: carregandoProdutos, isError: erroProdutos, refetch: recarregarProdutos } = useQuery({
     queryKey: ['produtos-caixa', profile?.clinica_id],
     queryFn: async () => {
       if (!profile?.clinica_id) return [];
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('estoque')
-        .select('id, nome, categoria, valor_venda, quantidade')
+        .select('id, nome, categoria, valor_venda, quantidade, validade')
         .eq('clinica_id', profile.clinica_id)
         .gt('quantidade', 0)
         .order('nome');
+      if (error) throw error;
       return data || [];
     },
-    enabled: !!profile?.clinica_id,
+    enabled: !!profile?.clinica_id && showLancamento,
   });
 
-  // Catálogo de exames (preços internos da configuração + precos_exames_convenio)
-  const { data: examesCatalogo = [] } = useQuery({
+  // Catálogo de venda direta: preço particular/configurado ou preço de venda.
+  // Preços de convênio não entram aqui porque o PDV não seleciona convênio;
+  // usar um deles sem contexto poderia cobrar o valor de outro plano.
+  const { data: examesCatalogo = [], isLoading: carregandoExames, isError: erroExames, refetch: recarregarExames } = useQuery({
     queryKey: ['exames-caixa', profile?.clinica_id, profile?.id],
     queryFn: async () => {
       if (!profile?.clinica_id) return [];
-      const items: { id: string; nome: string; valor: number }[] = [];
+      const itemsByName = new Map<string, { id: string; nome: string; valor: number }>();
+      const normalizarNome = (nome: unknown) => String(nome || '')
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('pt-BR')
+        .replace(/[^a-z0-9]+/g, ' ').trim().replace(/\s+/g, ' ');
 
       // 1. Preços internos salvos em configuracoes_clinica
       let cfgRows: any[] = [];
+      let erroConfiguracaoInterna: unknown = null;
       if (profile?.clinica_id) {
-        const { data } = await (supabase as any)
+        const { data, error } = await (supabase as any)
           .from('configuracoes_clinica')
           .select('valor, updated_at')
           .eq('chave', 'precos_exames_internos')
@@ -306,9 +406,10 @@ export default function CaixaDiario() {
           .order('updated_at', { ascending: false })
           .limit(1);
         cfgRows = data || [];
+        erroConfiguracaoInterna = error;
       }
       if (cfgRows.length === 0 && profile?.id) {
-        const { data } = await (supabase as any)
+        const { data, error } = await (supabase as any)
           .from('configuracoes_clinica')
           .select('valor, updated_at')
           .eq('chave', 'precos_exames_internos')
@@ -316,39 +417,52 @@ export default function CaixaDiario() {
           .order('updated_at', { ascending: false })
           .limit(1);
         cfgRows = data || [];
+        if (error) throw error;
       }
+      if (cfgRows.length === 0 && erroConfiguracaoInterna) throw erroConfiguracaoInterna;
       const internalPrices = cfgRows[0]?.valor;
       if (Array.isArray(internalPrices)) {
         internalPrices.forEach((e: any) => {
           const valor = toMoney(e.valor);
           if (e.nome && valor > 0) {
-            items.push({ id: `interno-${e.nome}`, nome: e.nome, valor });
+            const nomeNormalizado = normalizarNome(e.nome);
+            if (nomeNormalizado && !itemsByName.has(nomeNormalizado)) {
+              itemsByName.set(nomeNormalizado, { id: `interno-${nomeNormalizado}`, nome: e.nome, valor });
+            }
           }
         });
       }
 
-      // 2. Preços de convênio (valor_total ou valor_tabela)
-      const { data: convenioExames } = await supabase
-        .from('precos_exames_convenio')
-        .select('id, tipo_exame, valor_total, valor_tabela')
+      // O catálogo estruturado só fornece preço particular/de venda e serve
+      // como fallback quando a clínica ainda não mantém a lista interna.
+      const { data: catalogoExames, error: erroCatalogoExames } = await supabase
+        .from('tipo_exames_catalog')
+        .select('id, nome, preco_venda')
         .eq('clinica_id', profile.clinica_id)
         .eq('ativo', true);
-      if (convenioExames) {
-        convenioExames.forEach((e: any) => {
-          const valor = firstPositiveMoney(e.valor_total, e.valor_tabela);
-          if (!items.find(i => i.nome === e.tipo_exame) && Number.isFinite(valor) && valor > 0) {
-            items.push({ id: e.id, nome: e.tipo_exame, valor });
+      if (erroCatalogoExames) throw erroCatalogoExames;
+      if (catalogoExames) {
+        catalogoExames.forEach((e: any) => {
+          const valor = firstPositiveMoney(e.preco_venda);
+          const nomeNormalizado = normalizarNome(e.nome);
+          if (nomeNormalizado && !itemsByName.has(nomeNormalizado) && Number.isFinite(valor) && valor > 0) {
+            itemsByName.set(nomeNormalizado, { id: e.id, nome: e.nome, valor });
           }
         });
       }
 
-      return items.sort((a, b) => a.nome.localeCompare(b.nome));
+      return [...itemsByName.values()].sort((a, b) => a.nome.localeCompare(b.nome));
     },
-    enabled: !!profile?.clinica_id,
+    enabled: !!profile?.clinica_id && showLancamento,
   });
 
   // Histórico de caixas anteriores
-  const { data: historicosCaixa = [] } = useQuery({
+  const {
+    data: historicosCaixa = [],
+    isLoading: carregandoHistoricosCaixa,
+    isError: erroHistoricosCaixa,
+    refetch: recarregarHistoricosCaixa,
+  } = useQuery({
     queryKey: ['historico-caixas', profile?.clinica_id],
     queryFn: async () => {
       if (!profile?.clinica_id) return [];
@@ -367,37 +481,33 @@ export default function CaixaDiario() {
   });
 
   // Pacientes (busca para vincular à venda)
-  const { data: pacientesBusca = [] } = useQuery({
-    queryKey: ['pacientes-pos-busca', profile?.clinica_id, pacienteSearch],
-    queryFn: async () => {
-      if (!profile?.clinica_id) return [];
-      let q = supabase
-        .from('pacientes')
-        .select('id, nome, nome_social, cpf, telefone')
-        .eq('clinica_id', profile.clinica_id)
-        .order('nome')
-        .limit(20);
-      const term = pacienteSearch.trim();
-      if (term) {
-        q = q.or(`nome.ilike.%${term}%,nome_social.ilike.%${term}%,cpf.ilike.%${term}%,telefone.ilike.%${term}%`);
-      }
-      const { data } = await q;
-      return (data || []) as any[];
-    },
-    enabled: !!profile?.clinica_id && pacientePopoverOpen,
+  const pacienteBuscaQuery = useBuscaPacientes(pacienteSearch, {
+    limite: 20,
+    enabled: pacientePopoverOpen,
   });
+  const buscandoPacientes = pacienteBuscaQuery.isFetching || pacienteBuscaQuery.isPlaceholderData || pacienteBuscaQuery.isDebouncing;
+  const pacientesBusca = buscandoPacientes ? [] : pacienteBuscaQuery.data?.pacientes ?? [];
 
   // Lançamentos do caixa em detalhe
-  const { data: lancamentosDetalhe = [], isLoading: loadingLancamentosDetalhe, isError: erroLancamentosDetalhe, refetch: recarregarLancamentosDetalhe } = useQuery({
+  const { data: lancamentosDetalheData, isLoading: loadingLancamentosDetalhe, isError: erroLancamentosDetalhe, refetch: recarregarLancamentosDetalhe } = useQuery({
     queryKey: ['lancamentos-detalhe', profile?.id ?? null, profile?.clinica_id ?? null, showDetalhesCaixa?.data],
-    queryFn: async () => {
-      if (!showDetalhesCaixa?.data || !profile?.clinica_id) return [];
-      const { data, error } = await supabase.rpc('movimentos_caixa_diario', { p_data: showDetalhesCaixa.data });
-      if (error) throw error;
-      return (data || []) as Lancamento[];
+    queryFn: async (): Promise<{ movimentos: Lancamento[]; excedeuLimite: boolean }> => {
+      if (!showDetalhesCaixa?.data || !profile?.clinica_id) return { movimentos: [], excedeuLimite: false };
+      const rows = await buscarEmBlocos<Lancamento>(
+        () => supabase.rpc('movimentos_caixa_diario', { p_data: showDetalhesCaixa.data })
+          .order('created_at', { ascending: true })
+          .order('id', { ascending: true }),
+        { teto: LIMITE_BUSCA_EM_BLOCOS + 1 },
+      );
+      return {
+        movimentos: rows.slice(0, LIMITE_BUSCA_EM_BLOCOS),
+        excedeuLimite: rows.length > LIMITE_BUSCA_EM_BLOCOS,
+      };
     },
     enabled: !!showDetalhesCaixa?.data,
   });
+  const lancamentosDetalhe = lancamentosDetalheData?.movimentos ?? SEM_LANCAMENTOS;
+  const lancamentosDetalheExcederamLimite = Boolean(lancamentosDetalheData?.excedeuLimite);
 
 
 
@@ -437,10 +547,15 @@ export default function CaixaDiario() {
 
   const produtosFiltrados = useMemo(() => {
     const q = catalogoSearch.toLowerCase();
-    return produtosEstoque.filter((p: any) =>
+    return produtosEstoque.filter((p: any) => (!p.validade || p.validade >= today) && (
       !q || p.nome?.toLowerCase().includes(q) || p.categoria?.toLowerCase().includes(q)
-    );
-  }, [produtosEstoque, catalogoSearch]);
+    ));
+  }, [produtosEstoque, catalogoSearch, today]);
+  const temProdutoVencidoNaBusca = useMemo(() => {
+    const q = catalogoSearch.toLowerCase();
+    return produtosEstoque.some((p: any) => p.validade && p.validade < today &&
+      (!q || p.nome?.toLowerCase().includes(q) || p.categoria?.toLowerCase().includes(q)));
+  }, [produtosEstoque, catalogoSearch, today]);
 
   const examesFiltrados = useMemo(() => {
     const q = catalogoSearch.toLowerCase();
@@ -454,6 +569,13 @@ export default function CaixaDiario() {
     const valor = toMoney(item.valor);
     if (valor <= 0) {
       toast.error(`O item "${item.nome}" não possui preço cadastrado.`);
+      return;
+    }
+    const existente = carrinho.find(p => p.id === item.id && p.origem === item.origem);
+    if (item.origem === 'produto' && (item.quantidadeDisponivel ?? 0) <= (existente?.quantidade ?? 0)) {
+      toast.error((item.quantidadeDisponivel ?? 0) <= 0
+        ? `"${item.nome}" está sem estoque disponível.`
+        : `Há somente ${item.quantidadeDisponivel} unidade(s) de "${item.nome}" disponível(is).`);
       return;
     }
     setCarrinho(prev => {
@@ -474,14 +596,25 @@ export default function CaixaDiario() {
 
   const updateCartQty = (id: string, qty: number) => {
     if (qty <= 0) return removeFromCart(id);
+    const item = carrinho.find(p => p.id === id);
+    if (item?.origem === 'produto' && qty > (item.quantidadeDisponivel ?? 0)) {
+      toast.error(`Há somente ${item.quantidadeDisponivel ?? 0} unidade(s) de "${item.nome}" disponível(is).`);
+      return;
+    }
     setCarrinho(prev => prev.map(p => p.id === id ? { ...p, quantidade: qty } : p));
   };
 
-  const carrinhoTotal = useMemo(() => {
-    const subtotal = carrinho.reduce((s, i) => s + i.valor * i.quantidade, 0);
-    const desconto = parseFloat(lancDesconto) || 0;
-    return Math.max(0, subtotal - desconto);
-  }, [carrinho, lancDesconto]);
+  const carrinhoSubtotal = useMemo(
+    () => carrinho.reduce((s, i) => s + i.valor * i.quantidade, 0),
+    [carrinho],
+  );
+  const descontoInformado = lancDesconto.trim() === '' ? 0 : parseMoneyInput(lancDesconto);
+  const descontoInvalido = descontoInformado === null
+    || descontoInformado < 0
+    || descontoInformado > carrinhoSubtotal
+    || (carrinhoSubtotal > 0 && descontoInformado >= carrinhoSubtotal)
+    || !temPrecisaoDeCentavos(descontoInformado);
+  const carrinhoTotal = Math.max(0, carrinhoSubtotal - (descontoInformado ?? 0));
 
   const resetPOS = () => {
     setCarrinho([]);
@@ -504,20 +637,30 @@ export default function CaixaDiario() {
     );
   }, [lancamentos, searchTerm]);
 
+  const valorAberturaInformado = parseMoneyInput(valorAbertura);
+  const aberturaInvalida = valorAberturaInformado === null
+    || !Number.isFinite(valorAberturaInformado)
+    || valorAberturaInformado < 0
+    || !temPrecisaoDeCentavos(valorAberturaInformado);
+
   // ─── Mutations ──────────────────────────────────
   const abrirCaixaMutation = useMutation({
     mutationFn: async (valor: number) => {
+      if (!Number.isFinite(valor) || valor < 0 || !temPrecisaoDeCentavos(valor)) {
+        throw new Error('Informe o valor inicial do caixa, igual ou maior que zero e com até duas casas decimais.');
+      }
       const { data, error } = await supabase.rpc('abrir_caixa_diario', { p_valor_abertura: valor });
       if (error) throw error;
       validarResultadoRpcCaixa(data);
+      return valor;
     },
-    onSuccess: () => {
+    onSuccess: (valorConfirmado) => {
       // Sync state to localStorage so Recepcao picks it up instantly
-      const estado = { aberto: true, data: today, valorAbertura: parseFloat(valorAbertura) || 0, operador: profile?.nome };
-      if (profile?.id) localStorage.setItem(`caixa_estado_${profile.id}`, JSON.stringify(estado));
-      if (profile?.clinica_id) localStorage.setItem(`caixa_estado_clinica_${profile.clinica_id}`, JSON.stringify(estado));
+      const estado = { aberto: true, data: today, valorAbertura: valorConfirmado, operador: profile?.nome };
+      const estadoLocalSalvo = salvarEstadoLocalCaixa(estado, profile?.id, profile?.clinica_id);
 
       toast.success('Caixa aberto com sucesso!');
+      if (!estadoLocalSalvo) toast.warning('O caixa foi aberto, mas a Recepção pode precisar atualizar o estado direto do sistema. Recarregue a tela da Recepção.');
       setShowAbertura(false);
       setValorAbertura('');
       queryClient.invalidateQueries({ queryKey: ['caixa-hoje'] });
@@ -546,9 +689,9 @@ export default function CaixaDiario() {
     },
     onSuccess: ({ caixa, valor }) => {
       // A close from the history does not change today's reception state.
+      let estadoLocalLimpo = true;
       if (caixa.data === today) {
-        if (profile?.id) localStorage.removeItem(`caixa_estado_${profile.id}`);
-        if (profile?.clinica_id) localStorage.removeItem(`caixa_estado_clinica_${profile.clinica_id}`);
+        estadoLocalLimpo = limparEstadoLocalCaixa(profile?.id, profile?.clinica_id);
       }
       setShowDetalhesCaixa(current => current?.id === caixa.id ? {
         ...current,
@@ -558,6 +701,7 @@ export default function CaixaDiario() {
       } : current);
 
       toast.success('Caixa fechado com sucesso!');
+      if (!estadoLocalLimpo) toast.warning('O caixa foi fechado, mas a Recepção pode exibir o estado anterior até atualizar. Recarregue a tela da Recepção.');
       setShowFechamento(false);
       setValorFechamento('');
       setObsFechamento('');
@@ -587,9 +731,9 @@ export default function CaixaDiario() {
     },
     onSuccess: () => {
       const estado = { aberto: true, data: today, valorAbertura: caixaHoje?.valor_abertura || 0, operador: caixaHoje?.operador_abertura };
-      if (profile?.id) localStorage.setItem(`caixa_estado_${profile.id}`, JSON.stringify(estado));
-      if (profile?.clinica_id) localStorage.setItem(`caixa_estado_clinica_${profile.clinica_id}`, JSON.stringify(estado));
+      const estadoLocalSalvo = salvarEstadoLocalCaixa(estado, profile?.id, profile?.clinica_id);
       toast.success('Caixa reaberto', { description: 'O fechamento anterior permanece registrado no histórico.' });
+      if (!estadoLocalSalvo) toast.warning('O caixa foi reaberto, mas a Recepção pode precisar atualizar o estado direto do sistema. Recarregue a tela da Recepção.');
       setShowReabertura(false);
       setMotivoReabertura('');
       queryClient.invalidateQueries({ queryKey: ['caixa-hoje'] });
@@ -609,86 +753,99 @@ export default function CaixaDiario() {
     mutationFn: async () => {
       if (!profile?.clinica_id || !caixaHoje?.id) throw new Error('Caixa não está aberto');
       if (carrinho.length === 0) throw new Error('Adicione pelo menos um item');
+      if (descontoInvalido) throw new Error('O desconto deve ser menor que o subtotal para manter um valor de venda maior que zero.');
       if (!Number.isFinite(carrinhoTotal) || carrinhoTotal <= 0) throw new Error('O total da venda deve ser maior que zero');
+      if (carrinho.some(item => item.origem === 'exame') && !pacienteId) {
+        throw new Error('Selecione o paciente para registrar os exames vendidos no prontuário.');
+      }
       const descricao = carrinho.map(i => `${i.nome}${i.quantidade > 1 ? ` x${i.quantidade}` : ''}`).join(', ');
-      const { error } = await (supabase as any).from('lancamentos').insert({
-        tipo: 'receita', valor: carrinhoTotal,
-        descricao, forma_pagamento: lancFormaPagamento,
-        categoria: 'receita_caixa',
-        status: 'pago',
-        data_vencimento: today,
-        data: today, clinica_id: profile.clinica_id,
-        paciente_id: pacienteId || null,
+      const valorCobrado = carrinho.reduce((sum, item) => sum + item.valor * item.quantidade, 0);
+      const fingerprint = JSON.stringify({
+        clinic: profile.clinica_id,
+        patient: pacienteId,
+        date: today,
+        items: carrinho.map(({ id, origem, quantidade, valor }) => ({ id, origem, quantidade, valor })),
+        forma: lancFormaPagamento,
+        pago: carrinhoTotal,
+      });
+      if (posIdempotenciaRef.current?.fingerprint !== fingerprint) {
+        const chave = typeof crypto !== 'undefined' && 'randomUUID' in crypto
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+        posIdempotenciaRef.current = { fingerprint, chave };
+      }
+      const produtos = carrinho
+        .filter(item => item.origem === 'produto')
+        .map(item => ({ item_id: item.id, quantidade: item.quantidade }));
+      const exames = carrinho
+        .filter(item => item.origem === 'exame')
+        .map(item => ({ nome: item.nome, quantidade: item.quantidade, valor: item.valor }));
+      const idempotencia = posIdempotenciaRef.current;
+      if (!idempotencia) throw new Error('Não foi possível proteger esta venda contra duplicidade. Tente novamente.');
+      const { data, error } = await (supabase as any).rpc('registrar_venda_pdv', {
+        p_chave: idempotencia.chave,
+        p_clinica_id: profile.clinica_id,
+        p_paciente_id: pacienteId || null,
+        p_data: today,
+        p_descricao: descricao,
+        p_valor_cobrado: Number(valorCobrado.toFixed(2)),
+        p_valor_pago: Number(carrinhoTotal.toFixed(2)),
+        p_forma_pagamento: lancFormaPagamento,
+        p_produtos: produtos,
+        p_exames: exames,
       });
       if (error) throw error;
+      const venda = Array.isArray(data) ? data[0] : data;
+      if (!venda?.lancamento_id) throw new Error('O caixa não confirmou o registro da venda. Atualize a tela antes de tentar novamente.');
 
-      // Se há paciente vinculado, registrar exames realizados no prontuário.
-      //
-      // A falha aqui só ia para o console, e mesmo assim a tela dizia "Venda
-      // registrada e vinculada ao paciente!". O caixa recebia o pagamento e o
-      // exame comprado não aparecia no histórico clínico nem no fluxo do
-      // laboratório — ninguém ficava sabendo que faltava lançar.
-      //
-      // Não desfazemos a venda: o dinheiro já entrou. Mas quem está no balcão
-      // precisa saber que sobrou um lançamento manual para fazer.
-      let examesNaoRegistrados = false;
-      if (pacienteId) {
-        const examesItens = carrinho.filter(i => i.origem === 'exame');
-        if (examesItens.length > 0) {
-          const rows = examesItens.flatMap(i =>
-            Array.from({ length: i.quantidade }).map(() => ({
-              paciente_id: pacienteId,
-              clinica_id: profile.clinica_id,
-              tipo_exame: i.nome,
-              status: 'realizado',
-              data_solicitacao: today,
-              data_realizacao: today,
-              preco_venda: i.valor,
-              observacoes: 'Registrado via Ponto de Venda',
-            }))
-          );
-          const { error: exErr } = await (supabase as any).from('exames').insert(rows);
-          if (exErr) {
-            examesNaoRegistrados = true;
-            console.error('Erro ao registrar exames no prontuário:', exErr);
-          }
-        }
-      }
-
-      return { examesNaoRegistrados };
+      return { jaRegistrada: Boolean(venda.ja_registrada) };
     },
     onSuccess: (resultado) => {
-      if (resultado?.examesNaoRegistrados) {
-        toast.warning('Venda registrada, mas o exame não entrou no prontuário.', {
-          description: 'O pagamento foi lançado. Cadastre o exame manualmente em Exames — sem isso ele não aparece no histórico do paciente nem chega ao laboratório.',
-          duration: 12000,
-        });
-      } else {
-        toast.success(pacienteId ? 'Venda registrada e vinculada ao paciente!' : 'Venda registrada!');
-      }
+      posIdempotenciaRef.current = null;
+      toast.success(resultado?.jaRegistrada
+        ? 'Venda já estava registrada. O estoque não foi baixado novamente.'
+        : pacienteId ? 'Venda registrada e vinculada ao paciente!' : 'Venda registrada!');
       setShowLancamento(false);
       resetPOS();
       queryClient.invalidateQueries({ queryKey: ['lancamentos-caixa'] });
       queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
       queryClient.invalidateQueries({ queryKey: ['caixa-diario'] });
       queryClient.invalidateQueries({ queryKey: ['exames'] });
+      queryClient.invalidateQueries({ queryKey: ['produtos-caixa', profile?.clinica_id] });
+      queryClient.invalidateQueries({ queryKey: ['estoque'] });
     },
-    onError: (e: any) => toast.error(e?.message || 'Erro'),
+    onError: (e: any) => {
+      // Uma falha de rede pode ocorrer depois do RPC ter confirmado a venda;
+      // reconcilia estoque e caixa antes que o usuário repita a operação.
+      queryClient.invalidateQueries({ queryKey: ['produtos-caixa', profile?.clinica_id] });
+      queryClient.invalidateQueries({ queryKey: ['estoque'] });
+      queryClient.invalidateQueries({ queryKey: ['lancamentos-caixa'] });
+      queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
+      toast.error(e?.message || 'Erro');
+    },
   });
 
   const adicionarSangriaMutation = useMutation({
     mutationFn: async () => {
       if (!profile?.clinica_id || !caixaHoje?.id) throw new Error('Caixa não está aberto');
-      if (!sangriaForm.valor || Number(sangriaForm.valor) <= 0) throw new Error('Valor inválido');
+      const valor = parseMoneyInput(sangriaForm.valor);
+      if (valor === null || valor <= 0 || !temPrecisaoDeCentavos(valor)) {
+        throw new Error('Informe um valor válido, maior que zero e com até duas casas decimais.');
+      }
       if (!sangriaForm.motivo.trim()) throw new Error('Motivo obrigatório');
-      const { error } = await (supabase as any).from('lancamentos').insert({
-        tipo: 'sangria', valor: Number(sangriaForm.valor),
+      if (sangriaIdempotenciaRef.current?.clinicaId !== profile.clinica_id) {
+        sangriaIdempotenciaRef.current = { clinicaId: profile.clinica_id, id: novaChaveMovimentoCaixa() };
+      }
+      const id = sangriaIdempotenciaRef.current.id;
+      await inserirMovimentoCaixaUmaVez({
+        id,
+        tipo: 'sangria', valor,
         descricao: `Sangria — ${sangriaForm.motivo}`, forma_pagamento: 'dinheiro',
         categoria: 'sangria', status: 'pago', data_vencimento: today, data: today, clinica_id: profile.clinica_id,
       });
-      if (error) throw error;
     },
     onSuccess: () => {
+      sangriaIdempotenciaRef.current = null;
       toast.success('Sangria registrada!');
       setShowSangria(false);
       setSangriaForm({ valor: '', motivo: '' });
@@ -696,21 +853,36 @@ export default function CaixaDiario() {
       queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
       queryClient.invalidateQueries({ queryKey: ['caixa-diario'] });
     },
-    onError: (e: any) => toast.error(e?.message || 'Erro'),
+    onError: (e: any) => {
+      queryClient.invalidateQueries({ queryKey: ['lancamentos-caixa'] });
+      queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
+      queryClient.invalidateQueries({ queryKey: ['caixa-diario'] });
+      toast.error(e?.message || 'Não foi possível confirmar a sangria.', {
+        description: 'Se a conexão caiu, tente novamente sem alterar os dados; o caixa verificará a tentativa antes de gravar outro movimento.',
+      });
+    },
   });
 
   const adicionarSuprimentoMutation = useMutation({
     mutationFn: async () => {
       if (!profile?.clinica_id || !caixaHoje?.id) throw new Error('Caixa não está aberto');
-      if (!suprimentoForm.valor || Number(suprimentoForm.valor) <= 0) throw new Error('Valor inválido');
-      const { error } = await (supabase as any).from('lancamentos').insert({
-        tipo: 'suprimento', valor: Number(suprimentoForm.valor),
-        descricao: suprimentoForm.descricao || 'Suprimento de Caixa', forma_pagamento: 'dinheiro',
+      const valor = parseMoneyInput(suprimentoForm.valor);
+      if (valor === null || valor <= 0 || !temPrecisaoDeCentavos(valor)) {
+        throw new Error('Informe um valor válido, maior que zero e com até duas casas decimais.');
+      }
+      if (suprimentoIdempotenciaRef.current?.clinicaId !== profile.clinica_id) {
+        suprimentoIdempotenciaRef.current = { clinicaId: profile.clinica_id, id: novaChaveMovimentoCaixa() };
+      }
+      const id = suprimentoIdempotenciaRef.current.id;
+      await inserirMovimentoCaixaUmaVez({
+        id,
+        tipo: 'suprimento', valor,
+        descricao: suprimentoForm.descricao.trim() || 'Suprimento de Caixa', forma_pagamento: 'dinheiro',
         categoria: 'suprimento', status: 'pago', data_vencimento: today, data: today, clinica_id: profile.clinica_id,
       });
-      if (error) throw error;
     },
     onSuccess: () => {
+      suprimentoIdempotenciaRef.current = null;
       toast.success('Suprimento adicionado!');
       setShowSuprimento(false);
       setSuprimentoForm({ valor: '', descricao: '' });
@@ -718,12 +890,21 @@ export default function CaixaDiario() {
       queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
       queryClient.invalidateQueries({ queryKey: ['caixa-diario'] });
     },
-    onError: (e: any) => toast.error(e?.message || 'Erro'),
+    onError: (e: any) => {
+      queryClient.invalidateQueries({ queryKey: ['lancamentos-caixa'] });
+      queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
+      queryClient.invalidateQueries({ queryKey: ['caixa-diario'] });
+      toast.error(e?.message || 'Não foi possível confirmar o suprimento.', {
+        description: 'Se a conexão caiu, tente novamente sem alterar os dados; o caixa verificará a tentativa antes de gravar outro movimento.',
+      });
+    },
   });
 
   const deletarLancamentoMutation = useMutation({
     mutationFn: async (id: string) => {
-      const { data, error } = await supabase.from('lancamentos').delete().eq('id', id).select('id');
+      if (!profile?.clinica_id) throw new Error('Clínica não identificada. Atualize a sessão e tente novamente.');
+      const { data, error } = await supabase.from('lancamentos').delete()
+        .eq('id', id).eq('clinica_id', profile.clinica_id).select('id');
       if (error) throw error;
       if (!data || data.length === 0) throw new Error('Sem permissão para excluir este lançamento.');
     },
@@ -739,10 +920,11 @@ export default function CaixaDiario() {
 
   const editarLancamentoMutation = useMutation({
     mutationFn: async (payload: { id: string; descricao: string; valor: number; forma_pagamento: FormaPagamento }) => {
+      if (!profile?.clinica_id) throw new Error('Clínica não identificada. Atualize a sessão e tente novamente.');
       const { data, error } = await supabase
         .from('lancamentos')
         .update({ descricao: payload.descricao, valor: payload.valor, forma_pagamento: payload.forma_pagamento })
-        .eq('id', payload.id)
+        .eq('id', payload.id).eq('clinica_id', profile.clinica_id)
         .select('id');
       if (error) throw error;
       if (!data || data.length === 0) throw new Error('Sem permissão para editar este lançamento.');
@@ -786,7 +968,7 @@ export default function CaixaDiario() {
     return <SectionFallback rows={5} />;
   }
 
-  if (loadingCaixa) {
+  if (loadingCaixa || (!!caixaHoje?.data && loadingLanc)) {
     return (
       <div className="space-y-6 p-4 md:p-6">
         <Skeleton className="h-10 w-48" />
@@ -819,6 +1001,20 @@ export default function CaixaDiario() {
     contadoFechamento !== null &&
     !mesmoValor(contadoFechamento, saldoEsperadoGaveta),
   );
+  const valorSangriaInformado = parseMoneyInput(sangriaForm.valor);
+  const sangriaInvalida = valorSangriaInformado === null
+    || !Number.isFinite(valorSangriaInformado)
+    || valorSangriaInformado <= 0
+    || !temPrecisaoDeCentavos(valorSangriaInformado);
+  const valorSuprimentoInformado = parseMoneyInput(suprimentoForm.valor);
+  const suprimentoInvalido = valorSuprimentoInformado === null
+    || !Number.isFinite(valorSuprimentoInformado)
+    || valorSuprimentoInformado <= 0
+    || !temPrecisaoDeCentavos(valorSuprimentoInformado);
+  const valorManualInformado = parseMoneyInput(manualValor);
+  const valorManualInvalido = valorManualInformado === null
+    || valorManualInformado <= 0
+    || !temPrecisaoDeCentavos(valorManualInformado);
 
   return (
     <div className="space-y-6 p-4 md:p-6">
@@ -918,7 +1114,7 @@ export default function CaixaDiario() {
                 <Button onClick={() => setShowSuprimento(true)} variant="outline" className="gap-2 border-info/30 text-info hover:bg-info/10">
                   <ArrowUpFromLine className="h-4 w-4" /> Suprimento
                 </Button>
-                <Button onClick={() => { setCaixaParaFechar(caixaHoje); setValorFechamento(''); setObsFechamento(''); setShowFechamento(true); }} variant="destructive" className="gap-2 ml-auto">
+                <Button onClick={() => { setCaixaParaFechar(caixaHoje); setValorFechamento(''); setObsFechamento(''); setShowFechamento(true); }} disabled={loadingLanc || lancamentosExcederamLimite} variant="destructive" className="gap-2 ml-auto">
                   <Lock className="h-4 w-4" /> Fechar Caixa
                 </Button>
               </>
@@ -1013,6 +1209,11 @@ export default function CaixaDiario() {
                 </div>
               </CardHeader>
               <CardContent>
+                {lancamentosExcederamLimite && (
+                  <div role="alert" className="mb-3 rounded-lg border border-warning/40 bg-warning/5 p-3 text-xs text-warning-foreground">
+                    O caixa tem mais de {LIMITE_BUSCA_EM_BLOCOS.toLocaleString('pt-BR')} movimentos. Os totais da tela estão incompletos e o fechamento fica bloqueado; peça suporte para conferir o período completo.
+                  </div>
+                )}
                 {loadingLanc ? (
                   <div className="space-y-2">
                     {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-12" />)}
@@ -1206,7 +1407,18 @@ export default function CaixaDiario() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              {historicosCaixa.length === 0 ? (
+              {carregandoHistoricosCaixa ? (
+                <div className="space-y-2" role="status" aria-label="Carregando histórico de caixas">
+                  <Skeleton className="h-14" />
+                  <Skeleton className="h-14" />
+                  <Skeleton className="h-14" />
+                </div>
+              ) : erroHistoricosCaixa ? (
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3" role="alert">
+                  <span className="text-sm text-destructive">Não foi possível carregar o histórico de caixas.</span>
+                  <Button size="sm" variant="outline" onClick={() => void recarregarHistoricosCaixa()}>Tentar novamente</Button>
+                </div>
+              ) : historicosCaixa.length === 0 ? (
                 <div className="text-center py-10 text-muted-foreground">
                   <History className="h-10 w-10 mx-auto mb-3 opacity-30" />
                   <p>Nenhum registro de caixa</p>
@@ -1302,7 +1514,9 @@ export default function CaixaDiario() {
       {/* ═══ DIALOGS ═══ */}
 
       {/* Abrir Caixa */}
-      <Dialog open={showAbertura} onOpenChange={setShowAbertura}>
+      <Dialog open={showAbertura} onOpenChange={open => {
+        if (open || !abrirCaixaMutation.isPending) setShowAbertura(open);
+      }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -1311,15 +1525,19 @@ export default function CaixaDiario() {
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-1.5">
-              <Label className="text-xs">Valor inicial em caixa (R$)</Label>
-              <Input type="number" placeholder="0,00" value={valorAbertura}
+              <Label className="text-xs">Valor inicial em caixa (R$) *</Label>
+              <Input type="text" inputMode="decimal" placeholder="0,00" value={valorAbertura} disabled={abrirCaixaMutation.isPending}
                 onChange={e => setValorAbertura(e.target.value)} step="0.01" min="0" autoFocus />
+              <p className="text-xs text-muted-foreground">Informe o valor contado antes de abrir. Digite 0 se não houver dinheiro na gaveta.</p>
+              {valorAbertura.trim() !== '' && aberturaInvalida && (
+                <p role="alert" className="text-xs text-destructive">Use um valor igual ou maior que zero, com até duas casas decimais.</p>
+              )}
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowAbertura(false)}>Cancelar</Button>
-            <Button onClick={() => abrirCaixaMutation.mutate(parseFloat(valorAbertura) || 0)}
-              disabled={abrirCaixaMutation.isPending} className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white">
+            <Button variant="outline" disabled={abrirCaixaMutation.isPending} onClick={() => setShowAbertura(false)}>Cancelar</Button>
+            <Button onClick={() => valorAberturaInformado !== null && abrirCaixaMutation.mutate(valorAberturaInformado)}
+              disabled={abrirCaixaMutation.isPending || aberturaInvalida} className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white">
               {abrirCaixaMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
               Abrir Caixa
             </Button>
@@ -1376,7 +1594,11 @@ export default function CaixaDiario() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={showLancamento} onOpenChange={(open) => { setShowLancamento(open); if (!open) resetPOS(); }}>
+      <Dialog open={showLancamento} onOpenChange={open => {
+        if (!open && adicionarLancamentoMutation.isPending) return;
+        setShowLancamento(open);
+        if (!open) resetPOS();
+      }}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -1402,7 +1624,14 @@ export default function CaixaDiario() {
                 </TabsList>
 
                 <TabsContent value="consultas" className="flex-1 overflow-y-auto mt-2 space-y-1.5 max-h-[40vh]">
-                  {consultasFiltradas.length === 0 ? (
+                  {erroTiposConsulta ? (
+                    <div className="flex flex-col items-center gap-2 py-8 text-center" role="alert">
+                      <p className="text-sm text-destructive">Não foi possível carregar os tipos de consulta.</p>
+                      <Button type="button" size="sm" variant="outline" onClick={() => void recarregarTiposConsulta()}>Tentar novamente</Button>
+                    </div>
+                  ) : carregandoTiposConsulta ? (
+                    <p className="py-8 text-center text-sm text-muted-foreground" role="status">Carregando consultas…</p>
+                  ) : consultasFiltradas.length === 0 ? (
                     <div className="text-center py-8 text-muted-foreground text-sm">
                       <Stethoscope className="h-8 w-8 mx-auto mb-2 opacity-30" />
                       <p>Nenhum tipo de consulta cadastrado</p>
@@ -1426,7 +1655,17 @@ export default function CaixaDiario() {
                 </TabsContent>
 
                 <TabsContent value="exames" className="flex-1 overflow-y-auto mt-2 space-y-1.5 max-h-[40vh]">
-                  {examesFiltrados.length === 0 ? (
+                  {!erroExames && !carregandoExames && examesFiltrados.length > 0 && (
+                    <p className="px-1 pb-1 text-xs text-muted-foreground">Venda direta usa o preço particular cadastrado para o exame.</p>
+                  )}
+                  {erroExames ? (
+                    <div className="flex flex-col items-center gap-2 py-8 text-center" role="alert">
+                      <p className="text-sm text-destructive">Não foi possível carregar os preços dos exames.</p>
+                      <Button type="button" size="sm" variant="outline" onClick={() => void recarregarExames()}>Tentar novamente</Button>
+                    </div>
+                  ) : carregandoExames ? (
+                    <p className="py-8 text-center text-sm text-muted-foreground" role="status">Carregando exames…</p>
+                  ) : examesFiltrados.length === 0 ? (
                     <div className="text-center py-8 text-muted-foreground text-sm">
                       <FlaskConical className="h-8 w-8 mx-auto mb-2 opacity-30" />
                       <p>Nenhum exame com preço cadastrado</p>
@@ -1450,17 +1689,34 @@ export default function CaixaDiario() {
                 </TabsContent>
 
                 <TabsContent value="produtos" className="flex-1 overflow-y-auto mt-2 space-y-1.5 max-h-[40vh]">
-                  {produtosFiltrados.length === 0 ? (
+                  {erroProdutos ? (
+                    <div className="flex flex-col items-center gap-2 py-8 text-center" role="alert">
+                      <p className="text-sm text-destructive">Não foi possível carregar o estoque para venda.</p>
+                      <Button type="button" size="sm" variant="outline" onClick={() => void recarregarProdutos()}>Tentar novamente</Button>
+                    </div>
+                  ) : carregandoProdutos ? (
+                    <p className="py-8 text-center text-sm text-muted-foreground" role="status">Carregando produtos…</p>
+                  ) : produtosFiltrados.length === 0 ? (
                     <div className="text-center py-8 text-muted-foreground text-sm">
                       <ShoppingBag className="h-8 w-8 mx-auto mb-2 opacity-30" />
-                      <p>Nenhum produto no estoque</p>
-                      <p className="text-xs">Cadastre em Estoque</p>
+                      {temProdutoVencidoNaBusca ? (
+                        <>
+                          <p>Não há produtos válidos para venda neste filtro</p>
+                          <p className="text-xs">Itens vencidos não podem ser vendidos. Confira os demais produtos ou o estoque.</p>
+                        </>
+                      ) : (
+                        <>
+                          <p>Nenhum produto no estoque</p>
+                          <p className="text-xs">Cadastre em Estoque</p>
+                        </>
+                      )}
                     </div>
                   ) : produtosFiltrados.map((p: any) => (
                     <motion.button key={p.id}
                       whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.98 }}
-                      onClick={() => addToCart({ id: p.id, nome: p.nome, valor: p.valor_venda || 0, origem: 'produto' })}
-                      className="w-full flex items-center justify-between p-3 rounded-lg border hover:border-primary/40 hover:bg-primary/5 transition-all text-left"
+                      disabled={Number(p.quantidade) <= 0}
+                      onClick={() => addToCart({ id: p.id, nome: p.nome, valor: p.valor_venda || 0, origem: 'produto', quantidadeDisponivel: Number(p.quantidade) || 0 })}
+                      className="w-full flex items-center justify-between p-3 rounded-lg border hover:border-primary/40 hover:bg-primary/5 transition-all text-left disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       <div className="flex items-center gap-2.5">
                         <div className="p-1.5 rounded-lg bg-info/10">
@@ -1468,7 +1724,7 @@ export default function CaixaDiario() {
                         </div>
                         <div>
                           <span className="font-medium text-sm">{p.nome}</span>
-                          <p className="text-[10px] text-muted-foreground">{p.categoria} · Estoque: {p.quantidade}</p>
+                          <p className="text-[10px] text-muted-foreground">{p.categoria} · Estoque: {p.quantidade > 0 ? p.quantidade : 'sem unidades'}</p>
                         </div>
                       </div>
                       <span className="font-bold text-sm text-primary tabular-nums">{fmt(p.valor_venda || 0)}</span>
@@ -1484,12 +1740,16 @@ export default function CaixaDiario() {
                   </div>
                   <div className="space-y-1.5">
                     <Label className="text-xs">Valor (R$) *</Label>
-                    <Input type="number" placeholder="0,00" value={manualValor}
-                      onChange={e => setManualValor(e.target.value)} step="0.01" min="0" />
+              <Input type="text" inputMode="decimal" placeholder="0,00" value={manualValor}
+                onChange={e => setManualValor(e.target.value)} />
                   </div>
-                  <Button variant="outline" className="w-full gap-2" disabled={!manualNome.trim() || !manualValor}
+                  {manualValor.trim() !== '' && valorManualInvalido && (
+                    <p className="text-xs text-destructive" role="alert">Informe um valor maior que zero e com até duas casas decimais.</p>
+                  )}
+                  <Button variant="outline" className="w-full gap-2" disabled={!manualNome.trim() || valorManualInvalido}
                     onClick={() => {
-                      addToCart({ id: `manual-${Date.now()}`, nome: manualNome, valor: parseFloat(manualValor) || 0, origem: 'manual' });
+                      if (valorManualInformado === null || valorManualInvalido) return;
+                      addToCart({ id: `manual-${Date.now()}`, nome: manualNome, valor: valorManualInformado, origem: 'manual' });
                       setManualNome('');
                       setManualValor('');
                     }}>
@@ -1532,6 +1792,7 @@ export default function CaixaDiario() {
                           </Button>
                           <span className="text-xs font-bold w-4 text-center">{item.quantidade}</span>
                           <Button variant="ghost" size="icon" aria-label="Aumentar quantidade" className="h-6 w-6"
+                            disabled={item.origem === 'produto' && item.quantidade >= (item.quantidadeDisponivel ?? 0)}
                             onClick={() => updateCartQty(item.id, item.quantidade + 1)}>
                             <Plus className="h-3 w-3" />
                           </Button>
@@ -1591,28 +1852,47 @@ export default function CaixaDiario() {
                           onValueChange={setPacienteSearch}
                         />
                         <CommandList>
-                          <CommandEmpty>Nenhum paciente encontrado</CommandEmpty>
-                          <CommandGroup>
-                            {pacientesBusca.map((p: any) => (
-                              <CommandItem
-                                key={p.id}
-                                value={p.id}
-                                onSelect={() => {
-                                  setPacienteId(p.id);
-                                  setPacienteNome(p.nome_social || p.nome);
-                                  setPacientePopoverOpen(false);
-                                  setPacienteSearch('');
-                                }}
-                              >
-                                <div className="flex flex-col">
-                                  <span className="text-sm">{p.nome_social || p.nome}</span>
-                                  {p.cpf && (
-                                    <span className="text-[10px] text-muted-foreground">CPF: {p.cpf}</span>
-                                  )}
-                                </div>
-                              </CommandItem>
-                            ))}
-                          </CommandGroup>
+                          {pacienteBuscaQuery.isError ? (
+                            <div className="flex flex-col items-center gap-2 p-4 text-center text-sm text-muted-foreground">
+                              <p>Não foi possível buscar pacientes.</p>
+                              <Button type="button" size="sm" variant="outline" onClick={() => void pacienteBuscaQuery.refetch()}>
+                                Tentar novamente
+                              </Button>
+                            </div>
+                          ) : buscandoPacientes ? (
+                            <div role="status" className="flex items-center justify-center gap-2 py-6 text-sm text-muted-foreground">
+                              <Loader2 className="h-4 w-4 animate-spin" /> Buscando pacientes…
+                            </div>
+                          ) : (
+                            <>
+                              {pacientesBusca.length === 0 ? <CommandEmpty>Nenhum paciente encontrado</CommandEmpty> : <CommandGroup>
+                                {pacientesBusca.map((p: any) => (
+                                  <CommandItem
+                                    key={p.id}
+                                    value={p.id}
+                                    onSelect={() => {
+                                      setPacienteId(p.id);
+                                      setPacienteNome(p.nome_social || p.nome);
+                                      setPacientePopoverOpen(false);
+                                      setPacienteSearch('');
+                                    }}
+                                  >
+                                    <div className="flex flex-col">
+                                      <span className="text-sm">{p.nome_social || p.nome}</span>
+                                      {p.cpf && (
+                                        <span className="text-[10px] text-muted-foreground">CPF: {p.cpf}</span>
+                                      )}
+                                    </div>
+                                  </CommandItem>
+                                ))}
+                              </CommandGroup>}
+                              {pacienteBuscaQuery.data?.incompleta && (
+                                <p role="status" className="border-t px-3 py-2 text-xs text-muted-foreground">
+                                  Há mais pacientes. Digite mais caracteres para refinar a busca.
+                                </p>
+                              )}
+                            </>
+                          )}
                         </CommandList>
                       </Command>
                     </PopoverContent>
@@ -1628,8 +1908,13 @@ export default function CaixaDiario() {
               {/* Desconto */}
               <div className="space-y-1.5 mb-3">
                 <Label className="text-xs">Desconto (R$)</Label>
-                <Input type="number" placeholder="0,00" value={lancDesconto}
-                  onChange={e => setLancDesconto(e.target.value)} step="0.01" min="0" className="h-8 text-sm" />
+                <Input type="text" inputMode="decimal" placeholder="0,00" value={lancDesconto}
+                  onChange={e => setLancDesconto(e.target.value)} step="0.01" min="0" max={carrinhoSubtotal} className="h-8 text-sm" />
+                {descontoInvalido && (
+                  <p className="text-xs text-destructive" role="alert">
+                    O desconto precisa ser válido e menor que o subtotal de {fmt(carrinhoSubtotal)} para manter um total acima de zero.
+                  </p>
+                )}
               </div>
 
               {/* Forma de Pagamento */}
@@ -1646,6 +1931,7 @@ export default function CaixaDiario() {
                   ] as const).map(fp => (
                     <Button key={fp.v} variant={lancFormaPagamento === fp.v ? 'default' : 'outline'}
                       size="sm" className="text-[10px] gap-1 h-8 px-2"
+                      aria-pressed={lancFormaPagamento === fp.v}
                       onClick={() => setLancFormaPagamento(fp.v as FormaPagamento)}>
                       <fp.i className="h-3 w-3" /> {fp.l}
                     </Button>
@@ -1660,7 +1946,7 @@ export default function CaixaDiario() {
               </div>
 
               <Button onClick={() => adicionarLancamentoMutation.mutate()}
-                disabled={carrinho.length === 0 || adicionarLancamentoMutation.isPending}
+                disabled={carrinho.length === 0 || descontoInvalido || adicionarLancamentoMutation.isPending}
                 className="w-full gap-2" size="lg">
                 {adicionarLancamentoMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
                 Finalizar Venda
@@ -1671,7 +1957,9 @@ export default function CaixaDiario() {
       </Dialog>
 
       {/* Sangria */}
-      <Dialog open={showSangria} onOpenChange={setShowSangria}>
+      <Dialog open={showSangria} onOpenChange={open => {
+        if (open || !adicionarSangriaMutation.isPending) setShowSangria(open);
+      }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -1681,18 +1969,24 @@ export default function CaixaDiario() {
           <div className="space-y-4">
             <div className="space-y-1.5">
               <Label className="text-xs">Valor (R$) *</Label>
-              <Input type="number" placeholder="0,00" value={sangriaForm.valor}
-                onChange={e => setSangriaForm(p => ({ ...p, valor: e.target.value }))} step="0.01" min="0" />
+              <Input type="text" inputMode="decimal" placeholder="0,00" value={sangriaForm.valor}
+                onChange={e => setSangriaForm(p => ({ ...p, valor: e.target.value }))} />
+              {sangriaInvalida && (
+                <p className="text-xs text-destructive" role="alert">Informe um valor maior que zero, com até duas casas decimais.</p>
+              )}
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">Motivo *</Label>
               <Input placeholder="Motivo da retirada" value={sangriaForm.motivo}
                 onChange={e => setSangriaForm(p => ({ ...p, motivo: e.target.value }))} />
+              {!sangriaForm.motivo.trim() && (
+                <p className="text-xs text-muted-foreground">O motivo fica registrado para conferência do caixa.</p>
+              )}
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowSangria(false)}>Cancelar</Button>
-            <Button onClick={() => adicionarSangriaMutation.mutate()} disabled={adicionarSangriaMutation.isPending}
+            <Button variant="outline" disabled={adicionarSangriaMutation.isPending} onClick={() => setShowSangria(false)}>Cancelar</Button>
+            <Button onClick={() => adicionarSangriaMutation.mutate()} disabled={adicionarSangriaMutation.isPending || sangriaInvalida || !sangriaForm.motivo.trim()}
               className="gap-2 bg-amber-600 hover:bg-amber-700 text-white">
               {adicionarSangriaMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
               Registrar Sangria
@@ -1702,7 +1996,9 @@ export default function CaixaDiario() {
       </Dialog>
 
       {/* Suprimento */}
-      <Dialog open={showSuprimento} onOpenChange={setShowSuprimento}>
+      <Dialog open={showSuprimento} onOpenChange={open => {
+        if (open || !adicionarSuprimentoMutation.isPending) setShowSuprimento(open);
+      }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -1712,8 +2008,11 @@ export default function CaixaDiario() {
           <div className="space-y-4">
             <div className="space-y-1.5">
               <Label className="text-xs">Valor (R$) *</Label>
-              <Input type="number" placeholder="0,00" value={suprimentoForm.valor}
-                onChange={e => setSuprimentoForm(p => ({ ...p, valor: e.target.value }))} step="0.01" min="0" />
+              <Input type="text" inputMode="decimal" placeholder="0,00" value={suprimentoForm.valor}
+                onChange={e => setSuprimentoForm(p => ({ ...p, valor: e.target.value }))} />
+              {suprimentoInvalido && (
+                <p className="text-xs text-destructive" role="alert">Informe um valor maior que zero, com até duas casas decimais.</p>
+              )}
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">Descrição</Label>
@@ -1722,8 +2021,8 @@ export default function CaixaDiario() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowSuprimento(false)}>Cancelar</Button>
-            <Button onClick={() => adicionarSuprimentoMutation.mutate()} disabled={adicionarSuprimentoMutation.isPending}
+            <Button variant="outline" disabled={adicionarSuprimentoMutation.isPending} onClick={() => setShowSuprimento(false)}>Cancelar</Button>
+            <Button onClick={() => adicionarSuprimentoMutation.mutate()} disabled={adicionarSuprimentoMutation.isPending || suprimentoInvalido}
               className="gap-2 bg-blue-600 hover:bg-blue-700 text-white">
               {adicionarSuprimentoMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
               Adicionar Suprimento
@@ -1733,7 +2032,9 @@ export default function CaixaDiario() {
       </Dialog>
 
       {/* Fechar Caixa */}
-      <Dialog open={showFechamento} onOpenChange={setShowFechamento}>
+      <Dialog open={showFechamento} onOpenChange={open => {
+        if (open || !fecharCaixaMutation.isPending) setShowFechamento(open);
+      }}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -1765,7 +2066,7 @@ export default function CaixaDiario() {
             <div className="space-y-3">
               <div className="space-y-1.5">
                 <Label htmlFor="valor-contado-fechamento" className="text-xs font-medium">Dinheiro contado na gaveta (R$)</Label>
-                <Input type="number" placeholder="Digite o valor contado" value={valorFechamento}
+                <Input type="text" inputMode="decimal" placeholder="Digite o valor contado" value={valorFechamento}
                   id="valor-contado-fechamento" onChange={e => setValorFechamento(e.target.value)} step="0.01" min="0" required autoFocus />
                 {valorFechamento.trim() === '' && <p className="text-xs text-muted-foreground">Informe o valor contado; use 0 se não houver dinheiro no caixa.</p>}
               </div>
@@ -1814,9 +2115,9 @@ export default function CaixaDiario() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowFechamento(false)}>Cancelar</Button>
+            <Button variant="outline" disabled={fecharCaixaMutation.isPending} onClick={() => setShowFechamento(false)}>Cancelar</Button>
             <Button onClick={() => fecharCaixaMutation.mutate({ caixa: caixaParaFechar || undefined, valor: contadoFechamento })}
-              disabled={fecharCaixaMutation.isPending || loadingLancamentosDetalhe && !!caixaParaFechar && caixaParaFechar.id !== caixaHoje?.id || erroLancamentosDetalhe && !!caixaParaFechar && caixaParaFechar.id !== caixaHoje?.id || contadoFechamento === null || (fechamentoNaoBate && obsFechamento.trim().length < 5)}
+              disabled={fecharCaixaMutation.isPending || (!!caixaParaFechar && caixaParaFechar.id === caixaHoje?.id && (loadingLanc || erroLancamentos || lancamentosExcederamLimite)) || (loadingLancamentosDetalhe || erroLancamentosDetalhe || lancamentosDetalheExcederamLimite) && !!caixaParaFechar && caixaParaFechar.id !== caixaHoje?.id || contadoFechamento === null || (fechamentoNaoBate && obsFechamento.trim().length < 5)}
               variant="destructive" className="gap-2">
               {fecharCaixaMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
               Confirmar Fechamento
@@ -1864,6 +2165,12 @@ export default function CaixaDiario() {
               <Separator />
               <p className="text-sm font-semibold">Movimentações ({lancamentosDetalhe.length})</p>
 
+              {lancamentosDetalheExcederamLimite && (
+                <div role="alert" className="rounded-lg border border-warning/40 bg-warning/5 p-3 text-xs text-warning-foreground">
+                  Este caixa tem mais de {LIMITE_BUSCA_EM_BLOCOS.toLocaleString('pt-BR')} movimentos. A lista e os totais podem estar incompletos; não feche até conferir todos.
+                </div>
+              )}
+
               {loadingLancamentosDetalhe && <p className="text-xs text-muted-foreground" role="status">Carregando movimentos…</p>}
               {erroLancamentosDetalhe && (
                 <div className="flex items-center justify-between gap-2 rounded-md border border-destructive/30 p-3" role="alert">
@@ -1871,9 +2178,9 @@ export default function CaixaDiario() {
                   <Button size="sm" variant="outline" onClick={() => void recarregarLancamentosDetalhe()}>Tentar novamente</Button>
                 </div>
               )}
-              {lancamentosDetalhe.length === 0 ? (
+              {!loadingLancamentosDetalhe && !erroLancamentosDetalhe && lancamentosDetalhe.length === 0 ? (
                 <p className="text-center text-muted-foreground py-6 text-sm">Nenhuma movimentação neste caixa</p>
-              ) : (
+              ) : lancamentosDetalhe.length > 0 && (
                 <div className="space-y-1.5 max-h-60 overflow-y-auto">
                   {lancamentosDetalhe.map(l => {
                     const cfg = getTipoConfig(l.tipo);
@@ -1901,7 +2208,7 @@ export default function CaixaDiario() {
                     <p className="font-semibold tabular-nums">{fmt(saldoEsperadoGaveta)}</p>
                     {showDetalhesCaixa.data < today && <p className="mt-1 text-xs text-muted-foreground">Este caixa ficou aberto após a virada do dia. Fechar aqui não libera pagamentos para dias anteriores.</p>}
                   </div>
-                  <Button variant="destructive" className="gap-2" disabled={loadingLancamentosDetalhe || erroLancamentosDetalhe}
+                  <Button variant="destructive" className="gap-2" disabled={loadingLancamentosDetalhe || erroLancamentosDetalhe || lancamentosDetalheExcederamLimite}
                     onClick={() => { setValorFechamento(''); setObsFechamento(''); setShowFechamento(true); }}>
                     <Lock className="h-4 w-4" /> {showDetalhesCaixa.data < today ? 'Regularizar fechamento' : 'Fechar caixa'}
                   </Button>
@@ -1915,9 +2222,10 @@ export default function CaixaDiario() {
                   <Button size="sm" variant="outline" onClick={() => void recarregarEventosCaixa()}>Tentar novamente</Button>
                 </div>
               )}
-              {eventosCaixa.length === 0 && !erroEventosCaixa ? (
+              {loadingEventosCaixa && <p className="text-xs text-muted-foreground" role="status">Carregando histórico…</p>}
+              {eventosCaixa.length === 0 && !erroEventosCaixa && !loadingEventosCaixa ? (
                 <p className="text-xs text-muted-foreground">Nenhum evento de abertura, fechamento ou reabertura.</p>
-              ) : (
+              ) : eventosCaixa.length > 0 && (
                 <ol className="space-y-2">
                   {eventosCaixa.map(evento => (
                     <li key={evento.id} className="border-l-2 border-border pl-3 text-xs">
@@ -1940,24 +2248,32 @@ export default function CaixaDiario() {
       </Dialog>
 
       {/* Confirm Delete */}
-      <AlertDialog open={!!confirmDelete} onOpenChange={() => setConfirmDelete(null)}>
+      <AlertDialog open={!!confirmDelete} onOpenChange={(open) => {
+        if (open || !deletarLancamentoMutation.isPending) setConfirmDelete(open ? confirmDelete : null);
+      }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Remover lançamento?</AlertDialogTitle>
             <AlertDialogDescription>Esta ação não pode ser desfeita.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={() => confirmDelete && deletarLancamentoMutation.mutate(confirmDelete)}
+            <AlertDialogCancel disabled={deletarLancamentoMutation.isPending}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={(event) => {
+              event.preventDefault();
+              if (confirmDelete && !deletarLancamentoMutation.isPending) deletarLancamentoMutation.mutate(confirmDelete);
+            }}
+              disabled={deletarLancamentoMutation.isPending}
               className="bg-destructive hover:bg-destructive/90">
-              Remover
+              {deletarLancamentoMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Remover'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
       {/* Editar lançamento */}
-      <Dialog open={!!editLanc} onOpenChange={(o) => !o && setEditLanc(null)}>
+      <Dialog open={!!editLanc} onOpenChange={(o) => {
+        if (o || !editarLancamentoMutation.isPending) setEditLanc(o ? editLanc : null);
+      }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Editar lançamento</DialogTitle>
@@ -1973,7 +2289,7 @@ export default function CaixaDiario() {
             <div className="space-y-2">
               <Label>Valor (R$)</Label>
               <Input
-                type="number" step="0.01" min="0"
+                type="text" inputMode="decimal"
                 value={editForm.valor}
                 onChange={(e) => setEditForm(f => ({ ...f, valor: e.target.value }))}
               />
@@ -1997,13 +2313,16 @@ export default function CaixaDiario() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setEditLanc(null)}>Cancelar</Button>
+            <Button variant="outline" onClick={() => setEditLanc(null)} disabled={editarLancamentoMutation.isPending}>Cancelar</Button>
             <Button
               onClick={() => {
                 if (!editLanc) return;
-                const valor = parseFloat(editForm.valor);
+                const valor = parseMoneyInput(editForm.valor);
                 if (!editForm.descricao.trim()) { toast.error('Informe a descrição'); return; }
-                if (!Number.isFinite(valor) || valor <= 0) { toast.error('Valor inválido'); return; }
+                if (valor === null || valor <= 0 || !temPrecisaoDeCentavos(valor)) {
+                  toast.error('Informe um valor válido, maior que zero e com até duas casas decimais.');
+                  return;
+                }
                 editarLancamentoMutation.mutate({
                   id: editLanc.id,
                   descricao: editForm.descricao.trim(),

@@ -4,6 +4,8 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ChevronLeft, Users } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { ErrorState } from '@/components/ErrorState';
+import { Skeleton } from '@/components/ui/skeleton';
 
 interface Item {
   id: string;
@@ -21,6 +23,9 @@ interface Props {
   open: boolean;
   onToggle: () => void;
   items: Item[];
+  isLoading?: boolean;
+  error?: unknown;
+  onRetry?: () => void;
 }
 
 function WaitingCard({ item }: { item: Item }) {
@@ -60,7 +65,7 @@ function WaitingCard({ item }: { item: Item }) {
   );
 }
 
-export function WaitingListSidebar({ open, onToggle, items }: Props) {
+export function WaitingListSidebar({ open, onToggle, items, isLoading = false, error, onRetry }: Props) {
   return (
     <div
       className={cn(
@@ -74,7 +79,7 @@ export function WaitingListSidebar({ open, onToggle, items }: Props) {
             <div className="flex items-center gap-2 text-sm font-semibold">
               <Users className="h-4 w-4 text-primary" />
               Lista de espera
-              <Badge variant="secondary" className="text-[10px]">{items.length}</Badge>
+              <Badge variant="secondary" className="text-[10px]">{isLoading ? '…' : items.length}</Badge>
             </div>
           )}
           <Button variant="ghost" size="icon" className="h-11 w-11" aria-label={open ? 'Recolher lista de espera' : 'Expandir lista de espera'} onClick={onToggle}>
@@ -83,7 +88,15 @@ export function WaitingListSidebar({ open, onToggle, items }: Props) {
         </div>
         {open && (
           <div className="p-2 space-y-2 max-h-[calc(100vh-180px)] overflow-y-auto">
-            {items.length === 0 ? (
+            {error ? (
+              <ErrorState compact title="Erro na lista de espera" error={error} onRetry={onRetry} />
+            ) : isLoading ? (
+              <div className="space-y-2" role="status" aria-label="Carregando lista de espera">
+                <Skeleton className="h-24 w-full rounded-lg" />
+                <Skeleton className="h-24 w-full rounded-lg" />
+                <span className="sr-only">Carregando lista de espera...</span>
+              </div>
+            ) : items.length === 0 ? (
               <p className="text-xs text-muted-foreground text-center py-6">
                 Ninguém aguardando. Arraste um paciente da lista de espera para um horário vago para agendá-lo rapidamente.
               </p>

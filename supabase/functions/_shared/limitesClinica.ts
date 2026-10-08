@@ -22,7 +22,11 @@ export interface LimitesClinica {
   max_notifications: number;
 }
 
-export async function limitesDaClinica(service: SupabaseClient, clinicaId: string): Promise<LimitesClinica> {
+export async function limitesDaClinica(
+  service: SupabaseClient,
+  clinicaId: string,
+  defaults: Partial<LimitesClinica> = {},
+): Promise<LimitesClinica> {
   const { data, error } = await service
     .from('platform_tenant_limits')
     .select('max_users, max_ai_tokens, max_notifications')
@@ -32,7 +36,9 @@ export async function limitesDaClinica(service: SupabaseClient, clinicaId: strin
     console.error('[limites] falha ao ler limites da clínica:', error.message);
     throw new Error('Não foi possível validar os limites de uso da clínica. Tente novamente.');
   }
-  return { ...LIMITES_PADRAO, ...(data ?? {}) };
+  // Os limites explícitos da clínica prevalecem; na ausência deles, o dono da
+  // plataforma pode definir a cota padrão global para IA.
+  return { ...LIMITES_PADRAO, ...defaults, ...(data ?? {}) };
 }
 
 function inicioDoMesISO() {
@@ -57,8 +63,10 @@ export async function usuariosNoLimite(service: SupabaseClient, clinicaId: strin
 }
 
 /** Tokens de IA do mês corrente já atingiram o limite? */
-export async function tokensIaNoLimite(service: SupabaseClient, clinicaId: string) {
-  const limites = await limitesDaClinica(service, clinicaId);
+export async function tokensIaNoLimite(service: SupabaseClient, clinicaId: string, limitePadrao?: number) {
+  const limites = await limitesDaClinica(service, clinicaId, {
+    max_ai_tokens: limitePadrao && limitePadrao > 0 ? limitePadrao : LIMITES_PADRAO.max_ai_tokens,
+  });
   const { data, error } = await service
     .from('platform_ai_usage')
     .select('input_tokens, output_tokens')

@@ -33,30 +33,42 @@ export function useWhatsAppMutations() {
   const updateAgent = useMutation({
     mutationFn: async (agent: Partial<WhatsAppAgent> & { id: string }) => {
       const { id, ...updates } = agent;
-      const { error } = await supabase
+      if (!profile?.clinica_id) throw new Error('Clínica não identificada.');
+      const { data, error } = await supabase
         .from('whatsapp_agents')
         .update(updates)
-        .eq('id', id);
+        .eq('id', id)
+        .eq('clinica_id', profile.clinica_id)
+        .select('id')
+        .maybeSingle();
       if (error) throw error;
+      if (!data) throw new Error('Agente não encontrado nesta clínica.');
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['whatsapp-agents'] });
       toast.success('Agente atualizado!');
     },
+    onError: (error) => toast.error('Erro ao atualizar agente: ' + error.message),
   });
 
   const deleteAgent = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase
+      if (!profile?.clinica_id) throw new Error('Clínica não identificada.');
+      const { data, error } = await supabase
         .from('whatsapp_agents')
         .delete()
-        .eq('id', id);
+        .eq('id', id)
+        .eq('clinica_id', profile.clinica_id)
+        .select('id')
+        .maybeSingle();
       if (error) throw error;
+      if (!data) throw new Error('Agente não encontrado nesta clínica.');
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['whatsapp-agents'] });
       toast.success('Agente excluído!');
     },
+    onError: (error) => toast.error('Erro ao excluir agente: ' + error.message),
   });
 
   const createSession = useMutation({
@@ -90,6 +102,7 @@ export function useWhatsAppMutations() {
       queryClient.invalidateQueries({ queryKey: ['whatsapp-sessions'] });
       toast.success('QR Code atualizado!');
     },
+    onError: (error) => toast.error('Não foi possível atualizar o QR Code: ' + error.message),
   });
 
   const checkStatus = useMutation({
@@ -98,11 +111,20 @@ export function useWhatsAppMutations() {
         body: { action: 'check_status', session_id: sessionId },
       });
       if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || 'A verificação não foi concluída.');
       return data.data;
     },
-    onSuccess: () => {
+    onSuccess: (status: { connected?: boolean; state?: string }) => {
       queryClient.invalidateQueries({ queryKey: ['whatsapp-sessions'] });
+      if (status?.connected) {
+        toast.success('WhatsApp conectado.');
+      } else {
+        toast.warning('WhatsApp desconectado.', {
+          description: status?.state ? `Estado informado pelo provedor: ${status.state}.` : 'Conecte a sessão para voltar a enviar mensagens.',
+        });
+      }
     },
+    onError: (error) => toast.error('Não foi possível verificar a sessão: ' + error.message),
   });
 
   const deleteSession = useMutation({
@@ -117,20 +139,27 @@ export function useWhatsAppMutations() {
       queryClient.invalidateQueries({ queryKey: ['whatsapp-sessions'] });
       toast.success('Sessão removida!');
     },
+    onError: (error) => toast.error('Não foi possível remover a sessão: ' + error.message),
   });
 
   const linkAgentToSession = useMutation({
     mutationFn: async ({ sessionId, agentId }: { sessionId: string; agentId: string | null }) => {
-      const { error } = await supabase
+      if (!profile?.clinica_id) throw new Error('Clínica não identificada.');
+      const { data, error } = await supabase
         .from('whatsapp_sessions')
         .update({ agent_id: agentId })
-        .eq('id', sessionId);
+        .eq('id', sessionId)
+        .eq('clinica_id', profile.clinica_id)
+        .select('id')
+        .maybeSingle();
       if (error) throw error;
+      if (!data) throw new Error('Sessão não encontrada nesta clínica.');
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['whatsapp-sessions'] });
       toast.success('Agente vinculado!');
     },
+    onError: (error) => toast.error('Não foi possível vincular o agente: ' + error.message),
   });
 
   const updateConversationStatus = useMutation({
@@ -145,9 +174,15 @@ export function useWhatsAppMutations() {
       const { error } = await (supabase as any).rpc(rpcName, params);
       if (error) throw error;
     },
-    onSuccess: () => {
+    onSuccess: (_data, { status }) => {
       queryClient.invalidateQueries({ queryKey: ['whatsapp-conversations'] });
-      toast.success('Responsável pelo atendimento atualizado.');
+      toast.success(
+        status === 'em_atendimento_humano'
+          ? 'Conversa assumida para atendimento.'
+          : status === 'ativo'
+            ? 'Conversa devolvida para a IA.'
+            : 'Conversa encerrada.',
+      );
     },
     onError: (error) => toast.error('Não foi possível atualizar a conversa: ' + error.message),
   });
@@ -183,11 +218,14 @@ export function useWhatsAppMutations() {
   const updateConversationPriority = useMutation({
     mutationFn: async ({ conversationId, priority }: { conversationId: string; priority: string }) => {
       if (!profile?.clinica_id) throw new Error('Clínica não identificada.');
-      const { error } = await supabase.from('whatsapp_conversations')
+      const { data, error } = await supabase.from('whatsapp_conversations')
         .update({ prioridade: priority })
         .eq('id', conversationId)
-        .eq('clinica_id', profile.clinica_id);
+        .eq('clinica_id', profile.clinica_id)
+        .select('id')
+        .maybeSingle();
       if (error) throw error;
+      if (!data) throw new Error('Conversa não encontrada nesta clínica.');
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['whatsapp-conversations'], exact: false }),
     onError: (error) => toast.error('Não foi possível alterar a prioridade: ' + error.message),
@@ -225,10 +263,19 @@ export function useWhatsAppMutations() {
       });
       if (error) throw error;
       if (!data?.success) throw new Error(data?.error || 'Falha ao enviar anexo.');
+      return data.data as { sent?: boolean; historyRecorded?: boolean; conversationUpdated?: boolean };
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['whatsapp-messages'], exact: false });
-      toast.success('Anexo enviado pelo WhatsApp.');
+      queryClient.invalidateQueries({ queryKey: ['whatsapp-conversations'], exact: false });
+      if (result?.historyRecorded && result?.conversationUpdated) {
+        toast.success('Anexo enviado pelo WhatsApp.');
+      } else {
+        toast.warning('O WhatsApp aceitou o anexo, mas o histórico ficou incompleto.', {
+          description: 'Não envie novamente. Atualize a conversa e confira se o anexo aparece no histórico.',
+          duration: 10000,
+        });
+      }
     },
     onError: (error) => toast.error('Não foi possível enviar o anexo: ' + error.message),
   });
@@ -240,10 +287,19 @@ export function useWhatsAppMutations() {
       });
       if (error) throw error;
       if (!data?.success) throw new Error(data?.error || 'Falha ao encerrar atendimento.');
+      return data.data as { sent?: boolean; historyRecorded?: boolean; conversationClosed?: boolean };
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['whatsapp-conversations'], exact: false });
-      toast.success('Atendimento encerrado e avaliação solicitada.');
+      queryClient.invalidateQueries({ queryKey: ['whatsapp-messages'], exact: false });
+      if (result?.historyRecorded && result?.conversationClosed) {
+        toast.success('Atendimento encerrado e avaliação solicitada.');
+      } else {
+        toast.warning('A solicitação de avaliação foi enviada, mas o encerramento ficou incompleto.', {
+          description: 'Não solicite a avaliação novamente. Atualize a conversa e confira o status.',
+          duration: 10000,
+        });
+      }
     },
     onError: (error) => toast.error('Não foi possível encerrar: ' + error.message),
   });
@@ -258,11 +314,19 @@ export function useWhatsAppMutations() {
       });
       if (error) throw error;
       if (!data?.success) throw new Error(data?.error || 'Falha ao enviar mensagem.');
+      return data.data as { sent?: boolean; historyRecorded?: boolean; conversationUpdated?: boolean };
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['whatsapp-messages'], exact: false });
       queryClient.invalidateQueries({ queryKey: ['whatsapp-conversations'], exact: false });
-      toast.success('Mensagem enviada pelo WhatsApp.');
+      if (result?.historyRecorded && result?.conversationUpdated) {
+        toast.success('Mensagem enviada pelo WhatsApp.');
+      } else {
+        toast.warning('O WhatsApp aceitou a mensagem, mas o histórico ficou incompleto.', {
+          description: 'Não envie novamente. Atualize a conversa e confira se a mensagem aparece no histórico.',
+          duration: 10000,
+        });
+      }
     },
     onError: (error) => toast.error('Não foi possível enviar: ' + error.message),
   });

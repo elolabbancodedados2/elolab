@@ -16,6 +16,7 @@ import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { redirecionarParaCheckout } from '@/lib/safeUrl';
+import { ErrorState } from '@/components/ErrorState';
 
 const planConfig: Record<string, {
   icon: React.ReactNode;
@@ -70,8 +71,8 @@ const featureLabels: Record<string, string> = {
 const premiumFeatures = ['agente_ia', 'chatbot_whatsapp'];
 
 export default function Planos() {
-  const { data: planos, isLoading } = usePlanos();
-  const { planSlug, hasActivePlan, isTrial, trialEnd, trialDaysLeft } = useUserPlan();
+  const { data: planos, isLoading: loadingPlanos, isError: erroAoCarregarPlanos, error: erroPlanos, refetch: refetchPlanos } = usePlanos();
+  const { planSlug, hasActivePlan, isTrial, trialEnd, trialDaysLeft, isLoading: loadingAssinatura, isError: erroAoConsultarAssinatura, error: erroAssinatura, refetch: refetchAssinatura } = useUserPlan();
   const createPlatformSubscription = useCreatePlatformSubscription();
   const { user } = useSupabaseAuth();
   const queryClient = useQueryClient();
@@ -83,14 +84,10 @@ export default function Planos() {
     mutationFn: async (motivo: string) => {
       if (!user?.id) throw new Error('Usuário não autenticado');
 
-      // Buscar a assinatura MP ativa do usuário
-      if (!user?.id) {
-        throw new Error('Não encontramos assinatura ativa para cancelar');
-      }
-
       const { data, error } = await supabase.functions.invoke('mercadopago-checkout', {
         body: {
           action: 'cancel_subscription',
+          motivo: motivo.trim().slice(0, 500) || null,
         },
       });
       if (error) throw error;
@@ -133,7 +130,7 @@ export default function Planos() {
     onError: (err: any) => toast.error(err.message || 'Erro ao processar upgrade'),
   });
 
-  if (isLoading) {
+  if (loadingPlanos || loadingAssinatura) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
         <div className="flex flex-col items-center gap-3">
@@ -142,6 +139,18 @@ export default function Planos() {
         </div>
       </div>
     );
+  }
+
+  if (erroAoConsultarAssinatura) {
+    return <ErrorState title="Não foi possível confirmar sua assinatura" description="Por segurança, aguarde a consulta funcionar antes de iniciar outra contratação." error={erroAssinatura} onRetry={() => { void refetchAssinatura(); }} />;
+  }
+
+  if (erroAoCarregarPlanos) {
+    return <ErrorState title="Não foi possível carregar os planos" error={erroPlanos} onRetry={() => { void refetchPlanos(); }} />;
+  }
+
+  if (!planos?.length) {
+    return <div className="mx-auto max-w-xl rounded-xl border border-dashed p-8 text-center"><h2 className="font-semibold">Nenhum plano disponível no momento</h2><p className="mt-2 text-sm text-muted-foreground">Tente atualizar a lista em instantes.</p><Button className="mt-4" variant="outline" onClick={() => void refetchPlanos()}>Atualizar planos</Button></div>;
   }
 
   return (
@@ -161,7 +170,7 @@ export default function Planos() {
         {!hasActivePlan && (
           <div className="inline-flex items-center gap-2 bg-warning/10 text-warning rounded-full px-5 py-2.5 text-sm font-medium border border-warning/20">
             <Gift className="h-4 w-4" />
-            Teste grátis por 3 dias — cartão ou PIX recorrente necessário
+            Teste grátis disponível em planos elegíveis — cartão ou PIX recorrente necessário
           </div>
         )}
       </div>
@@ -200,6 +209,8 @@ export default function Planos() {
       <div className="grid gap-8 md:grid-cols-2">
         {planos?.map((plano) => {
           const isCurrentPlan = planSlug === plano.slug;
+          const currentPlan = planos.find((item) => item.slug === planSlug);
+          const isUpgrade = hasActivePlan && plano.ordem > (currentPlan?.ordem ?? 0);
           const isHighlighted = plano.destaque;
           const config = planConfig[plano.slug] || planConfig['elolab-max'];
           const features = plano.features as string[];
@@ -322,7 +333,7 @@ export default function Planos() {
                       onClick={() => upgradeMutation.mutate(plano)}
                       disabled={upgradeMutation.isPending}
                     >
-                      {upgradeMutation.isPending ? 'Processando...' : hasActivePlan ? 'Fazer Upgrade' : 'Assinar Direto'}
+                      {upgradeMutation.isPending ? 'Processando...' : hasActivePlan ? (isUpgrade ? 'Fazer upgrade' : 'Mudar para este plano') : 'Assinar Direto'}
                       <ArrowRight className="h-4 w-4 ml-2" />
                     </Button>
                   </>
@@ -378,9 +389,11 @@ export default function Planos() {
               id="cancel-reason"
               value={cancelReason}
               onChange={(e) => setCancelReason(e.target.value)}
+              maxLength={500}
               placeholder="Ex.: encontrei outra solução, custo, não atendeu necessidade..."
               rows={3}
             />
+            <p className="text-xs text-muted-foreground">{cancelReason.length}/500</p>
           </div>
 
           <AlertDialogFooter>

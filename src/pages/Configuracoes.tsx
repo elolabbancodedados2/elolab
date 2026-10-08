@@ -1,10 +1,10 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
 import {
   Save, Building, Clock, Bell, Download, History,
-  Shield, Globe, Mail, Smartphone, MessageSquare, Database,
+  Shield,
   Key, RefreshCw, CloudOff, Cloud,
-  DollarSign, Printer, MapPin, Phone, FileText, Users, Plus, Trash2, Edit,
+  DollarSign, Printer, MapPin, Phone, Users, Plus, Trash2, Edit,
   CreditCard, Receipt, Loader2, Hash, Clipboard, Image, Workflow,
   PlugZap,
 } from 'lucide-react';
@@ -36,15 +36,16 @@ import { supabase } from '@/integrations/supabase/client';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { Skeleton } from '@/components/ui/skeleton';
+import { ErrorState } from '@/components/ErrorState';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useUserPlan, usePlanos } from '@/hooks/useSubscriptionPlan';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
 import { abrirUrlSegura, checkoutUrlSeguro } from '@/lib/safeUrl';
 import { clearClinicaInfoCache } from '@/lib/pdfGenerator';
 import { IntegracoesClinica } from '@/components/configuracoes/IntegracoesClinica';
 import { AgendamentoOnlineConfig } from '@/components/configuracoes/AgendamentoOnlineConfig';
-import { chaveDaClinica, lerConfigsClinica, salvarConfigClinica } from '@/lib/configClinica';
+import { CONFIG_SEGURANCA_ATUALIZADA_EVENT, chaveDaClinica, lerConfigsClinicaComVersoes } from '@/lib/configClinica';
 
 
 
@@ -74,34 +75,6 @@ interface ConfiguracaoClinica {
   sabadoFechamento: string;
 }
 
-interface ConfiguracaoNotificacoes {
-  emailLembrete: boolean;
-  smsLembrete: boolean;
-  whatsappLembrete: boolean;
-  antecedenciaLembrete: number;
-  notificarCancelamento: boolean;
-  notificarNovoAgendamento: boolean;
-  notificarResultadoExame: boolean;
-  notificarAniversario: boolean;
-  notificarEstoqueBaixo: boolean;
-  notificarContasVencer: boolean;
-  resumoDiario: boolean;
-}
-
-interface ConfiguracaoFinanceiro {
-  formasPagamento: string[];
-  valorConsultaPadrao: number;
-  valorRetornoPadrao: number;
-  taxaCartaoCredito: number;
-  taxaCartaoDebito: number;
-  diasVencimentoBoleto: number;
-  chavePix: string;
-  tipoChavePix: string;
-  gerarBoletoAutomatico: boolean;
-  faturamentoAutomatico: boolean;
-  categoriasPadrao: string[];
-}
-
 interface ConfiguracaoSeguranca {
   sessionTimeoutMin: number;
   mascarCpf: boolean;
@@ -112,18 +85,10 @@ interface ConfiguracaoSeguranca {
 }
 
 interface ConfiguracaoImpressao {
-  cabecalhoReceita: string;
   rodapeReceita: string;
   mostrarLogo: boolean;
   mostrarCRM: boolean;
   mostrarCNES: boolean;
-  tamanhoPapel: string;
-  margemSuperior: number;
-  margemInferior: number;
-  margemEsquerda: number;
-  margemDireita: number;
-  fontePrincipal: string;
-  tamanhoFonte: number;
 }
 
 const DEFAULT_CLINICA: ConfiguracaoClinica = {
@@ -137,33 +102,21 @@ const DEFAULT_CLINICA: ConfiguracaoClinica = {
   sabadoAbertura: '08:00', sabadoFechamento: '12:00',
 };
 
-const DEFAULT_NOTIFICACOES: ConfiguracaoNotificacoes = {
-  emailLembrete: true, smsLembrete: false, whatsappLembrete: false,
-  antecedenciaLembrete: 24, notificarCancelamento: true,
-  notificarNovoAgendamento: true, notificarResultadoExame: true,
-  notificarAniversario: false, notificarEstoqueBaixo: true,
-  notificarContasVencer: true, resumoDiario: false,
-};
-
-const DEFAULT_FINANCEIRO: ConfiguracaoFinanceiro = {
-  formasPagamento: ['dinheiro', 'pix', 'cartao_credito', 'cartao_debito'],
-  valorConsultaPadrao: 200, valorRetornoPadrao: 0,
-  taxaCartaoCredito: 3.5, taxaCartaoDebito: 1.5,
-  diasVencimentoBoleto: 7, chavePix: '', tipoChavePix: 'cpf',
-  gerarBoletoAutomatico: false, faturamentoAutomatico: true,
-  categoriasPadrao: ['consulta', 'exame', 'procedimento', 'material', 'taxa'],
-};
-
 const DEFAULT_SEGURANCA: ConfiguracaoSeguranca = {
   sessionTimeoutMin: 30, mascarCpf: true, logAuditoria: true,
   lgpdConsentimento: true, senhaForte: true, loginDuplo: false,
 };
 
 const DEFAULT_IMPRESSAO: ConfiguracaoImpressao = {
-  cabecalhoReceita: '', rodapeReceita: '', mostrarLogo: true,
-  mostrarCRM: true, mostrarCNES: false, tamanhoPapel: 'A4',
-  margemSuperior: 20, margemInferior: 20, margemEsquerda: 15, margemDireita: 15,
-  fontePrincipal: 'Helvetica', tamanhoFonte: 12,
+  rodapeReceita: '', mostrarLogo: true, mostrarCRM: true, mostrarCNES: false,
+};
+
+const FATURA_STATUS_LABEL: Record<string, string> = {
+  approved: 'Pago', aprovado: 'Pago',
+  pending: 'Pendente', pendente: 'Pendente',
+  rejected: 'Recusado', recusado: 'Recusado',
+  cancelled: 'Cancelado', cancelado: 'Cancelado', cancelada: 'Cancelado',
+  refunded: 'Estornado', estornado: 'Estornado',
 };
 
 /* ─── Setting Row ─── */
@@ -186,6 +139,41 @@ function SettingRow({ icon: Icon, title, description, children }: {
   );
 }
 
+function validarHorarioClinica(config: ConfiguracaoClinica): string | null {
+  const minutos = (value: string) => {
+    const match = /^(\d{2}):(\d{2})$/.exec(value || '');
+    if (!match || Number(match[1]) > 23 || Number(match[2]) > 59) return null;
+    return Number(match[1]) * 60 + Number(match[2]);
+  };
+  const abertura = minutos(config.horarioAbertura);
+  const fechamento = minutos(config.horarioFechamento);
+  if (abertura === null || fechamento === null || abertura >= fechamento) {
+    return 'O fechamento principal deve ocorrer depois da abertura, com horários válidos.';
+  }
+
+  const inicioAlmoco = config.horarioAlmocoInicio ? minutos(config.horarioAlmocoInicio) : null;
+  const fimAlmoco = config.horarioAlmocoFim ? minutos(config.horarioAlmocoFim) : null;
+  if (Boolean(config.horarioAlmocoInicio) !== Boolean(config.horarioAlmocoFim)) {
+    return 'Preencha os dois horários do intervalo ou deixe ambos vazios.';
+  }
+  if (config.horarioAlmocoInicio && (inicioAlmoco === null || fimAlmoco === null)) {
+    return 'Informe horários válidos para o intervalo.';
+  }
+  if (inicioAlmoco !== null && fimAlmoco !== null &&
+      (inicioAlmoco >= fimAlmoco || inicioAlmoco < abertura || fimAlmoco > fechamento)) {
+    return 'O intervalo deve estar dentro do horário de funcionamento e terminar depois do início.';
+  }
+
+  if (config.diasFuncionamento.includes('sab')) {
+    const aberturaSabado = minutos(config.sabadoAbertura);
+    const fechamentoSabado = minutos(config.sabadoFechamento);
+    if (aberturaSabado === null || fechamentoSabado === null || aberturaSabado >= fechamentoSabado) {
+      return 'O fechamento de sábado deve ocorrer depois da abertura, com horários válidos.';
+    }
+  }
+  return null;
+}
+
 /* ─── Salas Management ─── */
 function SalasManager() {
   const { profile } = useSupabaseAuth();
@@ -196,31 +184,43 @@ function SalasManager() {
   const [salaParaExcluir, setSalaParaExcluir] = useState<{ id: string; nome: string } | null>(null);
   const [form, setForm] = useState({ nome: '', tipo: 'consultorio', ativo: true, equipamentos: '' as string });
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const saveLock = useRef(false);
+  const deleteLock = useRef(false);
 
-  const { data: salas = [], isLoading } = useQuery({
+  const salasQuery = useQuery({
     queryKey: ['salas-config', profile?.id ?? null, profile?.clinica_id ?? null],
     queryFn: async () => {
       if (!profile?.clinica_id) return [];
-      const { data } = await supabase.from('salas').select('*').eq('clinica_id', profile.clinica_id).order('nome');
+      const { data, error } = await supabase.from('salas').select('*').eq('clinica_id', profile.clinica_id).order('nome');
+      if (error) throw error;
       return data || [];
     },
     enabled: !!profile?.clinica_id,
   });
+  const salas = salasQuery.data ?? [];
+  const { isLoading } = salasQuery;
 
   const handleSave = async () => {
+    if (saveLock.current) return;
+    if (!profile?.clinica_id) { toast.error('Clínica não identificada.'); return; }
+    if (salasQuery.isError || salasQuery.isLoading) { toast.error('Carregue as salas antes de salvar.'); return; }
     if (!form.nome.trim()) { toast.error('Nome é obrigatório'); return; }
+    saveLock.current = true;
     setSaving(true);
     try {
       const equipArray = form.equipamentos ? form.equipamentos.split(',').map(s => s.trim()).filter(Boolean) : null;
       const payload: any = { nome: form.nome.trim(), tipo: form.tipo, ativo: form.ativo, equipamentos: equipArray };
       if (editId) {
-        const { error } = await supabase.from('salas').update(payload).eq('id', editId);
+        const { data, error } = await supabase.from('salas').update(payload)
+          .eq('id', editId).eq('clinica_id', profile.clinica_id).select('id').maybeSingle();
         if (error) throw error;
+        if (!data) throw new Error('Sala não encontrada ou sem permissão para alterar.');
         toast.success('Sala atualizada!');
       } else {
         const { error } = await supabase.from('salas').insert([{
           ...payload,
-          clinica_id: profile?.clinica_id || null,
+          clinica_id: profile.clinica_id,
         }]);
         if (error) throw error;
         toast.success('Sala criada!');
@@ -228,15 +228,31 @@ function SalasManager() {
       queryClient.invalidateQueries({ queryKey: ['salas-config'] });
       setShowForm(false); setEditId(null);
     } catch (e: any) { toast.error(e.message); }
-    finally { setSaving(false); }
+    finally {
+      saveLock.current = false;
+      setSaving(false);
+    }
   };
 
   const handleDelete = async (id: string) => {
-    const { data, error } = await supabase.from('salas').delete().eq('id', id).select('id');
-    if (error) { toast.error(error.message); return; }
-    if (!data || data.length === 0) { toast.error('Sem permissão para excluir esta sala.'); return; }
-    queryClient.invalidateQueries({ queryKey: ['salas-config'] });
-    toast.success('Sala removida!');
+    if (deleteLock.current) return;
+    if (!profile?.clinica_id) { toast.error('Clínica não identificada.'); return; }
+    deleteLock.current = true;
+    setDeleting(true);
+    try {
+      const { data, error } = await supabase.from('salas').delete()
+        .eq('id', id).eq('clinica_id', profile.clinica_id).select('id');
+      if (error) throw error;
+      if (!data || data.length === 0) throw new Error('Sem permissão para excluir esta sala.');
+      await queryClient.invalidateQueries({ queryKey: ['salas-config'] });
+      setSalaParaExcluir(null);
+      toast.success('Sala removida!');
+    } catch (error) {
+      toast.error('Não foi possível excluir a sala', { description: (error as Error)?.message || 'Tente novamente.' });
+    } finally {
+      deleteLock.current = false;
+      setDeleting(false);
+    }
   };
 
   const openEdit = (s: any) => {
@@ -254,13 +270,13 @@ function SalasManager() {
             <CardTitle className="flex items-center gap-2"><MapPin className="h-5 w-5 text-primary" />Salas e Consultórios</CardTitle>
             <CardDescription>Gerencie os espaços físicos da clínica</CardDescription>
           </div>
-          <Button size="sm" onClick={() => { setEditId(null); setForm({ nome: '', tipo: 'consultorio', ativo: true, equipamentos: '' }); setShowForm(true); }} className="gap-1.5">
+          <Button size="sm" disabled={!profile?.clinica_id || isLoading || salasQuery.isError} onClick={() => { setEditId(null); setForm({ nome: '', tipo: 'consultorio', ativo: true, equipamentos: '' }); setShowForm(true); }} className="gap-1.5">
             <Plus className="h-4 w-4" /> Nova Sala
           </Button>
         </div>
       </CardHeader>
       <CardContent>
-        {isLoading ? <Skeleton className="h-32 w-full" /> : (salas as any[]).length === 0 ? (
+        {salasQuery.isError ? <ErrorState compact title="Não foi possível carregar as salas" error={salasQuery.error} onRetry={() => void salasQuery.refetch()} /> : isLoading ? <Skeleton className="h-32 w-full" /> : (salas as any[]).length === 0 ? (
           <div className="text-center py-10 text-muted-foreground">
             <MapPin className="h-10 w-10 mx-auto mb-3 opacity-30" />
             <p className="font-medium">Nenhuma sala cadastrada</p>
@@ -298,7 +314,12 @@ function SalasManager() {
         )}
       </CardContent>
 
-      <Dialog open={showForm} onOpenChange={v => { setShowForm(v); if (!v) setEditId(null); }}>
+      <Dialog open={showForm} onOpenChange={v => {
+        if (v || !saveLock.current) {
+          setShowForm(v);
+          if (!v) setEditId(null);
+        }
+      }}>
         <DialogContent>
           <DialogHeader><DialogTitle>{editId ? 'Editar Sala' : 'Nova Sala'}</DialogTitle><DialogDescription>Preencha os dados do espaço.</DialogDescription></DialogHeader>
           <div className="space-y-4">
@@ -321,7 +342,7 @@ function SalasManager() {
             <div className="flex items-center gap-2"><Switch checked={form.ativo} onCheckedChange={v => setForm({ ...form, ativo: v })} /><Label>Ativa</Label></div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowForm(false)}>Cancelar</Button>
+            <Button variant="outline" onClick={() => setShowForm(false)} disabled={saving}>Cancelar</Button>
             <Button onClick={handleSave} disabled={saving}>{saving && <Loader2 className="h-4 w-4 animate-spin mr-1" />}{editId ? 'Salvar' : 'Criar'}</Button>
           </DialogFooter>
         </DialogContent>
@@ -330,9 +351,11 @@ function SalasManager() {
       {salaParaExcluir && (
         <DeleteConfirmDialog
           open
-          onOpenChange={(o) => !o && setSalaParaExcluir(null)}
+          onOpenChange={(o) => { if (!o && !deleteLock.current) setSalaParaExcluir(null); }}
           itemName={salaParaExcluir.nome}
-          onConfirm={() => { handleDelete(salaParaExcluir.id); setSalaParaExcluir(null); }}
+          onConfirm={() => { void handleDelete(salaParaExcluir.id); }}
+          isLoading={deleting}
+          closeOnConfirm={false}
         />
       )}
     </Card>
@@ -344,13 +367,14 @@ export default function Configuracoes() {
   const { theme, setTheme } = useTheme();
   const { user, profile } = useSupabaseAuth();
   const queryClient = useQueryClient();
-  const { planName, planSlug, hasActivePlan, isTrial, trialEnd, trialDaysLeft } = useUserPlan();
-  const { data: planos } = usePlanos();
+  const { planName, planSlug, hasActivePlan, isTrial, trialEnd, trialDaysLeft, isLoading: loadingPlanoAtual, isError: erroPlanoAtual, error: erroConsultaPlano, refetch: recarregarPlanoAtual } = useUserPlan();
+  const { data: planos, isLoading: carregandoPlanos, isError: erroAoCarregarPlanos, error: erroListaPlanos } = usePlanos();
   const navigate = useNavigate();
   const [showFaturas, setShowFaturas] = useState(false);
   const [showCancelPlan, setShowCancelPlan] = useState(false);
+  const cancelPlanLock = useRef(false);
 
-  const { data: faturas, isLoading: loadingFaturas } = useQuery({
+  const { data: faturas, isLoading: loadingFaturas, error: erroFaturas, refetch: recarregarFaturas } = useQuery({
     queryKey: ['minhas_faturas_saas', profile?.clinica_id],
     enabled: !!profile?.clinica_id && showFaturas,
     queryFn: async () => {
@@ -368,21 +392,9 @@ export default function Configuracoes() {
   const cancelPlanMutation = useMutation({
     mutationFn: async () => {
       if (!user?.id) throw new Error('Usuário não autenticado');
-      const { data: assinaturaMp, error: searchErr } = await (supabase as any)
-        .from('assinaturas_mercadopago')
-        .select('id, mp_preapproval_id')
-        .eq('status', 'ativa')
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (searchErr) throw searchErr;
-      if (!assinaturaMp?.mp_preapproval_id) throw new Error('Não encontramos assinatura ativa para cancelar');
       const { data, error } = await supabase.functions.invoke('mercadopago-checkout', {
         body: {
           action: 'cancel_subscription',
-          assinatura_id: assinaturaMp.id,
-          mp_preapproval_id: assinaturaMp.mp_preapproval_id,
-          user_id: user.id,
           motivo: 'Cancelado pelo usuário em Configurações',
         },
       });
@@ -396,31 +408,59 @@ export default function Configuracoes() {
       queryClient.invalidateQueries({ queryKey: ['user_plan'] });
     },
     onError: (err: any) => toast.error(err.message || 'Erro ao cancelar assinatura'),
+    onSettled: () => { cancelPlanLock.current = false; },
   });
+
+  const confirmarCancelamentoPlano = () => {
+    if (cancelPlanLock.current || cancelPlanMutation.isPending) return;
+    cancelPlanLock.current = true;
+    cancelPlanMutation.mutate();
+  };
 
   const [isCloudSynced, setIsCloudSynced] = useState(false);
   const [configClinica, setConfigClinica] = useState<ConfiguracaoClinica>(DEFAULT_CLINICA);
-  const [configNotificacoes, setConfigNotificacoes] = useState<ConfiguracaoNotificacoes>(DEFAULT_NOTIFICACOES);
-  const [configFinanceiro, setConfigFinanceiro] = useState<ConfiguracaoFinanceiro>(DEFAULT_FINANCEIRO);
   const [configSeguranca, setConfigSeguranca] = useState<ConfiguracaoSeguranca>(DEFAULT_SEGURANCA);
   const [configImpressao, setConfigImpressao] = useState<ConfiguracaoImpressao>(DEFAULT_IMPRESSAO);
+  const [configVersions, setConfigVersions] = useState<Record<string, string | null>>({});
   const [saving, setSaving] = useState<Record<string, boolean>>({});
+  const saveLocks = useRef(new Set<string>());
   const [loadingConfig, setLoadingConfig] = useState(true);
+  const [configLoadError, setConfigLoadError] = useState<unknown>(null);
+  const configLoadGeneration = useRef(0);
+  const [loadedConfigScope, setLoadedConfigScope] = useState<string | null>(null);
+  const currentConfigScope = `${user?.id ?? ''}:${profile?.clinica_id ?? ''}`;
 
   const loadConfigs = useCallback(async () => {
-    if (!user?.id) return;
+    const generation = ++configLoadGeneration.current;
+    setLoadedConfigScope(null);
+    setConfigClinica(DEFAULT_CLINICA);
+    setConfigSeguranca(DEFAULT_SEGURANCA);
+    setConfigImpressao(DEFAULT_IMPRESSAO);
+    setConfigVersions({});
+    setSaving({});
+    setIsCloudSynced(false);
+    setConfigLoadError(null);
     setLoadingConfig(true);
+    if (!user?.id || !profile?.clinica_id) {
+      setConfigLoadError(new Error('Sessão ou clínica não identificada.'));
+      setLoadingConfig(false);
+      return;
+    }
     try {
       const [configResult, clinicaResult] = await Promise.all([
         // Chaves da clínica vêm da linha compartilhada da clínica; antes a
         // leitura era só das linhas do próprio usuário, e um segundo admin
         // abria esta tela vazia.
         profile?.clinica_id
-          ? lerConfigsClinica(profile.clinica_id).then(
-              (mapa) => ({ data: Object.entries(mapa).map(([chave, valor]) => ({ chave, valor })), error: null }),
-              (error) => ({ data: [] as Array<{ chave: string; valor: any }>, error }),
+          ? lerConfigsClinicaComVersoes(profile.clinica_id).then(
+              ({ configs, updatedAtByKey }) => ({
+                data: Object.entries(configs).map(([chave, valor]) => ({ chave, valor })),
+                versions: updatedAtByKey,
+                error: null,
+              }),
+              (error) => ({ data: [] as Array<{ chave: string; valor: any }>, versions: {}, error }),
             )
-          : Promise.resolve({ data: [] as Array<{ chave: string; valor: any }>, error: null }),
+          : Promise.resolve({ data: [] as Array<{ chave: string; valor: any }>, versions: {}, error: null }),
         profile?.clinica_id
           ? supabase
               .from('clinicas')
@@ -430,6 +470,12 @@ export default function Configuracoes() {
           : Promise.resolve({ data: null, error: null }),
       ]);
 
+      if (generation !== configLoadGeneration.current) return;
+      if (configResult.error) throw configResult.error;
+      if (clinicaResult.error) throw clinicaResult.error;
+
+      setLoadedConfigScope(`${user!.id}:${profile!.clinica_id}`);
+      setConfigVersions(configResult.versions);
       const data = configResult.data;
       const clinicaBase = clinicaResult.data;
 
@@ -446,39 +492,46 @@ export default function Configuracoes() {
             cnpj: clinicaConfig.cnpj || clinicaBase?.cnpj || DEFAULT_CLINICA.cnpj,
           });
         }
-        if (map['config_notificacoes']) setConfigNotificacoes({ ...DEFAULT_NOTIFICACOES, ...(map['config_notificacoes'] as any) });
-        if (map['config_financeiro']) setConfigFinanceiro({ ...DEFAULT_FINANCEIRO, ...(map['config_financeiro'] as any) });
         if (map['config_seguranca']) setConfigSeguranca({ ...DEFAULT_SEGURANCA, ...(map['config_seguranca'] as any) });
         if (map['config_impressao']) setConfigImpressao({ ...DEFAULT_IMPRESSAO, ...(map['config_impressao'] as any) });
       }
     } catch (error) {
-      if (import.meta.env.DEV) console.error('Error loading configs:', error);
+      if (generation === configLoadGeneration.current) {
+        setConfigLoadError(error);
+        if (import.meta.env.DEV) console.error('Error loading configs:', error);
+      }
     } finally {
-      setLoadingConfig(false);
+      if (generation === configLoadGeneration.current) setLoadingConfig(false);
     }
   }, [profile?.clinica_id, user?.id]);
 
   useEffect(() => { loadConfigs(); }, [loadConfigs]);
 
   const saveConfig = async (chave: string, valor: any, label: string) => {
+    const saveLockKey = `${profile?.clinica_id ?? user?.id ?? 'sessao'}:${chave}`;
+    if (saveLocks.current.has(saveLockKey)) return;
     if (!user?.id) { toast.error('Faça login para salvar.'); return; }
+    if (loadingConfig || configLoadError || loadedConfigScope !== currentConfigScope) {
+      toast.error('Carregue as configurações atuais antes de salvar.');
+      return;
+    }
+    if (chave === 'config_clinica' && !String((valor as ConfiguracaoClinica).nomeClinica || '').trim()) {
+      toast.error('Informe o nome da clínica antes de salvar.');
+      return;
+    }
+    const generation = configLoadGeneration.current;
+    saveLocks.current.add(saveLockKey);
     setSaving(prev => ({ ...prev, [chave]: true }));
     try {
-      if (chave === 'config_clinica' && profile?.clinica_id) {
-        const clinicaConfig = valor as ConfiguracaoClinica;
-        const { error: clinicError } = await supabase
-          .from('clinicas')
-          .update({
-            nome: clinicaConfig.nomeClinica?.trim() || 'Minha Clínica',
-            cnpj: clinicaConfig.cnpj?.trim() || null,
-          })
-          .eq('id', profile.clinica_id);
-
-        if (clinicError) throw clinicError;
-      }
-
       if (profile?.clinica_id && chaveDaClinica(chave)) {
-        await salvarConfigClinica({ clinicaId: profile.clinica_id, userId: user.id, chave, valor });
+        const { data: novaVersao, error } = await (supabase as any).rpc('salvar_configuracao_clinica_segura', {
+          p_chave: chave,
+          p_valor: valor,
+          p_versao_esperada: configVersions[chave] ?? null,
+        });
+        if (error) throw error;
+        if (typeof novaVersao !== 'string') throw new Error('A configuração foi salva, mas a versão não foi confirmada. Atualize os dados antes de salvar novamente.');
+        setConfigVersions(prev => ({ ...prev, [chave]: novaVersao }));
       } else {
         const { error } = await supabase
           .from('configuracoes_clinica')
@@ -495,12 +548,18 @@ export default function Configuracoes() {
         if (error) throw error;
       }
       if (chave === 'config_clinica') clearClinicaInfoCache();
-      setIsCloudSynced(true);
-      toast.success(`${label} salvas na nuvem!`);
+      if (chave === 'config_seguranca') window.dispatchEvent(new Event(CONFIG_SEGURANCA_ATUALIZADA_EVENT));
+      if (generation === configLoadGeneration.current) {
+        setIsCloudSynced(true);
+        toast.success(`${label} salvas na nuvem!`);
+      }
     } catch (error: any) {
-      toast.error('Erro ao salvar: ' + (error.message || 'Tente novamente.'));
+      if (generation === configLoadGeneration.current) {
+        toast.error('Erro ao salvar: ' + (error.message || 'Tente novamente.'));
+      }
     } finally {
-      setSaving(prev => ({ ...prev, [chave]: false }));
+      saveLocks.current.delete(saveLockKey);
+      if (generation === configLoadGeneration.current) setSaving(prev => ({ ...prev, [chave]: false }));
     }
   };
 
@@ -520,17 +579,15 @@ export default function Configuracoes() {
     }));
   };
 
-  const toggleFormaPagamento = (forma: string) => {
-    setConfigFinanceiro(prev => ({
-      ...prev,
-      formasPagamento: prev.formasPagamento.includes(forma)
-        ? prev.formasPagamento.filter(f => f !== forma)
-        : [...prev.formasPagamento, forma]
-    }));
-  };
-
-  const SaveBtn = ({ configKey, label, configValue }: { configKey: string; label: string; configValue: any }) => (
-    <Button onClick={() => saveConfig(configKey, configValue, label)} disabled={saving[configKey]} className="gap-2">
+  const SaveBtn = ({ configKey, label, configValue, validate }: { configKey: string; label: string; configValue: any; validate?: () => string | null }) => (
+    <Button onClick={() => {
+      const validationError = validate?.();
+      if (validationError) {
+        toast.error('Revise os horários', { description: validationError });
+        return;
+      }
+      void saveConfig(configKey, configValue, label);
+    }} disabled={saving[configKey]} className="gap-2">
       {saving[configKey] ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
       Salvar na Nuvem
     </Button>
@@ -557,7 +614,7 @@ export default function Configuracoes() {
     </div>
   );
 
-  if (loadingConfig) {
+  if (loadingConfig || (!configLoadError && loadedConfigScope !== currentConfigScope)) {
     return (
       <div className="flex items-center justify-center py-20">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -565,16 +622,9 @@ export default function Configuracoes() {
     );
   }
 
-  const FORMAS_PAGAMENTO = [
-    { value: 'dinheiro', label: 'Dinheiro' },
-    { value: 'pix', label: 'PIX' },
-    { value: 'cartao_credito', label: 'Cartão Crédito' },
-    { value: 'cartao_debito', label: 'Cartão Débito' },
-    { value: 'boleto', label: 'Boleto' },
-    { value: 'transferencia', label: 'Transferência' },
-    { value: 'cheque', label: 'Cheque' },
-    { value: 'convenio', label: 'Convênio' },
-  ];
+  if (configLoadError) {
+    return <div className="p-4 md:p-6"><ErrorState title="Não foi possível carregar as configurações atuais" description="Os campos não serão apresentados com valores padrão para evitar sobrescrever configurações existentes. Tente carregar novamente." error={configLoadError} onRetry={() => void loadConfigs()} /></div>;
+  }
 
   return (
     <div className="space-y-6">
@@ -590,14 +640,16 @@ export default function Configuracoes() {
       </div>
 
       <Tabs defaultValue="clinica" className="space-y-6">
-        <TabsList className="flex-wrap h-auto gap-1 bg-muted/50 p-1">
-          {tabItems.map(tab => (
-            <TabsTrigger key={tab.value} value={tab.value} className="gap-1.5 text-xs">
-              <tab.icon className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">{tab.label}</span>
-            </TabsTrigger>
-          ))}
-        </TabsList>
+        <div className="-mx-1 overflow-x-auto pb-1 sm:mx-0 sm:overflow-visible">
+          <TabsList className="flex h-auto w-max min-w-full flex-nowrap gap-1 bg-muted/50 p-1 sm:w-full sm:flex-wrap">
+            {tabItems.map(tab => (
+              <TabsTrigger key={tab.value} value={tab.value} aria-label={tab.label} title={tab.label} className="shrink-0 gap-1.5 text-xs">
+                <tab.icon className="h-3.5 w-3.5" />
+                <span>{tab.label}</span>
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </div>
 
         {/* ─── Clínica ─── */}
         <TabsContent value="clinica">
@@ -689,7 +741,11 @@ export default function Configuracoes() {
                 <CardDescription>Visualize e gerencie sua subscrição</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
-                {!hasActivePlan ? (
+                {loadingPlanoAtual ? (
+                  <p role="status" className="py-8 text-center text-sm text-muted-foreground">Consultando sua assinatura…</p>
+                ) : erroPlanoAtual ? (
+                  <ErrorState compact title="Não foi possível confirmar seu plano" error={erroConsultaPlano} onRetry={() => void recarregarPlanoAtual()} />
+                ) : !hasActivePlan ? (
                   <div className="text-center py-8 space-y-4">
                     <p className="text-muted-foreground">Você não possui um plano ativo</p>
                     <Button className="gap-2" onClick={() => navigate('/planos')}>
@@ -735,10 +791,15 @@ export default function Configuracoes() {
                             <div className="p-3 bg-muted rounded-lg">
                               <p className="text-xs text-muted-foreground">Valor Mensal</p>
                               <p className="text-lg font-semibold mt-1">
-                                {planos?.find(p => p.slug === planSlug)?.valor
-                                  ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(planos.find(p => p.slug === planSlug)!.valor)
-                                  : 'Carregando...'}
+                                {erroAoCarregarPlanos
+                                  ? 'Preço indisponível'
+                                  : carregandoPlanos
+                                    ? 'Carregando...'
+                                    : planos?.find(p => p.slug === planSlug)
+                                      ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(planos.find(p => p.slug === planSlug)!.valor)
+                                      : 'Plano não encontrado'}
                               </p>
+                              {erroAoCarregarPlanos && <p className="text-xs text-destructive" title={erroListaPlanos instanceof Error ? erroListaPlanos.message : undefined}>Atualize os planos para consultar o valor.</p>}
                             </div>
                             <div className="p-3 bg-muted rounded-lg">
                               <p className="text-xs text-muted-foreground">Status do Pagamento</p>
@@ -782,6 +843,8 @@ export default function Configuracoes() {
                 </DialogHeader>
                 {loadingFaturas ? (
                   <div className="py-8 text-center"><Loader2 className="h-6 w-6 animate-spin mx-auto text-primary" /></div>
+                ) : erroFaturas ? (
+                  <ErrorState compact title="Não foi possível carregar as faturas" error={erroFaturas} onRetry={() => void recarregarFaturas()} />
                 ) : !faturas || faturas.length === 0 ? (
                   <div className="py-8 text-center text-muted-foreground">Nenhuma fatura encontrada ainda.</div>
                 ) : (
@@ -805,7 +868,7 @@ export default function Configuracoes() {
                           </TableCell>
                           <TableCell>
                             <Badge variant={f.status === 'approved' || f.status === 'aprovado' ? 'default' : f.status === 'pending' || f.status === 'pendente' ? 'secondary' : 'outline'}>
-                              {f.status || '—'}
+                              {FATURA_STATUS_LABEL[String(f.status || '').toLowerCase()] || f.status || '—'}
                             </Badge>
                           </TableCell>
                           <TableCell>
@@ -822,7 +885,9 @@ export default function Configuracoes() {
             </Dialog>
 
             {/* Dialog: Cancel plan */}
-            <Dialog open={showCancelPlan} onOpenChange={setShowCancelPlan}>
+            <Dialog open={showCancelPlan} onOpenChange={open => {
+              if (open || (!cancelPlanLock.current && !cancelPlanMutation.isPending)) setShowCancelPlan(open);
+            }}>
               <DialogContent>
                 <DialogHeader>
                   <DialogTitle>Cancelar assinatura?</DialogTitle>
@@ -831,8 +896,8 @@ export default function Configuracoes() {
                   </DialogDescription>
                 </DialogHeader>
                 <DialogFooter>
-                  <Button variant="outline" onClick={() => setShowCancelPlan(false)}>Manter assinatura</Button>
-                  <Button variant="destructive" disabled={cancelPlanMutation.isPending} onClick={() => cancelPlanMutation.mutate()}>
+                  <Button variant="outline" onClick={() => setShowCancelPlan(false)} disabled={cancelPlanMutation.isPending}>Manter assinatura</Button>
+                  <Button variant="destructive" disabled={cancelPlanMutation.isPending} onClick={confirmarCancelamentoPlano}>
                     {cancelPlanMutation.isPending && <Loader2 className="h-4 w-4 animate-spin mr-1" />}
                     Confirmar cancelamento
                   </Button>
@@ -849,7 +914,10 @@ export default function Configuracoes() {
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2"><Clock className="h-5 w-5 text-primary" />Horários de Funcionamento</CardTitle>
-                <CardDescription>Configure os horários, intervalos e dias de atendimento</CardDescription>
+                <CardDescription>
+                  Horário geral da clínica, exibido no link público. Os horários disponíveis para marcar dependem da agenda de cada profissional.{' '}
+                  <Button variant="link" asChild className="h-auto p-0 align-baseline"><Link to="/equipe">Configurar disponibilidade da equipe</Link></Button>
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
                 <h3 className="font-semibold text-sm">Horário Principal</h3>
@@ -920,7 +988,7 @@ export default function Configuracoes() {
                 )}
 
                 <Separator />
-                <SaveBtn configKey="config_clinica" label="Horários" configValue={configClinica} />
+                <SaveBtn configKey="config_clinica" label="Horários" configValue={configClinica} validate={() => validarHorarioClinica(configClinica)} />
               </CardContent>
             </Card>
           </motion.div>
@@ -941,84 +1009,38 @@ export default function Configuracoes() {
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2"><DollarSign className="h-5 w-5 text-primary" />Configurações Financeiras</CardTitle>
-                <CardDescription>Valores padrão, formas de pagamento e taxas</CardDescription>
+                <CardTitle className="flex items-center gap-2"><DollarSign className="h-5 w-5 text-primary" />Operação financeira</CardTitle>
+                <CardDescription>Configure preços e acompanhe cobranças nos módulos que usam esses dados.</CardDescription>
               </CardHeader>
-              <CardContent className="space-y-6">
-                <h3 className="font-semibold text-sm">Valores Padrão</h3>
-                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                  <div className="space-y-2">
-                    <Label>Consulta Padrão (R$)</Label>
-                    <Input type="number" step="0.01" value={configFinanceiro.valorConsultaPadrao} onChange={e => setConfigFinanceiro({ ...configFinanceiro, valorConsultaPadrao: parseFloat(e.target.value) || 0 })} />
+              <CardContent className="grid gap-4 md:grid-cols-2">
+                <div className="rounded-lg border p-4 space-y-3">
+                  <div>
+                    <h3 className="font-medium">Preços e serviços</h3>
+                    <p className="mt-1 text-sm text-muted-foreground">Cadastre serviços, valores particulares e preços de exames por convênio.</p>
                   </div>
-                  <div className="space-y-2">
-                    <Label>Retorno Padrão (R$)</Label>
-                    <Input type="number" step="0.01" value={configFinanceiro.valorRetornoPadrao} onChange={e => setConfigFinanceiro({ ...configFinanceiro, valorRetornoPadrao: parseFloat(e.target.value) || 0 })} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Dias p/ Vencimento Boleto</Label>
-                    <Input type="number" value={configFinanceiro.diasVencimentoBoleto} onChange={e => setConfigFinanceiro({ ...configFinanceiro, diasVencimentoBoleto: parseInt(e.target.value) || 7 })} />
-                  </div>
+                  <Button asChild><Link to="/precos-servicos">Abrir preços e serviços</Link></Button>
                 </div>
-
-                <Separator />
-                <h3 className="font-semibold text-sm">Taxas de Cartão</h3>
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label>Taxa Cartão Crédito (%)</Label>
-                    <Input type="number" step="0.1" value={configFinanceiro.taxaCartaoCredito} onChange={e => setConfigFinanceiro({ ...configFinanceiro, taxaCartaoCredito: parseFloat(e.target.value) || 0 })} />
+                <div className="rounded-lg border p-4 space-y-3">
+                  <div>
+                    <h3 className="font-medium">Contas e recebimentos</h3>
+                    <p className="mt-1 text-sm text-muted-foreground">Registre cobranças, pagamentos, vencimentos e formas recebidas em cada lançamento.</p>
                   </div>
-                  <div className="space-y-2">
-                    <Label>Taxa Cartão Débito (%)</Label>
-                    <Input type="number" step="0.1" value={configFinanceiro.taxaCartaoDebito} onChange={e => setConfigFinanceiro({ ...configFinanceiro, taxaCartaoDebito: parseFloat(e.target.value) || 0 })} />
+                  <Button asChild><Link to="/contas?tab=receber">Abrir contas a receber</Link></Button>
+                </div>
+                <div className="rounded-lg border p-4 space-y-3">
+                  <div>
+                    <h3 className="font-medium">Caixa da recepção</h3>
+                    <p className="mt-1 text-sm text-muted-foreground">Conclua atendimentos e registre o pagamento no fluxo do caixa.</p>
                   </div>
+                  <Button asChild><Link to="/recepcao">Abrir recepção</Link></Button>
                 </div>
-
-                <Separator />
-                <h3 className="font-semibold text-sm">PIX</h3>
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label>Tipo de Chave</Label>
-                    <Select value={configFinanceiro.tipoChavePix} onValueChange={v => setConfigFinanceiro({ ...configFinanceiro, tipoChavePix: v })}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="cpf">CPF</SelectItem>
-                        <SelectItem value="cnpj">CNPJ</SelectItem>
-                        <SelectItem value="email">Email</SelectItem>
-                        <SelectItem value="telefone">Telefone</SelectItem>
-                        <SelectItem value="aleatoria">Chave Aleatória</SelectItem>
-                      </SelectContent>
-                    </Select>
+                <div className="rounded-lg border p-4 space-y-3">
+                  <div>
+                    <h3 className="font-medium">Faturamento de convênios</h3>
+                    <p className="mt-1 text-sm text-muted-foreground">Organize lotes TISS, faturamento e acompanhamento de glosas.</p>
                   </div>
-                  <div className="space-y-2">
-                    <Label>Chave PIX</Label>
-                    <Input value={configFinanceiro.chavePix} onChange={e => setConfigFinanceiro({ ...configFinanceiro, chavePix: e.target.value })} placeholder="Sua chave PIX" />
-                  </div>
+                  <Button asChild><Link to="/faturamento-convenios">Abrir faturamento</Link></Button>
                 </div>
-
-                <Separator />
-                <h3 className="font-semibold text-sm">Formas de Pagamento Aceitas</h3>
-                <div className="flex flex-wrap gap-2">
-                  {FORMAS_PAGAMENTO.map(fp => (
-                    <Button key={fp.value} variant={configFinanceiro.formasPagamento.includes(fp.value) ? 'default' : 'outline'} size="sm" onClick={() => toggleFormaPagamento(fp.value)}>
-                      {fp.label}
-                    </Button>
-                  ))}
-                </div>
-
-                <Separator />
-                <h3 className="font-semibold text-sm">Automações</h3>
-                <div className="divide-y">
-                  <SettingRow icon={Receipt} title="Faturamento Automático" description="Gerar lançamento financeiro ao finalizar atendimento">
-                    <Switch checked={configFinanceiro.faturamentoAutomatico} onCheckedChange={v => setConfigFinanceiro({ ...configFinanceiro, faturamentoAutomatico: v })} />
-                  </SettingRow>
-                  <SettingRow icon={FileText} title="Boleto Automático" description="Gerar boleto automaticamente para convênios">
-                    <Switch checked={configFinanceiro.gerarBoletoAutomatico} onCheckedChange={v => setConfigFinanceiro({ ...configFinanceiro, gerarBoletoAutomatico: v })} />
-                  </SettingRow>
-                </div>
-
-                <Separator />
-                <SaveBtn configKey="config_financeiro" label="Configurações financeiras" configValue={configFinanceiro} />
               </CardContent>
             </Card>
           </motion.div>
@@ -1034,64 +1056,16 @@ export default function Configuracoes() {
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2"><Bell className="h-5 w-5 text-primary" />Notificações</CardTitle>
-                <CardDescription>Configure os canais e tipos de notificações automáticas</CardDescription>
+                <CardDescription>Gerencie lembretes e mensagens automáticas da clínica</CardDescription>
               </CardHeader>
-              <CardContent>
-                <h3 className="font-semibold text-sm mb-2">Canais de Lembrete</h3>
-                <div className="divide-y">
-                  <SettingRow icon={Mail} title="Lembrete por Email" description="Enviar lembrete de consulta por email">
-                    <Switch checked={configNotificacoes.emailLembrete} onCheckedChange={v => setConfigNotificacoes({ ...configNotificacoes, emailLembrete: v })} />
-                  </SettingRow>
-                  <SettingRow icon={Smartphone} title="Lembrete por SMS" description="Enviar lembrete por SMS">
-                    <Switch checked={configNotificacoes.smsLembrete} onCheckedChange={v => setConfigNotificacoes({ ...configNotificacoes, smsLembrete: v })} />
-                  </SettingRow>
-                  <SettingRow icon={MessageSquare} title="Lembrete por WhatsApp" description="Enviar lembrete via WhatsApp (requer Evolution API)">
-                    <Switch checked={configNotificacoes.whatsappLembrete} onCheckedChange={v => setConfigNotificacoes({ ...configNotificacoes, whatsappLembrete: v })} />
-                  </SettingRow>
+              <CardContent className="space-y-4">
+                <div className="rounded-lg border bg-muted/30 p-4 space-y-2">
+                  <p className="font-medium text-sm">As regras de envio ficam em Automações</p>
+                  <p className="text-sm text-muted-foreground">
+                    Os controles antigos desta aba só eram armazenados e não alteravam o envio. Configure e acompanhe os lembretes e mensagens que estão realmente ativos no módulo Automações.
+                  </p>
                 </div>
-
-                <Separator className="my-4" />
-                <h3 className="font-semibold text-sm mb-2">Tipos de Notificação</h3>
-                <div className="divide-y">
-                  <SettingRow icon={Bell} title="Cancelamentos" description="Notificar equipe ao cancelar consulta">
-                    <Switch checked={configNotificacoes.notificarCancelamento} onCheckedChange={v => setConfigNotificacoes({ ...configNotificacoes, notificarCancelamento: v })} />
-                  </SettingRow>
-                  <SettingRow icon={Bell} title="Novos Agendamentos" description="Notificar sobre novos agendamentos">
-                    <Switch checked={configNotificacoes.notificarNovoAgendamento} onCheckedChange={v => setConfigNotificacoes({ ...configNotificacoes, notificarNovoAgendamento: v })} />
-                  </SettingRow>
-                  <SettingRow icon={Database} title="Resultado de Exames" description="Notificar paciente quando resultado disponível">
-                    <Switch checked={configNotificacoes.notificarResultadoExame} onCheckedChange={v => setConfigNotificacoes({ ...configNotificacoes, notificarResultadoExame: v })} />
-                  </SettingRow>
-                  <SettingRow icon={Bell} title="Aniversário do Paciente" description="Enviar felicitação automática">
-                    <Switch checked={configNotificacoes.notificarAniversario} onCheckedChange={v => setConfigNotificacoes({ ...configNotificacoes, notificarAniversario: v })} />
-                  </SettingRow>
-                  <SettingRow icon={Bell} title="Estoque Baixo" description="Alertar quando item atingir estoque mínimo">
-                    <Switch checked={configNotificacoes.notificarEstoqueBaixo} onCheckedChange={v => setConfigNotificacoes({ ...configNotificacoes, notificarEstoqueBaixo: v })} />
-                  </SettingRow>
-                  <SettingRow icon={DollarSign} title="Contas a Vencer" description="Alertar sobre contas próximas do vencimento">
-                    <Switch checked={configNotificacoes.notificarContasVencer} onCheckedChange={v => setConfigNotificacoes({ ...configNotificacoes, notificarContasVencer: v })} />
-                  </SettingRow>
-                  <SettingRow icon={Mail} title="Resumo Diário" description="Receber resumo das atividades do dia por email">
-                    <Switch checked={configNotificacoes.resumoDiario} onCheckedChange={v => setConfigNotificacoes({ ...configNotificacoes, resumoDiario: v })} />
-                  </SettingRow>
-                </div>
-
-                <div className="mt-6 space-y-2 max-w-xs">
-                  <Label>Antecedência do Lembrete</Label>
-                  <Select value={configNotificacoes.antecedenciaLembrete.toString()} onValueChange={v => setConfigNotificacoes({ ...configNotificacoes, antecedenciaLembrete: parseInt(v) })}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="1">1 hora antes</SelectItem>
-                      <SelectItem value="2">2 horas antes</SelectItem>
-                      <SelectItem value="6">6 horas antes</SelectItem>
-                      <SelectItem value="12">12 horas antes</SelectItem>
-                      <SelectItem value="24">24 horas antes</SelectItem>
-                      <SelectItem value="48">48 horas antes</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <Separator className="my-6" />
-                <SaveBtn configKey="config_notificacoes" label="Notificações" configValue={configNotificacoes} />
+                <Button asChild><Link to="/automacoes">Abrir Automações</Link></Button>
               </CardContent>
             </Card>
           </motion.div>
@@ -1103,16 +1077,13 @@ export default function Configuracoes() {
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2"><Printer className="h-5 w-5 text-primary" />Impressão e Receituário</CardTitle>
-                <CardDescription>Configure a aparência de receitas, atestados e documentos impressos</CardDescription>
+                <CardDescription>Personalize os elementos exibidos no receituário médico em PDF.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
                 <div className="space-y-2">
-                  <Label>Cabeçalho do Receituário</Label>
-                  <Textarea value={configImpressao.cabecalhoReceita} onChange={e => setConfigImpressao({ ...configImpressao, cabecalhoReceita: e.target.value })} rows={3} placeholder="Ex: Clínica São Lucas - Atendimento Médico Especializado&#10;Rua das Flores, 123 - Centro - (11) 1234-5678" />
-                </div>
-                <div className="space-y-2">
                   <Label>Rodapé do Receituário</Label>
                   <Textarea value={configImpressao.rodapeReceita} onChange={e => setConfigImpressao({ ...configImpressao, rodapeReceita: e.target.value })} rows={2} placeholder="Ex: Este documento é válido por 30 dias" />
+                  <p className="text-xs text-muted-foreground">O rodapé personalizado aparece acima do aviso de assinatura e é limitado a duas linhas.</p>
                 </div>
 
                 <Separator />
@@ -1121,53 +1092,12 @@ export default function Configuracoes() {
                   <SettingRow icon={Image} title="Mostrar Logo" description="Incluir logo da clínica no cabeçalho dos documentos">
                     <Switch checked={configImpressao.mostrarLogo} onCheckedChange={v => setConfigImpressao({ ...configImpressao, mostrarLogo: v })} />
                   </SettingRow>
-                  <SettingRow icon={Hash} title="Mostrar CRM" description="Incluir número do CRM do médico">
+                  <SettingRow icon={Hash} title="Mostrar CRM" description="Incluir o CRM do profissional na área de assinatura">
                     <Switch checked={configImpressao.mostrarCRM} onCheckedChange={v => setConfigImpressao({ ...configImpressao, mostrarCRM: v })} />
                   </SettingRow>
                   <SettingRow icon={Building} title="Mostrar CNES" description="Incluir código CNES do estabelecimento">
                     <Switch checked={configImpressao.mostrarCNES} onCheckedChange={v => setConfigImpressao({ ...configImpressao, mostrarCNES: v })} />
                   </SettingRow>
-                </div>
-
-                <Separator />
-                <h3 className="font-semibold text-sm">Layout</h3>
-                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                  <div className="space-y-2">
-                    <Label>Tamanho do Papel</Label>
-                    <Select value={configImpressao.tamanhoPapel} onValueChange={v => setConfigImpressao({ ...configImpressao, tamanhoPapel: v })}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="A4">A4</SelectItem>
-                        <SelectItem value="A5">A5 (Meio A4)</SelectItem>
-                        <SelectItem value="Receituario">Receituário (14x20cm)</SelectItem>
-                        <SelectItem value="Carta">Carta (Letter)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Fonte</Label>
-                    <Select value={configImpressao.fontePrincipal} onValueChange={v => setConfigImpressao({ ...configImpressao, fontePrincipal: v })}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Helvetica">Helvetica</SelectItem>
-                        <SelectItem value="Times">Times New Roman</SelectItem>
-                        <SelectItem value="Courier">Courier</SelectItem>
-                        <SelectItem value="Arial">Arial</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Tamanho da Fonte (pt)</Label>
-                    <Input type="number" value={configImpressao.tamanhoFonte} onChange={e => setConfigImpressao({ ...configImpressao, tamanhoFonte: parseInt(e.target.value) || 12 })} />
-                  </div>
-                </div>
-
-                <h4 className="font-medium text-sm mt-4">Margens (mm)</h4>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div className="space-y-1"><Label className="text-xs">Superior</Label><Input type="number" value={configImpressao.margemSuperior} onChange={e => setConfigImpressao({ ...configImpressao, margemSuperior: parseInt(e.target.value) || 0 })} /></div>
-                  <div className="space-y-1"><Label className="text-xs">Inferior</Label><Input type="number" value={configImpressao.margemInferior} onChange={e => setConfigImpressao({ ...configImpressao, margemInferior: parseInt(e.target.value) || 0 })} /></div>
-                  <div className="space-y-1"><Label className="text-xs">Esquerda</Label><Input type="number" value={configImpressao.margemEsquerda} onChange={e => setConfigImpressao({ ...configImpressao, margemEsquerda: parseInt(e.target.value) || 0 })} /></div>
-                  <div className="space-y-1"><Label className="text-xs">Direita</Label><Input type="number" value={configImpressao.margemDireita} onChange={e => setConfigImpressao({ ...configImpressao, margemDireita: parseInt(e.target.value) || 0 })} /></div>
                 </div>
 
                 <Separator />
@@ -1200,30 +1130,18 @@ export default function Configuracoes() {
                       </SelectContent>
                     </Select>
                   </SettingRow>
-                  <SettingRow icon={Shield} title="Mascarar CPF" description="Exibir CPF mascarado na listagem de pacientes">
-                    <Switch checked={configSeguranca.mascarCpf} onCheckedChange={v => setConfigSeguranca({ ...configSeguranca, mascarCpf: v })} />
-                  </SettingRow>
-                  <SettingRow icon={Shield} title="Log de Auditoria" description="Registrar todas as ações dos usuários">
-                    <Switch checked={configSeguranca.logAuditoria} onCheckedChange={v => setConfigSeguranca({ ...configSeguranca, logAuditoria: v })} />
-                  </SettingRow>
-                  <SettingRow icon={Globe} title="Conformidade LGPD" description="Exigir consentimento do paciente para coleta de dados">
-                    <Switch checked={configSeguranca.lgpdConsentimento} onCheckedChange={v => setConfigSeguranca({ ...configSeguranca, lgpdConsentimento: v })} />
-                  </SettingRow>
-                  <SettingRow icon={Key} title="Senha Forte Obrigatória" description="Exigir mínimo 8 caracteres, maiúscula e número">
-                    <Switch checked={configSeguranca.senhaForte} onCheckedChange={v => setConfigSeguranca({ ...configSeguranca, senhaForte: v })} />
-                  </SettingRow>
                 </div>
-                <div className="mt-6 p-4 rounded-xl border bg-primary/5">
+                <div className="mt-6 p-4 rounded-xl border bg-primary/5 space-y-3">
                   <div className="flex gap-3">
                     <Shield className="h-5 w-5 text-primary shrink-0 mt-0.5" />
                     <div>
-                      <p className="font-medium text-sm">Proteção de Dados</p>
+                      <p className="font-medium text-sm">Proteções aplicadas pelo sistema</p>
                       <p className="text-xs text-muted-foreground mt-1">
-                        O sistema utiliza Row Level Security (RLS) no banco de dados, garantindo isolamento de dados por clínica.
-                        Todas as comunicações são criptografadas via HTTPS e os dados sensíveis são mascarados.
+                        Cadastro e redefinição de senha exigem pelo menos 10 caracteres, incluindo maiúscula, minúscula e número. O agendamento online sempre solicita consentimento. A autenticação em dois fatores é configurada por conta.
                       </p>
                     </div>
                   </div>
+                  <Button variant="outline" size="sm" asChild><Link to="/seguranca">Configurar segurança da conta</Link></Button>
                 </div>
                 <Separator className="my-6" />
                 <SaveBtn configKey="config_seguranca" label="Configurações de segurança" configValue={configSeguranca} />

@@ -10,14 +10,14 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { PacienteCombobox } from '@/components/patients/PacienteCombobox';
 import { usePacienteResumo } from '@/hooks/useBuscaPacientes';
-import { Trash2, Loader2, MessageCircle } from 'lucide-react';
+import { CircleX, Loader2, MessageCircle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { mensagemDeErro } from '@/lib/erros';
 import { useQueryClient } from '@tanstack/react-query';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
-import { todayDateOnly } from '@/lib/dateOnly';
+import { appointmentStartHasPassed, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 
 interface Props {
   open: boolean;
@@ -26,7 +26,7 @@ interface Props {
   medicos: any[];
   tipos: any[];
   salas: any[];
-  onSaved?: () => void;
+  onSaved?: () => void | Promise<void>;
 }
 
 export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos, salas, onSaved }: Props) {
@@ -35,6 +35,8 @@ export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos,
   const editing = !!initial?.id;
   const [tab, setTab] = useState('paciente');
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [confirmCancel, setConfirmCancel] = useState(false);
   const [form, setForm] = useState<any>({});
   const [foraExpediente, setForaExpediente] = useState<string | null>(null);
 
@@ -43,9 +45,9 @@ export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos,
       setForm({
         paciente_id: initial?.paciente_id || '',
         medico_id: initial?.medico_id || '',
-        data: initial?.data || todayDateOnly(),
-        hora_inicio: initial?.hora_inicio || '09:00',
-        hora_fim: initial?.hora_fim || '',
+        data: initial?.data || todaySaoPauloDateOnly(),
+        hora_inicio: initial?.hora_inicio?.slice(0, 5) || '09:00',
+        hora_fim: initial?.hora_fim?.slice(0, 5) || '',
         tipo: initial?.tipo || 'consulta',
         status: initial?.status || 'agendado',
         sala_id: initial?.sala_id || '',
@@ -57,11 +59,35 @@ export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos,
   }, [open, initial]);
 
   const { data: paciente } = usePacienteResumo(form.paciente_id);
+  const canMarkNoShow = form.status === 'faltou' || appointmentStartHasPassed(form.data || '', form.hora_inicio || '');
+  // Keep the current provider selectable when editing an existing booking,
+  // even if that provider has since been deactivated. Inactive providers remain
+  // unavailable for new appointments.
+  const medicoInativoDaConsulta = editing
+    ? medicos.find((m) => m.id === initial?.medico_id && m.ativo === false)
+    : null;
+  const statusAtualForaDasOpcoesManuais = Boolean(form.status)
+    && !['agendado', 'confirmado', 'aguardando'].includes(form.status);
+  const consultaSomenteLeitura = editing
+    && !['agendado', 'confirmado', 'aguardando'].includes(initial?.status);
+  const podeCancelarConsulta = editing
+    && ['agendado', 'confirmado', 'aguardando', 'aguardando_triagem', 'em_triagem'].includes(form.status);
+  const rotulosStatusOperacionais: Record<string, string> = {
+    em_atendimento: 'Em atendimento',
+    finalizado: 'Finalizado',
+    atendimento_finalizado: 'Atendimento finalizado',
+    aguardando_pagamento: 'Aguardando pagamento',
+    aguardando_pagamento_adicional: 'Aguardando pagamento adicional',
+    pago: 'Pago',
+    cancelado: 'Cancelado',
+    faltou: 'Faltou',
+  };
 
   const handleSave = async (confirmouForaExpediente = false) => {
     if (!form.paciente_id) { toast.error('Selecione um paciente'); setTab('paciente'); return; }
     if (!form.medico_id) { toast.error('Selecione um médico'); setTab('consulta'); return; }
     if (!form.hora_inicio) { toast.error('Informe o horário'); setTab('consulta'); return; }
+    if (!profile?.clinica_id) { toast.error('Clínica não identificada. Atualize a sessão e tente novamente.'); return; }
 
     if (['exame', 'exames'].includes(String(form.tipo || '').toLocaleLowerCase('pt-BR')) && !form.observacoes?.trim()) {
       toast.error('Informe qual exame será realizado', {
@@ -84,6 +110,7 @@ export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos,
       // consultas em sequência.
       const toMin = (t?: string | null): number | null => {
         if (!t) return null;
+        if (!/^(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/.test(t)) return null;
         const [h, m] = t.split(':').map(Number);
         return Number.isFinite(h) && Number.isFinite(m) ? h * 60 + m : null;
       };
@@ -92,7 +119,8 @@ export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos,
       const novoInicio = toMin(form.hora_inicio);
       const novoFimInformado = toMin(form.hora_fim);
 
-      const dataValida = /^\d{4}-\d{2}-\d{2}$/.test(form.data) && !Number.isNaN(Date.parse(`${form.data}T12:00:00`));
+      const dataParseada = /^\d{4}-\d{2}-\d{2}$/.test(form.data) ? new Date(`${form.data}T12:00:00Z`) : null;
+      const dataValida = !!dataParseada && !Number.isNaN(dataParseada.getTime()) && dataParseada.toISOString().slice(0, 10) === form.data;
       if (!dataValida || novoInicio === null || novoInicio < 0 || novoInicio >= 24 * 60) {
         toast.error('Informe uma data e um horário de início válidos.');
         setTab('consulta'); setSaving(false); return;
@@ -104,39 +132,70 @@ export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos,
 
       const novoFim = novoFimInformado ?? novoInicio + DURACAO_PADRAO;
 
-      if (novoFim <= novoInicio) {
-        toast.error('O horário de término deve ser após o início.');
+      if (novoFim <= novoInicio || novoFim >= 24 * 60) {
+        toast.error(novoFim >= 24 * 60 ? 'A consulta precisa terminar antes da meia-noite.' : 'O horário de término deve ser após o início.');
         setTab('consulta'); setSaving(false); return;
       }
 
+      const reservaAtiva = !['cancelado', 'faltou'].includes(form.status);
+      if (reservaAtiva) {
       const { data: doDia, error: erroDoDia } = await supabase
         .from('agendamentos')
-        .select('id, hora_inicio, hora_fim, status')
-        .eq('medico_id', form.medico_id)
+        .select('id, paciente_id, medico_id, sala_id, hora_inicio, hora_fim, status')
+        .eq('clinica_id', profile.clinica_id)
         .eq('data', form.data);
 
       // Sem esta checagem, uma falha aqui devolvia lista vazia e o código
       // concluía "não há conflito". A constraint do banco ainda barraria a
       // sobreposição, mas com uma mensagem que ninguém entende.
       if (erroDoDia) {
-        toast.error('Não foi possível conferir a agenda do médico.', {
+        toast.error('Não foi possível conferir os horários da agenda.', {
           description: `${erroDoDia.message}. Tente de novo antes de salvar.`,
         });
         setTab('consulta'); setSaving(false); return;
       }
 
       const conflito = (doDia || []).find((a: any) => {
-        if (a.status === 'cancelado') return false;
+        // O banco e o arrastar-e-soltar liberam horários de consultas
+        // canceladas ou com falta; o formulário precisa aplicar a mesma regra.
+        if (a.status === 'cancelado' || a.status === 'faltou') return false;
         if (editing && a.id === initial?.id) return false;
         const ini = toMin(a.hora_inicio);
         if (ini === null) return false;
         const fim = toMin(a.hora_fim) ?? ini + DURACAO_PADRAO;
         // Encostar (fim == início) não é conflito.
-        return ini < novoFim && fim > novoInicio;
+        const sobrepoe = ini < novoFim && fim > novoInicio;
+        return sobrepoe && a.medico_id === form.medico_id;
       });
 
       if (conflito) {
         toast.error('Este médico já tem consulta neste horário.');
+        setTab('consulta'); setSaving(false); return;
+      }
+
+      const conflitoPaciente = (doDia || []).find((a: any) => {
+        if (a.status === 'cancelado' || a.status === 'faltou' || (editing && a.id === initial?.id)) return false;
+        if (a.paciente_id !== form.paciente_id) return false;
+        const inicio = toMin(a.hora_inicio);
+        if (inicio === null) return false;
+        const fim = toMin(a.hora_fim) ?? inicio + DURACAO_PADRAO;
+        return inicio < novoFim && fim > novoInicio;
+      });
+      if (conflitoPaciente) {
+        toast.error('Este paciente já tem outro atendimento neste horário.');
+        setTab('consulta'); setSaving(false); return;
+      }
+
+      const conflitoSala = form.sala_id && (doDia || []).find((a: any) => {
+        if (a.status === 'cancelado' || a.status === 'faltou' || (editing && a.id === initial?.id)) return false;
+        if (a.sala_id !== form.sala_id) return false;
+        const inicio = toMin(a.hora_inicio);
+        if (inicio === null) return false;
+        const fim = toMin(a.hora_fim) ?? inicio + DURACAO_PADRAO;
+        return inicio < novoFim && fim > novoInicio;
+      });
+      if (conflitoSala) {
+        toast.error('Esta sala já está reservada neste horário.', { description: 'Escolha outra sala ou outro horário.' });
         setTab('consulta'); setSaving(false); return;
       }
 
@@ -176,10 +235,16 @@ export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos,
       // Fora do expediente cadastrado do médico: não bloqueia (encaixe antes da
       // abertura é comum), mas pede confirmação. Antes salvava calado.
       if (!confirmouForaExpediente) {
-        const diaSemana = new Date(`${form.data}T12:00:00`).getDay();
-        const { data: jornada } = await (supabase.from('medico_disponibilidade' as any)
+        const diaSemana = new Date(`${form.data}T12:00:00Z`).getUTCDay();
+        const { data: jornada, error: erroJornada } = await (supabase.from('medico_disponibilidade' as any)
           .select('hora_inicio, hora_fim')
           .eq('medico_id', form.medico_id).eq('dia_semana', diaSemana).eq('ativo', true) as any);
+        if (erroJornada) {
+          toast.error('Não foi possível conferir o expediente do médico.', {
+            description: `${erroJornada.message}. Tente novamente antes de agendar.`,
+          });
+          setTab('consulta'); setSaving(false); return;
+        }
         const dentro = ((jornada as any[]) || []).some((j) => {
           const ji = toMin(j.hora_inicio); const jf = toMin(j.hora_fim);
           return ji !== null && jf !== null && novoInicio >= ji && novoFim <= jf;
@@ -189,6 +254,7 @@ export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos,
           setForaExpediente(faixa ? `O expediente do médico neste dia é ${faixa}.` : 'O médico não tem expediente cadastrado neste dia da semana.');
           setSaving(false); return;
         }
+      }
       }
 
       const payload: any = {
@@ -207,10 +273,21 @@ export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos,
 
       let result;
       if (editing) {
-        result = await (supabase.from('agendamentos').update(payload).eq('id', initial.id) as any);
+        let updateQuery = supabase.from('agendamentos')
+          .update(payload)
+          .eq('id', initial.id)
+          .eq('clinica_id', profile.clinica_id);
+        updateQuery = initial.updated_at
+          ? updateQuery.eq('updated_at', initial.updated_at)
+          : updateQuery.is('updated_at', null);
+        result = await (updateQuery.select('id').maybeSingle() as any);
+        if (!result.error && !result.data) {
+          queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
+          throw new Error('Esta consulta foi atualizada ou removida enquanto o formulário estava aberto. Feche e abra novamente antes de salvar.');
+        }
       } else {
         payload.clinica_id = profile?.clinica_id;
-        result = await (supabase.from('agendamentos').insert(payload) as any);
+        result = await (supabase.from('agendamentos').insert(payload).select('id').single() as any);
       }
       if (result.error) throw result.error;
 
@@ -221,23 +298,33 @@ export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos,
       // `.catch(() => {})` e a recepção não sabia que precisava reenviar —
       // o que vira falta na agenda.
       if (form.send_whatsapp && !editing) {
-        supabase.functions
-          .invoke('send-appointment-reminder', {
-            body: { paciente_id: form.paciente_id, data: form.data, hora: form.hora_inicio },
-          })
-          .then(({ error }) => {
-            if (error) throw error;
-          })
-          .catch((erroLembrete: any) => {
-            toast.warning('Consulta marcada, mas o lembrete não foi enviado.', {
-              description: `${erroLembrete?.message || 'Falha no envio'}. Avise o paciente por outro meio.`,
-              duration: 10000,
-            });
+        try {
+          const { data, error } = await supabase.functions.invoke('send-appointment-reminder', {
+            body: { automation_key: 'confirmacao_agendamento', agendamento_id: result.data?.id },
           });
+          if (error) throw error;
+          if (!data?.success) throw new Error(data?.error || 'A confirmação não entrou na fila.');
+          if (data?.stats?.duplicado) {
+            toast.info('A confirmação desta consulta já estava na fila.');
+          } else if (!data?.stats?.enfileirados) {
+            toast.warning(data?.message || 'Consulta salva, mas a confirmação não foi enfileirada.');
+          } else {
+            toast.success('Confirmação adicionada à fila do WhatsApp.');
+          }
+        } catch (erroLembrete: any) {
+          toast.warning('Consulta salva, mas a confirmação não entrou na fila.', {
+            description: `${erroLembrete?.message || 'Falha ao preparar a confirmação'}. Confira as automações de WhatsApp.`,
+            duration: 10000,
+          });
+        }
       }
 
       queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
-      onSaved?.();
+      try {
+        await onSaved?.();
+      } catch (error) {
+        toast.warning('Consulta salva, mas uma atualização complementar falhou.', { description: mensagemDeErro(error) });
+      }
       onOpenChange(false);
     } catch (e: any) {
       // A constraint agendamentos_sem_sobreposicao é a rede de segurança para o
@@ -249,8 +336,11 @@ export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos,
         e?.code === '23P01' || String(e?.message || '').includes('agendamentos_sem_sobreposicao');
 
       if (violouSobreposicao) {
-        toast.error('Este horário acabou de ser ocupado', {
-          description: 'Outro usuário marcou nesta janela enquanto você preenchia. Escolha outro horário.',
+        const conflitoDeRecurso = String(e?.message || '').includes('AGENDA_RECURSO_CONFLITO');
+        toast.error(conflitoDeRecurso ? 'Paciente ou sala acabaram de ser ocupados' : 'Este horário acabou de ser ocupado', {
+          description: conflitoDeRecurso
+            ? 'Outro usuário marcou neste período enquanto você preenchia. Escolha outro horário ou sala.'
+            : 'Outro usuário marcou nesta janela enquanto você preenchia. Escolha outro horário.',
         });
         queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
       } else {
@@ -260,20 +350,33 @@ export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos,
   };
 
   const handleDelete = async () => {
-    if (!editing) return;
-    if (!confirm('Cancelar esta consulta? O histórico será preservado.')) return;
-    const { error } = await (supabase
-      .from('agendamentos')
-      .update({ status: 'cancelado' })
-      .eq('id', initial.id) as any);
-    if (error) return toast.error('Erro ao cancelar', { description: mensagemDeErro(error) });
-    toast.success('Consulta cancelada');
-    queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
-    onOpenChange(false);
+    if (!podeCancelarConsulta || !profile?.clinica_id) return;
+    setDeleting(true);
+    try {
+      let cancelQuery = supabase
+        .from('agendamentos')
+        .update({ status: 'cancelado' })
+        .eq('id', initial.id)
+        .eq('clinica_id', profile.clinica_id);
+      cancelQuery = initial.updated_at
+        ? cancelQuery.eq('updated_at', initial.updated_at)
+        : cancelQuery.is('updated_at', null);
+      const { data, error } = await (cancelQuery.select('id').maybeSingle() as any);
+      if (error) throw error;
+      if (!data) throw new Error('Esta consulta foi atualizada por outra pessoa. Atualize a agenda e confira o estado antes de tentar novamente.');
+      toast.success('Consulta cancelada; o histórico foi preservado.');
+      await queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
+      setConfirmCancel(false);
+      onOpenChange(false);
+    } catch (error) {
+      toast.error('Não foi possível cancelar a consulta.', { description: mensagemDeErro(error) });
+    } finally {
+      setDeleting(false);
+    }
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={(nextOpen) => { if (!saving && !deleting) onOpenChange(nextOpen); }}>
       <DialogContent className="max-h-[100dvh] w-full max-w-lg overflow-y-auto rounded-none pb-[calc(1rem+env(safe-area-inset-bottom))] sm:max-h-[90vh] sm:w-[calc(100%-2rem)] sm:rounded-lg">
         <DialogHeader>
           <DialogTitle>{editing ? 'Editar consulta' : 'Nova consulta'}</DialogTitle>
@@ -282,6 +385,7 @@ export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos,
           </DialogDescription>
         </DialogHeader>
 
+        <fieldset disabled={saving || deleting || consultaSomenteLeitura} className="min-w-0">
         <Tabs value={tab} onValueChange={setTab}>
           <TabsList className="grid grid-cols-3">
             <TabsTrigger value="paciente">Paciente</TabsTrigger>
@@ -310,8 +414,10 @@ export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos,
               <Select value={form.medico_id} onValueChange={(v) => setForm({ ...form, medico_id: v })}>
                 <SelectTrigger><SelectValue placeholder="Selecione o médico" /></SelectTrigger>
                 <SelectContent>
-                  {medicos.filter(m => m.ativo !== false).map(m => (
-                    <SelectItem key={m.id} value={m.id}>{nomeMedico(m.nome || m.crm)} · {m.especialidade || 'Geral'}</SelectItem>
+                  {[...medicos.filter(m => m.ativo !== false), ...(medicoInativoDaConsulta ? [medicoInativoDaConsulta] : [])].map(m => (
+                    <SelectItem key={m.id} value={m.id}>
+                      {nomeMedico(m.nome || m.crm)} · {m.ativo === false ? 'Inativo (consulta existente)' : m.especialidade || 'Geral'}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -346,14 +452,18 @@ export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos,
               </div>
               <div>
                 <Label>Status</Label>
-                <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v })}>
+                <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v })} disabled={consultaSomenteLeitura}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
+                    {statusAtualForaDasOpcoesManuais && (
+                      <SelectItem value={form.status} disabled>
+                        {rotulosStatusOperacionais[form.status] || `Status atual: ${form.status}`}
+                      </SelectItem>
+                    )}
                     <SelectItem value="agendado">Agendado</SelectItem>
                     <SelectItem value="confirmado">Confirmado</SelectItem>
                     <SelectItem value="aguardando">Aguardando</SelectItem>
-                    <SelectItem value="cancelado">Cancelado</SelectItem>
-                    <SelectItem value="faltou">Faltou</SelectItem>
+                    {canMarkNoShow && <SelectItem value="faltou">Faltou</SelectItem>}
                   </SelectContent>
                 </Select>
                 {/* 'em_atendimento' e 'finalizado' saíram do select manual:
@@ -392,20 +502,31 @@ export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos,
             )}
           </TabsContent>
         </Tabs>
+        </fieldset>
 
         <DialogFooter className="gap-2 sm:justify-between">
           <div>
-            {editing && (
-              <Button variant="ghost" size="sm" onClick={handleDelete} className="text-destructive">
-                <Trash2 className="h-4 w-4 mr-1" /> Remover
+            {podeCancelarConsulta && (
+              <Button variant="ghost" size="sm" onClick={() => setConfirmCancel(true)} disabled={saving || deleting} className="text-destructive">
+                <CircleX className="h-4 w-4 mr-1" /> Cancelar consulta
               </Button>
+            )}
+            {editing && ['cancelado', 'faltou'].includes(form.status) && (
+              <p className="max-w-52 text-xs text-muted-foreground">
+                Este estado fica no histórico. Para remarcar, crie uma nova consulta.
+              </p>
+            )}
+            {consultaSomenteLeitura && !['cancelado', 'faltou'].includes(form.status) && (
+              <p className="max-w-52 text-xs text-muted-foreground">
+                Este estado é controlado pelo fluxo de atendimento e financeiro.
+              </p>
             )}
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
-            <Button onClick={() => handleSave()} disabled={saving}>
+            <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving || deleting}>Fechar</Button>
+            <Button onClick={() => handleSave()} disabled={saving || deleting || consultaSomenteLeitura}>
               {saving && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
-              {editing ? 'Salvar' : 'Agendar'}
+              {consultaSomenteLeitura ? 'Somente leitura' : editing ? 'Salvar' : 'Agendar'}
             </Button>
           </div>
         </DialogFooter>
@@ -419,6 +540,20 @@ export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos,
           <AlertDialogFooter>
             <AlertDialogCancel>Escolher outro horário</AlertDialogCancel>
             <AlertDialogAction onClick={() => { setForaExpediente(null); void handleSave(true); }}>Agendar mesmo assim</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog open={confirmCancel} onOpenChange={(nextOpen) => { if (!deleting) setConfirmCancel(nextOpen); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancelar consulta?</AlertDialogTitle>
+            <AlertDialogDescription>A consulta deixará de ocupar o horário. O registro será mantido no histórico.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Manter consulta</AlertDialogCancel>
+            <AlertDialogAction onClick={(event) => { event.preventDefault(); void handleDelete(); }} disabled={deleting}>
+              {deleting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Cancelando…</> : 'Confirmar cancelamento'}
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

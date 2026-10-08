@@ -59,17 +59,38 @@ function serviceNameCandidates(value: string): string[] {
   return [...new Set(candidates.map(normalizeServiceName).filter(Boolean))];
 }
 
-function matchesServiceName(rowName: unknown, requestedName: string): boolean {
-  const row = normalizeServiceName(rowName);
-  if (!row) return false;
+function findPriceRow<T>(
+  rows: T[],
+  requestedName: string,
+  getName: (row: T) => unknown,
+  getCode: (row: T) => unknown,
+  source: string,
+): T | null {
   const candidates = serviceNameCandidates(requestedName);
-  if (candidates.includes(row)) return true;
+  const requestedCode = requestedName.trim().replace(/^exame\s*:\s*/i, '').match(/^([a-z]{2,}\d{3,}|\d{5,})/i)?.[1];
+  const normalizeCode = (value: unknown) => String(value || '').toLocaleUpperCase('pt-BR').replace(/[^A-Z0-9]/g, '');
 
-  // Allow a catalog entry such as "Hemograma completo" to match the short
-  // description typed in the appointment, without accepting tiny fragments.
-  return candidates.some(candidate =>
-    candidate.length >= 4 && (row.includes(candidate) || candidate.includes(row)),
-  );
+  if (requestedCode) {
+    const byCode = rows.filter(row => normalizeCode(getCode(row)) === normalizeCode(requestedCode));
+    if (byCode.length > 1) throw new Error(`Há mais de um preço com o código ${requestedCode} em ${source}. Revise a tabela antes de cobrar.`);
+    if (byCode.length === 1) return byCode[0];
+  }
+
+  const exact = rows.filter(row => candidates.includes(normalizeServiceName(getName(row))));
+  if (exact.length > 1) throw new Error(`Há mais de um preço exato para "${requestedName}" em ${source}. Revise a tabela antes de cobrar.`);
+  if (exact.length === 1) return exact[0];
+
+  // Short names can be substrings of several distinct procedures. Only use a
+  // fuzzy match when it identifies one row; choosing the first database row
+  // could silently charge the wrong amount.
+  const approximate = rows.filter(row => {
+    const normalizedRow = normalizeServiceName(getName(row));
+    return normalizedRow && candidates.some(candidate =>
+      candidate.length >= 4 && (normalizedRow.includes(candidate) || candidate.includes(normalizedRow)),
+    );
+  });
+  if (approximate.length > 1) throw new Error(`O exame "${requestedName}" combina com vários preços em ${source}. Informe o nome ou código TUSS exato e revise a tabela.`);
+  return approximate[0] ?? null;
 }
 
 function priceFromExamRow(row: any): number {
@@ -96,20 +117,23 @@ export async function resolveExamPrice(params: {
   const examName = params.tipoExame.trim();
   if (!examName) throw new Error('Informe o nome do exame antes de enviar o paciente ao balcão.');
 
-  const requestedNames = serviceNameCandidates(examName);
-
   // A convenio price is more specific than the private price. The convenio
   // itself is clinic-scoped, so this also works with older rows whose
   // clinica_id was not populated yet.
   if (params.convenioId) {
     const { data: convenioRows, error: convenioError } = await (supabase as any)
       .from('precos_exames_convenio')
-      .select('tipo_exame, valor_total, valor_tabela')
+      .select('tipo_exame, codigo_tuss, valor_total, valor_tabela')
       .eq('convenio_id', params.convenioId)
       .eq('ativo', true);
     if (convenioError) throw convenioError;
 
-    const matched = (convenioRows || []).find((row: any) => matchesServiceName(row.tipo_exame, examName));
+    const matched = findPriceRow(
+      convenioRows || [], examName,
+      (row: any) => row.tipo_exame,
+      (row: any) => row.codigo_tuss,
+      'tabela do convênio',
+    );
     const convenioPrice = priceFromExamRow(matched);
     if (convenioPrice > 0) return convenioPrice;
   }
@@ -144,7 +168,12 @@ export async function resolveExamPrice(params: {
 
   const internalPrices = internalRows?.[0]?.valor;
   if (Array.isArray(internalPrices)) {
-    const matched = internalPrices.find((row: any) => matchesServiceName(row?.nome, examName));
+    const matched = findPriceRow(
+      internalPrices, examName,
+      (row: any) => row?.nome,
+      (row: any) => row?.codigo_tuss,
+      'tabela particular',
+    );
     const internalPrice = priceFromExamRow(matched);
     if (internalPrice > 0) return internalPrice;
   }
@@ -159,9 +188,11 @@ export async function resolveExamPrice(params: {
       .eq('ativo', true);
     if (catalogError) throw catalogError;
 
-    const matched = (catalogRows || []).find((row: any) =>
-      matchesServiceName(row.nome, examName) ||
-      (row.codigo_tuss && requestedNames.includes(normalizeServiceName(`${row.codigo_tuss} - ${row.nome}`))),
+    const matched = findPriceRow(
+      catalogRows || [], examName,
+      (row: any) => row.nome,
+      (row: any) => row.codigo_tuss,
+      'catálogo de exames',
     );
     const catalogPrice = priceFromExamRow(matched);
     if (catalogPrice > 0) return catalogPrice;

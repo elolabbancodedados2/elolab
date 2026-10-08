@@ -1,11 +1,14 @@
 import { useQuery } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import { Activity, Bot, Building2, Download, FileBarChart, Headphones, RefreshCw, TrendingUp } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { ErrorState } from '@/components/ErrorState';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Skeleton } from '@/components/ui/skeleton';
 import { supabase } from '@/integrations/supabase/client';
 
 type Report = {
@@ -21,11 +24,15 @@ type Report = {
 const moeda = (value: number) => Number(value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
 function csvCell(value: unknown) {
-  return `"${String(value ?? '').replace(/"/g, '""')}"`;
+  const raw = String(value ?? '');
+  const safe = /^\s*[=+\-@]/.test(raw) ? `'${raw}` : raw;
+  return `"${safe.replace(/"/g, '""')}"`;
 }
 
 export default function PlatformRelatorioExecutivo() {
-  const periodo = Number(new URLSearchParams(location.search).get('dias') || 30);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedPeriod = Number(searchParams.get('dias'));
+  const periodo = [7, 30, 90].includes(requestedPeriod) ? requestedPeriod : 30;
   const report = useQuery({
     queryKey: ['platform-executive-report', periodo],
     queryFn: async () => {
@@ -35,12 +42,11 @@ export default function PlatformRelatorioExecutivo() {
     },
   });
 
-  const mudarPeriodo = (value: string) => {
-    const url = new URL(location.href);
-    url.searchParams.set('dias', value);
-    history.replaceState({}, '', url);
-    location.reload();
-  };
+  const mudarPeriodo = (value: string) => setSearchParams((current) => {
+    const next = new URLSearchParams(current);
+    next.set('dias', value);
+    return next;
+  }, { replace: true });
 
   const exportar = () => {
     if (!report.data) return;
@@ -58,7 +64,7 @@ export default function PlatformRelatorioExecutivo() {
     link.href = URL.createObjectURL(blob);
     link.download = `relatorio-executivo-${d.days}d-${new Date().toISOString().slice(0, 10)}.csv`;
     link.click();
-    URL.revokeObjectURL(link.href);
+    window.setTimeout(() => URL.revokeObjectURL(link.href), 1000);
     toast.success('Relatório exportado');
   };
 
@@ -69,14 +75,16 @@ export default function PlatformRelatorioExecutivo() {
         <div><h1 className="flex items-center gap-2 text-2xl font-bold"><FileBarChart /> Relatório Executivo</h1><p className="text-muted-foreground">Receita recorrente, crescimento, suporte, adoção e IA.</p></div>
         <div className="flex gap-2">
           <Select value={String(periodo)} onValueChange={mudarPeriodo}><SelectTrigger className="w-32" aria-label="Período do relatório"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="7">7 dias</SelectItem><SelectItem value="30">30 dias</SelectItem><SelectItem value="90">90 dias</SelectItem></SelectContent></Select>
-          <Button variant="outline" onClick={() => report.refetch()}><RefreshCw className={`mr-2 h-4 w-4 ${report.isFetching ? 'animate-spin' : ''}`} />Atualizar</Button>
-          <Button onClick={exportar} disabled={!d}><Download className="mr-2 h-4 w-4" />CSV</Button>
+          <Button variant="outline" onClick={() => void report.refetch()} disabled={report.isFetching}><RefreshCw className={`mr-2 h-4 w-4 ${report.isFetching ? 'animate-spin' : ''}`} />Atualizar</Button>
+          <Button onClick={exportar} disabled={!d || report.isFetching}><Download className="mr-2 h-4 w-4" />CSV</Button>
         </div>
       </div>
 
-      <Card><CardHeader><CardTitle>Receita recorrente atual</CardTitle><CardDescription>Fotografia das assinaturas ativas; não representa faturamento reconhecido.</CardDescription></CardHeader><CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      {report.isError ? <ErrorState error={report.error} onRetry={() => { void report.refetch(); }} /> : report.isLoading ? <div className="space-y-4"><Skeleton className="h-40 w-full" /><div className="grid gap-4 lg:grid-cols-3">{[1, 2, 3].map((item) => <Skeleton key={item} className="h-52" />)}</div><Skeleton className="h-64 w-full" /></div> : null}
+
+      {!report.isLoading && !report.isError && <><Card><CardHeader><CardTitle>Receita recorrente atual</CardTitle><CardDescription>Fotografia estimada das assinaturas válidas; não representa faturamento reconhecido nem recebimentos.</CardDescription></CardHeader><CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Metric icon={TrendingUp} label="MRR" value={moeda(d?.portfolio.mrr || 0)} detail={`ARR ${moeda(d?.portfolio.arr || 0)}`} />
-        <Metric icon={Building2} label="Clínicas ativas" value={d?.portfolio.ativas || 0} detail={`${d?.portfolio.trials || 0} em trial`} />
+        <Metric icon={Building2} label="Clínicas pagas ativas" value={d?.portfolio.ativas || 0} detail={`${d?.portfolio.trials || 0} em trial válido`} />
         <Metric icon={Activity} label="Clientes em risco" value={d?.portfolio.em_risco || 0} detail="14+ dias sem uso" alert={Boolean(d?.portfolio.em_risco)} />
         <Metric icon={Building2} label="Suspensas" value={d?.portfolio.suspensas || 0} detail={`${d?.portfolio.total_clinicas || 0} clínicas totais`} />
       </CardContent></Card>
@@ -90,7 +98,7 @@ export default function PlatformRelatorioExecutivo() {
       <Card><CardHeader><CardTitle>Clientes com maior uso acumulado</CardTitle><CardDescription>Ranking operacional atual, não uma série histórica do período.</CardDescription></CardHeader><CardContent className="space-y-2">
         {(d?.top_clients || []).map((client, index) => <div key={client.clinica_id} className="grid gap-2 rounded-lg border p-3 sm:grid-cols-6 sm:items-center"><span className="text-sm font-semibold">#{index + 1} {client.clinica_nome}</span><span className="text-xs">{client.plano_nome || 'Sem plano'}</span><span className="text-xs">{moeda(client.plano_valor || 0)}/mês</span><span className="text-xs">{client.total_pacientes} pacientes</span><span className="text-xs">{client.total_agendamentos} agendamentos</span><Badge variant={(client.dias_sem_uso || 0) >= 14 ? 'destructive' : 'outline'}>{client.dias_sem_uso == null ? 'Sem uso' : `${client.dias_sem_uso}d sem uso`}</Badge></div>)}
       </CardContent></Card>
-      {d?.generated_at && <p className="text-right text-xs text-muted-foreground">Gerado em {new Date(d.generated_at).toLocaleString('pt-BR')}</p>}
+      {d?.generated_at && <p className="text-right text-xs text-muted-foreground">Gerado em {new Date(d.generated_at).toLocaleString('pt-BR')}</p>}</>}
     </div>
   );
 }

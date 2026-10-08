@@ -24,9 +24,12 @@ import { useSalas, useMedicos } from '@/hooks/useSupabaseData';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Database } from '@/integrations/supabase/types';
+import { ErrorState } from '@/components/ErrorState';
 import { User } from 'lucide-react';
+import { normalizarTexto } from '@/lib/buscaPaciente';
 
 type StatusSala = Database['public']['Enums']['status_sala'];
+type EstadoSala = StatusSala | 'reservada';
 
 const STATUS_COLORS: Record<StatusSala, string> = {
   disponivel: 'bg-success',
@@ -40,6 +43,16 @@ const STATUS_LABELS: Record<StatusSala, string> = {
   ocupado: 'Ocupado',
   manutencao: 'Manutenção',
   limpeza: 'Limpeza',
+};
+
+const ESTADO_SALA_LABELS: Record<EstadoSala, string> = {
+  ...STATUS_LABELS,
+  reservada: 'Reservada',
+};
+
+const ESTADO_SALA_COLORS: Record<EstadoSala, string> = {
+  ...STATUS_COLORS,
+  reservada: 'bg-info',
 };
 
 const TIPO_LABELS: Record<string, string> = {
@@ -107,23 +120,27 @@ export default function Salas() {
   const { profile } = useSupabaseAuth();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingUpdatedAt, setEditingUpdatedAt] = useState<string | null>(null);
   const [form, setForm] = useState<SalaForm>(initialForm);
   const [isSaving, setIsSaving] = useState(false);
+  const [updatingSalaId, setUpdatingSalaId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [filterTipo, setFilterTipo] = useState('todos');
 
   const queryClient = useQueryClient();
-  const { data: salas = [], isLoading } = useSalas();
-  const { data: medicos = [] } = useMedicos();
+  const salasQuery = useSalas();
+  const { data: salas = [], isLoading } = salasQuery;
+  const medicosQuery = useMedicos();
+  const { data: medicos = [] } = medicosQuery;
 
   // Fetch active queue entries with sala_id to show who occupies each room
-  const { data: ocupacoes = [] } = useQuery({
+  const ocupacoesQuery = useQuery({
     queryKey: ['fila_atendimento_salas', profile?.clinica_id],
     queryFn: async () => {
       let query = (supabase as any)
         .from('fila_atendimento')
-        .select('id, sala_id, status, agendamento_id, agendamentos(id, paciente_id, medico_id, pacientes(id, nome), medicos(id, nome, crm, especialidade))')
-        .in('status', ['em_atendimento', 'aguardando'])
+        .select('id, sala_id, status, agendamento_id, agendamentos(id, paciente_id, medico_id, pacientes(id, nome, nome_social), medicos(id, nome, crm, especialidade))')
+        .in('status', ['em_atendimento', 'chamado', 'aguardando'])
         .not('sala_id', 'is', null);
       if (profile?.clinica_id) query = query.eq('clinica_id', profile.clinica_id);
       const { data, error } = await query;
@@ -133,24 +150,31 @@ export default function Salas() {
     enabled: !!profile?.clinica_id,
     refetchInterval: 10000, // auto-refresh every 10s
   });
+  const ocupacoes = ocupacoesQuery.data ?? [];
 
   const filtered = useMemo(() => {
     let list = salas as any[];
     if (filterTipo !== 'todos') list = list.filter(s => s.tipo === filterTipo);
     if (search.trim()) {
-      const q = search.toLowerCase();
-      list = list.filter(s =>
-        s.nome.toLowerCase().includes(q) ||
-        (s.setor || '').toLowerCase().includes(q) ||
-        (s.andar || '').toLowerCase().includes(q)
-      );
+      const q = normalizarTexto(search);
+      list = list.filter(s => {
+        const medico = (medicos as any[]).find(item => item.id === s.medico_responsavel);
+        const campos = [
+          s.nome, s.setor, s.andar, s.numero_cama, s.tipo, TIPO_LABELS[s.tipo],
+          STATUS_LABELS[s.status as StatusSala], s.observacoes,
+          ...(Array.isArray(s.equipamentos) ? s.equipamentos : []),
+          medico?.nome, medico?.crm, medico?.especialidade,
+        ];
+        return campos.some(valor => normalizarTexto(String(valor ?? '')).includes(q));
+      });
     }
     return list;
-  }, [salas, filterTipo, search]);
+  }, [salas, medicos, filterTipo, search]);
 
   const handleOpen = (sala?: any) => {
     if (sala) {
       setEditingId(sala.id);
+      setEditingUpdatedAt(sala.updated_at ?? null);
       setForm({
         nome: sala.nome, tipo: sala.tipo || 'consultorio', capacidade: sala.capacidade || 1,
         status: sala.status || 'disponivel', medico_responsavel: sala.medico_responsavel || '',
@@ -161,6 +185,7 @@ export default function Salas() {
       });
     } else {
       setEditingId(null);
+      setEditingUpdatedAt(null);
       setForm(initialForm);
     }
     setIsDialogOpen(true);
@@ -176,11 +201,21 @@ export default function Salas() {
   };
 
   const handleSave = async () => {
-    if (!form.nome) { toast.error('Nome da sala é obrigatório.'); return; }
+    if (isSaving) return;
+    if (!profile?.clinica_id) { toast.error('Clínica não identificada. Atualize a página e tente novamente.'); return; }
+    if (!form.nome.trim()) { toast.error('Nome da sala é obrigatório.'); return; }
+    if (!Number.isInteger(form.capacidade) || form.capacidade < 1) {
+      toast.error('A capacidade deve ser um número inteiro maior que zero.');
+      return;
+    }
+    if (form.horario_inicio && form.horario_fim && form.horario_fim <= form.horario_inicio) {
+      toast.error('O horário de encerramento deve ser posterior ao horário de início.');
+      return;
+    }
     setIsSaving(true);
     try {
       const payload = {
-        nome: form.nome,
+        nome: form.nome.trim(),
         tipo: form.tipo,
         capacidade: form.capacidade,
         status: form.status as StatusSala,
@@ -197,11 +232,23 @@ export default function Salas() {
       };
 
       if (editingId) {
-        const { error } = await supabase.from('salas').update(payload).eq('id', editingId);
+        const salaAtual = (salas as any[]).find(item => item.id === editingId);
+        const ocupacaoAtiva = (ocupacoes as any[]).some(item => item.sala_id === editingId);
+        if (salaAtual && ocupacaoAtiva && form.status !== 'ocupado' && form.status !== salaAtual.status) {
+          throw new Error('Esta sala ainda tem paciente aguardando ou em atendimento. Finalize ou transfira o atendimento antes de alterar o status.');
+        }
+        let query = supabase.from('salas').update(payload)
+          .eq('id', editingId).eq('clinica_id', profile.clinica_id);
+        query = editingUpdatedAt ? query.eq('updated_at', editingUpdatedAt) : query.is('updated_at', null);
+        const { data, error } = await query.select('id').maybeSingle();
         if (error) throw error;
+        if (!data) {
+          await queryClient.invalidateQueries({ queryKey: ['salas'] });
+          throw new Error('Esta sala foi alterada por outra pessoa ou removida. Atualize a lista e confira os dados antes de salvar novamente.');
+        }
         toast.success('Sala atualizada!');
       } else {
-        const { error } = await supabase.from('salas').insert({ ...payload, clinica_id: profile?.clinica_id || null });
+        const { error } = await supabase.from('salas').insert({ ...payload, clinica_id: profile.clinica_id });
         if (error) throw error;
         toast.success('Sala cadastrada!');
       }
@@ -215,15 +262,35 @@ export default function Salas() {
   };
 
   const handleChangeStatus = async (sala: any, newStatus: StatusSala) => {
+    if (updatingSalaId) return;
+    if (!profile?.clinica_id) { toast.error('Clínica não identificada. Atualize a página e tente novamente.'); return; }
+    const ocupacaoAtiva = (ocupacoes as any[]).some(item => item.sala_id === sala.id);
+    if (ocupacaoAtiva && newStatus !== 'ocupado') {
+      toast.error('Não é possível liberar esta sala enquanto houver paciente vinculado.', {
+        description: 'Finalize ou transfira o atendimento na Fila antes de marcar a sala para limpeza ou disponibilidade.',
+      });
+      return;
+    }
+    setUpdatingSalaId(sala.id);
     try {
+      // A mudança operacional de status não deve apagar o responsável fixo da sala.
       const updates: Record<string, unknown> = { status: newStatus };
-      if (newStatus !== 'ocupado') updates.medico_responsavel = null;
-      const { error } = await (supabase as any).from('salas').update(updates).eq('id', sala.id);
+      const { data, error } = await (supabase as any).from('salas').update(updates)
+        .eq('id', sala.id).eq('clinica_id', profile.clinica_id).eq('status', sala.status).select('id').maybeSingle();
       if (error) throw error;
+      if (!data) {
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ['salas'] }),
+          queryClient.invalidateQueries({ queryKey: ['fila_atendimento_salas'] }),
+        ]);
+        throw new Error('O status da sala mudou ou o atendimento foi atualizado por outra pessoa. Atualize a tela antes de tentar novamente.');
+      }
       queryClient.invalidateQueries({ queryKey: ['salas'] });
       toast.success(`${sala.nome} → ${STATUS_LABELS[newStatus]}`);
     } catch (error: any) {
-      toast.error(error.message);
+      toast.error(error.message || 'Erro ao atualizar o estado da sala.');
+    } finally {
+      setUpdatingSalaId(null);
     }
   };
 
@@ -234,21 +301,36 @@ export default function Salas() {
     salasPorTipo[tipo].push(sala);
   }
 
-  const stats = {
-    disponivel: (salas as any[]).filter(s => s.status === 'disponivel').length,
-    ocupado: (salas as any[]).filter(s => s.status === 'ocupado').length,
-    manutencao: (salas as any[]).filter(s => s.status === 'manutencao').length,
-    limpeza: (salas as any[]).filter(s => s.status === 'limpeza').length,
+  const getOcupacao = (salaId: string) =>
+    (ocupacoes as any[]).filter((item: any) => item.sala_id === salaId);
+
+  const statusEfetivoSala = (sala: any): EstadoSala => {
+    const atendimentos = getOcupacao(sala.id);
+    if (atendimentos.some((item: any) => item.status === 'em_atendimento')) return 'ocupado';
+    if (atendimentos.length > 0) return 'reservada';
+    return sala.status;
   };
 
-  if (isLoading) {
+  const stats = {
+    disponivel: (salas as any[]).filter(s => statusEfetivoSala(s) === 'disponivel').length,
+    ocupado: (salas as any[]).filter(s => statusEfetivoSala(s) === 'ocupado').length,
+    reservada: (salas as any[]).filter(s => statusEfetivoSala(s) === 'reservada').length,
+    manutencao: (salas as any[]).filter(s => statusEfetivoSala(s) === 'manutencao').length,
+    limpeza: (salas as any[]).filter(s => statusEfetivoSala(s) === 'limpeza').length,
+  };
+
+  if (isLoading || ocupacoesQuery.isLoading || medicosQuery.isLoading) {
     return <div className="space-y-6"><Skeleton className="h-10 w-64" /><Skeleton className="h-96" /></div>;
   }
-
-  // Helper to get occupation info for a sala
-  const getOcupacao = (salaId: string) => {
-    return (ocupacoes as any[]).filter((o: any) => o.sala_id === salaId);
-  };
+  if (salasQuery.isError) {
+    return <ErrorState title="Não foi possível carregar as salas" error={salasQuery.error} onRetry={() => void salasQuery.refetch()} />;
+  }
+  if (ocupacoesQuery.isError) {
+    return <ErrorState title="Não foi possível confirmar a ocupação das salas" description="A tela foi pausada para evitar mostrar uma sala ocupada como disponível." error={ocupacoesQuery.error} onRetry={() => void ocupacoesQuery.refetch()} />;
+  }
+  if (medicosQuery.isError) {
+    return <ErrorState title="Não foi possível carregar os médicos responsáveis" error={medicosQuery.error} onRetry={() => void medicosQuery.refetch()} />;
+  }
 
   const getMedicoNome = (id: string | null) => {
     if (!id) return null;
@@ -269,17 +351,18 @@ export default function Salas() {
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3">
         {([
-          { key: 'disponivel' as StatusSala, icon: CheckCircle2, label: 'Disponíveis' },
-          { key: 'ocupado' as StatusSala, icon: Users, label: 'Ocupados' },
-          { key: 'manutencao' as StatusSala, icon: Wrench, label: 'Manutenção' },
-          { key: 'limpeza' as StatusSala, icon: Paintbrush, label: 'Limpeza' },
+          { key: 'disponivel' as EstadoSala, icon: CheckCircle2, label: 'Disponíveis' },
+          { key: 'reservada' as EstadoSala, icon: Clock, label: 'Reservadas' },
+          { key: 'ocupado' as EstadoSala, icon: Users, label: 'Em atendimento' },
+          { key: 'manutencao' as EstadoSala, icon: Wrench, label: 'Manutenção' },
+          { key: 'limpeza' as EstadoSala, icon: Paintbrush, label: 'Limpeza' },
         ]).map(s => (
           <Card key={s.key} className="kpi-card">
             <CardContent className="pt-4 flex items-center gap-3">
-              <div className={cn('p-2 rounded-lg', `${STATUS_COLORS[s.key]}/20`)}>
-                <div className={cn('h-3 w-3 rounded-full', STATUS_COLORS[s.key])} />
+              <div className={cn('p-2 rounded-lg', `${ESTADO_SALA_COLORS[s.key]}/20`)}>
+                <div className={cn('h-3 w-3 rounded-full', ESTADO_SALA_COLORS[s.key])} />
               </div>
               <div>
                 <p className="text-2xl font-bold tabular-nums">{stats[s.key]}</p>
@@ -294,7 +377,7 @@ export default function Salas() {
       <div className="flex flex-wrap gap-3">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input className="pl-9 w-64" placeholder="Buscar sala, setor, andar..." value={search}
+          <Input className="pl-9 w-64" placeholder="Sala, cama, setor, equipamento..." value={search}
             onChange={e => setSearch(e.target.value)} />
         </div>
         <Select value={filterTipo} onValueChange={setFilterTipo}>
@@ -321,6 +404,7 @@ export default function Salas() {
                 {salasDoTipo.map((sala: any) => {
                   const medicoNome = getMedicoNome(sala.medico_responsavel);
                   const ocupacoesSala = getOcupacao(sala.id);
+                  const statusExibido = statusEfetivoSala(sala);
                   return (
                     <Card key={sala.id} className="relative overflow-hidden">
                       <div className="absolute top-0 left-0 right-0 h-1.5"
@@ -351,24 +435,29 @@ export default function Salas() {
                             </div>
                           </div>
                           <Badge variant="outline" className="gap-1 text-[10px]">
-                            <div className={cn('h-2 w-2 rounded-full', STATUS_COLORS[sala.status as StatusSala])} />
-                            {STATUS_LABELS[sala.status as StatusSala] || sala.status}
+                            <div className={cn('h-2 w-2 rounded-full', ESTADO_SALA_COLORS[statusExibido])} />
+                            {ESTADO_SALA_LABELS[statusExibido] || statusExibido}
                           </Badge>
                         </div>
 
                         {/* Occupation info */}
-                        {sala.status === 'ocupado' && ocupacoesSala.length > 0 && (
-                          <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-2.5 space-y-1.5">
+                        {ocupacoesSala.length > 0 && (
+                          <div className={cn(
+                            'rounded-lg border p-2.5 space-y-1.5',
+                            statusExibido === 'ocupado'
+                              ? 'bg-destructive/10 border-destructive/20'
+                              : 'bg-info/10 border-info/20',
+                          )}>
                             {ocupacoesSala.map((oc: any) => {
                               const ag = oc.agendamentos;
-                              const pacNome = ag?.pacientes?.nome;
+                              const pacNome = ag?.pacientes?.nome_social || ag?.pacientes?.nome;
                               const medNome = ag?.medicos?.nome;
                               const medEsp = ag?.medicos?.especialidade;
                               return (
                                 <div key={oc.id} className="flex flex-col gap-0.5">
                                   {pacNome && (
                                     <span className="text-xs font-medium text-foreground flex items-center gap-1">
-                                      <User className="h-3 w-3 text-destructive" />
+                                      <User className={cn('h-3 w-3', statusExibido === 'ocupado' ? 'text-destructive' : 'text-info')} />
                                       Paciente: {pacNome}
                                     </span>
                                   )}
@@ -379,11 +468,16 @@ export default function Salas() {
                                     </span>
                                   )}
                                   <Badge variant="secondary" className="text-[9px] w-fit">
-                                    {oc.status === 'em_atendimento' ? 'Em Atendimento' : 'Aguardando'}
+                                    {oc.status === 'em_atendimento' ? 'Em atendimento' : oc.status === 'chamado' ? 'Paciente chamado' : 'Aguardando na fila'}
                                   </Badge>
                                 </div>
                               );
                             })}
+                            <p className="border-t border-border pt-1.5 text-[10px] text-muted-foreground">
+                              {statusExibido === 'ocupado'
+                                ? 'A sala permanece ocupada até o atendimento ser finalizado ou transferido na Fila.'
+                                : 'Esta sala está reservada para o paciente chamado ou aguardando na Fila.'}
+                            </p>
                           </div>
                         )}
 
@@ -407,26 +501,33 @@ export default function Salas() {
                         </div>
 
                         <div className="flex gap-1.5 pt-1">
-                          {sala.status === 'disponivel' && (
-                            <Button size="sm" variant="outline" className="text-xs h-7"
-                              onClick={() => handleChangeStatus(sala, 'ocupado')}>Ocupar</Button>
-                          )}
-                          {sala.status === 'ocupado' && (
-                            <Button size="sm" variant="outline" className="text-xs h-7"
-                              onClick={() => handleChangeStatus(sala, 'limpeza')}>Liberar</Button>
-                          )}
-                          {sala.status === 'limpeza' && (
-                            <Button size="sm" variant="outline" className="text-xs h-7 gap-1"
-                              onClick={() => handleChangeStatus(sala, 'disponivel')}>
-                              <Paintbrush className="h-3 w-3" />Pronta
+                          {statusExibido === 'disponivel' && (
+                            <Button size="sm" variant="outline" className="min-h-11 text-xs"
+                              onClick={() => handleChangeStatus(sala, 'ocupado')} disabled={updatingSalaId !== null}>
+                              {updatingSalaId === sala.id ? 'Salvando...' : 'Ocupar'}
                             </Button>
                           )}
-                          {sala.status === 'manutencao' && (
-                            <Button size="sm" variant="outline" className="text-xs h-7"
-                              onClick={() => handleChangeStatus(sala, 'disponivel')}>Liberar</Button>
+                          {statusExibido === 'ocupado' && ocupacoesSala.length === 0 && (
+                            <Button size="sm" variant="outline" className="min-h-11 text-xs"
+                              onClick={() => handleChangeStatus(sala, 'limpeza')} disabled={updatingSalaId !== null}>
+                              {updatingSalaId === sala.id ? 'Salvando...' : 'Liberar'}
+                            </Button>
                           )}
-                          <Button size="sm" variant="ghost" className="h-7 ml-auto" aria-label="Editar sala"
-                            onClick={() => handleOpen(sala)}>
+                          {statusExibido === 'limpeza' && (
+                            <Button size="sm" variant="outline" className="min-h-11 text-xs gap-1"
+                              onClick={() => handleChangeStatus(sala, 'disponivel')} disabled={updatingSalaId !== null}>
+                              {updatingSalaId === sala.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Paintbrush className="h-3 w-3" />}
+                              {updatingSalaId === sala.id ? 'Salvando...' : 'Pronta'}
+                            </Button>
+                          )}
+                          {statusExibido === 'manutencao' && (
+                            <Button size="sm" variant="outline" className="min-h-11 text-xs"
+                              onClick={() => handleChangeStatus(sala, 'disponivel')} disabled={updatingSalaId !== null}>
+                              {updatingSalaId === sala.id ? 'Salvando...' : 'Liberar'}
+                            </Button>
+                          )}
+                          <Button size="icon" variant="ghost" className="h-11 w-11 ml-auto" aria-label={`Editar sala ${sala.nome}`}
+                            onClick={() => handleOpen(sala)} disabled={updatingSalaId !== null}>
                             <Settings className="h-3.5 w-3.5" />
                           </Button>
                         </div>
@@ -444,14 +545,21 @@ export default function Salas() {
         <Card>
           <CardContent className="py-16 text-center text-muted-foreground">
             <DoorOpen className="h-12 w-12 mx-auto mb-4 opacity-30" />
-            <p className="font-medium">Nenhuma sala encontrada</p>
-            <p className="text-sm mt-1">Ajuste os filtros ou cadastre uma nova sala</p>
+            <p className="font-medium">{salas.length === 0 ? 'Nenhuma sala cadastrada' : 'Nenhuma sala corresponde à busca e ao tipo selecionado'}</p>
+            <p className="text-sm mt-1">{salas.length === 0 ? 'Cadastre uma sala ou leito para começar.' : 'Limpe a busca e o tipo para ver todas as salas.'}</p>
+            {salas.length === 0 ? (
+              <Button className="mt-3" size="sm" onClick={() => handleOpen()}>Nova Sala / Leito</Button>
+            ) : (
+              <Button className="mt-3" size="sm" variant="outline" onClick={() => { setSearch(''); setFilterTipo('todos'); }}>
+                Limpar filtros
+              </Button>
+            )}
           </CardContent>
         </Card>
       )}
 
       {/* ─── Form Dialog (Enhanced) ─── */}
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+      <Dialog open={isDialogOpen} onOpenChange={(open) => { if (open || !isSaving) setIsDialogOpen(open); }}>
         <DialogContent className="max-w-2xl max-h-[95vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -630,7 +738,7 @@ export default function Salas() {
           </div>
 
           <DialogFooter className="flex-shrink-0 pt-4 border-t">
-            <Button variant="outline" onClick={() => setIsDialogOpen(false)}>Cancelar</Button>
+            <Button variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isSaving}>Cancelar</Button>
             <Button onClick={handleSave} disabled={isSaving}>
               {isSaving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Salvando...</> : 'Salvar'}
             </Button>

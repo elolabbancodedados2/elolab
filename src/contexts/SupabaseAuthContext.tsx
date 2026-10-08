@@ -43,7 +43,7 @@ interface SupabaseAuthContextType {
   /** @deprecated use isPlatformAdmin */
   isSuperAdmin: boolean;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
-  signUp: (email: string, password: string, nome: string, telefone?: string, cpfCnpj?: string) => Promise<{ data: any; error: Error | null }>;
+  signUp: (email: string, password: string, nome: string, telefone?: string, cpfCnpj?: string, redirectTo?: string) => Promise<{ data: any; error: Error | null }>;
   signOut: () => Promise<void>;
   hasRole: (role: AppRole) => boolean;
   hasAnyRole: (roles: AppRole[]) => boolean;
@@ -226,6 +226,28 @@ export function SupabaseAuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  // Keep the persisted last-seen timestamp current while an authenticated tab
+  // is visible. The platform user list uses it as a recent-activity signal.
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const registrarAtividade = () => {
+      if (document.visibilityState !== 'visible') return;
+      void supabase
+        .from('profiles')
+        .update({ ultimo_acesso: new Date().toISOString() } as any)
+        .eq('id', user.id);
+    };
+
+    registrarAtividade();
+    const interval = window.setInterval(registrarAtividade, 5 * 60 * 1000);
+    document.addEventListener('visibilitychange', registrarAtividade);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', registrarAtividade);
+    };
+  }, [user?.id]);
+
   useEffect(() => {
     let isActive = true;
 
@@ -282,8 +304,8 @@ export function SupabaseAuthProvider({ children }: { children: ReactNode }) {
     return { error: error as Error | null };
   };
 
-  const signUp = async (email: string, password: string, nome: string, telefone?: string, cpfCnpj?: string) => {
-    const redirectUrl = 'https://app.elolab.com.br/';
+  const signUp = async (email: string, password: string, nome: string, telefone?: string, cpfCnpj?: string, redirectTo?: string) => {
+    const redirectUrl = redirectTo || 'https://app.elolab.com.br/';
     
     const { data, error } = await supabase.auth.signUp({
       email,

@@ -18,7 +18,7 @@ const formatted = (metric: Metric, value: number) => metric.unit === 'BRL' ? brl
 const change = (metric: Metric) => metric.previous_value === 0 ? (metric.current_value === 0 ? 0 : null) : ((metric.current_value - metric.previous_value) / Math.abs(metric.previous_value)) * 100;
 
 export default function IndicadoresProdutividade() {
-  const { user, clinicaId } = useSupabaseAuth();
+  const { user, clinicaId, isLoading: authLoading } = useSupabaseAuth();
   const [period, setPeriod] = useState<Period>(30);
   const metrics = useQuery({
     queryKey: ['indicadores-produtividade', user?.id, clinicaId, period], enabled: Boolean(user && clinicaId),
@@ -36,8 +36,9 @@ export default function IndicadoresProdutividade() {
       <Select value={String(period)} onValueChange={(value) => setPeriod(Number(value) as Period)}><SelectTrigger id="productivity-period"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="7">Últimos 7 dias</SelectItem><SelectItem value="30">Últimos 30 dias</SelectItem><SelectItem value="90">Últimos 90 dias</SelectItem></SelectContent></Select>
     </div></header>
     <Card className="border-primary/15 bg-primary/[0.03]"><CardContent className="flex gap-3 p-4 text-sm"><LockKeyhole className="h-5 w-5 shrink-0 text-primary" aria-hidden="true" /><p>Colaboradores veem apenas seus próprios resultados. Administradores veem totais da clínica, sem nomes, ranking ou dados de pacientes.</p></CardContent></Card>
-    {metrics.isLoading ? <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3" aria-label="Carregando indicadores">{Array.from({ length: 4 }).map((_, index) => <Skeleton key={index} className="h-44 rounded-xl" />)}</div>
+    {authLoading || metrics.isLoading ? <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3" aria-label="Carregando indicadores">{Array.from({ length: 4 }).map((_, index) => <Skeleton key={index} className="h-44 rounded-xl" />)}</div>
       : metrics.isError ? <ErrorState error={metrics.error} onRetry={() => metrics.refetch()} />
+      : !clinicaId ? <Card><CardContent className="flex flex-col items-center gap-3 py-12 text-center"><LockKeyhole className="h-9 w-9 text-muted-foreground" aria-hidden="true" /><div><p className="font-medium">Clínica não identificada</p><p className="text-sm text-muted-foreground">Entre novamente ou peça ao administrador para conferir seu vínculo com a clínica.</p></div></CardContent></Card>
       : metrics.data?.length ? <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3" aria-label="Indicadores do período">{metrics.data.map((metric) => {
         const variation = change(metric); const TrendIcon = variation === null || variation === 0 ? ArrowRight : variation > 0 ? ArrowUpRight : ArrowDownRight;
         return <Card key={metric.metric_key}><CardHeader className="pb-3"><div className="flex items-start justify-between gap-3"><CardTitle className="text-base">{metric.label}</CardTitle><Badge variant="secondary">{metric.scope}</Badge></div><CardDescription>Comparação com os {period} dias anteriores</CardDescription></CardHeader><CardContent className="space-y-3"><p className="text-3xl font-bold tabular-nums">{formatted(metric, metric.current_value)}</p><div className="flex items-center gap-2 text-sm text-muted-foreground"><TrendIcon className="h-4 w-4" aria-hidden="true" /><span>{variation === null ? 'Sem base anterior para comparar' : `${variation > 0 ? '+' : ''}${number.format(variation)}% no período`}</span></div><p className="text-xs text-muted-foreground">Período anterior: {formatted(metric, metric.previous_value)}</p></CardContent></Card>;

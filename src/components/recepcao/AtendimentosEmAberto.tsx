@@ -19,7 +19,7 @@
  * O sistema não tem como saber o que houve. Então ele pergunta, com as duas
  * respostas possíveis à mão.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { differenceInCalendarDays } from 'date-fns';
 import { AlertTriangle, CheckCircle2, XCircle, Loader2 } from 'lucide-react';
@@ -34,7 +34,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { autoFinalizarAtendimento } from '@/lib/workflowAutomation';
 import { atomicMarkNoShow } from '@/lib/operationalTransitions';
-import { parseDateOnly, todayDateOnly } from '@/lib/dateOnly';
+import { parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { FinalizarAtendimentoDialog } from '@/components/fila/FinalizarAtendimentoDialog';
 
 interface Aberto {
@@ -57,10 +57,14 @@ export function AtendimentosEmAberto() {
   const [finalizando, setFinalizando] = useState<Aberto | null>(null);
   const [confirmandoNaoRealizado, setConfirmandoNaoRealizado] = useState<Aberto | null>(null);
 
-  const hoje = todayDateOnly();
+  const [hoje, setHoje] = useState(() => todaySaoPauloDateOnly());
+  useEffect(() => {
+    const timer = window.setInterval(() => setHoje(todaySaoPauloDateOnly()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const { data: abertosData, isLoading, isError, refetch } = useQuery({
-    queryKey: ['atendimentos-em-aberto', profile?.clinica_id],
+    queryKey: ['atendimentos-em-aberto', profile?.clinica_id, hoje],
     enabled: !!profile?.clinica_id,
     refetchInterval: 30_000,
     queryFn: async (): Promise<Aberto[]> => {

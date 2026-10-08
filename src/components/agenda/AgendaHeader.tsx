@@ -18,6 +18,7 @@ import { AgendaView } from './AgendaPage';
 import { Link } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { isValidAgendaDate, normalizeAgendaDate } from '@/lib/agendaDate';
+import { todaySaoPauloDateOnly } from '@/lib/dateOnly';
 
 interface Props {
   date: string;
@@ -67,7 +68,8 @@ export function AgendaHeader(p: Props) {
     p.onDateChange(format(next, 'yyyy-MM-dd'));
   };
 
-  const isToday = safeDate === format(new Date(), 'yyyy-MM-dd');
+  const today = todaySaoPauloDateOnly();
+  const isToday = safeDate === today;
   const activeFilters = p.medicoFilter.length + p.statusFilter.length + (p.search ? 1 : 0);
 
   return (
@@ -83,7 +85,7 @@ export function AgendaHeader(p: Props) {
             <Button variant="ghost" size="icon" className="h-11 w-11 shrink-0 sm:h-9 sm:w-9" onClick={() => nav(-1)} aria-label="Anterior">
               <ChevronLeft className="h-4 w-4" />
             </Button>
-            <Button variant="ghost" size="sm" className="h-11 px-3 text-xs font-medium sm:h-9" onClick={() => p.onDateChange(format(new Date(), 'yyyy-MM-dd'))}>
+            <Button variant="ghost" size="sm" className="h-11 px-3 text-xs font-medium sm:h-9" onClick={() => p.onDateChange(todaySaoPauloDateOnly())}>
               Hoje
             </Button>
             <Button variant="ghost" size="icon" className="h-11 w-11 shrink-0 sm:h-9 sm:w-9" onClick={() => nav(1)} aria-label="Próximo">

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { addDays, format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { CalendarCheck, CheckCircle2, ChevronLeft, ChevronRight, Clock, Loader2, Stethoscope } from 'lucide-react';
+import { CalendarCheck, CheckCircle2, ChevronLeft, ChevronRight, Clock, Loader2, Mail, MessageCircle, Phone, Stethoscope } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -14,7 +14,20 @@ import { cn } from '@/lib/utils';
 import { formatCPF, formatPhone, validateCPF } from '@/lib/formatters';
 
 interface Medico { id: string; nome: string; especialidade: string | null }
-interface Info { clinica: { nome: string }; mensagem: string | null; medicos: Medico[]; dias_antecedencia: number; hoje: string }
+interface Info {
+  clinica: { nome: string; telefone?: string; celular?: string; email?: string };
+  mensagem: string | null;
+  horarios_funcionamento: {
+    dias: string[];
+    abertura: string;
+    fechamento: string;
+    almoco: { inicio: string; fim: string } | null;
+    sabado: { abertura: string; fechamento: string } | null;
+  } | null;
+  medicos: Medico[];
+  dias_antecedencia: number;
+  hoje: string;
+}
 
 class ErroAgendamentoPublico extends Error {
   constructor(message: string, readonly code?: string) { super(message); }
@@ -52,8 +65,21 @@ export default function AgendamentoOnline() {
   const [concluido, setConcluido] = useState('');
   const [recarregar, setRecarregar] = useState(0);
   const [recarregarInfo, setRecarregarInfo] = useState(0);
+  const bookingRequestRef = useRef(0);
   const sucessoRef = useRef<HTMLDivElement>(null);
   const erroRef = useRef<HTMLParagraphElement>(null);
+
+  useEffect(() => {
+    // O roteador pode reutilizar esta página quando o link muda de clínica.
+    // Dados pessoais e consentimento pertencem ao contexto da clínica anterior.
+    bookingRequestRef.current += 1;
+    setInicioDias(0);
+    setForm({ nome: '', cpf: '', telefone: '', email: '', data_nascimento: '', website: '' });
+    setAceite(false);
+    setErro('');
+    setErroSlots('');
+    setEnviando(false);
+  }, [clinicaId]);
 
   useEffect(() => {
     let ativo = true;
@@ -107,6 +133,7 @@ export default function AgendamentoOnline() {
 
   const enviar = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (enviando) return;
     if (!medico || !data || !hora) return;
     const nomeCompleto = form.nome.trim().replace(/\s+/g, ' ');
     if (nomeCompleto.split(' ').length < 2) {
@@ -124,22 +151,26 @@ export default function AgendamentoOnline() {
       document.getElementById('ag-tel')?.focus();
       return;
     }
+    const requestId = ++bookingRequestRef.current;
+    const clinicIdAtStart = clinicaId;
     setEnviando(true); setErro('');
     try {
       const r = await chamar<{ message: string }>({
-        action: 'book', clinica_id: clinicaId, medico_id: medico.id, data, hora,
+        action: 'book', clinica_id: clinicIdAtStart, medico_id: medico.id, data, hora,
         ...form, aceite_lgpd: aceite,
       });
+      if (requestId !== bookingRequestRef.current) return;
       setConcluido(r.message);
     } catch (err) {
+      if (requestId !== bookingRequestRef.current) return;
       const erro = err instanceof Error ? err : new Error('Não foi possível concluir agora. Tente novamente.');
       setErro(erro.message);
-      if (erro instanceof ErroAgendamentoPublico && erro.code === 'slot_unavailable') {
+      if (erro instanceof ErroAgendamentoPublico && ['slot_unavailable', 'booking_unavailable'].includes(erro.code || '')) {
         setHora('');
-        setRecarregar((n) => n + 1);
+        if (erro.code === 'slot_unavailable') setRecarregar((n) => n + 1);
       }
     } finally {
-      setEnviando(false);
+      if (requestId === bookingRequestRef.current) setEnviando(false);
     }
   };
 
@@ -156,6 +187,11 @@ export default function AgendamentoOnline() {
     );
   }
   if (!info) return <Shell><div role="status" aria-live="polite" aria-label="Carregando informações da clínica"><Skeleton className="h-10 w-2/3" /><Skeleton className="mt-4 h-64 w-full" /></div></Shell>;
+  const contatoTelefone = info.clinica.celular || info.clinica.telefone;
+  const contatoDigitos = contatoTelefone?.replace(/\D/g, '') || '';
+  const numeroWhatsApp = contatoDigitos.length === 10 || contatoDigitos.length === 11
+    ? `55${contatoDigitos}`
+    : contatoDigitos;
 
   if (concluido) {
     return (
@@ -173,6 +209,25 @@ export default function AgendamentoOnline() {
 
   return (
     <Shell titulo={info.clinica.nome} subtitulo={info.mensagem || 'Escolha o profissional, o dia e o horário.'}>
+      <fieldset disabled={enviando} aria-busy={enviando} className="block space-y-4 border-0 p-0 m-0 min-w-0">
+      {info.horarios_funcionamento && (
+        <Card>
+          <CardContent className="flex items-start gap-3 py-4">
+            <Clock className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
+            <div className="space-y-1 text-sm">
+              <p className="font-medium">Funcionamento geral da clínica</p>
+              {info.horarios_funcionamento.dias.length > 0 && <p className="text-muted-foreground">
+                {info.horarios_funcionamento.dias.join(', ')}: {info.horarios_funcionamento.abertura}–{info.horarios_funcionamento.fechamento}
+                {info.horarios_funcionamento.almoco && ` · Intervalo ${info.horarios_funcionamento.almoco.inicio}–${info.horarios_funcionamento.almoco.fim}`}
+              </p>}
+              {info.horarios_funcionamento.sabado && (
+                <p className="text-muted-foreground">Sábado: {info.horarios_funcionamento.sabado.abertura}–{info.horarios_funcionamento.sabado.fechamento}</p>
+              )}
+              <p className="text-xs text-muted-foreground">Os horários disponíveis para agendamento dependem da agenda de cada profissional.</p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
       {/* 1. Profissional */}
       <Card>
         <CardHeader className="pb-3"><CardTitle className="text-base">1. Profissional</CardTitle></CardHeader>
@@ -189,6 +244,33 @@ export default function AgendamentoOnline() {
           ))}
         </CardContent>
       </Card>
+      {info.medicos.length === 0 && (contatoDigitos.length >= 10 || info.clinica.email) && (
+        <Card>
+          <CardContent className="space-y-3 py-4">
+            <div>
+              <p className="font-medium">Precisa agendar uma consulta?</p>
+              <p className="text-sm text-muted-foreground">Entre em contato com a clínica para verificar outras opções de horário.</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {contatoDigitos.length >= 10 && (
+                <Button asChild variant="outline" className="gap-2">
+                  <a href={`tel:${contatoDigitos}`}><Phone className="h-4 w-4" />Ligar</a>
+                </Button>
+              )}
+              {contatoDigitos.length >= 10 && (
+                <Button asChild variant="outline" className="gap-2">
+                  <a href={`https://wa.me/${numeroWhatsApp}`} target="_blank" rel="noreferrer"><MessageCircle className="h-4 w-4" />WhatsApp</a>
+                </Button>
+              )}
+              {info.clinica.email && (
+                <Button asChild variant="outline" className="gap-2">
+                  <a href={`mailto:${info.clinica.email}`}><Mail className="h-4 w-4" />E-mail</a>
+                </Button>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* 2. Dia e horário */}
       {medico && (
@@ -215,7 +297,7 @@ export default function AgendamentoOnline() {
                 return (
                   <button key={d} type="button" data-testid="online-booking-day"
                     aria-label={format(dt, "EEEE, d 'de' MMMM", { locale: ptBR })}
-                    aria-pressed={data === d} onClick={() => { setData(d); setErro(''); }}
+                    aria-pressed={data === d} onClick={() => { setData(d); setSlots(null); setHora(''); setErroSlots(''); setErro(''); }}
                     className={cn('flex min-w-0 flex-col items-center rounded-lg border px-0.5 py-2 text-[10px] transition-colors hover:bg-accent/50 sm:text-xs',
                       data === d && 'border-primary bg-primary text-primary-foreground hover:bg-primary')}>
                     <span className="uppercase">{diaCurto}</span>
@@ -284,6 +366,7 @@ export default function AgendamentoOnline() {
         </Card>
       )}
       {erro && !hora && <p ref={erroRef} tabIndex={-1} className="text-sm text-destructive" role="alert">{erro}</p>}
+      </fieldset>
     </Shell>
   );
 }

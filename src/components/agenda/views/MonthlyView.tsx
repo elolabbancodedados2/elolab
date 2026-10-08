@@ -5,6 +5,7 @@ import {
   parseISO, startOfMonth, startOfWeek,
 } from 'date-fns';
 import { cn } from '@/lib/utils';
+import { todaySaoPauloDateOnly } from '@/lib/dateOnly';
 
 interface Props {
   date: string;
@@ -24,7 +25,7 @@ export function MonthlyView({ date, agendamentos, colorFor, medicoById = {}, onD
   }, [date]);
 
   const base = parseISO(date);
-  const today = format(new Date(), 'yyyy-MM-dd');
+  const today = todaySaoPauloDateOnly();
   const dayLabels = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
 
   return (

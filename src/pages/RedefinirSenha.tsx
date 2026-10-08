@@ -26,6 +26,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Loader2, Mail, Lock, CheckCircle2, ArrowLeft, Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
 import { validatePassword, PASSWORD_MIN_LENGTH } from '@/lib/passwordPolicy';
+import { mensagemDeErro } from '@/lib/erros';
 
 type Etapa = 'pedir' | 'definir' | 'enviado';
 
@@ -59,20 +60,19 @@ export default function RedefinirSenha() {
     if (!email.trim()) return;
 
     setEnviando(true);
-    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
-      redirectTo: `${window.location.origin}/redefinir-senha`,
-    });
-    setEnviando(false);
+    let error: unknown = null;
+    try {
+      ({ error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+        redirectTo: `${window.location.origin}/redefinir-senha`,
+      }));
+    } catch (err) {
+      error = err;
+    } finally {
+      setEnviando(false);
+    }
 
     if (error) {
-      // Limite de envio do Supabase é o erro mais provável aqui, e a mensagem
-      // crua ("email rate limit exceeded") não diz nada a quem está usando.
-      const limite = /rate limit|too many/i.test(error.message);
-      toast.error(
-        limite
-          ? 'Muitas tentativas seguidas. Aguarde alguns minutos e tente de novo.'
-          : `Não foi possível enviar o e-mail: ${error.message}`
-      );
+      toast.error('Não foi possível enviar o e-mail.', { description: mensagemDeErro(error) });
       return;
     }
 
@@ -95,11 +95,17 @@ export default function RedefinirSenha() {
     }
 
     setEnviando(true);
-    const { error } = await supabase.auth.updateUser({ password: senha });
-    setEnviando(false);
+    let error: unknown = null;
+    try {
+      ({ error } = await supabase.auth.updateUser({ password: senha }));
+    } catch (err) {
+      error = err;
+    } finally {
+      setEnviando(false);
+    }
 
     if (error) {
-      toast.error(`Não foi possível salvar a nova senha: ${error.message}`);
+      toast.error('Não foi possível salvar a nova senha.', { description: mensagemDeErro(error) });
       return;
     }
 
@@ -142,6 +148,7 @@ export default function RedefinirSenha() {
 
           {etapa === 'pedir' && (
             <form onSubmit={pedirEmail} className="space-y-4">
+              <fieldset disabled={enviando} className="space-y-4 border-0 p-0 m-0 min-w-0">
               <div className="space-y-2">
                 <Label htmlFor="email">E-mail</Label>
                 <div className="relative">
@@ -169,11 +176,13 @@ export default function RedefinirSenha() {
               >
                 Voltar para o login
               </Link>
+              </fieldset>
             </form>
           )}
 
           {etapa === 'definir' && (
             <form onSubmit={definirSenha} className="space-y-4">
+              <fieldset disabled={enviando} className="space-y-4 border-0 p-0 m-0 min-w-0">
               <div className="space-y-2">
                 <Label htmlFor="senha">Nova senha</Label>
                 <div className="relative">
@@ -228,6 +237,7 @@ export default function RedefinirSenha() {
                   ? <><Loader2 aria-hidden="true" className="mr-2 h-4 w-4 animate-spin" />Salvando…</>
                   : 'Salvar nova senha'}
               </Button>
+              </fieldset>
             </form>
           )}
         </CardContent>

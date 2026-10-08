@@ -5,12 +5,24 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { MessageSquare, User, Search, Clock, CheckCircle2, AlertCircle, Send, X, StickyNote, Paperclip } from 'lucide-react';
-import { format, formatDistanceToNow } from 'date-fns';
+import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { WhatsAppConversation } from './types';
 import { Button } from '@/components/ui/button';
 import { useWhatsAppInternalNotes, useWhatsAppMessages } from './useWhatsAppQueries';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { ErrorState } from '@/components/ErrorState';
+
+const formatarHoraSaoPaulo = (valor: string | null | undefined, comData = false) => {
+  if (!valor) return '';
+  const data = new Date(valor);
+  if (Number.isNaN(data.getTime())) return '';
+  return new Intl.DateTimeFormat('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
+    ...(comData ? { day: '2-digit' as const, month: '2-digit' as const } : {}),
+    hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  }).format(data);
+};
 
 interface ConversationsTabProps {
   conversations: WhatsAppConversation[];
@@ -26,18 +38,21 @@ interface ConversationsTabProps {
   isGeneratingSummary: boolean;
   onSendMedia: (conversation: WhatsAppConversation, file: File) => Promise<void>;
   isSendingMedia: boolean;
+  isClosing: boolean;
   onCloseConversation: (conversation: WhatsAppConversation) => void;
 }
 
-export function ConversationsTab({ conversations, onStatusChange, isUpdating, onSendMessage, isSending, onMarkRead, onAddInternalNote, isAddingNote, onPriorityChange, onGenerateSummary, isGeneratingSummary, onSendMedia, isSendingMedia, onCloseConversation }: ConversationsTabProps) {
+export function ConversationsTab({ conversations, onStatusChange, isUpdating, onSendMessage, isSending, onMarkRead, onAddInternalNote, isAddingNote, onPriorityChange, onGenerateSummary, isGeneratingSummary, onSendMedia, isSendingMedia, isClosing, onCloseConversation }: ConversationsTabProps) {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('todos');
   const [selected, setSelected] = useState<WhatsAppConversation | null>(null);
   const [reply, setReply] = useState('');
   const [note, setNote] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const { data: messages = [], isLoading: loadingMessages } = useWhatsAppMessages(selected?.id || null);
-  const { data: notes = [] } = useWhatsAppInternalNotes(selected?.id || null);
+  const messagesQuery = useWhatsAppMessages(selected?.id || null);
+  const notesQuery = useWhatsAppInternalNotes(selected?.id || null);
+  const messages = messagesQuery.data || [];
+  const notes = notesQuery.data || [];
 
   useEffect(() => {
     if (!selected) return;
@@ -47,14 +62,22 @@ export function ConversationsTab({ conversations, onStatusChange, isUpdating, on
 
   const handleSend = async () => {
     if (!selected || !reply.trim()) return;
-    await onSendMessage(selected, reply);
-    setReply('');
+    try {
+      await onSendMessage(selected, reply);
+      setReply('');
+    } catch {
+      // Mantém a mensagem no campo para que o atendente possa tentar novamente.
+    }
   };
 
   const handleAddNote = async () => {
     if (!selected || !note.trim()) return;
-    await onAddInternalNote(selected.id, note);
-    setNote('');
+    try {
+      await onAddInternalNote(selected.id, note);
+      setNote('');
+    } catch {
+      // Preserva a nota digitada se o banco ou a conexão falhar.
+    }
   };
 
   const filtered = useMemo(() => {
@@ -205,8 +228,8 @@ export function ConversationsTab({ conversations, onStatusChange, isUpdating, on
                             </Button>
                           )}
                           {conv.status === 'em_atendimento_humano' && (
-                            <Button size="sm" variant="ghost" disabled={isUpdating} onClick={(event) => { event.stopPropagation(); onCloseConversation(conv); }}>
-                              Encerrar
+                            <Button size="sm" variant="ghost" disabled={isClosing || isUpdating} onClick={(event) => { event.stopPropagation(); onCloseConversation(conv); }}>
+                              {isClosing ? 'Encerrando...' : 'Encerrar'}
                             </Button>
                           )}
                         </div>
@@ -227,7 +250,7 @@ export function ConversationsTab({ conversations, onStatusChange, isUpdating, on
               <CardTitle className="text-base">{selected.pacientes?.nome || selected.remote_jid.replace('@s.whatsapp.net', '')}</CardTitle>
               <p className="text-xs text-muted-foreground">
                 {selected.profiles?.nome ? `Responsável: ${selected.profiles.nome}` : 'Sem responsável'}
-                {selected.sla_limite_em && !selected.primeira_resposta_em ? ` · SLA até ${format(new Date(selected.sla_limite_em), 'HH:mm')}` : ''}
+                {selected.sla_limite_em && !selected.primeira_resposta_em ? ` · SLA até ${formatarHoraSaoPaulo(selected.sla_limite_em)}` : ''}
               </p>
             </div>
             <Button size="icon" variant="ghost" aria-label="Fechar conversa" onClick={() => setSelected(null)}>
@@ -259,7 +282,9 @@ export function ConversationsTab({ conversations, onStatusChange, isUpdating, on
               </p>
             </div>
             <ScrollArea className="h-[380px] rounded-lg border bg-muted/20 p-3">
-              {loadingMessages ? (
+              {messagesQuery.isError ? (
+                <ErrorState compact title="Não foi possível carregar as mensagens" error={messagesQuery.error} onRetry={() => void messagesQuery.refetch()} />
+              ) : messagesQuery.isLoading ? (
                 <p className="text-sm text-muted-foreground">Carregando mensagens...</p>
               ) : messages.length === 0 ? (
                 <p className="py-12 text-center text-sm text-muted-foreground">Nenhuma mensagem registrada.</p>
@@ -270,7 +295,7 @@ export function ConversationsTab({ conversations, onStatusChange, isUpdating, on
                       <div className={`max-w-[82%] rounded-2xl px-3 py-2 text-sm ${message.direcao === 'saida' ? 'rounded-br-sm bg-primary text-primary-foreground' : 'rounded-bl-sm border bg-background'}`}>
                         <p className="whitespace-pre-wrap break-words">{message.conteudo}</p>
                         <p className={`mt-1 text-[10px] ${message.direcao === 'saida' ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
-                          {message.created_at ? format(new Date(message.created_at), 'dd/MM HH:mm') : ''}
+                          {formatarHoraSaoPaulo(message.created_at, true)}
                         </p>
                       </div>
                     </div>
@@ -282,7 +307,7 @@ export function ConversationsTab({ conversations, onStatusChange, isUpdating, on
               <div className="flex gap-2">
                 <input ref={fileInputRef} className="hidden" type="file" accept="image/jpeg,image/png,image/webp,audio/mpeg,audio/ogg,audio/mp4,application/pdf" onChange={event => {
                   const file = event.target.files?.[0];
-                  if (file) void onSendMedia(selected, file).finally(() => { event.target.value = ''; });
+                  if (file) void onSendMedia(selected, file).catch(() => {}).finally(() => { event.target.value = ''; });
                 }} />
                 <Button type="button" size="icon" variant="outline" aria-label="Enviar anexo" disabled={isSendingMedia} onClick={() => fileInputRef.current?.click()}>
                   <Paperclip className="h-4 w-4" />
@@ -308,7 +333,9 @@ export function ConversationsTab({ conversations, onStatusChange, isUpdating, on
             )}
             <div className="rounded-lg border border-dashed p-3 space-y-2">
               <div className="flex items-center gap-2 text-sm font-medium"><StickyNote className="h-4 w-4" />Notas internas</div>
-              {notes.length > 0 && (
+              {notesQuery.isError ? (
+                <ErrorState compact title="Não foi possível carregar as notas" error={notesQuery.error} onRetry={() => void notesQuery.refetch()} />
+              ) : notes.length > 0 && (
                 <div className="max-h-28 space-y-1 overflow-y-auto">
                   {notes.map(internalNote => (
                     <p key={internalNote.id} className="rounded bg-muted px-2 py-1 text-xs">

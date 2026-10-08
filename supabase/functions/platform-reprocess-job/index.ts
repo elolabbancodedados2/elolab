@@ -19,8 +19,9 @@ Deno.serve(async(req)=>{
   const body=await req.json()
   if(body.kind==='notification'){
    const{data,error}=await admin.rpc('platform_retry_notification',{p_id:body.id});if(error)throw error
+   if(data!==true)return reply({error:'A notificação não está mais em erro e não foi recolocada na fila.'},409)
    await admin.from('audit_log').insert({user_id:user.user.id,action:'update',collection:'notification_queue',record_id:body.id,changes:{action:'retry'}})
-   return reply({success:true,requeued:data})
+   return reply({success:true,requeued:true})
   }
   if(body.kind==='mercadopago'){
    const{data:log,error}=await admin.from('mercadopago_webhook_logs').select('id,payload,processado').eq('id',body.id).single();if(error)throw error

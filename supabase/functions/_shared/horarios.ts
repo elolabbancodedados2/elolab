@@ -77,7 +77,7 @@ async function ocupacoesDoDia(db: any, clinicId: string, medicoId: string, date:
       .eq('medico_id', medicoId).lte('data_inicio', date).gte('data_fim', date),
     db.from('agendamentos').select('id, hora_inicio, hora_fim')
       .eq('medico_id', medicoId).eq('clinica_id', clinicId).eq('data', date)
-      .not('status', 'in', '("cancelado")'),
+      .not('status', 'in', '("cancelado","faltou")'),
   ]);
   if (blocksError) throw blocksError;
   if (appointmentsError) throw appointmentsError;

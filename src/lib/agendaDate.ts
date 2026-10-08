@@ -1,5 +1,5 @@
 import { isValid, parseISO } from 'date-fns';
-import { todayDateOnly } from '@/lib/dateOnly';
+import { todaySaoPauloDateOnly } from '@/lib/dateOnly';
 
 const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -8,5 +8,5 @@ export function isValidAgendaDate(value: string | null | undefined): value is st
 }
 
 export function normalizeAgendaDate(value: string | null | undefined): string {
-  return isValidAgendaDate(value) ? value : todayDateOnly();
+  return isValidAgendaDate(value) ? value : todaySaoPauloDateOnly();
 }

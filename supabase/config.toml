@@ -74,6 +74,16 @@ verify_jwt = true
 [functions.scheduled-reports-runner]
 verify_jwt = true
 
+[functions.platform-reports-runner]
+verify_jwt = true
+
+[functions.resend-pending-registration]
+verify_jwt = true
+
+# Cron or execution manual restrita a administradores ativos da plataforma.
+[functions.reconcile-pending-registrations]
+verify_jwt = true
+
 # Ferramentas de conta do dono da plataforma. A função confere a identidade por
 # conta própria (platform_admins); verify_jwt é a trava anterior a essa.
 [functions.admin-contas]
@@ -96,4 +106,15 @@ verify_jwt = true
 verify_jwt = false
 
 [functions.clinic-integrations]
+verify_jwt = true
+
+[functions.memed-prescription]
+verify_jwt = true
+
+# Verificação DNS restrita a administradores ativos da plataforma.
+[functions.platform-check-domain]
+verify_jwt = true
+
+# Reprocessamento manual restrito a administradores ativos da plataforma.
+[functions.platform-reprocess-job]
 verify_jwt = true

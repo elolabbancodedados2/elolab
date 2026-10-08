@@ -17,8 +17,8 @@ import { getFilteredMenuGroups, MenuGroup } from '@/config/sidebarMenu';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const STORAGE_KEY = 'elolab_sidebar_collapsed';
-const GROUPS_KEY = 'elolab_sidebar_groups';
-const DEFAULT_OPEN_GROUPS = ['Início', 'Atendimento'];
+const GROUPS_KEY = 'elolab_sidebar_groups_v2';
+const DEFAULT_OPEN_GROUPS = ['Início', 'Atendimento', 'Pacientes'];
 
 interface SidebarProps {
   forceExpanded?: boolean;

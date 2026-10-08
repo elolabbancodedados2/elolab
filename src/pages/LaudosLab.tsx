@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
 import {
   FileText, Eye, CheckCircle2, AlertCircle, Loader2, RefreshCw,
@@ -19,11 +19,16 @@ import { supabase } from '@/integrations/supabase/client';
 import { notificarResultadoLiberado } from '@/lib/notificarResultado';
 import { toast } from 'sonner';
 import { mensagemDeErro } from '@/lib/erros';
-import { format, formatDistanceToNow, isToday } from 'date-fns';
+import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { gerarLaudoPDF, downloadLaudoPDF, LaudoData } from '@/lib/pdfGenerator';
 import { canalUnico } from '@/lib/realtimeCanal';
+import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
+import { ErrorState } from '@/components/ErrorState';
+import { Skeleton } from '@/components/ui/skeleton';
+import { pacienteCorresponde } from '@/lib/buscaPaciente';
+import { formatDateTimeSaoPaulo } from '@/lib/dateOnly';
 
 /**
  * Teto da worklist do laboratório.
@@ -36,6 +41,25 @@ const TETO_WORKLIST = 500;
 
 
 const normalize = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+const parseResultadoNumerico = (value: unknown): number | null => {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value !== 'string') return null;
+  const match = value.trim().match(/^[-+]?(?:\d[\d\s.,]*|\.\d+)/);
+  if (!match) return null;
+  const token = match[0].replace(/\s/g, '');
+  const ultimaVirgula = token.lastIndexOf(',');
+  const ultimoPonto = token.lastIndexOf('.');
+  let normalizado = token;
+  if (ultimaVirgula >= 0 && ultimoPonto >= 0) {
+    normalizado = ultimaVirgula > ultimoPonto
+      ? token.replace(/\./g, '').replace(',', '.')
+      : token.replace(/,/g, '');
+  } else if (ultimaVirgula >= 0) {
+    normalizado = token.replace(/,/g, (_virgula, offset) => offset === ultimaVirgula ? '.' : '');
+  }
+  const parsed = Number(normalizado);
+  return Number.isFinite(parsed) ? parsed : null;
+};
 
 const stagger = { hidden: {}, visible: { transition: { staggerChildren: 0.05 } } };
 const fadeUp = { hidden: { opacity: 0, y: 8 }, visible: { opacity: 1, y: 0, transition: { duration: 0.25 } } };
@@ -44,31 +68,60 @@ const fadeUp = { hidden: { opacity: 0, y: 8 }, visible: { opacity: 1, y: 0, tran
 function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
   coletaId: string | null; onClose: () => void; onUpdate: () => void;
 }) {
+  const { profile } = useSupabaseAuth();
   const [coleta, setColeta] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
+  const fetchRequestRef = useRef(0);
+  const [isValidating, setIsValidating] = useState(false);
+  const [isReleasingAll, setIsReleasingAll] = useState(false);
+  const [releasingIds, setReleasingIds] = useState<Set<string>>(new Set());
   const [observacaoLaudo, setObservacaoLaudo] = useState('');
+  const isBusy = isValidating || isReleasingAll || releasingIds.size > 0;
 
   const fetchData = useCallback(async () => {
-    if (!coletaId) return;
+    const requestId = ++fetchRequestRef.current;
+    if (!coletaId) {
+      setColeta(null);
+      setLoadError(null);
+      setLoading(false);
+      return;
+    }
+    if (!profile?.clinica_id) {
+      setColeta(null);
+      setLoadError(new Error('Clínica não identificada. Atualize a página e tente novamente.'));
+      setLoading(false);
+      return;
+    }
     setLoading(true);
-    const { data, error } = await supabase
-      .from('coletas_laboratorio')
-      .select(`
-        id, codigo_amostra, status, created_at, observacoes, tipo_amostra, tubo, urgente,
-        numero_guia, material,
-        pacientes(nome, cpf, data_nascimento, sexo),
-        medicos(nome, crm),
-        convenios(nome),
-        resultados_laboratorio(id, parametro, resultado, unidade,
-          valor_referencia_min, valor_referencia_max, valor_referencia_texto,
-          liberado, data_liberacao, metodo, exames(tipo_exame))
-      `)
-      .eq('id', coletaId)
-      .maybeSingle();
-    if (error) toast.error('Erro ao carregar dados da coleta.', { description: mensagemDeErro(error) });
-    setColeta(data);
-    setLoading(false);
-  }, [coletaId]);
+    setColeta(null);
+    setLoadError(null);
+    try {
+      const { data, error } = await supabase
+        .from('coletas_laboratorio')
+        .select(`
+          id, codigo_amostra, status, created_at, data_coleta, observacoes, tipo_amostra, tubo, urgente,
+          numero_guia, material,
+          pacientes(nome, nome_social, cpf, telefone, email, data_nascimento, sexo),
+          medicos(nome, crm),
+          convenios(nome),
+          resultados_laboratorio(id, parametro, resultado, unidade,
+            valor_referencia_min, valor_referencia_max, valor_referencia_texto,
+            liberado, data_liberacao, metodo, exames(tipo_exame))
+        `)
+        .eq('id', coletaId)
+        .eq('clinica_id', profile.clinica_id)
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) throw new Error('A coleta não foi encontrada ou não está acessível nesta clínica.');
+      if (requestId !== fetchRequestRef.current) return;
+      setColeta(data);
+    } catch (error) {
+      if (requestId === fetchRequestRef.current) setLoadError(error);
+    } finally {
+      if (requestId === fetchRequestRef.current) setLoading(false);
+    }
+  }, [coletaId, profile?.clinica_id]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -95,32 +148,48 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
   };
 
   const handleLiberarResultado = async (resultadoId: string) => {
+    if (isBusy || releasingIds.has(resultadoId)) return;
     if (conferenciaPendente()) { avisarConferenciaPendente(); return; }
 
+    setReleasingIds(current => new Set(current).add(resultadoId));
     try {
-      const { error } = await (supabase as any).rpc('liberar_resultados_laboratorio', {
+      const { data, error } = await (supabase as any).rpc('liberar_resultados_laboratorio', {
         p_coleta_id: coletaId,
         p_resultado_ids: [resultadoId],
       });
       if (error) throw error;
+      if (!data?.some((resultado: { id: string }) => resultado.id === resultadoId)) {
+        await fetchData();
+        toast.info('Este resultado já foi liberado por outra pessoa.');
+        onUpdate();
+        return;
+      }
 
-      const notificado = await notificarResultadoLiberado(resultadoId);
-
-      toast.success(notificado ? 'Resultado liberado e paciente notificado!' : 'Resultado liberado (notificação será reenviada)');
+      const notificacao = await notificarResultadoLiberado(resultadoId);
+      if (notificacao === 'enviada') {
+        toast.success('Resultado liberado e paciente notificado!');
+      } else if (notificacao === 'enfileirada') {
+        toast.warning('Resultado liberado; notificação entrou na fila de reenvio.');
+      } else {
+        toast.error('Resultado liberado, mas a notificação falhou e não entrou na fila. Avise o paciente manualmente.');
+      }
       await fetchData();
       onUpdate();
     } catch (err: any) {
       console.error('handleLiberarResultado error:', err);
       toast.error('Erro ao liberar: ' + (err?.message || 'Erro desconhecido'));
+    } finally {
+      setReleasingIds(current => { const next = new Set(current); next.delete(resultadoId); return next; });
     }
   };
 
   const handleLiberarTodos = async () => {
-    if (!coleta?.resultados_laboratorio?.length) return;
+    if (isBusy || !coleta?.resultados_laboratorio?.length) return;
     const pendentes = coleta.resultados_laboratorio.filter((r: any) => !r.liberado);
     if (pendentes.length === 0) { toast.info('Todos já liberados'); return; }
     // A liberação em lote é o caminho mais usado — e era o que menos conferia.
     if (conferenciaPendente()) { avisarConferenciaPendente(); return; }
+    setIsReleasingAll(true);
     try {
       // A RPC atualiza todos os resultados e a coleta dentro da mesma
       // transação. Se qualquer validação do banco falhar, nenhum resultado
@@ -133,10 +202,13 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
       if (liberacaoError) throw liberacaoError;
 
       const liberados = (liberadosData ?? []).map((r: { id: string }) => r.id);
+      let notificacoesEnfileiradas = 0;
       let notificacoesFalhadas = 0;
 
       for (const resultadoId of liberados) {
-        if (!(await notificarResultadoLiberado(resultadoId))) notificacoesFalhadas++;
+        const notificacao = await notificarResultadoLiberado(resultadoId);
+        if (notificacao === 'enfileirada') notificacoesEnfileiradas++;
+        else if (notificacao === 'falhou') notificacoesFalhadas++;
       }
 
       if (liberados.length === 0) {
@@ -150,7 +222,8 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
       const naoLiberados = pendentes.length - liberados.length;
       const partes = [`${liberados.length} de ${pendentes.length} resultado(s) liberado(s)`];
       if (naoLiberados > 0) partes.push(`${naoLiberados} falhou(aram)`);
-      if (notificacoesFalhadas > 0) partes.push(`${notificacoesFalhadas} notificação(ões) na fila de reenvio`);
+      if (notificacoesEnfileiradas > 0) partes.push(`${notificacoesEnfileiradas} notificação(ões) na fila de reenvio`);
+      if (notificacoesFalhadas > 0) partes.push(`${notificacoesFalhadas} notificação(ões) falharam e exigem contato manual`);
       const msg = partes.join(' · ');
 
       if (naoLiberados > 0) toast.warning(msg);
@@ -160,19 +233,34 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
     } catch (err: any) {
       console.error('handleLiberarTodos error:', err);
       toast.error('Erro ao liberar em lote: ' + (err?.message || 'Erro desconhecido'));
+    } finally {
+      setIsReleasingAll(false);
     }
   };
 
   const handleValidarColeta = async () => {
+    if (isValidating) return;
+    if (coleta?.status !== 'em_analise') {
+      toast.error('A coleta precisa estar em análise antes da validação.');
+      return;
+    }
+    if (!coleta?.resultados_laboratorio?.length) {
+      toast.error('Inclua ao menos um resultado antes de validar a coleta.');
+      return;
+    }
+    setIsValidating(true);
     try {
-      const { error } = await supabase.from('coletas_laboratorio')
-        .update({ status: 'validado' }).eq('id', coletaId!);
+      const { error } = await (supabase as any).rpc('validar_coleta_laboratorio', {
+        p_coleta_id: coletaId,
+      });
       if (error) throw error;
-      toast.success('Coleta validada!');
+      toast.success('Coleta validada e conferência registrada!');
       await fetchData();
       onUpdate();
     } catch (e) {
       toast.error('Erro ao validar.', { description: mensagemDeErro(e) });
+    } finally {
+      setIsValidating(false);
     }
   };
 
@@ -181,13 +269,13 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
 
     return {
       codigoAmostra: coleta.codigo_amostra,
-      pacienteNome: coleta.pacientes?.nome || '—',
+      pacienteNome: coleta.pacientes?.nome_social?.trim() || coleta.pacientes?.nome || '—',
       pacienteCpf: coleta.pacientes?.cpf,
       pacienteDataNascimento: coleta.pacientes?.data_nascimento,
       pacienteSexo: coleta.pacientes?.sexo,
       medicoNome: coleta.medicos?.nome,
       medicoCrm: coleta.medicos?.crm,
-      dataColeta: coleta.created_at ? format(new Date(coleta.created_at), "dd/MM/yyyy HH:mm:ss") : format(new Date(), "dd/MM/yyyy HH:mm:ss"),
+      dataColeta: formatDateTimeSaoPaulo(coleta.data_coleta || coleta.created_at, true),
       tipoAmostra: coleta.tipo_amostra,
       tubo: coleta.tubo,
       urgente: coleta.urgente,
@@ -235,7 +323,7 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
   const pendentes = totalResults - liberados;
 
   return (
-    <Dialog open={!!coletaId} onOpenChange={() => onClose()}>
+    <Dialog open={!!coletaId} onOpenChange={(open) => { if (open || !isBusy) onClose(); }}>
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -247,13 +335,15 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
 
         {loading ? (
           <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>
+        ) : loadError ? (
+          <ErrorState compact error={loadError} title="Não foi possível carregar este laudo" onRetry={() => void fetchData()} />
         ) : coleta ? (
           <div className="flex-1 overflow-y-auto space-y-4 pr-1">
             {/* Patient info */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 rounded-xl border p-4 bg-muted/20">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3 rounded-xl border p-4 bg-muted/20">
               <div>
                 <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Paciente</p>
-                <p className="font-semibold">{coleta.pacientes?.nome ?? '—'}</p>
+                <p className="font-semibold">{coleta.pacientes?.nome_social?.trim() || coleta.pacientes?.nome || '—'}</p>
               </div>
               <div>
                 <p className="text-[11px] text-muted-foreground uppercase tracking-wide">CPF</p>
@@ -266,7 +356,13 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
               <div>
                 <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Entrada</p>
                 <p className="font-medium">
-                  {coleta.created_at ? format(new Date(coleta.created_at), "dd/MM/yyyy HH:mm") : '—'}
+                  {formatDateTimeSaoPaulo(coleta.created_at)}
+                </p>
+              </div>
+              <div>
+                <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Coleta</p>
+                <p className="font-medium">
+                  {formatDateTimeSaoPaulo(coleta.data_coleta)}
                 </p>
               </div>
             </div>
@@ -289,8 +385,8 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
             {/* Results */}
             <div className="space-y-2">
               {(coleta.resultados_laboratorio ?? []).map((res: any) => {
-                const numResult = parseFloat(res.resultado);
-                const isAltered = !isNaN(numResult) && (
+                const numResult = parseResultadoNumerico(res.resultado);
+                const isAltered = numResult !== null && (
                   (res.valor_referencia_min != null && numResult < res.valor_referencia_min) ||
                   (res.valor_referencia_max != null && numResult > res.valor_referencia_max)
                 );
@@ -335,14 +431,15 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
                         {res.data_liberacao && (
                           <div>
                             <p className="text-[11px] text-muted-foreground">Liberado em</p>
-                            <p className="font-medium text-xs">{format(new Date(res.data_liberacao), "dd/MM HH:mm")}</p>
+                            <p className="font-medium text-xs">{formatDateTimeSaoPaulo(res.data_liberacao)}</p>
                           </div>
                         )}
                       </div>
                     )}
                     {!res.liberado && (
-                      <Button size="sm" className="h-7 text-xs gap-1 mt-1" onClick={() => handleLiberarResultado(res.id)}>
-                        <CheckCircle2 className="h-3 w-3" /> Liberar
+                      <Button size="sm" className="h-7 text-xs gap-1 mt-1" disabled={isBusy || conferenciaPendente()} onClick={() => handleLiberarResultado(res.id)}>
+                        {releasingIds.has(res.id) ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />}
+                        {releasingIds.has(res.id) ? 'Liberando...' : 'Liberar'}
                       </Button>
                     )}
                   </div>
@@ -362,14 +459,19 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
         {/* Footer actions */}
         {coleta && (
           <DialogFooter className="border-t pt-3 gap-2 flex-wrap">
-            {coleta.status !== 'validado' && coleta.status !== 'liberado' && (
-              <Button variant="outline" className="gap-1" onClick={handleValidarColeta}>
-                <Shield className="h-4 w-4" /> Validar Coleta
+            {coleta.status === 'em_analise' && (
+              <Button variant="outline" className="gap-1" onClick={handleValidarColeta} disabled={isBusy || !coleta.resultados_laboratorio?.length}>
+                {isValidating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Shield className="h-4 w-4" />}
+                {isValidating ? 'Validando...' : 'Validar Coleta'}
               </Button>
             )}
+            {coleta.status !== 'em_analise' && coleta.status !== 'validado' && coleta.status !== 'liberado' && (
+              <p className="mr-auto text-xs text-muted-foreground">Avance a coleta para “Em análise” antes de validar.</p>
+            )}
             {pendentes > 0 && (
-              <Button variant="default" className="gap-1" onClick={handleLiberarTodos}>
-                <CheckCircle2 className="h-4 w-4" /> Liberar Todos ({pendentes})
+              <Button variant="default" className="gap-1" onClick={handleLiberarTodos} disabled={isBusy || conferenciaPendente()}>
+                {isReleasingAll ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                {isReleasingAll ? 'Liberando...' : `Liberar Todos (${pendentes})`}
               </Button>
             )}
             <Button variant="outline" className="gap-1" onClick={handleDownloadLaudo}>
@@ -387,62 +489,165 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
 
 // ─── Main Page ─────────────────────────────────────────────
 export default function LaudosLab() {
+  const { profile } = useSupabaseAuth();
   const [coletas, setColetas] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<unknown>(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('todos');
   const [viewingId, setViewingId] = useState<string | null>(null);
+  const [cursorLaudos, setCursorLaudos] = useState<{ created_at: string; id: string } | null>(null);
+  const [hasOlderLaudos, setHasOlderLaudos] = useState(false);
+  const [loadingOlderLaudos, setLoadingOlderLaudos] = useState(false);
+  const [olderLaudosError, setOlderLaudosError] = useState<unknown>(null);
+  const fetchRequestRef = useRef(0);
+  const activeClinicRef = useRef<string | null>(null);
 
   const fetchLaudos = useCallback(async () => {
-    setLoading(true);
+    const clinicId = profile?.clinica_id ?? null;
+    if (activeClinicRef.current !== clinicId) return;
+    const requestId = ++fetchRequestRef.current;
+
+    if (!clinicId) {
+      setColetas([]);
+      setCursorLaudos(null);
+      setHasOlderLaudos(false);
+      setLoadError(new Error('Clínica não identificada.'));
+      setLoading(false);
+      return;
+    }
+    // Atualizações manuais, realtime e pós-liberação são em segundo plano.
+    // Trocar a página inteira pelo skeleton desmontava o modal e descartava
+    // observações ainda não impressas no laudo.
+    setLoadingOlderLaudos(false);
+    setOlderLaudosError(null);
     // A ordenação era ASCENDENTE e sem `.limit()`. O PostgREST corta em 1.000
     // linhas por padrão, então numa base com histórico o laboratório recebia as
     // amostras mais ANTIGAS e as de hoje nunca apareciam na tela de laudos.
     //
     // Buscamos as mais recentes e reordenamos em memória para manter o FIFO
     // dentro da janela de trabalho — que é o que a bancada precisa.
-    const { data, error } = await supabase
-      .from('coletas_laboratorio')
-      .select(`
-        id, codigo_amostra, status, created_at, urgente, tipo_amostra, tubo,
-        pacientes(nome, cpf),
-        medicos(nome, crm),
-        resultados_laboratorio(id, liberado, parametro, resultado, unidade,
-          valor_referencia_min, valor_referencia_max, exames(tipo_exame))
-      `)
-      .order('created_at', { ascending: false })
-      .limit(TETO_WORKLIST + 1);
+    try {
+      const { data, error } = await supabase
+        .from('coletas_laboratorio')
+        .select(`
+          id, codigo_amostra, status, created_at, data_coleta, urgente, tipo_amostra, tubo,
+          pacientes(nome, nome_social, cpf, telefone, email),
+          medicos(nome, crm),
+          resultados_laboratorio(id, liberado, parametro, resultado, unidade,
+            valor_referencia_min, valor_referencia_max, exames(tipo_exame))
+        `)
+        .eq('clinica_id', clinicId)
+        .order('created_at', { ascending: false })
+        .order('id', { ascending: false })
+        .limit(TETO_WORKLIST + 1);
 
-    if (error) toast.error('Erro ao carregar laudos', { description: mensagemDeErro(error) });
-    else {
+      if (requestId !== fetchRequestRef.current || activeClinicRef.current !== clinicId) return;
+      if (error) throw error;
+
       const linhas = data ?? [];
-      if (linhas.length > TETO_WORKLIST) {
-        toast.warning(`Mostrando as ${TETO_WORKLIST} coletas mais recentes.`, {
-          description: 'Há mais no histórico. Use a busca por paciente ou código da amostra para chegar às antigas.',
-          duration: 8000,
-        });
-      }
+      const janela = linhas.slice(0, TETO_WORKLIST);
+      setHasOlderLaudos(linhas.length > TETO_WORKLIST);
+      setCursorLaudos(janela.length ? {
+        created_at: janela[janela.length - 1].created_at,
+        id: janela[janela.length - 1].id,
+      } : null);
 
-      const comResultados = linhas
-        .slice(0, TETO_WORKLIST)
+      const comResultados = janela
         .filter((c: any) => (c.resultados_laboratorio ?? []).length > 0)
         // FIFO: mais antiga primeiro, dentro da janela carregada.
         .sort((a: any, b: any) =>
           new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
 
-      setColetas(comResultados);
+      setColetas(atuais => {
+        const porId = new Map<string, any>();
+        for (const coleta of atuais) porId.set(coleta.id, coleta);
+        // Atualizar a worklist não deve apagar os laudos antigos que a pessoa
+        // já carregou. Os registros da janela mais recente substituem os do
+        // cache; os mais antigos permanecem disponíveis sem duplicatas.
+        for (const coleta of comResultados) porId.set(coleta.id, coleta);
+        return [...porId.values()].sort((a, b) =>
+          new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+      });
+      setLoadError(null);
+    } catch (error) {
+      if (requestId === fetchRequestRef.current && activeClinicRef.current === clinicId) setLoadError(error);
+    } finally {
+      if (requestId === fetchRequestRef.current && activeClinicRef.current === clinicId) setLoading(false);
     }
-    setLoading(false);
-  }, []);
+  }, [profile?.clinica_id]);
+
+  const carregarLaudosAntigos = async () => {
+    const clinicId = profile?.clinica_id;
+    const cursor = cursorLaudos;
+    if (!clinicId || !cursor || !hasOlderLaudos || loadingOlderLaudos) return;
+    const requestId = fetchRequestRef.current;
+    setLoadingOlderLaudos(true);
+    setOlderLaudosError(null);
+    try {
+      const { data, error } = await supabase
+        .from('coletas_laboratorio')
+        .select(`
+          id, codigo_amostra, status, created_at, data_coleta, urgente, tipo_amostra, tubo,
+          pacientes(nome, nome_social, cpf, telefone, email),
+          medicos(nome, crm),
+          resultados_laboratorio(id, liberado, parametro, resultado, unidade,
+            valor_referencia_min, valor_referencia_max, exames(tipo_exame))
+        `)
+        .eq('clinica_id', clinicId)
+        .or(`created_at.lt.${cursor.created_at},and(created_at.eq.${cursor.created_at},id.lt.${cursor.id})`)
+        .order('created_at', { ascending: false })
+        .order('id', { ascending: false })
+        .limit(TETO_WORKLIST + 1);
+      if (error) throw error;
+      if (requestId !== fetchRequestRef.current || activeClinicRef.current !== clinicId) return;
+
+      const linhas = data ?? [];
+      const janela = linhas.slice(0, TETO_WORKLIST);
+      setCursorLaudos(janela.length ? {
+        created_at: janela[janela.length - 1].created_at,
+        id: janela[janela.length - 1].id,
+      } : cursor);
+      setHasOlderLaudos(linhas.length > TETO_WORKLIST);
+      const comResultados = janela
+        .filter((c: any) => (c.resultados_laboratorio ?? []).length > 0)
+        .sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+      setColetas(atuais => {
+        const porId = new Map<string, any>(atuais.map(coleta => [coleta.id, coleta]));
+        for (const coleta of comResultados) porId.set(coleta.id, coleta);
+        return [...porId.values()].sort((a, b) =>
+          new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+      });
+    } catch (error) {
+      if (requestId === fetchRequestRef.current && activeClinicRef.current === clinicId) setOlderLaudosError(error);
+    } finally {
+      if (requestId === fetchRequestRef.current && activeClinicRef.current === clinicId) setLoadingOlderLaudos(false);
+    }
+  };
 
   useEffect(() => {
-    fetchLaudos();
+    const clinicId = profile?.clinica_id ?? null;
+    activeClinicRef.current = clinicId;
+    fetchRequestRef.current += 1;
+    setColetas([]);
+    setCursorLaudos(null);
+    setHasOlderLaudos(false);
+    setLoadingOlderLaudos(false);
+    setOlderLaudosError(null);
+    setLoading(true);
+    setLoadError(null);
+    void fetchLaudos();
+    if (!clinicId) return () => { activeClinicRef.current = null; fetchRequestRef.current += 1; };
     const channel = supabase.channel(canalUnico('laudos-rt'))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'resultados_laboratorio' }, fetchLaudos)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'coletas_laboratorio' }, fetchLaudos)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'resultados_laboratorio', filter: `clinica_id=eq.${clinicId}` }, fetchLaudos)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'coletas_laboratorio', filter: `clinica_id=eq.${clinicId}` }, fetchLaudos)
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [fetchLaudos]);
+    return () => {
+      if (activeClinicRef.current === clinicId) activeClinicRef.current = null;
+      fetchRequestRef.current += 1;
+      supabase.removeChannel(channel);
+    };
+  }, [fetchLaudos, profile?.clinica_id]);
 
   const getExamesLiberados = (c: any) =>
     (c.resultados_laboratorio ?? []).filter((r: any) => r.liberado === true);
@@ -450,8 +655,8 @@ export default function LaudosLab() {
     (c.resultados_laboratorio ?? []).filter((r: any) => r.liberado !== true);
   const hasAlterado = (c: any) =>
     (c.resultados_laboratorio ?? []).some((r: any) => {
-      const num = parseFloat(r.resultado);
-      if (isNaN(num)) return false;
+      const num = parseResultadoNumerico(r.resultado);
+      if (num === null) return false;
       return (r.valor_referencia_min != null && num < r.valor_referencia_min) ||
              (r.valor_referencia_max != null && num > r.valor_referencia_max);
     });
@@ -462,8 +667,7 @@ export default function LaudosLab() {
         const q = normalize(search.trim());
         const nomes = (c.resultados_laboratorio ?? []).map((r: any) => normalize(r.parametro ?? ''));
         if (
-          !normalize(c.pacientes?.nome ?? '').includes(q) &&
-          !normalize(c.pacientes?.cpf ?? '').includes(q) &&
+          !(c.pacientes && pacienteCorresponde(c.pacientes, search)) &&
           !normalize(c.codigo_amostra ?? '').includes(q) &&
           !nomes.some((n: string) => n.includes(q))
         ) return false;
@@ -481,11 +685,22 @@ export default function LaudosLab() {
       return true;
     });
   }, [coletas, search, statusFilter]);
+  const limparFiltros = () => {
+    setSearch('');
+    setStatusFilter('todos');
+  };
 
   const totalLiberados = coletas.filter(c => getExamesLiberados(c).length > 0 && getExamesPendentes(c).length === 0).length;
   const totalParciais = coletas.filter(c => getExamesLiberados(c).length > 0 && getExamesPendentes(c).length > 0).length;
   const totalPendentes = coletas.filter(c => getExamesPendentes(c).length > 0 && getExamesLiberados(c).length === 0).length;
   const totalAlterados = coletas.filter(c => hasAlterado(c)).length;
+
+  if (loading) {
+    return <div className="space-y-6"><Skeleton className="h-10 w-64" /><div className="grid grid-cols-2 md:grid-cols-5 gap-3">{Array.from({ length: 5 }, (_, i) => <Skeleton key={i} className="h-24" />)}</div><Skeleton className="h-96" /></div>;
+  }
+  if (loadError) {
+    return <ErrorState title="Não foi possível carregar os laudos" error={loadError} onRetry={() => { setLoading(true); void fetchLaudos(); }} />;
+  }
 
   return (
     <div className="space-y-6 pb-8">
@@ -500,7 +715,7 @@ export default function LaudosLab() {
             Validação e liberação de resultados · {coletas.length} laudo(s)
           </p>
         </div>
-        <Button variant="outline" className="gap-2" onClick={fetchLaudos}>
+        <Button variant="outline" className="gap-2" disabled={loading} onClick={fetchLaudos}>
           <RefreshCw className="h-4 w-4" /> Atualizar
         </Button>
       </div>
@@ -515,9 +730,19 @@ export default function LaudosLab() {
           { label: 'Alterados', value: totalAlterados, icon: AlertTriangle, color: 'text-destructive', filter: 'alterado' },
         ].map(s => (
           <Card key={s.label} className={cn(
-            'cursor-pointer hover:shadow-sm transition-all',
+            'cursor-pointer hover:shadow-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
             statusFilter === s.filter && 'ring-2 ring-primary'
-          )} onClick={() => setStatusFilter(statusFilter === s.filter ? 'todos' : s.filter)}>
+          )}
+            role="button"
+            tabIndex={0}
+            aria-pressed={statusFilter === s.filter}
+            onClick={() => setStatusFilter(statusFilter === s.filter ? 'todos' : s.filter)}
+            onKeyDown={event => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                setStatusFilter(statusFilter === s.filter ? 'todos' : s.filter);
+              }
+            }}>
             <CardContent className="pt-4 pb-3 flex items-center gap-3">
               <s.icon className={cn('h-5 w-5 shrink-0', s.color)} />
               <div>
@@ -532,7 +757,7 @@ export default function LaudosLab() {
       {/* Search */}
       <div className="relative max-w-sm">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input className="pl-9" placeholder="Nome, CPF, código ou exame..."
+        <Input className="pl-9" placeholder="Nome, CPF, telefone, código ou exame..."
           value={search} onChange={e => setSearch(e.target.value)} />
       </div>
 
@@ -544,7 +769,17 @@ export default function LaudosLab() {
           ) : filtradas.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-center">
               <FileText className="h-12 w-12 text-muted-foreground/30 mb-4" />
-              <p className="text-muted-foreground font-medium">Nenhum laudo encontrado</p>
+              <p className="text-muted-foreground font-medium">
+                {coletas.length > 0
+                  ? 'Nenhum laudo corresponde à busca e ao status selecionados'
+                  : hasOlderLaudos
+                    ? 'Nenhum laudo encontrado entre os registros carregados'
+                    : 'Ainda não há laudos registrados'}
+              </p>
+              {coletas.length > 0 && (search.trim() || statusFilter !== 'todos') && (
+                <Button variant="link" onClick={limparFiltros} className="mt-2 h-11">Limpar busca e status</Button>
+              )}
+              {coletas.length === 0 && hasOlderLaudos && <p className="mt-1 text-sm text-muted-foreground">Carregue laudos anteriores para ampliar a busca.</p>}
             </div>
           ) : (
             <motion.table variants={stagger} initial="hidden" animate="visible" className="w-full text-sm">
@@ -581,7 +816,7 @@ export default function LaudosLab() {
                         <div className="flex items-center gap-1.5">
                           {c.urgente && <AlertTriangle className="h-3 w-3 text-destructive shrink-0" />}
                           <div>
-                            <p className="font-medium">{c.pacientes?.nome ?? '—'}</p>
+                            <p className="font-medium">{c.pacientes?.nome_social?.trim() || c.pacientes?.nome || '—'}</p>
                             <p className="text-[11px] text-muted-foreground">{c.pacientes?.cpf ?? ''}</p>
                           </div>
                         </div>
@@ -629,6 +864,30 @@ export default function LaudosLab() {
           )}
         </CardContent>
       </Card>
+
+      {olderLaudosError && (
+        <ErrorState
+          compact
+          title="Não foi possível carregar laudos anteriores"
+          error={olderLaudosError}
+          onRetry={() => void carregarLaudosAntigos()}
+          retryLabel="Tentar novamente"
+        />
+      )}
+      {hasOlderLaudos && (
+        <div className="flex flex-col items-center gap-2">
+          <p className="text-xs text-muted-foreground">{coletas.length} laudo(s) carregado(s)</p>
+          <Button
+            variant="outline"
+            onClick={() => void carregarLaudosAntigos()}
+            disabled={loadingOlderLaudos}
+            className="gap-2"
+          >
+            {loadingOlderLaudos && <Loader2 className="h-4 w-4 animate-spin" />}
+            {loadingOlderLaudos ? 'Carregando...' : 'Carregar laudos anteriores'}
+          </Button>
+        </div>
+      )}
 
       <LaudoDetalheModal coletaId={viewingId} onClose={() => setViewingId(null)} onUpdate={fetchLaudos} />
     </div>

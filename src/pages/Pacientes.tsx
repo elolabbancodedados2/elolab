@@ -1,6 +1,6 @@
 import { nomeMedico } from '@/lib/formatters';
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link as RouterLink, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Plus, Search, Edit, Trash2, Eye, Tag, Link, Loader2, MapPin,
@@ -12,12 +12,12 @@ import {
   Thermometer, Scale, Ruler, Paperclip, Shield, Clipboard,
   Clock, TestTube, DollarSign, CalendarPlus, RefreshCw, Wallet,
 } from 'lucide-react';
-import { format } from 'date-fns';
+import { addDays, format, subYears } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -33,22 +33,25 @@ import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { toast } from 'sonner';
 import { mensagemDeErro } from '@/lib/erros';
-import { usePacientes } from '@/hooks/useSupabaseData';
 import { useSupabaseQuery } from '@/hooks/useSupabaseData';
+import { useBuscaPacientes } from '@/hooks/useBuscaPacientes';
+import { useQuery } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { EtiquetaPaciente } from '@/components/EtiquetaPaciente';
 import { PatientStats, PatientListTable } from '@/components/patients';
 import { PatientPhoto, PatientTimeline, VitalSignsChart, AllergyAlert, Cid10Search, ClinicalProtocols, AnexosProntuario, DigitalSignature } from '@/components/clinical';
 import { AutorizacaoConvenioModal } from '@/components/AutorizacaoConvenioModal';
 import { Skeleton } from '@/components/ui/skeleton';
+import { ErrorState } from '@/components/ErrorState';
 import { supabase } from '@/integrations/supabase/client';
 import { Paciente } from '@/types';
 import { cn, sanitizeText } from '@/lib/utils';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { useCurrentMedico } from '@/hooks/useCurrentMedico';
 import { gerarProntuarioPDF, downloadPDF, openPDF } from '@/lib/pdfGenerator';
-import { ageFromDateOnly, parseDateOnly, todayDateOnly } from '@/lib/dateOnly';
-import { pacienteCorresponde } from '@/lib/buscaPaciente';
+import { ageFromDateOnly, isValidDateOnly, parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { logAudit } from '@/lib/auditTrail';
+import { cpfValido } from '@/lib/importacao/campos';
 
 interface PacienteFormData {
   nome: string;
@@ -111,6 +114,7 @@ const ESTADO_CIVIL_OPTIONS = [
 ];
 
 const TIPO_SANGUINEO_OPTIONS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
+const TAMANHO_PAGINA_HISTORICO = 50;
 
 const ESTADOS_BR = [
   'AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA',
@@ -119,12 +123,27 @@ const ESTADOS_BR = [
 
 const isMinor = (dataNascimento: string): boolean => {
   if (!dataNascimento) return false;
-  return ageFromDateOnly(dataNascimento) < 18;
+  const idade = ageFromDateOnly(dataNascimento);
+  return idade >= 0 && idade < 18;
+};
+
+const mascararCpf = (valor: string): string => {
+  const digits = valor.replace(/\D/g, '').slice(0, 11);
+  if (digits.length > 9) return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`;
+  if (digits.length > 6) return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6)}`;
+  if (digits.length > 3) return `${digits.slice(0, 3)}.${digits.slice(3)}`;
+  return digits;
 };
 
 const calcularIdade = (dataNascimento: string | null) => {
   if (!dataNascimento) return 0;
   return ageFromDateOnly(dataNascimento);
+};
+
+const minutosDaHora = (hora: string | null | undefined): number | null => {
+  if (!hora || !/^(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/.test(hora)) return null;
+  const [h, m] = hora.split(':').map(Number);
+  return h * 60 + m;
 };
 
 export default function Pacientes() {
@@ -133,6 +152,7 @@ export default function Pacientes() {
   const [isViewOpen, setIsViewOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [selectedPacienteId, setSelectedPacienteId] = useState<string | null>(null);
+  const [selectedPacienteUpdatedAt, setSelectedPacienteUpdatedAt] = useState<string | null>(null);
   const [formData, setFormData] = useState<PacienteFormData>(initialFormData);
   const [isEtiquetaOpen, setIsEtiquetaOpen] = useState(false);
   const [viewTab, setViewTab] = useState('dados');
@@ -142,26 +162,18 @@ export default function Pacientes() {
   // contexto do card) e de outros lugares que queiram apontar direto.
   const [searchParams, setSearchParams] = useSearchParams();
   const deepLinkAplicadoRef = useRef<string | null>(null);
-  useEffect(() => {
-    const pid = searchParams.get('paciente');
-    const tab = searchParams.get('tab');
-    if (!pid || deepLinkAplicadoRef.current === pid) return;
-    deepLinkAplicadoRef.current = pid;
-    setSelectedPacienteId(pid);
-    setIsViewOpen(true);
-    if (tab) setViewTab(tab);
-    // Limpa a URL para não repetir a ação se o usuário navegar de novo.
-    const params = new URLSearchParams(searchParams);
-    params.delete('paciente');
-    params.delete('tab');
-    setSearchParams(params, { replace: true });
-  }, [searchParams, setSearchParams]);
 
   /** Modal de guias/senhas de autorização do convênio do paciente. */
   const [showAutorizacao, setShowAutorizacao] = useState(false);
+  const [linkPortalGerado, setLinkPortalGerado] = useState<{ nome: string; url: string } | null>(null);
   const [cepLoading, setCepLoading] = useState(false);
+  const [cepError, setCepError] = useState('');
+  const cepLookupRef = useRef(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const pacienteSaveLockRef = useRef(false);
+  const pacienteDeleteLockRef = useRef(false);
+  const exameSaveLockRef = useRef(false);
   const [showFilters, setShowFilters] = useState(false);
   const [filterSexo, setFilterSexo] = useState<string>('todos');
   const [filterConvenio, setFilterConvenio] = useState<string>('todos');
@@ -170,6 +182,9 @@ export default function Pacientes() {
   // Prontuário inline state
   const [prontuarioList, setProntuarioList] = useState<any[]>([]);
   const [loadingProntuarios, setLoadingProntuarios] = useState(false);
+  const [loadingMaisProntuarios, setLoadingMaisProntuarios] = useState(false);
+  const [temMaisProntuarios, setTemMaisProntuarios] = useState(false);
+  const [prontuariosLoadError, setProntuariosLoadError] = useState<unknown>(null);
   const [activeProntuario, setActiveProntuario] = useState<any>(null);
   const [isEditingProntuario, setIsEditingProntuario] = useState(false);
   const [prontuarioForm, setProntuarioForm] = useState<Record<string, any>>({});
@@ -180,17 +195,24 @@ export default function Pacientes() {
   // Agendamentos inline state
   const [agendamentosList, setAgendamentosList] = useState<any[]>([]);
   const [loadingAgendamentos, setLoadingAgendamentos] = useState(false);
+  const [loadingMaisAgendamentos, setLoadingMaisAgendamentos] = useState(false);
+  const [temMaisAgendamentos, setTemMaisAgendamentos] = useState(false);
+  const [agendamentosLoadError, setAgendamentosLoadError] = useState<unknown>(null);
   const [showAgendamentoForm, setShowAgendamentoForm] = useState(false);
   const [agendamentoForm, setAgendamentoForm] = useState<Record<string, string>>({});
   const [savingAgendamento, setSavingAgendamento] = useState(false);
   // Exames inline state
   const [examesList, setExamesList] = useState<any[]>([]);
   const [loadingExames, setLoadingExames] = useState(false);
+  const [loadingMaisExames, setLoadingMaisExames] = useState(false);
+  const [temMaisExames, setTemMaisExames] = useState(false);
+  const [examesLoadError, setExamesLoadError] = useState<unknown>(null);
   const [showExameForm, setShowExameForm] = useState(false);
   const [exameForm, setExameForm] = useState<Record<string, string>>({});
   const [savingExame, setSavingExame] = useState(false);
 
   const { profile: authProfile, hasRole, isAdmin } = useSupabaseAuth();
+  const queryClient = useQueryClient();
 
   // A aba Prontuário grava em `prontuarios` e `prescricoes`, e o RLS das duas
   // aceita SÓ admin e médico — nem enfermagem. A rota /pacientes admite recepção
@@ -198,14 +220,79 @@ export default function Pacientes() {
   // o prontuário e perdia tudo no botão. Melhor não oferecer do que recusar
   // depois de a pessoa digitar.
   const podeVerProntuario = isAdmin() || hasRole('medico');
+  const exigeResponsavel = formData.is_menor || isMinor(formData.data_nascimento);
 
   // Gerar link do portal grava em paciente_portal_tokens, cujo RLS exige
   // can_manage_data — admin ou recepção. Enfermagem não passa.
   const podeGerarLinkPortal = isAdmin() || hasRole('recepcao');
   const { medicoId, isMedicoOnly } = useCurrentMedico();
-  const { data: pacientes = [], isLoading, refetch } = usePacientes();
-  const { data: convenios = [] } = useSupabaseQuery<any>('convenios', { orderBy: { column: 'nome', ascending: true } });
-  const { data: medicos = [] } = useSupabaseQuery<any>('medicos', { orderBy: { column: 'nome', ascending: true } });
+  const [paginaPacientes, setPaginaPacientes] = useState(0);
+  const limiteBusca = (paginaPacientes + 1) * 50 + 1;
+  const hoje = todaySaoPauloDateOnly();
+  const dataLimite = (anos: number) => format(subYears(parseDateOnly(hoje), anos), 'yyyy-MM-dd');
+  const filtrosBusca = useMemo(() => {
+    let nascimentoApos: string | undefined;
+    let nascimentoAte: string | undefined;
+    if (filterIdade === 'crianca') { nascimentoApos = format(addDays(subYears(parseDateOnly(hoje), 12), 1), 'yyyy-MM-dd'); nascimentoAte = hoje; }
+    if (filterIdade === 'adolescente') { nascimentoApos = format(addDays(subYears(parseDateOnly(hoje), 18), 1), 'yyyy-MM-dd'); nascimentoAte = dataLimite(12); }
+    if (filterIdade === 'adulto') { nascimentoApos = format(addDays(subYears(parseDateOnly(hoje), 60), 1), 'yyyy-MM-dd'); nascimentoAte = dataLimite(18); }
+    if (filterIdade === 'idoso') nascimentoAte = dataLimite(60);
+    return { sexo: filterSexo === 'todos' ? undefined : filterSexo, convenio: filterConvenio === 'todos' ? undefined : filterConvenio, nascimentoApos, nascimentoAte };
+  }, [filterSexo, filterConvenio, filterIdade, hoje]);
+  const { data: resultadoBusca, isLoading, isFetching: isBuscandoPacientes, error: pacientesError, refetch } = useBuscaPacientes(searchTerm, { limite: limiteBusca, filtros: filtrosBusca });
+  const resumoPacientes = resultadoBusca?.pacientes ?? [];
+  const inicioPagina = paginaPacientes * 50;
+  const resumosVisiveis = resumoPacientes.slice(inicioPagina, inicioPagina + 50);
+  const idsVisiveis = resumosVisiveis.map((p) => p.id);
+  const { data: pacientes = [], error: detalhesErro, isLoading: carregandoDetalhes } = useQuery({
+    queryKey: ['pacientes-lista-detalhes', authProfile?.clinica_id, idsVisiveis],
+    enabled: !!authProfile?.clinica_id && idsVisiveis.length > 0,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).from('pacientes').select('*').eq('clinica_id', authProfile!.clinica_id).in('id', idsVisiveis);
+      if (error) throw error;
+      const porId = new Map((data ?? []).map((p: any) => [p.id, p]));
+      return idsVisiveis.map((id) => porId.get(id)).filter(Boolean) as any[];
+    },
+    staleTime: 30_000,
+  });
+  const { data: resumoEstatisticas, error: erroEstatisticas, isLoading: carregandoEstatisticas, refetch: refazerEstatisticas } = useQuery({
+    queryKey: ['pacientes-estatisticas', authProfile?.clinica_id],
+    enabled: !!authProfile?.clinica_id,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).rpc('resumo_pacientes_clinica', { p_hoje: hoje });
+      if (error) throw error;
+      return (Array.isArray(data) ? data[0] : data) as { total: number; com_convenio: number; menores: number; com_alergias: number };
+    },
+    staleTime: 60_000,
+  });
+  const deepLinkPacienteId = searchParams.get('paciente');
+  const { data: pacienteDeepLink, isLoading: carregandoDeepLink, error: erroDeepLink, refetch: refazerDeepLink } = useQuery({
+    queryKey: ['paciente-deep-link', authProfile?.clinica_id, deepLinkPacienteId],
+    enabled: !!authProfile?.clinica_id && !!deepLinkPacienteId,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).from('pacientes').select('*').eq('clinica_id', authProfile!.clinica_id).eq('id', deepLinkPacienteId).maybeSingle();
+      if (error) throw error;
+      return data as any | null;
+    },
+  });
+  const { data: pacienteSelecionadoDetalhe } = useQuery({
+    queryKey: ['paciente-lista-selecionado', authProfile?.clinica_id, selectedPacienteId],
+    enabled: !!authProfile?.clinica_id && !!selectedPacienteId,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).from('pacientes').select('*').eq('clinica_id', authProfile!.clinica_id).eq('id', selectedPacienteId).maybeSingle();
+      if (error) throw error;
+      return data as any | null;
+    },
+  });
+  const { data: convenios = [], isLoading: carregandoConvenios, error: conveniosError, refetch: refetchConvenios } = useSupabaseQuery<any>('convenios', { orderBy: { column: 'nome', ascending: true } });
+  const conveniosAtivos = useMemo(() => convenios.filter((convenio: any) => convenio.ativo !== false), [convenios]);
+  const convenioSelecionado = formData.convenio_id && formData.convenio_id !== 'pending'
+    ? convenios.find((convenio: any) => convenio.id === formData.convenio_id)
+    : null;
+  const conveniosDisponiveisNoFormulario = convenioSelecionado && convenioSelecionado.ativo === false
+    ? [...conveniosAtivos, convenioSelecionado]
+    : conveniosAtivos;
+  const { data: medicos = [], error: medicosError, refetch: refetchMedicos } = useSupabaseQuery<any>('medicos', { orderBy: { column: 'nome', ascending: true } });
 
   /**
    * Guarda qual paciente está aberto AGORA.
@@ -217,6 +304,7 @@ export default function Pacientes() {
    * reproduzir depois, mas que causa dano se alguém agir sobre o que viu.
    */
   const pacienteEmFococRef = useRef<string | null>(null);
+  const edicaoPacienteSolicitadaRef = useRef(0);
 
   // Load prontuários when patient changes.
   //
@@ -224,71 +312,116 @@ export default function Pacientes() {
   // lista vinha vazia e a tela dizia "nenhum registro". Um paciente com dez
   // anos de histórico aparecia como se nunca tivesse sido atendido — e o
   // médico decidia em cima disso.
-  const loadProntuarios = useCallback(async (pacienteId: string) => {
-    setLoadingProntuarios(true);
+  const loadProntuarios = useCallback(async (pacienteId: string, offset = 0) => {
+    const carregarMais = offset > 0;
+    if (carregarMais) setLoadingMaisProntuarios(true);
+    else setLoadingProntuarios(true);
+    setProntuariosLoadError(null);
     const { data, error } = await supabase
       .from('prontuarios')
       .select('id, data, queixa_principal, hipotese_diagnostica, diagnostico_principal, conduta, sinais_vitais, plano_terapeutico, historia_doenca_atual, historia_patologica_pregressa, historia_familiar, historia_social, revisao_sistemas, alergias_relatadas, medicamentos_em_uso, exames_fisicos, exame_cabeca_pescoco, exame_torax, exame_abdomen, exame_membros, exame_neurologico, exame_pele, orientacoes_paciente, observacoes_internas, diagnosticos_secundarios, medico_id, paciente_id, medicos(nome, crm, especialidade)')
       .eq('paciente_id', pacienteId)
       .order('data', { ascending: false })
-      .limit(50);
-    if (pacienteEmFococRef.current !== pacienteId) return; // resposta velha
-    if (error) {
-      toast.error('Não foi possível carregar o histórico de prontuários.', {
-        description: `${error.message}. A lista abaixo pode estar incompleta — não trate como "sem histórico".`,
-        duration: 10000,
-      });
+      .order('id', { ascending: false })
+      .range(offset, offset + TAMANHO_PAGINA_HISTORICO - 1);
+    if (pacienteEmFococRef.current !== pacienteId) {
+      if (carregarMais) setLoadingMaisProntuarios(false); else setLoadingProntuarios(false);
+      return; // resposta velha
     }
-    setProntuarioList(data || []);
-    setLoadingProntuarios(false);
+    if (error) {
+      if (carregarMais) toast.error('Não foi possível carregar as evoluções anteriores.', { description: mensagemDeErro(error) });
+      else setProntuariosLoadError(error);
+    } else {
+      setProntuarioList(atual => {
+        if (!carregarMais) return data || [];
+        const ids = new Set(atual.map(item => item.id));
+        return [...atual, ...(data || []).filter(item => !ids.has(item.id))];
+      });
+      setTemMaisProntuarios((data || []).length === TAMANHO_PAGINA_HISTORICO);
+    }
+    if (carregarMais) setLoadingMaisProntuarios(false); else setLoadingProntuarios(false);
   }, []);
 
-  const loadAgendamentos = useCallback(async (pacienteId: string) => {
-    setLoadingAgendamentos(true);
+  const loadAgendamentos = useCallback(async (pacienteId: string, offset = 0) => {
+    const carregarMais = offset > 0;
+    if (carregarMais) setLoadingMaisAgendamentos(true);
+    else setLoadingAgendamentos(true);
+    setAgendamentosLoadError(null);
     const { data, error } = await supabase
       .from('agendamentos')
       .select('id, data, hora_inicio, hora_fim, status, tipo, observacoes, medico_id, medicos(nome, crm, especialidade), salas(nome)')
       .eq('paciente_id', pacienteId)
       .order('data', { ascending: false })
-      .limit(50);
-    if (pacienteEmFococRef.current !== pacienteId) return;
-    if (error) {
-      toast.error('Não foi possível carregar as consultas deste paciente.', {
-        description: `${error.message}. A lista pode estar incompleta.`,
-      });
+      .order('id', { ascending: false })
+      .range(offset, offset + TAMANHO_PAGINA_HISTORICO - 1);
+    if (pacienteEmFococRef.current !== pacienteId) {
+      if (carregarMais) setLoadingMaisAgendamentos(false); else setLoadingAgendamentos(false);
+      return;
     }
-    setAgendamentosList(data || []);
-    setLoadingAgendamentos(false);
+    if (error) {
+      if (carregarMais) toast.error('Não foi possível carregar as consultas anteriores.', { description: mensagemDeErro(error) });
+      else setAgendamentosLoadError(error);
+    } else {
+      setAgendamentosList(atual => {
+        if (!carregarMais) return data || [];
+        const ids = new Set(atual.map(item => item.id));
+        return [...atual, ...(data || []).filter(item => !ids.has(item.id))];
+      });
+      setTemMaisAgendamentos((data || []).length === TAMANHO_PAGINA_HISTORICO);
+    }
+    if (carregarMais) setLoadingMaisAgendamentos(false); else setLoadingAgendamentos(false);
   }, []);
 
-  const loadExames = useCallback(async (pacienteId: string) => {
-    setLoadingExames(true);
+  const loadExames = useCallback(async (pacienteId: string, offset = 0) => {
+    const carregarMais = offset > 0;
+    if (carregarMais) setLoadingMaisExames(true);
+    else setLoadingExames(true);
+    setExamesLoadError(null);
     const { data, error } = await supabase
       .from('exames')
       .select('id, tipo_exame, status, data_solicitacao, data_realizacao, resultado, observacoes, medico_solicitante_id, medicos:medico_solicitante_id(nome, crm)')
       .eq('paciente_id', pacienteId)
       .order('data_solicitacao', { ascending: false })
-      .limit(50);
-    if (pacienteEmFococRef.current !== pacienteId) return;
-    if (error) {
-      toast.error('Não foi possível carregar os exames deste paciente.', {
-        description: `${error.message}. A lista pode estar incompleta.`,
-      });
+      .order('id', { ascending: false })
+      .range(offset, offset + TAMANHO_PAGINA_HISTORICO - 1);
+    if (pacienteEmFococRef.current !== pacienteId) {
+      if (carregarMais) setLoadingMaisExames(false); else setLoadingExames(false);
+      return;
     }
-    setExamesList(data || []);
-    setLoadingExames(false);
+    if (error) {
+      if (carregarMais) toast.error('Não foi possível carregar os exames anteriores.', { description: mensagemDeErro(error) });
+      else setExamesLoadError(error);
+    } else {
+      setExamesList(atual => {
+        if (!carregarMais) return data || [];
+        const ids = new Set(atual.map(item => item.id));
+        return [...atual, ...(data || []).filter(item => !ids.has(item.id))];
+      });
+      setTemMaisExames((data || []).length === TAMANHO_PAGINA_HISTORICO);
+    }
+    if (carregarMais) setLoadingMaisExames(false); else setLoadingExames(false);
   }, []);
 
   // Reset state when view opens
   const handleViewWithProntuario = useCallback((paciente: any) => {
+    edicaoPacienteSolicitadaRef.current += 1;
     setIsFormOpen(false);
     pacienteEmFococRef.current = paciente.id; // antes de disparar as cargas
     setSelectedPacienteId(paciente.id);
     // Limpa as listas do paciente anterior: sem isso, entre abrir a ficha e a
     // resposta chegar, a tela mostra os dados de quem estava aberto antes.
     setProntuarioList([]);
+    setTemMaisProntuarios(false);
+    setLoadingMaisProntuarios(false);
+    setProntuariosLoadError(null);
     setAgendamentosList([]);
+    setTemMaisAgendamentos(false);
+    setLoadingMaisAgendamentos(false);
+    setAgendamentosLoadError(null);
     setExamesList([]);
+    setTemMaisExames(false);
+    setLoadingMaisExames(false);
+    setExamesLoadError(null);
     setViewTab('dados');
     setProntuarioTab('lista');
     setActiveProntuario(null);
@@ -301,12 +434,46 @@ export default function Pacientes() {
     loadExames(paciente.id);
   }, [loadProntuarios, loadAgendamentos, loadExames]);
 
+  useEffect(() => {
+    const pid = searchParams.get('paciente');
+    if (!pid) {
+      deepLinkAplicadoRef.current = null;
+      return;
+    }
+    if (isLoading || pacientesError || erroDeepLink || (deepLinkPacienteId && carregandoDeepLink)) return;
+
+    const tab = searchParams.get('tab') || 'dados';
+    const linkKey = `${pid}:${tab}`;
+    if (deepLinkAplicadoRef.current === linkKey) return;
+
+    const paciente = pacienteDeepLink;
+    if (!paciente) {
+      deepLinkAplicadoRef.current = linkKey;
+      toast.error('Não foi possível abrir a ficha deste paciente.', {
+        description: 'O cadastro não foi encontrado ou você não tem acesso a ele.',
+      });
+    } else {
+      const abasDisponiveis = ['dados', 'consultas', 'exames', 'historico', 'sinais', 'endereco', 'financeiro', 'lgpd'];
+      if (podeVerProntuario) abasDisponiveis.push('prontuario');
+      handleViewWithProntuario(paciente);
+      setViewTab(abasDisponiveis.includes(tab) ? tab : 'dados');
+      deepLinkAplicadoRef.current = linkKey;
+    }
+
+    // Mantém a URL intacta enquanto a lista carrega; limpa apenas depois de
+    // abrir a ficha ou informar que o paciente não está acessível.
+    const params = new URLSearchParams(searchParams);
+    params.delete('paciente');
+    params.delete('tab');
+    setSearchParams(params, { replace: true });
+  }, [searchParams, setSearchParams, isLoading, pacientesError, erroDeepLink, pacienteDeepLink, deepLinkPacienteId, carregandoDeepLink, podeVerProntuario, handleViewWithProntuario]);
+
   const handleNewProntuario = () => {
     const paciente = pacientes.find(p => p.id === selectedPacienteId);
     setProntuarioForm({
       paciente_id: selectedPacienteId,
       medico_id: medicoId || authProfile?.id || '',
-      data: format(new Date(), 'yyyy-MM-dd'),
+      data: todaySaoPauloDateOnly(),
       queixa_principal: '',
       historia_doenca_atual: '',
       historia_patologica_pregressa: '',
@@ -388,8 +555,13 @@ export default function Pacientes() {
 
       let prontuarioId = activeProntuario?.id;
       if (activeProntuario?.id) {
-        const { error } = await supabase.from('prontuarios').update(payload).eq('id', activeProntuario.id);
+        const { data, error } = await supabase.from('prontuarios')
+          .update(payload)
+          .eq('id', activeProntuario.id)
+          .select('id')
+          .maybeSingle();
         if (error) throw error;
+        if (!data) throw new Error('O prontuário não foi localizado para atualização. Atualize o histórico e tente novamente.');
       } else {
         if (!authProfile?.clinica_id) {
           throw new Error('Clínica não identificada. Recarregue a página e tente novamente.');
@@ -425,7 +597,7 @@ export default function Pacientes() {
               duracao: presc.duracao || null,
               quantidade: presc.quantidade || null,
               observacoes: presc.observacoes || null,
-              data_emissao: todayDateOnly(),
+              data_emissao: todaySaoPauloDateOnly(),
               tipo: 'simples',
             })),
           }
@@ -477,12 +649,25 @@ export default function Pacientes() {
   };
 
   const buscarCep = useCallback(async (cep: string) => {
+    const lookupId = ++cepLookupRef.current;
     const cleaned = cep.replace(/\D/g, '');
-    if (cleaned.length !== 8) return;
+    if (!cleaned) {
+      setCepError('');
+      setCepLoading(false);
+      return;
+    }
+    if (cleaned.length !== 8) {
+      setCepError('Informe os 8 dígitos do CEP para consultar o endereço.');
+      setCepLoading(false);
+      return;
+    }
     setCepLoading(true);
+    setCepError('');
     try {
       const res = await fetch(`https://viacep.com.br/ws/${cleaned}/json/`);
+      if (!res.ok) throw new Error('Serviço de consulta de CEP indisponível.');
       const data = await res.json();
+      if (lookupId !== cepLookupRef.current) return;
       if (!data.erro) {
         setFormData(prev => ({
           ...prev,
@@ -491,74 +676,64 @@ export default function Pacientes() {
           cidade: data.localidade || prev.cidade,
           estado: data.uf || prev.estado,
         }));
+      } else {
+        setCepError('CEP não encontrado. Confira os números ou preencha o endereço manualmente.');
       }
-    } catch { /* silently fail */ } finally {
-      setCepLoading(false);
+    } catch {
+      if (lookupId === cepLookupRef.current) {
+        setCepError('Não foi possível consultar o CEP. Você pode preencher o endereço manualmente.');
+      }
+    } finally {
+      if (lookupId === cepLookupRef.current) setCepLoading(false);
     }
   }, []);
 
-  const selectedPaciente = useMemo(
-    () => pacientes.find((p) => p.id === selectedPacienteId),
-    [pacientes, selectedPacienteId]
-  );
+  const filteredPacientes = pacientes;
+  const selectedPaciente = pacienteSelecionadoDetalhe ?? pacientes.find((p) => p.id === selectedPacienteId) ?? pacienteDeepLink ?? null;
+  const stats = {
+    total: resumoEstatisticas?.total ?? '—',
+    comConvenio: resumoEstatisticas?.com_convenio ?? '—',
+    menores: resumoEstatisticas?.menores ?? '—',
+    comAlergias: resumoEstatisticas?.com_alergias ?? '—',
+  };
+  const temMaisPacientes = resumoPacientes.length > inicioPagina + 50;
 
-  const filteredPacientes = useMemo(() => {
-    let result = pacientes;
-
-    // Text search — ignora acento, caixa e máscara (ver src/lib/buscaPaciente.ts).
-    // Antes comparava texto cru: quem digitasse o CPF sem pontos, como está no
-    // documento, não encontrava ninguém e acabava cadastrando o paciente de novo.
-    if (searchTerm) {
-      result = result.filter(p => pacienteCorresponde(p, searchTerm));
-    }
-
-    // Sexo filter
-    if (filterSexo !== 'todos') {
-      result = result.filter(p => p.sexo === filterSexo);
-    }
-
-    // Convenio filter
-    if (filterConvenio === 'particular') {
-      result = result.filter(p => !p.convenio_id);
-    } else if (filterConvenio !== 'todos') {
-      result = result.filter(p => p.convenio_id === filterConvenio);
-    }
-
-    // Age filter
-    if (filterIdade === 'crianca') {
-      result = result.filter(p => calcularIdade(p.data_nascimento) < 12);
-    } else if (filterIdade === 'adolescente') {
-      result = result.filter(p => { const a = calcularIdade(p.data_nascimento); return a >= 12 && a < 18; });
-    } else if (filterIdade === 'adulto') {
-      result = result.filter(p => { const a = calcularIdade(p.data_nascimento); return a >= 18 && a < 60; });
-    } else if (filterIdade === 'idoso') {
-      result = result.filter(p => calcularIdade(p.data_nascimento) >= 60);
-    }
-
-    return result;
-  }, [pacientes, searchTerm, filterSexo, filterConvenio, filterIdade]);
-
-  // Stats
-  const stats = useMemo(() => {
-    const total = pacientes.length;
-    const comConvenio = pacientes.filter(p => p.convenio_id).length;
-    const menores = pacientes.filter(p => p.data_nascimento && calcularIdade(p.data_nascimento) < 18).length;
-    const comAlergias = pacientes.filter(p => p.alergias && p.alergias.length > 0).length;
-    return { total, comConvenio, menores, comAlergias };
-  }, [pacientes]);
-
-  const activeFilters = [filterSexo !== 'todos', filterConvenio !== 'todos', filterIdade !== 'todos'].filter(Boolean).length;
+  const activeFilters = [Boolean(searchTerm.trim()), filterSexo !== 'todos', filterConvenio !== 'todos', filterIdade !== 'todos'].filter(Boolean).length;
+  const atualizarListasPacientes = () => {
+    void queryClient.invalidateQueries({ queryKey: ['busca-pacientes'] });
+    void queryClient.invalidateQueries({ queryKey: ['pacientes-lista-detalhes'] });
+    void queryClient.invalidateQueries({ queryKey: ['paciente-lista-selecionado'] });
+    void queryClient.invalidateQueries({ queryKey: ['paciente-deep-link'] });
+    void queryClient.invalidateQueries({ queryKey: ['pacientes-estatisticas'] });
+  };
+  const clearPatientFilters = () => {
+    setPaginaPacientes(0);
+    setSearchTerm('');
+    setFilterSexo('todos');
+    setFilterConvenio('todos');
+    setFilterIdade('todos');
+  };
 
   const handleNew = () => {
+    edicaoPacienteSolicitadaRef.current += 1;
+    cepLookupRef.current += 1;
+    setCepLoading(false);
+    setCepError('');
     setSelectedPacienteId(null);
+    setSelectedPacienteUpdatedAt(null);
     setFormData(initialFormData);
     setFormSection('pessoal');
     setIsFormOpen(true);
   };
 
   const handleEdit = async (paciente: any) => {
+    const edicaoSolicitada = ++edicaoPacienteSolicitadaRef.current;
+    cepLookupRef.current += 1;
+    setCepLoading(false);
+    setCepError('');
     setIsViewOpen(false);
     setSelectedPacienteId(paciente.id);
+    setSelectedPacienteUpdatedAt(paciente.updated_at || null);
 
     // As comorbidades vivem em tabela própria. Só as ativas entram no campo —
     // as inativas ficam no histórico e aparecem na linha do tempo do paciente.
@@ -569,6 +744,7 @@ export default function Pacientes() {
       .eq('ativo', true)
       .order('created_at');
 
+    if (edicaoPacienteSolicitadaRef.current !== edicaoSolicitada) return;
     if (erroComorbidades) {
       // Sem isto, um erro aqui abriria o formulário com o campo vazio e o
       // salvamento apagaria as comorbidades que já existiam.
@@ -584,9 +760,9 @@ export default function Pacientes() {
       telefone: paciente.telefone || '',
       email: paciente.email || '',
       sexo: paciente.sexo || '',
-      estado_civil: '',
-      profissao: '',
-      tipo_sanguineo: '',
+      estado_civil: paciente.estado_civil || '',
+      profissao: paciente.profissao || '',
+      tipo_sanguineo: paciente.tipo_sanguineo || '',
       cep: paciente.cep || '',
       logradouro: paciente.logradouro || '',
       numero: paciente.numero || '',
@@ -620,22 +796,39 @@ export default function Pacientes() {
 
   const handleDelete = async () => {
     if (!selectedPacienteId) return;
+    if (!authProfile?.clinica_id) {
+      toast.error('Clínica não identificada', { description: 'Atualize a sessão antes de excluir pacientes.' });
+      return;
+    }
+    if (pacienteDeleteLockRef.current) return;
+    pacienteDeleteLockRef.current = true;
     setIsDeleting(true);
     try {
-      const { data, error } = await supabase.from('pacientes').delete().eq('id', selectedPacienteId).select('id');
+      const { data, error } = await supabase.from('pacientes').delete()
+        .eq('id', selectedPacienteId).eq('clinica_id', authProfile.clinica_id).select('id');
       if (error) throw error;
       if (!data || data.length === 0) {
         toast.error('Não foi possível excluir: sem permissão ou o paciente já foi removido.');
+        atualizarListasPacientes();
+        setIsDeleteOpen(false);
         return;
       }
       toast.success('Paciente excluído com sucesso');
-      refetch();
+      atualizarListasPacientes();
+      setIsDeleteOpen(false);
     } catch (error) {
       if (import.meta.env.DEV) console.error('Erro ao excluir:', error);
-      toast.error('Erro ao excluir paciente', { description: mensagemDeErro(error) });
+      if ((error as any)?.code === '23503' || String((error as any)?.message || '').includes('histórico vinculado')) {
+        toast.error('Exclusão bloqueada para preservar o histórico', {
+          description: 'Use o fluxo LGPD para avaliar solicitações de exclusão de pacientes com dados vinculados.',
+          duration: 9000,
+        });
+      } else {
+        toast.error('Erro ao excluir paciente', { description: mensagemDeErro(error) });
+      }
     } finally {
+      pacienteDeleteLockRef.current = false;
       setIsDeleting(false);
-      setIsDeleteOpen(false);
     }
   };
 
@@ -648,87 +841,80 @@ export default function Pacientes() {
    * data de diagnóstico registrada antes.
    */
   const sincronizarComorbidades = async (pacienteId: string, desejadas: string[]) => {
-    const { data: existentes, error: erroLeitura } = await (supabase as any)
-      .from('paciente_comorbidades')
-      .select('id, descricao, ativo')
-      .eq('paciente_id', pacienteId);
-
-    if (erroLeitura) throw erroLeitura;
-
-    const normalizar = (s: string) => s.trim().toLowerCase();
-    const alvo = new Map(desejadas.map(d => [normalizar(d), d.trim()]));
-    const linhas: Array<{ id: string; descricao: string; ativo: boolean }> = existentes || [];
-
-    const reativar = linhas.filter(l => !l.ativo && alvo.has(normalizar(l.descricao))).map(l => l.id);
-    const desativar = linhas.filter(l => l.ativo && !alvo.has(normalizar(l.descricao))).map(l => l.id);
-
-    const jaRegistradas = new Set(linhas.map(l => normalizar(l.descricao)));
-    const inserir = [...alvo.entries()]
-      .filter(([chave]) => !jaRegistradas.has(chave))
-      .map(([, descricao]) => ({ paciente_id: pacienteId, descricao, ativo: true }));
-
-    if (desativar.length) {
-      const { error } = await (supabase as any)
-        .from('paciente_comorbidades').update({ ativo: false }).in('id', desativar);
-      if (error) throw error;
-    }
-    if (reativar.length) {
-      const { error } = await (supabase as any)
-        .from('paciente_comorbidades').update({ ativo: true }).in('id', reativar);
-      if (error) throw error;
-    }
-    if (inserir.length) {
-      const { error } = await (supabase as any).from('paciente_comorbidades').insert(inserir);
-      if (error) throw error;
-    }
+    const { error } = await (supabase as any).rpc('sincronizar_comorbidades_paciente', {
+      p_paciente_id: pacienteId,
+      p_descricoes: desejadas,
+    });
+    if (error) throw error;
   };
 
   const handleSave = async () => {
+    if (pacienteSaveLockRef.current) return;
+    if (!authProfile?.clinica_id) {
+      toast.error('Clínica não identificada', { description: 'Recarregue a página antes de cadastrar ou alterar pacientes.' });
+      return;
+    }
     if (!formData.nome.trim()) {
+      setFormSection('pessoal');
       toast.error('Erro', { description: 'O campo Nome é obrigatório.' });
       return;
     }
 
-    // Validate CPF only if provided
-    if (formData.cpf) {
-      const cpfDigits = formData.cpf.replace(/\D/g, '');
-      if (cpfDigits.length > 0 && cpfDigits.length !== 11) {
-        toast.error('CPF inválido', { description: 'O CPF deve conter 11 dígitos.' });
-        return;
-      }
-      if (cpfDigits.length === 11) {
-        if (/^(\d)\1+$/.test(cpfDigits)) {
-          toast.error('CPF inválido', { description: 'CPF com todos os dígitos iguais não é válido.' });
-          return;
-        }
-        let sum = 0;
-        for (let i = 0; i < 9; i++) sum += parseInt(cpfDigits[i]) * (10 - i);
-        let rem = (sum * 10) % 11;
-        if (rem === 10 || rem === 11) rem = 0;
-        if (rem !== parseInt(cpfDigits[9])) {
-          toast.error('CPF inválido', { description: 'O CPF informado não é válido.' });
-          return;
-        }
-        sum = 0;
-        for (let i = 0; i < 10; i++) sum += parseInt(cpfDigits[i]) * (11 - i);
-        rem = (sum * 10) % 11;
-        if (rem === 10 || rem === 11) rem = 0;
-        if (rem !== parseInt(cpfDigits[10])) {
-          toast.error('CPF inválido', { description: 'O CPF informado não é válido.' });
-          return;
-        }
-      }
+    if (formData.cpf && !cpfValido(formData.cpf)) {
+      setFormSection('pessoal');
+      toast.error('CPF inválido', { description: 'Informe um CPF válido com 11 dígitos.' });
+      return;
+    }
+    const cpfDigits = formData.cpf.replace(/\D/g, '');
+    const pacienteComMesmoCpf = cpfDigits
+      ? pacientes.find((paciente) => paciente.id !== selectedPacienteId && (paciente.cpf || '').replace(/\D/g, '') === cpfDigits)
+      : null;
+    if (pacienteComMesmoCpf) {
+      setFormSection('pessoal');
+      toast.error('Este CPF já está cadastrado nesta clínica', {
+        description: `O cadastro pertence a ${(pacienteComMesmoCpf as any).nome_social || pacienteComMesmoCpf.nome}. Abra a ficha existente para evitar duplicidade.`,
+        action: { label: 'Abrir ficha', onClick: () => handleView(pacienteComMesmoCpf) },
+      });
+      return;
+    }
+    if (formData.cpf_responsavel && !cpfValido(formData.cpf_responsavel)) {
+      setFormSection('pessoal');
+      toast.error('CPF do responsável inválido', { description: 'Informe um CPF válido com 11 dígitos.' });
+      return;
+    }
+    if (formData.profissao.trim().length > 120) {
+      toast.error('Profissão muito longa', { description: 'Use no máximo 120 caracteres.' });
+      setFormSection('pessoal');
+      return;
     }
 
     // Validate email only if provided
-    if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+    if (formData.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email.trim())) {
+      setFormSection('pessoal');
       toast.error('E-mail inválido', { description: 'Informe um e-mail válido.' });
       return;
     }
 
     // Validate birthdate only if provided
-    if (formData.data_nascimento && formData.data_nascimento > format(new Date(), 'yyyy-MM-dd')) {
+    if (formData.data_nascimento && !isValidDateOnly(formData.data_nascimento)) {
+      setFormSection('pessoal');
+      toast.error('Data inválida', { description: 'Confira a data de nascimento informada.' });
+      return;
+    }
+    if (formData.data_nascimento && formData.data_nascimento > todaySaoPauloDateOnly()) {
+      setFormSection('pessoal');
       toast.error('Data inválida', { description: 'A data de nascimento não pode ser no futuro.' });
+      return;
+    }
+    if (formData.validade_carteira && !isValidDateOnly(formData.validade_carteira)) {
+      setFormSection('convenio');
+      toast.error('Validade inválida', { description: 'Confira a data de validade da carteirinha.' });
+      return;
+    }
+
+    if (exigeResponsavel && !formData.nome_responsavel.trim()) {
+      toast.error('Responsável obrigatório', { description: 'Informe o nome do responsável por pacientes menores ou dependentes.' });
+      setFormSection('pessoal');
       return;
     }
 
@@ -736,21 +922,27 @@ export default function Pacientes() {
     if (formData.telefone) {
       const phoneDigits = formData.telefone.replace(/\D/g, '');
       if (phoneDigits.length > 0 && (phoneDigits.length < 10 || phoneDigits.length > 11)) {
+        setFormSection('pessoal');
         toast.error('Telefone inválido', { description: 'O telefone deve ter 10 ou 11 dígitos.' });
         return;
       }
     }
 
+    const comorbidadesParaSalvar = [...formData.comorbidades];
+    pacienteSaveLockRef.current = true;
     setIsSubmitting(true);
     try {
       const dataToSave: any = {
-        nome: formData.nome,
+        nome: formData.nome.trim(),
         nome_social: formData.nome_social || null,
         cpf: formData.cpf || null,
         data_nascimento: formData.data_nascimento || null,
         telefone: formData.telefone || null,
-        email: formData.email || null,
+        email: formData.email.trim().toLocaleLowerCase('pt-BR') || null,
         sexo: formData.sexo || null,
+        estado_civil: formData.estado_civil || null,
+        profissao: formData.profissao.trim() || null,
+        tipo_sanguineo: formData.tipo_sanguineo || null,
         cep: formData.cep || null,
         logradouro: formData.logradouro || null,
         numero: formData.numero || null,
@@ -768,15 +960,26 @@ export default function Pacientes() {
         nome_responsavel: formData.nome_responsavel || null,
         cpf_responsavel: formData.cpf_responsavel || null,
         parentesco_responsavel: formData.parentesco_responsavel || null,
-        clinica_id: authProfile?.clinica_id || null,
+        clinica_id: authProfile.clinica_id,
       };
 
       let pacienteId: string;
       let acao: 'atualizado' | 'cadastrado';
 
       if (selectedPacienteId) {
-        const { error } = await supabase.from('pacientes').update(dataToSave).eq('id', selectedPacienteId);
+        if (!selectedPacienteUpdatedAt) {
+          throw new Error('Não foi possível confirmar a versão desta ficha. Feche e abra o cadastro novamente antes de salvar.');
+        }
+        const { data, error } = await supabase.from('pacientes')
+          .update(dataToSave)
+          .eq('id', selectedPacienteId)
+          .eq('clinica_id', authProfile.clinica_id)
+          .eq('updated_at', selectedPacienteUpdatedAt)
+          .select('id, updated_at')
+          .maybeSingle();
         if (error) throw error;
+        if (!data) throw new Error('Esta ficha foi alterada ou removida em outra sessão. Seus dados continuam no formulário; recarregue o cadastro e confira as alterações antes de salvar novamente.');
+        setSelectedPacienteUpdatedAt(data.updated_at);
         pacienteId = selectedPacienteId;
         acao = 'atualizado';
       } else {
@@ -797,7 +1000,7 @@ export default function Pacientes() {
       // cadastro pela recepção parecia falhar enquanto o paciente era criado, e
       // quem tentava de novo acabava com paciente duplicado.
       try {
-        await sincronizarComorbidades(pacienteId, formData.comorbidades);
+        await sincronizarComorbidades(pacienteId, comorbidadesParaSalvar);
         toast.success(`Paciente ${acao} com sucesso`);
       } catch (erroComorbidades: any) {
         toast.warning(`Paciente ${acao}, mas as comorbidades não foram salvas`, {
@@ -805,16 +1008,26 @@ export default function Pacientes() {
         });
       }
 
-      refetch();
+      atualizarListasPacientes();
       setIsFormOpen(false);
     } catch (error: any) {
       console.error('Erro ao salvar paciente:', error);
+      const duplicidadeCpf = error?.code === '23505'
+        && String(error?.message || '').includes('pacientes_cpf_por_clinica');
+      if (duplicidadeCpf) {
+        toast.error('Este CPF já está cadastrado nesta clínica', {
+          description: 'Outro usuário pode ter cadastrado o paciente agora. Atualize a lista e abra a ficha existente.',
+        });
+        atualizarListasPacientes();
+        return;
+      }
       // A mensagem do banco costuma dizer exatamente o que faltou (campo
       // obrigatório, CPF duplicado, permissão). Esconder isso obriga a adivinhar.
       toast.error('Erro ao salvar paciente', {
         description: error?.message || error?.details || 'Verifique os dados e tente novamente.',
       });
     } finally {
+      pacienteSaveLockRef.current = false;
       setIsSubmitting(false);
     }
   };
@@ -826,10 +1039,31 @@ export default function Pacientes() {
       });
       if (error) throw error;
       if (!data) throw new Error('Paciente não encontrado');
-      await navigator.clipboard.writeText(data);
-      toast.success('Link copiado!', { description: `Link do portal de ${pacienteNome} copiado.` });
+      const url = String(data);
+      try {
+        if (!navigator.clipboard?.writeText) throw new Error('Cópia indisponível neste navegador.');
+        await navigator.clipboard.writeText(url);
+        toast.success('Link copiado!', { description: `Link do portal de ${pacienteNome} copiado.` });
+      } catch {
+        setLinkPortalGerado({ nome: pacienteNome, url });
+        toast.info('O link foi gerado', { description: 'A cópia automática não funcionou. Copie o link na janela aberta.' });
+      }
     } catch (e) {
       toast.error('Erro ao gerar link do portal', { description: mensagemDeErro(e) });
+    }
+  };
+
+  const copiarLinkPortalExibido = async () => {
+    if (!linkPortalGerado) return;
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('Cópia indisponível neste navegador.');
+      await navigator.clipboard.writeText(linkPortalGerado.url);
+      toast.success('Link copiado!');
+    } catch {
+      const campo = document.getElementById('link-portal-paciente') as HTMLInputElement | null;
+      campo?.focus();
+      campo?.select();
+      toast.info('Link selecionado', { description: 'Pressione Ctrl+C (ou ⌘C no Mac) para copiar.' });
     }
   };
 
@@ -858,8 +1092,12 @@ export default function Pacientes() {
     );
   }
 
+  if (pacientesError) return <ErrorState error={pacientesError} title="Não foi possível carregar os pacientes" onRetry={() => { void refetch(); }} />;
+
   return (
     <div className="space-y-5 sm:space-y-6">
+      {conveniosError && <ErrorState compact error={conveniosError} title="Convênios indisponíveis" description="A lista de convênios não carregou. Você pode continuar consultando pacientes, mas não deve alterar o convênio até atualizar os dados." onRetry={() => { void refetchConvenios(); }} />}
+      {medicosError && <ErrorState compact error={medicosError} title="Médicos indisponíveis" description="A lista de médicos não carregou. Atualize os dados antes de agendar consultas ou solicitar exames nesta ficha." onRetry={() => { void refetchMedicos(); }} />}
       {/* Header */}
       <motion.div
         className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4"
@@ -880,7 +1118,7 @@ export default function Pacientes() {
               className="h-11 w-full gap-2 rounded-xl border-2 border-border/60 px-3 text-sm font-semibold shadow-sm transition-all duration-200 hover:border-primary/40 hover:shadow-md sm:w-auto sm:px-5"
             >
               <Tag className="h-4 w-4" />
-              Etiquetas
+              Etiquetas da página
             </Button>
           </motion.div>
           <motion.div whileHover={{ scale: 1.04, y: -2 }} whileTap={{ scale: 0.96 }} transition={{ type: "spring", stiffness: 400, damping: 17 }}>
@@ -897,6 +1135,14 @@ export default function Pacientes() {
       </motion.div>
 
       {/* Stats */}
+      {resultadoBusca?.incompleta && resumoPacientes.length < limiteBusca && (
+        <div role="status" className="rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm text-warning-foreground">
+          A busca encontrou muitos cadastros semelhantes e foi limitada para manter a tela responsiva. Refine o nome, CPF ou telefone para localizar outros resultados.
+        </div>
+      )}
+      {erroDeepLink && <ErrorState compact error={erroDeepLink} title="Não foi possível abrir o paciente do link" onRetry={() => { void refazerDeepLink(); }} />}
+      {erroEstatisticas && <ErrorState compact error={erroEstatisticas} title="Indicadores indisponíveis" description="A lista continua disponível, mas os indicadores precisam ser atualizados." onRetry={() => { void refazerEstatisticas(); }} />}
+      {detalhesErro && <ErrorState compact error={detalhesErro} title="Não foi possível carregar os dados desta página" onRetry={() => { void queryClient.invalidateQueries({ queryKey: ['pacientes-lista-detalhes'] }); }} />}
       <PatientStats total={stats.total} comConvenio={stats.comConvenio} menores={stats.menores} comAlergias={stats.comAlergias} />
 
       {/* Search & Filters */}
@@ -905,7 +1151,7 @@ export default function Pacientes() {
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
             <CardTitle className="flex items-center gap-2">
               Lista de Pacientes
-              <Badge variant="secondary" className="text-xs">{filteredPacientes.length}</Badge>
+              <Badge variant="secondary" className="text-xs">{temMaisPacientes ? `${inicioPagina + 50}+` : resumoPacientes.length}</Badge>
             </CardTitle>
             <div className="flex items-center gap-2 w-full sm:w-auto">
               <div className="relative flex-1 sm:w-72">
@@ -913,7 +1159,7 @@ export default function Pacientes() {
                 <Input
                   placeholder="Buscar nome, CPF, telefone, email..."
                   value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
+                  onChange={(e) => { setPaginaPacientes(0); setSearchTerm(e.target.value); }}
                 className="h-11 pl-9"
                 />
               </div>
@@ -938,7 +1184,7 @@ export default function Pacientes() {
             <div className="grid grid-cols-1 gap-3 border-t pt-3 sm:flex sm:flex-wrap">
               <div className="space-y-1">
                 <Label className="text-xs">Sexo</Label>
-                <Select value={filterSexo} onValueChange={setFilterSexo}>
+                <Select value={filterSexo} onValueChange={(value) => { setPaginaPacientes(0); setFilterSexo(value); }}>
                   <SelectTrigger className="h-11 w-full text-xs sm:w-32"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="todos">Todos</SelectItem>
@@ -948,7 +1194,7 @@ export default function Pacientes() {
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">Convênio</Label>
-                <Select value={filterConvenio} onValueChange={setFilterConvenio}>
+                <Select value={filterConvenio} onValueChange={(value) => { setPaginaPacientes(0); setFilterConvenio(value); }}>
                   <SelectTrigger className="h-11 w-full text-xs sm:w-40"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="todos">Todos</SelectItem>
@@ -959,7 +1205,7 @@ export default function Pacientes() {
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">Faixa Etária</Label>
-                <Select value={filterIdade} onValueChange={setFilterIdade}>
+                <Select value={filterIdade} onValueChange={(value) => { setPaginaPacientes(0); setFilterIdade(value); }}>
                   <SelectTrigger className="h-11 w-full text-xs sm:w-36"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="todos">Todas</SelectItem>
@@ -972,7 +1218,7 @@ export default function Pacientes() {
               </div>
               {activeFilters > 0 && (
                 <div className="flex items-end">
-                  <Button variant="ghost" size="sm" className="h-11 text-xs gap-1" onClick={() => { setFilterSexo('todos'); setFilterConvenio('todos'); setFilterIdade('todos'); }}>
+                  <Button variant="ghost" size="sm" className="h-11 text-xs gap-1" onClick={clearPatientFilters}>
                     <X className="h-3 w-3" /> Limpar
                   </Button>
                 </div>
@@ -983,11 +1229,21 @@ export default function Pacientes() {
         <CardContent className="p-0">
           <PatientListTable
             pacientes={filteredPacientes}
+            totalPacientes={resumoEstatisticas?.total ?? null}
+            totalPacientesCarregado={!carregandoEstatisticas || Boolean(erroEstatisticas)}
+            hasFiltrosAtivos={activeFilters > 0}
+            pagina={paginaPacientes}
+            hasMore={temMaisPacientes}
+            isLoading={carregandoDetalhes || isBuscandoPacientes}
+            hasError={Boolean(detalhesErro || pacientesError)}
+            onPaginaChange={setPaginaPacientes}
+            onLimparFiltros={clearPatientFilters}
             onView={handleView}
             onEdit={handleEdit}
             onDelete={handleDeleteClick}
             onGeneratePortalLink={handleGeneratePortalLink}
             podeGerarLinkPortal={podeGerarLinkPortal}
+            podeExcluirPaciente={isAdmin()}
             getConvenioNome={getConvenioNome}
             calcularIdade={calcularIdade}
           />
@@ -995,12 +1251,18 @@ export default function Pacientes() {
       </Card>
 
       {/* ─── Form Dialog ─── */}
-      <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-        <DialogContent className="max-h-[100dvh] w-full max-w-3xl overflow-y-auto rounded-none pb-[calc(1rem+env(safe-area-inset-bottom))] sm:max-h-[90vh] sm:w-[calc(100%-2rem)] sm:rounded-lg">
+      <Dialog open={isFormOpen} onOpenChange={(open) => {
+        if (open || !isSubmitting) {
+          if (!open) edicaoPacienteSolicitadaRef.current += 1;
+          setIsFormOpen(open);
+        }
+      }}>
+        <DialogContent className="max-h-[100dvh] w-full max-w-3xl overflow-y-auto rounded-none pb-[calc(1rem+env(safe-area-inset-bottom))] sm:max-h-[90vh] sm:w-[calc(100%-2rem)] sm:rounded-lg" aria-busy={isSubmitting}>
           <DialogHeader>
             <DialogTitle>{selectedPacienteId ? 'Editar Paciente' : 'Novo Paciente'}</DialogTitle>
           </DialogHeader>
 
+          <fieldset disabled={isSubmitting} className="min-w-0 space-y-6 border-0 p-0">
           {/* Section nav */}
           <div className="flex gap-1 flex-wrap border-b pb-2">
             {[
@@ -1041,12 +1303,7 @@ export default function Pacientes() {
                   <div className="space-y-2">
                     <Label>CPF</Label>
                     <Input value={formData.cpf} onChange={e => {
-                      const digits = e.target.value.replace(/\D/g, '').slice(0, 11);
-                      let masked = digits;
-                      if (digits.length > 3) masked = `${digits.slice(0, 3)}.${digits.slice(3)}`;
-                      if (digits.length > 6) masked = `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6)}`;
-                      if (digits.length > 9) masked = `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`;
-                      setFormData({ ...formData, cpf: masked });
+                      setFormData({ ...formData, cpf: mascararCpf(e.target.value) });
                     }} placeholder="000.000.000-00" />
                   </div>
                   <div className="space-y-2">
@@ -1089,7 +1346,7 @@ export default function Pacientes() {
                   </div>
                   <div className="space-y-2">
                     <Label>Profissão</Label>
-                    <Input value={formData.profissao} onChange={e => setFormData({ ...formData, profissao: e.target.value })} placeholder="Profissão do paciente" />
+                    <Input value={formData.profissao} onChange={e => setFormData({ ...formData, profissao: e.target.value })} placeholder="Profissão do paciente" maxLength={120} />
                   </div>
                 </div>
 
@@ -1102,21 +1359,20 @@ export default function Pacientes() {
                     </h4>
                     <Button
                       type="button"
-                      variant={formData.is_menor ? 'default' : 'outline'}
+                      variant={exigeResponsavel ? 'default' : 'outline'}
                       size="sm"
-                      onClick={() => setFormData({ ...formData, is_menor: !formData.is_menor })}
+                      disabled={isMinor(formData.data_nascimento)}
+                      onClick={() => setFormData({ ...formData, is_menor: !exigeResponsavel })}
                     >
-                      {formData.is_menor ? 'Sim' : 'Não'}
+                      {exigeResponsavel ? 'Sim' : 'Não'}
                     </Button>
                   </div>
-                  {isMinor(formData.data_nascimento) && !formData.is_menor && (
-                    <p className="text-xs text-warning mt-1">
-                      ⚠️ A data de nascimento indica menor de idade. Considere ativar esta opção.
-                    </p>
+                  {isMinor(formData.data_nascimento) && (
+                    <p className="text-xs text-warning mt-1">A data de nascimento indica menor de idade; os dados do responsável são obrigatórios.</p>
                   )}
                 </div>
 
-                {formData.is_menor && (
+                {exigeResponsavel && (
                   <div className="border rounded-lg p-4 bg-warning/5 border-warning/20">
                     <h4 className="font-medium mb-3 flex items-center gap-2 text-warning">
                       <Baby className="h-4 w-4" />
@@ -1129,7 +1385,7 @@ export default function Pacientes() {
                       </div>
                       <div className="space-y-2">
                         <Label>CPF do Responsável</Label>
-                        <Input value={formData.cpf_responsavel} onChange={e => setFormData({ ...formData, cpf_responsavel: e.target.value })} placeholder="000.000.000-00" />
+                        <Input value={formData.cpf_responsavel} onChange={e => setFormData({ ...formData, cpf_responsavel: mascararCpf(e.target.value) })} placeholder="000.000.000-00" />
                       </div>
                       <div className="space-y-2">
                         <Label>Parentesco</Label>
@@ -1160,6 +1416,9 @@ export default function Pacientes() {
                     <Input
                       value={formData.cep}
                       onChange={e => {
+                        cepLookupRef.current += 1;
+                        setCepLoading(false);
+                        setCepError('');
                         const digits = e.target.value.replace(/\D/g, '').slice(0, 8);
                         const masked = digits.length > 5 ? `${digits.slice(0, 5)}-${digits.slice(5)}` : digits;
                         setFormData({ ...formData, cep: masked });
@@ -1174,7 +1433,11 @@ export default function Pacientes() {
                       <MapPin className="absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/40" />
                     )}
                   </div>
-                  <p className="text-[10px] text-muted-foreground">Sai do campo para preencher automaticamente</p>
+                  {cepError ? (
+                    <p role="alert" className="text-xs text-destructive">{cepError}</p>
+                  ) : (
+                    <p className="text-[10px] text-muted-foreground">Sai do campo para preencher automaticamente</p>
+                  )}
                 </div>
                 <div className="space-y-2 md:col-span-2">
                   <Label>Logradouro</Label>
@@ -1228,14 +1491,22 @@ export default function Pacientes() {
                       variant={formData.convenio_id ? 'default' : 'outline'}
                       onClick={() => {
                         if (!formData.convenio_id) {
-                          setFormData({ ...formData, convenio_id: convenios.length > 0 ? (convenios[0] as any).id : 'pending' });
+                          if (carregandoConvenios || conveniosError || conveniosAtivos.length === 0) return;
+                          setFormData({ ...formData, convenio_id: conveniosAtivos[0].id });
                         }
                       }}
+                      disabled={!formData.convenio_id && (carregandoConvenios || !!conveniosError || conveniosAtivos.length === 0)}
                     >
                       Sim
                     </Button>
                   </div>
                 </div>
+
+                {!formData.convenio_id && !carregandoConvenios && !conveniosError && conveniosAtivos.length === 0 && (
+                  <p role="status" className="text-xs text-muted-foreground">
+                    Não há convênios ativos disponíveis. Ative ou cadastre um convênio antes de associá-lo a um novo paciente.
+                  </p>
+                )}
 
                 {formData.convenio_id && (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 rounded-lg border bg-muted/30">
@@ -1245,7 +1516,11 @@ export default function Pacientes() {
                         <SelectTrigger><SelectValue placeholder="Selecione o convênio" /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="none">Nenhum (Particular)</SelectItem>
-                          {convenios.map((c: any) => <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>)}
+                          {conveniosDisponiveisNoFormulario.map((c: any) => (
+                            <SelectItem key={c.id} value={c.id}>
+                              {c.nome}{c.ativo === false ? ' (inativo — vínculo existente)' : ''}
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </div>
@@ -1274,6 +1549,7 @@ export default function Pacientes() {
                         {TIPO_SANGUINEO_OPTIONS.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
                       </SelectContent>
                     </Select>
+                    <p className="text-xs text-muted-foreground">Informado pelo paciente; confirme antes de qualquer decisão clínica.</p>
                   </div>
                 </div>
                 <div className="space-y-2">
@@ -1336,6 +1612,7 @@ export default function Pacientes() {
             )}
           </div>
 
+          </fieldset>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsFormOpen(false)} disabled={isSubmitting}>Cancelar</Button>
             <LoadingButton onClick={handleSave} isLoading={isSubmitting} loadingText="Salvando...">Salvar</LoadingButton>
@@ -1366,7 +1643,11 @@ export default function Pacientes() {
                 <div className="flex-1 min-w-0">
                   <h3 className="text-base font-bold truncate">{(selectedPaciente as any).nome_social || selectedPaciente.nome}</h3>
                   <div className="flex items-center gap-2 flex-wrap text-xs text-muted-foreground">
-                    <span>{calcularIdade(selectedPaciente.data_nascimento)}a</span>
+                    <span>{selectedPaciente.data_nascimento
+                      ? Number.isFinite(calcularIdade(selectedPaciente.data_nascimento)) && calcularIdade(selectedPaciente.data_nascimento) >= 0
+                        ? `${calcularIdade(selectedPaciente.data_nascimento)}a`
+                        : 'Nascimento inválido'
+                      : 'Idade N/I'}</span>
                     {selectedPaciente.sexo && <span>• {selectedPaciente.sexo === 'M' ? '♂' : selectedPaciente.sexo === 'F' ? '♀' : '⚧'}</span>}
                     {selectedPaciente.cpf && <span>• {selectedPaciente.cpf}</span>}
                     <span>• {getConvenioNome(selectedPaciente.convenio_id)}</span>
@@ -1429,6 +1710,9 @@ export default function Pacientes() {
                       <InfoField icon={Mail} label="Email" value={selectedPaciente.email} />
                       <InfoField icon={Building2} label="Convênio" value={getConvenioNome(selectedPaciente.convenio_id)} />
                       <InfoField icon={CreditCard} label="Carteira" value={selectedPaciente.numero_carteira} />
+                      <InfoField icon={Users} label="Estado civil" value={ESTADO_CIVIL_OPTIONS.find(option => option.value === selectedPaciente.estado_civil)?.label} />
+                      <InfoField icon={Briefcase} label="Profissão" value={selectedPaciente.profissao} />
+                      <InfoField icon={Droplets} label="Tipo sanguíneo informado" value={selectedPaciente.tipo_sanguineo} />
                     </div>
 
                     {selectedPaciente.convenio_id && (
@@ -1480,9 +1764,9 @@ export default function Pacientes() {
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
                         <Calendar className="h-3.5 w-3.5" />
-                        Consultas ({agendamentosList.length})
+                        Consultas ({agendamentosList.length}{temMaisAgendamentos ? '+' : ''})
                       </span>
-                      <Button size="sm" onClick={() => { setAgendamentoForm({ data: format(new Date(), 'yyyy-MM-dd'), hora_inicio: '08:00', medico_id: medicoId || '', tipo: 'consulta', observacoes: '' }); setShowAgendamentoForm(true); }} className="gap-1.5 rounded-xl text-xs">
+                      <Button size="sm" disabled={!!medicosError} onClick={() => { setAgendamentoForm({ data: todaySaoPauloDateOnly(), hora_inicio: '08:00', medico_id: medicoId || '', tipo: 'consulta', observacoes: '' }); setShowAgendamentoForm(true); }} className="gap-1.5 rounded-xl text-xs">
                         <CalendarPlus className="h-3.5 w-3.5" />Agendar Consulta
                       </Button>
                     </div>
@@ -1534,6 +1818,7 @@ export default function Pacientes() {
                             <Textarea value={agendamentoForm.observacoes || ''} onChange={e => setAgendamentoForm(p => ({ ...p, observacoes: e.target.value }))} rows={2} className="text-xs" placeholder="Observações sobre a consulta..." />
                           </div>
                         </div>
+                        <p className="text-[11px] text-muted-foreground">Este agendamento reserva 30 minutos. Conflitos e bloqueios do médico serão conferidos ao salvar.</p>
                         <div className="flex justify-end gap-2">
                           <Button variant="outline" size="sm" onClick={() => setShowAgendamentoForm(false)} className="text-xs h-7">Cancelar</Button>
                           <LoadingButton size="sm" className="text-xs h-7" isLoading={savingAgendamento} loadingText="Salvando..." onClick={async () => {
@@ -1541,13 +1826,61 @@ export default function Pacientes() {
                               toast.error('Preencha data, horário e médico');
                               return;
                             }
+                            if (!authProfile?.clinica_id) {
+                              toast.error('Não foi possível identificar a clínica deste usuário.');
+                              return;
+                            }
+                            const dataValida = /^\d{4}-\d{2}-\d{2}$/.test(agendamentoForm.data)
+                              && !Number.isNaN(new Date(`${agendamentoForm.data}T12:00:00Z`).getTime())
+                              && new Date(`${agendamentoForm.data}T12:00:00Z`).toISOString().slice(0, 10) === agendamentoForm.data;
+                            const inicioMin = minutosDaHora(agendamentoForm.hora_inicio);
+                            if (!dataValida || inicioMin === null || inicioMin + 30 >= 24 * 60) {
+                              toast.error('Informe uma data e um horário válidos. A consulta deve terminar antes da meia-noite.');
+                              return;
+                            }
+                            const fimMin = inicioMin + 30;
                             setSavingAgendamento(true);
                             try {
+                              const [{ data: doDia, error: erroDoDia }, { data: bloqueios, error: erroBloqueios }] = await Promise.all([
+                                supabase.from('agendamentos')
+                                  .select('id, hora_inicio, hora_fim, status')
+                                  .eq('clinica_id', authProfile.clinica_id)
+                                  .eq('medico_id', agendamentoForm.medico_id)
+                                  .eq('data', agendamentoForm.data),
+                                (supabase.from('bloqueios_agenda' as any)
+                                  .select('id, hora_inicio, hora_fim, dia_inteiro, motivo, tipo')
+                                  .eq('clinica_id', authProfile.clinica_id)
+                                  .eq('medico_id', agendamentoForm.medico_id)
+                                  .lte('data_inicio', agendamentoForm.data)
+                                  .gte('data_fim', agendamentoForm.data) as any),
+                              ]);
+                              if (erroDoDia) throw erroDoDia;
+                              if (erroBloqueios) throw erroBloqueios;
+
+                              const conflito = (doDia || []).find((ag: any) => {
+                                if (ag.status === 'cancelado' || ag.status === 'faltou') return false;
+                                const inicioExistente = minutosDaHora(ag.hora_inicio);
+                                const fimExistente = minutosDaHora(ag.hora_fim) ?? (inicioExistente === null ? null : inicioExistente + 30);
+                                return inicioExistente !== null && fimExistente !== null && inicioExistente < fimMin && fimExistente > inicioMin;
+                              });
+                              if (conflito) throw new Error('Este médico já tem uma consulta neste horário. Escolha outro horário.');
+
+                              const bloqueio = (bloqueios || []).find((item: any) => {
+                                if (item.dia_inteiro) return true;
+                                const inicioBloqueio = minutosDaHora(item.hora_inicio);
+                                const fimBloqueio = minutosDaHora(item.hora_fim);
+                                return inicioBloqueio !== null && fimBloqueio !== null && inicioBloqueio < fimMin && fimBloqueio > inicioMin;
+                              });
+                              if (bloqueio) {
+                                throw new Error(`Este médico está bloqueado neste horário${bloqueio.motivo ? `: ${bloqueio.motivo}` : bloqueio.tipo ? ` (${bloqueio.tipo})` : '.'}`);
+                              }
+
                               const { error } = await supabase.from('agendamentos').insert({
                                 paciente_id: selectedPacienteId!,
                                 medico_id: agendamentoForm.medico_id,
                                 data: agendamentoForm.data,
                                 hora_inicio: agendamentoForm.hora_inicio,
+                                hora_fim: `${String(Math.floor(fimMin / 60)).padStart(2, '0')}:${String(fimMin % 60).padStart(2, '0')}:00`,
                                 tipo: agendamentoForm.tipo || 'consulta',
                                 observacoes: agendamentoForm.observacoes || null,
                                 status: 'agendado',
@@ -1558,7 +1891,12 @@ export default function Pacientes() {
                               setShowAgendamentoForm(false);
                               loadAgendamentos(selectedPacienteId!);
                             } catch (err: any) {
-                              toast.error('Erro ao agendar', { description: mensagemDeErro(err) });
+                              const mensagem = mensagemDeErro(err);
+                              toast.error('Erro ao agendar', {
+                                description: err?.code === '23P01' || mensagem.includes('agendamentos_sem_sobreposicao')
+                                  ? 'O horário acabou de ser ocupado. Atualize a agenda e tente novamente.'
+                                  : mensagem,
+                              });
                             } finally { setSavingAgendamento(false); }
                           }}>Agendar</LoadingButton>
                         </div>
@@ -1567,6 +1905,8 @@ export default function Pacientes() {
 
                     {loadingAgendamentos ? (
                       <div className="space-y-2">{[1,2,3].map(i => <Skeleton key={i} className="h-14" />)}</div>
+                    ) : agendamentosLoadError ? (
+                      <ErrorState compact title="Não foi possível carregar as consultas" error={agendamentosLoadError} onRetry={() => { if (selectedPacienteId) void loadAgendamentos(selectedPacienteId); }} />
                     ) : agendamentosList.length === 0 ? (
                       <div className="flex flex-col items-center py-14 text-muted-foreground">
                         <Calendar className="h-8 w-8 opacity-20 mb-2" />
@@ -1605,6 +1945,14 @@ export default function Pacientes() {
                         })}
                       </div>
                     )}
+                    {temMaisAgendamentos && !agendamentosLoadError && selectedPacienteId && (
+                      <div className="flex justify-center pt-1">
+                        <Button variant="outline" size="sm" disabled={loadingMaisAgendamentos} onClick={() => void loadAgendamentos(selectedPacienteId, agendamentosList.length)}>
+                          {loadingMaisAgendamentos ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <History className="mr-2 h-4 w-4" />}
+                          {loadingMaisAgendamentos ? 'Carregando…' : 'Carregar consultas anteriores'}
+                        </Button>
+                      </div>
+                    )}
                   </TabsContent>
 
                   {/* Tab: Exames */}
@@ -1612,9 +1960,9 @@ export default function Pacientes() {
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
                         <TestTube className="h-3.5 w-3.5" />
-                        Exames ({examesList.length})
+                        Exames ({examesList.length}{temMaisExames ? '+' : ''})
                       </span>
-                      <Button size="sm" onClick={() => { setExameForm({ tipo_exame: '', medico_solicitante_id: medicoId || '', observacoes: '' }); setShowExameForm(true); }} className="gap-1.5 rounded-xl text-xs">
+                      <Button size="sm" disabled={!!medicosError} onClick={() => { setExameForm({ tipo_exame: '', medico_solicitante_id: medicoId || '', observacoes: '' }); setShowExameForm(true); }} className="gap-1.5 rounded-xl text-xs">
                         <Plus className="h-3.5 w-3.5" />Solicitar Exame
                       </Button>
                     </div>
@@ -1648,10 +1996,20 @@ export default function Pacientes() {
                         <div className="flex justify-end gap-2">
                           <Button variant="outline" size="sm" onClick={() => setShowExameForm(false)} className="text-xs h-7">Cancelar</Button>
                           <LoadingButton size="sm" className="text-xs h-7" isLoading={savingExame} loadingText="Salvando..." onClick={async () => {
+                            if (exameSaveLockRef.current) return;
                             if (!exameForm.tipo_exame || !exameForm.medico_solicitante_id) {
                               toast.error('Preencha tipo de exame e médico');
                               return;
                             }
+                            if (!authProfile?.clinica_id) {
+                              toast.error('Não foi possível identificar a clínica deste usuário.');
+                              return;
+                            }
+                            if (exameForm.data_agendamento && !isValidDateOnly(exameForm.data_agendamento)) {
+                              toast.error('Informe uma data válida para o exame.');
+                              return;
+                            }
+                            exameSaveLockRef.current = true;
                             setSavingExame(true);
                             try {
                               const { error } = await supabase.from('exames').insert({
@@ -1661,7 +2019,7 @@ export default function Pacientes() {
                                 data_agendamento: exameForm.data_agendamento || null,
                                 observacoes: exameForm.observacoes || null,
                                 status: 'solicitado',
-                                clinica_id: authProfile?.clinica_id || null,
+                                clinica_id: authProfile.clinica_id,
                               });
                               if (error) throw error;
                               toast.success('Exame solicitado!');
@@ -1669,7 +2027,10 @@ export default function Pacientes() {
                               loadExames(selectedPacienteId!);
                             } catch (err: any) {
                               toast.error('Erro ao solicitar exame', { description: mensagemDeErro(err) });
-                            } finally { setSavingExame(false); }
+                            } finally {
+                              exameSaveLockRef.current = false;
+                              setSavingExame(false);
+                            }
                           }}>Solicitar</LoadingButton>
                         </div>
                       </div>
@@ -1677,6 +2038,8 @@ export default function Pacientes() {
 
                     {loadingExames ? (
                       <div className="space-y-2">{[1,2,3].map(i => <Skeleton key={i} className="h-14" />)}</div>
+                    ) : examesLoadError ? (
+                      <ErrorState compact title="Não foi possível carregar os exames" error={examesLoadError} onRetry={() => { if (selectedPacienteId) void loadExames(selectedPacienteId); }} />
                     ) : examesList.length === 0 ? (
                       <div className="flex flex-col items-center py-14 text-muted-foreground">
                         <TestTube className="h-8 w-8 opacity-20 mb-2" />
@@ -1714,6 +2077,14 @@ export default function Pacientes() {
                         })}
                       </div>
                     )}
+                    {temMaisExames && !examesLoadError && selectedPacienteId && (
+                      <div className="flex justify-center pt-1">
+                        <Button variant="outline" size="sm" disabled={loadingMaisExames} onClick={() => void loadExames(selectedPacienteId, examesList.length)}>
+                          {loadingMaisExames ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <History className="mr-2 h-4 w-4" />}
+                          {loadingMaisExames ? 'Carregando…' : 'Carregar exames anteriores'}
+                        </Button>
+                      </div>
+                    )}
                   </TabsContent>
 
                   {/* Tab: Prontuário */}
@@ -1725,7 +2096,7 @@ export default function Pacientes() {
                         <div className="flex items-center justify-between">
                           <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
                             <ClipboardList className="h-3.5 w-3.5" />
-                            Evoluções ({prontuarioList.length})
+                            Evoluções ({prontuarioList.length}{temMaisProntuarios ? '+' : ''})
                           </span>
                           <Button size="sm" onClick={handleNewProntuario} className="gap-1.5 rounded-xl text-xs">
                             <Plus className="h-3.5 w-3.5" />Novo Atendimento
@@ -1734,6 +2105,8 @@ export default function Pacientes() {
 
                         {loadingProntuarios ? (
                           <div className="space-y-2">{[1,2,3].map(i => <Skeleton key={i} className="h-16" />)}</div>
+                        ) : prontuariosLoadError ? (
+                          <ErrorState compact title="Não foi possível carregar o histórico" description="O prontuário pode ter registros; atualize a lista antes de concluir que está vazia." error={prontuariosLoadError} onRetry={() => { if (selectedPacienteId) void loadProntuarios(selectedPacienteId); }} />
                         ) : prontuarioList.length === 0 ? (
                           <div className="flex flex-col items-center py-14 text-muted-foreground">
                             <FileText className="h-8 w-8 opacity-20 mb-2" />
@@ -1773,6 +2146,14 @@ export default function Pacientes() {
                             ))}
                           </div>
                         )}
+                      </div>
+                    )}
+                    {prontuarioTab === 'lista' && temMaisProntuarios && !prontuariosLoadError && selectedPacienteId && (
+                      <div className="flex justify-center pt-1">
+                        <Button variant="outline" size="sm" disabled={loadingMaisProntuarios} onClick={() => void loadProntuarios(selectedPacienteId, prontuarioList.length)}>
+                          {loadingMaisProntuarios ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <History className="mr-2 h-4 w-4" />}
+                          {loadingMaisProntuarios ? 'Carregando…' : 'Carregar evoluções anteriores'}
+                        </Button>
                       </div>
                     )}
 
@@ -1992,13 +2373,22 @@ export default function Pacientes() {
           <AlertDialogHeader>
             <AlertDialogTitle>Confirmar exclusão</AlertDialogTitle>
             <AlertDialogDescription>
-              Tem certeza que deseja excluir o paciente "{selectedPaciente?.nome}"? Esta ação não pode ser desfeita.
+              A exclusão só será permitida se esta ficha não tiver registros relacionados. Para preservar o histórico clínico, o banco bloqueará a exclusão quando houver prontuário, atendimento, exame ou outro dado vinculado. Solicite avaliação pelo fluxo LGPD quando precisar tratar dados de um paciente com histórico.
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {isAdmin() && (
+            <RouterLink
+              to="/lgpd-pacientes"
+              className="text-sm font-medium text-primary underline underline-offset-4"
+              onClick={() => setIsDeleteOpen(false)}
+            >
+              Abrir fluxo LGPD
+            </RouterLink>
+          )}
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isDeleting}>Cancelar</AlertDialogCancel>
             <LoadingButton onClick={handleDelete} isLoading={isDeleting} loadingText="Excluindo..." variant="destructive">
-              Excluir
+              Excluir ficha vazia
             </LoadingButton>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -2006,6 +2396,28 @@ export default function Pacientes() {
 
       {/* Etiquetas */}
       <EtiquetaPaciente pacientes={pacientesForEtiqueta} open={isEtiquetaOpen} onOpenChange={setIsEtiquetaOpen} />
+
+      <Dialog open={!!linkPortalGerado} onOpenChange={(open) => { if (!open) setLinkPortalGerado(null); }}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Link do Portal do Paciente</DialogTitle>
+            <DialogDescription>
+              Link gerado para {linkPortalGerado?.nome}. Compartilhe diretamente com o paciente.
+            </DialogDescription>
+          </DialogHeader>
+          <Input
+            id="link-portal-paciente"
+            value={linkPortalGerado?.url || ''}
+            readOnly
+            onFocus={(event) => event.currentTarget.select()}
+            aria-label="Link de acesso ao portal do paciente"
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setLinkPortalGerado(null)}>Fechar</Button>
+            <Button onClick={() => void copiarLinkPortalExibido()}>Copiar link</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Autorizações de convênio do paciente selecionado */}
       {selectedPaciente && (

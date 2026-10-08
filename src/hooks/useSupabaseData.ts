@@ -10,7 +10,7 @@ import { logAudit as registrarAuditoria } from '@/lib/auditTrail';
  * caso a tela precisa de filtro por período ou paginação de verdade, e o aviso
  * no console diz isso.
  */
-const MAX_LINHAS_AUTO = 20000;
+export const MAX_LINHAS_AUTO = 20000;
 
 /** Maior bloco que o PostgREST devolve numa resposta (max_rows padrão). */
 const BLOCO_SERVIDOR = 1000;
@@ -197,6 +197,9 @@ export function usePacientes() {
     telefone: string | null;
     email: string | null;
     sexo: string | null;
+    estado_civil: string | null;
+    profissao: string | null;
+    tipo_sanguineo: string | null;
     cep: string | null;
     logradouro: string | null;
     numero: string | null;
@@ -227,6 +230,7 @@ export function useMedicos() {
     nome: string | null;
     email: string | null;
     crm: string;
+    tipo_registro: string | null;
     crm_uf: string | null;
     cpf: string | null;
     rqe: string | null;
@@ -310,7 +314,9 @@ export function useLancamentos() {
     categoria: string;
     descricao: string;
     valor: number;
+    valor_pago: number | null;
     data: string;
+    data_pagamento: string | null;
     data_vencimento: string | null;
     data_emissao: string | null;
     status: string;

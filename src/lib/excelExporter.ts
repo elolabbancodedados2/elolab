@@ -189,24 +189,36 @@ export async function exportarFinanceiro(
     valor: number;
     status: string;
     formaPagamento?: string;
+    dataPagamento?: string;
+    dataVencimento?: string;
+    valorPago?: number;
+    saldoAberto?: number;
   }>
 ) {
   const data = lancamentos.map((l) => ({
     data: l.data ? format(parseDateOnly(l.data)!, 'dd/MM/yyyy') : '',
+    dataPagamento: l.dataPagamento ? format(parseDateOnly(l.dataPagamento)!, 'dd/MM/yyyy') : '',
+    dataVencimento: l.dataVencimento ? format(parseDateOnly(l.dataVencimento)!, 'dd/MM/yyyy') : '',
     tipo: l.tipo === 'receita' ? 'Receita' : 'Despesa',
     categoria: l.categoria,
     descricao: l.descricao,
     valor: l.valor,
+    valorPago: l.valorPago ?? 0,
+    saldoAberto: l.saldoAberto ?? Math.max(0, l.valor - (l.valorPago ?? 0)),
     status: l.status.charAt(0).toUpperCase() + l.status.slice(1),
     formaPagamento: l.formaPagamento?.replace('_', ' ') || '',
   }));
 
   await exportToExcel(data, 'financeiro', 'Lançamentos', {
     data: 'Data',
+    dataPagamento: 'Data do pagamento',
+    dataVencimento: 'Data do vencimento',
     tipo: 'Tipo',
     categoria: 'Categoria',
     descricao: 'Descrição',
     valor: 'Valor (R$)',
+    valorPago: 'Valor realizado (R$)',
+    saldoAberto: 'Saldo em aberto (R$)',
     status: 'Status',
     formaPagamento: 'Forma de Pagamento',
   } as any);

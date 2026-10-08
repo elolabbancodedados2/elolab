@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { mockPlanosPublicos } from './mockPlanosPublicos';
 
 test.describe('Authentication flows', () => {
   test('acesso a /dashboard sem login redireciona para /auth', async ({ page }) => {
@@ -42,6 +43,7 @@ test.describe('Authentication flows', () => {
   });
 
   test('landing page carrega sem erros de console', async ({ page }) => {
+    await mockPlanosPublicos(page);
     const errors: string[] = [];
     page.on('console', (msg) => {
       if (msg.type() === 'error' && !msg.text().includes('Failed to fetch')) {
