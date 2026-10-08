@@ -2,6 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { usuariosNoLimite, validarLimitesDeEquipe } from "../_shared/limitesClinica.ts";
 import { checarRateLimit, clientIp } from "../_shared/rateLimit.ts";
 import { corsPadrao } from '../_shared/cors.ts';
+import { isInvitationExpired } from "../_shared/invitationExpiry.ts";
 
 // Atribuído em cada request (reflete a origem permitida). Helpers
 // top-level (json/reply) capturam esta variável por closure.
@@ -41,6 +42,10 @@ Deno.serve(async (req) => {
     if (!invite) return json({ success: false, error: "Convite inválido." }, 404);
     if ((invite as any).accepted_at && action !== 'accept_authenticated') {
       return json({ success: false, error: "Convite já utilizado." }, 410);
+    }
+    // Links vencidos não devem revelar dados pessoais durante a consulta inicial.
+    if (action === "lookup" && isInvitationExpired((invite as any).expires_at)) {
+      return json({ success: false, error: "Convite expirado." }, 410);
     }
 
     const { data: clinica } = await service
@@ -98,12 +103,12 @@ Deno.serve(async (req) => {
         }
         return json({ success: false, error: 'Convite já utilizado.' }, 410);
       }
-      if (new Date((invite as any).expires_at) < new Date()) {
+      if (isInvitationExpired((invite as any).expires_at)) {
         return json({ success: false, error: 'Convite expirado.' }, 410);
       }
     } else {
       if (action !== 'accept') return json({ success: false, error: 'Ação inválida.' }, 400);
-      if (new Date((invite as any).expires_at) < new Date()) {
+      if (isInvitationExpired((invite as any).expires_at)) {
         return json({ success: false, error: 'Convite expirado.' }, 410);
       }
 
@@ -163,11 +168,8 @@ Deno.serve(async (req) => {
 
     // Vincula o cadastro de funcionário à conta criada.
     //
-    // Era a única coisa que este caminho não fazia e o outro
-    // (accept_employee_invitation) fazia. Sem o vínculo, a pessoa passa a ter
-    // login mas a ficha de funcionário fica órfã: hoje 9 dos 12 funcionários
-    // estão assim, sem user_id, e por isso não aparecem em nada que dependa de
-    // conta.
+    // Sem o vínculo, a pessoa teria login mas a ficha de funcionário ficaria
+    // órfã e deixaria de aparecer nas telas que dependem da conta.
     //
     // Casa pelo e-mail dentro da MESMA clínica. Se não houver ficha, cria —
     // convidar alguém já é a decisão de que essa pessoa faz parte da equipe.
