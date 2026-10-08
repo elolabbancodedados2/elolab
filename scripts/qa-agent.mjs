@@ -60,6 +60,7 @@ process.stdout.write('Clínica de QA confirmada. Rodando navegador real e verifi
 const cli = resolve('node_modules/@playwright/test/cli.js');
 const specs = [
   'tests/producao-smoke.spec.ts',
+  'tests/qa-ux.spec.ts',
   'tests/qa-real-user.spec.ts',
   'tests/navigation.spec.ts',
   'tests/modulos.spec.ts',
@@ -71,6 +72,7 @@ const result = spawnSync(process.execPath, [cli, 'test', ...specs, '--workers=1'
     ...process.env,
     QA_BASE_URL: baseURL,
     PRODUCAO_URL: baseURL,
+    QA_RUN_PRODUCTION_SMOKE: '1',
     QA_EXPECTED_BUILD_ID: localVersion.build_id,
   },
 });

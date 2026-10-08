@@ -1,6 +1,6 @@
 # Agente de QA do EloLab
 
-O agente abre o app publicado com Playwright, verifica se ele está no mesmo build local e percorre as telas como usuário. A bateria cobre login visual, páginas públicas, rotas dos módulos, painel do administrador da clínica e permissões dos cinco perfis.
+O agente usa Playwright para avaliar o frontend do ponto de vista de quem usa o EloLab. Ele verifica se a publicação corresponde ao build local, captura páginas em celular, tablet e desktop, registra problemas de leitura e acessibilidade, e percorre jornadas públicas e áreas da clínica.
 
 ## Ordem de execução
 
@@ -38,6 +38,9 @@ Para homologação, troque `QA_BASE_URL` e remova `QA_ALLOW_PRODUCTION`. O valor
 ## O que a bateria faz
 
 - Confere build publicado, landing, login, arquivos e cabeçalhos.
+- Faz uma revisão visual da landing, login, redefinição de senha e planos em celular (375px), tablet (768px) e desktop (1440px).
+- Guarda capturas e um JSON por tela com overflow, botões sem nome, campos sem rótulo, textos muito pequenos e alvos de toque reduzidos. Os apontamentos heurísticos orientam a revisão visual; não substituem a inspeção humana.
+- Testa validação vazia do login e confirma que ela não envia uma chamada de autenticação.
 - Verifica que cadastro de cliente não pede código de convite e que os campos aparecem com rótulos claros.
 - Verifica os cinco perfis em rotas permitidas e bloqueadas.
 - Entra pelo formulário de login da clínica de QA e navega pelos módulos principais.
@@ -45,4 +48,4 @@ Para homologação, troque `QA_BASE_URL` e remova `QA_ALLOW_PRODUCTION`. O valor
 
 O agente não cria, edita ou apaga pacientes, consultas, cobranças, mensagens ou contas. Também não envia e-mails de recuperação. Operações de CRUD precisam de uma etapa própria, com dados sintéticos identificáveis e limpeza limitada à clínica de QA.
 
-Playwright salva relatório HTML, traces e capturas de falhas em `playwright-report/` e `test-results/`. Revise esses arquivos antes de compartilhá-los.
+Playwright salva relatório HTML, traces, capturas visuais e achados em `playwright-report/` e `test-results/`. Revise esses arquivos antes de compartilhá-los. O smoke de produção só é ativado pelo runner após confirmar o mesmo `build_id`; a suíte E2E normal de PR fica no servidor local.

@@ -15,9 +15,13 @@ import { test, expect } from '@playwright/test';
  */
 
 const PRODUCAO_URL = process.env.PRODUCAO_URL;
+const EXECUTAR_SMOKE_PUBLICADO = process.env.QA_RUN_PRODUCTION_SMOKE === '1';
 
 test.describe('Produção — smoke', () => {
-  test.skip(!PRODUCAO_URL, 'Defina PRODUCAO_URL para rodar o smoke contra o ambiente publicado.');
+  test.skip(
+    !PRODUCAO_URL || !EXECUTAR_SMOKE_PUBLICADO,
+    'Smoke publicado exige PRODUCAO_URL e QA_RUN_PRODUCTION_SMOKE=1.',
+  );
 
   test('a landing carrega e renderiza conteúdo real', async ({ page }) => {
     const errosDeConsole: string[] = [];
