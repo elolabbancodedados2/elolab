@@ -28,6 +28,23 @@ type Subscription = {
   vencida: boolean;
 };
 type WebhookLog = { id: string; event_id: string | null; event_type: string; data_id: string | null; processado: boolean | null; tentativas: number | null; erro_mensagem: string | null; created_at: string };
+type PlatformInvoice = {
+  id: string;
+  clinic_name: string;
+  owner_email: string | null;
+  mp_authorized_payment_id: string;
+  mp_preapproval_id: string;
+  mp_payment_id: string | null;
+  invoice_status: string;
+  payment_status: string | null;
+  payment_status_detail: string | null;
+  amount: number | null;
+  currency_id: string | null;
+  invoice_type: string | null;
+  date_created: string | null;
+  debit_date: string | null;
+  retry_attempt: number | null;
+};
 type Overview = {
   generated_at: string;
   metrics: { mrr: number; ativas: number; trials: number; vencidas: number; sem_assinatura: number; webhooks_pendentes: number; webhooks_falha_24h: number };
@@ -35,7 +52,7 @@ type Overview = {
   webhooks: WebhookLog[];
 };
 
-const moeda = (value: number) => Number(value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+const moeda = (value: number, currency = 'BRL') => Number(value || 0).toLocaleString('pt-BR', { style: 'currency', currency });
 const dataHora = (value: string) => {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? 'Data indisponível' : date.toLocaleString('pt-BR');
@@ -50,6 +67,15 @@ export default function PlatformCobrancas() {
       const { data, error } = await (supabase as any).rpc('platform_billing_overview');
       if (error) throw error;
       return data as Overview;
+    },
+    refetchInterval: 60_000,
+  });
+  const invoices = useQuery({
+    queryKey: ['platform-subscription-invoices'],
+    queryFn: async (): Promise<PlatformInvoice[]> => {
+      const { data, error } = await (supabase as any).rpc('platform_subscription_invoice_history', { p_limit: 50 });
+      if (error) throw error;
+      return (data || []) as PlatformInvoice[];
     },
     refetchInterval: 60_000,
   });
@@ -119,6 +145,39 @@ export default function PlatformCobrancas() {
             </div>
           ))}
           {!overview.isLoading && !overview.isError && !lista.length && <div className="flex flex-col items-center gap-2 py-6 text-center"><p className="text-sm text-muted-foreground">Nenhuma clínica corresponde à busca e ao status selecionado.</p>{(busca.trim() || status !== 'all') && <Button variant="ghost" size="sm" onClick={() => { setBusca(''); setStatus('all'); }}>Limpar filtros</Button>}</div>}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Faturas recorrentes recentes</CardTitle>
+          <CardDescription>Histórico das faturas do Mercado Pago, com status da fatura e do pagamento separados.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {invoices.isLoading ? [1, 2, 3].map((item) => <Skeleton key={item} className="h-16 w-full" />) : invoices.isError ? (
+            <ErrorState error={invoices.error} onRetry={() => { void invoices.refetch(); }} />
+          ) : (invoices.data || []).map((invoice) => (
+            <div key={invoice.id} className="grid gap-2 rounded-lg border p-3 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium">{invoice.clinic_name}</p>
+                <p className="truncate text-xs text-muted-foreground">{invoice.owner_email || 'Sem e-mail'} · Fatura {invoice.mp_authorized_payment_id}</p>
+                <p className="text-xs text-muted-foreground">{invoice.date_created || invoice.debit_date ? dataHora(invoice.date_created || invoice.debit_date!) : 'Data indisponível'}{invoice.retry_attempt ? ` · tentativa ${invoice.retry_attempt}` : ''}</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Badge variant="secondary">Fatura: {invoice.invoice_status}</Badge>
+                <Badge variant={invoice.payment_status === 'approved' ? 'outline' : invoice.payment_status ? 'destructive' : 'secondary'}>
+                  Pagamento: {invoice.payment_status || 'sem pagamento vinculado'}
+                </Badge>
+              </div>
+              <span className="text-sm font-semibold sm:text-right">
+                {invoice.amount === null ? 'Valor indisponível' : moeda(invoice.amount, invoice.currency_id || 'BRL')}
+                {invoice.payment_status_detail && <small className="block text-xs font-normal text-muted-foreground">{invoice.payment_status_detail}</small>}
+              </span>
+            </div>
+          ))}
+          {!invoices.isLoading && !invoices.isError && !invoices.data?.length && (
+            <p className="py-4 text-center text-sm text-muted-foreground">Nenhuma fatura recorrente registrada ainda.</p>
+          )}
         </CardContent>
       </Card>
 

@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsPadrao } from '../_shared/cors.ts';
+import { mapAuthorizedPaymentInvoice } from '../_shared/mercadoPagoInvoice.ts';
 import { mercadoPagoPaymentResource } from '../_shared/mercadoPagoWebhookRouting.ts';
 
 // Atribuído em cada request (reflete a origem permitida). Helpers
@@ -671,7 +672,9 @@ async function processAuthorizedSubscriptionPaymentNotification(
   }
 
   const authorizedPayment = await response.json();
-  const payment = authorizedPayment.payment || authorizedPayment;
+  const payment = authorizedPayment.payment && typeof authorizedPayment.payment === "object"
+    ? authorizedPayment.payment
+    : {};
   const preapprovalId = authorizedPayment.preapproval_id ||
     authorizedPayment.subscription_id ||
     authorizedPayment.preapproval?.id;
@@ -693,12 +696,22 @@ async function processAuthorizedSubscriptionPaymentNotification(
   }
 
   const detalhes = (assinatura.detalhes || {}) as Record<string, unknown>;
-  const paymentStatus = payment.status || authorizedPayment.status;
+  const paymentStatus = typeof payment.status === "string" ? payment.status : null;
   const approved = paymentStatus === "approved";
   const userId = typeof detalhes.user_id === "string" ? detalhes.user_id : null;
   const planoId = typeof detalhes.plano_id === "string" ? detalhes.plano_id : null;
   const planoSlug = typeof detalhes.plano_slug === "string" ? detalhes.plano_slug : null;
   const trialEnd = typeof detalhes.trial_end === "string" ? detalhes.trial_end : null;
+
+  const invoice = mapAuthorizedPaymentInvoice({
+    authorizedPayment,
+    assinaturaMpId: assinatura.id,
+    userId,
+  });
+  const { error: invoiceError } = await supabase
+    .from("platform_subscription_invoices")
+    .upsert(invoice, { onConflict: "mp_authorized_payment_id" });
+  if (invoiceError) throw invoiceError;
 
   const { error: updateError } = await supabase
     .from("assinaturas_mercadopago")
