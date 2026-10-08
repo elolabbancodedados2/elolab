@@ -154,7 +154,8 @@ export async function validarLimitesDeEquipe(
   const { count: funcionarios, error: funcionariosError } = await service
     .from('funcionarios')
     .select('id', { count: 'exact', head: true })
-    .eq('clinica_id', clinicaId);
+    .eq('clinica_id', clinicaId)
+    .eq('ativo', true);
   if (funcionariosError) {
     console.error('[limites] falha ao contar funcionários:', funcionariosError.message);
     throw new Error('Não foi possível validar o limite de funcionários. Tente novamente.');

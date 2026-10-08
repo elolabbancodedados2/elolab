@@ -62,8 +62,11 @@ const TIPO_FUNCIONARIO_CONFIG: { value: string; label: string; registroLabel?: s
   { value: 'tecnico_enfermagem', label: 'Técnico(a) de Enfermagem', registroLabel: 'COREN', registroTipo: 'COREN' },
   { value: 'tecnico_laboratorio', label: 'Técnico(a) de Laboratório', registroLabel: 'CRT', registroTipo: 'CRT' },
   { value: 'atendente', label: 'Atendente' },
+  { value: 'recepcionista', label: 'Recepcionista' },
+  { value: 'financeiro', label: 'Financeiro(a)' },
   { value: 'gerente', label: 'Gerente / Dono(a)' },
   { value: 'administrativo', label: 'Administrativo' },
+  { value: 'outro', label: 'Outro' },
 ];
 
 const UF_OPTIONS = ['AC','AL','AM','AP','BA','CE','DF','ES','GO','MA','MG','MS','MT','PA','PB','PE','PI','PR','RJ','RN','RO','RR','RS','SC','SE','SP','TO'];

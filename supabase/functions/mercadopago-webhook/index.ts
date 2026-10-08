@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsPadrao } from '../_shared/cors.ts';
+import { mercadoPagoPaymentResource } from '../_shared/mercadoPagoWebhookRouting.ts';
 
 // Atribuído em cada request (reflete a origem permitida). Helpers
 // top-level (json/reply) capturam esta variável por closure.
@@ -194,15 +195,12 @@ Deno.serve(async (req) => {
     }
     if (!logId) throw new Error("Webhook sem registro de auditoria");
 
-    // Process payment notification (payment.created, payment.updated)
-    if (
-      data.type === "payment" ||
-      data.action === "payment.created" ||
-      data.action === "payment.updated"
-    ) {
+    // Pagamentos comuns usam GET /v1/payments/{id}.
+    const paymentResource = mercadoPagoPaymentResource(data);
+    if (paymentResource === 'payment') {
       const paymentId = data.data?.id;
       if (paymentId) {
-        await processAuthorizedSubscriptionPaymentNotification(
+        await processPaymentNotification(
           paymentId.toString(),
           mpToken,
           supabase,
@@ -223,15 +221,12 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Process authorized_payment (subscription automatic renewal payment)
-    if (
-      data.type === "subscription_authorized_payment" ||
-      data.action?.includes("authorized_payment")
-    ) {
+    // Faturas recorrentes usam GET /authorized_payments/{id}.
+    if (paymentResource === 'authorized_payment') {
       const paymentId = data.data?.id;
       if (paymentId) {
         console.log("Processing automatic subscription renewal payment:", paymentId);
-        await processPaymentNotification(paymentId.toString(), mpToken, supabase, logId);
+        await processAuthorizedSubscriptionPaymentNotification(paymentId.toString(), mpToken, supabase, logId);
         // Also log this as a renewal in the subscription
         const preapprovalId = data.data?.preapproval_id;
         if (preapprovalId) {
