@@ -48,7 +48,7 @@ export default function AceitarConvite() {
     const validateToken = async () => {
       try {
         // 1) Try the new edge function flow (convites_funcionario)
-        const { data: newResp } = await supabase.functions.invoke('accept-invite', {
+        const { data: newResp, error: newError } = await supabase.functions.invoke('accept-invite', {
           body: { action: 'lookup', token },
         });
         if (newResp && (newResp as any).success && (newResp as any).invite) {
@@ -60,6 +60,16 @@ export default function AceitarConvite() {
             clinica_nome: inv.clinica_nome,
             funcionario: inv.nome ? { nome: inv.nome, cargo: null } : undefined,
           });
+          setLoading(false);
+          return;
+        }
+
+        // A função nova usa 410 para links expirados/utilizados. Mostra a
+        // resposta específica em vez de tentar validá-los no fluxo legado.
+        const response = (newError as { context?: unknown } | null)?.context;
+        if (response instanceof Response && response.status === 410) {
+          const body = await response.clone().json().catch(() => null);
+          setError(typeof body?.error === 'string' ? body.error : 'Este convite expirou ou já foi utilizado.');
           setLoading(false);
           return;
         }
