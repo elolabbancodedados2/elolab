@@ -110,7 +110,6 @@ export function MercadoPagoPointPayment({
     onSuccess: refresh,
   });
 
-  if (!open || !lancamentoId) return null;
   const connected = terminalsQuery.data?.connected === true && ordersQuery.data?.connected === true;
   const busy = createMutation.isPending || syncMutation.isPending || cancelMutation.isPending;
   const openOrder = !!order && ['creating', 'created', 'at_terminal', 'action_required'].includes(order.status);
@@ -122,6 +121,8 @@ export function MercadoPagoPointPayment({
   useEffect(() => {
     onPendingChange(blocksManual);
   }, [blocksManual, onPendingChange]);
+
+  if (!open || !lancamentoId) return null;
 
   return (
     <section className="rounded-xl border border-primary/20 bg-primary/[0.03] p-4 space-y-3" aria-label="Mercado Pago Point">
