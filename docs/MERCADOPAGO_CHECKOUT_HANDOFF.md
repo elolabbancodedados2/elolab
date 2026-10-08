@@ -78,6 +78,15 @@ Nunca copie os valores para commits, logs ou respostas.
 - O painel Mercado Pago mostrou os tópicos `Order`, `Pagamentos (legacy)` e `Planos e assinaturas` selecionados. A entrega real de notificação pelo painel ainda precisa ser confirmada com uma compra de teste.
 - A suíte sandbox foi repetida em 08/10/2026: 17/17 cenários OK. Order aprovada com endereço, descritor de fatura e Device ID para medir qualidade: `ORDTST01M4E30MPWXQWX68R0XD646151`.
 
+## OAuth opcional por clínica e Mercado Pago Point
+
+- `mercadopago-oauth` inicia Authorization Code com `state` de uso único e PKCE; troca o código apenas no servidor, valida `user_id` em `/users/me` e cifra os tokens com `INTEGRACOES_CHAVE_CRIPTO`.
+- O refresh token é rotacionado com lock por clínica e gravação condicional, para não sobrescrever uma desconexão concorrente. As chamadas Point usam exclusivamente o token OAuth da clínica; as cobranças dos planos SaaS continuam usando `MERCADOPAGO_ACCESS_TOKEN` da plataforma.
+- O webhook `mp-connect` trata `application.deauthorized` e apaga a cópia local dos tokens. O botão Desconectar também apaga o token local. A revogação da autorização no Mercado Pago deve ser feita nas configurações da conta do vendedor; o Mercado Pago não oferece endpoint OAuth de revogação nesta API.
+- As Orders Point usam `mercadopago_point_orders`, token OAuth da clínica, idempotência e RPCs para registrar/estornar no livro `pagamentos`. Não escrevem em `pagamentos_mercadopago` nem nas tabelas de cobrança do SaaS.
+- Uma cobrança por fatura é garantida agora também por índice único parcial. A migração aborta sem apagar dados se encontrar cobranças abertas duplicadas. Se a resposta da criação se perder, o backend repete a mesma order com a chave idempotente e os valores já gravados.
+- Validação local de OAuth/Point: Deno type-check. Ainda é necessário validar autorização e revogação com uma clínica de QA isolada e uma conta Mercado Pago própria antes de liberar Point em produção.
+
 ## Pendências (em ordem)
 
 1. **Validar o fluxo completo no navegador** com usuário e cartão de teste: autorização recorrente no cartão, cancelamento, e Pix/boleto (pagamento único). Confirmar que as mudanças de status chegam pelo webhook real do painel.

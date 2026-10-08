@@ -135,27 +135,51 @@ Deno.serve(async (req) => {
         && availableTerminals.data.terminals.some((item: any) => String(item.id ?? '') === terminalId);
       if (!terminalExists) return json({ error: 'O terminal selecionado não pertence à conta Mercado Pago desta clínica.' }, 403, cors);
 
-      const { data: inFlight } = await service.from('mercadopago_point_orders')
-        .select('id,status,mp_order_id,expires_at')
+      const { data: inFlight, error: inFlightError } = await service.from('mercadopago_point_orders')
+        .select('id,request_id,status,mp_order_id,external_reference,idempotency_key,terminal_id,valor,expires_at')
         .eq('clinica_id', clinicId).eq('lancamento_id', lancamentoId)
         .in('status', ['creating', 'created', 'at_terminal', 'action_required'])
         .order('created_at', { ascending: false }).limit(1).maybeSingle();
-      if (inFlight && inFlight.expires_at && Date.parse(inFlight.expires_at) > Date.now()) {
-        return json({ error: 'Já existe uma cobrança aguardando no terminal.', existing_order: inFlight }, 409, cors);
-      }
+      if (inFlightError) throw inFlightError;
 
       type LocalPointOrder = {
         id: string;
+        request_id: string;
         mp_order_id: string | null;
         status: string;
         external_reference: string;
         idempotency_key: string;
+        terminal_id: string;
+        valor: number | string;
+        expires_at: string | null;
       };
-      const { data: existingOrder, error: localError } = await service.from('mercadopago_point_orders')
-        .select('id,mp_order_id,status,external_reference,idempotency_key')
-        .eq('clinica_id', clinicId).eq('request_id', requestId).maybeSingle();
-      if (localError) throw localError;
-      let localOrder = existingOrder as LocalPointOrder | null;
+      let localOrder = inFlight as LocalPointOrder | null;
+      if (localOrder?.request_id === requestId && localOrder.mp_order_id) {
+        return json({ order: localOrder }, 200, cors);
+      }
+      if (localOrder?.mp_order_id && localOrder.expires_at && Date.parse(localOrder.expires_at) <= Date.now()) {
+        // A expiração local não prova que o terminal encerrou a order. Consulte
+        // o Mercado Pago antes de liberar uma nova cobrança para esta fatura.
+        await syncMercadoPagoPointOrder(service, localOrder.mp_order_id);
+        const { data: refreshed, error: refreshError } = await service.from('mercadopago_point_orders')
+          .select('id,request_id,status,mp_order_id,external_reference,idempotency_key,terminal_id,valor,expires_at')
+          .eq('id', localOrder.id).eq('clinica_id', clinicId).maybeSingle();
+        if (refreshError) throw refreshError;
+        localOrder = refreshed as LocalPointOrder | null;
+      }
+
+      if (localOrder && localOrder.status !== 'creating' && localOrder.status !== 'expired'
+        && localOrder.status !== 'failed' && localOrder.status !== 'canceled') {
+        return json({ error: 'Já existe uma cobrança aguardando no terminal.', existing_order: localOrder }, 409, cors);
+      }
+
+      if (!localOrder) {
+        const { data: existingOrder, error: localError } = await service.from('mercadopago_point_orders')
+          .select('id,request_id,mp_order_id,status,external_reference,idempotency_key,terminal_id,valor,expires_at')
+          .eq('clinica_id', clinicId).eq('request_id', requestId).maybeSingle();
+        if (localError) throw localError;
+        localOrder = existingOrder as LocalPointOrder | null;
+      }
       if (localOrder?.mp_order_id) return json({ order: localOrder }, 200, cors);
       if (!localOrder) {
         const id = crypto.randomUUID();
@@ -172,14 +196,20 @@ Deno.serve(async (req) => {
           status: 'creating',
           expires_at: new Date(Date.now() + 15 * 60_000).toISOString(),
         }).select('id,external_reference,idempotency_key,terminal_id,valor').single();
-        if (error?.code === '23505') return json({ error: 'Esta solicitação já está em processamento. Atualize os pedidos antes de repetir.' }, 409, cors);
+        if (error?.code === '23505') {
+          return json({ error: 'Já existe uma cobrança em andamento para esta fatura. Atualize os pedidos antes de repetir.' }, 409, cors);
+        }
         if (error || !inserted) throw error ?? new Error('Falha ao preparar cobrança local.');
         localOrder = {
           id: String(inserted.id),
+          request_id: requestId,
           mp_order_id: null,
           status: 'creating',
           external_reference: String(inserted.external_reference),
           idempotency_key: String(inserted.idempotency_key),
+          terminal_id: terminalId,
+          valor: amount,
+          expires_at: new Date(Date.now() + 15 * 60_000).toISOString(),
         };
       }
       if (!localOrder) throw new Error('Falha ao preparar cobrança local.');
@@ -189,8 +219,8 @@ Deno.serve(async (req) => {
           type: 'point',
           external_reference: localOrder.external_reference,
           expiration_time: 'PT15M',
-          transactions: { payments: [{ amount: Number(amount).toFixed(2) }] },
-          config: { point: { terminal_id: terminalId } },
+          transactions: { payments: [{ amount: Number(localOrder.valor).toFixed(2) }] },
+          config: { point: { terminal_id: localOrder.terminal_id } },
           description: 'Cobrança EloLab',
         }, localOrder.idempotency_key);
         const { error: saveError } = await service.from('mercadopago_point_orders').update({
@@ -200,7 +230,7 @@ Deno.serve(async (req) => {
           updated_at: new Date().toISOString(),
         }).eq('id', localOrder.id);
         if (saveError) throw saveError;
-        return json({ order: { id: localOrder.id, mp_order_id: String(created.id), status: created.status, valor: amount } }, 201, cors);
+        return json({ order: { id: localOrder.id, mp_order_id: String(created.id), status: created.status, valor: localOrder.valor } }, 201, cors);
       } catch (error) {
         // Mantém a solicitação e a chave idempotente para uma repetição segura.
         await service.from('mercadopago_point_orders').update({

@@ -125,7 +125,10 @@ export function IntegracoesClinica() {
   };
 
   const desconectar = async (integracao: Integracao, referencia_id: string | null) => {
-    if (!window.confirm(`Desconectar ${integracao.nome}? A credencial salva será apagada.`)) return;
+    const detalhe = integracao.id === 'mercado_pago'
+      ? 'O EloLab apagará a autorização salva. Para revogar também o acesso da aplicação, faça isso nas configurações da sua conta Mercado Pago.'
+      : 'A credencial salva será apagada.';
+    if (!window.confirm(`Desconectar ${integracao.nome}? ${detalhe}`)) return;
     try {
       await chamar({ action: 'disconnect', provedor: integracao.id, referencia_id });
       toast.success(`${integracao.nome} desconectado`);
