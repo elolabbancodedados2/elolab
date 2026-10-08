@@ -45,6 +45,10 @@ test.describe('QA — jornada real, sem criar dados', () => {
   });
 
   test('entra pela tela de login e carrega os módulos principais com perfil de clínica', async ({ page }) => {
+    test.skip(
+      process.env.QA_DEDICATED_CLINIC !== '1',
+      'O login de ponta a ponta exige uma clínica exclusiva de QA, nunca uma conta de produção comum.',
+    );
     test.skip(!emailAdmin || !senhaAdmin, 'O agente exige uma conta admin exclusiva da clínica de QA.');
     const excecoes: string[] = [];
     page.on('pageerror', (error) => excecoes.push(error.message));
