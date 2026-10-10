@@ -43,7 +43,7 @@ interface SupabaseAuthContextType {
   /** @deprecated use isPlatformAdmin */
   isSuperAdmin: boolean;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
-  signUp: (email: string, password: string, nome: string, telefone?: string, cpfCnpj?: string, redirectTo?: string) => Promise<{ data: any; error: Error | null }>;
+  signUp: (email: string, password: string, nome: string, telefone?: string, cpfCnpj?: string, redirectTo?: string, metadata?: Record<string, unknown>) => Promise<{ data: any; error: Error | null }>;
   signOut: () => Promise<void>;
   hasRole: (role: AppRole) => boolean;
   hasAnyRole: (roles: AppRole[]) => boolean;
@@ -335,7 +335,7 @@ export function SupabaseAuthProvider({ children }: { children: ReactNode }) {
     return { error: error as Error | null };
   };
 
-  const signUp = async (email: string, password: string, nome: string, telefone?: string, cpfCnpj?: string, redirectTo?: string) => {
+  const signUp = async (email: string, password: string, nome: string, telefone?: string, cpfCnpj?: string, redirectTo?: string, metadata: Record<string, unknown> = {}) => {
     const redirectUrl = redirectTo || 'https://app.elolab.com.br/';
     
     const { data, error } = await supabase.auth.signUp({
@@ -348,6 +348,7 @@ export function SupabaseAuthProvider({ children }: { children: ReactNode }) {
           full_name: nome,
           telefone: telefone || null,
           cpf_cnpj: cpfCnpj || null,
+          ...metadata,
         },
       },
     });

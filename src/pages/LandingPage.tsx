@@ -194,7 +194,7 @@ const faqItems = [
   },
   {
     q: 'Como funciona o teste grátis?',
-    a: 'Crie sua conta, confirme o e-mail e cadastre o cartão no checkout do EloLab. O cartão permite a renovação automática; o valor e a data da primeira cobrança aparecem antes de confirmar. Você não precisa sair do EloLab para pagar.',
+    a: 'Escolha um plano, crie sua conta e cadastre um cartão no checkout seguro do Mercado Pago. O teste dura 3 dias. Antes de confirmar, mostramos o valor e a data da primeira cobrança recorrente; cancele antes do fim do teste para não pagar a primeira mensalidade.',
   },
   {
     q: 'Os dados dos meus pacientes ficam seguros?',
@@ -600,7 +600,7 @@ export default function LandingPage() {
                 <span className="bg-clip-text text-transparent" style={{ backgroundImage: C.grad }}>a sua operação</span>
               </h2>
               <p className="mt-3 text-lg" style={{ color: C.textL }}>
-                {plans.length > 0 ? `Teste gratuito por ${plans[0].trialDays} dias, sem cartão de crédito.` : 'Consulte os planos e as condições do teste gratuito.'}
+                {plans.length > 0 ? 'Teste grátis por 3 dias com cartão. Cancele antes da primeira cobrança automática.' : 'Consulte os planos e as condições do teste gratuito.'}
               </p>
             </div>
             {plansLoading ? (

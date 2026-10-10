@@ -12,12 +12,15 @@ interface SupabaseProtectedRouteProps {
    * assinaturas e planos de todos os clientes.
    */
   somentePlataforma?: boolean;
+  /** Permite apenas ao comprador autenticado sem clínica acessar o checkout do plano escolhido. */
+  permitirCompradorPendente?: boolean;
 }
 
 export function SupabaseProtectedRoute({
   children,
   allowedRoles,
   somentePlataforma,
+  permitirCompradorPendente = false,
 }: SupabaseProtectedRouteProps) {
   const { user, profile, isLoading, hasAnyRole, isPlatformAdmin } = useSupabaseAuth();
   const location = useLocation();
@@ -38,7 +41,13 @@ export function SupabaseProtectedRoute({
   // São dois tipos de administrador que o sistema precisa distinguir:
   //   admin de clínica  — comprou o EloLab e administra a clínica dele
   //   dono da plataforma — administra o EloLab, e não pertence a clínica alguma
-  if (!profile || (profile.roles.length === 0 && !isPlatformAdmin)) {
+  const checkoutSlug = location.pathname.match(/^\/planos\/checkout\/([^/]+)$/)?.[1];
+  const metadata = user.user_metadata as Record<string, unknown> | undefined;
+  const compradorPendente = Boolean(
+    permitirCompradorPendente && checkoutSlug && profile && !profile.clinica_id && profile.roles.length === 0 &&
+    metadata?.checkout_flow === 'saas_subscription' && metadata?.checkout_plan_slug === decodeURIComponent(checkoutSlug)
+  );
+  if (!profile || (profile.roles.length === 0 && !isPlatformAdmin && !compradorPendente)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background p-4">
         <div className="text-center max-w-md">
@@ -61,7 +70,7 @@ export function SupabaseProtectedRoute({
   }
 
   // Check role-based access
-  if (allowedRoles && !hasAnyRole(allowedRoles)) {
+  if (allowedRoles && !hasAnyRole(allowedRoles) && !compradorPendente) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background p-4">
         <div className="text-center max-w-md">

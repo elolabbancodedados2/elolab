@@ -16,6 +16,7 @@ import { ChatPanel } from '@/components/chat/ChatPanel';
 import { ImpersonationBanner } from '@/components/ImpersonationBanner';
 import { usePersonalPreferences } from '@/hooks/usePersonalPreferences';
 import { useOperationalEvents } from '@/hooks/useOperationalEvents';
+import { Version20Announcement } from '@/components/Version20Announcement';
 
 export function MainLayout() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -30,6 +31,7 @@ export function MainLayout() {
     <div className="flex h-[100dvh] min-h-[100svh] overflow-hidden bg-background">
       <SkipLink targetId="main-content" />
       <RouteAccessibility />
+      <Version20Announcement />
 
       {/* Desktop Sidebar */}
       <nav className="hidden lg:block" aria-label="Menu principal">
@@ -59,7 +61,7 @@ export function MainLayout() {
           role="main"
           tabIndex={-1}
         >
-          <div className="container mx-auto max-w-7xl px-3 pb-[calc(1.5rem+env(safe-area-inset-bottom))] pt-3 sm:p-4 md:p-6 lg:p-8">
+          <div className="mx-auto w-full max-w-[1600px] px-3 pb-[calc(2rem+env(safe-area-inset-bottom))] pt-4 sm:px-5 md:px-6 md:pt-5 xl:px-8 xl:pt-6">
             <Breadcrumbs />
             <div className="animate-fade-in">
               {/* Barreira POR TELA. Havia só um ErrorBoundary no topo do App,

@@ -28,6 +28,16 @@ const renderWithRouter = (ui: React.ReactElement) =>
     </MemoryRouter>
   );
 
+const renderPlanCheckout = (ui: React.ReactElement, slug = 'pro') =>
+  render(
+    <MemoryRouter initialEntries={[`/planos/checkout/${slug}`]}>
+      <Routes>
+        <Route path="/planos/checkout/:slug" element={ui} />
+        <Route path="/auth" element={<div>Tela de login</div>} />
+      </Routes>
+    </MemoryRouter>
+  );
+
 describe('SupabaseProtectedRoute', () => {
   it('mostra loading quando isLoading', () => {
     mockUseSupabaseAuth.mockReturnValue({
@@ -156,5 +166,39 @@ describe('SupabaseProtectedRoute', () => {
     );
 
     expect(screen.getByText('Protected')).toBeInTheDocument();
+  });
+
+  it('permite que somente o comprador pendente abra o checkout do plano escolhido', () => {
+    mockUseSupabaseAuth.mockReturnValue({
+      user: { id: '3', email: 'comprador@test.com', user_metadata: { checkout_flow: 'saas_subscription', checkout_plan_slug: 'pro' } },
+      profile: { clinica_id: null, roles: [] },
+      isLoading: false,
+      isPlatformAdmin: false,
+      hasAnyRole: () => false,
+    });
+    renderPlanCheckout(
+      <SupabaseProtectedRoute allowedRoles={['admin' as any]} permitirCompradorPendente>
+        <div>Checkout protegido</div>
+      </SupabaseProtectedRoute>
+    );
+    expect(screen.getByText('Checkout protegido')).toBeInTheDocument();
+  });
+
+  it('bloqueia comprador pendente que tenta abrir outro plano', () => {
+    mockUseSupabaseAuth.mockReturnValue({
+      user: { id: '3', email: 'comprador@test.com', user_metadata: { checkout_flow: 'saas_subscription', checkout_plan_slug: 'pro' } },
+      profile: { clinica_id: null, roles: [] },
+      isLoading: false,
+      isPlatformAdmin: false,
+      hasAnyRole: () => false,
+    });
+    renderPlanCheckout(
+      <SupabaseProtectedRoute allowedRoles={['admin' as any]} permitirCompradorPendente>
+        <div>Checkout protegido</div>
+      </SupabaseProtectedRoute>,
+      'ultra'
+    );
+    expect(screen.queryByText('Checkout protegido')).not.toBeInTheDocument();
+    expect(screen.getByText('Acesso Pendente')).toBeInTheDocument();
   });
 });

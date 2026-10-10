@@ -4,7 +4,7 @@ import { CardPayment, initMercadoPago } from '@mercadopago/sdk-react';
 import { addMonths, format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import {
-  AlertTriangle, ArrowLeft, Barcode, Check, CheckCircle2, Clock, Copy, CreditCard, ExternalLink,
+  AlertTriangle, ArrowLeft, Barcode, CalendarDays, Check, CheckCircle2, Clock, Copy, CreditCard, ExternalLink,
   Gift, Loader2, Lock, QrCode, RefreshCw, ShieldCheck, XCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -13,8 +13,10 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { ErrorState } from '@/components/ErrorState';
+import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { formatCEP, formatCNPJ, formatCPF } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
 import {
@@ -130,13 +132,14 @@ function SeletorMetodo({ valor, onChange, bloqueados }: { valor: Metodo; onChang
 // ─── Cartão (assinatura recorrente) ─────────────────────────────────────────
 
 function PagamentoCartao({
-  planoSlug, valor, trialDias, publicKey, onAprovado,
+  planoSlug, valor, trialDias, publicKey, trialConsent, onAprovado,
 }: {
   planoSlug: string;
   valor: number;
   trialDias: number;
   publicKey: string | null;
-  onAprovado: (info: { emTrial: boolean; emAnalise: boolean }) => void;
+  trialConsent: boolean;
+  onAprovado: (info: { emTrial: boolean; emAnalise: boolean }) => void | Promise<void>;
 }) {
   const criar = useCreateCardSubscription();
   const [pronto, setPronto] = useState(false);
@@ -205,12 +208,16 @@ function PagamentoCartao({
           }}
           onSubmit={async (formData) => {
             setErro(null);
+            if (trialDias > 0 && !trialConsent) {
+              setErro('Confirme a autorização da cobrança recorrente para iniciar o teste grátis.');
+              throw new Error('Consentimento da cobrança recorrente obrigatório.');
+            }
             try {
               const result = await criar.mutateAsync({
-                plano_slug: planoSlug, card_token_id: formData.token, trial_dias: trialDias, device_id: deviceIdMercadoPago(),
+                plano_slug: planoSlug, card_token_id: formData.token, trial_dias: trialDias, trial_consent: trialConsent, device_id: deviceIdMercadoPago(),
               });
               if (result.status === 'recusado') throw new Error('O cartão foi recusado. Use outro cartão ou forma de pagamento.');
-              onAprovado({ emTrial: result.em_trial, emAnalise: result.status === 'em_analise' });
+              await onAprovado({ emTrial: result.em_trial, emAnalise: result.status === 'em_analise' });
             } catch (error) {
               setErro(error instanceof Error ? error.message : 'Não foi possível concluir o pagamento.');
               // O token do cartão é de uso único: recria o formulário para nova tentativa.
@@ -480,6 +487,7 @@ export default function PlanoCheckout() {
   const { slug = '' } = useParams();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const { refreshProfile, user: authUser } = useSupabaseAuth();
   const { data: status, isLoading, isError, error, refetch } = useBillingStatus(slug);
 
   // MercadoPago.js V2 em toda a página (não só no cartão): gera o Device ID
@@ -495,14 +503,24 @@ export default function PlanoCheckout() {
   });
   const [pedidoId, setPedidoId] = useState<string | null>(null);
   const [sucesso, setSucesso] = useState<Sucesso | null>(null);
+  const [checkoutNow, setCheckoutNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setCheckoutNow(Date.now()), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const plano = status?.plano ?? null;
   const assinatura = status?.assinatura ?? null;
   const temPlanoAtivo = !!assinatura && ['ativa', 'trial'].includes(assinatura.status);
   const recorrenteAtiva = temPlanoAtivo && assinatura?.modalidade !== 'pre_pago';
-  const podeTrial = !!plano && plano.trial_dias > 0 && !temPlanoAtivo;
+  const checkoutMetadata = authUser?.user_metadata as Record<string, unknown> | undefined;
+  const podeTrial = !!plano && plano.trial_dias > 0 && !temPlanoAtivo
+    && checkoutMetadata?.checkout_flow === 'saas_subscription'
+    && checkoutMetadata?.checkout_plan_slug === plano.slug;
   const [usarTrial, setUsarTrial] = useState(searchParams.get('trial') === '1');
-  const trialDias = podeTrial && usarTrial && metodo === 'cartao' ? plano!.trial_dias : 0;
+  const [trialConsent, setTrialConsent] = useState(false);
+  const trialDias = podeTrial && usarTrial && metodo === 'cartao' ? 3 : 0;
+  const trialEndEstimate = trialDias > 0 ? new Date(checkoutNow + 72 * 60 * 60 * 1000) : null;
 
   // Retoma um Pix/boleto do mesmo plano que ainda está aberto.
   useEffect(() => {
@@ -566,7 +584,7 @@ export default function PlanoCheckout() {
             : `Pagamento confirmado. O ${plano.nome} está liberado até ${sucesso.pedido.periodo_fim ? format(new Date(sucesso.pedido.periodo_fim), "dd 'de' MMMM 'de' yyyy", { locale: ptBR }) : 'o fim do período'}.`}
         </p>
         <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
-          <Button size="lg" onClick={() => navigate('/dashboard')}>Ir para o painel</Button>
+          <Button size="lg" onClick={() => navigate(sucesso.tipo === 'cartao' && sucesso.emAnalise ? '/planos' : '/boas-vindas')}>{sucesso.tipo === 'cartao' && sucesso.emAnalise ? 'Acompanhar assinatura' : 'Continuar configuração'}</Button>
           <Button size="lg" variant="outline" onClick={() => navigate('/planos')}>Ver meu plano</Button>
         </div>
       </div>
@@ -592,7 +610,7 @@ export default function PlanoCheckout() {
 
       <div>
         <h1 className="text-3xl font-bold tracking-tight md:text-4xl">Finalizar contratação</h1>
-        <p className="mt-2 text-muted-foreground">Escolha como prefere pagar o {plano.nome}.</p>
+        <p className="mt-2 text-muted-foreground">Confira o valor, a primeira cobrança e as condições antes de continuar.</p>
       </div>
 
       <div className="grid gap-8 lg:grid-cols-[1fr_380px] lg:items-start">
@@ -626,11 +644,23 @@ export default function PlanoCheckout() {
                     <div className="flex items-center gap-3">
                       <Gift className="h-5 w-5 text-warning" />
                       <div>
-                        <Label htmlFor="usar-trial" className="font-medium">Começar com {plano.trial_dias} dias grátis</Label>
-                        <p className="text-xs text-muted-foreground">O cartão é validado agora e só é cobrado no fim do teste.</p>
+                        <Label htmlFor="usar-trial" className="font-medium">Começar com 3 dias grátis</Label>
+                        <p className="text-xs text-muted-foreground">O cartão pode receber uma validação temporária do Mercado Pago, estornada conforme as regras do emissor.</p>
                       </div>
                     </div>
-                    <Switch id="usar-trial" checked={usarTrial} onCheckedChange={setUsarTrial} />
+                    <Switch id="usar-trial" checked={usarTrial} onCheckedChange={(checked) => { setUsarTrial(checked); setTrialConsent(false); }} />
+                  </div>
+                )}
+                {trialDias > 0 && trialEndEstimate && (
+                  <div className="space-y-3 rounded-xl border border-primary/25 bg-primary/5 p-4">
+                    <div className="flex items-start gap-3 text-sm">
+                      <CalendarDays className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                      <p>Hoje: <strong>R$ 0,00</strong> pelo EloLab. Em <strong>{format(trialEndEstimate, "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}</strong>, começa a assinatura e será cobrado <strong>{brl(plano.valor)} por {periodoLabel(plano.periodo_meses)}</strong>, com renovação automática. Cancele em Planos antes desse horário para evitar a primeira mensalidade.</p>
+                    </div>
+                    <label htmlFor="consent-trial-recorrente" className="flex cursor-pointer items-start gap-3 text-sm leading-5">
+                      <Checkbox id="consent-trial-recorrente" checked={trialConsent} onCheckedChange={(checked) => setTrialConsent(checked === true)} />
+                      <span>Autorizo a cobrança recorrente de {brl(plano.valor)} por {periodoLabel(plano.periodo_meses)} após o teste de 3 dias. Entendi que posso cancelar antes da primeira cobrança.</span>
+                    </label>
                   </div>
                 )}
                 <PagamentoCartao
@@ -639,7 +669,11 @@ export default function PlanoCheckout() {
                   valor={plano.valor}
                   trialDias={trialDias}
                   publicKey={status?.public_key ?? null}
-                  onAprovado={(info) => setSucesso({ tipo: 'cartao', ...info })}
+                  trialConsent={trialConsent}
+                  onAprovado={async (info) => {
+                    if (!info.emAnalise) await refreshProfile();
+                    setSucesso({ tipo: 'cartao', ...info });
+                  }}
                 />
               </div>
             )}
@@ -648,7 +682,7 @@ export default function PlanoCheckout() {
               <PedidoEmAndamento
                 key={pedidoId}
                 pedidoId={pedidoId}
-                onPago={(pedido) => setSucesso({ tipo: 'periodo', pedido })}
+                onPago={async (pedido) => { await refreshProfile(); setSucesso({ tipo: 'periodo', pedido }); }}
                 onNovo={() => setPedidoId(null)}
               />
             )}

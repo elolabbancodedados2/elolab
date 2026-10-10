@@ -30,12 +30,13 @@ type SupabaseLike = any;
 
 export interface PlanCheckoutContext {
   supabase: SupabaseLike;
-  user: { id: string; email?: string; created_at?: string };
+  user: { id: string; email?: string; created_at?: string; user_metadata?: Record<string, unknown> };
   mpToken: string;
   headers: Record<string, string>;
 }
 
 const APP_URL = 'https://app.elolab.com.br';
+const FREE_TRIAL_DAYS = 3;
 const ORDER_CLIENT_FIELDS =
   'id, plano_slug, metodo, valor, periodo_meses, status, status_detail, ticket_url, qr_code, qr_code_base64, digitable_line, barcode_content, expira_em, pago_em, periodo_inicio, periodo_fim, created_at';
 
@@ -88,6 +89,38 @@ async function loadCurrentPlan(supabase: SupabaseLike, userId: string) {
   return data;
 }
 
+async function validateBuyerCheckout(ctx: PlanCheckoutContext, slug: string) {
+  const { data: profile, error } = await ctx.supabase.from('profiles').select('clinica_id').eq('id', ctx.user.id).maybeSingle();
+  if (error) throw error;
+  const { data: roles, error: roleError } = await ctx.supabase.from('user_roles').select('role').eq('user_id', ctx.user.id);
+  if (roleError) throw roleError;
+  const hasClinicRole = (roles || []).length > 0;
+  if (!profile?.clinica_id && !hasClinicRole) {
+    const metadata = ctx.user.user_metadata || {};
+    if (metadata.checkout_flow !== 'saas_subscription' || metadata.checkout_plan_slug !== slug) {
+      throw new Error('Este cadastro não tem uma contratação pendente válida para este plano. Volte à página de planos e inicie a contratação.');
+    }
+    const email = (ctx.user.email || '').trim().toLowerCase();
+    if (email) {
+      const [{ data: clinicInvite, error: clinicInviteError }, { data: employeeInvite, error: employeeInviteError }] = await Promise.all([
+        ctx.supabase.from('convites_funcionario').select('id').ilike('email', email).is('accepted_at', null).gt('expires_at', new Date().toISOString()).limit(1),
+        ctx.supabase.from('employee_invitations').select('id').ilike('email', email).eq('status', 'pending').gt('expires_at', new Date().toISOString()).limit(1),
+      ]);
+      if (clinicInviteError) throw clinicInviteError;
+      if (employeeInviteError) throw employeeInviteError;
+      if (clinicInvite?.length || employeeInvite?.length) {
+        throw new Error('Este e-mail já tem um convite de equipe pendente. Aceite o convite ou use outro e-mail para contratar uma clínica.');
+      }
+    }
+  }
+}
+
+async function provisionAfterEntitlement(supabase: SupabaseLike, userId: string) {
+  const { data, error } = await supabase.rpc('provision_clinic_after_subscription', { p_user_id: userId });
+  if (error) throw new Error(`Assinatura confirmada, mas o provisionamento da clínica falhou: ${error.message}`);
+  return data;
+}
+
 async function loadOpenOrder(supabase: SupabaseLike, userId: string) {
   const { data, error } = await supabase
     .from('platform_plan_orders')
@@ -130,7 +163,14 @@ export async function billingStatus(body: Record<string, unknown>, ctx: PlanChec
   const plano = body.plano_slug ? await loadActivePlan(ctx.supabase, body.plano_slug) : null;
   if (body.plano_slug && !plano) return reply({ error: 'Plano não encontrado' }, 404, ctx.headers);
 
+  if (plano) await validateBuyerCheckout(ctx, plano.slug);
+
   const current = await loadCurrentPlan(ctx.supabase, ctx.user.id);
+  let clinic: unknown = null;
+  if (current && ['ativa', 'trial'].includes(String(current.status))) {
+    // Recupera de uma interrupção entre a confirmação do gateway e a criação da clínica.
+    clinic = await provisionAfterEntitlement(ctx.supabase, ctx.user.id);
+  }
   const open = await loadOpenOrder(ctx.supabase, ctx.user.id);
 
   return reply({
@@ -144,7 +184,7 @@ export async function billingStatus(body: Record<string, unknown>, ctx: PlanChec
         descricao: plano.descricao,
         valor: Number(plano.valor),
         frequencia: plano.frequencia || 'mensal',
-        trial_dias: Number(plano.trial_dias || 0),
+        trial_dias: FREE_TRIAL_DAYS,
         features: plano.features || [],
         periodo_meses: periodMonthsFor(plano.frequencia),
       }
@@ -160,6 +200,7 @@ export async function billingStatus(body: Record<string, unknown>, ctx: PlanChec
       }
       : null,
     pedido_aberto: clientOrder(open),
+    provisionamento: clinic,
   }, 200, ctx.headers);
 }
 
@@ -169,6 +210,7 @@ export async function createCardSubscription(body: Record<string, unknown>, ctx:
   const { supabase, user, headers } = ctx;
   const plano = await loadActivePlan(supabase, body.plano_slug);
   if (!plano) return reply({ error: 'Plano não encontrado' }, 404, headers);
+  await validateBuyerCheckout(ctx, plano.slug);
 
   const cardTokenId = typeof body.card_token_id === 'string' ? body.card_token_id.trim() : '';
   if (!/^[A-Za-z0-9-]{16,64}$/.test(cardTokenId)) {
@@ -176,9 +218,14 @@ export async function createCardSubscription(body: Record<string, unknown>, ctx:
   }
 
   const requestedTrialDays = body.trial_dias === undefined || body.trial_dias === null ? 0 : Number(body.trial_dias);
-  const planTrialDays = Number(plano.trial_dias || 0);
-  if (!Number.isInteger(requestedTrialDays) || requestedTrialDays < 0 || requestedTrialDays > planTrialDays) {
+  if (requestedTrialDays !== 0 && requestedTrialDays !== FREE_TRIAL_DAYS) {
     return reply({ error: 'Período de teste inválido para este plano' }, 400, headers);
+  }
+  if (requestedTrialDays === FREE_TRIAL_DAYS && ctx.user.user_metadata?.checkout_flow !== 'saas_subscription') {
+    return reply({ error: 'O teste grátis exige um cadastro iniciado pela página de contratação.' }, 403, headers);
+  }
+  if (requestedTrialDays === FREE_TRIAL_DAYS && body.trial_consent !== true) {
+    return reply({ error: 'É necessário autorizar claramente a cobrança recorrente após o teste.' }, 400, headers);
   }
 
   const payerEmail = payerEmailFor(user);
@@ -189,8 +236,8 @@ export async function createCardSubscription(body: Record<string, unknown>, ctx:
     return reply({ error: 'Este plano já está ativo para esta conta' }, 409, headers);
   }
   // Teste grátis só para quem ainda não tem plano ativo.
-  if (requestedTrialDays > 0 && current && ['ativa', 'trial'].includes(String(current.status))) {
-    return reply({ error: 'O teste grátis não está disponível para contas com plano ativo' }, 409, headers);
+  if (requestedTrialDays > 0 && current) {
+    return reply({ error: 'O teste grátis está disponível somente para uma primeira contratação da conta' }, 409, headers);
   }
 
   const client = createMercadoPagoClient({ accessToken: ctx.mpToken });
@@ -237,6 +284,11 @@ export async function createCardSubscription(body: Record<string, unknown>, ctx:
         payer_email: payerEmail,
         trial_type: trialEnd ? 'with_payment_method' : 'none',
         trial_end: trialEnd?.toISOString() || null,
+        trial_consent: trialEnd ? {
+          accepted: true,
+          accepted_at: new Date().toISOString(),
+          terms_version: 'recurring-trial-3d-v1',
+        } : null,
         start_date: startDate?.toISOString() || null,
       },
     })
@@ -309,6 +361,7 @@ export async function createCardSubscription(body: Record<string, unknown>, ctx:
       gatewayStatus,
       trialEnd: trialEnd?.toISOString() || null,
     }, ctx.mpToken);
+    await provisionAfterEntitlement(supabase, user.id);
   }
 
   return reply({
@@ -360,6 +413,7 @@ export async function createPlanOrder(body: Record<string, unknown>, ctx: PlanCh
 
   const plano = await loadActivePlan(supabase, body.plano_slug);
   if (!plano) return reply({ error: 'Plano não encontrado' }, 404, headers);
+  await validateBuyerCheckout(ctx, plano.slug);
 
   const payerEmail = payerEmailFor(user);
   if (!payerEmail) return reply({ error: 'A conta precisa ter um e-mail válido' }, 400, headers);

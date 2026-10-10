@@ -88,6 +88,10 @@ export async function applyGatewayOrder(
   if (error) throw new Error(`Falha ao aplicar status do pedido: ${error.message}`);
 
   const detail = (result || {}) as JsonObject;
+  if (status === 'pago') {
+    const { error: provisionError } = await supabase.rpc('provision_clinic_after_subscription', { p_user_id: local.user_id });
+    if (provisionError) throw new Error(`Pagamento confirmado, mas a clínica não foi provisionada: ${provisionError.message}`);
+  }
   return { handled: true, ignored: false, status, applied: detail.aplicado === true, detail };
 }
 

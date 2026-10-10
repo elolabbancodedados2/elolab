@@ -110,7 +110,10 @@ export default function Auth() {
 
   useEffect(() => {
     const activationFinished = activationStatus === 'active' || (activationStatus === 'idle' && !urlCodigo && !hasPlanIntent);
-    if (!authLoading && user && profile && activationFinished) navigate('/dashboard');
+    if (!authLoading && user && profile && activationFinished) {
+      if (hasPlanIntent) navigate(`/planos/checkout/${encodeURIComponent(urlPlan)}${urlPlanMode === 'trial' ? '?trial=1' : ''}`, { replace: true });
+      else navigate('/dashboard');
+    }
   }, [user, profile, authLoading, navigate, activationStatus, urlCodigo, hasPlanIntent]);
 
   const loginForm = useForm<LoginFormData>({
@@ -182,7 +185,8 @@ export default function Auth() {
         }
 
         toast.success('Login realizado!');
-        navigate('/dashboard');
+        if (hasPlanIntent) navigate(`/planos/checkout/${encodeURIComponent(urlPlan)}${urlPlanMode === 'trial' ? '?trial=1' : ''}`);
+        else navigate('/dashboard');
       }
     } catch (e) {
       const feedback = interpretarErroLogin(e);
@@ -222,7 +226,8 @@ export default function Auth() {
   const handleMfaVerified = () => {
     setPendingFactorId(null);
     toast.success('Login realizado!');
-    navigate('/dashboard');
+    if (hasPlanIntent) navigate(`/planos/checkout/${encodeURIComponent(urlPlan)}${urlPlanMode === 'trial' ? '?trial=1' : ''}`);
+    else navigate('/dashboard');
   };
 
   const handleMfaCancel = async () => {
@@ -322,7 +327,11 @@ export default function Auth() {
         setActivationCode(inviteCode);
         setActivationStatus('activating');
       }
-      const result = await signUp(email, data.password, data.nome, data.telefone, data.cpfCnpj, activationRedirect.toString());
+      const result = await signUp(email, data.password, data.nome, data.telefone, data.cpfCnpj, activationRedirect.toString(), hasPlanIntent ? {
+        checkout_flow: 'saas_subscription',
+        checkout_plan_slug: urlPlan,
+        checkout_plan_mode: urlPlanMode,
+      } : undefined);
       if (result.error) {
         setActivationStatus('idle');
         if (/user already registered|already been registered/i.test(result.error.message)) {
