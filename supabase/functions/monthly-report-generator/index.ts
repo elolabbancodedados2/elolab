@@ -1,6 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { cronSecretOk, cronForbidden } from '../_shared/cronAuth.ts';
 import { corsPadrao } from '../_shared/cors.ts';
+import { sendBrevoEmail } from '../_shared/brevoEmail.ts';
 
 // Atribuído em cada request (reflete a origem permitida). Helpers
 // top-level (json/reply) capturam esta variável por closure.
@@ -20,12 +21,6 @@ Deno.serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    const resendApiKey = Deno.env.get('RESEND_API_KEY')
-
-    if (!resendApiKey) {
-      throw new Error('RESEND_API_KEY não configurada')
-    }
-
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
     // Calcular período do mês anterior
@@ -239,18 +234,12 @@ Deno.serve(async (req) => {
 
     for (const email of adminEmails) {
       try {
-        const emailRes = await fetch('https://api.resend.com/emails', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${resendApiKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            from: 'EloLab <onboarding@resend.dev>',
-            to: [email],
-            subject: `📊 Relatório Mensal - ${nomeMes.charAt(0).toUpperCase() + nomeMes.slice(1)} - EloLab`,
-            html: htmlReport,
-          }),
+        const emailRes = await sendBrevoEmail({
+          to: email,
+          senderName: 'EloLab',
+          subject: `📊 Relatório Mensal - ${nomeMes.charAt(0).toUpperCase() + nomeMes.slice(1)} - EloLab`,
+          preheader: `Resumo mensal do EloLab referente a ${nomeMes}.`,
+          html: htmlReport,
         })
 
         if (emailRes.ok) {
@@ -258,8 +247,7 @@ Deno.serve(async (req) => {
           console.log(`✅ Relatório enviado para ${email}`)
         } else {
           errorCount++
-          const error = await emailRes.json()
-          console.error(`❌ Erro ao enviar para ${email}:`, error)
+          console.error(`Falha no envio do relatório mensal (HTTP ${emailRes.status}).`)
         }
       } catch (err) {
         errorCount++

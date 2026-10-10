@@ -3,6 +3,7 @@ import { expect, test, type Page, type TestInfo } from '@playwright/test';
 const viewports = [
   { name: 'mobile', width: 375, height: 812 },
   { name: 'tablet', width: 768, height: 1024 },
+  { name: 'compact-desktop', width: 1024, height: 768 },
   { name: 'desktop', width: 1440, height: 900 },
 ];
 
@@ -110,8 +111,7 @@ test.describe('QA visual — UX, frontend e design', () => {
 
         const findings = await inspect(page, route.name, viewport.name);
         await capture(page, testInfo, `${route.name}-${viewport.name}`, findings);
-        expect(findings.filter((finding) => finding.severity === 'high' && finding.issue.startsWith('Conteúdo ultrapassa')),
-          `${route.path} tem overflow horizontal em ${viewport.name}`).toHaveLength(0);
+        expect(findings, `${route.path} tem achados de UX em ${viewport.name}`).toHaveLength(0);
       }
     }
 
@@ -135,5 +135,22 @@ test.describe('QA visual — UX, frontend e design', () => {
 
     const findings = await inspect(page, 'login-validation', 'desktop');
     await capture(page, testInfo, 'login-validation-desktop', findings);
+  });
+
+  test('respeita preferência de movimento reduzido nas animações da aplicação', async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.goto('/auth', { waitUntil: 'domcontentloaded' });
+    await expect(page.getByRole('heading', { name: /acesse sua conta/i })).toBeVisible();
+
+    const reducedMotionEnabled = await page.evaluate(
+      () => window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+    );
+    expect(reducedMotionEnabled).toBe(true);
+
+    const authCardTransform = await page.locator('form').evaluate((form) => {
+      const motionCard = form.closest('div[class*="max-w-"]');
+      return motionCard ? getComputedStyle(motionCard).transform : null;
+    });
+    expect(authCardTransform).toMatch(/^none$|^matrix\(1, 0, 0, 1, 0, 0\)$/);
   });
 });

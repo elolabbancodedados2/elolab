@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { cronOrUserOk, cronForbidden, clinicaDoChamador, cronSecretOk } from "../_shared/cronAuth.ts";
 import { corsPadrao } from '../_shared/cors.ts';
+import { sendBrevoEmail } from '../_shared/brevoEmail.ts';
 
 // Atribuído em cada request (reflete a origem permitida). Helpers
 // top-level (json/reply) capturam esta variável por closure.
@@ -132,7 +133,7 @@ Deno.serve(async (req) => {
         status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    const resendKey = Deno.env.get("RESEND_API_KEY");
+    const emailConfigured = Boolean(Deno.env.get('BREVO_API_KEY'));
 
     let body: any = {};
     // Corpo vazio é esperado quando o disparo vem do agendador.
@@ -206,23 +207,20 @@ Deno.serve(async (req) => {
 
       // Gerar CSV simples
       let csv = cols.join(",") + "\n";
-      for (const row of linhasRelatorio) csv += cols.map((c: string) => csvEscape(valorNoCaminho(row, c))).join(",") + "\n";
+      for (const row of linhasRelatorio) csv += cols.map((c) => csvEscape(valorNoCaminho(row, String(c)))).join(",") + "\n";
 
       // Enviar e-mail
       let delivery = "not_configured";
-      if (resendKey && r.destinatarios?.length) {
+      if (emailConfigured && r.destinatarios?.length) {
         const fileName = `${r.nome.replace(/\s+/g, "_")}_${new Date().toISOString().slice(0, 10)}.csv`;
         const html = `<h2>${htmlEscape(r.nome)}</h2><p>${htmlEscape(r.descricao)}</p><p>Registros: <b>${linhasRelatorio.length}</b></p><p>Relatório anexo (CSV).</p>`;
-        const emailResponse = await fetch("https://api.resend.com/emails", {
-          method: "POST",
-          headers: { Authorization: `Bearer ${resendKey}`, "Content-Type": "application/json" },
-          body: JSON.stringify({
-            from: "EloLab <noreply@elolab.com.br>",
-            to: r.destinatarios,
-            subject: `📊 ${r.nome}`,
-            html,
-            attachments: [{ filename: fileName, content: btoa(unescape(encodeURIComponent(csv))) }],
-          }),
+        const emailResponse = await sendBrevoEmail({
+          senderName: 'EloLab',
+          to: r.destinatarios,
+          subject: `📊 ${r.nome}`,
+          preheader: `Relatório salvo do EloLab: ${r.nome}.`,
+          html,
+          attachments: [{ filename: fileName, content: btoa(unescape(encodeURIComponent(csv))) }],
         });
         if (!emailResponse.ok) throw new Error("O serviço de e-mail recusou o envio do relatório.");
         delivery = "sent";

@@ -3,6 +3,7 @@ import react from "@vitejs/plugin-react-swc";
 import path from "path";
 import { componentTagger } from "lovable-tagger";
 import { VitePWA } from "vite-plugin-pwa";
+import { createViteTestSupabaseDefine } from './scripts/test-supabase-env.ts';
 
 export default defineConfig(({ mode }) => ({
   server: {
@@ -149,6 +150,7 @@ export default defineConfig(({ mode }) => ({
     }),
   ].filter(Boolean),
   define: {
+    ...(mode === 'test' ? createViteTestSupabaseDefine(process.env) : {}),
     // Identifica a versão publicada. Cada hospedagem expõe o commit com um nome
     // próprio; sem ler o do Cloudflare, uma publicação lá cairia no horário do
     // build — que muda a cada compilação e não aponta para commit nenhum,

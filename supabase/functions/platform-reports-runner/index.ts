@@ -1,5 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsPadrao } from '../_shared/cors.ts';
+import { sendBrevoEmail } from '../_shared/brevoEmail.ts';
 
 type Schedule = {
   id: string;
@@ -116,16 +117,17 @@ Deno.serve(async (req) => {
     for (const schedule of schedules as Schedule[]) {
       let sent = false;
       try {
-        const apiKey = Deno.env.get('RESEND_API_KEY');
-        if (!apiKey) throw new Error('Serviço de e-mail não está configurado');
+        if (!Deno.env.get('BREVO_API_KEY')) throw new Error('Serviço de e-mail não está configurado');
 
         const metrics = report?.metrics || {};
         const title = htmlEscape(schedule.name);
         const html = `<h1>${title}</h1><p>Resumo dos últimos 30 dias</p><ul><li>Clínicas: ${Number(metrics.clinicas_ativas || 0)}</li><li>Usuários ativos: ${Number(metrics.usuarios_ativos || 0)}</li><li>MRR: R$ ${Number(metrics.mrr || 0).toFixed(2)}</li><li>Incidentes abertos: ${Number(metrics.incidentes_abertos || 0)}</li></ul>`;
-        const response = await fetch('https://api.resend.com/emails', {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ from: 'EloLab <noreply@elolab.com.br>', to: schedule.recipients, subject: schedule.name, html }),
+        const response = await sendBrevoEmail({
+          senderName: 'EloLab',
+          to: schedule.recipients,
+          subject: schedule.name,
+          preheader: `Resumo EloLab dos últimos 30 dias: ${schedule.name}.`,
+          html,
         });
         if (!response.ok) throw new Error(`O serviço de e-mail recusou o envio (HTTP ${response.status})`);
         sent = true;

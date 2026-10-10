@@ -1,6 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { cronForbidden, cronOrUserOk, clinicaDoChamador } from '../_shared/cronAuth.ts'
 import { corsPadrao } from '../_shared/cors.ts';
+import { sendBrandedBrevoRequest } from '../_shared/brevoEmail.ts';
 
 // Atribuído em cada request (reflete a origem permitida). Helpers
 // top-level (json/reply) capturam esta variável por closure.
@@ -102,10 +103,9 @@ Deno.serve(async (req) => {
           .replace(/\{\{tipo_exame\}\}/g, tipoExame)
           .replace(/\{\{clinica_nome\}\}/g, clinicaNome)
 
-        const emailRes = await fetch('https://api.brevo.com/v3/smtp/email', {
+        const emailRes = await sendBrandedBrevoRequest({
           method: 'POST',
           headers: {
-            'api-key': brevoApiKey,
             'Content-Type': 'application/json',
             'Accept': 'application/json',
           },

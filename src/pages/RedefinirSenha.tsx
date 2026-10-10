@@ -171,7 +171,7 @@ export default function RedefinirSenha() {
               </Button>
               <Link
                 to="/auth"
-                className="block text-center text-sm text-muted-foreground hover:text-foreground"
+                className="inline-flex min-h-10 w-full items-center justify-center text-center text-sm text-muted-foreground hover:text-foreground"
               >
                 Voltar para o login
               </Link>

@@ -1,5 +1,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { corsPadrao } from '../_shared/cors.ts'
+import { sendBrandedBrevoRequest } from '../_shared/brevoEmail.ts'
 
 function escapeHtml(value: unknown) {
   return String(value ?? '').replace(/[&<>"']/g, (character) => ({
@@ -64,10 +65,10 @@ Deno.serve(async (req) => {
 
   let emailResponse: Response
   try {
-    emailResponse = await fetch('https://api.brevo.com/v3/smtp/email', {
+    emailResponse = await sendBrandedBrevoRequest({
       method: 'POST',
       signal: AbortSignal.timeout(20_000),
-      headers: { 'api-key': brevoApiKey, 'Content-Type': 'application/json', Accept: 'application/json' },
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify({
         sender: { name: 'EloLab', email: 'noreply@elolab.com.br' },
         to: [{ email: registration.email, name: registration.nome }],

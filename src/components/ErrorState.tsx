@@ -62,7 +62,7 @@ export function ErrorState({
         <p className="text-sm text-foreground flex-1">{message}</p>
         {onRetry && (
           <Button size="sm" variant="outline" onClick={onRetry} className="shrink-0">
-            <RefreshCw className="h-4 w-4 mr-2" />
+            <RefreshCw aria-hidden="true" className="h-4 w-4 mr-2" />
             {retryLabel}
           </Button>
         )}
@@ -73,7 +73,7 @@ export function ErrorState({
   return (
     <Card role="alert" className={cn('p-8 md:p-12 animate-fade-in', className)}>
       <div className="flex flex-col items-center justify-center text-center space-y-5">
-        <div className="h-16 w-16 rounded-2xl bg-destructive/10 flex items-center justify-center">
+        <div className="h-16 w-16 rounded-2xl bg-destructive/10 ring-1 ring-destructive/15 shadow-sm flex items-center justify-center">
           <Icon aria-hidden="true" className="h-8 w-8 text-destructive" />
         </div>
         <div className="space-y-2 max-w-md">
@@ -81,8 +81,8 @@ export function ErrorState({
           <p className="text-sm text-muted-foreground">{message}</p>
         </div>
         {onRetry && (
-          <Button onClick={onRetry} variant="outline">
-            <RefreshCw className="h-4 w-4 mr-2" />
+          <Button onClick={onRetry}>
+            <RefreshCw aria-hidden="true" className="h-4 w-4 mr-2" />
             {retryLabel}
           </Button>
         )}

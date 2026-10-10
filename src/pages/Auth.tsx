@@ -622,7 +622,7 @@ export default function Auth() {
                         não tinha nenhuma chamada de recuperação. */}
                     <Link
                       to="/redefinir-senha"
-                      className="block text-center text-sm text-muted-foreground hover:text-foreground"
+                      className="inline-flex min-h-10 w-full items-center justify-center text-center text-sm text-muted-foreground hover:text-foreground"
                     >
                       Esqueci minha senha
                     </Link>
@@ -858,12 +858,12 @@ export default function Auth() {
           <div className="mt-8 space-y-3">
             <a
               href="https://app.elolab.com.br"
-              className="flex items-center justify-center gap-2 text-sm font-medium text-primary hover:text-primary/80 transition-colors"
+              className="flex min-h-10 items-center justify-center gap-2 text-sm font-medium text-primary hover:text-primary/80 transition-colors"
             >
               <ArrowLeft className="h-3.5 w-3.5" />
               Voltar ao site
             </a>
-            <p className="text-center text-[11px] text-muted-foreground/60">
+            <p className="text-center text-xs text-muted-foreground/60">
               © {new Date().getFullYear()} EloLab · Todos os direitos reservados
             </p>
           </div>

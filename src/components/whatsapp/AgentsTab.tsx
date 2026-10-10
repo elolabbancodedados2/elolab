@@ -7,10 +7,17 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
 import { Bot, Plus, Settings, Trash2, RefreshCw } from 'lucide-react';
-import { WhatsAppAgent, NewAgentForm, defaultAgentForm } from './types';
+import {
+  WhatsAppAgent,
+  WhatsAppAgentCapability,
+  WHATSAPP_AGENT_CAPABILITIES,
+  NewAgentForm,
+  defaultAgentForm,
+} from './types';
 
 interface AgentsTabProps {
   agents: WhatsAppAgent[];
@@ -32,19 +39,6 @@ export function AgentsTab({
   const [selectedAgent, setSelectedAgent] = useState<WhatsAppAgent | null>(null);
   const [isCreatingAgent, setIsCreatingAgent] = useState(false);
   const [newAgentForm, setNewAgentForm] = useState<NewAgentForm>(defaultAgentForm);
-
-  const getTipoBadge = (tipo: string) => {
-    switch (tipo) {
-      case 'geral':
-        return <Badge variant="outline">Atendimento Geral</Badge>;
-      case 'agendamento':
-        return <Badge variant="secondary">Agendamento</Badge>;
-      case 'triagem':
-        return <Badge>Triagem</Badge>;
-      default:
-        return <Badge variant="outline">{tipo}</Badge>;
-    }
-  };
 
   const handleCreate = async () => {
     try {
@@ -133,7 +127,7 @@ export function AgentsTab({
                         <h3 className="font-medium">{agent.nome}</h3>
                       </div>
                       <div className="flex gap-2 flex-wrap">
-                        {getTipoBadge(agent.tipo)}
+                        <Badge variant="outline">{agent.habilidades?.length ?? 0} funções ativas</Badge>
                         <Badge variant="outline" className="text-[10px]">
                           {agent.humor === 'profissional' ? '🏢 Formal' : agent.humor === 'amigavel' ? '😊 Amigável' : '🎯 Objetivo'}
                         </Badge>
@@ -159,30 +153,21 @@ export function AgentsTab({
                 <CardTitle>Criar Novo Agente</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label>Nome do Agente</Label>
-                    <Input
-                      value={newAgentForm.nome}
-                      onChange={(e) => setNewAgentForm({ ...newAgentForm, nome: e.target.value })}
-                      placeholder="Ex: Assistente da Clínica"
-                    />
-                  </div>
-                  <div>
-                    <Label>Tipo</Label>
-                    <Select
-                      value={newAgentForm.tipo}
-                      onValueChange={(value) => setNewAgentForm({ ...newAgentForm, tipo: value })}
-                    >
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="geral">Atendimento Geral</SelectItem>
-                        <SelectItem value="agendamento">Agendamento</SelectItem>
-                        <SelectItem value="triagem">Triagem Inicial</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+                <div>
+                  <Label htmlFor="novo-agente-nome">Nome do agente</Label>
+                  <Input
+                    id="novo-agente-nome"
+                    value={newAgentForm.nome}
+                    onChange={(e) => setNewAgentForm({ ...newAgentForm, nome: e.target.value })}
+                    placeholder="Ex.: Ana, assistente da Clínica Central"
+                  />
+                  <p className="mt-1 text-xs text-muted-foreground">Esse nome aparece para o paciente no WhatsApp.</p>
                 </div>
+
+                <CapabilitiesEditor
+                  value={newAgentForm.habilidades}
+                  onChange={(habilidades) => setNewAgentForm({ ...newAgentForm, habilidades })}
+                />
 
                 <div>
                   <Label>Humor / Tom</Label>
@@ -293,29 +278,20 @@ export function AgentsTab({
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label>Nome do Agente</Label>
-                    <Input
-                      value={selectedAgent.nome}
-                      onChange={(e) => setSelectedAgent({ ...selectedAgent, nome: e.target.value })}
-                    />
-                  </div>
-                  <div>
-                    <Label>Tipo</Label>
-                    <Select
-                      value={selectedAgent.tipo}
-                      onValueChange={(value) => setSelectedAgent({ ...selectedAgent, tipo: value })}
-                    >
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="geral">Atendimento Geral</SelectItem>
-                        <SelectItem value="agendamento">Agendamento</SelectItem>
-                        <SelectItem value="triagem">Triagem Inicial</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+                <div>
+                  <Label htmlFor="editar-agente-nome">Nome do agente</Label>
+                  <Input
+                    id="editar-agente-nome"
+                    value={selectedAgent.nome}
+                    onChange={(e) => setSelectedAgent({ ...selectedAgent, nome: e.target.value })}
+                  />
+                  <p className="mt-1 text-xs text-muted-foreground">Esse nome aparece para o paciente no WhatsApp.</p>
                 </div>
+
+                <CapabilitiesEditor
+                  value={selectedAgent.habilidades || []}
+                  onChange={(habilidades) => setSelectedAgent({ ...selectedAgent, habilidades })}
+                />
 
                 <div>
                   <Label>Humor / Tom</Label>
@@ -412,5 +388,48 @@ export function AgentsTab({
         </div>
       </div>
     </div>
+  );
+}
+
+function CapabilitiesEditor({
+  value,
+  onChange,
+}: {
+  value: WhatsAppAgentCapability[];
+  onChange: (value: WhatsAppAgentCapability[]) => void;
+}) {
+  const toggle = (capability: WhatsAppAgentCapability, enabled: boolean) => {
+    const next = new Set(value);
+    if (enabled) next.add(capability);
+    else next.delete(capability);
+    onChange([...next]);
+  };
+
+  return (
+    <fieldset className="space-y-3 rounded-lg border p-4">
+      <legend className="px-1 text-sm font-semibold">O que este agente pode fazer?</legend>
+      <p className="text-xs text-muted-foreground">
+        Selecione as tarefas que ele pode executar. A transferência para a equipe humana fica sempre disponível.
+      </p>
+      <div className="grid gap-3 sm:grid-cols-2">
+        {WHATSAPP_AGENT_CAPABILITIES.map((capability) => (
+          <label key={capability.value} className="flex cursor-pointer items-start gap-3 rounded-md border p-3 hover:bg-muted/40">
+            <Checkbox
+              checked={value.includes(capability.value)}
+              onCheckedChange={(checked) => toggle(capability.value, checked === true)}
+              aria-label={capability.label}
+              className="mt-0.5"
+            />
+            <span className="space-y-1">
+              <span className="block text-sm font-medium">{capability.label}</span>
+              <span className="block text-xs text-muted-foreground">{capability.description}</span>
+            </span>
+          </label>
+        ))}
+      </div>
+      <p className="text-xs text-muted-foreground" role="note">
+        Ações de agenda só funcionam quando a clínica cadastrou profissionais e horários. O agente não dá diagnóstico nem altera prontuários.
+      </p>
+    </fieldset>
   );
 }

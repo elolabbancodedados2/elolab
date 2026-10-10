@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button';
 import { usePlanos } from '@/hooks/useSubscriptionPlan';
 import { GlowingEffect } from '@/components/ui/glowing-effect';
 import elolabLogo from '@/assets/elolab-logo-v2.png';
-import landingHero from '@/assets/landing-hero.webp';
+import clinicHero from '@/assets/hero-institutional.webp';
 import landingEfficiency from '@/assets/landing-efficiency.webp';
 import landingNoshow from '@/assets/landing-noshow.webp';
 import landingOnline from '@/assets/landing-online.webp';
@@ -372,12 +372,24 @@ export default function LandingPage() {
                 ENTRAR
               </Button>
             </div>
-            <button className="lg:hidden p-2" style={{ color: C.dark }} onClick={() => setMobileMenu(!mobileMenu)} aria-label="Menu">
+            <button
+              className="lg:hidden p-2"
+              style={{ color: C.dark }}
+              onClick={() => setMobileMenu(!mobileMenu)}
+              aria-label={mobileMenu ? 'Fechar menu de navegação' : 'Abrir menu de navegação'}
+              aria-expanded={mobileMenu}
+              aria-controls="navegacao-mobile"
+            >
               {mobileMenu ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
             </button>
           </div>
           {mobileMenu && (
-            <div className="lg:hidden bg-white border-t border-gray-100 px-6 pb-6 space-y-1 animate-fade-in shadow-lg">
+            <div
+              id="navegacao-mobile"
+              role="region"
+              aria-label="Navegação móvel"
+              className="lg:hidden bg-white border-t border-gray-100 px-6 pb-6 space-y-1 animate-fade-in shadow-lg"
+            >
               {navLinks.map(n => (
                 <button key={n.id} onClick={() => scrollTo(n.id)} className="block w-full text-left py-3 text-sm font-bold tracking-wide" style={{ color: C.dark }}>{n.l}</button>
               ))}
@@ -444,85 +456,20 @@ export default function LandingPage() {
                 </div>
               </div>
 
-              {/* Right: Floating mockups */}
-              <div className="min-w-0 w-full flex items-end justify-center lg:justify-end gap-3 sm:gap-6 animate-fade-in" style={{ animationDelay: '0.3s' }}>
-                {/* Desktop mockup */}
-                <div className="relative min-w-0" style={{ animation: 'heroFloat 4s ease-in-out infinite' }}>
-                  <div className="w-[64vw] max-w-[320px] md:max-w-[380px] rounded-xl overflow-hidden shadow-2xl border border-white/10">
-                    <div className="h-8 bg-gray-200 flex items-center px-3 gap-1.5">
-                      <div className="w-2.5 h-2.5 rounded-full bg-red-400" />
-                      <div className="w-2.5 h-2.5 rounded-full bg-yellow-400" />
-                      <div className="w-2.5 h-2.5 rounded-full bg-green-400" />
-                      <span className="ml-3 text-[10px] text-gray-500 font-medium">EloLab — Dashboard</span>
-                    </div>
-                    <div className="bg-white p-4">
-                      <div className="flex items-center gap-2 mb-3">
-                        <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: C.grad }}>
-                          <BarChart3 className="w-4 h-4 text-white" />
-                        </div>
-                        <div>
-                          <p className="text-[10px] font-bold" style={{ color: C.dark }}>Painel</p>
-                          <p className="text-[8px]" style={{ color: C.textL }}>Hoje, 15 Abr 2026</p>
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-3 gap-2 mb-3">
-                        {[
-                          { label: 'Agendamentos', val: '55', icon: Calendar },
-                          { label: 'Pacientes', val: '248', icon: Users },
-                          { label: 'Receita', val: 'R$ 29.9k', icon: Receipt },
-                        ].map((s, i) => (
-                          <div key={i} className="bg-gray-50 rounded-lg p-2 text-center">
-                            <s.icon className="w-3 h-3 mx-auto mb-1" style={{ color: C.coral }} />
-                            <p className="text-xs font-extrabold" style={{ color: C.dark }}>{s.val}</p>
-                            <p className="text-[7px]" style={{ color: C.textL }}>{s.label}</p>
-                          </div>
-                        ))}
-                      </div>
-                      <div className="h-16 rounded-lg bg-gradient-to-r from-blue-50 to-teal-50 flex items-center justify-center">
-                        <div className="flex items-end gap-1">
-                          {[30, 50, 35, 60, 45, 70, 55].map((h, i) => (
-                            <div key={i} className="w-4 rounded-t" style={{ height: `${h * 0.6}px`, background: i === 5 ? C.coral : 'hsl(210,60%,85%)' }} />
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="mx-auto w-20 h-5 bg-gray-300 rounded-b-lg" />
-                  <div className="mx-auto w-32 h-2 bg-gray-200 rounded-b-lg" />
+              {/* Imagem ilustrativa da clínica */}
+              <div className="relative mx-auto w-full max-w-xl animate-fade-in lg:justify-self-end" style={{ animationDelay: '0.3s' }}>
+                <div className="absolute -inset-3 rounded-[2rem] border border-white/15" aria-hidden="true" />
+                <div className="relative overflow-hidden rounded-3xl border border-white/20 bg-white/10 p-2 shadow-2xl shadow-black/20 backdrop-blur-sm">
+                  <img
+                    src={clinicHero}
+                    alt="Recep&#231;&#227;o de uma cl&#237;nica"
+                    className="aspect-[4/3] w-full rounded-[1.35rem] object-cover object-center sm:aspect-[16/10] lg:aspect-[4/3]"
+                    loading="eager"
+                  />
                 </div>
-
-                {/* Phone mockup */}
-                <div className="relative -mb-4 min-w-0" style={{ animation: 'heroFloat 4s ease-in-out infinite 1s' }}>
-                  <div className="w-[28vw] max-w-[140px] md:max-w-[160px] rounded-[24px] overflow-hidden shadow-2xl border-4 border-gray-800 bg-gray-800">
-                    <div className="h-5 bg-gray-800 flex justify-center">
-                      <div className="w-16 h-3 bg-gray-900 rounded-b-xl" />
-                    </div>
-                    <div className="bg-white p-3">
-                      <div className="flex items-center gap-1.5 mb-2">
-                        <div className="w-5 h-5 rounded-md flex items-center justify-center" style={{ background: C.grad }}>
-                          <Calendar className="w-2.5 h-2.5 text-white" />
-                        </div>
-                        <p className="text-[8px] font-bold" style={{ color: C.dark }}>Agenda</p>
-                      </div>
-                      {[
-                        { time: '08:00', name: 'Maria Silva', type: 'Consulta' },
-                        { time: '09:30', name: 'João Costa', type: 'Retorno' },
-                        { time: '10:00', name: 'Ana Lima', type: 'Exame' },
-                        { time: '11:00', name: 'Pedro Santos', type: 'Consulta' },
-                      ].map((a, i) => (
-                        <div key={i} className="flex items-center gap-1.5 py-1.5 border-b border-gray-50 last:border-0">
-                          <span className="text-[7px] font-mono font-bold w-7 shrink-0" style={{ color: C.coral }}>{a.time}</span>
-                          <div className="min-w-0">
-                            <p className="text-[7px] font-bold truncate" style={{ color: C.dark }}>{a.name}</p>
-                            <p className="text-[6px]" style={{ color: C.textL }}>{a.type}</p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="h-4 bg-gray-800 flex justify-center items-center">
-                      <div className="w-10 h-1 bg-gray-600 rounded-full" />
-                    </div>
-                  </div>
+                <div className="absolute -bottom-4 left-5 right-5 rounded-2xl border border-white/70 bg-white/95 px-4 py-3 shadow-xl shadow-black/10 backdrop-blur sm:left-8 sm:right-auto sm:min-w-64">
+                  <p className="text-xs font-semibold uppercase tracking-[0.14em]" style={{ color: C.coral }}>EloLab para cl&#237;nicas</p>
+                  <p className="mt-1 text-sm font-medium" style={{ color: C.dark }}>Agenda, equipe e opera&#231;&#227;o conectadas</p>
                 </div>
               </div>
             </div>

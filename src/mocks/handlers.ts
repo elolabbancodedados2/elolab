@@ -1,6 +1,6 @@
 import { http, HttpResponse } from 'msw';
 
-const SUPABASE_URL = 'https://gebygucrpipaufrlyqqj.supabase.co';
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'http://127.0.0.1:54321';
 
 const mockPacientes = [
   {

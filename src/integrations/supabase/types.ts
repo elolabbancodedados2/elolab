@@ -5448,6 +5448,7 @@ export type Database = {
           ativo: boolean | null
           clinica_id: string | null
           created_at: string | null
+          habilidades: string[]
           horario_atendimento_fim: string | null
           horario_atendimento_inicio: string | null
           humor: string
@@ -5467,6 +5468,7 @@ export type Database = {
           ativo?: boolean | null
           clinica_id?: string | null
           created_at?: string | null
+          habilidades?: string[]
           horario_atendimento_fim?: string | null
           horario_atendimento_inicio?: string | null
           humor?: string
@@ -5486,6 +5488,7 @@ export type Database = {
           ativo?: boolean | null
           clinica_id?: string | null
           created_at?: string | null
+          habilidades?: string[]
           horario_atendimento_fim?: string | null
           horario_atendimento_inicio?: string | null
           humor?: string
@@ -5512,6 +5515,7 @@ export type Database = {
       }
       whatsapp_conversations: {
         Row: {
+          acao_pendente: Json | null
           atendimento_humano_em: string | null
           clinica_id: string | null
           contexto: Json | null
@@ -5534,6 +5538,7 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          acao_pendente?: Json | null
           atendimento_humano_em?: string | null
           clinica_id?: string | null
           contexto?: Json | null
@@ -5556,6 +5561,7 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          acao_pendente?: Json | null
           atendimento_humano_em?: string | null
           clinica_id?: string | null
           contexto?: Json | null

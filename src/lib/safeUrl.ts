@@ -22,7 +22,7 @@ export function storageUrlSeguro(value: unknown): string | null {
   try {
     const url = new URL(value);
     const configuredSupabaseUrl = import.meta.env.VITE_SUPABASE_URL ||
-      (import.meta.env.MODE === 'test' ? 'https://gebygucrpipaufrlyqqj.supabase.co' : '');
+      (import.meta.env.MODE === 'test' ? 'http://127.0.0.1:54321' : '');
     if (!configuredSupabaseUrl) return null;
     const supabaseUrl = new URL(configuredSupabaseUrl);
     return url.protocol === 'https:' && url.hostname === supabaseUrl.hostname ? url.href : null;

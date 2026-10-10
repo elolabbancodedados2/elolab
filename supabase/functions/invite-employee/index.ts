@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { usuariosNoLimite, validarLimitesDeEquipe } from "../_shared/limitesClinica.ts";
 import { corsPadrao } from '../_shared/cors.ts';
+import { sendBrandedBrevoRequest } from '../_shared/brevoEmail.ts';
 
 // Atribuído em cada request (reflete a origem permitida). Helpers
 // top-level (json/reply) capturam esta variável por closure.
@@ -127,9 +128,9 @@ Deno.serve(async (req) => {
           <p style="color:#666;font-size:12px">Link: ${inviteUrl}<br>Válido por 7 dias.</p>
         </div></body></html>`;
       try {
-        const emailResponse = await fetch("https://api.brevo.com/v3/smtp/email", {
+        const emailResponse = await sendBrandedBrevoRequest({
           method: "POST",
-          headers: { "api-key": brevoKey, "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             sender: { name: "EloLab", email: "noreply@elolab.com.br" },
             to: [{ email, name: nome }],

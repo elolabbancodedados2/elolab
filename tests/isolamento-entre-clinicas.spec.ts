@@ -1,5 +1,5 @@
 import { test, expect, type APIRequestContext } from '@playwright/test';
-import { readFileSync } from 'node:fs';
+import { DEFAULT_LOCAL_SUPABASE_URL, resolveLocalQaSupabaseConfig } from '../scripts/test-supabase-env.ts';
 
 /**
  * Isolamento entre clínicas — o teste que faltava.
@@ -18,38 +18,21 @@ import { readFileSync } from 'node:fs';
  * a instância.
  *
  * ─── COMO RODAR ──────────────────────────────────────────────────────────────
- * Crie duas contas em clínicas DIFERENTES (pode ser em ambiente de teste) e:
- *
- *   CLINICA_A_EMAIL=admin@clinica-a.test CLINICA_A_SENHA=... \
- *   CLINICA_B_EMAIL=admin@clinica-b.test CLINICA_B_SENHA=... \
- *   npm run test:e2e -- tests/isolamento-entre-clinicas.spec.ts
- *
- * Sem essas variáveis os testes são PULADOS com aviso — nunca passam em falso.
- * Um teste de isolamento que passa sem ter testado nada é pior que teste nenhum:
- * dá a sensação de cobertura exatamente onde ela não existe.
+ * Use somente contas sinteticas em duas clinicas no Supabase local descartavel:
+ * QA_SUPABASE_URL=http://127.0.0.1:54321
+ * QA_SUPABASE_ANON_KEY=<chave-anon-local>
+ * QA_CLINICA_A_EMAIL/PASSWORD e QA_CLINICA_B_EMAIL/PASSWORD
+ * Acoes WhatsApp exigem QA_WHATSAPP_STUB_CONFIRMED=ELOLAB_LOCAL_STUB.
+ * Sem essas variaveis, os testes sao pulados e nenhum backend e acessado.
  */
 
-const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'https://gebygucrpipaufrlyqqj.supabase.co';
-
-function chaveAnonDoRepo(): string {
-  try {
-    const src = readFileSync('src/integrations/supabase/client.ts', 'utf8');
-    return src.match(/"(eyJ[A-Za-z0-9._-]+)"/)?.[1] ?? '';
-  } catch {
-    return '';
-  }
-}
-
-const ANON_KEY =
-  process.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
-  process.env.VITE_SUPABASE_ANON_KEY ||
-  chaveAnonDoRepo();
-
-const CONTA_A = { email: process.env.CLINICA_A_EMAIL, senha: process.env.CLINICA_A_SENHA };
-const CONTA_B = { email: process.env.CLINICA_B_EMAIL, senha: process.env.CLINICA_B_SENHA };
-
+const QA_SUPABASE = resolveLocalQaSupabaseConfig(process.env);
+const SUPABASE_URL = QA_SUPABASE?.url || DEFAULT_LOCAL_SUPABASE_URL;
+const ANON_KEY = QA_SUPABASE?.anonKey || '';
+const CONTA_A = { email: process.env.QA_CLINICA_A_EMAIL, senha: process.env.QA_CLINICA_A_PASSWORD };
+const CONTA_B = { email: process.env.QA_CLINICA_B_EMAIL, senha: process.env.QA_CLINICA_B_PASSWORD };
 const temAsDuasContas = Boolean(CONTA_A.email && CONTA_A.senha && CONTA_B.email && CONTA_B.senha);
-
+const whatsappStubConfirmed = process.env.QA_WHATSAPP_STUB_CONFIRMED === 'ELOLAB_LOCAL_STUB';
 /** Faz login e devolve o access_token. */
 async function entrar(
   request: APIRequestContext,
@@ -78,8 +61,8 @@ function cabecalhos(token: string) {
 
 test.describe('Isolamento entre clínicas', () => {
   test.skip(
-    !temAsDuasContas,
-    'Defina CLINICA_A_EMAIL/SENHA e CLINICA_B_EMAIL/SENHA para rodar. Sem duas contas reais em clínicas distintas não há como provar isolamento.',
+    (!QA_SUPABASE || !temAsDuasContas),
+    'Defina Supabase QA local e QA_CLINICA_A/B_EMAIL/PASSWORD para contas descartaveis em duas clinicas locais.',
   );
 
   let tokenA = '';
@@ -134,6 +117,7 @@ test.describe('Isolamento entre clínicas', () => {
   }
 
   test('A não obtém o QR Code do WhatsApp de B', async ({ request }) => {
+    test.skip(!whatsappStubConfirmed, 'Acoes WhatsApp exigem stub local confirmado.');
     test.skip(!sessaoDaClinicaB, 'A clínica B não tem sessão de WhatsApp cadastrada para servir de alvo.');
 
     const resposta = await request.post(`${SUPABASE_URL}/functions/v1/whatsapp-evolution`, {
@@ -150,6 +134,7 @@ test.describe('Isolamento entre clínicas', () => {
   });
 
   test('A não envia mensagem pela instância de B', async ({ request }) => {
+    test.skip(!whatsappStubConfirmed, 'Acoes WhatsApp exigem stub local confirmado.');
     test.skip(!sessaoDaClinicaB, 'A clínica B não tem sessão de WhatsApp cadastrada para servir de alvo.');
 
     const resposta = await request.post(`${SUPABASE_URL}/functions/v1/whatsapp-evolution`, {
@@ -157,7 +142,7 @@ test.describe('Isolamento entre clínicas', () => {
       data: {
         action: 'send_message',
         session_id: sessaoDaClinicaB,
-        to: '5511999999999',
+        to: '0000000000000',
         message: 'teste de isolamento entre clínicas',
       },
     });
@@ -169,6 +154,7 @@ test.describe('Isolamento entre clínicas', () => {
   });
 
   test('A não apaga a instância de B', async ({ request }) => {
+    test.skip(!whatsappStubConfirmed, 'Acoes WhatsApp exigem stub local confirmado.');
     test.skip(!sessaoDaClinicaB, 'A clínica B não tem sessão de WhatsApp cadastrada para servir de alvo.');
 
     const resposta = await request.post(`${SUPABASE_URL}/functions/v1/whatsapp-evolution`, {
@@ -183,6 +169,7 @@ test.describe('Isolamento entre clínicas', () => {
   });
 
   test('list_instances devolve só o que é da clínica de quem chamou', async ({ request }) => {
+    test.skip(!whatsappStubConfirmed, 'Acoes WhatsApp exigem stub local confirmado.');
     const resposta = await request.post(`${SUPABASE_URL}/functions/v1/whatsapp-evolution`, {
       headers: cabecalhos(tokenA),
       data: { action: 'list_instances' },

@@ -2,6 +2,10 @@
 
 Este documento descreve a produção atual e o procedimento para publicar mudanças.
 
+## E-mail transacional EloLab
+
+A configura??o da Brevo (envio das Edge Functions, SMTP do Auth, modelos e DNS) est? em [`docs/BREVO_EMAIL_SETUP.md`](BREVO_EMAIL_SETUP.md). Configure `BREVO_API_KEY` somente no servi?o de Edge Functions e as vari?veis `GOTRUE_SMTP_*` somente no servi?o Auth do Compose. N?o grave segredos no frontend nem no reposit?rio. Preserve os registros MX existentes.
+
 ## Arquitetura
 
 O EloLab roda em dois serviços do Easypanel na VPS:

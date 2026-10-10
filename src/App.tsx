@@ -1,4 +1,5 @@
 import { Suspense, lazy } from "react";
+import { MotionConfig } from "framer-motion";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -182,7 +183,8 @@ function App() {
   // papel). Removido — migrações passam pelo fluxo normal do Supabase.
 
   return (
-    <ErrorBoundary>
+    <MotionConfig reducedMotion="user">
+      <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
         <ThemeProvider>
           <TooltipProvider>
@@ -351,7 +353,8 @@ function App() {
           </TooltipProvider>
         </ThemeProvider>
       </QueryClientProvider>
-    </ErrorBoundary>
+      </ErrorBoundary>
+    </MotionConfig>
   );
 }
 

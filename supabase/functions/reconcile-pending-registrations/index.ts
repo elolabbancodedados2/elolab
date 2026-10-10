@@ -3,6 +3,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { cronSecretOk } from "../_shared/cronAuth.ts";
 import { corsPadrao } from '../_shared/cors.ts';
+import { sendBrandedBrevoRequest } from '../_shared/brevoEmail.ts';
 
 // Atribuído em cada request (reflete a origem permitida). Helpers
 // top-level (json/reply) capturam esta variável por closure.
@@ -99,9 +100,9 @@ Deno.serve(async (req) => {
       const planoNome = plano?.nome ?? reg.plano_slug;
       const link = `https://app.elolab.com.br/auth?codigo=${reg.codigo_convite}&email=${encodeURIComponent(reg.email)}&plano=${reg.plano_slug}`;
 
-      const r = await fetch("https://api.brevo.com/v3/smtp/email", {
+      const r = await sendBrandedBrevoRequest({
         method: "POST",
-        headers: { "api-key": brevoApiKey, "Content-Type": "application/json", Accept: "application/json" },
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
         body: JSON.stringify({
           sender: { name: "EloLab", email: "noreply@elolab.com.br" },
           to: [{ email: reg.email, name: reg.nome }],
@@ -134,7 +135,7 @@ Deno.serve(async (req) => {
           .eq("id", reg.id);
       } else {
         failed++;
-        console.error("Brevo erro:", r.status, await r.text());
+        console.error("Falha no envio Brevo (HTTP " + r.status + ".");
       }
     } catch (e) {
       failed++;

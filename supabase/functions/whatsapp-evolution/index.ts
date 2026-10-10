@@ -204,7 +204,7 @@ Deno.serve(async (req) => {
         }
 
         const createData = await createResponse.json()
-        console.log('[Evolution API] Instance created:', createData)
+        console.log('[Evolution API] Instance created:', Boolean(createData.instance?.instanceId))
 
         // Obter QR Code
         const qrResponse = await fetch(`${evolutionApiUrl}/instance/connect/${instance_name}`, {
@@ -243,7 +243,7 @@ Deno.serve(async (req) => {
         }
 
         // Configurar webhook na Evolution API
-        await fetch(`${evolutionApiUrl}/webhook/set/${instance_name}`, {
+        const webhookResponse = await fetch(`${evolutionApiUrl}/webhook/set/${instance_name}`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -253,6 +253,7 @@ Deno.serve(async (req) => {
             url: webhookUrl,
             webhook_by_events: false,
             webhook_base64: false,
+            headers: { apikey: evolutionApiKey },
             events: [
               'MESSAGES_UPSERT',
               'MESSAGES_UPDATE',
@@ -261,6 +262,19 @@ Deno.serve(async (req) => {
             ],
           }),
         })
+
+        if (!webhookResponse.ok) {
+          await supabase
+            .from('whatsapp_sessions')
+            .delete()
+            .eq('id', sessionData.id)
+            .eq('clinica_id', clinicaId)
+          await fetch(`${evolutionApiUrl}/instance/delete/${instance_name}`, {
+            method: 'DELETE',
+            headers: { apikey: evolutionApiKey },
+          }).catch(() => undefined)
+          throw new Error('Não foi possível ativar as notificações do WhatsApp. Tente novamente.')
+        }
 
         result = {
           session: sessionData,

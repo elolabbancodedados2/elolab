@@ -1,19 +1,11 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
-import { readFileSync } from 'node:fs';
+import { DEFAULT_LOCAL_SUPABASE_URL, resolveLocalQaSupabaseConfig } from '../scripts/test-supabase-env.ts';
 
 type Role = 'admin' | 'medico' | 'recepcao' | 'enfermagem' | 'financeiro';
-const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'https://gebygucrpipaufrlyqqj.supabase.co';
+const QA_SUPABASE = resolveLocalQaSupabaseConfig(process.env);
+const SUPABASE_URL = QA_SUPABASE?.url || DEFAULT_LOCAL_SUPABASE_URL;
 const PROJECT_REF = new URL(SUPABASE_URL).hostname.split('.')[0];
-
-function anonKey(): string {
-  if (process.env.VITE_SUPABASE_PUBLISHABLE_KEY) return process.env.VITE_SUPABASE_PUBLISHABLE_KEY;
-  if (process.env.VITE_SUPABASE_ANON_KEY) return process.env.VITE_SUPABASE_ANON_KEY;
-  try {
-    return readFileSync('src/integrations/supabase/client.ts', 'utf8').match(/"(eyJ[A-Za-z0-9._-]+)"/)?.[1] ?? '';
-  } catch { return ''; }
-}
-
-const ANON_KEY = anonKey();
+const ANON_KEY = QA_SUPABASE?.anonKey || '';
 const perfis: Array<{ role: Role; permitida: string; menu: string; menuLabel: string; negada: string }> = [
   { role: 'admin', permitida: '/configuracoes', menu: '/equipe', menuLabel: 'Equipe', negada: '/painel-admin' },
   { role: 'medico', permitida: '/prontuarios', menu: '/documentos-clinicos', menuLabel: 'Documentos Clínicos', negada: '/financeiro' },
@@ -23,8 +15,8 @@ const perfis: Array<{ role: Role; permitida: string; menu: string; menuLabel: st
 ];
 
 function credenciais(role: Role) {
-  const prefixo = `E2E_${role.toUpperCase()}`;
-  return { email: process.env[`${prefixo}_EMAIL`], senha: process.env[`${prefixo}_SENHA`] };
+  const prefixo = `QA_${role.toUpperCase()}`;
+  return { email: process.env[`${prefixo}_EMAIL`], senha: process.env[`${prefixo}_PASSWORD`] };
 }
 
 async function autenticar(request: APIRequestContext, role: Role) {
@@ -49,7 +41,7 @@ test.describe('RBAC real por perfil', () => {
   for (const perfil of perfis) {
     test(`${perfil.role}: login, menu, rota permitida e negativa cross-role`, async ({ page, request }) => {
       const conta = credenciais(perfil.role);
-      test.skip(!conta.email || !conta.senha, `Defina E2E_${perfil.role.toUpperCase()}_EMAIL/SENHA com conta exclusiva de teste.`);
+      test.skip(!QA_SUPABASE || !conta.email || !conta.senha, `Defina Supabase QA local e QA_${perfil.role.toUpperCase()}_EMAIL/PASSWORD.`);
       const session = await autenticar(request, perfil.role);
       await instalarSessao(page, session);
 
@@ -73,8 +65,8 @@ test.describe('RBAC real por perfil', () => {
 
 test.describe('Portal do paciente', () => {
   test('token real abre somente o portal correspondente', async ({ page }) => {
-    const token = process.env.E2E_PACIENTE_TOKEN;
-    test.skip(!token, 'Defina E2E_PACIENTE_TOKEN com token revogável de paciente de teste.');
+    const token = process.env.QA_E2E_PACIENTE_TOKEN;
+    test.skip(!QA_SUPABASE || !token, 'Defina Supabase QA local e QA_E2E_PACIENTE_TOKEN revogavel de teste.');
     await page.goto(`/portal-paciente?token=${encodeURIComponent(token!)}`);
     await expect(page).toHaveURL(/\/portal-paciente/);
     await expect(page.getByText(/token inválido|acesso negado|erro ao acessar/i)).toHaveCount(0);
@@ -82,6 +74,7 @@ test.describe('Portal do paciente', () => {
   });
 
   test('token inválido não libera dados do paciente', async ({ page }) => {
+    test.skip(!QA_SUPABASE, 'Configure um Supabase QA local em loopback.');
     await page.goto('/portal-paciente?token=token-e2e-deliberadamente-invalido');
     await expect(page.getByText(/token inválido|inválido ou expirado|erro ao acessar/i).first()).toBeVisible({ timeout: 15_000 });
     await expect(page.getByRole('button', { name: /sair do portal/i })).toHaveCount(0);

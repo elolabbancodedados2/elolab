@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsPadrao } from '../_shared/cors.ts';
+import { sendBrandedBrevoRequest } from '../_shared/brevoEmail.ts';
 import { mapAuthorizedPaymentInvoice } from '../_shared/mercadoPagoInvoice.ts';
 import { mercadoPagoPaymentResource } from '../_shared/mercadoPagoWebhookRouting.ts';
 import { isValidMercadoPagoSignature } from '../_shared/mercadoPagoSignature.ts';
@@ -925,10 +926,9 @@ async function sendActivationEmail(registro: any, supabase: any) {
     const planoNome = plano?.nome || registro.plano_slug;
     const planoValor = plano ? Number(plano.valor).toFixed(2) : "0.00";
 
-    await fetch("https://api.brevo.com/v3/smtp/email", {
+    await sendBrandedBrevoRequest({
       method: "POST",
       headers: {
-        "api-key": brevoApiKey,
         "Content-Type": "application/json",
         Accept: "application/json",
       },

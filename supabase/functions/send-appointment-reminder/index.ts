@@ -1,6 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { cronOrUserOk, cronForbidden, cronSecretOk, clinicaDoChamador } from '../_shared/cronAuth.ts';
 import { corsPadrao } from '../_shared/cors.ts';
+import { sendBrevoEmail as sendSharedBrevoEmail } from '../_shared/brevoEmail.ts';
 
 // Atribuído em cada request (reflete a origem permitida). Helpers
 // top-level (json/reply) capturam esta variável por closure.
@@ -229,7 +230,7 @@ Deno.serve(async (req) => {
               .replace(/\{\{clinica_nome\}\}/g, clinicaNome)
 
             try {
-              const emailRes = await sendBrevoEmail(brevoApiKey, paciente.email, paciente.nome, assunto, conteudo, clinicaNome)
+              const emailRes = await sendSharedBrevoEmail({ to: { email: paciente.email, name: paciente.nome }, subject: assunto, html: conteudo.replace(/\n/g, '<br>'), senderName: clinicaNome })
 
               if (emailRes.ok) {
                 totalSuccess++
@@ -365,7 +366,7 @@ Deno.serve(async (req) => {
               .replace(/\{\{clinica_nome\}\}/g, clinicaNome2h)
 
             try {
-              const emailRes = await sendBrevoEmail(brevoApiKey, paciente.email, paciente.nome, assunto, conteudo, clinicaNome2h)
+              const emailRes = await sendSharedBrevoEmail({ to: { email: paciente.email, name: paciente.nome }, subject: assunto, html: conteudo.replace(/\n/g, '<br>'), senderName: clinicaNome2h })
 
               if (emailRes.ok) {
                 totalSuccess++
@@ -576,22 +577,7 @@ async function getWhatsAppInstance(
   return cache[clinicId]
 }
 
-async function sendBrevoEmail(apiKey: string, to: string, toName: string, subject: string, htmlContent: string, clinicName?: string): Promise<Response> {
-  return fetch('https://api.brevo.com/v3/smtp/email', {
-    method: 'POST',
-    headers: {
-      'api-key': apiKey,
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-    },
-    body: JSON.stringify({
-      sender: { name: clinicName || 'EloLab Clínica', email: 'noreply@elolab.com.br' },
-      to: [{ email: to, name: toName }],
-      subject,
-      htmlContent: htmlContent.replace(/\n/g, '<br>'),
-    }),
-  })
-}
+
 
 async function sendWhatsAppMessage(apiUrl: string, apiKey: string, instanceName: string, phone: string, message: string): Promise<void> {
   const cleanPhone = phone.replace(/\D/g, '')

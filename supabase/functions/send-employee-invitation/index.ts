@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsPadrao } from '../_shared/cors.ts';
+import { sendBrandedBrevoRequest } from '../_shared/brevoEmail.ts';
 
 // Atribuído em cada request (reflete a origem permitida). Helpers
 // top-level (json/reply) capturam esta variável por closure.
@@ -250,10 +251,9 @@ Deno.serve(async (req) => {
     `;
 
     // Send via Brevo
-    const emailRes = await fetch('https://api.brevo.com/v3/smtp/email', {
+    const emailRes = await sendBrandedBrevoRequest({
       method: 'POST',
       headers: {
-        'api-key': brevoApiKey,
         'Content-Type': 'application/json',
         'Accept': 'application/json',
       },
@@ -266,8 +266,7 @@ Deno.serve(async (req) => {
     });
 
     if (!emailRes.ok) {
-      const errBody = await emailRes.text();
-      console.error("Brevo email error:", errBody);
+      console.error("Falha no envio Brevo (HTTP " + emailRes.status + ").");
     }
 
     return new Response(

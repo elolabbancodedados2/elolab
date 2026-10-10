@@ -38,7 +38,7 @@ export function MainLayout() {
 
       {/* Mobile Sidebar */}
       <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
-        <SheetContent side="left" className="w-[min(86vw,320px)] border-r-0 p-0 pt-[env(safe-area-inset-top)]">
+        <SheetContent id="menu-principal-mobile" side="left" className="w-[min(86vw,320px)] border-r-0 p-0 pt-[env(safe-area-inset-top)]">
           <SheetTitle className="sr-only">Menu principal</SheetTitle>
           <SheetDescription className="sr-only">
             Navegue entre os módulos da clínica.
@@ -51,7 +51,7 @@ export function MainLayout() {
 
       {/* Main Content */}
       <div className="flex flex-1 flex-col overflow-hidden">
-        <Navbar onMenuClick={() => setMobileMenuOpen(true)} />
+        <Navbar mobileMenuOpen={mobileMenuOpen} onMenuClick={() => setMobileMenuOpen(open => !open)} />
         <ImpersonationBanner />
         <main 
           id="main-content" 

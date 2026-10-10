@@ -1,6 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { cronOrUserOk, cronForbidden, clinicaDoChamador } from '../_shared/cronAuth.ts'
 import { corsPadrao } from '../_shared/cors.ts';
+import { sendBrandedBrevoRequest } from '../_shared/brevoEmail.ts';
 
 // Atribuído em cada request (reflete a origem permitida). Helpers
 // top-level (json/reply) capturam esta variável por closure.
@@ -127,9 +128,9 @@ Deno.serve(async (req) => {
 
       for (const admin of clinicAdmins) {
         try {
-          const emailRes = await fetch('https://api.brevo.com/v3/smtp/email', {
+          const emailRes = await sendBrandedBrevoRequest({
             method: 'POST',
-            headers: { 'api-key': brevoApiKey, 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               sender: { name: 'EloLab Clinica', email: 'noreply@elolab.com.br' },
               to: [{ email: admin.email, name: admin.nome }],
@@ -142,7 +143,7 @@ Deno.serve(async (req) => {
             successCount++
           } else {
             errorCount++
-            console.error(`Erro ao enviar alerta para ${admin.email}:`, await emailRes.text())
+            console.error('Falha ao enviar alerta por e-mail.', { status: emailRes.status })
           }
         } catch (error) {
           errorCount++

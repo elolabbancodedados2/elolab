@@ -14,6 +14,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { cronSecretOk, cronForbidden } from '../_shared/cronAuth.ts'
 import { corsPadrao } from '../_shared/cors.ts';
+import { sendBrandedBrevoRequest } from '../_shared/brevoEmail.ts';
 
 // Atribuído em cada request (reflete a origem permitida). Helpers
 // top-level (json/reply) capturam esta variável por closure.
@@ -103,9 +104,9 @@ Deno.serve(async (req) => {
               <b>Momento:</b> ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}</p>`
 
       try {
-        const envio = await fetch('https://api.brevo.com/v3/smtp/email', {
+        const envio = await sendBrandedBrevoRequest({
           method: 'POST',
-          headers: { 'api-key': chave, 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             sender: { name: 'EloLab', email: 'noreply@elolab.com.br' },
             to: [{ email: AVISAR }],
@@ -114,7 +115,7 @@ Deno.serve(async (req) => {
           }),
         })
         avisado = envio.ok
-        if (!envio.ok) console.error('MONITOR: Brevo recusou', await envio.text())
+        if (!envio.ok) console.error('MONITOR: Brevo recusou', { status: envio.status })
       } catch (e) {
         console.error('MONITOR: falha ao enviar aviso', e)
       }
