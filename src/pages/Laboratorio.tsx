@@ -26,6 +26,9 @@ import { ErrorState } from '@/components/ErrorState';
 import { pacienteCorresponde } from '@/lib/buscaPaciente';
 import { dateOnlyInTimeZone, parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { Link } from 'react-router-dom';
+import { PedidosLaboratorioPanel } from '@/pages/laboratorio/PedidosLaboratorioPanel';
+import { GestaoLaboratorioPanel } from '@/pages/laboratorio/GestaoLaboratorioPanel';
+import { IndicadoresLaboratorioPanel } from '@/pages/laboratorio/IndicadoresLaboratorioPanel';
 
 /**
  * Teto da worklist do laboratório.
@@ -129,6 +132,7 @@ export default function Laboratorio() {
   const [agora, setAgora] = useState(() => new Date());
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('todos');
+  const [setorFilter, setSetorFilter] = useState('todos');
   const [dateFilter, setDateFilter] = useState('hoje');
   const [urgentOnly, setUrgentOnly] = useState(false);
   const [showNewColeta, setShowNewColeta] = useState(false);
@@ -144,13 +148,14 @@ export default function Laboratorio() {
   const [activeTab, setActiveTab] = useState('worklist');
   const queryClient = useQueryClient();
   const { user, profile } = useSupabaseAuth();
+  const podeGerenciarLaboratorio = !!profile?.roles.some((role) => role === 'admin' || role === 'enfermagem');
   const [newColetaForm, setNewColetaForm] = useState({
     paciente_id: '', medico_solicitante_id: '', tipo_amostra: 'sangue',
     tubo: '', observacoes: '', jejum_necessario: false, jejum_horas: 0, urgente: false,
     coletado_por: '', data_coleta: dataHoraLocalDaClinica(),
     exame_id: '', volume_ml: '', condicao_amostra: [] as string[], sitio_coleta: '', lote_insumo: '',
     finalidade: 'diagnostico', indicacao_clinica: '', categoria_exame: '',
-    numero_guia: '', material: '', trouxe_material: false, cid: '', procedimento_codigo: '', convenio_id: '', grupo: '',
+    numero_guia: '', material: '', trouxe_material: false, cid: '', procedimento_codigo: '', convenio_id: '', grupo: '', setor_id: '',
   });
 
   useEffect(() => {
@@ -229,11 +234,22 @@ export default function Laboratorio() {
   });
   const convenios = conveniosQuery.data;
 
+  const setoresQuery = useQuery({
+    queryKey: ['lab-setores-worklist', profile?.clinica_id],
+    enabled: !!profile?.clinica_id,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).from('laboratorio_setores')
+        .select('id, nome').eq('clinica_id', profile!.clinica_id!).eq('ativo', true).order('nome');
+      if (error) throw error;
+      return (data ?? []) as Array<{ id: string; nome: string }>;
+    },
+  });
+
   const examesPendentesQuery = useQuery({
     queryKey: ['exames-pendentes-lab', profile?.clinica_id, user?.id, newColetaForm.paciente_id],
     queryFn: async () => {
       if (!newColetaForm.paciente_id) return { items: [], hasMore: false };
-      const { data, error } = await supabase.from('exames').select('id, tipo_exame, paciente_id, pacientes(nome)')
+      const { data, error } = await (supabase as any).from('exames').select('id, tipo_exame, paciente_id, pacientes(nome), tipo_exames_catalog(setor_id)')
         .eq('clinica_id', profile!.clinica_id!)
         .eq('paciente_id', newColetaForm.paciente_id)
         .in('status', ['solicitado', 'agendado'])
@@ -248,13 +264,14 @@ export default function Laboratorio() {
   });
 
   const coletasQuery = useInfiniteQuery({
-    queryKey: ['coletas-laboratorio', profile?.clinica_id, user?.id],
+    queryKey: ['coletas-laboratorio', profile?.clinica_id, user?.id, setorFilter],
     initialPageParam: null as { created_at: string; id: string } | null,
     queryFn: async ({ pageParam }) => {
-      let query = supabase
+      let query = (supabase as any)
         .from('coletas_laboratorio')
-        .select('*, pacientes(nome, cpf, data_nascimento, sexo), medicos(nome, crm, especialidade)')
+        .select('*, pacientes(nome, cpf, data_nascimento, sexo), medicos(nome, crm, especialidade), laboratorio_setores(nome)')
         .eq('clinica_id', profile!.clinica_id!);
+      if (setorFilter !== 'todos') query = query.eq('setor_id', setorFilter);
       if (pageParam) {
         // Paginação por cursor: várias amostras podem ter o mesmo created_at,
         // então o id também desempata para não pular nem repetir registros.
@@ -300,6 +317,19 @@ export default function Laboratorio() {
       return data || [];
     },
     enabled: !!profile?.clinica_id && !!showResultados,
+  });
+  const perfilCatalogoQuery = useQuery({
+    queryKey: ['lab-perfil-catalogo-coleta', profile?.clinica_id, showResultados],
+    enabled: !!profile?.clinica_id && !!showResultados,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).from('coletas_laboratorio')
+        .select('exames(tipo_exame, tipo_exames_catalog(nome, unidade_padrao, referencia_min, referencia_max, referencia_texto, metodo_padrao))')
+        .eq('clinica_id', profile!.clinica_id).eq('id', showResultados).maybeSingle();
+      if (error) throw error;
+      const exame = Array.isArray(data?.exames) ? data.exames[0] : data?.exames;
+      const catalogo = Array.isArray(exame?.tipo_exames_catalog) ? exame.tipo_exames_catalog[0] : exame?.tipo_exames_catalog;
+      return catalogo ? { ...catalogo, nome: catalogo.nome || exame?.tipo_exame || '' } : null;
+    },
   });
   const resultados = resultadosQuery.data;
 
@@ -406,7 +436,7 @@ export default function Laboratorio() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['resultados-laboratorio', profile?.clinica_id] });
-      setNewResultForm({ parametro: '', resultado: '', unidade: '', valor_referencia_min: '', valor_referencia_max: '', valor_referencia_texto: '', metodo: '' });
+      setNewResultForm({ parametro: '', resultado: '', unidade: '', valor_referencia_min: '', valor_referencia_max: '', valor_referencia_texto: '', metodo: '', critico: false });
       toast.success('Resultado adicionado!');
     },
     onError: (e) => toast.error('Erro ao adicionar resultado', { description: mensagemDeErro(e) }),
@@ -499,7 +529,7 @@ export default function Laboratorio() {
     coletado_por: user?.id || '', data_coleta: dataHoraLocalDaClinica(),
     exame_id: '', volume_ml: '', condicao_amostra: [], sitio_coleta: '', lote_insumo: '',
     finalidade: 'diagnostico', indicacao_clinica: '', categoria_exame: '',
-    numero_guia: '', material: '', trouxe_material: false, cid: '', procedimento_codigo: '', convenio_id: '', grupo: '',
+    numero_guia: '', material: '', trouxe_material: false, cid: '', procedimento_codigo: '', convenio_id: '', grupo: '', setor_id: '',
   });
 
   const toggleCondicao = (cond: string) => {
@@ -515,7 +545,7 @@ export default function Laboratorio() {
 
   const [newResultForm, setNewResultForm] = useState({
     parametro: '', resultado: '', unidade: '', valor_referencia_min: '',
-    valor_referencia_max: '', valor_referencia_texto: '', metodo: '',
+    valor_referencia_max: '', valor_referencia_texto: '', metodo: '', critico: false,
   });
 
   if (!profile?.clinica_id) {
@@ -685,6 +715,9 @@ export default function Laboratorio() {
         <TabsList>
           <TabsTrigger value="worklist" className="gap-1"><ClipboardCheck className="h-3.5 w-3.5" />Worklist</TabsTrigger>
           <TabsTrigger value="pipeline" className="gap-1"><Activity className="h-3.5 w-3.5" />Pipeline</TabsTrigger>
+          <TabsTrigger value="pedidos" className="gap-1"><TestTube className="h-3.5 w-3.5" />Pedidos</TabsTrigger>
+          {podeGerenciarLaboratorio && <TabsTrigger value="gestao" className="gap-1"><Package className="h-3.5 w-3.5" />Gestão do laboratório</TabsTrigger>}
+          <TabsTrigger value="indicadores" className="gap-1"><Activity className="h-3.5 w-3.5" />Indicadores</TabsTrigger>
         </TabsList>
 
         {/* ─── Worklist Tab ─── */}
@@ -703,6 +736,13 @@ export default function Laboratorio() {
                 {Object.entries(statusLabels).map(([k, v]) => (
                   <SelectItem key={k} value={k}>{v}</SelectItem>
                 ))}
+              </SelectContent>
+            </Select>
+            <Select value={setorFilter} onValueChange={setSetorFilter}>
+              <SelectTrigger className="w-44"><SelectValue placeholder="Todos os setores" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos">Todos os setores</SelectItem>
+                {(setoresQuery.data ?? []).map((setor) => <SelectItem key={setor.id} value={setor.id}>{setor.nome}</SelectItem>)}
               </SelectContent>
             </Select>
             <Select value={dateFilter} onValueChange={setDateFilter}>
@@ -770,6 +810,7 @@ export default function Laboratorio() {
                               <Barcode className="h-3 w-3" />{coleta.codigo_amostra}
                             </Badge>
                             <Badge className={statusColors[coleta.status]}>{statusLabels[coleta.status]}</Badge>
+                            {coleta.laboratorio_setores?.nome && <Badge variant="secondary">{coleta.laboratorio_setores.nome}</Badge>}
                             {coleta.urgente && <Badge variant="destructive" className="gap-1"><Zap className="h-3 w-3" />Urgente</Badge>}
                             {coleta.jejum_necessario && <Badge variant="outline" className="text-[10px]">Jejum {coleta.jejum_horas}h</Badge>}
                             {(coleta as any).procedimento_codigo && <Badge variant="outline" className="font-mono text-[10px]">{(coleta as any).procedimento_codigo}</Badge>}
@@ -908,6 +949,12 @@ export default function Laboratorio() {
             })}
           </div>
         </TabsContent>
+
+        <TabsContent value="pedidos" className="space-y-4">
+          <PedidosLaboratorioPanel />
+        </TabsContent>
+        {podeGerenciarLaboratorio && <TabsContent value="gestao" className="space-y-4"><GestaoLaboratorioPanel /></TabsContent>}
+        <TabsContent value="indicadores" className="space-y-4"><IndicadoresLaboratorioPanel /></TabsContent>
       </Tabs>
 
       {/* ─── Dialog Nova Coleta ─── */}
@@ -1085,6 +1132,13 @@ export default function Laboratorio() {
                 <Checkbox checked={newColetaForm.trouxe_material} onCheckedChange={v => setNewColetaForm(p => ({ ...p, trouxe_material: !!v }))} />
                 <Label className="text-sm flex items-center gap-1"><Package className="h-3.5 w-3.5" />Trouxe Material</Label>
               </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Setor responsável</Label>
+                <Select value={newColetaForm.setor_id || '__none__'} onValueChange={value => setNewColetaForm(p => ({ ...p, setor_id: value === '__none__' ? '' : value }))}>
+                  <SelectTrigger><SelectValue placeholder="Sem setor definido" /></SelectTrigger>
+                  <SelectContent><SelectItem value="__none__">Sem setor definido</SelectItem>{(setoresQuery.data ?? []).map(setor => <SelectItem key={setor.id} value={setor.id}>{setor.nome}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
             </div>
 
             {/* Vincular a Exame */}
@@ -1098,7 +1152,7 @@ export default function Laboratorio() {
                 <ErrorState compact title="Não foi possível carregar os pedidos deste paciente" error={examesPendentesQuery.error} onRetry={() => void examesPendentesQuery.refetch()} />
               ) : (
                 <>
-                  <Select value={newColetaForm.exame_id || '__none__'} onValueChange={v => setNewColetaForm(p => ({ ...p, exame_id: v === '__none__' ? '' : v }))} disabled={examesFiltrados.length === 0}>
+                  <Select value={newColetaForm.exame_id || '__none__'} onValueChange={v => { const exame = examesFiltrados.find((item: any) => item.id === v); const catalogo = Array.isArray(exame?.tipo_exames_catalog) ? exame.tipo_exames_catalog[0] : exame?.tipo_exames_catalog; setNewColetaForm(p => ({ ...p, exame_id: v === '__none__' ? '' : v, setor_id: v === '__none__' ? p.setor_id : (catalogo?.setor_id || p.setor_id) })); }} disabled={examesFiltrados.length === 0}>
                     <SelectTrigger><SelectValue placeholder={examesFiltrados.length ? 'Opcional' : 'Nenhum pedido em aberto'} /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="__none__">Nenhum (coleta avulsa)</SelectItem>
@@ -1311,10 +1365,10 @@ export default function Laboratorio() {
               const numResult = textoResultado ? Number(numeroNormalizado) : Number.NaN;
               const isAltered = Number.isFinite(numResult) && ((r.valor_referencia_min != null && numResult < r.valor_referencia_min) || (r.valor_referencia_max != null && numResult > r.valor_referencia_max));
               return (
-                <div key={r.id} className={cn('p-3 rounded-lg border', isAltered ? 'border-destructive/30 bg-destructive/5' : '')}>
+                <div key={r.id} className={cn('p-3 rounded-lg border', (isAltered || r.critico) ? 'border-destructive/30 bg-destructive/5' : '')}>
                   <div className="flex justify-between items-start">
                     <div>
-                      <p className="font-medium">{r.parametro}</p>
+                      <p className="flex items-center gap-2 font-medium">{r.parametro}{r.critico && <Badge variant="destructive" className="gap-1"><AlertTriangle className="h-3 w-3" />Crítico</Badge>}</p>
                       {r.metodo && <p className="text-xs text-muted-foreground">Método: {r.metodo}</p>}
                     </div>
                     <div className="text-right">
@@ -1332,7 +1386,7 @@ export default function Laboratorio() {
 
             {/* Add resultado form */}
             <Card>
-              <CardHeader><CardTitle className="text-sm">Adicionar Resultado</CardTitle></CardHeader>
+              <CardHeader className="flex flex-row items-center justify-between gap-3"><div><CardTitle className="text-sm">Adicionar Resultado</CardTitle><p className="mt-1 text-xs text-muted-foreground">Informe resultado e referência definidos para este método.</p></div>{perfilCatalogoQuery.data && <Button type="button" size="sm" variant="outline" disabled={perfilCatalogoQuery.isLoading || addResultado.isPending} onClick={() => setNewResultForm(current => ({ ...current, unidade: perfilCatalogoQuery.data?.unidade_padrao || current.unidade, valor_referencia_min: perfilCatalogoQuery.data?.referencia_min == null ? current.valor_referencia_min : String(perfilCatalogoQuery.data.referencia_min), valor_referencia_max: perfilCatalogoQuery.data?.referencia_max == null ? current.valor_referencia_max : String(perfilCatalogoQuery.data.referencia_max), valor_referencia_texto: perfilCatalogoQuery.data?.referencia_texto || current.valor_referencia_texto, metodo: perfilCatalogoQuery.data?.metodo_padrao || current.metodo }))}>Usar perfil do exame</Button>}</CardHeader>
               <CardContent>
                 <form onSubmit={(e) => {
                   e.preventDefault();
@@ -1353,6 +1407,7 @@ export default function Laboratorio() {
                     valor_referencia_max: newResultForm.valor_referencia_max,
                     valor_referencia_texto: newResultForm.valor_referencia_texto || null,
                     metodo: newResultForm.metodo || null,
+                    critico: newResultForm.critico,
                   });
                 }} className="grid grid-cols-2 gap-3">
                   <div><Label className="text-xs">Parâmetro *</Label><Input disabled={addResultado.isPending} value={newResultForm.parametro} onChange={(e) => setNewResultForm(p => ({ ...p, parametro: e.target.value }))} placeholder="Ex: Hemoglobina" /></div>
@@ -1362,6 +1417,7 @@ export default function Laboratorio() {
                   <div><Label className="text-xs">Ref. Mínimo</Label><Input disabled={addResultado.isPending} type="text" inputMode="decimal" value={newResultForm.valor_referencia_min} onChange={(e) => setNewResultForm(p => ({ ...p, valor_referencia_min: e.target.value }))} placeholder="Opcional" /></div>
                   <div><Label className="text-xs">Ref. Máximo</Label><Input disabled={addResultado.isPending} type="text" inputMode="decimal" value={newResultForm.valor_referencia_max} onChange={(e) => setNewResultForm(p => ({ ...p, valor_referencia_max: e.target.value }))} placeholder="Opcional" /></div>
                   <div className="col-span-2"><Label className="text-xs">Referência textual</Label><Input disabled={addResultado.isPending} value={newResultForm.valor_referencia_texto} onChange={(e) => setNewResultForm(p => ({ ...p, valor_referencia_texto: e.target.value }))} placeholder="Ex: Não reagente" /></div>
+                  <div className="col-span-2 flex items-start gap-2 rounded-md border border-destructive/20 bg-destructive/5 p-3"><Checkbox id="resultado-critico" checked={newResultForm.critico} disabled={addResultado.isPending} onCheckedChange={(checked) => setNewResultForm(p => ({ ...p, critico: checked === true }))} /><div><Label htmlFor="resultado-critico" className="cursor-pointer text-sm font-medium">Resultado crítico</Label><p className="text-xs text-muted-foreground">Sinaliza para revisão prioritária conforme o protocolo da clínica.</p></div></div>
                   <div className="col-span-2">
                     <Button
                       type="submit"
