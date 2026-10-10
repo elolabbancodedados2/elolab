@@ -405,7 +405,7 @@ export default function Auth() {
 
       <main className="relative z-10 mx-auto grid min-h-[calc(100svh-154px)] w-full max-w-[1680px] grid-cols-1 items-center gap-7 px-4 py-5 sm:px-8 lg:grid-cols-[minmax(0,1fr)_minmax(420px,490px)_minmax(0,1fr)] lg:gap-8 xl:px-14">
         <aside className="hidden self-center lg:block">
-          <div className="max-w-[220px] border-l border-[#8ba9d4]/55 py-1 pl-4 text-[11px] font-medium uppercase tracking-[0.14em] text-[#58739f]">
+          <div className="max-w-[220px] border-l border-[#8ba9d4]/55 py-1 pl-4 text-xs font-medium uppercase tracking-[0.14em] text-[#58739f]">
             <p className="-ml-[18px] flex items-center gap-2 font-semibold text-[#10264e]"><span className="h-5 w-1 rounded-full bg-primary" />Saúde</p>
             <p className="mt-4">Gestão</p>
             <p className="mt-4">Tecnologia</p>
@@ -426,7 +426,7 @@ export default function Auth() {
           className="relative z-10 mx-auto w-full max-w-[490px] rounded-[28px] border border-white/90 bg-white/65 px-6 py-7 shadow-[0_28px_90px_-38px_rgba(27,85,158,0.38)] backdrop-blur-2xl sm:px-10 sm:py-9"
         >
           <div className="mb-6 text-center">
-            <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-[#6680a7]">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-[#6680a7]">
               {activeTab === 'login' ? 'Bem-vindo à' : urlCodigo ? 'Convite EloLab' : 'Crie sua conta'}
             </p>
             <img src={logoHorizontal} alt="EloLab — tecnologia que cuida" className="mx-auto w-[178px] object-contain sm:w-[195px]" />
@@ -584,7 +584,7 @@ export default function Auth() {
                         não tinha nenhuma chamada de recuperação. */}
                     <Link
                       to="/redefinir-senha"
-                      className="inline-flex min-h-9 w-full items-center justify-center text-center text-sm font-medium text-primary hover:text-primary/80"
+                      className="inline-flex min-h-10 w-full items-center justify-center text-center text-sm font-medium text-primary hover:text-primary/80"
                     >
                       Esqueci minha senha
                     </Link>
@@ -821,7 +821,7 @@ export default function Auth() {
               <Shield className="h-4 w-4 text-primary" aria-hidden="true" />
               Acesso protegido para sua clínica
             </p>
-            <p className="mt-1 text-[11px] text-[#7890b2]">Seus dados de acesso são tratados com cuidado.</p>
+            <p className="mt-1 text-xs text-[#7890b2]">Seus dados de acesso são tratados com cuidado.</p>
           </div>
         </motion.div>
 
@@ -832,16 +832,16 @@ export default function Auth() {
         </aside>
       </main>
 
-      <footer className="relative z-10 mx-auto flex w-full max-w-[1680px] flex-col items-center justify-between gap-4 px-5 pb-5 text-[11px] text-[#6680a7] sm:flex-row sm:px-8 xl:px-14">
+      <footer className="relative z-10 mx-auto flex w-full max-w-[1680px] flex-col items-center justify-between gap-4 px-5 pb-5 text-xs text-[#6680a7] sm:flex-row sm:px-8 xl:px-14">
         <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 sm:justify-start">
           <span className="inline-flex items-center gap-2"><Shield className="h-4 w-4" aria-hidden="true" />Acesso por perfil</span>
           <span className="inline-flex items-center gap-2"><CalendarDays className="h-4 w-4" aria-hidden="true" />Agenda integrada</span>
           <span className="inline-flex items-center gap-2"><FlaskConical className="h-4 w-4" aria-hidden="true" />Gestão laboratorial</span>
         </div>
         <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 sm:justify-end">
-          <Link to="/termos-uso" className="hover:text-primary">Termos de Uso</Link>
+          <Link to="/termos-uso" className="inline-flex min-h-10 items-center hover:text-primary">Termos de Uso</Link>
           <span aria-hidden="true">|</span>
-          <Link to="/politica-privacidade" className="hover:text-primary">Privacidade</Link>
+          <Link to="/politica-privacidade" className="inline-flex min-h-10 items-center hover:text-primary">Privacidade</Link>
           <span aria-hidden="true">|</span>
           <span>© {new Date().getFullYear()} EloLab</span>
         </div>
