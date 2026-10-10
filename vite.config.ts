@@ -150,7 +150,7 @@ export default defineConfig(({ mode }) => ({
     }),
   ].filter(Boolean),
   define: {
-    ...(mode === 'test' ? createViteTestSupabaseDefine(process.env) : {}),
+    ...(mode === 'test' ? createViteTestSupabaseDefine({}) : {}),
     // Identifica a versão publicada. Cada hospedagem expõe o commit com um nome
     // próprio; sem ler o do Cloudflare, uma publicação lá cairia no horário do
     // build — que muda a cada compilação e não aponta para commit nenhum,
