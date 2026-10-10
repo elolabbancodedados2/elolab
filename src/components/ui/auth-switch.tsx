@@ -5,7 +5,6 @@ interface AuthSwitchProps {
   activeTab: "login" | "signup";
   onTabChange: (tab: "login" | "signup") => void;
 }
-
 export function AuthSwitch({ activeTab, onTabChange }: AuthSwitchProps) {
   return (
     <div className="relative flex w-full rounded-2xl bg-muted/50 p-1 border border-border/40">
@@ -48,4 +47,3 @@ export function AuthSwitch({ activeTab, onTabChange }: AuthSwitchProps) {
   );
 }
 
-export default AuthSwitch;

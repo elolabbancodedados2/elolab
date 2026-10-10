@@ -9,21 +9,6 @@ type AcaoDeConta =
   | 'confirmar_email'
   | 'apagar';
 
-export interface PreviaDaConta {
-  email: string;
-  bloqueado: boolean;
-  email_confirmado: boolean;
-  ultimo_login: string | null;
-  papeis: string[];
-  dono_da_clinica: string | null;
-  pacientes: number;
-  agendamentos: number;
-  /** Motivos que impedem a exclusão. Vazio = pode apagar. */
-  impedimentos: string[];
-  /** O que a exclusão levaria junto. */
-  some_junto: string[];
-}
-
 interface Pedido {
   acao: AcaoDeConta;
   alvo_id: string;

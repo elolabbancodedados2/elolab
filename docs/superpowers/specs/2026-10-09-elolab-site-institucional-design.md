@@ -9,7 +9,7 @@ Elevar o site institucional do EloLab a uma apresentação premium e confiável 
 - `src/App.tsx` seleciona o modo institucional pelos hosts `elolab.com.br` e `www.elolab.com.br`; `/` renderiza `src/pages/LandingPage.tsx`.
 - A landing reúne apresentação de módulos, benefícios, planos consultados via `usePlanos`, perguntas frequentes e links de conversão. Usa um conjunto grande de imagens em `src/assets`.
 - `index.html` contém título, descrição, canonical, Open Graph, Twitter Card e JSON-LD `SoftwareApplication`.
-- `public/robots.txt` e cabeçalhos em `public/_headers` são parte da configuração existente e devem ser avaliados sem afetar a aplicação.
+- `public/robots.txt` é parte da configuração existente. Os cabeçalhos da aplicação são aplicados pelo Nginx em `docker/security-headers.conf`.
 - O projeto descreve a marca com azul-teal/verde, Inter e Plus Jakarta Sans; ativos EloLab já existem no repositório.
 
 ## Direção de design

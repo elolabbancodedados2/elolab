@@ -128,5 +128,6 @@ Deploy desligado e publique manualmente somente após o CI verde.
 - Easypanel App: https://easypanel.io/docs/services/app
 - Easypanel Compose: https://easypanel.io/docs/services/compose
 - Template Supabase do Easypanel: https://easypanel.io/docs/templates/supabase
-- O arquivo `public/_headers` já inclui `api.elolab.com.br` na CSP. Se outro
-  domínio for escolhido, atualize a CSP antes do deploy.
+- A CSP aplicada pelo Nginx fica em `docker/security-headers.conf` e já inclui
+  `api.elolab.com.br`. Se outro domínio for escolhido, atualize a CSP antes do
+  deploy.

@@ -51,12 +51,10 @@ export async function checarRateLimit(
 }
 
 /**
- * Extrai o IP do cliente de forma consistente entre CDN/proxy.
- * Prioriza `cf-connecting-ip` (Cloudflare), depois `x-forwarded-for`.
+ * Extrai o IP informado pelo proxy que encaminhou a requisição.
  */
 export function clientIp(req: Request): string {
   return (
-    req.headers.get('cf-connecting-ip') ||
     req.headers.get('x-real-ip') ||
     (req.headers.get('x-forwarded-for') || '').split(',')[0].trim() ||
     'unknown'
