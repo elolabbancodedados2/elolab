@@ -10,13 +10,13 @@
     <link rel="canonical" href="https://elolab.com.br/" />
     
     <!-- PWA Meta Tags -->
-    <meta name="theme-color" content="#6bcfa4" />
+    <meta name="theme-color" content="#0c1f54" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="EloLab" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="format-detection" content="telephone=no" />
-    <meta name="msapplication-TileColor" content="#6bcfa4" />
+    <meta name="msapplication-TileColor" content="#0c1f54" />
     <meta name="msapplication-tap-highlight" content="no" />
 
     <!-- Perf: early connect to backend/CDN -->
@@ -66,17 +66,17 @@
   <body>
     <div id="root">
       <style>
-        #initial-loader{position:fixed;inset:0;display:grid;place-items:center;padding:24px;background:radial-gradient(ellipse at 50% 42%,rgba(103,207,164,.13),transparent 34%),#f4f8f6;color:#153c31;font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;text-align:center;z-index:9999}
-        #initial-loader .content{width:min(100%,360px)}
-        #initial-loader .identity{display:flex;align-items:center;justify-content:center;gap:12px}
-        #initial-loader img{display:block;width:48px;height:48px;object-fit:contain}
-        #initial-loader .brand{font-size:25px;font-weight:700;color:#123f32;letter-spacing:-.055em}
-        #initial-loader .progress{position:relative;width:144px;height:3px;overflow:hidden;border-radius:999px;background:rgba(17,108,79,.14);margin:27px auto 21px}
-        #initial-loader .progress span{position:absolute;inset:0 auto 0 0;width:38%;border-radius:inherit;background:#1b9b6d;animation:il-glide 1.35s ease-in-out infinite}
-        #initial-loader .msg{margin:0;color:#193f34;font-size:16px;font-weight:600;letter-spacing:-.02em}
-        #initial-loader .detail{margin:7px 0 0;color:#667b72;font-size:13px;line-height:1.55}
+        #initial-loader{position:fixed;inset:0;display:grid;place-items:center;padding:24px;background:radial-gradient(ellipse at 50% 42%,rgba(15,123,253,.08),transparent 34%),#e0ebf2;color:#0c1f54;font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;text-align:center;z-index:9999}
+        #initial-loader .content{width:min(100%,420px)}
+        #initial-loader .identity{display:flex;align-items:center;justify-content:center}
+        #initial-loader img{display:block;width:min(100%,280px);height:auto;object-fit:contain}
+        #initial-loader .brand{display:none}
+        #initial-loader .progress{position:relative;width:144px;height:3px;overflow:hidden;border-radius:999px;background:rgba(12,31,84,.14);margin:27px auto 21px}
+        #initial-loader .progress span{position:absolute;inset:0 auto 0 0;width:38%;border-radius:inherit;background:#005ecc;animation:il-glide 1.35s ease-in-out infinite}
+        #initial-loader .msg{margin:0;color:#0c1f54;font-size:16px;font-weight:600;letter-spacing:-.02em}
+        #initial-loader .detail{margin:7px 0 0;color:#52647b;font-size:13px;line-height:1.55}
         #initial-loader .retry,#initial-loader .slow-copy{display:none}
-        #initial-loader .retry{min-height:42px;align-items:center;justify-content:center;margin-top:19px;padding:0 16px;border:1px solid rgba(17,108,79,.22);border-radius:11px;background:#fff;color:#116c4f;font-size:13px;font-weight:600;text-decoration:none}
+        #initial-loader .retry{min-height:42px;align-items:center;justify-content:center;margin-top:19px;padding:0 16px;border:1px solid rgba(0,94,204,.22);border-radius:11px;background:#fff;color:#005ecc;font-size:13px;font-weight:600;text-decoration:none}
         #initial-loader.is-slow .progress span{animation:none;width:100%;opacity:.55}
         #initial-loader.is-slow .slow-copy{display:block}
         #initial-loader.is-slow .normal-copy{display:none}
@@ -86,7 +86,7 @@
       </style>
       <div id="initial-loader">
         <div class="content">
-          <div class="identity"><img src="/pwa-192x192.png" alt="" width="48" height="48" /><span class="brand">EloLab</span></div>
+          <div class="identity"><img src="/elolab-logo-horizontal.png" alt="EloLab" width="280" height="81" /></div>
           <div class="progress" aria-hidden="true"><span></span></div>
           <p class="msg normal-copy">Preparando seu espaço de cuidado</p>
           <p class="detail normal-copy">Agenda, prontuários e equipe estarão prontos em instantes.</p>

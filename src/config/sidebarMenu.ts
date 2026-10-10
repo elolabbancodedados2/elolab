@@ -80,7 +80,7 @@ export const menuGroups: MenuGroup[] = [
   {
     label: 'Início',
     icon: Gauge,
-    color: '#6366f1',
+    color: '#005ECC',
     items: [
       // Preferências, histórico, indicadores, feedback e segurança
       // da conta ficam no menu do avatar (Navbar): são da pessoa, não do fluxo
@@ -95,7 +95,7 @@ export const menuGroups: MenuGroup[] = [
   {
     label: 'Atendimento',
     icon: MonitorSmartphone,
-    color: '#0ea5e9',
+    color: '#005ECC',
     roles: ['admin', 'recepcao', 'enfermagem', 'medico', 'financeiro'],
     items: [
       { label: 'Agenda', icon: CalendarRange, href: '/agenda' },
@@ -108,7 +108,7 @@ export const menuGroups: MenuGroup[] = [
   {
     label: 'Pacientes',
     icon: Users,
-    color: '#10b981',
+    color: '#005ECC',
     roles: ['admin', 'recepcao', 'enfermagem', 'medico'],
     items: [
       { label: 'Cadastro', icon: Users, href: '/pacientes', roles: ['admin', 'recepcao', 'enfermagem'] },
@@ -119,7 +119,7 @@ export const menuGroups: MenuGroup[] = [
   {
     label: 'Clínica',
     icon: Stethoscope,
-    color: '#8b5cf6',
+    color: '#005ECC',
     roles: ['admin', 'medico', 'enfermagem'],
     items: [
       { label: 'Prontuários', icon: ScrollText, href: '/prontuarios', roles: ['admin', 'medico'] },
@@ -132,7 +132,7 @@ export const menuGroups: MenuGroup[] = [
   {
     label: 'Integrações',
     icon: FileText,
-    color: '#7c3aed',
+    color: '#005ECC',
     roles: ['admin', 'medico'],
     items: [
       { label: 'Interoperabilidade FHIR', icon: FileText, href: '/interoperabilidade', roles: ['admin', 'medico'] },
@@ -141,7 +141,7 @@ export const menuGroups: MenuGroup[] = [
   {
     label: 'Laboratório',
     icon: TestTubes,
-    color: '#06b6d4',
+    color: '#005ECC',
     // `recepcao` incluído para que Guias Externas apareça: a rota de
     // /guias-externas já libera recepção, mas o grupo derrubava o item.
     roles: ['admin', 'medico', 'enfermagem', 'recepcao'],
@@ -158,7 +158,7 @@ export const menuGroups: MenuGroup[] = [
   {
     label: 'Financeiro',
     icon: WalletCards,
-    color: '#f59e0b',
+    color: '#005ECC',
     roles: ['admin', 'financeiro'],
     items: [
       { label: 'Visão financeira', icon: CircleDollarSign, href: '/financeiro' },
@@ -173,7 +173,7 @@ export const menuGroups: MenuGroup[] = [
   {
     label: 'Relatórios e indicadores',
     icon: FileBarChart,
-    color: '#0891b2',
+    color: '#005ECC',
     roles: ['admin', 'financeiro'],
     items: [
       { label: 'Relatórios', icon: FileBarChart, href: '/relatorios', exact: true, roles: ['admin', 'financeiro'] },
@@ -184,7 +184,7 @@ export const menuGroups: MenuGroup[] = [
   {
     label: 'Equipe',
     icon: UsersRound,
-    color: '#ec4899',
+    color: '#005ECC',
     roles: ['admin'],
     items: [
       { label: 'Médicos, funcionários e convites', icon: UsersRound, href: '/equipe', roles: ['admin'] },
@@ -193,7 +193,7 @@ export const menuGroups: MenuGroup[] = [
   {
     label: 'Suprimentos',
     icon: PackageSearch,
-    color: '#ea580c',
+    color: '#005ECC',
     roles: ['admin', 'enfermagem'],
     items: [
       { label: 'Estoque', icon: PackageSearch, href: '/estoque', roles: ['admin', 'enfermagem'] },
@@ -202,7 +202,7 @@ export const menuGroups: MenuGroup[] = [
   {
     label: 'Automação e IA',
     icon: Sparkles,
-    color: '#db2777',
+    color: '#005ECC',
     roles: ['admin'],
     items: [
       { label: 'Automações', icon: Sparkles, href: '/automacoes', roles: ['admin'] },
@@ -212,7 +212,7 @@ export const menuGroups: MenuGroup[] = [
   {
     label: 'Configurações',
     icon: Settings2,
-    color: '#64748b',
+    color: '#005ECC',
     roles: ['admin'],
     items: [
       { label: 'Configurações', icon: Settings2, href: '/configuracoes' },
@@ -225,7 +225,7 @@ export const menuGroups: MenuGroup[] = [
   {
     label: 'Ajuda',
     icon: MessageCircle,
-    color: '#14b8a6',
+    color: '#005ECC',
     items: [
       { label: 'Treinamento', icon: BookMarked, href: '/treinamento' },
       { label: 'Falar com o Suporte', icon: MessageCircle, href: '/suporte', roles: ['admin', 'recepcao', 'enfermagem', 'medico', 'financeiro'] },
@@ -234,7 +234,7 @@ export const menuGroups: MenuGroup[] = [
   {
     label: 'Painel da plataforma',
     icon: Gauge,
-    color: '#6366f1',
+    color: '#005ECC',
     roles: ['admin'],
     superAdminOnly: true,
     items: [
@@ -246,7 +246,7 @@ export const menuGroups: MenuGroup[] = [
   {
     label: 'Clientes',
     icon: Building2,
-    color: '#0ea5e9',
+    color: '#005ECC',
     roles: ['admin'],
     superAdminOnly: true,
     items: [
@@ -261,7 +261,7 @@ export const menuGroups: MenuGroup[] = [
   {
     label: 'Receita',
     icon: CreditCard,
-    color: '#16a34a',
+    color: '#005ECC',
     roles: ['admin'],
     superAdminOnly: true,
     items: [
@@ -273,7 +273,7 @@ export const menuGroups: MenuGroup[] = [
   {
     label: 'Produto e comunicação',
     icon: MessageSquarePlus,
-    color: '#db2777',
+    color: '#005ECC',
     roles: ['admin'],
     superAdminOnly: true,
     items: [
@@ -286,7 +286,7 @@ export const menuGroups: MenuGroup[] = [
   {
     label: 'Controles da plataforma',
     icon: Shield,
-    color: '#64748b',
+    color: '#005ECC',
     roles: ['admin'],
     superAdminOnly: true,
     items: [

@@ -21,7 +21,8 @@ import { MFAVerifyDialog } from '@/components/MFAVerifyDialog';
 import { passwordSchema } from '@/lib/passwordPolicy';
 import { AuthSwitch } from '@/components/ui/auth-switch';
 import { interpretarErroLogin, loginSchema, type LoginFormData } from '@/lib/authValidation';
-import logoIcon from '@/assets/elolab-symbol-v2.png';
+import logoHorizontal from '@/assets/elolab-logo-identidade.png';
+import logoHorizontalDark from '@/assets/elolab-logo-identidade-dark.png';
 import authHero from '@/assets/auth-hero.webp';
 
 // ─── Schemas ───────────────────────────────────────────────
@@ -375,7 +376,7 @@ export default function Auth() {
           animate={{ opacity: 1, scale: 1 }}
           className="flex flex-col items-center gap-4"
         >
-          <img src={logoIcon} alt="EloLab" className="h-14 w-14 drop-shadow-lg" />
+          <img src={logoHorizontal} alt="EloLab" className="w-56 object-contain" />
           <Loader2 className="h-5 w-5 animate-spin text-primary" />
         </motion.div>
       </div>
@@ -398,7 +399,7 @@ export default function Auth() {
         <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
         <div className="absolute inset-0 bg-gradient-to-r from-transparent to-black/10" />
 
-        {/* Green accent glow */}
+            {/* Brand accent */}
         <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-primary via-primary/80 to-transparent" />
 
         {/* Content overlay */}
@@ -409,14 +410,7 @@ export default function Auth() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
           >
-            <div className="flex items-center gap-3">
-              <div className="h-11 w-11 rounded-xl bg-white/10 backdrop-blur-md flex items-center justify-center border border-white/20">
-                <img src={logoIcon} alt="EloLab" className="h-7 w-7 drop-shadow-lg" />
-              </div>
-              <span className="text-xl font-extrabold font-display tracking-tight text-white drop-shadow-md">
-                EloLab
-              </span>
-            </div>
+            <img src={logoHorizontalDark} alt="EloLab" className="w-48 object-contain" />
           </motion.div>
 
           {/* Bottom content */}
@@ -465,10 +459,7 @@ export default function Auth() {
           {/* Mobile Logo */}
           <div className="text-center mb-8 lg:hidden">
             <div className="flex items-center justify-center gap-2.5 mb-2">
-              <img src={logoIcon} alt="EloLab" className="h-10 w-10 drop-shadow-md" />
-              <span className="text-2xl font-extrabold font-display tracking-tight text-foreground">
-                Elo<span className="text-primary">Lab</span>
-              </span>
+              <img src={logoHorizontal} alt="EloLab" className="w-44 object-contain" />
             </div>
             <p className="text-muted-foreground text-sm">Gestão Clínica Inteligente</p>
           </div>

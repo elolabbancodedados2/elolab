@@ -33,9 +33,9 @@ export function SidebarNavItem({ item, collapsed, groupColor, onNavigate }: Side
       }
       className={({ isActive }) =>
         cn(
-          'group relative flex min-h-10 items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-[13px] font-medium transition-colors duration-150',
-          'text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/60',
-          isActive && !item.external && 'font-semibold text-sidebar-foreground shadow-sm ring-1 ring-black/[0.04]',
+          'group relative flex min-h-11 items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-all duration-150',
+          'text-sidebar-foreground/75 hover:text-sidebar-foreground hover:bg-white/75',
+          isActive && !item.external && 'font-semibold text-sidebar-foreground shadow-sm ring-1 ring-sidebar-border/60',
           collapsed && 'justify-center px-2',
           !collapsed && 'ml-1'
         )
@@ -47,7 +47,7 @@ export function SidebarNavItem({ item, collapsed, groupColor, onNavigate }: Side
           {isActive && !item.external && !collapsed && (
             <motion.div
               layoutId="sidebar-active-indicator"
-              className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-r-full"
+              className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 rounded-r-full"
               style={{ backgroundColor: groupColor || 'hsl(var(--sidebar-primary))' }}
               transition={{ type: 'spring', stiffness: 350, damping: 30 }}
             />
@@ -59,10 +59,10 @@ export function SidebarNavItem({ item, collapsed, groupColor, onNavigate }: Side
             whileTap={{ scale: 0.9 }}
             transition={{ type: 'spring', stiffness: 400, damping: 15 }}
             className={cn(
-              'flex items-center justify-center shrink-0 rounded-lg transition-all duration-200',
+              'flex items-center justify-center shrink-0 rounded-xl transition-all duration-200',
               isActive && !item.external
-                ? 'h-7 w-7 shadow-sm'
-                : 'h-7 w-7'
+                ? 'h-8 w-8 shadow-sm'
+                : 'h-8 w-8'
             )}
             style={
               isActive && !item.external && groupColor
@@ -71,7 +71,7 @@ export function SidebarNavItem({ item, collapsed, groupColor, onNavigate }: Side
             }
           >
             <Icon
-              className="h-[15px] w-[15px] shrink-0 transition-colors duration-200"
+              className="h-[17px] w-[17px] shrink-0 transition-colors duration-200"
               style={{
                 color: isActive && !item.external
                   ? groupColor || 'hsl(var(--sidebar-primary))'
@@ -99,7 +99,7 @@ export function SidebarNavItem({ item, collapsed, groupColor, onNavigate }: Side
               animate={{ scale: 1 }}
               transition={{ type: 'spring', stiffness: 500, damping: 20 }}
               className={cn(
-                'ml-auto flex h-[18px] items-center justify-center rounded-full px-1.5 text-[9px] font-bold tabular-nums ring-1',
+                'ml-auto flex h-5 items-center justify-center rounded-full px-2 text-[10px] font-bold tabular-nums ring-1',
                 typeof item.badge === 'number'
                   ? 'min-w-[18px] bg-primary/15 text-primary ring-primary/10'
                   : 'bg-muted text-muted-foreground ring-border uppercase tracking-wide'

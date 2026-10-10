@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import logoHorizontal from '@/assets/elolab-logo-identidade.png';
 
 interface BrandLoadingScreenProps {
   message?: string;
@@ -22,8 +23,7 @@ export function BrandLoadingScreen({
     <main className="brand-loader" role={slow ? 'alert' : 'status'} aria-live="polite">
       <div className="brand-loader__content">
         <div className="brand-loader__identity">
-          <img className="brand-loader__mark" src="/pwa-192x192.png" alt="" width="54" height="54" />
-          <span className="brand-loader__name">EloLab</span>
+          <img className="brand-loader__mark" src={logoHorizontal} alt="EloLab" />
         </div>
         <div className="brand-loader__progress" aria-hidden="true">
           <span />
