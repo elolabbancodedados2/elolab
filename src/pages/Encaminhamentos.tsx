@@ -27,13 +27,16 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
 import { supabase } from '@/integrations/supabase/client';
-import { usePacientes, useMedicos } from '@/hooks/useSupabaseData';
+import { useMedicos } from '@/hooks/useSupabaseData';
+import { useBuscaPacientes, usePacienteResumo } from '@/hooks/useBuscaPacientes';
 import { useCurrentMedico } from '@/hooks/useCurrentMedico';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
 import { EncaminhamentoMedico } from '@/components/clinical/EncaminhamentoMedico';
-import { parseDateOnly, todayDateOnly } from '@/lib/dateOnly';
+import { parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
+import { ErrorState } from '@/components/ErrorState';
+import { normalizarTexto, pacienteCorresponde } from '@/lib/buscaPaciente';
 
 interface EncaminhamentoData {
   id: string;
@@ -56,7 +59,8 @@ interface EncaminhamentoData {
   contra_referencia: string | null;
   data_contra_referencia: string | null;
   created_at: string | null;
-  paciente?: { nome: string } | null;
+  updated_at: string | null;
+  paciente?: { nome: string; nome_social?: string | null; cpf?: string | null; telefone?: string | null; email?: string | null } | null;
   medico_origem?: { nome: string | null; crm: string } | null;
 }
 
@@ -76,6 +80,7 @@ const URGENCIA_CONFIG: Record<string, { label: string; className: string }> = {
 
 export default function Encaminhamentos() {
   const [searchTerm, setSearchTerm] = useState('');
+  const [patientSearchTerm, setPatientSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('todos');
   const [selectedPacienteId, setSelectedPacienteId] = useState<string | null>(null);
   const [isViewOpen, setIsViewOpen] = useState(false);
@@ -86,15 +91,18 @@ export default function Encaminhamentos() {
   const queryClient = useQueryClient();
   const { user, profile } = useSupabaseAuth();
   const { medicoId } = useCurrentMedico();
-  const { data: pacientes = [], isLoading: loadingPacientes } = usePacientes();
-  const { data: medicos = [], isLoading: loadingMedicos } = useMedicos();
+  const medicosQuery = useMedicos();
+  const pacientesBuscaQuery = useBuscaPacientes(patientSearchTerm, { limite: 50 });
+  const pacientesBusca = pacientesBuscaQuery.data?.pacientes ?? [];
+  const pacienteSelecionadoQuery = usePacienteResumo(selectedPacienteId);
+  const medicos = medicosQuery.data || [];
 
-  const { data: encaminhamentos = [], isLoading: loadingEnc } = useQuery({
+  const encaminhamentosQuery = useQuery({
     queryKey: ['encaminhamentos', user?.id ?? null, profile?.clinica_id ?? null],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('encaminhamentos')
-        .select(`*, paciente:pacientes(nome), medico_origem:medicos!encaminhamentos_medico_origem_id_fkey(nome, crm)`)
+        .select(`*, paciente:pacientes(nome,nome_social,cpf,telefone,email), medico_origem:medicos!encaminhamentos_medico_origem_id_fkey(nome, crm)`)
         .eq('clinica_id', profile?.clinica_id ?? '')
         .order('created_at', { ascending: false });
       if (error) throw error;
@@ -102,10 +110,30 @@ export default function Encaminhamentos() {
     },
     enabled: !!user && !!profile?.clinica_id,
   });
+  const encaminhamentos = encaminhamentosQuery.data || [];
 
-  const isLoading = loadingEnc || loadingPacientes || loadingMedicos;
+  const statusHistoryQuery = useQuery({
+    queryKey: ['encaminhamento-status-history', profile?.clinica_id ?? null, selectedEnc?.id ?? null],
+    enabled: isViewOpen && !!selectedEnc?.id && !!profile?.clinica_id,
+    queryFn: async () => {
+      if (!selectedEnc?.id || !profile?.clinica_id) return [];
+      const { data, error } = await (supabase as any)
+        .from('encaminhamento_status_history')
+        .select('id,status_anterior,status_novo,usuario_id,usuario_nome,comentario,data_mudanca')
+        .eq('encaminhamento_id', selectedEnc.id)
+        .order('data_mudanca', { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as Array<Record<string, any>>;
+    },
+  });
 
-  const getPacienteNome = (id: string) => pacientes.find(p => p.id === id)?.nome || '—';
+  const isLoading = encaminhamentosQuery.isLoading || medicosQuery.isLoading;
+
+  const getPacienteNome = (id: string) => {
+    const paciente = encaminhamentos.find(enc => enc.paciente_id === id)?.paciente
+      ?? pacientesBusca.find(p => p.id === id);
+    return (paciente as any)?.nome_social || paciente?.nome || '—';
+  };
   const getMedicoNome = (id: string) => {
     const m = medicos.find(m => m.id === id);
     return m ? `${nomeMedico(m.nome || m.crm)}` : '—';
@@ -113,10 +141,12 @@ export default function Encaminhamentos() {
 
   const filteredEncaminhamentos = useMemo(() => {
     return encaminhamentos.filter(enc => {
-      const matchesSearch = !searchTerm.trim() ||
-        enc.paciente?.nome?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        enc.especialidade_destino.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        enc.motivo.toLowerCase().includes(searchTerm.toLowerCase());
+      const paciente = enc.paciente;
+      const termo = normalizarTexto(searchTerm);
+      const matchesSearch = !termo ||
+        (!!paciente && pacienteCorresponde(paciente, searchTerm)) ||
+        normalizarTexto(enc.especialidade_destino || '').includes(termo) ||
+        normalizarTexto(enc.motivo || '').includes(termo);
       const matchesStatus = statusFilter === 'todos' || enc.status === statusFilter;
       return matchesSearch && matchesStatus;
     });
@@ -134,16 +164,16 @@ export default function Encaminhamentos() {
   const pacientesComEnc = useMemo(() => {
     const countMap = new Map<string, number>();
     encaminhamentos.forEach(e => countMap.set(e.paciente_id, (countMap.get(e.paciente_id) || 0) + 1));
-    return pacientes
-      .filter(p => p.nome.toLowerCase().includes(searchTerm.toLowerCase()))
-      .sort((a, b) => {
+    return [...pacientesBusca].sort((a, b) => {
         const ca = countMap.get(a.id) || 0;
         const cb = countMap.get(b.id) || 0;
         return cb - ca;
       });
-  }, [pacientes, encaminhamentos, searchTerm]);
+  }, [pacientesBusca, encaminhamentos]);
 
-  const selectedPaciente = selectedPacienteId ? pacientes.find(p => p.id === selectedPacienteId) : null;
+  const selectedPaciente = selectedPacienteId
+    ? pacienteSelecionadoQuery.data ?? pacientesBusca.find(p => p.id === selectedPacienteId) ?? null
+    : null;
   const pacienteEncaminhamentos = selectedPacienteId
     ? encaminhamentos.filter(e => e.paciente_id === selectedPacienteId)
     : [];
@@ -155,34 +185,54 @@ export default function Encaminhamentos() {
   };
 
   const handleUpdateEncStatus = async (id: string, newStatus: string) => {
+    if (isUpdating) return;
+    if (!profile?.clinica_id) return toast.error('Clínica não identificada.');
+    const current = encaminhamentos.find(enc => enc.id === id);
+    const expectedStatuses = newStatus === 'em_andamento' ? ['pendente'] : ['pendente', 'em_andamento'];
+    if (!current || !expectedStatuses.includes(current.status || '')) {
+      return toast.error('O encaminhamento mudou de estado. Atualize a lista e tente novamente.');
+    }
     setIsUpdating(true);
     try {
       const updateData: Record<string, any> = { status: newStatus };
-      if (newStatus === 'em_andamento') updateData.data_atendimento = todayDateOnly();
-      const { error } = await (supabase as any).from('encaminhamentos').update(updateData).eq('id', id);
+      if (newStatus === 'em_andamento') updateData.data_atendimento = todaySaoPauloDateOnly();
+      const { data, error } = await (supabase as any).from('encaminhamentos').update(updateData)
+        .eq('id', id).eq('clinica_id', profile.clinica_id).in('status', expectedStatuses).select('id, updated_at').maybeSingle();
       if (error) throw error;
+      if (!data) throw new Error('O encaminhamento foi alterado em outra sessão. Atualize a lista antes de tentar novamente.');
       queryClient.invalidateQueries({ queryKey: ['encaminhamentos'] });
-      if (selectedEnc?.id === id) setSelectedEnc({ ...selectedEnc, status: newStatus } as any);
+      void queryClient.invalidateQueries({ queryKey: ['encaminhamento-status-history', profile.clinica_id, id] });
+      if (selectedEnc?.id === id) setSelectedEnc({ ...selectedEnc, status: newStatus, updated_at: data.updated_at } as any);
       toast.success(`Status atualizado para "${STATUS_CONFIG[newStatus]?.label || newStatus}"`);
     } catch (e) { toast.error('Erro ao atualizar status', { description: mensagemDeErro(e) }); }
-    setIsUpdating(false);
+    finally { setIsUpdating(false); }
   };
 
   const handleSaveContraRef = async () => {
+    if (isUpdating) return;
     if (!selectedEnc || !contraRefText.trim()) return;
+    if (!profile?.clinica_id) return toast.error('Clínica não identificada.');
+    if (selectedEnc.status === 'concluido' || selectedEnc.status === 'cancelado') return toast.error('Este encaminhamento não aceita nova contra-referência.');
+    if (!selectedEnc.updated_at) return toast.error('Não foi possível confirmar a versão deste encaminhamento. Atualize a lista e abra o registro novamente.');
+    if (contraRefText.trim().length > 10000) return toast.error('A contra-referência deve ter no máximo 10.000 caracteres.');
     setIsUpdating(true);
     try {
-      const { error } = await supabase.from('encaminhamentos').update({
+      const { data, error } = await supabase.from('encaminhamentos').update({
         contra_referencia: contraRefText,
-        data_contra_referencia: todayDateOnly(),
+        data_contra_referencia: todaySaoPauloDateOnly(),
         status: 'concluido',
-      }).eq('id', selectedEnc.id);
+        data_atendimento: selectedEnc.data_atendimento || todaySaoPauloDateOnly(),
+      }).eq('id', selectedEnc.id).eq('clinica_id', profile.clinica_id)
+        .eq('updated_at', selectedEnc.updated_at)
+        .in('status', ['pendente', 'em_andamento']).select('id, updated_at').maybeSingle();
       if (error) throw error;
+      if (!data) throw new Error('O encaminhamento foi alterado em outra sessão. Seu texto continua nesta tela; atualize o registro e confira o histórico antes de salvar novamente.');
       queryClient.invalidateQueries({ queryKey: ['encaminhamentos'] });
-      setSelectedEnc({ ...selectedEnc, contra_referencia: contraRefText, status: 'concluido' } as any);
+      void queryClient.invalidateQueries({ queryKey: ['encaminhamento-status-history', profile.clinica_id, selectedEnc.id] });
+      setSelectedEnc({ ...selectedEnc, contra_referencia: contraRefText, status: 'concluido', updated_at: data.updated_at } as any);
       toast.success('Contra-referência registrada! Encaminhamento concluído.');
     } catch (e) { toast.error('Erro ao salvar contra-referência', { description: mensagemDeErro(e) }); }
-    setIsUpdating(false);
+    finally { setIsUpdating(false); }
   };
 
   if (isLoading) {
@@ -195,6 +245,12 @@ export default function Encaminhamentos() {
         <Skeleton className="h-96" />
       </div>
     );
+  }
+
+  const referralQueries = [encaminhamentosQuery, medicosQuery];
+  const failedReferralQuery = referralQueries.find(query => query.isError);
+  if (failedReferralQuery) {
+    return <ErrorState title="Não foi possível carregar encaminhamentos" error={failedReferralQuery.error} onRetry={() => { for (const query of referralQueries) void query.refetch(); }} />;
   }
 
   return (
@@ -212,25 +268,25 @@ export default function Encaminhamentos() {
 
       {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card className="kpi-card cursor-pointer" onClick={() => setStatusFilter('todos')}>
+        <Card className="kpi-card cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" role="button" tabIndex={0} aria-pressed={statusFilter === 'todos'} onClick={() => setStatusFilter('todos')} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setStatusFilter('todos'); } }}>
           <CardContent className="p-4">
             <div className="text-2xl font-bold tabular-nums">{stats.total}</div>
             <p className="text-xs text-muted-foreground">Total</p>
           </CardContent>
         </Card>
-        <Card className={cn("kpi-card cursor-pointer", statusFilter === 'pendente' && "ring-2 ring-amber-500")} onClick={() => setStatusFilter('pendente')}>
+        <Card className={cn("kpi-card cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", statusFilter === 'pendente' && "ring-2 ring-amber-500")} role="button" tabIndex={0} aria-pressed={statusFilter === 'pendente'} onClick={() => setStatusFilter('pendente')} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setStatusFilter('pendente'); } }}>
           <CardContent className="p-4">
             <div className="text-2xl font-bold tabular-nums text-warning">{stats.pendentes}</div>
             <p className="text-xs text-muted-foreground">Pendentes</p>
           </CardContent>
         </Card>
-        <Card className={cn("kpi-card cursor-pointer", statusFilter === 'em_andamento' && "ring-2 ring-blue-500")} onClick={() => setStatusFilter('em_andamento')}>
+        <Card className={cn("kpi-card cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", statusFilter === 'em_andamento' && "ring-2 ring-blue-500")} role="button" tabIndex={0} aria-pressed={statusFilter === 'em_andamento'} onClick={() => setStatusFilter('em_andamento')} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setStatusFilter('em_andamento'); } }}>
           <CardContent className="p-4">
             <div className="text-2xl font-bold tabular-nums text-info">{stats.emAndamento}</div>
             <p className="text-xs text-muted-foreground">Em Andamento</p>
           </CardContent>
         </Card>
-        <Card className={cn("kpi-card cursor-pointer", statusFilter === 'concluido' && "ring-2 ring-green-500")} onClick={() => setStatusFilter('concluido')}>
+        <Card className={cn("kpi-card cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", statusFilter === 'concluido' && "ring-2 ring-green-500")} role="button" tabIndex={0} aria-pressed={statusFilter === 'concluido'} onClick={() => setStatusFilter('concluido')} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setStatusFilter('concluido'); } }}>
           <CardContent className="p-4">
             <div className="text-2xl font-bold tabular-nums text-success">{stats.concluidos}</div>
             <p className="text-xs text-muted-foreground">Concluídos</p>
@@ -250,28 +306,48 @@ export default function Encaminhamentos() {
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Buscar paciente..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Buscar por nome, CPF ou telefone..."
+                value={patientSearchTerm}
+                onChange={(e) => setPatientSearchTerm(e.target.value)}
                 className="pl-9"
               />
             </div>
           </CardHeader>
           <CardContent className="p-0">
             <ScrollArea className="h-[500px]">
-              {pacientesComEnc.map((paciente) => {
+              {pacientesBuscaQuery.isError ? (
+                <div className="p-4">
+                  <ErrorState compact title="Não foi possível buscar pacientes" error={pacientesBuscaQuery.error} onRetry={() => void pacientesBuscaQuery.refetch()} />
+                </div>
+              ) : pacientesBuscaQuery.isFetching || pacientesBuscaQuery.isDebouncing ? (
+                <p role="status" className="px-4 py-10 text-center text-sm text-muted-foreground">Buscando pacientes…</p>
+              ) : pacientesComEnc.length === 0 ? (
+                <div className="px-4 py-10 text-center text-sm text-muted-foreground">
+                  <p>{patientSearchTerm ? 'Nenhum paciente corresponde à busca.' : 'Nenhum paciente cadastrado.'}</p>
+                  {patientSearchTerm && <Button variant="link" onClick={() => setPatientSearchTerm('')}>Limpar busca</Button>}
+                </div>
+              ) : pacientesComEnc.map((paciente) => {
                 const qtd = encaminhamentos.filter(e => e.paciente_id === paciente.id).length;
                 return (
                   <div
                     key={paciente.id}
                     className={cn(
-                      'p-3 border-b cursor-pointer hover:bg-muted/50 transition-colors',
+                      'p-3 border-b cursor-pointer hover:bg-muted/50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
                       selectedPacienteId === paciente.id && 'bg-primary/10 border-l-2 border-l-primary',
                     )}
+                    role="button"
+                    tabIndex={0}
+                    aria-pressed={selectedPacienteId === paciente.id}
                     onClick={() => setSelectedPacienteId(paciente.id)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        setSelectedPacienteId(paciente.id);
+                      }
+                    }}
                   >
                     <div className="flex items-center justify-between">
-                      <p className="font-medium text-sm truncate">{paciente.nome}</p>
+                      <p className="font-medium text-sm truncate">{(paciente as any).nome_social || paciente.nome}</p>
                       {qtd > 0 && (
                         <Badge variant="secondary" className="text-[10px] tabular-nums">{qtd}</Badge>
                       )}
@@ -280,15 +356,31 @@ export default function Encaminhamentos() {
                 );
               })}
             </ScrollArea>
+            {!pacientesBuscaQuery.isError && !pacientesBuscaQuery.isFetching && pacientesBuscaQuery.data?.incompleta && (
+              <p role="status" className="border-t px-4 py-2 text-xs text-muted-foreground">
+                {patientSearchTerm.trim()
+                  ? 'Há mais pacientes com esse resultado. Refine a busca para localizar o próximo.'
+                  : 'Mostrando os 50 pacientes mais recentes. Pesquise para localizar outros.'}
+              </p>
+            )}
           </CardContent>
         </Card>
 
         {/* Referral Panel */}
         <div className="lg:col-span-2">
-          {selectedPaciente && medicoId ? (
+          {selectedPacienteId && pacienteSelecionadoQuery.isError ? (
+            <ErrorState
+              title="Não foi possível carregar o paciente selecionado"
+              description="Atualize os dados antes de criar ou consultar encaminhamentos para evitar usar uma ficha incorreta."
+              error={pacienteSelecionadoQuery.error}
+              onRetry={() => void pacienteSelecionadoQuery.refetch()}
+            />
+          ) : selectedPacienteId && pacienteSelecionadoQuery.isFetching && !selectedPaciente ? (
+            <Card><CardContent className="py-16 text-center text-sm text-muted-foreground">Carregando a ficha do paciente…</CardContent></Card>
+          ) : selectedPaciente && medicoId ? (
             <EncaminhamentoMedico
               pacienteId={selectedPaciente.id}
-              pacienteNome={selectedPaciente.nome}
+              pacienteNome={(selectedPaciente as any).nome_social || selectedPaciente.nome}
               medicoOrigemId={medicoId}
               encaminhamentos={pacienteEncaminhamentos}
               onEncaminhamentoCriado={() => queryClient.invalidateQueries({ queryKey: ['encaminhamentos'] })}
@@ -318,18 +410,18 @@ export default function Encaminhamentos() {
               <FileText className="h-5 w-5 text-primary" />
               Todos os Encaminhamentos ({filteredEncaminhamentos.length})
             </CardTitle>
-            <div className="flex gap-2">
+            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
-                  placeholder="Buscar..."
+                  placeholder="Paciente, CPF, especialidade ou motivo..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-9 w-56"
+                  className="h-11 w-full pl-9 sm:w-56"
                 />
               </div>
               <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-[150px]">
+                <SelectTrigger className="h-11 w-full sm:w-[150px]">
                   <Filter className="h-4 w-4 mr-2" />
                   <SelectValue placeholder="Status" />
                 </SelectTrigger>
@@ -364,7 +456,12 @@ export default function Encaminhamentos() {
                   <TableRow>
                     <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                       <ArrowRightLeft className="h-12 w-12 mx-auto mb-4 opacity-20" />
-                      <p>Nenhum encaminhamento encontrado</p>
+                      <p>{encaminhamentos.length === 0 ? 'Nenhum encaminhamento registrado' : 'Nenhum encaminhamento corresponde à busca e ao status selecionado'}</p>
+                      {encaminhamentos.length > 0 && (
+                        <Button size="sm" variant="outline" className="mt-2" onClick={() => { setSearchTerm(''); setStatusFilter('todos'); }}>
+                          Limpar filtros
+                        </Button>
+                      )}
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -378,7 +475,7 @@ export default function Encaminhamentos() {
                             ? format(parseDateOnly(enc.data_encaminhamento)!, 'dd/MM/yyyy')
                             : '—'}
                         </TableCell>
-                        <TableCell className="font-medium">{enc.paciente?.nome || getPacienteNome(enc.paciente_id)}</TableCell>
+                        <TableCell className="font-medium">{enc.paciente?.nome_social || enc.paciente?.nome || getPacienteNome(enc.paciente_id)}</TableCell>
                         <TableCell>
                           <div className="flex items-center gap-1.5">
                             <Stethoscope className="h-3.5 w-3.5 text-muted-foreground" />
@@ -403,7 +500,7 @@ export default function Encaminhamentos() {
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-1">
-                            <Button variant="ghost" size="icon" onClick={() => handleView(enc)} aria-label="Ver">
+                            <Button variant="ghost" size="icon" onClick={() => handleView(enc)} aria-label="Ver" disabled={isUpdating}>
                               <Eye className="h-4 w-4" />
                             </Button>
                             {enc.status === 'pendente' && (
@@ -429,7 +526,7 @@ export default function Encaminhamentos() {
       </Card>
 
       {/* View Detail Dialog */}
-      <Dialog open={isViewOpen} onOpenChange={setIsViewOpen}>
+      <Dialog open={isViewOpen} onOpenChange={(open) => { if (open || !isUpdating) setIsViewOpen(open); }}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -442,7 +539,7 @@ export default function Encaminhamentos() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <p className="text-muted-foreground text-xs">Paciente</p>
-                  <p className="font-medium">{selectedEnc.paciente?.nome || getPacienteNome(selectedEnc.paciente_id)}</p>
+                  <p className="font-medium">{selectedEnc.paciente?.nome_social || selectedEnc.paciente?.nome || getPacienteNome(selectedEnc.paciente_id)}</p>
                 </div>
                 <div>
                   <p className="text-muted-foreground text-xs">Especialidade</p>
@@ -490,6 +587,37 @@ export default function Encaminhamentos() {
 
               <Separator />
 
+              <section className="space-y-2" aria-label="Histórico de status">
+                <p className="text-xs font-semibold text-muted-foreground">Histórico do encaminhamento</p>
+                {statusHistoryQuery.isLoading ? (
+                  <p className="text-xs text-muted-foreground">Carregando histórico…</p>
+                ) : statusHistoryQuery.isError ? (
+                  <ErrorState compact title="Não foi possível carregar o histórico" error={statusHistoryQuery.error} onRetry={() => void statusHistoryQuery.refetch()} />
+                ) : statusHistoryQuery.data?.length ? (
+                  <ol className="space-y-2 border-l pl-3">
+                    {statusHistoryQuery.data.map((evento: Record<string, any>) => {
+                      const anterior = evento.status_anterior
+                        ? STATUS_CONFIG[evento.status_anterior]?.label || evento.status_anterior
+                        : null;
+                      const novo = STATUS_CONFIG[evento.status_novo]?.label || evento.status_novo;
+                      return (
+                        <li key={evento.id} className="relative text-xs">
+                          <p className="font-medium">{anterior ? `${anterior} → ${novo}` : novo}</p>
+                          {evento.comentario && <p className="text-muted-foreground">{evento.comentario}</p>}
+                          <p className="text-muted-foreground">
+                            {evento.usuario_nome || 'Usuário da clínica'} · {format(new Date(evento.data_mudanca), 'dd/MM/yyyy HH:mm', { locale: ptBR })}
+                          </p>
+                        </li>
+                      );
+                    })}
+                  </ol>
+                ) : (
+                  <p className="text-xs text-muted-foreground">Ainda não há alterações de status registradas.</p>
+                )}
+              </section>
+
+              <Separator />
+
               {/* Contra-referência section */}
               {selectedEnc.contra_referencia ? (
                 <div>
@@ -511,6 +639,7 @@ export default function Encaminhamentos() {
                     value={contraRefText}
                     onChange={e => setContraRefText(e.target.value)}
                     rows={3}
+                    disabled={isUpdating}
                   />
                   <Button
                     size="sm"

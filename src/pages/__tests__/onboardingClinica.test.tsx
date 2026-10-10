@@ -97,7 +97,7 @@ describe('OnboardingClinica', () => {
     renderPage();
 
     expect(screen.getByText('1 de 5 etapas concluídas')).toBeVisible();
-    expect(screen.getByText('1 pessoa ativa')).toBeVisible();
+    expect(screen.getByText('1 pessoa ativa com função de acesso')).toBeVisible();
     expect(screen.getByText('1 profissional com horários disponíveis')).toBeVisible();
     expect(screen.getByRole('link', { name: /Cadastrar serviço/ })).toHaveAttribute('href', '/precos-servicos?tab=tipos');
     expect(screen.getByRole('link', { name: /Conectar WhatsApp/ })).toHaveAttribute('href', '/agente-ia');

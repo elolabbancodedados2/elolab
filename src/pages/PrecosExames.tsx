@@ -1,5 +1,5 @@
 import { salvarConfigClinica } from '@/lib/configClinica';
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
@@ -18,199 +18,202 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import { DeleteConfirmDialog } from '@/components/ConfirmDialog';
-import { DollarSign, Plus, Search, Edit, Trash2, Building2, Stethoscope, Loader2 } from 'lucide-react';
+import { AlertTriangle, DollarSign, Plus, Search, Edit, Trash2, Building2, Stethoscope, Loader2, ExternalLink } from 'lucide-react';
 import { TableSkeleton } from '@/components/ui/loading-skeleton';
+import { ErrorState } from '@/components/ErrorState';
+import { normalizarTexto } from '@/lib/buscaPaciente';
+import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
 
 const CATALOGO_EXAMES: { nome: string; tuss: string }[] = [
   { nome: 'Hemograma Completo', tuss: '40304361' },
-  { nome: 'Coagulograma', tuss: '40304540' },
+  { nome: 'Coagulograma', tuss: '40304922' },
   { nome: 'Tempo de Protrombina (TP)', tuss: '40304590' },
-  { nome: 'TTPA', tuss: '40304604' },
-  { nome: 'VHS', tuss: '40304680' },
-  { nome: 'Reticulócitos', tuss: '40304507' },
-  { nome: 'Plaquetas', tuss: '40304470' },
-  { nome: 'Grupo Sanguíneo (ABO/Rh)', tuss: '40304213' },
-  { nome: 'Coombs Direto', tuss: '40304167' },
-  { nome: 'Coombs Indireto', tuss: '40304175' },
-  { nome: 'Eletroforese de Hemoglobina', tuss: '40304256' },
-  { nome: 'Ferro Sérico', tuss: '40301630' },
-  { nome: 'Ferritina', tuss: '40316360' },
-  { nome: 'Transferrina', tuss: '40316700' },
-  { nome: 'TIBC', tuss: '40301648' },
+  { nome: 'TTPA', tuss: '40304639' },
+  { nome: 'VHS', tuss: '40304370' },
+  { nome: 'Reticulócitos', tuss: '40304558' },
+  { nome: 'Plaquetas', tuss: '' },
+  { nome: 'Grupo Sanguíneo (ABO/Rh)', tuss: '40403173' },
+  { nome: 'Coombs Direto', tuss: '40304108' },
+  { nome: 'Coombs Indireto', tuss: '40304884' },
+  { nome: 'Eletroforese de Hemoglobina', tuss: '40304353' },
+  { nome: 'Ferro Sérico', tuss: '40301842' },
+  { nome: 'Ferritina', tuss: '40316270' },
+  { nome: 'Transferrina', tuss: '40302520' },
+  { nome: 'TIBC', tuss: '' },
   { nome: 'Glicose em Jejum', tuss: '40302040' },
-  { nome: 'Hemoglobina Glicada (HbA1c)', tuss: '40302059' },
-  { nome: 'Curva Glicêmica (TOTG)', tuss: '40302024' },
-  { nome: 'Insulina Basal', tuss: '40316459' },
-  { nome: 'Peptídeo C', tuss: '40316580' },
-  { nome: 'Colesterol Total', tuss: '40301508' },
-  { nome: 'HDL Colesterol', tuss: '40301516' },
-  { nome: 'LDL Colesterol', tuss: '40301524' },
-  { nome: 'VLDL Colesterol', tuss: '40301532' },
-  { nome: 'Triglicerídeos', tuss: '40301869' },
-  { nome: 'Perfil Lipídico Completo', tuss: '40301508' },
-  { nome: 'Ureia', tuss: '40301885' },
-  { nome: 'Creatinina', tuss: '40301575' },
-  { nome: 'Ácido Úrico', tuss: '40301397' },
-  { nome: 'TGO (AST)', tuss: '40301851' },
-  { nome: 'TGP (ALT)', tuss: '40301842' },
-  { nome: 'Gama GT', tuss: '40302016' },
-  { nome: 'Fosfatase Alcalina', tuss: '40301940' },
-  { nome: 'Bilirrubinas Total e Frações', tuss: '40301443' },
-  { nome: 'Proteínas Totais e Frações', tuss: '40301796' },
-  { nome: 'Albumina', tuss: '40301401' },
-  { nome: 'Amilase', tuss: '40301419' },
-  { nome: 'Lipase', tuss: '40301672' },
-  { nome: 'DHL', tuss: '40301591' },
-  { nome: 'CPK', tuss: '40301559' },
-  { nome: 'CPK-MB', tuss: '40301567' },
-  { nome: 'Troponina I', tuss: '40301877' },
-  { nome: 'BNP', tuss: '40316297' },
-  { nome: 'PCR (Proteína C-Reativa)', tuss: '40308014' },
-  { nome: 'PCR Ultrassensível', tuss: '40308022' },
-  { nome: 'Homocisteína', tuss: '40316424' },
-  { nome: 'Sódio', tuss: '40301834' },
-  { nome: 'Potássio', tuss: '40301770' },
-  { nome: 'Cálcio Total', tuss: '40301460' },
-  { nome: 'Cálcio Iônico', tuss: '40301478' },
-  { nome: 'Magnésio', tuss: '40301680' },
-  { nome: 'Fósforo', tuss: '40301958' },
-  { nome: 'Cloro', tuss: '40301494' },
-  { nome: 'Zinco', tuss: '40301893' },
-  { nome: 'TSH', tuss: '40316912' },
-  { nome: 'T3 Livre', tuss: '40316882' },
-  { nome: 'T4 Livre', tuss: '40316890' },
-  { nome: 'T3 Total', tuss: '40316874' },
-  { nome: 'T4 Total', tuss: '40316904' },
-  { nome: 'Anti-TPO', tuss: '40308146' },
-  { nome: 'Anti-Tireoglobulina', tuss: '40308138' },
-  { nome: 'Tireoglobulina', tuss: '40316858' },
-  { nome: 'Cortisol Basal', tuss: '40316327' },
-  { nome: 'ACTH', tuss: '40316270' },
-  { nome: 'Prolactina', tuss: '40316610' },
-  { nome: 'GH', tuss: '40316394' },
+  { nome: 'Hemoglobina Glicada (HbA1c)', tuss: '40302733' },
+  { nome: 'Curva Glicêmica (TOTG)', tuss: '40301680' },
+  { nome: 'Insulina Basal', tuss: '40316360' },
+  { nome: 'Peptídeo C', tuss: '40316394' },
+  { nome: 'Colesterol Total', tuss: '40301605' },
+  { nome: 'HDL Colesterol', tuss: '40301583' },
+  { nome: 'LDL Colesterol', tuss: '40301591' },
+  { nome: 'VLDL Colesterol', tuss: '40302695' },
+  { nome: 'Triglicerídeos', tuss: '40302547' },
+  { nome: 'Perfil Lipídico Completo', tuss: '40302750' },
+  { nome: 'Ureia', tuss: '40302580' },
+  { nome: 'Creatinina', tuss: '40301630' },
+  { nome: 'Ácido Úrico', tuss: '40301150' },
+  { nome: 'TGO (AST)', tuss: '40302504' },
+  { nome: 'TGP (ALT)', tuss: '40302512' },
+  { nome: 'Gama GT', tuss: '40301990' },
+  { nome: 'Fosfatase Alcalina', tuss: '40301885' },
+  { nome: 'Bilirrubinas Total e Frações', tuss: '40301397' },
+  { nome: 'Proteínas Totais e Frações', tuss: '40302385' },
+  { nome: 'Albumina', tuss: '40301222' },
+  { nome: 'Amilase', tuss: '40301281' },
+  { nome: 'Lipase', tuss: '40302199' },
+  { nome: 'DHL', tuss: '40301729' },
+  { nome: 'CPK', tuss: '40301648' },
+  { nome: 'CPK-MB', tuss: '' },
+  { nome: 'Troponina I', tuss: '' },
+  { nome: 'BNP', tuss: '40302776' },
+  { nome: 'PCR (Proteína C-Reativa)', tuss: '40308391' },
+  { nome: 'PCR Ultrassensível', tuss: '' },
+  { nome: 'Homocisteína', tuss: '40302113' },
+  { nome: 'Sódio', tuss: '40302423' },
+  { nome: 'Potássio', tuss: '40302318' },
+  { nome: 'Cálcio Total', tuss: '40301400' },
+  { nome: 'Cálcio Iônico', tuss: '40301419' },
+  { nome: 'Magnésio', tuss: '40302237' },
+  { nome: 'Fósforo', tuss: '40301931' },
+  { nome: 'Cloro', tuss: '40301559' },
+  { nome: 'Zinco', tuss: '40313328' },
+  { nome: 'TSH', tuss: '40316521' },
+  { nome: 'T3 Livre', tuss: '40316467' },
+  { nome: 'T4 Livre', tuss: '40316491' },
+  { nome: 'T3 Total', tuss: '40316556' },
+  { nome: 'T4 Total', tuss: '40316548' },
+  { nome: 'Anti-TPO', tuss: '40316157' },
+  { nome: 'Anti-Tireoglobulina', tuss: '40316106' },
+  { nome: 'Tireoglobulina', tuss: '40316530' },
+  { nome: 'Cortisol Basal', tuss: '40316190' },
+  { nome: 'ACTH', tuss: '40316041' },
+  { nome: 'Prolactina', tuss: '40316416' },
+  { nome: 'GH', tuss: '40316203' },
   { nome: 'IGF-1', tuss: '40316440' },
-  { nome: 'LH', tuss: '40316483' },
-  { nome: 'FSH', tuss: '40316378' },
-  { nome: 'Estradiol', tuss: '40316351' },
-  { nome: 'Progesterona', tuss: '40316602' },
-  { nome: 'Testosterona Total', tuss: '40316840' },
-  { nome: 'Testosterona Livre', tuss: '40316831' },
-  { nome: 'DHEA-S', tuss: '40316335' },
-  { nome: 'Androstenediona', tuss: '40316289' },
-  { nome: '17-OH Progesterona', tuss: '40316262' },
-  { nome: 'SHBG', tuss: '40316777' },
-  { nome: 'Beta-HCG Quantitativo', tuss: '40316050' },
-  { nome: 'PTH (Paratormônio)', tuss: '40316629' },
-  { nome: 'Calcitonina', tuss: '40316300' },
-  { nome: 'Aldosterona', tuss: '40316270' },
-  { nome: 'Renina', tuss: '40316653' },
-  { nome: 'PSA Total', tuss: '40316637' },
-  { nome: 'PSA Livre', tuss: '40316645' },
-  { nome: 'CEA', tuss: '40316319' },
-  { nome: 'CA 125', tuss: '40316068' },
-  { nome: 'CA 19-9', tuss: '40316076' },
-  { nome: 'CA 15-3', tuss: '40316084' },
-  { nome: 'AFP', tuss: '40316050' },
-  { nome: 'CA 72-4', tuss: '40316092' },
-  { nome: 'Urina Tipo I (EAS)', tuss: '40311066' },
+  { nome: 'LH', tuss: '40316335' },
+  { nome: 'FSH', tuss: '40316289' },
+  { nome: 'Estradiol', tuss: '40316246' },
+  { nome: 'Progesterona', tuss: '40316408' },
+  { nome: 'Testosterona Total', tuss: '40316513' },
+  { nome: 'Testosterona Livre', tuss: '40316505' },
+  { nome: 'DHEA-S', tuss: '' },
+  { nome: 'Androstenediona', tuss: '40316076' },
+  { nome: '17-OH Progesterona', tuss: '' },
+  { nome: 'SHBG', tuss: '40316300' },
+  { nome: 'Beta-HCG Quantitativo', tuss: '' },
+  { nome: 'PTH (Paratormônio)', tuss: '40305465' },
+  { nome: 'Calcitonina', tuss: '40316165' },
+  { nome: 'Aldosterona', tuss: '40316050' },
+  { nome: 'Renina', tuss: '40316432' },
+  { nome: 'PSA Total', tuss: '40316149' },
+  { nome: 'PSA Livre', tuss: '40316130' },
+  { nome: 'CEA', tuss: '40316122' },
+  { nome: 'CA 125', tuss: '40316378' },
+  { nome: 'CA 19-9', tuss: '40316378' },
+  { nome: 'CA 15-3', tuss: '40316378' },
+  { nome: 'AFP', tuss: '40316068' },
+  { nome: 'CA 72-4', tuss: '' },
+  { nome: 'Urina Tipo I (EAS)', tuss: '' },
   { nome: 'Urocultura', tuss: '40310213' },
-  { nome: 'Creatinina Urinária 24h', tuss: '40301575' },
-  { nome: 'Microalbuminúria', tuss: '40311023' },
-  { nome: 'Clearance de Creatinina', tuss: '40301583' },
-  { nome: 'Parasitológico de Fezes (EPF)', tuss: '40311082' },
-  { nome: 'Coprocultura', tuss: '40310116' },
-  { nome: 'Sangue Oculto nas Fezes', tuss: '40311074' },
-  { nome: 'Anti-HIV 1 e 2', tuss: '40307166' },
-  { nome: 'VDRL', tuss: '40308308' },
-  { nome: 'FTA-ABS IgG/IgM', tuss: '40308251' },
-  { nome: 'Hepatite A (Anti-HAV IgM)', tuss: '40307310' },
-  { nome: 'Hepatite B (HBsAg)', tuss: '40307336' },
-  { nome: 'Hepatite B (Anti-HBs)', tuss: '40307344' },
-  { nome: 'Hepatite B (Anti-HBc Total)', tuss: '40307352' },
-  { nome: 'Hepatite C (Anti-HCV)', tuss: '40307387' },
-  { nome: 'Toxoplasmose IgG', tuss: '40308286' },
-  { nome: 'Toxoplasmose IgM', tuss: '40308294' },
-  { nome: 'Rubéola IgG', tuss: '40307689' },
-  { nome: 'Rubéola IgM', tuss: '40307697' },
-  { nome: 'Citomegalovírus IgG', tuss: '40307220' },
-  { nome: 'Citomegalovírus IgM', tuss: '40307239' },
-  { nome: 'Dengue IgG/IgM', tuss: '40307247' },
-  { nome: 'COVID-19 IgG/IgM', tuss: '40314618' },
-  { nome: 'FAN', tuss: '40308065' },
-  { nome: 'Fator Reumatoide', tuss: '40308073' },
-  { nome: 'Anti-CCP', tuss: '40308103' },
-  { nome: 'IgE Total', tuss: '40308189' },
-  { nome: 'ASLO', tuss: '40308057' },
-  { nome: 'Vitamina D (25-OH)', tuss: '40316920' },
-  { nome: 'Vitamina B12', tuss: '40316769' },
-  { nome: 'Ácido Fólico', tuss: '40316750' },
-  { nome: 'Radiografia de Tórax PA/Perfil', tuss: '40801020' },
-  { nome: 'Radiografia de Coluna Cervical', tuss: '40801039' },
-  { nome: 'Radiografia de Coluna Lombar', tuss: '40801047' },
-  { nome: 'Radiografia de Mão e Punho', tuss: '40801055' },
-  { nome: 'Radiografia de Joelho', tuss: '40801063' },
-  { nome: 'Radiografia de Seios da Face', tuss: '40801080' },
-  { nome: 'Ultrassom de Abdome Total', tuss: '40901017' },
-  { nome: 'Ultrassom de Abdome Superior', tuss: '40901025' },
-  { nome: 'Ultrassom Pélvico', tuss: '40901033' },
-  { nome: 'Ultrassom Transvaginal', tuss: '40901041' },
-  { nome: 'Ultrassom Obstétrico', tuss: '40901050' },
-  { nome: 'Ultrassom Morfológico', tuss: '40901068' },
-  { nome: 'Ultrassom de Tireoide', tuss: '40901076' },
-  { nome: 'Ultrassom de Mama Bilateral', tuss: '40901084' },
-  { nome: 'Ultrassom de Próstata', tuss: '40901092' },
-  { nome: 'Ultrassom Renal', tuss: '40901106' },
-  { nome: 'Ultrassom Doppler Carótidas', tuss: '40901122' },
-  { nome: 'Ultrassom Doppler Venoso MMII', tuss: '40901131' },
-  { nome: 'Ultrassom Doppler Arterial MMII', tuss: '40901149' },
-  { nome: 'Ultrassom de Partes Moles', tuss: '40901157' },
-  { nome: 'TC de Crânio', tuss: '41001028' },
-  { nome: 'TC de Tórax', tuss: '41001036' },
-  { nome: 'TC de Abdome Total', tuss: '41001044' },
-  { nome: 'TC de Coluna Lombar', tuss: '41001052' },
-  { nome: 'TC de Seios da Face', tuss: '41001079' },
-  { nome: 'Angiotomografia Coronariana', tuss: '41001087' },
-  { nome: 'RM de Crânio', tuss: '41101014' },
-  { nome: 'RM de Coluna Cervical', tuss: '41101022' },
-  { nome: 'RM de Coluna Lombar', tuss: '41101030' },
-  { nome: 'RM de Joelho', tuss: '41101049' },
-  { nome: 'RM de Ombro', tuss: '41101057' },
-  { nome: 'RM de Abdome', tuss: '41101065' },
-  { nome: 'RM de Pelve', tuss: '41101073' },
-  { nome: 'RM Cardíaca', tuss: '41101081' },
-  { nome: 'Mamografia Bilateral', tuss: '40901211' },
-  { nome: 'Densitometria Óssea', tuss: '40801098' },
+  { nome: 'Creatinina Urinária 24h', tuss: '' },
+  { nome: 'Microalbuminúria', tuss: '' },
+  { nome: 'Clearance de Creatinina', tuss: '' },
+  { nome: 'Parasitológico de Fezes (EPF)', tuss: '' },
+  { nome: 'Coprocultura', tuss: '' },
+  { nome: 'Sangue Oculto nas Fezes', tuss: '' },
+  { nome: 'Anti-HIV 1 e 2', tuss: '' },
+  { nome: 'VDRL', tuss: '' },
+  { nome: 'FTA-ABS IgG/IgM', tuss: '' },
+  { nome: 'Hepatite A (Anti-HAV IgM)', tuss: '' },
+  { nome: 'Hepatite B (HBsAg)', tuss: '' },
+  { nome: 'Hepatite B (Anti-HBs)', tuss: '' },
+  { nome: 'Hepatite B (Anti-HBc Total)', tuss: '' },
+  { nome: 'Hepatite C (Anti-HCV)', tuss: '' },
+  { nome: 'Toxoplasmose IgG', tuss: '' },
+  { nome: 'Toxoplasmose IgM', tuss: '' },
+  { nome: 'Rubéola IgG', tuss: '' },
+  { nome: 'Rubéola IgM', tuss: '' },
+  { nome: 'Citomegalovírus IgG', tuss: '' },
+  { nome: 'Citomegalovírus IgM', tuss: '' },
+  { nome: 'Dengue IgG/IgM', tuss: '' },
+  { nome: 'COVID-19 IgG/IgM', tuss: '' },
+  { nome: 'FAN', tuss: '' },
+  { nome: 'Fator Reumatoide', tuss: '' },
+  { nome: 'Anti-CCP', tuss: '' },
+  { nome: 'IgE Total', tuss: '' },
+  { nome: 'ASLO', tuss: '' },
+  { nome: 'Vitamina D (25-OH)', tuss: '40302830' },
+  { nome: 'Vitamina B12', tuss: '' },
+  { nome: 'Ácido Fólico', tuss: '' },
+  { nome: 'Radiografia de Tórax PA/Perfil', tuss: '' },
+  { nome: 'Radiografia de Coluna Cervical', tuss: '' },
+  { nome: 'Radiografia de Coluna Lombar', tuss: '' },
+  { nome: 'Radiografia de Mão e Punho', tuss: '' },
+  { nome: 'Radiografia de Joelho', tuss: '' },
+  { nome: 'Radiografia de Seios da Face', tuss: '' },
+  { nome: 'Ultrassom de Abdome Total', tuss: '' },
+  { nome: 'Ultrassom de Abdome Superior', tuss: '' },
+  { nome: 'Ultrassom Pélvico', tuss: '' },
+  { nome: 'Ultrassom Transvaginal', tuss: '' },
+  { nome: 'Ultrassom Obstétrico', tuss: '' },
+  { nome: 'Ultrassom Morfológico', tuss: '' },
+  { nome: 'Ultrassom de Tireoide', tuss: '' },
+  { nome: 'Ultrassom de Mama Bilateral', tuss: '' },
+  { nome: 'Ultrassom de Próstata', tuss: '' },
+  { nome: 'Ultrassom Renal', tuss: '' },
+  { nome: 'Ultrassom Doppler Carótidas', tuss: '' },
+  { nome: 'Ultrassom Doppler Venoso MMII', tuss: '' },
+  { nome: 'Ultrassom Doppler Arterial MMII', tuss: '' },
+  { nome: 'Ultrassom de Partes Moles', tuss: '' },
+  { nome: 'TC de Crânio', tuss: '' },
+  { nome: 'TC de Tórax', tuss: '' },
+  { nome: 'TC de Abdome Total', tuss: '' },
+  { nome: 'TC de Coluna Lombar', tuss: '' },
+  { nome: 'TC de Seios da Face', tuss: '' },
+  { nome: 'Angiotomografia Coronariana', tuss: '' },
+  { nome: 'RM de Crânio', tuss: '' },
+  { nome: 'RM de Coluna Cervical', tuss: '' },
+  { nome: 'RM de Coluna Lombar', tuss: '' },
+  { nome: 'RM de Joelho', tuss: '' },
+  { nome: 'RM de Ombro', tuss: '' },
+  { nome: 'RM de Abdome', tuss: '' },
+  { nome: 'RM de Pelve', tuss: '' },
+  { nome: 'RM Cardíaca', tuss: '' },
+  { nome: 'Mamografia Bilateral', tuss: '' },
+  { nome: 'Densitometria Óssea', tuss: '' },
   { nome: 'Eletrocardiograma (ECG)', tuss: '40101010' },
-  { nome: 'Ecocardiograma Transtorácico', tuss: '40101029' },
-  { nome: 'Ecocardiograma com Doppler', tuss: '40101037' },
+  { nome: 'Ecocardiograma Transtorácico', tuss: '' },
+  { nome: 'Ecocardiograma com Doppler', tuss: '' },
   { nome: 'Teste Ergométrico', tuss: '40101045' },
-  { nome: 'Holter 24h', tuss: '40101053' },
-  { nome: 'MAPA 24h', tuss: '40101061' },
-  { nome: 'Eletroencefalograma (EEG)', tuss: '40201015' },
-  { nome: 'Eletroneuromiografia (ENMG)', tuss: '40201023' },
-  { nome: 'Espirometria', tuss: '40301010' },
-  { nome: 'Polissonografia', tuss: '40301036' },
-  { nome: 'Tonometria', tuss: '40501012' },
-  { nome: 'Campimetria Visual', tuss: '40501020' },
-  { nome: 'Retinografia', tuss: '40501039' },
-  { nome: 'OCT', tuss: '40501047' },
-  { nome: 'Mapeamento de Retina', tuss: '40501055' },
-  { nome: 'Audiometria Tonal e Vocal', tuss: '40601013' },
-  { nome: 'Impedanciometria', tuss: '40601021' },
-  { nome: 'Videolaringoscopia', tuss: '40601030' },
-  { nome: 'Papanicolaou', tuss: '40601056' },
-  { nome: 'Colposcopia', tuss: '40601064' },
-  { nome: 'Endoscopia Digestiva Alta', tuss: '40201040' },
-  { nome: 'Colonoscopia', tuss: '40201058' },
-  { nome: 'Biópsia de Pele', tuss: '40401014' },
-  { nome: 'Anatomopatológico', tuss: '40401022' },
-  { nome: 'Gasometria Arterial', tuss: '40302075' },
-  { nome: 'Hemoculturas', tuss: '40310167' },
-  { nome: 'Antibiograma', tuss: '40310191' },
-  { nome: 'D-Dímero', tuss: '40304183' },
-  { nome: 'Fibrinogênio', tuss: '40304281' },
-  { nome: 'Procalcitonina', tuss: '40316815' },
-  { nome: 'Cariótipo', tuss: '40314014' },
+  { nome: 'Holter 24h', tuss: '' },
+  { nome: 'MAPA 24h', tuss: '' },
+  { nome: 'Eletroencefalograma (EEG)', tuss: '' },
+  { nome: 'Eletroneuromiografia (ENMG)', tuss: '' },
+  { nome: 'Espirometria', tuss: '' },
+  { nome: 'Polissonografia', tuss: '' },
+  { nome: 'Tonometria', tuss: '' },
+  { nome: 'Campimetria Visual', tuss: '' },
+  { nome: 'Retinografia', tuss: '' },
+  { nome: 'OCT', tuss: '' },
+  { nome: 'Mapeamento de Retina', tuss: '' },
+  { nome: 'Audiometria Tonal e Vocal', tuss: '' },
+  { nome: 'Impedanciometria', tuss: '' },
+  { nome: 'Videolaringoscopia', tuss: '' },
+  { nome: 'Papanicolaou', tuss: '' },
+  { nome: 'Colposcopia', tuss: '' },
+  { nome: 'Endoscopia Digestiva Alta', tuss: '' },
+  { nome: 'Colonoscopia', tuss: '' },
+  { nome: 'Biópsia de Pele', tuss: '' },
+  { nome: 'Anatomopatológico', tuss: '' },
+  { nome: 'Gasometria Arterial', tuss: '' },
+  { nome: 'Hemoculturas', tuss: '' },
+  { nome: 'Antibiograma', tuss: '' },
+  { nome: 'D-Dímero', tuss: '' },
+  { nome: 'Fibrinogênio', tuss: '' },
+  { nome: 'Procalcitonina', tuss: '' },
+  { nome: 'Cariótipo', tuss: '' },
 ];
 
 function ExameCombobox({ value, onChange }: { value: string; onChange: (nome: string, tuss: string) => void }) {
@@ -219,11 +222,11 @@ function ExameCombobox({ value, onChange }: { value: string; onChange: (nome: st
 
   const filtered = useMemo(() => {
     if (!searchTerm) return CATALOGO_EXAMES;
-    const q = searchTerm.toLowerCase();
-    return CATALOGO_EXAMES.filter(e => e.nome.toLowerCase().includes(q) || e.tuss.includes(q));
+    const q = normalizarTexto(searchTerm.trim());
+    return CATALOGO_EXAMES.filter(e => normalizarTexto(e.nome).includes(q) || e.tuss.includes(searchTerm.trim()));
   }, [searchTerm]);
 
-  const isCustomName = searchTerm.trim() && !filtered.some(e => e.nome.toLowerCase() === searchTerm.trim().toLowerCase());
+  const isCustomName = searchTerm.trim() && !filtered.some(e => normalizarTexto(e.nome) === normalizarTexto(searchTerm.trim()));
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -277,6 +280,8 @@ const parseMoney = (value: string | number) => {
   const parsed = Number(String(value).replace(',', '.'));
   return Number.isFinite(parsed) ? parsed : NaN;
 };
+const temMaisDeDuasCasasDecimais = (valor: number) =>
+  Math.abs(valor * 100 - Math.round(valor * 100)) > 1e-7;
 
 // ─── Internal/Particular Prices Tab ───
 function PrecosInternos() {
@@ -285,36 +290,48 @@ function PrecosInternos() {
   const [search, setSearch] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [editIdx, setEditIdx] = useState<number | null>(null);
+  const [precoParaExcluir, setPrecoParaExcluir] = useState<{ idx: number; nome: string } | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [form, setForm] = useState({ nome: '', codigo_tuss: '', descricao: '', valor: '', custo: '' });
 
-  const { data: precos = [], isLoading } = useQuery({
+  const precosQuery = useQuery({
     queryKey: ['precos-exames-internos', user?.id, profile?.clinica_id],
     queryFn: async () => {
-      if (!user?.id) return [];
+      if (!user?.id) return { items: [], updatedAt: null };
       let query = supabase
         .from('configuracoes_clinica')
         .select('valor, updated_at')
-        .eq('chave', 'precos_exames_internos')
-        .order('updated_at', { ascending: false })
-        .limit(1);
+        .eq('chave', 'precos_exames_internos');
 
       query = profile?.clinica_id
-        ? query.or(`user_id.eq.${user.id},clinica_id.eq.${profile.clinica_id}`)
-        : query.eq('user_id', user.id);
+        ? query.eq('clinica_id', profile.clinica_id)
+        : query.eq('user_id', user.id).is('clinica_id', null);
+      query = query.order('updated_at', { ascending: false }).limit(1);
 
       const { data, error } = await query;
       if (error) throw error;
-      return (data?.[0]?.valor as any[]) || [];
+      return {
+        items: (data?.[0]?.valor as any[]) || [],
+        updatedAt: data?.[0]?.updated_at ?? null,
+      };
     },
     enabled: !!user?.id,
   });
+  const precos = precosQuery.data?.items ?? [];
+  const { isLoading } = precosQuery;
 
   const saveAll = async (list: any[]) => {
+    if (precosQuery.isError || precosQuery.isFetching) throw new Error('A tabela não foi carregada por completo. Atualize os dados antes de salvar para não substituir preços existentes.');
     if (!user?.id) throw new Error('Usuário não identificado');
     if (profile?.clinica_id) {
       // Tabela de preços é da clínica: uma linha só, compartilhada pela equipe.
-      await salvarConfigClinica({ clinicaId: profile.clinica_id, userId: user.id, chave: 'precos_exames_internos', valor: list });
+      await salvarConfigClinica({
+        clinicaId: profile.clinica_id,
+        userId: user.id,
+        chave: 'precos_exames_internos',
+        valor: list,
+        expectedUpdatedAt: precosQuery.data?.updatedAt ?? null,
+      });
     } else {
       const { error } = await supabase.from('configuracoes_clinica').upsert({
         chave: 'precos_exames_internos',
@@ -331,9 +348,20 @@ function PrecosInternos() {
   const handleSave = async () => {
     const valor = parseMoney(form.valor);
     const custo = form.custo ? parseMoney(form.custo) : 0;
-    if (!form.nome || !form.valor) { toast.error('Preencha nome e valor'); return; }
+    if (!form.nome.trim() || !form.valor) { toast.error('Preencha nome e valor'); return; }
     if (!Number.isFinite(valor) || valor <= 0) { toast.error('Informe um valor válido maior que zero'); return; }
     if (!Number.isFinite(custo) || custo < 0) { toast.error('Informe um custo válido'); return; }
+    if (temMaisDeDuasCasasDecimais(valor) || temMaisDeDuasCasasDecimais(custo)) { toast.error('Informe valor e custo com no máximo duas casas decimais.'); return; }
+    const nomeNormalizado = normalizarTexto(form.nome.trim());
+    const codigoNormalizado = form.codigo_tuss.trim().toLocaleUpperCase('pt-BR').replace(/[^A-Z0-9]/g, '');
+    const duplicado = precos.some((preco: any, index: number) => index !== editIdx && (
+      normalizarTexto(preco.nome) === nomeNormalizado ||
+      (codigoNormalizado && String(preco.codigo_tuss || '').toLocaleUpperCase('pt-BR').replace(/[^A-Z0-9]/g, '') === codigoNormalizado)
+    ));
+    if (duplicado) {
+      toast.error('Este nome ou código já está cadastrado na tabela particular. Edite o preço existente para evitar cobranças ambíguas.');
+      return;
+    }
     const entry = { nome: form.nome.trim(), codigo_tuss: form.codigo_tuss.trim(), descricao: form.descricao.trim(), valor, custo };
     const list = [...precos];
     if (editIdx !== null) list[editIdx] = entry;
@@ -346,19 +374,30 @@ function PrecosInternos() {
       setEditIdx(null);
       setForm({ nome: '', codigo_tuss: '', descricao: '', valor: '', custo: '' });
     } catch (error: any) {
-      toast.error(error?.message || 'Erro ao salvar exame');
+      if (String(error?.message || '').includes('Outra pessoa')) {
+        await precosQuery.refetch();
+        toast.error(error.message, { description: 'A tabela foi atualizada. Confira os valores atuais antes de tentar novamente.' });
+      } else toast.error(error?.message || 'Erro ao salvar exame');
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleDelete = async (idx: number) => {
-    const list = precos.filter((_: any, i: number) => i !== idx);
+  const handleDelete = async () => {
+    if (!precoParaExcluir) return;
+    const list = precos.filter((_: any, i: number) => i !== precoParaExcluir.idx);
+    setIsSaving(true);
     try {
       await saveAll(list);
       toast.success('Removido!');
+      setPrecoParaExcluir(null);
     } catch (error: any) {
-      toast.error(error?.message || 'Erro ao remover exame');
+      if (String(error?.message || '').includes('Outra pessoa')) {
+        await precosQuery.refetch();
+        toast.error(error.message, { description: 'A tabela foi atualizada. Confira os valores atuais antes de tentar novamente.' });
+      } else toast.error(error?.message || 'Erro ao remover exame');
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -370,9 +409,9 @@ function PrecosInternos() {
   };
 
   const filtered = useMemo(() => {
-    if (!search) return precos;
-    const q = search.toLowerCase();
-    return precos.filter((p: any) => p.nome?.toLowerCase().includes(q) || p.codigo_tuss?.toLowerCase().includes(q));
+    const q = normalizarTexto(search.trim());
+    if (!q) return precos;
+    return precos.filter((p: any) => normalizarTexto(p.nome).includes(q) || normalizarTexto(p.codigo_tuss).includes(q));
   }, [precos, search]);
 
   return (
@@ -402,14 +441,18 @@ function PrecosInternos() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {isLoading ? (
+              {precosQuery.isError ? (
+                <TableRow><TableCell colSpan={7} className="p-4"><ErrorState compact title="Não foi possível carregar a tabela particular" error={precosQuery.error} onRetry={() => void precosQuery.refetch()} /></TableCell></TableRow>
+              ) : isLoading ? (
                 <TableRow><TableCell colSpan={7} className="p-0"><TableSkeleton rows={5} cols={5} /></TableCell></TableRow>
               ) : filtered.length === 0 ? (
-                <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Nenhum exame cadastrado. Clique "Novo Exame" para começar.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={7} className="py-8 text-center text-muted-foreground">{precos.length === 0 ? 'Nenhum exame cadastrado. Clique em “Novo Exame” para começar.' : <>Nenhum exame encontrado para esta busca. <Button variant="link" className="h-auto p-0" onClick={() => setSearch('')}>Limpar busca</Button></>}</TableCell></TableRow>
               ) : (
                 filtered.map((p: any) => {
                   const originalIdx = precos.indexOf(p);
-                  const margem = p.custo > 0 ? ((p.valor - p.custo) / p.valor * 100) : 100;
+                  const margem = Number(p.custo) > 0 && Number(p.valor) > 0
+                    ? ((Number(p.valor) - Number(p.custo)) / Number(p.valor) * 100)
+                    : null;
                   return (
                     <TableRow key={`${p.nome}-${p.codigo_tuss || 'sem-tuss'}-${originalIdx}`}>
                       <TableCell className="font-medium">{p.nome}</TableCell>
@@ -418,14 +461,16 @@ function PrecosInternos() {
                       <TableCell className="text-right font-semibold">{fmt(p.valor)}</TableCell>
                       <TableCell className="text-right">{p.custo > 0 ? fmt(p.custo) : '—'}</TableCell>
                       <TableCell className="text-right">
-                        <Badge variant={margem >= 50 ? 'default' : margem >= 20 ? 'secondary' : 'destructive'} className="text-xs">
-                          {margem.toFixed(0)}%
-                        </Badge>
+                        {margem === null ? <span className="text-muted-foreground">—</span> : (
+                          <Badge variant={margem >= 50 ? 'default' : margem >= 20 ? 'secondary' : 'destructive'} className="text-xs">
+                            {margem.toFixed(0)}%
+                          </Badge>
+                        )}
                       </TableCell>
                       <TableCell>
                         <div className="flex gap-1">
-                          <Button aria-label={`Editar preço de ${p.tipo_exame}`} size="icon" variant="ghost" onClick={() => openEdit(originalIdx)}><Edit className="h-3 w-3" /></Button>
-                          <Button aria-label={`Excluir preço de ${p.tipo_exame}`} size="icon" variant="ghost" className="text-destructive" onClick={() => handleDelete(originalIdx)}><Trash2 className="h-3 w-3" /></Button>
+                          <Button aria-label={`Editar preço de ${p.nome}`} size="icon" variant="ghost" onClick={() => openEdit(originalIdx)}><Edit className="h-3 w-3" /></Button>
+                          <Button aria-label={`Excluir preço de ${p.nome}`} size="icon" variant="ghost" className="text-destructive" disabled={isSaving} onClick={() => setPrecoParaExcluir({ idx: originalIdx, nome: p.nome })}><Trash2 className="h-3 w-3" /></Button>
                         </div>
                       </TableCell>
                     </TableRow>
@@ -457,7 +502,13 @@ function PrecosInternos() {
           <div className="space-y-5">
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold">Nome do Exame *</Label>
-              <ExameCombobox value={form.nome} onChange={(nome, tuss) => setForm(p => ({ ...p, nome, codigo_tuss: tuss || p.codigo_tuss }))} />
+              <ExameCombobox value={form.nome} onChange={(nome, tuss) => setForm(p => ({ ...p, nome, codigo_tuss: tuss }))} />
+              <p className="text-xs text-muted-foreground">
+                Só preenchemos códigos conferidos na tabela oficial. Nos demais casos, consulte e confirme a vigência na{' '}
+                <a href="https://consulta-ocl.apps.sa-1a.mendixcloud.com/" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-primary underline underline-offset-2">
+                  consulta oficial TUSS da ANS <ExternalLink className="h-3 w-3" />
+                </a>{' '}antes de faturar.
+              </p>
             </div>
              <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
@@ -520,6 +571,14 @@ function PrecosInternos() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <DeleteConfirmDialog
+        open={!!precoParaExcluir}
+        onOpenChange={(open) => { if (!open && !isSaving) setPrecoParaExcluir(null); }}
+        itemName={precoParaExcluir?.nome || ''}
+        isLoading={isSaving}
+        closeOnConfirm={false}
+        onConfirm={() => void handleDelete()}
+      />
     </div>
   );
 }
@@ -535,7 +594,7 @@ function PrecosConvenio() {
   const [precoParaExcluir, setPrecoParaExcluir] = useState<any>(null);
   const queryClient = useQueryClient();
 
-  const { data: convenios } = useQuery({
+  const conveniosQuery = useQuery({
     queryKey: ['convenios-precos', profile?.clinica_id ?? null],
     queryFn: async () => {
       let query = supabase.from('convenios').select('id, nome, codigo').eq('ativo', true).order('nome');
@@ -546,28 +605,42 @@ function PrecosConvenio() {
     },
     enabled: !!profile?.clinica_id,
   });
+  const convenios = conveniosQuery.data ?? [];
 
-  const { data: precos, isLoading } = useQuery({
+  const precosQuery = useQuery({
     queryKey: ['precos-exames', profile?.clinica_id],
     queryFn: async () => {
-      const { data, error } = await supabase
+      return buscarEmBlocos<any>(() => supabase
         .from('precos_exames_convenio')
         .select('*, convenios(nome, codigo)')
         .eq('clinica_id', profile?.clinica_id)
-        .order('tipo_exame');
-      if (error) throw error;
-      return data || [];
+        .order('tipo_exame').order('id'));
     },
     enabled: !!profile?.clinica_id,
   });
+  const precos = precosQuery.data ?? [];
+  const precosAtingiramLimite = precos.length >= LIMITE_BUSCA_EM_BLOCOS;
+  const { isLoading } = precosQuery;
 
   const saveMutation = useMutation({
     mutationFn: async (form: any) => {
       const valorTabela = parseMoney(form.valor_tabela);
       if (!profile?.clinica_id) throw new Error('Clínica não identificada. Recarregue a página e tente novamente.');
-      if (!form.convenio_id || !form.tipo_exame || !Number.isFinite(valorTabela) || valorTabela <= 0) {
+      if (conveniosQuery.isError || precosQuery.isError || conveniosQuery.isLoading || precosQuery.isLoading) throw new Error('Carregue convênios e preços antes de gravar.');
+      if (precosAtingiramLimite) throw new Error('A lista de preços atingiu o limite de leitura. Não é possível validar duplicidade com segurança; revise a tabela antes de cadastrar.');
+      if (!convenios.some((convenio: any) => convenio.id === form.convenio_id) || !form.tipo_exame?.trim() || !Number.isFinite(valorTabela) || valorTabela <= 0) {
         throw new Error('Preencha convênio, exame e valor válido maior que zero.');
       }
+      const adicionais = ['valor_filme', 'valor_custo', 'valor_repasse'].map((key) => form[key] ? parseMoney(form[key]) : 0);
+      if (adicionais.some((valor) => !Number.isFinite(valor) || valor < 0)) throw new Error('Filme, custo e repasse devem ser valores válidos iguais ou maiores que zero.');
+      if ([valorTabela, ...adicionais].some(temMaisDeDuasCasasDecimais)) throw new Error('Informe os valores do convênio com no máximo duas casas decimais.');
+      const nomeNormalizado = normalizarTexto(form.tipo_exame.trim());
+      const codigoNormalizado = String(form.codigo_tuss || '').trim().toLocaleUpperCase('pt-BR').replace(/[^A-Z0-9]/g, '');
+      const duplicado = precos.some((preco: any) => preco.id !== editing?.id && preco.convenio_id === form.convenio_id && (
+        normalizarTexto(preco.tipo_exame) === nomeNormalizado ||
+        (codigoNormalizado && String(preco.codigo_tuss || '').toLocaleUpperCase('pt-BR').replace(/[^A-Z0-9]/g, '') === codigoNormalizado)
+      ));
+      if (duplicado) throw new Error('Este nome ou código já está cadastrado para o convênio selecionado. Edite o preço existente para evitar cobranças ambíguas.');
       const payload = {
         convenio_id: form.convenio_id, tipo_exame: form.tipo_exame.trim(), codigo_tuss: form.codigo_tuss?.trim() || null,
         descricao: form.descricao?.trim() || null, valor_tabela: valorTabela, valor_filme: form.valor_filme ? parseMoney(form.valor_filme) : 0,
@@ -575,9 +648,12 @@ function PrecosConvenio() {
         clinica_id: profile.clinica_id,
       };
       if (editing) {
-        const { data, error } = await supabase.from('precos_exames_convenio').update(payload).eq('id', editing.id).select('id').maybeSingle();
+        if (!editing.updated_at) throw new Error('Não foi possível confirmar a versão deste preço. Feche e abra o registro novamente antes de editar.');
+        const { data, error } = await supabase.from('precos_exames_convenio').update(payload)
+          .eq('id', editing.id).eq('clinica_id', profile.clinica_id).eq('updated_at', editing.updated_at)
+          .select('id, updated_at').maybeSingle();
         if (error) throw error;
-        if (!data) throw new Error('Preço não encontrado ou sem permissão para alterar.');
+        if (!data) throw new Error('Este preço foi alterado ou removido em outra sessão. Seus dados continuam no formulário; atualize a tabela e compare antes de salvar novamente.');
       } else {
         const { error } = await supabase.from('precos_exames_convenio').insert(payload);
         if (error) throw error;
@@ -594,20 +670,24 @@ function PrecosConvenio() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      const { data, error } = await supabase.from('precos_exames_convenio').delete().eq('id', id).select('id');
+      if (!profile?.clinica_id) throw new Error('Clínica não identificada. Recarregue a página e tente novamente.');
+      const { data, error } = await supabase.from('precos_exames_convenio').delete()
+        .eq('id', id).eq('clinica_id', profile.clinica_id).select('id');
       if (error) throw error;
       if (!data || data.length === 0) throw new Error('Sem permissão para excluir.');
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['precos-exames'] });
       toast.success('Removido');
+      setPrecoParaExcluir(null);
     },
     onError: (e: any) => toast.error(e?.message || 'Erro ao remover'),
   });
 
   const filtered = precos?.filter((p: any) => {
-    const matchSearch = p.tipo_exame.toLowerCase().includes(search.toLowerCase()) ||
-      p.codigo_tuss?.toLowerCase().includes(search.toLowerCase());
+    const q = normalizarTexto(search.trim());
+    const matchSearch = normalizarTexto(p.tipo_exame).includes(q) ||
+      normalizarTexto(p.codigo_tuss).includes(q);
     const matchConvenio = filterConvenio === 'all' || p.convenio_id === filterConvenio;
     return matchSearch && matchConvenio;
   });
@@ -645,6 +725,7 @@ function PrecosConvenio() {
         </Button>
       </div>
 
+      {precosAtingiramLimite && <div role="alert" className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm text-warning-foreground"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /><p>A lista de preços por convênio atingiu o limite de {LIMITE_BUSCA_EM_BLOCOS.toLocaleString('pt-BR')} itens.</p></div>}
       <Card>
         <CardContent className="p-0">
           <Table>
@@ -662,10 +743,14 @@ function PrecosConvenio() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {isLoading ? (
+              {conveniosQuery.isError ? (
+                <TableRow><TableCell colSpan={9} className="p-4"><ErrorState compact title="Não foi possível carregar os convênios" error={conveniosQuery.error} onRetry={() => void conveniosQuery.refetch()} /></TableCell></TableRow>
+              ) : precosQuery.isError ? (
+                <TableRow><TableCell colSpan={9} className="p-4"><ErrorState compact title="Não foi possível carregar os preços" error={precosQuery.error} onRetry={() => void precosQuery.refetch()} /></TableCell></TableRow>
+              ) : isLoading || conveniosQuery.isLoading ? (
                 <TableRow><TableCell colSpan={9} className="p-0"><TableSkeleton rows={5} cols={6} /></TableCell></TableRow>
               ) : filtered?.length === 0 ? (
-                <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">Nenhum preço cadastrado</TableCell></TableRow>
+                <TableRow><TableCell colSpan={9} className="py-8 text-center text-muted-foreground">{precos.length === 0 ? 'Nenhum preço cadastrado. Clique em “Novo Preço” para começar.' : <>Nenhum preço encontrado com estes filtros. <Button variant="link" className="h-auto p-0" onClick={() => { setSearch(''); setFilterConvenio('all'); }}>Limpar busca e convênio</Button></>}</TableCell></TableRow>
               ) : (
                 filtered?.map((p: any) => (
                   <TableRow key={p.id}>
@@ -729,13 +814,11 @@ function PrecosConvenio() {
       {precoParaExcluir && (
         <DeleteConfirmDialog
           open
-          onOpenChange={(o) => !o && setPrecoParaExcluir(null)}
+          onOpenChange={(o) => { if (!o && !deleteMutation.isPending) setPrecoParaExcluir(null); }}
           itemName={precoParaExcluir.tipo_exame}
           isLoading={deleteMutation.isPending}
-          onConfirm={() => {
-            deleteMutation.mutate(precoParaExcluir.id);
-            setPrecoParaExcluir(null);
-          }}
+          closeOnConfirm={false}
+          onConfirm={() => deleteMutation.mutate(precoParaExcluir.id)}
         />
       )}
     </div>

@@ -1,5 +1,109 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap');
 
+.brand-loader {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background:
+    radial-gradient(ellipse at 50% 42%, rgba(103, 207, 164, 0.13), transparent 34%),
+    #f4f8f6;
+  color: #153c31;
+  text-align: center;
+}
+
+.brand-loader__content {
+  width: min(100%, 360px);
+}
+
+.brand-loader__identity {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+
+.brand-loader__mark {
+  display: block;
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+}
+
+.brand-loader__name {
+  color: #123f32;
+  font-family: 'Plus Jakarta Sans', 'Inter', sans-serif;
+  font-size: 25px;
+  font-weight: 700;
+  letter-spacing: -0.055em;
+}
+
+.brand-loader__progress {
+  position: relative;
+  width: 144px;
+  height: 3px;
+  margin: 27px auto 21px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(17, 108, 79, 0.14);
+}
+
+.brand-loader__progress span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 38%;
+  border-radius: inherit;
+  background: #1b9b6d;
+  animation: brand-loader-glide 1.35s ease-in-out infinite;
+}
+
+.brand-loader__message {
+  margin: 0;
+  color: #193f34;
+  font-family: 'Plus Jakarta Sans', 'Inter', sans-serif;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.brand-loader__detail {
+  margin: 7px 0 0;
+  color: #667b72;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.brand-loader__retry {
+  display: inline-flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: center;
+  margin-top: 19px;
+  padding: 0 16px;
+  border: 1px solid rgba(17, 108, 79, 0.22);
+  border-radius: 11px;
+  background: #fff;
+  color: #116c4f;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.brand-loader__retry:focus-visible {
+  outline: 3px solid rgba(27, 155, 109, 0.34);
+  outline-offset: 3px;
+}
+
+@keyframes brand-loader-glide {
+  0% { transform: translateX(-110%); }
+  100% { transform: translateX(280%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .brand-loader__progress span { animation: none; width: 100%; opacity: 0.55; }
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

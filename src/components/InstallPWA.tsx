@@ -105,7 +105,7 @@ export function InstallPWA() {
           <div className="flex-1">
             <h3 className="font-semibold text-sm">Instalar EloLab</h3>
             <p className="text-xs text-muted-foreground mt-1">
-              Instale o app para acesso rápido e funcionamento offline
+              Instale para abrir mais rápido. As telas e os dados precisam de conexão com a internet.
             </p>
             <Button size="sm" className="mt-3 w-full" onClick={handleInstall}>
               <Download className="mr-2 h-4 w-4" />

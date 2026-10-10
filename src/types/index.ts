@@ -30,6 +30,9 @@ export interface Paciente {
   telefone: string;
   email?: string;
   sexo?: 'M' | 'F' | 'O';
+  estado_civil?: string;
+  profissao?: string;
+  tipo_sanguineo?: string;
   endereco: Endereco;
   convenio?: Convenio;
   alergias: string[];

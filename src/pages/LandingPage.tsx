@@ -1,6 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { redirecionarParaCheckout } from '@/lib/safeUrl';
 import {
   Calendar, Users, FileText, Shield, BarChart3, Stethoscope,
   MessageSquare, ArrowRight, Check,
@@ -8,16 +7,13 @@ import {
   Clock, Activity, Pill, ClipboardList, Building2, MonitorPlay,
   BellRing, FileBarChart, Warehouse, CreditCard, UserCheck,
   Microscope, HeartPulse, QrCode, Globe, SmartphoneNfc,
-  Crown, Loader2, ChevronDown, Headphones
+  Crown, ChevronDown, Headphones
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { supabase } from '@/integrations/supabase/client';
 import { usePlanos } from '@/hooks/useSubscriptionPlan';
-import { toast } from 'sonner';
 import { GlowingEffect } from '@/components/ui/glowing-effect';
-import elolabLogo from '@/assets/elolab-logo.png';
-import landingHero from '@/assets/landing-hero.webp';
+import elolabLogo from '@/assets/elolab-logo-v2.png';
+import clinicHero from '@/assets/hero-institutional.webp';
 import landingEfficiency from '@/assets/landing-efficiency.webp';
 import landingNoshow from '@/assets/landing-noshow.webp';
 import landingOnline from '@/assets/landing-online.webp';
@@ -197,8 +193,8 @@ const faqItems = [
     a: 'Sim. O EloLab funciona em celular, tablet e computador direto pelo navegador, sem baixar nada na loja de aplicativos. Você ainda pode instalá-lo na tela inicial e usar como um app comum.',
   },
   {
-    q: 'Preciso cadastrar cartão para testar?',
-    a: 'Não. O teste público não exige cartão: informe seus dados, confirme o código enviado por e-mail e conclua o cadastro. O plano pago é escolhido depois do teste.',
+    q: 'Como funciona o teste grátis?',
+    a: 'Crie sua conta, confirme o e-mail e cadastre o cartão no checkout do EloLab. O cartão permite a renovação automática; o valor e a data da primeira cobrança aparecem antes de confirmar. Você não precisa sair do EloLab para pagar.',
   },
   {
     q: 'Os dados dos meus pacientes ficam seguros?',
@@ -254,8 +250,6 @@ export default function LandingPage() {
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [checkoutMode, setCheckoutMode] = useState<'trial' | 'buy'>('trial');
   const [selectedPlan, setSelectedPlan] = useState<PublicPlan | null>(null);
-  const [formData, setFormData] = useState({ nome: '', email: '', telefone: '', clinica: '' });
-  const [loading, setLoading] = useState(false);
 
   const plans = useMemo<PublicPlan[]>(() => {
     if (!catalogPlans) return [];
@@ -287,40 +281,16 @@ export default function LandingPage() {
     setCheckoutOpen(true);
   };
 
-  const handleCheckout = async () => {
-    if (!formData.nome || !formData.email || !selectedPlan) {
-      toast.error('Preencha nome e e-mail');
-      return;
-    }
-    setLoading(true);
-    try {
-      const { data, error } = await supabase.functions.invoke('public-checkout', {
-        body: {
-          plano_slug: selectedPlan.slug,
-          nome: formData.nome,
-          email: formData.email,
-          telefone: formData.telefone,
-          clinica: formData.clinica,
-          mode: checkoutMode,
-        },
-      });
-
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
-
-      if (checkoutMode === 'buy' && data?.checkout_url) {
-        toast.success('Redirecionando para pagamento...');
-        redirecionarParaCheckout(data.checkout_url);
-      } else if (data?.success) {
-        toast.success('Verifique seu e-mail para o código de ativação!');
-        setCheckoutOpen(false);
-        setFormData({ nome: '', email: '', telefone: '', clinica: '' });
-      }
-    } catch (err: unknown) {
-      console.error('Checkout error:', err);
-      toast.error(err instanceof Error ? err.message : 'Erro ao processar. Tente novamente.');
-    } finally {
-      setLoading(false);
+  const handleCheckout = () => {
+    if (!selectedPlan) return;
+    const params = new URLSearchParams({ cadastro: '1', plano: selectedPlan.slug, modo: checkoutMode });
+    const next = `/auth?${params.toString()}`;
+    const host = window.location.hostname;
+    setCheckoutOpen(false);
+    if (host === 'elolab.com.br' || host === 'www.elolab.com.br') {
+      window.location.assign(`https://app.elolab.com.br${next}`);
+    } else {
+      navigate(next);
     }
   };
 
@@ -402,12 +372,24 @@ export default function LandingPage() {
                 ENTRAR
               </Button>
             </div>
-            <button className="lg:hidden p-2" style={{ color: C.dark }} onClick={() => setMobileMenu(!mobileMenu)} aria-label="Menu">
+            <button
+              className="lg:hidden p-2"
+              style={{ color: C.dark }}
+              onClick={() => setMobileMenu(!mobileMenu)}
+              aria-label={mobileMenu ? 'Fechar menu de navegação' : 'Abrir menu de navegação'}
+              aria-expanded={mobileMenu}
+              aria-controls="navegacao-mobile"
+            >
               {mobileMenu ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
             </button>
           </div>
           {mobileMenu && (
-            <div className="lg:hidden bg-white border-t border-gray-100 px-6 pb-6 space-y-1 animate-fade-in shadow-lg">
+            <div
+              id="navegacao-mobile"
+              role="region"
+              aria-label="Navegação móvel"
+              className="lg:hidden bg-white border-t border-gray-100 px-6 pb-6 space-y-1 animate-fade-in shadow-lg"
+            >
               {navLinks.map(n => (
                 <button key={n.id} onClick={() => scrollTo(n.id)} className="block w-full text-left py-3 text-sm font-bold tracking-wide" style={{ color: C.dark }}>{n.l}</button>
               ))}
@@ -445,8 +427,7 @@ export default function LandingPage() {
                 </div>
                 <h1 className="text-4xl sm:text-5xl lg:text-[3.5rem] font-light leading-[1.15] tracking-tight text-white">
                   Organize a rotina da clínica<br />
-                  <span className="font-extrabold">em um só lugar</span><br />
-                  em um só lugar.
+                  <span className="font-extrabold">em um só lugar</span>
                 </h1>
                 <p className="mt-5 text-base md:text-lg text-white/70 max-w-lg leading-relaxed">
                   Agenda, prontuário, financeiro, laboratório e recursos de IA no WhatsApp, conforme as integrações habilitadas para a clínica.
@@ -471,89 +452,24 @@ export default function LandingPage() {
                   <span className="flex items-center gap-1.5"><Lock className="w-3.5 h-3.5" /> LGPD</span>
                   <span className="flex items-center gap-1.5"><Clock className="w-3.5 h-3.5" /> {plans.length ? `${plans[0].trialDays} dias grátis` : 'Teste gratuito'}</span>
                   <span className="flex items-center gap-1.5"><Shield className="w-3.5 h-3.5" /> Acesso por perfil</span>
-                  <span className="flex items-center gap-1.5"><CreditCard className="w-3.5 h-3.5" /> Sem cartão de crédito</span>
+                  <span className="flex items-center gap-1.5"><CreditCard className="w-3.5 h-3.5" /> Renovação automática</span>
                 </div>
               </div>
 
-              {/* Right: Floating mockups */}
-              <div className="min-w-0 w-full flex items-end justify-center lg:justify-end gap-3 sm:gap-6 animate-fade-in" style={{ animationDelay: '0.3s' }}>
-                {/* Desktop mockup */}
-                <div className="relative min-w-0" style={{ animation: 'heroFloat 4s ease-in-out infinite' }}>
-                  <div className="w-[64vw] max-w-[320px] md:max-w-[380px] rounded-xl overflow-hidden shadow-2xl border border-white/10">
-                    <div className="h-8 bg-gray-200 flex items-center px-3 gap-1.5">
-                      <div className="w-2.5 h-2.5 rounded-full bg-red-400" />
-                      <div className="w-2.5 h-2.5 rounded-full bg-yellow-400" />
-                      <div className="w-2.5 h-2.5 rounded-full bg-green-400" />
-                      <span className="ml-3 text-[10px] text-gray-500 font-medium">EloLab — Dashboard</span>
-                    </div>
-                    <div className="bg-white p-4">
-                      <div className="flex items-center gap-2 mb-3">
-                        <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: C.grad }}>
-                          <BarChart3 className="w-4 h-4 text-white" />
-                        </div>
-                        <div>
-                          <p className="text-[10px] font-bold" style={{ color: C.dark }}>Painel</p>
-                          <p className="text-[8px]" style={{ color: C.textL }}>Hoje, 15 Abr 2026</p>
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-3 gap-2 mb-3">
-                        {[
-                          { label: 'Agendamentos', val: '55', icon: Calendar },
-                          { label: 'Pacientes', val: '248', icon: Users },
-                          { label: 'Receita', val: 'R$ 29.9k', icon: Receipt },
-                        ].map((s, i) => (
-                          <div key={i} className="bg-gray-50 rounded-lg p-2 text-center">
-                            <s.icon className="w-3 h-3 mx-auto mb-1" style={{ color: C.coral }} />
-                            <p className="text-xs font-extrabold" style={{ color: C.dark }}>{s.val}</p>
-                            <p className="text-[7px]" style={{ color: C.textL }}>{s.label}</p>
-                          </div>
-                        ))}
-                      </div>
-                      <div className="h-16 rounded-lg bg-gradient-to-r from-blue-50 to-teal-50 flex items-center justify-center">
-                        <div className="flex items-end gap-1">
-                          {[30, 50, 35, 60, 45, 70, 55].map((h, i) => (
-                            <div key={i} className="w-4 rounded-t" style={{ height: `${h * 0.6}px`, background: i === 5 ? C.coral : 'hsl(210,60%,85%)' }} />
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="mx-auto w-20 h-5 bg-gray-300 rounded-b-lg" />
-                  <div className="mx-auto w-32 h-2 bg-gray-200 rounded-b-lg" />
+              {/* Imagem ilustrativa da clínica */}
+              <div className="relative mx-auto w-full max-w-xl animate-fade-in lg:justify-self-end" style={{ animationDelay: '0.3s' }}>
+                <div className="absolute -inset-3 rounded-[2rem] border border-white/15" aria-hidden="true" />
+                <div className="relative overflow-hidden rounded-3xl border border-white/20 bg-white/10 p-2 shadow-2xl shadow-black/20 backdrop-blur-sm">
+                  <img
+                    src={clinicHero}
+                    alt="Recep&#231;&#227;o de uma cl&#237;nica"
+                    className="aspect-[4/3] w-full rounded-[1.35rem] object-cover object-center sm:aspect-[16/10] lg:aspect-[4/3]"
+                    loading="eager"
+                  />
                 </div>
-
-                {/* Phone mockup */}
-                <div className="relative -mb-4 min-w-0" style={{ animation: 'heroFloat 4s ease-in-out infinite 1s' }}>
-                  <div className="w-[28vw] max-w-[140px] md:max-w-[160px] rounded-[24px] overflow-hidden shadow-2xl border-4 border-gray-800 bg-gray-800">
-                    <div className="h-5 bg-gray-800 flex justify-center">
-                      <div className="w-16 h-3 bg-gray-900 rounded-b-xl" />
-                    </div>
-                    <div className="bg-white p-3">
-                      <div className="flex items-center gap-1.5 mb-2">
-                        <div className="w-5 h-5 rounded-md flex items-center justify-center" style={{ background: C.grad }}>
-                          <Calendar className="w-2.5 h-2.5 text-white" />
-                        </div>
-                        <p className="text-[8px] font-bold" style={{ color: C.dark }}>Agenda</p>
-                      </div>
-                      {[
-                        { time: '08:00', name: 'Maria Silva', type: 'Consulta' },
-                        { time: '09:30', name: 'João Costa', type: 'Retorno' },
-                        { time: '10:00', name: 'Ana Lima', type: 'Exame' },
-                        { time: '11:00', name: 'Pedro Santos', type: 'Consulta' },
-                      ].map((a, i) => (
-                        <div key={i} className="flex items-center gap-1.5 py-1.5 border-b border-gray-50 last:border-0">
-                          <span className="text-[7px] font-mono font-bold w-7 shrink-0" style={{ color: C.coral }}>{a.time}</span>
-                          <div className="min-w-0">
-                            <p className="text-[7px] font-bold truncate" style={{ color: C.dark }}>{a.name}</p>
-                            <p className="text-[6px]" style={{ color: C.textL }}>{a.type}</p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="h-4 bg-gray-800 flex justify-center items-center">
-                      <div className="w-10 h-1 bg-gray-600 rounded-full" />
-                    </div>
-                  </div>
+                <div className="absolute -bottom-4 left-5 right-5 rounded-2xl border border-white/70 bg-white/95 px-4 py-3 shadow-xl shadow-black/10 backdrop-blur sm:left-8 sm:right-auto sm:min-w-64">
+                  <p className="text-xs font-semibold uppercase tracking-[0.14em]" style={{ color: C.coral }}>EloLab para cl&#237;nicas</p>
+                  <p className="mt-1 text-sm font-medium" style={{ color: C.dark }}>Agenda, equipe e opera&#231;&#227;o conectadas</p>
                 </div>
               </div>
             </div>
@@ -760,14 +676,14 @@ export default function LandingPage() {
 
         {/* ══ CHECKOUT MODAL ══ */}
         {checkoutOpen && selectedPlan && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" onClick={() => !loading && setCheckoutOpen(false)}>
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" onClick={() => setCheckoutOpen(false)}>
             <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
             <div
               className="relative w-full max-w-md bg-white rounded-3xl p-8 shadow-2xl animate-fade-in"
               onClick={(e) => e.stopPropagation()}
             >
               <button
-                onClick={() => !loading && setCheckoutOpen(false)}
+                onClick={() => setCheckoutOpen(false)}
                 className="absolute top-4 right-4 p-1.5 rounded-full hover:bg-gray-100 transition-colors"
                 aria-label="Fechar"
               >
@@ -792,65 +708,26 @@ export default function LandingPage() {
                 </p>
               </div>
 
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-xs font-semibold mb-1.5" style={{ color: C.text }}>Nome completo *</label>
-                  <Input
-                    value={formData.nome}
-                    onChange={(e) => setFormData(p => ({ ...p, nome: e.target.value }))}
-                    placeholder="Seu nome"
-                    className="rounded-xl"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold mb-1.5" style={{ color: C.text }}>E-mail *</label>
-                  <Input
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) => setFormData(p => ({ ...p, email: e.target.value }))}
-                    placeholder="seu@email.com"
-                    className="rounded-xl"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold mb-1.5" style={{ color: C.text }}>Telefone</label>
-                  <Input
-                    value={formData.telefone}
-                    onChange={(e) => setFormData(p => ({ ...p, telefone: e.target.value }))}
-                    placeholder="(00) 00000-0000"
-                    className="rounded-xl"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold mb-1.5" style={{ color: C.text }}>Nome da Clínica</label>
-                  <Input
-                    value={formData.clinica}
-                    onChange={(e) => setFormData(p => ({ ...p, clinica: e.target.value }))}
-                    placeholder="Sua clínica"
-                    className="rounded-xl"
-                  />
-                </div>
+              <div className="rounded-2xl border p-4 text-sm leading-relaxed" style={{ color: C.text }}>
+                Primeiro você cria sua conta e confirma o e-mail. Para o teste, cadastre o cartão no checkout do EloLab; para assinar, escolha a forma de pagamento disponível.
               </div>
 
               <Button
                 onClick={handleCheckout}
-                disabled={loading}
                 className="w-full mt-6 rounded-full py-3 font-bold text-white border-0 transition-all hover:scale-[1.02]"
                 style={{ background: C.grad }}
               >
-                {loading ? (
-                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Processando...</>
-                ) : checkoutMode === 'trial' ? (
+                {checkoutMode === 'trial' ? (
                   <>Liberar meu acesso grátis <ArrowRight className="w-4 h-4 ml-2" /></>
                 ) : (
-                  <>Ir para o pagamento seguro <ArrowRight className="w-4 h-4 ml-2" /></>
+                  <>Criar conta e continuar <ArrowRight className="w-4 h-4 ml-2" /></>
                 )}
               </Button>
 
               <p className="text-center text-xs mt-4" style={{ color: C.textL }}>
                 {checkoutMode === 'trial'
-                  ? 'Sem cartão de crédito e sem compromisso. Ao final do teste, você decide se continua.'
-                  : 'Pagamento processado pelo Mercado Pago. Consulte as condições de cancelamento antes de concluir.'}
+                  ? 'Sem código de convite. O cartão fica salvo para renovar a assinatura quando o período grátis terminar.'
+                  : 'O pagamento será feito na sua conta após a criação e confirmação do acesso.'}
               </p>
             </div>
           </div>
@@ -931,7 +808,7 @@ export default function LandingPage() {
                   Conheça os fluxos do EloLab para a sua clínica
                 </h2>
                 <p className="mt-4 text-lg text-white/70 max-w-xl mx-auto">
-                  Consulte os planos atuais e inicie um teste gratuito sem cadastrar cartão de crédito.
+                  Consulte os planos e inicie o teste com renovação automática configurada no EloLab.
                 </p>
                 <div className="mt-10 flex flex-col sm:flex-row gap-4 justify-center">
                   <Button size="lg" onClick={() => scrollTo('planos')}
@@ -949,7 +826,7 @@ export default function LandingPage() {
                 <div className="mt-8 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-xs font-medium text-white/50">
                   <span className="flex items-center gap-1.5"><Lock className="w-3.5 h-3.5" /> Controle de acesso</span>
                   <span className="flex items-center gap-1.5"><Shield className="w-3.5 h-3.5" /> Recursos de privacidade</span>
-                  <span className="flex items-center gap-1.5"><CreditCard className="w-3.5 h-3.5" /> Sem cartão</span>
+                  <span className="flex items-center gap-1.5"><CreditCard className="w-3.5 h-3.5" /> Renovação automática</span>
                 </div>
               </div>
             </div>

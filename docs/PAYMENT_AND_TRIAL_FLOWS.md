@@ -23,3 +23,22 @@ A página de planos solicita `cancel_subscription` à mesma Edge Function. A fun
 - Os dados de pagamento são preenchidos no checkout hospedado pelo Mercado Pago.
 - A ação antiga `create_preference` está desativada e responde HTTP 410. Novas cobranças devem seguir um fluxo que derive valores de registros confiáveis no servidor.
 - Não reintroduza o formulário antigo de coleta de cartão (`PaymentMethodDialog`).
+
+## Checkout transparente dos planos (`/planos/checkout/:slug`)
+
+A API de Orders do Mercado Pago só faz pagamentos únicos; a recorrência fica na API de Assinaturas. Por isso a tela oferece:
+
+| Forma | API | Cobrança | Ativação |
+|---|---|---|---|
+| Cartão de crédito | `POST /preapproval` com `card_token_id` e `status: "authorized"` | Recorrente e automática | Na resposta autorizada e pelo webhook `subscription_preapproval` |
+| Pix | `POST /v1/orders` (`bank_transfer`) | Pagamento único de um período | Webhook `order` ou consulta da tela |
+| Boleto | `POST /v1/orders` (`ticket`, exige CPF/CNPJ e endereço) | Pagamento único de um período | Webhook `order` ou consulta da tela |
+
+- O cartão é tokenizado pelo Card Payment Brick no navegador; o número nunca passa pelo EloLab.
+- Preço e período vêm do banco. Pix/boleto ficam em `platform_plan_orders`, e o pagamento é aplicado por `aplicar_status_pedido_plano()`, que libera o período uma única vez. Notificações repetidas não estendem o acesso.
+- Plano pago por Pix/boleto fica com `assinaturas_plano.cobranca_modalidade = 'pre_pago'` e `data_fim`; o cron `expire-prepaid-platform-plans` marca o plano como `expirada` no vencimento.
+- O webhook valida `x-signature` (o `data.id` vai em minúsculas no manifest) e usa uma chave de idempotência por order, ação e status.
+
+Variáveis das Edge Functions: `MERCADOPAGO_ACCESS_TOKEN`, `MERCADOPAGO_PUBLIC_KEY`, `MERCADOPAGO_WEBHOOK_SECRET` e, só no sandbox, `MERCADOPAGO_ENV=sandbox` e `MERCADOPAGO_TEST_PAYER_EMAIL`.
+
+Validação no sandbox: `npm run test:mp-sandbox` (lê `supabase/functions/.env.local` e recusa tokens que não sejam de usuário de teste).

@@ -1,4 +1,5 @@
-import { useState, lazy, Suspense } from 'react';
+import { lazy, Suspense } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { BookMarked, FileBarChart, Stethoscope } from 'lucide-react';
 import { SectionFallback } from '@/components/ui/loading-skeleton';
@@ -10,7 +11,15 @@ const Encaminhamentos = lazy(() => import('./Encaminhamentos'));
 const Loader = () => <SectionFallback />;
 
 export default function DocumentosClinicos() {
-  const [tab, setTab] = useState('prescricoes');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedTab = searchParams.get('tab');
+  const tab = requestedTab === 'atestados' || requestedTab === 'encaminhamentos' ? requestedTab : 'prescricoes';
+  const setTab = (value: string) => setSearchParams(previous => {
+    const next = new URLSearchParams(previous);
+    if (value === 'prescricoes') next.delete('tab');
+    else next.set('tab', value);
+    return next;
+  }, { replace: true });
 
   return (
     <div className="space-y-4">

@@ -1,0 +1,143 @@
+{
+  "project": "EloLab site and app",
+  "environment": "Local only; Vite uses synthetic loopback Supabase settings; no real accounts or data.",
+  "result": "Aprovado com ressalvas",
+  "unit": {
+    "command": "npm run test:run -- --pool=forks --maxWorkers=4 --reporter=dot",
+    "filesPassed": 81,
+    "testsPassed": 697,
+    "failures": 0
+  },
+  "e2e": {
+    "command": "npm run test:e2e -- tests/ui.spec.ts tests/navigation.spec.ts tests/qa-ux.spec.ts tests/modulos.spec.ts tests/auth.spec.ts tests/crud.spec.ts tests/agendamento-online.spec.ts tests/qa-real-user.spec.ts --project=chromium --workers=2 --reporter=line",
+    "total": 130,
+    "passed": 129,
+    "skipped": 1,
+    "failed": 0,
+    "scope": [
+      "public routes",
+      "auth validation",
+      "mocked public booking",
+      "404 and token URL handling",
+      "67 protected routes redirect without a session",
+      "responsive and visual checks"
+    ],
+    "skipReason": "Single authenticated admin journey requires a dedicated QA clinic account.",
+    "qaUxCommand": "node node_modules/@playwright/test/cli.js test tests/qa-ux.spec.ts --project=chromium --workers=1 --reporter=line"
+  },
+  "visual": {
+    "routes": [
+      "/",
+      "/auth",
+      "/redefinir-senha",
+      "/planos"
+    ],
+    "viewports": [
+      "375x812",
+      "768x1024",
+      "1440x900"
+    ],
+    "qaUxTestsPassed": 2,
+    "finalFindings": 0,
+    "baselineFindings": [
+      {
+        "page": "password-reset",
+        "severity": "medium",
+        "issue": "Alvos clicáveis menores que 40px podem ser difíceis de tocar.",
+        "viewports": [
+          "mobile",
+          "tablet",
+          "desktop"
+        ]
+      },
+      {
+        "page": "plans",
+        "severity": "low",
+        "issue": "Textos menores que 12px podem ficar difíceis de ler.",
+        "viewports": [
+          "mobile",
+          "tablet",
+          "desktop"
+        ]
+      },
+      {
+        "page": "plans",
+        "severity": "medium",
+        "issue": "Alvos clicáveis menores que 40px podem ser difíceis de tocar.",
+        "viewports": [
+          "mobile",
+          "tablet",
+          "desktop"
+        ]
+      },
+      {
+        "page": "login-validation",
+        "severity": "low",
+        "issue": "Textos menores que 12px podem ficar difíceis de ler.",
+        "viewports": [
+          "desktop"
+        ]
+      },
+      {
+        "page": "login-validation",
+        "severity": "medium",
+        "issue": "Alvos clicáveis menores que 40px podem ser difíceis de tocar.",
+        "viewports": [
+          "desktop"
+        ]
+      }
+    ],
+    "routeNote": "Route names are those of tests/qa-ux.spec.ts; in the local app mode /planos resolves through the existing router."
+  },
+  "browser": {
+    "screenshots": [
+      "2026-10-09-elolab-site-mobile-qa.png",
+      "2026-10-09-elolab-site-desktop-qa.png",
+      "2026-10-09-elolab-app-auth-mobile-qa.png",
+      "2026-10-09-elolab-app-auth-desktop-qa.png"
+    ],
+    "scrollWidthMatchedViewport": true,
+    "brokenImages": 0,
+    "consoleErrors": 0,
+    "pageErrors": 0
+  },
+  "static": {
+    "typecheck": "passed",
+    "lint": "passed",
+    "build": "passed",
+    "accessibility": "passed",
+    "columns": "passed; 141 tables and 326 files",
+    "silentFailures": "0 findings",
+    "permissions": "passed; informational route/role notes only",
+    "diffCheck": "passed",
+    "commands": [
+      "npx tsc --noEmit -p tsconfig.app.json",
+      "npm run lint -- --quiet",
+      "npm run build",
+      "npm run check:a11y",
+      "npm run check:colunas",
+      "npm run check:falhas",
+      "npm run check:permissoes",
+      "git diff --check"
+    ]
+  },
+  "findingsFixed": [
+    "React 18 console warning from fetchPriority on img; replaced with loading=eager.",
+    "Small touch targets on auth and password-reset links; raised to a 40px minimum.",
+    "11px auth footer text; raised to 12px.",
+    "Visual E2E now fails on any recorded UX finding, not only horizontal overflow."
+  ],
+  "pending": [
+    "No authenticated dashboard or role-specific workflow QA without a dedicated clinic test account.",
+    "RLS, cross-clinic isolation, role-authenticated API and production smoke suites were not run; they need isolated backend/accounts and must not target production.",
+    "No Lighthouse run; build reports a 7,389.19 KiB PWA precache, so production performance and offline cache budget should be audited separately.",
+    "Vitest emits a React act(...) warning in buscaPacientes test and expected error logs from tests simulating network/database failures."
+  ],
+  "excludedSuites": [
+    "tests/rls.spec.ts",
+    "tests/perfis-rbac.spec.ts",
+    "tests/isolamento-entre-clinicas.spec.ts",
+    "tests/producao-smoke.spec.ts",
+    "npm run test:mp-sandbox"
+  ]
+}

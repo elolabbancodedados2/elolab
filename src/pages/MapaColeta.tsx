@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
 import {
   CheckCircle2, RefreshCw, Loader2, RotateCcw, XCircle, Search, Printer, FlaskConical,
@@ -17,11 +17,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { mensagemDeErro } from '@/lib/erros';
-import { format, differenceInMinutes } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
+import { differenceInMinutes } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { escapeHtml } from '@/lib/html';
 import { canalUnico } from '@/lib/realtimeCanal';
+import { ErrorState } from '@/components/ErrorState';
+import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
+import { ageFromDateOnly } from '@/lib/dateOnly';
+import { pacienteCorresponde } from '@/lib/buscaPaciente';
 
 const TUBOS = [
   { color: 'bg-purple-500', label: 'EDTA (Roxo)', nome: 'Roxo', volume: '4mL' },
@@ -41,21 +44,48 @@ const normalize = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, 
 
 const calcAge = (dob: string | null) => {
   if (!dob) return null;
-  return Math.floor((Date.now() - new Date(dob).getTime()) / (365.25 * 24 * 60 * 60 * 1000));
+  return ageFromDateOnly(dob);
 };
+
+const nomePaciente = (paciente: any) => paciente?.nome_social?.trim() || paciente?.nome || '—';
+const sexoPaciente = (sexo: unknown) => {
+  const valor = String(sexo ?? '').trim().toLowerCase();
+  if (['m', 'masculino', 'male'].includes(valor)) return 'M';
+  if (['f', 'feminino', 'female'].includes(valor)) return 'F';
+  if (['o', 'outro', 'other'].includes(valor)) return 'O';
+  return '—';
+};
+const sexoParaEtiqueta = (sexo: unknown) => {
+  const codigo = sexoPaciente(sexo);
+  if (codigo === 'M') return 'Masc';
+  if (codigo === 'F') return 'Fem';
+  return codigo === 'O' ? 'Outro' : '?';
+};
+const dataHoraClinica = (instant = new Date()) => new Intl.DateTimeFormat('pt-BR', {
+  timeZone: 'America/Sao_Paulo',
+  day: '2-digit', month: '2-digit', year: 'numeric',
+  hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+}).format(instant);
 
 const SLA_WARNING = 30; // minutes
 const SLA_CRITICAL = 60;
 
-const waitTimeLabel = (created: string) => {
-  const mins = differenceInMinutes(new Date(), new Date(created));
+const slaTimestamp = (coleta: any): string | null => {
+  if (coleta.status === 'recoleta') return coleta.updated_at || coleta.created_at;
+  // O SLA do mapa mede tempo aguardando coleta; ao registrar a coleta, esse
+  // relógio termina. A próxima etapa (análise) tem seu próprio fluxo e fila.
+  return coleta.status === 'pendente' ? coleta.created_at : null;
+};
+
+const waitTimeLabel = (created: string, now = new Date()) => {
+  const mins = Math.max(0, differenceInMinutes(now, new Date(created)));
   if (mins < 60) return `${mins}min`;
   const h = Math.floor(mins / 60);
   return `${h}h${mins % 60 > 0 ? `${mins % 60}m` : ''}`;
 };
 
-const waitTimeColor = (created: string) => {
-  const mins = differenceInMinutes(new Date(), new Date(created));
+const waitTimeColor = (created: string, now = new Date()) => {
+  const mins = Math.max(0, differenceInMinutes(now, new Date(created)));
   if (mins > SLA_CRITICAL) return 'text-destructive font-bold';
   if (mins > SLA_WARNING) return 'text-warning font-semibold';
   return 'text-muted-foreground';
@@ -65,15 +95,23 @@ const stagger = { hidden: {}, visible: { transition: { staggerChildren: 0.04 } }
 const fadeUp = { hidden: { opacity: 0, y: 8 }, visible: { opacity: 1, y: 0, transition: { duration: 0.2 } } };
 
 export default function MapaColeta() {
+  const { profile } = useSupabaseAuth();
   const [itens, setItens] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<unknown>(null);
   const [search, setSearch] = useState('');
   const [tuboFiltro, setTuboFiltro] = useState('Todos');
   const [statusFiltro, setStatusFiltro] = useState('todos');
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [now, setNow] = useState(new Date());
+  const [now, setNow] = useState(() => new Date());
   const [cancelarId, setCancelarId] = useState<string | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
+  const [processingIds, setProcessingIds] = useState<Set<string>>(new Set());
+  const processingIdsRef = useRef(new Set<string>());
+  const [bulkProcessing, setBulkProcessing] = useState(false);
+  const bulkProcessingRef = useRef(false);
+  const fetchRequestRef = useRef(0);
+  const activeClinicRef = useRef<string | null>(null);
 
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 30_000);
@@ -81,82 +119,168 @@ export default function MapaColeta() {
   }, []);
 
   const fetchColetas = useCallback(async () => {
+    const clinicId = profile?.clinica_id ?? null;
+    if (activeClinicRef.current !== clinicId) return;
+    const requestId = ++fetchRequestRef.current;
+
+    if (!clinicId) {
+      setLoading(false);
+      setLoadError(new Error('Clínica não identificada.'));
+      return;
+    }
     setLoading(true);
-    const { data, error } = await supabase
-      .from('coletas_laboratorio')
-      .select(`
-        id, codigo_amostra, status, created_at, observacoes, tipo_amostra,
-        tubo, urgente, jejum_necessario, jejum_horas, volume_ml,
-        sitio_coleta, condicao_amostra, data_coleta, lote_insumo,
-        pacientes(nome, cpf, data_nascimento, sexo, convenios(nome)),
-        medicos(nome, crm),
-        exames(tipo_exame)
-      `)
-      .in('status', ['pendente', 'coletado', 'recoleta'])
-      .order('created_at', { ascending: true });
-
-    if (error) toast.error('Erro ao carregar mapa de coleta', { description: mensagemDeErro(error) });
-    else setItens(data ?? []);
-    setLoading(false);
-  }, []);
-
-  useEffect(() => {
-    fetchColetas();
-    const channel = supabase.channel(canalUnico('mapa-coleta-rt'))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'coletas_laboratorio' }, fetchColetas)
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [fetchColetas]);
-
-  // ─── Actions ─────────────────────────────────────────────
-  const handleColetar = async (id: string) => {
-    const { error } = await supabase.from('coletas_laboratorio')
-      .update({ status: 'coletado', data_coleta: new Date().toISOString() }).eq('id', id);
-    if (error) toast.error('Erro ao registrar coleta', { description: mensagemDeErro(error) });
-    else { toast.success('Coleta registrada!'); fetchColetas(); }
-  };
-
-  const handleBulkColetar = async () => {
-    if (selected.size === 0) return;
-    const ids = Array.from(selected);
-    let ok = 0;
-    for (const id of ids) {
-      const item = itens.find(i => i.id === id);
-      if (item?.status === 'pendente' || item?.status === 'recoleta') {
-        const { error } = await supabase.from('coletas_laboratorio')
-          .update({ status: 'coletado', data_coleta: new Date().toISOString() }).eq('id', id);
-        if (!error) ok++;
+    try {
+      const pagina = 500;
+      const novasColetas: any[] = [];
+      let cursor: { created_at: string; id: string } | null = null;
+      while (true) {
+        if (requestId !== fetchRequestRef.current || activeClinicRef.current !== clinicId) return;
+        let query = supabase
+          .from('coletas_laboratorio')
+          .select(`
+            id, codigo_amostra, status, created_at, updated_at, observacoes, tipo_amostra,
+            tubo, urgente, jejum_necessario, jejum_horas, volume_ml,
+            sitio_coleta, condicao_amostra, data_coleta, lote_insumo,
+            pacientes(nome, nome_social, cpf, telefone, email, data_nascimento, sexo, convenios(nome)),
+            medicos(nome, crm),
+            exames(tipo_exame)
+          `)
+          .in('status', ['pendente', 'coletado', 'recoleta'])
+          .eq('clinica_id', clinicId);
+        if (cursor) {
+          query = query.or(`created_at.gt.${cursor.created_at},and(created_at.eq.${cursor.created_at},id.gt.${cursor.id})`);
+        }
+        const { data, error } = await query
+          .order('created_at', { ascending: true })
+          .order('id', { ascending: true })
+          .limit(pagina);
+        if (error) throw error;
+        const lote = data ?? [];
+        novasColetas.push(...lote);
+        if (lote.length < pagina) break;
+        const ultima = lote[lote.length - 1];
+        cursor = { created_at: ultima.created_at, id: ultima.id };
+      }
+      if (requestId !== fetchRequestRef.current || activeClinicRef.current !== clinicId) return;
+      setItens(novasColetas);
+      setSelected(prev => new Set([...prev].filter(id => novasColetas.some(item => item.id === id))));
+      setLoadError(null);
+    } catch (error) {
+      if (requestId === fetchRequestRef.current && activeClinicRef.current === clinicId) {
+        setLoadError(error);
+      }
+    } finally {
+      if (requestId === fetchRequestRef.current && activeClinicRef.current === clinicId) {
+        setLoading(false);
       }
     }
-    toast.success(`${ok} coleta(s) registrada(s)`);
+  }, [profile?.clinica_id]);
+
+  useEffect(() => {
+    const clinicId = profile?.clinica_id ?? null;
+    activeClinicRef.current = clinicId;
+    fetchRequestRef.current += 1;
+    setItens([]);
     setSelected(new Set());
-    fetchColetas();
+    setLoading(true);
+    setLoadError(null);
+    void fetchColetas();
+    if (!clinicId) return () => { activeClinicRef.current = null; fetchRequestRef.current += 1; };
+    const channel = supabase.channel(canalUnico('mapa-coleta-rt'))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'coletas_laboratorio', filter: `clinica_id=eq.${clinicId}` }, fetchColetas)
+      .subscribe();
+    return () => {
+      if (activeClinicRef.current === clinicId) activeClinicRef.current = null;
+      fetchRequestRef.current += 1;
+      supabase.removeChannel(channel);
+    };
+  }, [fetchColetas, profile?.clinica_id]);
+
+  // ─── Actions ─────────────────────────────────────────────
+  const transitionStatus = async (id: string, expected: string[], status: string, message: string) => {
+    if (!profile?.clinica_id || processingIdsRef.current.has(id) || bulkProcessingRef.current) return false;
+    processingIdsRef.current.add(id);
+    setProcessingIds(current => new Set(current).add(id));
+    try {
+      const updates: Record<string, unknown> = { status };
+      if (status === 'coletado') updates.data_coleta = new Date().toISOString();
+      const { data, error } = await (supabase as any).from('coletas_laboratorio')
+        .update(updates)
+        .eq('id', id)
+        .eq('clinica_id', profile.clinica_id)
+        .in('status', expected)
+        .select('id')
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) throw new Error('O status da coleta mudou ou ela não pertence à clínica atual. Atualize o mapa e tente novamente.');
+      toast.success(message);
+      await fetchColetas();
+      return true;
+    } catch (error) {
+      toast.error('Não foi possível atualizar a coleta', { description: mensagemDeErro(error) });
+      return false;
+    } finally {
+      processingIdsRef.current.delete(id);
+      setProcessingIds(current => { const next = new Set(current); next.delete(id); return next; });
+    }
   };
 
-  const handleRecoleta = async (id: string) => {
-    const { error } = await supabase.from('coletas_laboratorio').update({ status: 'recoleta' }).eq('id', id);
-    if (error) toast.error('Erro', { description: mensagemDeErro(error) }); else { toast.warning('Recoleta solicitada'); fetchColetas(); }
+  const handleColetar = (id: string) => transitionStatus(id, ['pendente', 'recoleta'], 'coletado', 'Coleta registrada!');
+
+  const handleBulkColetar = async () => {
+    if (selected.size === 0 || bulkProcessingRef.current || !profile?.clinica_id) return;
+    if ([...selected].some(id => processingIdsRef.current.has(id))) {
+      toast.info('Aguarde a atualização individual terminar antes de coletar em lote.');
+      return;
+    }
+    bulkProcessingRef.current = true;
+    setBulkProcessing(true);
+    const ids = Array.from(selected);
+    let ok = 0;
+    const failedIds: string[] = [];
+    try {
+      for (const id of ids) {
+        const item = itens.find(i => i.id === id);
+        if (item?.status !== 'pendente' && item?.status !== 'recoleta') continue;
+        const { data, error } = await supabase.from('coletas_laboratorio')
+          .update({ status: 'coletado', data_coleta: new Date().toISOString() })
+          .eq('id', id).eq('clinica_id', profile.clinica_id).in('status', ['pendente', 'recoleta'])
+          .select('id').maybeSingle();
+        if (error || !data) failedIds.push(id);
+        else ok++;
+      }
+      if (failedIds.length) toast.warning(`${ok} coleta(s) registrada(s); ${failedIds.length} não foram atualizadas.`, { description: 'As amostras que falharam continuam selecionadas para conferência.' });
+      else if (ok) toast.success(`${ok} coleta(s) registrada(s)`);
+      else toast.info('Nenhuma amostra selecionada está pendente de coleta.');
+      setSelected(new Set(failedIds));
+      await fetchColetas();
+    } catch (error) {
+      toast.error('Não foi possível concluir a coleta em lote', { description: mensagemDeErro(error) });
+    } finally {
+      bulkProcessingRef.current = false;
+      setBulkProcessing(false);
+    }
   };
+
+  const handleRecoleta = (id: string) => transitionStatus(id, ['coletado'], 'recoleta', 'Recoleta solicitada');
 
   const handleCancelar = async (id: string) => {
-    const { error } = await supabase.from('coletas_laboratorio').update({ status: 'cancelado' }).eq('id', id);
-    if (error) toast.error('Erro ao cancelar', { description: mensagemDeErro(error) });
-    else { toast.success('Coleta cancelada'); fetchColetas(); }
-    setCancelarId(null);
+    const cancelled = await transitionStatus(id, ['pendente', 'recoleta'], 'cancelado', 'Coleta cancelada');
+    if (cancelled) setCancelarId(null);
   };
 
-  const handleEncaminharAnalise = async (id: string) => {
-    const { error } = await supabase.from('coletas_laboratorio').update({ status: 'em_analise' }).eq('id', id);
-    if (error) toast.error('Erro', { description: mensagemDeErro(error) });
-    else { toast.success('Enviado para análise'); fetchColetas(); }
-  };
+  const handleEncaminharAnalise = (id: string) => transitionStatus(id, ['coletado'], 'em_analise', 'Enviado para análise');
 
   const handleBulkPrint = () => {
     if (selected.size === 0) { toast.error('Selecione ao menos uma coleta'); return; }
     const selectedItems = itens.filter(i => selected.has(i.id));
     const w = window.open('', '_blank');
-    if (w) {
-      w.document.write(`<html><head><title>Etiquetas</title><style>
+    if (!w) {
+      toast.error('O navegador bloqueou a janela de impressão. Permita pop-ups para gerar as etiquetas.');
+      return;
+    }
+    const impressoEm = dataHoraClinica();
+    w.document.write(`<html><head><title>Etiquetas</title><style>
         body{font-family:monospace;font-size:12px}
         .label{border:1px dashed #999;padding:8px;margin:4px 0;page-break-inside:avoid}
         .code{font-size:16px;font-weight:bold;letter-spacing:2px}
@@ -165,14 +289,13 @@ export default function MapaColeta() {
         <h3 class="no-print">${selected.size} etiqueta(s)</h3>
         ${selectedItems.map(i => `<div class="label">
           <div class="code">${escapeHtml(i.codigo_amostra)}</div>
-          <div><strong>${escapeHtml(i.pacientes?.nome)}</strong></div>
-          <div>${calcAge(i.pacientes?.data_nascimento) ?? '?'}a — ${i.pacientes?.sexo === 'M' ? 'Masc' : i.pacientes?.sexo === 'F' ? 'Fem' : '?'}</div>
+          <div><strong>${escapeHtml(nomePaciente(i.pacientes))}</strong></div>
+          <div>${calcAge(i.pacientes?.data_nascimento) ?? '?'}a — ${sexoParaEtiqueta(i.pacientes?.sexo)}</div>
           <div>Tubo: ${escapeHtml(i.tubo ?? i.tipo_amostra)} | Exame: ${escapeHtml(i.exames?.tipo_exame ?? '—')}</div>
-          <div>${format(new Date(), 'dd/MM/yyyy HH:mm')}</div>
+          <div>${escapeHtml(impressoEm)}</div>
         </div>`).join('')}</body></html>`);
     w.document.close();
     w.document.getElementById('imprimir-mapa')?.addEventListener('click', () => w.print());
-    }
     toast.success(`${selected.size} etiqueta(s) gerada(s)`);
   };
 
@@ -183,8 +306,7 @@ export default function MapaColeta() {
     if (search.trim()) {
       const q = normalize(search.trim());
       if (
-        !normalize(item.pacientes?.nome ?? '').includes(q) &&
-        !normalize(item.pacientes?.cpf ?? '').includes(q) &&
+        !(item.pacientes && pacienteCorresponde(item.pacientes, search)) &&
         !normalize(item.codigo_amostra ?? '').includes(q) &&
         !normalize(item.exames?.tipo_exame ?? '').includes(q)
       ) return false;
@@ -192,14 +314,24 @@ export default function MapaColeta() {
     return true;
   }), [itens, tuboFiltro, statusFiltro, search]);
 
+  useEffect(() => {
+    const idsVisiveis = new Set(filtrado.map(item => item.id));
+    setSelected(current => {
+      const next = new Set([...current].filter(id => idsVisiveis.has(id)));
+      return next.size === current.size ? current : next;
+    });
+  }, [filtrado]);
+
   const pendentes = filtrado.filter(i => i.status === 'pendente');
   const recoletas = filtrado.filter(i => i.status === 'recoleta');
   const coletados = filtrado.filter(i => i.status === 'coletado');
   const aguardando = [...recoletas, ...pendentes];
+  const selectedColetaveis = itens.filter(i => selected.has(i.id) && (i.status === 'pendente' || i.status === 'recoleta')).length;
 
   const slaBreaches = itens.filter(i => {
     if (i.status !== 'pendente' && i.status !== 'recoleta') return false;
-    return i.created_at && differenceInMinutes(new Date(), new Date(i.created_at)) > SLA_CRITICAL;
+    const desde = slaTimestamp(i);
+    return desde && differenceInMinutes(now, new Date(desde)) > SLA_CRITICAL;
   });
 
   const toggleSelect = (id: string) => setSelected(prev => {
@@ -233,10 +365,11 @@ export default function MapaColeta() {
 
   const ColetaRow = ({ item, idx, showActions = true }: { item: any; idx: number; showActions?: boolean }) => {
     const age = calcAge(item.pacientes?.data_nascimento);
-    const sexo = item.pacientes?.sexo === 'M' ? 'M' : item.pacientes?.sexo === 'F' ? 'F' : '—';
+    const sexo = sexoPaciente(item.pacientes?.sexo);
     const convenio = (item.pacientes as any)?.convenios?.nome ?? 'Particular';
     const isUrgent = item.urgente;
-    const isSLABreach = item.created_at && differenceInMinutes(new Date(), new Date(item.created_at)) > SLA_CRITICAL;
+    const desdeSLA = slaTimestamp(item);
+    const isSLABreach = desdeSLA && differenceInMinutes(now, new Date(desdeSLA)) > SLA_CRITICAL;
 
     return (
       <tr className={cn(
@@ -244,10 +377,17 @@ export default function MapaColeta() {
         isUrgent && 'bg-destructive/5',
         isSLABreach && !isUrgent && 'bg-warning/5',
       )}>
-        <td className="px-3 py-2"><Checkbox checked={selected.has(item.id)} onCheckedChange={() => toggleSelect(item.id)} /></td>
+        <td className="px-3 py-2">
+          <Checkbox
+            checked={selected.has(item.id)}
+            disabled={bulkProcessing || processingIds.has(item.id)}
+            aria-label={`Selecionar coleta ${item.codigo_amostra || ''} de ${nomePaciente(item.pacientes)}`}
+            onCheckedChange={() => toggleSelect(item.id)}
+          />
+        </td>
         <td className="px-2 py-2 text-xs font-bold text-muted-foreground tabular-nums">{idx + 1}</td>
         <td className="px-3 py-2">
-          <button className="font-mono text-xs text-primary font-semibold hover:underline" onClick={() => setDetailId(item.id)}>
+          <button type="button" aria-label={`Ver detalhes da coleta ${item.codigo_amostra || ''}`} className="font-mono text-xs text-primary font-semibold hover:underline" onClick={() => setDetailId(item.id)}>
             {item.codigo_amostra}
           </button>
         </td>
@@ -255,7 +395,7 @@ export default function MapaColeta() {
           <div className="flex items-center gap-1.5">
             {isUrgent && <Zap className="h-3.5 w-3.5 text-destructive flex-shrink-0" />}
             <div>
-              <p className={cn('font-medium text-sm', isUrgent && 'text-destructive')}>{item.pacientes?.nome ?? '—'}</p>
+              <p className={cn('font-medium text-sm', isUrgent && 'text-destructive')}>{nomePaciente(item.pacientes)}</p>
               <p className="text-[11px] text-muted-foreground">{age !== null ? `${age}a` : '?'} · {sexo}{item.pacientes?.cpf ? ` · ${item.pacientes.cpf}` : ''}</p>
             </div>
           </div>
@@ -274,43 +414,58 @@ export default function MapaColeta() {
           ) : <span className="text-[10px] text-muted-foreground">—</span>}
         </td>
         <td className="px-3 py-2 text-center hidden sm:table-cell">
-          {item.created_at ? (
-            <span className={cn('text-xs tabular-nums flex items-center justify-center gap-1', waitTimeColor(item.created_at))}>
-              <Timer className="h-3 w-3" />{waitTimeLabel(item.created_at)}
+          {item.status === 'coletado' && item.created_at && item.data_coleta ? (
+            <span className="text-xs tabular-nums flex items-center justify-center gap-1 text-muted-foreground" title="Tempo até a coleta ser registrada">
+              <Timer className="h-3 w-3" />{waitTimeLabel(item.created_at, new Date(item.data_coleta))}
+            </span>
+          ) : desdeSLA ? (
+            <span className={cn('text-xs tabular-nums flex items-center justify-center gap-1', waitTimeColor(desdeSLA, now))}>
+              <Timer className="h-3 w-3" />{waitTimeLabel(desdeSLA, now)}
             </span>
           ) : '—'}
         </td>
         <td className="px-3 py-2 text-center"><StatusBadge status={item.status} /></td>
         <td className="px-3 py-2 text-right">
           <div className="flex items-center justify-end gap-1">
-            {showActions && item.status !== 'coletado' && (
-              <Button variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={() => handleColetar(item.id)}>
-                <CheckCircle2 className="h-3 w-3" /> Coletar
+            {showActions && (item.status === 'pendente' || item.status === 'recoleta') && (
+              <Button variant="outline" size="sm" className="h-7 text-xs gap-1" disabled={processingIds.has(item.id) || bulkProcessing} onClick={() => handleColetar(item.id)}>
+                {processingIds.has(item.id) ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />}
+                {processingIds.has(item.id) ? 'Salvando…' : 'Coletar'}
               </Button>
             )}
             {item.status === 'coletado' && (
               <>
-                <Button variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={() => handleEncaminharAnalise(item.id)}>
-                  <ArrowRight className="h-3 w-3" /> Análise
+                <Button variant="outline" size="sm" className="h-7 text-xs gap-1" disabled={processingIds.has(item.id) || bulkProcessing} onClick={() => handleEncaminharAnalise(item.id)}>
+                  {processingIds.has(item.id) ? <Loader2 className="h-3 w-3 animate-spin" /> : <ArrowRight className="h-3 w-3" />}
+                  {processingIds.has(item.id) ? 'Salvando…' : 'Análise'}
                 </Button>
-                <Button variant="outline" size="sm" className="h-7 text-xs gap-1 text-warning" onClick={() => handleRecoleta(item.id)}>
-                  <RotateCcw className="h-3 w-3" />
+                <Button variant="outline" size="sm" className="h-7 text-xs gap-1 text-warning" aria-label={`Solicitar recoleta ${item.codigo_amostra || ''}`} title="Solicitar recoleta" disabled={processingIds.has(item.id) || bulkProcessing} onClick={() => handleRecoleta(item.id)}>
+                  {processingIds.has(item.id) ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
                 </Button>
               </>
             )}
-            <Button variant="ghost" size="sm" className="h-7 text-destructive" onClick={() => setCancelarId(item.id)}>
-              <XCircle className="h-3.5 w-3.5" />
-            </Button>
+            {(item.status === 'pendente' || item.status === 'recoleta') && (
+              <Button variant="ghost" size="sm" className="h-7 text-destructive" aria-label={`Cancelar coleta ${item.codigo_amostra || ''}`} title="Cancelar coleta" disabled={processingIds.has(item.id) || bulkProcessing} onClick={() => setCancelarId(item.id)}>
+                {processingIds.has(item.id) ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <XCircle className="h-3.5 w-3.5" />}
+              </Button>
+            )}
           </div>
         </td>
       </tr>
     );
   };
 
-  const TableHead = ({ items }: { items: any[] }) => (
+  if (loadError) {
+    return <ErrorState title="Não foi possível atualizar o mapa de coleta" description="Os dados anteriores foram ocultados para evitar registrar coleta com status desatualizado." error={loadError} onRetry={() => void fetchColetas()} />;
+  }
+
+  const TableHead = ({ items, label }: { items: any[]; label: string }) => {
+    const selectedCount = items.filter(item => selected.has(item.id)).length;
+    const allSelected = items.length > 0 && selectedCount === items.length;
+    return (
     <thead>
       <tr className="border-b border-border bg-muted/30">
-        <th className="px-3 py-2.5 w-8"><Checkbox checked={items.length > 0 && items.every(i => selected.has(i.id))} onCheckedChange={() => toggleAll(items)} /></th>
+        <th className="px-3 py-2.5 w-8"><Checkbox checked={allSelected ? true : selectedCount > 0 ? 'indeterminate' : false} disabled={bulkProcessing} aria-label={`Selecionar todas as coletas: ${label}`} onCheckedChange={() => toggleAll(items)} /></th>
         <th className="px-2 py-2.5 text-xs font-medium text-muted-foreground w-8">#</th>
         <th className="px-3 py-2.5 text-xs font-medium text-muted-foreground text-left">Código</th>
         <th className="px-3 py-2.5 text-xs font-medium text-muted-foreground text-left">Paciente</th>
@@ -318,12 +473,13 @@ export default function MapaColeta() {
         <th className="px-3 py-2.5 text-xs font-medium text-muted-foreground text-left">Tubo</th>
         <th className="px-3 py-2.5 text-xs font-medium text-muted-foreground text-left hidden lg:table-cell">Exame</th>
         <th className="px-3 py-2.5 text-xs font-medium text-muted-foreground text-center hidden md:table-cell">Jejum</th>
-        <th className="px-3 py-2.5 text-xs font-medium text-muted-foreground text-center hidden sm:table-cell">SLA</th>
+        <th className="px-3 py-2.5 text-xs font-medium text-muted-foreground text-center hidden sm:table-cell">Espera / coleta</th>
         <th className="px-3 py-2.5 text-xs font-medium text-muted-foreground text-center">Status</th>
         <th className="px-3 py-2.5 text-xs font-medium text-muted-foreground text-right">Ações</th>
       </tr>
     </thead>
-  );
+    );
+  };
 
   return (
     <div className="space-y-6 pb-8">
@@ -340,16 +496,16 @@ export default function MapaColeta() {
         <div className="flex gap-2">
           {selected.size > 0 && (
             <>
-              <Button variant="default" className="gap-2" onClick={handleBulkColetar}>
-                <CheckCircle2 className="h-4 w-4" /> Coletar {selected.size}
-              </Button>
+              {selectedColetaveis > 0 && <Button variant="default" className="gap-2" disabled={bulkProcessing} onClick={handleBulkColetar}>
+                {bulkProcessing ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />} Coletar {selectedColetaveis}
+              </Button>}
               <Button variant="outline" className="gap-2" onClick={handleBulkPrint}>
                 <Printer className="h-4 w-4" /> Etiquetas ({selected.size})
               </Button>
             </>
           )}
-          <Button variant="outline" className="gap-2" onClick={fetchColetas}>
-            <RefreshCw className="h-4 w-4" /> Atualizar
+          <Button variant="outline" className="gap-2" disabled={loading} onClick={fetchColetas}>
+            <RefreshCw className={cn('h-4 w-4', loading && 'animate-spin')} /> Atualizar
           </Button>
         </div>
       </div>
@@ -364,7 +520,7 @@ export default function MapaColeta() {
               {slaBreaches.length} coleta(s) excedendo SLA de {SLA_CRITICAL}min
             </p>
             <p className="text-xs text-muted-foreground">
-              {slaBreaches.slice(0, 3).map(i => `${i.pacientes?.nome} (${waitTimeLabel(i.created_at)})`).join(' · ')}
+              {slaBreaches.slice(0, 3).map(i => `${nomePaciente(i.pacientes)} (${waitTimeLabel(slaTimestamp(i) || i.created_at, now)})`).join(' · ')}
             </p>
           </div>
         </motion.div>
@@ -413,7 +569,7 @@ export default function MapaColeta() {
       <div className="flex flex-wrap gap-3 items-center">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input className="pl-9 w-64" placeholder="Nome, CPF, código ou exame..." value={search} onChange={e => setSearch(e.target.value)} />
+          <Input className="pl-9 w-64" placeholder="Nome, CPF, telefone, código ou exame..." value={search} onChange={e => setSearch(e.target.value)} />
         </div>
         <Select value={tuboFiltro} onValueChange={setTuboFiltro}>
           <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
@@ -438,7 +594,7 @@ export default function MapaColeta() {
         {selected.size > 0 && (
           <Badge variant="outline" className="text-xs gap-1">
             {selected.size} selecionado(s)
-            <button className="ml-1 hover:text-destructive" onClick={() => setSelected(new Set())}>✕</button>
+            <button type="button" aria-label="Limpar seleção de coletas" className="ml-1 hover:text-destructive" onClick={() => setSelected(new Set())}>✕</button>
           </Badge>
         )}
       </div>
@@ -458,7 +614,7 @@ export default function MapaColeta() {
                 </CardHeader>
                 <CardContent className="overflow-x-auto p-0">
                   <table className="w-full text-sm">
-                    <TableHead items={aguardando} />
+                    <TableHead items={aguardando} label="aguardando coleta" />
                     <tbody>{aguardando.map((item, idx) => <ColetaRow key={item.id} item={item} idx={idx} showActions />)}</tbody>
                   </table>
                 </CardContent>
@@ -477,7 +633,7 @@ export default function MapaColeta() {
                 </CardHeader>
                 <CardContent className="overflow-x-auto p-0">
                   <table className="w-full text-sm">
-                    <TableHead items={coletados} />
+                    <TableHead items={coletados} label="coletadas" />
                     <tbody>{coletados.map((item, idx) => <ColetaRow key={item.id} item={item} idx={idx} showActions />)}</tbody>
                   </table>
                 </CardContent>
@@ -490,7 +646,21 @@ export default function MapaColeta() {
               <Card>
                 <CardContent className="flex flex-col items-center justify-center py-16 text-center">
                   <FlaskConical className="h-12 w-12 text-muted-foreground/30 mb-4" />
-                  <p className="text-muted-foreground font-medium">Nenhuma coleta encontrada</p>
+                  <p className="text-muted-foreground font-medium">
+                    {itens.length === 0
+                      ? 'Não há coletas nesta fila no momento.'
+                      : 'Nenhuma coleta corresponde à busca e aos filtros selecionados.'}
+                  </p>
+                  {itens.length > 0 && (search.trim() || tuboFiltro !== 'Todos' || statusFiltro !== 'todos') && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="mt-3"
+                      onClick={() => { setSearch(''); setTuboFiltro('Todos'); setStatusFiltro('todos'); }}
+                    >
+                      Limpar filtros
+                    </Button>
+                  )}
                 </CardContent>
               </Card>
             </motion.div>
@@ -510,8 +680,10 @@ export default function MapaColeta() {
           {detailItem && (
             <div className="space-y-3 text-sm">
               <div className="grid grid-cols-2 gap-3 rounded-lg border p-3 bg-muted/20">
-                <div><p className="text-[11px] text-muted-foreground">Paciente</p><p className="font-semibold">{detailItem.pacientes?.nome}</p></div>
+                <div><p className="text-[11px] text-muted-foreground">Paciente</p><p className="font-semibold">{nomePaciente(detailItem.pacientes)}</p></div>
                 <div><p className="text-[11px] text-muted-foreground">CPF</p><p>{detailItem.pacientes?.cpf || '—'}</p></div>
+                <div><p className="text-[11px] text-muted-foreground">Solicitada em</p><p>{detailItem.created_at ? dataHoraClinica(new Date(detailItem.created_at)) : '—'}</p></div>
+                <div><p className="text-[11px] text-muted-foreground">Coletada em</p><p>{detailItem.data_coleta ? dataHoraClinica(new Date(detailItem.data_coleta)) : '—'}</p></div>
                 <div><p className="text-[11px] text-muted-foreground">Médico</p><p>{detailItem.medicos?.nome || '—'}</p></div>
                 <div><p className="text-[11px] text-muted-foreground">Exame</p><p>{detailItem.exames?.tipo_exame || '—'}</p></div>
                 <div><p className="text-[11px] text-muted-foreground">Amostra</p><p>{detailItem.tipo_amostra} {detailItem.tubo && `· ${detailItem.tubo}`}</p></div>
@@ -549,7 +721,11 @@ export default function MapaColeta() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Voltar</AlertDialogCancel>
-            <AlertDialogAction onClick={() => cancelarId && handleCancelar(cancelarId)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+            <AlertDialogAction
+              disabled={!cancelarId || processingIds.has(cancelarId)}
+              onClick={(event) => { event.preventDefault(); if (cancelarId) void handleCancelar(cancelarId); }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
               Cancelar Coleta
             </AlertDialogAction>
           </AlertDialogFooter>

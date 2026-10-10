@@ -19,6 +19,46 @@ import { horariosLivres, validarHorario, agoraEmBrasilia, dataValida } from '../
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+function horarioPublico(valor: unknown) {
+  const config = valor && typeof valor === 'object' ? valor as Record<string, unknown> : {};
+  const horaValida = (value: unknown) => typeof value === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
+  const diasValidos: Record<string, string> = {
+    seg: 'Segunda', ter: 'Terça', qua: 'Quarta', qui: 'Quinta',
+    sex: 'Sexta', sab: 'Sábado', dom: 'Domingo',
+  };
+  const dias = Array.isArray(config.diasFuncionamento)
+    ? [...new Set(config.diasFuncionamento.filter((dia): dia is string => typeof dia === 'string' && Object.hasOwn(diasValidos, dia)))]
+    : [];
+  if (!dias.length || !horaValida(config.horarioAbertura) || !horaValida(config.horarioFechamento) ||
+      String(config.horarioAbertura) >= String(config.horarioFechamento)) return null;
+
+  const temAlmoco = Boolean(config.horarioAlmocoInicio || config.horarioAlmocoFim);
+  if (temAlmoco && (!horaValida(config.horarioAlmocoInicio) || !horaValida(config.horarioAlmocoFim) ||
+      String(config.horarioAlmocoInicio) >= String(config.horarioAlmocoFim) ||
+      String(config.horarioAlmocoInicio) < String(config.horarioAbertura) ||
+      String(config.horarioAlmocoFim) > String(config.horarioFechamento))) return null;
+
+  let sabado: { abertura: string; fechamento: string } | null = null;
+  if (dias.includes('sab')) {
+    if (!horaValida(config.sabadoAbertura) || !horaValida(config.sabadoFechamento) ||
+        String(config.sabadoAbertura) >= String(config.sabadoFechamento)) return null;
+    sabado = { abertura: config.sabadoAbertura as string, fechamento: config.sabadoFechamento as string };
+  }
+
+  const diasUteis = dias.filter((dia) => dia !== 'sab');
+  const diasLabel = ['seg', 'ter', 'qua', 'qui', 'sex'].every((dia) => diasUteis.includes(dia))
+    ? ['Segunda a sexta', ...diasUteis.filter((dia) => dia === 'dom').map((dia) => diasValidos[dia])]
+    : diasUteis.map((dia) => diasValidos[dia]);
+
+  return {
+    dias: diasLabel,
+    abertura: config.horarioAbertura as string,
+    fechamento: config.horarioFechamento as string,
+    almoco: temAlmoco ? { inicio: config.horarioAlmocoInicio as string, fim: config.horarioAlmocoFim as string } : null,
+    sabado,
+  };
+}
+
 function cpfValido(cpf: string): boolean {
   const d = cpf.replace(/\D/g, '');
   if (d.length !== 11 || /^(\d)\1+$/.test(d)) return false;
@@ -32,12 +72,6 @@ function cpfValido(cpf: string): boolean {
 }
 
 const mascararCpf = (d: string) => `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`;
-
-function somarMinutos(hora: string, minutos: number) {
-  const [h, m] = hora.split(':').map(Number);
-  const t = (h * 60 + m + minutos) % 1440;
-  return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
-}
 
 async function buscarPacientePorCpf(db: any, clinicaId: string, cpf: string): Promise<string | null> {
   const { data, error } = await db.rpc('find_patient_id_by_normalized_cpf', {
@@ -80,6 +114,21 @@ Deno.serve(async (req) => {
       return json({ error: 'Esta clínica não está recebendo agendamentos online no momento.' }, 404);
     }
 
+    let horariosFuncionamento = null;
+    let contatoPublico: { telefone?: string; celular?: string; email?: string } = {};
+    if (action === 'info') {
+      const { data: configClinica } = await db.from('configuracoes_clinica')
+        .select('valor').eq('clinica_id', clinicaId).eq('chave', 'config_clinica')
+        .order('updated_at', { ascending: false }).limit(1).maybeSingle();
+      const valores = (configClinica?.valor ?? {}) as Record<string, unknown>;
+      horariosFuncionamento = horarioPublico(valores);
+      contatoPublico = {
+        telefone: typeof valores.telefone === 'string' ? valores.telefone : undefined,
+        celular: typeof valores.celular === 'string' ? valores.celular : undefined,
+        email: typeof valores.email === 'string' ? valores.email : undefined,
+      };
+    }
+
     // Médicos liberados: ativos, com disponibilidade cadastrada e (se a clínica
     // restringiu) na lista escolhida.
     const { data: medicosRaw } = await db.from('medicos')
@@ -100,7 +149,7 @@ Deno.serve(async (req) => {
     })();
 
     if (action === 'info') {
-      return json({ clinica: { nome: clinica.nome }, mensagem: cfg.mensagem || null, medicos, dias_antecedencia: diasAntecedencia, hoje: agoraEmBrasilia().data });
+      return json({ clinica: { nome: clinica.nome, ...contatoPublico }, mensagem: cfg.mensagem || null, horarios_funcionamento: horariosFuncionamento, medicos, dias_antecedencia: diasAntecedencia, hoje: agoraEmBrasilia().data });
     }
 
     if (action === 'slots') {
@@ -174,24 +223,31 @@ Deno.serve(async (req) => {
         .eq('clinica_id', clinicaId).eq('paciente_id', pacienteId).eq('status', 'agendado')
         .gte('data', agoraEmBrasilia().data).ilike('observacoes', '%[agendamento online]%');
       if ((pendentes ?? 0) >= 2) {
-        return json({ error: 'Você já tem agendamentos aguardando confirmação. Entre em contato com a clínica.' }, 409);
+        return json({
+          error: 'Não foi possível concluir este pedido online. Entre em contato com a clínica para continuar.',
+          code: 'booking_unavailable',
+        }, 409);
       }
 
-      const { error: erroAgendamento } = await db.from('agendamentos').insert({
-        clinica_id: clinicaId,
-        paciente_id: pacienteId,
-        medico_id: medicoId,
-        data,
-        hora_inicio: hora,
-        hora_fim: somarMinutos(hora, slot.duration),
-        tipo: 'consulta',
-        status: 'agendado',
-        observacoes: `[agendamento online] Marcado pelo paciente no link público. Confirmar com o paciente.\nNome informado: ${nome}\nTelefone informado: ${telefone}${email ? `\nE-mail informado: ${email}` : ''}`,
+      const { data: resultadoAgendamento, error: erroAgendamento } = await db.rpc('agendar_consulta_online_atomico', {
+        p_clinica_id: clinicaId,
+        p_paciente_id: pacienteId,
+        p_medico_id: medicoId,
+        p_data: data,
+        p_hora_inicio: hora,
+        p_duracao_minutos: slot.duration,
+        p_observacoes: `[agendamento online] Marcado pelo paciente no link público. Confirmar com o paciente.\nNome informado: ${nome}\nTelefone informado: ${telefone}${email ? `\nE-mail informado: ${email}` : ''}`,
       });
       if (erroAgendamento) {
-        const sobreposto = erroAgendamento.code === '23P01' || String(erroAgendamento.message).includes('sobreposicao');
-        if (sobreposto) return json({ error: 'Este horário acabou de ser ocupado. Escolha outro.', code: 'slot_unavailable' }, 409);
+        if (erroAgendamento.code === '23P01' || String(erroAgendamento.message).includes('sobreposicao')) {
+          return json({ error: 'Este horário acabou de ser ocupado. Escolha outro.', code: 'slot_unavailable' }, 409);
+        }
         throw erroAgendamento;
+      }
+      if (!resultadoAgendamento?.success) {
+        const code = resultadoAgendamento?.code;
+        const error = resultadoAgendamento?.error || 'Este horário não está mais disponível.';
+        return json({ error, code }, 409);
       }
 
       return json({ success: true, message: 'Pedido de agendamento enviado! A clínica vai entrar em contato para confirmar.' });

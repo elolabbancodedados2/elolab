@@ -27,9 +27,10 @@ import { ContextualHelp } from '@/components/ContextualHelp';
 
 interface NavbarProps {
   onMenuClick?: () => void;
+  mobileMenuOpen: boolean;
 }
 
-export function Navbar({ onMenuClick }: NavbarProps) {
+export function Navbar({ onMenuClick, mobileMenuOpen }: NavbarProps) {
   const { profile, signOut, isAdmin } = useSupabaseAuth();
   const navigate = useNavigate();
   const { notifications: systemNotifications, unreadCount: systemUnread } = useRealtimeNotifications();
@@ -80,7 +81,15 @@ export function Navbar({ onMenuClick }: NavbarProps) {
     <KeyboardShortcutsDialog />
     <header className="sticky top-0 z-30 flex min-h-14 items-center border-b border-border/25 bg-background/75 px-2 pt-[env(safe-area-inset-top)] backdrop-blur-2xl sm:px-3 md:px-5">
       {/* Left: Hamburger */}
-      <Button variant="ghost" size="icon" className="h-11 w-11 shrink-0 rounded-xl lg:hidden" aria-label="Abrir menu de navegação" onClick={onMenuClick}>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-11 w-11 shrink-0 rounded-xl lg:hidden"
+        aria-label={mobileMenuOpen ? 'Fechar menu de navegação' : 'Abrir menu de navegação'}
+        aria-expanded={mobileMenuOpen}
+        aria-controls="menu-principal-mobile"
+        onClick={onMenuClick}
+      >
         <Menu className="h-5 w-5" />
       </Button>
 

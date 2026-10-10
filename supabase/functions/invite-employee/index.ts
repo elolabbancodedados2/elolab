@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { usuariosNoLimite, validarLimitesDeEquipe } from "../_shared/limitesClinica.ts";
 import { corsPadrao } from '../_shared/cors.ts';
+import { sendBrandedBrevoRequest } from '../_shared/brevoEmail.ts';
 
 // Atribuído em cada request (reflete a origem permitida). Helpers
 // top-level (json/reply) capturam esta variável por closure.
@@ -17,6 +18,17 @@ const ROLE_LABELS: Record<string, string> = {
 };
 
 const ALLOWED_ROLES = new Set(["admin", "medico", "recepcao", "enfermagem", "financeiro"]);
+
+function escapeHtml(value: string): string {
+  const entities: Record<string, string> = {
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  };
+  return value.replace(/[&<>"']/g, (character) => entities[character] || character);
+}
 
 Deno.serve(async (req) => {
   corsHeaders = { ...corsPadrao(req),};
@@ -82,18 +94,18 @@ Deno.serve(async (req) => {
     // Limite de usuários definido pela plataforma (Limites e Consumo).
     const cotaUsuarios = await usuariosNoLimite(service, clinicaId);
     if (cotaUsuarios.atingido) {
-      return json({ success: false, error: `A clínica atingiu o limite de ${cotaUsuarios.limite} usuários ativos. Desative alguém ou fale com o suporte para ampliar.` }, 403);
+      return json({ success: false, error: `A clínica atingiu o limite de ${cotaUsuarios.limite} assentos contabilizados. Fale com o suporte para revisar as contas consideradas ou solicitar ampliação do limite.` }, 403);
     }
 
     // Cria convite
     const token = crypto.randomUUID();
-    const { error: insertErr } = await service.from("convites_funcionario").insert({
-      clinica_id: clinicaId,
-      email,
-      nome,
-      roles,
-      token,
-      invited_by: user.id,
+    const { error: insertErr } = await service.rpc("create_employee_invitation", {
+      _clinica_id: clinicaId,
+      _email: email,
+      _nome: nome,
+      _roles: roles,
+      _token: token,
+      _invited_by: user.id,
     });
     if (insertErr) {
       console.error("insert convite", insertErr);
@@ -105,19 +117,20 @@ Deno.serve(async (req) => {
     const clinicaNome = (clinica as any)?.nome || "EloLab";
     const inviterNome = (profile as any)?.nome || "a equipe";
 
+    let emailStatus: "sent" | "not_configured" | "failed" = "not_configured";
     if (brevoKey) {
       const html = `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;background:#f4f4f5;padding:24px">
         <div style="max-width:560px;margin:auto;background:#fff;border-radius:12px;padding:32px">
-          <h2 style="color:#10b981">Você foi convidado para ${clinicaNome}</h2>
-          <p>Olá <strong>${nome}</strong>,</p>
-          <p>${inviterNome} convidou você para entrar na <strong>${clinicaNome}</strong> com o(s) papel(is): <strong>${rolesDisplay}</strong>.</p>
+          <h2 style="color:#10b981">Você foi convidado para ${escapeHtml(clinicaNome)}</h2>
+          <p>Olá <strong>${escapeHtml(nome)}</strong>,</p>
+          <p>${escapeHtml(inviterNome)} convidou você para entrar na <strong>${escapeHtml(clinicaNome)}</strong> com o(s) papel(is): <strong>${escapeHtml(rolesDisplay)}</strong>.</p>
           <p><a href="${inviteUrl}" style="display:inline-block;background:#10b981;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none">Aceitar convite</a></p>
           <p style="color:#666;font-size:12px">Link: ${inviteUrl}<br>Válido por 7 dias.</p>
         </div></body></html>`;
       try {
-        await fetch("https://api.brevo.com/v3/smtp/email", {
+        const emailResponse = await sendBrandedBrevoRequest({
           method: "POST",
-          headers: { "api-key": brevoKey, "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             sender: { name: "EloLab", email: "noreply@elolab.com.br" },
             to: [{ email, name: nome }],
@@ -125,12 +138,19 @@ Deno.serve(async (req) => {
             htmlContent: html,
           }),
         });
+        if (emailResponse.ok) {
+          emailStatus = "sent";
+        } else {
+          emailStatus = "failed";
+          console.error("brevo rejected invite email", { status: emailResponse.status });
+        }
       } catch (e) {
+        emailStatus = "failed";
         console.error("brevo", e);
       }
     }
 
-    return json({ success: true, token, inviteUrl });
+    return json({ success: true, token, inviteUrl, emailStatus });
   } catch (e: any) {
     console.error(e);
     return json({ success: false, error: e?.message ?? "Erro" }, 500);

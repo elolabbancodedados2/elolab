@@ -59,6 +59,9 @@ Deno.serve(async (req) => {
     const provedor = String(body.provedor || '');
     const integracao = integracaoDoCatalogo(provedor);
     if (!integracao) return json({ error: 'Integração não disponível.' }, 404);
+    if (provedor === 'mercado_pago' && action === 'connect') {
+      return json({ error: 'Conecte sua conta pelo fluxo seguro de autorização do Mercado Pago.' }, 400);
+    }
 
     const referenciaId = body.referencia_id ? String(body.referencia_id) : null;
     if (integracao.escopo === 'profissional') {
@@ -117,12 +120,25 @@ Deno.serve(async (req) => {
 
       // Upsert manual: o índice único usa coalesce(referencia_id), que o
       // onConflict do PostgREST não alcança.
-      const { data: existente } = await filtro(service.from('integracoes_clinica').select('id')
+      const { data: existente, error: erroBusca } = await filtro(service.from('integracoes_clinica').select('id, updated_at')
         .eq('clinica_id', clinicaId).eq('provedor', provedor)).maybeSingle();
-      const { error } = existente
+      if (erroBusca) throw erroBusca;
+
+      const versaoEsperada = typeof body.versao_esperada === 'string' ? body.versao_esperada : null;
+      if (existente && (!versaoEsperada || versaoEsperada !== (existente as any).updated_at)) {
+        return json({ error: 'Outra pessoa alterou esta integração. Atualize a tela antes de tentar novamente.' }, 409);
+      }
+      if (!existente && versaoEsperada) {
+        return json({ error: 'Esta integração foi removida. Atualize a tela antes de conectar novamente.' }, 409);
+      }
+
+      const { data: salvo, error } = existente
         ? await service.from('integracoes_clinica').update(linha).eq('id', (existente as any).id)
-        : await service.from('integracoes_clinica').insert(linha);
+          .eq('updated_at', versaoEsperada).select('id').maybeSingle()
+        : await service.from('integracoes_clinica').insert(linha).select('id').maybeSingle();
+      if (error?.code === '23505') return json({ error: 'Outra pessoa conectou esta integração. Atualize a tela antes de tentar novamente.' }, 409);
       if (error) throw error;
+      if (!salvo) return json({ error: 'Outra pessoa alterou esta integração. Atualize a tela antes de tentar novamente.' }, 409);
 
       await service.from('audit_log').insert({
         action: 'update', collection: 'integracoes_clinica', record_id: `${provedor}:${referenciaId ?? 'clinica'}`,

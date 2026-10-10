@@ -130,11 +130,11 @@ export default function OnboardingClinica() {
         const definition = definitions[step.key];
         const Icon = definition.icon;
         const countLabel = {
-          team: step.count === 1 ? '1 pessoa ativa' : `${step.count} pessoas ativas`,
-          schedule: step.count === 1 ? '1 profissional com horários disponíveis' : `${step.count} profissionais com horários disponíveis`,
-          services: step.count === 1 ? '1 serviço ativo' : `${step.count} serviços ativos`,
-          whatsapp: step.count === 1 ? '1 sessão conectada' : `${step.count} sessões conectadas`,
-          appointment: step.count === 1 ? '1 agendamento cadastrado' : `${step.count} agendamentos cadastrados`,
+          team: step.count === 0 ? 'Nenhuma outra pessoa ativa com função de acesso' : step.count === 1 ? '1 pessoa ativa com função de acesso' : `${step.count} pessoas ativas com função de acesso`,
+          schedule: step.count === 0 ? 'Nenhum profissional com horários disponíveis ainda' : step.count === 1 ? '1 profissional com horários disponíveis' : `${step.count} profissionais com horários disponíveis`,
+          services: step.count === 0 ? 'Nenhum serviço ativo ainda' : step.count === 1 ? '1 serviço ativo' : `${step.count} serviços ativos`,
+          whatsapp: step.count === 0 ? 'Nenhuma sessão conectada ainda' : step.count === 1 ? '1 sessão conectada' : `${step.count} sessões conectadas`,
+          appointment: step.count === 0 ? 'Nenhum agendamento cadastrado ainda' : step.count === 1 ? '1 agendamento cadastrado' : `${step.count} agendamentos cadastrados`,
         }[step.key];
         return <Card key={step.key} className={step.complete ? 'border-emerald-500/40' : ''}>
           <CardHeader className="pb-3">
@@ -152,7 +152,7 @@ export default function OnboardingClinica() {
             </div>
           </CardHeader>
           <CardContent>
-            {step.count > 0 && <p className="mb-3 text-sm text-muted-foreground">{countLabel}</p>}
+            <p className="mb-3 text-sm text-muted-foreground">{countLabel}</p>
             <Button asChild variant={step.complete ? 'outline' : 'default'} className="w-full sm:w-auto">
               <Link to={definition.href}>{step.complete ? 'Revisar' : definition.action}<ArrowRight className="ml-2 h-4 w-4" /></Link>
             </Button>

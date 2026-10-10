@@ -26,7 +26,7 @@ interface AssinaturaPlano {
   trial_fim: string | null;
 }
 
-export function usePlanos() {
+export function usePlanos(enabled = true) {
   return useQuery({
     queryKey: ['planos'],
     queryFn: async () => {
@@ -38,13 +38,14 @@ export function usePlanos() {
       if (error) throw error;
       return data as unknown as Plano[];
     },
+    enabled,
   });
 }
 
 export function useUserPlan() {
-  const { user } = useSupabaseAuth();
+  const { user, isPlatformAdmin } = useSupabaseAuth();
 
-  const { data: assinatura, isLoading } = useQuery({
+  const assinaturaQuery = useQuery({
     queryKey: ['user_plan', user?.id],
     queryFn: async () => {
       if (!user) return null;
@@ -52,20 +53,19 @@ export function useUserPlan() {
       const { data: activePlan, error: activeError } = await supabase.rpc('get_user_plan' as any, {
         _user_id: user.id,
       });
-      if (activeError) {
-        console.error('Erro ao buscar plano:', activeError);
-      }
+      if (activeError) throw activeError;
       const active = (activePlan as unknown as AssinaturaPlano[])?.[0] || null;
       if (active) return active;
 
       // If no active plan, check for expired/cancelled
-      const { data: expiredData } = await supabase
+      const { data: expiredData, error: expiredError } = await supabase
         .from('assinaturas_plano' as any)
         .select('plano_slug, status, em_trial, trial_fim, planos!inner(nome)')
         .eq('user_id', user.id)
         .in('status', ['expirada', 'cancelada'])
         .order('updated_at', { ascending: false })
         .limit(1);
+      if (expiredError) throw expiredError;
 
       if (expiredData && (expiredData as any[]).length > 0) {
         const exp = (expiredData as any[])[0];
@@ -80,10 +80,14 @@ export function useUserPlan() {
 
       return null;
     },
-    enabled: !!user,
+    // Platform admins have product access independent of a customer plan.
+    // Do not surface a legacy/stale customer row as their subscription.
+    enabled: !!user && !isPlatformAdmin,
   });
+  const assinatura = isPlatformAdmin ? null : assinaturaQuery.data;
 
   const hasFeature = (feature: string): boolean => {
+    if (isPlatformAdmin) return true;
     if (!assinatura) return false;
     if (assinatura.plano_slug === 'elolab-ultra') return true;
     if (assinatura.plano_slug === 'elolab-max') {
@@ -104,7 +108,11 @@ export function useUserPlan() {
 
   return {
     plan: assinatura,
-    isLoading,
+    isExempt: isPlatformAdmin,
+    isLoading: !isPlatformAdmin && assinaturaQuery.isLoading,
+    isError: !isPlatformAdmin && assinaturaQuery.isError,
+    error: isPlatformAdmin ? null : assinaturaQuery.error,
+    refetch: assinaturaQuery.refetch,
     hasFeature,
     isUltra,
     isMax,
@@ -112,7 +120,7 @@ export function useUserPlan() {
     isTrial,
     trialEnd,
     trialDaysLeft,
-    planName: assinatura?.plano_nome || null,
+    planName: isPlatformAdmin ? 'Acesso da plataforma' : assinatura?.plano_nome || null,
     planSlug: assinatura?.plano_slug || null,
   };
 }

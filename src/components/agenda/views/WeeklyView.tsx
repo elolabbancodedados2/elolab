@@ -4,6 +4,7 @@ import { addDays, format, isWeekend, parseISO, startOfWeek } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
+import { todaySaoPauloDateOnly } from '@/lib/dateOnly';
 
 interface Props {
   date: string;
@@ -23,7 +24,7 @@ export function WeeklyView({ date, agendamentos, colorFor, medicoById = {}, onDa
     });
   }, [date]);
 
-  const today = format(new Date(), 'yyyy-MM-dd');
+  const today = todaySaoPauloDateOnly();
 
   return (
     <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">

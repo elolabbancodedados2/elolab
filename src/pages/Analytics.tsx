@@ -1,5 +1,6 @@
 import { nomeMedico } from '@/lib/formatters';
 import { useState, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import { supabase } from '@/integrations/supabase/client';
@@ -17,9 +18,9 @@ import {
 import {
   TrendingUp, Users, Calendar as CalendarIcon, DollarSign, Activity, Stethoscope,
   ArrowUp, ArrowDown, Filter, Download,
-  Star,
+  Star, FileBarChart,
 } from 'lucide-react';
-import { format, subDays, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, differenceInDays } from 'date-fns';
+import { format, addDays, subDays, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, differenceInDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { valorRealizado } from '@/lib/lancamentos';
@@ -27,8 +28,57 @@ import { DashboardSkeleton } from '@/components/ui/loading-skeleton';
 import { ErrorState } from '@/components/ErrorState';
 import { EmptyState } from '@/components/EmptyState';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
+import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
+import { dateOnlyInTimeZone, inicioDoDiaEmFusoIso, parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 
 const COLORS = ['hsl(var(--primary))', 'hsl(var(--success))', 'hsl(var(--warning))', 'hsl(var(--info))', 'hsl(var(--destructive))'];
+const STATUS_COMPARECEU = new Set([
+  'aguardando', 'aguardando_pagamento', 'aguardando_triagem', 'em_triagem',
+  'em_atendimento', 'finalizado', 'atendimento_finalizado', 'aguardando_pagamento_adicional',
+]);
+const STATUS_FINALIZADO = new Set(['finalizado', 'atendimento_finalizado']);
+
+function diaFinanceiro(value?: string | null): string | null {
+  if (!value) return null;
+  return value.includes('T') || value.includes(' ')
+    ? dateOnlyInTimeZone(new Date(value), 'America/Sao_Paulo')
+    : value.slice(0, 10);
+}
+
+function eventosFinanceirosDoPeriodo(lancamentos: any[], pagamentos: any[], inicio: Date, fim: Date) {
+  const inicioDia = format(inicio, 'yyyy-MM-dd');
+  const fimDia = format(fim, 'yyyy-MM-dd');
+  const lancamentosComPagamentos = new Set<string>(pagamentos.map(p => p.lancamento_id));
+  const legados = lancamentos
+    .filter(l => ['pago', 'parcial'].includes(l.status) && !lancamentosComPagamentos.has(l.id))
+    .flatMap(l => {
+      const data = diaFinanceiro(l.data_pagamento || l.data);
+      return data && data >= inicioDia && data <= fimDia
+        ? [{ id: l.id, lancamentoId: l.id, agendamentoId: l.agendamento_id, tipo: l.tipo, data, valor: valorRealizado(l), formaPagamento: l.forma_pagamento || null, estorno: false }]
+        : [];
+    });
+  const individuais = pagamentos.flatMap(p => {
+    const conta = Array.isArray(p.lancamentos) ? p.lancamentos[0] : p.lancamentos;
+    if (!conta || !['receita', 'despesa'].includes(conta.tipo) || !p.data_pagamento) return [];
+    const eventos: any[] = [];
+    const dataPagamento = diaFinanceiro(p.data_pagamento);
+    if (dataPagamento && dataPagamento >= inicioDia && dataPagamento <= fimDia) eventos.push({
+      id: p.id, lancamentoId: p.lancamento_id, agendamentoId: conta.agendamento_id,
+      tipo: conta.tipo, data: dataPagamento, valor: Number(p.valor),
+      formaPagamento: p.forma_pagamento || null, estorno: false,
+    });
+    if (p.estornado_em) {
+      const dataEstorno = diaFinanceiro(p.estornado_em);
+      if (dataEstorno && dataEstorno >= inicioDia && dataEstorno <= fimDia) eventos.push({
+        id: `${p.id}:estorno`, lancamentoId: p.lancamento_id, agendamentoId: conta.agendamento_id,
+        tipo: conta.tipo, data: dataEstorno, valor: -Number(p.valor),
+        formaPagamento: p.forma_pagamento || null, estorno: true,
+      });
+    }
+    return eventos;
+  });
+  return [...legados, ...individuais];
+}
 
 const PERIOD_PRESETS = [
   { label: 'Últimos 7 dias', value: '7d', days: 7 },
@@ -39,18 +89,31 @@ const PERIOD_PRESETS = [
   { label: 'Personalizado', value: 'custom', days: 0 },
 ];
 
+function limitesTimestampSaoPaulo(inicio: Date, fim: Date) {
+  const primeiroDia = format(inicio, 'yyyy-MM-dd');
+  const diaSeguinteAoFim = format(addDays(fim, 1), 'yyyy-MM-dd');
+  return {
+    inicio: inicioDoDiaEmFusoIso(primeiroDia, 'America/Sao_Paulo'),
+    fimExclusivo: inicioDoDiaEmFusoIso(diaSeguinteAoFim, 'America/Sao_Paulo'),
+  };
+}
+
 function getDateRange(preset: string, customFrom?: Date, customTo?: Date): { from: Date; to: Date } {
-  const now = new Date();
+  const now = parseDateOnly(todaySaoPauloDateOnly())!;
   switch (preset) {
-    case '7d': return { from: subDays(now, 7), to: now };
-    case '30d': return { from: subDays(now, 30), to: now };
-    case '90d': return { from: subDays(now, 90), to: now };
-    case 'month': return { from: startOfMonth(now), to: endOfMonth(now) };
+    case '7d': return { from: subDays(now, 6), to: now };
+    case '30d': return { from: subDays(now, 29), to: now };
+    case '90d': return { from: subDays(now, 89), to: now };
+    case 'month': return { from: startOfMonth(now), to: now };
     case 'prev_month': {
       const prev = subMonths(now, 1);
       return { from: startOfMonth(prev), to: endOfMonth(prev) };
     }
-    case 'custom': return { from: customFrom || subDays(now, 30), to: customTo || now };
+    case 'custom': {
+      const from = customFrom || subDays(now, 29);
+      const to = customTo || now;
+      return from <= to ? { from, to } : { from: to, to: from };
+    }
     default: return { from: subDays(now, 30), to: now };
   }
 }
@@ -58,7 +121,7 @@ function getDateRange(preset: string, customFrom?: Date, customTo?: Date): { fro
 interface KPICardProps {
   title: string;
   value: string | number;
-  change?: number;
+  change?: number | null;
   icon: React.ReactNode;
   description?: string;
 }
@@ -73,9 +136,11 @@ function KPICard({ title, value, change, icon, description }: KPICardProps) {
               <p className="text-sm text-muted-foreground">{title}</p>
               <p className="text-3xl font-bold mt-1 tabular-nums">{value}</p>
               {change !== undefined && (
-                <div className={cn('flex items-center gap-1 text-sm mt-1', change >= 0 ? 'text-success' : 'text-destructive')}>
-                  {change >= 0 ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
-                  {Math.abs(change)}% vs período anterior
+                <div className={cn('flex items-center gap-1 text-sm mt-1', change === null ? 'text-muted-foreground' : change >= 0 ? 'text-success' : 'text-destructive')}>
+                  {change === null ? 'Sem base anterior para comparar' : <>
+                    {change > 0 ? <ArrowUp className="h-3 w-3" /> : change < 0 ? <ArrowDown className="h-3 w-3" /> : <Activity className="h-3 w-3" />}
+                    {Math.abs(change)}% vs período anterior
+                  </>}
                 </div>
               )}
               {description && <p className="text-xs text-muted-foreground mt-1">{description}</p>}
@@ -97,114 +162,189 @@ export default function Analytics() {
   const [showComparison, setShowComparison] = useState(false);
 
   const range = useMemo(() => getDateRange(periodPreset, customFrom, customTo), [periodPreset, customFrom, customTo]);
-  const rangeDays = differenceInDays(range.to, range.from) || 1;
+  const timestampRange = useMemo(() => limitesTimestampSaoPaulo(range.from, range.to), [range]);
+  const rangeDays = differenceInDays(range.to, range.from) + 1;
   const prevRange = useMemo(() => ({
     from: subDays(range.from, rangeDays),
     to: subDays(range.to, rangeDays),
   }), [range, rangeDays]);
+  const previousTimestampRange = useMemo(() => limitesTimestampSaoPaulo(prevRange.from, prevRange.to), [prevRange]);
 
   // ─── Data queries ───────────────────────────────────────
   const { data: agendamentos = [], isLoading: loadingAg, error: errorAg, refetch: refetchAg } = useQuery({
     queryKey: ['analytics-ag', ...scopeKey, range.from.toISOString(), range.to.toISOString()],
-    queryFn: async () => {
-      const { data, error } = await supabase.from('agendamentos')
+    enabled: !!profile?.clinica_id,
+    queryFn: async () => buscarEmBlocos<any>(() => supabase.from('agendamentos')
         .select('*, medicos(nome, especialidade)')
+        .eq('clinica_id', profile!.clinica_id!)
         .gte('data', format(range.from, 'yyyy-MM-dd'))
-        .lte('data', format(range.to, 'yyyy-MM-dd'));
-      if (error) throw error;
-      return data || [];
-    },
+        .lte('data', format(range.to, 'yyyy-MM-dd'))
+        .order('data').order('id')),
   });
 
-  const { data: prevAgendamentos = [], error: errorPrevAg } = useQuery({
+  const prevAgendamentosQuery = useQuery({
     queryKey: ['analytics-ag-prev', ...scopeKey, prevRange.from.toISOString(), prevRange.to.toISOString()],
     enabled: showComparison && !!profile?.clinica_id,
-    queryFn: async () => {
-      const { data, error } = await supabase.from('agendamentos')
+    queryFn: async () => buscarEmBlocos<any>(() => supabase.from('agendamentos')
         .select('*')
+        .eq('clinica_id', profile!.clinica_id!)
         .gte('data', format(prevRange.from, 'yyyy-MM-dd'))
-        .lte('data', format(prevRange.to, 'yyyy-MM-dd'));
-      if (error) throw error;
-      return data || [];
-    },
+        .lte('data', format(prevRange.to, 'yyyy-MM-dd'))
+        .order('data').order('id')),
   });
 
-  const { data: lancamentos = [], isLoading: loadingLanc, error: errorLanc, refetch: refetchLanc } = useQuery({
-    queryKey: ['analytics-lanc', ...scopeKey, range.from.toISOString(), range.to.toISOString()],
-    queryFn: async () => {
-      const { data, error } = await supabase.from('lancamentos')
+  const lancamentosEmissaoQuery = useQuery({
+    queryKey: ['analytics-lanc-emissao', ...scopeKey, range.from.toISOString(), range.to.toISOString()],
+    enabled: !!profile?.clinica_id,
+    queryFn: async () => buscarEmBlocos<any>(() => supabase.from('lancamentos')
         .select('*')
+        .eq('clinica_id', profile!.clinica_id!)
         .gte('data', format(range.from, 'yyyy-MM-dd'))
-        .lte('data', format(range.to, 'yyyy-MM-dd'));
-      if (error) throw error;
-      return data || [];
-    },
+        .lte('data', format(range.to, 'yyyy-MM-dd'))
+        .order('data').order('id')),
+  });
+  const prevAgendamentos = prevAgendamentosQuery.data ?? [];
+  const errorPrevAg = prevAgendamentosQuery.error;
+
+  const lancamentosPagamentoQuery = useQuery({
+    queryKey: ['analytics-lanc-pagamento', ...scopeKey, range.from.toISOString(), range.to.toISOString()],
+    enabled: !!profile?.clinica_id,
+    queryFn: async () => buscarEmBlocos<any>(() => supabase.from('lancamentos')
+        .select('*')
+        .eq('clinica_id', profile!.clinica_id!)
+        .gte('data_pagamento', format(range.from, 'yyyy-MM-dd'))
+        .lte('data_pagamento', format(range.to, 'yyyy-MM-dd'))
+        .order('data_pagamento').order('id')),
   });
 
-  const { data: prevLancamentos = [], error: errorPrevLanc } = useQuery({
-    queryKey: ['analytics-lanc-prev', ...scopeKey, prevRange.from.toISOString(), prevRange.to.toISOString()],
+  const lancamentos = useMemo(() => {
+    const unique = new Map<string, any>();
+    for (const item of [...(lancamentosEmissaoQuery.data ?? []), ...(lancamentosPagamentoQuery.data ?? [])]) unique.set(item.id, item);
+    return [...unique.values()];
+  }, [lancamentosEmissaoQuery.data, lancamentosPagamentoQuery.data]);
+
+  const prevLancamentosEmissaoQuery = useQuery({
+    queryKey: ['analytics-lanc-prev-emissao', ...scopeKey, prevRange.from.toISOString(), prevRange.to.toISOString()],
     enabled: showComparison && !!profile?.clinica_id,
-    queryFn: async () => {
-      const { data, error } = await supabase.from('lancamentos')
+    queryFn: async () => buscarEmBlocos<any>(() => supabase.from('lancamentos')
         .select('*')
+        .eq('clinica_id', profile!.clinica_id!)
         .gte('data', format(prevRange.from, 'yyyy-MM-dd'))
-        .lte('data', format(prevRange.to, 'yyyy-MM-dd'));
-      if (error) throw error;
-      return data || [];
-    },
+        .lte('data', format(prevRange.to, 'yyyy-MM-dd'))
+        .order('data').order('id')),
   });
 
-  const { data: triagens = [], error: errorTri } = useQuery({
-    queryKey: ['analytics-tri', ...scopeKey, range.from.toISOString(), range.to.toISOString()],
-    queryFn: async () => {
-      const { data, error } = await supabase.from('triagens')
+  const prevLancamentosPagamentoQuery = useQuery({
+    queryKey: ['analytics-lanc-prev-pagamento', ...scopeKey, prevRange.from.toISOString(), prevRange.to.toISOString()],
+    enabled: showComparison && !!profile?.clinica_id,
+    queryFn: async () => buscarEmBlocos<any>(() => supabase.from('lancamentos')
         .select('*')
-        .gte('created_at', range.from.toISOString())
-        .lte('created_at', range.to.toISOString());
-      if (error) throw error;
-      return data || [];
-    },
+        .eq('clinica_id', profile!.clinica_id!)
+        .gte('data_pagamento', format(prevRange.from, 'yyyy-MM-dd'))
+        .lte('data_pagamento', format(prevRange.to, 'yyyy-MM-dd'))
+        .order('data_pagamento').order('id')),
   });
 
-  const { data: feedbacks = [], error: errorFeedback } = useQuery({
-    queryKey: ['analytics-feedback', ...scopeKey, range.from.toISOString(), range.to.toISOString()],
+  const prevLancamentos = useMemo(() => {
+    const unique = new Map<string, any>();
+    for (const item of [...(prevLancamentosEmissaoQuery.data ?? []), ...(prevLancamentosPagamentoQuery.data ?? [])]) unique.set(item.id, item);
+    return [...unique.values()];
+  }, [prevLancamentosEmissaoQuery.data, prevLancamentosPagamentoQuery.data]);
+
+  const pagamentosQuery = useQuery({
+    queryKey: ['analytics-pagamentos', ...scopeKey, timestampRange.inicio, timestampRange.fimExclusivo,
+      showComparison ? previousTimestampRange.inicio : null, showComparison ? previousTimestampRange.fimExclusivo : null],
+    enabled: !!profile?.clinica_id,
     queryFn: async () => {
-      const { data, error } = await supabase.from('feedbacks_nps')
-        .select('id, nota, comentario, created_at, pacientes(nome), medicos(nome)')
-        .gte('created_at', range.from.toISOString()).lte('created_at', range.to.toISOString())
-        .order('created_at', { ascending: false });
-      if (error) throw error;
-      return data || [];
+      const selecionar = () => supabase.from('pagamentos')
+        .select('id,lancamento_id,valor,data_pagamento,estornado_em,forma_pagamento,lancamentos!inner(agendamento_id,tipo,categoria,clinica_id)')
+        .eq('clinica_id', profile!.clinica_id!)
+        .eq('lancamentos.clinica_id', profile!.clinica_id!)
+        .order('id');
+      const periodos = [timestampRange, ...(showComparison ? [previousTimestampRange] : [])];
+      const eventos = await Promise.all(periodos.flatMap(periodo => [
+        buscarEmBlocos<any>(() => selecionar()
+          .gte('data_pagamento', periodo.inicio)
+          .lt('data_pagamento', periodo.fimExclusivo)),
+        buscarEmBlocos<any>(() => selecionar()
+          .not('estornado_em', 'is', null)
+          .gte('estornado_em', periodo.inicio)
+          .lt('estornado_em', periodo.fimExclusivo)),
+      ]));
+      return [...new Map(eventos.flat().map(pagamento => [pagamento.id, pagamento] as const)).values()];
     },
   });
+  const pagamentos = pagamentosQuery.data ?? [];
+
+  const triagensQuery = useQuery({
+    queryKey: ['analytics-tri', ...scopeKey, range.from.toISOString(), range.to.toISOString()],
+    enabled: !!profile?.clinica_id,
+    queryFn: async () => buscarEmBlocos<any>(() => supabase.from('triagens')
+        .select('*')
+        .eq('clinica_id', profile!.clinica_id!)
+        .gte('created_at', timestampRange.inicio)
+        .lt('created_at', timestampRange.fimExclusivo)
+        .order('created_at').order('id')),
+  });
+  const triagens = triagensQuery.data ?? [];
+
+  const feedbacksQuery = useQuery({
+    queryKey: ['analytics-feedback', ...scopeKey, range.from.toISOString(), range.to.toISOString()],
+    enabled: !!profile?.clinica_id,
+    queryFn: async () => buscarEmBlocos<any>(() => supabase.from('feedbacks_nps')
+        .select('id, nota, comentario, created_at, pacientes(nome), medicos(nome)')
+        .eq('clinica_id', profile!.clinica_id!)
+        .gte('created_at', timestampRange.inicio)
+        .lt('created_at', timestampRange.fimExclusivo)
+        .order('created_at', { ascending: false }).order('id')),
+  });
+  const feedbacks = feedbacksQuery.data ?? [];
 
   const mediaSatisfacao = feedbacks.length
     ? feedbacks.reduce((total: number, item: any) => total + item.nota, 0) / feedbacks.length : 0;
 
   // ─── KPI calculations ──────────────────────────────────
   const totalAg = agendamentos.length;
-  const finalizados = agendamentos.filter(a => a.status === 'finalizado').length;
+  const compareceram = agendamentos.filter(a => STATUS_COMPARECEU.has(a.status)).length;
+  const faltaram = agendamentos.filter(a => a.status === 'faltou').length;
   const cancelados = agendamentos.filter(a => a.status === 'cancelado').length;
-  const taxaComparecimento = totalAg > 0 ? Math.round((finalizados / totalAg) * 100) : 0;
+  const baseComparecimento = compareceram + faltaram;
+  const taxaComparecimento = baseComparecimento > 0 ? Math.round((compareceram / baseComparecimento) * 100) : 0;
   const taxaCancelamento = totalAg > 0 ? Math.round((cancelados / totalAg) * 100) : 0;
 
   const prevTotalAg = prevAgendamentos.length;
-  const prevFinalizados = prevAgendamentos.filter((a: any) => a.status === 'finalizado').length;
-  const prevTaxaComp = prevTotalAg > 0 ? Math.round((prevFinalizados / prevTotalAg) * 100) : 0;
+  const prevCompareceram = prevAgendamentos.filter((a: any) => STATUS_COMPARECEU.has(a.status)).length;
+  const prevFaltaram = prevAgendamentos.filter((a: any) => a.status === 'faltou').length;
+  const prevBaseComparecimento = prevCompareceram + prevFaltaram;
+  const prevTaxaComp = prevBaseComparecimento > 0 ? Math.round((prevCompareceram / prevBaseComparecimento) * 100) : 0;
 
-  const receitaTotal = lancamentos.filter(l => l.tipo === 'receita' && l.status === 'pago').reduce((acc, l) => acc + valorRealizado(l), 0);
-  const despesaTotal = lancamentos.filter(l => l.tipo === 'despesa' && l.status === 'pago').reduce((acc, l) => acc + valorRealizado(l), 0);
+  const eventosFinanceiros = useMemo(() => eventosFinanceirosDoPeriodo(lancamentos, pagamentos, range.from, range.to), [lancamentos, pagamentos, range]);
+  const eventosFinanceirosAnteriores = useMemo(() => eventosFinanceirosDoPeriodo(prevLancamentos, pagamentos, prevRange.from, prevRange.to), [prevLancamentos, pagamentos, prevRange]);
+  const receitaTotal = eventosFinanceiros.filter(evento => evento.tipo === 'receita').reduce((acc, evento) => acc + evento.valor, 0);
+  const despesaTotal = eventosFinanceiros.filter(evento => evento.tipo === 'despesa').reduce((acc, evento) => acc + evento.valor, 0);
   const lucroLiquido = receitaTotal - despesaTotal;
-  const margemLucro = receitaTotal > 0 ? Math.round((lucroLiquido / receitaTotal) * 100) : 0;
-  const ticketMedio = finalizados > 0 ? receitaTotal / finalizados : 0;
+  const margemLucro = receitaTotal > 0 ? Math.round((lucroLiquido / receitaTotal) * 100) : null;
+  const receitaAtendimentos = eventosFinanceiros.filter(evento => evento.tipo === 'receita' && evento.agendamentoId).reduce((acc, evento) => acc + evento.valor, 0);
+  const atendimentosComRecebimento = new Set(eventosFinanceiros
+    .filter(evento => evento.tipo === 'receita' && evento.agendamentoId)
+    .map(evento => evento.agendamentoId));
+  const ticketMedio = atendimentosComRecebimento.size > 0 ? receitaAtendimentos / atendimentosComRecebimento.size : 0;
 
-  const prevReceita = prevLancamentos.filter((l: any) => l.tipo === 'receita' && l.status === 'pago').reduce((acc: number, l: any) => acc + valorRealizado(l), 0);
-  const prevDespesa = prevLancamentos.filter((l: any) => l.tipo === 'despesa' && l.status === 'pago').reduce((acc: number, l: any) => acc + valorRealizado(l), 0);
+  const prevReceita = eventosFinanceirosAnteriores.filter(evento => evento.tipo === 'receita').reduce((acc, evento) => acc + evento.valor, 0);
+  const prevDespesa = eventosFinanceirosAnteriores.filter(evento => evento.tipo === 'despesa').reduce((acc, evento) => acc + evento.valor, 0);
+  const receitaAnteriorAtendimentos = eventosFinanceirosAnteriores.filter(evento => evento.tipo === 'receita' && evento.agendamentoId).reduce((acc, evento) => acc + evento.valor, 0);
+  const atendimentosAnterioresComRecebimento = new Set(eventosFinanceirosAnteriores
+    .filter(evento => evento.tipo === 'receita' && evento.agendamentoId)
+    .map(evento => evento.agendamentoId));
+  const ticketMedioAnterior = atendimentosAnterioresComRecebimento.size > 0
+    ? receitaAnteriorAtendimentos / atendimentosAnterioresComRecebimento.size
+    : 0;
 
   const calcChange = (current: number, previous: number) => {
-    if (previous === 0) return current > 0 ? 100 : 0;
+    if (previous === 0) return null;
     return Math.round(((current - previous) / previous) * 100);
   };
+  const changeDespesas = calcChange(despesaTotal, prevDespesa);
 
   // ─── Productivity per doctor ────────────────────────────
   const produtividade = useMemo(() => {
@@ -214,7 +354,7 @@ export default function Analytics() {
       const esp = a.medicos?.especialidade || 'Geral';
       if (!map[a.medico_id]) map[a.medico_id] = { nome: medicoNome, especialidade: esp, total: 0, finalizados: 0 };
       map[a.medico_id].total++;
-      if (a.status === 'finalizado') map[a.medico_id].finalizados++;
+      if (STATUS_FINALIZADO.has(a.status)) map[a.medico_id].finalizados++;
     });
     return Object.values(map).sort((a, b) => b.total - a.total);
   }, [agendamentos]);
@@ -224,26 +364,32 @@ export default function Analytics() {
   const chartInterval = days.length > 60 ? 'week' : 'day';
 
   const agPorDia = useMemo(() => {
-    const slice = chartInterval === 'week' ? days.filter((_, i) => i % 7 === 0) : days.slice(-14);
-    return slice.map(d => {
-      const ds = format(d, 'yyyy-MM-dd');
+    const points = chartInterval === 'week'
+      ? days.filter((_, i) => i % 7 === 0).map(start => ({ start, end: addDays(start, 6) > range.to ? range.to : addDays(start, 6) }))
+      : days.slice(-14).map(day => ({ start: day, end: day }));
+    return points.map(({ start, end }) => {
+      const inicio = format(start, 'yyyy-MM-dd');
+      const fim = format(end, 'yyyy-MM-dd');
+      const anteriores = showComparison ? { inicio: format(subDays(start, rangeDays), 'yyyy-MM-dd'), fim: format(subDays(end, rangeDays), 'yyyy-MM-dd') } : null;
       return {
-        dia: format(d, chartInterval === 'week' ? 'dd/MM' : 'EEE dd', { locale: ptBR }),
-        agendamentos: agendamentos.filter(a => a.data === ds).length,
-        ...(showComparison ? {
-          anterior: prevAgendamentos.filter((a: any) => {
-            const pd = format(subDays(d, rangeDays), 'yyyy-MM-dd');
-            return a.data === pd;
-          }).length,
-        } : {}),
+        dia: format(start, chartInterval === 'week' ? 'dd/MM' : 'EEE dd', { locale: ptBR }),
+        agendamentos: agendamentos.filter(a => a.data >= inicio && a.data <= fim).length,
+        ...(anteriores ? { anterior: prevAgendamentos.filter((a: any) => a.data >= anteriores.inicio && a.data <= anteriores.fim).length } : {}),
       };
     });
-  }, [agendamentos, prevAgendamentos, days, showComparison, rangeDays, chartInterval]);
+  }, [agendamentos, prevAgendamentos, days, showComparison, rangeDays, chartInterval, range.to]);
 
   const statusAgendamentos = [
-    { name: 'Finalizados', value: agendamentos.filter(a => a.status === 'finalizado').length },
+    { name: 'Finalizados', value: agendamentos.filter(a => STATUS_FINALIZADO.has(a.status)).length },
     { name: 'Confirmados', value: agendamentos.filter(a => a.status === 'confirmado').length },
+    { name: 'Agendados', value: agendamentos.filter(a => a.status === 'agendado').length },
+    { name: 'Aguardando pagamento', value: agendamentos.filter(a => a.status === 'aguardando_pagamento').length },
+    { name: 'Pago', value: agendamentos.filter(a => a.status === 'pago').length },
+    { name: 'Aguardando triagem', value: agendamentos.filter(a => a.status === 'aguardando_triagem').length },
+    { name: 'Em triagem', value: agendamentos.filter(a => a.status === 'em_triagem').length },
+    { name: 'Em atendimento', value: agendamentos.filter(a => a.status === 'em_atendimento').length },
     { name: 'Aguardando', value: agendamentos.filter(a => a.status === 'aguardando').length },
+    { name: 'Aguardando pagamento adicional', value: agendamentos.filter(a => a.status === 'aguardando_pagamento_adicional').length },
     { name: 'Cancelados', value: agendamentos.filter(a => a.status === 'cancelado').length },
     { name: 'Faltou', value: agendamentos.filter(a => a.status === 'faltou').length },
   ].filter(s => s.value > 0);
@@ -256,17 +402,35 @@ export default function Analytics() {
   ].filter(c => c.value > 0);
 
   const fluxoCaixa = useMemo(() => {
-    const slice = chartInterval === 'week' ? days.filter((_, i) => i % 7 === 0) : days.slice(-14);
-    return slice.map(d => {
-      const ds = format(d, 'yyyy-MM-dd');
-      const receitas = lancamentos.filter(l => l.data === ds && l.tipo === 'receita' && l.status === 'pago').reduce((acc, l) => acc + valorRealizado(l), 0);
-      const despesas = lancamentos.filter(l => l.data === ds && l.tipo === 'despesa' && l.status === 'pago').reduce((acc, l) => acc + valorRealizado(l), 0);
-      return { dia: format(d, 'dd/MM'), receitas, despesas, saldo: receitas - despesas };
+    const points = chartInterval === 'week'
+      ? days.filter((_, i) => i % 7 === 0).map(start => ({ start, end: addDays(start, 6) > range.to ? range.to : addDays(start, 6) }))
+      : days.slice(-14).map(day => ({ start: day, end: day }));
+    return points.map(({ start, end }) => {
+      const inicio = format(start, 'yyyy-MM-dd');
+      const fim = format(end, 'yyyy-MM-dd');
+      const eventosDoPeriodo = eventosFinanceiros.filter(evento => evento.data >= inicio && evento.data <= fim);
+      const receitas = eventosDoPeriodo.filter(evento => evento.tipo === 'receita').reduce((acc, evento) => acc + evento.valor, 0);
+      const despesas = eventosDoPeriodo.filter(evento => evento.tipo === 'despesa').reduce((acc, evento) => acc + evento.valor, 0);
+      return { dia: format(start, 'dd/MM'), receitas, despesas, saldo: receitas - despesas };
     });
-  }, [lancamentos, days, chartInterval]);
+  }, [eventosFinanceiros, days, chartInterval, range.to]);
 
-  const isLoadingDados = loadingAg || loadingLanc;
-  const erroDados = errorAg || errorLanc || errorPrevAg || errorPrevLanc || errorTri || errorFeedback;
+  const isLoadingDados = loadingAg || lancamentosEmissaoQuery.isLoading || lancamentosPagamentoQuery.isLoading ||
+    pagamentosQuery.isLoading || triagensQuery.isLoading || feedbacksQuery.isLoading ||
+    (showComparison && (prevAgendamentosQuery.isLoading || prevLancamentosEmissaoQuery.isLoading || prevLancamentosPagamentoQuery.isLoading));
+  const erroDados = errorAg || lancamentosEmissaoQuery.error || lancamentosPagamentoQuery.error || pagamentosQuery.error ||
+    triagensQuery.error || feedbacksQuery.error || (showComparison && (errorPrevAg || prevLancamentosEmissaoQuery.error || prevLancamentosPagamentoQuery.error));
+  const fontesNoLimite = [
+    { nome: 'agendamentos', total: agendamentos.length },
+    { nome: 'lançamentos', total: lancamentos.length },
+    { nome: 'pagamentos', total: pagamentos.length },
+    { nome: 'triagens', total: triagens.length },
+    { nome: 'feedbacks', total: feedbacks.length },
+    ...(showComparison ? [
+      { nome: 'agendamentos do período anterior', total: prevAgendamentos.length },
+      { nome: 'lançamentos do período anterior', total: prevLancamentos.length },
+    ] : []),
+  ].filter(fonte => fonte.total >= LIMITE_BUSCA_EM_BLOCOS).map(fonte => fonte.nome);
 
   if (isLoadingDados) {
     return (
@@ -284,23 +448,75 @@ export default function Analytics() {
           error={erroDados}
           onRetry={() => {
             refetchAg();
-            refetchLanc();
+            lancamentosEmissaoQuery.refetch();
+            lancamentosPagamentoQuery.refetch();
+            pagamentosQuery.refetch();
+            triagensQuery.refetch();
+            feedbacksQuery.refetch();
+            prevLancamentosEmissaoQuery.refetch();
+            prevLancamentosPagamentoQuery.refetch();
+            if (showComparison) prevAgendamentosQuery.refetch();
           }}
         />
       </div>
     );
   }
 
-  const semDados = agendamentos.length === 0 && lancamentos.length === 0;
+  const semDados = agendamentos.length === 0 && lancamentos.length === 0 && triagens.length === 0 && feedbacks.length === 0;
 
   if (semDados) {
     return (
       <div className="pb-8">
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="text-2xl font-bold font-display tracking-tight">Indicadores da clínica</h1>
+            <p className="mt-1 text-sm text-muted-foreground">Escolha outro período para consultar os indicadores.</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">Período</span>
+            <Select value={periodPreset} onValueChange={setPeriodPreset}>
+              <SelectTrigger className="w-[180px] h-9" aria-label="Selecionar período dos indicadores">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {PERIOD_PRESETS.map(p => (
+                  <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        {periodPreset === 'custom' && (
+          <div className="mb-4 flex items-center gap-2">
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" className="h-9 text-xs gap-1">
+                  <CalendarIcon className="h-3.5 w-3.5" />
+                  {customFrom ? format(customFrom, 'dd/MM/yy') : 'De'}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <Calendar mode="single" selected={customFrom} onSelect={setCustomFrom} className="p-3 pointer-events-auto" />
+              </PopoverContent>
+            </Popover>
+            <span className="text-muted-foreground text-xs">→</span>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" className="h-9 text-xs gap-1">
+                  <CalendarIcon className="h-3.5 w-3.5" />
+                  {customTo ? format(customTo, 'dd/MM/yy') : 'Até'}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <Calendar mode="single" selected={customTo} onSelect={setCustomTo} className="p-3 pointer-events-auto" />
+              </PopoverContent>
+            </Popover>
+          </div>
+        )}
         <EmptyState
           icon={Activity}
           title="Ainda não há dados neste período"
-          description="Assim que houver agendamentos ou lançamentos financeiros no intervalo selecionado, os indicadores aparecerão aqui. Experimente ampliar o período."
-          action={{ label: 'Ver últimos 90 dias', onClick: () => setPeriodPreset('90d') }}
+          description={`Não encontramos agendamentos, lançamentos, triagens ou feedbacks entre ${format(range.from, 'dd/MM/yyyy')} e ${format(range.to, 'dd/MM/yyyy')}. Selecione outro período acima.`}
         />
       </div>
     );
@@ -312,11 +528,14 @@ export default function Analytics() {
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold font-display tracking-tight flex items-center gap-2">
-            <Activity className="h-6 w-6 text-primary" /> Dashboard Analytics
+            <Activity className="h-6 w-6 text-primary" /> Indicadores da clínica
           </h1>
-          <p className="text-sm text-muted-foreground mt-1">Métricas e indicadores de desempenho da clínica</p>
+          <p className="text-sm text-muted-foreground mt-1">Acompanhe tendências e compare períodos. Para relatórios detalhados e exportações, acesse Relatórios.</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          <Button variant="outline" size="sm" asChild className="h-9 gap-1.5">
+            <Link to="/relatorios"><FileBarChart className="h-3.5 w-3.5" />Relatórios detalhados</Link>
+          </Button>
           <Select value={periodPreset} onValueChange={setPeriodPreset}>
             <SelectTrigger className="w-[180px] h-9">
               <Filter className="h-3.5 w-3.5 mr-1.5 text-muted-foreground" />
@@ -377,29 +596,32 @@ export default function Analytics() {
           </Badge>
         )}
       </div>
+      {fontesNoLimite.length > 0 && <div role="alert" className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm text-warning-foreground"><Activity className="mt-0.5 h-4 w-4 shrink-0" /><p>O limite de {LIMITE_BUSCA_EM_BLOCOS.toLocaleString('pt-BR')} registros foi atingido em: {fontesNoLimite.join(', ')}. Estes indicadores podem estar incompletos.</p></div>}
 
       {/* KPIs */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <KPICard
           title="Taxa de Comparecimento"
-          value={`${taxaComparecimento}%`}
-          change={showComparison ? calcChange(taxaComparecimento, prevTaxaComp) : undefined}
+          value={baseComparecimento > 0 ? `${taxaComparecimento}%` : '—'}
+          change={showComparison ? (baseComparecimento > 0 ? calcChange(taxaComparecimento, prevTaxaComp) : null) : undefined}
           icon={<Users className="h-6 w-6 text-primary" />}
-          description={`${finalizados} de ${totalAg} consultas`}
+          description={baseComparecimento > 0
+            ? `${compareceram} compareceram de ${baseComparecimento} consultas com desfecho (${faltaram} faltas). Pagamento prévio não conta como presença.`
+            : 'Sem consultas com desfecho no período. Pagamento prévio não conta como presença.'}
         />
         <KPICard
           title="Receita do Período"
           value={receitaTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
           change={showComparison ? calcChange(receitaTotal, prevReceita) : undefined}
           icon={<DollarSign className="h-6 w-6 text-primary" />}
-          description={`Margem: ${margemLucro}%`}
+          description={`Margem: ${margemLucro === null ? '—' : `${margemLucro}%`}`}
         />
         <KPICard
           title="Ticket Médio"
-          value={ticketMedio.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-          change={showComparison ? calcChange(ticketMedio, prevReceita / (prevFinalizados || 1)) : undefined}
+          value={atendimentosComRecebimento.size > 0 ? ticketMedio.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '—'}
+          change={showComparison ? calcChange(ticketMedio, ticketMedioAnterior) : undefined}
           icon={<TrendingUp className="h-6 w-6 text-primary" />}
-          description={`Lucro: ${lucroLiquido.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`}
+          description={`Média por atendimento com recebimento · Lucro: ${lucroLiquido.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`}
         />
         <KPICard
           title="Total Agendamentos"
@@ -415,8 +637,8 @@ export default function Analytics() {
         <Card><CardContent className="pt-5">
           <p className="text-xs text-muted-foreground">Despesas</p>
           <p className="text-xl font-bold tabular-nums text-destructive">{despesaTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</p>
-          {showComparison && <p className={cn('text-[10px]', calcChange(despesaTotal, prevDespesa) <= 0 ? 'text-success' : 'text-destructive')}>
-            {calcChange(despesaTotal, prevDespesa) <= 0 ? '↓' : '↑'} {Math.abs(calcChange(despesaTotal, prevDespesa))}% vs anterior
+          {showComparison && <p className={cn('text-[10px]', changeDespesas === null ? 'text-muted-foreground' : changeDespesas <= 0 ? 'text-success' : 'text-destructive')}>
+            {changeDespesas === null ? 'Sem base anterior para comparar' : `${changeDespesas <= 0 ? '↓' : '↑'} ${Math.abs(changeDespesas)}% vs anterior`}
           </p>}
         </CardContent></Card>
         <Card><CardContent className="pt-5">
@@ -426,7 +648,7 @@ export default function Analytics() {
         </CardContent></Card>
         <Card><CardContent className="pt-5">
           <p className="text-xs text-muted-foreground">Margem de Lucro</p>
-          <p className={cn('text-xl font-bold tabular-nums', margemLucro >= 0 ? 'text-success' : 'text-destructive')}>{margemLucro}%</p>
+          <p className={cn('text-xl font-bold tabular-nums', margemLucro === null ? 'text-muted-foreground' : margemLucro >= 0 ? 'text-success' : 'text-destructive')}>{margemLucro === null ? '—' : `${margemLucro}%`}</p>
           <p className="text-[10px] text-muted-foreground">Receita - Despesa / Receita</p>
         </CardContent></Card>
         <Card><CardContent className="pt-5">
@@ -625,7 +847,7 @@ export default function Analytics() {
         </TabsContent>
         <TabsContent value="satisfacao" className="space-y-4">
           <div className="grid gap-4 md:grid-cols-3">
-            <Card><CardContent className="pt-6"><p className="text-sm text-muted-foreground">Média</p><p className="text-3xl font-bold">{mediaSatisfacao.toFixed(1)}/5</p></CardContent></Card>
+            <Card><CardContent className="pt-6"><p className="text-sm text-muted-foreground">Média</p><p className={cn('text-3xl font-bold', feedbacks.length === 0 && 'text-muted-foreground')}>{feedbacks.length > 0 ? `${mediaSatisfacao.toFixed(1)}/5` : '—'}</p>{feedbacks.length === 0 && <p className="mt-1 text-xs text-muted-foreground">Sem respostas no período</p>}</CardContent></Card>
             <Card><CardContent className="pt-6"><p className="text-sm text-muted-foreground">Respostas</p><p className="text-3xl font-bold">{feedbacks.length}</p></CardContent></Card>
             <Card><CardContent className="pt-6"><p className="text-sm text-muted-foreground">Alertas (1–2)</p><p className="text-3xl font-bold text-destructive">{feedbacks.filter((f: any) => f.nota <= 2).length}</p></CardContent></Card>
           </div>

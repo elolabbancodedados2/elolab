@@ -7,7 +7,7 @@ import { ptBR } from 'date-fns/locale';
 import QRCode from 'qrcode';
 
 import { supabase } from '@/integrations/supabase/client';
-import { parseDateOnly } from '@/lib/dateOnly';
+import { formatDateTimeSaoPaulo, parseDateOnly } from '@/lib/dateOnly';
 
 /**
  * Carrega jsPDF e jspdf-autotable só quando alguém vai realmente gerar um PDF.
@@ -356,6 +356,11 @@ export async function gerarAtestado(
   atestado: {
     tipo: 'comparecimento' | 'afastamento' | 'aptidao' | 'acompanhante';
     dataAtendimento: string;
+    dataInicio?: string;
+    dataFim?: string;
+    horarioInicio?: string;
+    horarioFim?: string;
+    finalidade?: string;
     diasAfastamento?: number;
     cid?: string;
     observacoes?: string;
@@ -377,20 +382,28 @@ export async function gerarAtestado(
   doc.setTextColor(0, 0, 0);
 
   let texto = '';
-  const dataAtend = format(new Date(atestado.dataAtendimento), "dd 'de' MMMM 'de' yyyy", { locale: ptBR });
+  const dataAtendDate = parseDateOnly(atestado.dataAtendimento);
+  const dataAtend = dataAtendDate ? format(dataAtendDate, "dd 'de' MMMM 'de' yyyy", { locale: ptBR }) : 'data não informada';
 
   switch (atestado.tipo) {
     case 'comparecimento':
-      texto = `Atesto para os devidos fins que ${paciente.nome}${paciente.cpf ? `, CPF: ${paciente.cpf}` : ''}, compareceu a esta clínica no dia ${dataAtend} para consulta médica.`;
+      texto = `Atesto para os devidos fins que ${paciente.nome}${paciente.cpf ? `, CPF: ${paciente.cpf}` : ''}, compareceu a esta clínica no dia ${dataAtend}${atestado.horarioInicio && atestado.horarioFim ? `, das ${atestado.horarioInicio} às ${atestado.horarioFim}` : ''} para consulta médica.`;
       break;
     case 'afastamento':
-      texto = `Atesto para os devidos fins que ${paciente.nome}${paciente.cpf ? `, CPF: ${paciente.cpf}` : ''}, esteve sob meus cuidados profissionais no dia ${dataAtend} e necessita de afastamento de suas atividades por ${atestado.diasAfastamento || 1} dia(s), a partir desta data.`;
+      {
+        const inicio = atestado.dataInicio ? parseDateOnly(atestado.dataInicio) : dataAtendDate;
+        const fim = atestado.dataFim ? parseDateOnly(atestado.dataFim) : null;
+        const periodo = inicio && fim
+          ? `, de ${format(inicio, 'dd/MM/yyyy')} a ${format(fim, 'dd/MM/yyyy')}`
+          : `, a partir de ${inicio ? format(inicio, 'dd/MM/yyyy') : dataAtend}`;
+        texto = `Atesto para os devidos fins que ${paciente.nome}${paciente.cpf ? `, CPF: ${paciente.cpf}` : ''}, esteve sob meus cuidados profissionais no dia ${dataAtend} e necessita de afastamento de suas atividades por ${atestado.diasAfastamento || 1} dia(s)${periodo}.`;
+      }
       if (atestado.cid) {
         texto += `\n\nCID-10: ${atestado.cid}`;
       }
       break;
     case 'aptidao':
-      texto = `Atesto para os devidos fins que ${paciente.nome}${paciente.cpf ? `, CPF: ${paciente.cpf}` : ''}, foi submetido(a) a exame clínico nesta data e encontra-se APTO(A) para exercer suas atividades físicas e/ou laborais.`;
+      texto = `Atesto para os devidos fins que ${paciente.nome}${paciente.cpf ? `, CPF: ${paciente.cpf}` : ''}, foi submetido(a) a exame clínico nesta data e encontra-se APTO(A)${atestado.finalidade ? ` para ${atestado.finalidade.replace(/^Apto para\s+/i, '')}` : ' para exercer suas atividades físicas e/ou laborais'}.`;
       break;
     case 'acompanhante':
       texto = `Declaro para os devidos fins que ${paciente.nome}${paciente.cpf ? `, CPF: ${paciente.cpf}` : ''}, acompanhou paciente sob meus cuidados nesta clínica no dia ${dataAtend}.`;
@@ -428,6 +441,109 @@ export async function gerarAtestado(
   return doc;
 }
 
+export interface GuiaSolicitacaoExamesData {
+  paciente: { nome: string; cpf?: string | null };
+  medico?: { nome?: string | null; crm?: string | null; especialidade?: string | null } | null;
+  exames: Array<{ nome: string; tuss?: string; lateralidade?: string; regiao?: string; contraste?: boolean }>;
+  dataSolicitacao: string;
+  dataValidade: string;
+  indicacaoClinica?: string;
+  hipoteseDiagnostica?: string;
+  urgencia: string;
+  justificativaUrgencia?: string;
+  jejum?: string;
+  observacoes?: string;
+  anexos?: string[];
+}
+
+/** Gera a guia solicitada; o PDF exige assinatura manual do médico. */
+export async function gerarGuiaSolicitacaoExames(data: GuiaSolicitacaoExamesData): Promise<jsPDF> {
+  const { JsPDF, autoTable } = await carregarPdfLib();
+  const doc = new JsPDF();
+  await addHeader(doc, 'GUIA DE SOLICITAÇÃO DE EXAMES');
+
+  const margin = 20;
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const dataPedido = parseDateOnly(data.dataSolicitacao);
+  const dataValidade = parseDateOnly(data.dataValidade);
+  let y = 52;
+
+  doc.setFontSize(10);
+  doc.setTextColor(0, 0, 0);
+  const campo = (label: string, value?: string | null) => {
+    if (!value) return;
+    doc.setFont('helvetica', 'bold');
+    doc.text(`${label}:`, margin, y);
+    doc.setFont('helvetica', 'normal');
+    const labelWidth = doc.getTextWidth(`${label}: `);
+    const lines = doc.splitTextToSize(value, pageWidth - margin * 2 - labelWidth);
+    doc.text(lines, margin + labelWidth, y);
+    y += Math.max(6, lines.length * 5);
+  };
+
+  campo('Paciente', data.paciente.nome);
+  campo('CPF', data.paciente.cpf);
+  campo('Profissional solicitante', data.medico?.nome || '');
+  campo('CRM', data.medico?.crm || '');
+  campo('Especialidade', data.medico?.especialidade || '');
+  campo('Data do pedido', dataPedido ? format(dataPedido, 'dd/MM/yyyy') : '');
+  campo('Válida até', dataValidade ? format(dataValidade, 'dd/MM/yyyy') : '');
+  campo('Urgência', data.urgencia);
+
+  y += 2;
+  autoTable(doc, {
+    startY: y,
+    head: [['Exame / código', 'Detalhes']],
+    body: data.exames.map(exame => [
+      `${exame.tuss ? `${exame.tuss} — ` : ''}${exame.nome}`,
+      [exame.lateralidade && `Lateralidade: ${exame.lateralidade}`, exame.regiao && `Região: ${exame.regiao}`, exame.contraste && 'Necessita contraste'].filter(Boolean).join('\n') || '—',
+    ]),
+    margin: { left: margin, right: margin },
+    styles: { fontSize: 9, cellPadding: 3, overflow: 'linebreak' },
+    headStyles: { fillColor: [0, 102, 204] },
+    columnStyles: { 0: { cellWidth: 92 }, 1: { cellWidth: 'auto' } },
+  });
+  y = ((doc as any).lastAutoTable?.finalY || y) + 9;
+
+  const bloco = (titulo: string, texto?: string) => {
+    if (!texto?.trim()) return;
+    const linhas = doc.splitTextToSize(texto.trim(), pageWidth - margin * 2);
+    const altura = 7 + linhas.length * 5;
+    if (y + altura > 255) { doc.addPage(); y = 22; }
+    doc.setFont('helvetica', 'bold');
+    doc.text(titulo, margin, y);
+    y += 6;
+    doc.setFont('helvetica', 'normal');
+    doc.text(linhas, margin, y);
+    y += linhas.length * 5 + 5;
+  };
+
+  bloco('Indicação clínica', data.indicacaoClinica);
+  bloco('Hipótese diagnóstica', data.hipoteseDiagnostica);
+  bloco('Justificativa da urgência', data.justificativaUrgencia);
+  bloco('Preparo / jejum', data.jejum && data.jejum !== 'nao' ? data.jejum : undefined);
+  bloco('Observações', data.observacoes);
+  bloco('Anexos enviados', data.anexos?.join(', '));
+
+  if (y > 245) { doc.addPage(); y = 45; }
+  y = Math.max(y + 10, 235);
+  doc.setDrawColor(40);
+  doc.line(pageWidth / 2 - 42, y, pageWidth / 2 + 42, y);
+  y += 6;
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'bold');
+  doc.text(data.medico?.nome || 'Profissional solicitante', pageWidth / 2, y, { align: 'center' });
+  y += 5;
+  doc.setFont('helvetica', 'normal');
+  doc.text(data.medico?.crm ? `CRM: ${data.medico.crm}` : 'Assinatura do profissional solicitante', pageWidth / 2, y, { align: 'center' });
+  doc.setFontSize(8);
+  doc.setTextColor(120);
+  doc.text('Documento sem assinatura digital. Assine manualmente antes de encaminhar.', pageWidth / 2, 282, { align: 'center' });
+  doc.setTextColor(0);
+
+  return doc;
+}
+
 // Gerar relatório financeiro
 export async function gerarRelatorioFinanceiro(
   dados: {
@@ -441,6 +557,8 @@ export async function gerarRelatorioFinanceiro(
       categoria: string;
       descricao: string;
       valor: number;
+      valorRealizado?: number;
+      saldoAberto?: number;
       status: string;
     }>;
   }
@@ -486,12 +604,14 @@ export async function gerarRelatorioFinanceiro(
     l.categoria,
     l.descricao,
     formatCurrency(l.valor),
+    formatCurrency(l.valorRealizado ?? 0),
+    formatCurrency(l.saldoAberto ?? Math.max(0, l.valor - (l.valorRealizado ?? 0))),
     l.status.toUpperCase(),
   ]);
 
   autoTable(doc, {
     startY: (doc as any).lastAutoTable.finalY + 20,
-    head: [['Data', 'Tipo', 'Categoria', 'Descrição', 'Valor', 'Status']],
+    head: [['Data', 'Tipo', 'Categoria', 'Descrição', 'Cobrado', 'Realizado', 'Em aberto', 'Status']],
     body: detalhes,
     theme: 'striped',
     headStyles: { fillColor: [0, 102, 204], fontSize: 8 },
@@ -1103,10 +1223,8 @@ export async function gerarLaudoPDF(dados: LaudoData): Promise<jsPDF> {
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(80, 80, 80);
     const colResult = margin;
-    const colValor = margin + 55;
-    const colRef = rightX - 35;
+    const colRef = rightX - 48;
     doc.text('Resultado', colResult, y);
-    doc.text('Resultados Anteriores', colValor + 10, y);
     doc.text('Valor de Referência', colRef, y);
     y += 1;
     doc.setLineWidth(0.2);
@@ -1136,11 +1254,6 @@ export async function gerarLaudoPDF(dados: LaudoData): Promise<jsPDF> {
       const resultText = `${r.resultado} ${r.unidade || ''}`.trim();
       doc.text(resultText, colResult, y);
 
-      // Colunas de resultados anteriores (placeholder: ---) 
-      doc.setTextColor(150, 150, 150);
-      doc.text('---', colValor + 15, y);
-      doc.text('---', colValor + 30, y);
-
       // Valor de referência
       doc.setTextColor(0, 0, 0);
       doc.setFont('helvetica', 'normal');
@@ -1157,6 +1270,16 @@ export async function gerarLaudoPDF(dados: LaudoData): Promise<jsPDF> {
     doc.setLineWidth(0.15);
     doc.line(margin, y, rightX, y);
   }
+
+  const todosResultadosLiberados = dados.resultados.length > 0 && dados.resultados.every(resultado => resultado.liberado);
+  const resultadosPendentes = dados.resultados.filter(resultado => !resultado.liberado).length;
+  const textoPrevia = resultadosPendentes > 0
+    ? `PRÉVIA — ${resultadosPendentes} resultado(s) aguardando liberação`
+    : 'PRÉVIA — nenhum resultado cadastrado';
+  const datasLiberacao = dados.resultados
+    .map(resultado => resultado.dataLiberacao)
+    .filter((data): data is string => Boolean(data))
+    .sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
 
   // ── URGENTE ──
   if (dados.urgente) {
@@ -1184,34 +1307,26 @@ export async function gerarLaudoPDF(dados: LaudoData): Promise<jsPDF> {
     y += obsLines.length * 3.5 + 4;
   }
 
-  // ── ASSINATURA (lado direito, estilo WEBLIS) ──
+  // ── SITUAÇÃO DO DOCUMENTO ──
   if (y > pageHeight - 40) { doc.addPage(); y = margin; }
   y += 10;
-
-  // Data de assinatura
-  const dataLiberacao = dados.resultados.find(r => r.dataLiberacao)?.dataLiberacao;
-  const assinadoEm = dataLiberacao
-    ? format(new Date(dataLiberacao), "dd/MM/yyyy HH:mm:ss")
-    : format(new Date(), "dd/MM/yyyy HH:mm:ss");
-
   doc.setFontSize(7);
-  doc.setTextColor(80, 80, 80);
-  doc.text(`Assinado em: ${assinadoEm}`, rightX, y, { align: 'right' });
-  y += 8;
-
-  // Nome e cargo do responsável
-  doc.setFontSize(8);
-  doc.setTextColor(0, 0, 0);
   doc.setFont('helvetica', 'bold');
-  if (dados.medicoNome) doc.text(dados.medicoNome, rightX, y, { align: 'right' });
-  y += 4;
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7);
-  doc.text('Analista de Laboratório', rightX, y, { align: 'right' });
-  if (dados.medicoCrm) {
-    y += 3.5;
-    doc.text(`CRBM: ${dados.medicoCrm}`, rightX, y, { align: 'right' });
+  if (todosResultadosLiberados) {
+    doc.setTextColor(22, 101, 52);
+    const dataMaisRecente = datasLiberacao[0];
+    doc.text(
+      dataMaisRecente
+        ? `Resultados liberados em ${formatDateTimeSaoPaulo(dataMaisRecente, true)}`
+        : 'Resultados liberados',
+      rightX, y, { align: 'right' },
+    );
+  } else {
+    doc.setTextColor(180, 83, 9);
+    doc.text(textoPrevia, rightX, y, { align: 'right' });
   }
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(0, 0, 0);
 
   // ── QR CODE ──
   try {
@@ -1222,15 +1337,24 @@ export async function gerarLaudoPDF(dados: LaudoData): Promise<jsPDF> {
     console.warn('Não foi possível gerar o QR Code do laudo PDF.');
   }
 
-  // ── RODAPÉ ──
-  doc.setFontSize(7);
-  doc.setTextColor(150, 150, 150);
-  doc.text(
-    `Documento gerado em ${format(new Date(), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })} - Código: ${dados.codigoAmostra}`,
-    pageWidth / 2,
-    pageHeight - 8,
-    { align: 'center' }
-  );
+  // ── RODAPÉ EM TODAS AS PÁGINAS ──
+  const geradoEm = formatDateTimeSaoPaulo(new Date()).replace(' ', ' às ');
+  const totalPaginas = doc.getNumberOfPages();
+  for (let pagina = 1; pagina <= totalPaginas; pagina++) {
+    doc.setPage(pagina);
+    doc.setFontSize(7);
+    if (!todosResultadosLiberados) {
+      doc.setTextColor(180, 83, 9);
+      doc.text(textoPrevia.toUpperCase(), pageWidth / 2, pageHeight - 14, { align: 'center' });
+    }
+    doc.setTextColor(150, 150, 150);
+    doc.text(
+      `Documento gerado em ${geradoEm} - Código: ${dados.codigoAmostra} - Página ${pagina}/${totalPaginas}`,
+      pageWidth / 2,
+      pageHeight - 8,
+      { align: 'center' },
+    );
+  }
 
   return doc;
 }

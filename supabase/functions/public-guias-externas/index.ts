@@ -6,6 +6,18 @@ import { corsPadrao } from '../_shared/cors.ts';
 // top-level (json/reply) capturam esta variável por closure.
 let corsHeaders: Record<string, string> = {};
 
+function cpfValido(cpf: string): boolean {
+  const digits = cpf.replace(/\D/g, '');
+  if (digits.length !== 11 || /^(\d)\1+$/.test(digits)) return false;
+  const calcularDigito = (base: number) => {
+    let soma = 0;
+    for (let i = 0; i < base; i++) soma += Number(digits[i]) * (base + 1 - i);
+    const resto = (soma * 10) % 11;
+    return resto === 10 ? 0 : resto;
+  };
+  return calcularDigito(9) === Number(digits[9]) && calcularDigito(10) === Number(digits[10]);
+}
+
 ;
 
 Deno.serve(async (req) => {
@@ -66,6 +78,10 @@ Deno.serve(async (req) => {
     if (!body.paciente_nome || !String(body.paciente_nome).trim()) {
       return json({ error: "Nome do paciente é obrigatório" }, 400);
     }
+    const cpfDigits = String(body.paciente_cpf || '').replace(/\D/g, '');
+    if (body.paciente_cpf && !cpfValido(cpfDigits)) {
+      return json({ error: "CPF inválido" }, 400);
+    }
     if (!Array.isArray(body.exames_solicitados) || body.exames_solicitados.length === 0) {
       return json({ error: "Informe ao menos um exame" }, 400);
     }
@@ -83,7 +99,7 @@ Deno.serve(async (req) => {
         origem: "portal",
         status: "recebida",
         paciente_nome: String(body.paciente_nome).trim(),
-        paciente_cpf: body.paciente_cpf || null,
+        paciente_cpf: cpfDigits || null,
         paciente_nascimento: body.paciente_nascimento || null,
         paciente_telefone: body.paciente_telefone || null,
         paciente_email: body.paciente_email || null,

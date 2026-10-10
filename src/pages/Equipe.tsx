@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Stethoscope, UserCog, Mail } from 'lucide-react';
 import { lazy, Suspense } from 'react';
@@ -9,7 +9,17 @@ const Medicos = lazy(() => import('./Medicos'));
 const Funcionarios = lazy(() => import('./Funcionarios'));
 
 export default function Equipe() {
-  const [tab, setTab] = useState('medicos');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const abaSolicitada = searchParams.get('aba');
+  const tab = ['medicos', 'funcionarios', 'convites'].includes(abaSolicitada || '') ? abaSolicitada! : 'medicos';
+  const setTab = (value: string) => {
+    setSearchParams(previous => {
+      const next = new URLSearchParams(previous);
+      if (value === 'medicos') next.delete('aba');
+      else next.set('aba', value);
+      return next;
+    }, { replace: true });
+  };
 
   return (
     <div className="space-y-4">

@@ -2,10 +2,6 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { tokensIaNoLimite } from '../_shared/limitesClinica.ts'
 import { corsPadrao } from '../_shared/cors.ts';
 
-// Atribuído em cada request (reflete a origem permitida). Helpers
-// top-level (json/reply) capturam esta variável por closure.
-let corsHeaders: Record<string, string> = {};
-
 interface MedicalAssistantRequest {
   action: 'suggest_diagnosis' | 'check_interactions' | 'fill_prescription'
   data: {
@@ -18,13 +14,46 @@ interface MedicalAssistantRequest {
   }
 }
 
+function callOpenAI(
+  apiKey: string,
+  model: string,
+  instructions: string,
+  input: string,
+  maxOutputTokens: number,
+  temperature: number,
+  safetyIdentifier: string,
+) {
+  return fetch('https://api.openai.com/v1/responses', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    signal: AbortSignal.timeout(45_000),
+    body: JSON.stringify({
+      model,
+      instructions,
+      input: [{ role: 'user', content: input }],
+      max_output_tokens: maxOutputTokens,
+      temperature,
+      store: false,
+      safety_identifier: safetyIdentifier,
+    }),
+  })
+}
+
 Deno.serve(async (req) => {
-  corsHeaders = { ...corsPadrao(req),};
+  const corsHeaders = { ...corsPadrao(req) };
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
+  if (req.method !== 'POST') {
+    return new Response(JSON.stringify({ error: 'Método não permitido' }), { status: 405, headers: corsHeaders })
+  }
 
   const startTime = Date.now()
+  let usageClient: ReturnType<typeof createClient> | null = null
+  let usageUserId: string | null = null
+  let usageClinicId: string | null = null
+  let usageOperation: string | null = null
+  let modelUsed = Deno.env.get('OPENAI_MODEL') || 'gpt-4o-mini'
 
   try {
     // Auth validation
@@ -42,6 +71,7 @@ Deno.serve(async (req) => {
     if (userError || !user) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: corsHeaders })
     }
+    usageUserId = user.id
 
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const openaiApiKey = Deno.env.get('OPENAI_API_KEY')
@@ -52,9 +82,12 @@ Deno.serve(async (req) => {
     }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
-    const { data: aiConfig } = await supabase.from('platform_ai_config').select('*').eq('id', true).maybeSingle()
+    usageClient = supabase
+    const { data: aiConfig, error: aiConfigError } = await supabase.from('platform_ai_config').select('*').eq('id', true).maybeSingle()
+    if (aiConfigError) throw new Error('Não foi possível carregar a configuração da IA.')
     if (aiConfig && !aiConfig.ativo) return new Response(JSON.stringify({ error: 'Assistente de IA temporariamente desativado.' }), { status: 503, headers: corsHeaders })
     const openaiModel = aiConfig?.modelo_principal || defaultOpenaiModel
+    modelUsed = openaiModel
 
     // ─── Autorização ──────────────────────────────────────────────────────
     // A checagem anterior parava na validade do JWT. Como o texto enviado aqui
@@ -73,6 +106,7 @@ Deno.serve(async (req) => {
         { status: 403, headers: corsHeaders },
       )
     }
+    usageClinicId = clinicaId
 
     // Apoio à decisão clínica é ferramenta de quem prescreve.
     const { data: papeis } = await supabase
@@ -86,7 +120,7 @@ Deno.serve(async (req) => {
       )
     }
 
-    const cotaIa = await tokensIaNoLimite(supabase, clinicaId)
+    const cotaIa = await tokensIaNoLimite(supabase, clinicaId, aiConfig?.limite_mensal_clinica)
     if (cotaIa.atingido) {
       return new Response(
         JSON.stringify({ error: `A clínica atingiu o limite mensal de uso da IA (${cotaIa.limite.toLocaleString('pt-BR')} tokens). Fale com o suporte para ampliar.` }),
@@ -96,6 +130,10 @@ Deno.serve(async (req) => {
 
     const body: MedicalAssistantRequest = await req.json()
     const { action, data } = body
+    usageOperation = action
+    if (!['suggest_diagnosis', 'check_interactions', 'fill_prescription'].includes(action) || !data || typeof data !== 'object') {
+      throw new Error('Solicitação inválida para o assistente de IA.')
+    }
 
     // Registro da transferência internacional, exigido para demonstrar base
     // legal e rastrear quem enviou o quê para fora.
@@ -192,28 +230,32 @@ Sugira os medicamentos mais apropriados.`
         throw new Error(`Ação desconhecida: ${action}`)
     }
 
-    // Chamar OpenAI Responses API
+    // Chamar o modelo principal e usar o alternativo apenas em falha de rede,
+    // rate limit ou indisponibilidade temporária do provedor.
     const safetyIdentifier = await createSafetyIdentifier(user.id)
-    const aiResponse = await fetch('https://api.openai.com/v1/responses', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${openaiApiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: openaiModel,
-        instructions: `${aiConfig?.prompt_base || ''}\n\n${systemPrompt}`,
-        input: [{ role: 'user', content: userPrompt }],
-        max_output_tokens: aiConfig?.max_tokens || 2000,
-        temperature: Number(aiConfig?.temperatura ?? 0.3),
-        store: false,
-        safety_identifier: safetyIdentifier,
-      }),
-    })
+    const fallbackModel = aiConfig?.modelo_fallback || null
+    const instructions = `${aiConfig?.prompt_base || ''}\n\n${systemPrompt}`
+    const maxOutputTokens = aiConfig?.max_tokens || 2000
+    const temperature = Number(aiConfig?.temperatura ?? 0.3)
+    let aiResponse: Response
+
+    try {
+      aiResponse = await callOpenAI(openaiApiKey, openaiModel, instructions, userPrompt, maxOutputTokens, temperature, safetyIdentifier)
+    } catch (primaryNetworkError) {
+      if (!fallbackModel) throw new Error('O provedor de IA não respondeu. Tente novamente em alguns instantes.')
+      console.warn('[ai-medical-assistant] modelo principal indisponível; tentando alternativa')
+      aiResponse = await callOpenAI(openaiApiKey, fallbackModel, instructions, userPrompt, maxOutputTokens, temperature, safetyIdentifier)
+      modelUsed = fallbackModel
+    }
+    if (fallbackModel && modelUsed === openaiModel && (aiResponse.status === 429 || aiResponse.status >= 500)) {
+      console.warn(`[ai-medical-assistant] modelo principal retornou HTTP ${aiResponse.status}; tentando alternativa`)
+      aiResponse = await callOpenAI(openaiApiKey, fallbackModel, instructions, userPrompt, maxOutputTokens, temperature, safetyIdentifier)
+      modelUsed = fallbackModel
+    }
 
     if (!aiResponse.ok) {
-      const error = await aiResponse.text()
-      throw new Error(`Erro na API OpenAI: ${error}`)
+      console.error(`[ai-medical-assistant] provedor retornou HTTP ${aiResponse.status}`)
+      throw new Error('Não foi possível gerar a sugestão de IA. Tente novamente ou fale com o suporte.')
     }
 
     const aiResult = await aiResponse.json()
@@ -224,7 +266,8 @@ Sugira os medicamentos mais apropriados.`
 
     const duration = Date.now() - startTime
     const inputTokens = Number(aiResult.usage?.input_tokens || 0), outputTokens = Number(aiResult.usage?.output_tokens || 0)
-    await supabase.from('platform_ai_usage').insert({ clinica_id: clinicaId, user_id: user.id, operacao: action, modelo: openaiModel, input_tokens: inputTokens, output_tokens: outputTokens, custo_estimado: inputTokens * 0.00000015 + outputTokens * 0.0000006, duracao_ms: duration, sucesso: true })
+    const { error: usageError } = await supabase.from('platform_ai_usage').insert({ clinica_id: clinicaId, user_id: user.id, operacao: action, modelo: modelUsed, input_tokens: inputTokens, output_tokens: outputTokens, custo_estimado: inputTokens * 0.00000015 + outputTokens * 0.0000006, duracao_ms: duration, sucesso: true })
+    if (usageError) console.error('[ai-medical-assistant] falha ao registrar consumo:', usageError.message)
 
     // Log da automação
     await supabase.from('automation_logs').insert({
@@ -246,6 +289,8 @@ Sugira os medicamentos mais apropriados.`
       JSON.stringify({
         success: true,
         action,
+        model: modelUsed,
+        fallback_used: modelUsed !== openaiModel,
         suggestion,
         disclaimer: '⚠️ Esta é uma sugestão gerada por IA para apoio à decisão clínica. A responsabilidade pela conduta médica é exclusiva do profissional de saúde.',
         stats: {
@@ -256,6 +301,21 @@ Sugira os medicamentos mais apropriados.`
     )
   } catch (error) {
     console.error('Erro na função ai-medical-assistant:', error)
+    if (usageClient && usageUserId && usageClinicId && usageOperation) {
+      const { error: usageError } = await usageClient.from('platform_ai_usage').insert({
+        clinica_id: usageClinicId,
+        user_id: usageUserId,
+        operacao: usageOperation,
+        modelo: modelUsed,
+        input_tokens: 0,
+        output_tokens: 0,
+        custo_estimado: 0,
+        duracao_ms: Date.now() - startTime,
+        sucesso: false,
+        erro: 'A solicitação não foi concluída.',
+      })
+      if (usageError) console.error('[ai-medical-assistant] falha ao registrar tentativa sem sucesso:', usageError.message)
+    }
     const errorMessage = error instanceof Error ? error.message : String(error)
     return new Response(
       JSON.stringify({ success: false, error: errorMessage }),

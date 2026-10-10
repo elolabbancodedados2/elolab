@@ -3,7 +3,7 @@ import { useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { ChevronLeft, ChevronDown, PanelLeftOpen, Search } from 'lucide-react';
-import logoIcon from '@/assets/logo-elolab-icon.png';
+import logoIcon from '@/assets/elolab-symbol-v2.png';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -17,8 +17,8 @@ import { getFilteredMenuGroups, MenuGroup } from '@/config/sidebarMenu';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const STORAGE_KEY = 'elolab_sidebar_collapsed';
-const GROUPS_KEY = 'elolab_sidebar_groups';
-const DEFAULT_OPEN_GROUPS = ['Início', 'Atendimento'];
+const GROUPS_KEY = 'elolab_sidebar_groups_v2';
+const DEFAULT_OPEN_GROUPS = ['Início', 'Atendimento', 'Pacientes'];
 
 interface SidebarProps {
   forceExpanded?: boolean;

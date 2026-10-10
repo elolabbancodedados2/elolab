@@ -1,59 +1,79 @@
 import { test, expect } from '@playwright/test';
+import { mockPlanosPublicos } from './mockPlanosPublicos';
 
 test.describe('Authentication flows', () => {
   test('acesso a /dashboard sem login redireciona para /auth', async ({ page }) => {
     await page.goto('/dashboard');
     await page.waitForURL(/\/(auth|login|\?)/);
-    // Should not be on dashboard
     expect(page.url()).not.toContain('/dashboard');
   });
 
-  test('página de auth carrega sem erros', async ({ page }) => {
-    const errors: string[] = [];
-    page.on('console', (msg) => {
-      if (msg.type() === 'error') errors.push(msg.text());
+  test('página de auth carrega sem erros de console ou página', async ({ page }) => {
+    const consoleErrors: string[] = [];
+    const pageErrors: string[] = [];
+    page.on('console', (message) => {
+      if (message.type() === 'error') consoleErrors.push(message.text());
     });
+    page.on('pageerror', (error) => pageErrors.push(error.message));
+
     await page.goto('/auth');
     await page.waitForLoadState('networkidle');
-    // Auth page should render
-    const body = await page.textContent('body');
-    expect(body).toBeTruthy();
+    await expect(page.getByRole('heading', { name: /acesse sua conta/i })).toBeVisible();
+    await expect(page.getByRole('textbox', { name: /e-mail/i })).toBeVisible();
+    await expect(page.getByRole('textbox', { name: /senha/i })).toBeVisible();
+    await expect(page.locator('form').getByRole('button', { name: 'Entrar' })).toBeVisible();
+    await expect(page.getByRole('link', { name: /esqueci minha senha/i })).toBeVisible();
+
+    expect(consoleErrors).toEqual([]);
+    expect(pageErrors).toEqual([]);
   });
 
-  test('login com senha errada exibe erro', async ({ page }) => {
-    await page.goto('/auth');
-    await page.waitForLoadState('networkidle');
-
-    // Try to find email/password inputs
-    const emailInput = page.locator('input[type="email"], input[name="email"], input[placeholder*="email" i]').first();
-    const passwordInput = page.locator('input[type="password"]').first();
-
-    if (await emailInput.isVisible() && await passwordInput.isVisible()) {
-      await emailInput.fill('wrong@test.com');
-      await passwordInput.fill('wrongpassword123');
-
-      const submitBtn = page.locator('button[type="submit"]').first();
-      if (await submitBtn.isVisible()) {
-        await submitBtn.click();
-        // Wait for error message or toast
-        await page.waitForTimeout(3000);
-      }
-    }
-  });
-
-  test('landing page carrega sem erros de console', async ({ page }) => {
-    const errors: string[] = [];
-    page.on('console', (msg) => {
-      if (msg.type() === 'error' && !msg.text().includes('Failed to fetch')) {
-        errors.push(msg.text());
-      }
+  test('login com credenciais inválidas exibe erro e mantém os controles disponíveis', async ({ page }) => {
+    let authRequestCount = 0;
+    await page.route('**/auth/v1/token?grant_type=password', async (route) => {
+      authRequestCount += 1;
+      await route.fulfill({
+        status: 400,
+        contentType: 'application/json',
+        body: JSON.stringify({ code: 'invalid_credentials', message: 'Invalid login credentials' }),
+      });
     });
+
+    await page.goto('/auth');
+    const email = page.getByRole('textbox', { name: /e-mail/i });
+    const password = page.getByRole('textbox', { name: /senha/i });
+    const submit = page.locator('form').getByRole('button', { name: 'Entrar' });
+    const resetLink = page.getByRole('link', { name: /esqueci minha senha/i });
+
+    await expect(email).toBeVisible();
+    await expect(password).toBeVisible();
+    await expect(submit).toBeEnabled();
+    await expect(resetLink).toBeVisible();
+    await email.fill('wrong@test.com');
+    await password.fill('wrongpassword123');
+    await submit.click();
+
+    await expect(page.getByRole('alert')).toContainText(/e-mail ou senha incorretos/i);
+    await expect(email).toBeVisible();
+    await expect(password).toBeVisible();
+    await expect(submit).toBeEnabled();
+    await expect(resetLink).toBeVisible();
+    expect(authRequestCount).toBe(1);
+    expect(page.url()).toContain('/auth');
+  });
+
+  test('landing page carrega sem erros de console ou página', async ({ page }) => {
+    await mockPlanosPublicos(page);
+    const consoleErrors: string[] = [];
+    const pageErrors: string[] = [];
+    page.on('console', (message) => {
+      if (message.type() === 'error') consoleErrors.push(message.text());
+    });
+    page.on('pageerror', (error) => pageErrors.push(error.message));
+
     await page.goto('/');
     await page.waitForLoadState('networkidle');
-    // Filter out expected network errors
-    const realErrors = errors.filter(
-      (e) => !e.includes('supabase') && !e.includes('net::') && !e.includes('CORS')
-    );
-    expect(realErrors).toHaveLength(0);
+    await expect(page.locator('body')).not.toBeEmpty();
+    await expect.poll(() => [...consoleErrors, ...pageErrors]).toEqual([]);
   });
 });

@@ -23,7 +23,7 @@ import PainelTV from '@/pages/PainelTV';
 
 function queryResult(data: unknown, error: Error | null = null) {
   const query: Record<string, unknown> = {};
-  for (const method of ['select', 'in', 'order']) query[method] = vi.fn(() => query);
+  for (const method of ['select', 'eq', 'in', 'order']) query[method] = vi.fn(() => query);
   query.then = (resolve: (value: unknown) => unknown, reject?: (reason: unknown) => unknown) =>
     Promise.resolve({ data, error }).then(resolve, reject);
   return query;

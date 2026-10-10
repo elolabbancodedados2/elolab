@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
-import { useAgendamentosPeriodo, useSupabaseQuery, useEstoque, useMedicos, useFilaAtendimento } from '@/hooks/useSupabaseData';
+import { MAX_LINHAS_AUTO, useAgendamentosPeriodo, useSupabaseQuery, useEstoque, useMedicos, useFilaAtendimento } from '@/hooks/useSupabaseData';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useCurrentMedico } from '@/hooks/useCurrentMedico';
@@ -21,16 +21,18 @@ import {
   ShieldCheck, Target, Timer, Megaphone, Pill, Eye,
 } from 'lucide-react';
 import { DashboardSkeleton } from '@/components/ui/loading-skeleton';
+import { ErrorState } from '@/components/ErrorState';
 import { Link } from 'react-router-dom';
-import { format, parseISO, isToday, isTomorrow, differenceInMinutes } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, LineChart, Line,
 } from 'recharts';
-import { parseDateOnly } from '@/lib/dateOnly';
+import { dateOnlyInTimeZone, inicioDoDiaEmFusoIso, parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { valorRealizado } from '@/lib/lancamentos';
+import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
@@ -52,15 +54,22 @@ const fadeUp = {
 const stagger = { hidden: {}, visible: { transition: { staggerChildren: 0.05 } } };
 
 // ─── Live Clock ────────────────────────────────────────────
-function LiveClock() {
-  const [time, setTime] = useState(new Date());
+function useClinicClock() {
+  const [time, setTime] = useState(() => new Date());
   useEffect(() => {
     const timer = setInterval(() => setTime(new Date()), 60_000);
     return () => clearInterval(timer);
   }, []);
+  return time;
+}
+
+function LiveClock() {
+  const time = useClinicClock();
   return (
     <span className="tabular-nums font-semibold text-lg tracking-tight">
-      {format(time, 'HH:mm')}
+      {new Intl.DateTimeFormat('pt-BR', {
+        timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+      }).format(time)}
     </span>
   );
 }
@@ -195,24 +204,6 @@ function QuickActionBtn({ icon: Icon, label, href, color }: {
   );
 }
 
-// ─── Activity Item ─────────────────────────────────────────
-function ActivityItem({ icon: Icon, title, subtitle, time, color }: {
-  icon: React.ElementType; title: string; subtitle: string; time: string; color: string;
-}) {
-  return (
-    <div className="flex items-start gap-3 py-2.5">
-      <div className={cn('h-8 w-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5', color)}>
-        <Icon className="h-4 w-4" />
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium truncate">{title}</p>
-        <p className="text-[11px] text-muted-foreground">{subtitle}</p>
-      </div>
-      <span className="text-[10px] text-muted-foreground shrink-0 mt-1">{time}</span>
-    </div>
-  );
-}
-
 const roleWorkspaces = {
   admin: { title: 'Visão da administração', description: 'Acompanhe operação, equipe e resultados da clínica.', actions: [
     { label: 'Analytics', href: '/analytics', icon: BarChart3 }, { label: 'Equipe', href: '/equipe', icon: Users }, { label: 'Configurações', href: '/configuracoes', icon: ShieldCheck },
@@ -228,13 +219,15 @@ const roleWorkspaces = {
   ] },
 } as const;
 
+const dashboardRolePriority = ['admin', 'recepcao', 'enfermagem', 'financeiro'] as const;
+
 export function getDashboardLinksForRoles(roles: string[]): string[] {
-  const role = (['recepcao', 'enfermagem', 'financeiro', 'admin'] as const).find(item => roles.includes(item));
+  const role = dashboardRolePriority.find(item => roles.includes(item));
   return role ? roleWorkspaces[role].actions.map(action => action.href) : [];
 }
 
 function RoleWorkspace({ roles }: { roles: string[] }) {
-  const role = (['recepcao', 'enfermagem', 'financeiro', 'admin'] as const).find(item => roles.includes(item));
+  const role = dashboardRolePriority.find(item => roles.includes(item));
   if (!role) return null;
   const workspace = roleWorkspaces[role];
   return <section aria-labelledby="role-workspace-title" className="rounded-2xl border border-primary/15 bg-primary/[0.03] p-4 md:p-5">
@@ -246,15 +239,18 @@ function RoleWorkspace({ roles }: { roles: string[] }) {
 }
 
 function OperationalDashboard({ roles, nome }: { roles: string[]; nome?: string | null }) {
-  const agora = new Date();
-  const hora = agora.getHours();
+  const agora = useClinicClock();
+  const hora = Number(new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Sao_Paulo', hour: '2-digit', hourCycle: 'h23',
+  }).format(agora));
   const saudacao = hora < 12 ? 'Bom dia' : hora < 18 ? 'Boa tarde' : 'Boa noite';
+  const dataLocal = parseDateOnly(todaySaoPauloDateOnly(agora))!;
   return <div className="space-y-6">
     <Card className="overflow-hidden border-primary/15 bg-gradient-to-br from-primary/[0.06] via-card to-card">
       <CardContent className="p-6 md:p-8">
         <p className="text-sm font-medium text-primary">{saudacao}</p>
         <h1 className="mt-1 text-2xl font-bold tracking-tight md:text-3xl">{nome?.split(' ')[0] || 'Olá'}</h1>
-        <p className="mt-2 text-sm capitalize text-muted-foreground">{format(agora, "EEEE, d 'de' MMMM", { locale: ptBR })}</p>
+        <p className="mt-2 text-sm capitalize text-muted-foreground">{format(dataLocal, "EEEE, d 'de' MMMM", { locale: ptBR })}</p>
       </CardContent>
     </Card>
     <RoleWorkspace roles={roles} />
@@ -284,163 +280,299 @@ export default function Dashboard() {
 
 /** Primeiro dia do mês, `n` meses atrás, como yyyy-MM-dd. */
 function inicioDoMes(mesesAtras: number) {
-  const d = new Date();
-  return format(new Date(d.getFullYear(), d.getMonth() - mesesAtras, 1), 'yyyy-MM-dd');
+  const [year, month] = todaySaoPauloDateOnly().split('-').map(Number);
+  return new Date(Date.UTC(year, month - 1 - mesesAtras, 1)).toISOString().slice(0, 10);
 }
+
+function inicioDiaEmSaoPaulo(data: string) {
+  return inicioDoDiaEmFusoIso(data, 'America/Sao_Paulo');
+}
+
+const dataLocalDoEvento = (value: string) => value.includes('T') || value.includes(' ')
+  ? dateOnlyInTimeZone(new Date(value), 'America/Sao_Paulo')
+  : value.slice(0, 10);
+
+const valorEmAberto = (lancamento: { valor: number; valor_pago: number | null; desconto?: number | null; acrescimo?: number | null }) =>
+  Math.max(0, Number(lancamento.valor || 0) - Number(lancamento.desconto || 0)
+    + Number(lancamento.acrescimo || 0) - Number(lancamento.valor_pago || 0));
 
 function AdminDashboard() {
   const { profile: user } = useSupabaseAuth();
-  const hoje = format(new Date(), 'yyyy-MM-dd');
+  const agora = useClinicClock();
+  const hoje = todaySaoPauloDateOnly(agora);
   // Gráficos e indicadores cobrem os últimos 6 meses; "próximos" olha 60 dias à frente.
   const seisMeses = inicioDoMes(5);
-  const daquiA60 = format(new Date(Date.now() + 60 * 86400000), 'yyyy-MM-dd');
+  const [anoHoje, mesHoje] = hoje.split('-').map(Number);
+  const primeiroDiaMesAtual = `${hoje.slice(0, 7)}-01`;
+  const ultimoDiaMesAtual = new Date(Date.UTC(anoHoje, mesHoje, 0)).toISOString().slice(0, 10);
+  const daquiA60Date = new Date(`${hoje}T00:00:00Z`);
+  daquiA60Date.setUTCDate(daquiA60Date.getUTCDate() + 60);
+  const daquiA60 = daquiA60Date.toISOString().slice(0, 10);
 
-  const { data: agendamentos = [], isLoading: loadingAgendamentos } = useAgendamentosPeriodo(seisMeses, daquiA60);
-  const { data: lancamentos = [], isLoading: loadingLancamentos } = useSupabaseQuery<any>('lancamentos', {
+  const agendamentosQuery = useAgendamentosPeriodo(seisMeses, daquiA60);
+  const { data: agendamentos = [], isLoading: loadingAgendamentos } = agendamentosQuery;
+  const lancamentosQuery = useSupabaseQuery<any>('lancamentos', {
     orderBy: { column: 'data', ascending: false },
     filters: [{ column: 'data', operator: 'gte', value: seisMeses }],
   });
-  const { data: medicos = [], isLoading: loadingMedicos } = useMedicos();
-  const { data: estoque = [], isLoading: loadingEstoque } = useEstoque();
-  const { data: fila = [] } = useFilaAtendimento();
+  const lancamentosPorPagamentoQuery = useSupabaseQuery<any>('lancamentos', {
+    orderBy: { column: 'data_pagamento', ascending: false },
+    filters: [{ column: 'data_pagamento', operator: 'gte', value: seisMeses }],
+  });
+  const lancamentosPorVencimentoQuery = useSupabaseQuery<any>('lancamentos', {
+    orderBy: { column: 'data_vencimento', ascending: false },
+    filters: [
+      { column: 'data_vencimento', operator: 'gte', value: primeiroDiaMesAtual },
+      { column: 'data_vencimento', operator: 'lte', value: ultimoDiaMesAtual },
+    ],
+  });
+  const lancamentos = useMemo(() => {
+    const porId = new Map<string, any>();
+    for (const lancamento of [
+      ...(lancamentosQuery.data ?? []),
+      ...(lancamentosPorPagamentoQuery.data ?? []),
+      ...(lancamentosPorVencimentoQuery.data ?? []),
+    ]) porId.set(lancamento.id, lancamento);
+    return [...porId.values()];
+  }, [lancamentosQuery.data, lancamentosPorPagamentoQuery.data, lancamentosPorVencimentoQuery.data]);
+  const loadingLancamentos = lancamentosQuery.isLoading || lancamentosPorPagamentoQuery.isLoading || lancamentosPorVencimentoQuery.isLoading;
+  const idsLancamentosRealizados = useMemo(() => lancamentos
+    .filter(lancamento => ['pago', 'parcial'].includes(lancamento.status || ''))
+    .map(lancamento => lancamento.id), [lancamentos]);
+  const pagamentosQuery = useQuery({
+    queryKey: ['dashboard-admin-pagamentos', user?.clinica_id ?? null, seisMeses, hoje, idsLancamentosRealizados],
+    enabled: !!user?.clinica_id && !loadingLancamentos,
+    staleTime: 60_000,
+    queryFn: async () => {
+      const amanhaDate = new Date(`${hoje}T00:00:00Z`);
+      amanhaDate.setUTCDate(amanhaDate.getUTCDate() + 1);
+      const inicioLocal = inicioDoDiaEmFusoIso(seisMeses, 'America/Sao_Paulo');
+      const fimLocalExclusivo = inicioDoDiaEmFusoIso(amanhaDate.toISOString().slice(0, 10), 'America/Sao_Paulo');
+      const selecionar = () => supabase.from('pagamentos')
+        .select('id, lancamento_id, valor, data_pagamento, estornado_em, lancamentos!inner(agendamento_id, tipo, clinica_id)')
+        .eq('clinica_id', user!.clinica_id!)
+        .eq('lancamentos.clinica_id', user!.clinica_id!)
+        .order('id', { ascending: true });
+      const [pagamentosNoPeriodo, estornosNoPeriodo] = await Promise.all([
+        buscarEmBlocos<any>(() => selecionar()
+          .gte('data_pagamento', inicioLocal)
+          .lt('data_pagamento', fimLocalExclusivo)),
+        buscarEmBlocos<any>(() => selecionar()
+          .not('estornado_em', 'is', null)
+          .gte('estornado_em', inicioLocal)
+          .lt('estornado_em', fimLocalExclusivo)),
+      ]);
 
-  const { data: resumo, isLoading: loadingResumo } = useQuery({
+      const idsComHistorico = new Set<string>();
+      const lotesIds = Array.from({ length: Math.ceil(idsLancamentosRealizados.length / 250) }, (_, index) =>
+        idsLancamentosRealizados.slice(index * 250, (index + 1) * 250));
+      let historicoAtingiuLimite = false;
+      for (let inicio = 0; inicio < lotesIds.length; inicio += 4) {
+        const resultados = await Promise.all(lotesIds.slice(inicio, inicio + 4).map(ids =>
+          buscarEmBlocos<any>(() => supabase.from('pagamentos')
+            .select('id, lancamento_id')
+            .eq('clinica_id', user!.clinica_id!)
+            .in('lancamento_id', ids)
+            .order('id', { ascending: true }))));
+        for (const pagamentosDaConta of resultados) {
+          if (pagamentosDaConta.length >= LIMITE_BUSCA_EM_BLOCOS) historicoAtingiuLimite = true;
+          for (const pagamento of pagamentosDaConta) idsComHistorico.add(pagamento.lancamento_id);
+        }
+      }
+      return {
+        pagamentos: [...new Map([...pagamentosNoPeriodo, ...estornosNoPeriodo]
+          .map(pagamento => [pagamento.id, pagamento] as const)).values()],
+        idsComHistorico: [...idsComHistorico],
+        historicoAtingiuLimite,
+      };
+    },
+  });
+  const medicosQuery = useMedicos();
+  const { data: medicos = [], isLoading: loadingMedicos } = medicosQuery;
+  const estoqueQuery = useEstoque();
+  const { data: estoque = [], isLoading: loadingEstoque } = estoqueQuery;
+  const filaQuery = useFilaAtendimento();
+  const { data: fila = [], isLoading: loadingFila } = filaQuery;
+
+  const resumoQuery = useQuery({
     queryKey: ['dashboard-admin-resumo', user?.clinica_id, seisMeses],
     enabled: !!user?.clinica_id,
     staleTime: 60_000,
     queryFn: async () => {
       const db = supabase as any;
-      const [totalPac, pacRecentes, totalAg, totalLanc, vencidos] = await Promise.all([
-        db.from('pacientes').select('id', { count: 'exact', head: true }),
-        db.from('pacientes').select('id, nome, created_at').gte('created_at', seisMeses + 'T00:00:00')
-          .order('created_at', { ascending: false }).limit(1000),
-        db.from('agendamentos').select('id', { count: 'exact', head: true }),
-        db.from('lancamentos').select('id', { count: 'exact', head: true }),
+      const clinicaId = user!.clinica_id!;
+      const mesesPacientes = Array.from({ length: 6 }, (_, index) => inicioDoMes(5 - index));
+      const limitesMeses = [...mesesPacientes, inicioDoMes(-1)];
+      const [totalPac, totalAg, totalLanc, vencidos, pacientesPorMes] = await Promise.all([
+        db.from('pacientes').select('id', { count: 'exact', head: true }).eq('clinica_id', clinicaId),
+        db.from('agendamentos').select('id', { count: 'exact', head: true }).eq('clinica_id', clinicaId),
+        db.from('lancamentos').select('id', { count: 'exact', head: true }).eq('clinica_id', clinicaId),
         // Mesma regra de Contas a Receber: "atrasado", ou pendente com vencimento
         // passado. ("vencido" não existe no enum status_pagamento — a consulta
         // anterior falhava e o indicador ficava sempre zerado.)
-        db.from('lancamentos').select('valor, valor_pago').eq('tipo', 'receita')
-          .or(`status.eq.atrasado,and(status.in.(pendente,parcial),data_vencimento.lt.${hoje})`).limit(1000),
+        buscarEmBlocos<any>(() => db.from('lancamentos').select('valor, valor_pago, desconto, acrescimo').eq('tipo', 'receita')
+          .eq('clinica_id', clinicaId).or(`status.eq.atrasado,and(status.in.(pendente,parcial),data_vencimento.lt.${hoje})`).order('id', { ascending: true })),
+        Promise.all(mesesPacientes.map((_, index) => db.from('pacientes').select('id', { count: 'exact', head: true })
+          .eq('clinica_id', clinicaId)
+          .gte('created_at', inicioDiaEmSaoPaulo(limitesMeses[index]))
+          .lt('created_at', inicioDiaEmSaoPaulo(limitesMeses[index + 1])))),
       ]);
-      for (const r of [totalPac, pacRecentes, totalAg, totalLanc, vencidos]) if (r.error) throw r.error;
+      for (const r of [totalPac, totalAg, totalLanc]) if (r.error) throw r.error;
+      const erroMesPacientes = pacientesPorMes.find((result: { error: unknown }) => result.error);
+      if (erroMesPacientes?.error) throw erroMesPacientes.error;
       return {
         totalPacientes: totalPac.count ?? 0,
-        pacientesRecentes: (pacRecentes.data ?? []) as Array<{ id: string; nome: string; created_at: string | null }>,
+        pacientesPorMes: pacientesPorMes.map((result: { count: number | null }, index: number) => ({ mes: mesesPacientes[index], total: result.count ?? 0 })),
         totalAgendamentos: totalAg.count ?? 0,
         totalLancamentos: totalLanc.count ?? 0,
-        inadimplente: (vencidos.data ?? []).reduce((acc: number, l: any) => acc + Math.max(0, Number(l.valor || 0) - Number(l.valor_pago || 0)), 0),
+        inadimplente: vencidos.reduce((acc: number, l: any) => acc + valorEmAberto(l), 0),
+        inadimplenciaAtingiuLimite: vencidos.length >= LIMITE_BUSCA_EM_BLOCOS,
       };
     },
   });
-  const pacientes = resumo?.pacientesRecentes ?? [];
+  const { data: resumo, isLoading: loadingResumo } = resumoQuery;
   const totalPacientes = resumo?.totalPacientes ?? 0;
 
-  const isLoading = loadingResumo || loadingAgendamentos || loadingLancamentos || loadingMedicos || loadingEstoque;
+  const isLoading = loadingResumo || loadingAgendamentos || loadingLancamentos || pagamentosQuery.isLoading || loadingMedicos || loadingEstoque || loadingFila;
 
-  const hojeFormatado = format(new Date(), "EEEE, d 'de' MMMM", { locale: ptBR });
-  const horaAtual = new Date().getHours();
+  const hojeFormatado = format(parseDateOnly(hoje)!, "EEEE, d 'de' MMMM", { locale: ptBR });
+  const horaAtual = Number(new Intl.DateTimeFormat('en-US', { timeZone: 'America/Sao_Paulo', hour: '2-digit', hourCycle: 'h23' }).format(agora));
   const saudacao = horaAtual < 12 ? 'Bom dia' : horaAtual < 18 ? 'Boa tarde' : 'Boa noite';
   const SaudacaoIcon = horaAtual < 12 ? Sun : horaAtual < 18 ? Sunset : Moon;
 
-  const mesAtual = new Date().getMonth();
-  const anoAtual = new Date().getFullYear();
+  const mesReferencia = parseDateOnly(hoje)!;
+  const mesAtual = mesReferencia.getMonth();
+  const anoAtual = mesReferencia.getFullYear();
 
   const baseAgendamentos = agendamentos;
 
   // Consultas de hoje
   const consultasStats = useMemo(() => {
     const consultasHoje = baseAgendamentos.filter(a => a.data === hoje);
-    const consultasConfirmadas = consultasHoje.filter(a => a.status === 'confirmado').length;
-    const consultasAgendadas = consultasHoje.filter(a => a.status === 'agendado').length;
-    const consultasFinalizadas = consultasHoje.filter(a => a.status === 'finalizado').length;
-    const totalHoje = consultasHoje.length;
-    const taxaOcupacao = totalHoje > 0 ? Math.round((consultasFinalizadas + consultasConfirmadas) / totalHoje * 100) : 0;
-    const statusDistribution = [
-      { name: 'Confirmado', value: consultasConfirmadas, color: 'hsl(var(--success))' },
-      { name: 'Agendado', value: consultasAgendadas, color: 'hsl(var(--info))' },
-      { name: 'Finalizado', value: consultasFinalizadas, color: 'hsl(var(--primary))' },
-    ].filter(s => s.value > 0);
-    return { consultasConfirmadas, consultasAgendadas, consultasFinalizadas, totalHoje, taxaOcupacao, statusDistribution };
+    const consultasNaoCanceladas = consultasHoje.filter(a => a.status !== 'cancelado');
+    const consultasCanceladas = consultasHoje.length - consultasNaoCanceladas.length;
+    const gruposStatus = [
+      { name: 'Agendadas', statuses: ['agendado'], color: 'hsl(var(--info))' },
+      { name: 'Confirmadas', statuses: ['confirmado'], color: 'hsl(var(--success))' },
+      { name: 'Aguardando', statuses: ['aguardando', 'aguardando_triagem'], color: 'hsl(var(--warning))' },
+      { name: 'Em atendimento', statuses: ['em_triagem', 'em_atendimento'], color: 'hsl(var(--primary))' },
+      { name: 'Aguardando pagamento', statuses: ['aguardando_pagamento', 'aguardando_pagamento_adicional'], color: 'hsl(var(--warning))' },
+      { name: 'Finalizadas', statuses: ['finalizado', 'atendimento_finalizado'], color: 'hsl(var(--success))' },
+      { name: 'Pagas', statuses: ['pago'], color: 'hsl(var(--info))' },
+      { name: 'Faltou', statuses: ['faltou'], color: 'hsl(var(--destructive))' },
+      { name: 'Canceladas', statuses: ['cancelado'], color: 'hsl(var(--muted-foreground))' },
+    ];
+    const statusConhecidos = new Set(gruposStatus.flatMap(grupo => grupo.statuses));
+    const statusDistribution = gruposStatus.map(grupo => ({
+      name: grupo.name,
+      value: consultasHoje.filter(a => grupo.statuses.includes(a.status)).length,
+      color: grupo.color,
+    })).filter(grupo => grupo.value > 0);
+    const outros = consultasHoje.filter(a => !statusConhecidos.has(a.status)).length;
+    if (outros > 0) statusDistribution.push({ name: 'Outros', value: outros, color: 'hsl(var(--muted-foreground))' });
+    const consultasFinalizadas = consultasNaoCanceladas.filter(a => ['finalizado', 'atendimento_finalizado'].includes(a.status)).length;
+    const totalHoje = consultasNaoCanceladas.length;
+    const taxaFinalizacao = totalHoje > 0 ? Math.round(consultasFinalizadas / totalHoje * 100) : 0;
+    return { consultasFinalizadas, consultasCanceladas, totalHoje, taxaFinalizacao, statusDistribution };
   }, [baseAgendamentos, hoje]);
 
   // Financeiro
   const financeiroStats = useMemo(() => {
-    const filterByMonth = (tipo: string, status: string, month = mesAtual, year = anoAtual) =>
-      lancamentos
-        .filter(l => {
-          const d = parseDateOnly(l.data);
-          return Boolean(
-            d &&
-            l.tipo === tipo &&
-            l.status === status &&
-            d.getMonth() === month &&
-            d.getFullYear() === year,
-          );
-        })
-        .reduce((acc, l) => {
-          // Depois da baixa, `valor_pago` é o que efetivamente entrou/saiu do
-          // caixa. O `valor` continua sendo o total originalmente cobrado e
-          // deve ser usado apenas para valores ainda em aberto.
-          const valor = status === 'pago' ? valorRealizado(l) : Number(l.valor) || 0;
-          return acc + valor;
-        }, 0);
+    const filterAReceberByMonth = (tipo: string, month = mesAtual, year = anoAtual) =>
+      lancamentos.filter(l => {
+        const dataBase = l.data_vencimento || l.data;
+        const d = parseDateOnly(dataBase);
+        const statusValido = ['pendente', 'parcial'].includes(l.status || '') && dataBase >= hoje;
+        return Boolean(d && l.tipo === tipo && statusValido && d.getMonth() === month && d.getFullYear() === year);
+      }).reduce((acc, l) => acc + valorEmAberto(l), 0);
 
-    const receitasMes = filterByMonth('receita', 'pago');
-    const aReceber = filterByMonth('receita', 'pendente');
+    const dadosPagamentos = pagamentosQuery.data;
+    const lancamentosComHistorico = new Set<string>([
+      ...(dadosPagamentos?.idsComHistorico ?? []),
+      ...(dadosPagamentos?.pagamentos ?? []).map((pagamento: any) => pagamento.lancamento_id),
+    ]);
+    const eventosAntigos = lancamentos
+      .filter(l => ['pago', 'parcial'].includes(l.status || '') && !lancamentosComHistorico.has(l.id))
+      .map(l => ({
+        lancamentoId: l.id,
+        agendamentoId: l.agendamento_id || null,
+        tipo: l.tipo,
+        data: dataLocalDoEvento(l.data_pagamento || l.data),
+        valor: valorRealizado(l),
+      }));
+    const eventosIndividuais = (dadosPagamentos?.pagamentos ?? []).flatMap((pagamento: any) => {
+      const conta = Array.isArray(pagamento.lancamentos) ? pagamento.lancamentos[0] : pagamento.lancamentos;
+      if (!conta || !['receita', 'despesa'].includes(conta.tipo) || !pagamento.data_pagamento) return [];
+      const eventos: Array<{ lancamentoId: string; agendamentoId: string | null; tipo: string; data: string; valor: number }> = [];
+      eventos.push({
+        lancamentoId: pagamento.lancamento_id,
+        agendamentoId: conta.agendamento_id || null,
+        tipo: conta.tipo,
+        data: dataLocalDoEvento(pagamento.data_pagamento),
+        valor: Number(pagamento.valor),
+      });
+      if (pagamento.estornado_em) eventos.push({
+        lancamentoId: pagamento.lancamento_id,
+        agendamentoId: conta.agendamento_id || null,
+        tipo: conta.tipo,
+        data: dataLocalDoEvento(pagamento.estornado_em),
+        valor: -Number(pagamento.valor),
+      });
+      return eventos;
+    });
+    const eventosRealizados = [...eventosAntigos, ...eventosIndividuais];
+    const recebidoNoMes = (tipo: string, month = mesAtual, year = anoAtual) => eventosRealizados
+      .filter(evento => {
+        const d = parseDateOnly(evento.data);
+        return Boolean(d && evento.tipo === tipo && d.getMonth() === month && d.getFullYear() === year);
+      })
+      .reduce((acc, evento) => acc + evento.valor, 0);
+
+    const receitasMes = recebidoNoMes('receita');
+    const aReceber = filterAReceberByMonth('receita');
     const inadimplente = resumo?.inadimplente ?? 0;
-    const despesas = filterByMonth('despesa', 'pago');
+    const despesas = recebidoNoMes('despesa');
     const saldoLiquido = receitasMes - despesas;
 
     const prevMonth = mesAtual === 0 ? 11 : mesAtual - 1;
     const prevYear = mesAtual === 0 ? anoAtual - 1 : anoAtual;
-    const receitasMesAnterior = filterByMonth('receita', 'pago', prevMonth, prevYear);
+    const receitasMesAnterior = recebidoNoMes('receita', prevMonth, prevYear);
     const trendReceita = receitasMesAnterior > 0 ? Math.round(((receitasMes - receitasMesAnterior) / receitasMesAnterior) * 100) : 0;
 
-    const receitaDia = lancamentos
-      .filter(l => l.data === hoje && l.tipo === 'receita' && l.status === 'pago')
-      .reduce((acc, l) => acc + valorRealizado(l), 0);
+    const receitaDia = eventosRealizados
+      .filter(evento => evento.data === hoje && evento.tipo === 'receita')
+      .reduce((acc, evento) => acc + evento.valor, 0);
 
     const monthlyChartData = Array.from({ length: 6 }, (_, i) => {
       const date = new Date(anoAtual, mesAtual - 5 + i, 1);
-      const receitas = filterByMonth('receita', 'pago', date.getMonth(), date.getFullYear());
-      const desp = filterByMonth('despesa', 'pago', date.getMonth(), date.getFullYear());
+      const receitas = recebidoNoMes('receita', date.getMonth(), date.getFullYear());
+      const desp = recebidoNoMes('despesa', date.getMonth(), date.getFullYear());
       return { name: format(date, 'MMM', { locale: ptBR }), receitas, despesas: desp, lucro: receitas - desp };
     });
 
     const sparkReceitas = monthlyChartData.map(d => d.receitas);
 
-    const atendimentosFinalizadosMes = baseAgendamentos.filter(a => {
-      const d = parseDateOnly(a.data);
-      return Boolean(
-        d &&
-        a.status === 'finalizado' &&
-        d.getMonth() === mesAtual &&
-        d.getFullYear() === anoAtual,
-      );
-    }).length;
-    const ticketMedio = atendimentosFinalizadosMes > 0 ? receitasMes / atendimentosFinalizadosMes : 0;
+    const recebimentosPorAtendimento = new Map<string, number>();
+    for (const evento of eventosRealizados) {
+      const d = parseDateOnly(evento.data);
+      if (evento.tipo !== 'receita' || !evento.agendamentoId || !d || d.getMonth() !== mesAtual || d.getFullYear() !== anoAtual) continue;
+      recebimentosPorAtendimento.set(evento.agendamentoId, (recebimentosPorAtendimento.get(evento.agendamentoId) || 0) + evento.valor);
+    }
+    const atendimentosComRecebimento = [...recebimentosPorAtendimento.values()].filter(valor => valor > 0);
+    const ticketMedio = atendimentosComRecebimento.length > 0
+      ? atendimentosComRecebimento.reduce((total, valor) => total + valor, 0) / atendimentosComRecebimento.length
+      : 0;
 
-    return { receitasMes, aReceber, inadimplente, despesas, saldoLiquido, trendReceita, receitaDia, monthlyChartData, sparkReceitas, atendimentosFinalizadosMes, ticketMedio };
-  }, [lancamentos, baseAgendamentos, resumo, hoje, mesAtual, anoAtual]);
+    return { receitasMes, aReceber, inadimplente, despesas, saldoLiquido, trendReceita, receitaDia, monthlyChartData, sparkReceitas, ticketMedio, atendimentosComRecebimento: atendimentosComRecebimento.length };
+  }, [lancamentos, pagamentosQuery.data, baseAgendamentos, resumo, hoje, mesAtual, anoAtual]);
 
   // Operacional e sparklines
   const operacionalStats = useMemo(() => {
     const estoqueBaixo = estoque.filter(e => e.quantidade <= (e.quantidade_minima || 0)).length;
     const filaAguardando = fila.filter(f => f.status === 'aguardando').length;
-    const novosPacientesMes = pacientes.filter(p => {
-      if (!p.created_at) return false;
-      const d = new Date(p.created_at);
-      return d.getMonth() === mesAtual && d.getFullYear() === anoAtual;
-    }).length;
-
-    const sparkPacientes = Array.from({ length: 6 }, (_, i) => {
-      const date = new Date(anoAtual, mesAtual - 5 + i, 1);
-      return pacientes.filter(p => {
-        if (!p.created_at) return false;
-        const d = new Date(p.created_at);
-        return d.getMonth() === date.getMonth() && d.getFullYear() === date.getFullYear();
-      }).length;
-    });
+    const pacientesPorMes = resumo?.pacientesPorMes ?? [];
+    const novosPacientesMes = pacientesPorMes[pacientesPorMes.length - 1]?.total ?? 0;
+    const sparkPacientes = pacientesPorMes.map((item: { mes: string; total: number }) => item.total);
 
     const sparkConsultas = Array.from({ length: 6 }, (_, i) => {
       const date = new Date(anoAtual, mesAtual - 5 + i, 1);
@@ -457,27 +589,8 @@ function AdminDashboard() {
       .sort((a, b) => `${a.data}${a.hora_inicio}`.localeCompare(`${b.data}${b.hora_inicio}`))
       .slice(0, 6);
 
-    const recentActivities = [
-      ...pacientes.slice(0, 3).map(p => ({
-        icon: UserPlus,
-        title: `Paciente cadastrado: ${p.nome}`,
-        subtitle: 'Novo cadastro',
-        time: p.created_at ? format(new Date(p.created_at), 'HH:mm') : '',
-        color: 'bg-primary/10 text-primary',
-        date: p.created_at || '',
-      })),
-      ...agendamentos.filter(a => a.data === hoje).slice(-3).map(a => ({
-        icon: Calendar,
-        title: `Consulta ${a.status}`,
-        subtitle: `${a.hora_inicio?.slice(0, 5)} - ${a.tipo || 'Consulta'}`,
-        time: a.hora_inicio?.slice(0, 5) || '',
-        color: 'bg-success/10 text-success',
-        date: a.data,
-      })),
-    ].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5);
-
-    return { estoqueBaixo, filaAguardando, novosPacientesMes, sparkPacientes, sparkConsultas, medicosAtivos, proximosAgendamentos, recentActivities };
-  }, [pacientes, agendamentos, baseAgendamentos, estoque, fila, medicos, hoje, mesAtual, anoAtual]);
+    return { estoqueBaixo, filaAguardando, novosPacientesMes, sparkPacientes, sparkConsultas, medicosAtivos, proximosAgendamentos };
+  }, [resumo, agendamentos, baseAgendamentos, estoque, fila, medicos, hoje]);
 
   // Combine all stats into single object for backward compatibility
   const stats = useMemo(() => ({
@@ -496,7 +609,21 @@ function AdminDashboard() {
   const setupProgress = Math.round((setupSteps.filter(s => s.done).length / setupSteps.length) * 100);
 
   if (isLoading) return <DashboardSkeleton />;
+  const dashboardQueries = [resumoQuery, agendamentosQuery, lancamentosQuery, lancamentosPorPagamentoQuery, lancamentosPorVencimentoQuery, pagamentosQuery, medicosQuery, estoqueQuery, filaQuery];
+  const failedQuery = dashboardQueries.find(query => query.isError);
+  if (failedQuery) {
+    return <ErrorState title="Não foi possível carregar o dashboard" description="Os indicadores foram pausados porque uma ou mais áreas retornaram dados incompletos." error={failedQuery.error} onRetry={() => { for (const query of dashboardQueries) void query.refetch(); }} />;
+  }
 
+  const fontesNoLimite = [
+    { nome: 'agendamentos', total: agendamentos.length },
+    { nome: 'lançamentos por emissão', total: lancamentosQuery.data?.length ?? 0 },
+    { nome: 'lançamentos por pagamento', total: lancamentosPorPagamentoQuery.data?.length ?? 0 },
+    { nome: 'vencimentos do mês', total: lancamentosPorVencimentoQuery.data?.length ?? 0 },
+    { nome: 'médicos', total: medicos.length },
+    { nome: 'estoque', total: estoque.length },
+    { nome: 'fila', total: fila.length },
+  ].filter(fonte => fonte.total >= MAX_LINHAS_AUTO).map(fonte => fonte.nome);
 
   const hasData = totalPacientes > 0 || (resumo?.totalAgendamentos ?? 0) > 0 || (resumo?.totalLancamentos ?? 0) > 0;
   const firstName = user?.nome?.split(' ')[0] || 'Usuário';
@@ -505,6 +632,12 @@ function AdminDashboard() {
     <div className="space-y-6 pb-10">
       <OnboardingWizard />
       <RoleWorkspace roles={user?.roles || []} />
+      {fontesNoLimite.length > 0 && (
+        <div role="alert" className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm text-warning-foreground">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
+          <p>O limite de {MAX_LINHAS_AUTO.toLocaleString('pt-BR')} registros foi atingido em: {fontesNoLimite.join(', ')}. Os indicadores dessas áreas podem estar incompletos.</p>
+        </div>
+      )}
       
 
       <motion.div variants={stagger} initial="hidden" animate="visible" className="space-y-6">
@@ -699,7 +832,7 @@ function AdminDashboard() {
                 icon={Users} color="primary" href="/pacientes" delay={0}
                 sparkData={stats.sparkPacientes} />
               <KPICard title="Consultas Hoje" value={stats.totalHoje}
-                subtitle={`${stats.taxaOcupacao}% ocupação`}
+                subtitle={`${stats.taxaFinalizacao}% finalizadas das não canceladas`}
                 icon={Calendar} color="success" href="/agenda" delay={1}
                 sparkData={stats.sparkConsultas} />
               <KPICard title="Receita do Mês" value={formatCurrencyShort(stats.receitasMes)}
@@ -707,7 +840,7 @@ function AdminDashboard() {
                 icon={TrendingUp} color="info" href="/financeiro" delay={2}
                 sparkData={stats.sparkReceitas} trend={stats.trendReceita} />
               <KPICard title="Ticket Médio" value={formatCurrencyShort(stats.ticketMedio)}
-                subtitle={`${stats.atendimentosFinalizadosMes} atendimentos`}
+                subtitle={`${stats.atendimentosComRecebimento} atendimentos com recebimento`}
                 icon={Target} color="warning" href="/financeiro" delay={3} />
             </motion.div>
 
@@ -769,6 +902,8 @@ function AdminDashboard() {
                   <CardDescription>Mês atual</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-1">
+                  {resumo?.inadimplenciaAtingiuLimite && <p role="alert" className="mb-2 rounded-md border border-warning/30 bg-warning/5 p-2 text-xs text-warning-foreground">A lista de contas vencidas atingiu {LIMITE_BUSCA_EM_BLOCOS.toLocaleString('pt-BR')} registros; o valor de inadimplência pode estar incompleto.</p>}
+                  {((pagamentosQuery.data?.pagamentos.length ?? 0) >= LIMITE_BUSCA_EM_BLOCOS || pagamentosQuery.data?.historicoAtingiuLimite) && <p role="alert" className="mb-2 rounded-md border border-warning/30 bg-warning/5 p-2 text-xs text-warning-foreground">O histórico financeiro atingiu o limite de consulta; os valores recebidos podem estar incompletos.</p>}
                   <FinanceStat label="Recebido" value={formatCurrency(stats.receitasMes)} icon={CheckCircle2} variant="positive" />
                   <FinanceStat label="A Receber" value={formatCurrency(stats.aReceber)} icon={Clock} variant="neutral" />
                   <FinanceStat label="Inadimplente" value={formatCurrency(stats.inadimplente)} icon={AlertTriangle} variant="negative" />
@@ -791,17 +926,17 @@ function AdminDashboard() {
               <Card className="lg:col-span-3 border-border/40">
                 <CardHeader className="pb-2 text-center">
                   <CardTitle className="text-base">Hoje</CardTitle>
-                  <CardDescription>{stats.totalHoje} consulta{stats.totalHoje !== 1 ? 's' : ''}</CardDescription>
+                  <CardDescription>{stats.totalHoje} não cancelada{stats.totalHoje !== 1 ? 's' : ''} · {stats.consultasCanceladas} cancelada{stats.consultasCanceladas !== 1 ? 's' : ''}</CardDescription>
                 </CardHeader>
                 <CardContent>
                   {stats.totalHoje > 0 ? (
                     <div className="flex flex-col items-center gap-4">
                       <div className="relative">
-                        <ProgressRing value={stats.taxaOcupacao} size={100} strokeWidth={8} color="hsl(var(--primary))" />
+                        <ProgressRing value={stats.taxaFinalizacao} size={100} strokeWidth={8} color="hsl(var(--primary))" />
                         <div className="absolute inset-0 flex items-center justify-center">
                           <div className="text-center">
-                            <p className="text-xl font-bold tabular-nums">{stats.taxaOcupacao}%</p>
-                            <p className="text-[9px] text-muted-foreground uppercase tracking-wider">Ocupação</p>
+                            <p className="text-xl font-bold tabular-nums">{stats.taxaFinalizacao}%</p>
+                            <p className="text-[9px] text-muted-foreground uppercase tracking-wider">Finalizadas</p>
                           </div>
                         </div>
                       </div>

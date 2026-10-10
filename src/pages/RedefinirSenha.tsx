@@ -59,20 +59,19 @@ export default function RedefinirSenha() {
     if (!email.trim()) return;
 
     setEnviando(true);
-    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
-      redirectTo: `${window.location.origin}/redefinir-senha`,
-    });
-    setEnviando(false);
+    let error: unknown = null;
+    try {
+      ({ error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+        redirectTo: `${window.location.origin}/redefinir-senha`,
+      }));
+    } catch (err) {
+      error = err;
+    } finally {
+      setEnviando(false);
+    }
 
     if (error) {
-      // Limite de envio do Supabase é o erro mais provável aqui, e a mensagem
-      // crua ("email rate limit exceeded") não diz nada a quem está usando.
-      const limite = /rate limit|too many/i.test(error.message);
-      toast.error(
-        limite
-          ? 'Muitas tentativas seguidas. Aguarde alguns minutos e tente de novo.'
-          : `Não foi possível enviar o e-mail: ${error.message}`
-      );
+      toast.error('Não foi possível enviar o e-mail. Tente novamente.');
       return;
     }
 
@@ -95,11 +94,17 @@ export default function RedefinirSenha() {
     }
 
     setEnviando(true);
-    const { error } = await supabase.auth.updateUser({ password: senha });
-    setEnviando(false);
+    let error: unknown = null;
+    try {
+      ({ error } = await supabase.auth.updateUser({ password: senha }));
+    } catch (err) {
+      error = err;
+    } finally {
+      setEnviando(false);
+    }
 
     if (error) {
-      toast.error(`Não foi possível salvar a nova senha: ${error.message}`);
+      toast.error('Não foi possível salvar a nova senha. Tente novamente.');
       return;
     }
 
@@ -118,7 +123,7 @@ export default function RedefinirSenha() {
           </CardTitle>
           <CardDescription>
             {etapa === 'pedir' && 'Informe seu e-mail e enviaremos um link para criar uma nova senha.'}
-            {etapa === 'enviado' && 'Verifique sua caixa de entrada.'}
+            {etapa === 'enviado' && 'Confira seu e-mail em até 5 minutos.'}
             {etapa === 'definir' && 'Escolha uma senha que você ainda não usou em outro serviço.'}
           </CardDescription>
         </CardHeader>
@@ -129,8 +134,8 @@ export default function RedefinirSenha() {
               <Alert className="border-primary/20 bg-primary/5">
                 <CheckCircle2 className="h-4 w-4 text-primary" />
                 <AlertDescription>
-                  Se existir uma conta com <strong>{email}</strong>, o link chegou por e-mail.
-                  Ele vale por uma hora. Confira também o lixo eletrônico.
+                  Se este e-mail estiver cadastrado, o link para redefinir sua senha chegará em até 5 minutos.
+                  Confira a caixa de entrada e o spam.
                 </AlertDescription>
               </Alert>
               <Button variant="outline" className="w-full" onClick={() => navigate('/auth')}>
@@ -142,6 +147,7 @@ export default function RedefinirSenha() {
 
           {etapa === 'pedir' && (
             <form onSubmit={pedirEmail} className="space-y-4">
+              <fieldset disabled={enviando} className="space-y-4 border-0 p-0 m-0 min-w-0">
               <div className="space-y-2">
                 <Label htmlFor="email">E-mail</Label>
                 <div className="relative">
@@ -165,15 +171,17 @@ export default function RedefinirSenha() {
               </Button>
               <Link
                 to="/auth"
-                className="block text-center text-sm text-muted-foreground hover:text-foreground"
+                className="inline-flex min-h-10 w-full items-center justify-center text-center text-sm text-muted-foreground hover:text-foreground"
               >
                 Voltar para o login
               </Link>
+              </fieldset>
             </form>
           )}
 
           {etapa === 'definir' && (
             <form onSubmit={definirSenha} className="space-y-4">
+              <fieldset disabled={enviando} className="space-y-4 border-0 p-0 m-0 min-w-0">
               <div className="space-y-2">
                 <Label htmlFor="senha">Nova senha</Label>
                 <div className="relative">
@@ -228,6 +236,7 @@ export default function RedefinirSenha() {
                   ? <><Loader2 aria-hidden="true" className="mr-2 h-4 w-4 animate-spin" />Salvando…</>
                   : 'Salvar nova senha'}
               </Button>
+              </fieldset>
             </form>
           )}
         </CardContent>

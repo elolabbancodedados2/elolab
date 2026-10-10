@@ -1,7 +1,11 @@
 import { defineConfig, devices } from '@playwright/test';
 
 const e2ePort = Number(process.env.PLAYWRIGHT_PORT ?? 4173);
-const e2eBaseURL = `http://127.0.0.1:${e2ePort}`;
+// E2E de PR deve usar o app local. PRODUCAO_URL é apenas o alvo explícito dos
+// testes read-only de smoke; usá-la como baseURL faz toda a suíte interagir
+// com produção e mistura regressões do código com o estado do deploy.
+const remoteBaseURL = process.env.QA_BASE_URL;
+const e2eBaseURL = remoteBaseURL || `http://127.0.0.1:${e2ePort}`;
 
 export default defineConfig({
   testDir: './tests',
@@ -35,11 +39,13 @@ export default defineConfig({
       },
     },
   ],
-  webServer: {
-    command: `npm run dev -- --mode test --host 127.0.0.1 --port ${e2ePort}`,
-    url: e2eBaseURL,
-    // Nunca reutilizar um servidor arbitrário: outra aplicação pode estar
-    // ocupando a porta padrão e produzir falsos 404/erros nos testes.
-    reuseExistingServer: false,
-  },
+  ...(remoteBaseURL ? {} : {
+    webServer: {
+      command: `npm run dev -- --mode test --host 127.0.0.1 --port ${e2ePort}`,
+      url: e2eBaseURL,
+      // Nunca reutilizar um servidor arbitrário: outra aplicação pode estar
+      // ocupando a porta padrão e produzir falsos 404/erros nos testes.
+      reuseExistingServer: false,
+    },
+  }),
 });

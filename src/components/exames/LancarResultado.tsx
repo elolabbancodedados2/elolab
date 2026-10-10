@@ -14,7 +14,7 @@
  * Ao salvar, o exame vai para "laudo disponível" — que é o estado que dispara
  * o aviso ao paciente e a vinculação ao prontuário.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Upload, FileText, Loader2, X } from 'lucide-react';
 import { toast } from 'sonner';
@@ -26,6 +26,7 @@ import {
 } from '@/components/ui/dialog';
 import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
+import { mensagemDeErro } from '@/lib/erros';
 
 interface Props {
   exame: {
@@ -34,14 +35,21 @@ interface Props {
     paciente_id: string;
     resultado?: string | null;
     arquivo_resultado?: string | null;
+    updated_at?: string | null;
   } | null;
   onFechar: () => void;
   /** Chamado depois de salvar, para a tela seguir com o fluxo de laudo. */
-  aoSalvar?: (exameId: string) => void | Promise<void>;
+  aoSalvar?: (exameId: string) => void | boolean | Promise<void | boolean>;
 }
 
 /** 10 MB é o teto do bucket de anexos médicos. */
 const TETO_BYTES = 10 * 1024 * 1024;
+const TIPOS_PERMITIDOS = new Set(['application/pdf', 'image/jpeg', 'image/png', 'image/webp', 'image/gif']);
+const EXTENSOES_PERMITIDAS = new Set(['pdf', 'jpg', 'jpeg', 'png', 'webp', 'gif']);
+const MIME_POR_EXTENSAO: Record<string, string> = {
+  pdf: 'application/pdf', jpg: 'image/jpeg', jpeg: 'image/jpeg',
+  png: 'image/png', webp: 'image/webp', gif: 'image/gif',
+};
 
 export function LancarResultado({ exame, onFechar, aoSalvar }: Props) {
   const { profile } = useSupabaseAuth();
@@ -49,18 +57,23 @@ export function LancarResultado({ exame, onFechar, aoSalvar }: Props) {
   const [texto, setTexto] = useState('');
   const [arquivo, setArquivo] = useState<File | null>(null);
   const [salvando, setSalvando] = useState(false);
+  const exameId = exame?.id ?? null;
+  const resultadoSalvo = exame?.resultado ?? '';
 
-  // O conteúdo é remontado a cada abertura; sem isto o resultado de um exame
-  // apareceria ao abrir o próximo.
-  const [ultimoId, setUltimoId] = useState<string | null>(null);
-  if (exame && exame.id !== ultimoId) {
-    setUltimoId(exame.id);
-    setTexto(exame.resultado ?? '');
+  // Cada abertura começa com o que está salvo no banco. Fechar sem salvar e
+  // reabrir o mesmo exame não pode reaproveitar texto descartado no diálogo.
+  useEffect(() => {
+    setTexto(resultadoSalvo);
     setArquivo(null);
-  }
+  }, [exameId, resultadoSalvo]);
 
   async function salvar() {
     if (!exame) return;
+    if (salvando) return;
+    if (!profile?.clinica_id) {
+      toast.error('Clínica não identificada. Atualize a sessão e tente novamente.');
+      return;
+    }
     if (!texto.trim() && !arquivo && !exame.arquivo_resultado) {
       toast.error('Escreva o resultado ou anexe o laudo', {
         description: 'Sem um dos dois, o paciente é avisado e não encontra nada.',
@@ -69,6 +82,8 @@ export function LancarResultado({ exame, onFechar, aoSalvar }: Props) {
     }
 
     setSalvando(true);
+    let arquivoNovo: string | null = null;
+    let resultadoPersistido = false;
     try {
       let caminhoArquivo = exame.arquivo_resultado ?? null;
 
@@ -76,46 +91,98 @@ export function LancarResultado({ exame, onFechar, aoSalvar }: Props) {
         if (arquivo.size > TETO_BYTES) {
           throw new Error(`O arquivo tem ${(arquivo.size / 1048576).toFixed(1)} MB. O limite é 10 MB.`);
         }
+        const extensaoOriginal = arquivo.name.split('.').pop()?.toLowerCase() ?? '';
+        if (!EXTENSOES_PERMITIDAS.has(extensaoOriginal) || (arquivo.type && !TIPOS_PERMITIDOS.has(arquivo.type))) {
+          throw new Error('Use um arquivo PDF ou uma imagem JPG, PNG, WebP ou GIF.');
+        }
         // Caminho por clínica e paciente: é o que as políticas do bucket usam
         // para não deixar uma clínica alcançar o anexo da outra.
-        const extensao = arquivo.name.split('.').pop() ?? 'bin';
-        const caminho = `${profile?.clinica_id}/${exame.paciente_id}/${exame.id}-${Date.now()}.${extensao}`;
+        const extensao = extensaoOriginal;
+        const caminho = `${profile.clinica_id}/${exame.paciente_id}/${exame.id}-${Date.now()}.${extensao}`;
 
         const { error: erroUpload } = await supabase.storage
           .from('medical-attachments')
-          .upload(caminho, arquivo, { contentType: arquivo.type, upsert: false });
+          .upload(caminho, arquivo, { contentType: arquivo.type || MIME_POR_EXTENSAO[extensao], upsert: false });
         if (erroUpload) throw new Error(`Não consegui subir o arquivo: ${erroUpload.message}`);
 
+        arquivoNovo = caminho;
         caminhoArquivo = caminho;
       }
 
-      const { error } = await supabase
+      let atualizarExame = supabase
         .from('exames')
         .update({
           resultado: texto.trim() || null,
           arquivo_resultado: caminhoArquivo,
-        } as any)
+        })
         .eq('id', exame.id)
-        .select('id')
-        .single();
+        .eq('clinica_id', profile.clinica_id);
+      // O diálogo pode ficar aberto enquanto outro operador registra ou troca
+      // o laudo. Só grava se a linha ainda tiver a versão que foi aberta.
+      atualizarExame = exame.updated_at
+        ? atualizarExame.eq('updated_at', exame.updated_at)
+        : atualizarExame.is('updated_at', null);
+      const { data, error } = await atualizarExame.select('id').maybeSingle();
       if (error) throw error;
+      if (!data) throw new Error('Este exame foi alterado ou saiu do seu acesso enquanto o formulário estava aberto. Não sobrescrevi os dados. Atualize a lista, confira o resultado atual e tente novamente.');
+      resultadoPersistido = true;
+
+      // Ao trocar o laudo, o caminho anterior deixa de ser referenciado pelo
+      // exame. Limpa-o só depois da confirmação do banco; uma falha no Storage
+      // não invalida o resultado novo que já foi salvo.
+      if (arquivoNovo && exame.arquivo_resultado && exame.arquivo_resultado !== arquivoNovo) {
+        try {
+          const { error: erroRemocao } = await supabase.storage
+            .from('medical-attachments')
+            .remove([exame.arquivo_resultado]);
+          if (erroRemocao) throw erroRemocao;
+        } catch (erroRemocao) {
+          toast.warning('O novo laudo foi salvo, mas o arquivo anterior não pôde ser removido.', {
+            description: mensagemDeErro(erroRemocao),
+          });
+        }
+      }
 
       queryClient.invalidateQueries({ queryKey: ['exames'] });
       toast.success('Resultado lançado');
 
       // O laudo e o aviso ao paciente são passo seguinte, e quem sabe fazê-lo
       // é a tela de exames — que já tem a automação ligada.
-      await aoSalvar?.(exame.id);
+      let avancouParaLaudo = true;
+      let erroAoAvancar: string | null = null;
+      try {
+        avancouParaLaudo = (await aoSalvar?.(exame.id)) !== false;
+      } catch (erroAutomacao) {
+        avancouParaLaudo = false;
+        erroAoAvancar = mensagemDeErro(erroAutomacao);
+      }
+      if (!avancouParaLaudo) {
+        toast.warning('O resultado foi salvo, mas o laudo ainda não foi liberado.', {
+          description: [erroAoAvancar, 'O exame continua na lista. Use a ação de avanço para tentar novamente.'].filter(Boolean).join(' '),
+        });
+      }
       onFechar();
-    } catch (e: any) {
-      toast.error('Não foi possível lançar o resultado', { description: e?.message });
+    } catch (e: unknown) {
+      if (arquivoNovo && !resultadoPersistido) {
+        try {
+          const { error: erroLimpeza } = await supabase.storage
+            .from('medical-attachments')
+            .remove([arquivoNovo]);
+          if (erroLimpeza) throw erroLimpeza;
+        } catch (erroLimpeza) {
+          toast.warning('O resultado não foi salvo e o arquivo temporário não pôde ser removido.', {
+            description: mensagemDeErro(erroLimpeza),
+          });
+        }
+      }
+      toast.error('Não foi possível lançar o resultado', { description: mensagemDeErro(e) });
     } finally {
       setSalvando(false);
     }
   }
 
   return (
-    <Dialog open={!!exame} onOpenChange={a => !a && onFechar()}>
+    <Dialog open={!!exame} onOpenChange={a => { if (!a && !salvando) onFechar(); }}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Resultado — {exame?.tipo_exame}</DialogTitle>
@@ -125,7 +192,7 @@ export function LancarResultado({ exame, onFechar, aoSalvar }: Props) {
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-3">
+        <fieldset disabled={salvando} className="space-y-3">
           <div className="space-y-1">
             <Label htmlFor="resultado-texto">Resultado</Label>
             <Textarea
@@ -162,10 +229,10 @@ export function LancarResultado({ exame, onFechar, aoSalvar }: Props) {
               </label>
             )}
           </div>
-        </div>
+        </fieldset>
 
         <DialogFooter>
-          <Button variant="outline" onClick={onFechar}>Cancelar</Button>
+          <Button variant="outline" onClick={onFechar} disabled={salvando}>Cancelar</Button>
           <Button onClick={salvar} disabled={salvando}>
             {salvando && <Loader2 className="mr-1 h-4 w-4 animate-spin" />}
             Lançar resultado

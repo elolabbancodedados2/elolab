@@ -1,7 +1,31 @@
+export type WhatsAppAgentCapability =
+  | 'informacoes_clinica'
+  | 'consultar_disponibilidade'
+  | 'criar_agendamento'
+  | 'consultar_agendamentos_paciente'
+  | 'cancelar_agendamento'
+  | 'reagendar_agendamento'
+  | 'registrar_triagem';
+
+export const WHATSAPP_AGENT_CAPABILITIES: Array<{
+  value: WhatsAppAgentCapability;
+  label: string;
+  description: string;
+}> = [
+  { value: 'informacoes_clinica', label: 'Responder sobre a clínica', description: 'Informa endereço, contatos e horários cadastrados pela clínica.' },
+  { value: 'consultar_disponibilidade', label: 'Consultar horários', description: 'Verifica os horários livres e profissionais disponíveis.' },
+  { value: 'criar_agendamento', label: 'Marcar consultas', description: 'Agenda uma consulta após o paciente escolher dia e horário.' },
+  { value: 'consultar_agendamentos_paciente', label: 'Consultar minhas consultas', description: 'Mostra apenas os próximos agendamentos do número que chamou.' },
+  { value: 'cancelar_agendamento', label: 'Desmarcar consultas', description: 'Solicita confirmação do paciente antes de cancelar.' },
+  { value: 'reagendar_agendamento', label: 'Remarcar consultas', description: 'Confirma o novo horário com o paciente antes de alterar.' },
+  { value: 'registrar_triagem', label: 'Fazer pré-triagem', description: 'Registra sintomas para a equipe; não fornece diagnóstico.' },
+];
+
 export interface WhatsAppAgent {
   id: string;
   nome: string;
   tipo: string;
+  habilidades: WhatsAppAgentCapability[];
   humor: string;
   instrucoes_personalizadas: string | null;
   ativo: boolean;
@@ -74,6 +98,7 @@ export interface WhatsAppStats {
 export interface NewAgentForm {
   nome: string;
   tipo: string;
+  habilidades: WhatsAppAgentCapability[];
   humor: string;
   instrucoes_personalizadas: string;
   temperatura: number;
@@ -89,6 +114,14 @@ export interface NewAgentForm {
 export const defaultAgentForm: NewAgentForm = {
   nome: '',
   tipo: 'geral',
+  habilidades: [
+    'informacoes_clinica',
+    'consultar_disponibilidade',
+    'criar_agendamento',
+    'consultar_agendamentos_paciente',
+    'cancelar_agendamento',
+    'reagendar_agendamento',
+  ],
   humor: 'profissional',
   instrucoes_personalizadas: '',
   temperatura: 0.7,

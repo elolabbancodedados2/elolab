@@ -54,32 +54,65 @@ interface ClienteCRM {
 }
 
 const dinheiro = (v: number) =>
-  v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
+  v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const assinaturaLabel: Record<string, string> = {
+  ativa: 'Ativa', trial: 'Em teste', pendente: 'Pendente', cancelada: 'Cancelada', expirada: 'Expirada',
+};
+
+function idadeDoCliente(desde: string) {
+  const criado = new Date(desde).getTime();
+  return Number.isFinite(criado) ? Math.max(0, Math.floor((Date.now() - criado) / 86_400_000)) : 0;
+}
+
+function dataValida(value: string) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? 'data indisponível' : date.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+}
+
+function numeroWhatsApp(value: string) {
+  const digits = value.replace(/\D/g, '');
+  if (digits.length === 10 || digits.length === 11) return `55${digits}`;
+  return digits.length >= 12 && digits.length <= 13 && digits.startsWith('55') ? digits : null;
+}
 
 /** Dias até vencer, traduzido para o que a pessoa precisa decidir. */
-function SinalVencimento({ dias }: { dias: number | null }) {
+function SinalVencimento({ dias, venceEm, status }: { dias: number | null; venceEm: string | null; status: string | null }) {
+  if (status === 'cancelada') return <Badge variant="secondary">cancelada</Badge>;
+  if (status === 'expirada') return <Badge variant="destructive">expirada</Badge>;
   if (dias === null) return <span className="text-muted-foreground text-sm">sem assinatura</span>;
-  if (dias < 0)
-    return <Badge variant="destructive" className="gap-1"><AlertTriangle className="h-3 w-3" />venceu há {Math.abs(dias)}d</Badge>;
+  if (dias < 0) {
+    const elapsedDays = venceEm ? (Date.now() - new Date(venceEm).getTime()) / 86_400_000 : Number.NaN;
+    const label = !Number.isFinite(elapsedDays) ? `venceu há ${Math.abs(dias)}d` : elapsedDays < 1 ? 'venceu há menos de 1d' : `venceu há ${Math.floor(elapsedDays)}d`;
+    return <Badge variant="destructive" className="gap-1"><AlertTriangle className="h-3 w-3" />{label}</Badge>;
+  }
+  if (dias === 0)
+    return <Badge variant="destructive" className="gap-1"><CalendarClock className="h-3 w-3" />vence hoje</Badge>;
   if (dias <= 7)
     return <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100 gap-1"><CalendarClock className="h-3 w-3" />vence em {dias}d</Badge>;
   return <span className="text-sm text-muted-foreground">em {dias} dias</span>;
 }
 
 /** Clínica que parou de usar cancela depois. O sinal vem antes do pedido. */
-function SinalUso({ dias }: { dias: number | null }) {
-  if (dias === null) return <span className="text-sm text-muted-foreground">nunca usou</span>;
+function SinalUso({ dias, idadeClienteDias, ultimaAtividade }: { dias: number | null; idadeClienteDias: number; ultimaAtividade: string | null }) {
+  const detalheAtividade = ultimaAtividade
+    ? `Último acesso ou registro: ${dataValida(ultimaAtividade)}`
+    : null;
+  const sinal = (() => {
+  if (dias === null && idadeClienteDias < 30) return <span className="text-sm text-muted-foreground">sem atividade ainda · {idadeClienteDias}d de cliente</span>;
+  if (dias === null) return <Badge variant="destructive" className="gap-1"><Moon className="h-3 w-3" />sem atividade desde o cadastro</Badge>;
   if (dias >= 30)
     return <Badge variant="destructive" className="gap-1"><Moon className="h-3 w-3" />{dias}d parada</Badge>;
   if (dias >= 14)
     return <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100">{dias}d sem uso</Badge>;
   return <span className="text-sm text-muted-foreground">há {dias}d</span>;
+  })();
+  return <div className="space-y-1">{sinal}{dias !== null && dias >= 14 && detalheAtividade && <p className="text-[10px] text-muted-foreground">{detalheAtividade}</p>}</div>;
 }
 
 export default function PlatformCRM() {
   const [busca, setBusca] = useState('');
 
-  const { data: clientes = [], isLoading, error, refetch } = useQuery({
+  const { data: clientes = [], isLoading, isFetching, error, refetch } = useQuery({
     queryKey: ['platform-crm'],
     queryFn: async (): Promise<ClienteCRM[]> => {
       const { data, error } = await (supabase as any).rpc('platform_crm_overview');
@@ -89,29 +122,33 @@ export default function PlatformCRM() {
   });
 
   const resumo = useMemo(() => {
-    // Receita conta só assinatura ativa: somar quem venceu inflaria o número e
-    // é justamente o erro que faz alguém achar que está tudo bem.
+    // O valor do plano é preço de tabela, não confirmação de recebimento.
+    // Exclui testes, suspensões e períodos vencidos para evitar inflar a soma.
     const ativos = clientes.filter(
-      (c) => c.assinatura_status === 'ativa' && (c.dias_para_vencer ?? -1) >= 0
+      (c) => c.assinatura_status === 'ativa' && !c.em_trial && !c.suspensa && (c.dias_para_vencer ?? -1) >= 0
     );
     return {
       receitaMensal: ativos.reduce((s, c) => s + Number(c.plano_valor ?? 0), 0),
       pagantes: ativos.length,
-      vencendo: clientes.filter((c) => (c.dias_para_vencer ?? 99) <= 7 && (c.dias_para_vencer ?? 99) >= 0).length,
-      vencidos: clientes.filter((c) => (c.dias_para_vencer ?? 0) < 0).length,
-      paradas: clientes.filter((c) => (c.dias_sem_uso ?? 0) >= 30 || c.dias_sem_uso === null).length,
+      vencendo: clientes.filter((c) => !['cancelada', 'expirada'].includes(c.assinatura_status || '') && (c.dias_para_vencer ?? 99) <= 7 && (c.dias_para_vencer ?? 99) >= 0).length,
+      vencidos: clientes.filter((c) => c.assinatura_status === 'expirada' || (c.assinatura_status !== 'cancelada' && (c.dias_para_vencer ?? 0) < 0)).length,
+      // Ausência de atividade só indica risco após 30 dias de vida do cliente;
+      // onboarding recente não deve inflar a lista de risco de cancelamento.
+      paradas: clientes.filter((c) => (c.dias_sem_uso ?? idadeDoCliente(c.cliente_desde)) >= 30).length,
       semAssinatura: clientes.filter((c) => c.assinatura_status === null).length,
     };
   }, [clientes]);
 
   const visiveis = useMemo(() => {
     const t = busca.trim().toLowerCase();
+    const telefone = t.replace(/\D/g, '');
     if (!t) return clientes;
     return clientes.filter(
       (c) =>
         c.clinica_nome?.toLowerCase().includes(t) ||
         c.dono_email?.toLowerCase().includes(t) ||
-        c.dono_nome?.toLowerCase().includes(t)
+        c.dono_nome?.toLowerCase().includes(t) ||
+        (telefone.length > 0 && (c.dono_telefone?.replace(/\D/g, '').includes(telefone) ?? false))
     );
   }, [clientes, busca]);
 
@@ -127,18 +164,24 @@ export default function PlatformCRM() {
         <p className="text-muted-foreground mt-1">
           Suas clínicas clientes: receita, vencimentos e quem parou de usar.
         </p>
+        <Button className="mt-3 min-h-11" variant="outline" onClick={() => void refetch()} disabled={isFetching}>
+          <CalendarClock className={`mr-2 h-4 w-4 ${isFetching ? 'animate-pulse' : ''}`} />Atualizar clientes
+        </Button>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <Card>
           <CardHeader className="pb-2">
-            <CardDescription className="flex items-center gap-1">
-              <TrendingUp className="h-3.5 w-3.5" />Receita mensal
+          <CardDescription className="flex items-center gap-1">
+              <TrendingUp className="h-3.5 w-3.5" />Soma dos valores cadastrados
             </CardDescription>
             <CardTitle className="text-2xl text-emerald-600">{dinheiro(resumo.receitaMensal)}</CardTitle>
           </CardHeader>
           <CardContent className="pt-0 text-xs text-muted-foreground">
-            {resumo.pagantes} assinatura{resumo.pagantes === 1 ? '' : 's'} em dia
+            {resumo.pagantes} assinatura{resumo.pagantes === 1 ? '' : 's'} em dia, sem testes
+          </CardContent>
+          <CardContent className="pt-0 text-xs text-muted-foreground">
+            Soma nominal dos planos ativos. Não confirma recebimentos nem converte ciclos trimestrais, semestrais ou anuais em valor mensal.
           </CardContent>
         </Card>
 
@@ -165,7 +208,7 @@ export default function PlatformCRM() {
             <CardDescription>Paradas há 30 dias+</CardDescription>
             <CardTitle className="text-2xl text-red-600">{resumo.paradas}</CardTitle>
           </CardHeader>
-          <CardContent className="pt-0 text-xs text-muted-foreground">risco de cancelamento</CardContent>
+          <CardContent className="pt-0 text-xs text-muted-foreground">risco de cancelamento · inclui acessos e registros</CardContent>
         </Card>
       </div>
 
@@ -196,7 +239,7 @@ export default function PlatformCRM() {
               <Input
                 value={busca}
                 onChange={(e) => setBusca(e.target.value)}
-                placeholder="Buscar por clínica, dono ou e-mail"
+                placeholder="Buscar clínica, responsável, e-mail ou telefone"
                 className="pl-9"
               />
             </div>
@@ -230,23 +273,23 @@ export default function PlatformCRM() {
                           {c.suspensa && <Badge variant="destructive" className="text-xs">suspensa</Badge>}
                         </div>
                         <div className="text-xs text-muted-foreground">
-                          cliente desde {new Date(c.cliente_desde).toLocaleDateString('pt-BR')}
+                          cliente desde {dataValida(c.cliente_desde)}
                         </div>
                       </TableCell>
 
                       <TableCell>
-                        {c.dono_email ? (
+                        {c.dono_email || c.dono_nome || c.dono_telefone ? (
                           <div className="space-y-0.5">
                             <div className="text-sm">{c.dono_nome ?? '—'}</div>
-                            <a
+                            {c.dono_email && <a
                               href={`mailto:${c.dono_email}`}
                               className="text-xs text-primary hover:underline flex items-center gap-1"
                             >
                               <Mail className="h-3 w-3" />{c.dono_email}
-                            </a>
-                            {c.dono_telefone && (
+                            </a>}
+                            {c.dono_telefone && numeroWhatsApp(c.dono_telefone) && (
                               <a
-                                href={`https://wa.me/55${c.dono_telefone.replace(/\D/g, '')}`}
+                                href={`https://wa.me/${numeroWhatsApp(c.dono_telefone)}`}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="text-xs text-primary hover:underline flex items-center gap-1"
@@ -254,6 +297,7 @@ export default function PlatformCRM() {
                                 <Phone className="h-3 w-3" />{c.dono_telefone}
                               </a>
                             )}
+                            {c.dono_telefone && !numeroWhatsApp(c.dono_telefone) && <span className="text-xs text-muted-foreground">{c.dono_telefone}</span>}
                           </div>
                         ) : (
                           <span className="text-sm text-muted-foreground">sem dono definido</span>
@@ -263,19 +307,19 @@ export default function PlatformCRM() {
                       <TableCell>
                         {c.plano_nome ? (
                           <div>
-                            <div className="text-sm">{c.plano_nome}</div>
+                            <div className="flex flex-wrap items-center gap-1 text-sm">{c.plano_nome}{c.assinatura_status && <Badge variant={c.assinatura_status === 'ativa' ? 'outline' : c.assinatura_status === 'cancelada' || c.assinatura_status === 'expirada' ? 'destructive' : 'secondary'}>{assinaturaLabel[c.assinatura_status] || c.assinatura_status}</Badge>}</div>
                             <div className="text-xs text-muted-foreground">
-                              {c.plano_valor ? dinheiro(Number(c.plano_valor)) + '/mês' : '—'}
+                              {c.plano_valor !== null ? `${dinheiro(Number(c.plano_valor))} · valor cadastrado` : 'valor não informado'}
                               {c.em_trial && ' · teste'}
                             </div>
                           </div>
-                        ) : (
-                          <span className="text-sm text-muted-foreground">—</span>
-                        )}
+                        ) : c.assinatura_status ? (
+                          <Badge variant={c.assinatura_status === 'cancelada' || c.assinatura_status === 'expirada' ? 'destructive' : 'secondary'}>{assinaturaLabel[c.assinatura_status] || c.assinatura_status}</Badge>
+                        ) : <span className="text-sm text-muted-foreground">sem plano</span>}
                       </TableCell>
 
-                      <TableCell><SinalVencimento dias={c.dias_para_vencer} /></TableCell>
-                      <TableCell><SinalUso dias={c.dias_sem_uso} /></TableCell>
+                      <TableCell><SinalVencimento dias={c.dias_para_vencer} venceEm={c.vence_em} status={c.assinatura_status} /></TableCell>
+                      <TableCell><SinalUso dias={c.dias_sem_uso} idadeClienteDias={idadeDoCliente(c.cliente_desde)} ultimaAtividade={c.ultima_atividade} /></TableCell>
 
                       <TableCell className="text-right text-sm text-muted-foreground whitespace-nowrap">
                         {c.total_pacientes} pac · {c.total_medicos} méd

@@ -4,10 +4,10 @@ import { Users, Building2, Baby, Heart } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 
 interface PatientStatsProps {
-  total: number;
-  comConvenio: number;
-  menores: number;
-  comAlergias: number;
+  total: number | string;
+  comConvenio: number | string;
+  menores: number | string;
+  comAlergias: number | string;
 }
 
 export const PatientStats = memo(function PatientStats({ total, comConvenio, menores, comAlergias }: PatientStatsProps) {

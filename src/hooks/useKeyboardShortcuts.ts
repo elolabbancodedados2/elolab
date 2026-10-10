@@ -25,7 +25,7 @@ export function useShortcutsList(): ShortcutConfig[] {
     { key: 't', alt: true, action: () => navigate('/atestados'), description: 'Ir para Atestados', category: 'Navegação' },
     { key: 'x', alt: true, action: () => navigate('/exames'), description: 'Ir para Exames', category: 'Navegação' },
     { key: 'i', alt: true, action: () => navigate('/estoque'), description: 'Ir para Estoque', category: 'Navegação' },
-    { key: '$', alt: true, action: () => navigate('/financeiro'), description: 'Ir para Financeiro', category: 'Navegação' },
+    { key: 'c', alt: true, action: () => navigate('/financeiro'), description: 'Ir para Financeiro', category: 'Navegação' },
     { key: 's', alt: true, action: () => navigate('/configuracoes'), description: 'Ir para Configurações', category: 'Navegação' },
   ], [navigate]);
 }

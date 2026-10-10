@@ -8,6 +8,18 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { ErrorState } from '@/components/ErrorState';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
@@ -76,45 +88,63 @@ export default function TemplatesEmail() {
   const [previewTab, setPreviewTab] = useState('editar');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const { data: templates = [] } = useQuery({
+  const templatesQuery = useQuery({
     queryKey: ['templates', profile?.clinica_id],
     queryFn: async () => {
       if (!profile?.clinica_id) return [];
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('notification_templates')
         .select('*')
         .eq('clinica_id', profile.clinica_id)
         .order('nome');
+      if (error) throw error;
       return data || [];
     },
     enabled: !!profile?.clinica_id,
   });
+  const templates = templatesQuery.data || [];
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      if (!form.nome || !form.categoria || !form.assunto || !form.conteudo) {
+      if (!form.nome.trim() || !form.categoria || !form.assunto.trim() || !form.conteudo.trim()) {
         throw new Error('Preencha todos os campos');
       }
       if (!profile?.clinica_id) throw new Error('Clínica não identificada');
 
       const conteudoSeguro = sanitizeTemplateHtml(form.conteudo);
+      if (!conteudoSeguro.trim()) throw new Error('O conteúdo ficou vazio após remover elementos não permitidos.');
 
       // Extract variables from content
       const regex = /\{\{(\w+)\}\}/g;
       const variaveis: string[] = [];
       let match;
-      while ((match = regex.exec(form.conteudo)) !== null) {
+      while ((match = regex.exec(`${form.assunto}\n${conteudoSeguro}`)) !== null) {
         if (!variaveis.includes(match[1])) {
           variaveis.push(match[1]);
         }
       }
+      const desconhecidas = variaveis.filter(variable => !(variable in VALORES_EXEMPLO));
+      if (desconhecidas.length > 0) {
+        throw new Error(`Variáveis sem valor de substituição: ${desconhecidas.map(variable => `{{${variable}}}`).join(', ')}`);
+      }
 
       if (editId) {
-        const { error } = await supabase
+        const { data, error } = await supabase
           .from('notification_templates')
-          .update({ ...form, conteudo: conteudoSeguro, variaveis })
-          .eq('id', editId);
+          .update({
+            nome: form.nome.trim(),
+            categoria: form.categoria,
+            assunto: form.assunto.trim(),
+            conteudo: conteudoSeguro,
+            ativo: form.ativo,
+            variaveis,
+          })
+          .eq('id', editId)
+          .eq('clinica_id', profile.clinica_id)
+          .select('id')
+          .maybeSingle();
         if (error) throw error;
+        if (!data) throw new Error('Este modelo não pertence à clínica atual ou não está mais disponível.');
       } else {
         const { error } = await supabase
           .from('notification_templates')
@@ -142,11 +172,16 @@ export default function TemplatesEmail() {
 
   const toggleMutation = useMutation({
     mutationFn: async ({ id, ativo }: { id: string; ativo: boolean }) => {
-      const { error } = await supabase
+      if (!profile?.clinica_id) throw new Error('Clínica não identificada');
+      const { data, error } = await supabase
         .from('notification_templates')
         .update({ ativo: !ativo })
-        .eq('id', id);
+        .eq('id', id)
+        .eq('clinica_id', profile.clinica_id)
+        .select('id')
+        .maybeSingle();
       if (error) throw error;
+      if (!data) throw new Error('Este modelo não pertence à clínica atual ou não está mais disponível.');
     },
     onSuccess: () => {
       toast.success('Template atualizado!');
@@ -157,11 +192,16 @@ export default function TemplatesEmail() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase
+      if (!profile?.clinica_id) throw new Error('Clínica não identificada');
+      const { data, error } = await supabase
         .from('notification_templates')
         .delete()
-        .eq('id', id);
+        .eq('id', id)
+        .eq('clinica_id', profile.clinica_id)
+        .select('id')
+        .maybeSingle();
       if (error) throw error;
+      if (!data) throw new Error('Este modelo não pertence à clínica atual ou já foi removido.');
     },
     onSuccess: () => {
       toast.success('Template deletado!');
@@ -220,6 +260,10 @@ export default function TemplatesEmail() {
     return sanitizeTemplateHtml(html);
   };
 
+  if (templatesQuery.isError) {
+    return <ErrorState title="Não foi possível carregar os modelos de e-mail" error={templatesQuery.error} onRetry={() => void templatesQuery.refetch()} />;
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -230,7 +274,16 @@ export default function TemplatesEmail() {
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {templates.map((template: any) => {
+        {templatesQuery.isLoading ? (
+          [0, 1, 2].map(index => <Skeleton key={index} className="h-40 rounded-xl" />)
+        ) : templates.length === 0 ? (
+          <Card className="md:col-span-2 lg:col-span-3">
+            <CardContent className="py-12 text-center text-muted-foreground">
+              <p className="font-medium">Nenhum modelo de e-mail cadastrado</p>
+              <p className="mt-1 text-sm">Crie um modelo para reutilizar mensagens da clínica.</p>
+            </CardContent>
+          </Card>
+        ) : templates.map((template: any) => {
           const categoryObj = CATEGORIAS.find((c) => c.value === template.categoria);
           return (
             <Card key={template.id} className={!template.ativo ? 'opacity-60' : ''}>
@@ -240,7 +293,9 @@ export default function TemplatesEmail() {
                   <Button
                     size="sm"
                     variant="ghost"
+                    aria-label={template.ativo ? `Desativar modelo ${template.nome}` : `Ativar modelo ${template.nome}`}
                     onClick={() => toggleMutation.mutate({ id: template.id, ativo: template.ativo })}
+                    disabled={toggleMutation.isPending}
                     className={template.ativo ? 'text-success' : 'text-muted-foreground'}
                   >
                     {template.ativo ? '●' : '○'}
@@ -251,10 +306,10 @@ export default function TemplatesEmail() {
               <CardContent>
                 <p className="text-sm text-muted-foreground line-clamp-2 mb-4">{template.assunto}</p>
                 <div className="flex gap-2">
-                  <Button size="sm" variant="outline" onClick={() => openEdit(template)}>
+                  <Button size="sm" variant="outline" aria-label={`Editar modelo ${template.nome}`} onClick={() => openEdit(template)}>
                     <Edit2 className="h-3 w-3" />
                   </Button>
-                  <Button size="sm" variant="outline" onClick={() => setDeleteId(template.id)}>
+                  <Button size="sm" variant="outline" aria-label={`Excluir modelo ${template.nome}`} onClick={() => setDeleteId(template.id)}>
                     <Trash2 className="h-3 w-3 text-destructive" />
                   </Button>
                 </div>
@@ -264,7 +319,7 @@ export default function TemplatesEmail() {
         })}
       </div>
 
-      <Dialog open={showDialog} onOpenChange={setShowDialog}>
+      <Dialog open={showDialog} onOpenChange={(open) => { if (!saveMutation.isPending) setShowDialog(open); }}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editId ? 'Editar' : 'Novo'} Template</DialogTitle>
@@ -397,7 +452,7 @@ export default function TemplatesEmail() {
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowDialog(false)}>
+            <Button variant="outline" onClick={() => setShowDialog(false)} disabled={saveMutation.isPending}>
               Cancelar
             </Button>
             <Button
@@ -410,30 +465,29 @@ export default function TemplatesEmail() {
         </DialogContent>
       </Dialog>
 
-      {deleteId && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <Card className="max-w-sm">
-            <CardHeader>
-              <CardTitle className="text-base">Deletar template?</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground mb-4">Esta ação não pode ser desfeita.</p>
-              <div className="flex gap-2">
-                <Button variant="outline" onClick={() => setDeleteId(null)}>
-                  Cancelar
-                </Button>
-                <Button
-                  onClick={() => deleteMutation.mutate(deleteId)}
-                  disabled={deleteMutation.isPending}
-                  variant="destructive"
-                >
-                  Deletar
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
+      <AlertDialog open={!!deleteId} onOpenChange={(open) => {
+        if (!deleteMutation.isPending && !open) setDeleteId(null);
+      }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir modelo de e-mail?</AlertDialogTitle>
+            <AlertDialogDescription>Esta ação não pode ser desfeita. O modelo será removido permanentemente.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteMutation.isPending}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground"
+              disabled={deleteMutation.isPending}
+              onClick={(event) => {
+                event.preventDefault();
+                if (deleteId) deleteMutation.mutate(deleteId);
+              }}
+            >
+              {deleteMutation.isPending ? 'Excluindo…' : 'Excluir'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

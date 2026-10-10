@@ -1,5 +1,7 @@
 import { supabase } from '@/integrations/supabase/client';
 
+export const CONFIG_SEGURANCA_ATUALIZADA_EVENT = 'elolab:config-seguranca-atualizada';
+
 /**
  * Chaves de `configuracoes_clinica` que pertencem à CLÍNICA (uma linha por
  * clínica, lida por toda a equipe). As demais são preferências pessoais.
@@ -21,10 +23,32 @@ export function chaveDaClinica(chave: string): boolean {
  * criava uma cópia por pessoa e cada tela lia uma versão diferente. Atualiza a
  * linha da clínica se existir; senão insere.
  */
-export async function salvarConfigClinica(params: { clinicaId: string; userId: string; chave: string; valor: unknown }) {
-  const { clinicaId, userId, chave, valor } = params;
+export async function salvarConfigClinica(params: { clinicaId: string; userId: string; chave: string; valor: unknown; expectedUpdatedAt?: string | null }) {
+  const { clinicaId, userId, chave, valor, expectedUpdatedAt } = params;
   const db = supabase as any;
   const agora = new Date().toISOString();
+
+  // Para configurações editáveis por mais de uma pessoa, permite escrita
+  // condicional à versão lida e evita sobrescrever uma atualização concorrente.
+  if (expectedUpdatedAt !== undefined) {
+    if (expectedUpdatedAt !== null) {
+      const { data, error } = await db.from('configuracoes_clinica')
+        .update({ valor, updated_at: agora })
+        .eq('clinica_id', clinicaId).eq('chave', chave).eq('updated_at', expectedUpdatedAt)
+        .select('id');
+      if (error) throw error;
+      if ((data ?? []).length > 0) return;
+      throw new Error('Outra pessoa atualizou esta tabela de preços. Atualize os dados antes de salvar novamente.');
+    }
+
+    const { error } = await db.from('configuracoes_clinica')
+      .insert({ clinica_id: clinicaId, user_id: userId, chave, valor, updated_at: agora });
+    if (error) {
+      if (error.code === '23505') throw new Error('Outra pessoa criou esta tabela de preços. Atualize os dados antes de salvar novamente.');
+      throw error;
+    }
+    return;
+  }
 
   const atualizar = async () => {
     const { data, error } = await db.from('configuracoes_clinica')
@@ -48,13 +72,24 @@ export async function salvarConfigClinica(params: { clinicaId: string; userId: s
 
 /** Lê configurações da clínica como mapa chave → valor. */
 export async function lerConfigsClinica(clinicaId: string, chaves: readonly string[] = CHAVES_DA_CLINICA) {
+  const { configs } = await lerConfigsClinicaComVersoes(clinicaId, chaves);
+  return configs;
+}
+
+/** Lê também as versões para permitir salvamento concorrente sem sobrescrever outro administrador. */
+export async function lerConfigsClinicaComVersoes(clinicaId: string, chaves: readonly string[] = CHAVES_DA_CLINICA) {
   const { data, error } = await (supabase as any).from('configuracoes_clinica')
     .select('chave, valor, updated_at')
     .eq('clinica_id', clinicaId)
     .in('chave', chaves as string[])
     .order('updated_at', { ascending: false });
   if (error) throw error;
-  const mapa: Record<string, any> = {};
-  for (const linha of data ?? []) if (!(linha.chave in mapa)) mapa[linha.chave] = linha.valor;
-  return mapa;
+  const configs: Record<string, any> = {};
+  const updatedAtByKey: Record<string, string | null> = {};
+  for (const linha of data ?? []) {
+    if (linha.chave in configs) continue;
+    configs[linha.chave] = linha.valor;
+    updatedAtByKey[linha.chave] = linha.updated_at ?? null;
+  }
+  return { configs, updatedAtByKey };
 }

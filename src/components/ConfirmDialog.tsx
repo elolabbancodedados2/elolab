@@ -21,6 +21,7 @@ interface ConfirmDialogProps {
   onConfirm: () => void;
   variant?: 'default' | 'destructive' | 'warning';
   isLoading?: boolean;
+  closeOnConfirm?: boolean;
 }
 
 export function ConfirmDialog({
@@ -33,6 +34,7 @@ export function ConfirmDialog({
   onConfirm,
   variant = 'default',
   isLoading = false,
+  closeOnConfirm = true,
 }: ConfirmDialogProps) {
   const Icon = variant === 'destructive' ? Trash2 : variant === 'warning' ? AlertTriangle : Save;
   
@@ -67,7 +69,10 @@ export function ConfirmDialog({
         <AlertDialogFooter>
           <AlertDialogCancel disabled={isLoading}>{cancelLabel}</AlertDialogCancel>
           <AlertDialogAction
-            onClick={onConfirm}
+            onClick={(event) => {
+              if (!closeOnConfirm) event.preventDefault();
+              onConfirm();
+            }}
             disabled={isLoading}
             className={cn(
               variant === 'destructive' && 'bg-destructive hover:bg-destructive/90',
@@ -89,12 +94,14 @@ export function DeleteConfirmDialog({
   itemName,
   onConfirm,
   isLoading,
+  closeOnConfirm,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   itemName: string;
   onConfirm: () => void;
   isLoading?: boolean;
+  closeOnConfirm?: boolean;
 }) {
   return (
     <ConfirmDialog
@@ -106,6 +113,7 @@ export function DeleteConfirmDialog({
       variant="destructive"
       onConfirm={onConfirm}
       isLoading={isLoading}
+      closeOnConfirm={closeOnConfirm}
     />
   );
 }

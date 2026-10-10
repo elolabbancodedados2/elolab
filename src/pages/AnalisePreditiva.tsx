@@ -8,12 +8,13 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { AlertCircle, TrendingUp, Zap, Phone, Mail } from 'lucide-react';
+import { AlertCircle, TrendingUp, Zap, Phone, Mail, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { parseDateOnly, todayDateOnly } from '@/lib/dateOnly';
+import { parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { toast } from 'sonner';
+import { ErrorState } from '@/components/ErrorState';
 
 interface PredictedNoShow {
   agendamento_id: string;
@@ -32,16 +33,19 @@ interface PredictedNoShow {
 export default function AnalisePreditiva() {
   const { profile } = useSupabaseAuth();
   const [filtroRisco, setFiltroRisco] = useState('todos');
+  const [enviandoLembreteId, setEnviandoLembreteId] = useState<string | null>(null);
 
-  const { data: predicoes = [], isLoading } = useQuery({
-    queryKey: ['predicoes_no_show', profile?.clinica_id, filtroRisco],
+  const { data: predicoes = [], isLoading, isError, error, refetch } = useQuery({
+    queryKey: ['predicoes_no_show', profile?.clinica_id],
     queryFn: async () => {
       if (!profile?.clinica_id) return [];
 
       const { data, error } = await (supabase as any).from('predicoes_no_show').select(`
         agendamento_id,paciente_id,probabilidade_no_show,motivos_risco,recomendacoes,updated_at,
         agendamentos!inner(data,hora_inicio,status,pacientes(nome,email,telefone),medicos(nome))
-      `).eq('clinica_id', profile.clinica_id).gte('agendamentos.data', todayDateOnly())
+      `).eq('clinica_id', profile.clinica_id)
+        .gte('agendamentos.data', todaySaoPauloDateOnly())
+        .in('agendamentos.status', ['agendado', 'confirmado'])
         .order('probabilidade_no_show', { ascending: false });
       if (error) throw error;
       const predictions: PredictedNoShow[] = (data || []).map((row: any) => ({
@@ -58,17 +62,16 @@ export default function AnalisePreditiva() {
         email: row.agendamentos?.pacientes?.email,
       }));
 
-      // Filter by risk level
-      if (filtroRisco === 'alto') {
-        return predictions.filter((p) => p.probabilidade_no_show >= 0.7);
-      } else if (filtroRisco === 'medio') {
-        return predictions.filter((p) => p.probabilidade_no_show >= 0.4 && p.probabilidade_no_show < 0.7);
-      } else if (filtroRisco === 'baixo') {
-        return predictions.filter((p) => p.probabilidade_no_show < 0.4);
-      }
       return predictions.sort((a, b) => b.probabilidade_no_show - a.probabilidade_no_show);
     },
     enabled: !!profile?.clinica_id,
+  });
+
+  const predicoesFiltradas = predicoes.filter((predicao) => {
+    if (filtroRisco === 'alto') return predicao.probabilidade_no_show >= 0.7;
+    if (filtroRisco === 'medio') return predicao.probabilidade_no_show >= 0.4 && predicao.probabilidade_no_show < 0.7;
+    if (filtroRisco === 'baixo') return predicao.probabilidade_no_show < 0.4;
+    return true;
   });
 
   const getRiskColor = (probabilidade: number): string => {
@@ -77,15 +80,31 @@ export default function AnalisePreditiva() {
     return 'text-success';
   };
 
-  const enviarLembrete = async (agendamentoId: string) => {
-    const { data, error } = await supabase.rpc('enfileirar_lembrete_risco' as any, {
-      p_agendamento_id: agendamentoId,
-    });
-    if (error) {
-      toast.error('Não foi possível enviar o lembrete', { description: error.message });
+  const enviarLembrete = async (predicao: PredictedNoShow) => {
+    if (!predicao.telefone && !predicao.email) {
+      toast.warning('Não há contato cadastrado para este paciente', {
+        description: 'Atualize o telefone ou e-mail no cadastro antes de enviar o lembrete.',
+      });
       return;
     }
-    toast.success(data ? 'Lembrete enfileirado' : 'Lembrete já enviado nas últimas 20 horas');
+
+    setEnviandoLembreteId(predicao.agendamento_id);
+    try {
+      const { data, error } = await supabase.rpc('enfileirar_lembrete_risco' as any, {
+        p_agendamento_id: predicao.agendamento_id,
+      });
+      if (error) throw error;
+      toast.success(data ? 'Lembrete enfileirado' : 'Lembrete já enviado nas últimas 20 horas');
+    } catch (error) {
+      const mensagem = error && typeof error === 'object' && 'message' in error
+        ? String(error.message)
+        : error instanceof Error ? error.message : 'Verifique a conexão e tente novamente.';
+      toast.error('Não foi possível enfileirar o lembrete', {
+        description: mensagem,
+      });
+    } finally {
+      setEnviandoLembreteId(null);
+    }
   };
 
   const getRiskBgColor = (probabilidade: number): string => {
@@ -105,17 +124,26 @@ export default function AnalisePreditiva() {
     altoRisco: predicoes.filter((p) => p.probabilidade_no_show >= 0.7).length,
     medioRisco: predicoes.filter((p) => p.probabilidade_no_show >= 0.4 && p.probabilidade_no_show < 0.7).length,
     baixoRisco: predicoes.filter((p) => p.probabilidade_no_show < 0.4).length,
-    riskoPredioMedio: predicoes.length > 0
-      ? (predicoes.reduce((sum, p) => sum + p.probabilidade_no_show, 0) / predicoes.length).toFixed(2)
-      : '0',
+    probabilidadeMedia: predicoes.length > 0
+      ? Math.round((predicoes.reduce((sum, p) => sum + p.probabilidade_no_show, 0) / predicoes.length) * 100)
+      : 0,
   };
+
+  if (isError) {
+    return <ErrorState
+      title="Não foi possível carregar as previsões de faltas"
+      description="Os indicadores só aparecem depois de confirmar os dados atuais."
+      error={error}
+      onRetry={() => void refetch()}
+    />;
+  }
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold text-foreground">Risco de Falta</h1>
+        <h1 className="text-3xl font-bold text-foreground">Risco de faltas</h1>
         <p className="text-muted-foreground">
-          Score operacional calculado com o histórico real de comparecimento
+          Estimativa baseada no histórico de comparecimento para ajudar a equipe a priorizar confirmações. Revise cada caso antes de entrar em contato.
         </p>
       </div>
 
@@ -147,8 +175,8 @@ export default function AnalisePreditiva() {
         </Card>
         <Card>
           <CardContent className="pt-4 pb-3">
-            <p className="text-[10px] text-muted-foreground font-semibold uppercase">Risco Médio</p>
-            <p className="text-2xl font-bold tabular-nums">{stats.riskoPredioMedio}</p>
+            <p className="text-[10px] text-muted-foreground font-semibold uppercase">Probabilidade média</p>
+            <p className="text-2xl font-bold tabular-nums">{stats.probabilidadeMedia}%</p>
           </CardContent>
         </Card>
       </div>
@@ -178,14 +206,14 @@ export default function AnalisePreditiva() {
               <Skeleton className="h-20" />
               <Skeleton className="h-20" />
             </div>
-          ) : predicoes.length === 0 ? (
+          ) : predicoesFiltradas.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               <AlertCircle className="h-10 w-10 mx-auto mb-2 opacity-50" />
               <p>Nenhum agendamento encontrado nesta categoria</p>
             </div>
           ) : (
             <div className="space-y-3">
-              {predicoes.map((pred) => (
+              {predicoesFiltradas.map((pred) => (
                 <div
                   key={pred.agendamento_id}
                   className={cn(
@@ -230,20 +258,38 @@ export default function AnalisePreditiva() {
                   {/* Actions */}
                   <div className="flex flex-wrap gap-2">
                     {pred.telefone && (
-                      <Button size="sm" variant="outline" className="gap-1 text-xs" asChild>
+                      <Button size="sm" variant="outline" className="min-h-11 gap-1 text-xs sm:h-9 sm:min-h-0" asChild>
                         <a href={`tel:${pred.telefone.replace(/[^0-9+]/g, '')}`}><Phone className="h-3 w-3" />Ligar</a>
                       </Button>
                     )}
                     {pred.email && (
-                      <Button size="sm" variant="outline" className="gap-1 text-xs" asChild>
+                      <Button size="sm" variant="outline" className="min-h-11 gap-1 text-xs sm:h-9 sm:min-h-0" asChild>
                         <a href={`mailto:${pred.email}`}><Mail className="h-3 w-3" />Email</a>
                       </Button>
                     )}
-                    <Button size="sm" variant="ghost" className="gap-1 text-xs" onClick={() => enviarLembrete(pred.agendamento_id)}>
-                      <Zap className="h-3 w-3" />
-                      Enviar Lembrete
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="min-h-11 gap-1 text-xs sm:h-9 sm:min-h-0"
+                      disabled={enviandoLembreteId !== null || (!pred.telefone && !pred.email)}
+                      title={!pred.telefone && !pred.email ? 'Cadastre telefone ou e-mail para enviar' : undefined}
+                      onClick={() => void enviarLembrete(pred)}
+                    >
+                      {enviandoLembreteId === pred.agendamento_id
+                        ? <Loader2 className="h-3 w-3 animate-spin" />
+                        : <Zap className="h-3 w-3" />}
+                      {!pred.telefone && !pred.email
+                        ? 'Sem contato'
+                        : enviandoLembreteId === pred.agendamento_id
+                          ? 'Enfileirando…'
+                          : 'Enviar Lembrete'}
                     </Button>
                   </div>
+                  {!pred.telefone && !pred.email && (
+                    <p role="status" className="mt-2 text-xs text-muted-foreground">
+                      Cadastre um telefone ou e-mail no perfil do paciente para enviar o lembrete.
+                    </p>
+                  )}
                 </div>
               ))}
             </div>

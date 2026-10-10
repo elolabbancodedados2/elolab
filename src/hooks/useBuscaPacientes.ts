@@ -100,14 +100,44 @@ function colunaInexistente(erro: unknown): boolean {
  * Busca de paciente no servidor, para telas que antes baixavam o cadastro
  * inteiro só para preencher um seletor. Devolve no máximo `limite` resultados.
  */
-export async function buscarPacientes(termo: string, limite = 20): Promise<ResultadoBuscaPacientes> {
+export interface FiltrosBuscaPacientes {
+  sexo?: string;
+  convenio?: string;
+  nascimentoApos?: string;
+  nascimentoAte?: string;
+}
+
+export async function buscarPacientes(termo: string, limite = 20, filtros: FiltrosBuscaPacientes = {}): Promise<ResultadoBuscaPacientes> {
   const busca = termo.trim();
-  const criarConsulta = () => (supabase as any).from('pacientes').select(CAMPOS);
+  const criarConsulta = () => {
+    let query = (supabase as any).from('pacientes').select(CAMPOS);
+    if (filtros.sexo) query = query.eq('sexo', filtros.sexo);
+    if (filtros.convenio === 'particular') query = query.is('convenio_id', null);
+    else if (filtros.convenio) query = query.eq('convenio_id', filtros.convenio);
+    if (filtros.nascimentoApos) query = query.gte('data_nascimento', filtros.nascimentoApos);
+    if (filtros.nascimentoAte) query = query.lte('data_nascimento', filtros.nascimentoAte);
+    return query;
+  };
 
   if (!busca) {
-    const { data, error } = await criarConsulta().order('created_at', { ascending: false }).limit(limite);
-    if (error) throw error;
-    return { pacientes: data ?? [], incompleta: false };
+    const limiteSeguro = Math.max(0, Math.min(limite, MAX_CANDIDATOS));
+    const totalParaBuscar = limiteSeguro + 1;
+    const encontrados: PacienteResumo[] = [];
+    for (let inicio = 0; inicio < totalParaBuscar; inicio += TAMANHO_PAGINA) {
+      const fim = Math.min(inicio + TAMANHO_PAGINA, totalParaBuscar) - 1;
+      const { data, error } = await criarConsulta()
+        .order('created_at', { ascending: false })
+        .order('id', { ascending: true })
+        .range(inicio, fim);
+      if (error) throw error;
+      const lote = (data ?? []) as PacienteResumo[];
+      encontrados.push(...lote);
+      if (lote.length < fim - inicio + 1) break;
+    }
+    return {
+      pacientes: encontrados.slice(0, limiteSeguro),
+      incompleta: encontrados.length > limiteSeguro || limite > limiteSeguro,
+    };
   }
 
   const condicoesTexto = [
@@ -168,7 +198,7 @@ export async function buscarPacientes(termo: string, limite = 20): Promise<Resul
   return executar([...condicoesTexto, ...condicoesPorMascara(digitos)]);
 }
 
-export function useBuscaPacientes(termo: string, opcoes?: { limite?: number; enabled?: boolean }) {
+export function useBuscaPacientes(termo: string, opcoes?: { limite?: number; enabled?: boolean; filtros?: FiltrosBuscaPacientes }) {
   const { user, profile } = useSupabaseAuth();
   const limite = opcoes?.limite ?? 20;
   // Começa já aparado: com o termo cru, `isDebouncing` ficava verdadeiro na
@@ -181,7 +211,7 @@ export function useBuscaPacientes(termo: string, opcoes?: { limite?: number; ena
   }, [termo]);
 
   const query = useQuery({
-    queryKey: ['busca-pacientes', user?.id ?? null, profile?.clinica_id ?? null, debounced, limite],
+    queryKey: ['busca-pacientes', user?.id ?? null, profile?.clinica_id ?? null, debounced, limite, opcoes?.filtros],
     enabled: opcoes?.enabled !== false && !!profile?.clinica_id,
     placeholderData: (previousData, previousQuery) => {
       const [prefixo, usuarioAnterior, clinicaAnterior] = previousQuery?.queryKey ?? [];
@@ -190,12 +220,13 @@ export function useBuscaPacientes(termo: string, opcoes?: { limite?: number; ena
       if (
         prefixo !== 'busca-pacientes' ||
         usuarioAnterior !== (user?.id ?? null) ||
-        clinicaAnterior !== (profile?.clinica_id ?? null)
+        clinicaAnterior !== (profile?.clinica_id ?? null) ||
+        JSON.stringify(previousQuery?.queryKey?.[5]) !== JSON.stringify(opcoes?.filtros)
       ) return undefined;
       return previousData;
     },
     staleTime: 30_000,
-    queryFn: () => buscarPacientes(debounced, limite),
+    queryFn: () => buscarPacientes(debounced, limite, opcoes?.filtros),
   });
 
   // A consulta atual leva 250 ms para começar. Enquanto isso, React Query pode

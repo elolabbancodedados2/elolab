@@ -1751,6 +1751,7 @@ export type Database = {
       estoque: {
         Row: {
           categoria: string
+          chave_cadastro: string | null
           clinica_id: string | null
           codigo_ean: string | null
           created_at: string | null
@@ -1776,6 +1777,7 @@ export type Database = {
         }
         Insert: {
           categoria: string
+          chave_cadastro?: string | null
           clinica_id?: string | null
           codigo_ean?: string | null
           created_at?: string | null
@@ -1801,6 +1803,7 @@ export type Database = {
         }
         Update: {
           categoria?: string
+          chave_cadastro?: string | null
           clinica_id?: string | null
           codigo_ean?: string | null
           created_at?: string | null
@@ -2434,10 +2437,12 @@ export type Database = {
           frequencia_pagamento: string | null
           frequencia_recorrencia: string | null
           id: string
+          lote_tiss_id: string | null
           numero_documento: string | null
           observacoes: string | null
           paciente_id: string | null
           recorrente: boolean | null
+          recorrencia_origem_id: string | null
           status: Database["public"]["Enums"]["status_pagamento"] | null
           tipo: string
           updated_at: string | null
@@ -2465,10 +2470,12 @@ export type Database = {
           frequencia_pagamento?: string | null
           frequencia_recorrencia?: string | null
           id?: string
+          lote_tiss_id?: string | null
           numero_documento?: string | null
           observacoes?: string | null
           paciente_id?: string | null
           recorrente?: boolean | null
+          recorrencia_origem_id?: string | null
           status?: Database["public"]["Enums"]["status_pagamento"] | null
           tipo: string
           updated_at?: string | null
@@ -2496,10 +2503,12 @@ export type Database = {
           frequencia_pagamento?: string | null
           frequencia_recorrencia?: string | null
           id?: string
+          lote_tiss_id?: string | null
           numero_documento?: string | null
           observacoes?: string | null
           paciente_id?: string | null
           recorrente?: boolean | null
+          recorrencia_origem_id?: string | null
           status?: Database["public"]["Enums"]["status_pagamento"] | null
           tipo?: string
           updated_at?: string | null
@@ -2810,6 +2819,7 @@ export type Database = {
           created_at: string | null
           crm: string
           crm_uf: string | null
+          data_nascimento: string | null
           email: string | null
           especialidade: string | null
           foto_url: string | null
@@ -2831,6 +2841,7 @@ export type Database = {
           created_at?: string | null
           crm: string
           crm_uf?: string | null
+          data_nascimento?: string | null
           email?: string | null
           especialidade?: string | null
           foto_url?: string | null
@@ -2852,6 +2863,7 @@ export type Database = {
           created_at?: string | null
           crm?: string
           crm_uf?: string | null
+          data_nascimento?: string | null
           email?: string | null
           especialidade?: string | null
           foto_url?: string | null
@@ -3256,6 +3268,7 @@ export type Database = {
           data_nascimento: string | null
           email: string | null
           estado: string | null
+          estado_civil: string | null
           foto_url: string | null
           gestante: boolean
           id: string
@@ -3267,7 +3280,9 @@ export type Database = {
           numero_carteira: string | null
           observacoes: string | null
           parentesco_responsavel: string | null
+          profissao: string | null
           sexo: string | null
+          tipo_sanguineo: string | null
           telefone: string | null
           updated_at: string | null
           validade_carteira: string | null
@@ -3287,6 +3302,7 @@ export type Database = {
           data_nascimento?: string | null
           email?: string | null
           estado?: string | null
+          estado_civil?: string | null
           foto_url?: string | null
           gestante?: boolean
           id?: string
@@ -3298,7 +3314,9 @@ export type Database = {
           numero_carteira?: string | null
           observacoes?: string | null
           parentesco_responsavel?: string | null
+          profissao?: string | null
           sexo?: string | null
+          tipo_sanguineo?: string | null
           telefone?: string | null
           updated_at?: string | null
           validade_carteira?: string | null
@@ -3318,6 +3336,7 @@ export type Database = {
           data_nascimento?: string | null
           email?: string | null
           estado?: string | null
+          estado_civil?: string | null
           foto_url?: string | null
           gestante?: boolean
           id?: string
@@ -3329,7 +3348,9 @@ export type Database = {
           numero_carteira?: string | null
           observacoes?: string | null
           parentesco_responsavel?: string | null
+          profissao?: string | null
           sexo?: string | null
+          tipo_sanguineo?: string | null
           telefone?: string | null
           updated_at?: string | null
           validade_carteira?: string | null
@@ -4893,6 +4914,7 @@ export type Database = {
           data_vencimento: string | null
           descricao: string | null
           id: string
+          paciente_id: string | null
           prioridade: string
           responsavel_id: string | null
           status: string
@@ -4908,6 +4930,7 @@ export type Database = {
           data_vencimento?: string | null
           descricao?: string | null
           id?: string
+          paciente_id?: string | null
           prioridade?: string
           responsavel_id?: string | null
           status?: string
@@ -4923,6 +4946,7 @@ export type Database = {
           data_vencimento?: string | null
           descricao?: string | null
           id?: string
+          paciente_id?: string | null
           prioridade?: string
           responsavel_id?: string | null
           status?: string
@@ -4930,6 +4954,13 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "tarefas_paciente_id_fkey"
+            columns: ["paciente_id"]
+            isOneToOne: false
+            referencedRelation: "pacientes"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "tarefas_clinica_id_fkey"
             columns: ["clinica_id"]
@@ -5417,6 +5448,7 @@ export type Database = {
           ativo: boolean | null
           clinica_id: string | null
           created_at: string | null
+          habilidades: string[]
           horario_atendimento_fim: string | null
           horario_atendimento_inicio: string | null
           humor: string
@@ -5436,6 +5468,7 @@ export type Database = {
           ativo?: boolean | null
           clinica_id?: string | null
           created_at?: string | null
+          habilidades?: string[]
           horario_atendimento_fim?: string | null
           horario_atendimento_inicio?: string | null
           humor?: string
@@ -5455,6 +5488,7 @@ export type Database = {
           ativo?: boolean | null
           clinica_id?: string | null
           created_at?: string | null
+          habilidades?: string[]
           horario_atendimento_fim?: string | null
           horario_atendimento_inicio?: string | null
           humor?: string
@@ -5481,6 +5515,7 @@ export type Database = {
       }
       whatsapp_conversations: {
         Row: {
+          acao_pendente: Json | null
           atendimento_humano_em: string | null
           clinica_id: string | null
           contexto: Json | null
@@ -5503,6 +5538,7 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          acao_pendente?: Json | null
           atendimento_humano_em?: string | null
           clinica_id?: string | null
           contexto?: Json | null
@@ -5525,6 +5561,7 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          acao_pendente?: Json | null
           atendimento_humano_em?: string | null
           clinica_id?: string | null
           contexto?: Json | null
@@ -5824,6 +5861,10 @@ export type Database = {
         Args: { _token: string; _user_id: string }
         Returns: Json
       }
+      agendar_retorno_atomico: {
+        Args: { p_data: string; p_hora: string; p_retorno_id: string }
+        Returns: string
+      }
       aceitar_oferta_lista_espera: {
         Args: { p_lista_espera_id: string; p_paciente_id: string }
         Returns: string
@@ -5860,6 +5901,7 @@ export type Database = {
         Args: { p_dias: number; p_motivo: string }
         Returns: number
       }
+      cancelar_retorno_atomico: { Args: { p_retorno_id: string }; Returns: boolean }
       checar_rate_limit: {
         Args: { p_chave: string; p_janela_segundos?: number; p_limite: number }
         Returns: boolean
@@ -6015,12 +6057,14 @@ export type Database = {
           clinica_id: string
           clinica_nome: string
           created_at: string
+          data_fim: string | null
           em_trial: boolean
           owner_email: string
           owner_id: string
           owner_nome: string
           plano_nome: string
           plano_slug: string
+          suspensa: boolean
           total_agendamentos: number
           total_funcionarios: number
           total_medicos: number

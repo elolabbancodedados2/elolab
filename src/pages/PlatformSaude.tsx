@@ -14,7 +14,7 @@
  * `is_platform_admin` — a RPC recusa por dentro; a rota exige
  * `superAdminOnly` no menu.
  */
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -23,6 +23,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
+import { ErrorState } from '@/components/ErrorState';
 import { cn } from '@/lib/utils';
 import { Activity, AlertTriangle, Building2, Users, Calendar, Search, RefreshCw } from 'lucide-react';
 import { EmptyState } from '@/components/EmptyState';
@@ -59,6 +61,11 @@ function formatarBRL(valor: number): string {
   return valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
+function formatarDataHora(value: string): string {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? 'horário indisponível' : date.toLocaleString('pt-BR');
+}
+
 function formatarDias(dias: number | null): string {
   if (dias == null) return 'nunca usou';
   if (dias === 0) return 'hoje';
@@ -69,6 +76,7 @@ function formatarDias(dias: number | null): string {
 export default function PlatformSaude() {
   const { isPlatformAdmin } = useSupabaseAuth();
   const navigate = useNavigate();
+  const refreshLock = useRef(false);
   const [search, setSearch] = useState('');
   const [ordem, setOrdem] = useState<'atividade' | 'alertas' | 'nome'>('atividade');
 
@@ -88,6 +96,7 @@ export default function PlatformSaude() {
       } | null;
     },
     enabled: isPlatformAdmin,
+    refetchInterval: 60_000,
   });
 
   const clinicas = useQuery({
@@ -98,6 +107,7 @@ export default function PlatformSaude() {
       return (data ?? []) as LinhaSaude[];
     },
     enabled: isPlatformAdmin,
+    refetchInterval: 60_000,
   });
 
   const integracoes = useQuery({
@@ -110,6 +120,27 @@ export default function PlatformSaude() {
     enabled: isPlatformAdmin,
     refetchInterval: 60_000,
   });
+
+  const refreshing = agregada.isFetching || clinicas.isFetching || integracoes.isFetching;
+  const dadosAtualizadosEm = Math.max(agregada.dataUpdatedAt, clinicas.dataUpdatedAt);
+  const atualizarDiagnostico = async () => {
+    if (refreshLock.current) return;
+    refreshLock.current = true;
+    try {
+      await integracoes.refetch();
+    } finally {
+      refreshLock.current = false;
+    }
+  };
+  const atualizar = async () => {
+    if (refreshLock.current) return;
+    refreshLock.current = true;
+    try {
+      await Promise.all([agregada.refetch(), clinicas.refetch(), integracoes.refetch()]);
+    } finally {
+      refreshLock.current = false;
+    }
+  };
 
   const filtradas = useMemo(() => {
     const busca = search.trim().toLowerCase();
@@ -144,28 +175,46 @@ export default function PlatformSaude() {
             <Activity className="h-6 w-6 text-primary" /> Saúde da plataforma
           </h1>
           <p className="text-muted-foreground">Como o SaaS está agora, e como cada clínica está usando</p>
+          {dadosAtualizadosEm > 0 && <p className="mt-1 text-xs text-muted-foreground">Indicadores atualizados: {formatarDataHora(new Date(dadosAtualizadosEm).toISOString())} · atualização automática a cada minuto</p>}
         </div>
-        <Button variant="outline" size="sm" onClick={() => { agregada.refetch(); clinicas.refetch(); integracoes.refetch(); }}>
-          <RefreshCw className={cn('h-4 w-4 mr-2', (agregada.isFetching || clinicas.isFetching || integracoes.isFetching) && 'animate-spin')} />
+        <Button variant="outline" size="sm" onClick={() => void atualizar()} disabled={refreshing}>
+          <RefreshCw className={cn('h-4 w-4 mr-2', refreshing && 'animate-spin')} />
           Atualizar
         </Button>
       </div>
 
       <Card>
-        <CardHeader><CardTitle className="text-base">Integrações e serviços</CardTitle></CardHeader>
-        <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {(integracoes.data?.checks ?? []).map(check => <div key={check.id} className="rounded-lg border p-3"><div className="flex items-center justify-between gap-2"><p className="text-sm font-medium">{check.nome}</p><Badge variant={check.status === 'error' ? 'destructive' : 'outline'} className={cn(check.status === 'ok' && 'text-success border-success/30', check.status === 'warning' && 'text-warning border-warning/30')}>{check.status}</Badge></div><p className="mt-1 text-xs text-muted-foreground">{check.detalhe}</p>{check.latencia_ms != null && <p className="mt-1 text-[10px] text-muted-foreground">{check.latencia_ms} ms</p>}</div>)}
-          {integracoes.isError && <p className="text-sm text-destructive">Não foi possível executar o diagnóstico das integrações.</p>}
+        <CardHeader>
+          <CardTitle className="text-base">Integrações e serviços</CardTitle>
+          {integracoes.data?.checked_at && <p className="text-xs text-muted-foreground">Última verificação: {formatarDataHora(integracoes.data.checked_at)}</p>}
+        </CardHeader>
+        <CardContent>
+          {integracoes.isLoading ? (
+            <p role="status" className="py-4 text-sm text-muted-foreground">Verificando integrações e serviços…</p>
+          ) : integracoes.isError ? (
+            <ErrorState compact title="Não foi possível executar o diagnóstico das integrações" error={integracoes.error} onRetry={() => void atualizarDiagnostico()} />
+          ) : integracoes.data?.checks?.length ? (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {integracoes.data.checks.map(check => <div key={check.id} className="rounded-lg border p-3"><div className="flex items-center justify-between gap-2"><p className="text-sm font-medium">{check.nome}</p><Badge variant={check.status === 'error' ? 'destructive' : 'outline'} className={cn(check.status === 'ok' && 'text-success border-success/30', check.status === 'warning' && 'text-warning border-warning/30')}>{check.status}</Badge></div><p className="mt-1 text-xs text-muted-foreground">{check.detalhe}</p>{check.latencia_ms != null && <p className="mt-1 text-[10px] text-muted-foreground">{check.latencia_ms} ms</p>}</div>)}
+            </div>
+          ) : (
+            <p className="py-4 text-sm text-muted-foreground">A verificação não retornou serviços para exibir.</p>
+          )}
         </CardContent>
       </Card>
 
       {/* ─── Cards agregados ─── */}
+      {agregada.isLoading ? (
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">{[1, 2, 3, 4].map((item) => <Skeleton key={item} className="h-24" />)}</div>
+      ) : agregada.isError ? (
+        <ErrorState error={agregada.error} onRetry={() => void agregada.refetch()} />
+      ) : agregada.data && (
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
-          { icon: Building2, label: 'Clínicas ativas', valor: agregada.data?.clinicas_ativas ?? 0,
+          { icon: Building2, label: 'Assinaturas ativas', valor: agregada.data?.clinicas_ativas ?? 0,
             detalhe: `${agregada.data?.total_clinicas ?? 0} total · ${agregada.data?.clinicas_em_trial ?? 0} em trial` },
           { icon: Users, label: 'Pacientes', valor: agregada.data?.total_pacientes ?? 0, detalhe: 'em todo o SaaS' },
-          { icon: Calendar, label: 'Agendamentos no mês', valor: agregada.data?.agendamentos_no_mes ?? 0, detalhe: 'somando as 12 clínicas' },
+          { icon: Calendar, label: 'Agendamentos no mês', valor: agregada.data?.agendamentos_no_mes ?? 0, detalhe: 'total no banco, inclusive clínicas arquivadas' },
           { icon: Activity, label: 'Auditoria 7d', valor: agregada.data?.audits_ultimos_7d ?? 0,
             detalhe: 'ações registradas na última semana' },
         ].map((c) => (
@@ -183,6 +232,7 @@ export default function PlatformSaude() {
           </Card>
         ))}
       </div>
+      )}
 
       {/* ─── Filtro e ordenação ─── */}
       <div className="flex items-center gap-2">
@@ -203,7 +253,9 @@ export default function PlatformSaude() {
       </div>
 
       {/* ─── Tabela por clínica ─── */}
-      {clinicas.isLoading ? (
+      {clinicas.isError ? (
+        <ErrorState compact error={clinicas.error} onRetry={() => void clinicas.refetch()} />
+      ) : clinicas.isLoading ? (
         <div className="text-sm text-muted-foreground">Carregando…</div>
       ) : filtradas.length === 0 ? (
         <EmptyState icon={Building2} title="Nenhuma clínica" description="Ninguém correspondeu ao filtro." />

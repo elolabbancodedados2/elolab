@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { CheckCircle2, FileCheck2, Loader2, ShieldX } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, FileCheck2, Loader2, ShieldX } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
 
 interface VerificationResult {
@@ -21,13 +22,35 @@ export default function VerificarAssinatura() {
   const { codigo } = useParams();
   const [result, setResult] = useState<VerificationResult | null>(null);
   const [loading, setLoading] = useState(true);
+  const [verificationError, setVerificationError] = useState(false);
+  const [invalidCode, setInvalidCode] = useState(false);
+  const [retry, setRetry] = useState(0);
 
   useEffect(() => {
-    if (!codigo) { setLoading(false); return; }
-    (supabase as any).rpc('verificar_assinatura_prontuario', { p_codigo: codigo })
-      .then(({ data }: any) => setResult(data ?? null))
-      .finally(() => setLoading(false));
-  }, [codigo]);
+    let active = true;
+    setResult(null);
+    setVerificationError(false);
+    setInvalidCode(false);
+    if (!codigo || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(codigo)) {
+      setInvalidCode(true);
+      setLoading(false);
+      return () => { active = false; };
+    }
+
+    setLoading(true);
+    (async () => {
+      try {
+        const { data, error } = await (supabase as any).rpc('verificar_assinatura_prontuario', { p_codigo: codigo });
+        if (error) throw error;
+        if (active) setResult(data ?? null);
+      } catch {
+        if (active) setVerificationError(true);
+      } finally {
+        if (active) setLoading(false);
+      }
+    })();
+    return () => { active = false; };
+  }, [codigo, retry]);
 
   return (
     <main className="min-h-screen bg-muted/30 px-4 py-12">
@@ -39,6 +62,17 @@ export default function VerificarAssinatura() {
         <CardContent>
           {loading ? (
             <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin" />Verificando integridade…</div>
+          ) : verificationError ? (
+            <div className="space-y-3 text-center">
+              <div role="alert" className="rounded-xl border border-warning/30 bg-warning/5 p-5 text-center">
+                <AlertTriangle className="mx-auto mb-2 h-8 w-8 text-warning" />
+                <p className="font-semibold">Não foi possível verificar agora</p>
+                <p className="mt-1 text-xs text-muted-foreground">O serviço está indisponível. Isso não confirma nem invalida a assinatura; tente novamente.</p>
+              </div>
+              <Button variant="outline" onClick={() => setRetry((value) => value + 1)}>Tentar novamente</Button>
+            </div>
+          ) : invalidCode ? (
+            <StatusInvalid title="Código inválido" text="O endereço está incompleto ou o código de verificação não tem o formato esperado." />
           ) : !result ? (
             <StatusInvalid title="Assinatura não encontrada" text="Confira se o endereço ou código de verificação está completo." />
           ) : result.valid ? (
@@ -52,7 +86,7 @@ export default function VerificarAssinatura() {
                 <dt className="text-muted-foreground">Documento</dt><dd><Badge variant="outline">Prontuário #{result.documentReference}</Badge></dd>
                 <dt className="text-muted-foreground">Assinante</dt><dd className="font-medium">{result.signerName}</dd>
                 <dt className="text-muted-foreground">CRM</dt><dd>{result.signerCRM}</dd>
-                <dt className="text-muted-foreground">Assinado em</dt><dd>{new Date(result.signedAt).toLocaleString('pt-BR')}</dd>
+                <dt className="text-muted-foreground">Assinado em</dt><dd>{new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short', timeZone: 'America/Sao_Paulo' }).format(new Date(result.signedAt))}</dd>
                 <dt className="text-muted-foreground">Hash SHA-256</dt><dd className="break-all font-mono text-[10px]">{result.hash}</dd>
               </dl>
             </div>

@@ -46,11 +46,13 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
     const body = await req.json()
 
-    console.log('[Webhook] Received:', JSON.stringify(body, null, 2))
-
     const event = body.event
     const instanceName = body.instance
     const data = body.data
+
+    // Não registrar o corpo do webhook: ele contém mensagens e dados pessoais
+    // dos pacientes. O tipo do evento basta para diagnosticar a integração.
+    console.log(`[Webhook] Evento recebido: ${String(event || 'desconhecido')}`)
 
     // Buscar sessão
     const { data: session } = await supabase
@@ -154,8 +156,6 @@ Deno.serve(async (req) => {
             if (existingMessage) continue
           }
 
-          console.log(`[Webhook] Message from ${remoteJid}: ${messageContent}`)
-
           // Buscar ou criar conversa
           let { data: conversation } = await supabase
             .from('whatsapp_conversations')
@@ -196,7 +196,7 @@ Deno.serve(async (req) => {
           if (!conversation) continue
 
           // Salvar mensagem recebida
-          await supabase
+          const { error: erroInsercaoMensagem } = await supabase
             .from('whatsapp_messages')
             .insert({
               conversation_id: conversation.id,
@@ -205,8 +205,17 @@ Deno.serve(async (req) => {
               direcao: 'entrada',
               tipo: 'texto',
               conteudo: messageContent,
-              metadata: msg,
+              metadata: {
+                provider: 'evolution',
+                tipo_mensagem: Object.keys(msg.message || {})[0] || 'texto',
+              },
             })
+
+          // O índice único é a barreira contra duas entregas concorrentes do
+          // mesmo evento. Não executar IA, ferramentas ou incremento de não
+          // lidas quando outra execução já registrou a mensagem.
+          if (erroInsercaoMensagem?.code === '23505' && incomingMessageId) continue
+          if (erroInsercaoMensagem) throw erroInsercaoMensagem
 
           // Atualizar última mensagem
           await supabase
@@ -789,8 +798,8 @@ async function executeAgentTool(
     switch (toolName) {
       case 'consultar_disponibilidade': {
         const dataRef = String(args.data_preferencia || '')
-        const todayInClinic = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date())
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(dataRef) || dataRef < todayInClinic) {
+        const todayInClinic = todaySaoPauloDateOnly()
+        if (!isValidDateOnly(dataRef) || dataRef < todayInClinic) {
           return { success: false, message: 'Informe uma data válida a partir de hoje para eu consultar a agenda.' }
         }
         const requestedDate = new Date(`${dataRef}T12:00:00-03:00`)
@@ -802,7 +811,8 @@ async function executeAgentTool(
           .ilike('especialidade', `%${args.especialidade || ''}%`)
           .limit(5)
         if (clinicaId) medicosQuery = medicosQuery.eq('clinica_id', clinicaId)
-        const { data: medicos } = await medicosQuery
+        const { data: medicos, error: erroMedicos } = await medicosQuery
+        if (erroMedicos) throw erroMedicos
 
         if (!medicos || medicos.length === 0) {
           return {
@@ -811,12 +821,13 @@ async function executeAgentTool(
           }
         }
 
-        const { data: regrasDisponibilidade } = await supabase
+        const { data: regrasDisponibilidade, error: erroRegras } = await supabase
           .from('medico_disponibilidade')
           .select('medico_id, hora_inicio, hora_fim, duracao_consulta, intervalo_consultas')
           .in('medico_id', medicos.map((m: any) => m.id))
           .eq('dia_semana', weekday)
           .eq('ativo', true)
+        if (erroRegras) throw erroRegras
 
         if (!regrasDisponibilidade?.length) {
           return { success: true, message: 'Não há expediente configurado para essa especialidade nessa data. Quer tentar outro dia?' }
@@ -827,9 +838,10 @@ async function executeAgentTool(
           .select('medico_id, hora_inicio, hora_fim, status')
           .eq('data', dataRef)
           .in('medico_id', medicos.map((m: any) => m.id))
-          .not('status', 'in', '(cancelado,faltou)')
+          .or('status.is.null,status.not.in.(cancelado,faltou)')
         if (clinicaId) disponibilidadeQuery = disponibilidadeQuery.eq('clinica_id', clinicaId)
-        const { data: agendamentos } = await disponibilidadeQuery
+        const { data: agendamentos, error: erroAgendamentos } = await disponibilidadeQuery
+        if (erroAgendamentos) throw erroAgendamentos
 
         let disponibilidade = 'Horários disponíveis para ' + dataRef + ':\n\n'
         for (const medico of medicos) {
@@ -874,11 +886,12 @@ async function executeAgentTool(
           .from('agendamentos')
           .select('*, medicos(crm, especialidade)')
           .eq('paciente_id', conversation.paciente_id)
-          .gte('data', new Date().toISOString().split('T')[0])
+          .gte('data', todaySaoPauloDateOnly())
           .order('data', { ascending: true })
           .limit(5)
         if (clinicaId) pacienteAgendamentosQuery = pacienteAgendamentosQuery.eq('clinica_id', clinicaId)
-        const { data: agendamentos } = await pacienteAgendamentosQuery
+        const { data: agendamentos, error: erroAgendamentos } = await pacienteAgendamentosQuery
+        if (erroAgendamentos) throw erroAgendamentos
 
         if (!agendamentos || agendamentos.length === 0) {
           return {
@@ -914,30 +927,34 @@ async function executeAgentTool(
           return { success: false, message: 'Preciso da data, horário e profissional para concluir o agendamento.' }
         }
 
-        const { data: medico } = await supabase
+        const { data: medico, error: erroMedico } = await supabase
           .from('medicos')
           .select('id')
           .eq('id', args.medico_id)
           .eq('clinica_id', clinicaId)
           .eq('ativo', true)
           .maybeSingle()
+        if (erroMedico) throw erroMedico
         if (!medico) {
           return { success: false, message: 'Esse profissional não está disponível nesta clínica.' }
         }
 
         const bookingDate = String(args.data)
-        const bookingTime = String(args.hora_inicio).slice(0, 5)
-        const todayInClinic = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date())
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(bookingDate) || !/^\d{2}:\d{2}$/.test(bookingTime) || bookingDate < todayInClinic) {
+        const rawBookingTime = String(args.hora_inicio)
+        const timeMatch = /^(\d{2}):(\d{2})(?::\d{2}(?:\.\d+)?)?$/.exec(rawBookingTime)
+        const bookingTime = timeMatch ? `${timeMatch[1]}:${timeMatch[2]}` : ''
+        const todayInClinic = todaySaoPauloDateOnly()
+        if (!isValidDateOnly(bookingDate) || !isValidTime(bookingTime) || bookingDate < todayInClinic) {
           return { success: false, message: 'A data ou o horário informado não é válido.' }
         }
         const weekday = new Date(`${bookingDate}T12:00:00-03:00`).getUTCDay()
-        const { data: availabilityRules } = await supabase
+        const { data: availabilityRules, error: erroRegras } = await supabase
           .from('medico_disponibilidade')
           .select('hora_inicio, hora_fim, duracao_consulta, intervalo_consultas')
           .eq('medico_id', args.medico_id)
           .eq('dia_semana', weekday)
           .eq('ativo', true)
+        if (erroRegras) throw erroRegras
 
         const bookingStart = timeToMinutes(bookingTime)
         const matchingRule = (availabilityRules || []).find((rule: any) => {
@@ -953,16 +970,23 @@ async function executeAgentTool(
         }
         const bookingEnd = minutesToTime(bookingStart + Math.max(Number(matchingRule.duracao_consulta) || 30, 5))
 
-        const { data: conflito } = await supabase
+        const bookingEndMinutes = bookingStart + Math.max(Number(matchingRule.duracao_consulta) || 30, 5)
+        const { data: agendamentosNoDia, error: erroAgendamentos } = await supabase
           .from('agendamentos')
-          .select('id')
+          .select('id, hora_inicio, hora_fim')
           .eq('clinica_id', clinicaId)
           .eq('medico_id', args.medico_id)
-          .eq('data', args.data)
-          .eq('hora_inicio', args.hora_inicio)
-          .not('status', 'in', '(cancelado,recusado)')
-          .limit(1)
-        if (conflito?.length) {
+          .eq('data', bookingDate)
+          .or('status.is.null,status.not.in.(cancelado,faltou)')
+        if (erroAgendamentos) throw erroAgendamentos
+        const conflito = (agendamentosNoDia || []).some((item: any) => {
+          const inicioExistente = timeToMinutes(item.hora_inicio)
+          const fimExistente = item.hora_fim
+            ? timeToMinutes(item.hora_fim)
+            : inicioExistente + 30
+          return bookingStart < fimExistente && bookingEndMinutes > inicioExistente
+        })
+        if (conflito) {
           return { success: false, message: 'Esse horário acabou de ser ocupado. Escolha outro, por favor.' }
         }
 
@@ -978,6 +1002,9 @@ async function executeAgentTool(
         })
 
         if (error) {
+          if (error.code === '23P01') {
+            return { success: false, message: 'Esse horário acabou de ser ocupado. Escolha outro, por favor.' }
+          }
           return {
             success: false,
             message: 'Não foi possível realizar o agendamento. Por favor, tente novamente ou entre em contato por telefone.',
@@ -987,7 +1014,7 @@ async function executeAgentTool(
 
         return {
           success: true,
-          message: `✅ Agendamento confirmado!\n\n📅 Data: ${args.data}\n🕐 Horário: ${args.hora_inicio}\n\nLembre-se de chegar 15 minutos antes. Até lá!`,
+          message: `✅ Agendamento confirmado!\n\n📅 Data: ${bookingDate}\n🕐 Horário: ${bookingTime}\n\nLembre-se de chegar 15 minutos antes. Até lá!`,
         }
       }
 
@@ -1047,6 +1074,32 @@ async function executeAgentTool(
 function timeToMinutes(value: string): number {
   const [hours, minutes] = String(value).split(':').map(Number)
   return (hours * 60) + minutes
+}
+
+function todaySaoPauloDateOnly(): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date())
+  const values = Object.fromEntries(parts.map(({ type, value }) => [type, value]))
+  return `${values.year}-${values.month}-${values.day}`
+}
+
+function isValidDateOnly(value: string): boolean {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value)
+  if (!match) return false
+  const [, year, month, day] = match.map(Number)
+  const date = new Date(Date.UTC(year, month - 1, day))
+  return date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day
+}
+
+function isValidTime(value: string): boolean {
+  const match = /^(\d{2}):(\d{2})$/.exec(value)
+  return Boolean(match && Number(match[1]) <= 23 && Number(match[2]) <= 59)
 }
 
 function minutesToTime(value: number): string {

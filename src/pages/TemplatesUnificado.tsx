@@ -1,4 +1,5 @@
-import { useState, lazy, Suspense } from 'react';
+import { lazy, Suspense } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { FolderKanban, Mail } from 'lucide-react';
 import { SectionFallback } from '@/components/ui/loading-skeleton';
@@ -9,7 +10,9 @@ const TemplatesEmail = lazy(() => import('./TemplatesEmail'));
 const Loader = () => <SectionFallback />;
 
 export default function TemplatesUnificado() {
-  const [tab, setTab] = useState('prontuario');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tab = searchParams.get('tab') === 'email' ? 'email' : 'prontuario';
+  const setTab = (value: string) => setSearchParams(value === 'prontuario' ? {} : { tab: value }, { replace: true });
 
   return (
     <div className="space-y-4">
@@ -17,7 +20,7 @@ export default function TemplatesUnificado() {
         <TabsList className="grid w-full max-w-md grid-cols-2 mx-auto">
           <TabsTrigger value="prontuario" className="gap-2">
             <FolderKanban className="h-4 w-4" />
-            Prontuário
+            Clínicos
           </TabsTrigger>
           <TabsTrigger value="email" className="gap-2">
             <Mail className="h-4 w-4" />

@@ -103,6 +103,16 @@ describe('resumoDoDia', () => {
     expect(r.recebidoTotal).toBe(199.9);
   });
 
+  it('não conta crédito do paciente como dinheiro recebido no caixa', () => {
+    const r = resumoDoDia([], [
+      { forma_pagamento: 'pix', valor: 80 },
+      { forma_pagamento: 'credito_paciente', valor: 120 },
+    ]);
+
+    expect(r.recebidoTotal).toBe(80);
+    expect(r.porForma).toEqual([['pix', 80]]);
+  });
+
   it('pagamento a mais não vira saldo negativo no total a receber', () => {
     const r = resumoDoDia([
       atendimento({ step: 1, ag: { id: 'a', status: 'aguardando' }, lanc: conta('a', 100, 150) }),

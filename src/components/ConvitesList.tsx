@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Copy, Mail, RefreshCw, CheckCircle2, Clock, XCircle, Loader2, Ban, AlertTriangle } from 'lucide-react';
@@ -11,9 +11,13 @@ import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { EmptyState } from '@/components/EmptyState';
+import { ErrorState } from '@/components/ErrorState';
+import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
 
 type InviteStatus = 'aceito' | 'expirado' | 'pendente';
 
@@ -75,10 +79,14 @@ export function ConvitesList() {
   const queryClient = useQueryClient();
   const { profile, isPlatformAdmin } = useSupabaseAuth();
   const [resendingId, setResendingId] = useState<string | null>(null);
+  const [linkManual, setLinkManual] = useState('');
+  const linkManualInputRef = useRef<HTMLInputElement>(null);
+  const resendLockRef = useRef(false);
+  const cancelLockRef = useRef(false);
   const [cancelando, setCancelando] = useState<Invite | null>(null);
   const [filtro, setFiltro] = useState<InviteStatus | 'todos'>('todos');
 
-  const { data: invites = [], isLoading } = useQuery({
+  const invitesQuery = useQuery({
     queryKey: ['convites-list', profile?.clinica_id, isPlatformAdmin],
     enabled: isPlatformAdmin || !!profile?.clinica_id,
     queryFn: async (): Promise<Invite[]> => {
@@ -86,22 +94,21 @@ export function ConvitesList() {
       if (!isPlatformAdmin && !clinicId) return [];
       const scoped = (query: any) => isPlatformAdmin ? query : query.eq('clinica_id', clinicId);
       const [cf, ei] = await Promise.all([
-        scoped((supabase as any)
+        buscarEmBlocos<any>(() => scoped((supabase as any)
           .from('convites_funcionario')
           .select('id, clinica_id, email, nome, roles, token, created_at, expires_at, accepted_at')
-          .order('created_at', { ascending: false })),
-        scoped((supabase as any)
+          .order('created_at', { ascending: false })
+          .order('id', { ascending: true }))),
+        buscarEmBlocos<any>(() => scoped((supabase as any)
           .from('employee_invitations')
           .select('id, clinica_id, email, roles, token, created_at, expires_at, accepted_at, funcionario_id')
-          .order('created_at', { ascending: false })),
+          .order('created_at', { ascending: false })
+          .order('id', { ascending: true }))),
       ]);
-
-      if (cf.error) throw cf.error;
-      if (ei.error) throw ei.error;
 
       const merged: Invite[] = [];
 
-      (cf.data || []).forEach((r: any) => {
+      cf.forEach((r: any) => {
         merged.push({
           id: r.id,
           clinica_id: r.clinica_id,
@@ -118,17 +125,20 @@ export function ConvitesList() {
       });
 
       // enrich employee_invitations with funcionario name
-      const funcIds = (ei.data || []).map((r: any) => r.funcionario_id).filter(Boolean);
-      let funcMap: Record<string, string> = {};
+      const funcIds = [...new Set(ei.map((r: any) => r.funcionario_id).filter(Boolean))] as string[];
+      const funcMap: Record<string, string> = {};
       if (funcIds.length) {
-        const { data: funcs } = await (supabase as any)
-          .from('funcionarios')
-          .select('id, nome')
-          .in('id', funcIds);
-        funcMap = Object.fromEntries((funcs || []).map((f: any) => [f.id, f.nome]));
+        for (let start = 0; start < funcIds.length; start += 500) {
+          const { data: funcs, error } = await (supabase as any)
+            .from('funcionarios')
+            .select('id, nome')
+            .in('id', funcIds.slice(start, start + 500));
+          if (error) throw error;
+          Object.assign(funcMap, Object.fromEntries((funcs || []).map((f: any) => [f.id, f.nome])));
+        }
       }
 
-      (ei.data || []).forEach((r: any) => {
+      ei.forEach((r: any) => {
         merged.push({
           id: r.id,
           clinica_id: r.clinica_id,
@@ -149,6 +159,9 @@ export function ConvitesList() {
       return merged;
     },
   });
+  const invites = invitesQuery.data ?? [];
+  const invitesAtingiramLimite = invites.length >= LIMITE_BUSCA_EM_BLOCOS;
+  const { isLoading } = invitesQuery;
 
   const resendMutation = useMutation({
     mutationFn: async (inv: Invite) => {
@@ -172,8 +185,14 @@ export function ConvitesList() {
       if (data && (data as any).success === false) throw new Error((data as any).error);
       return data;
     },
-    onSuccess: () => {
-      toast.success('Novo convite enviado por e-mail.');
+    onSuccess: (data) => {
+      if (data?.emailStatus === 'sent') {
+        toast.success('Novo convite enviado por e-mail.');
+      } else {
+        toast.info('Convite criado, mas o e-mail não foi enviado.', {
+          description: 'O link está disponível na lista para copiar e compartilhar.',
+        });
+      }
       queryClient.invalidateQueries({ queryKey: ['convites-list'] });
     },
     onError: (e) =>
@@ -190,21 +209,25 @@ export function ConvitesList() {
       // token do mesmo jeito: accept_employee_invitation exige expires_at
       // futuro. Em convites_funcionario dá para apagar de fato.
       if (inv.source === 'employee_invitations') {
+        if (!isPlatformAdmin && !profile?.clinica_id) throw new Error('Clínica não identificada.');
         let query = (supabase as any)
           .from('employee_invitations')
           .update({ status: 'expired', expires_at: new Date().toISOString() })
           .eq('id', inv.id);
         if (!isPlatformAdmin && profile?.clinica_id) query = query.eq('clinica_id', profile.clinica_id);
-        const { error } = await query;
+        const { data, error } = await query.select('id').maybeSingle();
         if (error) throw error;
+        if (!data) throw new Error('Convite não encontrado ou sem permissão para cancelar.');
       } else {
+        if (!isPlatformAdmin && !profile?.clinica_id) throw new Error('Clínica não identificada.');
         let query = (supabase as any)
           .from('convites_funcionario')
           .delete()
           .eq('id', inv.id);
         if (!isPlatformAdmin && profile?.clinica_id) query = query.eq('clinica_id', profile.clinica_id);
-        const { error } = await query;
+        const { data, error } = await query.select('id').maybeSingle();
         if (error) throw error;
+        if (!data) throw new Error('Convite não encontrado ou sem permissão para cancelar.');
       }
     },
     onSuccess: () => {
@@ -219,12 +242,14 @@ export function ConvitesList() {
   });
 
   const copyLink = async (inv: Invite) => {
+    const url = buildInviteUrl(inv.token);
     try {
-      await navigator.clipboard.writeText(buildInviteUrl(inv.token));
+      await navigator.clipboard.writeText(url);
       toast.success('Link copiado para a área de transferência.');
     } catch (e) {
-      toast.error('Não foi possível copiar o link', {
-        description: mensagemDeErro(e) + ' Você pode selecionar e copiar manualmente.',
+      setLinkManual(url);
+      toast.error('Não foi possível copiar automaticamente. O link está aberto para cópia manual.', {
+        description: mensagemDeErro(e),
       });
     }
   };
@@ -239,6 +264,18 @@ export function ConvitesList() {
   const semPapel = invites.filter((i) => i.status !== 'aceito' && i.roles.length === 0);
 
   const visiveis = filtro === 'todos' ? invites : invites.filter((i) => i.status === filtro);
+  const acaoConviteOcupada = resendMutation.isPending || cancelMutation.isPending
+    || resendLockRef.current || cancelLockRef.current;
+  const reenviarConvite = (inv: Invite) => {
+    if (resendLockRef.current || cancelLockRef.current) return;
+    resendLockRef.current = true;
+    resendMutation.mutate(inv, { onSettled: () => { resendLockRef.current = false; } });
+  };
+  const confirmarCancelamento = () => {
+    if (!cancelando || resendLockRef.current || cancelLockRef.current) return;
+    cancelLockRef.current = true;
+    cancelMutation.mutate(cancelando, { onSettled: () => { cancelLockRef.current = false; } });
+  };
 
   const FILTROS: Array<{ chave: InviteStatus | 'todos'; texto: string; total: number }> = [
     { chave: 'todos', texto: 'Todos', total: invites.length },
@@ -334,7 +371,20 @@ export function ConvitesList() {
           )}
         </CardHeader>
         <CardContent>
-          {isLoading ? (
+          {invitesAtingiramLimite && (
+            <div role="alert" className="mb-4 flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm text-warning-foreground">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+              <p>A lista atingiu o limite de {LIMITE_BUSCA_EM_BLOCOS.toLocaleString('pt-BR')} convites. Convites mais antigos podem não aparecer.</p>
+            </div>
+          )}
+          {invitesQuery.isError ? (
+            <ErrorState
+              title="Não foi possível carregar os convites"
+              description="Tente atualizar a lista. Nenhum convite foi alterado."
+              error={invitesQuery.error}
+              onRetry={() => void invitesQuery.refetch()}
+            />
+          ) : isLoading ? (
             <div className="flex justify-center py-12">
               <Loader2 className="h-6 w-6 animate-spin text-primary" />
             </div>
@@ -392,12 +442,13 @@ export function ConvitesList() {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">
-                          {inv.status !== 'aceito' && (
+                          {inv.status === 'pendente' && (
                             <Button
                               size="sm"
                               variant="outline"
                               onClick={() => copyLink(inv)}
                               title="Copiar link do convite"
+                              aria-label={'Copiar link do convite para ' + inv.email}
                             >
                               <Copy className="h-3.5 w-3.5" />
                             </Button>
@@ -406,8 +457,9 @@ export function ConvitesList() {
                             <Button
                               size="sm"
                               variant="outline"
-                              onClick={() => resendMutation.mutate(inv)}
-                              disabled={resendingId === inv.id}
+                              onClick={() => reenviarConvite(inv)}
+                              disabled={acaoConviteOcupada}
+                              aria-label={'Reenviar convite para ' + inv.email}
                             >
                               {resendingId === inv.id ? (
                                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -422,7 +474,9 @@ export function ConvitesList() {
                               size="sm"
                               variant="outline"
                               onClick={() => setCancelando(inv)}
+                              disabled={acaoConviteOcupada}
                               title="Cancelar convite"
+                              aria-label={'Cancelar convite para ' + inv.email}
                               className="text-destructive hover:text-destructive"
                             >
                               <Ban className="h-3.5 w-3.5" />
@@ -459,8 +513,31 @@ export function ConvitesList() {
         cancelLabel="Voltar"
         variant="destructive"
         isLoading={cancelMutation.isPending}
-        onConfirm={() => cancelando && cancelMutation.mutate(cancelando)}
+        onConfirm={confirmarCancelamento}
       />
+
+      <Dialog open={!!linkManual} onOpenChange={(open) => { if (!open) setLinkManual(''); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Copiar link do convite</DialogTitle>
+            <DialogDescription>
+              Selecione o link abaixo e copie com Ctrl+C ou ⌘C para compartilhar com o funcionário.
+            </DialogDescription>
+          </DialogHeader>
+          <Input
+            ref={linkManualInputRef}
+            value={linkManual}
+            readOnly
+            aria-label="Link de aceitação do convite"
+            onFocus={(event) => event.currentTarget.select()}
+            onClick={(event) => event.currentTarget.select()}
+            autoFocus
+          />
+          <DialogFooter>
+            <Button onClick={() => setLinkManual('')}>Fechar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

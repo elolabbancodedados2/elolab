@@ -8,11 +8,15 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { toast } from 'sonner';
+import { todaySaoPauloDateOnly } from '@/lib/dateOnly';
+import { formatCPF, validateCPF } from '@/lib/formatters';
 
 export default function PortalGuias() {
   const { token } = useParams<{ token: string }>();
   const [validating, setValidating] = useState(true);
   const [valid, setValid] = useState(false);
+  const [validationUnavailable, setValidationUnavailable] = useState(false);
+  const [validationRetry, setValidationRetry] = useState(0);
   const [clinicaNome, setClinicaNome] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -25,6 +29,10 @@ export default function PortalGuias() {
   const [exames, setExames] = useState<{ nome: string }[]>([{ nome: '' }]);
 
   useEffect(() => {
+    const controller = new AbortController();
+    setValidating(true);
+    setValid(false);
+    setValidationUnavailable(false);
     (async () => {
       try {
         const resp = await fetch(
@@ -39,25 +47,38 @@ export default function PortalGuias() {
               'x-portal-token': token || '',
             },
             body: JSON.stringify({ action: 'validate' }),
+            signal: controller.signal,
           }
         );
         const json = await resp.json();
         if (resp.ok && json.valid) {
           setValid(true);
           setClinicaNome(json.clinica_nome || '');
+        } else if (![400, 401].includes(resp.status)) {
+          setValidationUnavailable(true);
         }
-      } catch (e) {
-        console.error(e);
+      } catch {
+        if (!controller.signal.aborted) setValidationUnavailable(true);
       } finally {
-        setValidating(false);
+        if (!controller.signal.aborted) setValidating(false);
       }
     })();
-  }, [token]);
+    return () => controller.abort();
+  }, [token, validationRetry]);
 
   const enviar = async () => {
     if (!form.paciente_nome.trim()) { toast.error('Informe o nome do paciente'); return; }
+    if (form.paciente_cpf && !validateCPF(form.paciente_cpf)) {
+      toast.error('CPF inválido. Confira os números digitados.');
+      return;
+    }
+    if (form.paciente_nascimento && form.paciente_nascimento > todaySaoPauloDateOnly()) {
+      toast.error('A data de nascimento não pode estar no futuro.');
+      return;
+    }
     const examesValidos = exames.filter((e) => e.nome.trim()).map((e) => ({ nome: e.nome.trim() }));
     if (examesValidos.length === 0) { toast.error('Adicione ao menos um exame'); return; }
+    if (examesValidos.length > 50) { toast.error('O limite é de 50 exames por guia.'); return; }
 
     setSubmitting(true);
     try {
@@ -93,11 +114,25 @@ export default function PortalGuias() {
       <div className="min-h-screen flex items-center justify-center p-6 bg-background">
         <Card className="max-w-md w-full">
           <CardContent className="p-8 text-center space-y-3">
-            <AlertCircle className="h-12 w-12 text-destructive mx-auto" />
-            <h2 className="text-xl font-bold">Link inválido</h2>
-            <p className="text-muted-foreground text-sm">
-              Este link de envio de guias não está ativo ou foi removido. Entre em contato com a clínica para obter um novo.
-            </p>
+            {validationUnavailable ? (
+              <>
+                <AlertCircle className="h-12 w-12 text-warning mx-auto" />
+                <h2 className="text-xl font-bold">Não foi possível validar o link</h2>
+                <p className="text-muted-foreground text-sm">Verifique sua conexão e tente novamente. Se o problema continuar, peça um novo link à clínica.</p>
+                <Button onClick={() => setValidationRetry(value => value + 1)} disabled={validating} className="mt-2">
+                  {validating && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                  Tentar novamente
+                </Button>
+              </>
+            ) : (
+              <>
+                <AlertCircle className="h-12 w-12 text-destructive mx-auto" />
+                <h2 className="text-xl font-bold">Link inválido</h2>
+                <p className="text-muted-foreground text-sm">
+                  Este link de envio de guias não está ativo ou foi removido. Entre em contato com a clínica para obter um novo.
+                </p>
+              </>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -136,12 +171,13 @@ export default function PortalGuias() {
           <p className="text-muted-foreground text-sm mt-1">{clinicaNome}</p>
         </motion.div>
 
+        <fieldset disabled={submitting} aria-busy={submitting} className="space-y-4 border-0 p-0 m-0 min-w-0">
         <Card>
           <CardHeader><CardTitle className="text-base">Dados do paciente</CardTitle></CardHeader>
           <CardContent className="space-y-3">
             <div><Label>Nome completo *</Label><Input value={form.paciente_nome} onChange={(e) => setForm({ ...form, paciente_nome: e.target.value })} /></div>
             <div className="grid grid-cols-2 gap-3">
-              <div><Label>CPF</Label><Input value={form.paciente_cpf} onChange={(e) => setForm({ ...form, paciente_cpf: e.target.value })} /></div>
+              <div><Label>CPF</Label><Input inputMode="numeric" autoComplete="off" placeholder="000.000.000-00" value={form.paciente_cpf} onChange={(e) => setForm({ ...form, paciente_cpf: formatCPF(e.target.value) })} /></div>
               <div><Label>Data nascimento</Label><Input type="date" value={form.paciente_nascimento} onChange={(e) => setForm({ ...form, paciente_nascimento: e.target.value })} /></div>
             </div>
             <div><Label>Telefone (WhatsApp)</Label><Input value={form.paciente_telefone} onChange={(e) => setForm({ ...form, paciente_telefone: e.target.value })} /></div>
@@ -174,7 +210,7 @@ export default function PortalGuias() {
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle className="text-base flex items-center gap-2"><FlaskConical className="h-4 w-4 text-primary" /> Exames solicitados *</CardTitle>
-              <Button size="sm" variant="outline" onClick={() => setExames([...exames, { nome: '' }])} className="gap-1.5">
+              <Button size="sm" variant="outline" onClick={() => setExames((current) => [...current, { nome: '' }])} disabled={exames.length >= 50} className="gap-1.5">
                 <Plus className="h-3.5 w-3.5" /> Adicionar
               </Button>
             </div>
@@ -184,11 +220,11 @@ export default function PortalGuias() {
               <div key={i} className="flex gap-2">
                 <Input
                   value={ex.nome}
-                  onChange={(e) => setExames(exames.map((x, idx) => idx === i ? { nome: e.target.value } : x))}
+                  onChange={(e) => setExames((current) => current.map((x, idx) => idx === i ? { nome: e.target.value } : x))}
                   placeholder={`Exame ${i + 1}`}
                 />
                 {exames.length > 1 && (
-                  <Button aria-label={`Remover exame ${i + 1}`} size="icon" variant="ghost" onClick={() => setExames(exames.filter((_, idx) => idx !== i))} className="h-10 w-10 shrink-0">
+                  <Button aria-label={`Remover exame ${i + 1}`} size="icon" variant="ghost" onClick={() => setExames((current) => current.filter((_, idx) => idx !== i))} className="h-10 w-10 shrink-0">
                     <X className="h-4 w-4" />
                   </Button>
                 )}
@@ -209,6 +245,7 @@ export default function PortalGuias() {
         <p className="text-xs text-center text-muted-foreground pb-4">
           Os dados serão tratados conforme a LGPD pela clínica destinatária.
         </p>
+        </fieldset>
       </div>
     </div>
   );

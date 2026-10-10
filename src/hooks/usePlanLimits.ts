@@ -50,7 +50,7 @@ export function usePlanLimits() {
       const max_storage_mb = plano?.max_storage_mb ?? 100000;
 
       const [{ count: funcCount }, { count: medCount }] = await Promise.all([
-        (supabase as any).from('funcionarios').select('id', { count: 'exact', head: true }).eq('clinica_id', clinicaId),
+        (supabase as any).from('funcionarios').select('id', { count: 'exact', head: true }).eq('clinica_id', clinicaId).eq('ativo', true),
         (supabase as any).from('medicos').select('id', { count: 'exact', head: true }).eq('clinica_id', clinicaId).eq('ativo', true),
       ]);
 

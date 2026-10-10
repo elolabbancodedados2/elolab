@@ -30,10 +30,12 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
 import { mensagemDeErro } from '@/lib/erros';
+import { ErrorState } from '@/components/ErrorState';
 import { cn } from '@/lib/utils';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { parseDateOnly } from '@/lib/dateOnly';
 import { Progress } from '@/components/ui/progress';
+import { Checkbox } from '@/components/ui/checkbox';
 import { downloadStringAsFile } from '@/lib/auditExport';
 
 const SUPER_ADMIN_EMAIL = import.meta.env.VITE_SUPER_ADMIN_EMAIL || 'contato@elolab.com.br';
@@ -99,47 +101,51 @@ export default function PainelAdmin() {
   const [auditSearch, setAuditSearch] = useState('');
 
   // Queries
-  const { data: profiles = [], isLoading: loadingProfiles } = useQuery({
+  const { data: profiles = [], isLoading: loadingProfiles, error: profilesError } = useQuery({
     queryKey: ['admin-profiles'],
     queryFn: async () => {
-      const { data } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
+      const { data, error } = await supabase.from('profiles').select('id,nome,email,telefone,avatar,ativo,created_at').order('created_at', { ascending: false });
+      if (error) throw error;
       return (data || []) as Profile[];
     },
   });
 
-  const { data: userRoles = [] } = useQuery({
+  const { data: userRoles = [], error: rolesError } = useQuery({
     queryKey: ['admin-user-roles'],
     queryFn: async () => {
-      const { data } = await supabase.from('user_roles').select('*');
+      const { data, error } = await supabase.from('user_roles').select('id,user_id,role');
+      if (error) throw error;
       return (data || []) as UserRole[];
     },
   });
 
-  const { data: subscriptions = [] } = useQuery({
+  const { data: subscriptions = [], error: subscriptionsError } = useQuery({
     queryKey: ['admin-subscriptions'],
     queryFn: async () => {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('assinaturas_plano')
-        .select('*, planos(nome, slug, valor)')
+        .select('id,user_id,plano_id,plano_slug,status,em_trial,trial_fim,data_inicio,data_fim,data_cancelamento,created_at,updated_at,planos(id,nome,slug,valor,frequencia)')
         .order('created_at', { ascending: false });
+      if (error) throw error;
       return data || [];
     },
   });
 
-  const { data: planos = [] } = useQuery({
+  const { data: planos = [], error: planosError } = useQuery({
     queryKey: ['admin-planos'],
     queryFn: async () => {
-      const { data } = await supabase.from('planos').select('*').eq('ativo', true).order('ordem');
+      const { data, error } = await supabase.from('planos').select('id,nome,slug,valor,frequencia,ativo,ordem').eq('ativo', true).order('ordem');
+      if (error) throw error;
       return data || [];
     },
   });
 
-  const { data: auditoria = [], isLoading: carregandoAuditoria } = useQuery({
+  const { data: auditoria = [], isLoading: carregandoAuditoria, error: auditoriaError } = useQuery({
     queryKey: ['admin-auditoria'],
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from('admin_acoes')
-        .select('*')
+        .select('id,criado_em,ator_id,ator_email,alvo_id,alvo_email,acao,motivo,sucesso,erro')
         .order('criado_em', { ascending: false })
         .limit(200);
       if (error) throw error;
@@ -150,7 +156,7 @@ export default function PainelAdmin() {
   // O bloqueio de verdade mora em auth.users.banned_until, que o PostgREST não
   // expõe. Esta função traz o estado de todas as contas de uma vez, em vez de
   // uma chamada por linha da tabela.
-  const { data: situacoes = [] } = useQuery({
+  const { data: situacoes = [], error: situacoesError } = useQuery({
     queryKey: ['admin-situacao-contas'],
     queryFn: async () => {
       const { data, error } = await (supabase as any).rpc('admin_situacao_contas');
@@ -165,10 +171,10 @@ export default function PainelAdmin() {
     },
   });
 
-  const { data: auditoriaUniversal = [], isLoading: carregandoAuditoriaUniversal } = useQuery({
+  const { data: auditoriaUniversal = [], isLoading: carregandoAuditoriaUniversal, error: auditoriaUniversalError } = useQuery({
     queryKey: ['admin-auditoria-universal'],
     queryFn: async () => {
-      const { data, error } = await supabase.from('audit_log').select('*').order('timestamp', { ascending: false }).limit(1000);
+      const { data, error } = await supabase.from('audit_log').select('id,timestamp,action,collection,record_id,record_name,user_id,user_name,clinica_id').order('timestamp', { ascending: false }).limit(1000);
       if (error) throw error;
       return data || [];
     },
@@ -180,12 +186,12 @@ export default function PainelAdmin() {
     return auditoriaUniversal.filter((item: any) => [item.collection, item.action, item.record_name, item.user_name, item.clinica_id].some(valor => String(valor || '').toLowerCase().includes(termo)));
   }, [auditoriaUniversal, auditSearch]);
 
-  const { data: saudePlataforma } = useQuery({
+  const { data: saudePlataforma, error: saudeError } = useQuery({
     queryKey: ['admin-saude-plataforma'],
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from('platform_saude_agregada')
-        .select('*')
+        .select('total_clinicas,clinicas_ativas,clinicas_arquivadas,clinicas_em_trial,total_pacientes,agendamentos_no_mes,audits_ultimos_7d')
         .maybeSingle();
       if (error) throw error;
       return data as {
@@ -200,10 +206,10 @@ export default function PainelAdmin() {
     },
   });
 
-  const { data: migracoes = [] } = useQuery({
+  const { data: migracoes = [], error: migracoesError } = useQuery({
     queryKey: ['admin-migracoes'],
     queryFn: async () => {
-      const { data, error } = await (supabase as any).from('platform_migration_runs').select('*').order('atualizada_em', { ascending: false });
+      const { data, error } = await (supabase as any).from('platform_migration_runs').select('id,nome,status,mensagem,progresso,etapa_atual,etapas_concluidas,total_etapas,atualizada_em').order('atualizada_em', { ascending: false });
       if (error) throw error;
       return data || [];
     },
@@ -234,37 +240,40 @@ export default function PainelAdmin() {
 
   // Stats
   const totalUsers = profiles.length;
-  const activeUsers = profiles.filter(p => p.ativo !== false).length;
-  const totalSubs = subscriptions.length;
-  const activeSubs = subscriptions.filter((s: any) => s.status === 'ativa' || s.status === 'trial').length;
-  const trialSubs = subscriptions.filter((s: any) => s.status === 'trial').length;
+  const activeUsers = profiles.filter(p => !situacoes.find(s => s.user_id === p.id)?.bloqueado).length;
+  const assinaturaVigente = (s: any) => !s.data_fim || new Date(`${s.data_fim}T23:59:59`).getTime() >= Date.now();
+  const activeSubs = subscriptions.filter((s: any) => s.status === 'ativa' && !s.em_trial && assinaturaVigente(s)).length;
+  const trialSubs = subscriptions.filter((s: any) => s.status === 'trial' || s.em_trial).length;
+  const valorMensalizado = (subscription: any) => {
+    const valor = Number(subscription.planos?.valor) || 0;
+    const mesesPorCiclo: Record<string, number> = { mensal: 1, trimestral: 3, semestral: 6, anual: 12 };
+    return valor / (mesesPorCiclo[subscription.planos?.frequencia || 'mensal'] || 1);
+  };
   const revenue = subscriptions
-    .filter((s: any) => s.status === 'ativa')
-    .reduce((sum: number, s: any) => sum + (s.planos?.valor || 0), 0);
+    .filter((s: any) => s.status === 'ativa' && !s.em_trial && assinaturaVigente(s))
+    .reduce((sum: number, s: any) => sum + valorMensalizado(s), 0);
   const expiredSubs = subscriptions.filter((s: any) => s.status === 'expirada').length;
   const cancelledSubs = subscriptions.filter((s: any) => s.status === 'cancelada').length;
-  const churnRate = totalSubs > 0 ? ((expiredSubs + cancelledSubs) / totalSubs * 100).toFixed(1) : '0';
-  const conversionRate = totalSubs > 0 ? ((activeSubs / totalSubs) * 100).toFixed(1) : '0';
+  const assinaturasInativas = expiredSubs + cancelledSubs;
   const pieData = [
-    { name: 'Ativas', value: subscriptions.filter((s: any) => s.status === 'ativa').length, color: 'hsl(var(--success))' },
+    { name: 'Ativas', value: activeSubs, color: 'hsl(var(--success))' },
     { name: 'Trial', value: trialSubs, color: 'hsl(var(--info))' },
     { name: 'Expiradas', value: expiredSubs, color: 'hsl(var(--warning))' },
     { name: 'Canceladas', value: cancelledSubs, color: 'hsl(var(--destructive))' },
   ].filter(d => d.value > 0);
   const monthlyData = useMemo(() => {
-    const months: Record<string, { month: string; mrr: number }> = {};
+    const months: Record<string, { month: string; count: number }> = {};
     const now = new Date();
     for (let i = 5; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      months[key] = { month: d.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }), mrr: 0 };
+      months[key] = { month: d.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }), count: 0 };
     }
     subscriptions.forEach((s: any) => {
-      if (s.status !== 'ativa' && s.status !== 'trial') return;
-      const created = s.data_inicio ? parseDateOnly(s.data_inicio)! : null;
+      const created = s.created_at ? new Date(s.created_at) : (s.data_inicio ? parseDateOnly(s.data_inicio)! : null);
       if (!created) return;
       const key = `${created.getFullYear()}-${String(created.getMonth() + 1).padStart(2, '0')}`;
-      Object.keys(months).forEach(mk => { if (mk >= key) months[mk].mrr += s.planos?.valor || 0; });
+      if (months[key]) months[key].count += 1;
     });
     return Object.values(months);
   }, [subscriptions]);
@@ -275,8 +284,7 @@ export default function PainelAdmin() {
     setEditFormData({
       nome: u.nome,
       telefone: u.telefone || '',
-      ativo: u.ativo ?? true,
-      role: u.roles[0] || 'recepcao',
+      roles: u.roles.length ? u.roles : ['recepcao'],
     });
   };
 
@@ -284,34 +292,18 @@ export default function PainelAdmin() {
     if (!editUser) return;
     setIsSaving(true);
     try {
-      await supabase.from('profiles').update({
-        nome: editFormData.nome,
-        telefone: editFormData.telefone || null,
-        ativo: editFormData.ativo,
-      }).eq('id', editUser.id);
-
-      // Mesmo cuidado de Funcionarios: sem checar o erro, um insert que falha
-      // depois do delete deixa a conta sem nenhum papel, com a tela dizendo que
-      // deu certo. Guardamos os papéis para restaurar em caso de falha.
-      const { data: papeisAtuais } = await supabase
-        .from('user_roles').select('role').eq('user_id', editUser.id);
-
-      const { error: delErr } = await supabase
-        .from('user_roles').delete().eq('user_id', editUser.id);
-      if (delErr) throw delErr;
-
-      const { error: insErr } = await supabase
-        .from('user_roles').insert({ user_id: editUser.id, role: editFormData.role });
-      if (insErr) {
-        if (papeisAtuais?.length) {
-          await supabase.from('user_roles')
-            .insert(papeisAtuais.map(p => ({ user_id: editUser.id, role: p.role })));
-        }
-        throw insErr;
-      }
+      const { error } = await (supabase as any).rpc('platform_update_clinic_user', {
+        p_user_id: editUser.id,
+        p_nome: editFormData.nome.trim(),
+        p_telefone: editFormData.telefone || null,
+        p_roles: editFormData.roles,
+      });
+      if (error) throw error;
 
       queryClient.invalidateQueries({ queryKey: ['admin-profiles'] });
       queryClient.invalidateQueries({ queryKey: ['admin-user-roles'] });
+      queryClient.invalidateQueries({ queryKey: ['profiles'] });
+      queryClient.invalidateQueries({ queryKey: ['user_roles'] });
       setEditUser(null);
       toast.success('Usuário atualizado.');
     } catch (e) {
@@ -327,8 +319,7 @@ export default function PainelAdmin() {
    * política de RLS. Quem fosse "desativado" continuava entrando e
    * trabalhando. Pior que ferramenta ausente: uma que parece resolver.
    *
-   * Agora bloqueia no Auth, que é onde o login realmente é decidido, e mantém
-   * `ativo` em dia para as telas que listam por esse campo.
+   * Agora bloqueia no Auth, que é onde o login realmente é decidido.
    */
   const [alterandoAcesso, setAlterandoAcesso] = useState<string | null>(null);
 
@@ -357,6 +348,7 @@ export default function PainelAdmin() {
   const handleCancelSub = async (subId: string) => {
     // Cancelamento de assinatura mexe em cobrança: anunciar sucesso sem
     // confirmar deixaria o cliente achando que cancelou algo que segue ativo.
+    if (!window.confirm('Confirma o cancelamento desta assinatura? Essa alteração afeta a cobrança e o acesso ao plano.')) return;
     const { error } = await supabase
       .from('assinaturas_plano')
       .update({ status: 'cancelada', data_cancelamento: new Date().toISOString() })
@@ -369,6 +361,10 @@ export default function PainelAdmin() {
   const handleChangePlan = async (subId: string, planoId: string) => {
     const plano = (planos as any[]).find(p => p.id === planoId);
     if (!plano) return;
+    if (!window.confirm(`Confirma a troca para o plano ${plano.nome}?`)) {
+      void queryClient.invalidateQueries({ queryKey: ['admin-subscriptions'] });
+      return;
+    }
     const { error } = await supabase.from('assinaturas_plano').update({
       plano_id: plano.id,
       plano_slug: plano.slug,
@@ -404,6 +400,13 @@ export default function PainelAdmin() {
     );
   }
 
+  const loadError = profilesError || rolesError || subscriptionsError || planosError || situacoesError || saudeError || migracoesError;
+  if (loadError) return <ErrorState error={loadError} onRetry={() => {
+    ['admin-profiles', 'admin-user-roles', 'admin-subscriptions', 'admin-planos', 'admin-situacao-contas', 'admin-saude-plataforma', 'admin-migracoes'].forEach(queryKey => {
+      void queryClient.invalidateQueries({ queryKey: [queryKey] });
+    });
+  }} />;
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -423,10 +426,19 @@ export default function PainelAdmin() {
           variant="outline"
           size="sm"
           onClick={() => {
-            queryClient.invalidateQueries({ queryKey: ['admin-profiles'] });
-            queryClient.invalidateQueries({ queryKey: ['admin-user-roles'] });
-            queryClient.invalidateQueries({ queryKey: ['admin-subscriptions'] });
-            queryClient.invalidateQueries({ queryKey: ['admin-saude-plataforma'] });
+            [
+              'admin-profiles',
+              'admin-user-roles',
+              'admin-subscriptions',
+              'admin-planos',
+              'admin-auditoria',
+              'admin-situacao-contas',
+              'admin-auditoria-universal',
+              'admin-saude-plataforma',
+              'admin-migracoes',
+            ].forEach((queryKey) => {
+              void queryClient.invalidateQueries({ queryKey: [queryKey] });
+            });
           }}
           className="gap-2"
         >
@@ -512,11 +524,11 @@ export default function PainelAdmin() {
           <div className="grid gap-4 lg:grid-cols-2">
             <Card>
               <CardHeader><CardTitle className="text-base">Situação comercial</CardTitle><CardDescription>Indicadores calculados diretamente das assinaturas.</CardDescription></CardHeader>
-              <CardContent className="grid grid-cols-2 gap-4">
+      <CardContent className="grid grid-cols-2 gap-4">
                 <div><p className="text-sm text-muted-foreground">Receita recorrente</p><p className="text-2xl font-bold text-success">{formatCurrency(revenue)}</p></div>
-                <div><p className="text-sm text-muted-foreground">Conversão</p><p className="text-2xl font-bold">{conversionRate}%</p></div>
+                <div><p className="text-sm text-muted-foreground">Assinantes pagantes ativos</p><p className="text-2xl font-bold">{activeSubs}</p></div>
                 <div><p className="text-sm text-muted-foreground">Em trial</p><p className="text-2xl font-bold">{saudePlataforma?.clinicas_em_trial ?? trialSubs}</p></div>
-                <div><p className="text-sm text-muted-foreground">Churn acumulado</p><p className="text-2xl font-bold text-warning">{churnRate}%</p></div>
+                <div><p className="text-sm text-muted-foreground">Canceladas ou expiradas</p><p className="text-2xl font-bold text-warning">{assinaturasInativas}</p></div>
               </CardContent>
             </Card>
             <Card>
@@ -777,7 +789,7 @@ export default function PainelAdmin() {
                   <div>
                     <p className="text-sm text-muted-foreground">Assinantes Ativos</p>
                     <p className="text-2xl font-bold">{activeSubs}</p>
-                    <p className="text-xs text-success">{conversionRate}% conversão</p>
+                    <p className="text-xs text-muted-foreground">assinaturas pagas vigentes</p>
                   </div>
                 </div>
               </CardContent>
@@ -787,9 +799,9 @@ export default function PainelAdmin() {
                 <div className="flex items-center gap-3">
                   <div className="p-2 rounded-lg bg-warning/10"><TrendingDown className="h-5 w-5 text-warning" /></div>
                   <div>
-                    <p className="text-sm text-muted-foreground">Churn Rate</p>
-                    <p className="text-2xl font-bold text-warning">{churnRate}%</p>
-                    <p className="text-xs text-muted-foreground">{expiredSubs + cancelledSubs} perdidos</p>
+                    <p className="text-sm text-muted-foreground">Canceladas ou expiradas</p>
+                    <p className="text-2xl font-bold text-warning">{assinaturasInativas}</p>
+                    <p className="text-xs text-muted-foreground">total acumulado</p>
                   </div>
                 </div>
               </CardContent>
@@ -809,15 +821,15 @@ export default function PainelAdmin() {
           </div>
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <Card className="lg:col-span-2">
-              <CardHeader><CardTitle className="text-base">Evolução MRR (6 meses)</CardTitle></CardHeader>
+              <CardHeader><CardTitle className="text-base">Novas assinaturas iniciadas (6 meses)</CardTitle></CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={280}>
                   <AreaChart data={monthlyData}>
                     <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                     <XAxis dataKey="month" className="text-xs" />
-                    <YAxis className="text-xs" tickFormatter={(v) => `R$${v}`} />
-                    <Tooltip formatter={(value: number) => [`${formatCurrency(value)}`, 'MRR']} />
-                    <Area type="monotone" dataKey="mrr" stroke="hsl(var(--success))" fill="hsl(var(--success))" fillOpacity={0.15} strokeWidth={2} />
+                    <YAxis className="text-xs" allowDecimals={false} />
+                    <Tooltip formatter={(value: number) => [value, 'Assinaturas']} />
+                    <Area type="monotone" dataKey="count" stroke="hsl(var(--success))" fill="hsl(var(--success))" fillOpacity={0.15} strokeWidth={2} />
                   </AreaChart>
                 </ResponsiveContainer>
               </CardContent>
@@ -854,6 +866,10 @@ export default function PainelAdmin() {
 
         {/* Auditoria */}
         <TabsContent value="auditoria" className="space-y-4">
+          {(auditoriaUniversalError || auditoriaError) && <ErrorState error={auditoriaUniversalError || auditoriaError} onRetry={() => {
+            void queryClient.invalidateQueries({ queryKey: ['admin-auditoria-universal'] });
+            void queryClient.invalidateQueries({ queryKey: ['admin-auditoria'] });
+          }} />}
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div className="relative max-w-md flex-1"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"/><Input className="pl-9" value={auditSearch} onChange={e => setAuditSearch(e.target.value)} placeholder="Buscar tabela, ação, pessoa ou clínica..."/></div>
             <Button variant="outline" onClick={() => downloadStringAsFile({ content: JSON.stringify(auditoriaUniversalFiltrada, null, 2), filename: `auditoria-elolab-${new Date().toISOString().slice(0,10)}.json`, mimeType: 'application/json;charset=utf-8' })}>Exportar trilha</Button>
@@ -955,25 +971,26 @@ export default function PainelAdmin() {
               <Label>Telefone</Label>
               <Input value={editFormData.telefone || ''} onChange={e => setEditFormData({ ...editFormData, telefone: e.target.value })} placeholder="(00) 00000-0000" />
             </div>
-            <div className="space-y-2">
-              <Label>Função</Label>
-              <Select value={editFormData.role} onValueChange={v => setEditFormData({ ...editFormData, role: v })}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {Object.entries(ROLE_LABELS).map(([k, v]) => (
-                    <SelectItem key={k} value={k}>{v}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex items-center gap-2">
-              <Switch checked={editFormData.ativo ?? true} onCheckedChange={c => setEditFormData({ ...editFormData, ativo: c })} />
-              <Label>Ativo</Label>
-            </div>
+            <fieldset className="space-y-2">
+              <legend className="text-sm font-medium">Funções do usuário</legend>
+              <p className="text-xs text-muted-foreground">Selecione as funções necessárias; mantenha ao menos uma.</p>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {Object.entries(ROLE_LABELS).map(([key, label]) => {
+                  const role = key as AppRole;
+                  return <label key={role} className="flex min-h-11 items-center gap-3 rounded-md border px-3">
+                    <Checkbox checked={editFormData.roles?.includes(role) || false} onCheckedChange={checked => setEditFormData((current: any) => ({
+                      ...current,
+                      roles: checked === true ? [...new Set([...(current.roles || []), role])] : (current.roles || []).filter((item: AppRole) => item !== role),
+                    }))} aria-label={label} />
+                    <span className="text-sm">{label}</span>
+                  </label>;
+                })}
+              </div>
+            </fieldset>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditUser(null)} disabled={isSaving}>Cancelar</Button>
-            <Button onClick={handleSave} disabled={isSaving}>
+            <Button onClick={handleSave} disabled={isSaving || !editFormData.nome?.trim() || !editFormData.roles?.length}>
               {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Salvar
             </Button>
           </DialogFooter>

@@ -1,7 +1,7 @@
 import { medicamentosParaLinhas, textoParaMedicamentos } from '@/lib/templatesPrescricao';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, FileText, Pill, Edit, Trash2, Copy, Loader2 } from 'lucide-react';
+import { Plus, FileText, Pill, Edit, Trash2, Copy, Loader2, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -39,6 +39,9 @@ import { useSupabaseQuery } from '@/hooks/useSupabaseData';
 import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient } from '@tanstack/react-query';
 import { Skeleton } from '@/components/ui/skeleton';
+import { ErrorState } from '@/components/ErrorState';
+import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
+import { normalizarTexto } from '@/lib/buscaPaciente';
 
 const PRESCRIPTION_TYPES: Record<string, string> = {
   simples: 'Receita Simples',
@@ -55,6 +58,7 @@ const CERTIFICATE_TYPES: Record<string, string> = {
 
 interface PrescriptionTemplate {
   id: string;
+  clinica_id: string | null;
   nome: string;
   tipo: string | null;
   medicamentos: unknown;
@@ -66,6 +70,7 @@ interface PrescriptionTemplate {
 
 interface CertificateTemplate {
   id: string;
+  clinica_id: string | null;
   nome: string;
   tipo: string | null;
   conteudo: string | null;
@@ -83,23 +88,60 @@ export default function Templates() {
   const [prescriptionForm, setPrescriptionForm] = useState<Partial<PrescriptionTemplate>>({});
   const [certificateForm, setCertificateForm] = useState<Partial<CertificateTemplate>>({});
   const [isSaving, setIsSaving] = useState(false);
+  const saveLock = useRef(false);
+  const duplicateLock = useRef(false);
+  const [duplicatingTemplateKey, setDuplicatingTemplateKey] = useState<string | null>(null);
+  const [isDeletingTemplate, setIsDeletingTemplate] = useState(false);
 
   const queryClient = useQueryClient();
+  const { profile } = useSupabaseAuth();
   const [medicamentosTexto, setMedicamentosTexto] = useState('');
+  const [prescriptionSearch, setPrescriptionSearch] = useState('');
+  const [certificateSearch, setCertificateSearch] = useState('');
 
-  const { data: prescriptionTemplates = [], isLoading: loadingPrescriptions } = useSupabaseQuery<PrescriptionTemplate>('templates_prescricao', {
+  const prescriptionQuery = useSupabaseQuery<PrescriptionTemplate>('templates_prescricao', {
     orderBy: { column: 'nome', ascending: true },
   });
 
-  const { data: certificateTemplates = [], isLoading: loadingCertificates } = useSupabaseQuery<CertificateTemplate>('templates_atestado', {
+  const certificateQuery = useSupabaseQuery<CertificateTemplate>('templates_atestado', {
     orderBy: { column: 'nome', ascending: true },
   });
+  const prescriptionTemplates = prescriptionQuery.data || [];
+  const certificateTemplates = certificateQuery.data || [];
+  const loadingPrescriptions = prescriptionQuery.isLoading;
+  const loadingCertificates = certificateQuery.isLoading;
 
   const isLoading = loadingPrescriptions || loadingCertificates;
 
+  const filteredPrescriptionTemplates = useMemo(() => {
+    const term = normalizarTexto(prescriptionSearch);
+    if (!term) return prescriptionTemplates;
+    return prescriptionTemplates.filter(template => {
+      const medicamentos = medicamentosParaLinhas(template.medicamentos).join(' ');
+      const tipo = PRESCRIPTION_TYPES[template.tipo || 'simples'] || template.tipo || '';
+      return [template.nome, tipo, medicamentos, template.observacoes_gerais]
+        .some(value => normalizarTexto(value).includes(term));
+    });
+  }, [prescriptionTemplates, prescriptionSearch]);
+
+  const filteredCertificateTemplates = useMemo(() => {
+    const term = normalizarTexto(certificateSearch);
+    if (!term) return certificateTemplates;
+    return certificateTemplates.filter(template => {
+      const tipo = CERTIFICATE_TYPES[template.tipo || 'comparecimento'] || template.tipo || '';
+      return [template.nome, tipo, template.conteudo, template.cid]
+        .some(value => normalizarTexto(value).includes(term));
+    });
+  }, [certificateTemplates, certificateSearch]);
+
   const handleSavePrescription = async () => {
-    if (!prescriptionForm.nome || !prescriptionForm.tipo) {
+    if (saveLock.current) return;
+    if (!prescriptionForm.nome?.trim() || !prescriptionForm.tipo) {
       toast.error('Preencha os campos obrigatórios');
+      return;
+    }
+    if (!profile?.clinica_id) {
+      toast.error('Clínica não identificada. Atualize a sessão e tente novamente.');
       return;
     }
     const medicamentos = textoParaMedicamentos(medicamentosTexto);
@@ -108,29 +150,36 @@ export default function Templates() {
       return;
     }
 
+    saveLock.current = true;
     setIsSaving(true);
     try {
       if (prescriptionForm.id) {
-        const { error } = await supabase
+        const { data, error } = await supabase
           .from('templates_prescricao')
           .update({
-            nome: prescriptionForm.nome,
+            nome: prescriptionForm.nome.trim(),
             tipo: prescriptionForm.tipo,
             observacoes_gerais: prescriptionForm.observacoes_gerais,
             medicamentos: medicamentos as any,
           })
-          .eq('id', prescriptionForm.id);
+          .eq('id', prescriptionForm.id)
+          .eq('clinica_id', profile.clinica_id)
+          .select('id')
+          .maybeSingle();
 
         if (error) throw error;
+        if (!data) throw new Error('Este modelo não pertence à clínica atual ou não está mais disponível.');
         toast.success('Template atualizado com sucesso');
       } else {
-        const { error } = await supabase
+        const { data, error } = await supabase
           .from('templates_prescricao')
           .insert({
-            nome: prescriptionForm.nome,
+            nome: prescriptionForm.nome.trim(),
             tipo: prescriptionForm.tipo,
             observacoes_gerais: prescriptionForm.observacoes_gerais,
             medicamentos: medicamentos as any,
+            clinica_id: profile.clinica_id,
+            criado_por: profile.id,
           });
 
         if (error) throw error;
@@ -144,41 +193,59 @@ export default function Templates() {
       if (import.meta.env.DEV) console.error('Error saving prescription template:', error);
       toast.error('Erro ao salvar template', { description: mensagemDeErro(error) });
     } finally {
+      saveLock.current = false;
       setIsSaving(false);
     }
   };
 
   const handleSaveCertificate = async () => {
-    if (!certificateForm.nome || !certificateForm.tipo || !certificateForm.conteudo) {
+    if (saveLock.current) return;
+    if (!certificateForm.nome?.trim() || !certificateForm.tipo || !certificateForm.conteudo?.trim()) {
       toast.error('Preencha os campos obrigatórios');
       return;
     }
+    if (!profile?.clinica_id) {
+      toast.error('Clínica não identificada. Atualize a sessão e tente novamente.');
+      return;
+    }
+    if (certificateForm.tipo === 'afastamento' && certificateForm.dias_afastamento != null
+      && (!Number.isInteger(certificateForm.dias_afastamento) || certificateForm.dias_afastamento < 1)) {
+      toast.error('Os dias de afastamento devem ser um número inteiro maior que zero.');
+      return;
+    }
 
+    saveLock.current = true;
     setIsSaving(true);
     try {
       if (certificateForm.id) {
-        const { error } = await supabase
+        const { data, error } = await supabase
           .from('templates_atestado')
           .update({
-            nome: certificateForm.nome,
+            nome: certificateForm.nome.trim(),
             tipo: certificateForm.tipo,
             conteudo: certificateForm.conteudo,
-            cid: certificateForm.cid,
-            dias_afastamento: certificateForm.dias_afastamento,
+            cid: certificateForm.tipo === 'afastamento' ? certificateForm.cid || null : null,
+            dias_afastamento: certificateForm.tipo === 'afastamento' ? certificateForm.dias_afastamento ?? null : null,
           })
-          .eq('id', certificateForm.id);
+          .eq('id', certificateForm.id)
+          .eq('clinica_id', profile.clinica_id)
+          .select('id')
+          .maybeSingle();
 
         if (error) throw error;
+        if (!data) throw new Error('Este modelo não pertence à clínica atual ou não está mais disponível.');
         toast.success('Template atualizado com sucesso');
       } else {
         const { error } = await supabase
           .from('templates_atestado')
           .insert({
-            nome: certificateForm.nome,
+            nome: certificateForm.nome.trim(),
             tipo: certificateForm.tipo,
             conteudo: certificateForm.conteudo,
-            cid: certificateForm.cid,
-            dias_afastamento: certificateForm.dias_afastamento,
+            cid: certificateForm.tipo === 'afastamento' ? certificateForm.cid || null : null,
+            dias_afastamento: certificateForm.tipo === 'afastamento' ? certificateForm.dias_afastamento ?? null : null,
+            clinica_id: profile.clinica_id,
+            criado_por: profile.id,
           });
 
         if (error) throw error;
@@ -192,6 +259,7 @@ export default function Templates() {
       if (import.meta.env.DEV) console.error('Error saving certificate template:', error);
       toast.error('Erro ao salvar template', { description: mensagemDeErro(error) });
     } finally {
+      saveLock.current = false;
       setIsSaving(false);
     }
   };
@@ -199,31 +267,48 @@ export default function Templates() {
   const handleDelete = async () => {
     const { type, id } = deleteDialog;
     const table = type === 'prescription' ? 'templates_prescricao' : 'templates_atestado';
+    if (!profile?.clinica_id || !id) {
+      toast.error('Clínica não identificada. Atualize a sessão e tente novamente.');
+      return;
+    }
 
-    setIsSaving(true);
+    setIsDeletingTemplate(true);
     try {
-      const { data, error } = await supabase.from(table).delete().eq('id', id).select('id');
+      const { data, error } = await supabase.from(table).delete()
+        .eq('id', id)
+        .eq('clinica_id', profile.clinica_id)
+        .select('id')
+        .maybeSingle();
       if (error) throw error;
-      if (!data || data.length === 0) { toast.error('Sem permissão para excluir este template.'); return; }
+      if (!data) throw new Error('Este modelo não pertence à clínica atual ou já foi removido.');
       queryClient.invalidateQueries({ queryKey: [table] });
       toast.success('Template excluído');
+      setDeleteDialog({ open: false, type: 'prescription', id: '' });
     } catch (error) {
       if (import.meta.env.DEV) console.error('Error deleting template:', error);
       toast.error('Erro ao excluir template', { description: mensagemDeErro(error) });
     } finally {
-      setIsSaving(false);
-      setDeleteDialog({ open: false, type: 'prescription', id: '' });
+      setIsDeletingTemplate(false);
     }
   };
 
   const duplicateTemplate = async (template: PrescriptionTemplate | CertificateTemplate, type: 'prescription' | 'certificate') => {
+    if (duplicateLock.current) return;
     const table = type === 'prescription' ? 'templates_prescricao' : 'templates_atestado';
+    if (!profile?.clinica_id) {
+      toast.error('Clínica não identificada. Atualize a sessão e tente novamente.');
+      return;
+    }
 
+    duplicateLock.current = true;
+    setDuplicatingTemplateKey(`${type}:${template.id}`);
     try {
-      const { id, created_at, updated_at, ...rest } = template as any;
+      const { id, created_at, updated_at, criado_por: _criadoPor, ...rest } = template as any;
       const { error } = await supabase.from(table).insert({
         ...rest,
         nome: `${template.nome} (cópia)`,
+        clinica_id: profile.clinica_id,
+        criado_por: profile.id,
       });
 
       if (error) throw error;
@@ -232,6 +317,9 @@ export default function Templates() {
     } catch (error) {
       if (import.meta.env.DEV) console.error('Error duplicating template:', error);
       toast.error('Erro ao duplicar template', { description: mensagemDeErro(error) });
+    } finally {
+      duplicateLock.current = false;
+      setDuplicatingTemplateKey(null);
     }
   };
 
@@ -242,6 +330,14 @@ export default function Templates() {
         <Skeleton className="h-96" />
       </div>
     );
+  }
+
+  if (prescriptionQuery.isError || certificateQuery.isError) {
+    const failedQuery = prescriptionQuery.isError ? prescriptionQuery : certificateQuery;
+    return <ErrorState title="Não foi possível carregar os templates clínicos" error={failedQuery.error} onRetry={() => {
+      void prescriptionQuery.refetch();
+      void certificateQuery.refetch();
+    }} />;
   }
 
   return (
@@ -264,24 +360,34 @@ export default function Templates() {
         </TabsList>
 
         <TabsContent value="prescriptions" className="space-y-4">
-          <div className="flex justify-end">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="relative w-full sm:max-w-sm">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={prescriptionSearch}
+                onChange={event => setPrescriptionSearch(event.target.value)}
+                placeholder="Buscar nome, tipo ou medicamento..."
+                aria-label="Buscar templates de prescrição"
+                className="pl-9"
+              />
+            </div>
             <Button onClick={() => { setPrescriptionForm({}); setMedicamentosTexto(''); setIsPrescriptionFormOpen(true); }}>
               <Plus className="mr-2 h-4 w-4" />
               Novo Template
             </Button>
           </div>
 
-          {prescriptionTemplates.length === 0 ? (
+          {filteredPrescriptionTemplates.length === 0 ? (
             <Card>
               <CardContent className="py-12 text-center text-muted-foreground">
                 <Pill className="mx-auto h-12 w-12 mb-4 opacity-50" />
-                <p>Nenhum template de prescrição criado</p>
-                <p className="text-sm">Crie templates para agilizar suas prescrições</p>
+                <p>{prescriptionTemplates.length === 0 ? 'Nenhum template de prescrição criado' : 'Nenhum template corresponde à busca'}</p>
+                <p className="text-sm">{prescriptionTemplates.length === 0 ? 'Crie templates para agilizar suas prescrições' : 'Tente outro nome, tipo ou medicamento.'}</p>
               </CardContent>
             </Card>
           ) : (
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {prescriptionTemplates.map((template) => (
+              {filteredPrescriptionTemplates.map((template) => (
                 <Card key={template.id}>
                   <CardHeader>
                     <div className="flex items-start justify-between">
@@ -294,15 +400,19 @@ export default function Templates() {
                         </div>
                       </div>
                       <div className="flex gap-1">
-                        <Button aria-label={`Duplicar modelo ${template.nome}`} size="icon" variant="ghost" onClick={() => duplicateTemplate(template, 'prescription')}>
-                          <Copy className="h-4 w-4" />
+                        <Button aria-label={`Duplicar modelo ${template.nome}`} size="icon" variant="ghost" disabled={duplicatingTemplateKey !== null} onClick={() => duplicateTemplate(template, 'prescription')}>
+                          {duplicatingTemplateKey === `prescription:${template.id}`
+                            ? <Loader2 className="h-4 w-4 animate-spin" />
+                            : <Copy className="h-4 w-4" />}
                         </Button>
-                        <Button aria-label={`Editar modelo ${template.nome}`} size="icon" variant="ghost" onClick={() => { setPrescriptionForm(template); setMedicamentosTexto(medicamentosParaLinhas(template.medicamentos).join('\n')); setIsPrescriptionFormOpen(true); }}>
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button aria-label={`Excluir modelo ${template.nome}`} size="icon" variant="ghost" onClick={() => setDeleteDialog({ open: true, type: 'prescription', id: template.id })}>
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
+                        {template.clinica_id === profile?.clinica_id && <>
+                          <Button aria-label={`Editar modelo ${template.nome}`} size="icon" variant="ghost" onClick={() => { setPrescriptionForm(template); setMedicamentosTexto(medicamentosParaLinhas(template.medicamentos).join('\n')); setIsPrescriptionFormOpen(true); }}>
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button aria-label={`Excluir modelo ${template.nome}`} size="icon" variant="ghost" onClick={() => setDeleteDialog({ open: true, type: 'prescription', id: template.id })}>
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </>}
                       </div>
                     </div>
                   </CardHeader>
@@ -318,24 +428,34 @@ export default function Templates() {
         </TabsContent>
 
         <TabsContent value="certificates" className="space-y-4">
-          <div className="flex justify-end">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="relative w-full sm:max-w-sm">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={certificateSearch}
+                onChange={event => setCertificateSearch(event.target.value)}
+                placeholder="Buscar nome, tipo, CID ou conteúdo..."
+                aria-label="Buscar templates de atestado"
+                className="pl-9"
+              />
+            </div>
             <Button onClick={() => { setCertificateForm({}); setIsCertificateFormOpen(true); }}>
               <Plus className="mr-2 h-4 w-4" />
               Novo Template
             </Button>
           </div>
 
-          {certificateTemplates.length === 0 ? (
+          {filteredCertificateTemplates.length === 0 ? (
             <Card>
               <CardContent className="py-12 text-center text-muted-foreground">
                 <FileText className="mx-auto h-12 w-12 mb-4 opacity-50" />
-                <p>Nenhum template de atestado criado</p>
-                <p className="text-sm">Crie templates para agilizar seus atestados</p>
+                <p>{certificateTemplates.length === 0 ? 'Nenhum template de atestado criado' : 'Nenhum template corresponde à busca'}</p>
+                <p className="text-sm">{certificateTemplates.length === 0 ? 'Crie templates para agilizar seus atestados' : 'Tente outro nome, tipo, CID ou conteúdo.'}</p>
               </CardContent>
             </Card>
           ) : (
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {certificateTemplates.map((template) => (
+              {filteredCertificateTemplates.map((template) => (
                 <Card key={template.id}>
                   <CardHeader>
                     <div className="flex items-start justify-between">
@@ -348,15 +468,19 @@ export default function Templates() {
                         </div>
                       </div>
                       <div className="flex gap-1">
-                        <Button aria-label={`Duplicar modelo ${template.nome}`} size="icon" variant="ghost" onClick={() => duplicateTemplate(template, 'certificate')}>
-                          <Copy className="h-4 w-4" />
+                        <Button aria-label={`Duplicar modelo ${template.nome}`} size="icon" variant="ghost" disabled={duplicatingTemplateKey !== null} onClick={() => duplicateTemplate(template, 'certificate')}>
+                          {duplicatingTemplateKey === `certificate:${template.id}`
+                            ? <Loader2 className="h-4 w-4 animate-spin" />
+                            : <Copy className="h-4 w-4" />}
                         </Button>
-                        <Button aria-label={`Editar modelo ${template.nome}`} size="icon" variant="ghost" onClick={() => { setCertificateForm(template); setIsCertificateFormOpen(true); }}>
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button aria-label={`Excluir modelo ${template.nome}`} size="icon" variant="ghost" onClick={() => setDeleteDialog({ open: true, type: 'certificate', id: template.id })}>
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
+                        {template.clinica_id === profile?.clinica_id && <>
+                          <Button aria-label={`Editar modelo ${template.nome}`} size="icon" variant="ghost" onClick={() => { setCertificateForm(template); setIsCertificateFormOpen(true); }}>
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button aria-label={`Excluir modelo ${template.nome}`} size="icon" variant="ghost" onClick={() => setDeleteDialog({ open: true, type: 'certificate', id: template.id })}>
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </>}
                       </div>
                     </div>
                   </CardHeader>
@@ -373,7 +497,7 @@ export default function Templates() {
       </Tabs>
 
       {/* Prescription Form Dialog */}
-      <Dialog open={isPrescriptionFormOpen} onOpenChange={setIsPrescriptionFormOpen}>
+      <Dialog open={isPrescriptionFormOpen} onOpenChange={(open) => { if (!isSaving) setIsPrescriptionFormOpen(open); }}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>{prescriptionForm.id ? 'Editar' : 'Novo'} Template de Prescrição</DialogTitle>
@@ -437,7 +561,7 @@ export default function Templates() {
       </Dialog>
 
       {/* Certificate Form Dialog */}
-      <Dialog open={isCertificateFormOpen} onOpenChange={setIsCertificateFormOpen}>
+      <Dialog open={isCertificateFormOpen} onOpenChange={(open) => { if (!isSaving) setIsCertificateFormOpen(open); }}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>{certificateForm.id ? 'Editar' : 'Novo'} Template de Atestado</DialogTitle>
@@ -456,7 +580,11 @@ export default function Templates() {
                 <Label>Tipo *</Label>
                 <Select
                   value={certificateForm.tipo || ''}
-                  onValueChange={(v) => setCertificateForm({ ...certificateForm, tipo: v })}
+                  onValueChange={(v) => setCertificateForm(current => ({
+                    ...current,
+                    tipo: v,
+                    ...(v !== 'afastamento' ? { cid: null, dias_afastamento: null } : {}),
+                  }))}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Selecione o tipo" />
@@ -475,8 +603,13 @@ export default function Templates() {
                   <Label>Dias de Afastamento</Label>
                   <Input
                     type="number"
+                    min={1}
+                    step={1}
                     value={certificateForm.dias_afastamento || ''}
-                    onChange={(e) => setCertificateForm({ ...certificateForm, dias_afastamento: parseInt(e.target.value) })}
+                    onChange={(e) => setCertificateForm({
+                      ...certificateForm,
+                      dias_afastamento: e.target.value === '' ? null : Number(e.target.value),
+                    })}
                   />
                 </div>
                 <div className="space-y-2">
@@ -513,7 +646,7 @@ export default function Templates() {
       </Dialog>
 
       {/* Delete Confirmation */}
-      <AlertDialog open={deleteDialog.open} onOpenChange={(open) => setDeleteDialog({ ...deleteDialog, open })}>
+      <AlertDialog open={deleteDialog.open} onOpenChange={(open) => { if (!isDeletingTemplate) setDeleteDialog((current) => ({ ...current, open })); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Excluir template?</AlertDialogTitle>
@@ -522,9 +655,9 @@ export default function Templates() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isSaving}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground" disabled={isSaving}>
-              {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            <AlertDialogCancel disabled={isDeletingTemplate}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={(event) => { event.preventDefault(); void handleDelete(); }} className="bg-destructive text-destructive-foreground" disabled={isDeletingTemplate}>
+              {isDeletingTemplate && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Excluir
             </AlertDialogAction>
           </AlertDialogFooter>

@@ -1,4 +1,5 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { AlertTriangle, CheckCircle2, Info, X } from 'lucide-react';
@@ -10,6 +11,18 @@ import { mensagemDeErro } from '@/lib/erros';
 export function PlatformAnnouncements() {
   const queryClient = useQueryClient();
   const { user } = useSupabaseAuth();
+  const markReadLock = useRef(false);
+  const markAsRead = useMutation({
+    mutationFn: async (announcementId: string) => {
+      const { error } = await (supabase as any).rpc('marcar_comunicado_lido', { p_announcement_id: announcementId });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      if (user?.id) void queryClient.invalidateQueries({ queryKey: ['meus-comunicados', user.id] });
+    },
+    onError: (error) => toast.error('Não foi possível marcar o comunicado como lido.', { description: mensagemDeErro(error) }),
+    onSettled: () => { markReadLock.current = false; },
+  });
   const query = useQuery({
     queryKey: ['meus-comunicados', user?.id],
     enabled: !!user,
@@ -21,6 +34,17 @@ export function PlatformAnnouncements() {
     refetchInterval: 60000,
   });
 
+  if (query.isError && query.data === undefined) {
+    return (
+      <div role="alert" className="flex items-center justify-between gap-3 border-b bg-destructive/5 px-4 py-3 text-sm">
+        <span>Não foi possível carregar os avisos da plataforma.</span>
+        <Button variant="outline" size="sm" onClick={() => void query.refetch()} disabled={query.isFetching}>
+          {query.isFetching ? 'Tentando…' : 'Tentar novamente'}
+        </Button>
+      </div>
+    );
+  }
+
   const announcement = query.data?.[0];
   if (!announcement) return null;
 
@@ -28,22 +52,10 @@ export function PlatformAnnouncements() {
     ? AlertTriangle
     : announcement.tipo === 'sucesso' ? CheckCircle2 : Info;
 
-  const dismiss = async () => {
-    const currentUser = (await supabase.auth.getUser()).data.user;
-    if (!currentUser) return;
-    const { error } = await (supabase as any).from('platform_announcement_reads').upsert({
-      announcement_id: announcement.id,
-      user_id: currentUser.id,
-    });
-    // Antes o erro era descartado: o clique parecia morto e o banner voltava a
-    // cada carregamento de página, sem explicar por quê.
-    if (error) {
-      toast.error('Não foi possível marcar o comunicado como lido.', {
-        description: mensagemDeErro(error),
-      });
-      return;
-    }
-    queryClient.invalidateQueries({ queryKey: ['meus-comunicados', currentUser.id] });
+  const dismiss = () => {
+    if (!user?.id || markReadLock.current) return;
+    markReadLock.current = true;
+    markAsRead.mutate(announcement.id);
   };
 
   return (
@@ -62,8 +74,8 @@ export function PlatformAnnouncements() {
         <p className="font-semibold">{announcement.titulo}</p>
         <p className="text-sm">{announcement.mensagem}</p>
       </div>
-      <Button variant="ghost" size="icon" onClick={dismiss} aria-label="Marcar comunicado como lido">
-        <X className="h-4 w-4" />
+      <Button variant="ghost" size="icon" onClick={dismiss} disabled={markAsRead.isPending} aria-label="Marcar comunicado como lido">
+        {markAsRead.isPending ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-r-transparent" aria-hidden="true" /> : <X className="h-4 w-4" />}
       </Button>
     </div>
   );

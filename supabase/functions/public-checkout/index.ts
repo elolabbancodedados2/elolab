@@ -1,6 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { checarRateLimit, clientIp } from '../_shared/rateLimit.ts'
 import { corsPadrao } from '../_shared/cors.ts';
+import { sendBrandedBrevoRequest } from '../_shared/brevoEmail.ts';
 
 // Atribuído em cada request (reflete a origem permitida). Helpers
 // top-level (json/reply) capturam esta variável por closure.
@@ -213,7 +214,7 @@ Deno.serve(async (req) => {
             await fetch(`${MP_API_BASE}/preapproval/${preapprovalData.id}`, {
               method: 'PUT',
               headers: { Authorization: `Bearer ${mpAccessToken}`, 'Content-Type': 'application/json' },
-              body: JSON.stringify({ status: 'canceled' }),
+              body: JSON.stringify({ status: 'cancelled' }),
             })
             throw new Error('Não foi possível registrar a assinatura. Tente novamente.')
           }
@@ -252,10 +253,9 @@ Deno.serve(async (req) => {
       const activationLink = `${appUrl}/auth?codigo=${inviteCode}&email=${encodeURIComponent(normalizedEmail)}&plano=${encodeURIComponent(plano.slug)}`
 
       try {
-        const emailRes = await fetch('https://api.brevo.com/v3/smtp/email', {
+        const emailRes = await sendBrandedBrevoRequest({
           method: 'POST',
           headers: {
-            'api-key': brevoApiKey,
             'Content-Type': 'application/json',
             'Accept': 'application/json',
           },
@@ -294,8 +294,7 @@ Deno.serve(async (req) => {
         if (emailRes.ok) {
           emailSent = true
         } else {
-          const errBody = await emailRes.text()
-          console.error('Brevo error:', emailRes.status, errBody)
+          console.error('Falha no envio Brevo (HTTP ' + emailRes.status + ').')
           emailError = `Falha ao enviar email (HTTP ${emailRes.status}). Use o código abaixo manualmente.`
         }
       } catch (emailErr) {

@@ -1,6 +1,7 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { useState, useMemo } from 'react';
-import { format, startOfMonth, endOfMonth, subMonths, eachDayOfInterval, parseISO } from 'date-fns';
+import { useQuery } from '@tanstack/react-query';
+import { addDays, format, startOfMonth, endOfMonth, subMonths, eachDayOfInterval } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import {
   FileText,
@@ -10,7 +11,7 @@ import {
   TrendingUp,
   TrendingDown,
   FileSpreadsheet,
-Download, Printer, BarChart2, Activity} from 'lucide-react';
+Download, Printer, BarChart2, Activity, AlertTriangle} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import {
@@ -30,14 +31,20 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { usePacientes, useAgendamentosPeriodo, useSupabaseQuery, useMedicos, useEstoque } from '@/hooks/useSupabaseData';
+import { usePacientes, useAgendamentosPeriodo, useSupabaseQuery, useEstoque } from '@/hooks/useSupabaseData';
+import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
+import { supabase } from '@/integrations/supabase/client';
+import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { exportarFinanceiro, exportarPacientes, exportarAgendamentos, exportarEstoque } from '@/lib/excelExporter';
 import { gerarRelatorioFinanceiro, gerarRelatorioAtendimentos, openPDF } from '@/lib/pdfGenerator';
 import { Skeleton } from '@/components/ui/skeleton';
+import { toast } from 'sonner';
 import RelatorioCustomizado from '@/components/relatorios/RelatorioCustomizado';
 import { valorRealizado } from '@/lib/lancamentos';
+import { ErrorState } from '@/components/ErrorState';
+import { dateOnlyInTimeZone, inicioDoDiaEmFusoIso, parseDateOnly } from '@/lib/dateOnly';
 import {
   AreaChart,
   Area,
@@ -55,30 +62,55 @@ import {
 } from 'recharts';
 
 const CHART_COLORS = ['hsl(var(--primary))', 'hsl(var(--success))', 'hsl(var(--warning))', 'hsl(var(--destructive))', 'hsl(var(--info))'];
+const STATUS_FINALIZADO = new Set(['finalizado', 'atendimento_finalizado']);
+const dateOnlyFromValue = (value: string) => value.includes('T') || value.includes(' ')
+  ? dateOnlyInTimeZone(new Date(value), 'America/Sao_Paulo')
+  : value.slice(0, 10);
+const saldoEmAberto = (lancamento: { valor: number; valor_pago: number | null; desconto?: number | null; acrescimo?: number | null }) =>
+  Math.max(0, Number(lancamento.valor || 0) - Number(lancamento.desconto || 0)
+    + Number(lancamento.acrescimo || 0) - Number(lancamento.valor_pago || 0));
+
+interface EventoFinanceiro {
+  id: string;
+  lancamentoId: string;
+  agendamentoId: string | null;
+  tipo: string;
+  categoria: string;
+  descricao: string;
+  data: string;
+  valor: number;
+  formaPagamento: string | null;
+  observacoes: string | null;
+  dataVencimento: string | null;
+  estornado: boolean;
+}
 
 export default function Relatorios() {
   const [periodo, setPeriodo] = useState('mes_atual');
-  const [customInicio, setCustomInicio] = useState(() => format(startOfMonth(new Date()), 'yyyy-MM-dd'));
-  const [customFim, setCustomFim] = useState(() => format(new Date(), 'yyyy-MM-dd'));
+  const [exportando, setExportando] = useState<string | null>(null);
+  const [customInicio, setCustomInicio] = useState(() => {
+    const hoje = parseDateOnly(dateOnlyInTimeZone(new Date(), 'America/Sao_Paulo'))!;
+    return format(startOfMonth(hoje), 'yyyy-MM-dd');
+  });
+  const [customFim, setCustomFim] = useState(() => dateOnlyInTimeZone(new Date(), 'America/Sao_Paulo'));
 
   const periodoRange = useMemo(() => {
-    const now = new Date();
+    const now = parseDateOnly(dateOnlyInTimeZone(new Date(), 'America/Sao_Paulo'))!;
     let start: Date;
-    let end: Date = endOfMonth(now);
+    let end: Date = now;
 
     switch (periodo) {
       case 'este_ano':
         start = new Date(now.getFullYear(), 0, 1);
-        end = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999);
         break;
       case 'ultimos_12_meses':
         start = startOfMonth(subMonths(now, 11));
         break;
       case 'personalizado': {
-        const ini = parseISO(customInicio);
-        const fim = parseISO(customFim);
-        start = isNaN(ini.getTime()) ? startOfMonth(now) : ini;
-        end = isNaN(fim.getTime()) ? endOfMonth(now) : new Date(fim.getFullYear(), fim.getMonth(), fim.getDate(), 23, 59, 59, 999);
+        const ini = parseDateOnly(customInicio);
+        const fim = parseDateOnly(customFim);
+        start = !ini || Number.isNaN(ini.getTime()) ? startOfMonth(now) : ini;
+        end = !fim || Number.isNaN(fim.getTime()) ? endOfMonth(now) : new Date(fim.getFullYear(), fim.getMonth(), fim.getDate(), 23, 59, 59, 999);
         if (start > end) [start, end] = [new Date(end.getFullYear(), end.getMonth(), end.getDate()), new Date(start.getFullYear(), start.getMonth(), start.getDate(), 23, 59, 59, 999)];
         break;
       }
@@ -106,9 +138,13 @@ export default function Relatorios() {
   // tela baixava o histórico inteiro e filtrava no navegador.
   const inicioStr = format(periodoRange.start, 'yyyy-MM-dd');
   const fimStr = format(periodoRange.end, 'yyyy-MM-dd');
-  const { data: pacientes = [], isLoading: loadingPacientes } = usePacientes();
-  const { data: agendamentos = [], isLoading: loadingAgendamentos } = useAgendamentosPeriodo(inicioStr, fimStr, { keepPrevious: true });
-  const { data: lancamentos = [], isLoading: loadingLancamentos } = useSupabaseQuery<any>('lancamentos', {
+  const { profile } = useSupabaseAuth();
+  const podeVerAgenda = !!profile?.roles?.some(role => ['admin', 'medico', 'enfermagem'].includes(role));
+  const pacientesQuery = usePacientes();
+  const pacientes = pacientesQuery.data ?? [];
+  const agendamentosQuery = useAgendamentosPeriodo(inicioStr, fimStr, { enabled: podeVerAgenda, keepPrevious: true });
+  const agendamentos = agendamentosQuery.data ?? [];
+  const lancamentosEmitidosQuery = useSupabaseQuery<any>('lancamentos', {
     orderBy: { column: 'data', ascending: false },
     filters: [
       { column: 'data', operator: 'gte', value: inicioStr },
@@ -116,66 +152,238 @@ export default function Relatorios() {
     ],
     keepPrevious: true,
   });
-  const { data: medicos = [], isLoading: loadingMedicos } = useMedicos();
-  const { data: estoque = [], isLoading: loadingEstoque } = useEstoque();
+  const lancamentosPagosQuery = useSupabaseQuery<any>('lancamentos', {
+    orderBy: { column: 'data_pagamento', ascending: false },
+    filters: [
+      { column: 'data_pagamento', operator: 'gte', value: inicioStr },
+      { column: 'data_pagamento', operator: 'lte', value: fimStr },
+    ],
+    keepPrevious: true,
+  });
+  const lancamentosVencidosQuery = useSupabaseQuery<any>('lancamentos', {
+    orderBy: { column: 'data_vencimento', ascending: false },
+    filters: [
+      { column: 'data_vencimento', operator: 'gte', value: inicioStr },
+      { column: 'data_vencimento', operator: 'lte', value: fimStr },
+    ],
+    keepPrevious: true,
+  });
+  const pagamentosQuery = useQuery({
+    queryKey: ['pagamentos-relatorios', profile?.clinica_id ?? null, inicioStr, fimStr],
+    queryFn: async () => {
+      // `pagamentos` usa timestamptz. As fronteiras precisam acompanhar o dia
+      // civil da clínica (São Paulo), e o fim é exclusivo para incluir o dia
+      // final inteiro sem depender de precisão de milissegundos.
+      const inicioLocal = inicioDoDiaEmFusoIso(inicioStr, 'America/Sao_Paulo');
+      const fimLocalExclusivo = inicioDoDiaEmFusoIso(
+        format(addDays(parseDateOnly(fimStr)!, 1), 'yyyy-MM-dd'),
+        'America/Sao_Paulo',
+      );
+      const selecionar = () => supabase.from('pagamentos')
+        .select('id, lancamento_id, valor, data_pagamento, estornado_em, forma_pagamento, observacoes, lancamentos!inner(agendamento_id, tipo, categoria, descricao, data_vencimento, clinica_id)')
+        .eq('clinica_id', profile!.clinica_id!)
+        .eq('lancamentos.clinica_id', profile!.clinica_id!)
+        .order('id', { ascending: true });
+      const [pagamentosNoPeriodo, estornosNoPeriodo] = await Promise.all([
+        buscarEmBlocos<any>(() => selecionar()
+          .gte('data_pagamento', inicioLocal)
+          .lt('data_pagamento', fimLocalExclusivo)),
+        buscarEmBlocos<any>(() => selecionar()
+          .not('estornado_em', 'is', null)
+          .gte('estornado_em', inicioLocal)
+          .lt('estornado_em', fimLocalExclusivo)),
+      ]);
+      return [...new Map([...pagamentosNoPeriodo, ...estornosNoPeriodo]
+        .map(pagamento => [pagamento.id, pagamento] as const)).values()];
+    },
+    enabled: !!profile?.clinica_id,
+  });
+  const lancamentos = useMemo(() => {
+    const porId = new Map<string, any>();
+    for (const lancamento of [
+      ...(lancamentosEmitidosQuery.data ?? []),
+      ...(lancamentosPagosQuery.data ?? []),
+      ...(lancamentosVencidosQuery.data ?? []),
+    ]) porId.set(lancamento.id, lancamento);
+    return [...porId.values()];
+  }, [lancamentosEmitidosQuery.data, lancamentosPagosQuery.data, lancamentosVencidosQuery.data]);
+  const idsLancamentosPagos = useMemo(() => lancamentos
+    .filter(lancamento => ['pago', 'parcial'].includes(lancamento.status))
+    .map(lancamento => lancamento.id), [lancamentos]);
+  const lancamentosComHistoricoPagamentoQuery = useQuery({
+    queryKey: ['lancamentos-com-historico-pagamento-relatorios', profile?.clinica_id ?? null, inicioStr, fimStr, idsLancamentosPagos],
+    queryFn: async () => {
+      const idsComHistorico = new Set<string>();
+      const lotesIds = Array.from({ length: Math.ceil(idsLancamentosPagos.length / 250) }, (_, index) =>
+        idsLancamentosPagos.slice(index * 250, (index + 1) * 250));
+      let atingiuLimite = false;
+      for (let inicio = 0; inicio < lotesIds.length; inicio += 4) {
+        const resultados = await Promise.all(lotesIds.slice(inicio, inicio + 4).map(ids =>
+          buscarEmBlocos<any>(() => supabase.from('pagamentos')
+            .select('id, lancamento_id')
+            .eq('clinica_id', profile!.clinica_id!)
+            .in('lancamento_id', ids)
+            .order('id', { ascending: true }))));
+        for (const pagamentosDaConta of resultados) {
+          if (pagamentosDaConta.length >= LIMITE_BUSCA_EM_BLOCOS) atingiuLimite = true;
+          for (const pagamento of pagamentosDaConta) idsComHistorico.add(pagamento.lancamento_id);
+        }
+      }
+      return { ids: [...idsComHistorico], atingiuLimite };
+    },
+    enabled: !!profile?.clinica_id && idsLancamentosPagos.length > 0,
+  });
+  const medicosQuery = useSupabaseQuery<any>('medicos', {
+    orderBy: { column: 'nome', ascending: true },
+    enabled: podeVerAgenda,
+  });
+  const medicos = medicosQuery.data ?? [];
+  const estoqueQuery = useEstoque();
+  const estoque = estoqueQuery.data ?? [];
 
-  const isLoading = loadingPacientes || loadingAgendamentos || loadingLancamentos || loadingMedicos || loadingEstoque;
+  const queries = [pacientesQuery, ...(podeVerAgenda ? [agendamentosQuery, medicosQuery] : []), lancamentosEmitidosQuery, lancamentosPagosQuery, lancamentosVencidosQuery, pagamentosQuery, lancamentosComHistoricoPagamentoQuery, estoqueQuery];
+  const isLoading = queries.some(query => query.isLoading);
+  const isFetching = queries.some(query => query.isFetching);
+  const failedQuery = queries.find(query => query.isError);
+  const fontesNoLimite = [
+    { nome: 'pacientes', total: pacientes.length },
+    { nome: 'agendamentos', total: agendamentos.length },
+    { nome: 'lançamentos', total: lancamentos.length },
+    { nome: 'pagamentos', total: (pagamentosQuery.data ?? []).length },
+    { nome: 'médicos', total: medicos.length },
+    { nome: 'estoque', total: estoque.length },
+  ].filter(fonte => fonte.total >= LIMITE_BUSCA_EM_BLOCOS).map(fonte => fonte.nome);
+  if (lancamentosComHistoricoPagamentoQuery.data?.atingiuLimite) fontesNoLimite.push('histórico de pagamentos');
 
   // Filtrar dados pelo período
   const agendamentosFiltrados = useMemo(() => {
     return agendamentos.filter(a => {
-      const data = parseISO(a.data);
+      const data = parseDateOnly(a.data)!;
       return data >= periodoRange.start && data <= periodoRange.end;
     });
   }, [agendamentos, periodoRange]);
 
-  const lancamentosFiltrados = useMemo(() => {
-    return lancamentos.filter(l => {
-      const data = parseISO(l.data);
-      return data >= periodoRange.start && data <= periodoRange.end;
+  const lancamentosFiltrados = useMemo(() => lancamentos.filter(l => {
+    const dentroDoPeriodo = (data?: string | null) => {
+      const dia = data?.slice(0, 10);
+      return !!dia && dia >= inicioStr && dia <= fimStr;
+    };
+    return dentroDoPeriodo(l.data) || dentroDoPeriodo(l.data_pagamento) || dentroDoPeriodo(l.data_vencimento);
+  }), [lancamentos, inicioStr, fimStr]);
+  const pagamentos = pagamentosQuery.data ?? [];
+  const eventosFinanceiros = useMemo<EventoFinanceiro[]>(() => {
+    const lancamentosComPagamentos = new Set<string>([
+      ...pagamentos.map((pagamento: any) => pagamento.lancamento_id),
+      ...(lancamentosComHistoricoPagamentoQuery.data?.ids ?? []),
+    ]);
+    const eventosAntigos: EventoFinanceiro[] = lancamentosFiltrados
+      .filter(l => ['pago', 'parcial'].includes(l.status) && !lancamentosComPagamentos.has(l.id))
+      .map(l => ({
+        id: l.id,
+        lancamentoId: l.id,
+        agendamentoId: l.agendamento_id || null,
+        tipo: l.tipo,
+        categoria: l.categoria || 'Outros',
+        descricao: l.descricao,
+        data: dateOnlyFromValue(l.data_pagamento || l.data),
+        valor: valorRealizado(l),
+        formaPagamento: l.forma_pagamento || null,
+        observacoes: null,
+        dataVencimento: l.data_vencimento || null,
+        estornado: false,
+      }))
+      .filter(evento => evento.data >= inicioStr && evento.data <= fimStr);
+    const eventosIndividuais: EventoFinanceiro[] = pagamentos.flatMap((pagamento: any) => {
+      const conta = Array.isArray(pagamento.lancamentos) ? pagamento.lancamentos[0] : pagamento.lancamentos;
+      if (!conta || !['receita', 'despesa'].includes(conta.tipo) || !pagamento.data_pagamento) return [];
+      const eventos: EventoFinanceiro[] = [];
+      const dataPagamento = dateOnlyFromValue(pagamento.data_pagamento);
+      if (dataPagamento >= inicioStr && dataPagamento <= fimStr) eventos.push({
+        id: pagamento.id,
+        lancamentoId: pagamento.lancamento_id,
+        agendamentoId: conta.agendamento_id || null,
+        tipo: conta.tipo,
+        categoria: conta.categoria || 'Outros',
+        descricao: conta.descricao,
+        data: dataPagamento,
+        valor: Number(pagamento.valor),
+        formaPagamento: pagamento.forma_pagamento || null,
+        observacoes: pagamento.observacoes || null,
+        dataVencimento: conta.data_vencimento || null,
+        estornado: false,
+      });
+      if (pagamento.estornado_em) {
+        const dataEstorno = dateOnlyFromValue(pagamento.estornado_em);
+        if (dataEstorno >= inicioStr && dataEstorno <= fimStr) eventos.push({
+          id: `${pagamento.id}:estorno`,
+          lancamentoId: pagamento.lancamento_id,
+          agendamentoId: conta.agendamento_id || null,
+          tipo: conta.tipo,
+          categoria: conta.categoria || 'Outros',
+          descricao: conta.descricao,
+          data: dataEstorno,
+          valor: -Number(pagamento.valor),
+          formaPagamento: pagamento.forma_pagamento || null,
+          observacoes: pagamento.observacoes || null,
+          dataVencimento: conta.data_vencimento || null,
+          estornado: true,
+        });
+      }
+      return eventos;
     });
-  }, [lancamentos, periodoRange]);
+    return [...eventosAntigos, ...eventosIndividuais];
+  }, [lancamentosFiltrados, pagamentos, lancamentosComHistoricoPagamentoQuery.data, inicioStr, fimStr]);
+  const vencimentosNoPeriodo = (l: any) => {
+    const dia = (l.data_vencimento || l.data)?.slice(0, 10);
+    return !!dia && dia >= inicioStr && dia <= fimStr;
+  };
 
   // Estatísticas gerais
   const estatisticas = useMemo(() => {
     const totalAtendimentos = agendamentosFiltrados.length;
-    const atendimentosFinalizados = agendamentosFiltrados.filter(a => a.status === 'finalizado').length;
+    const atendimentosFinalizados = agendamentosFiltrados.filter(a => STATUS_FINALIZADO.has(a.status)).length;
     const cancelamentos = agendamentosFiltrados.filter(a => a.status === 'cancelado').length;
     const faltas = agendamentosFiltrados.filter(a => a.status === 'faltou').length;
+    const atendimentosComDesfecho = atendimentosFinalizados + faltas;
 
-    // Pago = dinheiro que circulou → `valorRealizado`, que já considera
-    // desconto e acréscimo. Somar `valor` aqui inflava a receita pelo total de
-    // descontos concedidos: o dono fechava o mês com um número que não existia
-    // na conta bancária.
-    const receitas = lancamentosFiltrados
-      .filter(l => l.tipo === 'receita' && l.status === 'pago')
-      .reduce((acc, l) => acc + valorRealizado(l), 0);
+    // Cada pagamento individual é lançado na data real; contas antigas sem
+    // histórico filho usam o total realizado consolidado pela conta.
+    const receitas = eventosFinanceiros
+      .filter(evento => evento.tipo === 'receita')
+      .reduce((acc, evento) => acc + evento.valor, 0);
+    const eventosDeAtendimento = eventosFinanceiros.filter(evento => evento.tipo === 'receita' && evento.lancamentoId && evento.agendamentoId);
+    const atendimentosComRecebimento = new Set(eventosDeAtendimento.map(evento => evento.agendamentoId));
+    const receitaAtendimentos = eventosDeAtendimento.reduce((acc, evento) => acc + evento.valor, 0);
 
-    const despesas = lancamentosFiltrados
-      .filter(l => l.tipo === 'despesa' && l.status === 'pago')
-      .reduce((acc, l) => acc + valorRealizado(l), 0);
+    const despesas = eventosFinanceiros
+      .filter(evento => evento.tipo === 'despesa')
+      .reduce((acc, evento) => acc + evento.valor, 0);
 
     // Pendente é o que ainda está em aberto: aqui `valor` é o certo.
     const pendentes = lancamentosFiltrados
-      .filter(l => l.status === 'pendente')
-      .reduce((acc, l) => acc + Number(l.valor), 0);
+      .filter(l => ['pendente', 'parcial', 'atrasado'].includes(l.status) && vencimentosNoPeriodo(l))
+      .reduce((acc, l) => acc + saldoEmAberto(l), 0);
 
-    const taxaComparecimento = totalAtendimentos > 0 
-      ? Math.round((atendimentosFinalizados / totalAtendimentos) * 100) 
-      : 0;
+    const taxaComparecimento = atendimentosComDesfecho > 0
+      ? Math.round((atendimentosFinalizados / atendimentosComDesfecho) * 100)
+      : null;
 
     return {
       totalAtendimentos,
       atendimentosFinalizados,
       cancelamentos,
       faltas,
+      atendimentosComDesfecho,
       receitas,
+      receitaAtendimentos,
+      atendimentosComRecebimento: atendimentosComRecebimento.size,
+      ticketMedio: atendimentosComRecebimento.size > 0 ? receitaAtendimentos / atendimentosComRecebimento.size : null,
       despesas,
       lucro: receitas - despesas,
       pendentes,
       taxaComparecimento,
     };
-  }, [agendamentosFiltrados, lancamentosFiltrados]);
+  }, [agendamentosFiltrados, lancamentosFiltrados, eventosFinanceiros, inicioStr, fimStr, pagamentos]);
 
   // Dados por dia
   const dadosDiarios = useMemo(() => {
@@ -187,12 +395,13 @@ export default function Relatorios() {
     return dias.map(dia => {
       const diaStr = format(dia, 'yyyy-MM-dd');
       const atendimentos = agendamentosFiltrados.filter(a => a.data === diaStr).length;
-      const receita = lancamentosFiltrados
-        .filter(l => l.data === diaStr && l.tipo === 'receita' && l.status === 'pago')
-        .reduce((acc, l) => acc + valorRealizado(l), 0);
-      const despesa = lancamentosFiltrados
-        .filter(l => l.data === diaStr && l.tipo === 'despesa' && l.status === 'pago')
-        .reduce((acc, l) => acc + valorRealizado(l), 0);
+      const eventosDoDia = eventosFinanceiros.filter(evento => evento.data === diaStr);
+      const receita = eventosDoDia
+        .filter(evento => evento.tipo === 'receita')
+        .reduce((acc, evento) => acc + evento.valor, 0);
+      const despesa = eventosDoDia
+        .filter(evento => evento.tipo === 'despesa')
+        .reduce((acc, evento) => acc + evento.valor, 0);
 
       return {
         data: format(dia, 'dd/MM'),
@@ -201,14 +410,14 @@ export default function Relatorios() {
         despesa,
       };
     });
-  }, [agendamentosFiltrados, lancamentosFiltrados, periodoRange]);
+  }, [agendamentosFiltrados, eventosFinanceiros, periodoRange]);
 
   // Dados por médico
   const dadosPorMedico = useMemo(() => {
     return medicos.map(medico => {
       const atendimentos = agendamentosFiltrados.filter(a => a.medico_id === medico.id).length;
       const finalizados = agendamentosFiltrados.filter(
-        a => a.medico_id === medico.id && a.status === 'finalizado'
+        a => a.medico_id === medico.id && STATUS_FINALIZADO.has(a.status)
       ).length;
 
       return {
@@ -237,19 +446,17 @@ export default function Relatorios() {
   // Dados por forma de pagamento
   const dadosPorPagamento = useMemo(() => {
     const formas: Record<string, number> = {};
-    lancamentosFiltrados
-      .filter(l => l.tipo === 'receita' && l.status === 'pago')
+    eventosFinanceiros
+      .filter(evento => evento.tipo === 'receita')
       .forEach(l => {
-        const forma = l.forma_pagamento || 'Não informado';
-        // O agrupamento precisa fechar com o total de receitas acima, senão a
-        // soma das fatias do gráfico não bate com o KPI ao lado.
-        formas[forma] = (formas[forma] || 0) + valorRealizado(l);
+        const forma = l.formaPagamento || 'Não informado';
+        formas[forma] = (formas[forma] || 0) + l.valor;
       });
     return Object.entries(formas).map(([name, value]) => ({
       name: name.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase()),
       value,
     }));
-  }, [lancamentosFiltrados]);
+  }, [eventosFinanceiros]);
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('pt-BR', {
@@ -258,50 +465,95 @@ export default function Relatorios() {
     }).format(value);
   };
 
-  const handleExportExcel = () => {
-    exportarFinanceiro(lancamentosFiltrados.map(l => ({
-      data: l.data,
-      tipo: l.tipo,
-      categoria: l.categoria,
-      descricao: l.descricao,
-      valor: Number(l.valor),
-      status: l.status || 'pendente',
-      formaPagamento: l.forma_pagamento || '',
-    })));
-  };
-
-  const handleExportPDF = async () => {
-    const periodoLabel = {
+  const obterRotuloPeriodo = () => {
+    if (periodo === 'personalizado') {
+      return `${format(parseDateOnly(inicioStr)!, 'dd/MM/yyyy')} a ${format(parseDateOnly(fimStr)!, 'dd/MM/yyyy')}`;
+    }
+    return ({
       mes_atual: 'Mês Atual',
       mes_anterior: 'Mês Anterior',
       ultimos_3_meses: 'Últimos 3 Meses',
       ultimos_6_meses: 'Últimos 6 Meses',
-    }[periodo] || periodo;
+      ultimos_12_meses: 'Últimos 12 Meses',
+      este_ano: `Ano de ${periodoRange.start.getFullYear()}`,
+    } as Record<string, string>)[periodo] || periodo;
+  };
+
+  const lancamentosEmAberto = lancamentosFiltrados
+    .filter(l => ['pendente', 'parcial', 'atrasado'].includes(l.status))
+    .map(l => ({ lancamento: l, saldo: saldoEmAberto(l) }))
+    .filter(item => item.saldo > 0);
+
+  const linhasFinanceiras = [
+    ...eventosFinanceiros.map(evento => ({
+      data: evento.data,
+      dataPagamento: evento.data,
+      dataVencimento: evento.dataVencimento || '',
+      tipo: evento.tipo,
+      categoria: evento.categoria,
+      descricao: `${evento.estornado ? 'Estorno — ' : ''}${evento.descricao}${evento.observacoes ? ` — ${evento.observacoes}` : ''}`,
+      valor: Math.abs(evento.valor),
+      valorPago: evento.valor,
+      saldoAberto: 0,
+      status: evento.estornado ? 'estornado' : 'pago',
+      formaPagamento: evento.formaPagamento || '',
+    })),
+    ...lancamentosEmAberto.map(({ lancamento, saldo }) => ({
+      data: lancamento.data,
+      dataPagamento: '',
+      dataVencimento: lancamento.data_vencimento || '',
+      tipo: lancamento.tipo,
+      categoria: lancamento.categoria || 'Outros',
+      descricao: `${lancamento.descricao} — saldo em aberto`,
+      valor: saldo,
+      valorPago: 0,
+      saldoAberto: saldo,
+      status: lancamento.status || 'pendente',
+      formaPagamento: lancamento.forma_pagamento || '',
+    })),
+  ];
+
+  const executarExportacao = async (nome: string, acao: () => unknown | Promise<unknown>) => {
+    if (exportando) return;
+    setExportando(nome);
+    try {
+      await acao();
+      toast.success(`${nome} exportado com sucesso.`);
+    } catch (error) {
+      toast.error(`Não foi possível exportar ${nome.toLowerCase()}.`, {
+        description: error instanceof Error ? error.message : 'Tente novamente.',
+      });
+    } finally {
+      setExportando(null);
+    }
+  };
+
+  const handleExportExcel = () => executarExportacao('Financeiro para Excel', () => exportarFinanceiro(linhasFinanceiras));
+
+  const handleExportPDF = () => executarExportacao('Financeiro para PDF', async () => {
+    const periodoLabel = obterRotuloPeriodo();
 
     const doc = await gerarRelatorioFinanceiro({
       periodo: periodoLabel,
       receitas: estatisticas.receitas,
       despesas: estatisticas.despesas,
       lucro: estatisticas.lucro,
-      lancamentos: lancamentosFiltrados.map(l => ({
-        data: format(parseISO(l.data), 'dd/MM/yyyy'),
+      lancamentos: linhasFinanceiras.map(l => ({
+        data: format(parseDateOnly(l.data)!, 'dd/MM/yyyy'),
         tipo: l.tipo,
         categoria: l.categoria,
         descricao: l.descricao,
-        valor: Number(l.valor),
-        status: l.status || 'pendente',
+        valor: l.valor,
+        valorRealizado: l.valorPago,
+        saldoAberto: l.saldoAberto,
+        status: l.status,
       })),
     });
     openPDF(doc);
-  };
+  });
 
-  const handleExportAtendimentosPDF = async () => {
-    const periodoLabel = {
-      mes_atual: 'Mês Atual',
-      mes_anterior: 'Mês Anterior',
-      ultimos_3_meses: 'Últimos 3 Meses',
-      ultimos_6_meses: 'Últimos 6 Meses',
-    }[periodo] || periodo;
+  const handleExportAtendimentosPDF = () => executarExportacao('Atendimentos para PDF', async () => {
+    const periodoLabel = obterRotuloPeriodo();
 
     const doc = await gerarRelatorioAtendimentos({
       periodo: periodoLabel,
@@ -310,9 +562,9 @@ export default function Relatorios() {
       porTipo: dadosPorTipo.map(t => ({ tipo: t.name, quantidade: t.value })),
     });
     openPDF(doc);
-  };
+  });
 
-  const handleExportPacientesExcel = () => {
+  const handleExportPacientesExcel = () => executarExportacao('Pacientes para Excel', () => {
     exportarPacientes(pacientes.map(p => ({
       nome: p.nome,
       cpf: p.cpf || '',
@@ -321,21 +573,21 @@ export default function Relatorios() {
       email: p.email || '',
       sexo: p.sexo || '',
     })));
-  };
+  });
 
-  const handleExportAgendamentosExcel = () => {
+  const handleExportAgendamentosExcel = () => executarExportacao('Agenda para Excel', () => {
     exportarAgendamentos(agendamentosFiltrados.map(a => ({
       data: a.data,
       horaInicio: a.hora_inicio || '',
       horaFim: a.hora_fim || '',
-      paciente: a.paciente_id,
-      medico: a.medico_id,
+      paciente: a.pacientes?.nome_social || a.pacientes?.nome || a.paciente_id || '—',
+      medico: a.medicos?.nome || a.medico_id || '—',
       tipo: a.tipo || 'consulta',
       status: a.status || 'agendado',
     })));
-  };
+  });
 
-  const handleExportEstoqueExcel = () => {
+  const handleExportEstoqueExcel = () => executarExportacao('Estoque para Excel', () => {
     exportarEstoque(estoque.map(e => ({
       nome: e.nome,
       categoria: e.categoria,
@@ -346,7 +598,7 @@ export default function Relatorios() {
       fornecedor: e.fornecedor || '',
       validade: e.validade || '',
     })));
-  };
+  });
 
   if (isLoading) {
     return (
@@ -360,12 +612,21 @@ export default function Relatorios() {
     );
   }
 
+  if (failedQuery) {
+    return <ErrorState title="Não foi possível montar os relatórios" description="Uma ou mais fontes de dados falharam. Os números e exportações foram pausados para evitar relatórios incompletos." error={failedQuery.error} onRetry={() => { for (const query of queries) void query.refetch(); }} />;
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Relatórios</h1>
-          <p className="text-muted-foreground">Análise de desempenho e indicadores</p>
+          <h1 className="text-3xl font-bold text-foreground">Relatórios da clínica</h1>
+          <p className="text-muted-foreground">Consulte dados por área, exporte arquivos ou salve relatórios personalizados. Para acompanhar tendências em painel, use Indicadores da clínica.</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {podeVerAgenda
+              ? 'O período se aplica à agenda e ao financeiro. Pacientes e estoque mostram o cadastro e o saldo atuais.'
+              : 'O período se aplica ao financeiro. Pacientes e estoque mostram o cadastro e o saldo atuais.'}
+          </p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Select value={periodo} onValueChange={setPeriodo}>
@@ -389,32 +650,39 @@ export default function Relatorios() {
               <Input type="date" aria-label="Data final" className="w-40" value={customFim} min={customInicio || undefined} onChange={e => setCustomFim(e.target.value)} />
             </div>
           )}
-          <Button variant="outline" onClick={handleExportExcel} className="gap-2" aria-label="Exportar financeiro para Excel">
+          <Button variant="outline" onClick={handleExportExcel} disabled={isFetching || !!exportando} className="gap-2" aria-label="Exportar financeiro para Excel">
             <FileSpreadsheet className="h-4 w-4" />
             Excel
           </Button>
-          <Button variant="outline" onClick={handleExportPDF} className="gap-2" aria-label="Exportar financeiro para PDF">
+          <Button variant="outline" onClick={handleExportPDF} disabled={isFetching || !!exportando} className="gap-2" aria-label="Exportar financeiro para PDF">
             <FileText className="h-4 w-4" />
             PDF
           </Button>
-          <Button variant="outline" onClick={handleExportPacientesExcel} className="gap-2" aria-label="Exportar pacientes para Excel">
+          <Button variant="outline" onClick={handleExportPacientesExcel} disabled={isFetching || !!exportando} className="gap-2" aria-label="Exportar pacientes para Excel">
             <Users className="h-4 w-4" />
             Pacientes
           </Button>
-          <Button variant="outline" onClick={handleExportAgendamentosExcel} className="gap-2" aria-label="Exportar agendamentos para Excel">
-            <Calendar className="h-4 w-4" />
-            Agenda
-          </Button>
-          <Button variant="outline" onClick={handleExportEstoqueExcel} className="gap-2" aria-label="Exportar estoque para Excel">
+          {podeVerAgenda && (
+            <Button variant="outline" onClick={handleExportAgendamentosExcel} disabled={isFetching || !!exportando} className="gap-2" aria-label="Exportar agendamentos para Excel">
+              <Calendar className="h-4 w-4" />
+              Agenda
+            </Button>
+          )}
+          <Button variant="outline" onClick={handleExportEstoqueExcel} disabled={isFetching || !!exportando} className="gap-2" aria-label="Exportar estoque para Excel">
             <FileSpreadsheet className="h-4 w-4" />
             Estoque
           </Button>
         </div>
       </div>
 
+      {isFetching && <p role="status" className="text-sm text-muted-foreground">Atualizando dados do relatório…</p>}
+      {exportando && <p role="status" aria-live="polite" className="text-sm text-muted-foreground">Gerando {exportando}…</p>}
+
+      {fontesNoLimite.length > 0 && <div role="alert" className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm text-warning-foreground"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /><p>O limite de {LIMITE_BUSCA_EM_BLOCOS.toLocaleString('pt-BR')} registros foi atingido em: {fontesNoLimite.join(', ')}. Indicadores e exportações dessas fontes podem estar incompletos.</p></div>}
+
       {/* Cards de Resumo */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
+      <div className={cn('grid gap-4 md:grid-cols-2', podeVerAgenda ? 'lg:grid-cols-4' : 'lg:grid-cols-3')}>
+        {podeVerAgenda && <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-4">
               <div className="p-3 rounded-full bg-info/10">
@@ -429,7 +697,7 @@ export default function Relatorios() {
               </div>
             </div>
           </CardContent>
-        </Card>
+        </Card>}
 
         <Card>
           <CardContent className="pt-6">
@@ -484,31 +752,34 @@ export default function Relatorios() {
       </div>
 
       {/* KPIs Extras */}
-      <div className="grid gap-4 md:grid-cols-4">
-        <Card>
+      <div className={cn('grid gap-4', podeVerAgenda ? 'md:grid-cols-4' : 'md:grid-cols-1')}>
+        {podeVerAgenda && <Card>
           <CardContent className="pt-6">
             <p className="text-sm text-muted-foreground">Taxa Comparecimento</p>
-            <p className="text-2xl font-bold text-primary">{estatisticas.taxaComparecimento}%</p>
+            <p className="text-2xl font-bold text-primary">{estatisticas.taxaComparecimento === null ? '—' : `${estatisticas.taxaComparecimento}%`}</p>
+            <p className="mt-1 text-xs text-muted-foreground">Base: {estatisticas.atendimentosComDesfecho} desfechos; exclui cancelados e futuros.</p>
           </CardContent>
-        </Card>
-        <Card>
+        </Card>}
+        {podeVerAgenda && <Card>
           <CardContent className="pt-6">
             <p className="text-sm text-muted-foreground">Ticket Médio</p>
             <p className="text-2xl font-bold">
-              {formatCurrency(estatisticas.atendimentosFinalizados > 0 ? estatisticas.receitas / estatisticas.atendimentosFinalizados : 0)}
+              {estatisticas.ticketMedio === null ? '—' : formatCurrency(estatisticas.ticketMedio)}
             </p>
+            <p className="text-xs text-muted-foreground">Por atendimento com recebimento no período</p>
           </CardContent>
-        </Card>
-        <Card>
+        </Card>}
+        {podeVerAgenda && <Card>
           <CardContent className="pt-6">
             <p className="text-sm text-muted-foreground">Cancelamentos</p>
             <p className="text-2xl font-bold text-destructive">{estatisticas.cancelamentos}</p>
           </CardContent>
-        </Card>
+        </Card>}
         <Card>
           <CardContent className="pt-6">
             <p className="text-sm text-muted-foreground">Valores Pendentes</p>
             <p className="text-2xl font-bold text-destructive">{formatCurrency(estatisticas.pendentes)}</p>
+            <p className="mt-1 text-xs text-muted-foreground">Saldo de contas com vencimento no período</p>
           </CardContent>
         </Card>
       </div>
@@ -518,11 +789,11 @@ export default function Relatorios() {
           <TabsTrigger value="customizado">⚡ Customizado</TabsTrigger>
           <TabsTrigger value="financeiro">Financeiro</TabsTrigger>
           <TabsTrigger value="dre">DRE</TabsTrigger>
-          <TabsTrigger value="atendimentos">Atendimentos</TabsTrigger>
-          <TabsTrigger value="medicos">Por Médico</TabsTrigger>
+          {podeVerAgenda && <TabsTrigger value="atendimentos">Atendimentos</TabsTrigger>}
+          {podeVerAgenda && <TabsTrigger value="medicos">Por Médico</TabsTrigger>}
           <TabsTrigger value="pacientes">Pacientes</TabsTrigger>
           <TabsTrigger value="estoque">Estoque</TabsTrigger>
-          <TabsTrigger value="status">Status</TabsTrigger>
+          {podeVerAgenda && <TabsTrigger value="status">Status</TabsTrigger>}
         </TabsList>
 
         <TabsContent value="customizado" className="space-y-6">
@@ -580,7 +851,7 @@ export default function Relatorios() {
             <Card>
               <CardHeader>
                 <CardTitle>Formas de Pagamento</CardTitle>
-                <CardDescription>Distribuição das receitas</CardDescription>
+                <CardDescription>Recebimentos líquidos por forma de pagamento, incluindo estornos na data em que ocorreram.</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="h-[300px]">
@@ -624,12 +895,12 @@ export default function Relatorios() {
               {(() => {
                 const receitasPorCategoria: Record<string, number> = {};
                 const despesasPorCategoria: Record<string, number> = {};
-                lancamentosFiltrados.forEach(l => {
+                eventosFinanceiros.forEach(l => {
                   const cat = l.categoria || 'Outros';
-                  const val = Number(l.valor) || 0;
+                  const val = l.valor;
                   if (l.tipo === 'receita') {
                     receitasPorCategoria[cat] = (receitasPorCategoria[cat] || 0) + val;
-                  } else {
+                  } else if (l.tipo === 'despesa') {
                     despesasPorCategoria[cat] = (despesasPorCategoria[cat] || 0) + val;
                   }
                 });
@@ -709,7 +980,7 @@ export default function Relatorios() {
                         <DollarSign className="h-5 w-5" />
                         RESULTADO DO PERÍODO
                         <span className="text-xs font-normal opacity-70">
-                          (margem: {totalReceitas > 0 ? Math.round((resultado / totalReceitas) * 100) : 0}%)
+                          (margem: {totalReceitas > 0 ? `${Math.round((resultado / totalReceitas) * 100)}%` : '—'})
                         </span>
                       </span>
                       <span className="tabular-nums">{formatCurrency(resultado)}</span>
@@ -746,9 +1017,9 @@ export default function Relatorios() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="atendimentos" className="space-y-6">
+        {podeVerAgenda && <TabsContent value="atendimentos" className="space-y-6">
           <div className="flex justify-end">
-            <Button variant="outline" onClick={handleExportAtendimentosPDF} className="gap-2">
+            <Button variant="outline" onClick={handleExportAtendimentosPDF} disabled={isFetching || !!exportando} className="gap-2">
               <FileText className="h-4 w-4" />
               Exportar PDF
             </Button>
@@ -804,9 +1075,9 @@ export default function Relatorios() {
               </CardContent>
             </Card>
           </div>
-        </TabsContent>
+        </TabsContent>}
 
-        <TabsContent value="medicos" className="space-y-6">
+        {podeVerAgenda && <TabsContent value="medicos" className="space-y-6">
           <Card>
             <CardHeader>
               <CardTitle>Desempenho por Médico</CardTitle>
@@ -855,7 +1126,7 @@ export default function Relatorios() {
               </div>
             </CardContent>
           </Card>
-        </TabsContent>
+        </TabsContent>}
 
         <TabsContent value="pacientes" className="space-y-6">
           <div className="grid gap-4 md:grid-cols-3">
@@ -1013,7 +1284,7 @@ export default function Relatorios() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="status" className="space-y-6">
+        {podeVerAgenda && <TabsContent value="status" className="space-y-6">
           <Card>
             <CardHeader>
               <CardTitle>Distribuição por Status</CardTitle>
@@ -1043,7 +1314,7 @@ export default function Relatorios() {
               </div>
             </CardContent>
           </Card>
-        </TabsContent>
+        </TabsContent>}
       </Tabs>
     </div>
   );

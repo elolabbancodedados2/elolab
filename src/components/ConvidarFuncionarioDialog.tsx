@@ -57,11 +57,18 @@ export function ConvidarFuncionarioDialog({ trigger }: ConvidarFuncionarioDialog
       if (data && (data as any).success === false) throw new Error((data as any).error);
       return data;
     },
-    onSuccess: () => {
-      toast.success('Convite enviado por e-mail.');
+    onSuccess: (data) => {
+      if (data?.emailStatus === 'sent') {
+        toast.success('Convite enviado por e-mail.');
+      } else {
+        toast.info('Convite criado, mas o e-mail não foi enviado.', {
+          description: 'Acesse a lista de convites para copiar o link e compartilhar.',
+        });
+      }
       reset();
       setOpen(false);
-      queryClient.invalidateQueries({ queryKey: ['funcionarios'] });
+      queryClient.invalidateQueries({ queryKey: ['funcionarios-with-roles'] });
+      queryClient.invalidateQueries({ queryKey: ['convites-list'] });
       queryClient.invalidateQueries({ queryKey: ['plan-limits'] });
     },
     onError: (err) => {

@@ -144,11 +144,13 @@ describe('Fila de atendimento', () => {
       'fila-triagens': { data: [], isLoading: false, isError: false },
     };
     mocks.updateResult = { data: [], error: null };
-    mocks.from.mockImplementation(() => ({
-      update: () => ({
-        eq: () => ({ eq: () => ({ select: async () => mocks.updateResult }) }),
-      }),
-    }));
+    mocks.from.mockImplementation(() => {
+      const updateQuery = {
+        eq: vi.fn(() => updateQuery),
+        select: vi.fn(async () => mocks.updateResult),
+      };
+      return { update: vi.fn(() => updateQuery) };
+    });
   });
 
   it('separa agendamentos antigos e encerrados, e não expõe valor financeiro à enfermagem', () => {
@@ -164,7 +166,7 @@ describe('Fila de atendimento', () => {
   });
 
   it('não chama o paciente quando a atualização condicional encontra uma fila alterada', async () => {
-    const espera = agendamento('today', 'Paciente de hoje');
+    const espera = agendamento('today', 'Paciente de hoje', hoje, 'confirmado');
     mocks.fila = [item('today', espera)];
     mocks.agendamentos = [espera];
     mocks.queryResults['clinica-exige-pagamento'] = {
@@ -173,7 +175,6 @@ describe('Fila de atendimento', () => {
     setup();
 
     fireEvent.click(screen.getByRole('button', { name: /chamar/i }));
-
     await waitFor(() => expect(mocks.toast.warning).toHaveBeenCalledWith('A fila mudou. Atualize a tela antes de chamar este paciente.'));
     expect(mocks.toast.success).not.toHaveBeenCalled();
   });

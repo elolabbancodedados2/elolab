@@ -1,8 +1,10 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
+import { Link as RouterLink } from 'react-router-dom';
+import { PacienteCombobox } from '@/components/patients/PacienteCombobox';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,17 +16,20 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
-import { format, isPast, isToday } from 'date-fns';
+import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import {
   ListTodo, Plus, CheckCircle2, Clock, AlertTriangle, Circle, Search, Trash2,
-  Loader2, CalendarClock, User2, LayoutGrid, LayoutList, GripVertical,
+  Loader2, CalendarClock, User2, LayoutGrid, LayoutList, GripVertical, CircleX, RotateCcw,
 } from 'lucide-react';
-import { parseDateOnly } from '@/lib/dateOnly';
+import { parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
+import { normalizarTexto } from '@/lib/buscaPaciente';
 import { useRecoverableDraft } from '@/hooks/useRecoverableDraft';
 import { DraftRecoveryNotice } from '@/components/DraftRecoveryNotice';
 import { withSafeRetry } from '@/lib/retry';
+import { ErrorState } from '@/components/ErrorState';
+import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
 
 // ─── Config ────────────────────────────────────────────────
 const statusConfig: Record<string, { label: string; icon: typeof Circle; colorClasses: string }> = {
@@ -45,6 +50,7 @@ const kanbanColumns = [
   { key: 'pendente', label: 'Pendente', icon: Circle, color: 'text-warning', borderColor: 'border-warning/30', bg: 'bg-warning/5' },
   { key: 'em_andamento', label: 'Em Andamento', icon: Clock, color: 'text-info', borderColor: 'border-info/30', bg: 'bg-info/5' },
   { key: 'concluida', label: 'Concluída', icon: CheckCircle2, color: 'text-success', borderColor: 'border-success/30', bg: 'bg-success/5' },
+  { key: 'cancelada', label: 'Cancelada', icon: AlertTriangle, color: 'text-destructive', borderColor: 'border-destructive/30', bg: 'bg-destructive/5' },
 ];
 
 const fadeUp = {
@@ -57,27 +63,36 @@ const fadeUp = {
 
 const stagger = { hidden: {}, visible: { transition: { staggerChildren: 0.05 } } };
 
+const tarefaVencida = (tarefa: any, hoje: string) =>
+  Boolean(tarefa.data_vencimento && tarefa.data_vencimento < hoje && tarefa.status !== 'concluida' && tarefa.status !== 'cancelada');
+const tarefaDeHoje = (tarefa: any, hoje: string) => Boolean(tarefa.data_vencimento && tarefa.data_vencimento === hoje);
+
 // ─── Kanban Card (compact) ─────────────────────────────────
-function KanbanCard({ tarefa, onUpdate, onDelete, onDragStart }: {
+function KanbanCard({ tarefa, hoje, onUpdate, onDelete, onDragStart, draggable = true, isDragging = false }: {
   tarefa: any;
+  hoje: string;
   onUpdate: (data: any) => void;
   onDelete: (id: string) => void;
   onDragStart: (e: React.DragEvent, id: string) => void;
+  draggable?: boolean;
+  isDragging?: boolean;
 }) {
   const pc = prioridadeConfig[tarefa.prioridade] || prioridadeConfig.media;
-  const vencida = tarefa.data_vencimento && isPast(parseDateOnly(tarefa.data_vencimento)!) && tarefa.status !== 'concluida';
-  const hoje = tarefa.data_vencimento && isToday(parseDateOnly(tarefa.data_vencimento)!);
+  const vencida = tarefaVencida(tarefa, hoje);
+  const venceHoje = tarefaDeHoje(tarefa, hoje);
 
   return (
     <motion.div layout initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}>
       <div
-        draggable
-        onDragStart={(e) => onDragStart(e, tarefa.id)}
+        draggable={draggable}
+        onDragStart={draggable ? (e) => onDragStart(e, tarefa.id) : undefined}
         className={cn(
-          'group rounded-xl border bg-card p-3 cursor-grab active:cursor-grabbing transition-all hover:shadow-md hover:-translate-y-0.5',
+          'group rounded-xl border bg-card p-3 transition-all hover:shadow-md hover:-translate-y-0.5',
+          draggable && 'cursor-grab active:cursor-grabbing',
+          isDragging && 'opacity-50 scale-[0.98]',
           vencida && 'border-destructive/40',
-          hoje && 'border-warning/40',
-          tarefa.status === 'concluida' && 'opacity-60',
+          venceHoje && 'border-warning/40',
+          (tarefa.status === 'concluida' || tarefa.status === 'cancelada') && 'opacity-60',
         )}
       >
         <div className="flex items-start gap-2">
@@ -88,6 +103,15 @@ function KanbanCard({ tarefa, onUpdate, onDelete, onDragStart }: {
             </p>
             {tarefa.descricao && (
               <p className="text-[11px] text-muted-foreground line-clamp-2 mt-1">{tarefa.descricao}</p>
+            )}
+            {tarefa.paciente?.nome && (
+              <RouterLink
+                to={`/pacientes?paciente=${encodeURIComponent(tarefa.paciente_id)}`}
+                onClick={(event) => event.stopPropagation()}
+                className="mt-1 inline-flex min-h-11 items-center gap-1 text-xs text-primary hover:underline"
+              >
+                <User2 className="h-3 w-3" /> {tarefa.paciente.nome}
+              </RouterLink>
             )}
             <div className="flex items-center gap-2 flex-wrap mt-2">
               <div className="flex items-center gap-1">
@@ -106,18 +130,29 @@ function KanbanCard({ tarefa, onUpdate, onDelete, onDragStart }: {
             {tarefa.data_vencimento && (
               <p className={cn(
                 'text-[10px] mt-1.5 flex items-center gap-1',
-                vencida ? 'text-destructive font-semibold' : hoje ? 'text-warning font-semibold' : 'text-muted-foreground',
+                vencida ? 'text-destructive font-semibold' : venceHoje ? 'text-warning font-semibold' : 'text-muted-foreground',
               )}>
                 <CalendarClock className="h-2.5 w-2.5" />
                 {format(parseDateOnly(tarefa.data_vencimento)!, 'dd/MM', { locale: ptBR })}
                 {vencida && ' · vencida'}
-                {hoje && ' · hoje'}
+                {venceHoje && ' · hoje'}
               </p>
             )}
           </div>
-          <Button size="icon" variant="ghost" className="h-11 w-11 shrink-0 p-0 text-destructive opacity-100 md:opacity-0 md:group-hover:opacity-100" onClick={() => onDelete(tarefa.id)} aria-label={`Excluir tarefa ${tarefa.titulo}`}>
-            <Trash2 className="h-3 w-3" />
-          </Button>
+          <div className="flex shrink-0 flex-col">
+            {tarefa.status === 'cancelada' ? (
+              <Button size="icon" variant="ghost" className="h-11 w-11 p-0 text-primary" onClick={() => onUpdate({ id: tarefa.id, expectedUpdatedAt: tarefa.updated_at, status: 'pendente' })} aria-label={`Reabrir tarefa ${tarefa.titulo}`} title="Reabrir tarefa">
+                <RotateCcw className="h-3.5 w-3.5" />
+              </Button>
+            ) : tarefa.status !== 'concluida' ? (
+              <Button size="icon" variant="ghost" className="h-11 w-11 p-0 text-warning opacity-100 md:opacity-0 md:group-hover:opacity-100" onClick={() => onUpdate({ id: tarefa.id, expectedUpdatedAt: tarefa.updated_at, status: 'cancelada' })} aria-label={`Cancelar tarefa ${tarefa.titulo}`} title="Cancelar tarefa">
+                <CircleX className="h-3.5 w-3.5" />
+              </Button>
+            ) : null}
+            <Button size="icon" variant="ghost" className="h-11 w-11 p-0 text-destructive opacity-100 md:opacity-0 md:group-hover:opacity-100" onClick={() => onDelete(tarefa.id)} aria-label={`Excluir tarefa ${tarefa.titulo}`}>
+              <Trash2 className="h-3 w-3" />
+            </Button>
+          </div>
         </div>
       </div>
     </motion.div>
@@ -125,15 +160,17 @@ function KanbanCard({ tarefa, onUpdate, onDelete, onDragStart }: {
 }
 
 // ─── Task Card (list view) ─────────────────────────────────
-function TarefaCard({ tarefa, onUpdate, onDelete }: {
+function TarefaCard({ tarefa, hoje, onUpdate, onDelete, updating }: {
   tarefa: any;
+  hoje: string;
   onUpdate: (data: any) => void;
   onDelete: (id: string) => void;
+  updating: boolean;
 }) {
   const sc = statusConfig[tarefa.status] || statusConfig.pendente;
   const pc = prioridadeConfig[tarefa.prioridade] || prioridadeConfig.media;
-  const vencida = tarefa.data_vencimento && isPast(parseDateOnly(tarefa.data_vencimento)!) && tarefa.status !== 'concluida' && tarefa.status !== 'cancelada';
-  const hoje = tarefa.data_vencimento && isToday(parseDateOnly(tarefa.data_vencimento)!);
+  const vencida = tarefaVencida(tarefa, hoje);
+  const venceHoje = tarefaDeHoje(tarefa, hoje);
   const StatusIcon = sc.icon;
 
   return (
@@ -141,25 +178,24 @@ function TarefaCard({ tarefa, onUpdate, onDelete }: {
       <Card className={cn(
         'group transition-all duration-200 hover:shadow-md hover:-translate-y-0.5',
         vencida && 'border-destructive/40 shadow-destructive/5',
-        hoje && 'border-warning/40 shadow-warning/5',
+        venceHoje && 'border-warning/40 shadow-warning/5',
         tarefa.status === 'concluida' && 'opacity-60',
       )}>
         <CardContent className="py-4 px-5">
           <div className="flex items-start gap-3">
-            <button
-              onClick={() => {
-                if (tarefa.status === 'pendente') onUpdate({ id: tarefa.id, status: 'em_andamento' });
-                else if (tarefa.status === 'em_andamento') onUpdate({ id: tarefa.id, status: 'concluida' });
-              }}
+            {tarefa.status !== 'concluida' && tarefa.status !== 'cancelada' && <button
+              type="button"
+              aria-label={tarefa.status === 'pendente' ? 'Iniciar tarefa ' + tarefa.titulo : 'Concluir tarefa ' + tarefa.titulo}
+              title={tarefa.status === 'pendente' ? 'Iniciar tarefa' : 'Concluir tarefa'}
+              disabled={updating}
+              onClick={() => onUpdate({ id: tarefa.id, expectedUpdatedAt: tarefa.updated_at, status: tarefa.status === 'pendente' ? 'em_andamento' : 'concluida' })}
               className={cn(
                 'mt-0.5 h-11 w-11 rounded-full border-2 flex items-center justify-center shrink-0 transition-all sm:h-8 sm:w-8',
-                tarefa.status === 'concluida'
-                  ? 'bg-success border-success text-success-foreground'
-                  : 'border-border hover:border-primary hover:bg-primary/5',
+                'border-border hover:border-primary hover:bg-primary/5 disabled:cursor-wait disabled:opacity-50',
               )}
             >
-              {tarefa.status === 'concluida' && <CheckCircle2 className="h-3.5 w-3.5" />}
-            </button>
+              {updating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : tarefa.status === 'em_andamento' ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Circle className="h-3.5 w-3.5" />}
+            </button>}
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap mb-1">
                 <span className={cn('font-semibold text-sm', tarefa.status === 'concluida' && 'line-through text-muted-foreground')}>
@@ -178,29 +214,46 @@ function TarefaCard({ tarefa, onUpdate, onDelete }: {
                   <StatusIcon className="h-2.5 w-2.5 mr-1" />{sc.label}
                 </Badge>
                 {tarefa.categoria && <Badge variant="outline" className="text-[10px] h-5">{tarefa.categoria}</Badge>}
+                {tarefa.paciente?.nome && (
+                  <RouterLink
+                    to={`/pacientes?paciente=${encodeURIComponent(tarefa.paciente_id)}`}
+                    className="inline-flex min-h-11 items-center gap-1 text-primary hover:underline"
+                  >
+                    <User2 className="h-3 w-3" /> {tarefa.paciente.nome}
+                  </RouterLink>
+                )}
                 {tarefa.responsavel?.nome && (
                   <span className="flex items-center gap-1"><User2 className="h-3 w-3" />{tarefa.responsavel.nome}</span>
                 )}
                 {tarefa.data_vencimento && (
-                  <span className={cn('flex items-center gap-1', vencida && 'text-destructive font-semibold', hoje && 'text-warning font-semibold')}>
+                    <span className={cn('flex items-center gap-1', vencida && 'text-destructive font-semibold', venceHoje && 'text-warning font-semibold')}>
                     <CalendarClock className="h-3 w-3" />
                     {format(parseDateOnly(tarefa.data_vencimento)!, 'dd/MM/yyyy', { locale: ptBR })}
-                    {vencida && ' (vencida)'}{hoje && ' (hoje)'}
+                    {vencida && ' (vencida)'}{venceHoje && ' (hoje)'}
                   </span>
                 )}
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-1 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100">
               {tarefa.status === 'pendente' && (
-                <Button size="sm" variant="ghost" className="h-11 text-xs gap-1" onClick={() => onUpdate({ id: tarefa.id, status: 'em_andamento' })}>
+                <Button size="sm" variant="ghost" className="h-11 text-xs gap-1" disabled={updating} onClick={() => onUpdate({ id: tarefa.id, expectedUpdatedAt: tarefa.updated_at, status: 'em_andamento' })}>
                   <Clock className="h-3 w-3" /> Iniciar
                 </Button>
               )}
               {tarefa.status === 'em_andamento' && (
-                <Button size="sm" variant="ghost" className="h-11 text-xs gap-1 text-success" onClick={() => onUpdate({ id: tarefa.id, status: 'concluida' })}>
+                <Button size="sm" variant="ghost" className="h-11 text-xs gap-1 text-success" disabled={updating} onClick={() => onUpdate({ id: tarefa.id, expectedUpdatedAt: tarefa.updated_at, status: 'concluida' })}>
                   <CheckCircle2 className="h-3 w-3" /> Concluir
                 </Button>
               )}
+              {tarefa.status === 'cancelada' ? (
+                <Button size="sm" variant="ghost" className="h-11 text-xs gap-1 text-primary" disabled={updating} onClick={() => onUpdate({ id: tarefa.id, expectedUpdatedAt: tarefa.updated_at, status: 'pendente' })}>
+                  <RotateCcw className="h-3 w-3" /> Reabrir
+                </Button>
+              ) : tarefa.status !== 'concluida' ? (
+                <Button size="sm" variant="ghost" className="h-11 text-xs gap-1 text-warning" disabled={updating} onClick={() => onUpdate({ id: tarefa.id, expectedUpdatedAt: tarefa.updated_at, status: 'cancelada' })}>
+                  <CircleX className="h-3 w-3" /> Cancelar
+                </Button>
+              ) : null}
               <Button size="icon" variant="ghost" className="h-11 w-11 p-0 text-destructive" onClick={() => onDelete(tarefa.id)} aria-label={`Excluir tarefa ${tarefa.titulo}`}>
                 <Trash2 className="h-3.5 w-3.5" />
               </Button>
@@ -214,7 +267,9 @@ function TarefaCard({ tarefa, onUpdate, onDelete }: {
 
 // ─── Main Page ─────────────────────────────────────────────
 export default function Tarefas() {
-  const { user, profile } = useSupabaseAuth();
+  const { user, profile, isAdmin, hasRole } = useSupabaseAuth();
+  const podeVincularPaciente = isAdmin() || hasRole('recepcao') || hasRole('enfermagem') || hasRole('medico');
+  const [agora, setAgora] = useState(() => new Date());
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [showNew, setShowNew] = useState(false);
@@ -222,30 +277,38 @@ export default function Tarefas() {
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
   const [deleteTaskId, setDeleteTaskId] = useState<string | null>(null);
   const queryClient = useQueryClient();
-  const emptyForm = useMemo(() => ({ titulo: '', descricao: '', prioridade: 'media', responsavel_id: '', data_vencimento: '', categoria: '' }), []);
+  const emptyForm = useMemo(() => ({ titulo: '', descricao: '', prioridade: 'media', responsavel_id: '', data_vencimento: '', categoria: '', paciente_id: '' }), []);
+  const hoje = todaySaoPauloDateOnly(agora);
 
-  const { data: profiles } = useQuery({
-    queryKey: ['profiles-tarefas', profile?.clinica_id],
+  useEffect(() => {
+    const timer = window.setInterval(() => setAgora(new Date()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const profilesQuery = useQuery({
+    queryKey: ['profiles-tarefas', profile?.clinica_id, profile?.id],
     queryFn: async () => {
       if (!profile?.clinica_id) return [];
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('profiles')
-        .select('id, nome')
+        .select('id, nome, ativo')
         .eq('clinica_id', profile.clinica_id)
         .order('nome');
+      if (error) throw error;
       return data || [];
     },
     enabled: !!profile?.clinica_id,
   });
 
-  const { data: tarefas, isLoading } = useQuery({
-    queryKey: ['tarefas', profile?.clinica_id],
+  const tarefasQuery = useQuery({
+    queryKey: ['tarefas', profile?.clinica_id, profile?.id],
     queryFn: async () => {
-      const data = await withSafeRetry(async () => {
-        const result = await supabase.from('tarefas').select('*').order('created_at', { ascending: false });
-        if (result.error) throw result.error;
-        return result.data;
-      });
+      const data = await withSafeRetry(() => buscarEmBlocos<any>(() => supabase
+        .from('tarefas')
+        .select('*')
+        .eq('clinica_id', profile!.clinica_id)
+        .order('created_at', { ascending: false })
+        .order('id', { ascending: true })));
       if (import.meta.env.DEV) console.log('Tarefas carregadas:', data?.length || 0);
       return data || [];
     },
@@ -253,10 +316,30 @@ export default function Tarefas() {
     staleTime: 5000,
     enabled: !!profile?.clinica_id,
   });
+  const tarefas = tarefasQuery.data;
+  const isLoading = tarefasQuery.isLoading;
+
+  const pacienteIds = useMemo(
+    () => [...new Set((tarefas || []).map((t: any) => t.paciente_id).filter(Boolean))] as string[],
+    [tarefas],
+  );
+  const pacientesQuery = useQuery({
+    queryKey: ['tarefas-pacientes', profile?.clinica_id, profile?.id, pacienteIds],
+    queryFn: async () => {
+      if (!pacienteIds.length) return [];
+      const { data, error } = await supabase.from('pacientes').select('id, nome, nome_social').in('id', pacienteIds);
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: podeVincularPaciente && !!profile?.clinica_id && pacienteIds.length > 0,
+  });
+  const pacientesVinculados = pacientesQuery.data || [];
+  const profiles = profilesQuery.data;
 
   const createTarefa = useMutation({
     mutationFn: async (form: any) => {
-      const { error } = await supabase.from('tarefas').insert({ ...form, criado_por: user?.id, clinica_id: profile?.clinica_id || null });
+      if (!profile?.clinica_id || !user?.id) throw new Error('Usuário ou clínica não identificados.');
+      const { error } = await supabase.from('tarefas').insert({ ...form, criado_por: user.id, clinica_id: profile.clinica_id });
       if (error) throw error;
     },
     onSuccess: () => {
@@ -273,20 +356,29 @@ export default function Tarefas() {
   });
 
   const updateTarefa = useMutation({
-    mutationFn: async ({ id, ...updates }: any) => {
-      if (updates.status === 'concluida') updates.data_conclusao = new Date().toISOString();
-      const { error } = await supabase.from('tarefas').update(updates).eq('id', id);
+    mutationFn: async ({ id, expectedUpdatedAt, ...updates }: any) => {
+      if (!profile?.clinica_id) throw new Error('Clínica não identificada.');
+      if (updates.status) updates.data_conclusao = updates.status === 'concluida' ? new Date().toISOString() : null;
+      let query = supabase.from('tarefas').update(updates).eq('id', id).eq('clinica_id', profile.clinica_id);
+      query = expectedUpdatedAt ? query.eq('updated_at', expectedUpdatedAt) : query.is('updated_at', null);
+      const { data, error } = await query.select('id').maybeSingle();
       if (error) throw error;
+      if (!data) throw new Error('Esta tarefa foi alterada por outra pessoa. Atualize a lista e tente novamente.');
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tarefas'] });
       toast.success('Tarefa atualizada');
     },
+    onError: (error: Error) => {
+      queryClient.invalidateQueries({ queryKey: ['tarefas'] });
+      toast.error('Não foi possível atualizar a tarefa: ' + error.message);
+    },
   });
 
   const deleteTarefa = useMutation({
     mutationFn: async (id: string) => {
-      const { data, error } = await supabase.from('tarefas').delete().eq('id', id).select('id');
+      if (!profile?.clinica_id) throw new Error('Clínica não identificada.');
+      const { data, error } = await supabase.from('tarefas').delete().eq('id', id).eq('clinica_id', profile.clinica_id).select('id');
       if (error) throw error;
       if (!data || data.length === 0) throw new Error('Sem permissão para excluir esta tarefa.');
     },
@@ -301,31 +393,37 @@ export default function Tarefas() {
   const enrichedTarefas = useMemo(() => {
     return tarefas?.map((t: any) => ({
       ...t,
+      paciente: t.paciente_id ? (() => {
+        const paciente = pacientesVinculados.find((p: any) => p.id === t.paciente_id);
+        return paciente ? { nome: paciente.nome_social || paciente.nome } : null;
+      })() : null,
       responsavel: t.responsavel_id ? { nome: profiles?.find((p: any) => p.id === t.responsavel_id)?.nome || '' } : null,
       criador: t.criado_por ? { nome: profiles?.find((p: any) => p.id === t.criado_por)?.nome || '' } : null,
     })) || [];
-  }, [tarefas, profiles]);
+  }, [tarefas, profiles, pacientesVinculados]);
 
   const filtered = useMemo(() => {
     return enrichedTarefas.filter((t: any) => {
-      const matchSearch = !search || t.titulo.toLowerCase().includes(search.toLowerCase()) ||
-        (t.descricao && t.descricao.toLowerCase().includes(search.toLowerCase()));
-      const matchStatus = filterStatus === 'all' || t.status === filterStatus;
+      const termo = normalizarTexto(search);
+      const matchSearch = !termo || normalizarTexto(t.titulo).includes(termo) ||
+        normalizarTexto(t.descricao).includes(termo) || normalizarTexto(t.paciente?.nome).includes(termo);
+      const matchStatus = filterStatus === 'all' ||
+        (filterStatus === 'overdue' ? tarefaVencida(t, hoje) : t.status === filterStatus);
       return matchSearch && matchStatus;
     });
-  }, [enrichedTarefas, search, filterStatus]);
+  }, [enrichedTarefas, search, filterStatus, hoje]);
 
   const stats = useMemo(() => ({
     total: enrichedTarefas.length,
     pendentes: enrichedTarefas.filter((t: any) => t.status === 'pendente').length,
     emAndamento: enrichedTarefas.filter((t: any) => t.status === 'em_andamento').length,
     concluidas: enrichedTarefas.filter((t: any) => t.status === 'concluida').length,
-    vencidas: enrichedTarefas.filter((t: any) => t.data_vencimento && isPast(parseDateOnly(t.data_vencimento)!) && t.status !== 'concluida' && t.status !== 'cancelada').length,
-  }), [enrichedTarefas]);
+    vencidas: enrichedTarefas.filter((t: any) => tarefaVencida(t, hoje)).length,
+  }), [enrichedTarefas, hoje]);
 
   const [form, setForm] = useState({
     titulo: '', descricao: '', prioridade: 'media', responsavel_id: '',
-    data_vencimento: '', categoria: '',
+    data_vencimento: '', categoria: '', paciente_id: '',
   });
   const draft = useRecoverableDraft({
     key: `elolab:draft:task:${profile?.clinica_id || 'unknown'}:${user?.id || 'unknown'}`,
@@ -354,7 +452,7 @@ export default function Tarefas() {
     if (!taskId) return;
     const task = enrichedTarefas.find((t: Record<string, unknown>) => t.id === taskId);
     if (task && task.status !== newStatus) {
-      updateTarefa.mutate({ id: taskId, status: newStatus });
+      updateTarefa.mutate({ id: taskId, expectedUpdatedAt: task.updated_at, status: newStatus });
     }
     setDraggedTaskId(null);
   }, [enrichedTarefas, updateTarefa]);
@@ -403,11 +501,11 @@ export default function Tarefas() {
           { label: 'Pendentes', value: stats.pendentes, icon: Circle, color: 'text-warning', bg: 'bg-warning/10', filter: 'pendente' },
           { label: 'Em Andamento', value: stats.emAndamento, icon: Clock, color: 'text-info', bg: 'bg-info/10', filter: 'em_andamento' },
           { label: 'Concluídas', value: stats.concluidas, icon: CheckCircle2, color: 'text-success', bg: 'bg-success/10', filter: 'concluida' },
-          { label: 'Vencidas', value: stats.vencidas, icon: AlertTriangle, color: 'text-destructive', bg: 'bg-destructive/10', filter: 'all' },
+          { label: 'Vencidas', value: stats.vencidas, icon: AlertTriangle, color: 'text-destructive', bg: 'bg-destructive/10', filter: 'overdue' },
         ].map((s, i) => (
           <motion.div key={s.label} variants={fadeUp} custom={i}>
             <button
-              onClick={() => s.filter !== 'all' ? setFilterStatus(s.filter) : setFilterStatus('all')}
+              onClick={() => setFilterStatus(s.filter)}
               className={cn(
                 'min-h-11 w-full rounded-xl border bg-card px-3 py-3 flex items-center gap-2 transition-all hover:shadow-md hover:-translate-y-0.5 text-left sm:gap-3 sm:px-4',
                 filterStatus === s.filter && s.filter !== 'all' && 'ring-2 ring-primary/30 shadow-md',
@@ -425,6 +523,13 @@ export default function Tarefas() {
         ))}
       </motion.div>
 
+      {enrichedTarefas.length >= LIMITE_BUSCA_EM_BLOCOS && (
+        <div role="alert" className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm text-warning-foreground">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <p>A lista atingiu o limite de {LIMITE_BUSCA_EM_BLOCOS.toLocaleString('pt-BR')} tarefas. Os contadores e resultados podem estar incompletos; refine a busca ou o status.</p>
+        </div>
+      )}
+
       {/* Filters */}
       <div className="flex gap-3 flex-wrap items-center">
         <div className="relative w-full flex-1 sm:max-w-md">
@@ -436,11 +541,12 @@ export default function Tarefas() {
             <SelectTrigger className="h-11 w-full sm:w-[180px]"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Todos os status</SelectItem>
+              <SelectItem value="overdue">Vencidas</SelectItem>
               {Object.entries(statusConfig).map(([k, v]) => <SelectItem key={k} value={k}>{v.label}</SelectItem>)}
             </SelectContent>
           </Select>
         )}
-        {filterStatus !== 'all' && viewMode === 'list' && (
+        {filterStatus !== 'all' && (
           <Button variant="ghost" size="sm" className="text-xs gap-1" onClick={() => setFilterStatus('all')}>
             Limpar filtro
           </Button>
@@ -448,7 +554,13 @@ export default function Tarefas() {
       </div>
 
       {/* Content */}
-      {isLoading ? (
+      {tarefasQuery.isError ? (
+        <ErrorState title="Não foi possível carregar as tarefas" error={tarefasQuery.error} onRetry={() => void tarefasQuery.refetch()} />
+      ) : profilesQuery.isError ? (
+        <ErrorState title="Não foi possível carregar os responsáveis" description="A lista foi pausada porque os nomes da equipe não puderam ser conferidos." error={profilesQuery.error} onRetry={() => void profilesQuery.refetch()} />
+      ) : pacientesQuery.isError ? (
+        <ErrorState title="Não foi possível carregar os pacientes vinculados" error={pacientesQuery.error} onRetry={() => void pacientesQuery.refetch()} />
+      ) : isLoading || profilesQuery.isLoading || pacientesQuery.isLoading ? (
         <div className="space-y-3">
           {[1, 2, 3, 4].map(i => (
             <Card key={i}><CardContent className="py-4 px-5">
@@ -462,15 +574,27 @@ export default function Tarefas() {
             </CardContent></Card>
           ))}
         </div>
+      ) : filtered.length === 0 ? (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+          <Card>
+            <CardContent className="flex flex-col items-center justify-center py-16 text-center">
+              <ListTodo className="h-14 w-14 text-muted-foreground/20 mb-4" />
+              <p className="font-semibold text-lg">
+                {enrichedTarefas.length === 0 ? 'Ainda não há tarefas cadastradas' : 'Nenhuma tarefa corresponde à busca e ao filtro'}
+              </p>
+              {enrichedTarefas.length > 0 ? (
+                <Button variant="link" onClick={() => { setSearch(''); setFilterStatus('all'); }} className="mt-2 h-11">Limpar busca e filtro</Button>
+              ) : (
+                <Button onClick={() => setShowNew(true)} className="mt-4 gap-2"><Plus className="h-4 w-4" />Nova Tarefa</Button>
+              )}
+            </CardContent>
+          </Card>
+        </motion.div>
       ) : viewMode === 'kanban' ? (
         /* ─── Kanban View ─── */
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
           {kanbanColumns.map(col => {
-            const colTasks = enrichedTarefas.filter((t: any) => {
-              const matchSearch = !search || t.titulo.toLowerCase().includes(search.toLowerCase()) ||
-                (t.descricao && t.descricao.toLowerCase().includes(search.toLowerCase()));
-              return t.status === col.key && matchSearch;
-            });
+            const colTasks = filtered.filter((t: any) => t.status === col.key);
             const ColIcon = col.icon;
             return (
               <div
@@ -490,11 +614,14 @@ export default function Tarefas() {
                       <KanbanCard
                         key={t.id}
                         tarefa={t}
+                        hoje={hoje}
                         onUpdate={(data) => updateTarefa.mutate(data)}
                         onDelete={(id) => {
                           setDeleteTaskId(id);
                         }}
                         onDragStart={handleDragStart}
+                        draggable
+                        isDragging={draggedTaskId === t.id}
                       />
                     ))}
                   </AnimatePresence>
@@ -509,22 +636,6 @@ export default function Tarefas() {
             );
           })}
         </div>
-      ) : filtered.length === 0 ? (
-        /* ─── Empty List ─── */
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-          <Card>
-            <CardContent className="flex flex-col items-center justify-center py-16 text-center">
-              <ListTodo className="h-14 w-14 text-muted-foreground/20 mb-4" />
-              <p className="font-semibold text-lg">Nenhuma tarefa encontrada</p>
-              <p className="text-sm text-muted-foreground mt-1 mb-6">
-                {search || filterStatus !== 'all' ? 'Tente ajustar os filtros' : 'Crie sua primeira tarefa'}
-              </p>
-              <Button onClick={() => setShowNew(true)} className="gap-2">
-                <Plus className="h-4 w-4" /> Nova Tarefa
-              </Button>
-            </CardContent>
-          </Card>
-        </motion.div>
       ) : (
         /* ─── List View ─── */
         <motion.div variants={stagger} initial="hidden" animate="visible" className="space-y-2">
@@ -533,6 +644,8 @@ export default function Tarefas() {
               <TarefaCard
                 key={t.id}
                 tarefa={t}
+                hoje={hoje}
+                updating={updateTarefa.isPending}
                 onUpdate={(data) => updateTarefa.mutate(data)}
                 onDelete={(id) => {
                   setDeleteTaskId(id);
@@ -559,6 +672,7 @@ export default function Tarefas() {
               responsavel_id: form.responsavel_id || null,
               data_vencimento: form.data_vencimento || null,
               categoria: form.categoria || null,
+              paciente_id: form.paciente_id || null,
             });
           }} className="space-y-4">
             {draft.restorable && (
@@ -576,6 +690,27 @@ export default function Tarefas() {
               <Label>Descrição</Label>
               <Textarea value={form.descricao} onChange={(e) => setForm(p => ({ ...p, descricao: e.target.value }))} placeholder="Detalhes opcionais..." rows={3} />
             </div>
+            {podeVincularPaciente && (
+              <div className="space-y-2">
+                <Label>Paciente relacionado <span className="font-normal text-muted-foreground">(opcional)</span></Label>
+                <PacienteCombobox
+                  value={form.paciente_id || null}
+                  onChange={(id) => setForm(p => ({ ...p, paciente_id: id }))}
+                  placeholder="Buscar paciente por nome, CPF ou telefone..."
+                />
+                {form.paciente_id && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-11 px-2 text-muted-foreground"
+                    onClick={() => setForm(p => ({ ...p, paciente_id: '' }))}
+                  >
+                    Remover vínculo
+                  </Button>
+                )}
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Prioridade</Label>
@@ -603,7 +738,12 @@ export default function Tarefas() {
                 <Label>Responsável</Label>
                 <Select value={form.responsavel_id} onValueChange={(v) => setForm(p => ({ ...p, responsavel_id: v }))}>
                   <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                  <SelectContent>{profiles?.map((p: any) => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}</SelectContent>
+                  <SelectContent>
+                    {profiles?.filter((p: any) => p.ativo !== false).map((p: any) => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
+                    {!profiles?.some((p: any) => p.ativo !== false) && (
+                      <SelectItem value="sem-responsaveis-ativos" disabled>Nenhum membro ativo disponível</SelectItem>
+                    )}
+                  </SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">

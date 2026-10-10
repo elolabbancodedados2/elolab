@@ -1,5 +1,14 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsPadrao } from '../_shared/cors.ts';
+import { sendBrandedBrevoRequest } from '../_shared/brevoEmail.ts';
+import { mapAuthorizedPaymentInvoice } from '../_shared/mercadoPagoInvoice.ts';
+import { mercadoPagoPaymentResource } from '../_shared/mercadoPagoWebhookRouting.ts';
+import { isValidMercadoPagoSignature } from '../_shared/mercadoPagoSignature.ts';
+import { createMercadoPagoClient } from '../_shared/mercadoPagoClient.ts';
+import { isOrderNotification, webhookEventKey } from '../_shared/planCheckout.ts';
+import { syncPlanOrderFromGateway } from '../_shared/platformPlanOrders.ts';
+import { syncPlatformPlan } from '../_shared/platformPlanSync.ts';
+import { syncMercadoPagoPointOrder } from '../_shared/mercadoPagoPointOrders.ts';
 
 // Atribuído em cada request (reflete a origem permitida). Helpers
 // top-level (json/reply) capturam esta variável por closure.
@@ -8,72 +17,6 @@ let corsHeaders: Record<string, string> = {};
 ;
 
 const MP_API_BASE = "https://api.mercadopago.com";
-
-// Validate Mercado Pago signature (HMAC-SHA256)
-async function validateMercadoPagoSignature(
-  request: Request,
-  dataId: string,
-  secret: string
-): Promise<boolean> {
-  const xSignature = request.headers.get("x-signature");
-  const xRequestId = request.headers.get("x-request-id");
-
-  if (!xSignature || !xRequestId) {
-    console.warn("Missing signature headers");
-    return false;
-  }
-
-  // xSignature format: "ts=1234567890,v1=hash_value"
-  const parts = xSignature.split(",");
-  let timestamp = "";
-  let hash = "";
-
-  for (const part of parts) {
-    const [key, value] = part.split("=");
-    if (key === "ts") timestamp = value;
-    if (key === "v1") hash = value;
-  }
-
-  if (!timestamp || !hash) {
-    console.warn("Invalid signature format");
-    return false;
-  }
-
-  if (!dataId) {
-    console.warn("Missing notification data.id");
-    return false;
-  }
-
-  // Mercado Pago signs a manifest built from the notification data.id,
-  // x-request-id and timestamp (not the raw request body).
-  const signatureString = `id:${dataId};request-id:${xRequestId};ts:${timestamp};`;
-
-  // Create HMAC-SHA256
-  const encoder = new TextEncoder();
-  const key = await crypto.subtle.importKey(
-    "raw",
-    encoder.encode(secret),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"]
-  );
-
-  const signature = await crypto.subtle.sign(
-    "HMAC",
-    key,
-    encoder.encode(signatureString)
-  );
-
-  const calculatedHash = Array.from(new Uint8Array(signature))
-    .map(b => b.toString(16).padStart(2, "0"))
-    .join("");
-
-  const isValid = calculatedHash === hash;
-  if (!isValid) {
-    console.warn("Signature validation failed");
-  }
-  return isValid;
-}
 
 Deno.serve(async (req) => {
   corsHeaders = { ...corsPadrao(req),};
@@ -130,7 +73,13 @@ Deno.serve(async (req) => {
       );
     }
 
-    const isValid = trustedInternal || await validateMercadoPagoSignature(req, dataId, mpWebhookSecret!);
+    // O manifest usa o data.id da query string (em minúsculas para orders).
+    const isValid = trustedInternal || await isValidMercadoPagoSignature({
+      xSignature: req.headers.get("x-signature"),
+      xRequestId: req.headers.get("x-request-id"),
+      dataId,
+      secret: mpWebhookSecret!,
+    });
     if (!isValid) {
       console.error("Invalid webhook signature");
       return new Response(JSON.stringify({ error: "Invalid signature" }), {
@@ -139,8 +88,9 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Check for idempotency — prevent duplicate processing
-    const eventId = data.id?.toString() || `${data.type}-${data.data?.id}`;
+    // Check for idempotency — prevent duplicate processing. Orders não têm ID
+    // por notificação; a chave inclui ação e status (ver webhookEventKey).
+    const eventId = webhookEventKey(data);
     const { data: existingLog } = await supabase
       .from("mercadopago_webhook_logs")
       .select("id, processado")
@@ -170,6 +120,13 @@ Deno.serve(async (req) => {
         .select("id")
         .single();
 
+      if (logError?.code === "23505") {
+        // Entrega concorrente do mesmo evento: a outra execução processa.
+        return new Response(JSON.stringify({ received: true, duplicate: true }), {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
       if (logError) {
         console.error("Failed to create webhook log:", logError);
         return new Response(JSON.stringify({ error: "Failed to log webhook" }), {
@@ -178,6 +135,54 @@ Deno.serve(async (req) => {
         });
       }
       logId = newLog.id;
+    }
+
+    // O tópico mp-connect comunica autorização/revogação de OAuth da conta da
+    // clínica. A vinculação é gravada pelo callback OAuth; a revogação remove
+    // a cópia local dos dados de acesso para que ela não possa mais ser usada.
+    if (data.type === 'mp-connect') {
+      const sellerId = String(data.user_id ?? data.data?.id ?? '');
+      if (data.action === 'application.deauthorized' && sellerId) {
+        const { error: revokeError } = await supabase.from('integracoes_clinica')
+          .update({
+            status: 'desconectado',
+            segredo_cifrado: null,
+            segredo_dica: null,
+            ultimo_erro: null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('provedor', 'mercado_pago')
+          .filter('config->>mp_user_id', 'eq', sellerId);
+        if (revokeError) throw revokeError;
+      }
+      await supabase.from('mercadopago_webhook_logs').update({ processado: true }).eq('id', logId);
+      return new Response(JSON.stringify({ received: true }), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Orders Point foram criadas com OAuth da clínica e precisam ser buscadas
+    // com o token daquela conta, nunca com o token da assinatura EloLab.
+    if (isOrderNotification(data)) {
+      const pointOrderId = String(data.data?.id ?? '');
+      if (pointOrderId) {
+        const { data: pointOrder, error: pointLookupError } = await supabase
+          .from('mercadopago_point_orders')
+          .select('id')
+          .eq('mp_order_id', pointOrderId)
+          .maybeSingle();
+        if (pointLookupError) throw pointLookupError;
+        if (pointOrder) {
+          const result = await syncMercadoPagoPointOrder(supabase, pointOrderId, data.user_id);
+          console.log('Order Point da clínica sincronizada:', pointOrderId, JSON.stringify(result));
+          await supabase.from('mercadopago_webhook_logs').update({ processado: true }).eq('id', logId);
+          return new Response(JSON.stringify({ received: true }), {
+            status: 200,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+      }
     }
 
     const mpToken = Deno.env.get("MERCADOPAGO_ACCESS_TOKEN");
@@ -194,15 +199,26 @@ Deno.serve(async (req) => {
     }
     if (!logId) throw new Error("Webhook sem registro de auditoria");
 
-    // Process payment notification (payment.created, payment.updated)
-    if (
-      data.type === "payment" ||
-      data.action === "payment.created" ||
-      data.action === "payment.updated"
-    ) {
+    // Pedidos Pix/boleto dos planos (API de Orders). Falhas lançam erro e
+    // respondem 500 para o Mercado Pago reenviar a notificação.
+    if (isOrderNotification(data)) {
+      const orderId = data.data?.id?.toString();
+      if (orderId) {
+        const result = await syncPlanOrderFromGateway(
+          supabase,
+          createMercadoPagoClient({ accessToken: mpToken }),
+          orderId,
+        );
+        console.log("Pedido de plano sincronizado:", orderId, JSON.stringify(result));
+      }
+    }
+
+    // Pagamentos comuns usam GET /v1/payments/{id}.
+    const paymentResource = mercadoPagoPaymentResource(data);
+    if (paymentResource === 'payment') {
       const paymentId = data.data?.id;
       if (paymentId) {
-        await processAuthorizedSubscriptionPaymentNotification(
+        await processPaymentNotification(
           paymentId.toString(),
           mpToken,
           supabase,
@@ -223,15 +239,12 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Process authorized_payment (subscription automatic renewal payment)
-    if (
-      data.type === "subscription_authorized_payment" ||
-      data.action?.includes("authorized_payment")
-    ) {
+    // Faturas recorrentes usam GET /authorized_payments/{id}.
+    if (paymentResource === 'authorized_payment') {
       const paymentId = data.data?.id;
       if (paymentId) {
         console.log("Processing automatic subscription renewal payment:", paymentId);
-        await processPaymentNotification(paymentId.toString(), mpToken, supabase, logId);
+        await processAuthorizedSubscriptionPaymentNotification(paymentId.toString(), mpToken, supabase, logId);
         // Also log this as a renewal in the subscription
         const preapprovalId = data.data?.preapproval_id;
         if (preapprovalId) {
@@ -535,124 +548,6 @@ async function processPaymentNotification(
     .eq("id", logId);
 }
 
-type PlatformPlanSyncInput = {
-  assinaturaId: string;
-  userId: string;
-  planoId: string;
-  planoSlug: string;
-  gatewayStatus: string;
-  trialEnd?: string | null;
-};
-
-async function syncPlatformPlan(supabase: any, input: PlatformPlanSyncInput, mpToken?: string) {
-  const now = new Date();
-  const trialIsActive = Boolean(
-    input.trialEnd && new Date(input.trialEnd).getTime() > now.getTime()
-  );
-  const targetStatus = input.gatewayStatus === "authorized"
-    ? (trialIsActive ? "trial" : "ativa")
-    : input.gatewayStatus === "cancelled" || input.gatewayStatus === "canceled"
-      ? "cancelada"
-      : input.gatewayStatus === "paused"
-        ? "pausada"
-        : "pendente";
-
-  const { data: existingPlan, error: existingError } = await supabase
-    .from("assinaturas_plano")
-    .select("id, status, mp_assinatura_id")
-    .eq("user_id", input.userId)
-    .maybeSingle();
-  if (existingError) throw existingError;
-
-  // Do not take an already active plan offline while a replacement checkout
-  // is still pending. The replacement becomes authoritative once authorized.
-  if (
-    existingPlan &&
-    targetStatus === "pendente" &&
-    ["ativa", "trial"].includes(existingPlan.status)
-  ) {
-    return;
-  }
-
-  if (
-    existingPlan &&
-    ["cancelada", "pausada"].includes(targetStatus) &&
-    existingPlan.mp_assinatura_id &&
-    existingPlan.mp_assinatura_id !== input.assinaturaId
-  ) {
-    return;
-  }
-
-  const baseData = {
-    plano_id: input.planoId,
-    plano_slug: input.planoSlug,
-    status: targetStatus,
-    mp_assinatura_id: input.assinaturaId,
-    em_trial: targetStatus === "trial",
-    trial_fim: targetStatus === "trial" ? input.trialEnd : null,
-    data_cancelamento: targetStatus === "cancelada" ? now.toISOString() : null,
-    updated_at: now.toISOString(),
-  };
-
-  if (existingPlan?.id) {
-    if (
-      ["ativa", "trial"].includes(targetStatus) &&
-      existingPlan.mp_assinatura_id &&
-      existingPlan.mp_assinatura_id !== input.assinaturaId &&
-      mpToken
-    ) {
-      const { data: previousGateway, error: previousGatewayError } = await supabase
-        .from("assinaturas_mercadopago")
-        .select("id, mp_preapproval_id, status")
-        .eq("id", existingPlan.mp_assinatura_id)
-        .maybeSingle();
-      if (previousGatewayError) throw previousGatewayError;
-
-      if (previousGateway?.mp_preapproval_id && previousGateway.status !== "cancelada") {
-        const cancelResponse = await fetch(
-          `${MP_API_BASE}/preapproval/${previousGateway.mp_preapproval_id}`,
-          {
-            method: "PUT",
-            headers: {
-              Authorization: `Bearer ${mpToken}`,
-              "Content-Type": "application/json",
-              Accept: "application/json",
-            },
-            body: JSON.stringify({ status: "canceled" }),
-          },
-        );
-        if (!cancelResponse.ok) {
-          throw new Error(`Não foi possível cancelar a assinatura anterior (${cancelResponse.status})`);
-        }
-
-        const { error: previousUpdateError } = await supabase
-          .from("assinaturas_mercadopago")
-          .update({ status: "cancelada", data_fim: now.toISOString().slice(0, 10) })
-          .eq("id", previousGateway.id);
-        if (previousUpdateError) throw previousUpdateError;
-      }
-    }
-
-    const { error } = await supabase
-      .from("assinaturas_plano")
-      .update(baseData)
-      .eq("id", existingPlan.id);
-    if (error) throw error;
-    return;
-  }
-
-  if (["ativa", "trial", "pendente"].includes(targetStatus)) {
-    const { error } = await supabase
-      .from("assinaturas_plano")
-      .insert({
-        user_id: input.userId,
-        data_inicio: now.toISOString(),
-        ...baseData,
-      });
-    if (error) throw error;
-  }
-}
-
 async function processAuthorizedSubscriptionPaymentNotification(
   authorizedPaymentId: string,
   mpToken: string,
@@ -676,7 +571,9 @@ async function processAuthorizedSubscriptionPaymentNotification(
   }
 
   const authorizedPayment = await response.json();
-  const payment = authorizedPayment.payment || authorizedPayment;
+  const payment = authorizedPayment.payment && typeof authorizedPayment.payment === "object"
+    ? authorizedPayment.payment
+    : {};
   const preapprovalId = authorizedPayment.preapproval_id ||
     authorizedPayment.subscription_id ||
     authorizedPayment.preapproval?.id;
@@ -698,12 +595,22 @@ async function processAuthorizedSubscriptionPaymentNotification(
   }
 
   const detalhes = (assinatura.detalhes || {}) as Record<string, unknown>;
-  const paymentStatus = payment.status || authorizedPayment.status;
+  const paymentStatus = typeof payment.status === "string" ? payment.status : null;
   const approved = paymentStatus === "approved";
   const userId = typeof detalhes.user_id === "string" ? detalhes.user_id : null;
   const planoId = typeof detalhes.plano_id === "string" ? detalhes.plano_id : null;
   const planoSlug = typeof detalhes.plano_slug === "string" ? detalhes.plano_slug : null;
   const trialEnd = typeof detalhes.trial_end === "string" ? detalhes.trial_end : null;
+
+  const invoice = mapAuthorizedPaymentInvoice({
+    authorizedPayment,
+    assinaturaMpId: assinatura.id,
+    userId,
+  });
+  const { error: invoiceError } = await supabase
+    .from("platform_subscription_invoices")
+    .upsert(invoice, { onConflict: "mp_authorized_payment_id" });
+  if (invoiceError) throw invoiceError;
 
   const { error: updateError } = await supabase
     .from("assinaturas_mercadopago")
@@ -779,11 +686,29 @@ async function processSubscriptionNotification(
       const status = statusMap[preapproval.status] || preapproval.status;
 
       // Update assinaturas_mercadopago with full preapproval details
-      const { data: existingAssinatura } = await supabase
+      let { data: existingAssinatura } = await supabase
         .from("assinaturas_mercadopago")
         .select("id, detalhes")
         .eq("mp_preapproval_id", preapprovalId)
         .maybeSingle();
+
+      // Assinatura no cartão cuja resposta de criação se perdeu: o registro
+      // local existe sem ID do gateway e é localizado pelo external_reference.
+      if (!existingAssinatura && preapproval.external_reference) {
+        const { data: byReference } = await supabase
+          .from("assinaturas_mercadopago")
+          .select("id, detalhes")
+          .is("mp_preapproval_id", null)
+          .filter("detalhes->>checkout_reference", "eq", String(preapproval.external_reference))
+          .maybeSingle();
+        if (byReference) {
+          await supabase
+            .from("assinaturas_mercadopago")
+            .update({ mp_preapproval_id: preapprovalId })
+            .eq("id", byReference.id);
+          existingAssinatura = byReference;
+        }
+      }
 
       if (existingAssinatura) {
         const detalhes = (existingAssinatura.detalhes || {}) as Record<string, unknown>;
@@ -1001,10 +926,9 @@ async function sendActivationEmail(registro: any, supabase: any) {
     const planoNome = plano?.nome || registro.plano_slug;
     const planoValor = plano ? Number(plano.valor).toFixed(2) : "0.00";
 
-    await fetch("https://api.brevo.com/v3/smtp/email", {
+    await sendBrandedBrevoRequest({
       method: "POST",
       headers: {
-        "api-key": brevoApiKey,
         "Content-Type": "application/json",
         Accept: "application/json",
       },

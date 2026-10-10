@@ -24,9 +24,9 @@ import {
   Heart, Pill, AlertTriangle, Download, RefreshCw,
   LogOut,
 } from 'lucide-react';
-import { format, isToday, isFuture, parseISO, differenceInDays } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { appointmentStartHasPassed, todayDateOnly } from '@/lib/dateOnly';
+import { ageFromDateOnly, appointmentStartHasPassed, daysBetweenDateOnly, parseDateOnly, todayDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { abrirUrlSegura, checkoutUrlSeguro, storageUrlSeguro } from '@/lib/safeUrl';
 
 // ─── Status helpers ────────────────────────────────────────
@@ -61,11 +61,8 @@ function formatCurrency(v: number) {
 
 function calcularIdade(dn: string | null) {
   if (!dn) return null;
-  const hoje = new Date(), nasc = new Date(dn);
-  let i = hoje.getFullYear() - nasc.getFullYear();
-  const m = hoje.getMonth() - nasc.getMonth();
-  if (m < 0 || (m === 0 && hoje.getDate() < nasc.getDate())) i--;
-  return i;
+  const hoje = parseDateOnly(todaySaoPauloDateOnly());
+  return ageFromDateOnly(dn, hoje);
 }
 
 // ─── Animated counter ──────────────────────────────────────
@@ -185,16 +182,20 @@ function LoginScreen({ token, setToken, onLogin, loading, error }: {
 
 // ─── Next Appointment Hero ─────────────────────────────────
 function NextAppointmentHero({ agendamentos }: { agendamentos: any[] }) {
-  const proxima = agendamentos.find(a =>
+  const hojeNaClinica = todaySaoPauloDateOnly();
+  const proxima = agendamentos
+    .filter(a =>
     (a.status === 'agendado' || a.status === 'confirmado') &&
-    (isToday(parseISO(a.data)) || isFuture(parseISO(a.data)))
-  );
+    !appointmentStartHasPassed(a.data, a.hora_inicio)
+    )
+    .sort((a, b) => a.data.localeCompare(b.data)
+      || String(a.hora_inicio || '99:99').localeCompare(String(b.hora_inicio || '99:99')))[0];
 
   if (!proxima) return null;
 
   const dataConsulta = parseISO(proxima.data);
-  const diasRestantes = differenceInDays(dataConsulta, new Date());
-  const isHoje = isToday(dataConsulta);
+  const diasRestantes = daysBetweenDateOnly(hojeNaClinica, proxima.data);
+  const isHoje = proxima.data === hojeNaClinica;
 
   return (
     <motion.div
@@ -353,9 +354,12 @@ function NPSSurvey({ token }: { token: string }) {
 export default function PortalPaciente() {
   const [searchParams] = useSearchParams();
   const autoLoginAttempted = useRef(false);
+  const portalSessionRef = useRef(0);
   const [token, setToken] = useState(searchParams.get('token') || '');
   const [authenticated, setAuthenticated] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [portalDataLoading, setPortalDataLoading] = useState(false);
+  const [portalDataError, setPortalDataError] = useState('');
   const [error, setError] = useState('');
   const [profile, setProfile] = useState<any>(null);
   const [agendamentos, setAgendamentos] = useState<any[]>([]);
@@ -378,7 +382,11 @@ export default function PortalPaciente() {
   });
   const [availableSlots, setAvailableSlots] = useState<string[]>([]);
   const [schedulingLoading, setSchedulingLoading] = useState(false);
+  const [schedulingSubmitting, setSchedulingSubmitting] = useState(false);
   const [schedulingError, setSchedulingError] = useState('');
+  const [schedulingNotice, setSchedulingNotice] = useState('');
+  const schedulingLookupRef = useRef(0);
+  const schedulingSubmissionLock = useRef(false);
 
   // Reschedule/cancel state
   const [rescheduleModal, setRescheduleModal] = useState<any>(null);
@@ -468,13 +476,49 @@ export default function PortalPaciente() {
     else rescheduleCardsRef.current.get(triggerId)?.focus({ preventScroll: true });
   }, [agendamentoParaCancelar]);
 
+  const loadPortalData = async (accessToken: string, sessionId = portalSessionRef.current) => {
+    setPortalDataLoading(true);
+    setPortalDataError('');
+    try {
+      const results = await Promise.allSettled([
+        fetchData(accessToken, 'get_agendamentos'),
+        fetchData(accessToken, 'get_exames'),
+        fetchData(accessToken, 'get_pagamentos'),
+        fetchData(accessToken, 'get_prescricoes'),
+        fetchData(accessToken, 'get_medicos'),
+        fetchData(accessToken, 'get_retornos'),
+        fetchData(accessToken, 'get_waitlist_offers'),
+      ]);
+      if (sessionId !== portalSessionRef.current) return;
+      const valueOrEmpty = (result: PromiseSettledResult<any>) =>
+        result.status === 'fulfilled' ? result.value || [] : [];
+
+      setAgendamentos(valueOrEmpty(results[0]));
+      setExames(valueOrEmpty(results[1]));
+      setPagamentos(valueOrEmpty(results[2]));
+      setPrescricoes(valueOrEmpty(results[3]));
+      setMedicos(valueOrEmpty(results[4]));
+      setRetornos(valueOrEmpty(results[5]));
+      setOfertasEspera(valueOrEmpty(results[6]));
+
+      if (results.some(result => result.status === 'rejected')) {
+        setPortalDataError('Algumas informações não puderam ser carregadas. Tente atualizar.');
+      }
+    } finally {
+      if (sessionId === portalSessionRef.current) setPortalDataLoading(false);
+    }
+  };
+
   const handleLogin = async (accessToken = token) => {
     if (!accessToken.trim()) return;
+    const sessionId = ++portalSessionRef.current;
     setLoading(true);
     setError('');
+    setPortalDataError('');
 
     try {
       const profileData = await fetchData(accessToken, 'get_profile');
+      if (sessionId !== portalSessionRef.current) return;
       if (!profileData || profileData.error) {
         setError(profileData?.error || 'Token inválido ou expirado');
         return;
@@ -482,53 +526,45 @@ export default function PortalPaciente() {
       setProfile(profileData);
       setContactForm({ telefone: profileData.telefone || '', email: profileData.email || '' });
       setAuthenticated(true);
-
-      const [ag, ex, pg, presc, docs, rets, ofertas] = await Promise.all([
-        fetchData(accessToken, 'get_agendamentos'),
-        fetchData(accessToken, 'get_exames'),
-        fetchData(accessToken, 'get_pagamentos'),
-        fetchData(accessToken, 'get_prescricoes').catch(() => []),
-        fetchData(accessToken, 'get_medicos'),
-        fetchData(accessToken, 'get_retornos').catch(() => []),
-        fetchData(accessToken, 'get_waitlist_offers').catch(() => []),
-      ]);
-      setAgendamentos(ag || []);
-      setExames(ex || []);
-      setPagamentos(pg || []);
-      setPrescricoes(presc || []);
-      setMedicos(docs || []);
-      setRetornos(rets || []);
-      setOfertasEspera(ofertas || []);
+      await loadPortalData(accessToken, sessionId);
     } catch (err: any) {
+      if (sessionId !== portalSessionRef.current) return;
       // A resposta técnica da Edge Function (status, nome da função etc.) não
       // ajuda o paciente e revela detalhes internos. Para autenticação por
       // token, toda falha deve ser indistinguível de token ausente/revogado.
       if (import.meta.env.DEV) console.error('Falha ao validar acesso do portal:', err);
       setError('Token inválido ou expirado');
     } finally {
-      setLoading(false);
+      if (sessionId === portalSessionRef.current) setLoading(false);
     }
   };
 
   const loadAvailableSlots = async (medico_id: string, data: string) => {
-    if (!medico_id || !data || !token) return;
+    const lookupId = ++schedulingLookupRef.current;
+    setAvailableSlots([]);
+    setSchedulingError('');
+    if (!medico_id || !data || !token) {
+      setSchedulingLoading(false);
+      return;
+    }
     try {
       setSchedulingLoading(true);
-      setSchedulingError('');
-      setAvailableSlots([]);
       const slots = await fetchData(token, 'get_available_slots', {
         medico_id,
         data_inicio: data,
         data_fim: data,
       });
       if (!Array.isArray(slots)) throw new Error(slots?.error || 'Nenhum horário disponível nesta data.');
+      if (lookupId !== schedulingLookupRef.current) return;
       setAvailableSlots(slots);
       setSchedulingForm(f => ({ ...f, hora_inicio: '' }));
     } catch (err: any) {
-      setAvailableSlots([]);
-      setSchedulingError(err.message || 'Erro ao carregar horários disponíveis');
+      if (lookupId === schedulingLookupRef.current) {
+        setAvailableSlots([]);
+        setSchedulingError(err.message || 'Erro ao carregar horários disponíveis');
+      }
     } finally {
-      setSchedulingLoading(false);
+      if (lookupId === schedulingLookupRef.current) setSchedulingLoading(false);
     }
   };
 
@@ -593,14 +629,17 @@ export default function PortalPaciente() {
   };
 
   const handleCreateAgendamento = async () => {
+    if (schedulingSubmissionLock.current) return;
     if (!schedulingForm.medico_id || !schedulingForm.data || !schedulingForm.hora_inicio) {
       setSchedulingError('Por favor, preencha todos os campos obrigatórios');
       return;
     }
 
+    schedulingSubmissionLock.current = true;
+    setSchedulingSubmitting(true);
     try {
-      setSchedulingLoading(true);
       setSchedulingError('');
+      setSchedulingNotice('');
       const result = await fetchData(token, 'create_agendamento', {
         medico_id: schedulingForm.medico_id,
         data: schedulingForm.data,
@@ -613,17 +652,28 @@ export default function PortalPaciente() {
       }
 
       if (result?.success) {
-        // Reload agendamentos to show the new one
-        const updatedAgendamentos = await fetchData(token, 'get_agendamentos');
-        setAgendamentos(updatedAgendamentos || []);
+        // A criação já foi confirmada pelo servidor. Falha ao atualizar a
+        // lista não deve parecer falha no agendamento nem incentivar duplicata.
         setSchedulingForm({ medico_id: '', data: '', hora_inicio: '', tipo: 'Consulta' });
         setAvailableSlots([]);
+        schedulingLookupRef.current += 1;
+        setSchedulingLoading(false);
+        try {
+          const updatedAgendamentos = await fetchData(token, 'get_agendamentos');
+          setAgendamentos(updatedAgendamentos || []);
+          setSchedulingNotice('Consulta agendada com sucesso.');
+        } catch {
+          const aviso = 'Consulta confirmada, mas não foi possível atualizar a lista agora. Atualize os dados para conferir os detalhes.';
+          setSchedulingNotice(aviso);
+          setPortalDataError(aviso);
+        }
       }
     } catch (err: any) {
       setAvailableSlots([]);
       setSchedulingError(err.message || 'Erro ao agendar consulta');
     } finally {
-      setSchedulingLoading(false);
+      schedulingSubmissionLock.current = false;
+      setSchedulingSubmitting(false);
     }
   };
 
@@ -728,6 +778,7 @@ export default function PortalPaciente() {
   };
 
   const handleLogout = () => {
+    portalSessionRef.current += 1;
     setAuthenticated(false);
     setToken('');
     setProfile(null);
@@ -737,7 +788,9 @@ export default function PortalPaciente() {
     setPrescricoes([]);
     setRetornos([]);
     setOfertasEspera([]);
+    setPortalDataLoading(false);
     setError('');
+    setPortalDataError('');
   };
 
   const handleUpdateContact = async () => {
@@ -864,8 +917,11 @@ export default function PortalPaciente() {
   }
 
   // Stats
+  const hojeNaClinica = todaySaoPauloDateOnly();
   const totalConsultas = agendamentos.length;
-  const consultasFuturas = agendamentos.filter(a => (a.status === 'agendado' || a.status === 'confirmado')).length;
+  const consultasFuturas = agendamentos.filter(a =>
+    ['agendado', 'confirmado'].includes(a.status) && !appointmentStartHasPassed(a.data, a.hora_inicio)
+  ).length;
   const examesPendentes = exames.filter(e => e.status === 'solicitado' || e.status === 'em_andamento').length;
   const laudosDisponiveis = exames.filter(e => e.status === 'laudo_disponivel').length;
   const idade = calcularIdade(profile?.data_nascimento);
@@ -1003,6 +1059,16 @@ export default function PortalPaciente() {
             </p>
           </motion.div>
 
+          {portalDataError && (
+            <div role="alert" className="flex flex-col gap-3 rounded-md border border-warning/50 bg-warning/10 px-3 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+              <p>{portalDataError}</p>
+              <Button type="button" variant="outline" size="sm" onClick={() => void loadPortalData(token)} disabled={portalDataLoading} className="shrink-0 gap-2">
+                <RefreshCw className={`h-4 w-4 ${portalDataLoading ? 'animate-spin' : ''}`} />
+                {portalDataLoading ? 'Atualizando…' : 'Tentar novamente'}
+              </Button>
+            </div>
+          )}
+
           {/* ─── Next Appointment ─── */}
           <p role="status" aria-live="polite" aria-atomic="true" className={actionNotice ? 'rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-sm' : 'sr-only'}>{actionNotice}</p>
           {actionWarning && (
@@ -1098,14 +1164,21 @@ export default function PortalPaciente() {
                         {schedulingError}
                       </div>
                     )}
+                    {schedulingNotice && (
+                      <p role="status" className="rounded-lg border border-success/20 bg-success/5 p-3 text-sm text-success">
+                        {schedulingNotice}
+                      </p>
+                    )}
 
                     <div className="space-y-2">
                       <label className="text-sm font-medium">Médico *</label>
                       <select
                         value={schedulingForm.medico_id}
                         onChange={(e) => {
-                          setSchedulingForm(f => ({ ...f, medico_id: e.target.value, hora_inicio: '' }));
-                          setAvailableSlots([]);
+                          const medicoId = e.target.value;
+                          setSchedulingNotice('');
+                          setSchedulingForm(f => ({ ...f, medico_id: medicoId, hora_inicio: '' }));
+                          void loadAvailableSlots(medicoId, schedulingForm.data);
                         }}
                         className="w-full px-3 py-2 border rounded-lg bg-background text-foreground"
                       >
@@ -1124,10 +1197,10 @@ export default function PortalPaciente() {
                         type="date"
                         value={schedulingForm.data}
                         onChange={(e) => {
-                          setSchedulingForm(f => ({ ...f, data: e.target.value, hora_inicio: '' }));
-                          if (e.target.value && schedulingForm.medico_id) {
-                            loadAvailableSlots(schedulingForm.medico_id, e.target.value);
-                          }
+                          const data = e.target.value;
+                          setSchedulingNotice('');
+                          setSchedulingForm(f => ({ ...f, data, hora_inicio: '' }));
+                          void loadAvailableSlots(schedulingForm.medico_id, data);
                         }}
                         min={todayDateOnly()}
                         className="w-full px-3 py-2 border rounded-lg bg-background text-foreground"
@@ -1178,11 +1251,11 @@ export default function PortalPaciente() {
 
                     <Button
                       onClick={handleCreateAgendamento}
-                      disabled={!schedulingForm.medico_id || !schedulingForm.data || !schedulingForm.hora_inicio || schedulingLoading}
+                      disabled={!schedulingForm.medico_id || !schedulingForm.data || !schedulingForm.hora_inicio || schedulingLoading || schedulingSubmitting}
                       className="w-full gap-2"
                     >
                       <Calendar className="h-4 w-4" />
-                      {schedulingLoading ? 'Agendando…' : 'Confirmar Agendamento'}
+                      {schedulingSubmitting ? 'Agendando…' : 'Confirmar Agendamento'}
                     </Button>
                   </CardContent>
                 </Card>
@@ -1213,13 +1286,13 @@ export default function PortalPaciente() {
                             <div className="space-y-3">
                               <div className="flex items-center justify-between">
                                 <div className="flex items-start gap-3 flex-1">
-                                  <div className={`p-2.5 rounded-xl ${isToday(dataAg) ? 'bg-primary/20' : 'bg-muted'}`}>
-                                    <Calendar className={`h-4 w-4 ${isToday(dataAg) ? 'text-primary' : 'text-muted-foreground'}`} />
+                                  <div className={`p-2.5 rounded-xl ${a.data === hojeNaClinica ? 'bg-primary/20' : 'bg-muted'}`}>
+                                    <Calendar className={`h-4 w-4 ${a.data === hojeNaClinica ? 'text-primary' : 'text-muted-foreground'}`} />
                                   </div>
                                   <div className="space-y-0.5">
                                     <div className="flex items-center font-semibold text-sm">
                                       {a.tipo || 'Consulta'}
-                                      {isToday(dataAg) && <Badge className="ml-2 bg-primary text-primary-foreground text-[9px]">HOJE</Badge>}
+                                      {a.data === hojeNaClinica && <Badge className="ml-2 bg-primary text-primary-foreground text-[9px]">HOJE</Badge>}
                                     </div>
                                     <p className="text-sm text-muted-foreground">
                                       {format(dataAg, "dd 'de' MMM, yyyy", { locale: ptBR })}

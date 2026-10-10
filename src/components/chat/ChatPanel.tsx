@@ -15,6 +15,7 @@ import { useChatInterno, type ChatConversa, type ChatUsuario, type ChatMensagem 
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { format, isToday, isYesterday } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { toast } from 'sonner';
 
 // ─── Helpers ───────────────────────────────────────────────
 const getInitials = (name: string) =>
@@ -242,7 +243,7 @@ function ViewConversa({
   currentUserId: string;
   loading: boolean;
   onBack: () => void;
-  onEnviar: (texto: string, urgente: boolean) => void;
+  onEnviar: (texto: string, urgente: boolean) => Promise<boolean>;
 }) {
   const [texto, setTexto] = useState('');
   const [urgente, setUrgente] = useState(false);
@@ -264,12 +265,20 @@ function ViewConversa({
   const handleEnviar = async () => {
     if (!texto.trim() || enviando) return;
     setEnviando(true);
-    await onEnviar(texto.trim(), urgente);
-    setTexto('');
-    setUrgente(false);
-    setShowEmojis(false);
-    setEnviando(false);
-    inputRef.current?.focus();
+    try {
+      const enviado = await onEnviar(texto.trim(), urgente);
+      if (enviado) {
+        setTexto('');
+        setUrgente(false);
+        setShowEmojis(false);
+      }
+    } catch {
+      // Keep the draft so a transient failure does not erase the message.
+      toast.error('Não foi possível confirmar o envio. O rascunho foi mantido.');
+    } finally {
+      setEnviando(false);
+      inputRef.current?.focus();
+    }
   };
 
   const outroNome = conversa.outro_usuario?.nome ?? 'Usuário';

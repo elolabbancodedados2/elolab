@@ -18,7 +18,7 @@
  * outra decisão. A tela diz isso em voz alta, porque "arquivar" sugere o
  * contrário.
  */
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Archive, ArchiveRestore, Trash2, Loader2, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
@@ -60,6 +60,7 @@ export function AcoesDaClinica({ clinicaId, nome, arquivada }: Props) {
   const [motivo, setMotivo] = useState('');
   const [confirmacao, setConfirmacao] = useState('');
   const [conteudo, setConteudo] = useState<Conteudo | null>(null);
+  const operationLock = useRef(false);
 
   const atualizar = () => queryClient.invalidateQueries({ queryKey: ['platform-clinicas-overview'] });
 
@@ -68,6 +69,8 @@ export function AcoesDaClinica({ clinicaId, nome, arquivada }: Props) {
   }
 
   async function abrirExclusao() {
+    if (operationLock.current) return;
+    operationLock.current = true;
     setOcupado(true);
     try {
       // O que há dentro vem do banco, não de um palpite da tela: é a MESMA
@@ -80,11 +83,14 @@ export function AcoesDaClinica({ clinicaId, nome, arquivada }: Props) {
     } catch (e: any) {
       toast.error('Não consegui verificar o conteúdo da clínica', { description: e?.message });
     } finally {
+      operationLock.current = false;
       setOcupado(false);
     }
   }
 
   async function arquivar() {
+    if (operationLock.current) return;
+    operationLock.current = true;
     setOcupado(true);
     try {
       const { data, error } = await (supabase as any)
@@ -96,11 +102,14 @@ export function AcoesDaClinica({ clinicaId, nome, arquivada }: Props) {
     } catch (e: any) {
       toast.error('Não consegui arquivar', { description: e?.message });
     } finally {
+      operationLock.current = false;
       setOcupado(false);
     }
   }
 
   async function desarquivar() {
+    if (operationLock.current) return;
+    operationLock.current = true;
     setOcupado(true);
     try {
       const { error } = await (supabase as any)
@@ -111,11 +120,14 @@ export function AcoesDaClinica({ clinicaId, nome, arquivada }: Props) {
     } catch (e: any) {
       toast.error('Não consegui desarquivar', { description: e?.message });
     } finally {
+      operationLock.current = false;
       setOcupado(false);
     }
   }
 
   async function excluir() {
+    if (operationLock.current) return;
+    operationLock.current = true;
     setOcupado(true);
     try {
       const { data, error } = await (supabase as any)
@@ -127,6 +139,7 @@ export function AcoesDaClinica({ clinicaId, nome, arquivada }: Props) {
     } catch (e: any) {
       toast.error('Não consegui excluir', { description: e?.message });
     } finally {
+      operationLock.current = false;
       setOcupado(false);
     }
   }
@@ -157,7 +170,7 @@ export function AcoesDaClinica({ clinicaId, nome, arquivada }: Props) {
       </Button>
 
       {/* ─── Arquivar ─── */}
-      <Dialog open={aba === 'arquivar'} onOpenChange={a => !a && fechar()}>
+      <Dialog open={aba === 'arquivar'} onOpenChange={a => !a && !ocupado && fechar()}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Arquivar {nome}</DialogTitle>
@@ -176,13 +189,15 @@ export function AcoesDaClinica({ clinicaId, nome, arquivada }: Props) {
               <Label htmlFor="motivo-arquivar">Motivo (opcional)</Label>
               <Textarea
                 id="motivo-arquivar" rows={2} value={motivo}
+                maxLength={500}
                 onChange={e => setMotivo(e.target.value)}
                 placeholder="Ex.: cliente encerrou contrato em agosto"
+                disabled={ocupado}
               />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={fechar}>Cancelar</Button>
+            <Button variant="outline" onClick={fechar} disabled={ocupado}>Cancelar</Button>
             <Button onClick={arquivar} disabled={ocupado}>
               {ocupado && <Loader2 className="mr-1 h-4 w-4 animate-spin" />}Arquivar
             </Button>
@@ -191,7 +206,7 @@ export function AcoesDaClinica({ clinicaId, nome, arquivada }: Props) {
       </Dialog>
 
       {/* ─── Excluir ─── */}
-      <Dialog open={aba === 'excluir'} onOpenChange={a => !a && fechar()}>
+      <Dialog open={aba === 'excluir'} onOpenChange={a => !a && !ocupado && fechar()}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Excluir {nome}</DialogTitle>
@@ -230,13 +245,14 @@ export function AcoesDaClinica({ clinicaId, nome, arquivada }: Props) {
                   onChange={e => setConfirmacao(e.target.value)}
                   placeholder={nome}
                   autoComplete="off"
+                  disabled={ocupado}
                 />
               </div>
             </div>
           )}
 
           <DialogFooter>
-            <Button variant="outline" onClick={fechar}>Cancelar</Button>
+            <Button variant="outline" onClick={fechar} disabled={ocupado}>Cancelar</Button>
             {conteudo?.vazia && (
               <Button
                 variant="destructive" onClick={excluir}

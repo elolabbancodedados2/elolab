@@ -116,21 +116,85 @@ export function AppointmentCard({ agendamento, color, minutesToPx, onClick, conv
   /** Confirmação antes de cancelar/remover a consulta. */
   const [cancelandoCard, setCancelandoCard] = useState(false);
 
-  const setStatus = async (status: any) => {
-    const { error } = await (supabase.from('agendamentos').update({ status }).eq('id', agendamento.id) as any);
-    if (error) return toast.error('Erro ao atualizar', { description: mensagemDeErro(error) });
-    // Cancelar sem limpar a fila deixava o card fantasma do paciente na Fila
-    // (e no Painel TV) mesmo com a consulta cancelada.
-    if (status === 'cancelado' || status === 'faltou') {
-      const { error: filaErr } = await supabase
-        .from('fila_atendimento')
-        .delete()
-        .eq('agendamento_id', agendamento.id)
-        .neq('status', 'finalizado');
-      if (!filaErr) queryClient.invalidateQueries({ queryKey: ['fila_atendimento'] });
+  const invalidarAgendaEFila = () => {
+    void queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
+    void queryClient.invalidateQueries({ queryKey: ['fila_atendimento'] });
+  };
+  const invalidarFinanceiro = () => {
+    void queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
+  };
+
+  const fazerCheckin = () => checkinComCobranca({
+    agendamentoId: agendamento.id,
+    pacienteId: agendamento.paciente_id,
+    pacienteNome: agendamento.pacientes?.nome ?? patientName ?? 'Paciente',
+    convenioId: agendamento.pacientes?.convenio_id,
+    tipoConsulta: agendamento.tipo,
+    tipoExame: ['exame', 'exames'].includes(String(agendamento.tipo || '').toLocaleLowerCase('pt-BR'))
+      ? agendamento.observacoes
+      : null,
+    clinicaId: profile?.clinica_id,
+  });
+
+  const alterarStatusComFila = async (status: 'cancelado' | 'faltou') => {
+    if (!profile?.clinica_id) throw new Error('Não foi possível identificar a clínica. Atualize a sessão e tente novamente.');
+    const { data, error } = await (supabase as any).rpc('alterar_status_agendamento_com_fila', {
+      p_agendamento_id: agendamento.id,
+      p_clinica_id: profile.clinica_id,
+      p_status: status,
+      p_updated_at: agendamento.updated_at ?? null,
+    });
+    if (error) throw error;
+    const resultado = Array.isArray(data) ? data[0] : data;
+    if (!resultado?.atualizado) {
+      invalidarAgendaEFila();
+      throw new Error('A consulta mudou ou foi finalizada desde que a agenda foi carregada. Confira o status antes de tentar novamente.');
     }
-    toast.success('Status atualizado');
-    queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
+  };
+
+  const setStatus = async (status: 'confirmado' | 'aguardando' | 'faltou') => {
+    if (ocupado) return;
+    if (!profile?.clinica_id) {
+      toast.error('Não foi possível identificar a clínica. Atualize a sessão e tente novamente.');
+      return;
+    }
+    setOcupado(true);
+    try {
+      if (status === 'aguardando') {
+        const checkin = await fazerCheckin();
+        invalidarFinanceiro();
+        if (!checkin.success) throw new Error(checkin.message);
+        toast.success('Paciente encaminhado para a fila', { description: checkin.actions.join(' • ') });
+        invalidarAgendaEFila();
+        return;
+      }
+      if (status === 'faltou') {
+        await alterarStatusComFila(status);
+        toast.success('Falta registrada');
+        invalidarAgendaEFila();
+        return;
+      }
+      let update = supabase.from('agendamentos').update({ status })
+        .eq('id', agendamento.id)
+        .eq('clinica_id', profile.clinica_id);
+      update = agendamento.updated_at
+        ? update.eq('updated_at', agendamento.updated_at)
+        : update.is('updated_at', null);
+      const { data, error } = await (update.select('id').maybeSingle() as any);
+      if (error) throw error;
+      if (!data) {
+        invalidarAgendaEFila();
+        toast.error('A consulta mudou desde que a agenda foi carregada.', { description: 'Atualizei os dados. Confira o status antes de tentar novamente.' });
+        return;
+      }
+
+      toast.success('Status atualizado');
+      invalidarAgendaEFila();
+    } catch (error) {
+      toast.error('Erro ao atualizar a consulta', { description: mensagemDeErro(error) });
+    } finally {
+      setOcupado(false);
+    }
   };
 
   /**
@@ -147,17 +211,8 @@ export function AppointmentCard({ agendamento, color, minutesToPx, onClick, conv
   const iniciarAtendimento = async () => {
     setOcupado(true);
     try {
-      const checkin = await checkinComCobranca({
-        agendamentoId: agendamento.id,
-        pacienteId: agendamento.paciente_id,
-        pacienteNome: agendamento.pacientes?.nome ?? patientName ?? 'Paciente',
-        convenioId: agendamento.pacientes?.convenio_id,
-        tipoConsulta: agendamento.tipo,
-        tipoExame: ['exame', 'exames'].includes(String(agendamento.tipo || '').toLocaleLowerCase('pt-BR'))
-          ? agendamento.observacoes
-          : null,
-        clinicaId: profile?.clinica_id,
-      });
+      const checkin = await fazerCheckin();
+      invalidarFinanceiro();
       if (!checkin.success) throw new Error(checkin.message);
 
       const { data: item, error: erroFila } = await supabase
@@ -232,23 +287,24 @@ export function AppointmentCard({ agendamento, color, minutesToPx, onClick, conv
     }
   };
   const remove = async () => {
+    if (ocupado) return;
+    if (!profile?.clinica_id) {
+      toast.error('Não foi possível identificar a clínica. Atualize a sessão e tente novamente.');
+      return;
+    }
+    setOcupado(true);
     // Cancela e remove a fila junto — a confirmação é o ConfirmDialog abaixo
     // (antes era window.confirm nativo, fora do padrão do app).
-    const { error } = await (supabase
-      .from('agendamentos')
-      .update({ status: 'cancelado' })
-      .eq('id', agendamento.id) as any);
-    if (error) return toast.error('Erro ao cancelar', { description: mensagemDeErro(error) });
-    // A fila guardava o item do paciente mesmo com a consulta cancelada —
-    // ele continuava aparecendo na Fila e no Painel TV.
-    const { error: filaErr } = await supabase
-      .from('fila_atendimento')
-      .delete()
-      .eq('agendamento_id', agendamento.id)
-      .neq('status', 'finalizado');
-    if (!filaErr) queryClient.invalidateQueries({ queryKey: ['fila_atendimento'] });
-    toast.success('Consulta cancelada');
-    queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
+    try {
+      await alterarStatusComFila('cancelado');
+      invalidarAgendaEFila();
+      setCancelandoCard(false);
+      toast.success('Consulta cancelada');
+    } catch (error) {
+      toast.error('Erro ao cancelar a consulta', { description: mensagemDeErro(error) });
+    } finally {
+      setOcupado(false);
+    }
   };
 
   return (
@@ -320,17 +376,16 @@ export function AppointmentCard({ agendamento, color, minutesToPx, onClick, conv
           <Receipt className="mr-2 h-4 w-4" /> Extrato financeiro
         </ContextMenuItem>
         <ContextMenuSeparator />
-        <ContextMenuItem onSelect={() => setStatus('confirmado')}><CheckCircle2 className="mr-2 h-4 w-4" /> Confirmar</ContextMenuItem>
-        <ContextMenuItem onSelect={() => setStatus('aguardando')}>Marcar como aguardando</ContextMenuItem>
-        <ContextMenuItem disabled={ocupado} onSelect={iniciarAtendimento}><PlayCircle className="mr-2 h-4 w-4" /> Iniciar atendimento</ContextMenuItem>
+        <ContextMenuItem disabled={ocupado || agendamento.status !== 'agendado'} onSelect={() => setStatus('confirmado')}><CheckCircle2 className="mr-2 h-4 w-4" /> Confirmar</ContextMenuItem>
+        <ContextMenuItem disabled={ocupado || !agendamento.paciente_id || !['agendado', 'confirmado', 'aguardando'].includes(agendamento.status)} onSelect={() => setStatus('aguardando')}>Enviar para a fila</ContextMenuItem>
+        <ContextMenuItem disabled={ocupado || !agendamento.paciente_id || !['agendado', 'confirmado', 'aguardando'].includes(agendamento.status)} onSelect={iniciarAtendimento}><PlayCircle className="mr-2 h-4 w-4" /> Iniciar atendimento</ContextMenuItem>
         {agendamento.status === 'em_atendimento' && (
           <ContextMenuItem disabled={ocupado} onSelect={() => setFinalizandoCard(true)}>Finalizar</ContextMenuItem>
         )}
         <ContextMenuSeparator />
-        <ContextMenuItem onSelect={() => setStatus('faltou')} className="text-warning"><Ban className="mr-2 h-4 w-4" /> Marcar faltou</ContextMenuItem>
-        <ContextMenuItem onSelect={() => setStatus('cancelado')} className="text-destructive">Cancelar consulta</ContextMenuItem>
+        <ContextMenuItem disabled={ocupado || !['agendado', 'confirmado', 'aguardando'].includes(agendamento.status)} onSelect={() => setStatus('faltou')} className="text-warning"><Ban className="mr-2 h-4 w-4" /> Marcar faltou</ContextMenuItem>
         <ContextMenuSeparator />
-        <ContextMenuItem onSelect={() => setCancelandoCard(true)} className="text-destructive"><Trash2 className="mr-2 h-4 w-4" /> Remover</ContextMenuItem>
+        <ContextMenuItem disabled={ocupado || ['cancelado', 'faltou', 'finalizado', 'atendimento_finalizado', 'pago', 'aguardando_pagamento', 'aguardando_pagamento_adicional'].includes(agendamento.status)} onSelect={() => setCancelandoCard(true)} className="text-destructive"><Trash2 className="mr-2 h-4 w-4" /> Cancelar consulta</ContextMenuItem>
       </ContextMenuContent>
       <FinalizarAtendimentoDialog
         open={finalizandoCard}
@@ -345,7 +400,9 @@ export function AppointmentCard({ agendamento, color, minutesToPx, onClick, conv
         description="O histórico do paciente é preservado; o horário volta a ficar disponível e o paciente sai da fila de atendimento."
         confirmLabel="Cancelar consulta"
         variant="destructive"
-        onConfirm={() => { setCancelandoCard(false); remove(); }}
+        onConfirm={remove}
+        isLoading={ocupado}
+        closeOnConfirm={false}
       />
     </ContextMenu>
   );

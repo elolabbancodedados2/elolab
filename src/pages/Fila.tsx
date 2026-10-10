@@ -2,7 +2,7 @@ import { Switch } from '@/components/ui/switch';
 import { useCurrentMedico } from '@/hooks/useCurrentMedico';
 import { nomeMedico } from '@/lib/formatters';
 import { formatCurrency } from '@/lib/formatters';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -27,16 +27,18 @@ import { supabase } from '@/integrations/supabase/client';
 import { checkinComCobranca } from '@/lib/checkinWithBilling';
 import { autoFinalizarAtendimento } from '@/lib/workflowAutomation';
 import { atomicStartAppointment as autoIniciarAtendimento } from '@/lib/operationalTransitions';
-import { useFilaAtendimento, useAgendamentos, usePacientes, useMedicos, useSalas } from '@/hooks/useSupabaseData';
+import { useFilaAtendimento, useAgendamentos, useMedicos, useSalas } from '@/hooks/useSupabaseData';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { podeAtender, saldoDevedor } from '@/lib/liberacaoAtendimento';
 import { passouPelaTriagem } from '@/lib/liberacaoTriagem';
 import { ordenarFilaPorPrioridade } from '@/lib/filaPrioridade';
 import { podeIniciarAgendamento, separarFilaAtivaPorData } from '@/lib/filaPorData';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
-import { format, formatDistanceToNow } from 'date-fns';
+import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { dateOnlyInTimeZone, parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { ListSkeleton } from '@/components/ui/loading-skeleton';
+import { ErrorState } from '@/components/ErrorState';
 import { canalUnico } from '@/lib/realtimeCanal';
 
 // ─── Helpers ───────────────────────────────────────────────
@@ -55,6 +57,23 @@ function corEspera(horarioChegada: string | null): string {
   if (mins < 30) return 'text-warning';
   return 'text-destructive font-semibold';
 }
+
+function formatarHorarioClinica(horarioChegada: string | null): string {
+  if (!horarioChegada) return '—';
+  const instante = new Date(horarioChegada);
+  if (!Number.isFinite(instante.getTime())) return '—';
+  return new Intl.DateTimeFormat('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(instante);
+}
+
+const ocorreuNoDiaDaClinica = (dataHora: string | null | undefined, data: string) => {
+  if (!dataHora) return false;
+  const instante = new Date(dataHora);
+  return Number.isFinite(instante.getTime()) && dateOnlyInTimeZone(instante, 'America/Sao_Paulo') === data;
+};
 
 const STATUS_CONFIG = {
   aguardando: { label: 'Aguardando', color: 'bg-warning/10 text-warning border-warning/20' },
@@ -77,9 +96,10 @@ const cardAnim = {
 };
 
 // ─── Queue Card ────────────────────────────────────────────
-function FilaCard({ item, pos, pacienteNome, medicoNome, salaNome, canRemove, onIniciar, onFinalizar, onChamar, onRemover, onAbrirProntuario, now }: {
+function FilaCard({ item, pos, pacienteNome, medicoNome, salaNome, canRemove, actionsDisabled, isBusy, onIniciar, onFinalizar, onChamar, onRemover, onAbrirProntuario, now }: {
   item: any; pos: number; pacienteNome: string; medicoNome: string; salaNome: string;
   canRemove: boolean;
+  actionsDisabled: boolean; isBusy: boolean;
   onIniciar: () => void; onFinalizar: () => void; onChamar: () => void; onRemover: () => void;
   /** Volta ao prontuário de quem já está em atendimento (aba fechada, recarga). */
   onAbrirProntuario?: () => void;
@@ -92,7 +112,7 @@ function FilaCard({ item, pos, pacienteNome, medicoNome, salaNome, canRemove, on
 
   return (
     <motion.div variants={cardAnim} layout>
-      <div className={cn(
+      <div aria-busy={isBusy} className={cn(
         'rounded-2xl border bg-card transition-all duration-200',
         status === 'em_atendimento' && 'border-primary/40 shadow-lg shadow-primary/10 ring-1 ring-primary/20',
         status === 'finalizado' && 'opacity-60',
@@ -135,11 +155,17 @@ function FilaCard({ item, pos, pacienteNome, medicoNome, salaNome, canRemove, on
               {calcularEspera(item.horario_chegada)}
             </p>
             <p className="text-[10px] text-muted-foreground">
-              {item.horario_chegada ? format(new Date(item.horario_chegada), 'HH:mm', { locale: ptBR }) : '—'}
+              {formatarHorarioClinica(item.horario_chegada)}
             </p>
           </div>
 
           {/* Status badge */}
+          {isBusy && (
+            <span role="status" className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+              <Loader2 className="h-4 w-4 shrink-0 animate-spin text-primary" />
+              <span className="sr-only">Atualizando paciente</span>
+            </span>
+          )}
           <Badge className={cn('text-xs shrink-0 border', cfg.color)}>{cfg.label}</Badge>
         </div>
 
@@ -148,31 +174,36 @@ function FilaCard({ item, pos, pacienteNome, medicoNome, salaNome, canRemove, on
           <div className="flex items-center gap-2 px-4 pb-3 pt-1 border-t border-border/50">
             {status === 'aguardando' && (
               <>
-                <Button size="sm" className="gap-1.5 h-7 text-xs" onClick={onChamar}>
+                <Button size="sm" className="gap-1.5 h-11 px-3 text-xs sm:h-9" onClick={onChamar} disabled={actionsDisabled}>
                   <Bell className="h-3.5 w-3.5" /> Chamar
                 </Button>
-                <Button size="sm" variant="default" className="gap-1.5 h-7 text-xs bg-primary" onClick={onIniciar}>
+                <Button size="sm" variant="default" className="gap-1.5 h-11 px-3 text-xs bg-primary sm:h-9" onClick={onIniciar} disabled={actionsDisabled}>
                   <Play className="h-3.5 w-3.5" /> Iniciar
                 </Button>
               </>
             )}
             {status === 'chamado' && (
-              <Button size="sm" className="gap-1.5 h-7 text-xs" onClick={onIniciar}>
-                <Play className="h-3.5 w-3.5" /> Iniciar Atendimento
-              </Button>
+              <>
+                <Button size="sm" variant="outline" className="gap-1.5 h-11 px-3 text-xs sm:h-9" onClick={onChamar} disabled={actionsDisabled}>
+                  <Bell className="h-3.5 w-3.5" /> Chamar novamente
+                </Button>
+                <Button size="sm" className="gap-1.5 h-11 px-3 text-xs sm:h-9" onClick={onIniciar} disabled={actionsDisabled}>
+                  <Play className="h-3.5 w-3.5" /> Iniciar Atendimento
+                </Button>
+              </>
             )}
             {status === 'em_atendimento' && onAbrirProntuario && (
-              <Button size="sm" variant="outline" className="gap-1.5 h-7 text-xs" onClick={onAbrirProntuario}>
+              <Button size="sm" variant="outline" className="gap-1.5 h-11 px-3 text-xs sm:h-9" onClick={onAbrirProntuario}>
                 <FileText className="h-3.5 w-3.5" /> Abrir prontuário
               </Button>
             )}
             {status === 'em_atendimento' && (
-              <Button size="sm" variant="default" className="gap-1.5 h-7 text-xs bg-success text-white hover:bg-success/90" onClick={onFinalizar}>
+              <Button size="sm" variant="default" className="gap-1.5 h-11 px-3 text-xs bg-success text-white hover:bg-success/90 sm:h-9" onClick={onFinalizar} disabled={actionsDisabled}>
                 <CheckCircle2 className="h-3.5 w-3.5" /> Finalizar
               </Button>
             )}
             {canRemove && (
-              <Button size="sm" variant="ghost" className="gap-1.5 h-7 text-xs text-destructive ml-auto" onClick={onRemover} aria-label="Remover da fila">
+              <Button size="icon" variant="ghost" className="h-11 w-11 shrink-0 text-destructive ml-auto sm:h-9 sm:w-9" onClick={onRemover} aria-label={`Remover ${pacienteNome} da fila`} title={`Remover ${pacienteNome} da fila`} disabled={actionsDisabled}>
                 <XCircle className="h-3.5 w-3.5" />
               </Button>
             )}
@@ -190,6 +221,7 @@ export default function Fila() {
   const [selectedPrioridade, setSelectedPrioridade] = useState('normal');
   const [isSaving, setIsSaving] = useState(false);
   const [removeId, setRemoveId] = useState<string | null>(null);
+  const [isRemoving, setIsRemoving] = useState(false);
   /**
    * Finalização pendente, esperando a resposta sobre retorno.
    *
@@ -213,6 +245,8 @@ export default function Fila() {
   const [motivoLiberacao, setMotivoLiberacao] = useState('');
   const [salvandoLiberacao, setSalvandoLiberacao] = useState(false);
   const [now, setNow] = useState(Date.now());
+  const [busyQueueId, setBusyQueueId] = useState<string | null>(null);
+  const queueActionLock = useRef<string | null>(null);
 
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -222,40 +256,16 @@ export default function Fila() {
   const apenasMeus = apenasMeusEscolhido ?? isMedicoOnly;
   const canRemoveFromQueue = hasAnyRole(['admin', 'recepcao']);
   const podeVerValorCobranca = hasAnyRole(['admin', 'recepcao']);
-  const today = format(new Date(), 'yyyy-MM-dd');
+  const today = todaySaoPauloDateOnly();
 
-  const { data: fila = [], isLoading: loadingFila } = useFilaAtendimento();
-  const { data: agendamentos = [], isLoading: loadingAgendamentos } = useAgendamentos(today);
-  const { data: pacientes = [] } = usePacientes();
-  const { data: medicos = [] } = useMedicos();
+  const filaQuery = useFilaAtendimento();
+  const { data: fila = [], isLoading: loadingFila } = filaQuery;
+  const agendamentosQuery = useAgendamentos(today);
+  const { data: agendamentos = [], isLoading: loadingAgendamentos } = agendamentosQuery;
+  const medicosQuery = useMedicos();
+  const { data: medicos = [] } = medicosQuery;
   const { data: salas = [] } = useSalas();
   const idsAgendamentosHoje = agendamentos.map(ag => ag.id);
-
-  /**
-   * Saldo devedor dos atendimentos do dia.
-   *
-   * A fila não carregava lançamento nenhum: o profissional não tinha como saber
-   * se o paciente passou pelo balcão, e "Iniciar" chamava qualquer um.
-   */
-  const { data: cobrancas = [] } = useQuery({
-    queryKey: ['fila-cobrancas', profile?.clinica_id, idsAgendamentosHoje],
-    staleTime: 15_000,
-    refetchInterval: 15_000,
-    refetchIntervalInBackground: false,
-    queryFn: async () => {
-      if (!profile?.clinica_id || idsAgendamentosHoje.length === 0) return [];
-      const { data, error } = await supabase
-        .from('lancamentos')
-        .select('agendamento_id, valor, valor_pago, desconto, acrescimo')
-        .eq('clinica_id', profile.clinica_id)
-        .eq('tipo', 'receita')
-        .in('agendamento_id', idsAgendamentosHoje)
-        .not('status', 'in', '("cancelado","estornado")');
-      if (error) throw error;
-      return data ?? [];
-    },
-    enabled: !!profile?.clinica_id && idsAgendamentosHoje.length > 0 && podeVerValorCobranca,
-  });
 
   /** A clínica ligou a trava de pagamento e/ou a de triagem? */
   const { data: clinicaConfig, isLoading: carregandoRegrasClinica, isError: erroRegrasClinica } = useQuery({
@@ -274,6 +284,32 @@ export default function Fila() {
 
   const travaLigada = Boolean(clinicaConfig?.exigir_pagamento_previo);
   const triagemLigada = Boolean(clinicaConfig?.exigir_triagem);
+
+  /**
+   * Saldo devedor dos atendimentos do dia.
+   *
+   * A fila não carregava lançamento nenhum: o profissional não tinha como saber
+   * se o paciente passou pelo balcão, e "Iniciar" chamava qualquer um.
+   */
+  const { data: cobrancas = [], isLoading: carregandoCobrancas, isError: erroCobrancas } = useQuery({
+    queryKey: ['fila-cobrancas', profile?.clinica_id, idsAgendamentosHoje],
+    staleTime: 15_000,
+    refetchInterval: 15_000,
+    refetchIntervalInBackground: false,
+    queryFn: async () => {
+      if (!profile?.clinica_id || idsAgendamentosHoje.length === 0) return [];
+      const { data, error } = await supabase
+        .from('lancamentos')
+        .select('agendamento_id, valor, valor_pago, desconto, acrescimo')
+        .eq('clinica_id', profile.clinica_id)
+        .eq('tipo', 'receita')
+        .in('agendamento_id', idsAgendamentosHoje)
+        .not('status', 'in', '("cancelado","estornado")');
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: !!profile?.clinica_id && travaLigada && idsAgendamentosHoje.length > 0 && podeVerValorCobranca,
+  });
 
   /**
    * O RLS financeiro oculta cobranÃ§as de consulta de mÃ©dicos e enfermagem.
@@ -300,22 +336,25 @@ export default function Fila() {
    * Quem já tem triagem hoje. Só busca quando a clínica usa triagem — nas
    * outras a consulta seria peso morto em toda abertura da fila.
    */
-  const { data: triagensFeitas = [] } = useQuery({
-    queryKey: ['fila-triagens', profile?.clinica_id],
+  const triagensQuery = useQuery({
+    queryKey: ['fila-triagens', profile?.clinica_id, today, idsAgendamentosHoje],
     staleTime: 15_000,
     refetchInterval: 15_000,
     refetchIntervalInBackground: false,
     queryFn: async () => {
+      if (idsAgendamentosHoje.length === 0) return [];
       const { data, error } = await supabase
         .from('triagens')
         .select('agendamento_id')
         .eq('clinica_id', profile!.clinica_id!)
+        .in('agendamento_id', idsAgendamentosHoje)
         .not('agendamento_id', 'is', null);
       if (error) throw error;
       return (data ?? []).map((t: any) => t.agendamento_id as string);
     },
-    enabled: !!profile?.clinica_id && triagemLigada,
+    enabled: !!profile?.clinica_id && triagemLigada && idsAgendamentosHoje.length > 0,
   });
+  const triagensFeitas = triagensQuery.data ?? [];
 
   const triagensPorAgendamento = useMemo(
     () => new Set(triagensFeitas),
@@ -331,6 +370,9 @@ export default function Fila() {
     if (filaItem?.cobranca_estado === 'pendente') return false;
     if (carregandoRegrasClinica || erroRegrasClinica) return false;
     if (travaLigada) {
+      // Nunca liberar chamada usando um resultado antigo depois que a
+      // revalidação do servidor falhou. A RPC continua sendo a autoridade.
+      if (verificandoPagamento || erroVerificacaoPagamento) return false;
       return liberacoesPagamento.some(l => l.agendamento_id === agendamentoId && l.pode_atender);
     }
     return podeAtender(
@@ -430,17 +472,17 @@ export default function Fila() {
 
   // Só os finalizados HOJE: ordenar por updated_at sem filtro de data trazia
   // os cinco últimos de qualquer dia — semana passada incluso.
-  const inicioDoDia = new Date(); inicioDoDia.setHours(0, 0, 0, 0);
-  const filaFinalizada = filaVisivel
-    .filter(f => f.status === 'finalizado' && new Date(f.updated_at || f.created_at || 0) >= inicioDoDia)
-    .sort((a, b) => new Date(b.updated_at || 0).getTime() - new Date(a.updated_at || 0).getTime())
+  const filaFinalizadaHoje = filaVisivel
+    .filter(f => f.status === 'finalizado' && ocorreuNoDiaDaClinica(f.updated_at || f.created_at, today))
+    .sort((a, b) => new Date(b.updated_at || 0).getTime() - new Date(a.updated_at || 0).getTime());
+  const filaFinalizada = filaFinalizadaHoje
     .slice(0, 5);
 
   const getPacienteNome = (agId: string) => {
     const ag = agendamentos.find(a => a.id === agId) as any;
-    const agDaFila = fila.find(f => f.agendamento_id === agId)?.agendamentos;
-    return ag?.pacientes?.nome ?? agDaFila?.pacientes?.nome ??
-      pacientes.find(p => p.id === (ag?.paciente_id ?? agDaFila?.paciente_id))?.nome ?? 'Desconhecido';
+    const agDaFila = fila.find(f => f.agendamento_id === agId)?.agendamentos as any;
+    return ag?.pacientes?.nome_social || ag?.pacientes?.nome
+      || agDaFila?.pacientes?.nome_social || agDaFila?.pacientes?.nome || 'Desconhecido';
   };
 
   const getMedicoNome = (agId: string) => {
@@ -463,13 +505,30 @@ export default function Fila() {
     queryClient.invalidateQueries({ queryKey: ['fila-liberacao-pagamento', profile?.clinica_id] });
   };
 
+  const withQueueAction = async (id: string, action: () => Promise<void>) => {
+    if (queueActionLock.current) return;
+    queueActionLock.current = id;
+    setBusyQueueId(id);
+    try {
+      await action();
+    } catch (error) {
+      toast.error('Não foi possível atualizar a fila.', {
+        description: mensagemDeErro(error),
+      });
+      refresh();
+    } finally {
+      queueActionLock.current = null;
+      setBusyQueueId(null);
+    }
+  };
+
   const handleAddToFila = async () => {
     if (!selectedAgendamento) { toast.error('Selecione um agendamento.'); return; }
 
     setIsSaving(true);
     try {
       const agendamento = agendamentos.find((item) => item.id === selectedAgendamento);
-      const paciente = agendamento && pacientes.find((item) => item.id === agendamento.paciente_id);
+      const paciente = (agendamento as any)?.pacientes;
       if (!agendamento || !paciente) {
         throw new Error('Não foi possível carregar os dados do agendamento. Atualize a tela e tente novamente.');
       }
@@ -479,7 +538,7 @@ export default function Fila() {
       const result = await checkinComCobranca({
         agendamentoId: agendamento.id,
         pacienteId: agendamento.paciente_id,
-        pacienteNome: paciente.nome || 'Paciente',
+        pacienteNome: paciente.nome_social || paciente.nome || 'Paciente',
         convenioId: paciente.convenio_id,
         tipoConsulta: agendamento.tipo,
         tipoExame: ['exame', 'exames'].includes(String(agendamento.tipo || '').toLocaleLowerCase('pt-BR'))
@@ -534,14 +593,19 @@ export default function Fila() {
     if (!finalizando) return;
     const { filaId, agendamentoId } = finalizando;
     const ag = agendamentos.find(a => a.id === agendamentoId);
-    if (!ag) { setFinalizando(null); return; }
+    if (!ag) {
+      setFinalizando(null);
+      refresh();
+      toast.warning('O agendamento não está mais disponível. A fila foi atualizada.');
+      return;
+    }
 
-    const pac = pacientes.find(p => p.id === ag.paciente_id);
+    const pac = (ag as any).pacientes;
     const result = await autoFinalizarAtendimento({
       agendamentoId,
       filaId,
       pacienteId: ag.paciente_id,
-      pacienteNome: pac?.nome || 'Paciente',
+      pacienteNome: pac?.nome_social || pac?.nome || 'Paciente',
       medicoId: ag.medico_id,
       convenioId: pac?.convenio_id,
       tipoConsulta: ag.tipo,
@@ -552,13 +616,13 @@ export default function Fila() {
       diasRetorno: dias ?? undefined,
     });
 
-    setFinalizando(null);
     refresh();
 
     if (!result.success) {
       toast.error('Não foi possível finalizar o atendimento', { description: result.message });
       return;
     }
+    setFinalizando(null);
     toast.success(`✅ Atendimento finalizado — ${pac?.nome || 'Paciente'}`, {
       description: result.actions.join(' • '),
       duration: 8000,
@@ -566,9 +630,10 @@ export default function Fila() {
     });
   };
 
-  const updateStatus = async (id: string, status: string, agendamentoId?: string) => {
+  const performStatusUpdate = async (id: string, status: string, agendamentoId?: string) => {
     // Voice call when chamado
     if (status === 'chamado' && agendamentoId) {
+      if (!profile?.clinica_id) throw new Error('Clínica não identificada. Atualize a sessão e tente novamente.');
       const ag = agendamentos.find(a => a.id === agendamentoId) as any;
       if (!ag || !podeIniciarAgendamento(ag.status) || ag.status === 'em_atendimento') {
         refresh();
@@ -578,9 +643,13 @@ export default function Fila() {
       // A sala vem do agendamento (definida na Agenda). Gravá-la na fila aqui
       // faz o Painel TV anunciar "Maria, Sala 1" — antes a coluna sala_id da
       // fila nunca era escrita por ninguém e a TV sempre dizia "Recepção".
+      const item = fila.find(f => f.id === id);
+      const statusEsperado = item?.status === 'chamado' ? 'chamado' : 'aguardando';
+      const salaId = ag?.sala_id ?? item?.sala_id ?? null;
       const { data: chamadaAtualizada, error: errFila } = await supabase
-        .from('fila_atendimento').update({ status, sala_id: ag?.sala_id ?? null })
-        .eq('id', id).eq('status', 'aguardando').select('id');
+        .from('fila_atendimento').update({ status, sala_id: salaId })
+        .eq('id', id).eq('clinica_id', profile.clinica_id)
+        .eq('status', statusEsperado).select('id');
       if (errFila) {
         toast.error('Não foi possível chamar o paciente. Tente novamente.', { description: mensagemDeErro(errFila) });
         return;
@@ -592,12 +661,11 @@ export default function Fila() {
         return;
       }
 
-      const item = fila.find(f => f.id === id);
       const nome = getPacienteNome(agendamentoId);
-      const sala = getSalaNome(ag?.sala_id ?? item?.sala_id ?? null);
+      const sala = getSalaNome(salaId);
       chamarPacienteVoz(nome, sala);
       refresh();
-      toast.success('📢 Paciente chamado!');
+      toast.success(statusEsperado === 'chamado' ? '📢 Paciente chamado novamente!' : '📢 Paciente chamado!');
       return;
     }
 
@@ -639,8 +707,17 @@ export default function Fila() {
     // Os dois updates tinham o erro descartado: numa falha de permissão a tela
     // só chamava refresh() e o card voltava ao estado anterior, sem explicação.
     // O paciente seguia na fila e no painel da sala de espera.
-    const { error: erroFila } = await supabase
-      .from('fila_atendimento').update({ status }).eq('id', id);
+    if (!profile?.clinica_id) throw new Error('Clínica não identificada. Atualize a sessão e tente novamente.');
+    const itemAtual = fila.find(item => item.id === id);
+    if (!itemAtual) {
+      refresh();
+      toast.warning('Este paciente já não está na lista atualizada.');
+      return;
+    }
+    const { data: filaAtualizada, error: erroFila } = await supabase
+      .from('fila_atendimento').update({ status })
+      .eq('id', id).eq('clinica_id', profile.clinica_id).eq('status', itemAtual.status)
+      .select('id').maybeSingle();
 
     if (erroFila) {
       toast.error('Não foi possível mudar o status na fila.', {
@@ -649,63 +726,77 @@ export default function Fila() {
       refresh();
       return;
     }
+    if (!filaAtualizada) {
+      refresh();
+      toast.warning('A fila mudou enquanto você atualizava. Confira o status atual antes de tentar novamente.');
+      return;
+    }
 
     if (agendamentoId) {
       const agStatus = status === 'em_atendimento' ? 'em_atendimento' : status === 'finalizado' ? 'finalizado' : 'aguardando';
-      const { error: erroAg } = await supabase
-        .from('agendamentos').update({ status: agStatus }).eq('id', agendamentoId);
+      const agAtual = agendamentos.find(ag => ag.id === agendamentoId);
+      const { data: agendamentoAtualizado, error: erroAg } = agAtual
+        ? await supabase.from('agendamentos').update({ status: agStatus })
+            .eq('id', agendamentoId).eq('clinica_id', profile.clinica_id).eq('status', agAtual.status as any)
+            .select('id').maybeSingle()
+        : { data: null, error: null };
 
-      if (erroAg) {
+      if (erroAg || !agendamentoAtualizado) {
         toast.warning('A fila foi atualizada, mas o agendamento não acompanhou.', {
-          description: `${erroAg.message}. A agenda pode mostrar este paciente com status antigo.`,
+          description: erroAg
+            ? `${erroAg.message}. A agenda pode mostrar este paciente com status antigo.`
+            : 'O agendamento mudou ou não foi encontrado na clínica atual. Atualize a agenda para conferir.',
         });
       }
     }
     refresh();
   };
 
-  const handleRemover = async (id: string) => {
+  const updateStatus = (id: string, status: string, agendamentoId?: string) =>
+    withQueueAction(id, () => performStatusUpdate(id, status, agendamentoId));
+
+  const performRemove = async (id: string) => {
     const item = fila.find(f => f.id === id);
-    const { data, error } = await supabase.from('fila_atendimento').delete()
-      .eq('id', id)
-      .eq('status', String(item?.status ?? ''))
-      .select('id');
-    setRemoveId(null);
-    if (error) {
-      toast.error('Falha ao remover da fila', { description: mensagemDeErro(error) });
+    if (!item) {
+      refresh();
+      setRemoveId(null);
+      toast.warning('Este item já saiu da fila. A lista foi atualizada.');
       return;
     }
-    if (!data?.length) {
+    const { data, error } = await (supabase as any).rpc('remover_item_fila_atomico', {
+      p_fila_id: id,
+      p_status_esperado: String(item.status),
+    });
+    if (error) {
+      toast.error('Falha ao remover da fila', { description: mensagemDeErro(error) });
       refresh();
+      return;
+    }
+    if (data?.removido !== true) {
+      refresh();
+      setRemoveId(null);
       toast.warning(canRemoveFromQueue
         ? 'O estado do paciente mudou. A fila foi atualizada.'
         : 'Seu perfil nao pode remover itens da fila.');
       return;
     }
-    // Remover durante o chamado ou o atendimento deixava o agendamento preso
-    // em 'em_atendimento' para sempre: o card sumia da fila, não aparecia em
-    // AtendimentosEmAberto (que só lista dias anteriores) e não podia ser
-    // re-adicionado. Voltar a 'aguardando' dá saída: o paciente pode ser
-    // re-chamado, ou cancelado na Agenda se foi embora.
-    if (item?.status === 'em_atendimento' && item.agendamento_id) {
-      const { data: agAtualizado, error: agErr } = await supabase
-        .from('agendamentos').update({ status: 'aguardando' })
-        .eq('id', item.agendamento_id).eq('status', 'em_atendimento').select('id');
-      if (agErr) {
-        toast.warning('A fila removeu o item, mas o agendamento continuou em andamento.', {
-          description: `${mensagemDeErro(agErr)} Verifique a agenda deste paciente.`,
-        });
-      } else if (!agAtualizado?.length) {
-        toast.warning('A fila foi removida, mas o agendamento mudou durante a operacao. Atualize a agenda.');
-      } else {
-        toast.info('Paciente removido da fila', {
-          description: 'O agendamento voltou a "aguardando" — pode ser re-chamado ou cancelado na Agenda.',
-        });
-      }
-    } else {
-      toast.info('Paciente removido da fila');
-    }
+    toast.info('Paciente removido da fila', {
+      description: data.atendimento_reaberto
+        ? 'O atendimento voltou para “aguardando” e pode ser chamado novamente.'
+        : 'O agendamento foi preservado.',
+    });
+    setRemoveId(null);
     refresh();
+  };
+
+  const handleRemover = async (id: string) => {
+    if (isRemoving) return;
+    setIsRemoving(true);
+    try {
+      await withQueueAction(id, () => performRemove(id));
+    } finally {
+      setIsRemoving(false);
+    }
   };
 
   /**
@@ -715,6 +806,10 @@ export default function Fila() {
    */
   const handleLiberar = async () => {
     if (!liberando) return;
+    if (!profile?.id || !profile?.clinica_id) {
+      toast.error('Não foi possível identificar seu usuário e clínica. Atualize a sessão antes de liberar este atendimento.');
+      return;
+    }
     const motivo = motivoLiberacao.trim();
     if (motivo.length < 5) {
       toast.error('Descreva o motivo da liberação (mínimo 5 caracteres).');
@@ -722,26 +817,33 @@ export default function Fila() {
     }
     setSalvandoLiberacao(true);
     try {
-      const { error } = liberando.tipo === 'pagamento'
+      const { data, error } = liberando.tipo === 'pagamento'
         ? await supabase
             .from('agendamentos')
             .update({
               liberado_sem_pagamento: true,
-              liberado_sem_pagamento_por: profile?.id,
+              liberado_sem_pagamento_por: profile.id,
               liberado_sem_pagamento_em: new Date().toISOString(),
               motivo_liberacao: motivo,
             })
             .eq('id', liberando.agendamentoId)
+            .eq('clinica_id', profile.clinica_id)
+            .select('id')
+            .maybeSingle()
         : await supabase
             .from('agendamentos')
             .update({
               liberado_sem_triagem: true,
-              liberado_sem_triagem_por: profile?.id,
+              liberado_sem_triagem_por: profile.id,
               liberado_sem_triagem_em: new Date().toISOString(),
               liberado_sem_triagem_motivo: motivo,
             })
-            .eq('id', liberando.agendamentoId);
+            .eq('id', liberando.agendamentoId)
+            .eq('clinica_id', profile.clinica_id)
+            .select('id')
+            .maybeSingle();
       if (error) throw error;
+      if (!data) throw new Error('A consulta não foi atualizada. Ela pode ter saído da fila ou estar em outra clínica; atualize os dados e tente novamente.');
       toast.success(`${liberando.nome} liberado${liberando.tipo === 'pagamento' ? ' do pagamento' : ' da triagem'}.`, {
         description: 'A liberação fica registrada com autor, data e justificativa.',
       });
@@ -758,13 +860,29 @@ export default function Fila() {
 
   // Stats
   const stats = {
-    // "Chamado" ainda não entrou no consultório: conta como aguardando, senão
-    // o número não bate com os cards da tela (achado de UX).
-    aguardando: filaAtiva.filter(f => f.status === 'aguardando' || f.status === 'chamado').length,
-    emAtendimento: filaAtiva.filter(f => f.status === 'em_atendimento').length,
-    finalizadosHoje: filaFinalizada.length,
-    urgentes: filaAtiva.filter(f => f.prioridade === 'urgente').length,
+    // Conta também quem está bloqueado por pagamento/triagem; continuam na
+    // fila ativa, embora apareçam em uma seção separada até serem liberados.
+    aguardando: filaAtivaCompleta.filter(f => f.status === 'aguardando' || f.status === 'chamado').length,
+    emAtendimento: filaAtivaCompleta.filter(f => f.status === 'em_atendimento').length,
+    finalizadosHoje: filaFinalizadaHoje.length,
+    urgentes: filaAtivaCompleta.filter(f => f.prioridade === 'urgente').length,
   };
+
+  // O vínculo médico é necessário para aplicar o escopo individual da fila.
+  // Sem esperar essa consulta, o primeiro render podia mostrar a fila da
+  // clínica inteira antes de o filtro "só meus" ser resolvido.
+  if (isMedicoOnly && medicosQuery.isLoading) return <ListSkeleton items={4} />;
+  if (isMedicoOnly && medicosQuery.isError) {
+    return <ErrorState title="Não foi possível identificar seu vínculo médico" error={medicosQuery.error} onRetry={() => void medicosQuery.refetch()} />;
+  }
+  if (isMedicoOnly && !meuMedicoId) {
+    return (
+      <ErrorState
+        title="Seu usuário não está vinculado a um médico"
+        description="A fila individual não pode ser exibida até que um administrador vincule sua conta ao cadastro médico correspondente."
+      />
+    );
+  }
 
   return (
     <div className="space-y-6 pb-8">
@@ -773,7 +891,7 @@ export default function Fila() {
         <div>
           <h1 className="text-2xl font-bold font-display tracking-tight">Fila de Atendimento</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            {format(new Date(), "EEEE, dd 'de' MMMM", { locale: ptBR })} • Atualiza automaticamente
+            {format(parseDateOnly(today)!, "EEEE, dd 'de' MMMM", { locale: ptBR })} • Atualiza automaticamente
           </p>
         </div>
         <div className="flex gap-2">
@@ -786,7 +904,7 @@ export default function Fila() {
           <Button variant="outline" size="sm" className="gap-2" onClick={refresh} aria-label="Atualizar fila">
             <RefreshCw className="h-4 w-4" />
           </Button>
-          <Button className="gap-2" onClick={() => setIsAddOpen(true)}>
+          <Button className="gap-2" onClick={() => setIsAddOpen(true)} disabled={filaQuery.isError || agendamentosQuery.isError}>
             <UserPlus className="h-4 w-4" /> Adicionar à Fila
           </Button>
         </div>
@@ -814,15 +932,27 @@ export default function Fila() {
       </div>
 
       {/* Queue */}
-      {isLoading ? (
+      {filaQuery.isError ? (
+        <ErrorState title="Não foi possível carregar a fila" error={filaQuery.error} onRetry={() => void filaQuery.refetch()} />
+      ) : agendamentosQuery.isError ? (
+        <ErrorState title="Não foi possível carregar os agendamentos de hoje" description="A fila foi pausada para não iniciar ou encerrar atendimentos com dados incompletos." error={agendamentosQuery.error} onRetry={() => void agendamentosQuery.refetch()} />
+      ) : isLoading ? (
         <ListSkeleton items={4} />
       ) : filaAtiva.length === 0 ? (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
           <Card>
             <CardContent className="flex flex-col items-center justify-center py-16 text-center">
               <Users className="h-14 w-14 text-muted-foreground/20 mb-4" />
-              <p className="font-semibold text-lg">Fila vazia</p>
-              <p className="text-sm text-muted-foreground mt-1 mb-6">Nenhum paciente aguardando atendimento</p>
+              <p className="font-semibold text-lg">
+                {filaAtivaCompleta.length > 0 || filaParaRevisar.length > 0
+                  ? 'Nenhum paciente liberado para chamada'
+                  : 'Fila vazia'}
+              </p>
+              <p className="text-sm text-muted-foreground mt-1 mb-6">
+                {filaAtivaCompleta.length > 0 || filaParaRevisar.length > 0
+                  ? 'Confira as pendências e os itens para revisão abaixo.'
+                  : 'Nenhum paciente aguardando atendimento agora.'}
+              </p>
               <Button onClick={() => setIsAddOpen(true)} className="gap-2">
                 <UserPlus className="h-4 w-4" /> Adicionar Paciente
               </Button>
@@ -841,6 +971,8 @@ export default function Fila() {
                 medicoNome={getMedicoNome(item.agendamento_id)}
                 salaNome={getSalaNome(item.sala_id)}
                 canRemove={canRemoveFromQueue}
+                actionsDisabled={busyQueueId !== null}
+                isBusy={busyQueueId === item.id}
                 now={now}
                 onChamar={() => updateStatus(item.id, 'chamado', item.agendamento_id)}
                 onIniciar={() => updateStatus(item.id, 'em_atendimento', item.agendamento_id)}
@@ -856,6 +988,16 @@ export default function Fila() {
             ))}
           </AnimatePresence>
         </motion.div>
+      )}
+
+      {triagemLigada && triagensQuery.isError && (
+        <ErrorState
+          compact
+          title="Não foi possível verificar as triagens"
+          description="Os atendimentos que exigem triagem permanecem bloqueados. Atualize para consultar novamente."
+          error={triagensQuery.error}
+          onRetry={() => void triagensQuery.refetch()}
+        />
       )}
 
       {filaParaRevisar.length > 0 && (
@@ -917,6 +1059,11 @@ export default function Fila() {
                 : <>Não podem ser chamados até passarem pelo balcão. A recepção resolve em
                     Recepção &rarr; Balcão{hasAnyRole(['admin', 'medico']) && ', ou um médico libera com justificativa'}.</>}
           </p>
+          {erroCobrancas && podeVerValorCobranca && (
+            <p className="text-xs text-destructive" role="alert">
+              Não foi possível consultar os valores das cobranças. O saldo será mostrado quando a consulta funcionar; atualize a fila para tentar novamente.
+            </p>
+          )}
           {erroRegrasClinica && (
             <p className="text-xs text-destructive" role="alert">
               Não foi possível carregar as regras de liberação. Atualize antes de iniciar atendimentos.
@@ -945,9 +1092,13 @@ export default function Fila() {
                       : verificandoPagamento
                         ? 'Verificando pagamento'
                         : erroVerificacaoPagamento
-                          ? 'Validação indisponível'
-                          : podeVerValorCobranca
-                            ? `${formatCurrency(saldoDoAgendamento(item.agendamento_id))}`
+                            ? 'Validação indisponível'
+                            : podeVerValorCobranca
+                            ? carregandoCobrancas
+                              ? 'Carregando saldo…'
+                              : erroCobrancas
+                                ? 'Valor indisponível'
+                                : `${formatCurrency(saldoDoAgendamento(item.agendamento_id))}`
                             : 'Pendente no balcão'}
                   </Badge>
                   {item.cobranca_estado !== 'pendente' && hasAnyRole(['admin', 'medico']) && (
@@ -1018,7 +1169,7 @@ export default function Fila() {
       {filaFinalizada.length > 0 && (
         <div>
           <p className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-2">
-            <CheckCircle2 className="h-3.5 w-3.5 text-success" /> Finalizados hoje
+            <CheckCircle2 className="h-3.5 w-3.5 text-success" /> Últimos 5 finalizados hoje
           </p>
           <div className="space-y-1.5">
             {filaFinalizada.map(item => (
@@ -1051,10 +1202,10 @@ export default function Fila() {
                   {agendamentosDisponiveis.length === 0 ? (
                     <SelectItem value="none" disabled>Nenhum agendamento disponível</SelectItem>
                   ) : agendamentosDisponiveis.map(ag => {
-                    const pac = pacientes.find(p => p.id === (ag as any).paciente_id);
+                    const pac = (ag as any).pacientes;
                     return (
                       <SelectItem key={ag.id} value={ag.id}>
-                        {pac?.nome ?? 'Paciente'} — {ag.hora_inicio?.slice(0, 5)}
+                        {pac?.nome_social || pac?.nome || 'Paciente'} — {ag.hora_inicio?.slice(0, 5)}
                       </SelectItem>
                     );
                   })}
@@ -1084,18 +1235,25 @@ export default function Fila() {
       </Dialog>
 
       {/* Confirm removal dialog */}
-      <AlertDialog open={!!removeId} onOpenChange={(open) => !open && setRemoveId(null)}>
+      <AlertDialog open={!!removeId} onOpenChange={(open) => !open && !isRemoving && setRemoveId(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Remover da fila?</AlertDialogTitle>
             <AlertDialogDescription>
-              O paciente será removido da fila de atendimento. Essa ação não pode ser desfeita.
+              O paciente será removido da fila. Se o atendimento estiver em andamento, o agendamento volta para “aguardando” e poderá ser chamado novamente.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={() => removeId && handleRemover(removeId)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              Remover
+            <AlertDialogCancel disabled={isRemoving}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={isRemoving}
+              onClick={(event) => {
+                event.preventDefault();
+                if (removeId) void handleRemover(removeId);
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isRemoving ? 'Removendo...' : 'Remover'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

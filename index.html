@@ -66,18 +66,36 @@
   <body>
     <div id="root">
       <style>
-        #initial-loader{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;background:#eef0f2;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;z-index:9999}
-        #initial-loader .brand{font-size:28px;font-weight:700;color:#0f172a;letter-spacing:-0.02em}
-        #initial-loader .brand span{color:#10b981}
-        #initial-loader .spinner{width:40px;height:40px;border-radius:50%;border:3px solid rgba(16,185,129,.15);border-top-color:#10b981;animation:il-spin .8s linear infinite}
-        #initial-loader .msg{font-size:13px;color:#64748b}
-        @keyframes il-spin{to{transform:rotate(360deg)}}
+        #initial-loader{position:fixed;inset:0;display:grid;place-items:center;padding:24px;background:radial-gradient(ellipse at 50% 42%,rgba(103,207,164,.13),transparent 34%),#f4f8f6;color:#153c31;font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;text-align:center;z-index:9999}
+        #initial-loader .content{width:min(100%,360px)}
+        #initial-loader .identity{display:flex;align-items:center;justify-content:center;gap:12px}
+        #initial-loader img{display:block;width:48px;height:48px;object-fit:contain}
+        #initial-loader .brand{font-size:25px;font-weight:700;color:#123f32;letter-spacing:-.055em}
+        #initial-loader .progress{position:relative;width:144px;height:3px;overflow:hidden;border-radius:999px;background:rgba(17,108,79,.14);margin:27px auto 21px}
+        #initial-loader .progress span{position:absolute;inset:0 auto 0 0;width:38%;border-radius:inherit;background:#1b9b6d;animation:il-glide 1.35s ease-in-out infinite}
+        #initial-loader .msg{margin:0;color:#193f34;font-size:16px;font-weight:600;letter-spacing:-.02em}
+        #initial-loader .detail{margin:7px 0 0;color:#667b72;font-size:13px;line-height:1.55}
+        #initial-loader .retry,#initial-loader .slow-copy{display:none}
+        #initial-loader .retry{min-height:42px;align-items:center;justify-content:center;margin-top:19px;padding:0 16px;border:1px solid rgba(17,108,79,.22);border-radius:11px;background:#fff;color:#116c4f;font-size:13px;font-weight:600;text-decoration:none}
+        #initial-loader.is-slow .progress span{animation:none;width:100%;opacity:.55}
+        #initial-loader.is-slow .slow-copy{display:block}
+        #initial-loader.is-slow .normal-copy{display:none}
+        #initial-loader.is-slow .retry{display:inline-flex}
+        @keyframes il-glide{0%{transform:translateX(-110%)}100%{transform:translateX(280%)}}
+        @media(prefers-reduced-motion:reduce){#initial-loader .progress span{animation:none;width:100%;opacity:.55}}
       </style>
       <div id="initial-loader">
-        <div class="brand">Elo<span>Lab</span></div>
-        <div class="spinner"></div>
-        <div class="msg">Carregando seu ambiente...</div>
+        <div class="content">
+          <div class="identity"><img src="/pwa-192x192.png" alt="" width="48" height="48" /><span class="brand">EloLab</span></div>
+          <div class="progress" aria-hidden="true"><span></span></div>
+          <p class="msg normal-copy">Preparando seu espaço de cuidado</p>
+          <p class="detail normal-copy">Agenda, prontuários e equipe estarão prontos em instantes.</p>
+          <p class="msg slow-copy">O carregamento está demorando</p>
+          <p class="detail slow-copy">Confira sua conexão e tente abrir o app novamente.</p>
+          <a class="retry" href="">Tentar novamente</a>
+        </div>
       </div>
+      <script src="/loader-timeout.js" defer></script>
     </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

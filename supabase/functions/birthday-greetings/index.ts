@@ -1,6 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { cronOrUserOk, cronForbidden, clinicaDoChamador } from '../_shared/cronAuth.ts';
 import { corsPadrao } from '../_shared/cors.ts';
+import { sendBrandedBrevoRequest } from '../_shared/brevoEmail.ts';
 
 // Atribuído em cada request (reflete a origem permitida). Helpers
 // top-level (json/reply) capturam esta variável por closure.
@@ -29,51 +30,75 @@ Deno.serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
-    const { data: settings } = await supabase
+    const { data: settings, error: settingsError } = await supabase
       .from('automation_settings')
       .select('valor, ativo, clinica_id')
       .eq('chave', 'aniversariantes')
+    if (settingsError) throw new Error(`Erro ao carregar as configurações da automação: ${settingsError.message}`)
 
-    const { data: templates } = await supabase
+    const { data: templates, error: templatesError } = await supabase
       .from('notification_templates')
       .select('*')
       .eq('categoria', 'aniversario')
       .eq('tipo', 'email')
       .eq('ativo', true)
+    if (templatesError) throw new Error(`Erro ao carregar o modelo de aniversário: ${templatesError.message}`)
 
     if (!templates || templates.length === 0) {
       throw new Error('Template de aniversário não encontrado')
     }
 
     const hoje = new Date()
-    const dia = String(hoje.getDate()).padStart(2, '0')
-    const mes = String(hoje.getMonth() + 1).padStart(2, '0')
+    const hojeBrasil = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit',
+    }).format(hoje)
+    const [, mes, dia] = hojeBrasil.split('-')
 
     // Disparo manual só alcança a clínica de quem clicou; o cron segue global.
     const clinicaAlvo = await clinicaDoChamador(req, supabase)
 
-    let consulta = supabase
-      .from('pacientes')
-      .select('id, nome, email, data_nascimento, clinica_id')
-      .not('email', 'is', null)
-      .not('data_nascimento', 'is', null)
-    if (clinicaAlvo) consulta = consulta.eq('clinica_id', clinicaAlvo)
+    const limitePacientes = 20_000
+    const tamanhoPagina = 1_000
+    const pacientesComNascimento: any[] = []
+    while (pacientesComNascimento.length < limitePacientes) {
+      const inicio = pacientesComNascimento.length
+      const fim = Math.min(inicio + tamanhoPagina, limitePacientes) - 1
+      let consulta = supabase
+        .from('pacientes')
+        .select('id, nome, email, data_nascimento, clinica_id')
+        .not('email', 'is', null)
+        .not('data_nascimento', 'is', null)
+        .order('clinica_id', { ascending: true })
+        .order('id', { ascending: true })
+        .range(inicio, fim)
+      if (clinicaAlvo) consulta = consulta.eq('clinica_id', clinicaAlvo)
 
-    const { data: aniversariantes, error: fetchError } = await consulta
-
-    if (fetchError) {
-      throw new Error(`Erro ao buscar pacientes: ${fetchError.message}`)
+      const { data: pagina, error: fetchError } = await consulta
+      if (fetchError) throw new Error(`Erro ao buscar pacientes: ${fetchError.message}`)
+      pacientesComNascimento.push(...(pagina || []))
+      if ((pagina || []).length < fim - inicio + 1) break
     }
 
-    const aniversariantesHoje = aniversariantes?.filter(p => {
+    if (pacientesComNascimento.length === limitePacientes) {
+      let consultaExtra = supabase.from('pacientes').select('id')
+        .not('email', 'is', null).not('data_nascimento', 'is', null)
+        .order('clinica_id', { ascending: true }).order('id', { ascending: true })
+        .range(limitePacientes, limitePacientes)
+      if (clinicaAlvo) consultaExtra = consultaExtra.eq('clinica_id', clinicaAlvo)
+      const { data: extra, error: extraError } = await consultaExtra
+      if (extraError) throw new Error(`Erro ao verificar o limite de pacientes: ${extraError.message}`)
+      if (extra?.length) throw new Error(`A consulta excedeu o limite de ${limitePacientes} pacientes; a execução foi interrompida para não deixar aniversariantes de fora.`)
+    }
+
+    const aniversariantesHoje = pacientesComNascimento.filter(p => {
       if (!p.data_nascimento) return false
-      const [ano, m, d] = p.data_nascimento.split('-')
+      const [, m, d] = p.data_nascimento.split('-')
       return d === dia && m === mes && isAutomationActive(settings || [], p.clinica_id)
     }) || []
 
     if (aniversariantesHoje.length === 0) {
       return new Response(
-        JSON.stringify({ success: true, message: 'Nenhum aniversariante hoje', aniversariantes: 0 }),
+        JSON.stringify({ success: true, message: 'Nenhum aniversariante hoje', aniversariantes: 0, stats: { aniversariantes: 0, enviados: 0, erros: 0 } }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
@@ -82,19 +107,33 @@ Deno.serve(async (req) => {
     let errorCount = 0
 
     for (const paciente of aniversariantesHoje) {
-      if (!paciente.email) continue
+      if (!paciente.email) {
+        errorCount++
+        continue
+      }
 
       const template = templateForClinic(templates || [], paciente.clinica_id)
-      if (!template) continue
+      if (!template) {
+        errorCount++
+        continue
+      }
 
-      const { data: existing } = await supabase
+      const { data: existing, error: existingError } = await supabase
         .from('notification_queue')
         .select('id')
+        .eq('clinica_id', paciente.clinica_id)
         .eq('destinatario_id', paciente.id)
         .eq('dados_extras->tipo', 'aniversario')
-        .gte('created_at', hoje.toISOString().split('T')[0])
-        .single()
+        .gte('created_at', `${hojeBrasil}T00:00:00-03:00`)
+        .neq('status', 'cancelado')
+        .limit(1)
+        .maybeSingle()
 
+      if (existingError) {
+        errorCount++
+        console.error(`Não foi possível conferir o envio de aniversário para ${paciente.id}:`, existingError)
+        continue
+      }
       if (existing) continue
 
       const conteudo = template.conteudo
@@ -105,10 +144,9 @@ Deno.serve(async (req) => {
         .replace(/\{\{paciente_nome\}\}/g, paciente.nome)
 
       try {
-        const emailRes = await fetch('https://api.brevo.com/v3/smtp/email', {
+        const emailRes = await sendBrandedBrevoRequest({
           method: 'POST',
           headers: {
-            'api-key': brevoApiKey,
             'Content-Type': 'application/json',
             'Accept': 'application/json',
           },
@@ -122,7 +160,7 @@ Deno.serve(async (req) => {
 
         if (emailRes.ok) {
           successCount++
-          await supabase.from('notification_queue').insert({
+          const { error: queueError } = await supabase.from('notification_queue').insert({
             template_id: template.id,
             tipo: 'email',
             destinatario_id: paciente.id,
@@ -135,6 +173,10 @@ Deno.serve(async (req) => {
             status: 'enviado',
             enviado_em: new Date().toISOString(),
           })
+          if (queueError) {
+            errorCount++
+            console.error(`E-mail de aniversário enviado, mas não foi registrado na fila (${paciente.id}):`, queueError)
+          }
         } else {
           errorCount++
         }
@@ -148,12 +190,12 @@ Deno.serve(async (req) => {
     await supabase.from('automation_logs').insert({
       tipo: 'aniversario',
       nome: 'Mensagens de Aniversário',
-      status: errorCount === 0 ? 'sucesso' : 'parcial',
+      status: successCount === 0 && errorCount > 0 ? 'erro' : errorCount > 0 ? 'parcial' : 'sucesso',
       registros_processados: aniversariantesHoje.length,
       registros_sucesso: successCount,
       registros_erro: errorCount,
       detalhes: {
-        data: hoje.toISOString().split('T')[0],
+        data: hojeBrasil,
         aniversariantes: aniversariantesHoje.map(p => ({ id: p.id, nome: p.nome })),
       },
       duracao_ms: duration,

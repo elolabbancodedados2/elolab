@@ -39,7 +39,7 @@ function escapeHtml(value: string): string {
  * e progresso de exame, uma falha aqui deixava a tela dizendo "Atendimento
  * iniciado" com a fila parada — e ninguém ficava sabendo.
  *
- * Uso: `await must(supabase.from('x').update({...}).eq('id', y));`
+ * Uso: `await must(atualizacaoDeAgendamento);`
  */
 async function must<T extends { error: unknown }>(op: PromiseLike<T>): Promise<T> {
   const res = await op;
@@ -271,7 +271,7 @@ export async function autoFinalizarAtendimento(params: {
 export async function autoCreateColeta(params: {
   exameId: string;
   pacienteId: string;
-  medicoId: string;
+  medicoId: string | null;
   tipoExame: string;
   urgente?: boolean;
   clinicaId?: string | null;
@@ -334,7 +334,7 @@ export async function autoCreateColeta(params: {
     await must(supabase.from('coletas_laboratorio').insert({
       exame_id: params.exameId,
       paciente_id: params.pacienteId,
-      medico_solicitante_id: params.medicoId,
+      medico_solicitante_id: params.medicoId || null,
       tipo_amostra: tipoAmostra,
       tubo,
       status: 'pendente',
@@ -862,13 +862,14 @@ export async function autoProgressExame(params: {
   novoStatus: string;
   pacienteId: string;
   pacienteNome: string;
-  medicoId: string;
+  medicoId: string | null;
   tipoExame: string;
   convenioId?: string | null;
   resultado?: string;
   clinicaId?: string | null;
 }): Promise<WorkflowResult> {
   const actions: string[] = [];
+  let exameAtualizado = false;
 
   try {
     const updateData: any = { status: params.novoStatus };
@@ -879,7 +880,15 @@ export async function autoProgressExame(params: {
       updateData.resultado = params.resultado;
     }
 
-    await must(supabase.from('exames').update(updateData).eq('id', params.exameId));
+    const { data: atualizado, error: erroAtualizacao } = await supabase
+      .from('exames')
+      .update(updateData)
+      .eq('id', params.exameId)
+      .select('id')
+      .maybeSingle();
+    if (erroAtualizacao) throw erroAtualizacao;
+    if (!atualizado) throw new Error('Exame não encontrado para atualização. Atualize a lista e tente novamente.');
+    exameAtualizado = true;
     actions.push(`Status do exame → ${params.novoStatus}`);
 
     // Auto-create coleta when exam is ordered
@@ -939,6 +948,13 @@ export async function autoProgressExame(params: {
 
     return { success: true, message: `Exame atualizado para ${params.novoStatus}`, actions };
   } catch (e: any) {
+    if (exameAtualizado) {
+      return {
+        success: true,
+        message: 'Status do exame atualizado; uma etapa complementar falhou.',
+        actions: [...actions, `Atenção: ${e?.message || 'uma automação complementar falhou'}`],
+      };
+    }
     return { success: false, message: e.message, actions };
   }
 }

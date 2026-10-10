@@ -140,6 +140,7 @@ for (const f of fs.readdirSync(migDir).filter(f => f.endsWith('.sql')).sort()) {
 // já que não tem credencial do Supabase.
 const arquivoSchemaReal = process.env.SCHEMA_REAL
   || (fs.existsSync('schema-real.json') ? 'schema-real.json' : null);
+const verificaTabelasNoSchemaReal = Boolean(arquivoSchemaReal);
 
 if (arquivoSchemaReal) {
   const real = JSON.parse(fs.readFileSync(arquivoSchemaReal, 'utf8'));
@@ -341,7 +342,20 @@ for (const f of arquivos) {
   while ((m = fromRe.exec(src))) {
     const tabela = m[1];
     const cols = schema.get(tabela);
-    if (!cols || cols.size === 0) continue;
+    if (!cols) {
+      if (verificaTabelasNoSchemaReal) {
+        const linha = src.slice(0, m.index).split('\n').length;
+        achados.push({
+          f,
+          linha,
+          tabela,
+          op: '.from()',
+          col: 'tabela ausente no esquema real',
+        });
+      }
+      continue;
+    }
+    if (cols.size === 0) continue;
 
     // A cadeia termina no fim do statement OU no próximo .from(), o que vier
     // antes. Sem o segundo limite, consultas irmãs dentro de um

@@ -44,7 +44,7 @@ const steps = [
   {
     icon: Rocket,
     title: 'Tudo pronto!',
-    description: 'Explore os módulos no menu lateral. Use Ctrl+K para busca rápida e Alt+1-9 para atalhos. Bom trabalho!',
+    description: 'Explore os módulos no menu lateral. Use Ctrl+K para busca rápida e Alt+H, Alt+P, Alt+A e outros atalhos documentados para navegar. Bom trabalho!',
     color: 'hsl(168, 76%, 36%)',
   },
 ];

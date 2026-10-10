@@ -1,7 +1,7 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import {
   Plus, Search, Edit, Trash2, Building2, Shield, FileText, Clock,
-  ExternalLink, User, Phone, Loader2, Globe, FlaskConical, DollarSign,
+  ExternalLink, User, Phone, Loader2, Globe, FlaskConical, DollarSign, Power,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,6 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
+import { ErrorState } from '@/components/ErrorState';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -25,8 +26,39 @@ import { useConvenios } from '@/hooks/useSupabaseData';
 import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
+import { normalizarTexto } from '@/lib/buscaPaciente';
 
 const VERSOES_TISS = ['04.01.00', '04.00.02', '03.05.00', '03.04.01'];
+
+function normalizarCnpj(value: string | null | undefined): string {
+  return String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
+
+function cnpjValido(value: string): boolean {
+  const cnpj = normalizarCnpj(value);
+  if (!/^[A-Z0-9]{12}\d{2}$/.test(cnpj) || /^([A-Z0-9])\1{13}$/.test(cnpj)) return false;
+
+  const calcularDigito = (base: string, pesos: number[]) => {
+    const soma = [...base].reduce((total, caractere, indice) =>
+      total + (caractere.charCodeAt(0) - 48) * pesos[indice], 0);
+    const resto = soma % 11;
+    return resto < 2 ? 0 : 11 - resto;
+  };
+
+  const primeiro = calcularDigito(cnpj.slice(0, 12), [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]);
+  const segundo = calcularDigito(`${cnpj.slice(0, 12)}${primeiro}`, [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]);
+  return cnpj.endsWith(`${primeiro}${segundo}`);
+}
+
+function urlHttpsSegura(value: string | null | undefined): string | null {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' ? url.href : null;
+  } catch {
+    return null;
+  }
+}
 
 interface FormData {
   nome: string;
@@ -83,15 +115,18 @@ function TabelaExamesConvenio({ convenioId }: { convenioId: string }) {
   const [editingExameId, setEditingExameId] = useState<string | null>(null);
   const [isExameFormOpen, setIsExameFormOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const exameSaveLock = useRef(false);
+  const [isDeletingExame, setIsDeletingExame] = useState(false);
+  const exameDeleteLock = useRef(false);
   const [searchExame, setSearchExame] = useState('');
   const [deleteExameId, setDeleteExameId] = useState<string | null>(null);
 
-  const { data: exames = [], isLoading } = useQuery({
+  const { data: exames = [], isLoading, isFetching, error: erroExames, refetch: refetchExames } = useQuery({
     queryKey: ['precos-exames-convenio', profile?.id ?? null, profile?.clinica_id ?? null, convenioId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('precos_exames_convenio')
-        .select('*')
+        .select('id,tipo_exame,codigo_tuss,descricao,valor_tabela,valor_filme,valor_total,valor_custo,valor_repasse,ativo,created_at,updated_at')
         .eq('convenio_id', convenioId)
         .eq('clinica_id', profile?.clinica_id ?? '')
         .order('tipo_exame');
@@ -103,9 +138,9 @@ function TabelaExamesConvenio({ convenioId }: { convenioId: string }) {
 
   const filteredExames = useMemo(() =>
     (exames as any[]).filter(e =>
-      e.tipo_exame.toLowerCase().includes(searchExame.toLowerCase()) ||
-      (e.codigo_tuss || '').includes(searchExame) ||
-      (e.descricao || '').toLowerCase().includes(searchExame.toLowerCase())
+      normalizarTexto(e.tipo_exame).includes(normalizarTexto(searchExame.trim())) ||
+      normalizarTexto(e.codigo_tuss).includes(normalizarTexto(searchExame.trim())) ||
+      normalizarTexto(e.descricao).includes(normalizarTexto(searchExame.trim()))
     ), [exames, searchExame]);
 
   const handleNewExame = () => {
@@ -129,28 +164,42 @@ function TabelaExamesConvenio({ convenioId }: { convenioId: string }) {
   };
 
   const handleSaveExame = async () => {
-    if (!exameForm.tipo_exame) { toast.error('Tipo do exame é obrigatório.'); return; }
+    if (exameSaveLock.current) return;
+    if (!profile?.clinica_id) { toast.error('Clínica não identificada.'); return; }
+    if (isLoading || isFetching || erroExames) { toast.error('Atualize a tabela de exames antes de salvar.'); return; }
+    if (!exameForm.tipo_exame.trim()) { toast.error('Tipo do exame é obrigatório.'); return; }
+    const valores = [exameForm.valor_tabela, exameForm.valor_filme, exameForm.valor_custo, exameForm.valor_repasse];
+    if (!valores.every(Number.isFinite)) { toast.error('Confira os valores da tabela: todos devem ser números válidos.'); return; }
     if (exameForm.valor_tabela <= 0) { toast.error('Valor da tabela deve ser maior que zero.'); return; }
+    if ([exameForm.valor_filme, exameForm.valor_custo, exameForm.valor_repasse].some(valor => valor < 0)) {
+      toast.error('Filme, custo e repasse não podem ser negativos.'); return;
+    }
+    if (valores.some(valor => Math.abs(valor * 100 - Math.round(valor * 100)) >= 1e-7)) {
+      toast.error('Os valores da tabela devem ter no máximo duas casas decimais.'); return;
+    }
+    exameSaveLock.current = true;
     setIsSaving(true);
     try {
       const payload = {
         convenio_id: convenioId,
-        tipo_exame: exameForm.tipo_exame,
-        codigo_tuss: exameForm.codigo_tuss || null,
-        descricao: exameForm.descricao || null,
+        tipo_exame: exameForm.tipo_exame.trim(),
+        codigo_tuss: exameForm.codigo_tuss.trim() || null,
+        descricao: exameForm.descricao.trim() || null,
         valor_tabela: exameForm.valor_tabela,
         valor_filme: exameForm.valor_filme || 0,
         valor_custo: exameForm.valor_custo || 0,
         valor_repasse: exameForm.valor_repasse || 0,
       };
       if (editingExameId) {
-        const { error } = await supabase.from('precos_exames_convenio').update(payload).eq('id', editingExameId);
+        const { data, error } = await supabase.from('precos_exames_convenio').update(payload)
+          .eq('id', editingExameId).eq('convenio_id', convenioId).eq('clinica_id', profile.clinica_id).select('id').maybeSingle();
         if (error) throw error;
+        if (!data) throw new Error('O exame não foi atualizado. Verifique se ele ainda existe e se você tem permissão.');
         toast.success('Exame atualizado!');
       } else {
         const { error } = await supabase.from('precos_exames_convenio').insert({
           ...payload,
-          clinica_id: profile?.clinica_id || null,
+          clinica_id: profile.clinica_id,
         });
         if (error) throw error;
         toast.success('Exame adicionado à tabela!');
@@ -158,21 +207,28 @@ function TabelaExamesConvenio({ convenioId }: { convenioId: string }) {
       queryClient.invalidateQueries({ queryKey: ['precos-exames-convenio'] });
       setIsExameFormOpen(false);
     } catch (err: any) {
-      toast.error(err.message || 'Erro ao salvar exame.');
-    } finally { setIsSaving(false); }
+      const message = err.code === '23505'
+        ? 'Já existe um exame com este nome para este convênio. Edite o registro existente.'
+        : err.message || 'Erro ao salvar exame.';
+      toast.error(message);
+    } finally { exameSaveLock.current = false; setIsSaving(false); }
   };
 
   const handleDeleteExame = async () => {
-    if (!deleteExameId) return;
+    if (!deleteExameId || exameDeleteLock.current) return;
+    if (!profile?.clinica_id) { toast.error('Clínica não identificada.'); setDeleteExameId(null); return; }
+    exameDeleteLock.current = true;
+    setIsDeletingExame(true);
     try {
-      const { data, error } = await supabase.from('precos_exames_convenio').delete().eq('id', deleteExameId).select('id');
+      const { data, error } = await supabase.from('precos_exames_convenio').delete()
+        .eq('id', deleteExameId).eq('convenio_id', convenioId).eq('clinica_id', profile.clinica_id).select('id');
       if (error) throw error;
       if (!data || data.length === 0) { toast.error('Sem permissão para excluir.'); return; }
       toast.success('Exame removido da tabela.');
       queryClient.invalidateQueries({ queryKey: ['precos-exames-convenio'] });
     } catch (err: any) {
       toast.error(err.message || 'Erro ao excluir.');
-    } finally { setDeleteExameId(null); }
+    } finally { exameDeleteLock.current = false; setIsDeletingExame(false); setDeleteExameId(null); }
   };
 
   const formatCurrency = (v: number) =>
@@ -189,10 +245,10 @@ function TabelaExamesConvenio({ convenioId }: { convenioId: string }) {
         <div className="flex gap-2 w-full sm:w-auto">
           <div className="relative flex-1 sm:w-56">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-            <Input placeholder="Buscar exame ou TUSS..." value={searchExame}
+            <Input aria-label="Buscar exame por nome, TUSS ou descrição" placeholder="Buscar exame ou TUSS..." value={searchExame}
               onChange={e => setSearchExame(e.target.value)} className="pl-8 h-9 text-sm" />
           </div>
-          <Button size="sm" onClick={handleNewExame} className="gap-1.5">
+          <Button size="sm" onClick={handleNewExame} className="gap-1.5" disabled={isLoading || isFetching || !!erroExames}>
             <Plus className="h-3.5 w-3.5" /> Adicionar Exame
           </Button>
         </div>
@@ -204,11 +260,14 @@ function TabelaExamesConvenio({ convenioId }: { convenioId: string }) {
           <Skeleton className="h-10 w-full" />
           <Skeleton className="h-10 w-full" />
         </div>
+      ) : erroExames ? (
+        <ErrorState compact error={erroExames} title="Não foi possível carregar a tabela de exames" onRetry={() => { void refetchExames(); }} />
       ) : filteredExames.length === 0 ? (
         <div className="text-center py-10 text-muted-foreground">
           <FlaskConical className="h-10 w-10 mx-auto mb-3 opacity-40" />
-          <p className="font-medium">Nenhum exame cadastrado nesta tabela</p>
-          <p className="text-sm mt-1">Adicione os exames e seus valores para este convênio.</p>
+          <p className="font-medium">{exames.length === 0 ? 'Nenhum exame cadastrado nesta tabela' : 'Nenhum exame encontrado'}</p>
+          <p className="text-sm mt-1">{exames.length === 0 ? 'Adicione os exames e seus valores para este convênio.' : 'Tente outro termo ou limpe a busca.'}</p>
+          {exames.length > 0 && <Button variant="link" onClick={() => setSearchExame('')}>Limpar busca</Button>}
         </div>
       ) : (
         <div className="rounded-md border max-h-[400px] overflow-y-auto">
@@ -262,7 +321,7 @@ function TabelaExamesConvenio({ convenioId }: { convenioId: string }) {
       )}
 
       {/* Exame Form Dialog */}
-      <Dialog open={isExameFormOpen} onOpenChange={setIsExameFormOpen}>
+      <Dialog open={isExameFormOpen} onOpenChange={open => { if (open || !isSaving) setIsExameFormOpen(open); }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -342,15 +401,15 @@ function TabelaExamesConvenio({ convenioId }: { convenioId: string }) {
       </Dialog>
 
       {/* Delete Exame Dialog */}
-      <AlertDialog open={!!deleteExameId} onOpenChange={() => setDeleteExameId(null)}>
+      <AlertDialog open={!!deleteExameId} onOpenChange={open => { if (open || !isDeletingExame) setDeleteExameId(open ? deleteExameId : null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Remover exame da tabela?</AlertDialogTitle>
             <AlertDialogDescription>O exame será removido da tabela de preços deste convênio.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeleteExame} className="bg-destructive text-destructive-foreground">Excluir</AlertDialogAction>
+            <AlertDialogCancel disabled={isDeletingExame}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteExame} disabled={isDeletingExame} className="bg-destructive text-destructive-foreground">{isDeletingExame && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Excluir</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -365,25 +424,33 @@ function Convenios() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingUpdatedAt, setEditingUpdatedAt] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [formData, setFormData] = useState<FormData>(initialFormData);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const convenioSaveLock = useRef(false);
+  const convenioDeleteLock = useRef(false);
+  const [atualizandoStatusId, setAtualizandoStatusId] = useState<string | null>(null);
   const [newPlano, setNewPlano] = useState('');
   const [activeTab, setActiveTab] = useState('dados');
 
   const queryClient = useQueryClient();
-  const { data: convenios = [], isLoading } = useConvenios();
+  const { data: convenios = [], isLoading, error: erroConvenios, refetch: refetchConvenios } = useConvenios();
 
   const filteredConvenios = useMemo(() =>
-    (convenios as any[]).filter(c =>
-      c.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      c.codigo.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (c.registro_ans || '').includes(searchTerm)
-    ), [convenios, searchTerm]);
+    (convenios as any[]).filter(c => {
+      const termo = searchTerm.trim();
+      const termoCnpj = normalizarCnpj(termo);
+      return normalizarTexto(c.nome).includes(normalizarTexto(termo)) ||
+        normalizarTexto(c.codigo).includes(normalizarTexto(termo)) ||
+        normalizarTexto(c.registro_ans).includes(normalizarTexto(termo)) ||
+        (termoCnpj.length >= 3 && normalizarCnpj(c.cnpj).includes(termoCnpj));
+    }), [convenios, searchTerm]);
 
   const handleNew = () => {
     setEditingId(null);
+    setEditingUpdatedAt(null);
     setFormData(initialFormData);
     setActiveTab('dados');
     setIsFormOpen(true);
@@ -391,6 +458,7 @@ function Convenios() {
 
   const handleEdit = (c: any) => {
     setEditingId(c.id);
+    setEditingUpdatedAt(c.updated_at || null);
     setFormData({
       nome: c.nome, codigo: c.codigo, cnpj: c.cnpj || '', telefone: c.telefone || '',
       email: c.email || '', website: c.website || '', valor_consulta: c.valor_consulta || 0,
@@ -408,36 +476,87 @@ function Convenios() {
 
   const handleDeleteClick = (id: string) => { setSelectedId(id); setIsDeleteOpen(true); };
 
+  const handleToggleAtivo = async (convenio: any) => {
+    if (atualizandoStatusId) return;
+    if (!profile?.clinica_id) { toast.error('Clínica não identificada.'); return; }
+    setAtualizandoStatusId(convenio.id);
+    try {
+      const { data, error } = await supabase.from('convenios')
+        .update({ ativo: !convenio.ativo })
+        .eq('id', convenio.id)
+        .eq('clinica_id', profile.clinica_id)
+        .select('id')
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) throw new Error('O status não foi alterado. Verifique se você tem permissão para editar este convênio.');
+      queryClient.invalidateQueries({ queryKey: ['convenios'] });
+      toast.success(convenio.ativo ? 'Convênio inativado.' : 'Convênio ativado.');
+    } catch (error: any) {
+      toast.error('Não foi possível alterar o status do convênio.', { description: error.message || 'Tente novamente.' });
+    } finally {
+      setAtualizandoStatusId(null);
+    }
+  };
+
   const handleDelete = async () => {
-    if (!selectedId) return;
+    if (!selectedId || convenioDeleteLock.current) return;
+    if (!profile?.clinica_id) { toast.error('Clínica não identificada.'); return; }
+    convenioDeleteLock.current = true;
     setIsDeleting(true);
     try {
-      const { data, error } = await supabase.from('convenios').delete().eq('id', selectedId).select('id');
+      const { data, error } = await supabase.from('convenios').delete()
+        .eq('id', selectedId).eq('clinica_id', profile.clinica_id).select('id');
       if (error) throw error;
       if (!data || data.length === 0) { toast.error('Sem permissão ou convênio já removido.'); return; }
       toast.success('Convênio excluído!');
       queryClient.invalidateQueries({ queryKey: ['convenios'] });
     } catch (error: any) {
-      toast.error(error.message || 'Erro ao excluir.');
-    } finally { setIsDeleting(false); setIsDeleteOpen(false); }
+      const message = error.code === '23503'
+        ? 'Este convênio possui pacientes, autorizações, preços ou lotes vinculados. Inative-o para preservar esses dados e o histórico.'
+        : error.message || 'Erro ao excluir.';
+      toast.error('Não foi possível excluir o convênio.', { description: message });
+    } finally { convenioDeleteLock.current = false; setIsDeleting(false); setIsDeleteOpen(false); }
   };
 
   const handleSave = async () => {
-    if (!formData.nome || !formData.codigo) { toast.error('Nome e código são obrigatórios.'); return; }
-    if (formData.cnpj) {
-      const cnpjDigits = formData.cnpj.replace(/\D/g, '');
-      if (cnpjDigits.length !== 14) { toast.error('CNPJ deve conter 14 dígitos.'); return; }
+    if (convenioSaveLock.current) return;
+    if (!profile?.clinica_id) { toast.error('Clínica não identificada. Atualize a sessão antes de salvar.'); return; }
+    const nome = formData.nome.trim();
+    const codigo = formData.codigo.trim().toUpperCase();
+    if (!nome || !codigo) { toast.error('Nome e código são obrigatórios.'); return; }
+    if (formData.cnpj.trim() && !cnpjValido(formData.cnpj)) {
+      toast.error('CNPJ inválido.', { description: 'Informe um CNPJ numérico ou alfanumérico válido com 14 caracteres.' });
+      return;
     }
     if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
       toast.error('E-mail do convênio inválido.'); return;
     }
-    if (formData.valor_consulta < 0 || formData.valor_retorno < 0) {
+    const valoresFinanceiros = [formData.valor_consulta, formData.valor_retorno];
+    if (!valoresFinanceiros.every(Number.isFinite)) {
+      toast.error('Informe valores válidos para consulta e retorno.'); return;
+    }
+    if (valoresFinanceiros.some(valor => valor < 0)) {
       toast.error('Valores não podem ser negativos.'); return;
     }
+    if (valoresFinanceiros.some(valor => Math.abs(valor * 100 - Math.round(valor * 100)) >= 1e-7)) {
+      toast.error('Valores de consulta e retorno devem ter no máximo duas casas decimais.'); return;
+    }
+    if (!Number.isInteger(formData.carencia) || !Number.isInteger(formData.prazo_retorno)
+      || !Number.isFinite(formData.taxa_glosa) || formData.carencia < 0 || formData.prazo_retorno < 0
+      || formData.taxa_glosa < 0 || formData.taxa_glosa > 100) {
+      toast.error('Revise a carência, o prazo de retorno e a taxa de glosa (de 0 a 100%).'); return;
+    }
+    if (Math.abs(formData.taxa_glosa * 100 - Math.round(formData.taxa_glosa * 100)) >= 1e-7) {
+      toast.error('A taxa de glosa deve ter no máximo duas casas decimais.'); return;
+    }
+    if ([formData.website, formData.portal_url].some(value => value.trim() && !urlHttpsSegura(value.trim()))) {
+      toast.error('Website e portal do convênio devem usar um endereço HTTPS válido.'); return;
+    }
+    convenioSaveLock.current = true;
     setIsSubmitting(true);
     try {
       const payload = {
-        nome: formData.nome, codigo: formData.codigo, cnpj: formData.cnpj || null,
+        nome, codigo, cnpj: formData.cnpj.trim().toUpperCase() || null,
         telefone: formData.telefone || null, email: formData.email || null,
         website: formData.website || null, valor_consulta: formData.valor_consulta,
         valor_retorno: formData.valor_retorno, carencia: formData.carencia, ativo: formData.ativo,
@@ -451,8 +570,13 @@ function Convenios() {
       };
 
       if (editingId) {
-        const { error } = await supabase.from('convenios').update(payload).eq('id', editingId);
+        if (!editingUpdatedAt) throw new Error('Não foi possível confirmar a versão deste convênio. Feche e abra o cadastro novamente antes de salvar.');
+        const { data, error } = await supabase.from('convenios').update(payload)
+          .eq('id', editingId).eq('clinica_id', profile.clinica_id).eq('updated_at', editingUpdatedAt)
+          .select('id, updated_at').maybeSingle();
         if (error) throw error;
+        if (!data) throw new Error('Este convênio foi alterado ou removido em outra sessão. Seus dados continuam no formulário; reabra o cadastro e confira as alterações antes de salvar novamente.');
+        setEditingUpdatedAt(data.updated_at);
         toast.success('Convênio atualizado!');
       } else {
         const { data, error } = await supabase.from('convenios').insert({
@@ -468,8 +592,11 @@ function Convenios() {
         setIsFormOpen(false);
       }
     } catch (error: any) {
-      toast.error(error.message || 'Erro ao salvar.');
-    } finally { setIsSubmitting(false); }
+      const message = error.code === '23505'
+        ? 'Já existe um convênio com este código interno. Use outro código.'
+        : error.message || 'Erro ao salvar.';
+      toast.error('Não foi possível salvar o convênio.', { description: message });
+    } finally { convenioSaveLock.current = false; setIsSubmitting(false); }
   };
 
   const addPlano = () => {
@@ -486,6 +613,7 @@ function Convenios() {
   const formatCurrency = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 
   if (isLoading) return <div className="space-y-6"><Skeleton className="h-10 w-64" /><Skeleton className="h-96" /></div>;
+  if (erroConvenios) return <ErrorState error={erroConvenios} title="Não foi possível carregar os convênios" onRetry={() => { void refetchConvenios(); }} />;
 
   return (
     <div className="space-y-6">
@@ -523,7 +651,7 @@ function Convenios() {
             <CardTitle>Lista de Convênios ({filteredConvenios.length})</CardTitle>
             <div className="relative w-full sm:w-72">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input placeholder="Buscar nome, código ou ANS..." value={searchTerm}
+              <Input aria-label="Buscar convênio por nome, código, ANS ou CNPJ" placeholder="Buscar nome, código, ANS ou CNPJ..." value={searchTerm}
                 onChange={e => setSearchTerm(e.target.value)} className="pl-9" />
             </div>
           </div>
@@ -547,7 +675,8 @@ function Convenios() {
                   <TableRow>
                     <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                       <Building2 className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                      <p>Nenhum convênio encontrado</p>
+                      <p>{convenios.length === 0 ? 'Nenhum convênio cadastrado ainda' : 'Nenhum convênio corresponde à busca'}</p>
+                      {convenios.length > 0 && <Button variant="link" onClick={() => setSearchTerm('')}>Limpar busca</Button>}
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -594,15 +723,27 @@ function Convenios() {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
-                          {c.portal_url && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            aria-label={c.ativo ? `Inativar convênio ${c.nome}` : `Ativar convênio ${c.nome}`}
+                            title={c.ativo ? 'Inativar convênio' : 'Ativar convênio'}
+                            onClick={() => void handleToggleAtivo(c)}
+                            disabled={atualizandoStatusId !== null}
+                          >
+                            {atualizandoStatusId === c.id
+                              ? <Loader2 className="h-4 w-4 animate-spin" />
+                              : <Power className={cn('h-4 w-4', c.ativo ? 'text-muted-foreground' : 'text-success')} />}
+                          </Button>
+                          {urlHttpsSegura(c.portal_url) && (
                             <Button variant="ghost" size="icon" asChild title="Portal do convênio">
-                              <a href={c.portal_url} target="_blank" rel="noopener noreferrer">
+                              <a href={urlHttpsSegura(c.portal_url)!} target="_blank" rel="noopener noreferrer">
                                 <ExternalLink className="h-4 w-4" />
                               </a>
                             </Button>
                           )}
-                          <Button variant="ghost" size="icon" aria-label={`Editar convênio ${c.nome}`} onClick={() => handleEdit(c)}><Edit className="h-4 w-4" /></Button>
-                          <Button variant="ghost" size="icon" aria-label={`Excluir convênio ${c.nome}`} onClick={() => handleDeleteClick(c.id)}>
+                          <Button variant="ghost" size="icon" aria-label={`Editar convênio ${c.nome}`} onClick={() => handleEdit(c)} disabled={atualizandoStatusId !== null || isDeleting}><Edit className="h-4 w-4" /></Button>
+                          <Button variant="ghost" size="icon" aria-label={`Excluir convênio ${c.nome}`} onClick={() => handleDeleteClick(c.id)} disabled={atualizandoStatusId !== null || isDeleting}>
                             <Trash2 className="h-4 w-4 text-destructive" />
                           </Button>
                         </div>
@@ -617,7 +758,7 @@ function Convenios() {
       </Card>
 
       {/* ── Form Dialog with Tabs ── */}
-      <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
+      <Dialog open={isFormOpen} onOpenChange={open => { if (open || !isSubmitting) setIsFormOpen(open); }}>
         <DialogContent className="max-w-3xl max-h-[95vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -626,6 +767,7 @@ function Convenios() {
             </DialogTitle>
           </DialogHeader>
 
+          <fieldset disabled={isSubmitting} className="contents">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 overflow-hidden flex flex-col">
             <TabsList className="w-full grid grid-cols-2">
               <TabsTrigger value="dados" className="gap-1.5">
@@ -650,7 +792,7 @@ function Convenios() {
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs">CNPJ</Label>
-                <Input value={formData.cnpj} onChange={e => setFormData({ ...formData, cnpj: e.target.value })} placeholder="00.000.000/0001-00" />
+                <Input value={formData.cnpj} onChange={e => setFormData({ ...formData, cnpj: e.target.value.toUpperCase() })} placeholder="00.000.000/0001-00 ou AA.AAA.AAA/AAAA-00" />
               </div>
 
               {/* Dados ANS */}
@@ -702,12 +844,12 @@ function Convenios() {
                   <div className="space-y-1.5">
                     <Label className="text-xs">Carência (dias)</Label>
                     <Input type="number" value={formData.carencia}
-                      onChange={e => setFormData({ ...formData, carencia: parseInt(e.target.value) || 0 })} />
+                      onChange={e => setFormData({ ...formData, carencia: Number(e.target.value) || 0 })} />
                   </div>
                   <div className="space-y-1.5">
                     <Label className="text-xs">Prazo de Retorno (dias)</Label>
                     <Input type="number" value={formData.prazo_retorno}
-                      onChange={e => setFormData({ ...formData, prazo_retorno: parseInt(e.target.value) || 30 })} />
+                      onChange={e => setFormData({ ...formData, prazo_retorno: Number(e.target.value) || 0 })} />
                   </div>
                   <div className="space-y-1.5">
                     <Label className="text-xs">Taxa Glosa (%)</Label>
@@ -735,9 +877,17 @@ function Convenios() {
                 </div>
                 {formData.tipo_planos.length > 0 && (
                   <div className="flex flex-wrap gap-1.5">
-                    {formData.tipo_planos.map(p => (
-                      <Badge key={p} variant="secondary" className="gap-1 cursor-pointer" onClick={() => removePlano(p)}>
-                        {p} ×
+                    {formData.tipo_planos.map(plano => (
+                      <Badge key={plano} variant="secondary" className="min-h-11 gap-1">
+                        <span>{plano}</span>
+                        <button
+                          type="button"
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-full hover:bg-muted-foreground/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          aria-label={`Remover plano ${plano}`}
+                          onClick={() => removePlano(plano)}
+                        >
+                          ×
+                        </button>
                       </Badge>
                     ))}
                   </div>
@@ -810,6 +960,7 @@ function Convenios() {
               )}
             </TabsContent>
           </Tabs>
+          </fieldset>
 
           <DialogFooter className="flex-shrink-0 pt-4 border-t">
             <Button variant="outline" onClick={() => setIsFormOpen(false)} disabled={isSubmitting}>Fechar</Button>
@@ -823,11 +974,11 @@ function Convenios() {
       </Dialog>
 
       {/* Delete Dialog */}
-      <AlertDialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>
+      <AlertDialog open={isDeleteOpen} onOpenChange={open => { if (open || !isDeleting) setIsDeleteOpen(open); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Confirmar exclusão</AlertDialogTitle>
-            <AlertDialogDescription>Tem certeza que deseja excluir este convênio? Esta ação não pode ser desfeita.</AlertDialogDescription>
+            <AlertDialogDescription>Excluir remove este convênio permanentemente. A exclusão será bloqueada se houver pacientes, autorizações, preços ou lotes vinculados. Para preservar esses dados, prefira inativar o convênio pela lista.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isDeleting}>Cancelar</AlertDialogCancel>

@@ -43,7 +43,7 @@ interface SupabaseAuthContextType {
   /** @deprecated use isPlatformAdmin */
   isSuperAdmin: boolean;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
-  signUp: (email: string, password: string, nome: string, telefone?: string, cpfCnpj?: string) => Promise<{ data: any; error: Error | null }>;
+  signUp: (email: string, password: string, nome: string, telefone?: string, cpfCnpj?: string, redirectTo?: string) => Promise<{ data: any; error: Error | null }>;
   signOut: () => Promise<void>;
   hasRole: (role: AppRole) => boolean;
   hasAnyRole: (roles: AppRole[]) => boolean;
@@ -52,6 +52,18 @@ interface SupabaseAuthContextType {
 }
 
 const SupabaseAuthContext = createContext<SupabaseAuthContextType | undefined>(undefined);
+
+const AUTH_BOOTSTRAP_TIMEOUT_MS = 15000;
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error('A verificação da sessão demorou mais que o esperado.')), timeoutMs);
+  });
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+}
 
 export function SupabaseAuthProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
@@ -216,15 +228,45 @@ export function SupabaseAuthProvider({ children }: { children: ReactNode }) {
     );
 
     // THEN check for existing session
-    supabase.auth.getSession().then(({ data: { session: existingSession } }) => {
-      void syncSession(existingSession);
-    });
+    void supabase.auth.getSession()
+      .then(({ data: { session: existingSession } }) => {
+        void syncSession(existingSession);
+      })
+      .catch((error) => {
+        if (!isMounted) return;
+        console.error('Error restoring auth session:', error);
+        setSession(null);
+        setUser(null);
+        setIsLoading(false);
+      });
 
     return () => {
       isMounted = false;
       subscription.unsubscribe();
     };
   }, []);
+
+  // Keep the persisted last-seen timestamp current while an authenticated tab
+  // is visible. The platform user list uses it as a recent-activity signal.
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const registrarAtividade = () => {
+      if (document.visibilityState !== 'visible') return;
+      void supabase
+        .from('profiles')
+        .update({ ultimo_acesso: new Date().toISOString() } as any)
+        .eq('id', user.id);
+    };
+
+    registrarAtividade();
+    const interval = window.setInterval(registrarAtividade, 5 * 60 * 1000);
+    document.addEventListener('visibilitychange', registrarAtividade);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', registrarAtividade);
+    };
+  }, [user?.id]);
 
   useEffect(() => {
     let isActive = true;
@@ -239,31 +281,42 @@ export function SupabaseAuthProvider({ children }: { children: ReactNode }) {
 
       setIsLoading(true);
 
-      // Ensure session is fully available before running RLS-protected queries
-      const { data: { session: latestSession } } = await supabase.auth.getSession();
+      try {
+        // A sessão precisa estar pronta antes das consultas protegidas por RLS.
+        // O limite evita deixar a aplicação presa no loader se o storage ou a
+        // inicialização do cliente Supabase não responder.
+        const { data: { session: latestSession } } = await withTimeout(
+          supabase.auth.getSession(),
+          AUTH_BOOTSTRAP_TIMEOUT_MS,
+        );
 
-      if (!isActive) return;
+        if (!isActive) return;
 
-      if (!latestSession?.user || latestSession.user.id !== user.id) {
+        if (!latestSession?.user || latestSession.user.id !== user.id) {
+          setProfile(null);
+          return;
+        }
+
+        const userProfile = await withTimeout(fetchProfile(user.id), AUTH_BOOTSTRAP_TIMEOUT_MS);
+        if (!isActive) return;
+        setProfile(userProfile);
+
+        const level = await withTimeout(fetchPlatformAdmin(user.id), AUTH_BOOTSTRAP_TIMEOUT_MS);
+        if (!isActive) return;
+        setPlatformAdminLevel(level);
+
+        const owner = await withTimeout(fetchIsClinicaOwner(user.id, userProfile?.clinica_id), AUTH_BOOTSTRAP_TIMEOUT_MS);
+        if (!isActive) return;
+        setIsClinicaOwner(owner);
+      } catch (error) {
+        if (!isActive) return;
+        console.error('Error initializing auth profile:', error);
         setProfile(null);
-        setIsLoading(false);
-        return;
+        setPlatformAdminLevel(null);
+        setIsClinicaOwner(false);
+      } finally {
+        if (isActive) setIsLoading(false);
       }
-
-      const userProfile = await fetchProfile(user.id);
-
-      if (!isActive) return;
-      setProfile(userProfile);
-
-      const level = await fetchPlatformAdmin(user.id);
-      if (!isActive) return;
-      setPlatformAdminLevel(level);
-
-      const owner = await fetchIsClinicaOwner(user.id, userProfile?.clinica_id);
-      if (!isActive) return;
-      setIsClinicaOwner(owner);
-
-      setIsLoading(false);
     };
 
     void syncProfileFromUser();
@@ -282,8 +335,8 @@ export function SupabaseAuthProvider({ children }: { children: ReactNode }) {
     return { error: error as Error | null };
   };
 
-  const signUp = async (email: string, password: string, nome: string, telefone?: string, cpfCnpj?: string) => {
-    const redirectUrl = 'https://app.elolab.com.br/';
+  const signUp = async (email: string, password: string, nome: string, telefone?: string, cpfCnpj?: string, redirectTo?: string) => {
+    const redirectUrl = redirectTo || 'https://app.elolab.com.br/';
     
     const { data, error } = await supabase.auth.signUp({
       email,

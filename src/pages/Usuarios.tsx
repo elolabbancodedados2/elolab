@@ -1,8 +1,8 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { format, formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { Edit, Trash2, Shield, UserCheck, UserX, Loader2, Clock, Circle } from 'lucide-react';
+import { Ban, Edit, Shield, UserCheck, UserX, Loader2, Clock, Circle, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -16,13 +16,12 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Checkbox } from '@/components/ui/checkbox';
+import { ErrorState } from '@/components/ErrorState';
 import {
   Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
 } from '@/components/ui/tooltip';
@@ -30,9 +29,10 @@ import { toast } from 'sonner';
 import { mensagemDeErro } from '@/lib/erros';
 import { useSupabaseQuery } from '@/hooks/useSupabaseData';
 import { supabase } from '@/integrations/supabase/client';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSupabaseAuth, AppRole } from '@/contexts/SupabaseAuthContext';
 import { cn } from '@/lib/utils';
+import { chamarAdminContas } from '@/lib/adminContas';
 
 interface Profile {
   id: string;
@@ -40,7 +40,6 @@ interface Profile {
   email: string;
   telefone: string | null;
   avatar: string | null;
-  ativo: boolean | null;
   created_at: string | null;
   ultimo_acesso: string | null;
 }
@@ -50,6 +49,7 @@ interface UserRole {
   user_id: string;
   role: AppRole;
 }
+type PlatformUser = Profile & { roles: AppRole[] };
 
 const ROLE_LABELS: Record<AppRole, string> = {
   admin: 'Administrador',
@@ -70,31 +70,33 @@ const ROLE_COLORS: Record<AppRole, string> = {
 export default function Usuarios() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
-  const [selectedUser, setSelectedUser] = useState<Profile | null>(null);
-  const [formData, setFormData] = useState<Partial<Profile & { role: AppRole }>>({});
+  const [selectedUser, setSelectedUser] = useState<PlatformUser | null>(null);
+  const [formData, setFormData] = useState<Partial<Profile & { roles: AppRole[] }>>({});
   const [isSaving, setIsSaving] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
 
   const queryClient = useQueryClient();
   const { user: currentUser } = useSupabaseAuth();
 
-  const { data: profiles = [], isLoading: loadingProfiles } = useSupabaseQuery<Profile>('profiles', {
+  const { data: profiles = [], isLoading: loadingProfiles, error: profilesError, refetch: refetchProfiles } = useSupabaseQuery<Profile>('profiles', {
+    select: 'id,nome,email,telefone,avatar,created_at,ultimo_acesso',
     orderBy: { column: 'nome', ascending: true },
   });
 
-  const { data: userRoles = [], isLoading: loadingRoles } = useSupabaseQuery<UserRole>('user_roles', {});
+  const { data: userRoles = [], isLoading: loadingRoles, error: rolesError, refetch: refetchRoles } = useSupabaseQuery<UserRole>('user_roles', {
+    select: 'id,user_id,role',
+  });
 
-  const isLoading = loadingProfiles || loadingRoles;
+  const { data: situacoes = [], isLoading: loadingSituacoes, error: situacoesError, refetch: refetchSituacoes } = useQuery({
+    queryKey: ['admin-situacao-contas'],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).rpc('admin_situacao_contas');
+      if (error) throw error;
+      return (data || []) as { user_id: string; bloqueado: boolean }[];
+    },
+  });
 
-  // Update ultimo_acesso on mount for current user
-  useEffect(() => {
-    if (currentUser?.id) {
-      supabase
-        .from('profiles')
-        .update({ ultimo_acesso: new Date().toISOString() })
-        .eq('id', currentUser.id)
-        .then(() => {});
-    }
-  }, [currentUser?.id]);
+  const isLoading = loadingProfiles || loadingRoles || loadingSituacoes;
 
   const usuarios = useMemo(() => {
     return profiles.map(profile => {
@@ -106,26 +108,38 @@ export default function Usuarios() {
   const getUltimoAcessoInfo = (ultimo_acesso: string | null) => {
     if (!ultimo_acesso) return { text: 'Nunca acessou', isOnline: false };
     const date = new Date(ultimo_acesso);
+    if (Number.isNaN(date.getTime())) return { text: 'Data indisponível', isOnline: false };
     const diffMs = Date.now() - date.getTime();
     const diffMin = diffMs / 60000;
-    const isOnline = diffMin < 15;
-    const text = isOnline ? 'Online agora' : formatDistanceToNow(date, { addSuffix: true, locale: ptBR });
+    const isOnline = diffMin >= 0 && diffMin < 15;
+    const text = isOnline ? 'Ativo recentemente' : formatDistanceToNow(date, { addSuffix: true, locale: ptBR });
     return { text, isOnline, fullDate: format(date, "dd/MM/yyyy 'às' HH:mm", { locale: ptBR }) };
   };
 
-  const handleEdit = (user: typeof usuarios[0]) => {
+  const visibleUsers = useMemo(() => {
+    const term = searchTerm.trim().toLocaleLowerCase('pt-BR');
+    if (!term) return usuarios;
+    const phoneTerm = term.replace(/\D/g, '');
+    return usuarios.filter((user) =>
+      user.nome?.toLocaleLowerCase('pt-BR').includes(term) ||
+      user.email?.toLocaleLowerCase('pt-BR').includes(term) ||
+      (phoneTerm.length > 0 && (user.telefone?.replace(/\D/g, '').includes(phoneTerm) ?? false)) ||
+      user.roles.some((role) => ROLE_LABELS[role].toLocaleLowerCase('pt-BR').includes(term))
+    );
+  }, [usuarios, searchTerm]);
+
+  const handleEdit = (user: PlatformUser) => {
     setSelectedUser(user);
     setFormData({
       nome: user.nome,
       email: user.email,
       telefone: user.telefone || '',
-      ativo: user.ativo ?? true,
-      role: user.roles[0] || 'recepcao',
+      roles: user.roles.length ? user.roles : ['recepcao'],
     });
     setIsFormOpen(true);
   };
 
-  const handleDeleteClick = (user: typeof usuarios[0]) => {
+  const handleDeleteClick = (user: PlatformUser) => {
     setSelectedUser(user);
     setIsDeleteOpen(true);
   };
@@ -140,18 +154,12 @@ export default function Usuarios() {
 
     setIsSaving(true);
     try {
-      const { error: rolesError } = await supabase
-        .from('user_roles').delete().eq('user_id', selectedUser.id);
-      if (rolesError) throw rolesError;
-
-      const { error } = await supabase.from('profiles').update({ ativo: false }).eq('id', selectedUser.id);
-      if (error) throw error;
-      queryClient.invalidateQueries({ queryKey: ['profiles'] });
-      queryClient.invalidateQueries({ queryKey: ['user_roles'] });
-      toast.success('Usuário desativado com sucesso.');
+      await chamarAdminContas({ acao: 'bloquear', alvo_id: selectedUser.id });
+      queryClient.invalidateQueries({ queryKey: ['admin-situacao-contas'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-auditoria'] });
+      toast.success('Acesso bloqueado e sessões encerradas.');
     } catch (error) {
-      if (import.meta.env.DEV) console.error('Error deleting user:', error);
-      toast.error('Erro ao desativar usuário.', { description: mensagemDeErro(error) });
+      toast.error('Erro ao bloquear acesso.', { description: mensagemDeErro(error) });
     } finally {
       setIsSaving(false);
       setIsDeleteOpen(false);
@@ -159,43 +167,25 @@ export default function Usuarios() {
   };
 
   const handleSave = async () => {
-    if (!selectedUser || !formData.nome) {
+    if (!selectedUser || !formData.nome?.trim() || !formData.roles?.length) {
       toast.error('Preencha todos os campos obrigatórios.');
       return;
     }
 
     setIsSaving(true);
     try {
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .update({ nome: formData.nome, telefone: formData.telefone || null, ativo: formData.ativo })
-        .eq('id', selectedUser.id);
-      if (profileError) throw profileError;
-
-      if (formData.role) {
-        // Apaga e reinsere. O erro do insert já era checado, mas o papel antigo
-        // já tinha sido removido — a conta ficava sem nenhum acesso e a pessoa
-        // via "Acesso Pendente" sem entender por quê. Guardamos para restaurar.
-        const { data: papeisAtuais } = await supabase
-          .from('user_roles').select('role').eq('user_id', selectedUser.id);
-
-        const { error: delError } = await supabase
-          .from('user_roles').delete().eq('user_id', selectedUser.id);
-        if (delError) throw delError;
-
-        const { error: roleError } = await supabase
-          .from('user_roles').insert({ user_id: selectedUser.id, role: formData.role });
-        if (roleError) {
-          if (papeisAtuais?.length) {
-            await supabase.from('user_roles')
-              .insert(papeisAtuais.map(p => ({ user_id: selectedUser.id, role: p.role })));
-          }
-          throw roleError;
-        }
-      }
+      const { error } = await (supabase as any).rpc('platform_update_clinic_user', {
+        p_user_id: selectedUser.id,
+        p_nome: formData.nome.trim(),
+        p_telefone: formData.telefone || null,
+        p_roles: formData.roles,
+      });
+      if (error) throw error;
 
       queryClient.invalidateQueries({ queryKey: ['profiles'] });
       queryClient.invalidateQueries({ queryKey: ['user_roles'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-user-roles'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-profiles'] });
       setIsFormOpen(false);
       toast.success('Usuário atualizado com sucesso.');
     } catch (error) {
@@ -206,19 +196,22 @@ export default function Usuarios() {
     }
   };
 
-  const handleToggleAtivo = async (user: typeof usuarios[0]) => {
+  const handleToggleAcesso = async (user: typeof usuarios[0]) => {
     if (user.id === currentUser?.id) {
       toast.error('Você não pode desativar seu próprio usuário.');
       return;
     }
+    const bloqueado = situacoes.find((status) => status.user_id === user.id)?.bloqueado ?? false;
+    setIsSaving(true);
     try {
-      const { error } = await supabase.from('profiles').update({ ativo: !user.ativo }).eq('id', user.id);
-      if (error) throw error;
-      queryClient.invalidateQueries({ queryKey: ['profiles'] });
-      toast.success(user.ativo ? 'Usuário desativado.' : 'Usuário ativado.');
+      await chamarAdminContas({ acao: bloqueado ? 'desbloquear' : 'bloquear', alvo_id: user.id });
+      queryClient.invalidateQueries({ queryKey: ['admin-situacao-contas'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-auditoria'] });
+      toast.success(bloqueado ? 'Acesso liberado.' : 'Acesso bloqueado e sessões encerradas.');
     } catch (error) {
-      if (import.meta.env.DEV) console.error('Error toggling user status:', error);
-      toast.error('Erro ao alterar status do usuário.', { description: mensagemDeErro(error) });
+      toast.error('Erro ao alterar acesso.', { description: mensagemDeErro(error) });
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -231,6 +224,8 @@ export default function Usuarios() {
     );
   }
 
+  if (profilesError || rolesError || situacoesError) return <ErrorState error={profilesError || rolesError || situacoesError} onRetry={() => { void refetchProfiles(); void refetchRoles(); void refetchSituacoes(); }} />;
+
   return (
     <TooltipProvider>
       <div className="space-y-6">
@@ -242,7 +237,7 @@ export default function Usuarios() {
           <div className="flex items-center gap-3 text-sm text-muted-foreground">
             <div className="flex items-center gap-1.5">
               <Circle className="h-2.5 w-2.5 fill-success text-success" />
-              <span>{usuarios.filter(u => getUltimoAcessoInfo(u.ultimo_acesso).isOnline).length} online</span>
+              <span>{usuarios.filter(u => getUltimoAcessoInfo(u.ultimo_acesso).isOnline).length} ativos recentemente</span>
             </div>
             <span>•</span>
             <span>{usuarios.length} total</span>
@@ -251,7 +246,13 @@ export default function Usuarios() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Lista de Usuários</CardTitle>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <CardTitle>Lista de Usuários</CardTitle>
+              <div className="relative w-full sm:w-80">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input aria-label="Buscar usuários" value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Buscar nome, e-mail, telefone ou função" className="pl-9" />
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
             <div className="rounded-md border">
@@ -267,17 +268,17 @@ export default function Usuarios() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {usuarios.length === 0 ? (
+                  {visibleUsers.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
-                        Nenhum usuário encontrado
+                        {searchTerm ? 'Nenhum usuário corresponde à busca.' : 'Nenhum usuário encontrado'}
                       </TableCell>
                     </TableRow>
                   ) : (
-                    usuarios.map((usuario) => {
+                    visibleUsers.map((usuario) => {
                       const acesso = getUltimoAcessoInfo(usuario.ultimo_acesso);
                       return (
-                        <TableRow key={usuario.id} className={!usuario.ativo ? 'opacity-50' : ''}>
+                        <TableRow key={usuario.id} className={situacoes.find(status => status.user_id === usuario.id)?.bloqueado ? 'opacity-50' : ''}>
                           <TableCell>
                             <div className="flex items-center gap-2">
                               <div className="relative">
@@ -309,7 +310,7 @@ export default function Usuarios() {
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <div className="flex items-center gap-1.5 text-sm">
-                                  {acesso.isOnline ? (
+                                    {acesso.isOnline ? (
                                     <Circle className="h-2 w-2 fill-success text-success animate-pulse" />
                                   ) : (
                                     <Clock className="h-3 w-3 text-muted-foreground" />
@@ -327,24 +328,24 @@ export default function Usuarios() {
                           <TableCell>
                             <div className="flex items-center gap-2">
                               <Switch
-                                checked={usuario.ativo ?? true}
-                                onCheckedChange={() => handleToggleAtivo(usuario)}
-                                disabled={usuario.id === currentUser?.id}
+                                checked={!(situacoes.find(status => status.user_id === usuario.id)?.bloqueado ?? false)}
+                                onCheckedChange={() => handleToggleAcesso(usuario)}
+                                disabled={usuario.id === currentUser?.id || isSaving}
                               />
-                              {usuario.ativo ? (
-                                <UserCheck className="h-4 w-4 text-green-600" />
-                              ) : (
+                              {situacoes.find(status => status.user_id === usuario.id)?.bloqueado ? (
                                 <UserX className="h-4 w-4 text-muted-foreground" />
+                              ) : (
+                                <UserCheck className="h-4 w-4 text-green-600" />
                               )}
                             </div>
                           </TableCell>
                           <TableCell className="text-right">
                             <div className="flex justify-end gap-2">
-                              <Button aria-label={`Editar usuário ${usuario.nome}`} variant="ghost" size="icon" onClick={() => handleEdit(usuario)}>
+                              <Button aria-label={`Editar usuário ${usuario.nome}`} variant="ghost" size="icon" onClick={() => handleEdit(usuario)} disabled={usuario.id === currentUser?.id || isSaving}>
                                 <Edit className="h-4 w-4" />
                               </Button>
-                              <Button aria-label={`Excluir usuário ${usuario.nome}`} variant="ghost" size="icon" onClick={() => handleDeleteClick(usuario)} disabled={usuario.id === currentUser?.id}>
-                                <Trash2 className="h-4 w-4 text-destructive" />
+                              <Button aria-label={`Bloquear acesso de ${usuario.nome}`} variant="ghost" size="icon" onClick={() => handleDeleteClick(usuario)} disabled={usuario.id === currentUser?.id || isSaving || situacoes.find(status => status.user_id === usuario.id)?.bloqueado}>
+                                <Ban className="h-4 w-4 text-destructive" />
                               </Button>
                             </div>
                           </TableCell>
@@ -359,12 +360,14 @@ export default function Usuarios() {
         </Card>
 
         {/* Form Dialog */}
-        <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-          <DialogContent>
+        <Dialog open={isFormOpen} onOpenChange={open => {
+          if (open || !isSaving) setIsFormOpen(open);
+        }}>
+          <DialogContent aria-busy={isSaving}>
             <DialogHeader>
               <DialogTitle>Editar Usuário</DialogTitle>
             </DialogHeader>
-            <div className="space-y-4 py-4">
+            <fieldset disabled={isSaving} className="space-y-4 border-0 p-0 py-4">
               <div className="space-y-2">
                 <Label>Nome Completo *</Label>
                 <Input value={formData.nome || ''} onChange={(e) => setFormData({ ...formData, nome: e.target.value })} />
@@ -377,25 +380,30 @@ export default function Usuarios() {
                 <Label>Telefone</Label>
                 <Input value={formData.telefone || ''} onChange={(e) => setFormData({ ...formData, telefone: e.target.value })} placeholder="(00) 00000-0000" />
               </div>
-              <div className="space-y-2">
-                <Label>Função</Label>
-                <Select value={formData.role} onValueChange={(v) => setFormData({ ...formData, role: v as AppRole })}>
-                  <SelectTrigger><SelectValue placeholder="Selecione a função" /></SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(ROLE_LABELS).map(([key, label]) => (
-                      <SelectItem key={key} value={key}>{label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="flex items-center gap-2">
-                <Switch checked={formData.ativo ?? true} onCheckedChange={(checked) => setFormData({ ...formData, ativo: checked })} />
-                <Label>Usuário Ativo</Label>
-              </div>
-            </div>
+              <fieldset className="space-y-2">
+                <legend className="text-sm font-medium">Funções do usuário</legend>
+                <p className="text-xs text-muted-foreground">Selecione todas as áreas de trabalho necessárias. É preciso manter pelo menos uma função.</p>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {Object.entries(ROLE_LABELS).map(([key, label]) => {
+                    const role = key as AppRole;
+                    const checked = formData.roles?.includes(role) || false;
+                    return <label key={role} className="flex min-h-11 items-center gap-3 rounded-md border px-3">
+                      <Checkbox checked={checked} onCheckedChange={(value) => setFormData((current) => ({
+                        ...current,
+                        roles: value === true
+                          ? [...new Set([...(current.roles || []), role])]
+                          : (current.roles || []).filter((item) => item !== role),
+                      }))} aria-label={label} />
+                      <span className="text-sm">{label}</span>
+                    </label>;
+                  })}
+                </div>
+                {!formData.roles?.length && <p role="alert" className="text-xs text-destructive">Selecione ao menos uma função.</p>}
+              </fieldset>
+            </fieldset>
             <DialogFooter>
               <Button variant="outline" onClick={() => setIsFormOpen(false)} disabled={isSaving}>Cancelar</Button>
-              <Button onClick={handleSave} disabled={isSaving}>
+              <Button onClick={handleSave} disabled={isSaving || !formData.roles?.length || !formData.nome?.trim()}>
                 {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Salvar
               </Button>
@@ -407,16 +415,16 @@ export default function Usuarios() {
         <AlertDialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>Confirmar desativação</AlertDialogTitle>
+            <AlertDialogTitle>Confirmar bloqueio de acesso</AlertDialogTitle>
               <AlertDialogDescription>
-                Tem certeza que deseja desativar o usuário "{selectedUser?.nome}"? O usuário não poderá mais acessar o sistema.
+                Tem certeza que deseja bloquear o acesso de "{selectedUser?.nome}"? As sessões serão encerradas e o login ficará impedido até você liberar novamente.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel disabled={isSaving}>Cancelar</AlertDialogCancel>
               <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground" disabled={isSaving}>
                 {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Desativar
+                Bloquear acesso
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

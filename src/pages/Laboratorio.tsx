@@ -1,8 +1,8 @@
 import { nomeMedico } from '@/lib/formatters';
 import { PacienteCombobox } from '@/components/patients/PacienteCombobox';
 import { motion, AnimatePresence } from 'framer-motion';
-import React, { useState, useMemo } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import React, { useState, useMemo, useEffect } from 'react';
+import { useInfiniteQuery, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -18,11 +18,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
 import { mensagemDeErro } from '@/lib/erros';
-import { format, differenceInMinutes, differenceInHours, isToday, isYesterday, subDays } from 'date-fns';
+import { format, addDays, differenceInMinutes, differenceInHours, subDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
+import { ErrorState } from '@/components/ErrorState';
 import { pacienteCorresponde } from '@/lib/buscaPaciente';
+import { dateOnlyInTimeZone, parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
+import { Link } from 'react-router-dom';
 
 /**
  * Teto da worklist do laboratório.
@@ -32,6 +35,35 @@ import { pacienteCorresponde } from '@/lib/buscaPaciente';
  * histórico, em vez de deixá-lo achar que a amostra sumiu.
  */
 const TETO_WORKLIST = 500;
+const FUSO_CLINICA = 'America/Sao_Paulo';
+
+function dataHoraLocalDaClinica(instant = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: FUSO_CLINICA,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  }).formatToParts(instant);
+  const part = (type: string) => parts.find(item => item.type === type)?.value || '';
+  return `${part('year')}-${part('month')}-${part('day')}T${part('hour')}:${part('minute')}`;
+}
+
+function dataHoraDaClinicaParaIso(value: string): string | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(value);
+  if (!match) return null;
+  const [, yearText, monthText, dayText, hourText, minuteText] = match;
+  const targetWallTime = Date.UTC(Number(yearText), Number(monthText) - 1, Number(dayText), Number(hourText), Number(minuteText));
+  const initial = new Date(targetWallTime);
+  const clinicParts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: FUSO_CLINICA,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
+  }).formatToParts(initial);
+  const part = (type: string) => Number(clinicParts.find(item => item.type === type)?.value || 0);
+  const representedWallTime = Date.UTC(part('year'), part('month') - 1, part('day'), part('hour'), part('minute'), part('second'));
+  const instant = new Date(targetWallTime - (representedWallTime - targetWallTime));
+  const resolved = dataHoraLocalDaClinica(instant);
+  return resolved === value ? instant.toISOString() : null;
+}
 
 import {
   FlaskConical, Search, Plus, TestTube, ClipboardCheck, AlertTriangle,
@@ -86,7 +118,15 @@ const TUBOS = [
 const SLA_WARNING_MINUTES = 120; // 2h
 const SLA_CRITICAL_MINUTES = 240; // 4h
 
+function parseNumeroOpcional(valor: unknown): number | null {
+  if (valor == null || String(valor).trim() === '') return null;
+  const normalizado = String(valor).trim().replace(',', '.');
+  if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(normalizado)) return Number.NaN;
+  return Number(normalizado);
+}
+
 export default function Laboratorio() {
+  const [agora, setAgora] = useState(() => new Date());
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('todos');
   const [dateFilter, setDateFilter] = useState('hoje');
@@ -104,6 +144,19 @@ export default function Laboratorio() {
   const [activeTab, setActiveTab] = useState('worklist');
   const queryClient = useQueryClient();
   const { user, profile } = useSupabaseAuth();
+  const [newColetaForm, setNewColetaForm] = useState({
+    paciente_id: '', medico_solicitante_id: '', tipo_amostra: 'sangue',
+    tubo: '', observacoes: '', jejum_necessario: false, jejum_horas: 0, urgente: false,
+    coletado_por: '', data_coleta: dataHoraLocalDaClinica(),
+    exame_id: '', volume_ml: '', condicao_amostra: [] as string[], sitio_coleta: '', lote_insumo: '',
+    finalidade: 'diagnostico', indicacao_clinica: '', categoria_exame: '',
+    numero_guia: '', material: '', trouxe_material: false, cid: '', procedimento_codigo: '', convenio_id: '', grupo: '',
+  });
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setAgora(new Date()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const previewLimpar = useQuery({
     queryKey: ['preview-limpar-fila-lab', profile?.clinica_id, limparDias],
@@ -143,82 +196,101 @@ export default function Laboratorio() {
   });
 
 
-  const { data: medicos } = useQuery({
-    queryKey: ['medicos-lab', profile?.clinica_id],
+  const medicosQuery = useQuery({
+    queryKey: ['medicos-lab', profile?.clinica_id, user?.id],
     queryFn: async () => {
-      const { data, error } = await supabase.from('medicos').select('id, nome, crm, especialidade').order('nome');
+      const { data, error } = await supabase.from('medicos').select('id, nome, crm, especialidade').eq('clinica_id', profile!.clinica_id!).order('nome');
       if (error) throw error;
       return data || [];
     },
     enabled: !!profile?.clinica_id,
   });
+  const medicos = medicosQuery.data;
 
-  const { data: funcionarios } = useQuery({
-    queryKey: ['funcionarios-lab', profile?.clinica_id],
+  const funcionariosQuery = useQuery({
+    queryKey: ['funcionarios-lab', profile?.clinica_id, user?.id],
     queryFn: async () => {
-      const { data, error } = await supabase.from('profiles').select('id, nome').order('nome');
+      const { data, error } = await supabase.from('profiles').select('id, nome').eq('clinica_id', profile!.clinica_id!).order('nome');
       if (error) throw error;
       return data || [];
     },
     enabled: !!profile?.clinica_id,
   });
+  const funcionarios = funcionariosQuery.data;
 
-  const { data: convenios } = useQuery({
-    queryKey: ['convenios-lab', profile?.clinica_id],
+  const conveniosQuery = useQuery({
+    queryKey: ['convenios-lab', profile?.clinica_id, user?.id],
     queryFn: async () => {
-      const { data, error } = await supabase.from('convenios').select('id, nome, codigo').eq('ativo', true).order('nome');
+      const { data, error } = await supabase.from('convenios').select('id, nome, codigo').eq('clinica_id', profile!.clinica_id!).eq('ativo', true).order('nome');
       if (error) throw error;
       return data || [];
     },
     enabled: !!profile?.clinica_id,
   });
+  const convenios = conveniosQuery.data;
 
-  const { data: examesPendentes } = useQuery({
-    queryKey: ['exames-pendentes-lab', profile?.clinica_id],
+  const examesPendentesQuery = useQuery({
+    queryKey: ['exames-pendentes-lab', profile?.clinica_id, user?.id, newColetaForm.paciente_id],
     queryFn: async () => {
+      if (!newColetaForm.paciente_id) return { items: [], hasMore: false };
       const { data, error } = await supabase.from('exames').select('id, tipo_exame, paciente_id, pacientes(nome)')
-        .in('status', ['solicitado', 'agendado']).order('data_solicitacao', { ascending: false }).limit(200);
+        .eq('clinica_id', profile!.clinica_id!)
+        .eq('paciente_id', newColetaForm.paciente_id)
+        .in('status', ['solicitado', 'agendado'])
+        .order('data_solicitacao', { ascending: false })
+        .order('id', { ascending: true })
+        .limit(201);
       if (error) throw error;
-      return data || [];
+      const pedidos = data ?? [];
+      return { items: pedidos.slice(0, 200), hasMore: pedidos.length > 200 };
     },
-    enabled: !!profile?.clinica_id,
+    enabled: !!profile?.clinica_id && showNewColeta && !!newColetaForm.paciente_id,
   });
 
-  const { data: coletas, isLoading } = useQuery({
-    queryKey: ['coletas-laboratorio', profile?.clinica_id],
-    queryFn: async () => {
-      // Sem `.limit()` o PostgREST aplica o teto padrão (1.000 linhas) e corta
-      // em silêncio: passado esse ponto, amostras antigas simplesmente somem da
-      // worklist sem nenhum aviso, e o técnico conclui que a coleta se perdeu.
-      // Pedimos um a mais que o teto justamente para saber se houve corte.
-      const { data, error } = await supabase
+  const coletasQuery = useInfiniteQuery({
+    queryKey: ['coletas-laboratorio', profile?.clinica_id, user?.id],
+    initialPageParam: null as { created_at: string; id: string } | null,
+    queryFn: async ({ pageParam }) => {
+      let query = supabase
         .from('coletas_laboratorio')
         .select('*, pacientes(nome, cpf, data_nascimento, sexo), medicos(nome, crm, especialidade)')
+        .eq('clinica_id', profile!.clinica_id!);
+      if (pageParam) {
+        // Paginação por cursor: várias amostras podem ter o mesmo created_at,
+        // então o id também desempata para não pular nem repetir registros.
+        query = query.or(
+          `created_at.lt.${pageParam.created_at},and(created_at.eq.${pageParam.created_at},id.lt.${pageParam.id})`,
+        );
+      }
+      const { data, error } = await query
         .order('created_at', { ascending: false })
+        .order('id', { ascending: false })
         .limit(TETO_WORKLIST + 1);
-
-      if (error) {
-        toast.error('Não foi possível carregar a worklist.', { description: mensagemDeErro(error) });
-        throw error;
-      }
-
-      const linhas = data || [];
-      if (linhas.length > TETO_WORKLIST) {
-        toast.warning(`Mostrando as ${TETO_WORKLIST} coletas mais recentes.`, {
-          description: 'Há mais registros no histórico. Use os filtros de situação e busca para chegar às amostras antigas.',
-          duration: 8000,
-        });
-        return linhas.slice(0, TETO_WORKLIST);
-      }
-      return linhas;
+      if (error) throw error;
+      const linhas = data ?? [];
+      return { items: linhas.slice(0, TETO_WORKLIST), hasMore: linhas.length > TETO_WORKLIST };
+    },
+    getNextPageParam: (ultimaPagina) => {
+      if (!ultimaPagina.hasMore || ultimaPagina.items.length === 0) return undefined;
+      const ultimaColeta = ultimaPagina.items[ultimaPagina.items.length - 1];
+      return { created_at: ultimaColeta.created_at, id: ultimaColeta.id };
     },
     enabled: !!profile?.clinica_id,
   });
+  const coletas = coletasQuery.data?.pages.flatMap(pagina => pagina.items);
+  const isLoading = coletasQuery.isLoading;
 
-  const { data: resultados } = useQuery({
-    queryKey: ['resultados-laboratorio', profile?.clinica_id, showResultados],
+  const resultadosQuery = useQuery({
+    queryKey: ['resultados-laboratorio', profile?.clinica_id, user?.id, showResultados],
     queryFn: async () => {
       if (!showResultados) return [];
+      const { data: coleta, error: coletaError } = await supabase.from('coletas_laboratorio')
+        .select('id')
+        .eq('id', showResultados)
+        .eq('clinica_id', profile!.clinica_id!)
+        .maybeSingle();
+      if (coletaError) throw coletaError;
+      if (!coleta) throw new Error('Amostra não encontrada na clínica atual.');
       const { data, error } = await supabase
         .from('resultados_laboratorio')
         .select('*')
@@ -229,13 +301,25 @@ export default function Laboratorio() {
     },
     enabled: !!profile?.clinica_id && !!showResultados,
   });
+  const resultados = resultadosQuery.data;
 
   const createColeta = useMutation({
     mutationFn: async (form: any) => {
-      const payload = { ...form };
-      if (!payload.clinica_id && profile?.clinica_id) {
-        payload.clinica_id = profile.clinica_id;
+      if (!profile?.clinica_id || !user?.id) throw new Error('Usuário ou clínica não identificados.');
+      if (form.exame_id) {
+        const { data: coletaExistente, error: erroConsulta } = await supabase
+          .from('coletas_laboratorio')
+          .select('id')
+          .eq('clinica_id', profile.clinica_id)
+          .eq('exame_id', form.exame_id)
+          .limit(1)
+          .maybeSingle();
+        if (erroConsulta) throw erroConsulta;
+        if (coletaExistente) {
+          throw new Error('Este pedido já possui uma coleta. Localize a amostra existente na worklist para continuar o atendimento.');
+        }
       }
+      const payload = { ...form, clinica_id: profile.clinica_id };
       const { error } = await supabase.from('coletas_laboratorio').insert(payload);
       if (error) throw error;
     },
@@ -249,15 +333,35 @@ export default function Laboratorio() {
   });
 
   const updateStatus = useMutation({
-    mutationFn: async ({ id, status }: { id: string; status: string }) => {
-      const updates: any = { status };
+    mutationFn: async ({ id, status, expectedStatus }: { id: string; status: string; expectedStatus: string }) => {
+      if (!profile?.clinica_id) throw new Error('Clínica não identificada.');
+      const allowedNext: Record<string, string[]> = {
+        pendente: ['coletado', 'cancelado'],
+        recoleta: ['coletado', 'cancelado'],
+        coletado: ['em_analise', 'recoleta'],
+        em_analise: ['validado'],
+      };
+      if (!allowedNext[expectedStatus]?.includes(status)) throw new Error('Esta transição de status não é permitida. Atualize a worklist.');
+      if (status === 'validado') {
+        // A validação precisa registrar a autoria de quem conferiu os resultados
+        // na mesma transação que avança o status. Uma leitura seguida de update
+        // direto contornava esse registro e permitia divergência entre telas.
+        const { error } = await (supabase as any).rpc('validar_coleta_laboratorio', {
+          p_coleta_id: id,
+        });
+        if (error) throw error;
+        return;
+      }
+      const updates: Record<string, unknown> = { status };
       if (status === 'coletado') updates.data_coleta = new Date().toISOString();
-      const { error } = await supabase.from('coletas_laboratorio').update(updates).eq('id', id);
+      const { data, error } = await (supabase as any).from('coletas_laboratorio').update(updates)
+        .eq('id', id).eq('clinica_id', profile.clinica_id).eq('status', expectedStatus).select('id').maybeSingle();
       if (error) throw error;
+      if (!data) throw new Error('A coleta mudou de status ou não pertence à clínica atual. Atualize a worklist.');
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['coletas-laboratorio', profile?.clinica_id] });
-      toast.success('Status atualizado');
+      toast.success(variables.status === 'validado' ? 'Coleta validada e conferência registrada' : 'Status atualizado');
     },
     // Sem `onError` o botão parecia não fazer nada: o técnico seguia
     // trabalhando com uma coleta pendente sem saber que o update falhou.
@@ -268,15 +372,48 @@ export default function Laboratorio() {
 
   const addResultado = useMutation({
     mutationFn: async (form: any) => {
-      const { error } = await supabase.from('resultados_laboratorio').insert(form);
+      if (!profile?.clinica_id) throw new Error('Clínica não identificada.');
+      if (!String(form.parametro ?? '').trim() || !String(form.resultado ?? '').trim()) {
+        throw new Error('Informe o parâmetro e o resultado da análise.');
+      }
+      const referenciaMinima = parseNumeroOpcional(form.valor_referencia_min);
+      const referenciaMaxima = parseNumeroOpcional(form.valor_referencia_max);
+      if ([referenciaMinima, referenciaMaxima].some(valor => valor !== null && !Number.isFinite(valor))) {
+        throw new Error('Os valores de referência precisam ser numéricos.');
+      }
+      if (referenciaMinima !== null && referenciaMaxima !== null && referenciaMinima > referenciaMaxima) {
+        throw new Error('O valor de referência mínimo não pode ser maior que o máximo.');
+      }
+      const { data: coleta, error: coletaError } = await supabase.from('coletas_laboratorio')
+        .select('id, paciente_id, status')
+        .eq('id', form.coleta_id)
+        .eq('clinica_id', profile.clinica_id)
+        .maybeSingle();
+      if (coletaError) throw coletaError;
+      if (!coleta || !['coletado', 'em_analise'].includes(coleta.status)) {
+        throw new Error('Só é possível registrar resultado em uma amostra coletada que ainda esteja em análise.');
+      }
+      const { error } = await supabase.from('resultados_laboratorio').insert({
+        ...form,
+        parametro: String(form.parametro).trim(),
+        resultado: String(form.resultado).trim(),
+        valor_referencia_min: referenciaMinima,
+        valor_referencia_max: referenciaMaxima,
+        paciente_id: coleta.paciente_id,
+        clinica_id: profile.clinica_id,
+      });
       if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['resultados-laboratorio', profile?.clinica_id] });
+      setNewResultForm({ parametro: '', resultado: '', unidade: '', valor_referencia_min: '', valor_referencia_max: '', valor_referencia_texto: '', metodo: '' });
       toast.success('Resultado adicionado!');
     },
     onError: (e) => toast.error('Erro ao adicionar resultado', { description: mensagemDeErro(e) }),
   });
+
+  const hojeNaClinica = todaySaoPauloDateOnly(agora);
+  const ontemNaClinica = format(addDays(parseDateOnly(hojeNaClinica)!, -1), 'yyyy-MM-dd');
 
   // ─── Filtering with date ─────────────────────────────────
   const filtered = useMemo(() => {
@@ -295,17 +432,18 @@ export default function Laboratorio() {
       // Urgent
       if (urgentOnly && !c.urgente) return false;
       // Date
-      if (dateFilter === 'hoje' && c.created_at && !isToday(new Date(c.created_at))) return false;
-      if (dateFilter === 'ontem' && c.created_at && !isYesterday(new Date(c.created_at))) return false;
-      if (dateFilter === '7dias' && c.created_at && new Date(c.created_at) < subDays(new Date(), 7)) return false;
+      const diaCriacao = c.created_at ? dateOnlyInTimeZone(new Date(c.created_at), FUSO_CLINICA) : null;
+      if (dateFilter === 'hoje' && diaCriacao !== hojeNaClinica) return false;
+      if (dateFilter === 'ontem' && diaCriacao !== ontemNaClinica) return false;
+      if (dateFilter === '7dias' && c.created_at && new Date(c.created_at) < subDays(agora, 7)) return false;
       return true;
     });
-  }, [coletas, search, statusFilter, urgentOnly, dateFilter]);
+  }, [coletas, search, statusFilter, urgentOnly, dateFilter, hojeNaClinica, ontemNaClinica, agora]);
 
   // ─── Stats ───────────────────────────────────────────────
   const stats = useMemo(() => {
     if (!coletas) return { pendentes: 0, coletados: 0, emAnalise: 0, validados: 0, liberados: 0, cancelados: 0, urgentes: 0, total: 0 };
-    const todayItems = coletas.filter((c: any) => c.created_at && isToday(new Date(c.created_at)));
+    const todayItems = coletas.filter((c: any) => c.created_at && dateOnlyInTimeZone(new Date(c.created_at), FUSO_CLINICA) === hojeNaClinica);
     return {
       pendentes: todayItems.filter((c: any) => c.status === 'pendente').length,
       coletados: todayItems.filter((c: any) => c.status === 'coletado').length,
@@ -316,7 +454,7 @@ export default function Laboratorio() {
       urgentes: todayItems.filter((c: any) => c.urgente).length,
       total: todayItems.length,
     };
-  }, [coletas]);
+  }, [coletas, hojeNaClinica]);
 
   // SLA tracking
   const slaBreaches = useMemo(() => {
@@ -324,15 +462,18 @@ export default function Laboratorio() {
     return coletas.filter((c: any) => {
       if (c.status === 'liberado' || c.status === 'cancelado') return false;
       if (!c.created_at) return false;
-      const mins = differenceInMinutes(new Date(), new Date(c.created_at));
+      const mins = differenceInMinutes(agora, new Date(c.created_at));
       return mins > SLA_CRITICAL_MINUTES;
     });
-  }, [coletas]);
+  }, [coletas, agora]);
 
   const completionRate = stats.total > 0
     ? Math.round(((stats.liberados + stats.validados) / stats.total) * 100) : 0;
 
   const getNextStatus = (current: string) => {
+    // A liberação dos resultados passa pelo módulo Laudos: lá cada resultado
+    // é conferido, publicado e notificado; não deve haver atalho pelo pipeline.
+    if (current === 'validado') return null;
     const idx = PIPELINE_STEPS.indexOf(current);
     return idx >= 0 && idx < PIPELINE_STEPS.length - 1 ? PIPELINE_STEPS[idx + 1] : null;
   };
@@ -352,19 +493,10 @@ export default function Laboratorio() {
   };
 
   // ─── Form state ──────────────────────────────────────────
-  const [newColetaForm, setNewColetaForm] = useState({
-    paciente_id: '', medico_solicitante_id: '', tipo_amostra: 'sangue',
-    tubo: '', observacoes: '', jejum_necessario: false, jejum_horas: 0, urgente: false,
-    coletado_por: '', data_coleta: format(new Date(), "yyyy-MM-dd'T'HH:mm"),
-    exame_id: '', volume_ml: '', condicao_amostra: [] as string[], sitio_coleta: '', lote_insumo: '',
-    finalidade: 'diagnostico', indicacao_clinica: '', categoria_exame: '',
-    numero_guia: '', material: '', trouxe_material: false, cid: '', procedimento_codigo: '', convenio_id: '', grupo: '',
-  });
-
   const resetColetaForm = () => setNewColetaForm({
     paciente_id: '', medico_solicitante_id: '', tipo_amostra: 'sangue',
     tubo: '', observacoes: '', jejum_necessario: false, jejum_horas: 0, urgente: false,
-    coletado_por: user?.id || '', data_coleta: format(new Date(), "yyyy-MM-dd'T'HH:mm"),
+    coletado_por: user?.id || '', data_coleta: dataHoraLocalDaClinica(),
     exame_id: '', volume_ml: '', condicao_amostra: [], sitio_coleta: '', lote_insumo: '',
     finalidade: 'diagnostico', indicacao_clinica: '', categoria_exame: '',
     numero_guia: '', material: '', trouxe_material: false, cid: '', procedimento_codigo: '', convenio_id: '', grupo: '',
@@ -379,14 +511,31 @@ export default function Laboratorio() {
     }));
   };
 
-  const examesFiltrados = examesPendentes?.filter((e: any) =>
-    !newColetaForm.paciente_id || e.paciente_id === newColetaForm.paciente_id
-  ) || [];
+  const examesFiltrados = examesPendentesQuery.data?.items ?? [];
 
   const [newResultForm, setNewResultForm] = useState({
     parametro: '', resultado: '', unidade: '', valor_referencia_min: '',
     valor_referencia_max: '', valor_referencia_texto: '', metodo: '',
   });
+
+  if (!profile?.clinica_id) {
+    return <ErrorState title="Clínica não identificada" description="O módulo Laboratório só pode carregar dados após identificar a clínica da sessão." />;
+  }
+
+  if (coletasQuery.isError) {
+    return <ErrorState title="Não foi possível carregar a worklist do laboratório" description="As ações de coleta foram pausadas para evitar atualizar amostras com status desatualizado." error={coletasQuery.error} onRetry={() => void coletasQuery.refetch()} />;
+  }
+
+  const filtrarPipeline = (filter: string) => {
+    setDateFilter('hoje');
+    if (filter === 'urgente') {
+      setStatusFilter('todos');
+      setUrgentOnly(current => !current);
+      return;
+    }
+    setUrgentOnly(false);
+    setStatusFilter(current => current === filter ? 'todos' : filter);
+  };
 
   return (
     <div className="space-y-6">
@@ -418,7 +567,7 @@ export default function Laboratorio() {
               <Input id="limpar-dias" type="number" min={1} value={limparDias}
                 onChange={(e) => setLimparDias(e.target.value)} />
               <p className="text-xs text-muted-foreground mt-1">
-                {previewLimpar.data ?? '…'} coleta(s) da sua clínica seriam canceladas.
+                {previewLimpar.isError ? <ErrorState compact title="Não foi possível calcular o impacto" error={previewLimpar.error} onRetry={() => void previewLimpar.refetch()} /> : `${previewLimpar.data ?? '…'} coleta(s) da sua clínica seriam canceladas.`}
               </p>
             </div>
             <div>
@@ -459,6 +608,25 @@ export default function Laboratorio() {
         </motion.div>
       )}
 
+      {coletasQuery.hasNextPage && (
+        <div className="flex flex-col gap-2 rounded-lg border border-warning/30 bg-warning/5 p-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-xs text-muted-foreground">
+            Há mais coletas além das {coletas?.length ?? TETO_WORKLIST} carregadas. Os indicadores e a taxa de conclusão usam somente os registros carregados.
+          </p>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="shrink-0"
+            onClick={() => void coletasQuery.fetchNextPage()}
+            disabled={coletasQuery.isFetchingNextPage}
+          >
+            {coletasQuery.isFetchingNextPage ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ArrowRight className="mr-2 h-4 w-4" />}
+            {coletasQuery.isFetchingNextPage ? 'Carregando…' : 'Carregar mais registros'}
+          </Button>
+        </div>
+      )}
+
       {/* ─── Pipeline Visual + KPIs ─── */}
       <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
         {[
@@ -470,13 +638,19 @@ export default function Laboratorio() {
           { label: 'Urgentes', value: stats.urgentes, icon: Zap, color: 'text-destructive', bg: 'bg-destructive/10', border: 'border-destructive/30', filter: 'urgente' },
         ].map((s, idx) => (
           <motion.div key={s.label} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: idx * 0.04 }}>
-            <Card className={cn('relative border cursor-pointer hover:shadow-md transition-all',
+            <Card className={cn('relative border cursor-pointer hover:shadow-md transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
               s.border,
               (statusFilter === s.filter || (s.filter === 'urgente' && urgentOnly)) && 'ring-2 ring-primary'
             )}
-              onClick={() => {
-                if (s.filter === 'urgente') { setUrgentOnly(!urgentOnly); }
-                else { setStatusFilter(statusFilter === s.filter ? 'todos' : s.filter); setDateFilter('hoje'); }
+              role="button"
+              tabIndex={0}
+              aria-pressed={s.filter === 'urgente' ? urgentOnly : statusFilter === s.filter && dateFilter === 'hoje' && !urgentOnly}
+              onClick={() => filtrarPipeline(s.filter)}
+              onKeyDown={event => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  filtrarPipeline(s.filter);
+                }
               }}>
               <CardContent className="pt-3 pb-2 flex items-center gap-2">
                 <div className={cn('h-9 w-9 rounded-lg flex items-center justify-center shrink-0', s.bg)}>
@@ -565,11 +739,19 @@ export default function Laboratorio() {
                 <div className="h-16 w-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-4">
                   <FlaskConical className="h-8 w-8 text-primary" />
                 </div>
-                <p className="font-semibold text-foreground">Nenhuma coleta encontrada</p>
-                <p className="text-sm text-muted-foreground mt-1">Registre uma nova coleta para começar</p>
-                <Button className="mt-4 gap-2" onClick={() => { resetColetaForm(); setShowNewColeta(true); }}>
-                  <Plus className="h-4 w-4" /> Nova Coleta
-                </Button>
+                <p className="font-semibold text-foreground">
+                  {coletasQuery.hasNextPage ? 'Nenhuma coleta encontrada entre os registros carregados' : 'Nenhuma coleta encontrada'}
+                </p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  {coletasQuery.hasNextPage
+                    ? 'Ajuste os filtros ou carregue coletas anteriores para ampliar a busca.'
+                    : 'Ajuste os filtros ou registre uma nova coleta.'}
+                </p>
+                {!coletasQuery.hasNextPage && (
+                  <Button className="mt-4 gap-2" onClick={() => { resetColetaForm(); setShowNewColeta(true); }}>
+                    <Plus className="h-4 w-4" /> Nova Coleta
+                  </Button>
+                )}
               </CardContent></Card>
             ) : (
               filtered.map((coleta: any) => {
@@ -618,17 +800,24 @@ export default function Laboratorio() {
                         <div className="flex gap-1.5 flex-wrap">
                           {nextStatus && coleta.status !== 'cancelado' && (
                             <Button size="sm" variant="outline" className="h-7 text-xs gap-1"
-                              onClick={() => updateStatus.mutate({ id: coleta.id, status: nextStatus })}>
+                              disabled={updateStatus.isPending}
+                              onClick={() => updateStatus.mutate({ id: coleta.id, status: nextStatus, expectedStatus: coleta.status })}>
                               <ArrowRight className="h-3 w-3" /> {statusLabels[nextStatus]}
+                            </Button>
+                          )}
+                          {coleta.status === 'validado' && (
+                            <Button asChild size="sm" variant="outline" className="h-7 text-xs gap-1">
+                              <Link to="/laudos-lab"><FileText className="h-3 w-3" />Liberar laudo</Link>
                             </Button>
                           )}
                           <Button size="sm" variant="ghost" className="h-7 text-xs gap-1"
                             onClick={() => setShowResultados(coleta.id)}>
                             <Eye className="h-3 w-3" /> Resultados
                           </Button>
-                          {coleta.status !== 'cancelado' && coleta.status !== 'liberado' && (
+                          {(coleta.status === 'pendente' || coleta.status === 'recoleta') && (
                             <Button size="sm" variant="ghost" className="h-7 text-xs text-destructive"
-                              onClick={() => updateStatus.mutate({ id: coleta.id, status: 'cancelado' })}>
+                              disabled={updateStatus.isPending}
+                              onClick={() => updateStatus.mutate({ id: coleta.id, status: 'cancelado', expectedStatus: coleta.status })}>
                               <XCircle className="h-3 w-3" />
                             </Button>
                           )}
@@ -640,6 +829,23 @@ export default function Laboratorio() {
               })
             )}
           </div>
+
+          {coletasQuery.hasNextPage && (
+            <div className="flex flex-col items-center gap-2 rounded-lg border bg-muted/20 p-4 text-center">
+              <p className="text-xs text-muted-foreground">
+                {coletas?.length ?? 0} coletas carregadas. Há registros anteriores que ainda não entraram na busca.
+              </p>
+              <Button
+                variant="outline"
+                onClick={() => void coletasQuery.fetchNextPage()}
+                disabled={coletasQuery.isFetchingNextPage}
+                className="gap-2"
+              >
+                {coletasQuery.isFetchingNextPage ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
+                {coletasQuery.isFetchingNextPage ? 'Carregando...' : 'Carregar coletas anteriores'}
+              </Button>
+            </div>
+          )}
         </TabsContent>
 
         {/* ─── Pipeline Tab ─── */}
@@ -648,7 +854,7 @@ export default function Laboratorio() {
           <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
             {PIPELINE_STEPS.map(step => {
               const items = (coletas || []).filter((c: any) =>
-                c.status === step && c.created_at && isToday(new Date(c.created_at))
+                c.status === step && c.created_at && dateOnlyInTimeZone(new Date(c.created_at), FUSO_CLINICA) === hojeNaClinica
               );
               const nextStep = getNextStatus(step);
               return (
@@ -684,8 +890,14 @@ export default function Laboratorio() {
                         <p className="text-muted-foreground">{c.tipo_amostra} {c.tubo && `· ${c.tubo}`}</p>
                         {nextStep && (
                           <Button size="sm" variant="outline" className="h-6 text-[10px] w-full gap-1"
-                            onClick={() => updateStatus.mutate({ id: c.id, status: nextStep })}>
+                            disabled={updateStatus.isPending}
+                            onClick={() => updateStatus.mutate({ id: c.id, status: nextStep, expectedStatus: c.status })}>
                             <ArrowRight className="h-2.5 w-2.5" /> {statusLabels[nextStep]}
+                          </Button>
+                        )}
+                        {c.status === 'validado' && (
+                          <Button asChild size="sm" variant="outline" className="h-6 text-[10px] w-full gap-1">
+                            <Link to="/laudos-lab"><FileText className="h-2.5 w-2.5" />Liberar laudo</Link>
                           </Button>
                         )}
                       </div>
@@ -699,7 +911,9 @@ export default function Laboratorio() {
       </Tabs>
 
       {/* ─── Dialog Nova Coleta ─── */}
-      <Dialog open={showNewColeta} onOpenChange={setShowNewColeta}>
+      <Dialog open={showNewColeta} onOpenChange={open => {
+        if (open || !createColeta.isPending) setShowNewColeta(open);
+      }}>
         <DialogContent className="max-w-2xl max-h-[95vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -712,6 +926,31 @@ export default function Laboratorio() {
           <form onSubmit={(e) => {
             e.preventDefault();
             if (!newColetaForm.paciente_id) { toast.error('Selecione o paciente.'); return; }
+            if (medicosQuery.isLoading || funcionariosQuery.isLoading || conveniosQuery.isLoading) {
+              toast.info('Aguarde o carregamento das listas de profissionais e convênios.');
+              return;
+            }
+            if (medicosQuery.isError || funcionariosQuery.isError || conveniosQuery.isError) {
+              toast.error('Não foi possível confirmar os dados auxiliares da coleta.', {
+                description: 'Atualize as listas de médicos, profissionais e convênios antes de salvar para evitar um vínculo incorreto.',
+              });
+              return;
+            }
+            const dataColetaIso = dataHoraDaClinicaParaIso(newColetaForm.data_coleta);
+            if (!dataColetaIso) {
+              toast.error('Informe uma data e horário válidos para a coleta.');
+              return;
+            }
+            if (new Date(dataColetaIso).getTime() > Date.now()) {
+              toast.error('A coleta não pode ser registrada no futuro.', {
+                description: 'Este formulário registra uma amostra já coletada. Para uma coleta futura, mantenha o pedido como pendente até a realização.',
+              });
+              return;
+            }
+            if (!newColetaForm.coletado_por) {
+              toast.error('Informe o profissional que realizou a coleta.');
+              return;
+            }
             createColeta.mutate({
               paciente_id: newColetaForm.paciente_id,
               medico_solicitante_id: newColetaForm.medico_solicitante_id || null,
@@ -721,8 +960,9 @@ export default function Laboratorio() {
               jejum_necessario: newColetaForm.jejum_necessario,
               jejum_horas: newColetaForm.jejum_horas || null,
               urgente: newColetaForm.urgente,
+              status: 'coletado',
               coletado_por: newColetaForm.coletado_por || null,
-              data_coleta: newColetaForm.data_coleta ? new Date(newColetaForm.data_coleta).toISOString() : null,
+              data_coleta: dataColetaIso,
               exame_id: newColetaForm.exame_id && newColetaForm.exame_id !== '__none__' ? newColetaForm.exame_id : null,
               volume_ml: newColetaForm.volume_ml ? parseFloat(newColetaForm.volume_ml) : null,
               condicao_amostra: newColetaForm.condicao_amostra.length > 0 ? newColetaForm.condicao_amostra : null,
@@ -739,7 +979,8 @@ export default function Laboratorio() {
               convenio_id: newColetaForm.convenio_id && newColetaForm.convenio_id !== '__none__' ? newColetaForm.convenio_id : null,
               grupo: newColetaForm.grupo || null,
             } as any);
-          }} className="flex-1 overflow-y-auto space-y-5 pr-2">
+          }} className="flex-1 overflow-y-auto pr-2" aria-busy={createColeta.isPending}>
+            <fieldset disabled={createColeta.isPending} className="space-y-5 border-0 p-0">
 
             {/* Rastreabilidade */}
             <div className="bg-primary/5 border border-primary/20 rounded-lg p-4 space-y-2">
@@ -763,10 +1004,14 @@ export default function Laboratorio() {
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Médico Solicitante</Label>
-                <Select value={newColetaForm.medico_solicitante_id} onValueChange={v => setNewColetaForm(p => ({ ...p, medico_solicitante_id: v }))}>
-                  <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                  <SelectContent>{medicos?.map((m: any) => <SelectItem key={m.id} value={m.id}>{m.nome || `CRM ${m.crm}`} — {m.especialidade || 'Clínico'}</SelectItem>)}</SelectContent>
-                </Select>
+                {medicosQuery.isError ? (
+                  <ErrorState compact title="Não foi possível carregar os médicos" error={medicosQuery.error} onRetry={() => void medicosQuery.refetch()} />
+                ) : (
+                  <Select value={newColetaForm.medico_solicitante_id} onValueChange={v => setNewColetaForm(p => ({ ...p, medico_solicitante_id: v }))} disabled={medicosQuery.isLoading}>
+                    <SelectTrigger><SelectValue placeholder={medicosQuery.isLoading ? 'Carregando…' : 'Selecione...'} /></SelectTrigger>
+                    <SelectContent>{medicos?.map((m: any) => <SelectItem key={m.id} value={m.id}>{m.nome || `CRM ${m.crm}`} — {m.especialidade || 'Clínico'}</SelectItem>)}</SelectContent>
+                  </Select>
+                )}
               </div>
             </div>
 
@@ -778,13 +1023,17 @@ export default function Laboratorio() {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-1.5">
                   <Label className="text-xs font-medium">Convênio</Label>
-                  <Select value={newColetaForm.convenio_id || '__none__'} onValueChange={v => setNewColetaForm(p => ({ ...p, convenio_id: v === '__none__' ? '' : v }))}>
-                    <SelectTrigger><SelectValue placeholder="Particular" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__none__">Particular</SelectItem>
-                      {convenios?.map((c: any) => <SelectItem key={c.id} value={c.id}>{c.nome} ({c.codigo})</SelectItem>)}
-                    </SelectContent>
-                  </Select>
+                  {conveniosQuery.isError ? (
+                    <ErrorState compact title="Não foi possível carregar os convênios" error={conveniosQuery.error} onRetry={() => void conveniosQuery.refetch()} />
+                  ) : (
+                    <Select value={newColetaForm.convenio_id || '__none__'} onValueChange={v => setNewColetaForm(p => ({ ...p, convenio_id: v === '__none__' ? '' : v }))} disabled={conveniosQuery.isLoading}>
+                      <SelectTrigger><SelectValue placeholder={conveniosQuery.isLoading ? 'Carregando…' : 'Particular'} /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">Particular</SelectItem>
+                        {convenios?.map((c: any) => <SelectItem key={c.id} value={c.id}>{c.nome} ({c.codigo})</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  )}
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs font-medium">Nº da Guia</Label>
@@ -841,17 +1090,30 @@ export default function Laboratorio() {
             {/* Vincular a Exame */}
             <div className="space-y-1.5">
               <Label className="text-xs font-medium flex items-center gap-1"><Link2 className="h-3 w-3" />Vincular a Pedido de Exame</Label>
-              <Select value={newColetaForm.exame_id || '__none__'} onValueChange={v => setNewColetaForm(p => ({ ...p, exame_id: v === '__none__' ? '' : v }))}>
-                <SelectTrigger><SelectValue placeholder="Opcional" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none__">Nenhum (coleta avulsa)</SelectItem>
-                  {examesFiltrados.map((e: any) => (
-                    <SelectItem key={e.id} value={e.id}>
-                      {e.tipo_exame} — {(e as any).pacientes?.nome || ''}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {!newColetaForm.paciente_id ? (
+                <p className="text-xs text-muted-foreground">Selecione o paciente para localizar os pedidos em aberto.</p>
+              ) : examesPendentesQuery.isLoading ? (
+                <p role="status" className="text-xs text-muted-foreground">Buscando pedidos de exame do paciente…</p>
+              ) : examesPendentesQuery.isError ? (
+                <ErrorState compact title="Não foi possível carregar os pedidos deste paciente" error={examesPendentesQuery.error} onRetry={() => void examesPendentesQuery.refetch()} />
+              ) : (
+                <>
+                  <Select value={newColetaForm.exame_id || '__none__'} onValueChange={v => setNewColetaForm(p => ({ ...p, exame_id: v === '__none__' ? '' : v }))} disabled={examesFiltrados.length === 0}>
+                    <SelectTrigger><SelectValue placeholder={examesFiltrados.length ? 'Opcional' : 'Nenhum pedido em aberto'} /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">Nenhum (coleta avulsa)</SelectItem>
+                      {examesFiltrados.map((e: any) => (
+                        <SelectItem key={e.id} value={e.id}>
+                          {e.tipo_exame} — {(e as any).pacientes?.nome || ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {examesPendentesQuery.data?.hasMore && (
+                    <p role="status" className="text-xs text-warning-foreground">A lista atingiu 200 pedidos em aberto; os mais antigos podem não aparecer neste seletor.</p>
+                  )}
+                </>
+              )}
             </div>
 
             {/* Finalidade + Categoria do Exame */}
@@ -909,19 +1171,23 @@ export default function Laboratorio() {
             {/* Data/Hora + Profissional */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <Label className="text-xs font-medium flex items-center gap-1"><Clock className="h-3 w-3" />Data e Hora da Coleta</Label>
+                <Label className="text-xs font-medium flex items-center gap-1"><Clock className="h-3 w-3" />Data e Hora da Coleta (horário da clínica)</Label>
                 <Input type="datetime-local" value={newColetaForm.data_coleta}
                   onChange={e => setNewColetaForm(p => ({ ...p, data_coleta: e.target.value }))} />
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium flex items-center gap-1"><User className="h-3 w-3" />Profissional</Label>
-                <Select value={newColetaForm.coletado_por || '__none__'} onValueChange={v => setNewColetaForm(p => ({ ...p, coletado_por: v === '__none__' ? '' : v }))}>
-                  <SelectTrigger><SelectValue placeholder="Quem realizou" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">Não informado</SelectItem>
-                    {funcionarios?.map((f: any) => <SelectItem key={f.id} value={f.id}>{f.nome}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+                {funcionariosQuery.isError ? (
+                  <ErrorState compact title="Não foi possível carregar os profissionais" error={funcionariosQuery.error} onRetry={() => void funcionariosQuery.refetch()} />
+                ) : (
+                  <Select value={newColetaForm.coletado_por || '__none__'} onValueChange={v => setNewColetaForm(p => ({ ...p, coletado_por: v === '__none__' ? '' : v }))} disabled={funcionariosQuery.isLoading}>
+                    <SelectTrigger><SelectValue placeholder={funcionariosQuery.isLoading ? 'Carregando…' : 'Quem realizou'} /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">Não informado</SelectItem>
+                      {funcionarios?.map((f: any) => <SelectItem key={f.id} value={f.id}>{f.nome}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
             </div>
 
@@ -1022,6 +1288,7 @@ export default function Laboratorio() {
                 <Barcode className="h-4 w-4" />Registrar Coleta
               </Button>
             </DialogFooter>
+            </fieldset>
           </form>
         </DialogContent>
       </Dialog>
@@ -1031,10 +1298,18 @@ export default function Laboratorio() {
         <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Resultados Laboratoriais</DialogTitle></DialogHeader>
           <div className="space-y-4">
-            {resultados?.length === 0 && <p className="text-muted-foreground text-center py-4">Nenhum resultado cadastrado</p>}
+            {resultadosQuery.isLoading && <p role="status" className="text-muted-foreground text-center py-4">Carregando resultados…</p>}
+            {resultadosQuery.isError && (
+              <ErrorState compact title="Não foi possível carregar os resultados desta amostra" error={resultadosQuery.error} onRetry={() => void resultadosQuery.refetch()} />
+            )}
+            {!resultadosQuery.isLoading && !resultadosQuery.isError && resultados?.length === 0 && <p className="text-muted-foreground text-center py-4">Nenhum resultado cadastrado</p>}
             {resultados?.map((r: any) => {
-              const numResult = parseFloat(r.resultado);
-              const isAltered = !isNaN(numResult) && ((r.valor_referencia_min != null && numResult < r.valor_referencia_min) || (r.valor_referencia_max != null && numResult > r.valor_referencia_max));
+              const textoResultado = String(r.resultado ?? '').trim();
+              const numeroNormalizado = textoResultado.includes(',')
+                ? textoResultado.replace(/\./g, '').replace(',', '.')
+                : textoResultado;
+              const numResult = textoResultado ? Number(numeroNormalizado) : Number.NaN;
+              const isAltered = Number.isFinite(numResult) && ((r.valor_referencia_min != null && numResult < r.valor_referencia_min) || (r.valor_referencia_max != null && numResult > r.valor_referencia_max));
               return (
                 <div key={r.id} className={cn('p-3 rounded-lg border', isAltered ? 'border-destructive/30 bg-destructive/5' : '')}>
                   <div className="flex justify-between items-start">
@@ -1069,23 +1344,24 @@ export default function Laboratorio() {
                   const coleta = coletas?.find((c: any) => c.id === showResultados);
                   addResultado.mutate({
                     coleta_id: showResultados,
+                    clinica_id: profile?.clinica_id,
                     paciente_id: coleta?.paciente_id,
                     parametro: newResultForm.parametro,
                     resultado: newResultForm.resultado,
                     unidade: newResultForm.unidade || null,
-                    valor_referencia_min: newResultForm.valor_referencia_min ? +newResultForm.valor_referencia_min : null,
-                    valor_referencia_max: newResultForm.valor_referencia_max ? +newResultForm.valor_referencia_max : null,
+                    valor_referencia_min: newResultForm.valor_referencia_min,
+                    valor_referencia_max: newResultForm.valor_referencia_max,
                     valor_referencia_texto: newResultForm.valor_referencia_texto || null,
                     metodo: newResultForm.metodo || null,
                   });
-                  setNewResultForm({ parametro: '', resultado: '', unidade: '', valor_referencia_min: '', valor_referencia_max: '', valor_referencia_texto: '', metodo: '' });
                 }} className="grid grid-cols-2 gap-3">
-                  <div><Label className="text-xs">Parâmetro *</Label><Input value={newResultForm.parametro} onChange={(e) => setNewResultForm(p => ({ ...p, parametro: e.target.value }))} placeholder="Ex: Hemoglobina" /></div>
-                  <div><Label className="text-xs">Resultado *</Label><Input value={newResultForm.resultado} onChange={(e) => setNewResultForm(p => ({ ...p, resultado: e.target.value }))} placeholder="Ex: 14.2" /></div>
-                  <div><Label className="text-xs">Unidade</Label><Input value={newResultForm.unidade} onChange={(e) => setNewResultForm(p => ({ ...p, unidade: e.target.value }))} placeholder="g/dL" /></div>
-                  <div><Label className="text-xs">Método</Label><Input value={newResultForm.metodo} onChange={(e) => setNewResultForm(p => ({ ...p, metodo: e.target.value }))} placeholder="Automatizado" /></div>
-                  <div><Label className="text-xs">Ref. Mínimo</Label><Input type="number" step="any" value={newResultForm.valor_referencia_min} onChange={(e) => setNewResultForm(p => ({ ...p, valor_referencia_min: e.target.value }))} /></div>
-                  <div><Label className="text-xs">Ref. Máximo</Label><Input type="number" step="any" value={newResultForm.valor_referencia_max} onChange={(e) => setNewResultForm(p => ({ ...p, valor_referencia_max: e.target.value }))} /></div>
+                  <div><Label className="text-xs">Parâmetro *</Label><Input disabled={addResultado.isPending} value={newResultForm.parametro} onChange={(e) => setNewResultForm(p => ({ ...p, parametro: e.target.value }))} placeholder="Ex: Hemoglobina" /></div>
+                  <div><Label className="text-xs">Resultado *</Label><Input disabled={addResultado.isPending} value={newResultForm.resultado} onChange={(e) => setNewResultForm(p => ({ ...p, resultado: e.target.value }))} placeholder="Ex: 14.2" /></div>
+                  <div><Label className="text-xs">Unidade</Label><Input disabled={addResultado.isPending} value={newResultForm.unidade} onChange={(e) => setNewResultForm(p => ({ ...p, unidade: e.target.value }))} placeholder="g/dL" /></div>
+                  <div><Label className="text-xs">Método</Label><Input disabled={addResultado.isPending} value={newResultForm.metodo} onChange={(e) => setNewResultForm(p => ({ ...p, metodo: e.target.value }))} placeholder="Automatizado" /></div>
+                  <div><Label className="text-xs">Ref. Mínimo</Label><Input disabled={addResultado.isPending} type="text" inputMode="decimal" value={newResultForm.valor_referencia_min} onChange={(e) => setNewResultForm(p => ({ ...p, valor_referencia_min: e.target.value }))} placeholder="Opcional" /></div>
+                  <div><Label className="text-xs">Ref. Máximo</Label><Input disabled={addResultado.isPending} type="text" inputMode="decimal" value={newResultForm.valor_referencia_max} onChange={(e) => setNewResultForm(p => ({ ...p, valor_referencia_max: e.target.value }))} placeholder="Opcional" /></div>
+                  <div className="col-span-2"><Label className="text-xs">Referência textual</Label><Input disabled={addResultado.isPending} value={newResultForm.valor_referencia_texto} onChange={(e) => setNewResultForm(p => ({ ...p, valor_referencia_texto: e.target.value }))} placeholder="Ex: Não reagente" /></div>
                   <div className="col-span-2">
                     <Button
                       type="submit"

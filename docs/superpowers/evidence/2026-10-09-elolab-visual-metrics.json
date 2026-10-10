@@ -1,0 +1,48 @@
+{
+  "environment": "local; synthetic Supabase loopback mock",
+  "pages": [
+    {
+      "name": "site",
+      "path": "/",
+      "viewport": "375x812",
+      "screenshot": "2026-10-09-elolab-site-mobile-qa.png",
+      "title": "EloLab — Gestão para clínicas e laboratórios",
+      "scrollWidth": 375,
+      "innerWidth": 375,
+      "brokenImages": 0
+    },
+    {
+      "name": "site",
+      "path": "/",
+      "viewport": "1440x900",
+      "screenshot": "2026-10-09-elolab-site-desktop-qa.png",
+      "title": "EloLab — Gestão para clínicas e laboratórios",
+      "scrollWidth": 1440,
+      "innerWidth": 1440,
+      "brokenImages": 0
+    },
+    {
+      "name": "app-auth",
+      "path": "/auth",
+      "viewport": "375x812",
+      "screenshot": "2026-10-09-elolab-app-auth-mobile-qa.png",
+      "title": "EloLab — Gestão para clínicas e laboratórios",
+      "scrollWidth": 375,
+      "innerWidth": 375,
+      "brokenImages": 0
+    },
+    {
+      "name": "app-auth",
+      "path": "/auth",
+      "viewport": "1440x900",
+      "screenshot": "2026-10-09-elolab-app-auth-desktop-qa.png",
+      "title": "EloLab — Gestão para clínicas e laboratórios",
+      "scrollWidth": 1440,
+      "innerWidth": 1440,
+      "brokenImages": 0
+    }
+  ],
+  "consoleErrors": [],
+  "pageErrors": [],
+  "note": "Measured on Vite development server; no Lighthouse or production-network performance claim. Supabase was mocked to loopback."
+}

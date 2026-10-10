@@ -1,11 +1,12 @@
 import { Suspense, lazy } from "react";
+import { MotionConfig } from "framer-motion";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider, QueryCache } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { friendlyErrorMessage } from "@/components/ErrorState";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useSearchParams } from "react-router-dom";
 import { SupabaseAuthProvider } from "@/contexts/SupabaseAuthContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { SupabaseProtectedRoute } from "@/components/SupabaseProtectedRoute";
@@ -48,6 +49,7 @@ const Automacoes = lazy(() => import("@/pages/Automacoes"));
 const AgenteIA = lazy(() => import("@/pages/AgenteIA"));
 const Analytics = lazy(() => import("@/pages/Analytics"));
 const Planos = lazy(() => import("@/pages/Planos"));
+const PlanoCheckout = lazy(() => import("@/pages/PlanoCheckout"));
 const Laboratorio = lazy(() => import("@/pages/Laboratorio"));
 const PrecosExames = lazy(() => import("@/pages/PrecosExames"));
 const PrecosServicos = lazy(() => import("@/pages/PrecosServicos"));
@@ -116,6 +118,8 @@ const FaturamentoConvenios = lazy(() => import("@/pages/FaturamentoConvenios"));
 const RepassesMedicos = lazy(() => import("@/pages/RepassesMedicos"));
 const Interoperabilidade = lazy(() => import("@/pages/Interoperabilidade"));
 import { CookieConsent } from "@/components/CookieConsent";
+import { MaintenanceAnnouncement } from "@/components/MaintenanceAnnouncement";
+import { BrandLoadingScreen } from "@/components/BrandLoadingScreen";
 
 const queryClient = new QueryClient({
   // Falha de carregamento nunca deve virar tela em branco silenciosa:
@@ -143,18 +147,15 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function RedirecionarTriagem() {
+  const [searchParams] = useSearchParams();
+  const destino = new URLSearchParams(searchParams);
+  destino.set('tab', 'triagem');
+  return <Navigate to={`/fila?${destino.toString()}`} replace />;
+}
+
 function RouteFallback() {
-  return (
-    <div className="flex min-h-[60vh] items-center justify-center bg-background">
-      <div className="flex flex-col items-center gap-4">
-        <div className="relative h-12 w-12">
-          <div className="absolute inset-0 rounded-full border-2 border-primary/15" />
-          <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-primary animate-spin" />
-        </div>
-        <p className="text-sm font-medium text-muted-foreground animate-pulse">Carregando…</p>
-      </div>
-    </div>
-  );
+  return <BrandLoadingScreen message="Abrindo seu ambiente" detail="Estamos carregando esta área do EloLab." />;
 }
 
 /**
@@ -182,7 +183,8 @@ function App() {
   // papel). Removido — migrações passam pelo fluxo normal do Supabase.
 
   return (
-    <ErrorBoundary>
+    <MotionConfig reducedMotion="user">
+      <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
         <ThemeProvider>
           <TooltipProvider>
@@ -193,6 +195,7 @@ function App() {
                 <OperationalGuard><AppInitializer>
                 <NotificationBanner />
                 <PlatformAnnouncements />
+                <MaintenanceAnnouncement />
                 <Suspense fallback={<RouteFallback />}>
                   <Routes>
                     {mode === 'landing' ? (
@@ -246,10 +249,10 @@ function App() {
                           <Route path="/prontuarios" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico']}><Prontuarios /></SupabaseProtectedRoute>} />
                           <Route path="/documentos-clinicos" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico']}><DocumentosClinicos /></SupabaseProtectedRoute>} />
                           <Route path="/prescricoes" element={<Navigate to="/documentos-clinicos" replace />} />
-                          <Route path="/atestados" element={<Navigate to="/documentos-clinicos" replace />} />
+                          <Route path="/atestados" element={<Navigate to="/documentos-clinicos?tab=atestados" replace />} />
                           <Route path="/exames" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico', 'enfermagem']}><Exames /></SupabaseProtectedRoute>} />
-                          <Route path="/triagem" element={<Navigate to="/fila?tab=triagem" replace />} />
-                          <Route path="/encaminhamentos" element={<Navigate to="/documentos-clinicos" replace />} />
+                          <Route path="/triagem" element={<RedirecionarTriagem />} />
+                          <Route path="/encaminhamentos" element={<Navigate to="/documentos-clinicos?tab=encaminhamentos" replace />} />
                           <Route path="/retornos" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico', 'recepcao']}><Retornos /></SupabaseProtectedRoute>} />
                           <Route path="/laboratorio" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico', 'enfermagem']}><Laboratorio /></SupabaseProtectedRoute>} />
                           <Route path="/mapa-coleta" element={<SupabaseProtectedRoute allowedRoles={['admin', 'enfermagem']}><MapaColeta /></SupabaseProtectedRoute>} />
@@ -288,10 +291,10 @@ function App() {
                               enquanto o financeiro da clínica usa Contas + pagamentos.
                               Mantemos o endereço antigo como alias para não deixar
                               links salvos abrirem dados incompletos. */}
-                          <Route path="/pagamentos" element={<Navigate to="/contas" replace />} />
+                          <Route path="/pagamentos" element={<Navigate to="/contas?tab=receber" replace />} />
                           <Route path="/precos-servicos" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><PrecosServicos /></SupabaseProtectedRoute>} />
                           <Route path="/precos-exames" element={<Navigate to="/precos-servicos" replace />} />
-                          <Route path="/tipos-consulta" element={<Navigate to="/precos-servicos" replace />} />
+                          <Route path="/tipos-consulta" element={<Navigate to="/precos-servicos?tab=tipos" replace />} />
                           <Route path="/relatorios" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><Relatorios /></SupabaseProtectedRoute>} />
                           <Route path="/relatorios/salvos" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><RelatoriosSalvos /></SupabaseProtectedRoute>} />
                           <Route path="/cobranca-inadimplentes" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><CobrancaInadimplentes /></SupabaseProtectedRoute>} />
@@ -300,10 +303,11 @@ function App() {
                           <Route path="/onboarding" element={<SupabaseProtectedRoute allowedRoles={['admin']}><OnboardingClinica /></SupabaseProtectedRoute>} />
                           <Route path="/configuracoes-avancadas" element={<SupabaseProtectedRoute allowedRoles={['admin']}><ConfiguracoesAvancadas /></SupabaseProtectedRoute>} />
                           <Route path="/automacoes" element={<SupabaseProtectedRoute allowedRoles={['admin']}><Automacoes /></SupabaseProtectedRoute>} />
-                          <Route path="/templates-email" element={<Navigate to="/todos-templates" replace />} />
+                          <Route path="/templates-email" element={<Navigate to="/todos-templates?tab=email" replace />} />
                           <Route path="/agente-ia" element={<SupabaseProtectedRoute allowedRoles={['admin']}><AgenteIA /></SupabaseProtectedRoute>} />
                           <Route path="/analytics" element={<SupabaseProtectedRoute allowedRoles={['admin']}><Analytics /></SupabaseProtectedRoute>} />
                           <Route path="/planos" element={<SupabaseProtectedRoute allowedRoles={['admin']}><Planos /></SupabaseProtectedRoute>} />
+                          <Route path="/planos/checkout/:slug" element={<SupabaseProtectedRoute allowedRoles={['admin']}><PlanoCheckout /></SupabaseProtectedRoute>} />
                           <Route path="/documentacao" element={<SupabaseProtectedRoute somentePlataforma><Documentacao /></SupabaseProtectedRoute>} />
                           <Route path="/painel-admin" element={<SupabaseProtectedRoute somentePlataforma><PainelAdmin /></SupabaseProtectedRoute>} />
                           <Route path="/admin/clinicas" element={<SupabaseProtectedRoute somentePlataforma><PlatformClinicas /></SupabaseProtectedRoute>} />
@@ -349,7 +353,8 @@ function App() {
           </TooltipProvider>
         </ThemeProvider>
       </QueryClientProvider>
-    </ErrorBoundary>
+      </ErrorBoundary>
+    </MotionConfig>
   );
 }
 

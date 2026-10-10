@@ -1,8 +1,9 @@
-// Reconciliação diária: reenvia código de ativação para registros pagos há +24h
-// que ainda não viraram conta (user_id NULL). Também expira registros vencidos.
+// Reconciliação diária ou manual pela administração da plataforma: reenvia
+// convites pagos há +24h que ainda não viraram conta. Também expira vencidos.
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { cronSecretOk, cronForbidden } from "../_shared/cronAuth.ts";
+import { cronSecretOk } from "../_shared/cronAuth.ts";
 import { corsPadrao } from '../_shared/cors.ts';
+import { sendBrandedBrevoRequest } from '../_shared/brevoEmail.ts';
 
 // Atribuído em cada request (reflete a origem permitida). Helpers
 // top-level (json/reply) capturam esta variável por closure.
@@ -14,8 +15,37 @@ Deno.serve(async (req) => {
   corsHeaders = { ...corsPadrao(req),};
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
-  // Só o agendador. Antes a chave anon, que é pública, bastava para disparar.
-  if (!cronSecretOk(req)) return cronForbidden(corsHeaders);
+  // O cron usa o segredo privado; a execução manual exige sessão da plataforma.
+  if (!cronSecretOk(req)) {
+    const authorization = req.headers.get("Authorization");
+    if (!authorization?.startsWith("Bearer ")) {
+      return new Response(JSON.stringify({ error: "Acesso não autorizado." }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const authClient = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_ANON_KEY")!,
+      { global: { headers: { Authorization: authorization } } },
+    );
+    const { data: { user }, error: authError } = await authClient.auth.getUser();
+    if (authError || !user) {
+      return new Response(JSON.stringify({ error: "Acesso não autorizado." }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const { data: isPlatformAdmin, error: roleError } = await authClient.rpc("is_platform_admin");
+    if (roleError || isPlatformAdmin !== true) {
+      return new Response(JSON.stringify({ error: "Ação restrita à administração da plataforma." }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+  }
 
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,
@@ -28,6 +58,7 @@ Deno.serve(async (req) => {
 
   let resent = 0;
   let expired = 0;
+  let failed = 0;
 
   // 1. Marcar como expirados registros pendentes vencidos (>7d)
   const { data: expirados } = await supabase
@@ -55,17 +86,23 @@ Deno.serve(async (req) => {
     });
   }
 
+  if (!brevoApiKey && (orfaos?.length ?? 0) > 0) {
+    return new Response(JSON.stringify({ success: false, error: "O envio de e-mail não está configurado.", checked: orfaos?.length ?? 0, expired }), {
+      status: 503,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
   for (const reg of orfaos ?? []) {
-    if (!brevoApiKey) break;
     try {
       const { data: plano } = await supabase
         .from("planos").select("nome, valor").eq("id", reg.plano_id).maybeSingle();
       const planoNome = plano?.nome ?? reg.plano_slug;
       const link = `https://app.elolab.com.br/auth?codigo=${reg.codigo_convite}&email=${encodeURIComponent(reg.email)}&plano=${reg.plano_slug}`;
 
-      const r = await fetch("https://api.brevo.com/v3/smtp/email", {
+      const r = await sendBrandedBrevoRequest({
         method: "POST",
-        headers: { "api-key": brevoApiKey, "Content-Type": "application/json", Accept: "application/json" },
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
         body: JSON.stringify({
           sender: { name: "EloLab", email: "noreply@elolab.com.br" },
           to: [{ email: reg.email, name: reg.nome }],
@@ -97,15 +134,17 @@ Deno.serve(async (req) => {
           .update({ reminder_count: (reg.reminder_count ?? 0) + 1, updated_at: now.toISOString() })
           .eq("id", reg.id);
       } else {
-        console.error("Brevo erro:", r.status, await r.text());
+        failed++;
+        console.error("Falha no envio Brevo (HTTP " + r.status + ".");
       }
     } catch (e) {
+      failed++;
       console.error("Falha reenvio", reg.id, e);
     }
   }
 
   return new Response(
-    JSON.stringify({ success: true, resent, expired, checked: orfaos?.length ?? 0 }),
+    JSON.stringify({ success: true, resent, expired, failed, checked: orfaos?.length ?? 0 }),
     { headers: { ...corsHeaders, "Content-Type": "application/json" } },
   );
 });

@@ -2,6 +2,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { clinicaDoChamador, cronForbidden, cronOrUserOk, cronSecretOk } from '../_shared/cronAuth.ts'
 import { corsPadrao } from '../_shared/cors.ts';
 import { consumoNotificacoes } from '../_shared/limitesClinica.ts';
+import { sendBrandedBrevoRequest } from '../_shared/brevoEmail.ts';
 
 // Atribuído em cada request (reflete a origem permitida). Helpers
 // top-level (json/reply) capturam esta variável por closure.
@@ -68,13 +69,13 @@ Deno.serve(async (req) => {
         if (notif.tipo === 'email' && notif.destinatario_email) {
           const key = Deno.env.get('BREVO_API_KEY')
           if (!key) throw new Error('BREVO_API_KEY não configurada')
-          const res = await fetch('https://api.brevo.com/v3/smtp/email', {
-            method: 'POST', headers: { 'api-key': key, 'Content-Type': 'application/json', Accept: 'application/json' },
+          const res = await sendBrandedBrevoRequest({
+            method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
             body: JSON.stringify({ sender: { name: 'EloLab Clínica', email: 'noreply@elolab.com.br' },
               to: [{ email: notif.destinatario_email, name: notif.destinatario_nome || '' }],
               subject: notif.assunto || 'Notificação EloLab', htmlContent: notif.conteudo.replace(/\n/g, '<br>') }),
           })
-          if (!res.ok) { await falhar(notif, `Brevo ${res.status}: ${(await res.text()).slice(0, 700)}`); errorCount++; continue }
+          if (!res.ok) { await falhar(notif, `Brevo HTTP ${res.status}`); errorCount++; continue }
           await concluir(notif.id, notif.clinica_id); successCount++
         } else if (notif.tipo === 'whatsapp' && notif.destinatario_telefone) {
           const url = (Deno.env.get('EVOLUTION_API_URL') || '').replace(/\/+$/, '')

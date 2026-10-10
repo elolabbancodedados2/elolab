@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { readFileSync } from 'node:fs';
+import { DEFAULT_LOCAL_SUPABASE_URL, resolveLocalQaSupabaseConfig } from '../scripts/test-supabase-env.ts';
 
 /**
  * Testes de RLS contra a API REST do Supabase usando apenas a chave anon.
@@ -9,42 +9,16 @@ import { readFileSync } from 'node:fs';
  * explicitamente ZERO linhas para quem não está autenticado.
  */
 
-const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'https://gebygucrpipaufrlyqqj.supabase.co';
-
-/**
- * A chave anon é PÚBLICA — vai no JavaScript entregue a todo visitante, e o
- * próprio client.ts a traz embutida como padrão. Ler dali quando a variável de
- * ambiente não existe não expõe nada e resolve um problema real: sem o secret
- * configurado no repositório, estes 15 testes eram PULADOS e o job de e2e
- * passava verde sem nunca ter verificado vazamento de dados.
- *
- * Justamente os testes que mais importam eram os que não rodavam.
- */
-function chaveAnonDoRepo(): string {
-  try {
-    const src = readFileSync('src/integrations/supabase/client.ts', 'utf8');
-    return src.match(/"(eyJ[A-Za-z0-9._-]+)"/)?.[1] ?? '';
-  } catch {
-    return '';
-  }
-}
-
-const SUPABASE_ANON_KEY =
-  process.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
-  process.env.VITE_SUPABASE_ANON_KEY ||
-  chaveAnonDoRepo();
-
+const QA_SUPABASE = resolveLocalQaSupabaseConfig(process.env);
+const SUPABASE_URL = QA_SUPABASE?.url || DEFAULT_LOCAL_SUPABASE_URL;
+const SUPABASE_ANON_KEY = QA_SUPABASE?.anonKey || '';
 const headers = {
   apikey: SUPABASE_ANON_KEY,
   Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
   'Content-Type': 'application/json',
 };
 
-/**
- * UUID que não corresponde a nenhum registro. Os testes de escrita miram nele
- * de propósito: esta suíte roda contra o banco real, então um alvo amplo
- * transformaria uma falha de RLS em perda de dados causada pelo próprio teste.
- */
+/** IDs in mutation tests are deliberately impossible. All requests are restricted to loopback QA. */
 const ID_INEXISTENTE = '00000000-0000-0000-0000-000000000000';
 
 /** Tabelas que jamais podem devolver linhas para um visitante anônimo. */
@@ -70,9 +44,10 @@ const PRIVATE_TABLES = [
 ];
 
 test.beforeAll(() => {
-  // Só pula se nem a variável nem o client.ts trouxerem a chave — o que
-  // significaria que o repositório está incompleto, não que falta um secret.
-  test.skip(!SUPABASE_ANON_KEY, 'chave anon não encontrada nem no ambiente nem em client.ts');
+  test.skip(
+    !QA_SUPABASE,
+    'Configure QA_SUPABASE_URL e QA_SUPABASE_ANON_KEY para um Supabase local em loopback.',
+  );
 });
 
 test.describe('RLS — leitura anônima', () => {
@@ -95,6 +70,9 @@ test.describe('RLS — leitura anônima', () => {
 });
 
 test.describe('RLS — escrita anônima', () => {
+  test.beforeAll(() => {
+    test.skip(!QA_SUPABASE?.disposable, 'Testes de escrita exigem QA_SUPABASE_DISPOSABLE=ELOLAB_LOCAL_DISPOSABLE em banco local descartável.');
+  });
   test('insert de paciente é bloqueado', async ({ request }) => {
     const response = await request.post(`${SUPABASE_URL}/rest/v1/pacientes`, {
       headers: { ...headers, Prefer: 'return=representation' },
@@ -105,11 +83,7 @@ test.describe('RLS — escrita anônima', () => {
   });
 
   test('update de paciente não afeta linhas', async ({ request }) => {
-    // Filtro deliberadamente impossível: esta suíte roda contra o banco REAL.
-    // Uma versão anterior usava `?nome=neq.`, que casa com praticamente toda
-    // linha — se o RLS estivesse aberto, o próprio teste alteraria a base
-    // inteira de pacientes. O teste continua provando o que importa (anônimo
-    // não escreve) sem poder causar dano se a proteção falhar.
+    // Impossible row id; this mutation check is limited to a disposable local DB.
     const response = await request.patch(`${SUPABASE_URL}/rest/v1/pacientes?id=eq.${ID_INEXISTENTE}`, {
       headers: { ...headers, Prefer: 'return=representation' },
       data: { observacoes: 'rls-test' },
@@ -150,6 +124,9 @@ test.describe('RLS — escrita anônima', () => {
  * no próprio aparelho), mandaria mensagem em nome dela ou apagaria a instância.
  */
 test.describe('Edge functions — autorização própria', () => {
+  test.beforeAll(() => {
+    test.skip(process.env.QA_EDGE_STUB_CONFIRMED !== 'ELOLAB_LOCAL_STUB', 'Edge tests exigem confirmação de stub local sem integrações externas.');
+  });
   const SESSAO_DE_OUTRA_CLINICA = '11111111-2222-3333-4444-555555555555';
 
   test('whatsapp-evolution recusa quem não está autenticado', async ({ request }) => {

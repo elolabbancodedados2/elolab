@@ -1,5 +1,5 @@
-import { buscarEmBlocos } from '@/lib/buscarEmBlocos';
-import { useState, useMemo } from 'react';
+import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
+import { useState, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Plus, Search, Check, DollarSign, AlertCircle, Receipt, Calendar, Download, Clock,
@@ -7,7 +7,7 @@ import {
   ArrowUpRight, Banknote, CreditCard, QrCode, Landmark, Building2, Stethoscope,
   FlaskConical, Repeat, Scissors, Pill, Baby, Heart, Bone, Brain,
 } from 'lucide-react';
-import { format, differenceInDays, startOfMonth, endOfMonth, subMonths } from 'date-fns';
+import { format, differenceInCalendarDays, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -26,19 +26,25 @@ import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
-import { usePacientes } from '@/hooks/useSupabaseData';
+import { PacienteCombobox } from '@/components/patients/PacienteCombobox';
 import { Database } from '@/integrations/supabase/types';
 
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell,
 } from 'recharts';
-import { parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
+import { isValidDateOnly, parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { valorRealizado } from '@/lib/lancamentos';
+import { valorRecebidoDaConta } from '@/lib/contasReceber';
+import { ErrorState } from '@/components/ErrorState';
+import { pacienteCorresponde } from '@/lib/buscaPaciente';
+import { mensagemDeErro } from '@/lib/erros';
+import { MercadoPagoPointPayment } from '@/components/financeiro/MercadoPagoPointPayment';
 
 type StatusPagamento = Database['public']['Enums']['status_pagamento'];
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; border: string; icon: any }> = {
   pendente: { label: 'Pendente', color: 'text-warning', bg: 'bg-warning/10', border: 'border-warning/20', icon: Clock },
+  parcial: { label: 'Parcial', color: 'text-warning', bg: 'bg-warning/10', border: 'border-warning/20', icon: Clock },
   pago: { label: 'Recebido', color: 'text-success', bg: 'bg-success/10', border: 'border-success/20', icon: Check },
   atrasado: { label: 'Atrasado', color: 'text-destructive', bg: 'bg-destructive/10', border: 'border-destructive/20', icon: AlertCircle },
   cancelado: { label: 'Cancelado', color: 'text-muted-foreground', bg: 'bg-muted', border: 'border-border', icon: AlertCircle },
@@ -89,7 +95,7 @@ interface FormData {
   paciente_id: string;
   categoria: string;
   descricao: string;
-  valor: number;
+  valor: string;
   data_vencimento: string;
   forma_pagamento: string;
   centro_custo: string;
@@ -100,13 +106,42 @@ interface FormData {
 
 interface BaixaData {
   forma_pagamento: string;
-  data_recebimento: string;
-  desconto: number;
-  acrescimo: number;
+  desconto: string;
+  acrescimo: string;
+  valorReceber: string | null;
   observacoes: string;
 }
 
+interface PagamentoEstornavel {
+  id: string;
+  valor: string;
+  forma_pagamento: string;
+  data_pagamento: string;
+  observacoes: string | null;
+}
+
+const novoFormDataReceita = (): FormData => {
+  const hoje = todaySaoPauloDateOnly();
+  return {
+    paciente_id: '', categoria: 'consulta', descricao: '', valor: '',
+    data_vencimento: hoje, forma_pagamento: 'pix', centro_custo: 'geral',
+    numero_documento: '', competencia: hoje.slice(0, 7), observacoes: '',
+  };
+};
+
 const fmt = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
+function parseMoneyInput(value: string): number | null {
+  const compact = value.trim().replace(/\s/g, '');
+  if (!compact) return null;
+  const formatoBrasileiro = /^(?:\d+|\d{1,3}(?:\.\d{3})+)(?:,\d{1,2})?$/;
+  const formatoPontoDecimal = /^\d+(?:\.\d{1,2})?$/;
+  if (!formatoBrasileiro.test(compact) && !formatoPontoDecimal.test(compact)) return null;
+  const normalizado = compact.includes(',') ? compact.replace(/\./g, '').replace(',', '.') : compact;
+  const valor = Number(normalizado);
+  return Number.isFinite(valor) ? valor : null;
+}
+const formatMoneyInput = (value: number) => Number.isFinite(value) ? value.toFixed(2).replace('.', ',') : '';
+const formaPagamentoRPC: Record<string, string> = { cartao_credito: 'credito', cartao_debito: 'debito' };
 
 const PIE_COLORS = [
   'hsl(var(--primary))', 'hsl(var(--success))', 'hsl(var(--warning))',
@@ -122,49 +157,104 @@ export default function ContasReceber() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isPagamentoOpen, setIsPagamentoOpen] = useState(false);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
+  const [isEstornoOpen, setIsEstornoOpen] = useState(false);
+  const [carregandoPagamentosEstorno, setCarregandoPagamentosEstorno] = useState(false);
+  const [isEstornando, setIsEstornando] = useState(false);
+  const [contaEstorno, setContaEstorno] = useState<any>(null);
+  const [pagamentosEstornaveis, setPagamentosEstornaveis] = useState<PagamentoEstornavel[]>([]);
+  const [pagamentoEstornoId, setPagamentoEstornoId] = useState('');
+  const [motivoEstorno, setMotivoEstorno] = useState('');
+  const [contaParaCancelar, setContaParaCancelar] = useState<any>(null);
+  const [isCancelandoConta, setIsCancelandoConta] = useState(false);
   const [selectedConta, setSelectedConta] = useState<any>(null);
-  const [formData, setFormData] = useState<FormData>({
-    paciente_id: '', categoria: 'consulta', descricao: '', valor: 0,
-    data_vencimento: format(new Date(), 'yyyy-MM-dd'), forma_pagamento: 'pix',
-    centro_custo: 'geral', numero_documento: '', competencia: format(new Date(), 'yyyy-MM'),
-    observacoes: '',
-  });
+  const [formData, setFormData] = useState<FormData>(novoFormDataReceita);
+  const valorReceitaDigitado = parseMoneyInput(formData.valor);
+  const valorReceitaInvalido = valorReceitaDigitado === null || valorReceitaDigitado <= 0;
   const [baixaData, setBaixaData] = useState<BaixaData>({
-    forma_pagamento: 'pix', data_recebimento: format(new Date(), 'yyyy-MM-dd'),
-    desconto: 0, acrescimo: 0, observacoes: '',
+    forma_pagamento: 'pix',
+    desconto: '0,00', acrescimo: '0,00', valorReceber: null, observacoes: '',
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [baixaIncerta, setBaixaIncerta] = useState(false);
+  const [pointBlocksManual, setPointBlocksManual] = useState(false);
+  const submissionLock = useRef(false);
+  const estornoSubmissionLock = useRef(false);
+  const cancelamentoSubmissionLock = useRef(false);
+  const [chavesBaixa, setChavesBaixa] = useState<Record<string, string>>({});
 
   const { user, profile } = useSupabaseAuth();
   const queryClient = useQueryClient();
-  const { data: pacientes = [], isLoading: loadingPacientes } = usePacientes();
 
-  const { data: contas = [], isLoading: loadingContas } = useQuery({
+  const contasQuery = useQuery({
     queryKey: ['lancamentos', 'receita', user?.id ?? null, profile?.clinica_id ?? null],
     queryFn: async () => {
       // Em blocos: sem paginar, o servidor devolvia só as 1000 primeiras contas.
       const data = await buscarEmBlocos<any>(() => supabase
         .from('lancamentos')
-        .select('*, pacientes(nome)')
+        .select('*, pacientes(nome,nome_social,cpf,telefone,email)')
         .eq('tipo', 'receita')
+        .eq('clinica_id', profile?.clinica_id ?? '')
         .order('created_at', { ascending: false })
         .order('id', { ascending: true }));
       const today = todaySaoPauloDateOnly();
       return data.map(conta => {
-        if (conta.status === 'pendente' && conta.data_vencimento && conta.data_vencimento < today) {
-          return { ...conta, status: 'atrasado' as StatusPagamento };
-        }
-        return conta;
+        const vencido = ['pendente', 'parcial'].includes(conta.status) && !!conta.data_vencimento && conta.data_vencimento < today;
+        return { ...conta, vencido, status: vencido && conta.status === 'pendente' ? 'atrasado' as StatusPagamento : conta.status };
       });
     },
     enabled: !!user && !!profile?.clinica_id,
   });
+  const contas = contasQuery.data ?? [];
+  const contasAtingiramLimite = contas.length >= LIMITE_BUSCA_EM_BLOCOS;
 
-  const isLoading = loadingContas || loadingPacientes;
+  const pagamentosQuery = useQuery({
+    queryKey: ['pagamentos-contas-receber', profile?.clinica_id ?? null],
+    queryFn: async () => buscarEmBlocos<PagamentoEstornavel & { lancamento_id: string; estornado_em: string | null }>(() =>
+      supabase.from('pagamentos')
+        .select('id, lancamento_id, valor, forma_pagamento, data_pagamento, observacoes, estornado_em')
+        .eq('clinica_id', profile!.clinica_id!)
+        .order('id', { ascending: true })
+    ),
+    enabled: !!profile?.clinica_id,
+  });
+  const pagamentos = pagamentosQuery.data ?? [];
+  const pagamentosAtingiramLimite = pagamentos.length >= LIMITE_BUSCA_EM_BLOCOS;
+  const lancamentosComPagamento = useMemo(
+    () => new Set(pagamentos.map(pagamento => pagamento.lancamento_id)),
+    [pagamentos],
+  );
+  const pagamentosAtivosPorLancamento = useMemo(() => {
+    const agrupados = new Map<string, typeof pagamentos>();
+    for (const pagamento of pagamentos) {
+      if (pagamento.estornado_em) continue;
+      const lista = agrupados.get(pagamento.lancamento_id) ?? [];
+      lista.push(pagamento);
+      agrupados.set(pagamento.lancamento_id, lista);
+    }
+    return agrupados;
+  }, [pagamentos]);
+  const valorRecebidoConta = (conta: any) => {
+    const pagamentosAtivos = pagamentosAtivosPorLancamento.get(conta.id) ?? [];
+    return valorRecebidoDaConta(
+      conta,
+      !pagamentosAtingiramLimite,
+      lancamentosComPagamento.has(conta.id),
+      pagamentosAtivos.reduce((total, pagamento) => total + Number(pagamento.valor || 0), 0),
+    );
+  };
+  const saldoDevedorConta = (conta: any) => Math.max(
+    0,
+    Number(conta.valor || 0) - Number(conta.desconto || 0) + Number(conta.acrescimo || 0) - valorRecebidoConta(conta),
+  );
+
+  const isLoading = contasQuery.isLoading || pagamentosQuery.isLoading;
+  const hojeClinica = parseDateOnly(todaySaoPauloDateOnly())!;
 
   // Period filter
   const periodoRange = useMemo(() => {
-    const now = new Date();
+    // O período acompanha o dia civil da clínica em São Paulo, mesmo que o
+    // navegador esteja em outro fuso horário.
+    const now = parseDateOnly(todaySaoPauloDateOnly())!;
     switch (filterPeriodo) {
       case 'mes_atual': return { start: startOfMonth(now), end: endOfMonth(now) };
       case 'mes_anterior': return { start: startOfMonth(subMonths(now, 1)), end: endOfMonth(subMonths(now, 1)) };
@@ -178,15 +268,18 @@ export default function ContasReceber() {
     return contas.filter(c => {
       const paciente = (c as any).pacientes;
       const matchSearch =
-        paciente?.nome?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        c.descricao.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        c.categoria?.toLowerCase().includes(searchTerm.toLowerCase());
-      const matchStatus = filterStatus === 'todos' || c.status === filterStatus;
+        pacienteCorresponde(paciente || {}, searchTerm) ||
+        String(c.descricao || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        String(c.categoria || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        String(c.numero_documento || '').toLowerCase().includes(searchTerm.toLowerCase());
+      const matchStatus = filterStatus === 'todos' || (filterStatus === 'atrasado' ? c.vencido : c.status === filterStatus);
       const matchCategoria = filterCategoria === 'todas' || c.categoria === filterCategoria;
       let matchPeriodo = true;
       if (periodoRange) {
-        const d = parseDateOnly(c.data)!;
-        matchPeriodo = d >= periodoRange.start && d <= periodoRange.end;
+        const dataReferencia = parseDateOnly(c.data_vencimento || c.data);
+        matchPeriodo = !!dataReferencia
+          && dataReferencia >= periodoRange.start
+          && dataReferencia <= periodoRange.end;
       }
       return matchSearch && matchStatus && matchCategoria && matchPeriodo;
     });
@@ -196,15 +289,15 @@ export default function ContasReceber() {
     const filtered = filteredContas;
     return {
       total: filtered.filter(c => c.status !== 'cancelado' && c.status !== 'estornado').reduce((a, c) => a + c.valor, 0),
-      pendente: filtered.filter(c => c.status === 'pendente').reduce((a, c) => a + c.valor, 0),
-      atrasado: filtered.filter(c => c.status === 'atrasado').reduce((a, c) => a + c.valor, 0),
-      pago: filtered.filter(c => c.status === 'pago').reduce((a, c) => a + valorRealizado(c), 0),
-      countPendente: filtered.filter(c => c.status === 'pendente').length,
-      countAtrasado: filtered.filter(c => c.status === 'atrasado').length,
-      countPago: filtered.filter(c => c.status === 'pago').length,
+      pendente: filtered.filter(c => ['pendente', 'parcial'].includes(c.status || '') && !c.vencido).reduce((a, c) => a + saldoDevedorConta(c), 0),
+      atrasado: filtered.filter(c => c.vencido).reduce((a, c) => a + saldoDevedorConta(c), 0),
+      pago: filtered.filter(c => c.status === 'pago' || c.status === 'parcial').reduce((a, c) => a + valorRecebidoConta(c), 0),
+      countPendente: filtered.filter(c => ['pendente', 'parcial'].includes(c.status || '') && !c.vencido).length,
+      countAtrasado: filtered.filter(c => c.vencido).length,
+      countPago: filtered.filter(c => c.status === 'pago' || c.status === 'parcial').length,
       countTotal: filtered.length,
     };
-  }, [filteredContas]);
+  }, [filteredContas, lancamentosComPagamento, pagamentosAtivosPorLancamento, pagamentosAtingiramLimite]);
 
   // Por categoria (for chart)
   const porCategoria = useMemo(() => {
@@ -221,11 +314,21 @@ export default function ContasReceber() {
   // Por forma de pagamento (recebidos)
   const porFormaPgto = useMemo(() => {
     const map: Record<string, number> = {};
-    filteredContas.filter(c => c.status === 'pago').forEach(c => {
-      const fp = c.forma_pagamento || 'outros';
-      // Recebido por forma de pagamento é dinheiro que entrou: se somar `valor`
-      // aqui, o gráfico não fecha com o KPI "Recebido" da mesma tela.
-      map[fp] = (map[fp] || 0) + valorRealizado(c);
+    const idsFiltrados = new Set(filteredContas.map(conta => conta.id));
+    const formaCanonica = (forma: string) =>
+      Object.entries(formaPagamentoRPC).find(([, formaRPC]) => formaRPC === forma)?.[0] || forma;
+    for (const pagamento of pagamentos) {
+      if (!idsFiltrados.has(pagamento.lancamento_id) || pagamento.estornado_em) continue;
+      const forma = formaCanonica(pagamento.forma_pagamento || 'outros');
+      map[forma] = (map[forma] || 0) + Number(pagamento.valor || 0);
+    }
+    // Contas antigas podem não ter linhas em `pagamentos`; só nesses casos
+    // usamos o total consolidado e a forma gravada na própria conta.
+    filteredContas.filter(conta =>
+      (conta.status === 'pago' || conta.status === 'parcial') && !lancamentosComPagamento.has(conta.id)
+    ).forEach(conta => {
+      const forma = conta.forma_pagamento || 'outros';
+      map[forma] = (map[forma] || 0) + valorRealizado(conta);
     });
     return Object.entries(map)
       .map(([key, value]) => ({
@@ -233,36 +336,42 @@ export default function ContasReceber() {
         value,
       }))
       .sort((a, b) => b.value - a.value);
-  }, [filteredContas]);
+  }, [filteredContas, pagamentos, lancamentosComPagamento]);
 
-  const getPacienteNome = (conta: any) => conta.pacientes?.nome || 'Particular';
+  const getPacienteNome = (conta: any) => conta.pacientes?.nome_social || conta.pacientes?.nome || 'Particular';
 
   const handleNew = () => {
-    setFormData({
-      paciente_id: '', categoria: 'consulta', descricao: '', valor: 0,
-      data_vencimento: format(new Date(), 'yyyy-MM-dd'), forma_pagamento: 'pix',
-      centro_custo: 'geral', numero_documento: '', competencia: format(new Date(), 'yyyy-MM'),
-      observacoes: '',
-    });
+    setFormData(novoFormDataReceita());
     setIsFormOpen(true);
   };
 
   const handleSave = async () => {
-    if (!formData.descricao || !formData.valor) {
+    if (submissionLock.current) return;
+    if (!formData.descricao.trim()) {
       toast.error('Preencha a descrição e o valor.');
       return;
     }
-    if (formData.valor <= 0) {
+    const valorReceita = valorReceitaDigitado;
+    if (valorReceitaInvalido || valorReceita === null) {
       toast.error('O valor deve ser maior que zero.');
       return;
     }
+    if (!isValidDateOnly(formData.data_vencimento)) {
+      toast.error('Informe uma data de vencimento válida.');
+      return;
+    }
+    if (!profile?.clinica_id) {
+      toast.error('Clínica não identificada. Atualize a sessão e tente novamente.');
+      return;
+    }
+    submissionLock.current = true;
     setIsSubmitting(true);
     try {
       const { error } = await supabase.from('lancamentos').insert({
         tipo: 'receita',
         categoria: formData.categoria,
-        descricao: formData.descricao,
-        valor: formData.valor,
+        descricao: formData.descricao.trim(),
+        valor: valorReceita,
         data: todaySaoPauloDateOnly(),
         data_vencimento: formData.data_vencimento,
         status: 'pendente' as StatusPagamento,
@@ -272,7 +381,7 @@ export default function ContasReceber() {
         numero_documento: formData.numero_documento || null,
         competencia: formData.competencia || null,
         observacoes: formData.observacoes || null,
-        clinica_id: profile?.clinica_id || null,
+        clinica_id: profile.clinica_id,
       });
       if (error) throw error;
       toast.success('Receita cadastrada com sucesso!');
@@ -280,15 +389,22 @@ export default function ContasReceber() {
       setIsFormOpen(false);
     } catch (e: any) {
       toast.error(e.message || 'Erro ao salvar');
-    } finally { setIsSubmitting(false); }
+    } finally {
+      submissionLock.current = false;
+      setIsSubmitting(false);
+    }
   };
 
   const handleDarBaixa = (conta: any) => {
+    setBaixaIncerta(false);
+    setPointBlocksManual(false);
     setSelectedConta(conta);
+    setChavesBaixa(keys => ({ ...keys, [conta.id]: keys[conta.id] || crypto.randomUUID() }));
     setBaixaData({
       forma_pagamento: conta.forma_pagamento || 'pix',
-      data_recebimento: format(new Date(), 'yyyy-MM-dd'),
-      desconto: 0, acrescimo: 0, observacoes: '',
+      desconto: formatMoneyInput(Number(conta.desconto || 0)),
+      acrescimo: formatMoneyInput(Number(conta.acrescimo || 0)),
+      valorReceber: null, observacoes: '',
     });
     setIsPagamentoOpen(true);
   };
@@ -298,71 +414,235 @@ export default function ContasReceber() {
     setIsDetailOpen(true);
   };
 
+  const descontoBaixa = baixaData.desconto.trim() === '' ? 0 : parseMoneyInput(baixaData.desconto);
+  const acrescimoBaixa = baixaData.acrescimo.trim() === '' ? 0 : parseMoneyInput(baixaData.acrescimo);
   const valorFinal = useMemo(() => {
     if (!selectedConta) return 0;
-    return selectedConta.valor - baixaData.desconto + baixaData.acrescimo;
-  }, [selectedConta, baixaData.desconto, baixaData.acrescimo]);
+    if (descontoBaixa === null || acrescimoBaixa === null) return Number.NaN;
+    return selectedConta.valor - descontoBaixa + acrescimoBaixa - valorRecebidoConta(selectedConta);
+  }, [selectedConta, descontoBaixa, acrescimoBaixa, lancamentosComPagamento, pagamentosAtivosPorLancamento, pagamentosAtingiramLimite]);
+  const valorDoPagamento = baixaData.valorReceber === null ? valorFinal : parseMoneyInput(baixaData.valorReceber);
+  const saldoAposRecebimento = valorDoPagamento === null ? Number.NaN : valorFinal - valorDoPagamento;
+  const pagamentoBaixaInvalido = !Number.isFinite(valorFinal) || valorFinal <= 0
+    || valorDoPagamento === null || valorDoPagamento <= 0 || valorDoPagamento > valorFinal;
 
   const handleConfirmarBaixa = async () => {
+    if (submissionLock.current) return;
     if (!selectedConta) return;
     if (!baixaData.forma_pagamento) {
       toast.error('Selecione a forma de pagamento.');
       return;
     }
+    if (descontoBaixa === null || acrescimoBaixa === null || !Number.isFinite(valorFinal)
+      || descontoBaixa < 0 || acrescimoBaixa < 0 || valorFinal <= 0) {
+      toast.error('Confira o desconto e o acréscimo.', { description: 'O valor recebido precisa ser maior que zero e os ajustes não podem ser negativos.' });
+      return;
+    }
+    if (valorDoPagamento === null || valorDoPagamento <= 0) {
+      toast.error('Informe um valor recebido maior que zero.');
+      return;
+    }
+    if (valorDoPagamento > valorFinal) {
+      toast.error('O valor recebido não pode ser maior que o saldo em aberto.', { description: `Saldo disponível: ${fmt(valorFinal)}.` });
+      return;
+    }
+    submissionLock.current = true;
     setIsSubmitting(true);
+    let chamadaRpcIniciada = false;
+    let respostaServidorRecebida = false;
     try {
-      // O valor recebido precisa ser GRAVADO, não só exibido. Antes, desconto e
-      // acréscimo viravam texto em observações e `valor` continuava com o valor
-      // cobrado — então uma conta de R$ 200 recebida com R$ 20 de desconto
-      // seguia contabilizada como R$ 200, inflando receita, DRE e fluxo de caixa.
-      const { error } = await (supabase as any).from('lancamentos').update({
-        status: 'pago' as StatusPagamento,
-        forma_pagamento: baixaData.forma_pagamento,
-        valor_pago: Number(valorFinal.toFixed(2)),
-        desconto: Number((baixaData.desconto || 0).toFixed(2)),
-        acrescimo: Number((baixaData.acrescimo || 0).toFixed(2)),
-        data_pagamento: baixaData.data_recebimento || todaySaoPauloDateOnly(),
-        observacoes: [
-          selectedConta.observacoes, baixaData.observacoes,
-        ].filter(Boolean).join(' | ') || null,
-      }).eq('id', selectedConta.id);
-      if (error) throw error;
-      toast.success(`Pagamento confirmado — ${getPacienteNome(selectedConta)}`);
+      chamadaRpcIniciada = true;
+      const { data: resultado, error } = await (supabase as any).rpc('registrar_pagamento', {
+        p_lancamento_id: selectedConta.id,
+        p_pagamentos: [{
+          forma_pagamento: formaPagamentoRPC[baixaData.forma_pagamento] || baixaData.forma_pagamento,
+          valor: Number(valorDoPagamento.toFixed(2)),
+          parcelas: 1,
+        }],
+        p_desconto: Number(descontoBaixa.toFixed(2)),
+        p_acrescimo: Number(acrescimoBaixa.toFixed(2)),
+        p_chave_idempotencia: chavesBaixa[selectedConta.id] || null,
+        p_observacoes: baixaData.observacoes.trim() || null,
+      });
+      if (error) {
+        const erroRpc = error as { status?: number; code?: string };
+        // PostgREST pode devolver um SQLSTATE sem expor `status` no objeto.
+        // Uma rejeição explícita significa que a transação foi revertida e o
+        // formulário pode ser corrigido; somente falha sem resposta deve ser
+        // tratada como resultado incerto.
+        const statusHttp = Number(erroRpc.status);
+        respostaServidorRecebida = (statusHttp >= 400 && statusHttp < 500)
+          || /^[0-9A-Z]{5}$/i.test(String(erroRpc.code || ''));
+        throw error;
+      }
+      respostaServidorRecebida = true;
+      if (resultado?.repetido) toast.info('Este pagamento já havia sido registrado. Nada foi cobrado de novo.');
+      else toast.success(`Pagamento confirmado — ${getPacienteNome(selectedConta)}`);
       queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
       queryClient.invalidateQueries({ queryKey: ['caixa-diario'] });
+      queryClient.invalidateQueries({ queryKey: ['pagamentos-do-dia'] });
+      queryClient.invalidateQueries({ queryKey: ['pagamentos-contas-receber'] });
       setIsPagamentoOpen(false);
+      setBaixaIncerta(false);
+      setChavesBaixa(keys => {
+        const next = { ...keys };
+        delete next[selectedConta.id];
+        return next;
+      });
     } catch (e: any) {
-      toast.error(e.message || 'Erro ao confirmar');
-    } finally { setIsSubmitting(false); }
+      const message = e.message || 'Erro ao confirmar';
+      if (!chamadaRpcIniciada || respostaServidorRecebida) {
+        // O servidor confirmou a rejeição e a transação foi revertida; esta
+        // mesma chave pode ser usada após corrigir os dados ou abrir o caixa.
+        setBaixaIncerta(false);
+        queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
+        queryClient.invalidateQueries({ queryKey: ['pagamentos-contas-receber'] });
+        toast.error(message, message.toLowerCase().includes('caixa fechado')
+          ? { description: 'Abra o caixa do dia e tente novamente.' }
+          : undefined);
+      } else {
+        // Sem resposta HTTP, a gravação pode ter sido concluída antes da queda.
+        // Confere a chave no banco; se não der para confirmar, mantém o formulário
+        // congelado para que a repetição envie exatamente o mesmo pagamento.
+        const chave = chavesBaixa[selectedConta.id];
+        const verificacao = chave && profile?.clinica_id
+          ? await supabase.from('pagamentos').select('id')
+              .eq('clinica_id', profile.clinica_id)
+              .eq('lancamento_id', selectedConta.id)
+              .eq('chave_idempotencia', chave)
+              .maybeSingle()
+          : { data: null, error: new Error('Não foi possível confirmar a clínica ou a chave desta tentativa.') };
+
+        if (!verificacao.error && verificacao.data) {
+          setBaixaIncerta(false);
+          toast.info('O pagamento foi registrado antes da falha de conexão. Nenhum pagamento adicional foi criado.');
+          queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
+          queryClient.invalidateQueries({ queryKey: ['caixa-diario'] });
+          queryClient.invalidateQueries({ queryKey: ['pagamentos-do-dia'] });
+          queryClient.invalidateQueries({ queryKey: ['pagamentos-contas-receber'] });
+          setIsPagamentoOpen(false);
+          setChavesBaixa(keys => {
+            const next = { ...keys };
+            delete next[selectedConta.id];
+            return next;
+          });
+        } else {
+          setBaixaIncerta(true);
+          toast.warning('Não foi possível confirmar se o recebimento foi registrado.', {
+            description: 'Os dados foram bloqueados. Clique em “Confirmar novamente” sem alterá-los; a mesma chave impede uma cobrança duplicada.',
+            duration: 10000,
+          });
+        }
+      }
+    } finally {
+      submissionLock.current = false;
+      setIsSubmitting(false);
+    }
   };
 
   const handleEstornar = async (conta: any) => {
     try {
-      // Estorno desfaz a baixa: o dinheiro não entrou, então valor_pago volta a
-      // ser nulo e o lançamento deixa de contar como receita recebida.
-      const { error } = await (supabase as any).from('lancamentos').update({
-        status: 'estornado' as StatusPagamento,
-        valor_pago: null,
-        data_pagamento: null,
-      }).eq('id', conta.id);
-      if (error) throw error;
-      toast.success('Estorno realizado.');
-      queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
+      if (!profile?.clinica_id) throw new Error('Clínica não identificada. Atualize a sessão e tente novamente.');
+      setCarregandoPagamentosEstorno(true);
+      const data = await buscarEmBlocos<PagamentoEstornavel>(
+        () => supabase.from('pagamentos')
+          .select('id, valor, forma_pagamento, data_pagamento, observacoes')
+          .eq('lancamento_id', conta.id)
+          .eq('clinica_id', profile.clinica_id)
+          .is('estornado_em', null)
+          .order('data_pagamento', { ascending: false })
+          .order('id', { ascending: true }),
+        { teto: LIMITE_BUSCA_EM_BLOCOS + 1 },
+      );
+      if (data.length > LIMITE_BUSCA_EM_BLOCOS) {
+        throw new Error(`Esta conta ultrapassa ${LIMITE_BUSCA_EM_BLOCOS.toLocaleString('pt-BR')} pagamentos ativos. Consulte o financeiro antes de estornar.`);
+      }
+      if (!data.length) {
+        throw new Error('Esta conta não tem um pagamento individual registrado para estornar. Registros antigos precisam ser conferidos pelo financeiro antes de qualquer ajuste.');
+      }
+      setContaEstorno(conta);
+      setPagamentosEstornaveis(data);
+      setPagamentoEstornoId(data[0].id);
+      setMotivoEstorno('');
+      setIsEstornoOpen(true);
     } catch (e: any) {
-      toast.error(e.message || 'Erro');
+      toast.error('Não foi possível preparar o estorno.', { description: mensagemDeErro(e) });
+    } finally {
+      setCarregandoPagamentosEstorno(false);
     }
   };
 
-  const handleCancelar = async (conta: any) => {
+  const handleConfirmarEstorno = async () => {
+    if (estornoSubmissionLock.current) return;
+    if (!pagamentoEstornoId) {
+      toast.error('Selecione o pagamento que será estornado.');
+      return;
+    }
+    if (motivoEstorno.trim().length < 5) {
+      toast.error('Informe o motivo do estorno (mínimo 5 caracteres).');
+      return;
+    }
+
+    estornoSubmissionLock.current = true;
+    setIsEstornando(true);
     try {
-      const { error } = await supabase.from('lancamentos').update({
-        status: 'cancelado' as StatusPagamento,
-      }).eq('id', conta.id);
+      const { data, error } = await supabase.rpc('estornar_pagamento', {
+        p_pagamento_id: pagamentoEstornoId,
+        p_motivo: motivoEstorno.trim(),
+      });
       if (error) throw error;
+      const resultado = data as any;
+      if (!resultado?.success) throw new Error(resultado?.error || 'O pagamento não foi estornado.');
+
+      const pagamento = pagamentosEstornaveis.find(item => item.id === pagamentoEstornoId);
+      toast.success('Estorno registrado.', {
+        description: `${pagamento ? fmt(Number(pagamento.valor)) : 'Pagamento'} estornado. A conta foi recalculada.`,
+      });
+      queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
+      queryClient.invalidateQueries({ queryKey: ['caixa-diario'] });
+      queryClient.invalidateQueries({ queryKey: ['pagamentos-do-dia'] });
+      queryClient.invalidateQueries({ queryKey: ['pagamentos-contas-receber'] });
+      setIsEstornoOpen(false);
+      setContaEstorno(null);
+      setPagamentosEstornaveis([]);
+      setPagamentoEstornoId('');
+      setMotivoEstorno('');
+    } catch (e: any) {
+      queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
+      queryClient.invalidateQueries({ queryKey: ['pagamentos-contas-receber'] });
+      toast.error('Não foi possível estornar o pagamento.', { description: mensagemDeErro(e) });
+    } finally {
+      estornoSubmissionLock.current = false;
+      setIsEstornando(false);
+    }
+  };
+
+  const handleCancelar = (conta: any) => setContaParaCancelar(conta);
+
+  const handleConfirmarCancelamento = async () => {
+    if (!contaParaCancelar || cancelamentoSubmissionLock.current) return;
+    if (!profile?.clinica_id) {
+      toast.error('Clínica não identificada. Atualize a sessão e tente novamente.');
+      return;
+    }
+    cancelamentoSubmissionLock.current = true;
+    setIsCancelandoConta(true);
+    try {
+      const { data: cancelado, error } = await supabase.from('lancamentos').update({
+        status: 'cancelado' as StatusPagamento,
+      }).eq('id', contaParaCancelar.id).eq('clinica_id', profile.clinica_id)
+        .in('status', ['pendente', 'atrasado']).select('id').maybeSingle();
+      if (error) throw error;
+      if (!cancelado) throw new Error('Esta conta já foi alterada ou não está mais pendente. Atualize a lista.');
       toast.success('Conta cancelada.');
       queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
+      setContaParaCancelar(null);
     } catch (e: any) {
       toast.error(e.message || 'Erro');
+      queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
+    } finally {
+      cancelamentoSubmissionLock.current = false;
+      setIsCancelandoConta(false);
     }
   };
 
@@ -372,8 +652,13 @@ export default function ContasReceber() {
       Descrição: c.descricao,
       Categoria: CATEGORIAS_MAP[c.categoria]?.label || c.categoria,
       Valor: c.valor,
+      'Valor recebido': valorRecebidoConta(c),
+      'Saldo em aberto': saldoDevedorConta(c),
+      'Data de lançamento': c.data || '',
       Vencimento: c.data_vencimento || '',
-      Status: STATUS_CONFIG[c.status || 'pendente']?.label || c.status,
+      Status: c.vencido
+        ? c.status === 'parcial' ? 'Atrasado · parcial' : STATUS_CONFIG.atrasado.label
+        : STATUS_CONFIG[c.status || 'pendente']?.label || c.status,
       'Forma Pgto': FORMAS_PAGAMENTO.find(f => f.value === c.forma_pagamento)?.label || c.forma_pagamento || '',
       'Centro Custo': c.centro_custo || '',
       Competência: c.competencia || '',
@@ -393,6 +678,8 @@ export default function ContasReceber() {
       <Skeleton className="h-96 rounded-xl" />
     </div>
   );
+  if (contasQuery.isError) return <ErrorState title="Não foi possível carregar contas a receber" error={contasQuery.error} onRetry={() => void contasQuery.refetch()} />;
+  if (pagamentosQuery.isError) return <ErrorState title="Não foi possível carregar os pagamentos" error={pagamentosQuery.error} onRetry={() => void pagamentosQuery.refetch()} />;
 
   return (
     <div className="space-y-6 pb-8">
@@ -403,7 +690,7 @@ export default function ContasReceber() {
             <TrendingUp className="h-6 w-6 text-success" /> Contas a Receber
           </h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Receitas detalhadas — {stats.countTotal} lançamento(s)
+            Receitas detalhadas — período por data de lançamento · {stats.countTotal} lançamento(s)
           </p>
         </div>
         <div className="flex gap-2">
@@ -416,13 +703,20 @@ export default function ContasReceber() {
         </div>
       </div>
 
+      {(contasAtingiramLimite || pagamentosAtingiramLimite) && (
+        <div role="status" className="rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm text-warning-foreground">
+          {contasAtingiramLimite && <>A leitura atingiu {LIMITE_BUSCA_EM_BLOCOS.toLocaleString('pt-BR')} contas; a lista pode estar incompleta e os totais não devem ser usados para fechamento. </>}
+          {pagamentosAtingiramLimite && <>A leitura atingiu {LIMITE_BUSCA_EM_BLOCOS.toLocaleString('pt-BR')} pagamentos; o recebido pode estar incompleto. Consulte o Fluxo de Caixa para recebimentos por período.</>}
+        </div>
+      )}
+
       {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
           { label: 'Total Geral', value: stats.total, icon: DollarSign, color: 'text-primary', bg: 'bg-primary/10', border: 'border-primary/20' },
-          { label: 'Pendente', value: stats.pendente, icon: Clock, color: 'text-warning', bg: 'bg-warning/10', border: 'border-warning/20', count: stats.countPendente },
+          { label: 'Em aberto', value: stats.pendente, icon: Clock, color: 'text-warning', bg: 'bg-warning/10', border: 'border-warning/20', count: stats.countPendente },
           { label: 'Vencido', value: stats.atrasado, icon: AlertCircle, color: 'text-destructive', bg: 'bg-destructive/10', border: 'border-destructive/20', count: stats.countAtrasado },
-          { label: 'Recebido', value: stats.pago, icon: Check, color: 'text-success', bg: 'bg-success/10', border: 'border-success/20', count: stats.countPago },
+          { label: 'Recebido nas contas filtradas', value: stats.pago, icon: Check, color: 'text-success', bg: 'bg-success/10', border: 'border-success/20', count: stats.countPago },
         ].map((s, i) => (
           <motion.div key={s.label} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}>
             <Card className={cn('border', s.border)}>
@@ -475,6 +769,7 @@ export default function ContasReceber() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-bold">Recebido por Forma de Pagamento</CardTitle>
+            <CardDescription>Pagamentos individuais nas contas filtradas</CardDescription>
           </CardHeader>
           <CardContent>
             {porFormaPgto.length === 0 ? (
@@ -514,6 +809,7 @@ export default function ContasReceber() {
           <TabsList className="h-9">
             <TabsTrigger value="todos" className="text-xs px-3">Todos</TabsTrigger>
             <TabsTrigger value="pendente" className="text-xs px-3 gap-1"><Clock className="h-3 w-3" /> Pendentes</TabsTrigger>
+            <TabsTrigger value="parcial" className="text-xs px-3 gap-1"><Clock className="h-3 w-3" /> Parciais</TabsTrigger>
             <TabsTrigger value="atrasado" className="text-xs px-3 gap-1"><AlertCircle className="h-3 w-3" /> Vencidos</TabsTrigger>
             <TabsTrigger value="pago" className="text-xs px-3 gap-1"><Check className="h-3 w-3" /> Recebidos</TabsTrigger>
           </TabsList>
@@ -531,7 +827,7 @@ export default function ContasReceber() {
         </Select>
 
         <Select value={filterPeriodo} onValueChange={setFilterPeriodo}>
-          <SelectTrigger className="w-[150px] h-9 text-xs">
+          <SelectTrigger aria-label="Filtrar contas pelo mês de vencimento" className="w-[150px] h-9 text-xs">
             <Calendar className="h-3 w-3 mr-1" />
             <SelectValue />
           </SelectTrigger>
@@ -546,7 +842,7 @@ export default function ContasReceber() {
 
         <div className="relative flex-1 max-w-xs">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Buscar..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-9 h-9" />
+          <Input placeholder="Paciente, CPF, telefone, descrição ou documento..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-9 h-9" />
         </div>
       </div>
 
@@ -558,17 +854,32 @@ export default function ContasReceber() {
               <Card className="border-dashed">
                 <CardContent className="flex flex-col items-center justify-center py-16 text-center">
                   <Receipt className="h-12 w-12 text-muted-foreground/30 mb-3" />
-                  <p className="font-bold">Nenhuma conta encontrada</p>
-                  <p className="text-sm text-muted-foreground mt-1">Ajuste os filtros ou crie uma nova receita.</p>
+                  <p className="font-bold">{contas.length === 0 ? 'Nenhuma receita cadastrada' : 'Nenhuma conta encontrada com estes filtros'}</p>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    {contas.length === 0 ? 'Cadastre uma receita para acompanhar recebimentos.' : 'Limpe a busca e os filtros para ver outras contas.'}
+                  </p>
+                  {contas.length === 0 ? (
+                    <Button size="sm" onClick={handleNew} className="mt-4">Cadastrar receita</Button>
+                  ) : (
+                    <Button size="sm" variant="outline" onClick={() => {
+                      setSearchTerm('');
+                      setFilterStatus('todos');
+                      setFilterCategoria('todas');
+                      setFilterPeriodo('todos');
+                    }} className="mt-4">Limpar filtros</Button>
+                  )}
                 </CardContent>
               </Card>
             </motion.div>
           ) : (
             filteredContas.map((conta, i) => {
-              const status = STATUS_CONFIG[conta.status || 'pendente'];
+              const status = conta.vencido
+                ? { ...STATUS_CONFIG.atrasado, label: conta.status === 'parcial' ? 'Atrasado · parcial' : STATUS_CONFIG.atrasado.label }
+                : STATUS_CONFIG[conta.status || 'pendente'];
               const catInfo = CATEGORIAS_MAP[conta.categoria] || CATEGORIAS_MAP.outros;
               const CatIcon = catInfo?.icon || DollarSign;
-              const diasVenc = conta.data_vencimento ? differenceInDays(parseDateOnly(conta.data_vencimento)!, new Date()) : null;
+              const dataVencimento = conta.data_vencimento ? parseDateOnly(conta.data_vencimento) : null;
+              const diasVenc = dataVencimento ? differenceInCalendarDays(dataVencimento, hojeClinica) : null;
               return (
                 <motion.div key={conta.id} layout initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95 }} transition={{ delay: Math.min(i * 0.02, 0.3) }}>
                   <Card className={cn('hover:shadow-md hover:-translate-y-0.5 transition-all group border', status?.border)}>
@@ -611,15 +922,16 @@ export default function ContasReceber() {
                         {/* Value + Status */}
                         <div className="text-right shrink-0">
                           <p className={cn('text-lg font-black tabular-nums', status?.color)}>{fmt(conta.valor)}</p>
+                          {conta.status === 'parcial' && <p className="text-[10px] text-muted-foreground">Saldo: {fmt(saldoDevedorConta(conta))}</p>}
                           <Badge className={cn('text-[10px]', status?.bg, status?.color, 'border-0')}>{status?.label}</Badge>
                         </div>
 
                         {/* Actions */}
                         <div className="flex items-center gap-1 shrink-0">
-                          {(conta.status === 'pendente' || conta.status === 'atrasado') && (
+                          {['pendente', 'atrasado', 'parcial'].includes(conta.status) && (
                             <Button size="sm" onClick={() => handleDarBaixa(conta)}
                               className="gap-1 bg-success hover:bg-success/90 text-success-foreground font-bold text-xs px-3 shadow-lg shadow-success/20">
-                              <Receipt className="h-3.5 w-3.5" /> Receber
+                              <Receipt className="h-3.5 w-3.5" /> {conta.status === 'parcial' ? 'Receber saldo' : 'Receber'}
                             </Button>
                           )}
                           <DropdownMenu>
@@ -632,9 +944,10 @@ export default function ContasReceber() {
                               <DropdownMenuItem onClick={() => handleViewDetail(conta)} className="gap-2">
                                 <Eye className="h-4 w-4" /> Ver Detalhes
                               </DropdownMenuItem>
-                              {conta.status === 'pago' && (
-                                <DropdownMenuItem onClick={() => handleEstornar(conta)} className="gap-2 text-destructive">
-                                  <Repeat className="h-4 w-4" /> Estornar
+                              {['pago', 'parcial'].includes(conta.status) && (
+                                <DropdownMenuItem disabled={carregandoPagamentosEstorno} onClick={() => handleEstornar(conta)} className="gap-2 text-destructive">
+                                  {carregandoPagamentosEstorno ? <Loader2 className="h-4 w-4 animate-spin" /> : <Repeat className="h-4 w-4" />}
+                                  {carregandoPagamentosEstorno ? 'Carregando pagamentos…' : 'Estornar pagamento'}
                                 </DropdownMenuItem>
                               )}
                               {(conta.status === 'pendente' || conta.status === 'atrasado') && (
@@ -656,15 +969,17 @@ export default function ContasReceber() {
       </div>
 
       {/* Nova Receita Dialog */}
-      <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-        <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
+      <Dialog open={isFormOpen} onOpenChange={open => {
+        if (open || !isSubmitting) setIsFormOpen(open);
+      }}>
+        <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto" aria-busy={isSubmitting}>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Plus className="h-5 w-5 text-primary" /> Nova Receita
             </DialogTitle>
             <DialogDescription>Cadastre uma nova receita com todos os detalhes.</DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
+          <fieldset disabled={isSubmitting} className="space-y-4 border-0 p-0">
             {/* Categoria visual selector */}
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold uppercase tracking-wider">Tipo de Receita *</Label>
@@ -699,14 +1014,25 @@ export default function ContasReceber() {
 
             {/* Paciente */}
             <div className="space-y-1.5">
-              <Label className="text-xs">Paciente (opcional)</Label>
-              <Select value={formData.paciente_id || 'none'} onValueChange={v => setFormData({ ...formData, paciente_id: v === 'none' ? '' : v })}>
-                <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Sem vínculo</SelectItem>
-                  {pacientes.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <div className="flex items-center justify-between gap-2">
+                <Label className="text-xs">Paciente (opcional)</Label>
+                {formData.paciente_id && (
+                  <Button
+                    type="button"
+                    variant="link"
+                    size="sm"
+                    className="h-auto p-0 text-xs"
+                    onClick={() => setFormData(current => ({ ...current, paciente_id: '' }))}
+                  >
+                    Remover vínculo
+                  </Button>
+                )}
+              </div>
+              <PacienteCombobox
+                value={formData.paciente_id}
+                onChange={id => setFormData(current => ({ ...current, paciente_id: id }))}
+                placeholder="Buscar por nome, CPF ou telefone..."
+              />
             </div>
 
             {/* Descrição */}
@@ -719,7 +1045,8 @@ export default function ContasReceber() {
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs">Valor (R$) *</Label>
-                <Input type="number" step="0.01" value={formData.valor || ''} onChange={e => setFormData({ ...formData, valor: parseFloat(e.target.value) || 0 })} />
+                <Input type="text" inputMode="decimal" placeholder="0,00" value={formData.valor} onChange={e => setFormData({ ...formData, valor: e.target.value })} />
+                {formData.valor.trim() && valorReceitaInvalido && <p className="text-xs text-destructive" role="alert">Informe um valor maior que zero, com até duas casas decimais.</p>}
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs">Vencimento</Label>
@@ -762,10 +1089,10 @@ export default function ContasReceber() {
               <Label className="text-xs">Observações</Label>
               <Textarea value={formData.observacoes} onChange={e => setFormData({ ...formData, observacoes: e.target.value })} placeholder="Observações adicionais..." rows={2} />
             </div>
-          </div>
+          </fieldset>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsFormOpen(false)} disabled={isSubmitting}>Cancelar</Button>
-            <Button onClick={handleSave} disabled={isSubmitting} className="gap-2">
+            <Button onClick={handleSave} disabled={isSubmitting || valorReceitaInvalido} className="gap-2">
               {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />} Salvar Receita
             </Button>
           </DialogFooter>
@@ -773,13 +1100,15 @@ export default function ContasReceber() {
       </Dialog>
 
       {/* Dar Baixa Dialog */}
-      <Dialog open={isPagamentoOpen} onOpenChange={setIsPagamentoOpen}>
+      <Dialog open={isPagamentoOpen} onOpenChange={open => {
+        if (open || (!isSubmitting && !baixaIncerta)) setIsPagamentoOpen(open);
+      }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-success">
               <Receipt className="h-5 w-5" /> Confirmar Recebimento
             </DialogTitle>
-            <DialogDescription>Registre o pagamento recebido.</DialogDescription>
+            <DialogDescription>Registre o recebimento com o caixa do dia aberto.</DialogDescription>
           </DialogHeader>
           {selectedConta && (
             <div className="space-y-4">
@@ -801,7 +1130,24 @@ export default function ContasReceber() {
                   <span className="text-sm text-muted-foreground">Valor original</span>
                   <span className="text-lg font-black tabular-nums">{fmt(selectedConta.valor)}</span>
                 </div>
+                {valorRecebidoConta(selectedConta) > 0 && <div className="flex justify-between items-center text-xs">
+                  <span className="text-muted-foreground">Já recebido</span>
+                  <span className="font-semibold tabular-nums">{fmt(valorRecebidoConta(selectedConta))}</span>
+                </div>}
               </div>
+
+              <MercadoPagoPointPayment
+                clinicId={profile?.clinica_id}
+                lancamentoId={selectedConta.id}
+                open={isPagamentoOpen}
+                disabled={isSubmitting || baixaIncerta
+                  || parseMoneyInput(baixaData.desconto) === null
+                  || parseMoneyInput(baixaData.acrescimo) === null
+                  || Number(parseMoneyInput(baixaData.desconto) ?? 0) !== Number(selectedConta.desconto ?? 0)
+                  || Number(parseMoneyInput(baixaData.acrescimo) ?? 0) !== Number(selectedConta.acrescimo ?? 0)}
+                saldo={Math.max(0, saldoDevedorConta(selectedConta))}
+                onPendingChange={setPointBlocksManual}
+              />
 
               <div className="space-y-1.5">
                 <Label className="text-xs font-semibold uppercase tracking-wider">Forma de Pagamento *</Label>
@@ -812,8 +1158,10 @@ export default function ContasReceber() {
                     return (
                       <button key={fp.value} type="button"
                         onClick={() => setBaixaData({ ...baixaData, forma_pagamento: fp.value })}
+                        disabled={isSubmitting || baixaIncerta}
+                        aria-pressed={isSelected}
                         className={cn(
-                          'flex flex-col items-center gap-1 p-2 rounded-lg border text-[10px] transition-all',
+                          'flex flex-col items-center gap-1 p-2 rounded-lg border text-[10px] transition-all disabled:cursor-wait disabled:opacity-50',
                           isSelected ? 'border-success bg-success/10 text-success font-bold' : 'border-border hover:border-success/30'
                         )}>
                         <FPIcon className="h-4 w-4" />
@@ -822,43 +1170,140 @@ export default function ContasReceber() {
                     );
                   })}
                 </div>
-                <Select value={baixaData.forma_pagamento} onValueChange={v => setBaixaData({ ...baixaData, forma_pagamento: v })}>
+                <Select value={baixaData.forma_pagamento} onValueChange={v => setBaixaData({ ...baixaData, forma_pagamento: v })} disabled={isSubmitting || baixaIncerta}>
                   <SelectTrigger className="h-8 text-xs mt-1"><SelectValue /></SelectTrigger>
                   <SelectContent>{FORMAS_PAGAMENTO.map(f => <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
 
-              <div className="grid grid-cols-3 gap-2">
-                <div className="space-y-1">
-                  <Label className="text-[10px]">Data Recebimento</Label>
-                  <Input type="date" value={baixaData.data_recebimento} onChange={e => setBaixaData({ ...baixaData, data_recebimento: e.target.value })} className="h-8 text-xs" />
-                </div>
+              <div className="grid grid-cols-2 gap-2">
                 <div className="space-y-1">
                   <Label className="text-[10px]">Desconto (R$)</Label>
-                  <Input type="number" step="0.01" min={0} value={baixaData.desconto || ''} onChange={e => setBaixaData({ ...baixaData, desconto: parseFloat(e.target.value) || 0 })} className="h-8 text-xs" />
+                  <Input type="text" inputMode="decimal" placeholder="0,00" value={baixaData.desconto} onChange={e => setBaixaData({ ...baixaData, desconto: e.target.value })} className="h-8 text-xs" disabled={isSubmitting || baixaIncerta} />
+                  {baixaData.desconto.trim() && parseMoneyInput(baixaData.desconto) === null && <p className="text-[10px] text-destructive" role="alert">Valor inválido.</p>}
                 </div>
                 <div className="space-y-1">
                   <Label className="text-[10px]">Acréscimo (R$)</Label>
-                  <Input type="number" step="0.01" min={0} value={baixaData.acrescimo || ''} onChange={e => setBaixaData({ ...baixaData, acrescimo: parseFloat(e.target.value) || 0 })} className="h-8 text-xs" />
+                  <Input type="text" inputMode="decimal" placeholder="0,00" value={baixaData.acrescimo} onChange={e => setBaixaData({ ...baixaData, acrescimo: e.target.value })} className="h-8 text-xs" disabled={isSubmitting || baixaIncerta} />
+                  {baixaData.acrescimo.trim() && parseMoneyInput(baixaData.acrescimo) === null && <p className="text-[10px] text-destructive" role="alert">Valor inválido.</p>}
                 </div>
               </div>
 
               <div className="space-y-1">
-                <Label className="text-[10px]">Observações</Label>
-                <Textarea value={baixaData.observacoes} onChange={e => setBaixaData({ ...baixaData, observacoes: e.target.value })} placeholder="Opcional..." rows={2} className="resize-none text-xs" />
+                <div className="flex items-center justify-between gap-2">
+                  <Label htmlFor="contas-receber-valor-parcial" className="text-[10px]">Valor recebido (R$)</Label>
+                  {baixaData.valorReceber !== null && (
+                    <Button type="button" variant="link" size="sm" className="h-auto p-0 text-[10px]" onClick={() => setBaixaData({ ...baixaData, valorReceber: null })} disabled={isSubmitting || baixaIncerta}>
+                      Receber saldo total
+                    </Button>
+                  )}
+                </div>
+                <Input id="contas-receber-valor-parcial" type="text" inputMode="decimal" placeholder="0,00" value={baixaData.valorReceber ?? formatMoneyInput(valorFinal)} onChange={e => setBaixaData({ ...baixaData, valorReceber: e.target.value })} className="h-8 text-xs" disabled={isSubmitting || baixaIncerta} />
+                {baixaData.valorReceber !== null && pagamentoBaixaInvalido && <p className="text-[10px] text-destructive" role="alert">O valor deve ser maior que zero e não pode ultrapassar o saldo disponível.</p>}
+                <p className="text-[10px] text-muted-foreground">
+                  Saldo após este recebimento: {Number.isFinite(saldoAposRecebimento) ? fmt(Math.max(0, saldoAposRecebimento)) : '—'}
+                </p>
               </div>
 
+              <div className="space-y-1">
+                <Label className="text-[10px]">Observações</Label>
+                <Textarea value={baixaData.observacoes} onChange={e => setBaixaData({ ...baixaData, observacoes: e.target.value })} placeholder="Opcional..." rows={2} className="resize-none text-xs" disabled={isSubmitting || baixaIncerta} />
+              </div>
+
+              {baixaIncerta && (
+                <div role="status" className="rounded-lg border border-warning/30 bg-warning/5 p-3 text-xs text-warning-foreground">
+                  O resultado do registro ainda não foi confirmado. Confirme novamente esta mesma tentativa sem criar outro pagamento.
+                </div>
+              )}
+
               <div className="rounded-xl bg-success/5 border border-success/20 p-4 flex justify-between items-center">
-                <span className="text-sm font-bold uppercase tracking-wider text-success">Total a Receber</span>
-                <span className="text-2xl font-black text-success tabular-nums">{fmt(valorFinal)}</span>
+                <span className="text-sm font-bold uppercase tracking-wider text-success">Valor do recebimento</span>
+                <span className="text-2xl font-black text-success tabular-nums">{valorDoPagamento !== null && Number.isFinite(valorDoPagamento) ? fmt(valorDoPagamento) : '—'}</span>
               </div>
             </div>
           )}
           <DialogFooter className="gap-2 sm:gap-0">
-            <Button variant="outline" onClick={() => setIsPagamentoOpen(false)} disabled={isSubmitting}>Cancelar</Button>
-            <Button onClick={handleConfirmarBaixa} disabled={isSubmitting}
+            <Button variant="outline" onClick={() => setIsPagamentoOpen(false)} disabled={isSubmitting || baixaIncerta}>Cancelar</Button>
+            <Button onClick={handleConfirmarBaixa} disabled={isSubmitting || pointBlocksManual || pagamentoBaixaInvalido || descontoBaixa === null || acrescimoBaixa === null}
               className="gap-2 bg-success hover:bg-success/90 text-success-foreground font-bold shadow-lg shadow-success/25">
-              {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-5 w-5" />} Confirmar
+              {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-5 w-5" />} {baixaIncerta ? 'Confirmar novamente' : 'Confirmar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Estorno individual com motivo auditável no banco */}
+      <Dialog
+        open={isEstornoOpen}
+        onOpenChange={(open) => { if (!open && !isEstornando) setIsEstornoOpen(false); }}
+      >
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Estornar pagamento</DialogTitle>
+            <DialogDescription>
+              O estorno preserva o histórico, registra o motivo e recalcula o saldo da conta.
+              {contaEstorno ? ` Conta: ${contaEstorno.descricao}.` : ''}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <Label>Pagamento</Label>
+              <Select value={pagamentoEstornoId} onValueChange={setPagamentoEstornoId} disabled={isEstornando}>
+                <SelectTrigger><SelectValue placeholder="Selecione o pagamento" /></SelectTrigger>
+                <SelectContent>
+                  {pagamentosEstornaveis.map(pagamento => {
+                    const forma = FORMAS_PAGAMENTO.find(item =>
+                      item.value === pagamento.forma_pagamento || formaPagamentoRPC[item.value] === pagamento.forma_pagamento
+                    )?.label || pagamento.forma_pagamento;
+                    return (
+                      <SelectItem key={pagamento.id} value={pagamento.id}>
+                        {fmt(Number(pagamento.valor))} · {forma} · {format(new Date(pagamento.data_pagamento), 'dd/MM/yyyy HH:mm')}
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="motivo-estorno">Motivo do estorno *</Label>
+              <Textarea
+                id="motivo-estorno"
+                value={motivoEstorno}
+                onChange={event => setMotivoEstorno(event.target.value)}
+                placeholder="Ex.: pagamento duplicado, forma de pagamento incorreta..."
+                rows={3}
+                disabled={isEstornando}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsEstornoOpen(false)} disabled={isEstornando}>Voltar</Button>
+            <Button onClick={handleConfirmarEstorno} disabled={isEstornando || motivoEstorno.trim().length < 5} className="gap-2 bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              {isEstornando && <Loader2 className="h-4 w-4 animate-spin" />}
+              Confirmar estorno
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={!!contaParaCancelar}
+        onOpenChange={(open) => { if (!open && !isCancelandoConta) setContaParaCancelar(null); }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Cancelar conta a receber?</DialogTitle>
+            <DialogDescription>
+              {contaParaCancelar && (
+                <>A conta “{contaParaCancelar.descricao}” de {fmt(Number(contaParaCancelar.valor))} será cancelada. Esta ação só se aplica a contas sem pagamento registrado.</>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setContaParaCancelar(null)} disabled={isCancelandoConta}>Manter conta</Button>
+            <Button onClick={handleConfirmarCancelamento} disabled={isCancelandoConta} className="gap-2 bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              {isCancelandoConta && <Loader2 className="h-4 w-4 animate-spin" />}
+              Confirmar cancelamento
             </Button>
           </DialogFooter>
         </DialogContent>
