@@ -28,7 +28,7 @@
 
 - Conta com o e-mail alvo ausente: migration aborta claramente sem criar associação parcial (Task 1, migration e revisão transacional).
 - Perfil já associado a clínica de terceiro: migration aborta e preserva o vínculo (Task 1, bloco de validação da migration).
-- Clínica do owner já existente: migration a reutiliza e uma segunda execução não duplica clínica ou role (Task 1, migration idempotente e inspeção local).
+- Clínica própria já vinculada ao perfil, mesmo com outra clínica própria antiga: migration reutiliza a clínica indicada pelo perfil; se não houver vínculo e existirem múltiplas clínicas próprias, aborta por ambiguidade; nova execução não duplica clínica ou role (Task 1, migration idempotente e inspeção local).
 - Outra conta tem papel ativo de plataforma: fica inativa para plataforma, enquanto seu `user_roles`, perfil, plano e assinatura permanecem iguais (Task 1, snapshot antes/depois no banco local descartável).
 - Navegação sem provisionamento: admin da plataforma sem clínica permanece no menu da plataforma; assinante/admin clínico sem plataforma usa o App, sem seletor ou rota administrativa (Task 2, testes de `Sidebar` e `SupabaseProtectedRoute`).
 
@@ -44,15 +44,15 @@
 - A migration localiza `auth.users.id` por `lower(email) = lower('contato@elolab.com.br')`.
 - A migration garante exatamente um `platform_admins.ativo = true` para o owner indicado; desativa as demais autoridades da plataforma sem apagar linhas nem alterar os outros dados dos usuários.
 - A migration garante `platform_admins.nivel = 'owner'`, `user_roles.role = 'admin'`, e `profiles.clinica_id` apontando para uma clínica cujo `owner_id` é o mesmo usuário.
-- A verificação SQL falha com `RAISE EXCEPTION` se não houver exatamente um administrador de plataforma ativo, uma clínica interna e as duas autoridades esperadas.
+- A verificação SQL falha com `RAISE EXCEPTION` se não houver exatamente um administrador de plataforma ativo, o vínculo do perfil a uma clínica própria e as duas autoridades esperadas; a ausência de duplicação após reexecução é validada pela fixture local.
 
 - [ ] **Step 1: Implementar a migration transacional e idempotente**
 
-Na migration, usar um bloco `DO` e `pg_advisory_xact_lock(hashtextextended('elolab:owner-clinic:contato@elolab.com.br', 0))` para serializar provisionamentos concorrentes dessa conta. Falhar antes de mutações se a conta ou o perfil não existirem, ou se `profiles.clinica_id` apontar para clínica cujo `owner_id` não seja o usuário. Reutilizar a clínica já apontada quando ela pertence ao usuário; caso contrário procurar clínica existente pelo `owner_id`, reutilizá-la se única, e criar `EloLab — Clínica Interna` apenas se nenhuma existir. Fazer upsert do registro `owner` ativo e do papel `admin`; atualizar `profiles.clinica_id`; por fim desativar os outros registros de `platform_admins`, sem removê-los. Não alterar perfil, papel clínico, clínica ou assinatura de outro usuário. PostgreSQL aplica a migration atomicamente.
+Na migration, usar um bloco `DO` e `pg_advisory_xact_lock(hashtextextended('elolab:owner-clinic:contato@elolab.com.br', 0))` para serializar provisionamentos concorrentes dessa conta. Falhar antes de mutações se a conta ou o perfil não existirem, ou se `profiles.clinica_id` apontar para clínica cujo `owner_id` não seja o usuário. Reutilizar primeiro a clínica já apontada quando ela pertence ao usuário, mesmo que haja outra clínica própria antiga. Sem vínculo no perfil, procurar clínica existente pelo `owner_id`, reutilizá-la se única, abortar se houver várias por ambiguidade e criar `EloLab — Clínica Interna` apenas se nenhuma existir. Fazer upsert do registro `owner` ativo e do papel `admin`; atualizar `profiles.clinica_id`; por fim desativar os outros registros de `platform_admins`, sem removê-los. Não alterar perfil, papel clínico, clínica ou assinatura de outro usuário. PostgreSQL aplica a migration atomicamente.
 
 - [ ] **Step 2: Criar verificação SQL somente para ambiente local/de teste**
 
-O arquivo deve conferir por `lower(email)` que o usuário alvo é o único administrador de plataforma ativo, está no nível `owner`, tem role clínica `admin`, aponta para uma clínica de sua propriedade e não possui clínica duplicada criada para a mesma conta. O comentário inicial deve proibir explicitamente execução em produção sem autorização separada. A verificação de preservação de perfis, papéis, planos e assinaturas de outra conta pertence à fixture local descartável da Task 3.
+O arquivo deve conferir por `lower(email)` que o usuário alvo é o único administrador de plataforma ativo, está no nível `owner`, tem role clínica `admin` e aponta para uma clínica de sua propriedade. O comentário inicial deve proibir explicitamente execução em produção sem autorização separada. A verificação de idempotência (sem criar clínica ou papel duplicado ao reexecutar) e a preservação de perfis, papéis, planos e assinaturas de outra conta pertencem à fixture local descartável da Task 3.
 
 - [ ] **Step 3: Revisar o SQL sem conectar a produção**
 

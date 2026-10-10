@@ -38,15 +38,6 @@ BEGIN
     RAISE EXCEPTION 'O perfil de contato@elolab.com.br não existe; provisionamento cancelado.';
   END IF;
 
-  SELECT count(*)
-    INTO v_owned_clinic_count
-    FROM public.clinicas AS c
-   WHERE c.owner_id = v_user_id;
-
-  IF v_owned_clinic_count > 1 THEN
-    RAISE EXCEPTION 'A conta dona já possui mais de uma clínica própria; provisionamento cancelado para evitar escolha ambígua.';
-  END IF;
-
   IF v_profile_clinica_id IS NOT NULL THEN
     SELECT c.owner_id
       INTO v_clinic_owner_id
@@ -59,6 +50,15 @@ BEGIN
 
     v_clinica_id := v_profile_clinica_id;
   ELSE
+    SELECT count(*)
+      INTO v_owned_clinic_count
+      FROM public.clinicas AS c
+     WHERE c.owner_id = v_user_id;
+
+    IF v_owned_clinic_count > 1 THEN
+      RAISE EXCEPTION 'A conta dona já possui mais de uma clínica própria e o perfil não identifica qual reutilizar; provisionamento cancelado.';
+    END IF;
+
     IF v_owned_clinic_count = 1 THEN
       SELECT c.id
         INTO v_clinica_id

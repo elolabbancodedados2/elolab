@@ -4,7 +4,6 @@ DECLARE
   v_owner_id uuid;
   v_active_platform_admins integer;
   v_clinica_id uuid;
-  v_owned_clinic_count integer;
 BEGIN
   SELECT id
     INTO v_owner_id
@@ -52,15 +51,6 @@ BEGIN
        AND owner_id = v_owner_id
   ) THEN
     RAISE EXCEPTION 'O perfil da conta dona não aponta para sua própria clínica.';
-  END IF;
-
-  SELECT count(*)
-    INTO v_owned_clinic_count
-    FROM public.clinicas
-   WHERE owner_id = v_owner_id;
-
-  IF v_owned_clinic_count <> 1 THEN
-    RAISE EXCEPTION 'Esperada uma única clínica própria da conta dona; encontradas %.', v_owned_clinic_count;
   END IF;
 
   IF EXISTS (
