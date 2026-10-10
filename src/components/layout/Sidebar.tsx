@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
-import { ChevronLeft, ChevronDown, PanelLeftOpen, Search } from 'lucide-react';
+import { ChevronLeft, ChevronDown, LayoutDashboard, PanelLeftOpen, Search, ShieldCheck } from 'lucide-react';
 import logoIcon from '@/assets/elolab-symbol-v2.png';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,7 +13,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { SidebarNavItem } from './SidebarNavItem';
-import { getFilteredMenuGroups, MenuGroup } from '@/config/sidebarMenu';
+import { getFilteredMenuGroups, getNavigationMode, MenuGroup } from '@/config/sidebarMenu';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const STORAGE_KEY = 'elolab_sidebar_collapsed';
@@ -26,9 +26,12 @@ interface SidebarProps {
 }
 
 export function Sidebar({ forceExpanded = false, onNavigate }: SidebarProps) {
-  const { profile, isAdmin, isSuperAdmin } = useSupabaseAuth();
+  const { profile, isAdmin, isSuperAdmin, isPlatformAdmin } = useSupabaseAuth();
   const location = useLocation();
   const [search, setSearch] = useState('');
+  const navigationMode = isPlatformAdmin && !profile?.clinica_id
+    ? 'platform'
+    : getNavigationMode(location.pathname, isPlatformAdmin);
 
   const [collapsed, setCollapsed] = useState(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
@@ -56,7 +59,8 @@ export function Sidebar({ forceExpanded = false, onNavigate }: SidebarProps) {
     // Durante a impersonação o perfil recebe a clinica_id da clínica visitada,
     // então as telas de clínica reaparecem — que é justamente quando o dono
     // precisa delas.
-    !!profile?.clinica_id
+    !!profile?.clinica_id,
+    navigationMode
   );
 
   const searchedGroups = search.trim()
@@ -145,6 +149,48 @@ export function Sidebar({ forceExpanded = false, onNavigate }: SidebarProps) {
       </div>
 
       {/* ─── Search ─── */}
+      {isPlatformAdmin && profile?.clinica_id && (
+        <div
+          role="group"
+          aria-label="Alternar área"
+          className={cn(
+            'grid gap-1 px-2 pb-2',
+            isCollapsed ? 'grid-cols-1' : 'grid-cols-2 px-3',
+          )}
+        >
+          <Link
+            to="/dashboard"
+            onClick={onNavigate}
+            aria-label="App"
+            aria-current={navigationMode === 'app' ? 'page' : undefined}
+            className={cn(
+              'flex min-h-10 items-center justify-center gap-2 rounded-lg px-2 text-xs font-semibold transition-colors',
+              navigationMode === 'app'
+                ? 'bg-primary/10 text-primary ring-1 ring-primary/20'
+                : 'text-sidebar-foreground/55 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground',
+            )}
+          >
+            <LayoutDashboard className="h-4 w-4 shrink-0" />
+            {!isCollapsed && <span>App</span>}
+          </Link>
+          <Link
+            to="/painel-admin"
+            onClick={onNavigate}
+            aria-label="Painel Admin"
+            aria-current={navigationMode === 'platform' ? 'page' : undefined}
+            className={cn(
+              'flex min-h-10 items-center justify-center gap-2 rounded-lg px-2 text-xs font-semibold transition-colors',
+              navigationMode === 'platform'
+                ? 'bg-primary/10 text-primary ring-1 ring-primary/20'
+                : 'text-sidebar-foreground/55 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground',
+            )}
+          >
+            <ShieldCheck className="h-4 w-4 shrink-0" />
+            {!isCollapsed && <span>Painel Admin</span>}
+          </Link>
+        </div>
+      )}
+
       {!isCollapsed && (
         <div className="px-3 pb-2">
           <div className="relative">

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getFilteredMenuGroups } from '../sidebarMenu';
+import { getFilteredMenuGroups, getNavigationMode } from '../sidebarMenu';
 
 /**
  * O filtro do menu já teve dois defeitos, e nenhum aparecia em revisão de
@@ -53,6 +53,38 @@ describe('menu do administrador de clínica', () => {
   it('alcança a própria assinatura — esconder isso impediria de contratar', () => {
     const todos = adminClinica().flatMap((g) => g.items.map((i) => i.href));
     expect(todos).toContain('/planos');
+  });
+});
+
+describe('modos de navegação da plataforma', () => {
+  it('no modo App, mostra os módulos clínicos e oculta os grupos da plataforma', () => {
+    const grupos = getFilteredMenuGroups(['admin'], true, true, true, 'app');
+    expect(nomes(grupos)).toContain('Pacientes');
+    expect(nomes(grupos).some((nome) => nome.startsWith('SaaS ·'))).toBe(false);
+  });
+
+  it('no modo Painel Admin, mostra os grupos da plataforma e oculta módulos clínicos', () => {
+    const grupos = getFilteredMenuGroups(['admin'], true, true, true, 'platform');
+    expect(nomes(grupos)).toContain('SaaS · Clientes');
+    expect(nomes(grupos)).not.toContain('Pacientes');
+  });
+
+  it.each([
+    ['/painel-admin', true, 'platform'],
+    ['/admin/crm', true, 'platform'],
+    ['/usuarios', true, 'platform'],
+    ['/documentacao', true, 'platform'],
+    ['/feedback', true, 'platform'],
+    ['/feedback', false, 'app'],
+    ['/dashboard', true, 'app'],
+  ] as const)('resolve %s para %s', (path, isPlatformAdmin, expected) => {
+    expect(getNavigationMode(path, isPlatformAdmin)).toBe(expected);
+  });
+
+  it('mantém o filtro antigo quando o modo não é especificado', () => {
+    const grupos = getFilteredMenuGroups(['admin'], true, true, true);
+    expect(nomes(grupos)).toContain('Pacientes');
+    expect(nomes(grupos)).toContain('SaaS · Clientes');
   });
 });
 

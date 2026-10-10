@@ -2,7 +2,7 @@
 
 ## Objetivo
 
-Permitir que `contato@elolab.com.br` use, pela mesma conta, o app clínico do EloLab e o Painel Admin da plataforma. A conta terá uma clínica interna própria; os demais usuários não receberão acesso ao Painel Admin nem serão adicionados a essa clínica.
+Permitir que `contato@elolab.com.br` use, pela mesma conta, o app clínico do EloLab e o Painel Admin da plataforma. Somente essa conta manterá autoridade ativa de administração da plataforma. Os assinantes continuam usando o app com os acessos previstos por seus planos e papéis; a mudança não remove seus perfis, papéis clínicos ou assinaturas. A conta dona terá uma clínica interna própria.
 
 ## Contexto atual
 
@@ -15,7 +15,7 @@ Permitir que `contato@elolab.com.br` use, pela mesma conta, o app clínico do El
 
 ## Abordagem escolhida
 
-Manter uma única identidade com as duas autoridades existentes: administrador da plataforma e administrador de uma clínica interna exclusiva. Criar uma migração idempotente que localiza a conta pelo e-mail confirmado, garante o registro `owner` em `platform_admins`, associa o perfil a uma clínica dedicada do EloLab e concede o papel clínico `admin`. A migração não cria uma conta de autenticação nem concede papéis a outras contas.
+Manter uma única identidade com as duas autoridades existentes: administrador da plataforma e administrador de uma clínica interna exclusiva. Criar uma migração idempotente que localiza a conta pelo e-mail confirmado, garante seu registro `owner` ativo em `platform_admins`, desativa a autoridade de plataforma das outras contas sem apagar seus registros, associa o perfil a uma clínica dedicada do EloLab e concede a essa conta o papel clínico `admin`. A migração não cria uma conta de autenticação nem altera perfis, papéis clínicos ou assinaturas dos demais usuários.
 
 Adicionar à navegação uma opção explícita para alternar entre “App” e “Painel Admin”. A opção administrativa aparece apenas para administradores da plataforma. O modo App leva ao dashboard e mostra a navegação clínica; o modo Painel Admin leva a `/painel-admin` e mostra a navegação administrativa. As proteções de rota e as políticas do banco permanecem como autoridade de acesso; ocultar itens na interface não é considerado proteção.
 
@@ -33,6 +33,7 @@ Adicionar à navegação uma opção explícita para alternar entre “App” e 
 - A clínica interna deve ter nome identificável como ambiente próprio do EloLab, proprietário igual à conta dona, e nenhuma associação com clínicas de clientes.
 - Se o perfil já estiver ligado a uma clínica diferente, o provisionamento deve falhar sem trocar o vínculo. Se já houver clínica própria do usuário, ela deve ser reutilizada em vez de criar outra.
 - O Painel Admin continua protegido no servidor por `is_platform_admin()`; administradores de clínica e demais usuários continuam sem acesso.
+- Após o provisionamento, somente `contato@elolab.com.br` pode ter `platform_admins.ativo = true`; contas anteriormente registradas como suporte/financeiro deixam de ter autoridade de plataforma. Seus acessos clínicos ou de assinante permanecem inalterados.
 - O app usa o vínculo de `profiles.clinica_id` para carregar o espaço clínico da conta. A alternância não usa impersonação de cliente nem altera o escopo de outras contas.
 - Não haverá chamada à produção nem deploy como parte desta implementação. A ativação no banco e publicação do frontend exigem as respectivas etapas autorizadas após a revisão do plano.
 
@@ -46,11 +47,11 @@ Adicionar à navegação uma opção explícita para alternar entre “App” e 
 
 ## Critérios de aceite
 
-1. `contato@elolab.com.br` tem registro ativo de proprietário da plataforma, perfil ligado a uma clínica interna própria e papel clínico `admin` após o provisionamento autorizado.
+1. `contato@elolab.com.br` tem o único registro ativo de proprietário da plataforma, perfil ligado a uma clínica interna própria e papel clínico `admin` após o provisionamento autorizado.
 2. A mesma sessão consegue acessar o dashboard clínico e `/painel-admin` através da opção de navegação.
 3. Um usuário comum não vê a opção administrativa e continua impedido de abrir `/painel-admin` diretamente.
 4. Rodar o provisionamento novamente não duplica clínica, vínculo ou papel.
-5. Um e-mail de conta diferente não ganha vínculo, papel ou autoridade por causa desta mudança.
+5. Nenhum outro usuário mantém autoridade ativa na plataforma após a migration; perfis, papéis clínicos e assinaturas desses usuários não são alterados.
 6. Nenhuma alteração é aplicada em produção durante a implementação local.
 
 ## Verificação
@@ -59,4 +60,4 @@ Cobrir o RBAC e a navegação para conta da plataforma com e sem vínculo clíni
 
 ## Limites
 
-Esta especificação trata apenas da conta indicada, da clínica interna e da alternância entre contextos. Não inclui novos papéis administrativos, painel clínico novo, impersonação, mudanças de cobrança ou permissões para outras contas.
+Esta especificação trata apenas da conta indicada, da clínica interna, da alternância entre contextos e da exclusividade da autoridade de plataforma. Não inclui novos papéis administrativos, painel clínico novo, impersonação, mudanças de cobrança nem alterações nos acessos clínicos/assinaturas dos outros usuários.
