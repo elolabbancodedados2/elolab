@@ -23,7 +23,7 @@ import { passwordSchema } from '@/lib/passwordPolicy';
 import { AuthSwitch } from '@/components/ui/auth-switch';
 import { interpretarErroLogin, loginSchema, type LoginFormData } from '@/lib/authValidation';
 import logoHorizontal from '@/assets/elolab-logo-identidade.png';
-import marcaElolab from '@/assets/elolab-symbol-identidade.png';
+import authBackground from '@/assets/auth-background-elolab.png';
 
 // ─── Schemas ───────────────────────────────────────────────
 const signupSchema = z.object({
@@ -387,11 +387,9 @@ export default function Auth() {
   return (
     <div className="relative min-h-svh overflow-x-hidden bg-[#edf5ff] text-[#10264e]">
       <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_52%_42%,rgba(255,255,255,0.94)_0%,rgba(244,249,255,0.68)_42%,rgba(221,237,255,0.74)_100%)]" />
-        <div className="absolute -right-[27rem] -top-[19rem] h-[58rem] w-[58rem] rounded-full bg-cyan-200/45 blur-[110px]" />
-        <div className="absolute -bottom-[26rem] -left-[18rem] h-[52rem] w-[52rem] rounded-full bg-blue-200/55 blur-[120px]" />
-        <img src={marcaElolab} alt="" className="absolute left-1/2 top-[44%] w-[min(106vw,1050px)] max-w-none -translate-y-1/2 -translate-x-[34%] opacity-[0.22] mix-blend-multiply blur-[0.4px] sm:w-[min(92vw,1120px)] lg:top-[48%] lg:translate-x-[-25%] lg:opacity-[0.28]" />
-        <div className="absolute inset-0 bg-white/10" />
+        <img src={authBackground} alt="" className="absolute inset-0 h-full w-full object-cover object-center" />
+        <div className="absolute inset-0 bg-white/20" />
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_50%_48%,rgba(255,255,255,0.06)_0%,rgba(237,245,255,0.12)_65%,rgba(237,245,255,0.35)_100%)]" />
       </div>
 
       <header className="relative z-20 flex h-[82px] items-center justify-between px-5 sm:px-8 xl:px-14">
