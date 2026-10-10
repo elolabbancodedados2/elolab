@@ -4,10 +4,10 @@ import type { Database } from './types';
 
 // Em produção, as duas variáveis são obrigatórias. O fallback só existe no
 // ambiente de testes, para que os testes unitários não dependam de um backend.
-// Nunca deixar o frontend cair silenciosamente no Supabase Cloud: isso pode
-// mascarar uma configuração incompleta do Coolify.
+// Nunca deixar o frontend cair silenciosamente em outro ambiente: isso pode
+// mascarar uma configuração incompleta do deploy na VPS pelo EasyPanel.
 const isTest = import.meta.env.MODE === "test";
-export const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || (isTest ? "https://gebygucrpipaufrlyqqj.supabase.co" : "");
+export const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || (isTest ? "http://127.0.0.1:54321" : "");
 export const SUPABASE_PUBLISHABLE_KEY =
   import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
   import.meta.env.VITE_SUPABASE_ANON_KEY ||

@@ -475,3 +475,7 @@ conversa com a clínica, não código.
 2. Mergear o PR #30.
 3. Decidir sobre as clínicas de teste que sobraram — agora há botão no painel.
 4. Ligar a triagem, se a clínica tiver enfermagem.
+# Historical deployment report
+
+This report records the hosting setup at the time it was written. Current
+production uses Supabase and EasyPanel on the VPS; see `../EASYPANEL-VPS.md`.

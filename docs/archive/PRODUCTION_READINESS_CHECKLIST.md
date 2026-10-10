@@ -2,7 +2,7 @@
 
 > **Obsoleto.** Este checklist descreve uma revisão antiga e não comprova o
 > estado atual da produção. A aplicação está no Easypanel da VPS; consulte
-> [`docs/EASYPANEL-VPS.md`](docs/EASYPANEL-VPS.md) e a revisão atual antes de
+> [`docs/EASYPANEL-VPS.md`](../EASYPANEL-VPS.md) e a revisão atual antes de
 > qualquer deploy.
 
 ---
@@ -54,7 +54,7 @@ Template files: `supabase/seed-email-templates.sql`
 | Resultado de Exame | `resultado_exame` | Blue design, exam type, portal link | ✅ Ready |
 | Recibo de Pagamento | `recibo_pagamento` | Purple design, payment details, CNPJ | ✅ Ready |
 
-**To Apply**: Execute SQL in Supabase Dashboard (see SEED_TEMPLATES_GUIDE.md)
+**To Apply**: This is historical. See [`templates doc`](../operations/SEED_TEMPLATES.md).
 
 ---
 
@@ -329,3 +329,8 @@ All automations follow same pattern. Multi-channel (email + WhatsApp) where appl
 ---
 
 Generated: 2026-04-13 | EloLab Production Sprint Complete
+# Historical document
+
+This checklist describes the earlier hosted deployment and is retained as an
+audit record. It is not the current production procedure. The current app runs
+on the VPS with Supabase and EasyPanel; see `docs/EASYPANEL-VPS.md`.

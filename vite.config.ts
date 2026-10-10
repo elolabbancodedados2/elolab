@@ -128,9 +128,8 @@ export default defineConfig(({ mode }) => ({
           // Dados clínicos e arquivos de paciente NÃO são cacheados no disco do
           // navegador: em máquina compartilhada (recepção) o conteúdo continuava
           // recuperável depois do logout. Ambos passam a ir sempre à rede.
-          // A URL pode ser supabase.co durante a transição ou um domínio da
-          // própria VPS no ambiente auto-hospedado. O caminho é a parte
-          // estável e estes dados nunca devem entrar no cache offline.
+          // O caminho funciona com o domínio atual da API na VPS. Dados
+          // clínicos e arquivos de pacientes nunca entram no cache offline.
           {
             urlPattern: ({ url }) => /^\/(?:rest\/v1|storage\/v1)\//i.test(url.pathname),
             handler: "NetworkOnly",

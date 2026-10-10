@@ -1,4 +1,8 @@
-# Setup de Exames Laboratoriais com Preços
+# Historico: setup de exames laboratoriais com precos
+
+Este procedimento manual foi substituido pela migration
+`supabase/migrations/20260413225100_add_exam_pricing.sql`. Nao execute o SQL
+abaixo no banco atual. O deploy de producao usa o Supabase na VPS.
 
 ## 📋 Estrutura Implementada
 

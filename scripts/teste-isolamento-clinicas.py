@@ -3,10 +3,10 @@ Prova que a clinica A nao alcanca dados nem a sessao de WhatsApp da clinica B.
 
 COMO RODAR
 
-    SUPABASE_SERVICE_KEY=... SUPABASE_ANON_KEY=...       python scripts/teste-isolamento-clinicas.py
+    SUPABASE_URL=https://api.elolab.com.br SUPABASE_SERVICE_KEY=... \
+    SUPABASE_ANON_KEY=... python scripts/teste-isolamento-clinicas.py
 
-As chaves saem de `supabase projects api-keys --project-ref <ref>`. Nao guarde
-nenhuma delas no repositorio.
+Use chaves do ambiente de teste. Nao guarde nenhuma delas no repositorio.
 
 ATENCAO: roda contra o banco REAL. Cria duas clinicas descartaveis com um
 usuario cada, exercita o isolamento e apaga tudo no `finally` — inclusive se
@@ -36,8 +36,7 @@ import uuid
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-REF = "gebygucrpipaufrlyqqj"
-BASE = f"https://{REF}.supabase.co"
+BASE = os.environ["SUPABASE_URL"].rstrip("/")
 SERVICE = os.environ["SUPABASE_SERVICE_KEY"]
 ANON = os.environ["SUPABASE_ANON_KEY"]
 

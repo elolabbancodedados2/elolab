@@ -19,8 +19,6 @@
     "check:colunas": "node scripts/check-colunas.mjs",
     "check:falhas": "node scripts/check-falhas-silenciosas.mjs",
     "check:permissoes": "node scripts/check-permissoes.mjs",
-    "schema:real": "node scripts/dump-schema-real.mjs > schema-real.json",
-    "check:colunas:real": "npm run schema:real && node scripts/check-colunas.mjs",
     "check:a11y": "node scripts/check-acessibilidade.mjs --teto 0",
     "test:mp-sandbox": "npx -y deno@2 run --no-lock --config=supabase/functions/deno.json --allow-net=api.mercadopago.com --allow-read=supabase/functions/.env.local --allow-env=MP_TEST_DEVICE_ID scripts/mercadopago-sandbox-e2e.ts"
   },
