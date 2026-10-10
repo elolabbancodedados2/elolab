@@ -4,7 +4,7 @@ import path from "path";
 import { createViteTestSupabaseDefine } from './scripts/test-supabase-env.ts';
 
 export default defineConfig({
-  define: createViteTestSupabaseDefine(process.env),
+  define: createViteTestSupabaseDefine({}),
   plugins: [react()],
   test: {
     environment: "jsdom",
