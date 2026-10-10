@@ -44,6 +44,13 @@ function formatarDataHoraSaoPaulo(value?: string | null, longo = false): string 
   return (longo ? FORMATADOR_DATA_HORA_LONGA : FORMATADOR_DATA_HORA).format(instante);
 }
 
+function paraDataHoraLocal(value?: string | null): string {
+  if (!value) return '';
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return '';
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+}
+
 const STATUS_LABEL: Record<string, { label: string; variant: any }> = {
   recebida: { label: 'Recebida', variant: 'secondary' },
   em_analise: { label: 'Em análise', variant: 'default' },
@@ -320,6 +327,7 @@ export default function GuiasExternas() {
 
       {detail && (
         <DetalheGuiaDialog
+          key={detail.id}
           guia={detail}
           open={!!detail}
           onClose={() => setDetailId(null)}
@@ -562,6 +570,73 @@ function DetalheGuiaDialog({ guia, open, onClose, onChanged }: any) {
   const [agendando, setAgendando] = useState(false);
   const [dataAg, setDataAg] = useState('');
   const [horaAg, setHoraAg] = useState('');
+  const [terceirizacao, setTerceirizacao] = useState({
+    laboratorio_id: guia.laboratorio_id || '', status_terceirizacao: guia.status_terceirizacao || 'nao_enviado',
+    prazo_laboratorio: guia.prazo_laboratorio || '', custo_laboratorio: guia.custo_laboratorio == null ? '' : String(guia.custo_laboratorio),
+    data_envio_laboratorio: guia.data_envio_laboratorio || '', data_retorno_laboratorio: guia.data_retorno_laboratorio || '',
+    laudo_externo_url: guia.laudo_externo_url || '', laudo_externo_nome: guia.laudo_externo_nome || '',
+  });
+  const [uploadingRetorno, setUploadingRetorno] = useState(false);
+
+  const laboratoriosParceiros = useQuery({
+    queryKey: ['lab-parceiros-guia', profile?.clinica_id], enabled: open && !!profile?.clinica_id,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).from('laboratorios').select('id, nome')
+        .eq('clinica_id', profile!.clinica_id).eq('ativo', true).order('nome');
+      if (error) throw error; return data ?? [];
+    },
+  });
+  const eventosTerceirizacao = useQuery({
+    queryKey: ['lab-guia-eventos', guia.id, profile?.clinica_id], enabled: open && !!profile?.clinica_id,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).from('guias_externas_eventos_lab')
+        .select('id, tipo, detalhes, created_at').eq('clinica_id', profile!.clinica_id).eq('guia_id', guia.id).order('created_at', { ascending: false }).limit(30);
+      if (error) throw error; return data ?? [];
+    },
+  });
+
+  const salvarTerceirizacao = useMutation({
+    mutationFn: async () => {
+      if (!profile?.clinica_id) throw new Error('Clínica não identificada.');
+      const custo = terceirizacao.custo_laboratorio.trim() ? Number(terceirizacao.custo_laboratorio.replace(',', '.')) : null;
+      if (custo != null && (!Number.isFinite(custo) || custo < 0)) throw new Error('Informe um custo válido, igual ou maior que zero.');
+      if (terceirizacao.status_terceirizacao !== 'nao_enviado' && !terceirizacao.laboratorio_id) throw new Error('Selecione o laboratório parceiro antes de acompanhar o envio.');
+      const { data, error } = await (supabase as any).from('guias_externas').update({
+        laboratorio_id: terceirizacao.laboratorio_id || null, status_terceirizacao: terceirizacao.status_terceirizacao,
+        prazo_laboratorio: terceirizacao.prazo_laboratorio || null, custo_laboratorio: custo,
+        data_envio_laboratorio: terceirizacao.data_envio_laboratorio || null,
+        data_retorno_laboratorio: terceirizacao.data_retorno_laboratorio || null,
+        laudo_externo_url: terceirizacao.laudo_externo_url || null, laudo_externo_nome: terceirizacao.laudo_externo_nome || null,
+      }).eq('id', guia.id).eq('clinica_id', profile.clinica_id).select('id').maybeSingle();
+      if (error) throw error;
+      if (!data) throw new Error('A guia não pertence à clínica atual ou mudou enquanto você editava.');
+    },
+    onSuccess: () => { onChanged(); void eventosTerceirizacao.refetch(); toast.success('Acompanhamento do laboratório externo salvo.'); },
+    onError: (error: any) => toast.error('Não foi possível salvar o acompanhamento.', { description: mensagemDeErro(error) }),
+  });
+
+  const enviarLaudoParceiro = async (file?: File) => {
+    if (!file) return;
+    if (file.type !== 'application/pdf' || file.size > 15 * 1024 * 1024) { toast.error('Selecione um PDF de até 15 MB.'); return; }
+    if (!profile?.clinica_id) { toast.error('Clínica não identificada.'); return; }
+    setUploadingRetorno(true);
+    try {
+      const path = `${profile.clinica_id}/retornos/${guia.id}-${Date.now()}.pdf`;
+      const { error } = await supabase.storage.from('guias-externas').upload(path, file, { contentType: 'application/pdf', upsert: false });
+      if (error) throw error;
+      setTerceirizacao(current => ({ ...current, laudo_externo_url: path, laudo_externo_nome: file.name }));
+      toast.success('Laudo do parceiro anexado. Salve o acompanhamento para concluir.');
+    } catch (error) { toast.error('Não foi possível anexar o laudo.', { description: mensagemDeErro(error) }); }
+    finally { setUploadingRetorno(false); }
+  };
+
+  const abrirLaudoParceiro = async () => {
+    if (!terceirizacao.laudo_externo_url) return;
+    const { data, error } = await supabase.storage.from('guias-externas').createSignedUrl(terceirizacao.laudo_externo_url, 300);
+    if (error || !data?.signedUrl || !abrirUrlSegura(data.signedUrl, storageUrlSeguro)) {
+      toast.error('Não foi possível abrir o laudo do parceiro.', { description: error?.message }); return;
+    }
+  };
 
   const updateStatus = useMutation({
     mutationFn: async (patch: any) => {
@@ -669,6 +744,27 @@ function DetalheGuiaDialog({ guia, open, onClose, onChanged }: any) {
           </div>
 
           {guia.observacoes && <Info label="Observações" value={guia.observacoes} />}
+
+          <Card className="border-border/70">
+            <CardHeader className="border-b bg-muted/20 py-3"><CardTitle className="text-sm">Acompanhamento do laboratório parceiro</CardTitle><CardDescription>Parceiro, prazo, custo e retorno ficam vinculados a esta guia da clínica.</CardDescription></CardHeader>
+            <CardContent className="space-y-3 p-4">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1"><Label>Laboratório parceiro</Label><Select value={terceirizacao.laboratorio_id || '__none__'} onValueChange={(value) => setTerceirizacao(current => ({ ...current, laboratorio_id: value === '__none__' ? '' : value }))}><SelectTrigger><SelectValue placeholder="Selecione o parceiro" /></SelectTrigger><SelectContent><SelectItem value="__none__">Não definido</SelectItem>{(laboratoriosParceiros.data ?? []).map((laboratorio: any) => <SelectItem key={laboratorio.id} value={laboratorio.id}>{laboratorio.nome}</SelectItem>)}</SelectContent></Select></div>
+                <div className="space-y-1"><Label>Status do processamento externo</Label><Select value={terceirizacao.status_terceirizacao} onValueChange={(value) => setTerceirizacao(current => ({ ...current, status_terceirizacao: value, data_envio_laboratorio: value === 'enviado' && !current.data_envio_laboratorio ? new Date().toISOString() : current.data_envio_laboratorio, data_retorno_laboratorio: value === 'concluido' && !current.data_retorno_laboratorio ? new Date().toISOString() : current.data_retorno_laboratorio }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="nao_enviado">Não enviado</SelectItem><SelectItem value="enviado">Enviado</SelectItem><SelectItem value="em_processamento">Em processamento</SelectItem><SelectItem value="concluido">Concluído</SelectItem><SelectItem value="atrasado">Atrasado</SelectItem></SelectContent></Select></div>
+                <div className="space-y-1"><Label>Prazo previsto</Label><Input type="date" value={terceirizacao.prazo_laboratorio} onChange={(event) => setTerceirizacao(current => ({ ...current, prazo_laboratorio: event.target.value }))} /></div>
+                <div className="space-y-1"><Label>Custo do parceiro (R$)</Label><Input inputMode="decimal" value={terceirizacao.custo_laboratorio} onChange={(event) => setTerceirizacao(current => ({ ...current, custo_laboratorio: event.target.value }))} placeholder="0,00" /></div>
+                <div className="space-y-1"><Label>Enviado em</Label><Input type="datetime-local" value={paraDataHoraLocal(terceirizacao.data_envio_laboratorio)} onChange={(event) => setTerceirizacao(current => ({ ...current, data_envio_laboratorio: event.target.value ? new Date(event.target.value).toISOString() : '' }))} /></div>
+                <div className="space-y-1"><Label>Retornado em</Label><Input type="datetime-local" value={paraDataHoraLocal(terceirizacao.data_retorno_laboratorio)} onChange={(event) => setTerceirizacao(current => ({ ...current, data_retorno_laboratorio: event.target.value ? new Date(event.target.value).toISOString() : '' }))} /></div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 border-t pt-3">
+                <Button variant="outline" size="sm" asChild={false} onClick={() => document.getElementById(`laudo-parceiro-${guia.id}`)?.click()} disabled={uploadingRetorno}>{uploadingRetorno ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Upload className="mr-1 h-4 w-4" />}{terceirizacao.laudo_externo_nome || 'Anexar laudo PDF'}</Button>
+                <input id={`laudo-parceiro-${guia.id}`} type="file" accept="application/pdf,.pdf" className="sr-only" onChange={(event) => { void enviarLaudoParceiro(event.target.files?.[0]); event.currentTarget.value = ''; }} />
+                {terceirizacao.laudo_externo_url && <Button variant="ghost" size="sm" onClick={() => void abrirLaudoParceiro()}><ExternalLink className="mr-1 h-4 w-4" />Abrir PDF privado</Button>}
+                <Button size="sm" className="ml-auto" onClick={() => salvarTerceirizacao.mutate()} disabled={salvarTerceirizacao.isPending || uploadingRetorno}>{salvarTerceirizacao.isPending ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : null}Salvar acompanhamento</Button>
+              </div>
+              <div className="border-t pt-3"><p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Histórico de acompanhamento</p>{eventosTerceirizacao.isLoading ? <p role="status" className="text-xs text-muted-foreground">Carregando histórico…</p> : (eventosTerceirizacao.data ?? []).length === 0 ? <p className="text-xs text-muted-foreground">As atualizações feitas após a migration aparecerão aqui.</p> : <ul className="space-y-1.5">{eventosTerceirizacao.data?.map((evento: any) => <li key={evento.id} className="flex justify-between gap-3 text-xs"><span>{evento.tipo === 'parceiro_registrado' ? 'Acompanhamento iniciado' : 'Acompanhamento atualizado'}</span><time className="text-muted-foreground">{formatarDataHoraSaoPaulo(evento.created_at, true)}</time></li>)}</ul>}</div>
+            </CardContent>
+          </Card>
 
           {guia.anexo_url && (
             <Button variant="outline" size="sm" onClick={openAnexo} className="gap-1.5">

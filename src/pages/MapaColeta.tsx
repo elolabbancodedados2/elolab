@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import {
   CheckCircle2, RefreshCw, Loader2, RotateCcw, XCircle, Search, Printer, FlaskConical,
@@ -7,6 +8,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -106,12 +108,29 @@ export default function MapaColeta() {
   const [now, setNow] = useState(() => new Date());
   const [cancelarId, setCancelarId] = useState<string | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
+  const [eventoTipo, setEventoTipo] = useState('transporte');
+  const [eventoLocal, setEventoLocal] = useState('');
+  const [eventoMotivo, setEventoMotivo] = useState('');
+  const [savingEvento, setSavingEvento] = useState(false);
   const [processingIds, setProcessingIds] = useState<Set<string>>(new Set());
   const processingIdsRef = useRef(new Set<string>());
   const [bulkProcessing, setBulkProcessing] = useState(false);
   const bulkProcessingRef = useRef(false);
   const fetchRequestRef = useRef(0);
   const activeClinicRef = useRef<string | null>(null);
+
+  const eventosAmostraQuery = useQuery({
+    queryKey: ['lab-amostra-eventos', profile?.clinica_id, detailId],
+    enabled: !!profile?.clinica_id && !!detailId,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).from('laboratorio_eventos_amostra')
+        .select('id, tipo, status_anterior, status_novo, local, detalhes, created_at, profiles(nome)')
+        .eq('clinica_id', profile!.clinica_id!).eq('coleta_id', detailId!)
+        .order('created_at', { ascending: false }).limit(100);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
 
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 30_000);
@@ -135,17 +154,17 @@ export default function MapaColeta() {
       let cursor: { created_at: string; id: string } | null = null;
       while (true) {
         if (requestId !== fetchRequestRef.current || activeClinicRef.current !== clinicId) return;
-        let query = supabase
+        let query = (supabase as any)
           .from('coletas_laboratorio')
           .select(`
-            id, codigo_amostra, status, created_at, updated_at, observacoes, tipo_amostra,
+            id, codigo_amostra, status, created_at, updated_at, observacoes, tipo_amostra, local_atual, rejeicao_motivo, recoleta_de_id,
             tubo, urgente, jejum_necessario, jejum_horas, volume_ml,
             sitio_coleta, condicao_amostra, data_coleta, lote_insumo,
             pacientes(nome, nome_social, cpf, telefone, email, data_nascimento, sexo, convenios(nome)),
             medicos(nome, crm),
             exames(tipo_exame)
           `)
-          .in('status', ['pendente', 'coletado', 'recoleta'])
+          .in('status', ['pendente', 'coletado', 'em_analise', 'recoleta', 'rejeitada'])
           .eq('clinica_id', clinicId);
         if (cursor) {
           query = query.or(`created_at.gt.${cursor.created_at},and(created_at.eq.${cursor.created_at},id.gt.${cursor.id})`);
@@ -271,6 +290,38 @@ export default function MapaColeta() {
 
   const handleEncaminharAnalise = (id: string) => transitionStatus(id, ['coletado'], 'em_analise', 'Enviado para análise');
 
+  const registrarEventoAmostra = async () => {
+    const amostra = itens.find(item => item.id === detailId);
+    if (!amostra || !profile?.clinica_id || savingEvento) return;
+    if (['transporte', 'armazenamento'].includes(eventoTipo) && !eventoLocal.trim()) {
+      toast.error('Informe o local da amostra.');
+      return;
+    }
+    if (['rejeicao', 'recoleta'].includes(eventoTipo) && eventoMotivo.trim().length < 5) {
+      toast.error('Informe um motivo com pelo menos 5 caracteres.');
+      return;
+    }
+    setSavingEvento(true);
+    try {
+      const { data, error } = await (supabase as any).rpc('laboratorio_registrar_evento_amostra', {
+        p_coleta_id: amostra.id,
+        p_tipo: eventoTipo,
+        p_local: eventoLocal.trim() || null,
+        p_detalhes: eventoMotivo.trim() ? { motivo: eventoMotivo.trim() } : {},
+      });
+      if (error) throw error;
+      const resultId = typeof data === 'string' ? data : amostra.id;
+      toast.success(eventoTipo === 'recoleta' ? 'Nova amostra criada e vinculada à anterior' : 'Movimentação registrada no histórico');
+      setEventoLocal(''); setEventoMotivo(''); setEventoTipo('transporte');
+      await Promise.all([fetchColetas(), eventosAmostraQuery.refetch()]);
+      if (eventoTipo === 'recoleta') setDetailId(resultId);
+    } catch (error) {
+      toast.error('Não foi possível registrar a movimentação', { description: mensagemDeErro(error) });
+    } finally {
+      setSavingEvento(false);
+    }
+  };
+
   const handleBulkPrint = () => {
     if (selected.size === 0) { toast.error('Selecione ao menos uma coleta'); return; }
     const selectedItems = itens.filter(i => selected.has(i.id));
@@ -324,7 +375,8 @@ export default function MapaColeta() {
 
   const pendentes = filtrado.filter(i => i.status === 'pendente');
   const recoletas = filtrado.filter(i => i.status === 'recoleta');
-  const coletados = filtrado.filter(i => i.status === 'coletado');
+  const rejeitadas = filtrado.filter(i => i.status === 'rejeitada');
+  const coletados = filtrado.filter(i => i.status === 'coletado' || i.status === 'em_analise');
   const aguardando = [...recoletas, ...pendentes];
   const selectedColetaveis = itens.filter(i => selected.has(i.id) && (i.status === 'pendente' || i.status === 'recoleta')).length;
 
@@ -359,7 +411,9 @@ export default function MapaColeta() {
 
   const StatusBadge = ({ status }: { status: string }) => {
     if (status === 'coletado') return <Badge className="bg-success/10 text-success border-success/20">Coletado</Badge>;
+    if (status === 'em_analise') return <Badge variant="outline">Em análise</Badge>;
     if (status === 'recoleta') return <Badge variant="destructive" className="gap-1"><RotateCcw className="h-3 w-3" />Recoleta</Badge>;
+    if (status === 'rejeitada') return <Badge variant="destructive">Rejeitada</Badge>;
     return <Badge variant="secondary">Pendente</Badge>;
   };
 
@@ -527,13 +581,14 @@ export default function MapaColeta() {
       )}
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
         {[
           { label: 'Aguardando', value: pendentes.length, icon: Clock, color: 'text-warning', bg: 'bg-warning/10' },
           { label: 'Recoleta', value: recoletas.length, icon: RotateCcw, color: 'text-destructive', bg: 'bg-destructive/10' },
           { label: 'Coletados', value: coletados.length, icon: CheckCircle2, color: 'text-green-500', bg: 'bg-green-500/10' },
           { label: 'Urgentes', value: filtrado.filter(i => i.urgente).length, icon: Zap, color: 'text-destructive', bg: 'bg-destructive/10' },
           { label: 'SLA Crítico', value: slaBreaches.length, icon: AlertTriangle, color: 'text-destructive', bg: 'bg-destructive/10' },
+          { label: 'Rejeitadas', value: rejeitadas.length, icon: XCircle, color: 'text-destructive', bg: 'bg-destructive/10' },
         ].map(s => (
           <Card key={s.label}>
             <CardContent className="pt-4 pb-3 flex items-center gap-3">
@@ -588,7 +643,9 @@ export default function MapaColeta() {
             <SelectItem value="todos">Todos</SelectItem>
             <SelectItem value="pendente">Pendente</SelectItem>
             <SelectItem value="coletado">Coletado</SelectItem>
+            <SelectItem value="em_analise">Em análise</SelectItem>
             <SelectItem value="recoleta">Recoleta</SelectItem>
+            <SelectItem value="rejeitada">Rejeitada</SelectItem>
           </SelectContent>
         </Select>
         {selected.size > 0 && (
@@ -637,6 +694,15 @@ export default function MapaColeta() {
                     <tbody>{coletados.map((item, idx) => <ColetaRow key={item.id} item={item} idx={idx} showActions />)}</tbody>
                   </table>
                 </CardContent>
+              </Card>
+            </motion.div>
+          )}
+
+          {rejeitadas.length > 0 && (
+            <motion.div variants={fadeUp}>
+              <Card className="border-destructive/20">
+                <CardHeader className="pb-3"><CardTitle className="text-base flex items-center gap-2"><XCircle className="h-4 w-4 text-destructive" />Amostras rejeitadas ({rejeitadas.length})</CardTitle></CardHeader>
+                <CardContent className="overflow-x-auto p-0"><table className="w-full text-sm"><TableHead items={rejeitadas} label="rejeitadas" /><tbody>{rejeitadas.map((item, idx) => <ColetaRow key={item.id} item={item} idx={idx} showActions={false} />)}</tbody></table></CardContent>
               </Card>
             </motion.div>
           )}
@@ -707,6 +773,29 @@ export default function MapaColeta() {
                 {detailItem.urgente && <Badge variant="destructive" className="gap-1"><Zap className="h-3 w-3" />Urgente</Badge>}
                 {detailItem.jejum_necessario && <Badge variant="outline">Jejum {detailItem.jejum_horas}h</Badge>}
               </div>
+              {detailItem.local_atual && <p className="text-xs text-muted-foreground">Local atual: <span className="font-medium text-foreground">{detailItem.local_atual}</span></p>}
+              {detailItem.rejeicao_motivo && <p className="rounded-md bg-destructive/5 p-2 text-xs text-destructive">Motivo da rejeição: {detailItem.rejeicao_motivo}</p>}
+
+              <section className="space-y-3 rounded-xl border p-3" aria-label="Histórico de rastreabilidade">
+                <div><p className="text-sm font-semibold">Rastreabilidade da amostra</p><p className="text-xs text-muted-foreground">Cada movimentação fica registrada com data e responsável.</p></div>
+                {eventosAmostraQuery.isError ? <ErrorState compact title="Não foi possível carregar o histórico" error={eventosAmostraQuery.error} onRetry={() => void eventosAmostraQuery.refetch()} /> : eventosAmostraQuery.isLoading ? <p role="status" className="text-xs text-muted-foreground">Carregando histórico…</p> : eventosAmostraQuery.data?.length ? (
+                  <ol className="max-h-48 space-y-3 overflow-y-auto">{eventosAmostraQuery.data.map((evento: any) => <li key={evento.id} className="flex gap-2 border-l-2 border-primary/20 pl-3"><div className="min-w-0"><p className="text-xs font-medium capitalize">{String(evento.tipo).replace(/_/g, ' ')}{evento.status_novo ? ` · ${evento.status_novo}` : ''}</p><p className="text-[11px] text-muted-foreground">{dataHoraClinica(new Date(evento.created_at))}{evento.profiles?.nome ? ` · ${evento.profiles.nome}` : ''}{evento.local ? ` · ${evento.local}` : ''}</p>{evento.detalhes?.motivo && <p className="mt-0.5 text-xs">{evento.detalhes.motivo}</p>}</div></li>)}</ol>
+                ) : <p className="text-xs text-muted-foreground">Nenhuma movimentação registrada.</p>}
+              </section>
+
+              <section className="space-y-3 rounded-xl border bg-muted/10 p-3">
+                <p className="text-sm font-semibold">Registrar movimentação</p>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-1"><Label>Evento</Label><Select value={eventoTipo} onValueChange={setEventoTipo}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>
+                    <SelectItem value="recebida">Recebimento no laboratório</SelectItem><SelectItem value="transporte">Transporte</SelectItem><SelectItem value="armazenamento">Armazenamento</SelectItem><SelectItem value="observacao">Observação</SelectItem>
+                    {(detailItem.status === 'coletado' || detailItem.status === 'em_analise') && <SelectItem value="rejeicao">Rejeitar amostra</SelectItem>}
+                    {detailItem.status === 'rejeitada' && <SelectItem value="recoleta">Abrir recoleta</SelectItem>}
+                  </SelectContent></Select></div>
+                  {['transporte', 'armazenamento'].includes(eventoTipo) && <div className="space-y-1"><Label htmlFor="lab-amostra-local">Local</Label><Input id="lab-amostra-local" value={eventoLocal} onChange={(event) => setEventoLocal(event.target.value)} maxLength={120} placeholder="Ex.: setor de bioquímica" /></div>}
+                  {['rejeicao', 'recoleta', 'observacao'].includes(eventoTipo) && <div className="space-y-1 sm:col-span-2"><Label htmlFor="lab-amostra-motivo">{eventoTipo === 'observacao' ? 'Observação' : 'Motivo'}</Label><Input id="lab-amostra-motivo" value={eventoMotivo} onChange={(event) => setEventoMotivo(event.target.value)} maxLength={500} placeholder="Descreva a ocorrência" /></div>}
+                </div>
+                <div className="flex justify-end"><Button size="sm" onClick={() => void registrarEventoAmostra()} disabled={savingEvento} className="gap-2">{savingEvento && <Loader2 className="h-4 w-4 animate-spin" />} Registrar evento</Button></div>
+              </section>
             </div>
           )}
         </DialogContent>
