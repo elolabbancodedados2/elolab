@@ -19,6 +19,8 @@ import { InstallPWA } from "@/components/InstallPWA";
 import { SubscriptionGuard } from "@/components/SubscriptionGuard";
 import { PlanFeatureGuard } from "@/components/PlanFeatureGuard";
 const LandingPage = lazy(() => import("@/pages/LandingPage"));
+const BoasVindasClinica = lazy(() => import("@/pages/BoasVindasClinica"));
+const DemonstracaoClinica = lazy(() => import("@/pages/DemonstracaoClinica"));
 const Dashboard = lazy(() => import("@/pages/Dashboard"));
 const Agenda = lazy(() => import("@/pages/Agenda"));
 const Pacientes = lazy(() => import("@/pages/Pacientes"));
@@ -203,6 +205,7 @@ function App() {
                     {mode === 'landing' ? (
                       <>
                         <Route path="/" element={<LandingPage />} />
+                        <Route path="/demonstracao" element={<DemonstracaoClinica />} />
                         <Route path="/auth" element={<Auth />} />
                         <Route path="/login" element={<Navigate to="/auth" replace />} />
                         <Route path="/aceitar-convite" element={<AceitarConvite />} />
@@ -216,6 +219,7 @@ function App() {
                     ) : (
                       <>
                         <Route path="/" element={<LandingPage />} />
+                        <Route path="/demonstracao" element={<DemonstracaoClinica />} />
                         <Route path="/landing" element={<LandingPage />} />
                         <Route path="/auth" element={<Auth />} />
                         <Route path="/login" element={<Navigate to="/auth" replace />} />
@@ -228,6 +232,7 @@ function App() {
                         <Route path="/agendar/:clinicaId" element={<AgendamentoOnline />} />
                         <Route path="/portal-guias/:token" element={<PortalGuias />} />
                         <Route path="/verificar-assinatura/:codigo" element={<VerificarAssinatura />} />
+                        <Route path="/planos/checkout/:slug" element={<SupabaseProtectedRoute allowedRoles={['admin']} permitirCompradorPendente><PlanoCheckout /></SupabaseProtectedRoute>} />
                         <Route path="/painel-tv" element={<SupabaseProtectedRoute><PainelTV /></SupabaseProtectedRoute>} />
 
                         <Route
@@ -240,6 +245,7 @@ function App() {
                           }
                         >
                           <Route path="/dashboard" element={<Dashboard />} />
+                          <Route path="/boas-vindas" element={<SupabaseProtectedRoute allowedRoles={['admin']}><BoasVindasClinica /></SupabaseProtectedRoute>} />
                           <Route path="/chat" element={<ChatInterno />} />
                           <Route path="/notificacoes" element={<CentralNotificacoes />} />
                           <Route path="/portal-pacientes" element={<SupabaseProtectedRoute allowedRoles={['admin']}><PortalPacientesClinica /></SupabaseProtectedRoute>} />
@@ -310,7 +316,6 @@ function App() {
                           <Route path="/agente-ia" element={<SupabaseProtectedRoute allowedRoles={['admin']}><AgenteIA /></SupabaseProtectedRoute>} />
                           <Route path="/analytics" element={<SupabaseProtectedRoute allowedRoles={['admin']}><Analytics /></SupabaseProtectedRoute>} />
                           <Route path="/planos" element={<SupabaseProtectedRoute allowedRoles={['admin']}><Planos /></SupabaseProtectedRoute>} />
-                          <Route path="/planos/checkout/:slug" element={<SupabaseProtectedRoute allowedRoles={['admin']}><PlanoCheckout /></SupabaseProtectedRoute>} />
                           <Route path="/documentacao" element={<SupabaseProtectedRoute somentePlataforma><Documentacao /></SupabaseProtectedRoute>} />
                           <Route path="/painel-admin" element={<SupabaseProtectedRoute somentePlataforma><PainelAdmin /></SupabaseProtectedRoute>} />
                           <Route path="/admin/clinicas" element={<SupabaseProtectedRoute somentePlataforma><PlatformClinicas /></SupabaseProtectedRoute>} />

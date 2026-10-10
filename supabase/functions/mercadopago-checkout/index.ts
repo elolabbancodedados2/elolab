@@ -131,7 +131,7 @@ Deno.serve(async (req) => {
     console.error("Erro no mercadopago-checkout:", error);
     return new Response(
       JSON.stringify({ error: error.message || "Erro interno" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { status: error?.message?.includes('contratação pendente válida') || error?.message?.includes('convite de equipe pendente') ? 403 : 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });
@@ -163,8 +163,10 @@ async function createSubscription(
   }
 
   const requestedTrialDays = trial_dias === undefined || trial_dias === null ? 0 : Number(trial_dias);
-  const planTrialDays = Number(plano.trial_dias || 0);
-  if (!Number.isInteger(requestedTrialDays) || requestedTrialDays < 0 || requestedTrialDays > planTrialDays) {
+  if (requestedTrialDays !== 0) {
+    return json({ error: "O teste gratuito só pode ser contratado no novo checkout transparente com cartão e autorização explícita." }, 410, headers);
+  }
+  if (!Number.isInteger(requestedTrialDays) || requestedTrialDays < 0) {
     return json({ error: "Período de teste inválido para este plano" }, 400, headers);
   }
 

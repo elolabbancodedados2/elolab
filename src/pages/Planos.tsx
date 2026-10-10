@@ -271,7 +271,7 @@ export default function Planos() {
                 {!hasActivePlan && (
                   <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1.5">
                     <Gift className="h-3.5 w-3.5 text-warning" />
-                    {plano.trial_dias || 3} dias grátis — depois será cobrado
+                    3 dias grátis com cartão — {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(plano.valor)} após o teste; cancele antes para não pagar
                   </p>
                 )}
               </div>

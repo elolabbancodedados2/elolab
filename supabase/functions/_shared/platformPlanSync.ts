@@ -120,6 +120,10 @@ export async function syncPlatformPlan(supabase: any, input: PlatformPlanSyncInp
       .update(baseData)
       .eq("id", existingPlan.id);
     if (error) throw error;
+    if (["ativa", "trial"].includes(targetStatus)) {
+      const { error: provisionError } = await supabase.rpc("provision_clinic_after_subscription", { p_user_id: input.userId });
+      if (provisionError) throw new Error(`Assinatura autorizada, mas a clínica não foi provisionada: ${provisionError.message}`);
+    }
     return;
   }
 
@@ -132,5 +136,9 @@ export async function syncPlatformPlan(supabase: any, input: PlatformPlanSyncInp
         ...baseData,
       });
     if (error) throw error;
+    if (["ativa", "trial"].includes(targetStatus)) {
+      const { error: provisionError } = await supabase.rpc("provision_clinic_after_subscription", { p_user_id: input.userId });
+      if (provisionError) throw new Error(`Assinatura autorizada, mas a clínica não foi provisionada: ${provisionError.message}`);
+    }
   }
 }

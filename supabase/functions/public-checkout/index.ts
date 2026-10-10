@@ -73,6 +73,12 @@ Deno.serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
+    if (mode === 'trial') {
+      return new Response(
+        JSON.stringify({ error: 'O teste gratuito agora exige cadastro no EloLab, cartão e autorização da assinatura recorrente no checkout seguro.' }),
+        { status: 410, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
 
     // Resolve plan server-side by slug to avoid depender do ID no cliente
     let { data: plano, error: planoError } = await supabase

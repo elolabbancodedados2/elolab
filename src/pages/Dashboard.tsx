@@ -16,13 +16,15 @@ import { useCurrentMedico } from '@/hooks/useCurrentMedico';
 import {
   Users, Calendar, Clock, UserPlus, CalendarPlus, ArrowRight, ArrowUpRight,
   Activity, Stethoscope, Package, FileText, TrendingUp, TrendingDown,
-  Sparkles, CheckCircle2, AlertTriangle, Wallet, Plus, Zap, BarChart3,
-  ClipboardList, HeartPulse, Bell, Sun, Sunset, Moon,
+  Sparkles, CheckCircle2, AlertTriangle, Wallet, Plus, BarChart3,
+  ClipboardList, HeartPulse, Bell,
   ShieldCheck, Target, Timer, Megaphone, Pill, Eye,
 } from 'lucide-react';
 import { DashboardSkeleton } from '@/components/ui/loading-skeleton';
 import { ErrorState } from '@/components/ErrorState';
 import { Link } from 'react-router-dom';
+import dashboardBanner from '@/assets/dashboard-banner-elolab.png';
+import logoHorizontal from '@/assets/elolab-logo-identidade.png';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -66,7 +68,7 @@ function useClinicClock() {
 function LiveClock() {
   const time = useClinicClock();
   return (
-    <span className="tabular-nums font-semibold text-lg tracking-tight">
+    <span className="tabular-nums font-semibold text-xs tracking-tight">
       {new Intl.DateTimeFormat('pt-BR', {
         timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
       }).format(time)}
@@ -126,13 +128,13 @@ function KPICard({ title, value, subtitle, icon: Icon, color, href, delay = 0, s
 
   const content = (
     <motion.div variants={fadeUp} custom={delay}>
-      <Card className="group relative overflow-hidden hover:shadow-lg hover:-translate-y-1 transition-all duration-350 cursor-pointer border-border/30 bg-card">
+      <Card className="group relative overflow-hidden border-border/60 bg-card shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
         <CardContent className="pt-5 pb-4">
           <div className="flex items-start justify-between mb-2">
             <div className="space-y-1 flex-1 min-w-0">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-[0.06em]">{title}</p>
+              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-[0.08em]">{title}</p>
               <div className="flex items-baseline gap-2">
-                <p className="text-[26px] font-bold font-display tracking-tight tabular-nums truncate">{value}</p>
+                <p className="text-[28px] font-bold font-display tracking-tight tabular-nums truncate">{value}</p>
                 {trend !== undefined && trend !== 0 && (
                   <span className={cn('text-[11px] font-semibold flex items-center gap-0.5',
                     trend > 0 ? 'text-success' : 'text-destructive'
@@ -195,11 +197,11 @@ function QuickActionBtn({ icon: Icon, label, href, color }: {
   icon: React.ElementType; label: string; href: string; color: string;
 }) {
   return (
-    <Link to={href} className="group flex flex-col items-center gap-2 p-3 rounded-xl hover:bg-accent/50 transition-all duration-200">
-      <div className={cn('h-11 w-11 rounded-xl flex items-center justify-center transition-all group-hover:scale-110 group-hover:shadow-md', color)}>
-        <Icon className="h-5 w-5" />
+    <Link to={href} className="group flex min-h-14 items-center gap-3 rounded-xl border border-border/60 bg-card p-3 transition-colors hover:border-primary/25 hover:bg-accent/40">
+      <div className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-transform group-hover:scale-105', color)}>
+        <Icon className="h-4 w-4" />
       </div>
-      <span className="text-[11px] font-medium text-muted-foreground group-hover:text-foreground transition-colors text-center leading-tight">{label}</span>
+      <span className="text-xs font-medium text-foreground transition-colors">{label}</span>
     </Link>
   );
 }
@@ -438,7 +440,6 @@ function AdminDashboard() {
   const hojeFormatado = format(parseDateOnly(hoje)!, "EEEE, d 'de' MMMM", { locale: ptBR });
   const horaAtual = Number(new Intl.DateTimeFormat('en-US', { timeZone: 'America/Sao_Paulo', hour: '2-digit', hourCycle: 'h23' }).format(agora));
   const saudacao = horaAtual < 12 ? 'Bom dia' : horaAtual < 18 ? 'Boa tarde' : 'Boa noite';
-  const SaudacaoIcon = horaAtual < 12 ? Sun : horaAtual < 18 ? Sunset : Moon;
 
   const mesReferencia = parseDateOnly(hoje)!;
   const mesAtual = mesReferencia.getMonth();
@@ -626,7 +627,7 @@ function AdminDashboard() {
   ].filter(fonte => fonte.total >= MAX_LINHAS_AUTO).map(fonte => fonte.nome);
 
   const hasData = totalPacientes > 0 || (resumo?.totalAgendamentos ?? 0) > 0 || (resumo?.totalLancamentos ?? 0) > 0;
-  const firstName = user?.nome?.split(' ')[0] || 'Usuário';
+  const firstName = user?.nome?.replace(/^(dr|dra|dr\(a\))\.?\s+/i, '').split(' ')[0] || 'equipe';
 
   return (
     <div className="space-y-6 pb-10">
@@ -643,84 +644,38 @@ function AdminDashboard() {
       <motion.div variants={stagger} initial="hidden" animate="visible" className="space-y-6">
         {/* ─── Welcome Hero ─── */}
         <motion.div variants={fadeUp}>
-          <div className="relative overflow-hidden rounded-2xl border border-border/30 bg-card">
-            {/* Decorative elements */}
-            <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-success/5" />
-            <div className="absolute top-0 right-0 w-80 h-80 bg-primary/4 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3" />
-            <div className="absolute bottom-0 left-0 w-56 h-56 bg-success/4 rounded-full blur-3xl translate-y-1/2 -translate-x-1/4" />
+          <section className="relative isolate min-h-[250px] overflow-hidden rounded-2xl border border-[#0F7BFD]/10 bg-white text-[#0C1F54] shadow-sm sm:min-h-[250px]">
+            <img
+              src={dashboardBanner}
+              alt=""
+              aria-hidden="true"
+              className="absolute inset-0 -z-10 h-full w-full object-cover object-[center_44%]"
+            />
+            <div className="absolute inset-y-0 left-0 w-[78%] bg-gradient-to-r from-white via-white/95 to-transparent" />
+            <img src={logoHorizontal} alt="EloLab" className="absolute right-5 top-5 z-10 hidden w-28 object-contain sm:block" />
 
-            <div className="relative p-6 md:p-8">
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-5">
-                <div className="flex items-center gap-4">
-                  <div className="relative">
-                    <motion.div
-                      initial={{ scale: 0.8, opacity: 0 }}
-                      animate={{ scale: 1, opacity: 1 }}
-                      transition={{ type: 'spring', stiffness: 200, damping: 15 }}
-                      className="h-14 w-14 md:h-16 md:w-16 rounded-2xl bg-gradient-to-br from-primary/15 to-primary/5 flex items-center justify-center ring-1 ring-primary/20 shadow-lg shadow-primary/10"
-                    >
-                      <SaudacaoIcon className="h-7 w-7 md:h-8 md:w-8 text-primary" />
-                    </motion.div>
-                    <motion.div
-                      initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ delay: 0.3, type: 'spring' }}
-                      className="absolute -right-1 -bottom-1 h-5 w-5 rounded-full bg-success flex items-center justify-center shadow-md ring-2 ring-card"
-                    >
-                      <Zap className="h-2.5 w-2.5 text-success-foreground" />
-                    </motion.div>
-                  </div>
-                  <div>
-                    <h1 className="text-2xl md:text-3xl font-bold font-display tracking-tight">
-                      {saudacao},{' '}
-                      <span className="bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
-                        {firstName}
-                      </span>
-                    </h1>
-                    <div className="flex items-center gap-3 mt-1">
-                      <p className="text-sm text-muted-foreground capitalize">{hojeFormatado}</p>
-                      <span className="text-border">•</span>
-                      <LiveClock />
-                    </div>
-                  </div>
-                </div>
-                <div className="flex flex-wrap gap-2.5">
-                  <Button asChild size="default" className="shadow-lg shadow-primary/20 gap-2 rounded-full">
-                    <Link to="/agenda"><CalendarPlus className="h-4 w-4" />Nova Consulta</Link>
+            <div className="relative flex min-h-[250px] items-center p-6 sm:p-8 lg:p-10">
+              <div className="max-w-xl pb-1">
+                <p className="mb-2 text-xs font-semibold capitalize tracking-[0.08em] text-[#0F5CBD]">{hojeFormatado}<span className="mx-2 text-[#0C1F54]/35">·</span><LiveClock /></p>
+                <h1 className="text-2xl font-bold tracking-tight text-[#0C1F54] sm:text-3xl lg:text-[34px]">
+                  {saudacao}, {firstName} <span aria-hidden="true">👋</span>
+                  <br />
+                  <span className="text-[#0F7BFD]">Sua clínica, mais organizada.</span>
+                </h1>
+                <p className="mt-2 max-w-md text-sm leading-6 text-[#0C1F54]/70">
+                  Agenda, equipe e informações importantes em um só lugar.
+                </p>
+                <div className="mt-5 flex flex-wrap gap-2.5">
+                  <Button asChild className="h-10 bg-[#005ECC] text-white shadow-sm hover:bg-[#004FAE]">
+                    <Link to="/agenda"><CalendarPlus className="h-4 w-4" />Novo atendimento<ArrowRight className="h-4 w-4" /></Link>
                   </Button>
-                  <Button variant="outline" size="default" asChild className="gap-2 rounded-full">
-                    <Link to="/pacientes"><UserPlus className="h-4 w-4" />Novo Paciente</Link>
+                  <Button asChild variant="outline" className="h-10 border-[#0C1F54]/15 bg-white/80 text-[#0C1F54] hover:bg-white">
+                    <Link to="/pacientes"><UserPlus className="h-4 w-4" />Cadastrar paciente</Link>
                   </Button>
                 </div>
               </div>
-
-              {/* Mini Stats Strip */}
-              {hasData && (
-                <motion.div variants={fadeUp} className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-6 pt-6 border-t border-border/20">
-                  {[
-                    { label: 'Consultas Hoje', value: stats.totalHoje, icon: Calendar, color: 'text-primary', bg: 'bg-primary/8' },
-                    { label: 'Na Fila', value: stats.filaAguardando, icon: Timer, color: stats.filaAguardando > 0 ? 'text-warning' : 'text-success', bg: stats.filaAguardando > 0 ? 'bg-warning/8' : 'bg-success/8' },
-                    { label: 'Receita Hoje', value: formatCurrencyShort(stats.receitaDia), icon: Wallet, color: 'text-success', bg: 'bg-success/8' },
-                    { label: 'Estoque Crítico', value: stats.estoqueBaixo, icon: Package, color: stats.estoqueBaixo > 0 ? 'text-destructive' : 'text-success', bg: stats.estoqueBaixo > 0 ? 'bg-destructive/8' : 'bg-success/8' },
-                  ].map((s, i) => (
-                    <motion.div
-                      key={i}
-                      initial={{ opacity: 0, scale: 0.95 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      transition={{ delay: 0.2 + i * 0.05 }}
-                      className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-accent/30 transition-colors"
-                    >
-                      <div className={cn('h-9 w-9 rounded-lg flex items-center justify-center shrink-0', s.bg)}>
-                        <s.icon className={cn('h-4 w-4', s.color)} />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">{s.label}</p>
-                        <p className="text-sm font-bold tabular-nums">{s.value}</p>
-                      </div>
-                    </motion.div>
-                  ))}
-                </motion.div>
-              )}
             </div>
-          </div>
+          </section>
         </motion.div>
 
         {hasData && setupProgress < 100 && (

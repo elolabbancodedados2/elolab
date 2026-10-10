@@ -102,7 +102,7 @@ export function useBillingStatus(planoSlug?: string, enabled = true) {
 export function useCreateCardSubscription() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: { plano_slug: string; card_token_id: string; trial_dias: number; device_id?: string }) =>
+    mutationFn: (input: { plano_slug: string; card_token_id: string; trial_dias: number; trial_consent?: boolean; device_id?: string }) =>
       invokeCheckout<{ status: 'aprovado' | 'em_analise' | 'recusado'; proxima_cobranca: string | null; em_trial: boolean }>({
         action: 'create_card_subscription',
         ...input,

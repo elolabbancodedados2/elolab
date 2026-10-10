@@ -41,8 +41,8 @@ const definitions = {
     action: 'Cadastrar serviço', href: '/precos-servicos?tab=tipos', icon: Stethoscope,
   },
   whatsapp: {
-    title: 'Conecte o WhatsApp',
-    description: 'Conecte uma sessão para centralizar conversas e preparar o atendimento automatizado.',
+    title: 'Conecte o WhatsApp (opcional)',
+    description: 'Opcional: conecte uma sessão para centralizar conversas e preparar o atendimento automatizado.',
     action: 'Conectar WhatsApp', href: '/agente-ia', icon: MessageCircle,
   },
   appointment: {
@@ -122,7 +122,7 @@ export default function OnboardingClinica() {
     {overview.completed_at && <Alert className="border-emerald-500/40 bg-emerald-500/5">
       <PartyPopper className="h-4 w-4 text-emerald-600" />
       <AlertTitle>Clínica pronta para começar</AlertTitle>
-      <AlertDescription>As cinco etapas essenciais foram validadas. Você pode voltar aqui quando quiser para revisar a configuração.</AlertDescription>
+          <AlertDescription>As etapas essenciais foram validadas. Você pode voltar aqui quando quiser para revisar a configuração.</AlertDescription>
     </Alert>}
 
     <section className="grid gap-4 md:grid-cols-2" aria-label="Etapas do onboarding">
@@ -144,7 +144,7 @@ export default function OnboardingClinica() {
               </div>
               <div className="min-w-0">
                 <div className="mb-1 flex flex-wrap items-center gap-2">
-                  <CardTitle className="text-base">{index + 1}. {definition.title}</CardTitle>
+                  <CardTitle className="text-base">{step.key === 'whatsapp' ? definition.title : `${overview.steps.slice(0, index + 1).filter((item) => item.key !== 'whatsapp').length}. ${definition.title}`}</CardTitle>
                   <Badge variant={step.complete ? 'outline' : 'secondary'}>{step.complete ? 'Concluída' : 'Pendente'}</Badge>
                 </div>
                 <CardDescription>{definition.description}</CardDescription>
