@@ -3,7 +3,8 @@ import { Link, useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { ChevronLeft, ChevronDown, LayoutDashboard, PanelLeftOpen, Search, ShieldCheck } from 'lucide-react';
-import logoIcon from '@/assets/elolab-symbol-v2.png';
+import logoHorizontal from '@/assets/elolab-logo-identidade.png';
+import logoMark from '@/assets/elolab-symbol-identidade.png';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -114,24 +115,10 @@ export function Sidebar({ forceExpanded = false, onNavigate }: SidebarProps) {
         isCollapsed ? 'justify-center px-2 h-[76px]' : 'justify-between px-5 h-[76px]'
       )}>
         {!isCollapsed ? (
-          <div className="flex items-center gap-3">
-            <div className="relative flex h-11 w-11 items-center justify-center rounded-2xl shrink-0 overflow-hidden bg-white shadow-sm ring-1 ring-sidebar-border/70">
-              <img src={logoIcon} alt="EloLab" className="h-8 w-8 object-contain" />
-              <div className="absolute right-0.5 top-0.5 h-2 w-2 rounded-full bg-primary ring-2 ring-white" />
-            </div>
-            <div className="flex flex-col leading-none">
-              <span className="text-base font-bold tracking-tight text-foreground">
-                EloLab
-              </span>
-              <span className="mt-1 text-[10px] font-semibold tracking-[0.14em] text-sidebar-foreground/45 uppercase">
-                Gestão clínica
-              </span>
-            </div>
-          </div>
+          <img src={logoHorizontal} alt="EloLab" className="h-auto w-[168px] object-contain" />
         ) : (
           <div className="relative flex h-9 w-9 items-center justify-center rounded-xl overflow-hidden bg-gradient-to-br from-primary/15 to-primary/5 ring-1 ring-primary/15">
-            <img src={logoIcon} alt="EloLab" className="h-7 w-7 object-contain" />
-            <div className="absolute -right-px -top-px h-2 w-2 rounded-full bg-primary ring-2 ring-sidebar animate-pulse" />
+            <img src={logoMark} alt="EloLab" className="h-9 w-9 object-contain" />
           </div>
         )}
 
