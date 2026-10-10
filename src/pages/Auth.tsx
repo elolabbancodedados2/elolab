@@ -11,8 +11,9 @@ import { Input } from '@/components/ui/input';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { MaskedInput } from '@/components/ui/masked-input';
 import {
-  Loader2, Eye, EyeOff, Shield, ArrowLeft,
+  Loader2, Eye, EyeOff, Shield,
   Gift, CheckCircle2, Lock, Mail, User, Phone, FileText, CreditCard,
+  CalendarDays, ClipboardList, Stethoscope, FlaskConical,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -22,8 +23,7 @@ import { passwordSchema } from '@/lib/passwordPolicy';
 import { AuthSwitch } from '@/components/ui/auth-switch';
 import { interpretarErroLogin, loginSchema, type LoginFormData } from '@/lib/authValidation';
 import logoHorizontal from '@/assets/elolab-logo-identidade.png';
-import logoHorizontalDark from '@/assets/elolab-logo-identidade-dark.png';
-import authHero from '@/assets/auth-hero.webp';
+import authBackground from '@/assets/auth-background-elolab.png';
 
 // ─── Schemas ───────────────────────────────────────────────
 const signupSchema = z.object({
@@ -370,7 +370,7 @@ export default function Auth() {
   // ─── Loading state ───────────────────────────────────────
   if (authLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
+      <div className="min-h-svh flex items-center justify-center bg-[#edf5ff]">
         <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
@@ -385,83 +385,54 @@ export default function Auth() {
 
   // ─── Render ──────────────────────────────────────────────
   return (
-    <div className="min-h-screen flex bg-background">
-      {/* ─── Left: Hero Image ─── */}
-      <div className="hidden lg:flex lg:w-[55%] relative overflow-hidden">
-        {/* Image */}
-        <img
-          src={authHero}
-          alt="Médica usando tecnologia"
-          className="absolute inset-0 w-full h-full object-cover"
-        />
-
-        {/* Overlay gradient */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
-        <div className="absolute inset-0 bg-gradient-to-r from-transparent to-black/10" />
-
-            {/* Brand accent */}
-        <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-primary via-primary/80 to-transparent" />
-
-        {/* Content overlay */}
-        <div className="relative z-10 flex flex-col justify-between p-10 xl:p-14 w-full">
-          {/* Top logo */}
-          <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
-          >
-            <img src={logoHorizontalDark} alt="EloLab" className="w-48 object-contain" />
-          </motion.div>
-
-          {/* Bottom content */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3, duration: 0.6 }}
-            className="max-w-lg"
-          >
-            <h1 className="text-3xl xl:text-4xl font-extrabold font-display text-white leading-tight mb-3 drop-shadow-lg">
-              Gestão clínica
-              <br />
-              <span className="text-primary">inteligente e moderna</span>
-            </h1>
-            <p className="text-white/60 text-sm leading-relaxed mb-6 max-w-md">
-              Prontuário eletrônico, agenda, financeiro e laboratório em uma única plataforma segura.
-            </p>
-
-            {/* Stats badges */}
-            <div className="flex items-center gap-3">
-              <div className="px-4 py-2 rounded-xl bg-white/10 backdrop-blur-md border border-white/15 text-white text-xs font-medium flex items-center gap-2">
-                <Shield className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
-                Acesso por perfil
-              </div>
-              <div className="px-4 py-2 rounded-xl bg-white/10 backdrop-blur-md border border-white/15 text-white text-xs font-medium flex items-center gap-2">
-                <Lock className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
-                Sessão protegida
-              </div>
-            </div>
-          </motion.div>
-        </div>
+    <div className="relative min-h-svh overflow-x-hidden bg-[#edf5ff] text-[#10264e]">
+      <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden">
+        <img src={authBackground} alt="" className="absolute inset-0 h-full w-full object-cover object-center" />
+        <div className="absolute inset-0 bg-white/20" />
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_50%_48%,rgba(255,255,255,0.06)_0%,rgba(237,245,255,0.12)_65%,rgba(237,245,255,0.35)_100%)]" />
       </div>
 
-      {/* ─── Right: Auth Form ─── */}
-      <div className="flex-1 flex items-center justify-center p-6 md:p-10 relative overflow-hidden">
-        {/* Subtle background decoration */}
-        <div className="absolute top-0 right-0 w-96 h-96 bg-primary/[0.03] rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
-        <div className="absolute bottom-0 left-0 w-64 h-64 bg-primary/[0.02] rounded-full blur-3xl translate-y-1/2 -translate-x-1/2" />
+      <header className="relative z-20 flex h-[82px] items-center justify-between px-5 sm:px-8 xl:px-14">
+        <Link to="/auth" aria-label="EloLab — início do acesso" className="inline-flex rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-4">
+          <img src={logoHorizontal} alt="EloLab — tecnologia que cuida" className="w-[172px] object-contain sm:w-[205px]" />
+        </Link>
+        <div className="hidden text-right text-xs leading-relaxed text-[#58739f] sm:block">
+          <p>Cuidar hoje.</p>
+          <p>Construir o amanhã.</p>
+          <span className="mt-2 ml-auto block h-0.5 w-7 rounded-full bg-primary" />
+        </div>
+      </header>
+
+      <main className="relative z-10 mx-auto grid min-h-[calc(100svh-154px)] w-full max-w-[1680px] grid-cols-1 items-center gap-7 px-4 py-5 sm:px-8 lg:grid-cols-[minmax(0,1fr)_minmax(420px,490px)_minmax(0,1fr)] lg:gap-8 xl:px-14">
+        <aside className="hidden self-center lg:block">
+          <div className="max-w-[220px] border-l border-[#8ba9d4]/55 py-1 pl-4 text-[11px] font-medium uppercase tracking-[0.14em] text-[#58739f]">
+            <p className="-ml-[18px] flex items-center gap-2 font-semibold text-[#10264e]"><span className="h-5 w-1 rounded-full bg-primary" />Saúde</p>
+            <p className="mt-4">Gestão</p>
+            <p className="mt-4">Tecnologia</p>
+            <p className="mt-4">Pessoas</p>
+          </div>
+          <p className="mt-6 max-w-[190px] text-sm leading-relaxed text-[#58739f]">Tudo o que sua clínica precisa, em um só lugar.</p>
+          <div className="mt-9 space-y-3 text-xs text-[#45658f]">
+            <div className="flex items-center gap-2.5"><CalendarDays className="h-4 w-4 text-primary" aria-hidden="true" />Agenda e atendimento</div>
+            <div className="flex items-center gap-2.5"><ClipboardList className="h-4 w-4 text-primary" aria-hidden="true" />Prontuário e exames</div>
+            <div className="flex items-center gap-2.5"><Stethoscope className="h-4 w-4 text-primary" aria-hidden="true" />Gestão da clínica</div>
+          </div>
+        </aside>
 
         <motion.div
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-          className="w-full max-w-[420px] relative z-10"
+          className="relative z-10 mx-auto w-full max-w-[490px] rounded-[28px] border border-white/90 bg-white/65 px-6 py-7 shadow-[0_28px_90px_-38px_rgba(27,85,158,0.38)] backdrop-blur-2xl sm:px-10 sm:py-9"
         >
-          {/* Mobile Logo */}
-          <div className="text-center mb-8 lg:hidden">
-            <div className="flex items-center justify-center gap-2.5 mb-2">
-              <img src={logoHorizontal} alt="EloLab" className="w-44 object-contain" />
-            </div>
-            <p className="text-muted-foreground text-sm">Gestão Clínica Inteligente</p>
+          <div className="mb-6 text-center">
+            <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-[#6680a7]">
+              {activeTab === 'login' ? 'Bem-vindo à' : urlCodigo ? 'Convite EloLab' : 'Crie sua conta'}
+            </p>
+            <img src={logoHorizontal} alt="EloLab — tecnologia que cuida" className="mx-auto w-[178px] object-contain sm:w-[195px]" />
+            <p className="mx-auto mt-3 max-w-[300px] text-sm leading-relaxed text-[#58739f]">
+              {activeTab === 'login' ? 'Acesse sua conta e continue cuidando de vidas.' : 'Faça seu cadastro para começar com a EloLab.'}
+            </p>
           </div>
 
           {/* Invite banner */}
@@ -477,15 +448,15 @@ export default function Auth() {
                   <Gift className="h-4 w-4 text-primary" />
                 </div>
                 <div>
-                  <p className="text-sm font-semibold text-foreground">Convite da equipe detectado</p>
-                  <p className="text-xs text-muted-foreground">Preencha seus dados para entrar na clínica.</p>
+                  <p className="text-sm font-semibold text-[#10264e]">Convite da equipe detectado</p>
+                  <p className="text-xs text-[#6680a7]">Preencha seus dados para entrar na clínica.</p>
                 </div>
               </motion.div>
             )}
           </AnimatePresence>
 
           {/* Heading */}
-          <div className="mb-6">
+          <div className="mb-5">
             <AnimatePresence mode="wait">
               <motion.div
                 key={activeTab}
@@ -494,10 +465,10 @@ export default function Auth() {
                 exit={{ opacity: 0, y: -6 }}
                 transition={{ duration: 0.2 }}
               >
-                <h2 className="text-2xl font-bold font-display text-foreground">
+                <h2 className="sr-only">
                   {activeTab === 'login' ? 'Acesse sua conta' : urlCodigo ? 'Aceite o convite' : 'Crie sua conta'}
                 </h2>
-                <p className="text-muted-foreground text-sm mt-1">
+                <p className="sr-only">
                   {activeTab === 'login'
                     ? 'Entre com o e-mail e a senha cadastrados'
                     : urlCodigo ? 'Entre para fazer parte da equipe da clínica' : 'Cadastre-se para começar'}
@@ -546,10 +517,10 @@ export default function Auth() {
                       name="email"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel className="text-sm font-medium">E-mail</FormLabel>
+                          <FormLabel className="sr-only">E-mail</FormLabel>
                           <FormControl>
                             <div className="relative">
-                              <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/40" />
+                              <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[#6680a7]/40" />
                               <Input
                                 aria-label="E-mail"
                                 type="email"
@@ -557,7 +528,7 @@ export default function Auth() {
                                 autoComplete="email"
                                 autoCapitalize="none"
                                 spellCheck={false}
-                                className="h-11 pl-10 bg-muted/20 border-border/50 focus:border-primary focus:bg-card rounded-xl"
+                                className="h-[50px] rounded-[14px] border-[#d8e5f7] bg-white/70 pl-11 text-[#10264e] placeholder:text-[#8297b7] focus:border-primary focus:bg-white focus:ring-primary/15"
                                 {...field}
                                 onChange={(event) => { setLoginFeedback(null); field.onChange(event); }}
                               />
@@ -572,16 +543,16 @@ export default function Auth() {
                       name="password"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel className="text-sm font-medium">Senha</FormLabel>
+                          <FormLabel className="sr-only">Senha</FormLabel>
                           <FormControl>
                             <div className="relative">
-                              <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/40" />
+                              <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[#6680a7]/40" />
                               <Input
                                 aria-label="Senha"
                                 type={showPassword ? 'text' : 'password'}
                                 placeholder="••••••••"
                                 autoComplete="current-password"
-                                className="h-11 pl-10 pr-10 bg-muted/20 border-border/50 focus:border-primary focus:bg-card rounded-xl"
+                                className="h-[50px] rounded-[14px] border-[#d8e5f7] bg-white/70 pl-11 pr-12 text-[#10264e] placeholder:text-[#8297b7] focus:border-primary focus:bg-white focus:ring-primary/15"
                                 {...field}
                                 onChange={(event) => { setLoginFeedback(null); field.onChange(event); }}
                               />
@@ -593,8 +564,8 @@ export default function Auth() {
                                 aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'} onClick={() => setShowPassword(!showPassword)}
                               >
                                 {showPassword
-                                  ? <EyeOff className="h-4 w-4 text-muted-foreground" />
-                                  : <Eye className="h-4 w-4 text-muted-foreground" />}
+                                  ? <EyeOff className="h-4 w-4 text-[#6680a7]" />
+                                  : <Eye className="h-4 w-4 text-[#6680a7]" />}
                               </Button>
                             </div>
                           </FormControl>
@@ -604,7 +575,7 @@ export default function Auth() {
                     />
                     <Button
                       type="submit"
-                      className="w-full h-11 font-bold rounded-xl text-sm shadow-md shadow-primary/15 hover:shadow-lg hover:shadow-primary/25 transition-all"
+                      className="h-[52px] w-full rounded-[14px] bg-gradient-to-r from-[#0765e8] via-[#0878f9] to-[#278dff] text-sm font-bold text-white shadow-[0_12px_24px_-12px_rgba(0,103,235,0.7)] transition hover:brightness-105 hover:shadow-[0_15px_28px_-12px_rgba(0,103,235,0.75)]"
                       disabled={isLoading}
                     >
                       {isLoading ? <><Loader2 aria-hidden="true" className="mr-2 h-4 w-4 animate-spin" />Entrando…</> : 'Entrar'}
@@ -613,7 +584,7 @@ export default function Auth() {
                         não tinha nenhuma chamada de recuperação. */}
                     <Link
                       to="/redefinir-senha"
-                      className="inline-flex min-h-10 w-full items-center justify-center text-center text-sm text-muted-foreground hover:text-foreground"
+                      className="inline-flex min-h-9 w-full items-center justify-center text-center text-sm font-medium text-primary hover:text-primary/80"
                     >
                       Esqueci minha senha
                     </Link>
@@ -686,11 +657,11 @@ export default function Auth() {
                         name="nome"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel className="text-sm font-medium">Nome completo</FormLabel>
+                          <FormLabel className="sr-only">Nome completo</FormLabel>
                             <FormControl>
                               <div className="relative">
-                                <User className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/40" />
-                                <Input aria-label="Nome completo" placeholder="Maria Souza" autoComplete="name" className="h-11 pl-10 bg-muted/20 border-border/50 focus:border-primary focus:bg-card rounded-xl" {...field} />
+                                <User className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[#6680a7]/40" />
+                                <Input aria-label="Nome completo" placeholder="Maria Souza" autoComplete="name" className="h-[50px] rounded-[14px] border-[#d8e5f7] bg-white/70 pl-11 text-[#10264e] placeholder:text-[#8297b7] focus:border-primary focus:bg-white focus:ring-primary/15" {...field} />
                               </div>
                             </FormControl>
                             <FormMessage />
@@ -702,16 +673,16 @@ export default function Auth() {
                         name="telefone"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel className="text-sm font-medium">Telefone (opcional)</FormLabel>
+                          <FormLabel className="sr-only">Telefone (opcional)</FormLabel>
                             <FormControl>
                               <div className="relative">
-                                <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/40" />
+                                <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[#6680a7]/40" />
                                 <MaskedInput
                                   aria-label="Telefone (opcional)"
                                   mask="phone"
                                   placeholder="(11) 99999-9999"
                                   autoComplete="tel"
-                                  className="h-11 pl-10 bg-muted/20 border-border/50 focus:border-primary focus:bg-card rounded-xl"
+                                  className="h-[50px] rounded-[14px] border-[#d8e5f7] bg-white/70 pl-11 text-[#10264e] placeholder:text-[#8297b7] focus:border-primary focus:bg-white focus:ring-primary/15"
                                   value={field.value}
                                   onChange={field.onChange}
                                 />
@@ -743,15 +714,15 @@ export default function Auth() {
                           };
                           return (
                             <FormItem>
-                              <FormLabel className="text-sm font-medium">CPF ou CNPJ (opcional)</FormLabel>
+                              <FormLabel className="sr-only">CPF ou CNPJ (opcional)</FormLabel>
                               <FormControl>
                                 <div className="relative">
-                                  <FileText className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/40" />
+                                  <FileText className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[#6680a7]/40" />
                                   <Input
                                     aria-label="CPF ou CNPJ (opcional)"
                                     placeholder="000.000.000-00"
                                     autoComplete="off"
-                                    className="h-11 pl-10 bg-muted/20 border-border/50 focus:border-primary focus:bg-card rounded-xl"
+                                    className="h-[50px] rounded-[14px] border-[#d8e5f7] bg-white/70 pl-11 text-[#10264e] placeholder:text-[#8297b7] focus:border-primary focus:bg-white focus:ring-primary/15"
                                     value={field.value}
                                     onChange={handleCpfCnpjChange}
                                   />
@@ -767,11 +738,11 @@ export default function Auth() {
                         name="email"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel className="text-sm font-medium">E-mail</FormLabel>
+                            <FormLabel className="sr-only">E-mail</FormLabel>
                             <FormControl>
                               <div className="relative">
-                                <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/40" />
-                                <Input aria-label="E-mail" type="email" placeholder="seu@email.com" autoComplete="email" className="h-11 pl-10 bg-muted/20 border-border/50 focus:border-primary focus:bg-card rounded-xl" {...field} />
+                                <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[#6680a7]/40" />
+                                <Input aria-label="E-mail" type="email" placeholder="seu@email.com" autoComplete="email" className="h-[50px] rounded-[14px] border-[#d8e5f7] bg-white/70 pl-11 text-[#10264e] placeholder:text-[#8297b7] focus:border-primary focus:bg-white focus:ring-primary/15" {...field} />
                               </div>
                             </FormControl>
                             <FormMessage />
@@ -783,13 +754,13 @@ export default function Auth() {
                         name="password"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel className="text-sm font-medium">Senha</FormLabel>
+                            <FormLabel className="sr-only">Senha</FormLabel>
                             <FormControl>
                               <div className="relative">
-                                <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/40" />
-                                <Input aria-label="Senha" type={showPassword ? 'text' : 'password'} placeholder="••••••••" autoComplete="new-password" className="h-11 pl-10 pr-10 bg-muted/20 border-border/50 focus:border-primary focus:bg-card rounded-xl" {...field} />
+                                <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[#6680a7]/40" />
+                                <Input aria-label="Senha" type={showPassword ? 'text' : 'password'} placeholder="••••••••" autoComplete="new-password" className="h-[50px] rounded-[14px] border-[#d8e5f7] bg-white/70 pl-11 pr-12 text-[#10264e] placeholder:text-[#8297b7] focus:border-primary focus:bg-white focus:ring-primary/15" {...field} />
                                 <Button type="button" variant="ghost" size="icon" className="absolute right-0 top-0 h-full px-3 hover:bg-transparent" aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'} onClick={() => setShowPassword(!showPassword)}>
-                                  {showPassword ? <EyeOff className="h-4 w-4 text-muted-foreground" /> : <Eye className="h-4 w-4 text-muted-foreground" />}
+                                  {showPassword ? <EyeOff className="h-4 w-4 text-[#6680a7]" /> : <Eye className="h-4 w-4 text-[#6680a7]" />}
                                 </Button>
                               </div>
                             </FormControl>
@@ -802,13 +773,13 @@ export default function Auth() {
                         name="confirmPassword"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel className="text-sm font-medium">Confirmar senha</FormLabel>
+                            <FormLabel className="sr-only">Confirmar senha</FormLabel>
                             <FormControl>
                               <div className="relative">
-                                <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/40" />
-                                <Input aria-label="Confirmar senha" type={showConfirmPassword ? 'text' : 'password'} placeholder="••••••••" autoComplete="new-password" className="h-11 pl-10 pr-10 bg-muted/20 border-border/50 focus:border-primary focus:bg-card rounded-xl" {...field} />
+                                <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[#6680a7]/40" />
+                                <Input aria-label="Confirmar senha" type={showConfirmPassword ? 'text' : 'password'} placeholder="••••••••" autoComplete="new-password" className="h-[50px] rounded-[14px] border-[#d8e5f7] bg-white/70 pl-11 pr-12 text-[#10264e] placeholder:text-[#8297b7] focus:border-primary focus:bg-white focus:ring-primary/15" {...field} />
                                 <Button type="button" variant="ghost" size="icon" className="absolute right-0 top-0 h-full px-3 hover:bg-transparent" aria-label={showConfirmPassword ? 'Ocultar confirmação de senha' : 'Mostrar confirmação de senha'} onClick={() => setShowConfirmPassword(!showConfirmPassword)}>
-                                  {showConfirmPassword ? <EyeOff className="h-4 w-4 text-muted-foreground" /> : <Eye className="h-4 w-4 text-muted-foreground" />}
+                                  {showConfirmPassword ? <EyeOff className="h-4 w-4 text-[#6680a7]" /> : <Eye className="h-4 w-4 text-[#6680a7]" />}
                                 </Button>
                               </div>
                             </FormControl>
@@ -818,20 +789,20 @@ export default function Auth() {
                       />
                       <Button
                         type="submit"
-                        className="w-full h-11 font-bold rounded-xl text-sm shadow-md shadow-primary/15 hover:shadow-lg hover:shadow-primary/25 transition-all"
+                        className="h-[52px] w-full rounded-[14px] bg-gradient-to-r from-[#0765e8] via-[#0878f9] to-[#278dff] text-sm font-bold text-white shadow-[0_12px_24px_-12px_rgba(0,103,235,0.7)] transition hover:brightness-105"
                         disabled={isLoading}
                       >
                         {isLoading ? <><Loader2 aria-hidden="true" className="mr-2 h-4 w-4 animate-spin" />Criando…</> : urlCodigo ? 'Aceitar convite e criar conta' : 'Criar conta'}
                       </Button>
                       {!urlCodigo && (
-                        <p className="text-center text-xs leading-relaxed text-muted-foreground">
+                        <p className="text-center text-xs leading-relaxed text-[#6680a7]">
                           Ao criar sua conta, você concorda com os <Link to="/termos-uso" className="text-primary underline underline-offset-2">Termos de Uso</Link> e a <Link to="/politica-privacidade" className="text-primary underline underline-offset-2">Política de Privacidade</Link>.
                         </p>
                       )}
                       <Button
                         type="button"
                         variant="outline"
-                        className="w-full h-11 font-bold rounded-xl text-sm border-primary/30 text-primary hover:bg-primary/5 transition-all"
+                        className="h-[48px] w-full rounded-[14px] border-[#c7d9f1] bg-white/50 text-sm font-semibold text-primary hover:bg-white/90"
                         onClick={() => navigate('/#planos')}
                       >
                         <CreditCard className="mr-2 h-4 w-4" />
@@ -845,21 +816,36 @@ export default function Auth() {
             )}
           </AnimatePresence>
 
-          {/* Footer */}
-          <div className="mt-8 space-y-3">
-            <a
-              href="https://app.elolab.com.br"
-              className="flex min-h-10 items-center justify-center gap-2 text-sm font-medium text-primary hover:text-primary/80 transition-colors"
-            >
-              <ArrowLeft className="h-3.5 w-3.5" />
-              Voltar ao site
-            </a>
-            <p className="text-center text-xs text-muted-foreground/60">
-              © {new Date().getFullYear()} EloLab · Todos os direitos reservados
+          <div className="mt-6 border-t border-[#d7e4f4] pt-5 text-center">
+            <p className="flex items-center justify-center gap-2 text-xs font-medium text-[#52739d]">
+              <Shield className="h-4 w-4 text-primary" aria-hidden="true" />
+              Acesso protegido para sua clínica
             </p>
+            <p className="mt-1 text-[11px] text-[#7890b2]">Seus dados de acesso são tratados com cuidado.</p>
           </div>
         </motion.div>
-      </div>
+
+        <aside className="hidden justify-self-end self-center text-[#58739f] xl:block">
+          <div className="border-l border-[#8ba9d4]/60 py-1 pl-4"><span className="text-xs">01</span></div>
+          <p className="mt-4 max-w-[135px] text-xs font-medium uppercase leading-relaxed tracking-[0.12em]">Sistema completo para clínicas</p>
+          <div className="mt-5 flex gap-1.5" aria-hidden="true"><span className="h-1 w-5 rounded-full bg-primary" /><span className="h-1 w-5 rounded-full bg-[#b9cce5]" /><span className="h-1 w-5 rounded-full bg-[#b9cce5]" /></div>
+        </aside>
+      </main>
+
+      <footer className="relative z-10 mx-auto flex w-full max-w-[1680px] flex-col items-center justify-between gap-4 px-5 pb-5 text-[11px] text-[#6680a7] sm:flex-row sm:px-8 xl:px-14">
+        <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 sm:justify-start">
+          <span className="inline-flex items-center gap-2"><Shield className="h-4 w-4" aria-hidden="true" />Acesso por perfil</span>
+          <span className="inline-flex items-center gap-2"><CalendarDays className="h-4 w-4" aria-hidden="true" />Agenda integrada</span>
+          <span className="inline-flex items-center gap-2"><FlaskConical className="h-4 w-4" aria-hidden="true" />Gestão laboratorial</span>
+        </div>
+        <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 sm:justify-end">
+          <Link to="/termos-uso" className="hover:text-primary">Termos de Uso</Link>
+          <span aria-hidden="true">|</span>
+          <Link to="/politica-privacidade" className="hover:text-primary">Privacidade</Link>
+          <span aria-hidden="true">|</span>
+          <span>© {new Date().getFullYear()} EloLab</span>
+        </div>
+      </footer>
 
       {pendingFactorId && (
         <MFAVerifyDialog
