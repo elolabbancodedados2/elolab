@@ -16,6 +16,7 @@ import {
 import { SidebarNavItem } from './SidebarNavItem';
 import { getFilteredMenuGroups, getNavigationMode, MenuGroup } from '@/config/sidebarMenu';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useUserPlan } from '@/hooks/useSubscriptionPlan';
 
 const STORAGE_KEY = 'elolab_sidebar_collapsed';
 const GROUPS_KEY = 'elolab_sidebar_groups_v3';
@@ -28,6 +29,7 @@ interface SidebarProps {
 
 export function Sidebar({ forceExpanded = false, onNavigate }: SidebarProps) {
   const { profile, isAdmin, isSuperAdmin, isPlatformAdmin } = useSupabaseAuth();
+  const { hasFeature, isLoading: isPlanLoading, isError: isPlanError } = useUserPlan();
   const location = useLocation();
   const [search, setSearch] = useState('');
   const navigationMode = isPlatformAdmin && !profile?.clinica_id
@@ -53,7 +55,7 @@ export function Sidebar({ forceExpanded = false, onNavigate }: SidebarProps) {
   });
   const isCollapsed = collapsed && !forceExpanded;
 
-  const filteredMenuGroups = getFilteredMenuGroups(
+  const roleFilteredMenuGroups = getFilteredMenuGroups(
     profile?.roles || [],
     isAdmin(),
     isSuperAdmin,
@@ -63,6 +65,15 @@ export function Sidebar({ forceExpanded = false, onNavigate }: SidebarProps) {
     !!profile?.clinica_id,
     navigationMode
   );
+
+  const hasPlanFeature = (feature?: string) => !feature || (!isPlanLoading && !isPlanError && hasFeature(feature));
+  const filteredMenuGroups = roleFilteredMenuGroups
+    .filter(group => hasPlanFeature(group.planFeature))
+    .map(group => ({
+      ...group,
+      items: group.items.filter(item => hasPlanFeature(item.planFeature)),
+    }))
+    .filter(group => group.items.length > 0);
 
   const searchedGroups = search.trim()
     ? filteredMenuGroups
@@ -85,7 +96,7 @@ export function Sidebar({ forceExpanded = false, onNavigate }: SidebarProps) {
 
   useEffect(() => {
     const activeGroup = filteredMenuGroups.find(group =>
-      group.items.some(item => item.href === location.pathname)
+      group.items.some(item => item.href.split('?')[0] === location.pathname)
     );
     if (activeGroup) {
       setOpenGroups(prev =>
@@ -272,7 +283,7 @@ interface SidebarMenuGroupProps {
 
 function SidebarMenuGroup({ group, collapsed, isOpen, onToggle, currentPath, onNavigate }: SidebarMenuGroupProps) {
   const GroupIcon = group.icon;
-  const hasActiveChild = group.items.some(item => item.href === currentPath);
+  const hasActiveChild = group.items.some(item => item.href.split('?')[0] === currentPath);
 
   return (
     <div className="mb-2">

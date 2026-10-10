@@ -1,4 +1,5 @@
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -102,9 +103,11 @@ const formatarDataMovimentacao = (valor: string | null | undefined) => {
 };
 
 export default function Estoque() {
+  const [searchParams] = useSearchParams();
+  const requestedAlert = searchParams.get('alerta');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterCategoria, setFilterCategoria] = useState('todos');
-  const [filterAlerta, setFilterAlerta] = useState('todos');
+  const [filterAlerta, setFilterAlerta] = useState(requestedAlert === 'critico' ? 'critico' : 'todos');
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isMovimentacaoOpen, setIsMovimentacaoOpen] = useState(false);
   const [isTimelineOpen, setIsTimelineOpen] = useState(false);
@@ -127,6 +130,10 @@ export default function Estoque() {
   const estoqueQuery = useEstoque();
   const estoque = estoqueQuery.data ?? [];
   const { isLoading } = estoqueQuery;
+
+  useEffect(() => {
+    setFilterAlerta(requestedAlert === 'critico' ? 'critico' : 'todos');
+  }, [requestedAlert]);
 
   // Movement timeline query
   const movimentacoesQuery = useQuery({

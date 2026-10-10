@@ -1,4 +1,4 @@
-import { NavLink } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { MenuItem } from '@/config/sidebarMenu';
@@ -18,6 +18,13 @@ interface SidebarNavItemProps {
 
 export function SidebarNavItem({ item, collapsed, groupColor, onNavigate }: SidebarNavItemProps) {
   const Icon = item.icon;
+  const location = useLocation();
+  const targetUrl = new URL(item.href, window.location.origin);
+  const isItemActive = (routeIsActive: boolean) => targetUrl.search
+    ? location.pathname === targetUrl.pathname && location.search === targetUrl.search
+    : item.exact
+      ? routeIsActive && location.search === targetUrl.search
+      : routeIsActive;
 
   const linkContent = (
     <NavLink
@@ -27,21 +34,24 @@ export function SidebarNavItem({ item, collapsed, groupColor, onNavigate }: Side
       rel={item.external ? 'noopener noreferrer' : undefined}
       onClick={onNavigate}
       style={({ isActive }: { isActive: boolean }) =>
-        isActive && !item.external && groupColor
+        isItemActive(isActive) && !item.external && groupColor
           ? { backgroundColor: `${groupColor}12`, '--active-color': groupColor } as React.CSSProperties
           : undefined
       }
-      className={({ isActive }) =>
-        cn(
+      className={({ isActive }) => {
+        const itemIsActive = isItemActive(isActive);
+        return cn(
           'group relative flex min-h-11 items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-all duration-150',
           'text-sidebar-foreground/75 hover:text-sidebar-foreground hover:bg-white/75',
-          isActive && !item.external && 'font-semibold text-sidebar-foreground shadow-sm ring-1 ring-sidebar-border/60',
+          itemIsActive && !item.external && 'font-semibold text-sidebar-foreground shadow-sm ring-1 ring-sidebar-border/60',
           collapsed && 'justify-center px-2',
           !collapsed && 'ml-1'
-        )
-      }
+        );
+      }}
     >
-      {({ isActive }) => (
+      {({ isActive: routeIsActive }) => {
+        const isActive = isItemActive(routeIsActive);
+        return (
         <>
           {/* Active indicator — animated bar */}
           {isActive && !item.external && !collapsed && (
@@ -111,7 +121,8 @@ export function SidebarNavItem({ item, collapsed, groupColor, onNavigate }: Side
 
           {/* Hover shine effect */}
         </>
-      )}
+        );
+      }}
     </NavLink>
   );
 

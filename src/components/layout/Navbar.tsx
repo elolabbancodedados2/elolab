@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { primeiroNome } from '@/lib/formatters';
 import { Bell, Menu, LogOut, User, Settings, Plus, CalendarPlus, UserPlus, FileText, FlaskConical, Mail, MessageSquare, Shield, History, Activity, MessageSquarePlus } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
@@ -24,6 +25,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { ContextualHelp } from '@/components/ContextualHelp';
+import { toast } from 'sonner';
 
 interface NavbarProps {
   onMenuClick?: () => void;
@@ -31,9 +33,10 @@ interface NavbarProps {
 }
 
 export function Navbar({ onMenuClick, mobileMenuOpen }: NavbarProps) {
-  const { profile, signOut, isAdmin } = useSupabaseAuth();
+  const { user, profile, signOut, isAdmin } = useSupabaseAuth();
   const navigate = useNavigate();
   const { notifications: systemNotifications, unreadCount: systemUnread } = useRealtimeNotifications();
+  const operationalSeenRef = useRef<{ owner: string; initialized: boolean; ids: Set<string> }>({ owner: '', initialized: false, ids: new Set() });
 
   useKeyboardShortcuts();
 
@@ -52,6 +55,52 @@ export function Navbar({ onMenuClick, mobileMenuOpen }: NavbarProps) {
     enabled: !!profile?.clinica_id,
     refetchInterval: 15000,
   });
+
+  const { data: operationalNotifications = [] } = useQuery({
+    queryKey: ['central-notificacoes', user?.id, profile?.clinica_id],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).rpc('central_notificacoes_usuario', { p_limit: 250 });
+      if (error) throw error;
+      return (data ?? []) as Array<{ source_type: string; source_id: string; title: string; message: string; severity: 'info' | 'warning' | 'error'; href: string; is_read: boolean }>;
+    },
+    enabled: !!user && !!profile?.clinica_id,
+    refetchInterval: 20000,
+  });
+
+  useEffect(() => {
+    if (!user?.id || !profile?.clinica_id) return;
+    const owner = `${user.id}:${profile.clinica_id}`;
+    const tracker = operationalSeenRef.current;
+    if (tracker.owner !== owner) {
+      tracker.owner = owner;
+      tracker.initialized = false;
+      tracker.ids = new Set();
+    }
+    if (!operationalNotifications.length) return;
+
+    const current = operationalNotifications.map((item) => ({
+      item,
+      id: `${item.source_type}:${item.source_id}`,
+    }));
+    if (!tracker.initialized) {
+      current.forEach(({ id }) => tracker.ids.add(id));
+      tracker.initialized = true;
+      return;
+    }
+
+    current.forEach(({ item, id }) => {
+      if (tracker.ids.has(id)) return;
+      tracker.ids.add(id);
+      if (item.is_read) return;
+      const show = item.severity === 'error' ? toast.error : item.severity === 'warning' ? toast.warning : toast.info;
+      show(item.title, {
+        description: item.message,
+        duration: 8000,
+        action: item.href ? { label: 'Ver', onClick: () => navigate(item.href) } : undefined,
+        className: 'border border-primary/15 shadow-xl',
+      });
+    });
+  }, [operationalNotifications, user?.id, profile?.clinica_id, navigate]);
 
   const queueUnread = queueNotifications.filter((n: any) => n.status !== 'lida').length;
   const totalUnread = systemUnread + queueUnread;
@@ -79,7 +128,7 @@ export function Navbar({ onMenuClick, mobileMenuOpen }: NavbarProps) {
   return (
     <>
     <KeyboardShortcutsDialog />
-    <header className="sticky top-0 z-30 flex min-h-14 items-center border-b border-border/25 bg-background/75 px-2 pt-[env(safe-area-inset-top)] backdrop-blur-2xl sm:px-3 md:px-5">
+    <header className="sticky top-0 z-30 flex min-h-16 items-center border-b border-border/60 bg-white/90 px-2 pt-[env(safe-area-inset-top)] shadow-[0_1px_2px_rgba(12,31,84,0.03)] backdrop-blur-xl sm:px-3 md:px-5">
       {/* Left: Hamburger */}
       <Button
         variant="ghost"
@@ -260,6 +309,10 @@ export function Navbar({ onMenuClick, mobileMenuOpen }: NavbarProps) {
                 </ScrollArea>
               </TabsContent>
             </Tabs>
+            <DropdownMenuSeparator className="my-0" />
+            <DropdownMenuItem asChild className="cursor-pointer justify-center rounded-none py-2 text-xs font-medium text-primary focus:bg-primary/5">
+              <Link to="/notificacoes">Ver todas as notificações</Link>
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
 

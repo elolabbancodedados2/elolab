@@ -65,11 +65,10 @@ const featureLabels: Record<string, string> = {
   lista_espera: 'Lista de Espera',
   painel_tv: 'Painel TV',
   pagamentos: 'Pagamentos Mercado Pago',
-  agente_ia: 'Agente IA WhatsApp',
-  chatbot_whatsapp: 'Chatbot Atendente 24h',
+  agente_ia: 'Atendente de IA para a clínica',
 };
 
-const premiumFeatures = ['agente_ia', 'chatbot_whatsapp'];
+const premiumFeatures = ['agente_ia'];
 
 export default function Planos() {
   const { user, isPlatformAdmin } = useSupabaseAuth();

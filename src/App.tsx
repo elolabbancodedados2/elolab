@@ -17,6 +17,7 @@ import { PlatformAnnouncements } from "@/components/PlatformAnnouncements";
 import { OperationalGuard } from "@/components/OperationalGuard";
 import { InstallPWA } from "@/components/InstallPWA";
 import { SubscriptionGuard } from "@/components/SubscriptionGuard";
+import { PlanFeatureGuard } from "@/components/PlanFeatureGuard";
 const LandingPage = lazy(() => import("@/pages/LandingPage"));
 const Dashboard = lazy(() => import("@/pages/Dashboard"));
 const Agenda = lazy(() => import("@/pages/Agenda"));
@@ -104,6 +105,7 @@ const AceitarConvite = lazy(() => import("@/pages/AceitarConvite"));
 const RedefinirSenha = lazy(() => import("@/pages/RedefinirSenha"));
 const PainelTV = lazy(() => import("@/pages/PainelTV"));
 const PortalPaciente = lazy(() => import("@/pages/PortalPaciente"));
+const PortalPacientesClinica = lazy(() => import("@/pages/PortalPacientesClinica"));
 const AgendamentoOnline = lazy(() => import("@/pages/AgendamentoOnline"));
 const NotFound = lazy(() => import("@/pages/NotFound"));
 const PoliticaPrivacidade = lazy(() => import("@/pages/PoliticaPrivacidade"));
@@ -240,6 +242,7 @@ function App() {
                           <Route path="/dashboard" element={<Dashboard />} />
                           <Route path="/chat" element={<ChatInterno />} />
                           <Route path="/notificacoes" element={<CentralNotificacoes />} />
+                          <Route path="/portal-pacientes" element={<SupabaseProtectedRoute allowedRoles={['admin']}><PortalPacientesClinica /></SupabaseProtectedRoute>} />
                           <Route path="/meu-historico" element={<MeuHistorico />} />
                           <Route path="/preferencias" element={<PreferenciasPessoais />} />
                           <Route path="/feedback" element={<FeedbackProduto />} />
@@ -250,14 +253,14 @@ function App() {
                           <Route path="/documentos-clinicos" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico']}><DocumentosClinicos /></SupabaseProtectedRoute>} />
                           <Route path="/prescricoes" element={<Navigate to="/documentos-clinicos" replace />} />
                           <Route path="/atestados" element={<Navigate to="/documentos-clinicos?tab=atestados" replace />} />
-                          <Route path="/exames" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico', 'enfermagem']}><Exames /></SupabaseProtectedRoute>} />
+                          <Route path="/exames" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico', 'enfermagem']}><PlanFeatureGuard feature="exames" requiredPlan="EloLab Pro"><Exames /></PlanFeatureGuard></SupabaseProtectedRoute>} />
                           <Route path="/triagem" element={<RedirecionarTriagem />} />
                           <Route path="/encaminhamentos" element={<Navigate to="/documentos-clinicos?tab=encaminhamentos" replace />} />
                           <Route path="/retornos" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico', 'recepcao']}><Retornos /></SupabaseProtectedRoute>} />
-                          <Route path="/laboratorio" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico', 'enfermagem']}><Laboratorio /></SupabaseProtectedRoute>} />
-                          <Route path="/mapa-coleta" element={<SupabaseProtectedRoute allowedRoles={['admin', 'enfermagem']}><MapaColeta /></SupabaseProtectedRoute>} />
-                          <Route path="/guias-externas" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem']}><GuiasExternas /></SupabaseProtectedRoute>} />
-                          <Route path="/laudos-lab" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico', 'enfermagem']}><LaudosLab /></SupabaseProtectedRoute>} />
+                          <Route path="/laboratorio" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico', 'enfermagem']}><PlanFeatureGuard feature="exames" requiredPlan="EloLab Pro"><Laboratorio /></PlanFeatureGuard></SupabaseProtectedRoute>} />
+                          <Route path="/mapa-coleta" element={<SupabaseProtectedRoute allowedRoles={['admin', 'enfermagem']}><PlanFeatureGuard feature="exames" requiredPlan="EloLab Pro"><MapaColeta /></PlanFeatureGuard></SupabaseProtectedRoute>} />
+                          <Route path="/guias-externas" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem']}><PlanFeatureGuard feature="exames" requiredPlan="EloLab Pro"><GuiasExternas /></PlanFeatureGuard></SupabaseProtectedRoute>} />
+                          <Route path="/laudos-lab" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico', 'enfermagem']}><PlanFeatureGuard feature="exames" requiredPlan="EloLab Pro"><LaudosLab /></PlanFeatureGuard></SupabaseProtectedRoute>} />
                           <Route path="/pacientes" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem']}><Pacientes /></SupabaseProtectedRoute>} />
                           {/* `medico` estava fora, então o médico recebia "sem permissão" numa
                               tela que o banco já autorizava: fila_atendimento e agendamentos
@@ -302,7 +305,7 @@ function App() {
                           <Route path="/configuracoes" element={<SupabaseProtectedRoute allowedRoles={['admin']}><Configuracoes /></SupabaseProtectedRoute>} />
                           <Route path="/onboarding" element={<SupabaseProtectedRoute allowedRoles={['admin']}><OnboardingClinica /></SupabaseProtectedRoute>} />
                           <Route path="/configuracoes-avancadas" element={<SupabaseProtectedRoute allowedRoles={['admin']}><ConfiguracoesAvancadas /></SupabaseProtectedRoute>} />
-                          <Route path="/automacoes" element={<SupabaseProtectedRoute allowedRoles={['admin']}><Automacoes /></SupabaseProtectedRoute>} />
+                          <Route path="/automacoes" element={<SupabaseProtectedRoute allowedRoles={['admin']}><PlanFeatureGuard feature="automacoes" requiredPlan="EloLab Pro"><Automacoes /></PlanFeatureGuard></SupabaseProtectedRoute>} />
                           <Route path="/templates-email" element={<Navigate to="/todos-templates?tab=email" replace />} />
                           <Route path="/agente-ia" element={<SupabaseProtectedRoute allowedRoles={['admin']}><AgenteIA /></SupabaseProtectedRoute>} />
                           <Route path="/analytics" element={<SupabaseProtectedRoute allowedRoles={['admin']}><Analytics /></SupabaseProtectedRoute>} />
