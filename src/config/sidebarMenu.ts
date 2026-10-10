@@ -63,6 +63,20 @@ export interface MenuGroup {
   superAdminOnly?: boolean;
 }
 
+export type NavigationMode = 'app' | 'platform';
+
+/** Define o modo ativo pela rota; /feedback é compartilhada, mas seu conteúdo
+ * administrativo pertence ao Painel Admin apenas para a conta da plataforma.
+ */
+export function getNavigationMode(pathname: string, isPlatformAdmin: boolean): NavigationMode {
+  if (!isPlatformAdmin) return 'app';
+
+  const platformPaths = ['/painel-admin', '/usuarios', '/documentacao', '/feedback'];
+  return platformPaths.includes(pathname) || pathname === '/admin' || pathname.startsWith('/admin/')
+    ? 'platform'
+    : 'app';
+}
+
 export const menuGroups: MenuGroup[] = [
   {
     label: 'Início',
@@ -306,12 +320,18 @@ export function getFilteredMenuGroups(
    * Ao entrar numa clínica pela impersonação, o perfil recebe aquela clinica_id
    * e as telas voltam, porque aí elas têm dado para mostrar.
    */
-  temClinica = true
+  temClinica = true,
+  mode?: NavigationMode
 ): MenuGroup[] {
   const soPlataforma = isSuperAdmin && !temClinica;
+  const modoExplicito = mode;
 
   return menuGroups
-    .filter((group) => (soPlataforma ? !!group.superAdminOnly : true))
+    .filter((group) => {
+      if (modoExplicito === 'platform') return !!group.superAdminOnly;
+      if (modoExplicito === 'app') return !group.superAdminOnly;
+      return soPlataforma ? !!group.superAdminOnly : true;
+    })
     .filter((group) => {
       if (group.superAdminOnly && !isSuperAdmin) return false;
       if (isAdmin || isSuperAdmin) return true;
