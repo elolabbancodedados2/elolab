@@ -58,6 +58,23 @@ jobs:
             --build-arg VITE_SUPABASE_PUBLISHABLE_KEY="$VITE_SUPABASE_PUBLISHABLE_KEY" \
             -t elolab-frontend:ci .
 
-      # Este workflow valida a imagem; não publica na VPS. O webhook Git do
-      # Easypanel é independente e precisa de branch protection para não
-      # iniciar deploy antes dos checks terminarem.
+  deploy:
+    name: Deploy to Easypanel
+    needs: validate
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Trigger the configured Easypanel app deployment
+        env:
+          EASYPANEL_DEPLOY_TRIGGER_URL: ${{ secrets.EASYPANEL_DEPLOY_TRIGGER_URL }}
+        run: |
+          if [ -z "$EASYPANEL_DEPLOY_TRIGGER_URL" ]; then
+            echo "Missing repository Actions secret: EASYPANEL_DEPLOY_TRIGGER_URL" >&2
+            exit 1
+          fi
+          curl --fail --silent --show-error --max-time 30 \
+            --request POST \
+            --output /dev/null \
+            "$EASYPANEL_DEPLOY_TRIGGER_URL"
+
