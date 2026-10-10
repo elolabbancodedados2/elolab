@@ -11,6 +11,10 @@ vi.mock('@/contexts/SupabaseAuthContext', () => ({
   useSupabaseAuth: mocks.useSupabaseAuth,
 }));
 
+vi.mock('@/hooks/useSubscriptionPlan', () => ({
+  useUserPlan: () => ({ hasFeature: () => true, isLoading: false, isError: false }),
+}));
+
 beforeEach(() => {
   localStorage.clear();
   vi.spyOn(window, 'scrollTo').mockImplementation(() => undefined);

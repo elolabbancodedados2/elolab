@@ -11,7 +11,7 @@ describe('Breadcrumbs', () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByText('Central de notificações')).toBeInTheDocument();
+    expect(screen.getByText('Notificações')).toBeInTheDocument();
     expect(screen.queryByText(/Ã/)).not.toBeInTheDocument();
   });
 });

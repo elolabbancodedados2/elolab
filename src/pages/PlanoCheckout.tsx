@@ -48,8 +48,7 @@ const featureLabels: Record<string, string> = {
   estoque: 'Controle de estoque',
   relatorios: 'Relatórios',
   automacoes: 'Automações',
-  agente_ia: 'Agente IA no WhatsApp',
-  chatbot_whatsapp: 'Chatbot atendente 24h',
+  agente_ia: 'Atendente de IA para a clínica',
 };
 
 function periodoLabel(meses: number) {

@@ -91,13 +91,13 @@ export function useUserPlan() {
     if (!assinatura) return false;
     if (assinatura.plano_slug === 'elolab-ultra') return true;
     if (assinatura.plano_slug === 'elolab-max') {
-      return feature !== 'agente_ia' && feature !== 'chatbot_whatsapp';
+      return feature !== 'agente_ia';
     }
     return false;
   };
 
   const isUltra = assinatura?.plano_slug === 'elolab-ultra';
-  const isMax = assinatura?.plano_slug === 'elolab-max';
+  const isPro = assinatura?.plano_slug === 'elolab-max';
   const hasActivePlan = !!assinatura && (assinatura.status === 'ativa' || assinatura.status === 'trial');
   const isTrial = assinatura?.em_trial === true && assinatura?.status === 'trial';
   const trialEnd = assinatura?.trial_fim ? new Date(assinatura.trial_fim) : null;
@@ -115,7 +115,7 @@ export function useUserPlan() {
     refetch: assinaturaQuery.refetch,
     hasFeature,
     isUltra,
-    isMax,
+    isPro,
     hasActivePlan,
     isTrial,
     trialEnd,

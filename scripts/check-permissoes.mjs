@@ -100,6 +100,24 @@ const grupoAnulaItem = [];
 const rotaAbertaDemais = [];
 const semRota = [];
 
+// Um mesmo endereço pode aparecer em mais de um grupo por fazer parte de dois
+// fluxos. Considere a união das entradas visíveis antes de chamar uma rota de
+// "escondida" (por exemplo, Preços e serviços fica em Financeiro e também em
+// Configurações para administradores).
+const papeisVisiveisPorRota = new Map();
+for (const g of grupos) {
+  for (const it of g.itens) {
+    if (it.soPlataforma || g.soPlataforma) continue;
+    const caminho = it.href.split('?')[0];
+    const canonico = aliases.get(caminho) || caminho;
+    const visiveis = papeisVisiveisPorRota.get(canonico) || new Set();
+    it.papeisItem
+      .filter((p) => p !== 'admin' && g.papeisGrupo.includes(p))
+      .forEach((p) => visiveis.add(p));
+    papeisVisiveisPorRota.set(canonico, visiveis);
+  }
+}
+
 for (const g of grupos) {
   for (const it of g.itens) {
     const efetivo = it.papeisItem.filter((p) => g.papeisGrupo.includes(p) && p !== 'admin');
@@ -121,7 +139,9 @@ for (const g of grupos) {
     if (it.soPlataforma) continue;
 
     const negados = efetivo.filter((p) => !daRota.has(p));
-    const escondidos = [...daRota].filter((p) => p !== 'admin' && !efetivo.includes(p));
+    const canonico = aliases.get(caminho) || caminho;
+    const visiveis = papeisVisiveisPorRota.get(canonico) || new Set();
+    const escondidos = [...daRota].filter((p) => p !== 'admin' && !visiveis.has(p));
 
     if (negados.length) cliqueNegado.push({ ...it, grupo: g.labelGrupo, papeis: negados });
     if (escondidos.length) recursoEscondido.push({ ...it, grupo: g.labelGrupo, papeis: escondidos });

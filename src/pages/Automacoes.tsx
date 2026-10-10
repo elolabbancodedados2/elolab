@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Bot,
   Clock,
@@ -163,6 +164,15 @@ const formatarDataHora = (valor: string | null | undefined, ano: 'numeric' | '2-
 };
 
 export default function Automacoes() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedTab = searchParams.get('tab');
+  const activeTab = ['logs', 'fila', 'erros-app'].includes(requestedTab || '') ? requestedTab! : 'automacoes';
+  const changeTab = (value: string) => setSearchParams(previous => {
+    const next = new URLSearchParams(previous);
+    if (value === 'automacoes') next.delete('tab');
+    else next.set('tab', value);
+    return next;
+  }, { replace: true });
   const [isRunning, setIsRunning] = useState<Record<string, boolean>>({});
   const [isToggling, setIsToggling] = useState<Record<string, boolean>>({});
   const [updatingQueue, setUpdatingQueue] = useState<Record<string, boolean>>({});
@@ -368,7 +378,7 @@ export default function Automacoes() {
         </Button>
       </div>
 
-      <Tabs defaultValue="automacoes" className="space-y-6">
+      <Tabs value={activeTab} onValueChange={changeTab} className="space-y-6">
         <TabsList>
           <TabsTrigger value="automacoes">Automações</TabsTrigger>
           <TabsTrigger value="logs">Logs de Execução</TabsTrigger>

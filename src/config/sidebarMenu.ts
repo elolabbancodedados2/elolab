@@ -51,6 +51,7 @@ export interface MenuItem {
   /** Exige correspondência exata para rotas que têm subpáginas próprias. */
   exact?: boolean;
   superAdminOnly?: boolean;
+  planFeature?: string;
 }
 
 export interface MenuGroup {
@@ -60,6 +61,7 @@ export interface MenuGroup {
   items: MenuItem[];
   roles?: AppRole[];
   superAdminOnly?: boolean;
+  planFeature?: string;
 }
 
 export type NavigationMode = 'app' | 'platform';
@@ -82,13 +84,7 @@ export const menuGroups: MenuGroup[] = [
     icon: Gauge,
     color: '#005ECC',
     items: [
-      // Preferências, histórico, indicadores, feedback e segurança
-      // da conta ficam no menu do avatar (Navbar): são da pessoa, não do fluxo
-      // de trabalho, e lotavam o grupo com 11 itens.
       { label: 'Dashboard', icon: LayoutDashboard, href: '/dashboard' },
-      { label: 'Central de notificações', icon: Bell, href: '/notificacoes' },
-      { label: 'Chat Interno', icon: MessageCircle, href: '/chat' },
-      { label: 'Primeiros passos', icon: ListChecks, href: '/onboarding', roles: ['admin'] },
       { label: 'Tarefas', icon: ListChecks, href: '/tarefas', roles: ['admin', 'recepcao', 'enfermagem', 'financeiro', 'medico'] },
     ],
   },
@@ -99,10 +95,11 @@ export const menuGroups: MenuGroup[] = [
     roles: ['admin', 'recepcao', 'enfermagem', 'medico', 'financeiro'],
     items: [
       { label: 'Agenda', icon: CalendarRange, href: '/agenda' },
-      { label: 'Recepção & Caixa', icon: MonitorSmartphone, href: '/recepcao', roles: ['admin', 'recepcao', 'financeiro'] },
+      { label: 'Recepção e caixa', icon: MonitorSmartphone, href: '/recepcao', roles: ['admin', 'recepcao', 'financeiro'] },
       { label: 'Fila e triagem', icon: ClipboardCheck, href: '/fila', roles: ['admin', 'recepcao', 'enfermagem', 'medico'] },
-      { label: 'Risco de faltas', icon: ActivitySquare, href: '/analise-preditiva', roles: ['admin', 'recepcao'] },
       { label: 'Salas e lista de espera', icon: DoorOpen, href: '/gestao-fluxo', roles: ['admin', 'recepcao'] },
+      { label: 'Retornos', icon: CalendarCheck, href: '/retornos', roles: ['admin', 'medico', 'recepcao'] },
+      { label: 'Risco de faltas', icon: ActivitySquare, href: '/analise-preditiva', roles: ['admin', 'recepcao'] },
     ],
   },
   {
@@ -111,9 +108,9 @@ export const menuGroups: MenuGroup[] = [
     color: '#005ECC',
     roles: ['admin', 'recepcao', 'enfermagem', 'medico'],
     items: [
-      { label: 'Cadastro', icon: Users, href: '/pacientes', roles: ['admin', 'recepcao', 'enfermagem'] },
-      { label: 'Retornos', icon: CalendarCheck, href: '/retornos', roles: ['admin', 'medico', 'recepcao'] },
+      { label: 'Cadastro e histórico', icon: Users, href: '/pacientes', roles: ['admin', 'recepcao', 'enfermagem'] },
       { label: 'Convênios', icon: Building2, href: '/convenios', roles: ['admin', 'recepcao'] },
+      { label: 'Acesso ao portal do paciente', icon: UsersRound, href: '/portal-pacientes', roles: ['admin'] },
     ],
   },
   {
@@ -125,33 +122,21 @@ export const menuGroups: MenuGroup[] = [
       { label: 'Prontuários', icon: ScrollText, href: '/prontuarios', roles: ['admin', 'medico'] },
       { label: 'Prescrições e documentos', icon: BookMarked, href: '/documentos-clinicos', roles: ['admin', 'medico'] },
       { label: 'Sinais vitais', icon: ActivitySquare, href: '/vitais-graficos', roles: ['admin', 'medico', 'enfermagem'] },
-      { label: 'Exames', icon: Microscope, href: '/exames', roles: ['admin', 'medico', 'enfermagem'] },
-      { label: 'Templates clínicos', icon: FolderKanban, href: '/todos-templates', roles: ['admin', 'medico'] },
-    ],
-  },
-  {
-    label: 'Integrações',
-    icon: FileText,
-    color: '#005ECC',
-    roles: ['admin', 'medico'],
-    items: [
-      { label: 'Interoperabilidade FHIR', icon: FileText, href: '/interoperabilidade', roles: ['admin', 'medico'] },
+      { label: 'Exames', icon: Microscope, href: '/exames', roles: ['admin', 'medico', 'enfermagem'], planFeature: 'exames' },
+      { label: 'Modelos clínicos', icon: FolderKanban, href: '/todos-templates', roles: ['admin', 'medico'] },
+      { label: 'Encaminhamentos', icon: Stethoscope, href: '/documentos-clinicos?tab=encaminhamentos', roles: ['admin', 'medico'] },
     ],
   },
   {
     label: 'Laboratório',
     icon: TestTubes,
     color: '#005ECC',
-    // `recepcao` incluído para que Guias Externas apareça: a rota de
-    // /guias-externas já libera recepção, mas o grupo derrubava o item.
     roles: ['admin', 'medico', 'enfermagem', 'recepcao'],
+    planFeature: 'exames',
     items: [
-      // Sem `roles` o item vale para todos os papéis do grupo. Como /laboratorio
-      // NÃO libera recepção, deixar implícito faria o item aparecer e negar no
-      // clique — o defeito que esta revisão foi corrigir.
       { label: 'Painel do laboratório', icon: FlaskConical, href: '/laboratorio', roles: ['admin', 'medico', 'enfermagem'] },
-      { label: 'Mapa de Coleta', icon: MapPinned, href: '/mapa-coleta', roles: ['admin', 'enfermagem'] },
-      { label: 'Guias Externas', icon: FileText, href: '/guias-externas', roles: ['admin', 'recepcao', 'enfermagem'] },
+      { label: 'Mapa de coleta', icon: MapPinned, href: '/mapa-coleta', roles: ['admin', 'enfermagem'] },
+      { label: 'Guias externas', icon: FileText, href: '/guias-externas', roles: ['admin', 'recepcao', 'enfermagem'] },
       { label: 'Laudos', icon: ScrollText, href: '/laudos-lab', roles: ['admin', 'medico', 'enfermagem'] },
     ],
   },
@@ -162,23 +147,24 @@ export const menuGroups: MenuGroup[] = [
     roles: ['admin', 'financeiro'],
     items: [
       { label: 'Visão financeira', icon: CircleDollarSign, href: '/financeiro' },
-      { label: 'Contas', icon: BadgeDollarSign, href: '/contas' },
-      { label: 'Fluxo de Caixa', icon: PiggyBank, href: '/fluxo-caixa' },
-      { label: 'TISS & Glosas', icon: FileText, href: '/faturamento-convenios' },
-      { label: 'Repasses Médicos', icon: HandCoins, href: '/repasses-medicos' },
-      { label: 'Preços & Serviços', icon: CircleDollarSign, href: '/precos-servicos' },
-      { label: 'Cobrança Inadimplentes', icon: BadgeDollarSign, href: '/cobranca-inadimplentes' },
+      { label: 'Contas a receber e a pagar', icon: BadgeDollarSign, href: '/contas' },
+      { label: 'Caixa e fluxo de caixa', icon: PiggyBank, href: '/fluxo-caixa' },
+      { label: 'TISS e glosas', icon: FileText, href: '/faturamento-convenios' },
+      { label: 'Repasses médicos', icon: HandCoins, href: '/repasses-medicos' },
+      { label: 'Preços e serviços', icon: CircleDollarSign, href: '/precos-servicos' },
+      { label: 'Cobrança de inadimplentes', icon: BadgeDollarSign, href: '/cobranca-inadimplentes' },
     ],
   },
   {
     label: 'Relatórios e indicadores',
     icon: FileBarChart,
     color: '#005ECC',
-    roles: ['admin', 'financeiro'],
+    roles: ['admin', 'financeiro', 'recepcao', 'enfermagem', 'medico'],
     items: [
       { label: 'Relatórios', icon: FileBarChart, href: '/relatorios', exact: true, roles: ['admin', 'financeiro'] },
       { label: 'Relatórios salvos', icon: FileBarChart, href: '/relatorios/salvos', roles: ['admin', 'financeiro'] },
       { label: 'Indicadores da clínica', icon: ActivitySquare, href: '/analytics', roles: ['admin'] },
+      { label: 'Indicadores de produtividade', icon: ActivitySquare, href: '/indicadores', roles: ['admin', 'recepcao', 'enfermagem', 'financeiro', 'medico'] },
     ],
   },
   {
@@ -187,16 +173,27 @@ export const menuGroups: MenuGroup[] = [
     color: '#005ECC',
     roles: ['admin'],
     items: [
-      { label: 'Médicos, funcionários e convites', icon: UsersRound, href: '/equipe', roles: ['admin'] },
+      { label: 'Médicos e funcionários', icon: UsersRound, href: '/equipe', roles: ['admin'], exact: true },
+      { label: 'Convites e acessos', icon: UserCog, href: '/equipe?aba=convites', roles: ['admin'] },
     ],
   },
   {
-    label: 'Suprimentos',
+    label: 'Estoque e suprimentos',
     icon: PackageSearch,
     color: '#005ECC',
     roles: ['admin', 'enfermagem'],
     items: [
       { label: 'Estoque', icon: PackageSearch, href: '/estoque', roles: ['admin', 'enfermagem'] },
+      { label: 'Itens com baixo estoque', icon: PackageSearch, href: '/estoque?alerta=critico', roles: ['admin', 'enfermagem'] },
+    ],
+  },
+  {
+    label: 'Comunicação',
+    icon: MessageCircle,
+    color: '#005ECC',
+    items: [
+      { label: 'Chat interno', icon: MessageCircle, href: '/chat' },
+      { label: 'Mensagens e lembretes a pacientes', icon: Bell, href: '/automacoes?tab=fila', roles: ['admin'], planFeature: 'automacoes' },
     ],
   },
   {
@@ -204,22 +201,25 @@ export const menuGroups: MenuGroup[] = [
     icon: Sparkles,
     color: '#005ECC',
     roles: ['admin'],
+    planFeature: 'automacoes',
     items: [
-      { label: 'Automações', icon: Sparkles, href: '/automacoes', roles: ['admin'] },
-      { label: 'Agente IA', icon: BotMessageSquare, href: '/agente-ia', roles: ['admin'] },
+      { label: 'Automações da clínica', icon: Sparkles, href: '/automacoes', roles: ['admin'], exact: true },
+      { label: 'Atendente de IA', icon: BotMessageSquare, href: '/agente-ia', roles: ['admin'], planFeature: 'agente_ia' },
     ],
   },
   {
     label: 'Configurações',
     icon: Settings2,
     color: '#005ECC',
-    roles: ['admin'],
+    roles: ['admin', 'medico'],
     items: [
-      { label: 'Configurações', icon: Settings2, href: '/configuracoes' },
-      { label: 'Configurações Avançadas', icon: Gauge, href: '/configuracoes-avancadas' },
-      { label: 'Alterar plano', icon: CreditCard, href: '/planos', roles: ['admin'] },
-      { label: 'Acesso assistido pelo suporte', icon: Shield, href: '/acesso-assistido', roles: ['admin'] },
-      { label: 'Solicitações LGPD de pacientes', icon: ScrollText, href: '/lgpd-pacientes' },
+      { label: 'Dados da clínica', icon: Building2, href: '/configuracoes', roles: ['admin'], exact: true },
+      { label: 'Horários e agenda online', icon: CalendarRange, href: '/configuracoes?tab=horarios', roles: ['admin'] },
+      { label: 'Serviços e preços', icon: CircleDollarSign, href: '/precos-servicos', roles: ['admin'] },
+      { label: 'Notificações', icon: Bell, href: '/configuracoes?tab=notificacoes', roles: ['admin'] },
+      { label: 'Integrações disponíveis', icon: Settings2, href: '/configuracoes?tab=integracoes', roles: ['admin'] },
+      { label: 'Interoperabilidade FHIR', icon: FileText, href: '/interoperabilidade', roles: ['admin', 'medico'] },
+      { label: 'Plano e assinatura', icon: CreditCard, href: '/planos', roles: ['admin'] },
     ],
   },
   {
@@ -227,8 +227,9 @@ export const menuGroups: MenuGroup[] = [
     icon: MessageCircle,
     color: '#005ECC',
     items: [
-      { label: 'Treinamento', icon: BookMarked, href: '/treinamento' },
-      { label: 'Falar com o Suporte', icon: MessageCircle, href: '/suporte', roles: ['admin', 'recepcao', 'enfermagem', 'medico', 'financeiro'] },
+      { label: 'Treinamento e documentação', icon: BookMarked, href: '/treinamento' },
+      { label: 'Suporte', icon: MessageCircle, href: '/suporte', roles: ['admin', 'recepcao', 'enfermagem', 'medico', 'financeiro'] },
+      { label: 'Acesso assistido pelo suporte', icon: Shield, href: '/acesso-assistido', roles: ['admin'] },
     ],
   },
   {
