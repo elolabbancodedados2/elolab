@@ -89,3 +89,8 @@ O EloLab possui uma base de segurança acima da média para um SPA clínico: RLS
 ## Limitação da revisão conjunta
 
 O Claude CLI está instalado, autenticado e funcional, mas o Orca 1.4.184 encerrou a conexão em três tentativas de `worker-start`, antes de atribuir um terminal ao dispatch. Portanto, não há parecer independente do Claude nesta versão do relatório.
+# Historical security report
+
+This report predates the current VPS deployment. References to Vercel files are
+historical and must not be used as the current production configuration. The
+active frontend security headers are in `../../docker/security-headers.conf`.

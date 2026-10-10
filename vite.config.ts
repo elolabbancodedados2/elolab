@@ -128,9 +128,8 @@ export default defineConfig(({ mode }) => ({
           // Dados clínicos e arquivos de paciente NÃO são cacheados no disco do
           // navegador: em máquina compartilhada (recepção) o conteúdo continuava
           // recuperável depois do logout. Ambos passam a ir sempre à rede.
-          // A URL pode ser supabase.co durante a transição ou um domínio da
-          // própria VPS no ambiente auto-hospedado. O caminho é a parte
-          // estável e estes dados nunca devem entrar no cache offline.
+          // O caminho funciona com o domínio atual da API na VPS. Dados
+          // clínicos e arquivos de pacientes nunca entram no cache offline.
           {
             urlPattern: ({ url }) => /^\/(?:rest\/v1|storage\/v1)\//i.test(url.pathname),
             handler: "NetworkOnly",
@@ -151,15 +150,9 @@ export default defineConfig(({ mode }) => ({
   ].filter(Boolean),
   define: {
     ...(mode === 'test' ? createViteTestSupabaseDefine({}) : {}),
-    // Identifica a versão publicada. Cada hospedagem expõe o commit com um nome
-    // próprio; sem ler o do Cloudflare, uma publicação lá cairia no horário do
-    // build — que muda a cada compilação e não aponta para commit nenhum,
-    // deixando o rastreamento de erro sem como dizer qual versão quebrou.
+    // Identifica a versão publicada para relacionar erros ao build correspondente.
     "globalThis.__APP_BUILD_ID__": JSON.stringify(
-      process.env.CF_PAGES_COMMIT_SHA ??
-        process.env.VERCEL_GIT_COMMIT_SHA ??
-        process.env.VITE_APP_BUILD_ID ??
-        `build-${Date.now()}`,
+      process.env.VITE_APP_BUILD_ID ?? `build-${Date.now()}`,
     ),
   },
   resolve: {

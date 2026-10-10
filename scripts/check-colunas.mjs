@@ -133,8 +133,8 @@ for (const f of fs.readdirSync(migDir).filter(f => f.endsWith('.sql')).sort()) {
 // erro de API.
 //
 // Se houver um schema-real.json na raiz (ou o caminho em SCHEMA_REAL), ele
-// SUBSTITUI o schema montado acima. Gere com `npm run schema:real`, ou use
-// `npm run check:colunas:real` para fazer as duas coisas de uma vez.
+// SUBSTITUI o schema montado acima. Para VPS self-hosted, exporte o schema
+// pelo Supabase Studio e informe o arquivo com SCHEMA_REAL.
 //
 // Sem o arquivo, o comportamento continua o de antes — é assim que o CI roda,
 // já que não tem credencial do Supabase.

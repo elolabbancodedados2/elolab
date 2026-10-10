@@ -1,4 +1,8 @@
-# Setup do Banco de Dados - Caixa Diário
+# Historico: setup do banco de dados - caixa diario
+
+Este procedimento manual foi substituido pela migration
+`supabase/migrations/20260413223725_caixa_diario_complete.sql`. Nao execute o
+SQL abaixo no banco atual. O deploy de producao usa o Supabase na VPS.
 
 ## 🔴 Problema
 

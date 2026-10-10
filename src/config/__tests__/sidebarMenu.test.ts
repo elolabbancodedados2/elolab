@@ -21,18 +21,18 @@ describe('menu do dono da plataforma', () => {
     const g = getFilteredMenuGroups([], false, true, false);
     expect(g.length).toBeGreaterThan(0);
     expect(g.every((grupo) => grupo.superAdminOnly)).toBe(true);
-    expect(nomes(g)).toContain('SaaS · Clientes');
+    expect(nomes(g)).toContain('Clientes');
   });
 
   it('ao entrar numa clínica (impersonação), recupera as telas de clínica', () => {
     const g = getFilteredMenuGroups([], false, true, true);
     expect(nomes(g)).toContain('Pacientes');
-    expect(nomes(g)).toContain('SaaS · Clientes');
+    expect(nomes(g)).toContain('Clientes');
   });
 
   it('o CRM só existe para ele', () => {
     const dono = getFilteredMenuGroups([], false, true, false);
-    expect(itens(dono, 'SaaS · Clientes')).toContain('/admin/crm');
+    expect(itens(dono, 'Clientes')).toContain('/admin/crm');
   });
 });
 
@@ -60,12 +60,12 @@ describe('modos de navegação da plataforma', () => {
   it('no modo App, mostra os módulos clínicos e oculta os grupos da plataforma', () => {
     const grupos = getFilteredMenuGroups(['admin'], true, true, true, 'app');
     expect(nomes(grupos)).toContain('Pacientes');
-    expect(nomes(grupos).some((nome) => nome.startsWith('SaaS ·'))).toBe(false);
+    expect(grupos.some((grupo) => grupo.superAdminOnly)).toBe(false);
   });
 
   it('no modo Painel Admin, mostra os grupos da plataforma e oculta módulos clínicos', () => {
     const grupos = getFilteredMenuGroups(['admin'], true, true, true, 'platform');
-    expect(nomes(grupos)).toContain('SaaS · Clientes');
+    expect(nomes(grupos)).toContain('Clientes');
     expect(nomes(grupos)).not.toContain('Pacientes');
   });
 
@@ -84,7 +84,7 @@ describe('modos de navegação da plataforma', () => {
   it('mantém o filtro antigo quando o modo não é especificado', () => {
     const grupos = getFilteredMenuGroups(['admin'], true, true, true);
     expect(nomes(grupos)).toContain('Pacientes');
-    expect(nomes(grupos)).toContain('SaaS · Clientes');
+    expect(nomes(grupos)).toContain('Clientes');
   });
 });
 

@@ -17,8 +17,8 @@ import { getFilteredMenuGroups, getNavigationMode, MenuGroup } from '@/config/si
 import { motion, AnimatePresence } from 'framer-motion';
 
 const STORAGE_KEY = 'elolab_sidebar_collapsed';
-const GROUPS_KEY = 'elolab_sidebar_groups_v2';
-const DEFAULT_OPEN_GROUPS = ['Início', 'Atendimento', 'Pacientes'];
+const GROUPS_KEY = 'elolab_sidebar_groups_v3';
+const DEFAULT_OPEN_GROUPS = ['Início', 'Atendimento', 'Pacientes', 'Painel da plataforma', 'Clientes', 'Receita'];
 
 interface SidebarProps {
   forceExpanded?: boolean;
@@ -149,7 +149,7 @@ export function Sidebar({ forceExpanded = false, onNavigate }: SidebarProps) {
       </div>
 
       {/* ─── Search ─── */}
-      {isPlatformAdmin && profile?.clinica_id && (
+      {isPlatformAdmin && (
         <div
           role="group"
           aria-label="Alternar área"
@@ -158,21 +158,36 @@ export function Sidebar({ forceExpanded = false, onNavigate }: SidebarProps) {
             isCollapsed ? 'grid-cols-1' : 'grid-cols-2 px-3',
           )}
         >
-          <Link
-            to="/dashboard"
-            onClick={onNavigate}
-            aria-label="App"
-            aria-current={navigationMode === 'app' ? 'page' : undefined}
-            className={cn(
-              'flex min-h-10 items-center justify-center gap-2 rounded-lg px-2 text-xs font-semibold transition-colors',
-              navigationMode === 'app'
-                ? 'bg-primary/10 text-primary ring-1 ring-primary/20'
-                : 'text-sidebar-foreground/55 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground',
-            )}
-          >
-            <LayoutDashboard className="h-4 w-4 shrink-0" />
-            {!isCollapsed && <span>App</span>}
-          </Link>
+          {profile?.clinica_id && (
+            <Link
+              to="/dashboard"
+              onClick={onNavigate}
+              aria-label="App"
+              aria-current={navigationMode === 'app' ? 'page' : undefined}
+              className={cn(
+                'flex min-h-10 items-center justify-center gap-2 rounded-lg px-2 text-xs font-semibold transition-colors',
+                navigationMode === 'app'
+                  ? 'bg-primary/10 text-primary ring-1 ring-primary/20'
+                  : 'text-sidebar-foreground/55 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground',
+              )}
+            >
+              <LayoutDashboard className="h-4 w-4 shrink-0" />
+              {!isCollapsed && <span>App</span>}
+            </Link>
+          )}
+          {!profile?.clinica_id && (
+            <Button
+              type="button"
+              variant="ghost"
+              disabled
+              title="O vínculo da clínica da conta proprietária ainda não foi configurado."
+              aria-label="App: vínculo da clínica ainda não configurado"
+              className="flex min-h-10 justify-center gap-2 rounded-lg px-2 text-xs font-semibold"
+            >
+              <LayoutDashboard className="h-4 w-4 shrink-0" />
+              {!isCollapsed && <span>App</span>}
+            </Button>
+          )}
           <Link
             to="/painel-admin"
             onClick={onNavigate}

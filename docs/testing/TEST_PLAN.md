@@ -62,7 +62,7 @@
 
 ## CI/CD (GitHub Actions)
 
-Arquivo: [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml)
+Arquivo: [`.github/workflows/deploy.yml`](../../.github/workflows/deploy.yml)
 
 **Triggers:** PRs para `main`, push em `main` e execução manual.
 
@@ -80,7 +80,7 @@ Vá em **Settings → Secrets and variables → Actions** do repositório e adic
 O workflow valida a imagem Docker, mas não publica nem controla o Easypanel.
 O webhook Git do painel pode começar o deploy antes do CI terminar. Proteja
 `main` e exija o check antes de habilitar deploy automático; consulte
-[`docs/EASYPANEL-VPS.md`](docs/EASYPANEL-VPS.md).
+[`docs/EASYPANEL-VPS.md`](../EASYPANEL-VPS.md).
 
 ### Pipeline
 

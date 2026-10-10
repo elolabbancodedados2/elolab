@@ -74,11 +74,13 @@ describe('Sidebar alterna áreas para a dona da plataforma', () => {
     expect(screen.queryByRole('link', { name: 'Painel Admin' })).not.toBeInTheDocument();
   });
 
-  it('não mostra navegação do App antes de a conta plataforma ter clínica', () => {
+  it('separa o App do Painel Admin e mantém o App bloqueado sem clínica', () => {
     renderSidebar('/dashboard', true, null);
 
-    expect(screen.queryByRole('group', { name: 'Alternar área' })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'SaaS · Clientes' })).toBeInTheDocument();
+    const selector = screen.getByRole('group', { name: 'Alternar área' });
+    expect(within(selector).getByRole('button', { name: /App/ })).toBeDisabled();
+    expect(within(selector).getByRole('link', { name: 'Painel Admin' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Clientes' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Pacientes' })).not.toBeInTheDocument();
   });
 });
