@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { format, subDays } from 'date-fns';
 import { MemoryRouter } from 'react-router-dom';
+import { todaySaoPauloDateOnly } from '@/lib/dateOnly';
 
 interface AppointmentFixture {
   id: string;
@@ -80,8 +80,10 @@ vi.mock('@/components/fila/FinalizarAtendimentoDialog', () => ({ FinalizarAtendi
 
 import Fila from '@/pages/Fila';
 
-const hoje = format(new Date(), 'yyyy-MM-dd');
-const ontem = format(subDays(new Date(), 1), 'yyyy-MM-dd');
+const hoje = todaySaoPauloDateOnly();
+const ontemDate = new Date(`${hoje}T00:00:00Z`);
+ontemDate.setUTCDate(ontemDate.getUTCDate() - 1);
+const ontem = ontemDate.toISOString().slice(0, 10);
 
 function agendamento(id: string, nome: string, data = hoje, status = 'aguardando'): AppointmentFixture {
   return {
