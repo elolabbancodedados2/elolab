@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 
 describe('migration de gravações controladas do TISS', () => {
   it('remove INSERT/UPDATE diretos e expõe apenas operações validadas', () => {
-    const migration = readFileSync(resolve(process.cwd(), 'supabase/migrations/20261011090000_tiss_gravacoes_controladas.sql'), 'utf8');
+    const migration = readFileSync(resolve(process.cwd(), 'supabase/migrations/20261011090001_tiss_gravacoes_controladas.sql'), 'utf8');
 
     expect(migration).toMatch(/REVOKE\s+INSERT,\s*UPDATE\s+ON\s+public\.lotes_tiss\s+FROM\s+authenticated/i);
     expect(migration).toMatch(/REVOKE\s+UPDATE\s+ON\s+public\.glosas_convenio\s+FROM\s+authenticated/i);
