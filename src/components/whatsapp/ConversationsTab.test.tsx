@@ -1,4 +1,5 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { ConversationsTab } from './ConversationsTab';
 import type { WhatsAppConversation } from './types';
@@ -36,7 +37,9 @@ const conversation = {
 } as WhatsAppConversation & { contexto: unknown };
 
 describe('ConversationsTab pré-triagem', () => {
-  it('mostra o contexto apenas no painel interno após abrir a conversa e rotula os dados', () => {
+  it('mostra o contexto apenas no painel interno após abrir a conversa e rotula os dados', async () => {
+    const user = userEvent.setup();
+    const onMarkRead = vi.fn();
     render(
       <ConversationsTab
         conversations={[conversation]}
@@ -47,7 +50,7 @@ describe('ConversationsTab pré-triagem', () => {
         isUpdating={false}
         onSendMessage={vi.fn(async () => {})}
         isSending={false}
-        onMarkRead={vi.fn()}
+        onMarkRead={onMarkRead}
         onAddInternalNote={vi.fn(async () => {})}
         isAddingNote={false}
         onPriorityChange={vi.fn()}
@@ -60,9 +63,17 @@ describe('ConversationsTab pré-triagem', () => {
       />,
     );
 
+    expect(screen.getByRole('textbox', { name: 'Buscar conversas por nome ou número' })).toBeInTheDocument();
     expect(screen.queryByText('Dor de cabeça')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByText('Ana Clínica'));
+    const selectConversation = screen.getByRole('button', { name: /Abrir conversa com Ana Clínica/ });
+    expect(selectConversation).toHaveAttribute('aria-pressed', 'false');
+    expect(within(selectConversation).queryByRole('button')).not.toBeInTheDocument();
+    selectConversation.focus();
+    expect(selectConversation).toHaveFocus();
+    await user.keyboard('{Enter}');
 
+    expect(selectConversation).toHaveAttribute('aria-pressed', 'true');
+    expect(onMarkRead).toHaveBeenCalledWith(conversation.id);
     expect(screen.getByRole('region', { name: 'Pré-triagem informada pelo paciente' })).toBeInTheDocument();
     expect(screen.getByText('Dor de cabeça')).toBeInTheDocument();
     expect(screen.getByText('Queixa principal')).toBeInTheDocument();
@@ -70,5 +81,10 @@ describe('ConversationsTab pré-triagem', () => {
     expect(screen.getByText('Desde ontem')).toBeInTheDocument();
     expect(screen.getByText('Dipirona, Vitamina B')).toBeInTheDocument();
     expect(screen.getByText('Uso interno')).toBeInTheDocument();
+
+    const activeFilter = screen.getByRole('button', { name: /Ativas/ });
+    expect(activeFilter).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(activeFilter);
+    expect(activeFilter).toHaveAttribute('aria-pressed', 'true');
   });
 });
