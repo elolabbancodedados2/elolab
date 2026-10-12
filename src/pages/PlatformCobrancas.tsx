@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { supabase } from '@/integrations/supabase/client';
+import { usePlatformRealtime } from '@/hooks/usePlatformRealtime';
 
 type Subscription = {
   clinica_id: string;
@@ -59,6 +60,7 @@ const dataHora = (value: string) => {
 };
 
 export default function PlatformCobrancas() {
+  usePlatformRealtime();
   const [busca, setBusca] = useState('');
   const [status, setStatus] = useState('all');
   const overview = useQuery({
@@ -68,7 +70,7 @@ export default function PlatformCobrancas() {
       if (error) throw error;
       return data as Overview;
     },
-    refetchInterval: 60_000,
+    refetchInterval: 30_000,
   });
   const invoices = useQuery({
     queryKey: ['platform-subscription-invoices'],
@@ -77,7 +79,7 @@ export default function PlatformCobrancas() {
       if (error) throw error;
       return (data || []) as PlatformInvoice[];
     },
-    refetchInterval: 60_000,
+    refetchInterval: 30_000,
   });
 
   const lista = useMemo(() => {
@@ -121,8 +123,8 @@ export default function PlatformCobrancas() {
             ['Vencidas', metrics?.vencidas || 0],
             ['Sem assinatura', metrics?.sem_assinatura || 0],
           ].map(([label, value], index) => {
-            const accents = ['border-l-[#2F80ED] bg-[#F4F8FF]', 'border-l-[#16A77A] bg-[#F2FBF7]', 'border-l-[#45BBD1] bg-[#F1FBFD]', 'border-l-[#E6A12A] bg-[#FFFAF0]', 'border-l-[#92A6BB] bg-[#F7F9FC]'];
-            return <Card key={label} className={`rounded-xl border border-[#E1ECF5] border-l-4 shadow-sm ${accents[index]}`}><CardContent className="py-4"><p className="text-xs font-medium text-[#39516B]">{label}</p><p className="mt-1 text-2xl font-bold tracking-tight text-[#0C1F54]">{value}</p></CardContent></Card>;
+            const surfaces = ['bg-[#F4F8FF]', 'bg-[#F2FBF7]', 'bg-[#F1FBFD]', 'bg-[#FFFAF0]', 'bg-[#F7F9FC]'];
+            return <Card key={label} className={`rounded-xl border border-[#E1ECF5] shadow-sm ${surfaces[index]}`}><CardContent className="py-4"><p className="text-xs font-medium text-[#39516B]">{label}</p><p className="mt-1 text-2xl font-bold tracking-tight text-[#0C1F54]">{value}</p></CardContent></Card>;
           })}
         </div>
       )}

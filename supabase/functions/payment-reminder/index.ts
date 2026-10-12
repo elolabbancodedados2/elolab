@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { cronSecretOk, cronForbidden } from '../_shared/cronAuth.ts';
 import { corsPadrao } from '../_shared/cors.ts';
+import { saoPauloDate, saoPauloDayWindow, shiftCivilDate } from '../_shared/paymentReminderSchedule.ts';
 
 let corsHeaders: Record<string, string> = {};
 
@@ -21,17 +22,31 @@ serve(async (req) => {
 
     const now = new Date();
 
-    // 1. Find subscriptions expiring in 1 day (reminder before expiry)
-    const tomorrow = new Date(now);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const tomorrowStr = tomorrow.toISOString().split("T")[0];
+    // Billing reminders use the subscriber's civil date in São Paulo, not UTC.
+    const todayStr = saoPauloDate(now);
+    const tomorrowStr = shiftCivilDate(todayStr, 1);
+    const todayWindow = saoPauloDayWindow(todayStr);
+    const tomorrowWindow = saoPauloDayWindow(tomorrowStr);
+    const appUrl = (Deno.env.get("APP_URL") || "https://app.elolab.com.br").replace(/\/+$/, "");
 
+    // One-off plans get a choice of payment method on the due date. The email
+    // is deduplicated by subscription and São Paulo civil date.
+    const { data: dueToday, error: dueTodayError } = await supabase
+      .from("assinaturas_plano")
+      .select("id, user_id, plano_slug, data_fim")
+      .eq("status", "ativa")
+      .eq("cobranca_modalidade", "pre_pago")
+      .gte("data_fim", todayWindow.start)
+      .lt("data_fim", todayWindow.end);
+    if (dueTodayError) throw dueTodayError;
+
+    // 1. Find other subscriptions expiring tomorrow (reminder before expiry).
     const { data: expiringTomorrow } = await supabase
       .from("assinaturas_plano")
-      .select("user_id, plano_slug, trial_fim, data_fim")
+      .select("id, user_id, plano_slug, trial_fim, data_fim, cobranca_modalidade")
       .in("status", ["trial", "ativa"])
-      .or(`trial_fim.gte.${tomorrowStr}T00:00:00,data_fim.gte.${tomorrowStr}T00:00:00`)
-      .or(`trial_fim.lt.${tomorrowStr}T23:59:59,data_fim.lt.${tomorrowStr}T23:59:59`);
+      .or(`trial_fim.gte.${tomorrowWindow.start},data_fim.gte.${tomorrowWindow.start}`)
+      .or(`trial_fim.lt.${tomorrowWindow.end},data_fim.lt.${tomorrowWindow.end}`);
 
     let remindersCount = 0;
 
@@ -42,6 +57,52 @@ serve(async (req) => {
       .eq("status", "expirada");
 
     const notifications: any[] = [];
+
+    for (const sub of dueToday || []) {
+      const { data: alreadyQueued, error: dedupeError } = await supabase
+        .from("notification_queue")
+        .select("id")
+        .eq("destinatario_id", sub.user_id)
+        .contains("dados_extras", {
+          tipo_lembrete: "prepaid_due_today",
+          assinatura_id: sub.id,
+          due_date: todayStr,
+        })
+        .limit(1)
+        .maybeSingle();
+      if (dedupeError) throw dedupeError;
+      if (alreadyQueued) continue;
+
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("email, nome")
+        .eq("id", sub.user_id)
+        .maybeSingle();
+      if (profileError) throw profileError;
+      if (!profile?.email) continue;
+
+      const dueDate = new Intl.DateTimeFormat("pt-BR", {
+        timeZone: "America/Sao_Paulo",
+        dateStyle: "short",
+      }).format(new Date(todayWindow.start));
+      const checkoutUrl = `${appUrl}/planos/checkout/${encodeURIComponent(sub.plano_slug)}`;
+      notifications.push({
+        tipo: "email",
+        assunto: "Hoje vence o seu plano EloLab",
+        conteudo: `Olá ${profile.nome || ""},\n\nHoje (${dueDate}) vence o período pré-pago do plano ${sub.plano_slug}. Acesse o checkout para escolher a forma de pagamento disponível e renovar o acesso:\n${checkoutUrl}\n\nA renovação não será cobrada automaticamente sem uma nova autorização sua.\n\nEquipe EloLab`,
+        destinatario_email: profile.email,
+        destinatario_nome: profile.nome,
+        destinatario_id: sub.user_id,
+        status: "pendente",
+        dados_extras: {
+          tipo_lembrete: "prepaid_due_today",
+          assinatura_id: sub.id,
+          plano: sub.plano_slug,
+          due_date: todayStr,
+        },
+      });
+      remindersCount++;
+    }
 
     // Trial com cartão: avisar dentro das últimas 24 horas e deduplicar por
     // assinatura, mesmo quando o cron executa mais de uma vez nesse intervalo.
@@ -89,6 +150,8 @@ serve(async (req) => {
     if (expiringTomorrow) {
       for (const sub of expiringTomorrow) {
         // Trials recebem o aviso específico das últimas 24 horas abaixo.
+        // Assinaturas pré-pagas recebem o lembrete no próprio dia de vencimento.
+        if (sub.cobranca_modalidade === "pre_pago") continue;
         if (sub.trial_fim && new Date(sub.trial_fim).getTime() > now.getTime()) continue;
         const { data: profile } = await supabase
           .from("profiles")
@@ -175,7 +238,7 @@ serve(async (req) => {
       status: "sucesso",
       registros_processados: remindersCount,
       registros_sucesso: remindersCount,
-      detalhes: { expiring_tomorrow: expiringTomorrow?.length || 0, trials_ending_soon: trialsEndingSoon?.length || 0, expired: expired?.length || 0 },
+      detalhes: { prepaid_due_today: dueToday?.length || 0, expiring_tomorrow: expiringTomorrow?.length || 0, trials_ending_soon: trialsEndingSoon?.length || 0, expired: expired?.length || 0 },
     });
 
     console.info(`Payment reminders sent: ${remindersCount}`);
