@@ -10,7 +10,7 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
 import {
-  ChevronLeft, ChevronRight, Filter, Plus, Palette, Ban, Search,
+  ChevronLeft, ChevronRight, Filter, Plus, Palette, Ban, Search, X,
   CalendarDays, LayoutGrid, List, MoreHorizontal, Users2, Printer, Keyboard, Pin,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -117,7 +117,7 @@ export function AgendaHeader(p: Props) {
         </div>
 
         <div className="flex w-full items-center gap-2 overflow-x-auto pb-1 sm:w-auto sm:overflow-visible sm:pb-0">
-          <div className="flex items-center gap-0.5 rounded-xl border border-[#D8E8F4] bg-white p-1 shadow-sm">
+          <div role="group" aria-label="Visualização da agenda" className="flex items-center gap-0.5 rounded-xl border border-[#D8E8F4] bg-white p-1 shadow-sm">
             <Button variant={p.view === 'daily' ? 'default' : 'ghost'} size="sm" className={cn('h-11 px-3 sm:h-9', p.view === 'daily' && 'bg-[#0C1F54] text-white hover:bg-[#142D68]')} onClick={() => p.onViewChange('daily')} aria-label="Visualização diária">
               <List className="h-3.5 w-3.5 md:mr-1" /> <span className="hidden md:inline">Dia</span>
             </Button>
@@ -129,7 +129,7 @@ export function AgendaHeader(p: Props) {
             </Button>
           </div>
 
-          <Button variant="outline" size="sm" onClick={p.onToggleWaiting} className="hidden h-9 lg:inline-flex">
+          <Button variant="outline" size="sm" onClick={p.onToggleWaiting} aria-label={`Alternar lista de espera${p.waitingCount ? `, ${p.waitingCount} pacientes` : ''}`} className="hidden h-9 lg:inline-flex">
             <Users2 className="h-4 w-4 md:mr-1.5" />
             <span className="hidden md:inline">Espera</span>
             {p.waitingCount > 0 && <Badge variant="secondary" className="ml-1.5 h-5 px-1.5 text-[10px]">{p.waitingCount}</Badge>}
@@ -163,7 +163,7 @@ export function AgendaHeader(p: Props) {
             </DropdownMenuContent>
           </DropdownMenu>
 
-          <Button size="sm" onClick={p.onNewAppointment} className="h-11 shrink-0 bg-[#005ECC] text-white shadow-md shadow-[#0F7BFD]/15 hover:bg-[#004FAE] sm:h-9">
+          <Button size="sm" onClick={p.onNewAppointment} aria-label="Nova consulta" className="h-11 shrink-0 bg-[#005ECC] text-white shadow-md shadow-[#0F7BFD]/15 hover:bg-[#004FAE] sm:h-9">
             <Plus className="h-4 w-4 md:mr-1" /> <span className="hidden md:inline">Nova consulta</span>
           </Button>
         </div>
@@ -178,8 +178,20 @@ export function AgendaHeader(p: Props) {
             value={p.search}
             onChange={(e) => p.onSearchChange(e.target.value)}
             aria-label="Buscar paciente, CPF ou telefone"
-            className="h-11 border-[#D8E8F4] bg-white pl-8 text-sm focus-visible:ring-[#0F7BFD] sm:h-9"
+            className={cn('h-11 border-[#D8E8F4] bg-white pl-8 text-sm focus-visible:ring-[#0F7BFD] sm:h-9', p.search && 'pr-10')}
           />
+          {p.search && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label="Limpar busca"
+              onClick={() => p.onSearchChange('')}
+              className="absolute right-1 top-1/2 h-8 w-8 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          )}
         </div>
 
         <Popover>
@@ -244,7 +256,7 @@ export function AgendaHeader(p: Props) {
           }}>Limpar filtros</Button>
         )}
 
-        <div className="-mx-1 flex w-[calc(100%+0.5rem)] items-center gap-1.5 overflow-x-auto px-1 pb-1 text-xs sm:ml-auto sm:w-auto sm:overflow-visible sm:pb-0">
+        <div role="group" aria-label={`Resumo dos atendimentos: ${p.totals.total} no total, ${p.totals.confirmados} confirmados, ${p.totals.aguardando} aguardando e ${p.totals.cancelados} cancelados`} className="-mx-1 flex w-[calc(100%+0.5rem)] items-center gap-1.5 overflow-x-auto px-1 pb-1 text-xs sm:ml-auto sm:w-auto sm:overflow-visible sm:pb-0">
           <Stat label="Total" value={p.totals.total} />
           <Stat label="Conf." value={p.totals.confirmados} tone="success" />
           <Stat label="Aguard." value={p.totals.aguardando} tone="warning" />

@@ -125,7 +125,7 @@ function SettingRow({ icon: Icon, title, description, children }: {
   icon: React.ElementType; title: string; description: string; children: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center justify-between gap-4 py-4">
+    <div className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
       <div className="flex items-start gap-3 flex-1 min-w-0">
         <div className="p-2 rounded-lg bg-muted shrink-0">
           <Icon className="h-4 w-4 text-muted-foreground" />
@@ -135,7 +135,7 @@ function SettingRow({ icon: Icon, title, description, children }: {
           <p className="text-xs text-muted-foreground mt-0.5">{description}</p>
         </div>
       </div>
-      <div className="shrink-0">{children}</div>
+      <div className="flex shrink-0 items-center sm:pl-4">{children}</div>
     </div>
   );
 }
@@ -599,9 +599,9 @@ export default function Configuracoes() {
         return;
       }
       void saveConfig(configKey, configValue, label);
-    }} disabled={saving[configKey]} className="gap-2">
+    }} disabled={saving[configKey]} aria-busy={saving[configKey]} className="gap-2">
       {saving[configKey] ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-      Salvar na Nuvem
+      {saving[configKey] ? 'Salvando…' : 'Salvar na nuvem'}
     </Button>
   );
 
@@ -642,23 +642,23 @@ export default function Configuracoes() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col justify-between gap-3 rounded-2xl border border-[#dce9f6] bg-gradient-to-r from-[#f3f8ff] via-white to-[#f3fbfa] p-5 sm:flex-row sm:items-center sm:p-6">
+      <div className="flex flex-col justify-between gap-4 rounded-2xl border border-[#dce9f6] bg-gradient-to-r from-[#f3f8ff] via-white to-[#f3fbfa] p-5 sm:flex-row sm:items-center sm:p-6">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Configurações</h1>
-          <p className="text-sm text-muted-foreground">Gerencie todas as configurações do sistema</p>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">Configurações</h1>
+          <p className="mt-1 max-w-prose text-sm text-muted-foreground">Gerencie os dados e as preferências da sua clínica.</p>
         </div>
-        <Badge variant="outline" className={cn('gap-1.5 rounded-full bg-white/80', isCloudSynced ? 'border-[#cfe9dd] text-[#247453]' : 'border-[#dce9f6] text-[#52647a]')}>
+        <Badge variant="outline" role="status" className={cn('w-fit gap-1.5 rounded-full bg-white/80', isCloudSynced ? 'border-[#cfe9dd] text-[#247453]' : 'border-[#dce9f6] text-[#52647a]')}>
           {isCloudSynced ? <Cloud className="h-3 w-3" /> : <CloudOff className="h-3 w-3" />}
           {isCloudSynced ? 'Sincronizado' : 'Local'}
         </Badge>
       </div>
 
-      <Tabs defaultValue={initialSettingsTab} className="space-y-6">
-        <div className="-mx-1 overflow-x-auto pb-1 sm:mx-0 sm:overflow-visible">
-          <TabsList className="flex h-auto w-max min-w-full flex-nowrap gap-1 rounded-xl border border-[#dce9f6] bg-[#f3f8ff] p-1.5 sm:w-full sm:flex-wrap">
+      <Tabs defaultValue={initialSettingsTab} className="space-y-5 sm:space-y-6">
+        <div className="-mx-4 overflow-x-auto overscroll-x-contain px-4 pb-2 sm:-mx-1 sm:px-1">
+          <TabsList aria-label="Seções das configurações" className="flex h-auto w-max min-w-full flex-nowrap justify-start gap-1 rounded-xl border border-[#dce9f6] bg-[#f3f8ff] p-1.5 xl:w-full xl:flex-wrap">
             {tabItems.map(tab => (
-              <TabsTrigger key={tab.value} value={tab.value} aria-label={tab.label} title={tab.label} className="shrink-0 gap-1.5 rounded-lg text-xs data-[state=active]:bg-white data-[state=active]:text-[#1766a8] data-[state=active]:shadow-sm">
-                <tab.icon className="h-3.5 w-3.5" />
+              <TabsTrigger key={tab.value} value={tab.value} title={tab.label} className="min-h-9 shrink-0 gap-2 rounded-lg px-3 text-xs data-[state=active]:bg-white data-[state=active]:text-[#1766a8] data-[state=active]:shadow-sm">
+                <tab.icon aria-hidden="true" className="h-4 w-4" />
                 <span>{tab.label}</span>
               </TabsTrigger>
             ))}
@@ -993,7 +993,7 @@ export default function Configuracoes() {
                 <h3 className="font-semibold text-sm">Dias de Funcionamento</h3>
                 <div className="flex flex-wrap gap-2">
                   {diasSemana.map(dia => (
-                    <Button key={dia.value} variant={configClinica.diasFuncionamento.includes(dia.value) ? 'default' : 'outline'} size="sm" onClick={() => toggleDia(dia.value)} className="min-w-[48px]">
+                    <Button key={dia.value} type="button" aria-pressed={configClinica.diasFuncionamento.includes(dia.value)} variant={configClinica.diasFuncionamento.includes(dia.value) ? 'default' : 'outline'} size="sm" onClick={() => toggleDia(dia.value)} className="min-w-[48px]">
                       {dia.label}
                     </Button>
                   ))}
@@ -1103,8 +1103,8 @@ export default function Configuracoes() {
               </CardHeader>
               <CardContent className="space-y-6">
                 <div className="space-y-2">
-                  <Label>Rodapé do Receituário</Label>
-                  <Textarea value={configImpressao.rodapeReceita} onChange={e => setConfigImpressao({ ...configImpressao, rodapeReceita: e.target.value })} rows={2} placeholder="Ex: Este documento é válido por 30 dias" />
+                  <Label htmlFor="rodape-receituario">Rodapé do receituário</Label>
+                  <Textarea id="rodape-receituario" value={configImpressao.rodapeReceita} onChange={e => setConfigImpressao({ ...configImpressao, rodapeReceita: e.target.value })} rows={2} placeholder="Ex: Este documento é válido por 30 dias" />
                   <p className="text-xs text-muted-foreground">O rodapé personalizado aparece acima do aviso de assinatura e é limitado a duas linhas.</p>
                 </div>
 
@@ -1112,13 +1112,13 @@ export default function Configuracoes() {
                 <h3 className="font-semibold text-sm">Elementos Visíveis</h3>
                 <div className="divide-y">
                   <SettingRow icon={Image} title="Mostrar Logo" description="Incluir logo da clínica no cabeçalho dos documentos">
-                    <Switch checked={configImpressao.mostrarLogo} onCheckedChange={v => setConfigImpressao({ ...configImpressao, mostrarLogo: v })} />
+                    <Switch aria-label="Mostrar logotipo nos documentos" checked={configImpressao.mostrarLogo} onCheckedChange={v => setConfigImpressao({ ...configImpressao, mostrarLogo: v })} />
                   </SettingRow>
                   <SettingRow icon={Hash} title="Mostrar CRM" description="Incluir o CRM do profissional na área de assinatura">
-                    <Switch checked={configImpressao.mostrarCRM} onCheckedChange={v => setConfigImpressao({ ...configImpressao, mostrarCRM: v })} />
+                    <Switch aria-label="Mostrar CRM na assinatura" checked={configImpressao.mostrarCRM} onCheckedChange={v => setConfigImpressao({ ...configImpressao, mostrarCRM: v })} />
                   </SettingRow>
                   <SettingRow icon={Building} title="Mostrar CNES" description="Incluir código CNES do estabelecimento">
-                    <Switch checked={configImpressao.mostrarCNES} onCheckedChange={v => setConfigImpressao({ ...configImpressao, mostrarCNES: v })} />
+                    <Switch aria-label="Mostrar CNES nos documentos" checked={configImpressao.mostrarCNES} onCheckedChange={v => setConfigImpressao({ ...configImpressao, mostrarCNES: v })} />
                   </SettingRow>
                 </div>
 
@@ -1141,9 +1141,9 @@ export default function Configuracoes() {
               </CardHeader>
               <CardContent>
                 <div className="divide-y">
-                  <SettingRow icon={Key} title="Tempo de Sessão" description="Desconectar após inatividade">
+                  <SettingRow icon={Key} title="Encerrar sessão após" description="Tempo sem atividade antes de sair da conta.">
                     <Select value={configSeguranca.sessionTimeoutMin.toString()} onValueChange={v => setConfigSeguranca({ ...configSeguranca, sessionTimeoutMin: parseInt(v) })}>
-                      <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
+                      <SelectTrigger aria-label="Tempo sem atividade para encerrar a sessão" className="w-[160px]"><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="15">15 minutos</SelectItem>
                         <SelectItem value="30">30 minutos</SelectItem>

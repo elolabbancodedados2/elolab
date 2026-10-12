@@ -1604,7 +1604,7 @@ export default function Prontuarios() {
       {erroMedicos && <ErrorState compact error={erroMedicos} title="Lista de médicos indisponível" description="Não é possível iniciar um atendimento ou assinar um prontuário sem carregar os dados do médico." onRetry={() => { void refetchMedicos(); }} />}
       {erroConvenios && <ErrorState compact error={erroConvenios} title="Convênios indisponíveis" description="A ficha pode ser consultada, mas o convênio do paciente não será identificado até atualizar os dados." onRetry={() => { void refetchConvenios(); }} />}
       {/* Page header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
           <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center">
             <ClipboardList className="h-5 w-5 text-primary" />
@@ -1614,7 +1614,7 @@ export default function Prontuarios() {
             <p className="text-xs text-muted-foreground">Registro médico, evolução e prescrições do paciente</p>
           </div>
         </div>
-        <Badge className="bg-primary/10 text-primary border-primary/20 gap-1 text-xs rounded-full px-2.5 py-1">
+        <Badge className="shrink-0 bg-primary/10 text-primary border-primary/20 gap-1 text-xs rounded-full px-2.5 py-1">
           <ShieldCheck className="h-3 w-3" />Acesso clínico
         </Badge>
       </div>
@@ -1822,7 +1822,7 @@ export default function Prontuarios() {
                   <div className="border-b border-border/40 px-4 pt-3">
                     <TabsList
                       aria-label="Abas da ficha do paciente"
-                      className="grid h-auto w-full grid-cols-3 gap-1 bg-transparent p-0 sm:flex sm:flex-wrap sm:gap-0"
+                      className="grid h-auto w-full grid-cols-2 gap-1 bg-transparent p-0 sm:flex sm:flex-wrap sm:gap-0"
                     >
                       {[
                         { val: 'evolucoes', icon: FileText, label: 'Evoluções' },
@@ -1860,9 +1860,9 @@ export default function Prontuarios() {
                               initial={{ opacity: 0, y: 4 }}
                               animate={{ opacity: 1, y: 0 }}
                               transition={{ delay: idx * 0.02 }}
-                              className="group border border-border/40 rounded-xl p-3.5 hover:border-primary/30 cursor-pointer transition-all hover:bg-primary/[0.02]"
                               role="button"
                               tabIndex={0}
+                              className="group cursor-pointer rounded-xl border border-border/40 p-3.5 transition-colors hover:border-primary/30 hover:bg-primary/[0.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                               aria-label={`Abrir evolução de ${format(new Date(p.data), 'dd/MM/yyyy')}: ${p.queixa_principal || 'Atendimento clínico'}`}
                               onKeyDown={event => {
                                 if (event.key === 'Enter' || event.key === ' ') {

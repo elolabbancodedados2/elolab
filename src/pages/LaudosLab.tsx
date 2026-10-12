@@ -32,6 +32,7 @@ import { pacienteCorresponde } from '@/lib/buscaPaciente';
 import { formatDateTimeSaoPaulo } from '@/lib/dateOnly';
 import { deveNotificarRetificacao, perfilPodeRetificarResultado, podeRetificarResultado } from '@/lib/laudoWorkflow';
 import { cursorAposAtualizacaoWorklist, type CursorLaudo } from '@/lib/laudoWorklist';
+import { LaboratorioSubnav } from '@/components/laboratorio/LaboratorioSubnav';
 
 /**
  * Teto da worklist do laboratório.
@@ -828,6 +829,8 @@ export default function LaudosLab() {
           <RefreshCw className="h-4 w-4" /> Atualizar
         </Button>
       </div>
+
+      <LaboratorioSubnav />
 
       {/* KPIs */}
       <div className="grid gap-3 grid-cols-2 md:grid-cols-3 xl:grid-cols-6">

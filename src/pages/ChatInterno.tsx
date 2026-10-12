@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   MessageSquare, Search, Send, AlertTriangle, Loader2,
-  CheckCheck, Check, Smile, ArrowLeft, Circle,
+  CheckCheck, Check, Smile, ArrowLeft, Circle, X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -90,6 +90,7 @@ function ChatSidebar({
 }) {
   const [search, setSearch] = useState('');
   const [tab, setTab] = useState<'conversas' | 'equipe'>('conversas');
+  const searchTerm = search.trim().toLocaleLowerCase('pt-BR');
 
   const conversasComUsuarios = conversas
     .filter(c => c.outro_usuario)
@@ -104,13 +105,13 @@ function ChatSidebar({
   const onlineMembers = teamMembers.filter(m => isOnline(m.ultimo_acesso));
   const offlineMembers = teamMembers.filter(m => !isOnline(m.ultimo_acesso));
 
-  const filteredTeam = search
-    ? teamMembers.filter(m => m.nome.toLowerCase().includes(search.toLowerCase()))
+  const filteredTeam = searchTerm
+    ? teamMembers.filter(m => `${m.nome} ${m.email}`.toLocaleLowerCase('pt-BR').includes(searchTerm))
     : null;
 
-  const filteredConversas = search
+  const filteredConversas = searchTerm
     ? conversasComUsuarios.filter(c =>
-        c.outro_usuario?.nome.toLowerCase().includes(search.toLowerCase())
+        `${c.outro_usuario?.nome || ''} ${c.outro_usuario?.email || ''}`.toLocaleLowerCase('pt-BR').includes(searchTerm)
       )
     : conversasComUsuarios;
 
@@ -129,18 +130,35 @@ function ChatSidebar({
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            className="pl-10 h-9 text-sm rounded-xl"
+            className={cn('pl-10 h-10 text-sm rounded-xl focus-visible:ring-primary', search && 'pr-10')}
             aria-label="Buscar conversas e equipe"
-            placeholder="Buscar..."
+            placeholder={tab === 'conversas' ? 'Buscar por nome ou e-mail...' : 'Buscar na equipe...'}
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
+          {search && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label="Limpar busca"
+              onClick={() => setSearch('')}
+              className="absolute right-1 top-1/2 h-8 w-8 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          )}
         </div>
       </div>
 
       {/* Tabs */}
-      <div className="flex border-b border-border/25">
+      <div role="tablist" aria-label="Seções do chat" className="flex border-b border-border/25">
         <button
+          type="button"
+          role="tab"
+          id="chat-tab-conversas"
+          aria-selected={tab === 'conversas'}
+          aria-controls="chat-sidebar-panel"
           onClick={() => setTab('conversas')}
           className={cn(
             'flex-1 text-xs font-semibold py-2.5 transition-colors border-b-2',
@@ -152,6 +170,11 @@ function ChatSidebar({
           Conversas
         </button>
         <button
+          type="button"
+          role="tab"
+          id="chat-tab-equipe"
+          aria-selected={tab === 'equipe'}
+          aria-controls="chat-sidebar-panel"
           onClick={() => setTab('equipe')}
           className={cn(
             'flex-1 text-xs font-semibold py-2.5 transition-colors border-b-2 flex items-center justify-center gap-1.5',
@@ -167,15 +190,21 @@ function ChatSidebar({
         </button>
       </div>
 
-      <ScrollArea className="flex-1">
+      <ScrollArea
+        id="chat-sidebar-panel"
+        role="tabpanel"
+        aria-labelledby={tab === 'conversas' ? 'chat-tab-conversas' : 'chat-tab-equipe'}
+        tabIndex={0}
+        className="min-h-0 flex-1"
+      >
         <div className="p-1.5">
           {tab === 'conversas' && (
             <>
               {filteredConversas.length === 0 ? (
                 <div className="text-center py-10">
                   <MessageSquare className="h-10 w-10 mx-auto mb-3 opacity-20" />
-                  <p className="text-sm text-muted-foreground">Nenhuma conversa</p>
-                  <p className="text-xs text-muted-foreground/60 mt-1">Clique em "Equipe" para iniciar</p>
+                  <p className="text-sm text-muted-foreground">{searchTerm ? 'Nenhuma conversa encontrada' : 'Nenhuma conversa'}</p>
+                  {!searchTerm && <p className="text-xs text-muted-foreground/60 mt-1">Clique em "Equipe" para iniciar</p>}
                 </div>
               ) : (
                 filteredConversas.map(c => {
@@ -246,7 +275,7 @@ function ChatSidebar({
               {(filteredTeam || [...onlineMembers, ...offlineMembers]).length === 0 ? (
                 <div className="text-center py-10">
                   <MessageSquare className="h-10 w-10 mx-auto mb-3 opacity-20" />
-                  <p className="text-sm text-muted-foreground">Nenhum membro encontrado</p>
+                  <p className="text-sm text-muted-foreground">{searchTerm ? 'Nenhum membro encontrado' : 'Nenhuma pessoa na equipe'}</p>
                 </div>
               ) : filteredTeam ? (
                 filteredTeam.map(m => (
@@ -420,7 +449,7 @@ function ConversaView({
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-3" ref={scrollRef}>
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3" ref={scrollRef}>
         {loading ? (
           <div className="flex flex-col items-center justify-center py-8 gap-2">
             <Loader2 className="h-6 w-6 animate-spin text-primary" />
@@ -552,13 +581,13 @@ function ConversaView({
 
           <Input
             ref={inputRef}
-            className="flex-1 h-10 text-sm rounded-xl"
+            className="flex-1 h-11 min-w-0 text-sm rounded-xl"
             aria-label="Mensagem"
             placeholder="Digite uma mensagem..."
             value={texto}
             onChange={e => setTexto(e.target.value)}
             onKeyDown={e => {
-              if (e.key === 'Enter' && !e.shiftKey) {
+              if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
                 e.preventDefault();
                 handleEnviar();
               }
@@ -571,9 +600,10 @@ function ConversaView({
               'h-10 w-10 shrink-0 rounded-full transition-all',
               texto.trim() ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground',
             )}
-            aria-label="Enviar mensagem"
+            aria-label={enviando ? 'Enviando mensagem' : 'Enviar mensagem'}
             onClick={handleEnviar}
             disabled={!texto.trim() || enviando}
+            aria-busy={enviando}
           >
             {enviando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
           </Button>
@@ -651,7 +681,7 @@ export default function ChatInterno() {
   if (!user) return null;
 
   return (
-    <div className="h-[calc(100vh-3.5rem)] flex flex-col overflow-hidden rounded-2xl border border-[#dce9f6] bg-white shadow-sm shadow-[#133453]/[0.03]">
+    <div className="flex h-[calc(100vh-3.5rem)] min-h-0 flex-col overflow-hidden rounded-2xl border border-[#dce9f6] bg-white shadow-sm shadow-[#133453]/[0.03] supports-[height:100dvh]:h-[calc(100dvh-3.5rem)]">
       {/* Header */}
       <div className="border-b border-[#dce9f6] bg-gradient-to-r from-[#f3f8ff] via-white to-[#f3fbfa] px-5 py-4 sm:px-6">
         <div className="flex items-center justify-between">
@@ -684,10 +714,10 @@ export default function ChatInterno() {
       )}
 
       {/* Content */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex min-h-0 flex-1 overflow-hidden">
         {/* Sidebar */}
         <div className={cn(
-          'w-full md:w-80 border-r border-[#e2ebf4] bg-[#f8fbff] flex-shrink-0',
+          'min-h-0 w-full md:w-80 border-r border-[#e2ebf4] bg-[#f8fbff] flex-shrink-0',
           conversaAtiva ? 'hidden md:flex md:flex-col' : 'flex flex-col',
         )}>
           <ChatSidebar
@@ -701,7 +731,7 @@ export default function ChatInterno() {
 
         {/* Chat area */}
         <div className={cn(
-          'flex-1 flex flex-col',
+          'min-h-0 flex-1 flex flex-col',
           !conversaAtiva ? 'hidden md:flex' : 'flex',
         )}>
           {conversaAtiva ? (

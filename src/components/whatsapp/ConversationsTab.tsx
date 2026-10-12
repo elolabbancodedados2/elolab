@@ -24,6 +24,35 @@ const formatarHoraSaoPaulo = (valor: string | null | undefined, comData = false)
   }).format(data);
 };
 
+type PreTriagem = Record<string, unknown>;
+
+function lerPreTriagens(conversation: WhatsAppConversation): PreTriagem[] {
+  const contexto = (conversation as WhatsAppConversation & { contexto?: unknown }).contexto;
+  if (!Array.isArray(contexto)) return [];
+  return contexto.filter((item): item is PreTriagem =>
+    item !== null && typeof item === 'object' && !Array.isArray(item),
+  );
+}
+
+function formatarValorPreTriagem(value: unknown): string | null {
+  if (typeof value === 'string') return value.trim() || null;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (Array.isArray(value)) {
+    const values = value.filter((item): item is string => typeof item === 'string').map(item => item.trim()).filter(Boolean);
+    return values.length ? values.join(', ') : null;
+  }
+  return null;
+}
+
+function formatarDataPreTriagem(value: unknown): string | null {
+  if (typeof value !== 'string' || !value.trim()) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return formatarValorPreTriagem(value);
+  return new Intl.DateTimeFormat('pt-BR', {
+    timeZone: 'America/Sao_Paulo', dateStyle: 'short', timeStyle: 'short',
+  }).format(date);
+}
+
 interface ConversationsTabProps {
   conversations: WhatsAppConversation[];
   hasMoreConversations: boolean;
@@ -56,6 +85,7 @@ export function ConversationsTab({ conversations, hasMoreConversations, isLoadin
   const notesQuery = useWhatsAppInternalNotes(selected?.id || null);
   const messages = messagesQuery.data || [];
   const notes = notesQuery.data || [];
+  const preTriagens = selected ? lerPreTriagens(selected) : [];
 
   useEffect(() => {
     if (!selected) return;
@@ -268,6 +298,39 @@ export function ConversationsTab({ conversations, hasMoreConversations, isLoadin
             </Button>
           </CardHeader>
           <CardContent className="space-y-3">
+            {preTriagens.length > 0 && (
+              <section aria-label="Pré-triagem informada pelo paciente" className="rounded-lg border border-amber-200 bg-amber-50/60 p-3">
+                <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <h3 className="text-sm font-semibold text-foreground">Pré-triagem</h3>
+                    <p className="text-xs text-muted-foreground">Informações relatadas pelo paciente ao assistente.</p>
+                  </div>
+                  <Badge variant="outline" className="border-amber-300 bg-background text-amber-900">Uso interno</Badge>
+                </div>
+                <div className="space-y-3">
+                  {preTriagens.map((triagem, index) => {
+                    const campos = [
+                      ['Queixa principal', formatarValorPreTriagem(triagem.queixa_principal)],
+                      ['Sintomas', formatarValorPreTriagem(triagem.sintomas)],
+                      ['Duração dos sintomas', formatarValorPreTriagem(triagem.duracao_sintomas)],
+                      ['Medicamentos em uso', formatarValorPreTriagem(triagem.medicamentos_em_uso)],
+                      ['Registrado em', formatarDataPreTriagem(triagem.registrado_em)],
+                    ].filter((field): field is [string, string] => Boolean(field[1]));
+                    if (!campos.length) return null;
+                    return (
+                      <dl key={`${selected.id}-pretriagem-${index}`} className="grid gap-x-4 gap-y-2 border-t border-amber-200/80 pt-3 first:border-t-0 first:pt-0 sm:grid-cols-2">
+                        {campos.map(([label, value]) => (
+                          <div key={label} className="min-w-0">
+                            <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
+                            <dd className="mt-0.5 whitespace-pre-wrap break-words text-sm text-foreground">{value}</dd>
+                          </div>
+                        ))}
+                      </dl>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
             <div className="flex items-center justify-between gap-3">
               <span className="text-xs text-muted-foreground">Prioridade do atendimento</span>
               <Select value={selected.prioridade} onValueChange={priority => onPriorityChange(selected.id, priority)}>

@@ -1,4 +1,4 @@
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { WhatsAppAgent, WhatsAppSession, WhatsAppConversation, WhatsAppInternalNote, WhatsAppMessage, WhatsAppStats } from './types';
@@ -43,15 +43,40 @@ export function useWhatsAppSessions(allowed = true) {
 
 export function useWhatsAppConversations(allowed = true) {
   const { profile } = useSupabaseAuth();
+  const queryClient = useQueryClient();
+  const clinicId = profile?.clinica_id;
+  const profileId = profile?.id;
+  const queryKey = ['whatsapp-conversations', clinicId, profileId] as const;
+
+  useEffect(() => {
+    if (!allowed || !clinicId) return;
+
+    const channel = supabase
+      .channel(`whatsapp-conversations:${clinicId}:${profileId || 'session'}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'whatsapp_conversations',
+        filter: `clinica_id=eq.${clinicId}`,
+      }, () => {
+        void queryClient.invalidateQueries({ queryKey });
+      })
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [allowed, clinicId, profileId, queryClient]);
+
   const query = useInfiniteQuery({
-    queryKey: ['whatsapp-conversations', profile?.clinica_id, profile?.id],
+    queryKey,
     initialPageParam: 0,
     queryFn: async ({ pageParam }) => {
-      if (!profile?.clinica_id) return [] as WhatsAppConversation[];
+      if (!clinicId) return [] as WhatsAppConversation[];
       const { data, error } = await supabase
         .from('whatsapp_conversations')
         .select('*, pacientes(nome), profiles!whatsapp_conversations_responsavel_id_fkey(nome)')
-        .eq('clinica_id', profile.clinica_id)
+        .eq('clinica_id', clinicId)
         .order('ultima_mensagem_at', { ascending: false })
         .order('id', { ascending: false })
         .range(pageParam, pageParam + 49);
@@ -59,7 +84,12 @@ export function useWhatsAppConversations(allowed = true) {
       return data as WhatsAppConversation[];
     },
     getNextPageParam: (lastPage, allPages) => lastPage.length === 50 ? allPages.length * 50 : undefined,
-    enabled: allowed && !!profile?.clinica_id,
+    enabled: allowed && !!clinicId,
+    // Realtime acelera a atualização; polling mantém a fila confiável quando
+    // a conexão do canal cai ou a tabela não está disponível na publicação.
+    refetchInterval: allowed && clinicId ? 15_000 : false,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
   });
   return { ...query, data: query.data?.pages.flat() ?? [] };
 }

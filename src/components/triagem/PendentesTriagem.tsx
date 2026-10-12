@@ -1,4 +1,4 @@
-import { Activity, LoaderCircle } from 'lucide-react';
+import { Activity, CheckCircle2, LoaderCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 type Appointment = {
@@ -25,7 +25,17 @@ export function PendentesTriagem({ loading, appointments, onTriage }: Props) {
     );
   }
 
-  if (appointments.length === 0) return null;
+  if (appointments.length === 0) {
+    return (
+      <div role="status" className="flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50/70 p-4 text-sm text-emerald-950">
+        <CheckCircle2 aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-emerald-700" />
+        <div>
+          <p className="font-medium">Nenhum paciente aguardando triagem</p>
+          <p className="mt-0.5 text-emerald-900/75">Os pacientes com check-in e sem triagem aparecerão aqui.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <section aria-label="Pacientes aguardando triagem" className="space-y-2 rounded-xl border border-info/30 bg-info/5 p-4">
@@ -46,8 +56,8 @@ export function PendentesTriagem({ loading, appointments, onTriage }: Props) {
                   {String(appointment.hora_inicio).slice(0, 5)} · {appointment.tipo || 'consulta'}
                 </p>
               </div>
-              <Button size="sm" className="h-8 shrink-0 gap-1 text-xs" onClick={() => onTriage(appointment.paciente_id, appointment.id)}>
-                <Activity className="h-3 w-3" /> Triar
+              <Button size="sm" className="min-h-9 shrink-0 gap-1 text-xs" aria-label={`Triar ${patient?.nome_social || patient?.nome || 'paciente'}`} onClick={() => onTriage(appointment.paciente_id, appointment.id)}>
+                <Activity aria-hidden="true" className="h-3 w-3" /> Triar
               </Button>
             </div>
           );

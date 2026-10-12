@@ -15,7 +15,13 @@ describe('lista de pacientes aguardando triagem', () => {
       { id: 'ag-1', paciente_id: 'pac-1', hora_inicio: '09:30', tipo: 'consulta', pacientes: { nome: 'Ana' } },
     ]} onTriage={onTriage} />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Triar' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Triar Ana' }));
     expect(onTriage).toHaveBeenCalledWith('pac-1', 'ag-1');
+  });
+
+  it('explica quando não há pacientes aguardando triagem', () => {
+    render(<PendentesTriagem loading={false} appointments={[]} onTriage={vi.fn()} />);
+
+    expect(screen.getByRole('status')).toHaveTextContent('Nenhum paciente aguardando triagem');
   });
 });

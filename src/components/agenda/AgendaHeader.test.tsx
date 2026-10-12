@@ -6,6 +6,7 @@ import { AgendaHeader } from './AgendaHeader';
 describe('AgendaHeader', () => {
   it('mantém pesquisa acessível e abre o cadastro de consulta', () => {
     const onNewAppointment = vi.fn();
+    const onSearchChange = vi.fn();
 
     render(
       <MemoryRouter>
@@ -14,8 +15,8 @@ describe('AgendaHeader', () => {
           view="daily"
           onDateChange={vi.fn()}
           onViewChange={vi.fn()}
-          search=""
-          onSearchChange={vi.fn()}
+          search="Ana"
+          onSearchChange={onSearchChange}
           medicos={[]}
           statusFilter={[]}
           medicoFilter={[]}
@@ -34,6 +35,8 @@ describe('AgendaHeader', () => {
     );
 
     expect(screen.getByRole('textbox', { name: 'Buscar paciente, CPF ou telefone' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Limpar busca' }));
+    expect(onSearchChange).toHaveBeenCalledWith('');
     fireEvent.click(screen.getByRole('button', { name: /Nova consulta/ }));
     expect(onNewAppointment).toHaveBeenCalledOnce();
 
