@@ -1,33 +1,38 @@
 import { useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
-import { useMedicos } from '@/hooks/useSupabaseData';
+import { supabase } from '@/integrations/supabase/client';
 
 /**
  * Hook that returns the medico record linked to the current logged-in user.
- * Returns null if the user is not a doctor or has no linked medico record.
+ * Returns null if the user has no securely linked medico record.
  */
 export function useCurrentMedico() {
   const { user, profile, hasRole, isAdmin } = useSupabaseAuth();
-  const { data: medicos = [] } = useMedicos();
-
-  const currentMedico = useMemo(() => {
-    if (!user) return null;
-    const byUser = medicos.find(m => m.user_id === user.id);
-    if (byUser) return byUser;
-    // Convites antigos podem ter criado a ficha antes de vincular user_id.
-    // O e-mail é um segundo vínculo dentro da clínica já filtrada pelo hook.
-    return medicos.find(m => m.email?.trim().toLowerCase() === user.email?.trim().toLowerCase()) || null;
-  }, [user, medicos]);
+  const currentMedicoQuery = useQuery({
+    queryKey: ['medico-atual', user?.id ?? null, profile?.clinica_id ?? null],
+    enabled: !!user && !!profile?.clinica_id,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).rpc('buscar_medico_atual');
+      if (error) throw error;
+      return data?.[0] ?? null;
+    },
+  });
+  const currentMedico = currentMedicoQuery.data ?? null;
 
   const isMedicoOnly = useMemo(() => {
     if (!profile) return false;
-    // User is medico but NOT admin
-    return hasRole('medico') && !isAdmin();
+    // Clinicians without operational or admin roles use their own schedule.
+    // Reception and nursing keep the clinic-wide clinical schedule.
+    return hasRole('medico') && !isAdmin() && !hasRole('recepcao') && !hasRole('enfermagem');
   }, [profile, hasRole, isAdmin]);
 
   return {
     currentMedico,
     medicoId: currentMedico?.id || null,
     isMedicoOnly,
+    isLoading: currentMedicoQuery.isLoading,
+    error: currentMedicoQuery.error,
+    refetch: currentMedicoQuery.refetch,
   };
 }

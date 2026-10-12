@@ -177,7 +177,7 @@ export default function PlatformOnboarding() {
 
   return (
     <div className="space-y-6">
-      <header className="flex flex-wrap items-start justify-between gap-3">
+      <header className="flex flex-wrap items-start justify-between gap-3 rounded-2xl border border-[#dce9f6] bg-gradient-to-r from-[#f3f8ff] via-white to-[#f3fbfa] p-5 sm:p-6">
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-bold"><Building2 />Onboarding de clínicas</h1>
           <p className="text-muted-foreground">Acompanhe prontidão, etapa, próxima ação e prazo de ativação por clínica.</p>

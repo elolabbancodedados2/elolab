@@ -1,5 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { cronOrUserOk, cronForbidden, clinicaDoChamador } from '../_shared/cronAuth.ts'
+import { cronOrUserOk, cronForbidden, cronSecretOk, clinicaAdminDoChamador } from '../_shared/cronAuth.ts'
 import { corsPadrao } from '../_shared/cors.ts';
 import { sendBrandedBrevoRequest } from '../_shared/brevoEmail.ts';
 
@@ -40,7 +40,9 @@ Deno.serve(async (req) => {
     if (settingsError) throw new Error(`Erro ao carregar as configurações da automação: ${settingsError.message}`)
 
     // Disparo manual só alcança a clínica de quem clicou; o cron segue global.
-    const clinicaAlvo = await clinicaDoChamador(req, supabase)
+    const chamadaDoCron = cronSecretOk(req)
+    const clinicaAlvo = chamadaDoCron ? null : await clinicaAdminDoChamador(req, supabase)
+    if (!chamadaDoCron && !clinicaAlvo) return cronForbidden(corsHeaders)
 
     const limiteItens = 20_000
     const tamanhoPagina = 1_000

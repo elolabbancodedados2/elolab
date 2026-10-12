@@ -22,36 +22,39 @@ export default function Equipe() {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <Tabs value={tab} onValueChange={setTab} className="w-full">
-        <TabsList className="grid w-full max-w-xl grid-cols-3 mx-auto">
-          <TabsTrigger value="medicos" className="gap-2">
+        <TabsList
+          aria-label="Seções da equipe"
+          className="h-auto w-full justify-start gap-1 overflow-x-auto rounded-xl border border-sky-100 bg-sky-50/70 p-1.5 text-slate-500 shadow-sm"
+        >
+          <TabsTrigger value="medicos" className="h-10 shrink-0 gap-2 rounded-lg px-4 data-[state=active]:bg-white data-[state=active]:text-sky-800 data-[state=active]:shadow-sm focus-visible:ring-sky-500">
             <Stethoscope className="h-4 w-4" />
             Equipe Médica
           </TabsTrigger>
-          <TabsTrigger value="funcionarios" className="gap-2">
+          <TabsTrigger value="funcionarios" className="h-10 shrink-0 gap-2 rounded-lg px-4 data-[state=active]:bg-white data-[state=active]:text-sky-800 data-[state=active]:shadow-sm focus-visible:ring-sky-500">
             <UserCog className="h-4 w-4" />
             Funcionários
           </TabsTrigger>
-          <TabsTrigger value="convites" className="gap-2">
+          <TabsTrigger value="convites" className="h-10 shrink-0 gap-2 rounded-lg px-4 data-[state=active]:bg-white data-[state=active]:text-sky-800 data-[state=active]:shadow-sm focus-visible:ring-sky-500">
             <Mail className="h-4 w-4" />
             Convites
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="medicos" className="mt-4">
+        <TabsContent value="medicos" className="mt-5 focus-visible:ring-sky-500">
           <Suspense fallback={<SectionFallback />}>
             <Medicos />
           </Suspense>
         </TabsContent>
 
-        <TabsContent value="funcionarios" className="mt-4">
+        <TabsContent value="funcionarios" className="mt-5 focus-visible:ring-sky-500">
           <Suspense fallback={<SectionFallback />}>
             <Funcionarios />
           </Suspense>
         </TabsContent>
 
-        <TabsContent value="convites" className="mt-4">
+        <TabsContent value="convites" className="mt-5 focus-visible:ring-sky-500">
           <ConvitesList />
         </TabsContent>
       </Tabs>

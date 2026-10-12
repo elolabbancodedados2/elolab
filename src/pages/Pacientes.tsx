@@ -52,6 +52,8 @@ import { gerarProntuarioPDF, downloadPDF, openPDF } from '@/lib/pdfGenerator';
 import { ageFromDateOnly, isValidDateOnly, parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { logAudit } from '@/lib/auditTrail';
 import { cpfValido } from '@/lib/importacao/campos';
+import { canViewPatientClinicalTimeline, canViewPatientFinancialTab } from '@/lib/patientBasicData';
+import { autorizarLeituraHistoricoPaciente } from '@/lib/prontuarioAudit';
 
 interface PacienteFormData {
   nome: string;
@@ -220,6 +222,9 @@ export default function Pacientes() {
   // o prontuário e perdia tudo no botão. Melhor não oferecer do que recusar
   // depois de a pessoa digitar.
   const podeVerProntuario = isAdmin() || hasRole('medico');
+  const podeEditarPaciente = isAdmin() || hasRole('recepcao');
+  const podeVerTimelinePaciente = canViewPatientClinicalTimeline(authProfile?.roles);
+  const podeVerExtratoFinanceiroPaciente = canViewPatientFinancialTab(authProfile?.roles);
   const exigeResponsavel = formData.is_menor || isMinor(formData.data_nascimento);
 
   // Gerar link do portal grava em paciente_portal_tokens, cujo RLS exige
@@ -292,7 +297,7 @@ export default function Pacientes() {
   const conveniosDisponiveisNoFormulario = convenioSelecionado && convenioSelecionado.ativo === false
     ? [...conveniosAtivos, convenioSelecionado]
     : conveniosAtivos;
-  const { data: medicos = [], error: medicosError, refetch: refetchMedicos } = useSupabaseQuery<any>('medicos', { orderBy: { column: 'nome', ascending: true } });
+  const { data: medicos = [], error: medicosError, refetch: refetchMedicos } = useSupabaseQuery<any>('medicos', { select: 'id, nome, crm, especialidade', orderBy: { column: 'nome', ascending: true } });
 
   /**
    * Guarda qual paciente está aberto AGORA.
@@ -317,6 +322,14 @@ export default function Pacientes() {
     if (carregarMais) setLoadingMaisProntuarios(true);
     else setLoadingProntuarios(true);
     setProntuariosLoadError(null);
+    try {
+      await autorizarLeituraHistoricoPaciente(pacienteId);
+    } catch (error) {
+      if (carregarMais) toast.error('Nao foi possivel autorizar a leitura do historico clinico.', { description: mensagemDeErro(error) });
+      else setProntuariosLoadError(error);
+      if (carregarMais) setLoadingMaisProntuarios(false); else setLoadingProntuarios(false);
+      return;
+    }
     const { data, error } = await supabase
       .from('prontuarios')
       .select('id, data, queixa_principal, hipotese_diagnostica, diagnostico_principal, conduta, sinais_vitais, plano_terapeutico, historia_doenca_atual, historia_patologica_pregressa, historia_familiar, historia_social, revisao_sistemas, alergias_relatadas, medicamentos_em_uso, exames_fisicos, exame_cabeca_pescoco, exame_torax, exame_abdomen, exame_membros, exame_neurologico, exame_pele, orientacoes_paciente, observacoes_internas, diagnosticos_secundarios, medico_id, paciente_id, medicos(nome, crm, especialidade)')
@@ -453,7 +466,9 @@ export default function Pacientes() {
         description: 'O cadastro não foi encontrado ou você não tem acesso a ele.',
       });
     } else {
-      const abasDisponiveis = ['dados', 'consultas', 'exames', 'historico', 'sinais', 'endereco', 'financeiro', 'lgpd'];
+      const abasDisponiveis = ['dados', 'consultas', 'exames', 'sinais', 'endereco', 'lgpd'];
+      if (podeVerTimelinePaciente) abasDisponiveis.push('historico');
+      if (podeVerExtratoFinanceiroPaciente) abasDisponiveis.push('financeiro');
       if (podeVerProntuario) abasDisponiveis.push('prontuario');
       handleViewWithProntuario(paciente);
       setViewTab(abasDisponiveis.includes(tab) ? tab : 'dados');
@@ -466,7 +481,7 @@ export default function Pacientes() {
     params.delete('paciente');
     params.delete('tab');
     setSearchParams(params, { replace: true });
-  }, [searchParams, setSearchParams, isLoading, pacientesError, erroDeepLink, pacienteDeepLink, deepLinkPacienteId, carregandoDeepLink, podeVerProntuario, handleViewWithProntuario]);
+  }, [searchParams, setSearchParams, isLoading, pacientesError, erroDeepLink, pacienteDeepLink, deepLinkPacienteId, carregandoDeepLink, podeVerProntuario, podeVerTimelinePaciente, handleViewWithProntuario]);
 
   const handleNewProntuario = () => {
     const paciente = pacientes.find(p => p.id === selectedPacienteId);
@@ -1106,7 +1121,7 @@ export default function Pacientes() {
         transition={{ duration: 0.4 }}
       >
         <div>
-          <h1 className="text-2xl font-bold text-foreground sm:text-3xl">Pacientes</h1>
+          <h1 className="text-2xl font-bold text-[#0C1F54] sm:text-3xl">Pacientes</h1>
           <p className="text-muted-foreground">Gestão completa do cadastro de pacientes</p>
         </div>
         <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:gap-3">
@@ -1157,6 +1172,7 @@ export default function Pacientes() {
               <div className="relative flex-1 sm:w-72">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
+                  aria-label="Buscar pacientes por nome, CPF ou telefone"
                   placeholder="Buscar nome, CPF, telefone, email..."
                   value={searchTerm}
                   onChange={(e) => { setPaginaPacientes(0); setSearchTerm(e.target.value); }}
@@ -1185,7 +1201,7 @@ export default function Pacientes() {
               <div className="space-y-1">
                 <Label className="text-xs">Sexo</Label>
                 <Select value={filterSexo} onValueChange={(value) => { setPaginaPacientes(0); setFilterSexo(value); }}>
-                  <SelectTrigger className="h-11 w-full text-xs sm:w-32"><SelectValue /></SelectTrigger>
+                  <SelectTrigger aria-label="Filtrar pacientes por sexo" className="h-11 w-full text-xs sm:w-32"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="todos">Todos</SelectItem>
                     {SEXO_OPTIONS.map(s => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
@@ -1195,7 +1211,7 @@ export default function Pacientes() {
               <div className="space-y-1">
                 <Label className="text-xs">Convênio</Label>
                 <Select value={filterConvenio} onValueChange={(value) => { setPaginaPacientes(0); setFilterConvenio(value); }}>
-                  <SelectTrigger className="h-11 w-full text-xs sm:w-40"><SelectValue /></SelectTrigger>
+                  <SelectTrigger aria-label="Filtrar pacientes por convênio" className="h-11 w-full text-xs sm:w-40"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="todos">Todos</SelectItem>
                     <SelectItem value="particular">Particular</SelectItem>
@@ -1206,7 +1222,7 @@ export default function Pacientes() {
               <div className="space-y-1">
                 <Label className="text-xs">Faixa Etária</Label>
                 <Select value={filterIdade} onValueChange={(value) => { setPaginaPacientes(0); setFilterIdade(value); }}>
-                  <SelectTrigger className="h-11 w-full text-xs sm:w-36"><SelectValue /></SelectTrigger>
+                  <SelectTrigger aria-label="Filtrar pacientes por faixa etária" className="h-11 w-full text-xs sm:w-36"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="todos">Todas</SelectItem>
                     <SelectItem value="crianca">Criança (0-11)</SelectItem>
@@ -1241,6 +1257,7 @@ export default function Pacientes() {
             onView={handleView}
             onEdit={handleEdit}
             onDelete={handleDeleteClick}
+            podeEditarPaciente={podeEditarPaciente}
             onGeneratePortalLink={handleGeneratePortalLink}
             podeGerarLinkPortal={podeGerarLinkPortal}
             podeExcluirPaciente={isAdmin()}
@@ -1290,38 +1307,38 @@ export default function Pacientes() {
               <div className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label>Nome Completo <span className="text-destructive">*</span></Label>
-                    <Input value={formData.nome} onChange={e => setFormData({ ...formData, nome: e.target.value })} placeholder="Nome completo" />
+                    <Label htmlFor="paciente-nome">Nome Completo <span className="text-destructive">*</span></Label>
+                    <Input id="paciente-nome" value={formData.nome} onChange={e => setFormData({ ...formData, nome: e.target.value })} placeholder="Nome completo" />
                   </div>
                   <div className="space-y-2">
-                    <Label className="flex items-center gap-1.5">
+                    <Label htmlFor="paciente-nome-social" className="flex items-center gap-1.5">
                       Nome Social
                       <Badge variant="outline" className="text-[9px] px-1 py-0 font-normal">Opcional</Badge>
                     </Label>
-                    <Input value={formData.nome_social} onChange={e => setFormData({ ...formData, nome_social: e.target.value })} placeholder="Nome pelo qual prefere ser chamado(a)" />
+                    <Input id="paciente-nome-social" value={formData.nome_social} onChange={e => setFormData({ ...formData, nome_social: e.target.value })} placeholder="Nome pelo qual prefere ser chamado(a)" />
                   </div>
                   <div className="space-y-2">
-                    <Label>CPF</Label>
-                    <Input value={formData.cpf} onChange={e => {
+                    <Label htmlFor="paciente-cpf">CPF</Label>
+                    <Input id="paciente-cpf" value={formData.cpf} onChange={e => {
                       setFormData({ ...formData, cpf: mascararCpf(e.target.value) });
                     }} placeholder="000.000.000-00" />
                   </div>
                   <div className="space-y-2">
-                    <Label>Data de Nascimento</Label>
-                    <Input type="date" value={formData.data_nascimento} onChange={e => setFormData({ ...formData, data_nascimento: e.target.value })} />
+                    <Label htmlFor="paciente-nascimento">Data de Nascimento</Label>
+                    <Input id="paciente-nascimento" type="date" value={formData.data_nascimento} onChange={e => setFormData({ ...formData, data_nascimento: e.target.value })} />
                   </div>
                   <div className="space-y-2">
-                    <Label>Sexo</Label>
+                    <Label htmlFor="paciente-sexo">Sexo</Label>
                     <Select value={formData.sexo} onValueChange={v => setFormData({ ...formData, sexo: v })}>
-                      <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                      <SelectTrigger id="paciente-sexo"><SelectValue placeholder="Selecione" /></SelectTrigger>
                       <SelectContent>
                         {SEXO_OPTIONS.map(s => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
                       </SelectContent>
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label>Telefone</Label>
-                    <Input value={formData.telefone} onChange={e => {
+                    <Label htmlFor="paciente-telefone">Telefone</Label>
+                    <Input id="paciente-telefone" value={formData.telefone} onChange={e => {
                       const digits = e.target.value.replace(/\D/g, '').slice(0, 11);
                       let masked = digits;
                       if (digits.length > 0) masked = `(${digits.slice(0, 2)}`;
@@ -1332,21 +1349,21 @@ export default function Pacientes() {
                     }} placeholder="(00) 00000-0000" />
                   </div>
                   <div className="space-y-2">
-                    <Label>Email</Label>
-                    <Input type="email" value={formData.email} onChange={e => setFormData({ ...formData, email: e.target.value })} placeholder="email@exemplo.com" />
+                    <Label htmlFor="paciente-email">Email</Label>
+                    <Input id="paciente-email" type="email" value={formData.email} onChange={e => setFormData({ ...formData, email: e.target.value })} placeholder="email@exemplo.com" />
                   </div>
                   <div className="space-y-2">
-                    <Label>Estado Civil</Label>
+                    <Label htmlFor="paciente-estado-civil">Estado Civil</Label>
                     <Select value={formData.estado_civil} onValueChange={v => setFormData({ ...formData, estado_civil: v })}>
-                      <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                      <SelectTrigger id="paciente-estado-civil"><SelectValue placeholder="Selecione" /></SelectTrigger>
                       <SelectContent>
                         {ESTADO_CIVIL_OPTIONS.map(s => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
                       </SelectContent>
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label>Profissão</Label>
-                    <Input value={formData.profissao} onChange={e => setFormData({ ...formData, profissao: e.target.value })} placeholder="Profissão do paciente" maxLength={120} />
+                    <Label htmlFor="paciente-profissao">Profissão</Label>
+                    <Input id="paciente-profissao" value={formData.profissao} onChange={e => setFormData({ ...formData, profissao: e.target.value })} placeholder="Profissão do paciente" maxLength={120} />
                   </div>
                 </div>
 
@@ -1380,17 +1397,17 @@ export default function Pacientes() {
                     </h4>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <div className="space-y-2">
-                        <Label>Nome do Responsável *</Label>
-                        <Input value={formData.nome_responsavel} onChange={e => setFormData({ ...formData, nome_responsavel: e.target.value })} placeholder="Nome completo" />
+                        <Label htmlFor="paciente-responsavel-nome">Nome do Responsável *</Label>
+                        <Input id="paciente-responsavel-nome" value={formData.nome_responsavel} onChange={e => setFormData({ ...formData, nome_responsavel: e.target.value })} placeholder="Nome completo" />
                       </div>
                       <div className="space-y-2">
-                        <Label>CPF do Responsável</Label>
-                        <Input value={formData.cpf_responsavel} onChange={e => setFormData({ ...formData, cpf_responsavel: mascararCpf(e.target.value) })} placeholder="000.000.000-00" />
+                        <Label htmlFor="paciente-responsavel-cpf">CPF do Responsável</Label>
+                        <Input id="paciente-responsavel-cpf" value={formData.cpf_responsavel} onChange={e => setFormData({ ...formData, cpf_responsavel: mascararCpf(e.target.value) })} placeholder="000.000.000-00" />
                       </div>
                       <div className="space-y-2">
-                        <Label>Parentesco</Label>
+                        <Label htmlFor="paciente-responsavel-parentesco">Parentesco</Label>
                         <Select value={formData.parentesco_responsavel} onValueChange={v => setFormData({ ...formData, parentesco_responsavel: v })}>
-                          <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                          <SelectTrigger id="paciente-responsavel-parentesco"><SelectValue placeholder="Selecione" /></SelectTrigger>
                           <SelectContent>
                             <SelectItem value="mae">Mãe</SelectItem>
                             <SelectItem value="pai">Pai</SelectItem>
@@ -1411,9 +1428,10 @@ export default function Pacientes() {
             {formSection === 'endereco' && (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-2">
-                  <Label>CEP</Label>
+                  <Label htmlFor="paciente-cep">CEP</Label>
                   <div className="relative">
                     <Input
+                      id="paciente-cep"
                       value={formData.cep}
                       onChange={e => {
                         cepLookupRef.current += 1;
@@ -1440,29 +1458,29 @@ export default function Pacientes() {
                   )}
                 </div>
                 <div className="space-y-2 md:col-span-2">
-                  <Label>Logradouro</Label>
-                  <Input value={formData.logradouro} onChange={e => setFormData({ ...formData, logradouro: e.target.value })} />
+                  <Label htmlFor="paciente-logradouro">Logradouro</Label>
+                  <Input id="paciente-logradouro" value={formData.logradouro} onChange={e => setFormData({ ...formData, logradouro: e.target.value })} />
                 </div>
                 <div className="space-y-2">
-                  <Label>Número</Label>
-                  <Input value={formData.numero} onChange={e => setFormData({ ...formData, numero: e.target.value })} />
+                  <Label htmlFor="paciente-numero">Número</Label>
+                  <Input id="paciente-numero" value={formData.numero} onChange={e => setFormData({ ...formData, numero: e.target.value })} />
                 </div>
                 <div className="space-y-2">
-                  <Label>Complemento</Label>
-                  <Input value={formData.complemento} onChange={e => setFormData({ ...formData, complemento: e.target.value })} placeholder="Apto, Bloco, etc." />
+                  <Label htmlFor="paciente-complemento">Complemento</Label>
+                  <Input id="paciente-complemento" value={formData.complemento} onChange={e => setFormData({ ...formData, complemento: e.target.value })} placeholder="Apto, Bloco, etc." />
                 </div>
                 <div className="space-y-2">
-                  <Label>Bairro</Label>
-                  <Input value={formData.bairro} onChange={e => setFormData({ ...formData, bairro: e.target.value })} />
+                  <Label htmlFor="paciente-bairro">Bairro</Label>
+                  <Input id="paciente-bairro" value={formData.bairro} onChange={e => setFormData({ ...formData, bairro: e.target.value })} />
                 </div>
                 <div className="space-y-2">
-                  <Label>Cidade</Label>
-                  <Input value={formData.cidade} onChange={e => setFormData({ ...formData, cidade: e.target.value })} />
+                  <Label htmlFor="paciente-cidade">Cidade</Label>
+                  <Input id="paciente-cidade" value={formData.cidade} onChange={e => setFormData({ ...formData, cidade: e.target.value })} />
                 </div>
                 <div className="space-y-2">
-                  <Label>Estado</Label>
+                  <Label htmlFor="paciente-estado">Estado</Label>
                   <Select value={formData.estado} onValueChange={v => setFormData({ ...formData, estado: v })}>
-                    <SelectTrigger><SelectValue placeholder="UF" /></SelectTrigger>
+                    <SelectTrigger id="paciente-estado"><SelectValue placeholder="UF" /></SelectTrigger>
                     <SelectContent>
                       {ESTADOS_BR.map(uf => <SelectItem key={uf} value={uf}>{uf}</SelectItem>)}
                     </SelectContent>
@@ -1511,9 +1529,9 @@ export default function Pacientes() {
                 {formData.convenio_id && (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 rounded-lg border bg-muted/30">
                     <div className="space-y-2 md:col-span-2">
-                      <Label>Convênio</Label>
+                      <Label htmlFor="paciente-convenio">Convênio</Label>
                       <Select value={formData.convenio_id || 'none'} onValueChange={v => setFormData({ ...formData, convenio_id: v === 'none' ? '' : v })}>
-                        <SelectTrigger><SelectValue placeholder="Selecione o convênio" /></SelectTrigger>
+                        <SelectTrigger id="paciente-convenio"><SelectValue placeholder="Selecione o convênio" /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="none">Nenhum (Particular)</SelectItem>
                           {conveniosDisponiveisNoFormulario.map((c: any) => (
@@ -1525,12 +1543,12 @@ export default function Pacientes() {
                       </Select>
                     </div>
                     <div className="space-y-2">
-                      <Label>Número da Carteira</Label>
-                      <Input value={formData.numero_carteira} onChange={e => setFormData({ ...formData, numero_carteira: e.target.value })} placeholder="Número da carteirinha" />
+                      <Label htmlFor="paciente-numero-carteira">Número da Carteira</Label>
+                      <Input id="paciente-numero-carteira" value={formData.numero_carteira} onChange={e => setFormData({ ...formData, numero_carteira: e.target.value })} placeholder="Número da carteirinha" />
                     </div>
                     <div className="space-y-2">
-                      <Label>Validade da Carteira</Label>
-                      <Input type="date" value={formData.validade_carteira} onChange={e => setFormData({ ...formData, validade_carteira: e.target.value })} />
+                      <Label htmlFor="paciente-validade-carteira">Validade da Carteira</Label>
+                      <Input id="paciente-validade-carteira" type="date" value={formData.validade_carteira} onChange={e => setFormData({ ...formData, validade_carteira: e.target.value })} />
                     </div>
                   </div>
                 )}
@@ -1542,9 +1560,9 @@ export default function Pacientes() {
               <div className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label>Tipo Sanguíneo</Label>
+                    <Label htmlFor="paciente-tipo-sanguineo">Tipo Sanguíneo</Label>
                     <Select value={formData.tipo_sanguineo} onValueChange={v => setFormData({ ...formData, tipo_sanguineo: v })}>
-                      <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                      <SelectTrigger id="paciente-tipo-sanguineo"><SelectValue placeholder="Selecione" /></SelectTrigger>
                       <SelectContent>
                         {TIPO_SANGUINEO_OPTIONS.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
                       </SelectContent>
@@ -1553,8 +1571,9 @@ export default function Pacientes() {
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <Label>Alergias (separadas por vírgula)</Label>
+                  <Label htmlFor="paciente-alergias">Alergias (separadas por vírgula)</Label>
                   <Input
+                    id="paciente-alergias"
                     value={formData.alergias.join(', ')}
                     onChange={e => setFormData({ ...formData, alergias: e.target.value.split(',').map(a => a.trim()).filter(Boolean) })}
                     placeholder="Penicilina, Dipirona, Ibuprofeno, etc."
@@ -1585,8 +1604,9 @@ export default function Pacientes() {
                   </p>
                 </div>
                 <div className="space-y-2">
-                  <Label>Comorbidades (separadas por vírgula)</Label>
+                  <Label htmlFor="paciente-comorbidades">Comorbidades (separadas por vírgula)</Label>
                   <Input
+                    id="paciente-comorbidades"
                     value={formData.comorbidades.join(', ')}
                     onChange={e => setFormData({
                       ...formData,
@@ -1600,8 +1620,9 @@ export default function Pacientes() {
                   </p>
                 </div>
                 <div className="space-y-2">
-                  <Label>Observações Gerais</Label>
+                  <Label htmlFor="paciente-observacoes">Observações Gerais</Label>
                   <Textarea
+                    id="paciente-observacoes"
                     value={formData.observacoes}
                     onChange={e => setFormData({ ...formData, observacoes: e.target.value })}
                     placeholder="Informações adicionais relevantes sobre o paciente..."
@@ -1667,10 +1688,12 @@ export default function Pacientes() {
                     {podeVerProntuario && (
                       <TabsTrigger value="prontuario" className="text-[11px] gap-1 py-1.5 rounded-lg"><Stethoscope className="h-3 w-3" />Prontuário</TabsTrigger>
                     )}
-                    <TabsTrigger value="historico" className="text-[11px] gap-1 py-1.5 rounded-lg"><History className="h-3 w-3" />Timeline</TabsTrigger>
+                  {podeVerTimelinePaciente && <TabsTrigger value="historico" className="text-[11px] gap-1 py-1.5 rounded-lg"><History className="h-3 w-3" />Timeline</TabsTrigger>}
                     <TabsTrigger value="sinais" className="text-[11px] gap-1 py-1.5 rounded-lg"><Activity className="h-3 w-3" />Sinais</TabsTrigger>
                     <TabsTrigger value="endereco" className="text-[11px] gap-1 py-1.5 rounded-lg"><MapPin className="h-3 w-3" />Endereço</TabsTrigger>
-                    <TabsTrigger value="financeiro" className="text-[11px] gap-1 py-1.5 rounded-lg"><Wallet className="h-3 w-3" />Financeiro</TabsTrigger>
+                    {podeVerExtratoFinanceiroPaciente && (
+                      <TabsTrigger value="financeiro" className="text-[11px] gap-1 py-1.5 rounded-lg"><Wallet className="h-3 w-3" />Financeiro</TabsTrigger>
+                    )}
                     <TabsTrigger value="lgpd" className="text-[11px] gap-1 py-1.5 rounded-lg"><ShieldCheck className="h-3 w-3" />LGPD</TabsTrigger>
                   </TabsList>
                 </div>
@@ -1680,13 +1703,15 @@ export default function Pacientes() {
                       "esse paciente deve alguma coisa?" é a pergunta que a
                       recepção faz o dia inteiro e que não tinha resposta em
                       lugar nenhum do sistema. */}
-                  <TabsContent value="financeiro" className="mt-0 space-y-3">
-                    <span className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                      <Wallet className="h-3.5 w-3.5" />
-                      Extrato do paciente
-                    </span>
-                    <ExtratoDoPaciente pacienteId={selectedPaciente.id} />
-                  </TabsContent>
+                  {podeVerExtratoFinanceiroPaciente && (
+                    <TabsContent value="financeiro" className="mt-0 space-y-3">
+                      <span className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                        <Wallet className="h-3.5 w-3.5" />
+                        Extrato do paciente
+                      </span>
+                      <ExtratoDoPaciente pacienteId={selectedPaciente.id} />
+                    </TabsContent>
+                  )}
 
                   {/* Tab: LGPD — captação de consentimento. Sem esta tab, o
                       componente `ConsentimentoLGPD` existia mas ninguém
@@ -2354,9 +2379,11 @@ export default function Pacientes() {
                     </div>
                   </TabsContent>
 
-                  <TabsContent value="historico" className="pt-1 mt-0">
-                    <PatientTimeline pacienteId={selectedPaciente.id} />
-                  </TabsContent>
+                  {podeVerTimelinePaciente && (
+                    <TabsContent value="historico" className="pt-1 mt-0">
+                      <PatientTimeline pacienteId={selectedPaciente.id} />
+                    </TabsContent>
+                  )}
                   <TabsContent value="sinais" className="pt-1 mt-0">
                     <VitalSignsChart pacienteId={selectedPaciente.id} />
                   </TabsContent>

@@ -16,7 +16,7 @@ export default function Contas() {
   return (
     <div className="space-y-4">
       <Tabs value={tab} onValueChange={value => setSearchParams(value === 'pagar' ? { tab: 'pagar' } : {}, { replace: true })} className="w-full">
-        <TabsList className="grid w-full max-w-md grid-cols-2 mx-auto">
+        <TabsList className="mx-auto grid w-full max-w-md grid-cols-2 rounded-xl border border-[#d7e9f7] bg-[#f2f9fc] p-1">
           <TabsTrigger value="receber" className="gap-2">
             <BadgeDollarSign className="h-4 w-4" />
             Contas a Receber

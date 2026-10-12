@@ -1,5 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsPadrao } from '../_shared/cors.ts';
+import { autorizarAcaoMemed } from '../_shared/memedAuthorization.ts';
+import { extrairIdentificadoresCallbackMemed, verificarPrescricaoMemedOficial } from '../_shared/memedPrescriptionVerification.ts';
 
 let corsHeaders: Record<string, string> = {};
 
@@ -38,11 +40,6 @@ function prescriptionId(payload: Record<string, any>): string {
     ?? payload.prescricao?.uuid
     ?? payload.uuid;
   return typeof value === 'string' ? value.slice(0, 200) : '';
-}
-
-function memedNumericId(payload: Record<string, any>): string | null {
-  const value = payload.id ?? payload.prescricao?.id;
-  return typeof value === 'string' || typeof value === 'number' ? String(value).slice(0, 200) : null;
 }
 
 function ambienteMemed() {
@@ -84,6 +81,30 @@ async function memedRequest(path: string, method: 'GET' | 'POST', body?: unknown
   return { response, data };
 }
 
+async function memedPrescriptionRequest(prescriptionId: string, prescriberToken: string) {
+  const { apiUrl } = ambienteMemed();
+  const url = new URL(`${apiUrl}/prescricoes/${encodeURIComponent(prescriptionId)}`);
+  url.searchParams.set('structuredDocuments', 'true');
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/vnd.api+json',
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-cache',
+      Authorization: `Bearer ${prescriberToken}`,
+    },
+  });
+  const data = await response.json().catch(() => ({}));
+  return { response, data };
+}
+
+async function tokenPrescritorMemed(medicoId: string): Promise<string> {
+  const result = await memedRequest(`/sinapse-prescricao/usuarios/${encodeURIComponent(medicoId)}`, 'GET');
+  const token = result.data?.data?.attributes?.token;
+  if (!result.response.ok || typeof token !== 'string' || !token) throw new Error('MEMED_PRESCRIBER_TOKEN_UNAVAILABLE');
+  return token;
+}
+
 Deno.serve(async (req) => {
   corsHeaders = corsPadrao(req);
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
@@ -113,17 +134,24 @@ Deno.serve(async (req) => {
     const action = String(body.action ?? '');
     const medicoId = String(body.medicoId ?? '');
     const pacienteId = String(body.pacienteId ?? '');
+    if (!['prepare', 'prescription_printed', 'prescription_deleted'].includes(action)) {
+      return json({ error: 'Ação inválida.' }, 400);
+    }
     if (!medicoId || !pacienteId) return json({ error: 'Selecione o médico e o paciente.' }, 400);
 
-    const [{ data: medico }, { data: paciente }] = await Promise.all([
+    const [{ data: roles }, { data: medico }, { data: paciente }] = await Promise.all([
+      service.from('user_roles').select('role').eq('user_id', user.id),
       service.from('medicos')
-        .select('id, clinica_id, nome, cpf, crm, crm_uf, tipo_registro, data_nascimento, email, telefone, especialidade, ativo')
+        .select('id, user_id, clinica_id, nome, cpf, crm, crm_uf, tipo_registro, data_nascimento, email, telefone, especialidade, ativo')
         .eq('id', medicoId).eq('clinica_id', clinicaId).maybeSingle(),
       service.from('pacientes')
         .select('id, clinica_id, nome, cpf, data_nascimento, sexo, telefone, email')
         .eq('id', pacienteId).eq('clinica_id', clinicaId).maybeSingle(),
     ]);
     if (!medico || !paciente) return json({ error: 'Médico ou paciente não pertence a esta clínica.' }, 404);
+    if (!autorizarAcaoMemed(action, user.id, (roles ?? []).map((item: any) => item.role), medico as any, clinicaId)) {
+      return json({ error: 'Somente o médico ativo vinculado à própria conta pode operar esta prescrição.' }, 403);
+    }
 
     if (action === 'prepare') {
       const apiKey = Deno.env.get('MEMED_API_KEY');
@@ -181,76 +209,110 @@ Deno.serve(async (req) => {
       return json({ token, scriptUrl: ambienteMemed().scriptUrl, ambiente: Deno.env.get('MEMED_AMBIENTE') ?? 'homologacao' });
     }
 
-      if (action === 'prescription_printed' || action === 'prescription_deleted') {
-      const payload = body.payload;
-      if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    if (action === 'prescription_printed' || action === 'prescription_deleted') {
+      const callbackPayload = body.payload;
+      if (!callbackPayload || typeof callbackPayload !== 'object' || Array.isArray(callbackPayload)) {
         return json({ error: 'Dados de evento inválidos.' }, 400);
       }
-      if (JSON.stringify(payload).length > 1_000_000) return json({ error: 'Evento muito grande.' }, 413);
-      const externalPrescriptionId = prescriptionId(payload as Record<string, any>);
+      if (JSON.stringify(callbackPayload).length > 1_000_000) return json({ error: 'Evento muito grande.' }, 413);
+      const callbackIds = extrairIdentificadoresCallbackMemed(callbackPayload);
+      const externalPrescriptionId = prescriptionId(callbackPayload as Record<string, any>);
 
       const table = (service as any).from('memed_prescricoes');
       if (action === 'prescription_deleted') {
-        const idExcluido = String((payload as any).prescriptionId ?? (payload as any).id ?? externalPrescriptionId).trim();
+        const idExcluido = String((callbackPayload as any).prescriptionId ?? callbackIds?.id ?? externalPrescriptionId).trim();
         if (!idExcluido) return json({ error: 'A Memed não enviou o identificador da prescrição excluída.' }, 422);
-        const { data: rowToDelete, error: lookupError } = await table.select('memed_prescription_uuid')
-          .eq('clinica_id', clinicaId).eq('memed_prescription_id', idExcluido).maybeSingle();
+        const { data: rowToDelete, error: lookupError } = await table.select('id, memed_prescription_uuid, memed_prescription_id')
+          .eq('clinica_id', clinicaId).eq('medico_id', medicoId).eq('paciente_id', pacienteId)
+          .eq('memed_prescription_id', idExcluido).maybeSingle();
         if (lookupError) throw lookupError;
-        const uuid = rowToDelete?.memed_prescription_uuid ?? externalPrescriptionId;
-        const { error } = await table.update({ excluida_em: new Date().toISOString(), updated_at: new Date().toISOString() })
-          .eq('clinica_id', clinicaId).eq('memed_prescription_id', idExcluido);
-        if (error) throw error;
-        if (!rowToDelete && externalPrescriptionId) {
-          await table.update({ excluida_em: new Date().toISOString(), updated_at: new Date().toISOString() })
-            .eq('clinica_id', clinicaId).eq('memed_prescription_uuid', externalPrescriptionId);
+        let rowAlvo = rowToDelete;
+        if (!rowAlvo && externalPrescriptionId) {
+          const { data, error } = await table.select('id, memed_prescription_uuid, memed_prescription_id')
+            .eq('clinica_id', clinicaId).eq('medico_id', medicoId).eq('paciente_id', pacienteId)
+            .eq('memed_prescription_uuid', externalPrescriptionId).maybeSingle();
+          if (error) throw error;
+          rowAlvo = data;
         }
+        if (!rowAlvo) return json({ error: 'Prescrição Memed não encontrada para este prescritor e paciente.' }, 404);
+        const token = await tokenPrescritorMemed(medicoId);
+        const upstream = await memedPrescriptionRequest(String(rowAlvo.memed_prescription_id ?? idExcluido), token);
+        if (upstream.response.status !== 404) {
+          if (!upstream.response.ok) return json({ error: 'Nao foi possivel confirmar a exclusao na Memed.' }, 502);
+          return json({ error: 'A prescricao ainda consta ativa na Memed; evento nao confirmado.' }, 409);
+        }
+        const uuid = rowAlvo.memed_prescription_uuid;
+        const { error } = await table.update({ excluida_em: new Date().toISOString(), updated_at: new Date().toISOString() })
+          .eq('id', rowAlvo.id).eq('clinica_id', clinicaId).eq('medico_id', medicoId).eq('paciente_id', pacienteId);
+        if (error) throw error;
         if (uuid) {
           await service.from('prescricoes').update({ observacoes: `Prescrição excluída na Memed. Memed:${uuid}` })
-            .eq('clinica_id', clinicaId).eq('observacoes', `Memed:${uuid}`);
+            .eq('clinica_id', clinicaId).eq('medico_id', medicoId).eq('paciente_id', pacienteId)
+            .eq('observacoes', `Memed:${uuid}`);
         }
         return json({ success: true });
       }
 
       if (!externalPrescriptionId) return json({ error: 'A Memed não enviou o identificador da prescrição.' }, 422);
 
-      const date = dataISO((payload as any).prescriptionDate ?? (payload as any).prescricao?.prescriptionDate);
+      if (!callbackIds?.id || !externalPrescriptionId) return json({ error: 'Identificadores da prescriÃ§Ã£o ausentes.' }, 422);
+      const token = await tokenPrescritorMemed(medicoId);
+      const verification = await memedPrescriptionRequest(callbackIds.id, token);
+      if (!verification.response.ok) {
+        return json({ error: 'A Memed nÃ£o confirmou esta prescriÃ§Ã£o para o prescritor autenticado.' }, verification.response.status === 404 ? 404 : 502);
+      }
+      const verifiedPayload = verificarPrescricaoMemedOficial(verification.data, {
+        prescriptionId: callbackIds.id,
+        prescriptionUuid: callbackIds.uuid,
+        patientExternalId: pacienteId,
+        prescriberCpf: String((medico as any).cpf ?? ''),
+        prescriberCrm: String((medico as any).crm ?? ''),
+        prescriberUf: String((medico as any).crm_uf ?? ''),
+      });
+      if (!verifiedPayload) return json({ error: 'Os dados oficiais da Memed nao correspondem ao paciente e prescritor selecionados.' }, 403);
+      const verifiedPrescription = (verifiedPayload as any).prescricao ?? verifiedPayload;
+      const verifiedUuid = String(verifiedPrescription.prescriptionUuid ?? verifiedPrescription.uuid ?? (verifiedPayload as any).prescriptionUuid ?? '');
+      if (!verifiedUuid) return json({ error: 'A Memed nao retornou o UUID oficial da prescricao.' }, 502);
+
+      const { data: existente, error: existenteError } = await table.select('id, medico_id, paciente_id')
+        .eq('clinica_id', clinicaId).eq('memed_prescription_uuid', verifiedUuid).maybeSingle();
+      if (existenteError) throw existenteError;
+      if (existente && (existente.medico_id !== medicoId || existente.paciente_id !== pacienteId)) {
+        return json({ error: 'Esta prescrição já está vinculada a outro médico ou paciente.' }, 403);
+      }
+
+      const date = dataISO(verifiedPrescription.prescriptionDate ?? (verifiedPayload as any).prescriptionDate);
       const { error } = await table.upsert({
         clinica_id: clinicaId,
         paciente_id: pacienteId,
         medico_id: medicoId,
-        memed_prescription_uuid: externalPrescriptionId,
-        memed_prescription_id: memedNumericId(payload as Record<string, any>),
+        memed_prescription_uuid: verifiedUuid,
+        memed_prescription_id: String(verifiedPrescription.id ?? (verifiedPayload as any).id ?? callbackIds.id),
         data_prescricao: date,
-        payload,
+        payload: verifiedPayload,
         excluida_em: null,
         updated_at: new Date().toISOString(),
       }, { onConflict: 'clinica_id,memed_prescription_uuid' });
       if (error) throw error;
 
-      const marker = `Memed:${externalPrescriptionId}`;
-      const { data: localPrescription } = await service.from('prescricoes').select('id')
-        .eq('clinica_id', clinicaId).eq('observacoes', marker).maybeSingle();
-      if (!localPrescription) {
-        const prescription = (payload as any).prescricao ?? payload;
-        const medicamentos = Array.isArray((payload as any).medicamentos)
-          ? (payload as any).medicamentos
-          : Array.isArray(prescription.medicamentos) ? prescription.medicamentos : [];
-        const resumo = medicamentos.map((item: Record<string, unknown>) => {
-          const nome = String(item.nome ?? item.titulo ?? 'Medicamento');
-          const posologia = String(item.sanitized_posology ?? item.posologia ?? '').replace(/<[^>]*>/g, ' ').trim();
-          return posologia ? `${nome} — ${posologia}` : nome;
-        }).join('\n').slice(0, 10000) || 'Receita digital Memed';
-        const { error: localError } = await service.from('prescricoes').insert({
-          clinica_id: clinicaId,
-          paciente_id: pacienteId,
-          medico_id: medicoId,
-          tipo: 'simples',
-          medicamento: resumo,
-          observacoes: marker,
-          data_emissao: date ?? new Date().toISOString().slice(0, 10),
-        } as any);
-        if (localError) throw localError;
-      }
+      const medicamentos = Array.isArray(verifiedPrescription.medicamentos)
+        ? verifiedPrescription.medicamentos
+        : [];
+      const resumo = medicamentos.map((item: Record<string, unknown>) => {
+        const nome = String(item.nome ?? item.titulo ?? 'Medicamento');
+        const posologia = String(item.sanitized_posology ?? item.posologia ?? '').replace(/<[^>]*>/g, ' ').trim();
+        return posologia ? `${nome} — ${posologia}` : nome;
+      }).join('\n').slice(0, 10000) || 'Receita digital Memed';
+      const { data: localPrescriptionId, error: localError } = await service.rpc('registrar_prescricao_memed_local', {
+        p_clinica_id: clinicaId,
+        p_paciente_id: pacienteId,
+        p_medico_id: medicoId,
+        p_prescription_uuid: verifiedUuid,
+        p_medicamento: resumo,
+        p_data_emissao: date ?? new Date().toISOString().slice(0, 10),
+      });
+      if (localError) throw localError;
+      if (!localPrescriptionId) throw new Error('MEMED_LOCAL_PRESCRIPTION_NOT_PERSISTED');
       return json({ success: true });
     }
 

@@ -17,6 +17,8 @@ import {
 } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+import { registrarAdendoProntuario } from '@/lib/prontuarioAudit';
+import { ErrorState } from '@/components/ErrorState';
 
 interface Adendo {
   id: string;
@@ -31,16 +33,9 @@ interface Adendo {
 
 interface Props {
   prontuarioId: string;
-  medicoId?: string | null;
-  medicoNome?: string;
-  crm?: string;
+  medicoNome?: string | null;
+  crm?: string | null;
   disabled?: boolean;
-}
-
-async function sha256Hex(input: string): Promise<string> {
-  const enc = new TextEncoder();
-  const buf = await crypto.subtle.digest('SHA-256', enc.encode(input));
-  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
 const tipoLabels: Record<string, { label: string; color: string }> = {
@@ -49,9 +44,10 @@ const tipoLabels: Record<string, { label: string; color: string }> = {
   erratum: { label: 'Erratum', color: 'bg-destructive/10 text-destructive border-destructive/20' },
 };
 
-export function ProntuarioAdendos({ prontuarioId, medicoId, medicoNome, crm, disabled }: Props) {
+export function ProntuarioAdendos({ prontuarioId, medicoNome, crm, disabled }: Props) {
   const [adendos, setAdendos] = useState<Adendo[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<unknown>(null);
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState<{ tipo: Adendo['tipo']; motivo: string; texto: string }>({
@@ -61,10 +57,18 @@ export function ProntuarioAdendos({ prontuarioId, medicoId, medicoNome, crm, dis
   const load = useCallback(async () => {
     if (!prontuarioId) return;
     setLoading(true);
-    const { data } = await (supabase as any).from('prontuario_adendos')
-      .select('*').eq('prontuario_id', prontuarioId).order('created_at', { ascending: true });
-    setAdendos(data || []);
-    setLoading(false);
+    setLoadError(null);
+    try {
+      const { data, error } = await (supabase as any).from('prontuario_adendos')
+        .select('*').eq('prontuario_id', prontuarioId).order('created_at', { ascending: true });
+      if (error) throw error;
+      setAdendos(data || []);
+    } catch (error) {
+      setAdendos([]);
+      setLoadError(error);
+    } finally {
+      setLoading(false);
+    }
   }, [prontuarioId]);
 
   useEffect(() => { load(); }, [load]);
@@ -74,45 +78,10 @@ export function ProntuarioAdendos({ prontuarioId, medicoId, medicoNome, crm, dis
       toast.error('Preencha motivo e conteúdo', { description: 'Ambos são obrigatórios (CFM Res. 1.638/2002).' });
       return;
     }
-    if (!medicoNome || !crm) {
-      toast.error('Médico não identificado', { description: 'Adendos exigem identificação do profissional com CRM.' });
-      return;
-    }
     setSaving(true);
     try {
-      const hash = await sha256Hex(`${prontuarioId}|${form.tipo}|${form.motivo}|${form.texto}|${new Date().toISOString()}`);
-      const { error } = await (supabase as any).from('prontuario_adendos').insert({
-        prontuario_id: prontuarioId,
-        medico_id: medicoId || null,
-        medico_nome: medicoNome,
-        crm,
-        tipo: form.tipo,
-        motivo: form.motivo.trim(),
-        texto: form.texto.trim(),
-        hash,
-      });
-      if (error) throw error;
-
-      // Log de acesso — ação: adendo
-      const { error: acessoErr } = await (supabase as any).from('prontuario_acessos').insert({
-        prontuario_id: prontuarioId,
-        acao: 'adendo',
-        user_nome: medicoNome,
-        user_crm: crm,
-        justificativa: form.motivo.trim(),
-      });
-
-      // O adendo em si já foi gravado acima. Se apenas o registro de acesso
-      // falhar, o dado clínico está salvo mas a trilha ficou incompleta — e
-      // isso precisa aparecer, não sumir num catch silencioso.
-      if (acessoErr) {
-        console.error('Falha ao registrar acesso do adendo:', acessoErr);
-        toast.warning('Adendo registrado', {
-          description: 'Não foi possível gravar o registro de acesso na auditoria.',
-        });
-      } else {
-        toast.success('Adendo registrado', { description: 'Registro imutável adicionado ao prontuário.' });
-      }
+      await registrarAdendoProntuario(prontuarioId, form.tipo, form.motivo, form.texto);
+      toast.success('Adendo registrado', { description: 'Registro imutável adicionado ao prontuário.' });
       setForm({ tipo: 'complemento', motivo: '', texto: '' });
       setOpen(false);
       load();
@@ -155,6 +124,8 @@ export function ProntuarioAdendos({ prontuarioId, medicoId, medicoNome, crm, dis
 
       {loading ? (
         <div className="space-y-2">{[1, 2].map(i => <Skeleton key={i} className="h-20" />)}</div>
+      ) : loadError ? (
+        <ErrorState compact error={loadError} title="Não foi possível carregar os adendos" description="Não foi possível carregar os adendos. Tente novamente." onRetry={() => void load()} />
       ) : adendos.length === 0 ? (
         <div className="flex flex-col items-center py-8 text-muted-foreground">
           <FileEdit className="h-8 w-8 opacity-20 mb-2" />
@@ -211,9 +182,9 @@ export function ProntuarioAdendos({ prontuarioId, medicoId, medicoNome, crm, dis
           </DialogHeader>
           <div className="space-y-3">
             <div className="space-y-1.5">
-              <Label className="text-xs">Tipo *</Label>
+              <Label htmlFor="adendo-tipo" className="text-xs">Tipo *</Label>
               <Select value={form.tipo} onValueChange={v => setForm(f => ({ ...f, tipo: v as any }))}>
-                <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
+                <SelectTrigger id="adendo-tipo" className="h-9 text-xs"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="complemento">Complemento (adicionar informação)</SelectItem>
                   <SelectItem value="retificacao">Retificação (corrigir registro)</SelectItem>
@@ -222,8 +193,9 @@ export function ProntuarioAdendos({ prontuarioId, medicoId, medicoNome, crm, dis
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs">Motivo *</Label>
+              <Label htmlFor="adendo-motivo" className="text-xs">Motivo *</Label>
               <Textarea
+                id="adendo-motivo"
                 placeholder="Descreva o motivo do adendo..."
                 value={form.motivo}
                 onChange={e => setForm(f => ({ ...f, motivo: e.target.value }))}
@@ -231,8 +203,9 @@ export function ProntuarioAdendos({ prontuarioId, medicoId, medicoNome, crm, dis
               />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs">Conteúdo do Adendo *</Label>
+              <Label htmlFor="adendo-conteudo" className="text-xs">Conteúdo do Adendo *</Label>
               <Textarea
+                id="adendo-conteudo"
                 placeholder="Registro complementar ou retificação..."
                 value={form.texto}
                 onChange={e => setForm(f => ({ ...f, texto: e.target.value }))}

@@ -1059,7 +1059,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
           data: today,
           hora_inicio: hhmm(agora),
           hora_fim: hhmm(fim),
-          status: 'aguardando',
+          status: 'agendado',
           clinica_id: profile?.clinica_id,
         })
         .select('id, paciente_id, medico_id, tipo')
@@ -1094,9 +1094,9 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
   return (
     <div className="space-y-6">
       {/* Header */}
-      <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} className="space-y-1">
-        <h1 className="text-2xl font-bold tracking-tight">Painel de Recepção</h1>
-        <p className="text-muted-foreground text-sm">
+      <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} className="space-y-1 rounded-2xl border border-[#D8E8F4] bg-[linear-gradient(118deg,#FFFFFF_12%,#F3FAFF_67%,#E7F8FC_100%)] px-5 py-4 shadow-[0_12px_32px_-26px_rgba(12,31,84,0.35)]">
+        <h1 className="text-2xl font-bold tracking-tight text-[#0C1F54]">Painel de Recepção</h1>
+        <p className="text-[#0C1F54]/65 text-sm">
           {format(parseDateOnly(today)!, "EEEE, d 'de' MMMM", { locale: ptBR })} — Fluxo completo do paciente
         </p>
       </motion.div>
@@ -1125,6 +1125,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="Buscar paciente ou médico..."
+            aria-label="Buscar paciente ou médico na recepção"
             value={search}
             onChange={e => setSearch(e.target.value)}
             className="pl-9"
@@ -1555,8 +1556,8 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
                 );
               })()}
 
-              <div className="space-y-2">
-                <Label className="text-xs font-medium">Forma de Pagamento</Label>
+              <div role="group" aria-labelledby="forma-pagamento-label" className="space-y-2">
+                <Label id="forma-pagamento-label" className="text-xs font-medium">Forma de Pagamento</Label>
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                   {FORMAS_PAGAMENTO.map(fp => (
                     <button
@@ -1609,15 +1610,15 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
                   As formas informadas dividem o valor recebido nesta etapa; a
                   primeira forma escolhida absorve o restante. */}
               {formasExtras.length > 0 && (
-                <div className="space-y-2">
-                  <Label className="text-xs font-medium">Dividir com outra forma</Label>
+                <div role="group" aria-labelledby="forma-pagamento-adicional-label" className="space-y-2">
+                  <Label id="forma-pagamento-adicional-label" className="text-xs font-medium">Dividir com outra forma</Label>
                   {formasExtras.map((extra, i) => (
                     <div key={i} className="flex gap-2 items-center">
                       <Select
                         value={extra.forma}
                         onValueChange={v => setFormasExtras(fs => fs.map((f, j) => j === i ? { ...f, forma: v } : f))}
                       >
-                        <SelectTrigger className="h-9 flex-1"><SelectValue placeholder="Forma" /></SelectTrigger>
+                        <SelectTrigger aria-label={`Forma de pagamento adicional ${i + 1}`} className="h-9 flex-1"><SelectValue placeholder="Forma" /></SelectTrigger>
                         <SelectContent>
                           {FORMAS_PAGAMENTO.filter(fp => fp.value !== formaPagamento).map(fp => (
                             <SelectItem key={fp.value} value={fp.value}>{fp.label}</SelectItem>
@@ -1655,8 +1656,9 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <Label className="text-xs">Desconto (R$)</Label>
+                  <Label htmlFor="recepcao-desconto" className="text-xs">Desconto (R$)</Label>
                   <Input
+                    id="recepcao-desconto"
                     type="number"
                     min={0}
                     value={desconto || ''}
@@ -1664,8 +1666,9 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
                   />
                 </div>
                 <div className="space-y-1">
-                  <Label className="text-xs">Acréscimo (R$)</Label>
+                  <Label htmlFor="recepcao-acrescimo" className="text-xs">Acréscimo (R$)</Label>
                   <Input
+                    id="recepcao-acrescimo"
                     type="number"
                     min={0}
                     value={acrescimo || ''}
@@ -1675,8 +1678,9 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
               </div>
 
               <div className="space-y-1">
-                <Label className="text-xs">Observações</Label>
+                <Label htmlFor="recepcao-observacoes-pagamento" className="text-xs">Observações</Label>
                 <Textarea
+                  id="recepcao-observacoes-pagamento"
                   placeholder="Opcional..."
                   value={obsPagamento}
                   onChange={e => setObsPagamento(e.target.value)}
@@ -1761,8 +1765,8 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label>Paciente</Label>
-              <PacienteCombobox value={encaixePacienteId} onChange={(id) => setEncaixePacienteId(id)} />
+              <Label htmlFor="recepcao-encaixe-paciente">Paciente</Label>
+              <PacienteCombobox id="recepcao-encaixe-paciente" value={encaixePacienteId} onChange={(id) => setEncaixePacienteId(id)} />
               {encaixePacienteId && carregandoPacienteEncaixe && (
                 <p role="status" className="text-xs text-muted-foreground">Carregando os dados do paciente…</p>
               )}
@@ -1782,11 +1786,11 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
               </p>
             </div>
             <div className="space-y-2">
-              <Label>Médico</Label>
+              <Label htmlFor="recepcao-encaixe-medico">Médico</Label>
               {medicosQuery.isError ? (
                 <ErrorState compact title="Não foi possível carregar os médicos" error={medicosQuery.error} onRetry={() => void medicosQuery.refetch()} />
               ) : <Select value={encaixeMedicoId} onValueChange={setEncaixeMedicoId} disabled={medicosQuery.isLoading}>
-                <SelectTrigger><SelectValue placeholder="Selecionar médico..." /></SelectTrigger>
+                <SelectTrigger id="recepcao-encaixe-medico"><SelectValue placeholder="Selecionar médico..." /></SelectTrigger>
                 <SelectContent>
                   {(medicos as any[]).filter(m => m.ativo !== false).map(m => (
                     <SelectItem key={m.id} value={m.id}>{m.nome || m.crm}</SelectItem>
@@ -1795,11 +1799,11 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
               </Select>}
             </div>
             <div className="space-y-2">
-              <Label>Tipo de consulta</Label>
+              <Label htmlFor="recepcao-encaixe-tipo">Tipo de consulta</Label>
               {tiposConsultaQuery.isError ? (
                 <ErrorState compact title="Não foi possível carregar os tipos de consulta" error={tiposConsultaQuery.error} onRetry={() => void tiposConsultaQuery.refetch()} />
               ) : <Select value={encaixeTipo} onValueChange={setEncaixeTipo} disabled={tiposConsultaQuery.isLoading}>
-                <SelectTrigger><SelectValue placeholder="Selecionar tipo..." /></SelectTrigger>
+                <SelectTrigger id="recepcao-encaixe-tipo"><SelectValue placeholder="Selecionar tipo..." /></SelectTrigger>
                 <SelectContent>
                   {(tiposConsulta as any[]).map(t => (
                     <SelectItem key={t.id} value={t.nome}>{t.nome}</SelectItem>

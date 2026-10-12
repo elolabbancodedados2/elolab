@@ -27,6 +27,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { normalizarTexto } from '@/lib/buscaPaciente';
+import { getConveniosPermissions } from '@/lib/conveniosPermissions';
 
 const VERSOES_TISS = ['04.01.00', '04.00.02', '03.05.00', '03.04.01'];
 
@@ -109,7 +110,10 @@ const initialExameForm: ExamePreco = {
 
 /* ─── Tabela de Exames do Convênio ─── */
 function TabelaExamesConvenio({ convenioId }: { convenioId: string }) {
-  const { profile } = useSupabaseAuth();
+  const { profile, hasRole, isAdmin } = useSupabaseAuth();
+  const permissoesConvenios = getConveniosPermissions(isAdmin(), hasRole);
+  const podeGerenciarTabela = permissoesConvenios.gerenciarTabelaExames;
+  const podeExcluirExame = permissoesConvenios.excluirExames;
   const queryClient = useQueryClient();
   const [exameForm, setExameForm] = useState<ExamePreco>(initialExameForm);
   const [editingExameId, setEditingExameId] = useState<string | null>(null);
@@ -164,6 +168,7 @@ function TabelaExamesConvenio({ convenioId }: { convenioId: string }) {
   };
 
   const handleSaveExame = async () => {
+    if (!podeGerenciarTabela) { toast.error('Seu perfil não pode alterar a tabela de exames.'); return; }
     if (exameSaveLock.current) return;
     if (!profile?.clinica_id) { toast.error('Clínica não identificada.'); return; }
     if (isLoading || isFetching || erroExames) { toast.error('Atualize a tabela de exames antes de salvar.'); return; }
@@ -215,6 +220,7 @@ function TabelaExamesConvenio({ convenioId }: { convenioId: string }) {
   };
 
   const handleDeleteExame = async () => {
+    if (!podeExcluirExame) { toast.error('Somente administradores podem excluir itens da tabela.'); return; }
     if (!deleteExameId || exameDeleteLock.current) return;
     if (!profile?.clinica_id) { toast.error('Clínica não identificada.'); setDeleteExameId(null); return; }
     exameDeleteLock.current = true;
@@ -248,9 +254,9 @@ function TabelaExamesConvenio({ convenioId }: { convenioId: string }) {
             <Input aria-label="Buscar exame por nome, TUSS ou descrição" placeholder="Buscar exame ou TUSS..." value={searchExame}
               onChange={e => setSearchExame(e.target.value)} className="pl-8 h-9 text-sm" />
           </div>
-          <Button size="sm" onClick={handleNewExame} className="gap-1.5" disabled={isLoading || isFetching || !!erroExames}>
+          {podeGerenciarTabela && <Button size="sm" onClick={handleNewExame} className="gap-1.5" disabled={isLoading || isFetching || !!erroExames}>
             <Plus className="h-3.5 w-3.5" /> Adicionar Exame
-          </Button>
+          </Button>}
         </div>
       </div>
 
@@ -281,7 +287,7 @@ function TabelaExamesConvenio({ convenioId }: { convenioId: string }) {
                 <TableHead className="text-right hidden md:table-cell">Custo</TableHead>
                 <TableHead className="text-right hidden md:table-cell">Repasse</TableHead>
                 <TableHead className="text-right">Total</TableHead>
-                <TableHead className="text-right w-24">Ações</TableHead>
+                <TableHead className="text-right w-24">{podeGerenciarTabela ? 'Ações' : 'Tabela'}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -304,14 +310,16 @@ function TabelaExamesConvenio({ convenioId }: { convenioId: string }) {
                   <TableCell className="text-right tabular-nums text-sm hidden md:table-cell">{formatCurrency(e.valor_repasse || 0)}</TableCell>
                   <TableCell className="text-right tabular-nums text-sm font-semibold">{formatCurrency(e.valor_total || e.valor_tabela + (e.valor_filme || 0))}</TableCell>
                   <TableCell className="text-right">
+                    {podeGerenciarTabela ? (
                     <div className="flex justify-end gap-1">
                       <Button variant="ghost" size="icon" className="h-7 w-7" aria-label={`Editar exame ${e.tipo_exame}`} onClick={() => handleEditExame(e)}>
                         <Edit className="h-3.5 w-3.5" />
                       </Button>
-                      <Button variant="ghost" size="icon" className="h-7 w-7" aria-label={`Excluir exame ${e.tipo_exame}`} onClick={() => setDeleteExameId(e.id)}>
+                      {podeExcluirExame && <Button variant="ghost" size="icon" className="h-7 w-7" aria-label={`Excluir exame ${e.tipo_exame}`} onClick={() => setDeleteExameId(e.id)}>
                         <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                      </Button>
+                      </Button>}
                     </div>
+                    ) : <span className="text-xs text-muted-foreground">Somente leitura</span>}
                   </TableCell>
                 </TableRow>
               ))}
@@ -331,44 +339,44 @@ function TabelaExamesConvenio({ convenioId }: { convenioId: string }) {
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-1.5">
-              <Label className="text-xs">Tipo do Exame *</Label>
-              <Input value={exameForm.tipo_exame}
+              <Label htmlFor="convenio-exame-tipo" className="text-xs">Tipo do Exame *</Label>
+              <Input id="convenio-exame-tipo" value={exameForm.tipo_exame}
                 onChange={e => setExameForm({ ...exameForm, tipo_exame: e.target.value })}
                 placeholder="Ex: Hemograma, Raio-X Tórax..." />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label className="text-xs">Código TUSS</Label>
-                <Input value={exameForm.codigo_tuss}
+                <Label htmlFor="convenio-exame-tuss" className="text-xs">Código TUSS</Label>
+                <Input id="convenio-exame-tuss" value={exameForm.codigo_tuss}
                   onChange={e => setExameForm({ ...exameForm, codigo_tuss: e.target.value })}
                   placeholder="40301010" className="font-mono" />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs">Valor Tabela (R$) *</Label>
-                <Input type="number" step="0.01" value={exameForm.valor_tabela}
+              <Label htmlFor="convenio-exame-valor" className="text-xs">Valor Tabela (R$) *</Label>
+              <Input id="convenio-exame-valor" type="number" step="0.01" value={exameForm.valor_tabela}
                   onChange={e => setExameForm({ ...exameForm, valor_tabela: parseFloat(e.target.value) || 0 })} />
               </div>
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs">Valor Filme (R$)</Label>
-              <Input type="number" step="0.01" value={exameForm.valor_filme}
+              <Label htmlFor="convenio-exame-filme" className="text-xs">Valor Filme (R$)</Label>
+              <Input id="convenio-exame-filme" type="number" step="0.01" value={exameForm.valor_filme}
                 onChange={e => setExameForm({ ...exameForm, valor_filme: parseFloat(e.target.value) || 0 })} />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label className="text-xs">Valor Custo (R$)</Label>
-                <Input type="number" step="0.01" value={exameForm.valor_custo}
+                <Label htmlFor="convenio-exame-custo" className="text-xs">Valor Custo (R$)</Label>
+                <Input id="convenio-exame-custo" type="number" step="0.01" value={exameForm.valor_custo}
                   onChange={e => setExameForm({ ...exameForm, valor_custo: parseFloat(e.target.value) || 0 })} />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs">Valor Repasse (R$)</Label>
-                <Input type="number" step="0.01" value={exameForm.valor_repasse}
+                <Label htmlFor="convenio-exame-repasse" className="text-xs">Valor Repasse (R$)</Label>
+                <Input id="convenio-exame-repasse" type="number" step="0.01" value={exameForm.valor_repasse}
                   onChange={e => setExameForm({ ...exameForm, valor_repasse: parseFloat(e.target.value) || 0 })} />
               </div>
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs">Descrição</Label>
-              <Input value={exameForm.descricao}
+              <Label htmlFor="convenio-exame-descricao" className="text-xs">Descrição</Label>
+              <Input id="convenio-exame-descricao" value={exameForm.descricao}
                 onChange={e => setExameForm({ ...exameForm, descricao: e.target.value })}
                 placeholder="Descrição opcional do procedimento" />
             </div>
@@ -419,7 +427,10 @@ function TabelaExamesConvenio({ convenioId }: { convenioId: string }) {
 
 /* ─── Página Principal ─── */
 function Convenios() {
-  const { profile } = useSupabaseAuth();
+  const { profile, isAdmin, hasRole } = useSupabaseAuth();
+  const permissoesConvenios = getConveniosPermissions(isAdmin(), hasRole);
+  const podeGerenciarConvenios = permissoesConvenios.gerenciarConvenios;
+  const podeGerenciarTabelaExames = permissoesConvenios.gerenciarTabelaExames;
   const [searchTerm, setSearchTerm] = useState('');
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
@@ -474,9 +485,17 @@ function Convenios() {
     setIsFormOpen(true);
   };
 
+  const handleGerenciarPrecosExames = (c: any) => {
+    setEditingId(c.id);
+    setEditingUpdatedAt(c.updated_at || null);
+    setActiveTab('exames');
+    setIsFormOpen(true);
+  };
+
   const handleDeleteClick = (id: string) => { setSelectedId(id); setIsDeleteOpen(true); };
 
   const handleToggleAtivo = async (convenio: any) => {
+    if (!podeGerenciarConvenios) { toast.error('Somente administradores podem alterar convênios.'); return; }
     if (atualizandoStatusId) return;
     if (!profile?.clinica_id) { toast.error('Clínica não identificada.'); return; }
     setAtualizandoStatusId(convenio.id);
@@ -499,6 +518,7 @@ function Convenios() {
   };
 
   const handleDelete = async () => {
+    if (!podeGerenciarConvenios) { toast.error('Somente administradores podem excluir convênios.'); return; }
     if (!selectedId || convenioDeleteLock.current) return;
     if (!profile?.clinica_id) { toast.error('Clínica não identificada.'); return; }
     convenioDeleteLock.current = true;
@@ -519,6 +539,7 @@ function Convenios() {
   };
 
   const handleSave = async () => {
+    if (!podeGerenciarConvenios) { toast.error('Somente administradores podem alterar convênios.'); return; }
     if (convenioSaveLock.current) return;
     if (!profile?.clinica_id) { toast.error('Clínica não identificada. Atualize a sessão antes de salvar.'); return; }
     const nome = formData.nome.trim();
@@ -593,7 +614,7 @@ function Convenios() {
       }
     } catch (error: any) {
       const message = error.code === '23505'
-        ? 'Já existe um convênio com este código interno. Use outro código.'
+        ? 'Já existe um convênio com este código interno nesta clínica. Use outro código.'
         : error.message || 'Erro ao salvar.';
       toast.error('Não foi possível salvar o convênio.', { description: message });
     } finally { convenioSaveLock.current = false; setIsSubmitting(false); }
@@ -619,29 +640,29 @@ function Convenios() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Convênios</h1>
-          <p className="text-muted-foreground">Operadoras de saúde, faturamento TISS e tabelas de preços</p>
+          <h1 className="text-3xl font-bold text-[#0C1F54]">Convênios</h1>
+          <p className="text-[#0C1F54]/65">Operadoras de saúde, faturamento TISS e tabelas de preços</p>
         </div>
-        <Button onClick={handleNew} className="gap-2"><Plus className="h-4 w-4" />Novo Convênio</Button>
+        {podeGerenciarConvenios && <Button onClick={handleNew} className="gap-2 bg-[#005ECC] text-white hover:bg-[#004FAE]"><Plus className="h-4 w-4" />Novo Convênio</Button>}
       </div>
 
       {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Card><CardContent className="pt-4 flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-primary/10"><Building2 className="h-5 w-5 text-primary" /></div>
-          <div><p className="text-2xl font-bold">{(convenios as any[]).length}</p><p className="text-xs text-muted-foreground">Convênios</p></div>
+        <Card className="border-[#D6E7F3] bg-white shadow-sm"><CardContent className="pt-4 flex items-center gap-3">
+          <div className="rounded-lg bg-[#EAF4FF] p-2"><Building2 className="h-5 w-5 text-[#005ECC]" /></div>
+          <div><p className="text-2xl font-bold text-[#0C1F54]">{(convenios as any[]).length}</p><p className="text-xs text-[#0C1F54]/60">Convênios</p></div>
         </CardContent></Card>
-        <Card><CardContent className="pt-4 flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-primary/10"><Shield className="h-5 w-5 text-primary" /></div>
-          <div><p className="text-2xl font-bold">{(convenios as any[]).filter(c => c.ativo).length}</p><p className="text-xs text-muted-foreground">Ativos</p></div>
+        <Card className="border-[#D6E7F3] bg-white shadow-sm"><CardContent className="pt-4 flex items-center gap-3">
+          <div className="rounded-lg bg-[#E0EBF2] p-2"><Shield className="h-5 w-5 text-[#0C1F54]" /></div>
+          <div><p className="text-2xl font-bold text-[#0C1F54]">{(convenios as any[]).filter(c => c.ativo).length}</p><p className="text-xs text-[#0C1F54]/60">Ativos</p></div>
         </CardContent></Card>
-        <Card><CardContent className="pt-4 flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-primary/10"><FileText className="h-5 w-5 text-primary" /></div>
-          <div><p className="text-2xl font-bold">{(convenios as any[]).filter(c => c.registro_ans).length}</p><p className="text-xs text-muted-foreground">Com ANS</p></div>
+        <Card className="border-[#D6E7F3] bg-white shadow-sm"><CardContent className="pt-4 flex items-center gap-3">
+          <div className="rounded-lg bg-[#DFF4FA] p-2"><FileText className="h-5 w-5 text-[#007B9E]" /></div>
+          <div><p className="text-2xl font-bold text-[#0C1F54]">{(convenios as any[]).filter(c => c.registro_ans).length}</p><p className="text-xs text-[#0C1F54]/60">Com ANS</p></div>
         </CardContent></Card>
-        <Card><CardContent className="pt-4 flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-accent"><Clock className="h-5 w-5 text-accent-foreground" /></div>
-          <div><p className="text-2xl font-bold">{(convenios as any[]).filter(c => !c.registro_ans && c.ativo).length}</p><p className="text-xs text-muted-foreground">Sem ANS</p></div>
+        <Card className="border-[#D6E7F3] bg-white shadow-sm"><CardContent className="pt-4 flex items-center gap-3">
+          <div className="rounded-lg bg-[#F0F7FC] p-2"><Clock className="h-5 w-5 text-[#0F7BFD]" /></div>
+          <div><p className="text-2xl font-bold text-[#0C1F54]">{(convenios as any[]).filter(c => !c.registro_ans && c.ativo).length}</p><p className="text-xs text-[#0C1F54]/60">Sem ANS</p></div>
         </CardContent></Card>
       </div>
 
@@ -723,7 +744,7 @@ function Convenios() {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
-                          <Button
+                          {podeGerenciarConvenios && <Button
                             variant="ghost"
                             size="icon"
                             aria-label={c.ativo ? `Inativar convênio ${c.nome}` : `Ativar convênio ${c.nome}`}
@@ -734,7 +755,10 @@ function Convenios() {
                             {atualizandoStatusId === c.id
                               ? <Loader2 className="h-4 w-4 animate-spin" />
                               : <Power className={cn('h-4 w-4', c.ativo ? 'text-muted-foreground' : 'text-success')} />}
-                          </Button>
+                          </Button>}
+                          {podeGerenciarTabelaExames && <Button variant="ghost" size="icon" aria-label={`Gerenciar preços de exames do convênio ${c.nome}`} title="Tabela de preços de exames" onClick={() => handleGerenciarPrecosExames(c)}>
+                            <FlaskConical className="h-4 w-4 text-[#005ECC]" />
+                          </Button>}
                           {urlHttpsSegura(c.portal_url) && (
                             <Button variant="ghost" size="icon" asChild title="Portal do convênio">
                               <a href={urlHttpsSegura(c.portal_url)!} target="_blank" rel="noopener noreferrer">
@@ -742,10 +766,10 @@ function Convenios() {
                               </a>
                             </Button>
                           )}
-                          <Button variant="ghost" size="icon" aria-label={`Editar convênio ${c.nome}`} onClick={() => handleEdit(c)} disabled={atualizandoStatusId !== null || isDeleting}><Edit className="h-4 w-4" /></Button>
-                          <Button variant="ghost" size="icon" aria-label={`Excluir convênio ${c.nome}`} onClick={() => handleDeleteClick(c.id)} disabled={atualizandoStatusId !== null || isDeleting}>
+                          {podeGerenciarConvenios && <Button variant="ghost" size="icon" aria-label={`Editar convênio ${c.nome}`} onClick={() => handleEdit(c)} disabled={atualizandoStatusId !== null || isDeleting}><Edit className="h-4 w-4" /></Button>}
+                          {podeGerenciarConvenios && <Button variant="ghost" size="icon" aria-label={`Excluir convênio ${c.nome}`} onClick={() => handleDeleteClick(c.id)} disabled={atualizandoStatusId !== null || isDeleting}>
                             <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
+                          </Button>}
                         </div>
                       </TableCell>
                     </TableRow>
@@ -763,36 +787,36 @@ function Convenios() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Building2 className="h-5 w-5 text-primary" />
-              {editingId ? 'Editar Convênio' : 'Novo Convênio'}
+              {podeGerenciarConvenios ? (editingId ? 'Editar Convênio' : 'Novo Convênio') : 'Tabela de preços de exames'}
             </DialogTitle>
           </DialogHeader>
 
           <fieldset disabled={isSubmitting} className="contents">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 overflow-hidden flex flex-col">
-            <TabsList className="w-full grid grid-cols-2">
-              <TabsTrigger value="dados" className="gap-1.5">
+            <TabsList className={cn('w-full grid rounded-xl border border-[#D6E7F3] bg-[#EAF4FF] p-1', podeGerenciarConvenios ? 'grid-cols-2' : 'grid-cols-1')}>
+              {podeGerenciarConvenios && <TabsTrigger value="dados" className="gap-1.5 rounded-lg data-[state=active]:bg-white data-[state=active]:text-[#0C1F54] data-[state=active]:shadow-sm">
                 <Building2 className="h-3.5 w-3.5" /> Dados do Convênio
-              </TabsTrigger>
-              <TabsTrigger value="exames" disabled={!editingId} className="gap-1.5">
+              </TabsTrigger>}
+              {podeGerenciarTabelaExames && <TabsTrigger value="exames" disabled={!editingId} className="gap-1.5 rounded-lg data-[state=active]:bg-white data-[state=active]:text-[#0C1F54] data-[state=active]:shadow-sm">
                 <FlaskConical className="h-3.5 w-3.5" /> Tabela de Exames
-              </TabsTrigger>
+              </TabsTrigger>}
             </TabsList>
 
-            <TabsContent value="dados" className="flex-1 overflow-y-auto space-y-5 pr-2 mt-4">
+            {podeGerenciarConvenios && <TabsContent value="dados" className="flex-1 overflow-y-auto space-y-5 pr-2 mt-4">
               {/* Identificação */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Nome *</Label>
-                  <Input value={formData.nome} onChange={e => setFormData({ ...formData, nome: e.target.value })} />
+                  <Label htmlFor="convenio-nome" className="text-xs">Nome *</Label>
+                  <Input id="convenio-nome" value={formData.nome} onChange={e => setFormData({ ...formData, nome: e.target.value })} />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Código Interno *</Label>
-                  <Input value={formData.codigo} onChange={e => setFormData({ ...formData, codigo: e.target.value.toUpperCase() })} maxLength={10} />
+                  <Label htmlFor="convenio-codigo" className="text-xs">Código Interno *</Label>
+                  <Input id="convenio-codigo" value={formData.codigo} onChange={e => setFormData({ ...formData, codigo: e.target.value.toUpperCase() })} maxLength={10} />
                 </div>
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs">CNPJ</Label>
-                <Input value={formData.cnpj} onChange={e => setFormData({ ...formData, cnpj: e.target.value.toUpperCase() })} placeholder="00.000.000/0001-00 ou AA.AAA.AAA/AAAA-00" />
+                <Label htmlFor="convenio-cnpj" className="text-xs">CNPJ</Label>
+                <Input id="convenio-cnpj" value={formData.cnpj} onChange={e => setFormData({ ...formData, cnpj: e.target.value.toUpperCase() })} placeholder="00.000.000/0001-00 ou AA.AAA.AAA/AAAA-00" />
               </div>
 
               {/* Dados ANS */}
@@ -803,19 +827,19 @@ function Convenios() {
                 </h4>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                   <div className="space-y-1.5">
-                    <Label className="text-xs">Registro ANS</Label>
-                    <Input value={formData.registro_ans} onChange={e => setFormData({ ...formData, registro_ans: e.target.value })}
+                    <Label htmlFor="convenio-ans" className="text-xs">Registro ANS</Label>
+                    <Input id="convenio-ans" value={formData.registro_ans} onChange={e => setFormData({ ...formData, registro_ans: e.target.value })}
                       placeholder="Nº ANS" className="font-mono" />
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-xs">Código da Operadora</Label>
-                    <Input value={formData.codigo_operadora} onChange={e => setFormData({ ...formData, codigo_operadora: e.target.value })}
+                    <Label htmlFor="convenio-operadora" className="text-xs">Código da Operadora</Label>
+                    <Input id="convenio-operadora" value={formData.codigo_operadora} onChange={e => setFormData({ ...formData, codigo_operadora: e.target.value })}
                       placeholder="Código TISS" className="font-mono" />
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-xs">Versão TISS</Label>
+                    <Label htmlFor="convenio-tiss" className="text-xs">Versão TISS</Label>
                     <Select value={formData.versao_tiss} onValueChange={v => setFormData({ ...formData, versao_tiss: v })}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectTrigger id="convenio-tiss"><SelectValue /></SelectTrigger>
                       <SelectContent>
                         {VERSOES_TISS.map(v => <SelectItem key={v} value={v}>{v}</SelectItem>)}
                       </SelectContent>
@@ -832,28 +856,28 @@ function Convenios() {
                 </h4>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                   <div className="space-y-1.5">
-                    <Label className="text-xs">Valor Consulta (R$)</Label>
-                    <Input type="number" step="0.01" value={formData.valor_consulta}
+                    <Label htmlFor="convenio-valor-consulta" className="text-xs">Valor Consulta (R$)</Label>
+                    <Input id="convenio-valor-consulta" type="number" step="0.01" value={formData.valor_consulta}
                       onChange={e => setFormData({ ...formData, valor_consulta: parseFloat(e.target.value) || 0 })} />
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-xs">Valor Retorno (R$)</Label>
-                    <Input type="number" step="0.01" value={formData.valor_retorno}
+                    <Label htmlFor="convenio-valor-retorno" className="text-xs">Valor Retorno (R$)</Label>
+                    <Input id="convenio-valor-retorno" type="number" step="0.01" value={formData.valor_retorno}
                       onChange={e => setFormData({ ...formData, valor_retorno: parseFloat(e.target.value) || 0 })} />
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-xs">Carência (dias)</Label>
-                    <Input type="number" value={formData.carencia}
+                    <Label htmlFor="convenio-carencia" className="text-xs">Carência (dias)</Label>
+                    <Input id="convenio-carencia" type="number" value={formData.carencia}
                       onChange={e => setFormData({ ...formData, carencia: Number(e.target.value) || 0 })} />
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-xs">Prazo de Retorno (dias)</Label>
-                    <Input type="number" value={formData.prazo_retorno}
+                    <Label htmlFor="convenio-prazo-retorno" className="text-xs">Prazo de Retorno (dias)</Label>
+                    <Input id="convenio-prazo-retorno" type="number" value={formData.prazo_retorno}
                       onChange={e => setFormData({ ...formData, prazo_retorno: Number(e.target.value) || 0 })} />
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-xs">Taxa Glosa (%)</Label>
-                    <Input type="number" step="0.1" value={formData.taxa_glosa}
+                    <Label htmlFor="convenio-taxa-glosa" className="text-xs">Taxa Glosa (%)</Label>
+                    <Input id="convenio-taxa-glosa" type="number" step="0.1" value={formData.taxa_glosa}
                       onChange={e => setFormData({ ...formData, taxa_glosa: parseFloat(e.target.value) || 0 })} />
                   </div>
                 </div>
@@ -870,7 +894,7 @@ function Convenios() {
               <div>
                 <h4 className="text-sm font-semibold text-muted-foreground mb-3">Planos Vinculados</h4>
                 <div className="flex gap-2 mb-2">
-                  <Input value={newPlano} onChange={e => setNewPlano(e.target.value)}
+                  <Input aria-label="Adicionar nome do plano de convênio" value={newPlano} onChange={e => setNewPlano(e.target.value)}
                     placeholder="Ex: Básico, Executivo, Nacional..."
                     onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addPlano())} className="flex-1" />
                   <Button type="button" variant="outline" size="sm" onClick={addPlano}>Adicionar</Button>
@@ -902,20 +926,20 @@ function Convenios() {
                 </h4>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
-                    <Label className="text-xs">Telefone</Label>
-                    <Input value={formData.telefone} onChange={e => setFormData({ ...formData, telefone: e.target.value })} />
+                    <Label htmlFor="convenio-telefone" className="text-xs">Telefone</Label>
+                    <Input id="convenio-telefone" value={formData.telefone} onChange={e => setFormData({ ...formData, telefone: e.target.value })} />
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-xs">E-mail</Label>
-                    <Input type="email" value={formData.email} onChange={e => setFormData({ ...formData, email: e.target.value })} />
+                    <Label htmlFor="convenio-email" className="text-xs">E-mail</Label>
+                    <Input id="convenio-email" type="email" value={formData.email} onChange={e => setFormData({ ...formData, email: e.target.value })} />
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-xs">Website</Label>
-                    <Input value={formData.website} onChange={e => setFormData({ ...formData, website: e.target.value })} placeholder="https://..." />
+                    <Label htmlFor="convenio-website" className="text-xs">Website</Label>
+                    <Input id="convenio-website" value={formData.website} onChange={e => setFormData({ ...formData, website: e.target.value })} placeholder="https://..." />
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-xs">Portal de Autorização (URL)</Label>
-                    <Input value={formData.portal_url} onChange={e => setFormData({ ...formData, portal_url: e.target.value })} placeholder="https://portal..." />
+                    <Label htmlFor="convenio-portal" className="text-xs">Portal de Autorização (URL)</Label>
+                    <Input id="convenio-portal" value={formData.portal_url} onChange={e => setFormData({ ...formData, portal_url: e.target.value })} placeholder="https://portal..." />
                   </div>
                 </div>
               </div>
@@ -928,16 +952,16 @@ function Convenios() {
                 </h4>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div className="space-y-1.5">
-                    <Label className="text-xs">Nome</Label>
-                    <Input value={formData.responsavel_nome} onChange={e => setFormData({ ...formData, responsavel_nome: e.target.value })} />
+                    <Label htmlFor="convenio-responsavel-nome" className="text-xs">Nome</Label>
+                    <Input id="convenio-responsavel-nome" value={formData.responsavel_nome} onChange={e => setFormData({ ...formData, responsavel_nome: e.target.value })} />
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-xs">Cargo</Label>
-                    <Input value={formData.responsavel_cargo} onChange={e => setFormData({ ...formData, responsavel_cargo: e.target.value })} />
+                    <Label htmlFor="convenio-responsavel-cargo" className="text-xs">Cargo</Label>
+                    <Input id="convenio-responsavel-cargo" value={formData.responsavel_cargo} onChange={e => setFormData({ ...formData, responsavel_cargo: e.target.value })} />
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-xs">Telefone</Label>
-                    <Input value={formData.responsavel_telefone} onChange={e => setFormData({ ...formData, responsavel_telefone: e.target.value })} />
+                    <Label htmlFor="convenio-responsavel-telefone" className="text-xs">Telefone</Label>
+                    <Input id="convenio-responsavel-telefone" value={formData.responsavel_telefone} onChange={e => setFormData({ ...formData, responsavel_telefone: e.target.value })} />
                   </div>
                 </div>
               </div>
@@ -945,12 +969,12 @@ function Convenios() {
               {/* Ativo */}
               <Separator />
               <div className="flex items-center gap-2">
-                <Switch checked={formData.ativo} onCheckedChange={checked => setFormData({ ...formData, ativo: checked })} />
-                <Label>Convênio Ativo</Label>
+                <Switch id="convenio-ativo" checked={formData.ativo} onCheckedChange={checked => setFormData({ ...formData, ativo: checked })} />
+                <Label htmlFor="convenio-ativo">Convênio Ativo</Label>
               </div>
-            </TabsContent>
+            </TabsContent>}
 
-            <TabsContent value="exames" className="flex-1 overflow-y-auto mt-4">
+            {podeGerenciarTabelaExames && <TabsContent value="exames" className="flex-1 overflow-y-auto mt-4">
               {editingId ? (
                 <TabelaExamesConvenio convenioId={editingId} />
               ) : (
@@ -958,13 +982,13 @@ function Convenios() {
                   <p>Salve o convênio primeiro para gerenciar a tabela de exames.</p>
                 </div>
               )}
-            </TabsContent>
+            </TabsContent>}
           </Tabs>
           </fieldset>
 
           <DialogFooter className="flex-shrink-0 pt-4 border-t">
             <Button variant="outline" onClick={() => setIsFormOpen(false)} disabled={isSubmitting}>Fechar</Button>
-            {activeTab === 'dados' && (
+            {podeGerenciarConvenios && activeTab === 'dados' && (
               <Button onClick={handleSave} disabled={isSubmitting}>
                 {isSubmitting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Salvando...</> : 'Salvar'}
               </Button>

@@ -2,10 +2,21 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { cronOrUserOk, cronForbidden, clinicaDoChamador, cronSecretOk } from "../_shared/cronAuth.ts";
 import { corsPadrao } from '../_shared/cors.ts';
 import { sendBrevoEmail } from '../_shared/brevoEmail.ts';
+import { dateRangeInTimeZoneIso } from '../_shared/reportDateRange.ts';
 
 // Atribuído em cada request (reflete a origem permitida). Helpers
 // top-level (json/reply) capturam esta variável por closure.
 let corsHeaders: Record<string, string> = {};
+const CLAIM_LEASE_MS = 30 * 60 * 1000;
+
+function claimAindaAtiva(relatorio: any, agora = Date.now()) {
+  const ultimaExecucao = Date.parse(relatorio.ultima_execucao ?? "");
+  const proximaExecucao = Date.parse(relatorio.proxima_execucao ?? "");
+  return Number.isFinite(ultimaExecucao)
+    && Number.isFinite(proximaExecucao)
+    && proximaExecucao > agora
+    && Math.abs(proximaExecucao - ultimaExecucao - CLAIM_LEASE_MS) < 1000;
+}
 
 ;
 
@@ -14,7 +25,7 @@ const DATASET_TABLES: Record<string, {
   statusField?: string; statusOptions?: string[]; medicoField?: string; convenioField?: string;
   textSearchFields?: string[]; valueField?: string;
 }> = {
-  pacientes: { table: "pacientes", dateField: "created_at", select: "id,nome,nome_social,cpf,data_nascimento,sexo,telefone,email,cidade,estado,convenio_id,created_at,convenios(nome)", columns: ["nome", "nome_social", "cpf", "data_nascimento", "sexo", "telefone", "email", "cidade", "estado", "convenios.nome", "created_at"], convenioField: "convenio_id", textSearchFields: ["nome", "nome_social", "cpf", "email", "telefone"], allowedRoles: ["admin", "medico", "enfermagem", "recepcao", "financeiro"] },
+  pacientes: { table: "pacientes", dateField: "created_at", select: "id,nome,nome_social,cpf,data_nascimento,sexo,telefone,email,cidade,estado,convenio_id,created_at,convenios(nome)", columns: ["nome", "nome_social", "cpf", "data_nascimento", "sexo", "telefone", "email", "cidade", "estado", "convenios.nome", "created_at"], convenioField: "convenio_id", textSearchFields: ["nome", "nome_social", "cpf", "email", "telefone"], allowedRoles: ["admin"] },
   agendamentos: { table: "agendamentos", dateField: "data", select: "id,data,hora_inicio,hora_fim,tipo,status,observacoes,paciente_id,medico_id,pacientes(nome),medicos(nome)", columns: ["data", "hora_inicio", "pacientes.nome", "medicos.nome", "tipo", "status", "observacoes"], statusField: "status", statusOptions: ["agendado", "confirmado", "em_atendimento", "finalizado", "cancelado", "faltou"], medicoField: "medico_id", textSearchFields: ["observacoes", "tipo"], allowedRoles: ["admin", "medico", "enfermagem", "recepcao"] },
   lancamentos: { table: "lancamentos", dateField: "data", select: "id,tipo,categoria,descricao,valor,data,data_vencimento,status,forma_pagamento,paciente_id,pacientes(nome)", columns: ["data", "data_vencimento", "tipo", "categoria", "descricao", "pacientes.nome", "forma_pagamento", "status", "valor"], statusField: "status", statusOptions: ["pendente", "pago", "atrasado", "cancelado"], textSearchFields: ["descricao", "categoria"], valueField: "valor", allowedRoles: ["admin", "financeiro"] },
   exames: { table: "exames", dateField: "data_solicitacao", select: "id,tipo_exame,status,data_solicitacao,data_realizacao,observacoes,paciente_id,medico_solicitante_id,pacientes(nome),medicos!exames_medico_solicitante_id_fkey(nome)", columns: ["data_solicitacao", "data_realizacao", "pacientes.nome", "medicos.nome", "tipo_exame", "status", "observacoes"], statusField: "status", statusOptions: ["solicitado", "agendado", "coletado", "em_analise", "laudo_disponivel", "cancelado"], medicoField: "medico_solicitante_id", textSearchFields: ["tipo_exame", "observacoes"], allowedRoles: ["admin", "medico", "enfermagem"] },
@@ -139,6 +150,11 @@ Deno.serve(async (req) => {
     // Corpo vazio é esperado quando o disparo vem do agendador.
     try { body = await req.json(); } catch { /* sem corpo */ }
     const forceId = body?.id || null;
+    if (!isCron && !forceId) {
+      return new Response(JSON.stringify({ error: "Informe o relatório que deseja executar." }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     let q = supabase.from("relatorios_salvos").select("*");
     if (clinicaAlvo) q = q.eq("clinica_id", clinicaAlvo);
@@ -149,6 +165,11 @@ Deno.serve(async (req) => {
 
     const out: any[] = [];
     for (const r of relatorios || []) {
+      if (!isCron && callerId !== r.user_id && !callerRoles?.has("admin")) {
+        return new Response(JSON.stringify({ error: "Você não pode executar o relatório de outro usuário." }), {
+          status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
       const cfg: any = r.config || {};
       const ds = DATASET_TABLES[r.dataset];
       if (!ds) { out.push({ id: r.id, skipped: "dataset_invalido" }); continue; }
@@ -160,6 +181,23 @@ Deno.serve(async (req) => {
       if (!possuiAcesso(ownerRoles) || (callerRoles && !possuiAcesso(callerRoles))) {
         out.push({ id: r.id, skipped: "sem_permissao_para_fonte" });
         continue;
+      }
+      let ownerMedicoIds: string[] | null = null;
+      if (!ownerRoles.has("admin") && ownerRoles.has("medico") && ds.medicoField) {
+        const { data: medicosDoOwner, error: medicosError } = await supabase.from("medicos")
+          .select("id")
+          .eq("user_id", r.user_id)
+          .eq("clinica_id", r.clinica_id);
+        if (medicosError) throw medicosError;
+        ownerMedicoIds = (medicosDoOwner ?? []).map((medico: any) => String(medico.id));
+        if (ownerMedicoIds.length === 0) {
+          out.push({ id: r.id, skipped: "medico_responsavel_nao_encontrado" });
+          continue;
+        }
+        if (cfg.medicoFilter && cfg.medicoFilter !== "todos" && !ownerMedicoIds.includes(String(cfg.medicoFilter))) {
+          out.push({ id: r.id, skipped: "filtro_medico_fora_do_escopo" });
+          continue;
+        }
       }
 
       if (ds.statusField && cfg.statusFilter && cfg.statusFilter !== "todos" && !ds.statusOptions?.includes(cfg.statusFilter)) {
@@ -173,12 +211,44 @@ Deno.serve(async (req) => {
       if (ds.valueField && ((min !== null && (!Number.isFinite(min) || min < 0)) || (max !== null && (!Number.isFinite(max) || max < 0)))) {
         throw new Error("Faixa de valores inválida no relatório salvo.");
       }
+      if (claimAindaAtiva(r)) {
+        out.push({ id: r.id, skipped: "em_execucao" });
+        continue;
+      }
+      const claimAt = new Date().toISOString();
+      const leaseUntil = new Date(Date.parse(claimAt) + CLAIM_LEASE_MS).toISOString();
+      let claimQuery = supabase.from("relatorios_salvos")
+        .update({ ultima_execucao: claimAt, proxima_execucao: leaseUntil })
+        .eq("id", r.id)
+        .eq("clinica_id", r.clinica_id)
+        .eq("ativo", r.ativo);
+      claimQuery = r.ultima_execucao
+        ? claimQuery.eq("ultima_execucao", r.ultima_execucao)
+        : claimQuery.is("ultima_execucao", null);
+      claimQuery = r.proxima_execucao
+        ? claimQuery.eq("proxima_execucao", r.proxima_execucao)
+        : claimQuery.is("proxima_execucao", null);
+      const { data: claimed, error: claimError } = await claimQuery.select("id").maybeSingle();
+      if (claimError) throw claimError;
+      if (!claimed) {
+        out.push({ id: r.id, skipped: "em_execucao" });
+        continue;
+      }
+
       const montarConsulta = () => {
         let query: any = supabase.from(ds.table).select(ds.select).eq("clinica_id", r.clinica_id);
-        if (cfg.dataInicio) query = query.gte(ds.dateField, cfg.dataInicio);
-        if (cfg.dataFim) query = query.lte(ds.dateField, ds.dateField === "created_at" || ds.dateField === "updated_at" ? `${cfg.dataFim}T23:59:59.999` : cfg.dataFim);
+        const intervaloTimestamp = ds.dateField === "created_at" || ds.dateField === "updated_at"
+          ? dateRangeInTimeZoneIso(cfg.dataInicio, cfg.dataFim, "America/Sao_Paulo")
+          : null;
+        if (cfg.dataInicio) query = query.gte(ds.dateField, intervaloTimestamp?.gte ?? cfg.dataInicio);
+        if (cfg.dataFim) {
+          query = intervaloTimestamp?.lt
+            ? query.lt(ds.dateField, intervaloTimestamp.lt)
+            : query.lte(ds.dateField, cfg.dataFim);
+        }
         if (ds.statusField && cfg.statusFilter && cfg.statusFilter !== "todos") query = query.eq(ds.statusField, cfg.statusFilter);
         if (ds.medicoField && cfg.medicoFilter && cfg.medicoFilter !== "todos") query = query.eq(ds.medicoField, cfg.medicoFilter);
+        if (ownerMedicoIds && ds.medicoField) query = query.in(ds.medicoField, ownerMedicoIds);
         if (ds.convenioField && cfg.convenioFilter && cfg.convenioFilter !== "todos") query = query.eq(ds.convenioField, cfg.convenioFilter);
         if (r.dataset === "lancamentos" && cfg.tipoLancamento && cfg.tipoLancamento !== "todos") query = query.eq("tipo", cfg.tipoLancamento);
         if (ds.valueField && min !== null) query = query.gte(ds.valueField, min);
@@ -229,11 +299,14 @@ Deno.serve(async (req) => {
       const proxima = r.frequencia
         ? nextRun(r.frequencia, r.hora ?? "08:00", r.dia_semana, r.dia_mes)
         : null;
-      const { error: updateError } = await supabase.from("relatorios_salvos").update({
+      const { data: completed, error: updateError } = await supabase.from("relatorios_salvos").update({
         ultima_execucao: new Date().toISOString(),
         proxima_execucao: proxima,
-      }).eq("id", r.id).eq("clinica_id", r.clinica_id);
+      }).eq("id", r.id).eq("clinica_id", r.clinica_id)
+        .eq("ultima_execucao", claimAt).eq("proxima_execucao", leaseUntil)
+        .select("id").maybeSingle();
       if (updateError) throw updateError;
+      if (!completed) throw new Error("A reserva de execução expirou antes da conclusão do relatório.");
 
       out.push({ id: r.id, rows: linhasRelatorio.length, sent_to: delivery === "sent" ? (r.destinatarios?.length || 0) : 0, delivery });
     }

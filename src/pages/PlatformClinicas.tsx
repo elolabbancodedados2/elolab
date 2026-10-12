@@ -239,7 +239,7 @@ export default function PlatformClinicas() {
 
   return (
     <div className="space-y-6 p-6">
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex flex-col items-start justify-between gap-4 rounded-2xl border border-[#dce9f6] bg-gradient-to-r from-[#f3f8ff] via-white to-[#f3fbfa] p-5 sm:flex-row sm:p-6">
         <div>
           <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
             <Crown className="h-7 w-7 text-primary" /> Plataforma — Clínicas
@@ -479,6 +479,7 @@ export default function PlatformClinicas() {
             <Textarea
               id="motivo-impersonacao"
               value={motivo}
+              maxLength={500}
               onChange={e => setMotivo(e.target.value)}
               placeholder="Ex.: chamado #142 — agenda não abre para a recepção"
               rows={3}

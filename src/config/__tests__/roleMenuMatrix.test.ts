@@ -13,7 +13,7 @@ describe('matriz operacional do menu por perfil', () => {
     { role: 'medico' as const, permitidas: ['/fila', '/prontuarios', '/documentos-clinicos', '/exames'], negadas: ['/financeiro', '/equipe', '/configuracoes'] },
     { role: 'recepcao' as const, permitidas: ['/recepcao', '/pacientes', '/retornos', '/convenios'], negadas: ['/prontuarios', '/financeiro', '/equipe'] },
     { role: 'enfermagem' as const, permitidas: ['/fila', '/pacientes', '/mapa-coleta', '/estoque'], negadas: ['/prontuarios', '/financeiro', '/equipe'] },
-    { role: 'financeiro' as const, permitidas: ['/recepcao', '/financeiro', '/contas', '/relatorios'], negadas: ['/pacientes', '/prontuarios', '/equipe'] },
+    { role: 'financeiro' as const, permitidas: ['/recepcao', '/financeiro', '/contas', '/relatorios'], negadas: ['/pacientes', '/prontuarios', '/equipe', '/agenda'] },
   ];
 
   for (const caso of casos) {

@@ -188,7 +188,7 @@ async function logAudit(
 
 // Specific hooks for each table
 
-export function usePacientes() {
+export function usePacientes(enabled = true) {
   return useSupabaseQuery<{
     id: string;
     nome: string;
@@ -220,30 +220,24 @@ export function usePacientes() {
     updated_at: string;
   }>('pacientes', {
     orderBy: { column: 'nome', ascending: true },
+    enabled,
   });
 }
 
 export function useMedicos() {
   return useSupabaseQuery<{
     id: string;
-    user_id: string | null;
     nome: string | null;
-    email: string | null;
     crm: string;
     tipo_registro: string | null;
     crm_uf: string | null;
-    cpf: string | null;
     rqe: string | null;
     especialidade: string | null;
-    telefone: string | null;
-    foto_url: string | null;
-    carimbo_url: string | null;
-    cns: string | null;
     intervalo_consulta: number | null;
-    ativo: boolean;
-    created_at: string;
-    updated_at: string;
+    ativo: boolean | null;
+    clinica_id: string | null;
   }>('medicos', {
+    select: 'id, nome, crm, tipo_registro, crm_uf, rqe, especialidade, intervalo_consulta, ativo, clinica_id',
     orderBy: { column: 'nome', ascending: true },
   });
 }
@@ -269,7 +263,7 @@ export function useConvenios() {
   });
 }
 
-export function useAgendamentos(date?: string) {
+export function useAgendamentos(date?: string, options?: { enabled?: boolean }) {
   return useSupabaseQuery<{
     id: string;
     paciente_id: string;
@@ -284,9 +278,10 @@ export function useAgendamentos(date?: string) {
     created_at: string;
     updated_at: string;
   }>('agendamentos', {
-    select: '*, pacientes(*), medicos(*)',
+    select: '*, pacientes(*), medicos(id, nome, crm, tipo_registro, crm_uf, rqe, especialidade, intervalo_consulta, ativo, clinica_id)',
     orderBy: { column: 'hora_inicio', ascending: true },
     filters: date ? [{ column: 'data', operator: 'eq', value: date }] : undefined,
+    enabled: options?.enabled,
   });
 }
 
@@ -296,7 +291,7 @@ export function useAgendamentos(date?: string) {
  */
 export function useAgendamentosPeriodo(inicio: string, fim: string, options?: { enabled?: boolean; keepPrevious?: boolean }) {
   return useSupabaseQuery<any>('agendamentos', {
-    select: '*, pacientes(*), medicos(*)',
+    select: '*, pacientes(*), medicos(id, nome, crm, tipo_registro, crm_uf, rqe, especialidade, intervalo_consulta, ativo, clinica_id)',
     orderBy: { column: 'hora_inicio', ascending: true },
     filters: [
       { column: 'data', operator: 'gte', value: inicio },
@@ -375,7 +370,7 @@ export function useSalas() {
   });
 }
 
-export function useFilaAtendimento() {
+export function useFilaAtendimento(options?: { enabled?: boolean }) {
   return useSupabaseQuery<{
     id: string;
     agendamento_id: string;
@@ -396,8 +391,9 @@ export function useFilaAtendimento() {
       medicos: { nome: string | null; crm: string | null } | null;
     } | null;
   }>('fila_atendimento', {
-    select: '*, agendamentos(*, pacientes(*), medicos(*))',
+    select: '*, agendamentos(*, pacientes(*), medicos(id, nome, crm, tipo_registro, crm_uf, rqe, especialidade, intervalo_consulta, ativo, clinica_id))',
     orderBy: { column: 'posicao', ascending: true },
     staleTime: 1000 * 15, // 15 seconds for real-time queue
+    enabled: options?.enabled,
   });
 }

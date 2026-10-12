@@ -30,6 +30,7 @@ import { DraftRecoveryNotice } from '@/components/DraftRecoveryNotice';
 import { withSafeRetry } from '@/lib/retry';
 import { ErrorState } from '@/components/ErrorState';
 import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
+import { getInitialTaskView } from './taskViewMode';
 
 // ─── Config ────────────────────────────────────────────────
 const statusConfig: Record<string, { label: string; icon: typeof Circle; colorClasses: string }> = {
@@ -68,14 +69,16 @@ const tarefaVencida = (tarefa: any, hoje: string) =>
 const tarefaDeHoje = (tarefa: any, hoje: string) => Boolean(tarefa.data_vencimento && tarefa.data_vencimento === hoje);
 
 // ─── Kanban Card (compact) ─────────────────────────────────
-function KanbanCard({ tarefa, hoje, onUpdate, onDelete, onDragStart, draggable = true, isDragging = false }: {
+function KanbanCard({ tarefa, hoje, onUpdate, onDelete, onDragStart, canOpenPatient, draggable = true, isDragging = false, updating = false }: {
   tarefa: any;
   hoje: string;
   onUpdate: (data: any) => void;
   onDelete: (id: string) => void;
   onDragStart: (e: React.DragEvent, id: string) => void;
+  canOpenPatient: boolean;
   draggable?: boolean;
   isDragging?: boolean;
+  updating?: boolean;
 }) {
   const pc = prioridadeConfig[tarefa.prioridade] || prioridadeConfig.media;
   const vencida = tarefaVencida(tarefa, hoje);
@@ -87,7 +90,7 @@ function KanbanCard({ tarefa, hoje, onUpdate, onDelete, onDragStart, draggable =
         draggable={draggable}
         onDragStart={draggable ? (e) => onDragStart(e, tarefa.id) : undefined}
         className={cn(
-          'group rounded-xl border bg-card p-3 transition-all hover:shadow-md hover:-translate-y-0.5',
+          'group rounded-2xl border border-[#E0EBF2] bg-white p-3 shadow-[0_8px_24px_-20px_rgba(12,31,84,0.35)] transition-all hover:border-[#B7D9FF] hover:shadow-md hover:-translate-y-0.5',
           draggable && 'cursor-grab active:cursor-grabbing',
           isDragging && 'opacity-50 scale-[0.98]',
           vencida && 'border-destructive/40',
@@ -105,13 +108,13 @@ function KanbanCard({ tarefa, hoje, onUpdate, onDelete, onDragStart, draggable =
               <p className="text-[11px] text-muted-foreground line-clamp-2 mt-1">{tarefa.descricao}</p>
             )}
             {tarefa.paciente?.nome && (
-              <RouterLink
+              canOpenPatient ? <RouterLink
                 to={`/pacientes?paciente=${encodeURIComponent(tarefa.paciente_id)}`}
                 onClick={(event) => event.stopPropagation()}
                 className="mt-1 inline-flex min-h-11 items-center gap-1 text-xs text-primary hover:underline"
               >
                 <User2 className="h-3 w-3" /> {tarefa.paciente.nome}
-              </RouterLink>
+              </RouterLink> : <span className="mt-1 inline-flex min-h-11 items-center gap-1 text-xs text-muted-foreground"><User2 className="h-3 w-3" /> {tarefa.paciente.nome}</span>
             )}
             <div className="flex items-center gap-2 flex-wrap mt-2">
               <div className="flex items-center gap-1">
@@ -140,16 +143,30 @@ function KanbanCard({ tarefa, hoje, onUpdate, onDelete, onDragStart, draggable =
             )}
           </div>
           <div className="flex shrink-0 flex-col">
+            {tarefa.status === 'pendente' && (
+              <Button size="icon" variant="ghost" className="h-11 w-11 p-0 text-info" disabled={updating} onClick={() => onUpdate({ id: tarefa.id, expectedUpdatedAt: tarefa.updated_at, status: 'em_andamento' })} aria-label={`Iniciar tarefa ${tarefa.titulo}`} title="Iniciar tarefa">
+                <Clock className="h-3.5 w-3.5" />
+              </Button>
+            )}
+            {tarefa.status === 'em_andamento' && (
+              <Button size="icon" variant="ghost" className="h-11 w-11 p-0 text-success" disabled={updating} onClick={() => onUpdate({ id: tarefa.id, expectedUpdatedAt: tarefa.updated_at, status: 'concluida' })} aria-label={`Concluir tarefa ${tarefa.titulo}`} title="Concluir tarefa">
+                <CheckCircle2 className="h-3.5 w-3.5" />
+              </Button>
+            )}
             {tarefa.status === 'cancelada' ? (
-              <Button size="icon" variant="ghost" className="h-11 w-11 p-0 text-primary" onClick={() => onUpdate({ id: tarefa.id, expectedUpdatedAt: tarefa.updated_at, status: 'pendente' })} aria-label={`Reabrir tarefa ${tarefa.titulo}`} title="Reabrir tarefa">
+              <Button size="icon" variant="ghost" className="h-11 w-11 p-0 text-primary" disabled={updating} onClick={() => onUpdate({ id: tarefa.id, expectedUpdatedAt: tarefa.updated_at, status: 'pendente' })} aria-label={`Reabrir tarefa ${tarefa.titulo}`} title="Reabrir tarefa">
+                <RotateCcw className="h-3.5 w-3.5" />
+              </Button>
+            ) : tarefa.status === 'concluida' ? (
+              <Button size="icon" variant="ghost" className="h-11 w-11 p-0 text-primary" disabled={updating} onClick={() => onUpdate({ id: tarefa.id, expectedUpdatedAt: tarefa.updated_at, status: 'pendente' })} aria-label={`Reabrir tarefa ${tarefa.titulo}`} title="Reabrir tarefa">
                 <RotateCcw className="h-3.5 w-3.5" />
               </Button>
             ) : tarefa.status !== 'concluida' ? (
-              <Button size="icon" variant="ghost" className="h-11 w-11 p-0 text-warning opacity-100 md:opacity-0 md:group-hover:opacity-100" onClick={() => onUpdate({ id: tarefa.id, expectedUpdatedAt: tarefa.updated_at, status: 'cancelada' })} aria-label={`Cancelar tarefa ${tarefa.titulo}`} title="Cancelar tarefa">
+            <Button size="icon" variant="ghost" className="h-11 w-11 p-0 text-warning opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100" disabled={updating} onClick={() => onUpdate({ id: tarefa.id, expectedUpdatedAt: tarefa.updated_at, status: 'cancelada' })} aria-label={`Cancelar tarefa ${tarefa.titulo}`} title="Cancelar tarefa">
                 <CircleX className="h-3.5 w-3.5" />
               </Button>
             ) : null}
-            <Button size="icon" variant="ghost" className="h-11 w-11 p-0 text-destructive opacity-100 md:opacity-0 md:group-hover:opacity-100" onClick={() => onDelete(tarefa.id)} aria-label={`Excluir tarefa ${tarefa.titulo}`}>
+            <Button size="icon" variant="ghost" className="h-11 w-11 p-0 text-destructive opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100" onClick={() => onDelete(tarefa.id)} aria-label={`Excluir tarefa ${tarefa.titulo}`}>
               <Trash2 className="h-3 w-3" />
             </Button>
           </div>
@@ -160,11 +177,12 @@ function KanbanCard({ tarefa, hoje, onUpdate, onDelete, onDragStart, draggable =
 }
 
 // ─── Task Card (list view) ─────────────────────────────────
-function TarefaCard({ tarefa, hoje, onUpdate, onDelete, updating }: {
+function TarefaCard({ tarefa, hoje, onUpdate, onDelete, canOpenPatient, updating }: {
   tarefa: any;
   hoje: string;
   onUpdate: (data: any) => void;
   onDelete: (id: string) => void;
+  canOpenPatient: boolean;
   updating: boolean;
 }) {
   const sc = statusConfig[tarefa.status] || statusConfig.pendente;
@@ -176,7 +194,7 @@ function TarefaCard({ tarefa, hoje, onUpdate, onDelete, updating }: {
   return (
     <motion.div variants={fadeUp} layout>
       <Card className={cn(
-        'group transition-all duration-200 hover:shadow-md hover:-translate-y-0.5',
+        'group rounded-2xl border-[#E0EBF2] bg-white shadow-[0_8px_24px_-20px_rgba(12,31,84,0.35)] transition-all duration-200 hover:border-[#B7D9FF] hover:shadow-md hover:-translate-y-0.5',
         vencida && 'border-destructive/40 shadow-destructive/5',
         venceHoje && 'border-warning/40 shadow-warning/5',
         tarefa.status === 'concluida' && 'opacity-60',
@@ -215,12 +233,12 @@ function TarefaCard({ tarefa, hoje, onUpdate, onDelete, updating }: {
                 </Badge>
                 {tarefa.categoria && <Badge variant="outline" className="text-[10px] h-5">{tarefa.categoria}</Badge>}
                 {tarefa.paciente?.nome && (
-                  <RouterLink
+                  canOpenPatient ? <RouterLink
                     to={`/pacientes?paciente=${encodeURIComponent(tarefa.paciente_id)}`}
                     className="inline-flex min-h-11 items-center gap-1 text-primary hover:underline"
                   >
                     <User2 className="h-3 w-3" /> {tarefa.paciente.nome}
-                  </RouterLink>
+                  </RouterLink> : <span className="inline-flex min-h-11 items-center gap-1 text-muted-foreground"><User2 className="h-3 w-3" /> {tarefa.paciente.nome}</span>
                 )}
                 {tarefa.responsavel?.nome && (
                   <span className="flex items-center gap-1"><User2 className="h-3 w-3" />{tarefa.responsavel.nome}</span>
@@ -234,7 +252,7 @@ function TarefaCard({ tarefa, hoje, onUpdate, onDelete, updating }: {
                 )}
               </div>
             </div>
-            <div className="flex shrink-0 items-center gap-1 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100">
+            <div className="flex shrink-0 items-center gap-1 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
               {tarefa.status === 'pendente' && (
                 <Button size="sm" variant="ghost" className="h-11 text-xs gap-1" disabled={updating} onClick={() => onUpdate({ id: tarefa.id, expectedUpdatedAt: tarefa.updated_at, status: 'em_andamento' })}>
                   <Clock className="h-3 w-3" /> Iniciar
@@ -243,6 +261,11 @@ function TarefaCard({ tarefa, hoje, onUpdate, onDelete, updating }: {
               {tarefa.status === 'em_andamento' && (
                 <Button size="sm" variant="ghost" className="h-11 text-xs gap-1 text-success" disabled={updating} onClick={() => onUpdate({ id: tarefa.id, expectedUpdatedAt: tarefa.updated_at, status: 'concluida' })}>
                   <CheckCircle2 className="h-3 w-3" /> Concluir
+                </Button>
+              )}
+              {tarefa.status === 'concluida' && (
+                <Button size="sm" variant="ghost" className="h-11 text-xs gap-1 text-primary" disabled={updating} onClick={() => onUpdate({ id: tarefa.id, expectedUpdatedAt: tarefa.updated_at, status: 'pendente' })} aria-label={`Reabrir tarefa ${tarefa.titulo}`}>
+                  <RotateCcw className="h-3 w-3" /> Reabrir
                 </Button>
               )}
               {tarefa.status === 'cancelada' ? (
@@ -269,11 +292,16 @@ function TarefaCard({ tarefa, hoje, onUpdate, onDelete, updating }: {
 export default function Tarefas() {
   const { user, profile, isAdmin, hasRole } = useSupabaseAuth();
   const podeVincularPaciente = isAdmin() || hasRole('recepcao') || hasRole('enfermagem') || hasRole('medico');
+  const podeAbrirPaciente = isAdmin() || hasRole('recepcao') || hasRole('enfermagem');
   const [agora, setAgora] = useState(() => new Date());
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [showNew, setShowNew] = useState(false);
-  const [viewMode, setViewMode] = useState<'list' | 'kanban'>('kanban');
+  const [viewMode, setViewMode] = useState<'list' | 'kanban'>(() => getInitialTaskView(
+    typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+      ? window.matchMedia('(any-pointer: coarse)').matches
+      : false,
+  ));
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
   const [deleteTaskId, setDeleteTaskId] = useState<string | null>(null);
   const queryClient = useQueryClient();
@@ -462,61 +490,66 @@ export default function Tarefas() {
   }, []);
 
   return (
-    <div className="space-y-6 pb-8">
+    <div className="space-y-5 pb-8">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold font-display tracking-tight flex items-center gap-2">
-            <ListTodo className="h-6 w-6 text-primary" /> Tarefas Internas
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">Gerencie e acompanhe tarefas da equipe</p>
-        </div>
-        <div className="grid w-full grid-cols-[auto_1fr] items-center gap-2 sm:flex sm:w-auto">
-          <div className="flex rounded-lg border overflow-hidden">
+      <section className="relative isolate overflow-hidden rounded-2xl border border-[#D8E8F4] bg-[linear-gradient(118deg,#FFFFFF_12%,#F3FAFF_67%,#E7F8FC_100%)] p-5 shadow-[0_12px_32px_-26px_rgba(12,31,84,0.35)] sm:p-7">
+        <div aria-hidden="true" className="pointer-events-none absolute -right-8 -top-16 h-52 w-52 rounded-full border-[26px] border-[#50E3FB]/15" />
+        <div className="relative flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+          <div className="max-w-xl">
+            <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.16em] text-[#005ECC]">Rotina da clínica</p>
+            <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight text-[#0C1F54] sm:text-3xl">
+              <ListTodo className="h-6 w-6 text-[#0F7BFD]" /> Tarefas da equipe
+            </h1>
+            <p className="mt-1.5 text-sm text-[#0C1F54]/65">Organize prioridades, acompanhe prazos e distribua o trabalho.</p>
+          </div>
+          <div className="grid w-full grid-cols-1 items-center gap-2 sm:w-auto sm:grid-cols-[auto_auto]">
+          <div className="flex rounded-xl border border-[#D7E5F0] bg-white/90 p-1 shadow-sm">
             <Button
               variant={viewMode === 'kanban' ? 'default' : 'ghost'}
-              size="sm" className="h-11 gap-1.5 rounded-none border-0 px-3 text-xs"
+              size="sm" className={cn('h-10 gap-1.5 rounded-lg border-0 px-3 text-xs', viewMode === 'kanban' && 'bg-[#0C1F54] text-white hover:bg-[#142D68]')}
               onClick={() => setViewMode('kanban')}
             >
               <LayoutGrid className="h-3.5 w-3.5" /> Kanban
             </Button>
             <Button
               variant={viewMode === 'list' ? 'default' : 'ghost'}
-              size="sm" className="h-11 gap-1.5 rounded-none border-0 border-l px-3 text-xs"
+              size="sm" className={cn('h-10 gap-1.5 rounded-lg border-0 px-3 text-xs', viewMode === 'list' && 'bg-[#0C1F54] text-white hover:bg-[#142D68]')}
               onClick={() => setViewMode('list')}
             >
               <LayoutList className="h-3.5 w-3.5" /> Lista
             </Button>
           </div>
-          <Button onClick={() => setShowNew(true)} className="h-11 gap-2 shadow-lg shadow-primary/20">
+          <Button onClick={() => setShowNew(true)} className="h-11 w-full gap-2 bg-[#005ECC] text-white shadow-md shadow-[#0F7BFD]/15 hover:bg-[#004FAE] sm:w-auto">
             <Plus className="h-4 w-4" /> Nova Tarefa
           </Button>
+          </div>
         </div>
-      </div>
+      </section>
 
       {/* Stats */}
       <motion.div variants={stagger} initial="hidden" animate="visible" className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         {[
-          { label: 'Total', value: stats.total, icon: ListTodo, color: 'text-primary', bg: 'bg-primary/10', filter: 'all' },
-          { label: 'Pendentes', value: stats.pendentes, icon: Circle, color: 'text-warning', bg: 'bg-warning/10', filter: 'pendente' },
-          { label: 'Em Andamento', value: stats.emAndamento, icon: Clock, color: 'text-info', bg: 'bg-info/10', filter: 'em_andamento' },
-          { label: 'Concluídas', value: stats.concluidas, icon: CheckCircle2, color: 'text-success', bg: 'bg-success/10', filter: 'concluida' },
-          { label: 'Vencidas', value: stats.vencidas, icon: AlertTriangle, color: 'text-destructive', bg: 'bg-destructive/10', filter: 'overdue' },
+          { label: 'Total', value: stats.total, icon: ListTodo, color: '#005ECC', bg: '#EAF4FF', filter: 'all' },
+          { label: 'Pendentes', value: stats.pendentes, icon: Circle, color: '#0F7BFD', bg: '#EAF4FF', filter: 'pendente' },
+          { label: 'Em Andamento', value: stats.emAndamento, icon: Clock, color: '#007F9E', bg: '#E1F9FD', filter: 'em_andamento' },
+          { label: 'Concluídas', value: stats.concluidas, icon: CheckCircle2, color: '#0C1F54', bg: '#E0EBF2', filter: 'concluida' },
+          { label: 'Vencidas', value: stats.vencidas, icon: AlertTriangle, color: '#005ECC', bg: '#DFF4FA', filter: 'overdue' },
         ].map((s, i) => (
           <motion.div key={s.label} variants={fadeUp} custom={i}>
             <button
               onClick={() => setFilterStatus(s.filter)}
               className={cn(
-                'min-h-11 w-full rounded-xl border bg-card px-3 py-3 flex items-center gap-2 transition-all hover:shadow-md hover:-translate-y-0.5 text-left sm:gap-3 sm:px-4',
-                filterStatus === s.filter && s.filter !== 'all' && 'ring-2 ring-primary/30 shadow-md',
+                'relative min-h-[76px] w-full overflow-hidden rounded-2xl border border-[#E0EBF2] bg-white px-3 py-3 shadow-[0_8px_24px_-20px_rgba(12,31,84,0.35)] flex items-center gap-2 transition-all hover:border-[#B7D9FF] hover:shadow-md hover:-translate-y-0.5 text-left sm:gap-3 sm:px-4',
+                filterStatus === s.filter && 'ring-2 ring-[#0F7BFD]/30 shadow-md',
               )}
             >
-              <div className={cn('h-10 w-10 rounded-xl flex items-center justify-center shrink-0', s.bg)}>
-                <s.icon className={cn('h-5 w-5', s.color)} />
+              <span className="absolute inset-x-0 top-0 h-1 bg-[#0F7BFD]/70" />
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl" style={{ backgroundColor: s.bg, color: s.color }}>
+                <s.icon className="h-5 w-5" />
               </div>
               <div>
-                <p className={cn('text-xl font-bold tabular-nums', s.color)}>{s.value}</p>
-                <p className="text-[11px] text-muted-foreground font-medium">{s.label}</p>
+                <p className="text-xl font-bold tabular-nums text-[#0C1F54]">{s.value}</p>
+                <p className="text-[11px] font-medium text-[#0C1F54]/60">{s.label}</p>
               </div>
             </button>
           </motion.div>
@@ -531,10 +564,10 @@ export default function Tarefas() {
       )}
 
       {/* Filters */}
-      <div className="flex gap-3 flex-wrap items-center">
+      <div className="flex flex-col gap-3 rounded-2xl border border-[#E0EBF2] bg-white p-3 shadow-[0_8px_24px_-20px_rgba(12,31,84,0.3)] sm:flex-row sm:flex-wrap sm:items-center sm:p-4">
         <div className="relative w-full flex-1 sm:max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Buscar tarefas..." value={search} onChange={(e) => setSearch(e.target.value)} className="h-11 pl-10" />
+          <Input placeholder="Buscar tarefas..." value={search} onChange={(e) => setSearch(e.target.value)} className="h-11 border-[#D7E5F0] pl-10 focus-visible:ring-[#0F7BFD]" />
         </div>
         {viewMode === 'list' && (
           <Select value={filterStatus} onValueChange={setFilterStatus}>
@@ -599,14 +632,14 @@ export default function Tarefas() {
             return (
               <div
                 key={col.key}
-                className={cn('rounded-2xl border-2 border-dashed p-3 min-h-[400px] transition-colors', col.borderColor, col.bg)}
+                className="min-h-[340px] rounded-2xl border border-[#DCE9F2] bg-[#F6FAFD] p-3 transition-colors sm:min-h-[400px]"
                 onDragOver={handleDragOver}
                 onDrop={(e) => handleDrop(e, col.key)}
               >
                 <div className="flex items-center gap-2 mb-3 px-1">
-                  <ColIcon className={cn('h-4 w-4', col.color)} />
-                  <h3 className={cn('text-sm font-bold', col.color)}>{col.label}</h3>
-                  <Badge variant="outline" className="ml-auto text-[10px] h-5">{colTasks.length}</Badge>
+                  <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#EAF4FF] text-[#005ECC]"><ColIcon className="h-4 w-4" /></span>
+                  <h3 className="text-sm font-bold text-[#0C1F54]">{col.label}</h3>
+                  <Badge variant="outline" className="ml-auto h-6 border-[#D6E7F3] bg-white text-[10px] text-[#005ECC]">{colTasks.length}</Badge>
                 </div>
                 <div className="space-y-2">
                   <AnimatePresence mode="popLayout">
@@ -620,7 +653,9 @@ export default function Tarefas() {
                           setDeleteTaskId(id);
                         }}
                         onDragStart={handleDragStart}
+                        canOpenPatient={podeAbrirPaciente}
                         draggable
+                        updating={updateTarefa.isPending}
                         isDragging={draggedTaskId === t.id}
                       />
                     ))}
@@ -645,6 +680,7 @@ export default function Tarefas() {
                 key={t.id}
                 tarefa={t}
                 hoje={hoje}
+                canOpenPatient={podeAbrirPaciente}
                 updating={updateTarefa.isPending}
                 onUpdate={(data) => updateTarefa.mutate(data)}
                 onDelete={(id) => {
@@ -683,17 +719,18 @@ export default function Tarefas() {
               />
             )}
             <div className="space-y-2">
-              <Label>Título *</Label>
-              <Input value={form.titulo} onChange={(e) => setForm(p => ({ ...p, titulo: e.target.value }))} placeholder="O que precisa ser feito?" autoFocus />
+              <Label htmlFor="task-title">Título *</Label>
+              <Input id="task-title" value={form.titulo} onChange={(e) => setForm(p => ({ ...p, titulo: e.target.value }))} placeholder="O que precisa ser feito?" autoFocus />
             </div>
             <div className="space-y-2">
-              <Label>Descrição</Label>
-              <Textarea value={form.descricao} onChange={(e) => setForm(p => ({ ...p, descricao: e.target.value }))} placeholder="Detalhes opcionais..." rows={3} />
+              <Label htmlFor="task-description">Descrição</Label>
+              <Textarea id="task-description" value={form.descricao} onChange={(e) => setForm(p => ({ ...p, descricao: e.target.value }))} placeholder="Detalhes opcionais..." rows={3} />
             </div>
             {podeVincularPaciente && (
               <div className="space-y-2">
-                <Label>Paciente relacionado <span className="font-normal text-muted-foreground">(opcional)</span></Label>
+                <Label htmlFor="task-patient">Paciente relacionado <span className="font-normal text-muted-foreground">(opcional)</span></Label>
                 <PacienteCombobox
+                  id="task-patient"
                   value={form.paciente_id || null}
                   onChange={(id) => setForm(p => ({ ...p, paciente_id: id }))}
                   placeholder="Buscar paciente por nome, CPF ou telefone..."
@@ -711,11 +748,11 @@ export default function Tarefas() {
                 )}
               </div>
             )}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label>Prioridade</Label>
+                <Label htmlFor="task-priority">Prioridade</Label>
                 <Select value={form.prioridade} onValueChange={(v) => setForm(p => ({ ...p, prioridade: v }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger id="task-priority"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {Object.entries(prioridadeConfig).map(([k, v]) => (
                       <SelectItem key={k} value={k}>
@@ -729,15 +766,15 @@ export default function Tarefas() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>Vencimento</Label>
-                <Input type="date" value={form.data_vencimento} onChange={(e) => setForm(p => ({ ...p, data_vencimento: e.target.value }))} />
+                <Label htmlFor="task-due-date">Vencimento</Label>
+                <Input id="task-due-date" type="date" value={form.data_vencimento} onChange={(e) => setForm(p => ({ ...p, data_vencimento: e.target.value }))} />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label>Responsável</Label>
+                <Label htmlFor="task-assignee">Responsável</Label>
                 <Select value={form.responsavel_id} onValueChange={(v) => setForm(p => ({ ...p, responsavel_id: v }))}>
-                  <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                  <SelectTrigger id="task-assignee"><SelectValue placeholder="Selecione..." /></SelectTrigger>
                   <SelectContent>
                     {profiles?.filter((p: any) => p.ativo !== false).map((p: any) => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
                     {!profiles?.some((p: any) => p.ativo !== false) && (
@@ -747,9 +784,9 @@ export default function Tarefas() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>Categoria</Label>
+                <Label htmlFor="task-category">Categoria</Label>
                 <Select value={form.categoria} onValueChange={(v) => setForm(p => ({ ...p, categoria: v }))}>
-                  <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                  <SelectTrigger id="task-category"><SelectValue placeholder="Selecione..." /></SelectTrigger>
                   <SelectContent>
                     {['Administrativo', 'Clínico', 'Financeiro', 'TI', 'Manutenção', 'RH', 'Outro'].map(c => (
                       <SelectItem key={c} value={c}>{c}</SelectItem>

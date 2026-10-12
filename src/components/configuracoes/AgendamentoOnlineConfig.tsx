@@ -9,9 +9,10 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
+import { ErrorState } from '@/components/ErrorState';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { useMedicos } from '@/hooks/useSupabaseData';
-import { lerConfigsClinica, salvarConfigClinica } from '@/lib/configClinica';
+import { lerConfigsClinicaComVersoes, salvarConfigClinica } from '@/lib/configClinica';
 
 interface ConfigAgendamentoOnline {
   ativo: boolean;
@@ -27,29 +28,38 @@ export function AgendamentoOnlineConfig() {
   const { user, profile } = useSupabaseAuth();
   const clinicaId = profile?.clinica_id;
   const queryClient = useQueryClient();
-  const { data: medicos = [], isLoading: carregandoMedicos } = useMedicos();
+  const medicosQuery = useMedicos();
+  const medicos = medicosQuery.data ?? [];
+  const carregandoMedicos = medicosQuery.isLoading;
   const [cfg, setCfg] = useState<ConfigAgendamentoOnline>(PADRAO);
   const [diasAntecedenciaInput, setDiasAntecedenciaInput] = useState(String(PADRAO.dias_antecedencia));
   const [salvando, setSalvando] = useState(false);
 
-  const { data: salvo, isLoading } = useQuery({
+  const { data: salvo, isLoading, isError, error, isSuccess, refetch } = useQuery({
     queryKey: ['config-agendamento-online', clinicaId],
     enabled: !!clinicaId,
-    queryFn: async () => (await lerConfigsClinica(clinicaId!, ['agendamento_online'])).agendamento_online ?? null,
+    queryFn: async () => {
+      const resultado = await lerConfigsClinicaComVersoes(clinicaId!, ['agendamento_online']);
+      return {
+        valor: resultado.configs.agendamento_online ?? null,
+        updatedAt: resultado.updatedAtByKey.agendamento_online ?? null,
+      };
+    },
   });
   useEffect(() => {
-    const proxima = { ...PADRAO, ...salvo };
+    if (!isSuccess) return;
+    const proxima = { ...PADRAO, ...(salvo?.valor ?? {}) };
     setCfg(proxima);
     setDiasAntecedenciaInput(String(proxima.dias_antecedencia));
-  }, [salvo]);
+  }, [salvo, isSuccess]);
 
   const link = clinicaId ? `${window.location.origin}/agendar/${clinicaId}` : '';
 
   const salvar = async () => {
-    if (!clinicaId || !user) return;
+    if (!clinicaId || !user || !isSuccess || medicosQuery.isError || carregandoMedicos) return;
     setSalvando(true);
     try {
-      await salvarConfigClinica({ clinicaId, userId: user.id, chave: 'agendamento_online', valor: cfg });
+      await salvarConfigClinica({ clinicaId, userId: user.id, chave: 'agendamento_online', valor: cfg, expectedUpdatedAt: salvo.updatedAt });
       queryClient.invalidateQueries({ queryKey: ['config-agendamento-online'] });
       toast.success(cfg.ativo ? 'Agendamento online ativado' : 'Configuração salva');
     } catch (e: any) {
@@ -64,6 +74,25 @@ export function AgendamentoOnlineConfig() {
   const todosMedicos = medicos as any[];
   const medicosInativosSalvos = cfg.medicos.filter((id) => !todosMedicos.some((m) => m.id === id && m.ativo));
   const idsSemCadastro = medicosInativosSalvos.filter((id) => !todosMedicos.some((m) => m.id === id));
+
+  if (!clinicaId) {
+    return <ErrorState title="Clínica não identificada" description="Atualize seu perfil antes de configurar o agendamento online." />;
+  }
+
+  if (isError) {
+    return (
+      <ErrorState
+        title="Não foi possível carregar o agendamento online"
+        description="A configuração atual não foi carregada. Recarregue os dados antes de fazer qualquer alteração."
+        error={error}
+        onRetry={() => void refetch()}
+      />
+    );
+  }
+
+  if (medicosQuery.isError) {
+    return <ErrorState title={'N\u00e3o foi poss\u00edvel carregar os profissionais'} description={'A lista atual de profissionais n\u00e3o foi confirmada. Recarregue antes de salvar o agendamento online.'} error={medicosQuery.error} onRetry={() => void medicosQuery.refetch()} />;
+  }
 
   const copiarLink = async () => {
     try {
@@ -155,7 +184,7 @@ export function AgendamentoOnlineConfig() {
               )}
             </div>
 
-            <Button onClick={salvar} disabled={salvando} className="gap-2">
+            <Button onClick={salvar} disabled={salvando || isLoading || carregandoMedicos || medicosQuery.isError || !isSuccess} className="gap-2">
               {salvando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}Salvar
             </Button>
           </>

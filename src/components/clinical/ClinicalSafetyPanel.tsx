@@ -5,6 +5,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
+import { autorizarLeituraHistoricoPaciente } from '@/lib/prontuarioAudit';
 
 interface ClinicalSafetyPanelProps {
   pacienteId: string;
@@ -48,6 +49,7 @@ export function ClinicalSafetyPanel({ pacienteId, alergias = [] }: ClinicalSafet
   const { data, isLoading, isError } = useQuery({
     queryKey: ['clinical-safety-panel', user?.id ?? null, profile?.clinica_id ?? null, pacienteId],
     queryFn: async () => {
+      await autorizarLeituraHistoricoPaciente(pacienteId);
       const [conditionsResult, recordResult, examsResult, triageResult] = await Promise.all([
         supabase.from('paciente_comorbidades').select('id, codigo_cid, descricao').eq('paciente_id', pacienteId).eq('ativo', true).order('data_diagnostico', { ascending: false }),
         supabase.from('prontuarios').select('medicamentos_em_uso, sinais_vitais, data').eq('paciente_id', pacienteId).order('data', { ascending: false }).limit(1).maybeSingle(),

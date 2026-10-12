@@ -342,8 +342,8 @@ export default function Templates() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold text-foreground">Templates</h1>
+      <div className="rounded-2xl border border-[#d8e8fb] bg-gradient-to-r from-[#f4f8ff] via-white to-[#effaff] p-4 sm:p-5">
+        <h1 className="text-2xl font-bold tracking-tight text-[#102a56]">Modelos clínicos</h1>
         <p className="text-muted-foreground">Modelos reutilizáveis para prescrições e atestados</p>
       </div>
 
@@ -388,7 +388,7 @@ export default function Templates() {
           ) : (
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               {filteredPrescriptionTemplates.map((template) => (
-                <Card key={template.id}>
+                <Card key={template.id} className="border-[#dce9f8] shadow-sm transition-shadow hover:shadow-md">
                   <CardHeader>
                     <div className="flex items-start justify-between">
                       <div>
@@ -456,7 +456,7 @@ export default function Templates() {
           ) : (
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               {filteredCertificateTemplates.map((template) => (
-                <Card key={template.id}>
+                <Card key={template.id} className="border-[#dce9f8] shadow-sm transition-shadow hover:shadow-md">
                   <CardHeader>
                     <div className="flex items-start justify-between">
                       <div>
@@ -505,20 +505,21 @@ export default function Templates() {
           <div className="space-y-4 py-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Nome do Template *</Label>
+                <Label htmlFor="prescription-template-name">Nome do Template *</Label>
                 <Input
+                  id="prescription-template-name"
                   value={prescriptionForm.nome || ''}
                   onChange={(e) => setPrescriptionForm({ ...prescriptionForm, nome: e.target.value })}
                   placeholder="Ex: Antibiótico padrão"
                 />
               </div>
               <div className="space-y-2">
-                <Label>Tipo *</Label>
+                <Label htmlFor="prescription-template-type">Tipo *</Label>
                 <Select
                   value={prescriptionForm.tipo || ''}
                   onValueChange={(v) => setPrescriptionForm({ ...prescriptionForm, tipo: v })}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger id="prescription-template-type">
                     <SelectValue placeholder="Selecione o tipo" />
                   </SelectTrigger>
                   <SelectContent>
@@ -530,8 +531,9 @@ export default function Templates() {
               </div>
             </div>
             <div className="space-y-2">
-              <Label>Medicamentos e posologia *</Label>
+              <Label htmlFor="prescription-template-medications">Medicamentos e posologia *</Label>
               <Textarea
+                id="prescription-template-medications"
                 value={medicamentosTexto}
                 onChange={(e) => setMedicamentosTexto(e.target.value)}
                 placeholder={`Um medicamento por linha. Ex.:\nAmoxicilina 500mg — 1 cápsula de 8/8h por 7 dias\nIbuprofeno 400mg — 1 comprimido de 12/12h por 5 dias`}
@@ -541,8 +543,9 @@ export default function Templates() {
               <p className="text-xs text-muted-foreground">Ao usar o modelo numa prescrição, estas linhas entram já numeradas.</p>
             </div>
             <div className="space-y-2">
-              <Label>Observações Gerais</Label>
+              <Label htmlFor="prescription-template-observations">Observações Gerais</Label>
               <Textarea
+                id="prescription-template-observations"
                 value={prescriptionForm.observacoes_gerais || ''}
                 onChange={(e) => setPrescriptionForm({ ...prescriptionForm, observacoes_gerais: e.target.value })}
                 placeholder="Instruções gerais para o paciente..."
@@ -569,15 +572,16 @@ export default function Templates() {
           <div className="space-y-4 py-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Nome do Template *</Label>
+                <Label htmlFor="certificate-template-name">Nome do Template *</Label>
                 <Input
+                  id="certificate-template-name"
                   value={certificateForm.nome || ''}
                   onChange={(e) => setCertificateForm({ ...certificateForm, nome: e.target.value })}
                   placeholder="Ex: Atestado padrão"
                 />
               </div>
               <div className="space-y-2">
-                <Label>Tipo *</Label>
+                <Label htmlFor="certificate-template-type">Tipo *</Label>
                 <Select
                   value={certificateForm.tipo || ''}
                   onValueChange={(v) => setCertificateForm(current => ({
@@ -586,7 +590,7 @@ export default function Templates() {
                     ...(v !== 'afastamento' ? { cid: null, dias_afastamento: null } : {}),
                   }))}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger id="certificate-template-type">
                     <SelectValue placeholder="Selecione o tipo" />
                   </SelectTrigger>
                   <SelectContent>
@@ -600,8 +604,9 @@ export default function Templates() {
             {certificateForm.tipo === 'afastamento' && (
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Dias de Afastamento</Label>
+                  <Label htmlFor="certificate-template-days">Dias de Afastamento</Label>
                   <Input
+                    id="certificate-template-days"
                     type="number"
                     min={1}
                     step={1}
@@ -613,8 +618,9 @@ export default function Templates() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>CID</Label>
+                  <Label htmlFor="certificate-template-cid">CID</Label>
                   <Input
+                    id="certificate-template-cid"
                     value={certificateForm.cid || ''}
                     onChange={(e) => setCertificateForm({ ...certificateForm, cid: e.target.value })}
                     placeholder="Ex: J11"
@@ -623,8 +629,9 @@ export default function Templates() {
               </div>
             )}
             <div className="space-y-2">
-              <Label>Conteúdo do Atestado *</Label>
+              <Label htmlFor="certificate-template-content">Conteúdo do Atestado *</Label>
               <Textarea
+                id="certificate-template-content"
                 value={certificateForm.conteudo || ''}
                 onChange={(e) => setCertificateForm({ ...certificateForm, conteudo: e.target.value })}
                 placeholder="Texto do atestado... Use {{paciente}}, {{data}}, {{medico}} como variáveis"

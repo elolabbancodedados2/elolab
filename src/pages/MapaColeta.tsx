@@ -27,6 +27,7 @@ import { ErrorState } from '@/components/ErrorState';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { ageFromDateOnly } from '@/lib/dateOnly';
 import { pacienteCorresponde } from '@/lib/buscaPaciente';
+import { dadosTransicaoColeta } from '@/lib/mapaColetaWorkflow';
 
 const TUBOS = [
   { color: 'bg-purple-500', label: 'EDTA (Roxo)', nome: 'Roxo', volume: '4mL' },
@@ -221,8 +222,7 @@ export default function MapaColeta() {
     processingIdsRef.current.add(id);
     setProcessingIds(current => new Set(current).add(id));
     try {
-      const updates: Record<string, unknown> = { status };
-      if (status === 'coletado') updates.data_coleta = new Date().toISOString();
+      const updates = dadosTransicaoColeta(status, profile.id);
       const { data, error } = await (supabase as any).from('coletas_laboratorio')
         .update(updates)
         .eq('id', id)
@@ -262,7 +262,7 @@ export default function MapaColeta() {
         const item = itens.find(i => i.id === id);
         if (item?.status !== 'pendente' && item?.status !== 'recoleta') continue;
         const { data, error } = await supabase.from('coletas_laboratorio')
-          .update({ status: 'coletado', data_coleta: new Date().toISOString() })
+          .update(dadosTransicaoColeta('coletado', profile.id) as any)
           .eq('id', id).eq('clinica_id', profile.clinica_id).in('status', ['pendente', 'recoleta'])
           .select('id').maybeSingle();
         if (error || !data) failedIds.push(id);
@@ -281,7 +281,12 @@ export default function MapaColeta() {
     }
   };
 
-  const handleRecoleta = (id: string) => transitionStatus(id, ['coletado'], 'recoleta', 'Recoleta solicitada');
+  const handleRecoleta = (id: string) => {
+    setEventoTipo('recoleta');
+    setEventoLocal('');
+    setEventoMotivo('');
+    setDetailId(id);
+  };
 
   const handleCancelar = async (id: string) => {
     const cancelled = await transitionStatus(id, ['pendente', 'recoleta'], 'cancelado', 'Coleta cancelada');
@@ -410,11 +415,11 @@ export default function MapaColeta() {
   const detailItem = itens.find(i => i.id === detailId);
 
   const StatusBadge = ({ status }: { status: string }) => {
-    if (status === 'coletado') return <Badge className="bg-success/10 text-success border-success/20">Coletado</Badge>;
-    if (status === 'em_analise') return <Badge variant="outline">Em análise</Badge>;
+    if (status === 'coletado') return <Badge className="border border-[#ccebdd] bg-[#effaf4] text-[#16734d]">Coletado</Badge>;
+    if (status === 'em_analise') return <Badge className="border border-[#c8eaf1] bg-[#edfbff] text-[#087e98]">Em análise</Badge>;
     if (status === 'recoleta') return <Badge variant="destructive" className="gap-1"><RotateCcw className="h-3 w-3" />Recoleta</Badge>;
     if (status === 'rejeitada') return <Badge variant="destructive">Rejeitada</Badge>;
-    return <Badge variant="secondary">Pendente</Badge>;
+    return <Badge className="border border-[#f1dfb8] bg-[#fff8e8] text-[#8a5b00]">Pendente</Badge>;
   };
 
   const ColetaRow = ({ item, idx, showActions = true }: { item: any; idx: number; showActions?: boolean }) => {
@@ -538,10 +543,10 @@ export default function MapaColeta() {
   return (
     <div className="space-y-6 pb-8">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 rounded-2xl border border-[#d8e8fb] bg-gradient-to-r from-[#f4f8ff] via-white to-[#effaff] p-4 sm:p-5">
         <div>
           <h1 className="text-2xl font-bold font-display tracking-tight flex items-center gap-2">
-            <FlaskConical className="h-6 w-6 text-primary" /> Mapa de Coleta
+            <span className="rounded-xl bg-[#e5f1ff] p-2 text-[#1766b3] ring-1 ring-[#d5e6fa]"><FlaskConical className="h-5 w-5" /></span> Mapa de Coleta
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
             Central de comando — {pendentes.length} aguardando · {recoletas.length} recoleta · {coletados.length} coletados
@@ -624,7 +629,7 @@ export default function MapaColeta() {
       <div className="flex flex-wrap gap-3 items-center">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input className="pl-9 w-64" placeholder="Nome, CPF, telefone, código ou exame..." value={search} onChange={e => setSearch(e.target.value)} />
+          <Input aria-label="Buscar por paciente, CPF, telefone, código ou exame" className="pl-9 w-64" placeholder="Nome, CPF, telefone, código ou exame..." value={search} onChange={e => setSearch(e.target.value)} />
         </div>
         <Select value={tuboFiltro} onValueChange={setTuboFiltro}>
           <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
@@ -786,10 +791,10 @@ export default function MapaColeta() {
               <section className="space-y-3 rounded-xl border bg-muted/10 p-3">
                 <p className="text-sm font-semibold">Registrar movimentação</p>
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="space-y-1"><Label>Evento</Label><Select value={eventoTipo} onValueChange={setEventoTipo}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>
+                  <div className="space-y-1"><Label htmlFor="lab-amostra-evento">Evento</Label><Select value={eventoTipo} onValueChange={setEventoTipo}><SelectTrigger id="lab-amostra-evento"><SelectValue /></SelectTrigger><SelectContent>
                     <SelectItem value="recebida">Recebimento no laboratório</SelectItem><SelectItem value="transporte">Transporte</SelectItem><SelectItem value="armazenamento">Armazenamento</SelectItem><SelectItem value="observacao">Observação</SelectItem>
                     {(detailItem.status === 'coletado' || detailItem.status === 'em_analise') && <SelectItem value="rejeicao">Rejeitar amostra</SelectItem>}
-                    {detailItem.status === 'rejeitada' && <SelectItem value="recoleta">Abrir recoleta</SelectItem>}
+                    {['coletado', 'em_analise', 'rejeitada'].includes(detailItem.status) && <SelectItem value="recoleta">Solicitar recoleta</SelectItem>}
                   </SelectContent></Select></div>
                   {['transporte', 'armazenamento'].includes(eventoTipo) && <div className="space-y-1"><Label htmlFor="lab-amostra-local">Local</Label><Input id="lab-amostra-local" value={eventoLocal} onChange={(event) => setEventoLocal(event.target.value)} maxLength={120} placeholder="Ex.: setor de bioquímica" /></div>}
                   {['rejeicao', 'recoleta', 'observacao'].includes(eventoTipo) && <div className="space-y-1 sm:col-span-2"><Label htmlFor="lab-amostra-motivo">{eventoTipo === 'observacao' ? 'Observação' : 'Motivo'}</Label><Input id="lab-amostra-motivo" value={eventoMotivo} onChange={(event) => setEventoMotivo(event.target.value)} maxLength={500} placeholder="Descreva a ocorrência" /></div>}

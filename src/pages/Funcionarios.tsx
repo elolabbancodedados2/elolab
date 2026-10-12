@@ -226,11 +226,8 @@ export default function Funcionarios() {
   const funcionariosQuery = useQuery({
     queryKey: ['funcionarios-with-roles', user?.id ?? null, profile?.clinica_id ?? null],
     queryFn: async () => {
-      const { data: funcs, error: funcsError } = await supabase
-        .from('funcionarios')
-        .select('*')
-        .eq('clinica_id', profile?.clinica_id ?? '')
-        .order('nome');
+      const { data: funcs, error: funcsError } = await (supabase as any)
+        .rpc('listar_funcionarios_equipe_admin');
       if (funcsError) throw funcsError;
 
       const funcionariosWithRoles: FuncionarioWithRoles[] = (funcs || []).map((func: any) => {
@@ -267,7 +264,7 @@ export default function Funcionarios() {
           carga_horaria: data.carga_horaria ? parseInt(data.carga_horaria) : null,
           turno: data.turno || 'integral',
         } as any)
-        .select()
+        .select('id')
         .single();
       if (funcError) throw funcError;
 
@@ -538,7 +535,7 @@ export default function Funcionarios() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 rounded-2xl border border-[#dce9f6] bg-gradient-to-r from-[#f3f8ff] via-white to-[#f3fbfa] p-5 sm:p-6">
         <div>
           <h1 className="text-3xl font-bold text-foreground">Funcionários</h1>
           <p className="text-muted-foreground">Gerencie a equipe e suas permissões de acesso</p>
@@ -546,12 +543,12 @@ export default function Funcionarios() {
         <div className="flex gap-2">
           <ConvidarFuncionarioDialog
             trigger={
-              <Button variant="outline" className="gap-2">
+              <Button variant="outline" className="gap-2 border-[#d3e3f2] bg-white text-[#315675] hover:bg-[#f3f8ff]">
                 <Mail className="h-4 w-4" />Convidar por e-mail
               </Button>
             }
           />
-          <Button variant="outline" onClick={handleOpenCustomize} className="gap-2">
+          <Button variant="outline" onClick={handleOpenCustomize} className="gap-2 border-[#d3e3f2] bg-white text-[#315675] hover:bg-[#f3f8ff]">
             <Settings2 className="h-4 w-4" />Personalizar perfis
           </Button>
           <Button onClick={() => handleOpenDialog()} className="gap-2">
@@ -703,11 +700,11 @@ export default function Funcionarios() {
           <div className="space-y-6 py-4">
             {/* Tipo de Profissional */}
             <div className="space-y-2">
-              <Label className="text-sm font-semibold flex items-center gap-2">
+              <Label htmlFor="func-tipo" className="text-sm font-semibold flex items-center gap-2">
                 <Briefcase className="h-4 w-4" />Tipo de Profissional *
               </Label>
               <Select value={formData.tipo_funcionario} onValueChange={handleTipoChange}>
-                <SelectTrigger><SelectValue placeholder="Selecione o tipo" /></SelectTrigger>
+                <SelectTrigger id="func-tipo"><SelectValue placeholder="Selecione o tipo" /></SelectTrigger>
                 <SelectContent className="max-h-64">
                   {TIPO_FUNCIONARIO_CONFIG.map(t => (
                     <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
@@ -720,27 +717,27 @@ export default function Funcionarios() {
 
             {/* Dados Pessoais */}
             <div className="space-y-4">
-              <Label className="text-sm font-semibold">Dados Pessoais</Label>
+              <h3 className="text-sm font-semibold">Dados Pessoais</h3>
               <div className="space-y-2">
-                <Label className="text-xs">Nome completo *</Label>
-                <Input value={formData.nome} onChange={(e) => setFormData({ ...formData, nome: e.target.value })} placeholder="Nome Sobrenome" />
+                <Label htmlFor="func-nome" className="text-xs">Nome completo *</Label>
+                <Input id="func-nome" value={formData.nome} onChange={(e) => setFormData({ ...formData, nome: e.target.value })} placeholder="Nome Sobrenome" />
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label className="text-xs">CPF</Label>
-                  <Input value={formData.cpf} onChange={(e) => setFormData({ ...formData, cpf: e.target.value })} placeholder="000.000.000-00" />
+                  <Label htmlFor="func-cpf" className="text-xs">CPF</Label>
+                  <Input id="func-cpf" value={formData.cpf} onChange={(e) => setFormData({ ...formData, cpf: e.target.value })} placeholder="000.000.000-00" />
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-xs">Data de Nascimento</Label>
-                  <Input type="date" value={formData.data_nascimento} onChange={(e) => setFormData({ ...formData, data_nascimento: e.target.value })} />
+                  <Label htmlFor="func-data-nascimento" className="text-xs">Data de Nascimento</Label>
+                  <Input id="func-data-nascimento" type="date" value={formData.data_nascimento} onChange={(e) => setFormData({ ...formData, data_nascimento: e.target.value })} />
                 </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label className="text-xs">E-mail de contato / convite</Label>
-                  <Input type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} placeholder="email@clinica.com" />
+                  <Label htmlFor="func-email" className="text-xs">E-mail de contato / convite</Label>
+                  <Input id="func-email" type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} placeholder="email@clinica.com" />
                   {editingFunc?.user_id && (
                     <p className="text-xs text-muted-foreground">
                       Alterar este contato não troca o e-mail usado para entrar na conta vinculada.
@@ -748,8 +745,8 @@ export default function Funcionarios() {
                   )}
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-xs">Telefone</Label>
-                  <Input value={formData.telefone} onChange={(e) => setFormData({ ...formData, telefone: e.target.value })} placeholder="(11) 99999-9999" />
+                  <Label htmlFor="func-telefone" className="text-xs">Telefone</Label>
+                  <Input id="func-telefone" value={formData.telefone} onChange={(e) => setFormData({ ...formData, telefone: e.target.value })} placeholder="(11) 99999-9999" />
                 </div>
               </div>
             </div>
@@ -764,19 +761,19 @@ export default function Funcionarios() {
                   </Label>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <div className="space-y-2">
-                      <Label className="text-xs">Nº do Registro *</Label>
-                      <Input value={formData.registro_profissional}
+                      <Label htmlFor="func-registro" className="text-xs">Nº do Registro *</Label>
+                      <Input id="func-registro" value={formData.registro_profissional}
                         onChange={(e) => setFormData({ ...formData, registro_profissional: e.target.value })}
                         placeholder={`Ex: 12345`} />
                     </div>
                     <div className="space-y-2">
-                      <Label className="text-xs">Conselho</Label>
-                      <Input value={formData.tipo_registro} readOnly className="bg-muted" />
+                      <Label htmlFor="func-conselho" className="text-xs">Conselho</Label>
+                      <Input id="func-conselho" value={formData.tipo_registro} readOnly className="bg-muted" />
                     </div>
                     <div className="space-y-2">
-                      <Label className="text-xs">UF</Label>
+                      <Label htmlFor="func-uf" className="text-xs">UF</Label>
                       <Select value={formData.uf_registro} onValueChange={v => setFormData({ ...formData, uf_registro: v })}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectTrigger id="func-uf"><SelectValue /></SelectTrigger>
                         <SelectContent className="max-h-48">
                           {UF_OPTIONS.map(uf => <SelectItem key={uf} value={uf}>{uf}</SelectItem>)}
                         </SelectContent>
@@ -784,8 +781,8 @@ export default function Funcionarios() {
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <Label className="text-xs">Especialidade</Label>
-                    <Input value={formData.especialidade}
+                    <Label htmlFor="func-especialidade" className="text-xs">Especialidade</Label>
+                    <Input id="func-especialidade" value={formData.especialidade}
                       onChange={(e) => setFormData({ ...formData, especialidade: e.target.value })}
                       placeholder="Ex: Análises Clínicas, Cardiologia" />
                   </div>
@@ -797,35 +794,35 @@ export default function Funcionarios() {
 
             {/* Dados Funcionais */}
             <div className="space-y-4">
-              <Label className="text-sm font-semibold">Dados Funcionais</Label>
+              <h3 className="text-sm font-semibold">Dados Funcionais</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label className="text-xs">Cargo</Label>
-                  <Input value={formData.cargo} onChange={(e) => setFormData({ ...formData, cargo: e.target.value })} placeholder="Ex: Recepcionista" />
+                  <Label htmlFor="func-cargo" className="text-xs">Cargo</Label>
+                  <Input id="func-cargo" value={formData.cargo} onChange={(e) => setFormData({ ...formData, cargo: e.target.value })} placeholder="Ex: Recepcionista" />
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-xs">Departamento</Label>
-                  <Input value={formData.departamento} onChange={(e) => setFormData({ ...formData, departamento: e.target.value })} placeholder="Ex: Atendimento" />
+                  <Label htmlFor="func-departamento" className="text-xs">Departamento</Label>
+                  <Input id="func-departamento" value={formData.departamento} onChange={(e) => setFormData({ ...formData, departamento: e.target.value })} placeholder="Ex: Atendimento" />
                 </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label className="text-xs">Turno</Label>
+                  <Label htmlFor="func-turno" className="text-xs">Turno</Label>
                   <Select value={formData.turno} onValueChange={v => setFormData({ ...formData, turno: v })}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectTrigger id="func-turno"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       {TURNO_OPTIONS.map(t => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-xs">Carga Horária (h/semana)</Label>
-                  <Input type="number" value={formData.carga_horaria} onChange={(e) => setFormData({ ...formData, carga_horaria: e.target.value })} placeholder="40" />
+                  <Label htmlFor="func-carga-horaria" className="text-xs">Carga Horária (h/semana)</Label>
+                  <Input id="func-carga-horaria" type="number" value={formData.carga_horaria} onChange={(e) => setFormData({ ...formData, carga_horaria: e.target.value })} placeholder="40" />
                 </div>
               </div>
               <div className="flex items-center justify-between">
-                <Label>Funcionário ativo</Label>
-                <Switch checked={formData.ativo} onCheckedChange={(checked) => setFormData({ ...formData, ativo: checked })} />
+                <Label htmlFor="func-ativo">Funcionário ativo</Label>
+                <Switch id="func-ativo" checked={formData.ativo} onCheckedChange={(checked) => setFormData({ ...formData, ativo: checked })} />
               </div>
             </div>
 
@@ -834,7 +831,7 @@ export default function Funcionarios() {
             {/* Permissões de Acesso */}
             <div className="space-y-4">
               <div>
-                <Label className="text-sm font-semibold">Permissões de Acesso</Label>
+                <h3 className="text-sm font-semibold">Permissões de Acesso</h3>
                 <p className="text-xs text-muted-foreground mt-1">
                   Selecione o que este funcionário pode acessar no sistema.
                   {!editingFunc?.user_id && editingFunc && (
@@ -847,18 +844,18 @@ export default function Funcionarios() {
               <div className="grid gap-3">
                 {ROLE_CONFIG.map(({ role, label, description, color }) => (
                   <div key={role}
-                    className={`flex items-start gap-3 p-3 rounded-lg border transition-colors cursor-pointer ${
+                    className={`flex items-start gap-3 p-3 rounded-lg border transition-colors ${
                       formData.selectedRoles.includes(role) ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/50'
                     }`}
-                    onClick={() => toggleRole(role)}>
-                    <Checkbox checked={formData.selectedRoles.includes(role)} onCheckedChange={() => toggleRole(role)} className="mt-0.5" />
-                    <div className="flex-1">
+                    >
+                    <Checkbox id={`func-role-${role}`} checked={formData.selectedRoles.includes(role)} onCheckedChange={() => toggleRole(role)} className="mt-0.5" />
+                    <label htmlFor={`func-role-${role}`} className="flex-1 cursor-pointer">
                       <div className="flex items-center gap-2">
                         <span className="font-medium text-sm">{label}</span>
                         <Badge className={color} variant="secondary">{role}</Badge>
                       </div>
                       <p className="text-xs text-muted-foreground mt-0.5">{description}</p>
-                    </div>
+                    </label>
                   </div>
                 ))}
               </div>
@@ -921,8 +918,9 @@ export default function Funcionarios() {
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label className="text-xs font-medium">Nome de exibição</Label>
+                      <Label htmlFor={`role-label-${def.role}`} className="text-xs font-medium">Nome de exibição</Label>
                       <Input
+                        id={`role-label-${def.role}`}
                         value={custom.label}
                         onChange={(e) => setEditingCustomRoles(prev => ({
                           ...prev,
@@ -932,8 +930,9 @@ export default function Funcionarios() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label className="text-xs font-medium">Descrição</Label>
+                      <Label htmlFor={`role-description-${def.role}`} className="text-xs font-medium">Descrição</Label>
                       <Input
+                        id={`role-description-${def.role}`}
                         value={custom.description}
                         onChange={(e) => setEditingCustomRoles(prev => ({
                           ...prev,

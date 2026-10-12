@@ -65,17 +65,17 @@ interface EncaminhamentoData {
 }
 
 const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
-  pendente: { label: 'Pendente', className: 'bg-warning/10 text-warning border-warning/20' },
-  em_andamento: { label: 'Em Andamento', className: 'bg-info/10 text-info border-info/20' },
-  concluido: { label: 'Concluído', className: 'bg-success/10 text-success border-success/20' },
-  cancelado: { label: 'Cancelado', className: 'bg-muted text-muted-foreground' },
+  pendente: { label: 'Pendente', className: 'border-[#f1dfb8] bg-[#fff8e8] text-[#8a5b00]' },
+  em_andamento: { label: 'Em Andamento', className: 'border-[#cce2fa] bg-[#edf6ff] text-[#175c9f]' },
+  concluido: { label: 'Concluído', className: 'border-[#ccebdd] bg-[#effaf4] text-[#16734d]' },
+  cancelado: { label: 'Cancelado', className: 'border-slate-200 bg-slate-50 text-slate-600' },
 };
 
 const URGENCIA_CONFIG: Record<string, { label: string; className: string }> = {
-  eletivo: { label: 'Eletivo', className: 'bg-muted text-muted-foreground' },
-  normal: { label: 'Normal', className: 'bg-success/10 text-success' },
-  urgente: { label: 'Urgente', className: 'bg-warning/10 text-warning' },
-  emergencia: { label: 'Emergência', className: 'bg-destructive/10 text-destructive' },
+  eletivo: { label: 'Eletivo', className: 'bg-slate-50 text-slate-600' },
+  normal: { label: 'Normal', className: 'bg-[#effaf4] text-[#16734d]' },
+  urgente: { label: 'Urgente', className: 'bg-[#fff8e8] text-[#8a5b00]' },
+  emergencia: { label: 'Emergência', className: 'bg-[#fff0f0] text-[#a83232]' },
 };
 
 export default function Encaminhamentos() {
@@ -111,6 +111,10 @@ export default function Encaminhamentos() {
     enabled: !!user && !!profile?.clinica_id,
   });
   const encaminhamentos = encaminhamentosQuery.data || [];
+  const podeAtualizarEncaminhamento = (enc: EncaminhamentoData) => Boolean(
+    profile?.roles?.includes('admin')
+    || (medicoId && (enc.medico_origem_id === medicoId || enc.medico_destino_id === medicoId))
+  );
 
   const statusHistoryQuery = useQuery({
     queryKey: ['encaminhamento-status-history', profile?.clinica_id ?? null, selectedEnc?.id ?? null],
@@ -188,6 +192,9 @@ export default function Encaminhamentos() {
     if (isUpdating) return;
     if (!profile?.clinica_id) return toast.error('Clínica não identificada.');
     const current = encaminhamentos.find(enc => enc.id === id);
+    if (current && !podeAtualizarEncaminhamento(current)) {
+      return toast.error('Somente os médicos envolvidos ou a administração podem atualizar este encaminhamento.');
+    }
     const expectedStatuses = newStatus === 'em_andamento' ? ['pendente'] : ['pendente', 'em_andamento'];
     if (!current || !expectedStatuses.includes(current.status || '')) {
       return toast.error('O encaminhamento mudou de estado. Atualize a lista e tente novamente.');
@@ -256,10 +263,10 @@ export default function Encaminhamentos() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 rounded-2xl border border-[#d8e8fb] bg-gradient-to-r from-[#f4f8ff] via-white to-[#effaff] p-4 sm:p-5">
         <div>
-          <h1 className="text-3xl font-bold text-foreground flex items-center gap-2">
-            <ArrowRightLeft className="h-8 w-8 text-primary" />
+          <h1 className="text-2xl font-bold tracking-tight text-[#102a56] flex items-center gap-2">
+            <span className="rounded-xl bg-[#e5f1ff] p-2 text-[#1766b3] ring-1 ring-[#d5e6fa]"><ArrowRightLeft className="h-5 w-5" /></span>
             Encaminhamentos
           </h1>
           <p className="text-muted-foreground">Referências e contra-referências médicas</p>
@@ -306,6 +313,7 @@ export default function Encaminhamentos() {
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
+                aria-label="Buscar paciente por nome, CPF ou telefone"
                 placeholder="Buscar por nome, CPF ou telefone..."
                 value={patientSearchTerm}
                 onChange={(e) => setPatientSearchTerm(e.target.value)}
@@ -414,6 +422,7 @@ export default function Encaminhamentos() {
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
+                  aria-label="Buscar encaminhamentos por paciente, CPF, especialidade ou motivo"
                   placeholder="Paciente, CPF, especialidade ou motivo..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
@@ -421,7 +430,7 @@ export default function Encaminhamentos() {
                 />
               </div>
               <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="h-11 w-full sm:w-[150px]">
+                <SelectTrigger aria-label="Filtrar encaminhamentos por status" className="h-11 w-full sm:w-[190px]">
                   <Filter className="h-4 w-4 mr-2" />
                   <SelectValue placeholder="Status" />
                 </SelectTrigger>
@@ -503,12 +512,12 @@ export default function Encaminhamentos() {
                             <Button variant="ghost" size="icon" onClick={() => handleView(enc)} aria-label="Ver" disabled={isUpdating}>
                               <Eye className="h-4 w-4" />
                             </Button>
-                            {enc.status === 'pendente' && (
+                            {enc.status === 'pendente' && podeAtualizarEncaminhamento(enc) && (
                               <Button variant="outline" size="sm" className="text-xs" onClick={() => handleUpdateEncStatus(enc.id, 'em_andamento')} disabled={isUpdating}>
                                 Iniciar
                               </Button>
                             )}
-                            {enc.status === 'em_andamento' && (
+                            {enc.status === 'em_andamento' && podeAtualizarEncaminhamento(enc) && (
                               <Button variant="outline" size="sm" className="text-xs" onClick={() => { handleView(enc); }} disabled={isUpdating}>
                                 <Edit className="h-3 w-3 mr-1" />Contra-ref.
                               </Button>
@@ -629,12 +638,14 @@ export default function Encaminhamentos() {
                   </p>
                   <p className="bg-success/5 border border-success/20 rounded-lg p-3">{selectedEnc.contra_referencia}</p>
                 </div>
-              ) : selectedEnc.status !== 'cancelado' && selectedEnc.status !== 'concluido' ? (
+              ) : selectedEnc.status !== 'cancelado' && selectedEnc.status !== 'concluido' && podeAtualizarEncaminhamento(selectedEnc) ? (
                 <div className="space-y-2">
                   <p className="text-muted-foreground text-xs font-medium flex items-center gap-1">
                     <Send className="h-3 w-3" /> Registrar Contra-referência
                   </p>
+                  <label htmlFor="contra-referencia-text" className="sr-only">Texto da contra-referência</label>
                   <Textarea
+                    id="contra-referencia-text"
                     placeholder="Informe o retorno do especialista, condutas sugeridas, diagnóstico final..."
                     value={contraRefText}
                     onChange={e => setContraRefText(e.target.value)}
@@ -656,7 +667,7 @@ export default function Encaminhamentos() {
           )}
 
           {/* Status actions in footer */}
-          {selectedEnc && selectedEnc.status !== 'concluido' && selectedEnc.status !== 'cancelado' && (
+          {selectedEnc && selectedEnc.status !== 'concluido' && selectedEnc.status !== 'cancelado' && podeAtualizarEncaminhamento(selectedEnc) && (
             <DialogFooter className="gap-2">
               {selectedEnc.status === 'pendente' && (
                 <Button variant="outline" size="sm" onClick={() => handleUpdateEncStatus(selectedEnc.id, 'em_andamento')} disabled={isUpdating}>

@@ -107,8 +107,23 @@ export interface FiltrosBuscaPacientes {
   nascimentoAte?: string;
 }
 
-export async function buscarPacientes(termo: string, limite = 20, filtros: FiltrosBuscaPacientes = {}): Promise<ResultadoBuscaPacientes> {
+export async function buscarPacientes(termo: string, limite = 20, filtros: FiltrosBuscaPacientes = {}, somenteFinanceiro = false): Promise<ResultadoBuscaPacientes> {
   const busca = termo.trim();
+  if (somenteFinanceiro) {
+    const { data, error } = await (supabase as any).rpc('buscar_pacientes_resumo_financeiro', {
+      p_ids: null,
+      p_termo: busca || null,
+      p_limite: Math.max(1, Math.min(limite + 1, 5000)),
+      p_sexo: filtros.sexo || null,
+      p_convenio_id: filtros.convenio && filtros.convenio !== 'particular' ? filtros.convenio : null,
+      p_somente_particular: filtros.convenio === 'particular',
+      p_nascimento_apos: filtros.nascimentoApos || null,
+      p_nascimento_ate: filtros.nascimentoAte || null,
+    });
+    if (error) throw error;
+    const pacientes = (data ?? []) as PacienteResumo[];
+    return { pacientes: pacientes.slice(0, limite), incompleta: pacientes.length > limite };
+  }
   const criarConsulta = () => {
     let query = (supabase as any).from('pacientes').select(CAMPOS);
     if (filtros.sexo) query = query.eq('sexo', filtros.sexo);
@@ -201,6 +216,8 @@ export async function buscarPacientes(termo: string, limite = 20, filtros: Filtr
 export function useBuscaPacientes(termo: string, opcoes?: { limite?: number; enabled?: boolean; filtros?: FiltrosBuscaPacientes }) {
   const { user, profile } = useSupabaseAuth();
   const limite = opcoes?.limite ?? 20;
+  const somenteFinanceiro = !!profile?.roles?.includes('financeiro') &&
+    !profile.roles.some((role) => ['admin', 'recepcao', 'enfermagem', 'medico'].includes(role));
   // Começa já aparado: com o termo cru, `isDebouncing` ficava verdadeiro na
   // primeira renderização e disparava uma busca extra só pelo espaço.
   const [debounced, setDebounced] = useState(() => termo.trim());
@@ -226,7 +243,7 @@ export function useBuscaPacientes(termo: string, opcoes?: { limite?: number; ena
       return previousData;
     },
     staleTime: 30_000,
-    queryFn: () => buscarPacientes(debounced, limite, opcoes?.filtros),
+    queryFn: () => buscarPacientes(debounced, limite, opcoes?.filtros, somenteFinanceiro),
   });
 
   // A consulta atual leva 250 ms para começar. Enquanto isso, React Query pode
@@ -243,6 +260,17 @@ export function usePacienteResumo(id: string | null | undefined) {
     enabled: !!id && !!user && !!profile?.clinica_id,
     staleTime: 60_000,
     queryFn: async (): Promise<PacienteResumo | null> => {
+      const somenteFinanceiro = !!profile?.roles?.includes('financeiro') &&
+        !profile.roles.some((role) => ['admin', 'recepcao', 'enfermagem', 'medico'].includes(role));
+      if (somenteFinanceiro) {
+        const { data, error } = await (supabase as any).rpc('buscar_pacientes_resumo_financeiro', {
+          p_ids: [id], p_termo: null, p_limite: 1,
+          p_sexo: null, p_convenio_id: null, p_somente_particular: false,
+          p_nascimento_apos: null, p_nascimento_ate: null,
+        });
+        if (error) throw error;
+        return (data?.[0] as PacienteResumo | undefined) ?? null;
+      }
       const { data, error } = await (supabase as any).from('pacientes').select(CAMPOS).eq('id', id).maybeSingle();
       if (error) throw error;
       return data;

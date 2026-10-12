@@ -1,7 +1,7 @@
 import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
 import { useState, useMemo, useRef } from 'react';
 import {
-  Plus, Search, Check, DollarSign, AlertCircle, Calendar, FileText,
+  Plus, Search, Check, DollarSign, AlertCircle, Calendar, FileText, CreditCard,
   Repeat, Building2, Loader2,
 } from 'lucide-react';
 import { format } from 'date-fns';
@@ -331,11 +331,11 @@ export default function ContasPagar() {
   if (contasQuery.isError) return <ErrorState title="Não foi possível carregar contas a pagar" error={contasQuery.error} onRetry={() => void contasQuery.refetch()} />;
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+    <div className="space-y-6 pb-8">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 rounded-2xl border border-[#d7e9f7] bg-gradient-to-r from-[#f1fbfd] via-white to-[#eff4ff] p-4 shadow-sm sm:p-5">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Contas a Pagar</h1>
-          <p className="text-muted-foreground">Despesas, fornecedores e controle de vencimentos</p>
+          <h1 className="flex items-center gap-2 text-2xl font-bold font-display tracking-tight text-foreground"><span className="rounded-xl bg-[#fff0ed] p-2 text-[#b65a4d] ring-1 ring-[#f2d6d0]"><CreditCard className="h-5 w-5" /></span>Contas a Pagar</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Despesas, fornecedores e controle de vencimentos</p>
         </div>
         <Button onClick={handleNew} className="gap-2"><Plus className="h-4 w-4" />Nova Conta</Button>
       </div>
@@ -363,19 +363,19 @@ export default function ContasPagar() {
       {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
-          { label: 'Total', value: stats.total, icon: DollarSign, color: 'text-primary', bg: 'bg-primary/10', border: 'border-primary/20' },
-          { label: 'Pendente', value: stats.pendente, icon: Calendar, color: 'text-warning', bg: 'bg-warning/10', border: 'border-warning/20' },
-          { label: 'Atrasado', value: stats.atrasado, icon: AlertCircle, color: 'text-destructive', bg: 'bg-destructive/10', border: 'border-destructive/20' },
-          { label: 'Pago', value: stats.pago, icon: Check, color: 'text-success', bg: 'bg-success/10', border: 'border-success/20' },
+          { label: 'Total', value: stats.total, icon: DollarSign, color: 'text-[#1766a8]', bg: 'bg-[#eaf4ff]', border: 'border-[#d1e5f8]' },
+          { label: 'Pendente', value: stats.pendente, icon: Calendar, color: 'text-[#916813]', bg: 'bg-[#fff8e8]', border: 'border-[#f3e6bf]' },
+          { label: 'Atrasado', value: stats.atrasado, icon: AlertCircle, color: 'text-[#b65a4d]', bg: 'bg-[#fff0ed]', border: 'border-[#f2d6d0]' },
+          { label: 'Pago', value: stats.pago, icon: Check, color: 'text-[#147765]', bg: 'bg-[#e5f7f2]', border: 'border-[#c5eadd]' },
         ].map((s) => (
-          <Card key={s.label} className={cn('border', s.border)}>
+          <Card key={s.label} className={cn('h-full border bg-gradient-to-br from-white to-[#f8fbfd] shadow-sm transition-shadow hover:shadow-md', s.border)}>
             <CardContent className="py-4 px-5">
               <div className="flex items-start justify-between">
                 <div>
                   <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">{s.label}</p>
                   <p className={cn('text-xl font-black mt-0.5 tabular-nums', s.color)}>{formatCurrency(s.value)}</p>
                 </div>
-                <div className={cn('h-10 w-10 rounded-xl flex items-center justify-center', s.bg)}>
+                <div className={cn('h-10 w-10 rounded-xl flex items-center justify-center ring-1 ring-inset ring-black/[0.03]', s.bg)}>
                   <s.icon className={cn('h-5 w-5', s.color)} />
                 </div>
               </div>

@@ -726,13 +726,13 @@ export default function Documentacao() {
   const currentSection = filteredSections.find((section) => section.id === activeSection) || filteredSections[0];
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold text-foreground flex items-center gap-3">
-          <BookOpen className="h-8 w-8 text-primary" />
+    <div className="space-y-6 pb-8">
+      <div className="rounded-2xl border border-[#DCEAF5] bg-gradient-to-r from-[#F1F7FF] via-white to-[#EBFBFD] p-5 sm:p-6">
+        <h1 className="flex items-center gap-3 text-2xl font-bold tracking-tight text-[#0C1F54] sm:text-3xl">
+          <BookOpen className="h-7 w-7 text-[#005ECC]" />
           Documentação do Sistema
         </h1>
-        <p className="text-muted-foreground mt-1">
+        <p className="mt-1 text-sm text-[#0C1F54]/65">
           Orientações dos principais módulos e fluxos do EloLab
         </p>
       </div>

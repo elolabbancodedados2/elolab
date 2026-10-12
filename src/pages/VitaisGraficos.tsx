@@ -6,25 +6,10 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { PacienteCombobox } from '@/components/patients/PacienteCombobox';
 import { ErrorState } from '@/components/ErrorState';
+import { autorizarLeituraHistoricoPaciente } from '@/lib/prontuarioAudit';
+import { consolidarHistoricoVitais, historicoVitaisLimitado, type ProntuarioVitalsRow, type TriagemVitalsRow } from '@/lib/vitalsHistory';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { TrendingUp, Heart, Droplets, Thermometer, Weight, AlertCircle, X } from 'lucide-react';
-
-interface VitalSignData {
-  id: string;
-  paciente_id: string;
-  pressao_sistolica: number | null;
-  pressao_diastolica: number | null;
-  frequencia_cardiaca: number | null;
-  frequencia_respiratoria: number | null;
-  temperatura: number | null;
-  peso: number | null;
-  altura: number | null;
-  imc: number | null;
-  oxigenacao: number | null;
-  glicemia: number | null;
-  dor_escala: number | null;
-  created_at: string;
-}
 
 const MAX_REGISTROS_GRAFICO = 1000;
 const FUSO_CLINICA = 'America/Sao_Paulo';
@@ -42,56 +27,60 @@ export default function VitaisGraficos() {
   const [selectedPacienteId, setSelectedPacienteId] = useState<string>('');
 
   const vitaisQuery = useQuery({
-    queryKey: ['vitais_triagens', profile?.clinica_id ?? null, profile?.id, selectedPacienteId],
+    queryKey: [
+      'vitais_historico',
+      profile?.clinica_id ?? null,
+      profile?.id,
+      profile?.roles?.slice().sort().join(',') ?? profile?.role ?? null,
+      selectedPacienteId,
+    ],
     queryFn: async () => {
       if (!selectedPacienteId) return { registros: [], historicoLimitado: false };
       if (!profile?.clinica_id) throw new Error('Clínica não identificada. Atualize a sessão e tente novamente.');
-      // O fluxo atual registra os sinais vitais na triagem; por isso esta
-      // consulta usa a fonte em que os atendimentos gravam as medições.
-      const { data, error, count } = await supabase
+      const { data: triagensData, error: triagensError, count: triagensCount } = await supabase
         .from('triagens')
         .select(
-          'id, paciente_id, pressao_arterial, frequencia_cardiaca, frequencia_respiratoria, temperatura, peso, altura, imc, saturacao, glicemia, dor_escala, data_hora, created_at',
+          'id, paciente_id, agendamento_id, pressao_arterial, frequencia_cardiaca, frequencia_respiratoria, temperatura, peso, altura, imc, saturacao, glicemia, dor_escala, data_hora, created_at',
           { count: 'exact' },
         )
         .eq('paciente_id', selectedPacienteId)
         .eq('clinica_id', profile.clinica_id)
-        .order('data_hora', { ascending: false, nullsFirst: false })
         .order('created_at', { ascending: false })
         .limit(MAX_REGISTROS_GRAFICO);
 
-      if (error) throw error;
+      if (triagensError) throw triagensError;
 
-      const linhas = data || [];
-      const registrosRecentes = linhas.slice(0, MAX_REGISTROS_GRAFICO).reverse();
-      const registros = registrosRecentes.map((t): VitalSignData => {
-        // A triagem grava a pressão como texto ("120/80"); os gráficos
-        // precisam dos dois números separados.
-        const [sistolica, diastolica] = (t.pressao_arterial || '')
-          .split('/')
-          .map((n) => {
-            const v = Number.parseInt(n.trim(), 10);
-            return Number.isFinite(v) ? v : null;
-          });
+      // Prontuários assinados exigem autorização auditada antes da leitura.
+      // Enfermagem continua restrita às triagens permitidas pela política RLS.
+      const podeLerProntuarios = profile.roles?.some((role) => role === 'admin' || role === 'medico')
+        || profile.role === 'admin' || profile.role === 'medico';
+      let prontuarios: ProntuarioVitalsRow[] = [];
+      let prontuariosCount = 0;
+      if (podeLerProntuarios) {
+        await autorizarLeituraHistoricoPaciente(selectedPacienteId);
+        const { data, error, count } = await supabase
+          .from('prontuarios')
+          .select('id, paciente_id, agendamento_id, data, created_at, sinais_vitais', { count: 'exact' })
+          .eq('paciente_id', selectedPacienteId)
+          .eq('clinica_id', profile.clinica_id)
+          .order('created_at', { ascending: false })
+          .limit(MAX_REGISTROS_GRAFICO);
+        if (error) throw error;
+        prontuarios = (data || []) as ProntuarioVitalsRow[];
+        prontuariosCount = count ?? prontuarios.length;
+      }
 
-        return {
-          id: t.id,
-          paciente_id: t.paciente_id,
-          pressao_sistolica: sistolica ?? null,
-          pressao_diastolica: diastolica ?? null,
-          frequencia_cardiaca: t.frequencia_cardiaca,
-          frequencia_respiratoria: t.frequencia_respiratoria,
-          temperatura: t.temperatura,
-          peso: t.peso,
-          altura: t.altura,
-          imc: t.imc,
-          oxigenacao: t.saturacao,
-          glicemia: t.glicemia,
-          dor_escala: t.dor_escala,
-          created_at: t.data_hora || t.created_at,
-        };
-      });
-      return { registros, historicoLimitado: (count ?? linhas.length) > MAX_REGISTROS_GRAFICO };
+      const linhasTriagem = (triagensData || []) as TriagemVitalsRow[];
+      const registrosCompletos = consolidarHistoricoVitais(linhasTriagem, prontuarios);
+      return {
+        registros: registrosCompletos.slice(-MAX_REGISTROS_GRAFICO),
+        historicoLimitado: historicoVitaisLimitado(
+          triagensCount ?? linhasTriagem.length,
+          prontuariosCount,
+          registrosCompletos.length,
+          MAX_REGISTROS_GRAFICO,
+        ),
+      };
     },
     enabled: !!profile?.clinica_id && !!selectedPacienteId,
   });
@@ -136,13 +125,18 @@ export default function VitaisGraficos() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold text-foreground">Gráficos de Vitais</h1>
-        <p className="text-muted-foreground">Histórico de sinais vitais por paciente</p>
+      <div className="flex items-start gap-3">
+        <div className="rounded-2xl bg-[#eaf4ff] p-3 text-[#1769c2] shadow-sm ring-1 ring-[#d8e8fb]">
+          <Heart className="h-6 w-6" />
+        </div>
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-[#102a56] md:text-3xl">Sinais vitais</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Acompanhe a evolução clínica com medições da triagem e do prontuário.</p>
+        </div>
       </div>
 
       {/* Seletor de paciente */}
-      <Card>
+      <Card className="border-[#dce9f7] bg-gradient-to-r from-white to-[#f3f8ff] shadow-sm">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Droplets className="h-5 w-5" />
@@ -159,9 +153,12 @@ export default function VitaisGraficos() {
 
       {!selectedPacienteId ? (
         <Card>
-          <CardContent className="pt-12 pb-12 text-center">
-            <Droplets className="h-12 w-12 mx-auto mb-3 opacity-30" />
-            <p className="text-muted-foreground">Selecione um paciente para visualizar seus vitais</p>
+          <CardContent className="py-12 text-center">
+            <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#edf6ff] text-[#2476ce]">
+              <Droplets className="h-7 w-7" />
+            </div>
+            <p className="font-medium text-[#18345f]">Selecione um paciente para visualizar o histórico</p>
+            <p className="mt-1 text-sm text-muted-foreground">As medições ficam organizadas por data e atendimento.</p>
           </CardContent>
         </Card>
       ) : vitaisQuery.isError ? (
@@ -170,9 +167,12 @@ export default function VitaisGraficos() {
         <div role="status" className="py-12 text-center text-sm text-muted-foreground">Carregando o histórico clínico…</div>
       ) : vitais.length === 0 ? (
         <Card>
-          <CardContent className="pt-12 pb-12 text-center">
-            <AlertCircle className="h-12 w-12 mx-auto mb-3 opacity-30" />
-            <p className="text-muted-foreground">Nenhum registro de vitais para este paciente</p>
+          <CardContent className="py-12 text-center">
+            <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#edf6ff] text-[#2476ce]">
+              <AlertCircle className="h-7 w-7" />
+            </div>
+            <p className="font-medium text-[#18345f]">Nenhuma medição encontrada</p>
+            <p className="mt-1 text-sm text-muted-foreground">Quando houver sinais vitais na triagem ou no prontuário, eles aparecerão aqui.</p>
           </CardContent>
         </Card>
       ) : (
@@ -180,7 +180,7 @@ export default function VitaisGraficos() {
           {historicoLimitado && (
             <Card className="border-warning/40 bg-warning/5">
               <CardContent className="py-3 text-sm text-muted-foreground">
-                Exibindo os {MAX_REGISTROS_GRAFICO} registros mais recentes. Há medições anteriores fora deste gráfico.
+                O histórico excede o limite de visualização de {MAX_REGISTROS_GRAFICO} medições; parte das medições mais antigas pode não aparecer.
               </CardContent>
             </Card>
           )}
@@ -248,13 +248,15 @@ export default function VitaisGraficos() {
                 unit: '/10',
               },
             ].map((item) => (
-              <Card key={item.label}>
+              <Card key={item.label} className="border-[#e0eaf5] shadow-sm transition-shadow hover:shadow-md">
                 <CardContent className="pt-4 pb-3">
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-[10px] text-muted-foreground font-semibold uppercase">
                       {item.label}
                     </p>
-                    <item.icon className="h-4 w-4 text-muted-foreground" />
+                    <span className="rounded-lg bg-[#edf6ff] p-1.5 text-[#2878cb]">
+                      <item.icon className="h-4 w-4" />
+                    </span>
                   </div>
                   <p className="text-xl font-bold tabular-nums">
                     {item.stats.media === null ? 'Sem registro' : `${item.stats.media.toFixed(1)} ${item.unit}`}
@@ -293,7 +295,7 @@ export default function VitaisGraficos() {
                     <Line
                       type="monotone"
                       dataKey="pressaoSistolica"
-                      stroke="#ef4444"
+                      stroke="#0c1f54"
                       name="Sistólica (mmHg)"
                       strokeWidth={2}
                       isAnimationActive={true}
@@ -301,7 +303,7 @@ export default function VitaisGraficos() {
                     <Line
                       type="monotone"
                       dataKey="pressaoDiastolica"
-                      stroke="#f97316"
+                      stroke="#0f7bfd"
                       name="Diastólica (mmHg)"
                       strokeWidth={2}
                     />
@@ -334,7 +336,7 @@ export default function VitaisGraficos() {
                     <Line
                       type="monotone"
                       dataKey="frequenciaCardiaca"
-                      stroke="#3b82f6"
+                      stroke="#50bde3"
                       name="FC (bpm)"
                       strokeWidth={2}
                     />
@@ -363,7 +365,7 @@ export default function VitaisGraficos() {
                       contentStyle={{ backgroundColor: 'var(--background)', border: '1px solid var(--border)' }}
                       labelStyle={{ color: 'var(--foreground)' }}
                     />
-                    <Bar dataKey="peso" fill="#8b5cf6" name="Peso (kg)" />
+                    <Bar dataKey="peso" fill="#0f7bfd" name="Peso (kg)" />
                   </BarChart>
                 </ResponsiveContainer>
               </CardContent>
@@ -395,7 +397,7 @@ export default function VitaisGraficos() {
                       yAxisId="left"
                       type="monotone"
                       dataKey="oxigenacao"
-                      stroke="#10b981"
+                      stroke="#22a6a1"
                       name="O2 (%)"
                       strokeWidth={2}
                     />

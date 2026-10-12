@@ -788,13 +788,13 @@ export default function Prescricoes() {
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 rounded-2xl border border-[#d8e8fb] bg-[#f4f8ff] p-4 sm:p-5">
         <div>
-          <h1 className="text-3xl font-bold text-foreground flex items-center gap-2">
-            <Pill className="h-8 w-8 text-primary" />
+          <h1 className="text-2xl font-bold tracking-tight text-[#102a56] flex items-center gap-2">
+            <span className="rounded-xl bg-white p-2 text-[#1766b3] ring-1 ring-[#d5e6fa]"><Pill className="h-5 w-5" /></span>
             Prescrições
           </h1>
-          <p className="text-muted-foreground">Receituário digital com assinatura via ITI</p>
+          <p className="text-muted-foreground">Prescrição em PDF; assinatura digital feita fora do EloLab</p>
         </div>
         <Button
           onClick={handleOpen}
@@ -868,7 +868,7 @@ export default function Prescricoes() {
             <CardTitle>Histórico</CardTitle>
             <div className="relative w-full sm:w-72">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input placeholder="Buscar paciente, CPF ou medicamento..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="pl-9" />
+              <Input aria-label="Buscar prescrições por paciente, CPF ou medicamento" placeholder="Buscar paciente, CPF ou medicamento..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="pl-9" />
             </div>
           </div>
         </CardHeader>
@@ -951,8 +951,8 @@ export default function Prescricoes() {
 
           <fieldset disabled={gerando || memedOpening} className="space-y-4 min-w-0">
             <div className="space-y-2">
-              <Label>Paciente *</Label>
-              <PacienteCombobox value={form.paciente_id} onChange={v => setForm(f => ({ ...f, paciente_id: v }))} />
+              <Label htmlFor="prescricao-paciente">Paciente *</Label>
+              <PacienteCombobox id="prescricao-paciente" value={form.paciente_id} onChange={v => setForm(f => ({ ...f, paciente_id: v }))} />
               {selectedPacienteQuery.isError && form.paciente_id && (
                 <ErrorState compact title="Não foi possível carregar os dados do paciente" error={selectedPacienteQuery.error} onRetry={() => void selectedPacienteQuery.refetch()} />
               )}
@@ -963,9 +963,9 @@ export default function Prescricoes() {
             </div>
 
             <div className="space-y-2">
-              <Label>Médico Prescritor *</Label>
+              <Label htmlFor="prescricao-medico">Médico Prescritor *</Label>
               <Select value={form.medico_id} disabled={isMedicoOnly} onValueChange={v => setForm(f => ({ ...f, medico_id: v }))}>
-                <SelectTrigger><SelectValue placeholder="Selecione o médico" /></SelectTrigger>
+                <SelectTrigger id="prescricao-medico"><SelectValue placeholder="Selecione o médico" /></SelectTrigger>
                 <SelectContent>
                   {medicosDisponiveis.map(m => (
                     <SelectItem key={m.id} value={m.id}>{m.nome || m.crm} — CRM {m.crm}</SelectItem>
@@ -975,20 +975,20 @@ export default function Prescricoes() {
             </div>
 
             <div className="space-y-2">
-              <Label>Data de Emissão</Label>
-              <Input type="date" max={today} required value={form.data_emissao} onChange={e => setForm(f => ({ ...f, data_emissao: e.target.value }))} />
+              <Label htmlFor="prescricao-data">Data de Emissão</Label>
+              <Input id="prescricao-data" type="date" max={today} required value={form.data_emissao} onChange={e => setForm(f => ({ ...f, data_emissao: e.target.value }))} />
             </div>
 
             <div className="space-y-2">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <Label>Medicamentos e Posologia *</Label>
+                <Label htmlFor="prescricao-medicamentos">Medicamentos e Posologia *</Label>
                 {modelosQuery.isError ? (
                   <ErrorState compact title="Não foi possível carregar os modelos" error={modelosQuery.error} onRetry={() => void modelosQuery.refetch()} />
                 ) : modelosQuery.isLoading ? (
                   <span className="text-xs text-muted-foreground">Carregando modelos...</span>
                 ) : modelos.length > 0 ? (
                   <Select value="" onValueChange={aplicarModelo}>
-                    <SelectTrigger className="h-8 w-56 text-xs"><SelectValue placeholder="Usar modelo..." /></SelectTrigger>
+                    <SelectTrigger aria-label="Usar modelo de prescrição" className="h-8 w-56 text-xs"><SelectValue placeholder="Usar modelo..." /></SelectTrigger>
                     <SelectContent>
                       {modelos.map(m => <SelectItem key={m.id} value={m.id}>{m.nome}</SelectItem>)}
                     </SelectContent>
@@ -998,6 +998,7 @@ export default function Prescricoes() {
                 )}
               </div>
               <Textarea
+                id="prescricao-medicamentos"
                 placeholder={`1) Amoxicilina 500mg — Tomar 1 cápsula de 8/8h por 7 dias\n2) Ibuprofeno 400mg — Tomar 1 comprimido de 12/12h por 5 dias\n3) Omeprazol 20mg — Tomar 1 cápsula em jejum por 30 dias`}
                 value={form.medicamentos_texto}
                 onChange={e => setForm(f => ({ ...f, medicamentos_texto: e.target.value }))}
@@ -1078,11 +1079,11 @@ export default function Prescricoes() {
               <Clipboard className="h-5 w-5 text-primary" />
               Receita Gerada!
             </DialogTitle>
-            <DialogDescription>Baixe agora ou recupere o PDF depois pelo histórico de prescrições.</DialogDescription>
+            <DialogDescription>O EloLab guarda o PDF emitido sem assinatura. Você pode assiná-lo externamente e manter a cópia assinada fora do sistema.</DialogDescription>
           </DialogHeader>
 
           <p className="text-muted-foreground text-sm">
-            O PDF da receita está pronto. Você pode baixá-lo agora e, em seguida, assinar digitalmente gratuitamente pelo portal do ITI (Gov.br).
+            O PDF gerado ainda não está assinado. Baixe o arquivo e, se necessário, assine pelo portal do ITI (Gov.br). A cópia assinada não é enviada nem armazenada pelo EloLab.
           </p>
 
           <div className="flex flex-col gap-3 mt-4">

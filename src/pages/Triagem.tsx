@@ -36,7 +36,10 @@ import { ptBR } from 'date-fns/locale';
 import { pacienteCorresponde } from '@/lib/buscaPaciente';
 import { canalUnico } from '@/lib/realtimeCanal';
 import { ErrorState } from '@/components/ErrorState';
+import { PendentesTriagem } from '@/components/triagem/PendentesTriagem';
 import { dateOnlyInTimeZone, parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
+import { useCurrentMedico } from '@/hooks/useCurrentMedico';
+import { buildTriagensFilters, filtrarAgendamentosAguardandoTriagem, temCheckinAtivo } from '@/lib/triageQueue';
 
 const FUSO_CLINICA = 'America/Sao_Paulo';
 
@@ -207,6 +210,8 @@ function RiscoBadge({ risco, size = 'sm' }: { risco: Risco; size?: 'sm' | 'lg' }
 
 // ─── Main Page ─────────────────────────────────────────────
 export default function TriagemPage() {
+  const { hasAnyRole } = useSupabaseAuth();
+  const podeRegistrarTriagem = hasAnyRole(['admin', 'medico', 'enfermagem']);
   const [searchParams, setSearchParams] = useSearchParams();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [formData, setFormData] = useState<TriagemForm>(emptyForm);
@@ -217,6 +222,7 @@ export default function TriagemPage() {
 
   const queryClient = useQueryClient();
   const { user, profile } = useSupabaseAuth();
+  const { isMedicoOnly } = useCurrentMedico();
   const [today, setToday] = useState(() => todaySaoPauloDateOnly());
   React.useEffect(() => {
     const timer = window.setInterval(() => setToday(todaySaoPauloDateOnly()), 60_000);
@@ -227,18 +233,43 @@ export default function TriagemPage() {
   const proximoDiaUtc = new Date(`${today}T00:00:00Z`);
   proximoDiaUtc.setUTCDate(proximoDiaUtc.getUTCDate() + 1);
   const inicioDoProximoDia = new Date(`${proximoDiaUtc.toISOString().slice(0, 10)}T00:00:00-03:00`).toISOString();
+  const agendamentosQuery = useAgendamentos(today);
+  const { data: agendamentos = [] } = agendamentosQuery;
+  const filaQuery = useSupabaseQuery<any>('fila_atendimento', {
+    select: 'id, agendamento_id, status, horario_chegada',
+    filters: [
+      { column: 'horario_chegada', operator: 'gte', value: inicioDoDia },
+      { column: 'horario_chegada', operator: 'lt', value: inicioDoProximoDia },
+    ],
+    staleTime: 1000 * 15,
+  });
+  const { data: fila = [] } = filaQuery;
+  const agendamentoIdsDoMedico = useMemo(() => agendamentos.map((ag: any) => ag.id), [agendamentos]);
   const triagensQuery = useSupabaseQuery<any>('triagens', {
+    select: '*, pacientes(id,nome,nome_social,cpf,telefone,email)',
+    orderBy: { column: 'data_hora', ascending: false },
+    filters: buildTriagensFilters(inicioDoDia, inicioDoProximoDia, isMedicoOnly, agendamentoIdsDoMedico),
+    enabled: !isMedicoOnly || (agendamentosQuery.isSuccess && agendamentoIdsDoMedico.length > 0),
+    staleTime: 1000 * 15,
+  });
+  const triagensAvulsasQuery = useSupabaseQuery<any>('triagens', {
     select: '*, pacientes(id,nome,nome_social,cpf,telefone,email)',
     orderBy: { column: 'data_hora', ascending: false },
     filters: [
       { column: 'data_hora', operator: 'gte', value: inicioDoDia },
       { column: 'data_hora', operator: 'lt', value: inicioDoProximoDia },
+      { column: 'enfermeiro_id', operator: 'eq', value: user?.id },
+      { column: 'agendamento_id', operator: 'is', value: null },
     ],
+    enabled: isMedicoOnly && Boolean(user?.id),
     staleTime: 1000 * 15,
   });
-  const { data: triagens = [], isLoading, isError: erroTriagens } = triagensQuery;
-  const agendamentosQuery = useAgendamentos(today);
-  const { data: agendamentos = [] } = agendamentosQuery;
+  const triagens = useMemo(() => {
+    const registros = [...(triagensQuery.data ?? []), ...(triagensAvulsasQuery.data ?? [])];
+    return Array.from(new Map(registros.map((triagem: any) => [triagem.id, triagem])).values());
+  }, [triagensQuery.data, triagensAvulsasQuery.data]);
+  const isLoading = triagensQuery.isLoading || triagensAvulsasQuery.isLoading;
+  const erroTriagens = triagensQuery.isError || triagensAvulsasQuery.isError;
   const pacienteBuscaId = searchParams.get('buscarPaciente');
   const pacienteBuscaQuery = usePacienteResumo(pacienteBuscaId);
 
@@ -269,15 +300,8 @@ export default function TriagemPage() {
         .filter((t: any) => ocorreuNaDataDaClinica(t.data_hora, today))
         .map((t: any) => t.agendamento_id)
     );
-    return agendamentos
-      .filter((a: any) =>
-        a.data === today &&
-        ['agendado', 'confirmado', 'aguardando', 'aguardando_triagem', 'pago'].includes(a.status || '') &&
-        a.exige_triagem !== false &&
-        !jaTriados.has(a.id)
-      )
-      .sort((a: any, b: any) => String(a.hora_inicio).localeCompare(String(b.hora_inicio)));
-  }, [agendamentos, triagens, today]);
+    return filtrarAgendamentosAguardandoTriagem(agendamentos, fila, [...jaTriados], today);
+  }, [agendamentos, fila, triagens, today]);
 
   const pendingTriagemCount = aguardandoTriagem.length;
 
@@ -335,6 +359,10 @@ export default function TriagemPage() {
         toast.error('O agendamento selecionado não pertence a este paciente.'); return;
       }
     }
+    if (formData.agendamento_id && (filaQuery.isLoading || filaQuery.isError || !temCheckinAtivo(fila, formData.agendamento_id))) {
+      toast.error('O paciente precisa fazer check-in na recepção antes da triagem.'); return;
+    }
+
     // Validate PA format (e.g. "120/80")
     const paMatch = formData.pressao_arterial.match(/^(\d{2,3})\/(\d{2,3})$/);
     if (!paMatch) {
@@ -459,6 +487,7 @@ export default function TriagemPage() {
                 medicoId: ag.medico_id,
                 pacienteNome: pac?.nome_social || pac?.nome || 'Paciente',
                 motivo: `Triagem ${formData.classificacao_risco.toUpperCase()} — PA: ${formData.pressao_arterial}, FC: ${formData.frequencia_cardiaca || '—'}`,
+                clinicaId: profile?.clinica_id || '',
               });
               if (notificacaoResult.success) {
                 acoesComplementares.push(...notificacaoResult.actions);
@@ -550,14 +579,15 @@ export default function TriagemPage() {
             size="icon"
             onClick={() => {
               void triagensQuery.refetch();
+              void triagensAvulsasQuery.refetch();
               void agendamentosQuery.refetch();
             }}
           >
             <RefreshCw className="h-4 w-4" />
           </Button>
-          <Button className="gap-2" onClick={() => handleOpenDialog()}>
+          {podeRegistrarTriagem && <Button className="gap-2 bg-[#005ECC] text-white hover:bg-[#004FAE]" onClick={() => handleOpenDialog()}>
             <Plus className="h-4 w-4" /> Nova Triagem
-          </Button>
+          </Button>}
         </div>
       </div>
 
@@ -568,7 +598,10 @@ export default function TriagemPage() {
         <ErrorState compact title="Não foi possível carregar os agendamentos de hoje" description="A lista de pacientes aguardando triagem está indisponível. Atualize antes de registrar uma triagem vinculada à agenda." error={agendamentosQuery.error} onRetry={() => void agendamentosQuery.refetch()} />
       )}
       {erroTriagens && (
-        <ErrorState compact title="Não foi possível carregar as triagens registradas" description="A lista de pacientes pendentes e os totais por risco podem estar incompletos." error={triagensQuery.error} onRetry={() => void triagensQuery.refetch()} />
+        <ErrorState compact title="Não foi possível carregar as triagens registradas" description="A lista de pacientes pendentes e os totais por risco podem estar incompletos." error={triagensQuery.error || triagensAvulsasQuery.error} onRetry={() => { void triagensQuery.refetch(); void triagensAvulsasQuery.refetch(); }} />
+      )}
+      {filaQuery.isError && (
+        <ErrorState compact title="Não foi possível confirmar a chegada dos pacientes" description="A lista de triagem foi pausada para evitar atender quem ainda não fez check-in." error={filaQuery.error} onRetry={() => void filaQuery.refetch()} />
       )}
       {!erroTriagens && triagens.length >= MAX_LINHAS_AUTO && (
         <div role="alert" className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm text-warning-foreground">
@@ -577,41 +610,12 @@ export default function TriagemPage() {
         </div>
       )}
 
-      {!erroTriagens && !agendamentosQuery.isError && aguardandoTriagem.length > 0 && (
-        <div className="rounded-xl border border-info/30 bg-info/5 p-4 space-y-2">
-          <p className="text-xs font-medium text-info flex items-center gap-2">
-            <Activity className="h-3.5 w-3.5" />
-            {aguardandoTriagem.length === 1
-              ? '1 paciente aguardando triagem'
-              : `${aguardandoTriagem.length} pacientes aguardando triagem`}
-          </p>
-          <div className="space-y-1.5 pt-1">
-            {aguardandoTriagem.slice(0, 12).map((ag: any) => {
-              const pac = (ag as any).pacientes;
-              return (
-                <div key={ag.id} className="flex items-center justify-between gap-3 rounded-lg bg-background/60 px-3 py-2">
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium truncate">{pac?.nome_social || pac?.nome || 'Paciente'}</p>
-                    <p className="text-[10px] text-muted-foreground tabular-nums">
-                      {String(ag.hora_inicio).slice(0, 5)} · {ag.tipo || 'consulta'}
-                    </p>
-                  </div>
-                  <Button
-                    size="sm" className="h-7 gap-1 text-xs shrink-0"
-                    onClick={() => handleOpenDialog(ag.paciente_id, ag.id)}
-                  >
-                    <Activity className="h-3 w-3" /> Triar
-                  </Button>
-                </div>
-              );
-            })}
-            {aguardandoTriagem.length > 12 && (
-              <p className="px-3 text-[10px] text-muted-foreground">
-                e mais {aguardandoTriagem.length - 12}…
-              </p>
-            )}
-          </div>
-        </div>
+      {!erroTriagens && !agendamentosQuery.isError && !filaQuery.isError && (
+        <PendentesTriagem
+          loading={isLoading || agendamentosQuery.isLoading || filaQuery.isLoading}
+          appointments={aguardandoTriagem}
+          onTriage={handleOpenDialog}
+        />
       )}
 
       {/* Risk summary */}
@@ -639,7 +643,7 @@ export default function TriagemPage() {
       <div className="flex gap-3 flex-wrap">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input className="pl-9 w-64" placeholder="Buscar paciente..." value={search} onChange={e => setSearch(e.target.value)} />
+          <Input className="pl-9 w-64" placeholder="Buscar paciente..." aria-label="Buscar triagem por paciente" value={search} onChange={e => setSearch(e.target.value)} />
         </div>
         {filterRisco !== 'todos' && (
           <Button variant="outline" size="sm" onClick={() => setFilterRisco('todos')} className="gap-1.5">
@@ -677,9 +681,9 @@ export default function TriagemPage() {
                   <>
                     <p className="font-semibold text-foreground">Nenhuma triagem registrada hoje</p>
                     <p className="text-sm text-muted-foreground mt-1">Registre a primeira triagem do dia</p>
-                    <Button className="mt-4 gap-2" onClick={() => handleOpenDialog()}>
+                    {podeRegistrarTriagem && <Button className="mt-4 gap-2 bg-[#005ECC] text-white hover:bg-[#004FAE]" onClick={() => handleOpenDialog()}>
                       <Plus className="h-4 w-4" /> Registrar Triagem
-                    </Button>
+                    </Button>}
                   </>
                 ) : (
                   <>
@@ -720,6 +724,13 @@ export default function TriagemPage() {
                                 <User className="h-3.5 w-3.5 text-primary" />
                               </div>
                               <span className="font-medium text-sm">{getPacienteNome(t)}</span>
+                            </div>
+                            <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] text-muted-foreground md:hidden">
+                              <span>PA: <strong className="text-foreground">{t.pressao_arterial || '—'}</strong></span>
+                              <span>FC: <strong className="text-foreground">{t.frequencia_cardiaca ? `${t.frequencia_cardiaca} bpm` : '—'}</strong></span>
+                              <span>Temp: <strong className="text-foreground">{t.temperatura ? `${t.temperatura}°C` : '—'}</strong></span>
+                              <span>SpO₂: <strong className="text-foreground">{t.saturacao ? `${t.saturacao}%` : '—'}</strong></span>
+                              <span>IMC: <strong className="text-foreground">{t.imc ?? '—'}</strong></span>
                             </div>
                           </TableCell>
                           <TableCell>
@@ -818,7 +829,7 @@ export default function TriagemPage() {
                   <SelectTrigger id="triagem-agendamento" disabled={isSaving || agendamentosQuery.isLoading || agendamentosQuery.isError}><SelectValue placeholder="Opcional..." /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__none__">Nenhum</SelectItem>
-                    {agendamentos.map(ag => {
+                    {aguardandoTriagem.map(ag => {
                       const pacienteAgendamento = (ag as any).pacientes;
                       const medicoAgendamento = (ag as any).medicos;
                       return <SelectItem key={ag.id} value={ag.id}>
@@ -873,8 +884,8 @@ export default function TriagemPage() {
 
             {/* Risk Classification */}
             <div className="space-y-2">
-              <Label>Classificação de Risco (Manchester) *</Label>
-              <div className="flex flex-wrap gap-2">
+              <Label id="triagem-classificacao-label">Classificação de Risco (Manchester) *</Label>
+              <div role="group" aria-labelledby="triagem-classificacao-label" className="flex flex-wrap gap-2">
                 {Object.entries(RISCO).map(([key, cfg]) => (
                   <button
                     type="button"
@@ -903,23 +914,23 @@ export default function TriagemPage() {
             {/* Chief Complaint & Notes */}
             <div className="grid grid-cols-1 gap-3">
               <div className="space-y-1.5">
-                <Label>Queixa Principal *</Label>
-                <Input value={formData.queixa_principal} onChange={e => setField('queixa_principal')(e.target.value)} placeholder="Descreva a queixa principal..." />
+                <Label htmlFor="triagem-queixa">Queixa Principal *</Label>
+                <Input id="triagem-queixa" value={formData.queixa_principal} onChange={e => setField('queixa_principal')(e.target.value)} placeholder="Descreva a queixa principal..." />
               </div>
               <div className="space-y-1.5">
-                <Label>Dor (0-10)</Label>
-                <Input type="number" min="0" max="10" value={formData.dor_escala} onChange={e => setField('dor_escala')(e.target.value)} placeholder="0 = sem dor, 10 = pior dor" />
+                <Label htmlFor="triagem-dor">Dor (0-10)</Label>
+                <Input id="triagem-dor" type="number" min="0" max="10" value={formData.dor_escala} onChange={e => setField('dor_escala')(e.target.value)} placeholder="0 = sem dor, 10 = pior dor" />
               </div>
               <div className="space-y-1.5">
-                <Label>Observações</Label>
-                <Textarea value={formData.observacoes} onChange={e => setField('observacoes')(e.target.value)} placeholder="Informações adicionais..." rows={2} />
+                <Label htmlFor="triagem-observacoes">Observações</Label>
+                <Textarea id="triagem-observacoes" value={formData.observacoes} onChange={e => setField('observacoes')(e.target.value)} placeholder="Informações adicionais..." rows={2} />
               </div>
             </div>
           </div>
 
           <DialogFooter>
             <Button variant="outline" disabled={isSaving} onClick={() => setIsDialogOpen(false)}>Cancelar</Button>
-            <Button onClick={handleSave} disabled={isSaving || erroTriagens || (!!formData.agendamento_id && (agendamentosQuery.isLoading || agendamentosQuery.isError))} className="gap-2">
+            <Button onClick={handleSave} disabled={!podeRegistrarTriagem || isSaving || erroTriagens || (!!formData.agendamento_id && (agendamentosQuery.isLoading || agendamentosQuery.isError))} className="gap-2 bg-[#005ECC] text-white hover:bg-[#004FAE]">
               {isSaving && <Loader2 className="h-4 w-4 animate-spin" />}
               Registrar Triagem
             </Button>

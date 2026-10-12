@@ -368,6 +368,9 @@ export default function PortalPaciente() {
   const [prescricoes, setPrescricoes] = useState<any[]>([]);
   const [retornos, setRetornos] = useState<any[]>([]);
   const [ofertasEspera, setOfertasEspera] = useState<any[]>([]);
+  const [portalHasMore, setPortalHasMore] = useState({ agendamentos: false, exames: false, pagamentos: false, prescricoes: false });
+  const [loadingMore, setLoadingMore] = useState<string | null>(null);
+  const loadMoreLocks = useRef(new Set<string>());
   const [contactForm, setContactForm] = useState({ telefone: '', email: '' });
   const [contactSaving, setContactSaving] = useState(false);
   const [contactMessage, setContactMessage] = useState('');
@@ -500,12 +503,47 @@ export default function PortalPaciente() {
       setMedicos(valueOrEmpty(results[4]));
       setRetornos(valueOrEmpty(results[5]));
       setOfertasEspera(valueOrEmpty(results[6]));
+      setPortalHasMore({
+        agendamentos: (valueOrEmpty(results[0]) as any[]).length === 50,
+        exames: (valueOrEmpty(results[1]) as any[]).length === 30,
+        pagamentos: (valueOrEmpty(results[2]) as any[]).length === 20,
+        prescricoes: (valueOrEmpty(results[3]) as any[]).length === 50,
+      });
 
       if (results.some(result => result.status === 'rejected')) {
         setPortalDataError('Algumas informações não puderam ser carregadas. Tente atualizar.');
       }
     } finally {
       if (sessionId === portalSessionRef.current) setPortalDataLoading(false);
+    }
+  };
+
+  const loadMorePortalList = async (
+    action: 'get_agendamentos' | 'get_exames' | 'get_pagamentos' | 'get_prescricoes',
+    listKey: 'agendamentos' | 'exames' | 'pagamentos' | 'prescricoes',
+    currentItems: any[],
+    setItems: React.Dispatch<React.SetStateAction<any[]>>,
+    pageSize: number,
+  ) => {
+    if (!token.trim() || loadMoreLocks.current.has(action)) return;
+    loadMoreLocks.current.add(action);
+    const sessionId = portalSessionRef.current;
+    const accessToken = token;
+    setLoadingMore(action);
+    try {
+      const rows = await fetchData(accessToken, action, { offset: currentItems.length });
+      if (sessionId !== portalSessionRef.current) return;
+      const nextRows = Array.isArray(rows) ? rows : [];
+      setItems(previous => {
+        const existingIds = new Set(previous.map(row => row.id));
+        return [...previous, ...nextRows.filter(row => !existingIds.has(row.id))];
+      });
+      setPortalHasMore(previous => ({ ...previous, [listKey]: nextRows.length === pageSize }));
+    } catch (loadError) {
+      if (sessionId === portalSessionRef.current) setPortalDataError('NÃ£o foi possÃ­vel carregar mais registros. Tente novamente.');
+    } finally {
+      loadMoreLocks.current.delete(action);
+      setLoadingMore(null);
     }
   };
 
@@ -788,6 +826,7 @@ export default function PortalPaciente() {
     setPrescricoes([]);
     setRetornos([]);
     setOfertasEspera([]);
+    setPortalHasMore({ agendamentos: false, exames: false, pagamentos: false, prescricoes: false });
     setPortalDataLoading(false);
     setError('');
     setPortalDataError('');
@@ -1371,7 +1410,8 @@ export default function PortalPaciente() {
                     );
                   })
                 )}
-              </TabsContent>
+                {portalHasMore.agendamentos && <div className="flex justify-center pt-2"><Button variant="outline" disabled={loadingMore !== null} onClick={() => void loadMorePortalList('get_agendamentos', 'agendamentos', agendamentos, setAgendamentos, 50)}>{loadingMore === 'get_agendamentos' ? 'Carregando...' : 'Carregar mais consultas'}</Button></div>}
+</TabsContent>
 
               {/* ─── Exames Tab ─── */}
               <TabsContent value="exames" className="mt-4 space-y-3">
@@ -1416,6 +1456,7 @@ export default function PortalPaciente() {
                               </div>
                               <div className="flex items-center gap-2">
                                 <StatusBadge status={e.status} />
+                                {e.arquivo_resultado_indisponivel && <span className="text-xs text-muted-foreground" role="status">Solicite o laudo à clínica</span>}
                                 {e.arquivo_resultado && (
                                   <Button
                                     variant="outline"
@@ -1435,7 +1476,8 @@ export default function PortalPaciente() {
                     );
                   })
                 )}
-              </TabsContent>
+                {portalHasMore.exames && <div className="flex justify-center pt-2"><Button variant="outline" disabled={loadingMore !== null} onClick={() => void loadMorePortalList('get_exames', 'exames', exames, setExames, 30)}>{loadingMore === 'get_exames' ? 'Carregando...' : 'Carregar mais exames'}</Button></div>}
+</TabsContent>
 
               {/* ─── Prescrições Tab ─── */}
               <TabsContent value="prescricoes" className="mt-4 space-y-3">
@@ -1480,7 +1522,8 @@ export default function PortalPaciente() {
                     </motion.div>
                   ))
                 )}
-              </TabsContent>
+                {portalHasMore.prescricoes && <div className="flex justify-center pt-2"><Button variant="outline" disabled={loadingMore !== null} onClick={() => void loadMorePortalList('get_prescricoes', 'prescricoes', prescricoes, setPrescricoes, 50)}>{loadingMore === 'get_prescricoes' ? 'Carregando...' : 'Carregar mais prescricoes'}</Button></div>}
+</TabsContent>
 
               {/* ─── Histórico Médico Tab ─── */}
               <TabsContent value="historico" className="mt-4 space-y-3">
@@ -1573,11 +1616,11 @@ export default function PortalPaciente() {
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                       <div className="text-center p-3 rounded-xl bg-muted/50">
                         <p className="text-2xl font-bold text-primary tabular-nums">{agendamentos.length}</p>
-                        <p className="text-[10px] text-muted-foreground">Total Consultas</p>
+                        <p className="text-[10px] text-muted-foreground">Consultas carregadas</p>
                       </div>
                       <div className="text-center p-3 rounded-xl bg-muted/50">
                         <p className="text-2xl font-bold text-primary tabular-nums">{exames.length}</p>
-                        <p className="text-[10px] text-muted-foreground">Exames Realizados</p>
+                        <p className="text-[10px] text-muted-foreground">Exames carregados</p>
                       </div>
                       <div className="text-center p-3 rounded-xl bg-muted/50">
                         <p className="text-2xl font-bold text-primary tabular-nums">
@@ -1589,7 +1632,7 @@ export default function PortalPaciente() {
                         <p className="text-2xl font-bold text-primary tabular-nums">
                           {agendamentos.filter(a => a.status === 'finalizado').length}
                         </p>
-                        <p className="text-[10px] text-muted-foreground">Atendimentos</p>
+                        <p className="text-[10px] text-muted-foreground">Atendimentos carregados</p>
                       </div>
                     </div>
                   </CardContent>
@@ -1686,7 +1729,8 @@ export default function PortalPaciente() {
                     </motion.div>
                   ))
                 )}
-              </TabsContent>
+                {portalHasMore.pagamentos && <div className="flex justify-center pt-2"><Button variant="outline" disabled={loadingMore !== null} onClick={() => void loadMorePortalList('get_pagamentos', 'pagamentos', pagamentos, setPagamentos, 20)}>{loadingMore === 'get_pagamentos' ? 'Carregando...' : 'Carregar mais pagamentos'}</Button></div>}
+</TabsContent>
             </Tabs>
           </motion.div>
 

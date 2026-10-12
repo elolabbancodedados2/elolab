@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { MAX_LINHAS_AUTO, useLancamentos } from '@/hooks/useSupabaseData';
@@ -19,7 +19,7 @@ import {
   Wallet,
   ChevronLeft,
   ChevronRight,
-ArrowUpRight, ArrowDownRight} from 'lucide-react';
+} from 'lucide-react';
 import {
   AreaChart,
   Area,
@@ -35,6 +35,7 @@ import {
 import { cn } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/skeleton';
 import { valorRealizado } from '@/lib/lancamentos';
+import { grupoMovimentoCaixa, totaisMovimentoCaixa } from '@/lib/fluxoCaixa';
 import { ErrorState } from '@/components/ErrorState';
 import { dateOnlyInTimeZone, inicioDoDiaEmFusoIso, parseDateOnly } from '@/lib/dateOnly';
 
@@ -132,7 +133,7 @@ export default function FluxoCaixa() {
       }));
     const individuais = pagamentos.flatMap(p => {
       const conta = Array.isArray(p.lancamentos) ? p.lancamentos[0] : p.lancamentos;
-      if (!conta || !['receita', 'despesa'].includes(conta.tipo)) return [];
+      if (!conta || !grupoMovimentoCaixa(conta.tipo)) return [];
       const pagamento = {
         id: p.id,
         tipo: conta.tipo,
@@ -159,13 +160,7 @@ export default function FluxoCaixa() {
     const realizadosNoMes = eventosRealizados.filter(evento => noMes(evento.data, mesAtual, anoAtual));
     const emAbertoNoMes = lancamentos.filter(l => statusAberto(l.status) && noMes(l.data_vencimento || l.data, mesAtual, anoAtual));
 
-    const receitas = realizadosNoMes
-      .filter(l => l.tipo === 'receita')
-      .reduce((acc, l) => acc + l.valor, 0);
-
-    const despesas = realizadosNoMes
-      .filter(l => l.tipo === 'despesa')
-      .reduce((acc, l) => acc + l.valor, 0);
+    const realizados = totaisMovimentoCaixa(realizadosNoMes);
 
     const receitasPendentes = emAbertoNoMes
       .filter(l => l.tipo === 'receita')
@@ -176,9 +171,7 @@ export default function FluxoCaixa() {
       .reduce((acc, l) => acc + valorAberto(l), 0);
 
     return {
-      receitas,
-      despesas,
-      saldo: receitas - despesas,
+      ...realizados,
       receitasPendentes,
       despesasPendentes,
     };
@@ -197,21 +190,12 @@ export default function FluxoCaixa() {
       const lancamentosDia = eventosRealizados.filter(evento => evento.data === dataStr);
 
       // O evento já tem o valor efetivamente recebido ou estornado nesta data.
-      const receitas = lancamentosDia
-        .filter(l => l.tipo === 'receita')
-        .reduce((acc, l) => acc + l.valor, 0);
-
-      const despesas = lancamentosDia
-        .filter(l => l.tipo === 'despesa')
-        .reduce((acc, l) => acc + l.valor, 0);
-
-      saldoAcumulado += receitas - despesas;
+      const totais = totaisMovimentoCaixa(lancamentosDia);
+      saldoAcumulado += totais.saldo;
 
       return {
         dia: format(dia, 'dd'),
-        receitas,
-        despesas,
-        saldo: receitas - despesas,
+        ...totais,
         saldoAcumulado,
       };
     });
@@ -219,19 +203,17 @@ export default function FluxoCaixa() {
 
   // Dados por categoria
   const dadosPorCategoria = useMemo(() => {
-    const categorias: Record<string, { receitas: number; despesas: number }> = {};
+    const categorias: Record<string, { receitas: number; despesas: number; suprimentos: number; sangrias: number }> = {};
 
     eventosRealizados
       .filter(evento => noMes(evento.data, mesAtual, anoAtual))
       .forEach(l => {
+        const grupo = grupoMovimentoCaixa(l.tipo);
+        if (!grupo) return;
         if (!categorias[l.categoria]) {
-          categorias[l.categoria] = { receitas: 0, despesas: 0 };
+          categorias[l.categoria] = { receitas: 0, despesas: 0, suprimentos: 0, sangrias: 0 };
         }
-        if (l.tipo === 'receita') {
-          categorias[l.categoria].receitas += l.valor;
-        } else if (l.tipo === 'despesa') {
-          categorias[l.categoria].despesas += l.valor;
-        }
+        categorias[l.categoria][grupo] += l.valor;
       });
 
     return Object.entries(categorias).map(([categoria, valores]) => ({
@@ -248,27 +230,21 @@ export default function FluxoCaixa() {
 
     const lancamentosMesAnterior = eventosRealizados.filter(l => noMes(l.data, mesAnt, anoAnt));
 
-    const receitasAnt = lancamentosMesAnterior
-      .filter(l => l.tipo === 'receita')
-      .reduce((acc, l) => acc + l.valor, 0);
+    const totaisAnteriores = totaisMovimentoCaixa(lancamentosMesAnterior);
 
-    const despesasAnt = lancamentosMesAnterior
-      .filter(l => l.tipo === 'despesa')
-      .reduce((acc, l) => acc + l.valor, 0);
-
-    const variacaoReceita = receitasAnt > 0 
-      ? ((totaisMes.receitas - receitasAnt) / receitasAnt) * 100 
+    const variacaoReceita = totaisAnteriores.entradas > 0
+      ? ((totaisMes.entradas - totaisAnteriores.entradas) / totaisAnteriores.entradas) * 100
       : 0;
 
-    const variacaoDespesa = despesasAnt > 0 
-      ? ((totaisMes.despesas - despesasAnt) / despesasAnt) * 100 
+    const variacaoDespesa = totaisAnteriores.saidas > 0
+      ? ((totaisMes.saidas - totaisAnteriores.saidas) / totaisAnteriores.saidas) * 100
       : 0;
 
     return {
       variacaoReceita,
       variacaoDespesa,
-      receitaSemBaseAnterior: receitasAnt === 0 && totaisMes.receitas > 0,
-      despesaSemBaseAnterior: despesasAnt === 0 && totaisMes.despesas > 0,
+      receitaSemBaseAnterior: totaisAnteriores.entradas === 0 && totaisMes.entradas > 0,
+      despesaSemBaseAnterior: totaisAnteriores.saidas === 0 && totaisMes.saidas > 0,
     };
   }, [eventosRealizados, currentDate, totaisMes]);
 
@@ -290,20 +266,20 @@ export default function FluxoCaixa() {
   if (pagamentosQuery.isError) return <ErrorState title="Não foi possível carregar os pagamentos do fluxo de caixa" error={pagamentosQuery.error} onRetry={() => void pagamentosQuery.refetch()} />;
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+    <div className="space-y-6 pb-8">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 rounded-2xl border border-[#d7e9f7] bg-gradient-to-r from-[#f1fbfd] via-white to-[#eff4ff] p-4 shadow-sm sm:p-5">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Fluxo de Caixa</h1>
-          <p className="text-muted-foreground">Acompanhe as movimentações financeiras</p>
+          <h1 className="flex items-center gap-2 text-2xl font-bold font-display tracking-tight text-foreground"><span className="rounded-xl bg-[#eaf4ff] p-2 text-[#1766a8] ring-1 ring-[#d1e5f8]"><Wallet className="h-5 w-5" /></span>Fluxo de Caixa</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Acompanhe as movimentações financeiras</p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button aria-label="Mês anterior" variant="outline" size="icon" onClick={handlePrevMonth}>
+        <div className="flex items-center gap-2 rounded-xl border border-[#dceaf5] bg-white/90 p-1 shadow-sm">
+          <Button aria-label="Mês anterior" variant="ghost" size="icon" className="rounded-lg text-[#34749f] hover:bg-[#eaf5fb]" onClick={handlePrevMonth}>
             <ChevronLeft className="h-4 w-4" />
           </Button>
-          <span className="font-medium min-w-[140px] text-center">
+          <span className="min-w-[140px] text-center text-sm font-bold capitalize text-[#173b61]">
             {format(currentDate, "MMMM 'de' yyyy", { locale: ptBR })}
           </span>
-          <Button aria-label="Próximo mês" variant="outline" size="icon" onClick={handleNextMonth}>
+          <Button aria-label="Próximo mês" variant="ghost" size="icon" className="rounded-lg text-[#34749f] hover:bg-[#eaf5fb]" onClick={handleNextMonth}>
             <ChevronRight className="h-4 w-4" />
           </Button>
         </div>
@@ -322,22 +298,22 @@ export default function FluxoCaixa() {
       {/* Cards de Resumo */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         {[
-          { label: 'Recebido no mês', value: totaisMes.receitas, icon: ArrowUpCircle, color: 'text-success', bg: 'bg-success/10', border: 'border-success/20',
+          { label: 'Entradas no mês', value: totaisMes.entradas, icon: ArrowUpCircle, color: 'text-[#147765]', bg: 'bg-[#e5f7f2]', border: 'border-[#c5eadd]',
             trend: comparacaoMesAnterior.variacaoReceita, trendPositive: comparacaoMesAnterior.variacaoReceita > 0,
             trendNovaBase: comparacaoMesAnterior.receitaSemBaseAnterior,
             sub: totaisMes.receitasPendentes > 0 ? `Em aberto com vencimento no mês: ${formatCurrency(totaisMes.receitasPendentes)}` : undefined },
-          { label: 'Pago no mês', value: totaisMes.despesas, icon: ArrowDownCircle, color: 'text-destructive', bg: 'bg-destructive/10', border: 'border-destructive/20',
+          { label: 'Saídas no mês', value: totaisMes.saidas, icon: ArrowDownCircle, color: 'text-[#b65a4d]', bg: 'bg-[#fff0ed]', border: 'border-[#f2d6d0]',
             trend: comparacaoMesAnterior.variacaoDespesa, trendPositive: comparacaoMesAnterior.variacaoDespesa < 0,
             trendNovaBase: comparacaoMesAnterior.despesaSemBaseAnterior,
             sub: totaisMes.despesasPendentes > 0 ? `Em aberto com vencimento no mês: ${formatCurrency(totaisMes.despesasPendentes)}` : undefined },
           { label: 'Saldo do Mês', value: totaisMes.saldo, icon: Wallet,
-            color: totaisMes.saldo >= 0 ? 'text-success' : 'text-destructive',
-            bg: totaisMes.saldo >= 0 ? 'bg-success/10' : 'bg-destructive/10',
-            border: totaisMes.saldo >= 0 ? 'border-success/20' : 'border-destructive/20', trendNovaBase: false },
-          { label: 'Margem', value: -1, icon: DollarSign, color: 'text-primary', bg: 'bg-primary/10', border: 'border-primary/20',
-            pct: totaisMes.receitas > 0 ? `${((totaisMes.saldo / totaisMes.receitas) * 100).toFixed(1)}%` : '—', trendNovaBase: false },
+            color: totaisMes.saldo >= 0 ? 'text-[#147765]' : 'text-[#b65a4d]',
+            bg: totaisMes.saldo >= 0 ? 'bg-[#e5f7f2]' : 'bg-[#fff0ed]',
+            border: totaisMes.saldo >= 0 ? 'border-[#c5eadd]' : 'border-[#f2d6d0]', trendNovaBase: false },
+          { label: 'Margem operacional', value: -1, icon: DollarSign, color: 'text-[#1766a8]', bg: 'bg-[#eaf4ff]', border: 'border-[#d1e5f8]',
+            pct: totaisMes.receitas > 0 ? `${(((totaisMes.receitas - totaisMes.despesas) / totaisMes.receitas) * 100).toFixed(1)}%` : '—', trendNovaBase: false },
         ].map((s) => (
-          <Card key={s.label} className={cn('border', s.border)}>
+          <Card key={s.label} className={cn('h-full border bg-gradient-to-br from-white to-[#f8fbfd] shadow-sm transition-shadow hover:shadow-md', s.border)}>
             <CardContent className="pt-5 pb-4">
               <div className="flex items-start justify-between">
                 <div>
@@ -357,7 +333,7 @@ export default function FluxoCaixa() {
                   )}
                   {s.sub && <p className="text-xs text-muted-foreground mt-1">{s.sub}</p>}
                 </div>
-                <div className={cn('rounded-xl p-3', s.bg)}>
+                <div className={cn('rounded-xl p-3 ring-1 ring-inset ring-black/[0.03]', s.bg)}>
                   <s.icon className={cn('h-5 w-5', s.color)} />
                 </div>
               </div>
@@ -390,8 +366,10 @@ export default function FluxoCaixa() {
                     }}
                   />
                   <Legend />
-                  <Bar dataKey="receitas" name="Receitas" fill="hsl(var(--chart-2))" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="despesas" name="Despesas" fill="hsl(var(--chart-5))" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="receitas" name="Receitas" fill="#55bda9" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="despesas" name="Despesas" fill="#e68f82" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="suprimentos" name="Suprimentos" fill="#7bb8e8" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="sangrias" name="Sangrias" fill="#d6a849" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -467,8 +445,10 @@ export default function FluxoCaixa() {
                     }}
                   />
                   <Legend />
-                  <Bar dataKey="receitas" name="Receitas" fill="hsl(var(--chart-2))" radius={[0, 4, 4, 0]} />
-                  <Bar dataKey="despesas" name="Despesas" fill="hsl(var(--chart-5))" radius={[0, 4, 4, 0]} />
+                  <Bar dataKey="receitas" name="Receitas" fill="#55bda9" radius={[0, 4, 4, 0]} />
+                  <Bar dataKey="despesas" name="Despesas" fill="#e68f82" radius={[0, 4, 4, 0]} />
+                  <Bar dataKey="suprimentos" name="Suprimentos" fill="#7bb8e8" radius={[0, 4, 4, 0]} />
+                  <Bar dataKey="sangrias" name="Sangrias" fill="#d6a849" radius={[0, 4, 4, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>

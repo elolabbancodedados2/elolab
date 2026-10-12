@@ -16,12 +16,17 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { supabase } from '@/integrations/supabase/client';
+import { autorizarLeituraHistoricoClinica } from '@/lib/prontuarioAudit';
 import { useMedicos, useConvenios } from '@/hooks/useSupabaseData';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { exportToExcel } from '@/lib/excelExporter';
 import { toast } from 'sonner';
 import { escapeHtml } from '@/lib/html';
-import { parseDateOnly, proximaExecucaoSaoPaulo } from '@/lib/dateOnly';
+import { dateRangeInTimeZoneIso, parseDateOnly, proximaExecucaoSaoPaulo } from '@/lib/dateOnly';
+import { podeAcessarRelatorioCompletoDePacientes } from '@/lib/reportAccess';
+import { formatCsvCell } from '@/lib/csv';
+import { buscarEmBlocos } from '@/lib/buscarEmBlocos';
+import { existeMaisResultadoQueLimite } from '@/lib/reportAccess';
 
 type DatasetKey =
   | 'pacientes' | 'agendamentos' | 'lancamentos' | 'exames'
@@ -277,10 +282,10 @@ export default function RelatorioCustomizado() {
   const { profile, isLoading: authLoading } = useSupabaseAuth();
   const location = useLocation();
   const navigate = useNavigate();
-  const roles = new Set(profile?.roles ?? []);
-  const allowedDatasets: DatasetKey[] = roles.has('admin')
+  const podeVerRelatorioPacientes = podeAcessarRelatorioCompletoDePacientes(profile?.roles);
+  const allowedDatasets: DatasetKey[] = podeVerRelatorioPacientes
     ? Object.keys(DATASETS) as DatasetKey[]
-    : ['pacientes', 'lancamentos', 'estoque'];
+    : ['lancamentos', 'estoque'];
   const [dataset, setDataset] = useState<DatasetKey>('lancamentos');
   const cfg = DATASETS[dataset];
 
@@ -300,6 +305,7 @@ export default function RelatorioCustomizado() {
   const [visibleCols, setVisibleCols] = useState<Set<string>>(new Set(cfg.columns.map(c => c.key)));
 
   const [rows, setRows] = useState<any[]>([]);
+  const [haMaisResultados, setHaMaisResultados] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saveOpen, setSaveOpen] = useState(false);
   const [saveForm, setSaveForm] = useState({
@@ -344,31 +350,44 @@ export default function RelatorioCustomizado() {
       return;
     }
     setLoading(true);
+    setRows([]);
+    setHaMaisResultados(false);
     try {
-      let q: any = (supabase as any).from(cfg.table).select(cfg.select);
+      if (dataset === 'prontuarios') await autorizarLeituraHistoricoClinica();
+      const montarConsulta = () => {
+        let q: any = (supabase as any).from(cfg.table).select(cfg.select);
+        const isTimestamp = cfg.dateField === 'created_at' || cfg.dateField === 'updated_at';
+        if (isTimestamp) {
+          const range = dateRangeInTimeZoneIso(dataInicio || undefined, dataFim || undefined, 'America/Sao_Paulo');
+          if (range.gte) q = q.gte(cfg.dateField, range.gte);
+          if (range.lt) q = q.lt(cfg.dateField, range.lt);
+        } else {
+          if (dataInicio) q = q.gte(cfg.dateField, dataInicio);
+          if (dataFim) q = q.lte(cfg.dateField, dataFim);
+        }
+        if (cfg.statusField && statusFilter !== 'todos') {
+          const v = statusFilter === 'true' ? true : statusFilter === 'false' ? false : statusFilter;
+          q = q.eq(cfg.statusField, v);
+        }
+        if (cfg.medicoField && medicoFilter !== 'todos') q = q.eq(cfg.medicoField, medicoFilter);
+        if (cfg.convenioField && convenioFilter !== 'todos') q = q.eq(cfg.convenioField, convenioFilter);
+        if (dataset === 'lancamentos' && tipoLancamento !== 'todos') q = q.eq('tipo', tipoLancamento);
+        if (dataset === 'lancamentos' && valorMin) q = q.gte('valor', Number(valorMin));
+        if (dataset === 'lancamentos' && valorMax) q = q.lte('valor', Number(valorMax));
+        if (textoBusca && cfg.textSearchFields?.length) {
+          const or = cfg.textSearchFields.map(f => `${f}.ilike.%${textoBusca}%`).join(',');
+          q = q.or(or);
+        }
+        return q.order(cfg.dateField, { ascending: false }).order('id', { ascending: true });
+      };
 
-      const isTimestamp = cfg.dateField === 'created_at' || cfg.dateField === 'updated_at';
-      if (dataInicio) q = q.gte(cfg.dateField, dataInicio);
-      if (dataFim) q = q.lte(cfg.dateField, isTimestamp ? dataFim + 'T23:59:59.999' : dataFim);
-      if (cfg.statusField && statusFilter !== 'todos') {
-        const v = statusFilter === 'true' ? true : statusFilter === 'false' ? false : statusFilter;
-        q = q.eq(cfg.statusField, v);
-      }
-      if (cfg.medicoField && medicoFilter !== 'todos') q = q.eq(cfg.medicoField, medicoFilter);
-      if (cfg.convenioField && convenioFilter !== 'todos') q = q.eq(cfg.convenioField, convenioFilter);
-      if (dataset === 'lancamentos' && tipoLancamento !== 'todos') q = q.eq('tipo', tipoLancamento);
-      if (dataset === 'lancamentos' && valorMin) q = q.gte('valor', Number(valorMin));
-      if (dataset === 'lancamentos' && valorMax) q = q.lte('valor', Number(valorMax));
-      if (textoBusca && cfg.textSearchFields?.length) {
-        const or = cfg.textSearchFields.map(f => `${f}.ilike.%${textoBusca}%`).join(',');
-        q = q.or(or);
-      }
-      q = q.order(cfg.dateField, { ascending: false }).limit(Number(limite));
-
-      const { data, error } = await q;
-      if (error) throw error;
-      setRows(data || []);
-      toast.success(`${data?.length || 0} registros encontrados`);
+      const limiteNumerico = Math.min(5000, Math.max(1, Math.floor(Number(limite) || 500)));
+      const data = await buscarEmBlocos<any>(montarConsulta, { bloco: 1000, teto: limiteNumerico + 1 });
+      const truncado = existeMaisResultadoQueLimite(data.length, limiteNumerico);
+      const resultado = data.slice(0, limiteNumerico);
+      setRows(resultado);
+      setHaMaisResultados(truncado);
+      toast.success(`${resultado.length} registros encontrados${truncado ? ' (há mais resultados; ajuste os filtros para exportar tudo)' : ''}`);
     } catch (e: any) {
       console.error(e);
       toast.error(e.message || 'Erro ao gerar relatório');
@@ -399,7 +418,7 @@ export default function RelatorioCustomizado() {
     if (typeof config.convenioFilter === 'string') setConvenioFilter(config.convenioFilter);
     if (typeof config.textoBusca === 'string') setTextoBusca(config.textoBusca);
     const limiteSalvo = Number(config.limite);
-    if (Number.isFinite(limiteSalvo) && limiteSalvo >= 1) setLimite(String(limiteSalvo));
+    if (Number.isFinite(limiteSalvo) && limiteSalvo >= 1) setLimite(String(Math.min(5000, Math.floor(limiteSalvo))));
     if (typeof config.valorMin === 'string') setValorMin(config.valorMin);
     if (typeof config.valorMax === 'string') setValorMax(config.valorMax);
     if (typeof config.tipoLancamento === 'string') setTipoLancamento(config.tipoLancamento);
@@ -426,6 +445,8 @@ export default function RelatorioCustomizado() {
 
   const exportExcel = () => {
     if (!rows.length) { toast.error('Gere o relatório primeiro'); return; }
+    if (haMaisResultados) { toast.error('A exportação foi bloqueada porque há mais resultados que o limite selecionado.'); return; }
+    if (haMaisResultados) { toast.error('A exportação foi bloqueada porque há mais resultados que o limite selecionado.'); return; }
     const flat = rows.map(r => {
       const o: Record<string, any> = {};
       visibleColumns.forEach(c => { o[c.label] = formatCell(getValue(r, c.key), c.format); });
@@ -436,9 +457,11 @@ export default function RelatorioCustomizado() {
 
   const exportCSV = () => {
     if (!rows.length) { toast.error('Gere o relatório primeiro'); return; }
-    const head = visibleColumns.map(c => `"${c.label}"`).join(';');
+    if (haMaisResultados) { toast.error('A exportação foi bloqueada porque há mais resultados que o limite selecionado.'); return; }
+    if (haMaisResultados) { toast.error('A exportação foi bloqueada porque há mais resultados que o limite selecionado.'); return; }
+    const head = visibleColumns.map(c => formatCsvCell(c.label)).join(';');
     const lines = rows.map(r =>
-      visibleColumns.map(c => `"${String(formatCell(getValue(r, c.key), c.format)).replace(/"/g, '""')}"`).join(';')
+      visibleColumns.map(c => formatCsvCell(formatCell(getValue(r, c.key), c.format))).join(';')
     );
     const csv = '\uFEFF' + [head, ...lines].join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -450,6 +473,8 @@ export default function RelatorioCustomizado() {
 
   const printReport = () => {
     if (!rows.length) { toast.error('Gere o relatório primeiro'); return; }
+    if (haMaisResultados) { toast.error('A impressão foi bloqueada porque há mais resultados que o limite selecionado.'); return; }
+    if (haMaisResultados) { toast.error('A impressão foi bloqueada porque há mais resultados que o limite selecionado.'); return; }
     const w = window.open('', '_blank');
     if (!w) return;
     w.document.write(`
@@ -515,7 +540,7 @@ export default function RelatorioCustomizado() {
             <div>
               <Label className="text-xs">Fonte de dados</Label>
               <Select value={dataset} onValueChange={(v) => setDataset(v as DatasetKey)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger aria-label="Fonte de dados"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {allowedDatasets.map(k => (
                     <SelectItem key={k} value={k}>{DATASETS[k].label}</SelectItem>
@@ -525,16 +550,16 @@ export default function RelatorioCustomizado() {
             </div>
             <div>
               <Label className="text-xs">Data início</Label>
-              <Input type="date" value={dataInicio} onChange={e => setDataInicio(e.target.value)} />
+              <Input aria-label="Data inicial do relatorio" type="date" value={dataInicio} onChange={e => setDataInicio(e.target.value)} />
             </div>
             <div>
               <Label className="text-xs">Data fim</Label>
-              <Input type="date" value={dataFim} onChange={e => setDataFim(e.target.value)} />
+              <Input aria-label="Data final do relatorio" type="date" value={dataFim} onChange={e => setDataFim(e.target.value)} />
             </div>
             <div>
               <Label className="text-xs">Limite de registros</Label>
               <Select value={limite} onValueChange={setLimite}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger aria-label="Limite de registros"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="100">100</SelectItem>
                   <SelectItem value="500">500</SelectItem>
@@ -548,7 +573,7 @@ export default function RelatorioCustomizado() {
               <div>
                 <Label className="text-xs">Status</Label>
                 <Select value={statusFilter} onValueChange={setStatusFilter}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger aria-label="Status"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="todos">Todos</SelectItem>
                     {cfg.statusOptions?.map(s => (
@@ -565,7 +590,7 @@ export default function RelatorioCustomizado() {
               <div>
                 <Label className="text-xs">Médico</Label>
                 <Select value={medicoFilter} onValueChange={setMedicoFilter}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger aria-label="Medico"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="todos">Todos</SelectItem>
                     {medicos.map((m: any) => (
@@ -580,7 +605,7 @@ export default function RelatorioCustomizado() {
               <div>
                 <Label className="text-xs">Convênio</Label>
                 <Select value={convenioFilter} onValueChange={setConvenioFilter}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger aria-label="Convenio"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="todos">Todos</SelectItem>
                     {convenios.map((c: any) => (
@@ -596,7 +621,7 @@ export default function RelatorioCustomizado() {
                 <div>
                   <Label className="text-xs">Tipo</Label>
                   <Select value={tipoLancamento} onValueChange={setTipoLancamento}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectTrigger aria-label="Tipo de lancamento"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="todos">Todos</SelectItem>
                       <SelectItem value="receita">Receita</SelectItem>
@@ -606,11 +631,11 @@ export default function RelatorioCustomizado() {
                 </div>
                 <div>
                   <Label className="text-xs">Valor mín. (R$)</Label>
-                  <Input type="number" value={valorMin} onChange={e => setValorMin(e.target.value)} />
+                  <Input aria-label="Valor minimo" type="number" value={valorMin} onChange={e => setValorMin(e.target.value)} />
                 </div>
                 <div>
                   <Label className="text-xs">Valor máx. (R$)</Label>
-                  <Input type="number" value={valorMax} onChange={e => setValorMax(e.target.value)} />
+                  <Input aria-label="Valor maximo" type="number" value={valorMax} onChange={e => setValorMax(e.target.value)} />
                 </div>
               </>
             )}
@@ -620,7 +645,7 @@ export default function RelatorioCustomizado() {
                 <Label className="text-xs">
                   Busca livre ({cfg.textSearchFields.join(', ')})
                 </Label>
-                <Input
+                <Input aria-label="Buscar registros"
                   placeholder="Digite para filtrar..."
                   value={textoBusca}
                   onChange={e => setTextoBusca(e.target.value)}
@@ -632,7 +657,7 @@ export default function RelatorioCustomizado() {
               <div>
                 <Label className="text-xs">Agrupar por (contagem)</Label>
                 <Select value={groupBy} onValueChange={setGroupBy}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger aria-label="Agrupar por"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="nenhum">Sem agrupamento</SelectItem>
                     {cfg.groupByOptions.map(g => (
@@ -669,13 +694,13 @@ export default function RelatorioCustomizado() {
               {loading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
               Gerar relatório
             </Button>
-            <Button variant="outline" onClick={exportExcel} disabled={!rows.length}>
+            <Button variant="outline" onClick={exportExcel} disabled={loading || !rows.length || haMaisResultados}>
               <FileSpreadsheet className="h-4 w-4 mr-2" /> Excel
             </Button>
-            <Button variant="outline" onClick={exportCSV} disabled={!rows.length}>
+            <Button variant="outline" onClick={exportCSV} disabled={loading || !rows.length || haMaisResultados}>
               <Download className="h-4 w-4 mr-2" /> CSV
             </Button>
-            <Button variant="outline" onClick={printReport} disabled={!rows.length}>
+            <Button variant="outline" onClick={printReport} disabled={loading || !rows.length || haMaisResultados}>
               <Printer className="h-4 w-4 mr-2" /> Imprimir / PDF
             </Button>
             <Button variant="outline" onClick={() => setSaveOpen(true)}>
@@ -707,9 +732,9 @@ export default function RelatorioCustomizado() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {rows.length >= Number(limite) && (
-              <div role="status" className="mb-4 rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm text-warning-foreground">
-                A consulta chegou ao limite de {Number(limite).toLocaleString('pt-BR')} registros. Pode haver mais resultados; refine os filtros ou aumente o limite antes de exportar.
+            {haMaisResultados && (
+              <div role="alert" className="mb-4 rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm text-warning-foreground">
+                Há mais resultados que o limite de {Number(limite).toLocaleString('pt-BR')}. A exportação e a impressão estão bloqueadas para evitar um arquivo parcial; refine os filtros ou aumente o limite.
               </div>
             )}
             {grouped && (
@@ -784,17 +809,17 @@ export default function RelatorioCustomizado() {
           <div className="space-y-3">
             <div>
               <Label className="text-xs">Nome*</Label>
-              <Input value={saveForm.nome} onChange={e => setSaveForm({ ...saveForm, nome: e.target.value })} placeholder="Ex: Receita mensal" />
+              <Input aria-label="Nome do relatorio salvo" value={saveForm.nome} onChange={e => setSaveForm({ ...saveForm, nome: e.target.value })} placeholder="Ex: Receita mensal" />
             </div>
             <div>
               <Label className="text-xs">Descrição</Label>
-              <Textarea rows={2} value={saveForm.descricao} onChange={e => setSaveForm({ ...saveForm, descricao: e.target.value })} />
+              <Textarea aria-label="Descricao do relatorio salvo" rows={2} value={saveForm.descricao} onChange={e => setSaveForm({ ...saveForm, descricao: e.target.value })} />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label className="text-xs">Frequência de envio</Label>
                 <Select value={saveForm.frequencia} onValueChange={v => setSaveForm({ ...saveForm, frequencia: v })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger aria-label="Frequencia de envio"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="nenhuma">Apenas favoritar (sem envio)</SelectItem>
                     <SelectItem value="diaria">Diária</SelectItem>
@@ -805,13 +830,13 @@ export default function RelatorioCustomizado() {
               </div>
               <div>
                 <Label className="text-xs">Horário de envio</Label>
-                <Input type="time" value={saveForm.hora} onChange={e => setSaveForm({ ...saveForm, hora: e.target.value })} />
+                <Input aria-label="Horario de envio" type="time" value={saveForm.hora} onChange={e => setSaveForm({ ...saveForm, hora: e.target.value })} />
               </div>
               {saveForm.frequencia === 'semanal' && (
                 <div>
                   <Label className="text-xs">Dia da semana</Label>
                   <Select value={saveForm.dia_semana} onValueChange={v => setSaveForm({ ...saveForm, dia_semana: v })}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectTrigger aria-label="Dia da semana"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       {['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'].map((d, i) => (
                         <SelectItem key={i} value={String(i)}>{d}</SelectItem>
@@ -823,13 +848,13 @@ export default function RelatorioCustomizado() {
               {saveForm.frequencia === 'mensal' && (
                 <div>
                   <Label className="text-xs">Dia do mês</Label>
-                  <Input type="number" min={1} max={28} value={saveForm.dia_mes} onChange={e => setSaveForm({ ...saveForm, dia_mes: e.target.value })} />
+                  <Input aria-label="Dia do mes" type="number" min={1} max={28} value={saveForm.dia_mes} onChange={e => setSaveForm({ ...saveForm, dia_mes: e.target.value })} />
                 </div>
               )}
               <div>
                 <Label className="text-xs">Formato</Label>
                 <Select value={saveForm.formato} onValueChange={v => setSaveForm({ ...saveForm, formato: v })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger aria-label="Formato do relatorio"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="csv">CSV</SelectItem>
                   </SelectContent>
@@ -839,7 +864,7 @@ export default function RelatorioCustomizado() {
             {saveForm.frequencia !== 'nenhuma' && (
               <div>
                 <Label className="text-xs">Destinatários (e-mails separados por vírgula)</Label>
-                <Textarea rows={2} value={saveForm.destinatarios} onChange={e => setSaveForm({ ...saveForm, destinatarios: e.target.value })} placeholder="gestor@clinica.com, financeiro@clinica.com" />
+                <Textarea aria-label="E-mails destinatarios do relatorio" rows={2} value={saveForm.destinatarios} onChange={e => setSaveForm({ ...saveForm, destinatarios: e.target.value })} placeholder="gestor@clinica.com, financeiro@clinica.com" />
               </div>
             )}
             <p className="text-xs text-muted-foreground">

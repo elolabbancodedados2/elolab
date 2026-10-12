@@ -16,6 +16,7 @@ import { mensagemDeErro } from '@/lib/erros';
 import { useQueryClient } from '@tanstack/react-query';
 import { FinalizarAtendimentoDialog } from '@/components/fila/FinalizarAtendimentoDialog';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { podeRemarcarAgendamento } from '@/lib/appointmentStatus';
 
 interface Props {
   agendamento: any;
@@ -75,9 +76,14 @@ export function AppointmentCard({ agendamento, color, minutesToPx, onClick, conv
   const queryClient = useQueryClient();
   const { profile } = useSupabaseAuth();
   const navigate = useNavigate();
+  const roles = profile?.roles ?? [];
+  const podeAbrirFicha = roles.some(role => ['admin', 'recepcao', 'enfermagem'].includes(role));
+  const podeAbrirExtrato = podeAbrirFicha && roles.some(role => ['admin', 'recepcao'].includes(role));
+  const movable = podeRemarcarAgendamento(agendamento.status);
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: `ag:${agendamento.id}`,
     data: { agendamento },
+    disabled: !movable,
   });
 
   const start = toMinutes(agendamento.hora_inicio);
@@ -134,6 +140,10 @@ export function AppointmentCard({ agendamento, color, minutesToPx, onClick, conv
       ? agendamento.observacoes
       : null,
     clinicaId: profile?.clinica_id,
+  }, 'normal', {
+    deferBilling: Boolean(profile?.roles?.includes('medico') && !profile.roles.some(role =>
+      ['admin', 'recepcao', 'enfermagem'].includes(role),
+    )),
   });
 
   const alterarStatusComFila = async (status: 'cancelado' | 'faltou') => {
@@ -164,7 +174,13 @@ export function AppointmentCard({ agendamento, color, minutesToPx, onClick, conv
         const checkin = await fazerCheckin();
         invalidarFinanceiro();
         if (!checkin.success) throw new Error(checkin.message);
-        toast.success('Paciente encaminhado para a fila', { description: checkin.actions.join(' • ') });
+        toast.success('Paciente encaminhado para a fila', {
+          description: profile?.roles?.includes('medico') && !profile.roles.some(role =>
+            ['admin', 'recepcao', 'enfermagem'].includes(role),
+          )
+            ? 'A recepção deve confirmar a cobrança antes do atendimento.'
+            : checkin.actions.join(' • '),
+        });
         invalidarAgendaEFila();
         return;
       }
@@ -365,16 +381,16 @@ export function AppointmentCard({ agendamento, color, minutesToPx, onClick, conv
       <ContextMenuContent className="w-56">
         <ContextMenuItem onSelect={onClick}><Edit3 className="mr-2 h-4 w-4" /> Abrir / editar</ContextMenuItem>
         <ContextMenuSeparator />
-        <ContextMenuItem
+        {podeAbrirFicha && <ContextMenuItem
           disabled={!agendamento.paciente_id}
           onSelect={() => navigate(`/pacientes?paciente=${agendamento.paciente_id}`)}>
           <User className="mr-2 h-4 w-4" /> Ficha do paciente
-        </ContextMenuItem>
-        <ContextMenuItem
+        </ContextMenuItem>}
+        {podeAbrirExtrato && <ContextMenuItem
           disabled={!agendamento.paciente_id}
           onSelect={() => navigate(`/pacientes?paciente=${agendamento.paciente_id}&tab=financeiro`)}>
           <Receipt className="mr-2 h-4 w-4" /> Extrato financeiro
-        </ContextMenuItem>
+        </ContextMenuItem>}
         <ContextMenuSeparator />
         <ContextMenuItem disabled={ocupado || agendamento.status !== 'agendado'} onSelect={() => setStatus('confirmado')}><CheckCircle2 className="mr-2 h-4 w-4" /> Confirmar</ContextMenuItem>
         <ContextMenuItem disabled={ocupado || !agendamento.paciente_id || !['agendado', 'confirmado', 'aguardando'].includes(agendamento.status)} onSelect={() => setStatus('aguardando')}>Enviar para a fila</ContextMenuItem>
@@ -385,7 +401,7 @@ export function AppointmentCard({ agendamento, color, minutesToPx, onClick, conv
         <ContextMenuSeparator />
         <ContextMenuItem disabled={ocupado || !['agendado', 'confirmado', 'aguardando'].includes(agendamento.status)} onSelect={() => setStatus('faltou')} className="text-warning"><Ban className="mr-2 h-4 w-4" /> Marcar faltou</ContextMenuItem>
         <ContextMenuSeparator />
-        <ContextMenuItem disabled={ocupado || ['cancelado', 'faltou', 'finalizado', 'atendimento_finalizado', 'pago', 'aguardando_pagamento', 'aguardando_pagamento_adicional'].includes(agendamento.status)} onSelect={() => setCancelandoCard(true)} className="text-destructive"><Trash2 className="mr-2 h-4 w-4" /> Cancelar consulta</ContextMenuItem>
+        <ContextMenuItem disabled={ocupado || !['agendado', 'confirmado', 'aguardando', 'aguardando_triagem', 'em_triagem'].includes(agendamento.status)} onSelect={() => setCancelandoCard(true)} className="text-destructive"><Trash2 className="mr-2 h-4 w-4" /> Cancelar consulta</ContextMenuItem>
       </ContextMenuContent>
       <FinalizarAtendimentoDialog
         open={finalizandoCard}

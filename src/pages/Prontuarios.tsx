@@ -1,5 +1,6 @@
 import { nomeMedico } from '@/lib/formatters';
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search, FileText, Plus, Save, CalendarCheck, FileDown, History, Loader2,
@@ -40,15 +41,23 @@ import { ProntuarioAdendos } from '@/components/clinical/ProntuarioAdendos';
 import { useMedicos, useAgendamentos, useSupabaseQuery } from '@/hooks/useSupabaseData';
 import { useCurrentMedico } from '@/hooks/useCurrentMedico';
 import { supabase } from '@/integrations/supabase/client';
+import { agruparBaixasEstoque } from '@/lib/stockPrescriptionDeductions';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ErrorState } from '@/components/ErrorState';
-import { exportToFHIR, exportToXML, downloadClinicalExport } from '@/lib/clinicalExport';
+import { exportToFHIR, exportToXML } from '@/lib/clinicalExport';
 import { ageFromDateOnly, parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { useBuscaPacientes } from '@/hooks/useBuscaPacientes';
+import { PatientSearchResult } from '@/components/clinical/PatientSearchResult';
 import { mensagemDeErro } from '@/lib/erros';
 import { useSearchParams } from 'react-router-dom';
-import { logAudit } from '@/lib/auditTrail';
+import { autorizarLeituraHistoricoPaciente, registrarAcessoProntuario, registrarExportacaoProntuarios } from '@/lib/prontuarioAudit';
+import { obterIdentificacaoAssinante } from '@/lib/prontuarioSigner';
+import { lerConfigsClinica } from '@/lib/configClinica';
+import { buscarPorIdsEmLotes, buscarTodasAsPaginas, combinarEventosAuditoria, EventoAuditoriaExportavel, filtrarEventosAuditoria, gerarCsvAuditoria } from '@/lib/prontuarioAuditExport';
 import { UnsavedChangesDialog } from '@/components/ConfirmDialog';
+import { ExportacaoClinicaProtegida } from '@/components/clinical/ExportacaoClinicaProtegida';
+import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
+import { filtrarRascunhosAbertos } from '@/lib/prontuarioDrafts';
 
 // ─── Types ─────────────────────────────────────────────────
 interface PrescricaoForm {
@@ -58,6 +67,18 @@ interface PrescricaoForm {
   duracao: string;
   quantidade: string;
   observacoes: string;
+}
+
+interface RascunhoNaFila {
+  id: string;
+  paciente_id: string;
+  medico_id: string | null;
+  data: string;
+  queixa_principal: string | null;
+  updated_at: string | null;
+  assinado: boolean | null;
+  pacientes?: { nome?: string | null; nome_social?: string | null } | Array<{ nome?: string | null; nome_social?: string | null }> | null;
+  [key: string]: unknown;
 }
 
 interface SinaisVitais {
@@ -70,6 +91,9 @@ interface SinaisVitais {
   peso: string;
   altura: string;
   imc: string;
+  glicemia: string;
+  circunferencia_abdominal: string;
+  circunferencia_craniana: string;
   glasgow: string;
   dor: string;
 }
@@ -79,6 +103,7 @@ const emptySinaisVitais: SinaisVitais = {
   frequencia_cardiaca: '', frequencia_respiratoria: '',
   temperatura: '', saturacao: '',
   peso: '', altura: '', imc: '',
+  glicemia: '', circunferencia_abdominal: '', circunferencia_craniana: '',
   glasgow: '', dor: '',
 };
 
@@ -147,6 +172,9 @@ function VitalSignsInput({ sinais, onChange, disabled = false }: { sinais: Sinai
     { key: 'spo2', label: 'SpO₂ (%)', icon: Droplets, accent: 'text-info', field: 'saturacao', placeholder: '98' },
     { key: 'peso', label: 'Peso (kg)', icon: Scale, accent: 'text-success', field: 'peso', placeholder: '70' },
     { key: 'altura', label: 'Alt (cm)', icon: Ruler, accent: 'text-primary', field: 'altura', placeholder: '170' },
+    { key: 'glicemia', label: 'Glicemia (mg/dL)', icon: Droplets, accent: 'text-warning', field: 'glicemia', placeholder: '90' },
+    { key: 'circ-abd', label: 'Cintura (cm)', icon: Ruler, accent: 'text-info', field: 'circunferencia_abdominal', placeholder: '82' },
+    { key: 'circ-cran', label: 'Cabeça (cm)', icon: Ruler, accent: 'text-info', field: 'circunferencia_craniana', placeholder: '54' },
     { key: 'glasgow', label: 'Glasgow', icon: Brain, accent: 'text-primary', field: 'glasgow', placeholder: '15' },
     { key: 'dor', label: 'Dor (0-10)', icon: AlertTriangle, accent: 'text-warning', field: 'dor', placeholder: '0' },
   ];
@@ -172,7 +200,7 @@ function VitalSignsInput({ sinais, onChange, disabled = false }: { sinais: Sinai
                   <Input placeholder="80" value={sinais.pressao_diastolica} onChange={e => update('pressao_diastolica', e.target.value)} className="h-7 text-xs px-2" disabled={disabled} />
                 </div>
               ) : (
-                <Input placeholder={f.placeholder} value={(sinais as any)[f.field!] || ''} onChange={e => update(f.field!, e.target.value)} inputMode={f.field === 'peso' || f.field === 'altura' ? 'decimal' : 'numeric'} className="h-7 text-xs px-2" disabled={disabled} />
+                <Input placeholder={f.placeholder} value={(sinais as any)[f.field!] || ''} onChange={e => update(f.field!, e.target.value)} inputMode={['peso', 'altura', 'temperatura', 'glicemia', 'circunferencia_abdominal', 'circunferencia_craniana'].includes(f.field!) ? 'decimal' : 'numeric'} className="h-7 text-xs px-2" disabled={disabled} />
               )}
             </div>
           );
@@ -320,72 +348,214 @@ function FichaPaciente({ paciente, convenioNome }: { paciente: any; convenioNome
 }
 
 // ─── Audit Log ─────────────────────────────────────────────
-function ProntuarioAuditLog({ prontuarioId }: { prontuarioId: string }) {
-  const [logs, setLogs] = useState<any[]>([]);
+async function carregarPrescricoesParaExportacao(prontuarioIds: string[]) {
+  return buscarPorIdsEmLotes(prontuarioIds, (lote) => buscarTodasAsPaginas((inicio, fim) =>
+    supabase.from('prescricoes')
+      .select('prontuario_id, medicamento, dosagem, posologia, duracao, quantidade, observacoes')
+      .in('prontuario_id', lote)
+      .order('prontuario_id', { ascending: true })
+      .range(inicio, fim),
+  ), 100);
+}
+
+function caminhoArquivoClinico(stored: string) {
+  if (!stored.startsWith('http')) return stored;
+  const afterBucket = stored.split('/medical-attachments/')[1];
+  return decodeURIComponent((afterBucket || stored.split('/').slice(-2).join('/')).split('?')[0]);
+}
+
+async function blobParaBase64(blob: Blob) {
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  let binary = '';
+  for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+  }
+  return btoa(binary);
+}
+
+function mimeDoArquivo(nome: string) {
+  const ext = nome.split('.').pop()?.toLowerCase();
+  return ({ pdf: 'application/pdf', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif' } as Record<string, string>)[ext || ''] || 'application/octet-stream';
+}
+
+async function carregarDadosCompletosExportacao(pacienteId: string, prontuarioIds: string[]) {
+  const ids = [...new Set(prontuarioIds.filter(Boolean))];
+  const [prescricoes, exames, anexos, adendos] = await Promise.all([
+    carregarPrescricoesParaExportacao(ids),
+    buscarTodasAsPaginas((inicio, fim) => supabase.from('exames')
+      .select('id,tipo_exame,data_solicitacao,data_realizacao,status,resultado,observacoes,arquivo_resultado')
+      .eq('paciente_id', pacienteId).order('data_solicitacao', { ascending: true }).range(inicio, fim)),
+    ids.length ? buscarTodasAsPaginas((inicio, fim) => supabase.from('anexos_prontuario')
+      .select('id,nome_arquivo,tipo_arquivo,categoria,descricao,created_at,url_arquivo,tamanho_bytes')
+      .in('prontuario_id', ids).order('created_at', { ascending: true }).range(inicio, fim)) : Promise.resolve([]),
+    ids.length ? buscarTodasAsPaginas((inicio, fim) => (supabase as any).from('prontuario_adendos')
+      .select('id,prontuario_id,tipo,motivo,texto,medico_nome,crm,created_at')
+      .in('prontuario_id', ids).order('created_at', { ascending: true }).range(inicio, fim)) : Promise.resolve([]),
+  ]);
+
+  const arquivosPendentes = [
+    ...anexos.map((anexo: any) => ({ id: anexo.id, nome: anexo.nome_arquivo, tipo: anexo.tipo_arquivo, path: caminhoArquivoClinico(anexo.url_arquivo), categoria: anexo.categoria, descricao: anexo.descricao, data: anexo.created_at, tamanho: anexo.tamanho_bytes, grupo: 'anexo' as const })),
+    ...exames.filter((exame: any) => exame.arquivo_resultado).map((exame: any) => ({ id: exame.id, nome: exame.arquivo_resultado.split('/').pop() || `laudo-${exame.id}`, tipo: mimeDoArquivo(exame.arquivo_resultado), path: caminhoArquivoClinico(exame.arquivo_resultado), tamanho: null, grupo: 'exame' as const })),
+  ];
+  const tamanhoDeclarado = arquivosPendentes.reduce((total, arquivo) => total + (arquivo.tamanho || 0), 0);
+  if (tamanhoDeclarado > 50 * 1024 * 1024) throw new Error('Os arquivos anexados ultrapassam 50 MB. Exporte os documentos em lotes menores.');
+  let tamanhoReal = 0;
+  const arquivosExportados = [] as Array<{ id: string; nome: string; tipo: string; categoria?: string; descricao?: string; data?: string; conteudoBase64: string }>;
+  const examesExportados = exames.map((exame: any) => ({
+    id: exame.id, tipo: exame.tipo_exame, data: exame.data_realizacao || exame.data_solicitacao,
+    status: exame.status, resultado: exame.resultado || undefined, observacoes: exame.observacoes || undefined,
+  })) as Array<{ id: string; tipo: string; data?: string; status?: string; resultado?: string; observacoes?: string; conteudoBase64?: string; nomeArquivo?: string; tipoArquivo?: string }>;
+  for (const arquivo of arquivosPendentes) {
+    const { data, error } = await supabase.storage.from('medical-attachments').download(arquivo.path);
+    if (error || !data) throw new Error(`Não foi possível incluir o arquivo ${arquivo.nome} na portabilidade.`);
+    tamanhoReal += data.size;
+    if (tamanhoReal > 50 * 1024 * 1024) throw new Error('Os arquivos anexados ultrapassam 50 MB. Exporte os documentos em lotes menores.');
+    const conteudoBase64 = await blobParaBase64(data);
+    if (arquivo.grupo === 'anexo') {
+      arquivosExportados.push({ id: arquivo.id, nome: arquivo.nome, tipo: arquivo.tipo, categoria: arquivo.categoria || undefined, descricao: arquivo.descricao || undefined, data: arquivo.data || undefined, conteudoBase64 });
+    } else {
+      const exame = examesExportados.find(item => item.id === arquivo.id);
+      if (exame) Object.assign(exame, { conteudoBase64, nomeArquivo: arquivo.nome, tipoArquivo: arquivo.tipo });
+    }
+  }
+  return {
+    prescricoes: prescricoes.map((item: any) => ({ ...item })),
+    exames: examesExportados,
+    anexos: arquivosExportados,
+    adendos: adendos.map((item: any) => ({ id: item.id, tipo: item.tipo, motivo: item.motivo, texto: item.texto, medico_nome: item.medico_nome, crm: item.crm, data: item.created_at })),
+  };
+}
+
+function ProntuarioAuditLog({ prontuarioId, clinicaId }: { prontuarioId: string; clinicaId?: string }) {
+  const [logs, setLogs] = useState<EventoAuditoriaExportavel[]>([]);
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState<unknown>(null);
   const [reload, setReload] = useState(0);
+  const [dataInicial, setDataInicial] = useState('');
+  const [dataFinal, setDataFinal] = useState('');
+  const [acao, setAcao] = useState('todos');
+  const [userId, setUserId] = useState('todos');
+  const [metadados, setMetadados] = useState({
+    softwareNome: 'EloLab', softwareFornecedor: 'EloLab', softwareVersao: '0.0.0',
+    softwareBuild: (globalThis as any).__APP_BUILD_ID__ || 'dev-build',
+    instituicaoNome: '', instituicaoCnes: '', instituicaoCnpj: '',
+  });
 
   useEffect(() => {
     if (!prontuarioId) return;
     setLoading(true);
     setErro(null);
     let active = true;
-    Promise.all([
-      (supabase as any).from('prontuario_acessos').select('id,created_at,acao,user_nome,user_crm,justificativa').eq('prontuario_id', prontuarioId)
-        .order('created_at', { ascending: false }).limit(50),
-      supabase.from('audit_log').select('id,timestamp,action,user_name').eq('record_id', prontuarioId).eq('collection', 'prontuarios')
-        .order('timestamp', { ascending: false }).limit(20),
-    ]).then(([acessos, audit]) => {
-      if (!active) return;
-      if (acessos.error || audit.error) {
-        setErro(acessos.error || audit.error);
-        setLogs([]);
-        setLoading(false);
-        return;
+    const carregar = async () => {
+      const db = supabase as any;
+      const [acessos, alteracoes] = await Promise.all([
+        buscarTodasAsPaginas<EventoAuditoriaExportavel>((inicio, fim) =>
+        db.from('prontuario_acessos')
+          .select('id,created_at,acao,user_id,user_nome,user_crm,prontuario_id')
+          .eq('prontuario_id', prontuarioId)
+          .order('created_at', { ascending: false }).order('id', { ascending: false })
+          .range(inicio, fim).then(({ data, error }: any) => ({
+            data: (data || []).map((a: any) => ({
+              id: a.id, source: 'prontuario_acessos', ts: a.created_at,
+              action: a.acao, user_id: a.user_id, user_name: a.user_nome,
+              user_crm: a.user_crm, prontuario_id: a.prontuario_id,
+            } as EventoAuditoriaExportavel)), error,
+          })), 500),
+        buscarTodasAsPaginas<EventoAuditoriaExportavel>((inicio, fim) =>
+          db.from('audit_log')
+            .select('id,timestamp,action,user_id,user_name,record_id,changes')
+            .eq('collection', 'prontuarios').eq('record_id', prontuarioId)
+            .order('timestamp', { ascending: false }).order('id', { ascending: false })
+            .range(inicio, fim).then(({ data, error }: any) => ({
+              data: (data || []).map((event: any) => ({
+                id: event.id, source: 'audit_log', ts: event.timestamp,
+                action: event.action === 'insert' ? 'insert' : event.action,
+                operacaoBanco: event.action, possuiDiff: Boolean(event.changes),
+                user_id: event.user_id, user_name: event.user_name,
+                user_crm: null, prontuario_id: event.record_id,
+              } as EventoAuditoriaExportavel)), error,
+            })), 500),
+      ]);
+      const todos = combinarEventosAuditoria(acessos, alteracoes);
+      let configClinica: any = {};
+      let clinica: any = null;
+      if (clinicaId) {
+        const [config, clinicResult] = await Promise.all([
+          lerConfigsClinica(clinicaId, ['config_clinica']).catch(() => ({})),
+          db.from('clinicas').select('nome,cnpj').eq('id', clinicaId).maybeSingle(),
+        ]);
+        configClinica = (config as any).config_clinica || {};
+        clinica = clinicResult.data;
       }
-      const merged = [
-        ...((acessos.data as any[]) || []).map(a => ({
-          id: `a-${a.id}`, ts: a.created_at, action: a.acao,
-          user_name: a.user_nome, user_crm: a.user_crm,
-          justificativa: a.justificativa, source: 'cfm',
-        })),
-        ...((audit.data as any[]) || []).map(a => ({
-          id: `l-${a.id}`, ts: a.timestamp, action: a.action,
-          user_name: a.user_name, source: 'audit',
-        })),
-      ].sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime());
-      setLogs(merged);
+      if (!active) return;
+      setLogs(todos);
+      setMetadados((current) => ({
+        ...current,
+        instituicaoNome: configClinica.nomeClinica || clinica?.nome || '',
+        instituicaoCnes: configClinica.cnes || '',
+        instituicaoCnpj: configClinica.cnpj || clinica?.cnpj || '',
+      }));
       setLoading(false);
-    }).catch(error => {
+    };
+    carregar().catch(error => {
       if (!active) return;
       setErro(error);
       setLogs([]);
       setLoading(false);
     });
     return () => { active = false; };
-  }, [prontuarioId, reload]);
+  }, [prontuarioId, clinicaId, reload]);
 
   if (loading) return <Skeleton className="h-32" />;
   if (erro) return <ErrorState compact error={erro} title="Não foi possível carregar a trilha de auditoria" onRetry={() => { setLoading(true); setReload(value => value + 1); }} />;
 
   const actionLabel = (a: string) => ({
-    create: 'Criação', update: 'Edição', access: 'Acesso',
+    create: 'Criação', insert: 'Criação', update: 'Edição', delete: 'Exclusão', access: 'Acesso',
     visualizacao: 'Visualização', edicao: 'Edição', assinatura: 'Assinatura',
     adendo: 'Adendo', sign: 'Assinatura', edit_request: 'Solicitou edição',
     exportacao: 'Exportação', impressao: 'Impressão',
   } as Record<string, string>)[a] || a;
+  const logsFiltrados = filtrarEventosAuditoria(logs, {
+    dataInicial, dataFinal, acao, userId,
+  });
+  const usuarios = [...new Map(logs.filter(log => log.user_id).map(log => [log.user_id!, log])).values()];
+  const exportar = () => {
+    const csv = gerarCsvAuditoria(logsFiltrados, metadados);
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `auditoria-prontuario-${prontuarioId}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <div className="space-y-3">
-      <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
-        <Shield className="h-3.5 w-3.5" /> Trilha de Auditoria
-      </h4>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+          <Shield className="h-3.5 w-3.5" /> Trilha de Auditoria
+        </h4>
+        <Button type="button" variant="outline" size="sm" onClick={exportar} disabled={logsFiltrados.length === 0}>
+          <FileDown className="mr-1.5 h-3.5 w-3.5" />Exportar CSV ({logsFiltrados.length})
+        </Button>
+      </div>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-4">
+        <div className="space-y-1"><Label htmlFor="audit-data-inicial" className="text-[10px]">De</Label><Input id="audit-data-inicial" type="date" value={dataInicial} onChange={event => setDataInicial(event.target.value)} className="h-9" /></div>
+        <div className="space-y-1"><Label htmlFor="audit-data-final" className="text-[10px]">Até</Label><Input id="audit-data-final" type="date" value={dataFinal} onChange={event => setDataFinal(event.target.value)} className="h-9" /></div>
+        <div className="space-y-1"><Label htmlFor="audit-evento" className="text-[10px]">Evento</Label><Select value={acao} onValueChange={setAcao}><SelectTrigger id="audit-evento" className="h-9"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="todos">Todos</SelectItem>{[...new Set(logs.map(log => log.action))].map(evento => <SelectItem key={evento} value={evento}>{actionLabel(evento)}</SelectItem>)}</SelectContent></Select></div>
+        <div className="space-y-1"><Label htmlFor="audit-usuario" className="text-[10px]">Usuário (ID)</Label><Select value={userId} onValueChange={setUserId}><SelectTrigger id="audit-usuario" className="h-9"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="todos">Todos</SelectItem>{usuarios.map(log => <SelectItem key={log.user_id!} value={log.user_id!}>{log.user_name || log.user_id} · {log.user_id!.slice(0, 8)}</SelectItem>)}</SelectContent></Select></div>
+      </div>
+      <p className="text-[10px] text-muted-foreground">{logsFiltrados.length} de {logs.length} eventos. O CSV contém os IDs do registro e do usuário, sem dados do paciente ou conteúdo clínico.</p>
+      {(!metadados.instituicaoCnes || !metadados.instituicaoCnpj) && (
+        <p className="text-[10px] text-warning">CNES ou CNPJ não configurado. O campo correspondente ficará vazio no arquivo; complete em Configurações da clínica.</p>
+      )}
       {logs.length === 0 ? (
         <p className="text-xs text-muted-foreground py-6 text-center">Nenhum registro de auditoria</p>
+      ) : logsFiltrados.length === 0 ? (
+        <p className="text-xs text-muted-foreground py-6 text-center">Nenhum evento corresponde aos filtros.</p>
       ) : (
         <div className="space-y-1.5">
-          {logs.map((log: any) => (
+          {logsFiltrados.map((log) => (
             <div key={log.id} className="flex items-start gap-2.5 text-xs border-l-2 border-muted pl-3 py-1.5">
               <Lock className="h-3 w-3 text-muted-foreground mt-0.5 flex-shrink-0" />
               <div className="flex-1 min-w-0">
@@ -395,13 +565,10 @@ function ProntuarioAuditLog({ prontuarioId }: { prontuarioId: string }) {
                     {log.ts ? format(new Date(log.ts), "dd/MM/yy HH:mm", { locale: ptBR }) : '—'}
                   </span>
                 </div>
-                {log.user_name && (
+                {(log.user_name || log.user_id) && (
                   <p className="text-[10px] text-muted-foreground">
-                    por {log.user_name}{log.user_crm ? ` — CRM ${log.user_crm}` : ''}
+                    por {log.user_name || 'Usuário'} · ID {log.user_id}{log.user_crm ? ` — CRM ${log.user_crm}` : ''}
                   </p>
-                )}
-                {log.justificativa && (
-                  <p className="text-[10px] text-muted-foreground italic mt-0.5">{log.justificativa}</p>
                 )}
               </div>
             </div>
@@ -410,7 +577,7 @@ function ProntuarioAuditLog({ prontuarioId }: { prontuarioId: string }) {
       )}
       <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground bg-muted/40 rounded-lg p-2">
         <ShieldCheck className="h-3 w-3" />
-        <span>LGPD • CFM nº 1.821/07 • Todos os acessos registrados</span>
+        <span>Trilha cronológica deste registro. Eventos antigos podem ter dados incompletos.</span>
       </div>
     </div>
   );
@@ -498,7 +665,7 @@ function RelatedRecords({ pacienteId }: { pacienteId: string }) {
 }
 
 // ─── Anexos Wrapper ────────────────────────────────────────
-function AnexosWrapper({ pacienteId, prontuarioId }: { pacienteId: string; prontuarioId: string }) {
+function AnexosWrapper({ pacienteId, prontuarioId, readOnly }: { pacienteId: string; prontuarioId: string; readOnly: boolean }) {
   const [anexos, setAnexos] = useState<any[]>([]);
   const [erro, setErro] = useState<unknown>(null);
   const [loading, setLoading] = useState(true);
@@ -519,7 +686,7 @@ function AnexosWrapper({ pacienteId, prontuarioId }: { pacienteId: string; pront
   useEffect(() => { loadAnexos(); }, [loadAnexos]);
   if (loading) return <Skeleton className="h-32 w-full" />;
   if (erro) return <ErrorState compact error={erro} title="Não foi possível carregar os anexos" onRetry={() => { void loadAnexos(); }} />;
-  return <AnexosProntuario pacienteId={pacienteId} prontuarioId={prontuarioId} anexos={anexos} onAnexoAdicionado={loadAnexos} onAnexoRemovido={loadAnexos} />;
+  return <AnexosProntuario pacienteId={pacienteId} prontuarioId={prontuarioId} anexos={anexos} readOnly={readOnly} onAnexoAdicionado={loadAnexos} onAnexoRemovido={loadAnexos} />;
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -527,6 +694,7 @@ function AnexosWrapper({ pacienteId, prontuarioId }: { pacienteId: string; pront
 // ═══════════════════════════════════════════════════════════
 export default function Prontuarios() {
   const [dispensando, setDispensando] = useState(false);
+  const [exportacaoPendente, setExportacaoPendente] = useState<{ conteudo: string; nomeArquivo: string; tipo: 'application/json' | 'application/xml'; formato: 'FHIR R4 JSON' | 'XML clínico simplificado'; ids: string[] } | null>(null);
 
   /**
    * Dá baixa no estoque dos medicamentos que a clínica entregou em mãos.
@@ -547,11 +715,17 @@ export default function Prontuarios() {
 
     setDispensando(true);
     try {
+      const prontuarioId = await performSave(true);
+      if (!prontuarioId) {
+        throw new Error('Não foi possível salvar as prescrições. Revise o atendimento e tente novamente.');
+      }
+
       const { autoDispensarMedicamentos } = await import('@/lib/workflowAutomation');
       const r = await autoDispensarMedicamentos({
         medicamentos: itens,
         pacienteId: selectedPaciente?.id ?? '',
         pacienteNome: selectedPaciente?.nome ?? 'Paciente',
+        prontuarioId,
         userId: user?.id,
       });
 
@@ -577,6 +751,8 @@ export default function Prontuarios() {
   const routeOpenedRef = useRef(false);
   const routeKeyRef = useRef<string | null>(null);
   const [selectedPacienteId, setSelectedPacienteId] = useState<string | null>(null);
+  const [rascunhoParaAbrir, setRascunhoParaAbrir] = useState<Record<string, any> | null>(null);
+  const [rascunhoParaEditarId, setRascunhoParaEditarId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [isProntuarioOpen, setIsProntuarioOpen] = useState(false);
   const [currentProntuario, setCurrentProntuario] = useState<Record<string, any>>({});
@@ -603,15 +779,41 @@ export default function Prontuarios() {
   const pacientesBusca = pacientesBuscaQuery.data?.pacientes ?? [];
   const buscandoPacientes = pacientesBuscaQuery.isFetching || pacientesBuscaQuery.isDebouncing || pacientesBuscaQuery.isPlaceholderData;
   const { data: medicos = [], isLoading: loadingMedicos, error: erroMedicos, refetch: refetchMedicos } = useMedicos();
+  const medicoDoProntuario = medicos.find((medico: any) => medico.id === currentProntuario.medico_id);
+  const identificacaoAssinante = obterIdentificacaoAssinante({
+    assinado: Boolean(currentProntuario.assinado),
+    assinado_por: currentProntuario.assinado_por,
+    crm_assinante: currentProntuario.crm_assinante,
+    medicoVinculado: medicoDoProntuario,
+  });
   const { data: convenios = [], error: erroConvenios, refetch: refetchConvenios } = useSupabaseQuery<any>('convenios', { orderBy: { column: 'nome', ascending: true } });
   const { medicoId, isMedicoOnly } = useCurrentMedico();
+  const rascunhosQuery = useQuery<RascunhoNaFila[]>({
+    queryKey: ['prontuarios-rascunhos-abertos', user?.id, user?.clinica_id, medicoId],
+    enabled: !!user?.clinica_id && !!medicoId,
+    queryFn: () => buscarEmBlocos<RascunhoNaFila>(() => (supabase as any)
+      .from('prontuarios')
+      .select('id, paciente_id, medico_id, data, queixa_principal, updated_at, assinado, pacientes(nome, nome_social)')
+      .eq('clinica_id', user!.clinica_id)
+      .eq('medico_id', medicoId!)
+      .eq('assinado', false)
+      .order('updated_at', { ascending: false })
+      .order('id', { ascending: false })),
+    staleTime: 15_000,
+  });
+  const rascunhosAbertos = useMemo(
+    () => filtrarRascunhosAbertos(rascunhosQuery.data || [], medicoId),
+    [rascunhosQuery.data, medicoId],
+  );
   const [historicoEvolucoes, setHistoricoEvolucoes] = useState<any[]>([]);
   const [loadingHistorico, setLoadingHistorico] = useState(false);
+  const [historicoAuditadoPacienteId, setHistoricoAuditadoPacienteId] = useState<string | null>(null);
   const [erroHistorico, setErroHistorico] = useState<unknown>(null);
   const [reloadHistorico, setReloadHistorico] = useState(0);
 
   useEffect(() => {
     if (!selectedPacienteId || (isMedicoOnly && !medicoId)) {
+      setHistoricoAuditadoPacienteId(null);
       setHistoricoEvolucoes([]);
       setErroHistorico(null);
       setLoadingHistorico(false);
@@ -622,27 +824,27 @@ export default function Prontuarios() {
     setErroHistorico(null);
     setErroHistorico(null);
     let active = true;
-    let query = supabase
-      .from('prontuarios')
-      .select('id, data, queixa_principal, historia_doenca_atual, exames_fisicos, hipotese_diagnostica, conduta, sinais_vitais, diagnostico_principal, plano_terapeutico, assinado, assinado_em, assinado_por, crm_assinante, medicos(nome, crm, especialidade)')
-      .eq('paciente_id', selectedPacienteId)
-      .order('data', { ascending: false })
-      .limit(50);
-    if (isMedicoOnly) query = query.eq('medico_id', medicoId!);
-    Promise.resolve(query).then(({ data, error }) => {
+    autorizarLeituraHistoricoPaciente(selectedPacienteId).then(() => {
       if (!active) return;
-      if (error) {
-        setHistoricoEvolucoes([]);
-        setErroHistorico(error);
-        toast.error('Não foi possível carregar o histórico clínico.', { description: error.message });
-      } else {
-        setHistoricoEvolucoes(data ?? []);
-      }
+      setHistoricoAuditadoPacienteId(selectedPacienteId);
+      return buscarTodasAsPaginas((inicio, fim) => {
+      const query = supabase
+        .from('prontuarios')
+        .select('id, data, queixa_principal, historia_doenca_atual, historia_patologica_pregressa, historia_familiar, historia_social, revisao_sistemas, alergias_relatadas, medicamentos_em_uso, exames_fisicos, hipotese_diagnostica, conduta, sinais_vitais, diagnostico_principal, diagnosticos_secundarios, plano_terapeutico, assinado, assinado_em, assinado_por, crm_assinante, medicos(nome, crm, especialidade)')
+        .eq('paciente_id', selectedPacienteId)
+        .order('data', { ascending: false }).order('id', { ascending: false });
+      return query.range(inicio, fim);
+      });
+    }).then(async (data) => {
+      if (data === undefined) return;
+      if (!active) return;
+      setHistoricoEvolucoes(data ?? []);
       setLoadingHistorico(false);
     }).catch(error => {
       if (!active) return;
       setHistoricoEvolucoes([]);
       setErroHistorico(error);
+      toast.error('Não foi possível carregar o histórico clínico.', { description: mensagemDeErro(error) });
       setLoadingHistorico(false);
     });
     return () => { active = false; };
@@ -656,10 +858,9 @@ export default function Prontuarios() {
   // navegador de uma máquina de recepção.
   const { data: prontuarios = [], isLoading: loadingProntuarios, error: erroProntuarios, refetch: refetchProntuarios } = useSupabaseQuery<Record<string, any>>('prontuarios', {
     orderBy: { column: 'data', ascending: false },
-    enabled: !!selectedPacienteId && (!isMedicoOnly || !!medicoId),
+    enabled: !!selectedPacienteId && historicoAuditadoPacienteId === selectedPacienteId && (!isMedicoOnly || !!medicoId),
     filters: [
       ...(selectedPacienteId ? [{ column: 'paciente_id', operator: 'eq', value: selectedPacienteId }] : []),
-      ...(isMedicoOnly ? [{ column: 'medico_id', operator: 'eq', value: medicoId || '00000000-0000-0000-0000-000000000000' }] : []),
     ],
   });
 
@@ -769,11 +970,21 @@ export default function Prontuarios() {
 
   const handleViewProntuario = async (prontuario: Record<string, any>) => {
     const requestId = ++prescricoesRequestRef.current;
+    try {
+      await registrarAcessoProntuario(prontuario.id, 'visualizacao');
+    } catch (error) {
+      console.error('[prontuario] registro de acesso falhou:', error);
+      toast.error('Nao foi possivel registrar o acesso ao prontuario.', {
+        description: 'O prontuario permaneceu fechado. Tente novamente em instantes.',
+      });
+      return false;
+    }
+    if (requestId !== prescricoesRequestRef.current) return false;
     setCurrentProntuario(prontuario);
     setSinaisVitais({ ...emptySinaisVitais, ...(prontuario.sinais_vitais || {}) });
     setErroPrescricoes(null);
     const prescriptionsLoaded = await carregarPrescricoes(prontuario.id, requestId);
-    if (requestId !== prescricoesRequestRef.current) return;
+    if (requestId !== prescricoesRequestRef.current) return false;
     if (!prescriptionsLoaded) {
       setPrescricoes([]);
       setHasUnsavedChanges(false);
@@ -785,7 +996,7 @@ export default function Prontuarios() {
         description: 'As prescrições não carregaram. Recarregue essa seção antes de editar para evitar substituir dados que não foram exibidos.',
         duration: 9000,
       });
-      return;
+      return false;
     }
     setHasUnsavedChanges(false);
     setAutoSaveError(null);
@@ -801,28 +1012,8 @@ export default function Prontuarios() {
     // Não bloqueamos a leitura: negar o prontuário ao médico porque o log
     // falhou é pior para o paciente. Mas a falha precisa ser visível e o
     // registro precisa sobreviver — daí a fila de reenvio em auditTrail.
-    const trilhaOk = await logAudit({
-      action: 'access' as any,
-      collection: 'prontuarios',
-      recordId: prontuario.id,
-      recordName: selectedPaciente?.nome || '',
-      userId: user?.id || undefined,
-      userName: user?.nome || undefined,
-    });
 
-    const { error: erroAcesso } = await (supabase as any).from('prontuario_acessos').insert({
-      prontuario_id: prontuario.id,
-      acao: 'visualizacao',
-      user_nome: user?.nome || null,
-    });
-
-    if (!trilhaOk || erroAcesso) {
-      console.error('[prontuário] registro de acesso falhou:', erroAcesso);
-      toast.warning('O acesso a este prontuário não pôde ser registrado agora.', {
-        description: 'O registro ficou na fila e será reenviado. Se persistir, avise o suporte — a trilha de acesso é exigida pela CFM 1.821/07.',
-        duration: 8000,
-      });
-    }
+    return true;
   };
 
   useEffect(() => {
@@ -914,6 +1105,7 @@ export default function Prontuarios() {
 
   const isSigned = !!currentProntuario.assinado;
   const isReadOnly = (!!currentProntuario.id && !isEditing) || isSigned;
+  const podeAdendar = isSigned && !!user?.roles?.includes('medico') && medicoId === currentProntuario.medico_id && !!medicoDoProntuario?.crm;
 
   const handleRequestEdit = async () => {
     if (erroPrescricoes) {
@@ -924,29 +1116,14 @@ export default function Prontuarios() {
     }
     if (isSigned) {
       toast.error('Prontuário assinado', {
-        description: 'Registros assinados são imutáveis (CFM 1.821/07). Use "Adendos" para retificar ou complementar.',
+        description: 'Registros assinados são bloqueados para edição. Use "Adendos" para retificar ou complementar.',
       });
       return;
     }
 
     let auditado = false;
     try {
-      const trilhaOk = await logAudit({
-        action: 'access' as any,
-        collection: 'prontuarios',
-        recordId: currentProntuario.id,
-        recordName: `Edição — ${selectedPaciente?.nome || ''}`,
-        userId: user?.id || undefined,
-        userName: user?.nome || undefined,
-      });
-      if (!trilhaOk) throw new Error('A trilha principal de auditoria não confirmou o registro.');
-      const { error: acessoErr } = await (supabase as any).from('prontuario_acessos').insert({
-        prontuario_id: currentProntuario.id,
-        acao: 'edicao',
-        user_nome: user?.nome || null,
-        justificativa: 'Modo de edição ativado',
-      });
-      if (acessoErr) throw acessoErr;
+      await registrarAcessoProntuario(currentProntuario.id, 'edicao', 'Modo de edição ativado');
       auditado = true;
     } catch (e) {
       // Engolir a falha em silêncio era pior que não auditar: a tela afirmava
@@ -965,6 +1142,40 @@ export default function Prontuarios() {
       });
     }
   };
+
+  useEffect(() => {
+    if (!rascunhoParaAbrir || selectedPacienteId !== rascunhoParaAbrir.paciente_id) return;
+    if (pacienteSelecionadoQuery.isLoading || loadingProntuarios) return;
+    if (historicoAuditadoPacienteId !== selectedPacienteId) return;
+    if (pacienteSelecionadoQuery.isError || !selectedPaciente) {
+      toast.error('NÃ£o foi possÃ­vel retomar este rascunho.', {
+        description: 'O paciente nÃ£o estÃ¡ acessÃ­vel nesta clÃ­nica.',
+      });
+      setRascunhoParaAbrir(null);
+      return;
+    }
+    if (erroProntuarios) {
+      setRascunhoParaAbrir(null);
+      return;
+    }
+    const draft = pacienteProntuarios.find((item) => item.id === rascunhoParaAbrir.id);
+    if (!draft) {
+      toast.error('Este rascunho nÃ£o estÃ¡ mais disponÃ­vel para sua conta. Atualize a lista.');
+      setRascunhoParaAbrir(null);
+      return;
+    }
+
+    setRascunhoParaAbrir(null);
+    void handleViewProntuario(draft).then((opened) => {
+      if (opened) setRascunhoParaEditarId(draft.id);
+    });
+  }, [rascunhoParaAbrir, selectedPacienteId, pacienteSelecionadoQuery.isLoading, pacienteSelecionadoQuery.isError, selectedPaciente, loadingProntuarios, erroProntuarios, pacienteProntuarios, historicoAuditadoPacienteId]);
+
+  useEffect(() => {
+    if (!rascunhoParaEditarId || !isProntuarioOpen || currentProntuario.id !== rascunhoParaEditarId) return;
+    setRascunhoParaEditarId(null);
+    void handleRequestEdit();
+  }, [rascunhoParaEditarId, isProntuarioOpen, currentProntuario.id]);
 
   const updateField = (field: string, value: any) => {
     setCurrentProntuario(prev => ({ ...prev, [field]: value }));
@@ -1008,6 +1219,7 @@ export default function Prontuarios() {
       saveInProgressRef.current = false;
       return null;
     }
+    let prontuarioPersistido = false;
     try {
       const savingVersion = changeVersionRef.current;
       const payload = {
@@ -1063,6 +1275,7 @@ export default function Prontuarios() {
         prontuarioId = data.id;
         setCurrentProntuario(prev => ({ ...prev, id: prontuarioId, updated_at: data.updated_at }));
       }
+      prontuarioPersistido = true;
 
       // ─── Save prescriptions (create + update) ───
       if (prontuarioId) {
@@ -1097,6 +1310,7 @@ export default function Prontuarios() {
         // agora passa pelo RPC transacional, que serializa o item e grava o
         // movimento junto com o novo saldo.
         if (!silent) {
+          const baixasSolicitadas: Array<{ itemId: string; itemName: string; quantity: number }> = [];
           for (const presc of validas) {
             // Casamento por nome aproximado pode acertar o medicamento errado.
             // Se houver mais de um candidato, não adivinhamos: registramos e
@@ -1125,12 +1339,19 @@ export default function Prontuarios() {
               continue;
             }
             const qtd = Number(qtdTexto);
+            baixasSolicitadas.push({
+              itemId: estoqueItem.id,
+              itemName: estoqueItem.nome,
+              quantity: qtd,
+            });
+          }
 
+          for (const baixaSolicitada of agruparBaixasEstoque(baixasSolicitadas)) {
             const { data: baixa, error: movErr } = await (supabase as any).rpc(
               'registrar_baixa_estoque',
               {
-                p_item_id: estoqueItem.id,
-                p_quantidade: qtd,
+                p_item_id: baixaSolicitada.itemId,
+                p_quantidade: baixaSolicitada.quantity,
                 p_prontuario_id: prontuarioId,
                 p_usuario_id: user?.id || null,
                 p_motivo: `Prescrição — ${selectedPaciente?.nome || 'paciente'}`,
@@ -1141,7 +1362,7 @@ export default function Prontuarios() {
               // Baixa duplicada é tratada dentro do RPC como no-op. Qualquer
               // outro erro precisa aparecer, porque a transação inteira foi
               // desfeita e o saldo continua inalterado.
-              toast.warning(`Estoque não foi baixado: ${estoqueItem.nome}`, {
+              toast.warning(`Estoque não foi baixado: ${baixaSolicitada.itemName}`, {
                 description: movErr.message,
               });
               continue;
@@ -1155,46 +1376,27 @@ export default function Prontuarios() {
         }
       }
 
-      // ─── Audit log ───
-      // Alteração de prontuário sem registro de autor é o que uma auditoria do
-      // CFM procura. O `catch` vazio daqui nunca disparava (supabase-js devolve
-      // `{ error }` em vez de lançar), então a falha era invisível.
-      const trilhaOk = await logAudit({
-        action: currentProntuario.id && !silent ? 'update' : 'create',
-        collection: 'prontuarios',
-        recordId: prontuarioId,
-        recordName: selectedPaciente?.nome || '',
-        userId: user?.id || undefined,
-        userName: user?.nome || undefined,
-      });
-
-      // No autosave (`silent`) não interrompemos o médico a cada 60s: a fila de
-      // reenvio cuida disso. No salvamento explícito, ele precisa saber.
-      if (!trilhaOk && !silent) {
-        toast.warning('A alteração foi salva, mas não foi registrada na auditoria.', {
-          description: 'O registro ficou na fila de reenvio. Se persistir, avise o suporte.',
-          duration: 8000,
-        });
-      }
-
+      // Leituras e edições são registradas pela RPC de acesso; criação e
+      // atualização são registradas pelo trigger do banco.
       if (silent) {
         setAutoSaveTime(format(new Date(), 'HH:mm'));
         setAutoSaveError(null);
       } else {
         refetchProntuarios();
         // Reload history
-        let historicoQuery = supabase.from('prontuarios')
-          .select('id, data, queixa_principal, historia_doenca_atual, exames_fisicos, hipotese_diagnostica, conduta, sinais_vitais, diagnostico_principal, plano_terapeutico, assinado, assinado_em, assinado_por, crm_assinante, medicos(nome, crm, especialidade)')
-          .eq('paciente_id', currentProntuario.paciente_id)
-          .order('data', { ascending: false }).limit(50);
-        if (isMedicoOnly) historicoQuery = historicoQuery.eq('medico_id', medicoId!);
-        const { data: hist, error: historicoErr } = await historicoQuery;
-        if (historicoErr) {
+        try {
+          const hist = await buscarTodasAsPaginas((inicio, fim) => {
+            const historicoQuery = supabase.from('prontuarios')
+              .select('id, data, queixa_principal, historia_doenca_atual, historia_patologica_pregressa, historia_familiar, historia_social, revisao_sistemas, alergias_relatadas, medicamentos_em_uso, exames_fisicos, hipotese_diagnostica, conduta, sinais_vitais, diagnostico_principal, diagnosticos_secundarios, plano_terapeutico, assinado, assinado_em, assinado_por, crm_assinante, medicos(nome, crm, especialidade)')
+              .eq('paciente_id', currentProntuario.paciente_id)
+              .order('data', { ascending: false }).order('id', { ascending: false });
+            return historicoQuery.range(inicio, fim);
+          });
+          setHistoricoEvolucoes(hist);
+          setErroHistorico(null);
+        } catch (historicoErr) {
           setHistoricoEvolucoes([]);
           setErroHistorico(historicoErr);
-        } else {
-          setHistoricoEvolucoes(hist ?? []);
-          setErroHistorico(null);
         }
       }
 
@@ -1207,6 +1409,10 @@ export default function Prontuarios() {
       if (import.meta.env.DEV) console.error('Error saving prontuario:', error);
       if (silent) {
         setAutoSaveError(mensagemDeErro(error));
+      } else if (prontuarioPersistido) {
+        toast.error('A evolução foi salva, mas as prescrições não foram atualizadas.', {
+          description: 'O registro clínico continua aberto. Tente salvar novamente para concluir as prescrições.',
+        });
       } else {
         toast.error('Erro ao salvar prontuário.', { description: mensagemDeErro(error) });
       }
@@ -1289,6 +1495,20 @@ export default function Prontuarios() {
     if (!isProntuarioOpen) setAutoSaveTime(null);
   }, [isProntuarioOpen]);
 
+  const auditarExportacaoPdf = async (formato: 'PDF' | 'WhatsApp') => {
+    if (!currentProntuario.id) {
+      toast.info('Salve o prontuÃ¡rio antes de exportar para registrar a auditoria.');
+      return false;
+    }
+    try {
+      await registrarExportacaoProntuarios([currentProntuario.id], formato);
+      return true;
+    } catch (error) {
+      toast.error('ExportaÃ§Ã£o cancelada: nÃ£o foi possÃ­vel registrar a auditoria.', { description: mensagemDeErro(error) });
+      return false;
+    }
+  };
+
   // ─── Exam solicitation ───
   const handleSolicitarExame = async () => {
     if (isRequestingExam) return;
@@ -1296,8 +1516,7 @@ export default function Prontuarios() {
       toast.error('Erro', { description: 'Informe o tipo do exame.' });
       return;
     }
-    const resolvedMedicoId = medicoId || medicos.find(m => m.ativo !== false)?.id;
-    if (!resolvedMedicoId || !selectedPacienteId) {
+    if (!currentProntuario.id || !medicoId || !selectedPacienteId) {
       toast.error('Não foi possível identificar o paciente ou médico solicitante.');
       return;
     }
@@ -1309,7 +1528,8 @@ export default function Prontuarios() {
     try {
       const { error } = await supabase.from('exames').insert({
         paciente_id: selectedPacienteId,
-        medico_solicitante_id: resolvedMedicoId,
+        medico_solicitante_id: medicoId,
+        prontuario_id: currentProntuario.id,
         tipo_exame: examForm.tipo_exame,
         descricao: examForm.descricao || null,
         observacoes: examForm.observacoes || null,
@@ -1432,6 +1652,56 @@ export default function Prontuarios() {
             </CardHeader>
             <CardContent className="p-0">
               <ScrollArea className="h-[calc(100vh-240px)]">
+                {medicoId && (
+                  <section aria-labelledby="open-medical-drafts" className="border-b border-[#DCE9F2] bg-[#F5FAFE] p-2.5">
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <h2 id="open-medical-drafts" className="text-[11px] font-bold text-[#0C1F54]">Rascunhos em aberto</h2>
+                      <Badge variant="outline" className="h-5 border-[#CFE2F1] bg-white text-[10px] text-[#005ECC]">
+                        {rascunhosAbertos.length}
+                      </Badge>
+                    </div>
+                    {rascunhosQuery.isError ? (
+                      <ErrorState compact title="Rascunhos indisponíveis" error={rascunhosQuery.error} onRetry={() => void rascunhosQuery.refetch()} />
+                    ) : rascunhosQuery.isLoading ? (
+                      <p role="status" className="py-3 text-center text-[11px] text-muted-foreground">Carregando rascunhos…</p>
+                    ) : rascunhosAbertos.length === 0 ? (
+                      <p className="py-2 text-[11px] text-muted-foreground">Você não tem rascunhos para continuar.</p>
+                    ) : (
+                      <div className="space-y-1.5">
+                        {rascunhosAbertos.map((draft) => {
+                          const paciente = Array.isArray(draft.pacientes) ? draft.pacientes[0] : draft.pacientes;
+                          return (
+                            <Button
+                              key={draft.id}
+                              type="button"
+                              variant="ghost"
+                              className="h-auto min-h-11 w-full justify-start whitespace-normal rounded-lg border border-[#DCE9F2] bg-white px-2.5 py-2 text-left hover:border-[#B7D9FF] hover:bg-[#EFF7FF]"
+                              onClick={() => {
+                                setRascunhoParaAbrir(draft);
+                                setSelectedPacienteId(draft.paciente_id);
+                              }}
+                            >
+                              <span className="min-w-0 flex-1">
+                                <span className="flex items-center justify-between gap-2">
+                                  <span className="truncate text-[11px] font-semibold text-[#0C1F54]">{paciente?.nome_social || paciente?.nome || 'Paciente'}</span>
+                                  <span className="shrink-0 text-[10px] text-[#005ECC]">Retomar</span>
+                                </span>
+                                <span className="mt-0.5 block truncate text-[10px] text-muted-foreground">
+                                  {draft.queixa_principal?.trim() || 'Evolução sem queixa principal'}
+                                  {draft.updated_at ? ` · salva ${format(new Date(draft.updated_at), 'dd/MM HH:mm', { locale: ptBR })}` : ''}
+                                </span>
+                              </span>
+                              <ArrowRight className="ml-2 h-3.5 w-3.5 shrink-0 text-[#0F7BFD]" aria-hidden="true" />
+                            </Button>
+                          );
+                        })}
+                        {rascunhosAbertos.length >= LIMITE_BUSCA_EM_BLOCOS && (
+                          <p role="status" className="text-[10px] text-warning-foreground">A lista atingiu o limite de consulta. Refine os rascunhos ou peça apoio ao administrador.</p>
+                        )}
+                      </div>
+                    )}
+                  </section>
+                )}
                 {pacientesBuscaQuery.isError ? (
                   <div className="p-3">
                     <ErrorState compact title="Não foi possível buscar pacientes" error={pacientesBuscaQuery.error} onRetry={() => void pacientesBuscaQuery.refetch()} />
@@ -1442,32 +1712,18 @@ export default function Prontuarios() {
                 {filteredPacientes.map(pac => {
                   const isSelected = selectedPacienteId === pac.id;
                   return (
-                    <motion.div
+                    <PatientSearchResult
                       key={pac.id}
-                      whileHover={{ backgroundColor: 'hsl(var(--muted) / 0.5)' }}
-                      className={`px-3 py-2.5 cursor-pointer transition-all border-b border-border/30 ${
-                        isSelected ? 'bg-primary/5 border-l-2 border-l-primary' : 'border-l-2 border-l-transparent'
-                      }`}
-                      onClick={() => {
+                      paciente={pac}
+                      selecionado={isSelected}
+                      detalhe={pac.data_nascimento ? `${calcularIdade(pac.data_nascimento)} anos` : 'Data de nascimento não informada'}
+                      onSelect={() => {
                         prescricoesRequestRef.current += 1;
+                        setRascunhoParaAbrir(null);
                         setErroPrescricoes(null);
                         setSelectedPacienteId(pac.id);
                       }}
-                    >
-                      <div className="flex items-center gap-2.5">
-                        <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary text-xs font-semibold shrink-0">
-                          {(pac.nome_social || pac.nome).slice(0, 2).toUpperCase()}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-semibold truncate">{pac.nome_social || pac.nome}</p>
-                          <p className="text-[10px] text-muted-foreground">
-                            {pac.data_nascimento ? `${calcularIdade(pac.data_nascimento)}a` : 'N/I'}
-                            {pac.cpf && ` • ${pac.cpf}`}
-                          </p>
-                        </div>
-                        {isSelected && <div className="h-1.5 w-1.5 rounded-full bg-primary flex-shrink-0" />}
-                      </div>
-                    </motion.div>
+                    />
                   );
                 })}
                 {!pacientesBuscaQuery.isError && !buscandoPacientes && filteredPacientes.length === 0 && (
@@ -1566,6 +1822,15 @@ export default function Prontuarios() {
                               animate={{ opacity: 1, y: 0 }}
                               transition={{ delay: idx * 0.02 }}
                               className="group border border-border/40 rounded-xl p-3.5 hover:border-primary/30 cursor-pointer transition-all hover:bg-primary/[0.02]"
+                              role="button"
+                              tabIndex={0}
+                              aria-label={`Abrir evolução de ${format(new Date(p.data), 'dd/MM/yyyy')}: ${p.queixa_principal || 'Atendimento clínico'}`}
+                              onKeyDown={event => {
+                                if (event.key === 'Enter' || event.key === ' ') {
+                                  event.preventDefault();
+                                  handleViewProntuario(p);
+                                }
+                              }}
                               onClick={() => handleViewProntuario(p)}
                             >
                               <div className="flex justify-between items-start">
@@ -1609,7 +1874,7 @@ export default function Prontuarios() {
                       <div className="space-y-4">
                         <p className="text-xs text-muted-foreground flex items-center gap-1.5">
                           <Share2 className="h-3.5 w-3.5" />
-                          Exporte dados clínicos em formatos interoperáveis (HL7 FHIR / XML CDA).
+                          Exporta evoluções, prescrições, exames, adendos e arquivos anexados. O FHIR inclui CPF, telefone e e-mail. O arquivo sai criptografado e pode ser aberto na área de Interoperabilidade.
                         </p>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                           <div className="border rounded-xl p-4 space-y-3">
@@ -1618,7 +1883,12 @@ export default function Prontuarios() {
                               <span className="text-xs font-bold">HL7 FHIR R4</span>
                             </div>
                             <p className="text-[11px] text-muted-foreground">Padrão internacional para interoperabilidade em saúde.</p>
-                            <Button variant="outline" size="sm" className="w-full gap-1.5 text-xs" disabled={loadingHistorico || !!erroHistorico} onClick={() => {
+                            <Button variant="outline" size="sm" className="w-full gap-1.5 text-xs" disabled={loadingHistorico || !!erroHistorico} onClick={async () => {
+                              const ids = historicoEvolucoes.map((p: any) => p.id);
+                              let complementosExportacao: Awaited<ReturnType<typeof carregarDadosCompletosExportacao>>;
+                              try { complementosExportacao = await carregarDadosCompletosExportacao(selectedPaciente.id, ids); }
+                              catch (error) { toast.error('A portabilidade foi interrompida porque algum dado ou arquivo clínico não pôde ser carregado.', { description: mensagemDeErro(error) }); return; }
+                              const exportFormat = 'FHIR R4 JSON';
                               const exportData = {
                                 paciente: {
                                   id: selectedPaciente.id, nome: selectedPaciente.nome,
@@ -1630,12 +1900,19 @@ export default function Prontuarios() {
                                 prontuarios: historicoEvolucoes.map((p: any) => ({
                                   id: p.id, data: p.data, queixa_principal: p.queixa_principal,
                                   historia_doenca_atual: p.historia_doenca_atual, hipotese_diagnostica: p.hipotese_diagnostica,
-                                  diagnostico_principal: p.diagnostico_principal, conduta: p.conduta,
-                                  sinais_vitais: p.sinais_vitais, medico_nome: p.medicos?.nome, medico_crm: p.medicos?.crm,
+                                  historia_patologica_pregressa: p.historia_patologica_pregressa, historia_familiar: p.historia_familiar,
+                                  historia_social: p.historia_social, revisao_sistemas: p.revisao_sistemas,
+                                  exames_fisicos: p.exames_fisicos, alergias_relatadas: p.alergias_relatadas,
+                                  medicamentos_em_uso: p.medicamentos_em_uso,
+                                  diagnostico_principal: p.diagnostico_principal, diagnosticos_secundarios: p.diagnosticos_secundarios,
+                                  conduta: p.conduta,
+                                  sinais_vitais: p.sinais_vitais, assinado: p.assinado,
+                                  medico_nome: p.medicos?.nome, medico_crm: p.medicos?.crm,
+                                  assinado_por: p.assinado_por, crm_assinante: p.crm_assinante,
                                 })),
+                                ...complementosExportacao,
                               };
-                              downloadClinicalExport(exportToFHIR(exportData), `prontuario-${selectedPaciente.nome.replace(/\s+/g, '-')}`, 'json');
-                              toast.success('Exportado', { description: 'FHIR JSON baixado.' });
+                              setExportacaoPendente({ conteudo: exportToFHIR(exportData), nomeArquivo: `prontuario-${selectedPaciente.id}`, tipo: 'application/json', formato: exportFormat, ids });
                             }}>
                               <FileDown className="h-3.5 w-3.5" />Exportar FHIR
                             </Button>
@@ -1643,10 +1920,15 @@ export default function Prontuarios() {
                           <div className="border rounded-xl p-4 space-y-3">
                             <div className="flex items-center gap-2">
                               <Badge variant="outline" className="text-[10px]">XML</Badge>
-                              <span className="text-xs font-bold">CDA / HL7 v3</span>
+                              <span className="text-xs font-bold">XML clínico simplificado</span>
                             </div>
-                            <p className="text-[11px] text-muted-foreground">XML baseado no Clinical Document Architecture.</p>
-                            <Button variant="outline" size="sm" className="w-full gap-1.5 text-xs" disabled={loadingHistorico || !!erroHistorico} onClick={() => {
+                          <p className="text-[11px] text-muted-foreground">Documento XML com seções clínicas e anexos embutidos.</p>
+                            <Button variant="outline" size="sm" className="w-full gap-1.5 text-xs" disabled={loadingHistorico || !!erroHistorico} onClick={async () => {
+                              const ids = historicoEvolucoes.map((p: any) => p.id);
+                              let complementosExportacao: Awaited<ReturnType<typeof carregarDadosCompletosExportacao>>;
+                              try { complementosExportacao = await carregarDadosCompletosExportacao(selectedPaciente.id, ids); }
+                              catch (error) { toast.error('A portabilidade foi interrompida porque algum dado ou arquivo clínico não pôde ser carregado.', { description: mensagemDeErro(error) }); return; }
+                              const exportFormat = 'XML clínico simplificado';
                               const exportData = {
                                 paciente: {
                                   id: selectedPaciente.id, nome: selectedPaciente.nome,
@@ -1656,13 +1938,20 @@ export default function Prontuarios() {
                                 },
                                 prontuarios: historicoEvolucoes.map((p: any) => ({
                                   id: p.id, data: p.data, queixa_principal: p.queixa_principal,
+                                  historia_doenca_atual: p.historia_doenca_atual,
+                                  historia_patologica_pregressa: p.historia_patologica_pregressa, historia_familiar: p.historia_familiar,
+                                  historia_social: p.historia_social, revisao_sistemas: p.revisao_sistemas,
+                                  exames_fisicos: p.exames_fisicos, alergias_relatadas: p.alergias_relatadas,
+                                  medicamentos_em_uso: p.medicamentos_em_uso,
                                   hipotese_diagnostica: p.hipotese_diagnostica, diagnostico_principal: p.diagnostico_principal,
+                                  diagnosticos_secundarios: p.diagnosticos_secundarios,
                                   conduta: p.conduta, sinais_vitais: p.sinais_vitais,
                                   medico_nome: p.medicos?.nome, medico_crm: p.medicos?.crm,
+                                  assinado_por: p.assinado_por, crm_assinante: p.crm_assinante,
                                 })),
+                                ...complementosExportacao,
                               };
-                              downloadClinicalExport(exportToXML(exportData), `prontuario-${selectedPaciente.nome.replace(/\s+/g, '-')}`, 'xml');
-                              toast.success('Exportado', { description: 'XML CDA baixado.' });
+                              setExportacaoPendente({ conteudo: exportToXML(exportData), nomeArquivo: `prontuario-${selectedPaciente.id}`, tipo: 'application/xml', formato: exportFormat, ids });
                             }}>
                               <FileDown className="h-3.5 w-3.5" />Exportar XML
                             </Button>
@@ -1684,6 +1973,17 @@ export default function Prontuarios() {
       {/* ═══════════════════════════════════════════════════════ */}
       {/* ─── Prontuário Dialog ─────────────────────────────── */}
       {/* ═══════════════════════════════════════════════════════ */}
+      {exportacaoPendente && <ExportacaoClinicaProtegida
+        open={Boolean(exportacaoPendente)}
+        onOpenChange={aberto => { if (!aberto) setExportacaoPendente(null); }}
+        conteudo={exportacaoPendente.conteudo}
+        nomeArquivo={exportacaoPendente.nomeArquivo}
+        tipo={exportacaoPendente.tipo}
+        onBeforeDownload={async () => {
+          try { await registrarExportacaoProntuarios(exportacaoPendente.ids, exportacaoPendente.formato); }
+          catch (error) { throw new Error(`Exportação bloqueada porque a auditoria não pôde ser registrada: ${mensagemDeErro(error)}`); }
+        }}
+      />}
       <Dialog open={isProntuarioOpen} onOpenChange={handleProntuarioOpenChange}>
         <DialogContent className="max-w-6xl max-h-[95vh] overflow-hidden flex flex-col">
           <DialogHeader className="flex-shrink-0">
@@ -1735,12 +2035,13 @@ export default function Prontuarios() {
                     <>
                       {/* `buildPDF()` agora é assíncrono: o jsPDF só é baixado
                           quando alguém clica, em vez de vir junto com a tela. */}
-                      <Button variant="outline" size="sm" onClick={async () => openPDF(await buildPDF())} className="gap-1 text-xs h-7"><ExternalLink className="h-3 w-3" />Visualizar</Button>
-                      <Button variant="outline" size="sm" onClick={async () => downloadPDF(await buildPDF(), fn)} className="gap-1 text-xs h-7"><Printer className="h-3 w-3" />PDF</Button>
+                      <Button variant="outline" size="sm" disabled={!currentProntuario.id || salvandoProntuario} onClick={async () => { if (await auditarExportacaoPdf('PDF')) openPDF(await buildPDF()); }} className="gap-1 text-xs h-7"><ExternalLink className="h-3 w-3" />Visualizar</Button>
+                      <Button variant="outline" size="sm" disabled={!currentProntuario.id || salvandoProntuario} onClick={async () => { if (await auditarExportacaoPdf('PDF')) downloadPDF(await buildPDF(), fn); }} className="gap-1 text-xs h-7"><Printer className="h-3 w-3" />PDF</Button>
                       <Button variant="outline" size="sm" onClick={async () => {
+                        if (!await auditarExportacaoPdf('WhatsApp')) return;
                         sharePDFWhatsApp(await buildPDF(), fn, selectedPaciente?.telefone);
                         toast.info('WhatsApp', { description: 'PDF baixado! Cole na conversa.' });
-                      }} className="gap-1 text-xs h-7 text-success border-success/30 hover:bg-success/5">
+                      }} disabled={!currentProntuario.id || salvandoProntuario} className="gap-1 text-xs h-7 text-success border-success/30 hover:bg-success/5">
                         <MessageCircle className="h-3 w-3" />WhatsApp
                       </Button>
                     </>
@@ -1809,8 +2110,8 @@ export default function Prontuarios() {
               <Lock className={`h-3.5 w-3.5 flex-shrink-0 ${isSigned ? 'text-success' : 'text-warning'}`} />
               <span className={`text-xs font-medium flex-1 ${isSigned ? 'text-success' : 'text-warning'}`}>
                 {isSigned
-                  ? `Assinado digitalmente — imutável (CFM 1.821/07)${currentProntuario.assinado_em ? ` em ${format(new Date(currentProntuario.assinado_em), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}` : ''}`
-                  : 'Somente leitura — CFM nº 1.821/07'}
+                  ? `Assinado eletronicamente — bloqueado para edição${currentProntuario.assinado_em ? ` em ${format(new Date(currentProntuario.assinado_em), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}` : ''}`
+                  : 'Rascunho em modo de leitura'}
               </span>
               {!isSigned && (
                 <Button variant="outline" size="sm" onClick={handleRequestEdit} disabled={!!erroPrescricoes} className="h-6 text-[10px] gap-1 border-warning/40 text-warning hover:bg-warning/10">
@@ -1832,8 +2133,7 @@ export default function Prontuarios() {
 
           {/* Scrollable content */}
           <ScrollArea className="flex-1 pr-4">
-            <fieldset disabled={isReadOnly || salvandoProntuario} className="contents">
-              <Tabs defaultValue="anamnese" className="w-full">
+            <Tabs defaultValue="anamnese" className="w-full">
                 <TabsList className="mb-3 flex h-auto w-full justify-start gap-0.5 overflow-x-auto rounded-xl bg-muted/40 p-0.5">
                   {[
                     { val: 'anamnese', icon: ClipboardList, label: 'Anamnese' },
@@ -1844,7 +2144,7 @@ export default function Prontuarios() {
                     { val: 'anexos', icon: Paperclip, label: 'Anexos' },
                     { val: 'historico', icon: History, label: 'Histórico' },
             { val: 'adendos', icon: ScrollText, label: 'Adendos' },
-                    { val: 'auditoria', icon: Shield, label: 'Auditoria' },
+                    ...(user?.roles?.includes('admin') ? [{ val: 'auditoria', icon: Shield, label: 'Auditoria' }] : []),
                   ].map(t => (
                     <TabsTrigger key={t.val} value={t.val} className="shrink-0 gap-1.5 rounded-lg px-3 py-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm">
                       <t.icon className="h-3.5 w-3.5" />{t.label}
@@ -1854,6 +2154,7 @@ export default function Prontuarios() {
 
                 {/* ─── Anamnese ─── */}
                 <TabsContent value="anamnese" className="space-y-4 pt-1">
+                  <fieldset disabled={isReadOnly || salvandoProntuario} className="contents">
                   {!currentProntuario.id && (
                     <div className="space-y-2">
                       <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
@@ -1911,10 +2212,12 @@ export default function Prontuarios() {
                   <Section icon={ClipboardList} title="Revisão de Sistemas" collapsible>
                     <Textarea placeholder="Cardiovascular, respiratório, GI, neuro..." value={currentProntuario.revisao_sistemas || ''} onChange={e => updateField('revisao_sistemas', e.target.value)} rows={3} />
                   </Section>
-                </TabsContent>
+
+                  </fieldset></TabsContent>
 
                 {/* ─── Exame Físico ─── */}
                 <TabsContent value="exame" className="space-y-4 pt-1">
+                  <fieldset disabled={isReadOnly || salvandoProntuario} className="contents">
                   <VitalSignsInput sinais={sinaisVitais} onChange={(value) => { setSinaisVitais(value); setHasUnsavedChanges(true); changeVersionRef.current += 1; }} />
                   <Separator />
                   <Section icon={Stethoscope} title="Exame Físico Geral">
@@ -1940,23 +2243,27 @@ export default function Prontuarios() {
                       <Textarea placeholder="Lesões, coloração, turgor..." value={currentProntuario.exame_pele || ''} onChange={e => updateField('exame_pele', e.target.value)} rows={3} />
                     </Section>
                   </div>
-                </TabsContent>
+
+                  </fieldset></TabsContent>
 
                 {/* ─── Diagnóstico ─── */}
                 <TabsContent value="diagnostico" className="space-y-4 pt-1">
+                  <fieldset disabled={isReadOnly || salvandoProntuario} className="contents">
                   <Section icon={BookOpen} title="Hipótese Diagnóstica (CID-10)">
                     <Cid10Search value={currentProntuario.hipotese_diagnostica || ''} onChange={v => updateField('hipotese_diagnostica', v)} />
                   </Section>
                   <Section icon={FileCheck} title="Diagnóstico Principal">
-                    <Input placeholder="Diagnóstico principal" value={currentProntuario.diagnostico_principal || ''} onChange={e => updateField('diagnostico_principal', e.target.value)} />
+                    <Cid10Search value={currentProntuario.diagnostico_principal || ''} onChange={v => updateField('diagnostico_principal', v)} placeholder="Buscar CID-10 principal..." multiple={false} />
                   </Section>
                   <Section icon={ClipboardList} title="Diagnósticos Secundários" collapsible>
                     <Textarea placeholder="Comorbidades, um por linha" value={(currentProntuario.diagnosticos_secundarios || []).join('\n')} onChange={e => updateField('diagnosticos_secundarios', e.target.value.split('\n').filter(Boolean))} rows={3} />
                   </Section>
-                </TabsContent>
+
+                  </fieldset></TabsContent>
 
                 {/* ─── Conduta ─── */}
                 <TabsContent value="conduta" className="space-y-4 pt-1">
+                  <fieldset disabled={isReadOnly || salvandoProntuario} className="contents">
                   <div className="flex justify-end">
                     <Button variant="outline" size="sm" onClick={() => setShowProtocols(true)} className="text-[10px] h-6 gap-1">
                       <CalendarCheck className="h-3 w-3" />Aplicar Protocolo Clínico
@@ -1984,10 +2291,12 @@ export default function Prontuarios() {
                   <Section icon={ShieldCheck} title="Observações Internas" collapsible>
                     <Textarea placeholder="Anotações internas (não imprime)..." value={currentProntuario.observacoes_internas || ''} onChange={e => updateField('observacoes_internas', e.target.value)} rows={2} className="border-dashed" />
                   </Section>
-                </TabsContent>
+
+                  </fieldset></TabsContent>
 
                 {/* ─── Prescrição ─── */}
                 <TabsContent value="prescricao" className="space-y-3 pt-1">
+                  <fieldset disabled={isReadOnly || salvandoProntuario} className="contents">
                   <div className="flex justify-between items-center">
                     <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
                       <Pill className="h-3.5 w-3.5" />Receituário Digital
@@ -2014,7 +2323,7 @@ export default function Prontuarios() {
                       </p>
                       <Button
                         variant="outline" size="sm" className="h-6 shrink-0 gap-1 text-[10px]"
-                        disabled={dispensando}
+                        disabled={dispensando || salvandoProntuario}
                         onClick={dispensarNaClinica}
                       >
                         <Pill className="h-3 w-3" />
@@ -2065,7 +2374,8 @@ export default function Prontuarios() {
                       ))}
                     </div>
                   )}
-                </TabsContent>
+
+                  </fieldset></TabsContent>
 
                 {/* ─── Anexos ─── */}
                 <TabsContent value="anexos" className="pt-1">
@@ -2073,13 +2383,14 @@ export default function Prontuarios() {
                     <Paperclip className="h-3 w-3" />Upload de PDFs, imagens e exames — LGPD.
                   </p>
                   {currentProntuario.id && selectedPacienteId ? (
-                    <AnexosWrapper pacienteId={selectedPacienteId} prontuarioId={currentProntuario.id} />
+                    <AnexosWrapper pacienteId={selectedPacienteId} prontuarioId={currentProntuario.id} readOnly={isReadOnly || salvandoProntuario} />
                   ) : (
                     <div className="flex flex-col items-center py-10 text-muted-foreground">
                       <Paperclip className="h-8 w-8 opacity-20 mb-2" />
                       <p className="text-xs">Salve primeiro para anexar</p>
                     </div>
                   )}
+
                 </TabsContent>
 
                 {/* ─── Histórico ─── */}
@@ -2099,6 +2410,15 @@ export default function Prontuarios() {
                           animate={{ opacity: 1, x: 0 }}
                           transition={{ delay: idx * 0.02 }}
                           className="border border-border/40 rounded-xl p-3 space-y-1.5 hover:bg-primary/[0.03] hover:border-primary/30 transition-colors cursor-pointer group"
+                          role="button"
+                          tabIndex={0}
+                          aria-label={`Abrir registro clínico: ${ev.queixa_principal || 'Evolução'}`}
+                          onKeyDown={event => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault();
+                              event.currentTarget.click();
+                            }
+                          }}
                           onClick={() => {
                             if (salvandoProntuario) {
                               toast.info('Aguarde o salvamento terminar antes de abrir outra evolução.');
@@ -2143,9 +2463,9 @@ export default function Prontuarios() {
                   {currentProntuario.id ? (
                     <ProntuarioAdendos
                       prontuarioId={currentProntuario.id}
-                      medicoId={currentProntuario.medico_id}
-                      medicoNome={medicos.find((m: any) => m.id === currentProntuario.medico_id)?.nome || user?.nome}
-                      crm={medicos.find((m: any) => m.id === currentProntuario.medico_id)?.crm}
+                      medicoNome={medicoDoProntuario?.nome}
+                      crm={medicoDoProntuario?.crm}
+                      disabled={!podeAdendar}
                     />
                   ) : (
                     <div className="flex flex-col items-center py-10 text-muted-foreground">
@@ -2156,9 +2476,9 @@ export default function Prontuarios() {
                 </TabsContent>
 
                 {/* ─── Auditoria ─── */}
-                <TabsContent value="auditoria" className="pt-1">
+                {user?.roles?.includes('admin') && <TabsContent value="auditoria" className="pt-1">
                   {currentProntuario.id ? (
-                    <ProntuarioAuditLog prontuarioId={currentProntuario.id} />
+                    <ProntuarioAuditLog prontuarioId={currentProntuario.id} clinicaId={user?.clinica_id} />
                   ) : (
                     <div className="space-y-3">
                       <p className="text-[10px] text-muted-foreground flex items-center gap-1 bg-muted/40 rounded-lg p-2">
@@ -2184,9 +2504,8 @@ export default function Prontuarios() {
                       <p className="text-[11px] text-muted-foreground text-center py-4">Salve para ver a trilha de auditoria</p>
                     </div>
                   )}
-                </TabsContent>
+                </TabsContent>}
               </Tabs>
-            </fieldset>
           </ScrollArea>
 
           {/* Footer */}
@@ -2197,11 +2516,14 @@ export default function Prontuarios() {
                   <DigitalSignature
                     documentId={currentProntuario.id}
                     documentType="prontuario"
-                    signerName={medicos.find((m: any) => m.id === currentProntuario.medico_id)?.nome || user?.nome || 'Médico'}
-                    signerCRM={medicos.find((m: any) => m.id === currentProntuario.medico_id)?.crm}
+                    signerName={identificacaoAssinante.nome}
+                    signerCRM={identificacaoAssinante.crm}
                     compact
                     alreadySigned={isSigned}
                     signedAt={currentProntuario.assinado_em}
+                    disabledReason={isEditing || hasUnsavedChanges || salvandoProntuario
+                      ? 'Salve as alteraÃ§Ãµes e reabra o prontuÃ¡rio para assinar a versÃ£o atual.'
+                      : undefined}
                     onSigned={() => {
                       setCurrentProntuario(prev => ({ ...prev, assinado: true, assinado_em: new Date().toISOString() }));
                       setIsEditing(false);
@@ -2221,7 +2543,7 @@ export default function Prontuarios() {
                 )}
               </div>
               <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={() => setShowExamSolicitation(true)} className="rounded-xl text-xs gap-1">
+                <Button variant="outline" size="sm" onClick={() => setShowExamSolicitation(true)} disabled={!currentProntuario.id || !medicoId || isRequestingExam} title={!currentProntuario.id ? 'Salve a evolução antes de solicitar o exame.' : !medicoId ? 'A solicitação exige um médico responsável vinculado à sua sessão.' : undefined} className="rounded-xl text-xs gap-1">
                   <TestTube className="h-3.5 w-3.5" />Solicitar Exame
                 </Button>
                 <Button variant="outline" onClick={() => handleProntuarioOpenChange(false)} disabled={salvandoProntuario} size="sm" className="rounded-xl text-xs">Cancelar</Button>

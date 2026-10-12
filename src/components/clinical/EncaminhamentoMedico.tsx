@@ -520,12 +520,12 @@ export function EncaminhamentoMedico({
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Especialidade *</Label>
+                <Label htmlFor="encaminhamento-especialidade">Especialidade *</Label>
                 <Select
                   value={formData.especialidade_destino}
                   onValueChange={(v) => setFormData({ ...formData, especialidade_destino: v, medico_destino_id: '' })}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger id="encaminhamento-especialidade">
                     <SelectValue placeholder="Selecione" />
                   </SelectTrigger>
                   <SelectContent>
@@ -537,12 +537,12 @@ export function EncaminhamentoMedico({
               </div>
 
               <div className="space-y-2">
-                <Label>Urgência</Label>
+                <Label htmlFor="encaminhamento-urgencia">Urgência</Label>
                 <Select
                   value={formData.urgencia}
                   onValueChange={(v) => setFormData({ ...formData, urgencia: v })}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger id="encaminhamento-urgencia">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -555,7 +555,7 @@ export function EncaminhamentoMedico({
             </div>
 
             <div className="space-y-2">
-              <Label>Médico de Destino (opcional)</Label>
+              <Label htmlFor="encaminhamento-medico-destino">Médico de Destino (opcional)</Label>
               {medicosError && (
                 <ErrorState
                   compact
@@ -569,7 +569,7 @@ export function EncaminhamentoMedico({
                 disabled={isLoadingMedicos || !!medicosError || !profile?.clinica_id}
                 onValueChange={(v) => setFormData({ ...formData, medico_destino_id: v })}
               >
-                <SelectTrigger>
+                <SelectTrigger id="encaminhamento-medico-destino">
                   <SelectValue placeholder={isLoadingMedicos ? 'Carregando médicos…' : 'Qualquer médico da especialidade'} />
                 </SelectTrigger>
                 <SelectContent>
@@ -586,8 +586,9 @@ export function EncaminhamentoMedico({
             </div>
 
             <div className="space-y-2">
-              <Label>Motivo do Encaminhamento *</Label>
+              <Label htmlFor="encaminhamento-motivo">Motivo do Encaminhamento *</Label>
               <Textarea
+                id="encaminhamento-motivo"
                 value={formData.motivo}
                 onChange={(e) => setFormData({ ...formData, motivo: e.target.value })}
                 placeholder="Descreva o motivo do encaminhamento..."
@@ -598,16 +599,18 @@ export function EncaminhamentoMedico({
             </div>
 
             <div className="space-y-2">
-              <Label>Hipótese Diagnóstica / CID</Label>
+              <Label htmlFor="encaminhamento-cid">Hipótese Diagnóstica / CID</Label>
               <Cid10Search
+                id="encaminhamento-cid"
                 value={formData.cid_principal}
                 onChange={(v) => setFormData({ ...formData, cid_principal: v, hipotese_diagnostica: v })}
               />
             </div>
 
             <div className="space-y-2">
-              <Label>Exames Realizados</Label>
+              <Label htmlFor="encaminhamento-exames">Exames Realizados</Label>
               <Textarea
+                id="encaminhamento-exames"
                 value={formData.exames_realizados}
                 onChange={(e) => setFormData({ ...formData, exames_realizados: e.target.value })}
                 placeholder="Liste os exames já realizados..."
@@ -616,8 +619,9 @@ export function EncaminhamentoMedico({
             </div>
 
             <div className="space-y-2">
-              <Label>Tratamento Atual</Label>
+              <Label htmlFor="encaminhamento-tratamento">Tratamento Atual</Label>
               <Textarea
+                id="encaminhamento-tratamento"
                 value={formData.tratamento_atual}
                 onChange={(e) => setFormData({ ...formData, tratamento_atual: e.target.value })}
                 placeholder="Descreva o tratamento em andamento..."
@@ -626,8 +630,9 @@ export function EncaminhamentoMedico({
             </div>
 
             <div className="space-y-2">
-              <Label>Informações Adicionais</Label>
+              <Label htmlFor="encaminhamento-informacoes">Informações Adicionais</Label>
               <Textarea
+                id="encaminhamento-informacoes"
                 value={formData.informacoes_adicionais}
                 onChange={(e) => setFormData({ ...formData, informacoes_adicionais: e.target.value })}
                 placeholder="Outras informações relevantes..."
@@ -719,6 +724,7 @@ export function EncaminhamentoMedico({
 
           <div className="space-y-4">
             <Textarea
+              aria-label="Contra-referência do encaminhamento"
               value={contraReferencia}
               onChange={(e) => setContraReferencia(e.target.value)}
               placeholder="Descreva o resultado do atendimento, diagnóstico, tratamento realizado e recomendações..."

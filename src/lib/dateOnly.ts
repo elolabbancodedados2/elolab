@@ -96,6 +96,25 @@ export function inicioDoDiaEmFusoIso(data: string, timeZone: string): string {
   return new Date(superior).toISOString();
 }
 
+/** Convert optional civil-date filters into a half-open timestamp range in a business timezone. */
+export function dateRangeInTimeZoneIso(
+  startDate: string | undefined,
+  endDate: string | undefined,
+  timeZone: string,
+): { gte?: string; lt?: string } {
+  if (startDate && !isValidDateOnly(startDate)) throw new Error('Data inicial invÃ¡lida.');
+  if (endDate && !isValidDateOnly(endDate)) throw new Error('Data final invÃ¡lida.');
+  if (startDate && endDate && startDate > endDate) throw new Error('Intervalo de datas invÃ¡lido.');
+
+  const nextDay = endDate
+    ? new Date(Date.parse(`${endDate}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10)
+    : undefined;
+  return {
+    ...(startDate ? { gte: inicioDoDiaEmFusoIso(startDate, timeZone) } : {}),
+    ...(nextDay ? { lt: inicioDoDiaEmFusoIso(nextDay, timeZone) } : {}),
+  };
+}
+
 /** Today at the clinic's fixed business timezone, São Paulo. */
 export function todaySaoPauloDateOnly(instant: Date = new Date()): string {
   return dateOnlyInTimeZone(instant, 'America/Sao_Paulo');

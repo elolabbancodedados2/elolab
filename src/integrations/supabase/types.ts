@@ -1852,6 +1852,7 @@ export type Database = {
           medico_solicitante_id: string | null
           observacoes: string | null
           paciente_id: string | null
+          prontuario_id: string | null
           preco_custo: number | null
           preco_venda: number | null
           resultado: string | null
@@ -1876,6 +1877,7 @@ export type Database = {
           medico_solicitante_id?: string | null
           observacoes?: string | null
           paciente_id?: string | null
+          prontuario_id?: string | null
           preco_custo?: number | null
           preco_venda?: number | null
           resultado?: string | null
@@ -1900,6 +1902,7 @@ export type Database = {
           medico_solicitante_id?: string | null
           observacoes?: string | null
           paciente_id?: string | null
+          prontuario_id?: string | null
           preco_custo?: number | null
           preco_venda?: number | null
           resultado?: string | null
@@ -5777,8 +5780,8 @@ export type Database = {
           email: string | null
           id: string | null
           nome: string | null
-          salario: number | null
           telefone: string | null
+          tipo_funcionario: string | null
           updated_at: string | null
           user_id: string | null
         }
@@ -5792,8 +5795,8 @@ export type Database = {
           email?: string | null
           id?: string | null
           nome?: string | null
-          salario?: never
           telefone?: string | null
+          tipo_funcionario?: string | null
           updated_at?: string | null
           user_id?: string | null
         }
@@ -5807,8 +5810,8 @@ export type Database = {
           email?: string | null
           id?: string | null
           nome?: string | null
-          salario?: never
           telefone?: string | null
+          tipo_funcionario?: string | null
           updated_at?: string | null
           user_id?: string | null
         }
@@ -5857,6 +5860,15 @@ export type Database = {
       }
     }
     Functions: {
+      alterar_status_agendamento_com_fila: {
+        Args: {
+          p_agendamento_id: string
+          p_clinica_id: string
+          p_status: string
+          p_updated_at: string | null
+        }
+        Returns: { atualizado: boolean; fila_removida: number }
+      }
       accept_employee_invitation: {
         Args: { _token: string; _user_id: string }
         Returns: Json
@@ -6118,6 +6130,16 @@ export type Database = {
           quantidade_anterior: number
           quantidade_nova: number
         }[]
+      }
+      realizar_checkin: {
+        Args: { p_agendamento_id: string; p_prioridade?: string }
+        Returns: {
+          cobranca_estado: string
+          fila_id: string
+          repetido: boolean
+          status_agendamento: string
+          status_anterior: string
+        }
       }
       registrar_pagamento: {
         Args: {

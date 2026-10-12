@@ -25,6 +25,19 @@ vi.mock('@/hooks/use-toast', () => ({ useToast: () => ({ toast: mocks.toast }) }
 
 import { AnexosProntuario } from '@/components/clinical/AnexosProntuario';
 
+describe('read-only attachments', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('keeps viewing and downloading available while disabling attachment changes', () => {
+    render(<AnexosProntuario prontuarioId="prontuario-1" pacienteId="paciente-1" anexos={[anexo]} readOnly onAnexoAdicionado={vi.fn()} onAnexoRemovido={vi.fn()} />);
+
+    expect(screen.getByRole('button', { name: 'Adicionar Anexo' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Excluir anexo resultado.pdf' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Visualizar anexo resultado.pdf' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Baixar anexo resultado.pdf' })).toBeEnabled();
+  });
+});
+
 const anexo = {
   id: 'anexo-1',
   nome_arquivo: 'resultado.pdf',

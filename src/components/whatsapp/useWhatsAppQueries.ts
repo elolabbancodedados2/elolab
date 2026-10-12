@@ -1,4 +1,5 @@
-import { useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { WhatsAppAgent, WhatsAppSession, WhatsAppConversation, WhatsAppInternalNote, WhatsAppMessage, WhatsAppStats } from './types';
 import { todaySaoPauloDateOnly } from '@/lib/dateOnly';
@@ -42,21 +43,25 @@ export function useWhatsAppSessions(allowed = true) {
 
 export function useWhatsAppConversations(allowed = true) {
   const { profile } = useSupabaseAuth();
-  return useQuery({
+  const query = useInfiniteQuery({
     queryKey: ['whatsapp-conversations', profile?.clinica_id, profile?.id],
-    queryFn: async () => {
+    initialPageParam: 0,
+    queryFn: async ({ pageParam }) => {
       if (!profile?.clinica_id) return [] as WhatsAppConversation[];
       const { data, error } = await supabase
         .from('whatsapp_conversations')
         .select('*, pacientes(nome), profiles!whatsapp_conversations_responsavel_id_fkey(nome)')
         .eq('clinica_id', profile.clinica_id)
         .order('ultima_mensagem_at', { ascending: false })
-        .limit(50);
+        .order('id', { ascending: false })
+        .range(pageParam, pageParam + 49);
       if (error) throw error;
       return data as WhatsAppConversation[];
     },
+    getNextPageParam: (lastPage, allPages) => lastPage.length === 50 ? allPages.length * 50 : undefined,
     enabled: allowed && !!profile?.clinica_id,
   });
+  return { ...query, data: query.data?.pages.flat() ?? [] };
 }
 
 export function useWhatsAppInternalNotes(conversationId: string | null) {
@@ -80,7 +85,10 @@ export function useWhatsAppInternalNotes(conversationId: string | null) {
 
 export function useWhatsAppMessages(conversationId: string | null) {
   const { profile } = useSupabaseAuth();
-  return useQuery({
+  const [historyEnabled, setHistoryEnabled] = useState(false);
+  useEffect(() => setHistoryEnabled(false), [conversationId]);
+
+  const latestQuery = useQuery({
     queryKey: ['whatsapp-messages', profile?.clinica_id, profile?.id, conversationId],
     queryFn: async () => {
       if (!profile?.clinica_id || !conversationId) return [] as WhatsAppMessage[];
@@ -98,6 +106,54 @@ export function useWhatsAppMessages(conversationId: string | null) {
     enabled: !!profile?.clinica_id && !!conversationId,
     refetchInterval: conversationId ? 3000 : false,
   });
+
+  const latestMessages = latestQuery.data ?? [];
+  const oldestLatest = latestMessages[0];
+  const historyQuery = useInfiniteQuery({
+    queryKey: ['whatsapp-message-history', profile?.clinica_id, profile?.id, conversationId],
+    initialPageParam: oldestLatest ? { created_at: oldestLatest.created_at, id: oldestLatest.id } : null as { created_at: string; id: string } | null,
+    queryFn: async ({ pageParam }) => {
+      if (!profile?.clinica_id || !conversationId || !pageParam) return { messages: [] as WhatsAppMessage[], nextCursor: null as { created_at: string; id: string } | null };
+      const cursor = pageParam as { created_at: string; id: string };
+      const { data, error } = await supabase
+        .from('whatsapp_messages')
+        .select('id, direcao, conteudo, status, created_at, metadata')
+        .eq('clinica_id', profile.clinica_id)
+        .eq('conversation_id', conversationId)
+        .or(`created_at.lt.${cursor.created_at},and(created_at.eq.${cursor.created_at},id.lt.${cursor.id})`)
+        .order('created_at', { ascending: false })
+        .order('id', { ascending: false })
+        .limit(200);
+      if (error) throw error;
+      const rows = (data || []) as WhatsAppMessage[];
+      const oldest = rows.at(-1);
+      return {
+        messages: rows.reverse(),
+        nextCursor: rows.length === 200 && oldest ? { created_at: oldest.created_at, id: oldest.id } : null,
+      };
+    },
+    getNextPageParam: lastPage => lastPage.nextCursor ?? undefined,
+    enabled: historyEnabled && !!profile?.clinica_id && !!conversationId && !!oldestLatest,
+  });
+
+  const olderMessages = historyQuery.data?.pages.flatMap(page => page.messages).reverse() ?? [];
+  const hasOlderMessages = latestMessages.length === 200 && (historyQuery.data ? historyQuery.hasNextPage : true);
+  const loadOlderMessages = () => {
+    if (!historyQuery.data) setHistoryEnabled(true);
+    else if (historyQuery.hasNextPage && !historyQuery.isFetchingNextPage) void historyQuery.fetchNextPage();
+  };
+
+  return {
+    ...latestQuery,
+    data: [...olderMessages, ...latestMessages],
+    latestError: latestQuery.error,
+    historyError: historyEnabled ? historyQuery.error : null,
+    error: latestQuery.error || (historyEnabled ? historyQuery.error : null),
+    isError: latestQuery.isError || (historyEnabled && historyQuery.isError),
+    hasOlderMessages: Boolean(hasOlderMessages),
+    loadOlderMessages,
+    isLoadingOlderMessages: historyQuery.isFetching,
+  };
 }
 
 export function useWhatsAppStats(allowed = true) {

@@ -24,6 +24,7 @@ import { cn } from '@/lib/utils';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { ErrorState } from '@/components/ErrorState';
 import { pacienteCorresponde } from '@/lib/buscaPaciente';
+import { dadosAoRegistrarColeta, podeGerenciarLaboratorioPorPapel, podeRegistrarResultado, STATUS_COLETA_LABELS } from '@/lib/laboratorioWorkflow';
 import { dateOnlyInTimeZone, parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { Link } from 'react-router-dom';
 import { PedidosLaboratorioPanel } from '@/pages/laboratorio/PedidosLaboratorioPanel';
@@ -77,24 +78,17 @@ import {
 } from 'lucide-react';
 
 const statusColors: Record<string, string> = {
-  pendente: 'bg-warning/10 text-warning',
-  coletado: 'bg-info/10 text-info',
-  em_analise: 'bg-accent text-accent-foreground',
-  validado: 'bg-success/10 text-success',
-  liberado: 'bg-success/10 text-success',
-  cancelado: 'bg-destructive/10 text-destructive',
-  recoleta: 'bg-warning/10 text-warning',
+  pendente: 'border border-[#f1dfb8] bg-[#fff8e8] text-[#8a5b00]',
+  coletado: 'border border-[#cce2fa] bg-[#edf6ff] text-[#175c9f]',
+  em_analise: 'border border-[#c8eaf1] bg-[#edfbff] text-[#087e98]',
+  validado: 'border border-[#ccebdd] bg-[#effaf4] text-[#16734d]',
+  liberado: 'border border-[#ccebdd] bg-[#effaf4] text-[#16734d]',
+  cancelado: 'border border-[#f1d1d1] bg-[#fff0f0] text-[#a83232]',
+  recoleta: 'border border-[#f1dfb8] bg-[#fff8e8] text-[#8a5b00]',
+  rejeitada: 'border border-[#f1d1d1] bg-[#fff0f0] text-[#a83232]',
 };
 
-const statusLabels: Record<string, string> = {
-  pendente: 'Pendente',
-  coletado: 'Coletado',
-  em_analise: 'Em Análise',
-  validado: 'Validado',
-  liberado: 'Liberado',
-  cancelado: 'Cancelado',
-  recoleta: 'Recoleta',
-};
+const statusLabels = STATUS_COLETA_LABELS;
 
 const PIPELINE_STEPS = ['pendente', 'coletado', 'em_analise', 'validado', 'liberado'];
 
@@ -148,7 +142,7 @@ export default function Laboratorio() {
   const [activeTab, setActiveTab] = useState('worklist');
   const queryClient = useQueryClient();
   const { user, profile } = useSupabaseAuth();
-  const podeGerenciarLaboratorio = !!profile?.roles.some((role) => role === 'admin' || role === 'enfermagem');
+  const podeGerenciarLaboratorio = podeGerenciarLaboratorioPorPapel(profile?.roles);
   const [newColetaForm, setNewColetaForm] = useState({
     paciente_id: '', medico_solicitante_id: '', tipo_amostra: 'sangue',
     tubo: '', observacoes: '', jejum_necessario: false, jejum_horas: 0, urgente: false,
@@ -182,6 +176,7 @@ export default function Laboratorio() {
 
   const limparFila = useMutation({
     mutationFn: async () => {
+      if (!podeGerenciarLaboratorio) throw new Error('Seu perfil não pode limpar a fila do laboratório.');
       const dias = Number(limparDias);
       if (!Number.isFinite(dias) || dias < 1) throw new Error('Informe dias >= 1');
       if (!limparMotivo || limparMotivo.trim().length < 5) throw new Error('Motivo mínimo 5 caracteres');
@@ -368,7 +363,7 @@ export default function Laboratorio() {
       const allowedNext: Record<string, string[]> = {
         pendente: ['coletado', 'cancelado'],
         recoleta: ['coletado', 'cancelado'],
-        coletado: ['em_analise', 'recoleta'],
+        coletado: ['em_analise'],
         em_analise: ['validado'],
       };
       if (!allowedNext[expectedStatus]?.includes(status)) throw new Error('Esta transição de status não é permitida. Atualize a worklist.');
@@ -383,7 +378,7 @@ export default function Laboratorio() {
         return;
       }
       const updates: Record<string, unknown> = { status };
-      if (status === 'coletado') updates.data_coleta = new Date().toISOString();
+      if (status === 'coletado') Object.assign(updates, dadosAoRegistrarColeta(new Date(), profile.id));
       const { data, error } = await (supabase as any).from('coletas_laboratorio').update(updates)
         .eq('id', id).eq('clinica_id', profile.clinica_id).eq('status', expectedStatus).select('id').maybeSingle();
       if (error) throw error;
@@ -569,24 +564,24 @@ export default function Laboratorio() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-[#d8e8fb] bg-gradient-to-r from-[#f4f8ff] via-white to-[#effaff] p-4 sm:p-5">
         <div>
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <FlaskConical className="h-6 w-6 text-primary" /> Laboratório
+            <span className="rounded-xl bg-[#e5f1ff] p-2 text-[#1766b3] ring-1 ring-[#d5e6fa]"><FlaskConical className="h-5 w-5" /></span> Laboratório
           </h1>
           <p className="text-muted-foreground">Central de gestão laboratorial — worklist, coletas e resultados</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => setShowLimparFila(true)}>
+          {podeGerenciarLaboratorio && <Button variant="outline" onClick={() => setShowLimparFila(true)}>
             Limpar fila antiga
-          </Button>
+          </Button>}
           <Button onClick={() => { resetColetaForm(); setShowNewColeta(true); }}>
             <Plus className="h-4 w-4 mr-2" /> Nova Coleta
           </Button>
         </div>
       </div>
 
-      <Dialog open={showLimparFila} onOpenChange={(o) => { setShowLimparFila(o); if (!o) setLimparMotivo(''); }}>
+      <Dialog open={showLimparFila && podeGerenciarLaboratorio} onOpenChange={(o) => { setShowLimparFila(o); if (!o) setLimparMotivo(''); }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Cancelar coletas pendentes antigas</DialogTitle>
@@ -1385,7 +1380,7 @@ export default function Laboratorio() {
             })}
 
             {/* Add resultado form */}
-            <Card>
+            {podeRegistrarResultado(coletas?.find((c: any) => c.id === showResultados)?.status) ? <Card>
               <CardHeader className="flex flex-row items-center justify-between gap-3"><div><CardTitle className="text-sm">Adicionar Resultado</CardTitle><p className="mt-1 text-xs text-muted-foreground">Informe resultado e referência definidos para este método.</p></div>{perfilCatalogoQuery.data && <Button type="button" size="sm" variant="outline" disabled={perfilCatalogoQuery.isLoading || addResultado.isPending} onClick={() => setNewResultForm(current => ({ ...current, unidade: perfilCatalogoQuery.data?.unidade_padrao || current.unidade, valor_referencia_min: perfilCatalogoQuery.data?.referencia_min == null ? current.valor_referencia_min : String(perfilCatalogoQuery.data.referencia_min), valor_referencia_max: perfilCatalogoQuery.data?.referencia_max == null ? current.valor_referencia_max : String(perfilCatalogoQuery.data.referencia_max), valor_referencia_texto: perfilCatalogoQuery.data?.referencia_texto || current.valor_referencia_texto, metodo: perfilCatalogoQuery.data?.metodo_padrao || current.metodo }))}>Usar perfil do exame</Button>}</CardHeader>
               <CardContent>
                 <form onSubmit={(e) => {
@@ -1410,13 +1405,13 @@ export default function Laboratorio() {
                     critico: newResultForm.critico,
                   });
                 }} className="grid grid-cols-2 gap-3">
-                  <div><Label className="text-xs">Parâmetro *</Label><Input disabled={addResultado.isPending} value={newResultForm.parametro} onChange={(e) => setNewResultForm(p => ({ ...p, parametro: e.target.value }))} placeholder="Ex: Hemoglobina" /></div>
-                  <div><Label className="text-xs">Resultado *</Label><Input disabled={addResultado.isPending} value={newResultForm.resultado} onChange={(e) => setNewResultForm(p => ({ ...p, resultado: e.target.value }))} placeholder="Ex: 14.2" /></div>
-                  <div><Label className="text-xs">Unidade</Label><Input disabled={addResultado.isPending} value={newResultForm.unidade} onChange={(e) => setNewResultForm(p => ({ ...p, unidade: e.target.value }))} placeholder="g/dL" /></div>
-                  <div><Label className="text-xs">Método</Label><Input disabled={addResultado.isPending} value={newResultForm.metodo} onChange={(e) => setNewResultForm(p => ({ ...p, metodo: e.target.value }))} placeholder="Automatizado" /></div>
-                  <div><Label className="text-xs">Ref. Mínimo</Label><Input disabled={addResultado.isPending} type="text" inputMode="decimal" value={newResultForm.valor_referencia_min} onChange={(e) => setNewResultForm(p => ({ ...p, valor_referencia_min: e.target.value }))} placeholder="Opcional" /></div>
-                  <div><Label className="text-xs">Ref. Máximo</Label><Input disabled={addResultado.isPending} type="text" inputMode="decimal" value={newResultForm.valor_referencia_max} onChange={(e) => setNewResultForm(p => ({ ...p, valor_referencia_max: e.target.value }))} placeholder="Opcional" /></div>
-                  <div className="col-span-2"><Label className="text-xs">Referência textual</Label><Input disabled={addResultado.isPending} value={newResultForm.valor_referencia_texto} onChange={(e) => setNewResultForm(p => ({ ...p, valor_referencia_texto: e.target.value }))} placeholder="Ex: Não reagente" /></div>
+                  <div><Label htmlFor="lab-resultado-parametro" className="text-xs">Parâmetro *</Label><Input id="lab-resultado-parametro" disabled={addResultado.isPending} value={newResultForm.parametro} onChange={(e) => setNewResultForm(p => ({ ...p, parametro: e.target.value }))} placeholder="Ex: Hemoglobina" /></div>
+                  <div><Label htmlFor="lab-resultado-valor" className="text-xs">Resultado *</Label><Input id="lab-resultado-valor" disabled={addResultado.isPending} value={newResultForm.resultado} onChange={(e) => setNewResultForm(p => ({ ...p, resultado: e.target.value }))} placeholder="Ex: 14.2" /></div>
+                  <div><Label htmlFor="lab-resultado-unidade" className="text-xs">Unidade</Label><Input id="lab-resultado-unidade" disabled={addResultado.isPending} value={newResultForm.unidade} onChange={(e) => setNewResultForm(p => ({ ...p, unidade: e.target.value }))} placeholder="g/dL" /></div>
+                  <div><Label htmlFor="lab-resultado-metodo" className="text-xs">Método</Label><Input id="lab-resultado-metodo" disabled={addResultado.isPending} value={newResultForm.metodo} onChange={(e) => setNewResultForm(p => ({ ...p, metodo: e.target.value }))} placeholder="Automatizado" /></div>
+                  <div><Label htmlFor="lab-resultado-ref-min" className="text-xs">Ref. Mínimo</Label><Input id="lab-resultado-ref-min" disabled={addResultado.isPending} type="text" inputMode="decimal" value={newResultForm.valor_referencia_min} onChange={(e) => setNewResultForm(p => ({ ...p, valor_referencia_min: e.target.value }))} placeholder="Opcional" /></div>
+                  <div><Label htmlFor="lab-resultado-ref-max" className="text-xs">Ref. Máximo</Label><Input id="lab-resultado-ref-max" disabled={addResultado.isPending} type="text" inputMode="decimal" value={newResultForm.valor_referencia_max} onChange={(e) => setNewResultForm(p => ({ ...p, valor_referencia_max: e.target.value }))} placeholder="Opcional" /></div>
+                  <div className="col-span-2"><Label htmlFor="lab-resultado-ref-texto" className="text-xs">Referência textual</Label><Input id="lab-resultado-ref-texto" disabled={addResultado.isPending} value={newResultForm.valor_referencia_texto} onChange={(e) => setNewResultForm(p => ({ ...p, valor_referencia_texto: e.target.value }))} placeholder="Ex: Não reagente" /></div>
                   <div className="col-span-2 flex items-start gap-2 rounded-md border border-destructive/20 bg-destructive/5 p-3"><Checkbox id="resultado-critico" checked={newResultForm.critico} disabled={addResultado.isPending} onCheckedChange={(checked) => setNewResultForm(p => ({ ...p, critico: checked === true }))} /><div><Label htmlFor="resultado-critico" className="cursor-pointer text-sm font-medium">Resultado crítico</Label><p className="text-xs text-muted-foreground">Sinaliza para revisão prioritária conforme o protocolo da clínica.</p></div></div>
                   <div className="col-span-2">
                     <Button
@@ -1431,7 +1426,11 @@ export default function Laboratorio() {
                   </div>
                 </form>
               </CardContent>
-            </Card>
+            </Card> : (
+              <div role="status" className="rounded-xl border border-[#d8e8fb] bg-[#f4f8ff] p-4 text-sm text-[#315b8f]">
+                A amostra não está mais aberta para lançamento. Isso preserva a conferência e a trilha de auditoria do resultado.
+              </div>
+            )}
           </div>
         </DialogContent>
       </Dialog>

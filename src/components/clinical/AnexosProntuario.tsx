@@ -91,6 +91,7 @@ interface AnexosProntuarioProps {
   anexos: Anexo[];
   onAnexoAdicionado: () => void;
   onAnexoRemovido: () => void;
+  readOnly?: boolean;
 }
 
 const CATEGORIAS = [
@@ -108,7 +109,8 @@ export function AnexosProntuario({
   pacienteId, 
   anexos, 
   onAnexoAdicionado,
-  onAnexoRemovido 
+  onAnexoRemovido,
+  readOnly = false,
 }: AnexosProntuarioProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
@@ -150,6 +152,7 @@ export function AnexosProntuario({
   };
 
   const handleUpload = async () => {
+    if (readOnly) return;
     if (!selectedFile) {
       toast({
         title: 'Erro',
@@ -233,6 +236,7 @@ export function AnexosProntuario({
   };
 
   const handleDelete = async (anexo: Anexo) => {
+    if (readOnly) return;
     if (!confirm('Deseja realmente excluir este anexo?')) return;
 
     setLoading(true);
@@ -340,7 +344,7 @@ export function AnexosProntuario({
                 <Badge variant="secondary">{anexos.length}</Badge>
               )}
             </div>
-            <Button onClick={() => setIsOpen(true)} size="sm">
+            <Button onClick={() => setIsOpen(true)} size="sm" disabled={readOnly}>
               <Upload className="h-4 w-4 mr-2" />
               Adicionar Anexo
             </Button>
@@ -413,7 +417,7 @@ export function AnexosProntuario({
                       className="h-8 w-8 text-destructive"
                       aria-label={`Excluir anexo ${anexo.nome_arquivo}`}
                       onClick={() => handleDelete(anexo)}
-                      disabled={loading}
+                      disabled={loading || readOnly}
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
@@ -489,7 +493,7 @@ export function AnexosProntuario({
             <Button variant="outline" onClick={() => setIsOpen(false)}>
               Cancelar
             </Button>
-            <Button onClick={handleUpload} disabled={uploading || !selectedFile}>
+            <Button onClick={handleUpload} disabled={uploading || !selectedFile || readOnly}>
               {uploading ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />

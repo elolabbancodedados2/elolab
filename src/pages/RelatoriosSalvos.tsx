@@ -54,6 +54,8 @@ export default function RelatoriosSalvos() {
       if (!resultado) throw new Error('O servidor não confirmou a execução deste relatório.');
       if (resultado.skipped === 'sem_permissao_para_fonte') {
         toast.error('Relatório não executado', { description: 'O responsável pelo relatório não tem acesso à fonte de dados selecionada.' });
+      } else if (resultado.skipped === 'em_execucao') {
+        toast.error('Relatório já está em processamento', { description: 'Aguarde a conclusão da execução atual antes de tentar novamente.' });
       } else if (resultado.skipped) {
         toast.error('Relatório não executado', { description: 'A fonte de dados salva não é válida para este relatório.' });
       } else if (resultado.delivery === 'not_configured' || !resultado.sent_to) {
@@ -86,17 +88,17 @@ export default function RelatoriosSalvos() {
   };
 
   return (
-    <div className="space-y-4 p-4 md:p-6">
-      <Card>
-        <CardHeader>
+    <div className="space-y-5 pb-8">
+      <Card className="overflow-hidden rounded-2xl border-[#d7e9f7] shadow-sm">
+        <CardHeader className="border-b border-[#e4eef6] bg-gradient-to-r from-[#f1fbfd] via-white to-[#eff4ff] p-4 sm:p-5">
           <CardTitle className="flex items-center gap-2">
-            <Star className="h-5 w-5 text-primary" /> Relatórios salvos e agendados
+            <span className="rounded-xl bg-[#eaf4ff] p-2 text-[#1766a8] ring-1 ring-[#d1e5f8]"><Star className="h-5 w-5" /></span> Relatórios salvos e agendados
           </CardTitle>
           <CardDescription>
             Reaproveite filtros favoritos e receba relatórios por e-mail automaticamente.
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-4 sm:p-5">
           {itemsQuery.isError ? (
             <ErrorState compact title="Não foi possível carregar os relatórios salvos" error={itemsQuery.error} onRetry={() => void itemsQuery.refetch()} />
           ) : !profile?.clinica_id ? (
@@ -116,7 +118,7 @@ export default function RelatoriosSalvos() {
                 </div>
               )}
               {items.map((it: any) => (
-                <div key={it.id} className="border rounded-lg p-4 flex flex-col md:flex-row md:items-center gap-3 hover:bg-muted/40">
+                <div key={it.id} className="flex flex-col gap-3 rounded-xl border border-[#dceaf5] bg-gradient-to-br from-white to-[#f8fbfd] p-4 transition-colors hover:border-[#bfd8ec] hover:bg-[#f8fbfd] md:flex-row md:items-center">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <h3 className="font-semibold">{it.nome}</h3>

@@ -130,6 +130,7 @@ function ChatSidebar({
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             className="pl-10 h-9 text-sm rounded-xl"
+            aria-label="Buscar conversas e equipe"
             placeholder="Buscar..."
             value={search}
             onChange={e => setSearch(e.target.value)}
@@ -523,6 +524,7 @@ function ConversaView({
           <Tooltip>
             <TooltipTrigger asChild>
               <button
+                aria-label={urgente ? 'Remover urgência' : 'Marcar como urgente'}
                 onClick={() => setUrgente(u => !u)}
                 className={cn(
                   'flex items-center justify-center h-9 w-9 rounded-full transition-colors shrink-0',
@@ -538,6 +540,7 @@ function ConversaView({
           </Tooltip>
 
           <button
+            aria-label={showEmojis ? 'Ocultar emojis' : 'Mostrar emojis'}
             onClick={() => setShowEmojis(s => !s)}
             className={cn(
               'flex items-center justify-center h-9 w-9 rounded-full transition-colors shrink-0',
@@ -550,6 +553,7 @@ function ConversaView({
           <Input
             ref={inputRef}
             className="flex-1 h-10 text-sm rounded-xl"
+            aria-label="Mensagem"
             placeholder="Digite uma mensagem..."
             value={texto}
             onChange={e => setTexto(e.target.value)}
@@ -612,11 +616,8 @@ export default function ChatInterno() {
     queryKey: ['funcionarios-chat', profile?.clinica_id, user?.id],
     queryFn: async () => {
       if (!profile?.clinica_id) return [];
-      const { data, error } = await supabase
-        .from('funcionarios')
-        .select('user_id, cargo, tipo_funcionario')
-        .eq('clinica_id', profile.clinica_id)
-        .eq('ativo', true);
+      const { data, error } = await (supabase as any)
+        .rpc('listar_funcionarios_chat_equipe');
       if (error) throw error;
       return data || [];
     },
@@ -650,12 +651,12 @@ export default function ChatInterno() {
   if (!user) return null;
 
   return (
-    <div className="h-[calc(100vh-3.5rem)] flex flex-col">
+    <div className="h-[calc(100vh-3.5rem)] flex flex-col overflow-hidden rounded-2xl border border-[#dce9f6] bg-white shadow-sm shadow-[#133453]/[0.03]">
       {/* Header */}
-      <div className="border-b border-border/25 bg-background/75 backdrop-blur-2xl px-6 py-4">
+      <div className="border-b border-[#dce9f6] bg-gradient-to-r from-[#f3f8ff] via-white to-[#f3fbfa] px-5 py-4 sm:px-6">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <MessageSquare className="h-6 w-6 text-primary" />
+            <span className="rounded-xl bg-[#eaf4ff] p-2 text-[#1766a8] ring-1 ring-[#d1e5f8]"><MessageSquare className="h-5 w-5" /></span>
             <div>
               <h1 className="text-2xl font-bold text-foreground">Chat Interno</h1>
               <p className="text-sm text-muted-foreground">
@@ -686,7 +687,7 @@ export default function ChatInterno() {
       <div className="flex-1 flex overflow-hidden">
         {/* Sidebar */}
         <div className={cn(
-          'w-full md:w-80 border-r border-border/25 bg-muted/10 flex-shrink-0',
+          'w-full md:w-80 border-r border-[#e2ebf4] bg-[#f8fbff] flex-shrink-0',
           conversaAtiva ? 'hidden md:flex md:flex-col' : 'flex flex-col',
         )}>
           <ChatSidebar
@@ -715,9 +716,9 @@ export default function ChatInterno() {
             />
           ) : (
             <div className="flex-1 flex items-center justify-center">
-              <div className="text-center">
-                <div className="h-20 w-20 rounded-3xl bg-primary/10 flex items-center justify-center mx-auto mb-4">
-                  <MessageSquare className="h-10 w-10 text-primary" />
+              <div className="max-w-sm rounded-3xl border border-[#dce9f6] bg-gradient-to-br from-[#f5faff] to-white p-8 text-center shadow-sm shadow-[#133453]/[0.03]">
+                <div className="h-16 w-16 rounded-2xl bg-[#eaf4ff] flex items-center justify-center mx-auto mb-4 text-[#1766a8] ring-1 ring-[#d1e5f8]">
+                  <MessageSquare className="h-8 w-8" />
                 </div>
                 <p className="text-lg font-semibold text-foreground">Selecione uma conversa</p>
                 <p className="text-sm text-muted-foreground mt-1">

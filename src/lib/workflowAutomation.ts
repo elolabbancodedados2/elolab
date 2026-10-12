@@ -13,6 +13,8 @@ import { formatCurrency } from '@/lib/formatters';
 import { supabase } from '@/integrations/supabase/client';
 import { resolveExamPrice } from '@/lib/autoBilling';
 import { format } from 'date-fns';
+import { autorizarLeituraHistoricoPaciente } from '@/lib/prontuarioAudit';
+import type { Database } from '@/integrations/supabase/types';
 
 // ─── Types ──────────────────────────────────────────────
 interface WorkflowResult {
@@ -53,85 +55,30 @@ export async function autoCheckin(
   agendamentoId: string,
   clinicaId?: string | null,
 ): Promise<WorkflowResult> {
+  void clinicaId;
   const actions: string[] = [];
 
   try {
-    // Check if already in queue
-    let existingQuery = supabase
-      .from('fila_atendimento')
-      .select('id')
-      .eq('agendamento_id', agendamentoId)
-      .neq('status', 'finalizado')
-      .limit(1);
-    if (clinicaId) existingQuery = existingQuery.eq('clinica_id', clinicaId);
-    const { data: existing, error: existingError } = await existingQuery;
-    if (existingError) throw existingError;
+    const { data, error } = await supabase.rpc('realizar_checkin', {
+      p_agendamento_id: agendamentoId,
+      p_prioridade: 'normal',
+    });
+    if (error) throw error;
+    const resultado = data;
+    if (!resultado) throw new Error('O check-in nao retornou um resultado.');
 
-    if (existing && existing.length > 0) {
-      return { success: true, message: 'Paciente já está na fila', actions: [] };
+    if (resultado.repetido) {
+      return { success: true, message: 'Paciente ja esta na fila', actions: [] };
     }
 
-    // ORDEM IMPORTA. Antes o status do agendamento era atualizado primeiro e a
-    // fila depois: se o insert na fila falhasse, o agendamento ficava
-    // "aguardando" sem existir item na fila. A recepção via o paciente como
-    // aguardando, mas ele não aparecia no painel e não podia ser chamado.
-    //
-    // Agora a fila — que é o artefato visível — vem primeiro. Se ela falhar,
-    // nada mudou. Se o status falhar depois, desfazemos a entrada na fila.
-
-    // Get next position
-    let lastFilaQuery = supabase
-      .from('fila_atendimento')
-      .select('posicao')
-      .order('posicao', { ascending: false })
-      .limit(1);
-    if (clinicaId) lastFilaQuery = lastFilaQuery.eq('clinica_id', clinicaId);
-    const { data: lastFila, error: lastFilaError } = await lastFilaQuery;
-    if (lastFilaError) throw lastFilaError;
-    const nextPos = (lastFila?.[0]?.posicao || 0) + 1;
-
-    // Add to queue
-    const { data: filaCriada, error: erroFila } = await supabase
-      .from('fila_atendimento')
-      .insert({
-        agendamento_id: agendamentoId,
-        posicao: nextPos,
-        status: 'aguardando',
-        prioridade: 'normal',
-        horario_chegada: new Date().toISOString(),
-        clinica_id: clinicaId || null,
-      })
-      .select('id')
-      .single();
-
-    if (erroFila) throw erroFila;
-    actions.push('Paciente adicionado à fila');
-
-    // Update agendamento status
-    const { error: erroStatus } = await supabase
-      .from('agendamentos').update({ status: 'aguardando' }).eq('id', agendamentoId);
-
-    if (erroStatus) {
-      // Compensação: sem o status certo, o item na fila viraria um fantasma que
-      // ninguém consegue chamar. Melhor voltar ao estado anterior e pedir para
-      // tentar de novo do que deixar o balcão com uma fila inconsistente.
-      if (filaCriada?.id) {
-        await supabase.from('fila_atendimento').delete().eq('id', filaCriada.id);
-      }
-      throw erroStatus;
-    }
-    actions.push('Status do agendamento → Aguardando');
-
-    return { success: true, message: 'Check-in automático realizado', actions };
+    actions.push('Paciente adicionado a fila');
+    actions.push('Status do agendamento atualizado para aguardando');
+    return { success: true, message: 'Check-in realizado', actions };
   } catch (e: any) {
     return { success: false, message: e.message, actions };
   }
 }
 
-// ─── 2. Iniciar Atendimento ─────────────────────────────
-/** Start consultation: update only the operational statuses.
- * The medical user creates the chart when opening the consultation.
- */
 export async function autoIniciarAtendimento(
   agendamentoId: string,
   filaId: string,
@@ -328,6 +275,19 @@ export async function autoCreateColeta(params: {
     if (existingColetaError) throw existingColetaError;
 
     if (existingColeta && existingColeta.length > 0) {
+      if (params.urgente) {
+        const { data: coletaAtualizada, error: atualizarErro } = await supabase
+          .from('coletas_laboratorio')
+          .update({ urgente: true })
+          .eq('id', existingColeta[0].id)
+          .eq('clinica_id', params.clinicaId || '')
+          .select('id')
+          .maybeSingle();
+        if (atualizarErro) throw atualizarErro;
+        if (!coletaAtualizada) throw new Error('NÃ£o foi possÃ­vel aplicar a prioridade urgente Ã  coleta existente.');
+        actions.push('Coleta existente marcada como URGENTE');
+        return { success: true, message: 'Coleta existente marcada como urgente', actions };
+      }
       return { success: true, message: 'Coleta já registrada', actions: [] };
     }
 
@@ -365,12 +325,15 @@ export async function autoDispensarMedicamentos(params: {
   medicamentos: Array<{ nome: string; quantidade: string }>;
   pacienteId: string;
   pacienteNome: string;
+  prontuarioId: string;
   userId?: string;
 }): Promise<WorkflowResult> {
   const actions: string[] = [];
   const alertas: string[] = [];
 
   try {
+    if (!params.prontuarioId) throw new Error('Salve o prontuário antes de registrar a dispensação.');
+
     for (const med of params.medicamentos) {
       if (!med.nome || !med.quantidade) continue;
       const qty = parseInt(med.quantidade) || 1;
@@ -404,6 +367,7 @@ export async function autoDispensarMedicamentos(params: {
         {
           p_item_id: stockItem.id,
           p_quantidade: qty,
+          p_prontuario_id: params.prontuarioId,
           p_usuario_id: params.userId || null,
           p_motivo: `Dispensação — ${params.pacienteNome}`,
         },
@@ -494,6 +458,7 @@ export async function autoBillingExame(params: {
         .maybeSingle();
       clinicaId = profile?.clinica_id || null;
     }
+    if (!clinicaId) throw new Error('Clínica não identificada para enfileirar o aviso do resultado.');
 
     // Check if already billed
     let existingQuery = supabase
@@ -546,6 +511,7 @@ export async function autoBillingExame(params: {
         assunto: `Resultado de exame disponível — ${params.tipoExame}`,
         conteudo: `Olá ${params.pacienteNome}, o resultado do seu exame "${params.tipoExame}" já está disponível. Acesse pelo portal do paciente ou retire na clínica.`,
         status: 'pendente',
+        clinica_id: clinicaId,
       }));
       actions.push('Notificação de resultado enviada ao paciente');
     }
@@ -564,100 +530,41 @@ export async function autoTriagemParaFila(params: {
   clinicaId?: string | null;
 }): Promise<WorkflowResult> {
   const actions: string[] = [];
+  const prioridadeMap: Record<string, string> = {
+    vermelho: 'urgente',
+    laranja: 'urgente',
+    amarelo: 'preferencial',
+    verde: 'normal',
+    azul: 'normal',
+  };
+  const prioridade = prioridadeMap[params.classificacaoRisco];
 
   try {
-    const prioridadeMap: Record<string, string> = {
-      vermelho: 'urgente', laranja: 'urgente', amarelo: 'preferencial',
-      verde: 'normal', azul: 'normal',
+    const { data, error } = await supabase.rpc('realizar_checkin', {
+      p_agendamento_id: params.agendamentoId,
+      p_prioridade: prioridade,
+    });
+    if (error) throw error;
+    const resultado = data;
+    if (!resultado) throw new Error('O check-in da triagem nao retornou um resultado.');
+
+    actions.push(resultado.repetido
+      ? 'Paciente ja estava na fila; prioridade: ' + prioridade
+      : 'Paciente adicionado a fila (prioridade: ' + prioridade + ')');
+    actions.push('Agendamento atualizado para aguardando');
+
+    return {
+      success: true,
+      message: resultado.repetido
+        ? 'Prioridade de triagem confirmada na fila'
+        : 'Paciente adicionado a fila com prioridade',
+      actions,
     };
-
-    // Check if already in queue
-    const { data: existing, error: existingError } = await supabase
-      .from('fila_atendimento')
-      .select('id, prioridade')
-      .eq('agendamento_id', params.agendamentoId)
-      .neq('status', 'finalizado')
-      .limit(1);
-    if (existingError) throw existingError;
-
-    const novaPrioridade = prioridadeMap[params.classificacaoRisco];
-
-    if (existing && existing.length > 0) {
-      // Update priority if already in queue
-      if (existing[0].prioridade !== novaPrioridade) {
-        await must(supabase.from('fila_atendimento')
-          .update({ prioridade: novaPrioridade })
-          .eq('id', existing[0].id));
-        actions.push(`Prioridade atualizada para ${novaPrioridade}`);
-      }
-      return { success: true, message: 'Prioridade atualizada na fila', actions };
-    }
-
-    // Add to queue. Urgentes precisam de posições distintas: usar sempre 0
-    // criava empates e deixava a ordem entre dois pacientes críticos ao acaso.
-    const { data: lastFila, error: lastFilaError } = await supabase
-      .from('fila_atendimento')
-      .select('posicao')
-      .order('posicao', { ascending: false })
-      .limit(1);
-    if (lastFilaError) throw lastFilaError;
-    const nextPos = (lastFila?.[0]?.posicao || 0) + 1;
-
-    const isUrgent = params.classificacaoRisco === 'vermelho' || params.classificacaoRisco === 'laranja';
-    let posicao = nextPos;
-    if (isUrgent) {
-      const { data: firstFila, error: firstFilaError } = await supabase
-        .from('fila_atendimento')
-        .select('posicao')
-        .order('posicao', { ascending: true })
-        .limit(1);
-      if (firstFilaError) throw firstFilaError;
-      posicao = (firstFila?.[0]?.posicao ?? 0) - 1;
-    }
-
-    const { data: filaCriada, error: filaError } = await supabase
-      .from('fila_atendimento')
-      .insert({
-        agendamento_id: params.agendamentoId,
-        posicao,
-        status: 'aguardando',
-        prioridade: novaPrioridade,
-        horario_chegada: new Date().toISOString(),
-        clinica_id: params.clinicaId || null,
-      })
-      .select('id')
-      .single();
-    if (filaError) throw filaError;
-    actions.push(`Adicionado à fila (prioridade: ${novaPrioridade})`);
-
-    try {
-      await must(supabase.from('agendamentos')
-        .update({ status: 'aguardando' })
-        .eq('id', params.agendamentoId)
-        .select('id')
-        .single());
-    } catch (agendamentoError) {
-      // O item recém-criado não pode ficar órfão na fila se a atualização do
-      // agendamento for rejeitada por RLS ou por um id inválido.
-      if (filaCriada?.id) {
-        await supabase.from('fila_atendimento').delete().eq('id', filaCriada.id);
-      }
-      throw agendamentoError;
-    }
-    actions.push('Agendamento → Aguardando');
-
-    if (isUrgent) {
-      actions.push('⚡ Paciente posicionado no início da fila');
-    }
-
-    return { success: true, message: 'Paciente adicionado à fila com prioridade', actions };
   } catch (e: any) {
     return { success: false, message: e.message, actions };
   }
 }
 
-// ─── 9. Confirmar Pagamento Completo ────────────────────
-/** Confirm payment and auto-close the flow */
 export async function autoConfirmarPagamento(params: {
   lancamentoId: string;
   formaPagamento: string;
@@ -780,19 +687,28 @@ export async function autoCancelarAgendamento(params: {
     // Get appointment details before cancelling
     const { data: ag } = await supabase
       .from('agendamentos')
-      .select('data, hora_inicio, medico_id, paciente_id')
+      .select('data, hora_inicio, medico_id, paciente_id, clinica_id, updated_at')
       .eq('id', params.agendamentoId)
       .maybeSingle();
 
-    await must(supabase.from('agendamentos').update({ status: params.motivo }).eq('id', params.agendamentoId));
-    actions.push(`Agendamento marcado como ${params.motivo === 'faltou' ? 'falta' : 'cancelado'}`);
+    if (!ag?.clinica_id) throw new Error('Agendamento sem clÃ­nica ou nÃ£o encontrado.');
 
-    // Remove from queue if present
-    await must(supabase.from('fila_atendimento').delete().eq('agendamento_id', params.agendamentoId));
+    const { data: resultado, error } = await supabase.rpc('alterar_status_agendamento_com_fila', {
+      p_agendamento_id: params.agendamentoId,
+      p_clinica_id: ag.clinica_id,
+      p_status: params.motivo,
+      p_updated_at: ag.updated_at ?? null,
+    });
+    if (error) throw error;
+    const atualizado = resultado;
+    if (!atualizado?.atualizado) throw new Error('A consulta mudou ou foi finalizada. Atualize a agenda e tente novamente.');
+
+    actions.push(`Agendamento marcado como ${params.motivo === 'faltou' ? 'falta' : 'cancelado'}`);
     actions.push('Removido da fila (se estava)');
 
-    // Auto-convoke waiting list
-    if (ag) {
+    // Cancelled appointments trigger the database waitlist workflow atomically.
+    // A no-show does not trigger that workflow, so keep the legacy invitation here.
+    if (params.motivo === 'faltou') {
       const { data: espera } = await supabase
         .from('lista_espera')
         .select('id, paciente_id, medico_id')
@@ -860,13 +776,14 @@ export async function autoCancelarAgendamento(params: {
 export async function autoProgressExame(params: {
   exameId: string;
   novoStatus: string;
+  statusAtual: Database['public']['Enums']['status_exame'];
   pacienteId: string;
   pacienteNome: string;
   medicoId: string | null;
   tipoExame: string;
   convenioId?: string | null;
   resultado?: string;
-  clinicaId?: string | null;
+  clinicaId: string;
 }): Promise<WorkflowResult> {
   const actions: string[] = [];
   let exameAtualizado = false;
@@ -880,10 +797,16 @@ export async function autoProgressExame(params: {
       updateData.resultado = params.resultado;
     }
 
+    if (!params.clinicaId || !params.statusAtual) {
+      throw new Error('Clínica e situação atual são necessárias para avançar o exame. Atualize a lista e tente novamente.');
+    }
+
     const { data: atualizado, error: erroAtualizacao } = await supabase
       .from('exames')
       .update(updateData)
       .eq('id', params.exameId)
+      .eq('clinica_id', params.clinicaId)
+      .eq('status', params.statusAtual)
       .select('id')
       .maybeSingle();
     if (erroAtualizacao) throw erroAtualizacao;
@@ -971,6 +894,7 @@ export async function autoVincularResultadoProntuario(params: {
 
   try {
     // Find the latest prontuario for this patient
+    await autorizarLeituraHistoricoPaciente(params.pacienteId);
     const { data: prontuario } = await supabase
       .from('prontuarios')
       .select('id, observacoes_internas')
@@ -1006,15 +930,16 @@ export async function autoNotificarMedico(params: {
   pacienteNome: string;
   motivo: string;
   sala?: string;
+  clinicaId: string;
 }): Promise<WorkflowResult> {
   const actions: string[] = [];
 
   try {
-    const { data: med } = await supabase
-      .from('medicos')
-      .select('email, nome, user_id')
-      .eq('id', params.medicoId)
+    if (!params.clinicaId) throw new Error('Clínica não identificada para enfileirar a notificação do profissional.');
+    const { data: med, error: medicoError } = await (supabase as any)
+      .rpc('buscar_contato_medico_notificacao', { p_medico_id: params.medicoId })
       .maybeSingle();
+    if (medicoError) throw medicoError;
 
     if (med?.email) {
       await must(supabase.from('notification_queue').insert({
@@ -1025,6 +950,7 @@ export async function autoNotificarMedico(params: {
         assunto: `Paciente pronto: ${params.pacienteNome}`,
         conteudo: `${nomeMedico(med.nome)}, o paciente ${params.pacienteNome} está pronto para atendimento. ${params.motivo}${params.sala ? ` Sala: ${params.sala}.` : ''}`,
         status: 'pendente',
+        clinica_id: params.clinicaId,
       }));
       actions.push(`Médico ${med.nome} notificado por e-mail`);
     }

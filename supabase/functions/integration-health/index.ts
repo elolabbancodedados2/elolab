@@ -21,15 +21,11 @@ Deno.serve(async req=>{
   if(req.method==='OPTIONS') return new Response('ok',{headers:cors})
   const auth=req.headers.get('authorization'); if(!auth) return json({error:'Sessão obrigatória'},401)
   const url=Deno.env.get('SUPABASE_URL')!, anon=Deno.env.get('SUPABASE_ANON_KEY')!, serviceKey=Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-  const userDb=createClient(url,anon,{global:{headers:{Authorization:auth}}}); const service=createClient(url,serviceKey)
+  const userDb=createClient(url,anon,{global:{headers:{Authorization:auth}}})
   const {data:{user},error:userError}=await userDb.auth.getUser(); if(userError||!user) return json({error:'Sessão inválida'},401)
-  const [{data:isAdmin},{data:isPlatformAdmin}]=await Promise.all([
-    userDb.rpc('is_admin',{_user_id:user.id}),
-    userDb.rpc('is_platform_admin'),
-  ])
-  if(!isAdmin&&!isPlatformAdmin) return json({error:'Apenas administradores'},403)
-  const {data:profile}=await service.from('profiles').select('clinica_id').eq('id',user.id).maybeSingle()
-  if(!profile?.clinica_id&&!isPlatformAdmin) return json({error:'Clínica não identificada'},400)
+  const {data:isPlatformAdmin,error:platformAdminError}=await userDb.rpc('is_platform_admin')
+  if(platformAdminError||isPlatformAdmin!==true) return json({error:'Apenas administradores da plataforma'},403)
+  const service=createClient(url,serviceKey)
 
   const brevo=Deno.env.get('BREVO_API_KEY')||'', mp=Deno.env.get('MERCADOPAGO_ACCESS_TOKEN')||'', openai=Deno.env.get('OPENAI_API_KEY')||''
   const evoUrl=(Deno.env.get('EVOLUTION_API_URL')||'').replace(/\/+$/,''), evoKey=Deno.env.get('EVOLUTION_API_KEY')||''
@@ -39,9 +35,8 @@ Deno.serve(async req=>{
     external('ia','OpenAI','https://api.openai.com/v1/models',{Authorization:`Bearer ${openai}`},!!openai),
     external('whatsapp_api','Evolution API',`${evoUrl}/instance/fetchInstances`,{apikey:evoKey},!!evoUrl&&!!evoKey),
   ])
-  let sessoesQuery=service.from('whatsapp_sessions').select('*',{count:'exact',head:true}).eq('status','connected')
-  let filaQuery=service.from('notification_queue').select('*',{count:'exact',head:true}).eq('status','erro')
-  if(profile?.clinica_id){ sessoesQuery=sessoesQuery.eq('clinica_id',profile.clinica_id); filaQuery=filaQuery.eq('clinica_id',profile.clinica_id) }
+  const sessoesQuery=service.from('whatsapp_sessions').select('*',{count:'exact',head:true}).eq('status','connected')
+  const filaQuery=service.from('notification_queue').select('*',{count:'exact',head:true}).eq('status','erro')
   const [{count:sessoes},{count:errosFila},{data:ultimoBackup}]=await Promise.all([
     sessoesQuery,
     filaQuery,
