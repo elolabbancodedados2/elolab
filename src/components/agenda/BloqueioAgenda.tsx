@@ -130,7 +130,12 @@ export function BloqueioAgenda({ medicoIdFilter }: BloqueioAgendaProps) {
       setDialogOpen(false);
       setForm({ medico_id: medicoIdFilter || '', data_inicio: '', data_fim: '', hora_inicio: '', hora_fim: '', dia_inteiro: true, motivo: '', tipo: 'bloqueio' });
     } catch (error) {
-      toast.error('Erro ao criar bloqueio', { description: mensagemDeErro(error) });
+      const conflito = String((error as any)?.message || '').includes('AGENDA_BLOQUEIO_CONFLITO');
+      toast.error(conflito ? 'Não foi possível bloquear este período' : 'Erro ao criar bloqueio', {
+        description: conflito
+          ? 'Existe uma consulta marcada neste período. Remarque a consulta ou escolha outro intervalo.'
+          : mensagemDeErro(error),
+      });
     } finally {
       setSalvando(false);
     }

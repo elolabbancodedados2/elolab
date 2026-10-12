@@ -1072,6 +1072,9 @@ export interface LaudoData {
     tipoExame?: string;
     liberado: boolean;
     dataLiberacao?: string;
+    validadoPor?: string;
+    dataValidacao?: string;
+    liberadoPor?: string;
   }>;
 }
 
@@ -1327,6 +1330,31 @@ export async function gerarLaudoPDF(dados: LaudoData): Promise<jsPDF> {
   }
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(0, 0, 0);
+
+  const atribuicoes = dados.resultados.flatMap(resultado => [
+    resultado.validadoPor ? {
+      texto: `Conferência técnica: ${resultado.validadoPor}${resultado.dataValidacao ? ` · ${formatDateTimeSaoPaulo(resultado.dataValidacao, true)}` : ''}`,
+      data: resultado.dataValidacao,
+    } : null,
+    resultado.liberadoPor ? {
+      texto: `Liberado por: ${resultado.liberadoPor}${resultado.dataLiberacao ? ` · ${formatDateTimeSaoPaulo(resultado.dataLiberacao, true)}` : ''}`,
+      data: resultado.dataLiberacao,
+    } : null,
+  ].filter((item): item is { texto: string; data: string | null | undefined } => item !== null));
+  const atribuicoesUnicas = [...new Map(atribuicoes.map(item => [item.texto, item])).values()];
+  if (atribuicoesUnicas.length > 0) {
+    y += 4;
+    const linhas = atribuicoesUnicas.flatMap(item => doc.splitTextToSize(item.texto, rightX - margin));
+    const altura = linhas.length * 3.5 + 5;
+    if (y > pageHeight - altura - 24) { doc.addPage(); y = margin; }
+    doc.setFontSize(7);
+    doc.setFont('helvetica', 'bold');
+    doc.text('REGISTRO DE CONFERÊNCIA E LIBERAÇÃO', margin, y);
+    doc.setFont('helvetica', 'normal');
+    y += 4;
+    doc.text(linhas, margin, y);
+    y += linhas.length * 3.5 + 2;
+  }
 
   // ── QR CODE ──
   try {

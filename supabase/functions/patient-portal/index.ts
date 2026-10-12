@@ -61,6 +61,10 @@ Deno.serve(async (req) => {
 
     const body = await req.json();
     const { action, token } = body;
+    const offset = body.offset === undefined ? 0 : Number(body.offset);
+    if (!Number.isSafeInteger(offset) || offset < 0 || offset > 100_000) {
+      return new Response(JSON.stringify({ error: "?ndice de p?gina inv?lido" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
 
     if (!token) {
       return new Response(JSON.stringify({ error: "Token obrigatório" }), {
@@ -152,7 +156,8 @@ Deno.serve(async (req) => {
           .eq("paciente_id", pacienteId)
           .eq("clinica_id", pacienteClinicaId)
           .order("data", { ascending: false })
-          .limit(50);
+          .order("id", { ascending: true })
+          .range(offset, offset + 49);
         if (error) throw error;
         result = data || [];
         break;
@@ -274,7 +279,8 @@ Deno.serve(async (req) => {
           .eq("paciente_id", pacienteId)
           .eq("clinica_id", pacienteClinicaId)
           .order("data_solicitacao", { ascending: false })
-          .limit(30);
+          .order("id", { ascending: true })
+          .range(offset, offset + 29);
         if (error) throw error;
         result = await Promise.all((data || []).map(async (exame: any) => {
           // Conteúdo clínico e arquivo só podem sair depois da liberação.
@@ -283,7 +289,16 @@ Deno.serve(async (req) => {
             return { ...exame, resultado: null, arquivo_resultado: null };
           }
           if (!exame.arquivo_resultado) return exame;
-          if (/^https:\/\//i.test(exame.arquivo_resultado)) return exame;
+          if (/^https:\/\//i.test(exame.arquivo_resultado)) {
+            const configuredHost = new URL(Deno.env.get("SUPABASE_URL")!).hostname;
+            try {
+              const fileUrl = new URL(exame.arquivo_resultado);
+              if (fileUrl.protocol === "https:" && fileUrl.hostname === configuredHost) return exame;
+            } catch {
+              // Hide malformed or untrusted external links from the patient portal.
+            }
+            return { ...exame, arquivo_resultado: null, arquivo_resultado_indisponivel: true };
+          }
           const { data: signed, error: signError } = await supabase.storage
             .from("medical-attachments").createSignedUrl(exame.arquivo_resultado, 300);
           if (signError) {
@@ -302,7 +317,8 @@ Deno.serve(async (req) => {
           .eq("paciente_id", pacienteId)
           .eq("clinica_id", pacienteClinicaId)
           .order("created_at", { ascending: false })
-          .limit(20);
+          .order("id", { ascending: true })
+          .range(offset, offset + 19);
         if (error) throw error;
         result = data || [];
         break;
@@ -315,7 +331,8 @@ Deno.serve(async (req) => {
           .eq("paciente_id", pacienteId)
           .eq("clinica_id", pacienteClinicaId)
           .order("data_emissao", { ascending: false })
-          .limit(50);
+          .order("id", { ascending: true })
+          .range(offset, offset + 49);
         if (error) throw error;
         result = data || [];
         break;

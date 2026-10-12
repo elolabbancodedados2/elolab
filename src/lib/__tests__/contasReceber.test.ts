@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { valorRecebidoDaConta } from '@/lib/contasReceber';
+import { podeExportarContasCompletas, valorRecebidoDaConta } from '@/lib/contasReceber';
 
 describe('valor recebido por conta', () => {
   it('usa pagamentos individuais quando a leitura está completa', () => {
@@ -18,5 +18,17 @@ describe('valor recebido por conta', () => {
     expect(valorRecebidoDaConta(
       { valor: 200, valor_pago: null }, true, false, 0,
     )).toBe(200);
+  });
+});
+
+describe('exportação de contas a receber', () => {
+  it('permite exportar quando a lista e o livro de pagamentos estão completos', () => {
+    expect(podeExportarContasCompletas(false, false)).toBe(true);
+  });
+
+  it('bloqueia exportação quando qualquer conjunto atingiu o limite', () => {
+    expect(podeExportarContasCompletas(true, false)).toBe(false);
+    expect(podeExportarContasCompletas(false, true)).toBe(false);
+    expect(podeExportarContasCompletas(true, true)).toBe(false);
   });
 });

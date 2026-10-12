@@ -288,23 +288,23 @@ export default function Financeiro() {
   return (
     <div className="space-y-6 pb-8">
       {/* Header with month navigation */}
-      <div className="flex items-center justify-between flex-wrap gap-4">
+      <div className="flex items-center justify-between flex-wrap gap-4 rounded-2xl border border-[#d7e9f7] bg-gradient-to-r from-[#f1fbfd] via-white to-[#eff4ff] p-4 shadow-sm sm:p-5">
         <div>
           <h1 className="text-2xl font-bold font-display tracking-tight flex items-center gap-2">
-            <DollarSign className="h-6 w-6 text-primary" /> Painel Financeiro
+            <span className="rounded-xl bg-[#e2f2fc] p-2 text-[#1766a8] ring-1 ring-[#cfe5f5]"><DollarSign className="h-5 w-5" /></span> Painel Financeiro
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
             Análise completa de receitas, despesas e resultados
           </p>
         </div>
-        <div className="flex items-center gap-2 bg-muted/50 rounded-xl p-1">
-          <Button aria-label="Mês anterior" variant="ghost" size="icon" className="h-8 w-8" onClick={() => setCurrentDate(subMonths(currentDate, 1))}>
+        <div className="flex items-center gap-2 rounded-xl border border-[#dceaf5] bg-white/90 p-1 shadow-sm">
+          <Button aria-label="Mês anterior" variant="ghost" size="icon" className="h-8 w-8 rounded-lg text-[#34749f] hover:bg-[#eaf5fb]" onClick={() => setCurrentDate(subMonths(currentDate, 1))}>
             <ChevronLeft className="h-4 w-4" />
           </Button>
-          <span className="font-bold text-sm min-w-[120px] text-center capitalize">
+          <span className="min-w-[120px] text-center text-sm font-bold capitalize text-[#173b61]">
             {format(currentDate, 'MMMM yyyy', { locale: ptBR })}
           </span>
-          <Button aria-label="Próximo mês" variant="ghost" size="icon" className="h-8 w-8" onClick={() => setCurrentDate(addMonths(currentDate, 1))}>
+          <Button aria-label="Próximo mês" variant="ghost" size="icon" className="h-8 w-8 rounded-lg text-[#34749f] hover:bg-[#eaf5fb]" onClick={() => setCurrentDate(addMonths(currentDate, 1))}>
             <ChevronRight className="h-4 w-4" />
           </Button>
         </div>
@@ -315,36 +315,36 @@ export default function Financeiro() {
         {[
           {
             label: 'Receita Recebida', value: kpis.recebido, icon: CheckCircle2,
-            color: 'text-success', bg: 'bg-success/10', border: 'border-success/20',
+            color: 'text-[#147765]', bg: 'bg-[#e5f7f2]', border: 'border-[#c5eadd]',
             var: kpis.varReceita,
             varNovaBase: kpis.receitaSemBaseAnterior,
             varGoodWhenUp: true,
           },
           {
             label: 'A Receber', value: kpis.aReceber, icon: Clock,
-            color: 'text-warning', bg: 'bg-warning/10', border: 'border-warning/20',
+            color: 'text-[#2167a5]', bg: 'bg-[#eaf4ff]', border: 'border-[#d1e5f8]',
             varNovaBase: false,
             sub: kpis.countPendentesReceber > 0 ? `${kpis.countPendentesReceber} em aberto` : undefined,
             varGoodWhenUp: false,
           },
           {
             label: 'Despesas Pagas', value: kpis.totalDespesas, icon: TrendingDown,
-            color: 'text-destructive', bg: 'bg-destructive/10', border: 'border-destructive/20',
+            color: 'text-[#b65a4d]', bg: 'bg-[#fff0ed]', border: 'border-[#f2d6d0]',
             var: kpis.varDespesa,
             varNovaBase: kpis.despesaSemBaseAnterior,
             varGoodWhenUp: false,
           },
           {
             label: 'Resultado Líquido', value: kpis.saldo, icon: DollarSign,
-            color: kpis.saldo >= 0 ? 'text-success' : 'text-destructive',
-            bg: kpis.saldo >= 0 ? 'bg-success/10' : 'bg-destructive/10',
-            border: kpis.saldo >= 0 ? 'border-success/20' : 'border-destructive/20',
+            color: kpis.saldo >= 0 ? 'text-[#147765]' : 'text-[#b65a4d]',
+            bg: kpis.saldo >= 0 ? 'bg-[#e5f7f2]' : 'bg-[#fff0ed]',
+            border: kpis.saldo >= 0 ? 'border-[#c5eadd]' : 'border-[#f2d6d0]',
             varNovaBase: false,
             varGoodWhenUp: true,
           },
         ].map((s, i) => (
           <motion.div key={s.label} variants={fadeUp}>
-            <Card className={cn('border hover:shadow-md hover:-translate-y-0.5 transition-all', s.border)}>
+            <Card className={cn('h-full border bg-gradient-to-br from-white to-[#f8fbfd] shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md', s.border)}>
               <CardContent className="py-4 px-5">
                 <div className="flex items-start justify-between">
                   <div>
@@ -360,7 +360,7 @@ export default function Financeiro() {
                     )}
                     {s.sub && <p className="text-[10px] text-muted-foreground mt-0.5">{s.sub}</p>}
                   </div>
-                  <div className={cn('h-11 w-11 rounded-xl flex items-center justify-center', s.bg)}>
+                  <div className={cn('h-11 w-11 rounded-xl flex items-center justify-center ring-1 ring-inset ring-black/[0.03]', s.bg)}>
                     <s.icon className={cn('h-5 w-5', s.color)} />
                   </div>
                 </div>

@@ -45,6 +45,7 @@ import { mesmoValor, diferencaEmReais, parseValorContado } from '@/lib/dinheiro'
 import { calcularSaldoGaveta, calcularTotaisCaixa, validarResultadoRpcCaixa } from '@/lib/caixaDiario';
 import { useBuscaPacientes } from '@/hooks/useBuscaPacientes';
 import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
+import { canAccessCashTab, canAccessRestrictedCashTabs } from '@/lib/cashierAccess';
 
 type LancamentoTipo = 'receita' | 'despesa' | 'sangria' | 'suprimento';
 type FormaPagamento = 'dinheiro' | 'pix' | 'credito' | 'debito' | 'cartao_credito' | 'cartao_debito' | 'cheque' | 'transferencia';
@@ -224,6 +225,8 @@ interface ProdutoCarrinho {
 
 export default function CaixaDiario() {
   const { profile } = useSupabaseAuth();
+  const roles = [...new Set([...(profile?.roles ?? []), ...(profile?.role ? [profile.role] : [])])];
+  const podeAcessarModulosFinanceiros = canAccessRestrictedCashTabs(roles);
   const queryClient = useQueryClient();
   const [today, setToday] = useState(() => todaySaoPauloDateOnly());
   useEffect(() => {
@@ -232,6 +235,7 @@ export default function CaixaDiario() {
   }, []);
 
   const [activeTab, setActiveTab] = useState('hoje');
+  const activeTabPermitida = canAccessCashTab(activeTab, roles) ? activeTab : 'hoje';
   const [searchTerm, setSearchTerm] = useState('');
   const [showAbertura, setShowAbertura] = useState(false);
   const [showFechamento, setShowFechamento] = useState(false);
@@ -1019,7 +1023,7 @@ export default function CaixaDiario() {
   return (
     <div className="space-y-6 p-4 md:p-6">
       {/* ─── Header ─── */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+      <div className="flex flex-col items-start justify-between gap-3 rounded-2xl border border-[#D8E8F4] bg-[linear-gradient(118deg,#FFFFFF_12%,#F3FAFF_67%,#E7F8FC_100%)] px-4 py-4 shadow-[0_12px_32px_-26px_rgba(12,31,84,0.35)] sm:flex-row sm:items-center sm:px-5">
         <div className="flex items-center gap-3">
           <div className={cn(
             'p-2.5 rounded-xl',
@@ -1028,8 +1032,8 @@ export default function CaixaDiario() {
             <DollarSign className={cn('h-6 w-6', isOpen ? 'text-success' : 'text-muted-foreground')} />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-foreground">Caixa Diário</h1>
-            <p className="text-sm text-muted-foreground flex items-center gap-1">
+            <h1 className="text-2xl font-bold text-[#0C1F54]">Caixa Diário</h1>
+            <p className="flex items-center gap-1 text-sm text-[#0C1F54]/65">
               <CalendarDays className="h-3.5 w-3.5" />
               {new Date(`${today}T12:00:00`).toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}
             </p>
@@ -1053,20 +1057,22 @@ export default function CaixaDiario() {
       </div>
 
       {/* ─── Tabs ─── */}
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
+      <Tabs value={activeTabPermitida} onValueChange={setActiveTab}>
         <div className="overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0">
-          <TabsList className="inline-flex w-auto min-w-full md:min-w-0 gap-0.5">
+          <TabsList className="inline-flex h-auto w-auto min-w-full gap-0.5 rounded-xl border border-[#D8E8F4] bg-[#EAF4FF] p-1 md:min-w-0">
             {[
               { v: 'hoje', l: 'Caixa Hoje', i: Receipt },
               { v: 'historico', l: 'Histórico', i: History },
-              { v: 'receber', l: 'Contas a Receber', i: ArrowUpRight },
-              { v: 'pagar', l: 'Contas a Pagar', i: ArrowDownRight },
-              { v: 'fluxo', l: 'Fluxo de Caixa', i: TrendingUp },
-              { v: 'precos', l: 'Tabela de Preços', i: Tag },
-              { v: 'tipos', l: 'Tipos de Consulta', i: Stethoscope },
-              { v: 'relatorios', l: 'Relatórios', i: ClipboardList },
+              ...(podeAcessarModulosFinanceiros ? [
+                { v: 'receber', l: 'Contas a Receber', i: ArrowUpRight },
+                { v: 'pagar', l: 'Contas a Pagar', i: ArrowDownRight },
+                { v: 'fluxo', l: 'Fluxo de Caixa', i: TrendingUp },
+                { v: 'precos', l: 'Tabela de Preços', i: Tag },
+                { v: 'tipos', l: 'Tipos de Consulta', i: Stethoscope },
+                { v: 'relatorios', l: 'Relatórios', i: ClipboardList },
+              ] : []),
             ].map(tab => (
-              <TabsTrigger key={tab.v} value={tab.v} className="gap-1.5 text-xs whitespace-nowrap px-3">
+              <TabsTrigger key={tab.v} value={tab.v} className="min-h-10 gap-1.5 whitespace-nowrap rounded-lg px-3 text-xs data-[state=active]:bg-white data-[state=active]:text-[#0C1F54] data-[state=active]:shadow-sm">
                 <tab.i className="h-3.5 w-3.5" /> {tab.l}
               </TabsTrigger>
             ))}
@@ -1203,7 +1209,7 @@ export default function CaixaDiario() {
                   </CardTitle>
                   <div className="relative">
                     <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                    <Input className="pl-8 w-52 h-9 text-sm" placeholder="Buscar..." value={searchTerm}
+                    <Input className="pl-8 w-52 h-9 text-sm" placeholder="Buscar..." aria-label="Buscar movimentações do caixa" value={searchTerm}
                       onChange={e => setSearchTerm(e.target.value)} />
                   </div>
                 </div>
@@ -1474,41 +1480,41 @@ export default function CaixaDiario() {
         </TabsContent>
 
         {/* ═══ FERRAMENTAS FINANCEIRAS ═══ */}
-        <TabsContent value="receber" className="mt-4">
+        {podeAcessarModulosFinanceiros && <TabsContent value="receber" className="mt-4">
           <Suspense fallback={<div className="space-y-4"><Skeleton className="h-10 w-48" /><Skeleton className="h-64" /></div>}>
             <LazyContasReceber />
           </Suspense>
-        </TabsContent>
+        </TabsContent>}
 
-        <TabsContent value="pagar" className="mt-4">
+        {podeAcessarModulosFinanceiros && <TabsContent value="pagar" className="mt-4">
           <Suspense fallback={<div className="space-y-4"><Skeleton className="h-10 w-48" /><Skeleton className="h-64" /></div>}>
             <LazyContasPagar />
           </Suspense>
-        </TabsContent>
+        </TabsContent>}
 
-        <TabsContent value="fluxo" className="mt-4">
+        {podeAcessarModulosFinanceiros && <TabsContent value="fluxo" className="mt-4">
           <Suspense fallback={<div className="space-y-4"><Skeleton className="h-10 w-48" /><Skeleton className="h-64" /></div>}>
             <LazyFluxoCaixa />
           </Suspense>
-        </TabsContent>
+        </TabsContent>}
 
-        <TabsContent value="precos" className="mt-4">
+        {podeAcessarModulosFinanceiros && <TabsContent value="precos" className="mt-4">
           <Suspense fallback={<div className="space-y-4"><Skeleton className="h-10 w-48" /><Skeleton className="h-64" /></div>}>
             <LazyPrecosExames />
           </Suspense>
-        </TabsContent>
+        </TabsContent>}
 
-        <TabsContent value="tipos" className="mt-4">
+        {podeAcessarModulosFinanceiros && <TabsContent value="tipos" className="mt-4">
           <Suspense fallback={<div className="space-y-4"><Skeleton className="h-10 w-48" /><Skeleton className="h-64" /></div>}>
             <LazyTiposConsulta />
           </Suspense>
-        </TabsContent>
+        </TabsContent>}
 
-        <TabsContent value="relatorios" className="mt-4">
+        {podeAcessarModulosFinanceiros && <TabsContent value="relatorios" className="mt-4">
           <Suspense fallback={<div className="space-y-4"><Skeleton className="h-10 w-48" /><Skeleton className="h-64" /></div>}>
             <LazyRelatorios />
           </Suspense>
-        </TabsContent>
+        </TabsContent>}
       </Tabs>
 
       {/* ═══ DIALOGS ═══ */}
@@ -1525,8 +1531,8 @@ export default function CaixaDiario() {
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-1.5">
-              <Label className="text-xs">Valor inicial em caixa (R$) *</Label>
-              <Input type="text" inputMode="decimal" placeholder="0,00" value={valorAbertura} disabled={abrirCaixaMutation.isPending}
+              <Label htmlFor="caixa-valor-inicial" className="text-xs">Valor inicial em caixa (R$) *</Label>
+              <Input id="caixa-valor-inicial" type="text" inputMode="decimal" placeholder="0,00" value={valorAbertura} disabled={abrirCaixaMutation.isPending}
                 onChange={e => setValorAbertura(e.target.value)} step="0.01" min="0" autoFocus />
               <p className="text-xs text-muted-foreground">Informe o valor contado antes de abrir. Digite 0 se não houver dinheiro na gaveta.</p>
               {valorAbertura.trim() !== '' && aberturaInvalida && (
@@ -1734,13 +1740,13 @@ export default function CaixaDiario() {
 
                 <TabsContent value="manual" className="mt-2 space-y-3">
                   <div className="space-y-1.5">
-                    <Label className="text-xs">Nome do item *</Label>
-                    <Input placeholder="Ex: Exame de sangue, Taxa extra..." value={manualNome}
+                    <Label htmlFor="caixa-item-manual-nome" className="text-xs">Nome do item *</Label>
+                    <Input id="caixa-item-manual-nome" placeholder="Ex: Exame de sangue, Taxa extra..." value={manualNome}
                       onChange={e => setManualNome(e.target.value)} />
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-xs">Valor (R$) *</Label>
-              <Input type="text" inputMode="decimal" placeholder="0,00" value={manualValor}
+                    <Label htmlFor="caixa-item-manual-valor" className="text-xs">Valor (R$) *</Label>
+              <Input id="caixa-item-manual-valor" type="text" inputMode="decimal" placeholder="0,00" value={manualValor}
                 onChange={e => setManualValor(e.target.value)} />
                   </div>
                   {manualValor.trim() !== '' && valorManualInvalido && (
@@ -1812,7 +1818,7 @@ export default function CaixaDiario() {
 
               {/* Paciente (opcional) — vincula ao prontuário */}
               <div className="space-y-1.5 mb-3">
-                <Label className="text-xs flex items-center gap-1">
+                <Label id="caixa-paciente-label" className="text-xs flex items-center gap-1">
                   <User className="h-3 w-3" /> Paciente
                   <span className="text-muted-foreground font-normal">(opcional)</span>
                 </Label>
@@ -1836,6 +1842,7 @@ export default function CaixaDiario() {
                   <Popover open={pacientePopoverOpen} onOpenChange={setPacientePopoverOpen}>
                     <PopoverTrigger asChild>
                       <Button
+                        aria-labelledby="caixa-paciente-label"
                         variant="outline"
                         size="sm"
                         className="w-full justify-start text-xs h-8 text-muted-foreground"
@@ -1907,8 +1914,8 @@ export default function CaixaDiario() {
 
               {/* Desconto */}
               <div className="space-y-1.5 mb-3">
-                <Label className="text-xs">Desconto (R$)</Label>
-                <Input type="text" inputMode="decimal" placeholder="0,00" value={lancDesconto}
+                <Label htmlFor="caixa-venda-desconto" className="text-xs">Desconto (R$)</Label>
+                <Input id="caixa-venda-desconto" type="text" inputMode="decimal" placeholder="0,00" value={lancDesconto}
                   onChange={e => setLancDesconto(e.target.value)} step="0.01" min="0" max={carrinhoSubtotal} className="h-8 text-sm" />
                 {descontoInvalido && (
                   <p className="text-xs text-destructive" role="alert">
@@ -1918,8 +1925,8 @@ export default function CaixaDiario() {
               </div>
 
               {/* Forma de Pagamento */}
-              <div className="space-y-1.5 mb-3">
-                <Label className="text-xs">Forma de Pagamento</Label>
+              <div role="group" aria-labelledby="caixa-forma-pagamento-label" className="space-y-1.5 mb-3">
+                <Label id="caixa-forma-pagamento-label" className="text-xs">Forma de Pagamento</Label>
                 <div className="grid grid-cols-3 gap-1.5">
                   {([
                     { v: 'dinheiro', l: 'Dinheiro', i: Banknote },
@@ -1967,17 +1974,17 @@ export default function CaixaDiario() {
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            <div className="space-y-1.5">
-              <Label className="text-xs">Valor (R$) *</Label>
-              <Input type="text" inputMode="decimal" placeholder="0,00" value={sangriaForm.valor}
+              <div className="space-y-1.5">
+              <Label htmlFor="caixa-sangria-valor" className="text-xs">Valor (R$) *</Label>
+              <Input id="caixa-sangria-valor" type="text" inputMode="decimal" placeholder="0,00" value={sangriaForm.valor}
                 onChange={e => setSangriaForm(p => ({ ...p, valor: e.target.value }))} />
               {sangriaInvalida && (
                 <p className="text-xs text-destructive" role="alert">Informe um valor maior que zero, com até duas casas decimais.</p>
               )}
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs">Motivo *</Label>
-              <Input placeholder="Motivo da retirada" value={sangriaForm.motivo}
+              <Label htmlFor="caixa-sangria-motivo" className="text-xs">Motivo *</Label>
+              <Input id="caixa-sangria-motivo" placeholder="Motivo da retirada" value={sangriaForm.motivo}
                 onChange={e => setSangriaForm(p => ({ ...p, motivo: e.target.value }))} />
               {!sangriaForm.motivo.trim() && (
                 <p className="text-xs text-muted-foreground">O motivo fica registrado para conferência do caixa.</p>
@@ -2007,16 +2014,16 @@ export default function CaixaDiario() {
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-1.5">
-              <Label className="text-xs">Valor (R$) *</Label>
-              <Input type="text" inputMode="decimal" placeholder="0,00" value={suprimentoForm.valor}
+              <Label htmlFor="caixa-suprimento-valor" className="text-xs">Valor (R$) *</Label>
+              <Input id="caixa-suprimento-valor" type="text" inputMode="decimal" placeholder="0,00" value={suprimentoForm.valor}
                 onChange={e => setSuprimentoForm(p => ({ ...p, valor: e.target.value }))} />
               {suprimentoInvalido && (
                 <p className="text-xs text-destructive" role="alert">Informe um valor maior que zero, com até duas casas decimais.</p>
               )}
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs">Descrição</Label>
-              <Input placeholder="Descrição do suprimento" value={suprimentoForm.descricao}
+              <Label htmlFor="caixa-suprimento-descricao" className="text-xs">Descrição</Label>
+              <Input id="caixa-suprimento-descricao" placeholder="Descrição do suprimento" value={suprimentoForm.descricao}
                 onChange={e => setSuprimentoForm(p => ({ ...p, descricao: e.target.value }))} />
             </div>
           </div>
@@ -2095,10 +2102,11 @@ export default function CaixaDiario() {
                 );
               })()}
               <div className="space-y-1.5">
-                <Label className="text-xs">
+                <Label htmlFor="caixa-observacoes-fechamento" className="text-xs">
                   Observações {fechamentoNaoBate ? '(obrigatórias — o caixa não bate)' : '(opcional)'}
                 </Label>
                 <Textarea
+                  id="caixa-observacoes-fechamento"
                   placeholder={fechamentoNaoBate
                     ? 'Explique a diferença: troco não conferido, sangria não registrada...'
                     : 'Anotações sobre o fechamento...'}
@@ -2280,27 +2288,29 @@ export default function CaixaDiario() {
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-2">
-              <Label>Descrição</Label>
+              <Label htmlFor="caixa-editar-descricao">Descrição</Label>
               <Input
+                id="caixa-editar-descricao"
                 value={editForm.descricao}
                 onChange={(e) => setEditForm(f => ({ ...f, descricao: e.target.value }))}
               />
             </div>
             <div className="space-y-2">
-              <Label>Valor (R$)</Label>
+              <Label htmlFor="caixa-editar-valor">Valor (R$)</Label>
               <Input
+                id="caixa-editar-valor"
                 type="text" inputMode="decimal"
                 value={editForm.valor}
                 onChange={(e) => setEditForm(f => ({ ...f, valor: e.target.value }))}
               />
             </div>
             <div className="space-y-2">
-              <Label>Forma de pagamento</Label>
+              <Label htmlFor="caixa-editar-forma">Forma de pagamento</Label>
               <Select
                 value={editForm.forma_pagamento}
                 onValueChange={(v) => setEditForm(f => ({ ...f, forma_pagamento: v as FormaPagamento }))}
               >
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger id="caixa-editar-forma"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="dinheiro">Dinheiro</SelectItem>
                   <SelectItem value="pix">PIX</SelectItem>

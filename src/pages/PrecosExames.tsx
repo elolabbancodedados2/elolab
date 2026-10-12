@@ -231,7 +231,7 @@ function ExameCombobox({ value, onChange }: { value: string; onChange: (nome: st
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button variant="outline" role="combobox" aria-expanded={open}
+        <Button variant="outline" role="combobox" aria-label="Nome do exame" aria-expanded={open}
           className={cn("w-full justify-between h-11 font-normal text-left", !value && "text-muted-foreground")}>
           <span className="truncate">{value || 'Selecione ou digite um nome de exame...'}</span>
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
@@ -512,9 +512,9 @@ function PrecosInternos() {
             </div>
              <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <Label className="text-xs font-semibold">Código TUSS</Label>
+              <Label htmlFor="preco-exame-tuss" className="text-xs font-semibold">Código TUSS</Label>
                 <div className="flex gap-1.5">
-                  <Input value={form.codigo_tuss} onChange={(e) => setForm(p => ({ ...p, codigo_tuss: e.target.value }))}
+                  <Input id="preco-exame-tuss" value={form.codigo_tuss} onChange={(e) => setForm(p => ({ ...p, codigo_tuss: e.target.value }))}
                     placeholder="Ex: 40301630 ou livre" className="font-mono flex-1" />
                   <Button type="button" variant="outline" size="sm" className="h-9 px-2 text-xs whitespace-nowrap"
                     onClick={() => {
@@ -528,26 +528,26 @@ function PrecosInternos() {
                 </div>
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs font-semibold">Descrição</Label>
-                <Input value={form.descricao} onChange={(e) => setForm(p => ({ ...p, descricao: e.target.value }))}
+                <Label htmlFor="preco-exame-descricao" className="text-xs font-semibold">Descrição</Label>
+                <Input id="preco-exame-descricao" value={form.descricao} onChange={(e) => setForm(p => ({ ...p, descricao: e.target.value }))}
                   placeholder="Breve descrição" />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <Label className="text-xs font-semibold">Valor Particular (R$) *</Label>
+                <Label htmlFor="preco-exame-valor" className="text-xs font-semibold">Valor Particular (R$) *</Label>
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground font-medium">R$</span>
-                  <Input type="number" step="0.01" min="0" value={form.valor}
+                  <Input id="preco-exame-valor" type="number" step="0.01" min="0" value={form.valor}
                     onChange={(e) => setForm(p => ({ ...p, valor: e.target.value }))}
                     placeholder="0,00" className="pl-10 h-11 text-lg font-bold tabular-nums" />
                 </div>
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs font-semibold">Custo (R$)</Label>
+                <Label htmlFor="preco-exame-custo" className="text-xs font-semibold">Custo (R$)</Label>
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground font-medium">R$</span>
-                  <Input type="number" step="0.01" min="0" value={form.custo}
+                  <Input id="preco-exame-custo" type="number" step="0.01" min="0" value={form.custo}
                     onChange={(e) => setForm(p => ({ ...p, custo: e.target.value }))}
                     placeholder="0,00" className="pl-10 h-11 tabular-nums" />
                 </div>
@@ -711,10 +711,10 @@ function PrecosConvenio() {
       <div className="flex gap-3 flex-wrap items-center">
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Buscar exame ou TUSS..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-10" />
+          <Input aria-label="Buscar exame ou código TUSS" placeholder="Buscar exame ou TUSS..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-10" />
         </div>
         <Select value={filterConvenio} onValueChange={setFilterConvenio}>
-          <SelectTrigger className="w-[200px]"><SelectValue /></SelectTrigger>
+          <SelectTrigger aria-label="Filtrar por convênio" className="w-[200px]"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Todos os convênios</SelectItem>
             {convenios?.map((c: any) => <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>)}
@@ -781,24 +781,24 @@ function PrecosConvenio() {
           <DialogHeader><DialogTitle>{editing ? 'Editar Preço' : 'Novo Preço de Exame por Convênio'}</DialogTitle></DialogHeader>
           <form onSubmit={(e) => { e.preventDefault(); saveMutation.mutate(form); }} className="space-y-4">
             <div>
-              <Label>Convênio *</Label>
+              <Label htmlFor="preco-exame-convenio">Convênio *</Label>
               <Select value={form.convenio_id} onValueChange={(v) => setForm(p => ({ ...p, convenio_id: v }))}>
-                <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                <SelectTrigger id="preco-exame-convenio" aria-label="Convênio"><SelectValue placeholder="Selecione..." /></SelectTrigger>
                 <SelectContent>{convenios?.map((c: any) => <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>)}</SelectContent>
               </Select>
             </div>
             <div className="grid grid-cols-2 gap-4">
-              <div><Label>Tipo de Exame *</Label><Input value={form.tipo_exame} onChange={(e) => setForm(p => ({ ...p, tipo_exame: e.target.value }))} placeholder="Hemograma Completo" /></div>
-              <div><Label>Código TUSS</Label><Input value={form.codigo_tuss} onChange={(e) => setForm(p => ({ ...p, codigo_tuss: e.target.value }))} placeholder="40301630" /></div>
+              <div><Label htmlFor="preco-convenio-tipo">Tipo de Exame *</Label><Input id="preco-convenio-tipo" value={form.tipo_exame} onChange={(e) => setForm(p => ({ ...p, tipo_exame: e.target.value }))} placeholder="Hemograma Completo" /></div>
+              <div><Label htmlFor="preco-convenio-tuss">Código TUSS</Label><Input id="preco-convenio-tuss" value={form.codigo_tuss} onChange={(e) => setForm(p => ({ ...p, codigo_tuss: e.target.value }))} placeholder="40301630" /></div>
             </div>
-            <div><Label>Descrição</Label><Input value={form.descricao} onChange={(e) => setForm(p => ({ ...p, descricao: e.target.value }))} /></div>
+            <div><Label htmlFor="preco-convenio-descricao">Descrição</Label><Input id="preco-convenio-descricao" value={form.descricao} onChange={(e) => setForm(p => ({ ...p, descricao: e.target.value }))} /></div>
             <div className="grid grid-cols-2 gap-4">
-              <div><Label>Valor Tabela (R$) *</Label><Input type="number" step="0.01" value={form.valor_tabela} onChange={(e) => setForm(p => ({ ...p, valor_tabela: e.target.value }))} /></div>
-              <div><Label>Valor Filme (R$)</Label><Input type="number" step="0.01" value={form.valor_filme} onChange={(e) => setForm(p => ({ ...p, valor_filme: e.target.value }))} /></div>
+              <div><Label htmlFor="preco-convenio-valor">Valor Tabela (R$) *</Label><Input id="preco-convenio-valor" type="number" min="0" step="0.01" value={form.valor_tabela} onChange={(e) => setForm(p => ({ ...p, valor_tabela: e.target.value }))} /></div>
+              <div><Label htmlFor="preco-convenio-filme">Valor Filme (R$)</Label><Input id="preco-convenio-filme" type="number" min="0" step="0.01" value={form.valor_filme} onChange={(e) => setForm(p => ({ ...p, valor_filme: e.target.value }))} /></div>
             </div>
             <div className="grid grid-cols-2 gap-4">
-              <div><Label>Custo (R$)</Label><Input type="number" step="0.01" value={form.valor_custo} onChange={(e) => setForm(p => ({ ...p, valor_custo: e.target.value }))} /></div>
-              <div><Label>Repasse (R$)</Label><Input type="number" step="0.01" value={form.valor_repasse} onChange={(e) => setForm(p => ({ ...p, valor_repasse: e.target.value }))} /></div>
+              <div><Label htmlFor="preco-convenio-custo">Custo (R$)</Label><Input id="preco-convenio-custo" type="number" min="0" step="0.01" value={form.valor_custo} onChange={(e) => setForm(p => ({ ...p, valor_custo: e.target.value }))} /></div>
+              <div><Label htmlFor="preco-convenio-repasse">Repasse (R$)</Label><Input id="preco-convenio-repasse" type="number" min="0" step="0.01" value={form.valor_repasse} onChange={(e) => setForm(p => ({ ...p, valor_repasse: e.target.value }))} /></div>
             </div>
             <DialogFooter>
               <Button variant="outline" type="button" onClick={() => setShowNew(false)}>Cancelar</Button>
@@ -828,16 +828,16 @@ function PrecosConvenio() {
 // ─── Main Page ───
 export default function PrecosExames() {
   return (
-    <div className="space-y-6">
-      <div>
+    <div className="space-y-6 pb-8">
+      <div className="rounded-2xl border border-[#d7e9f7] bg-gradient-to-r from-[#f1fbfd] via-white to-[#eff4ff] p-4 shadow-sm sm:p-5">
         <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-          <DollarSign className="h-6 w-6 text-primary" /> Tabela de Preços de Exames
+          <span className="rounded-xl bg-[#eaf4ff] p-2 text-[#1766a8] ring-1 ring-[#d1e5f8]"><DollarSign className="h-5 w-5" /></span> Tabela de Preços de Exames
         </h1>
-        <p className="text-muted-foreground text-sm">Gerencie preços de exames internos (particular) e por convênio</p>
+        <p className="mt-1 text-muted-foreground text-sm">Gerencie preços de exames internos (particular) e por convênio</p>
       </div>
 
       <Tabs defaultValue="particular" className="space-y-4">
-        <TabsList>
+        <TabsList className="rounded-xl border border-[#d7e9f7] bg-[#f2f9fc] p-1">
           <TabsTrigger value="particular" className="gap-1.5">
             <Stethoscope className="h-3.5 w-3.5" /> Particular / Interno
           </TabsTrigger>

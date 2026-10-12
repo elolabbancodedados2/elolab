@@ -229,7 +229,7 @@ export default function Usuarios() {
   return (
     <TooltipProvider>
       <div className="space-y-6">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div className="flex flex-col justify-between items-start gap-4 rounded-2xl border border-[#dce9f6] bg-gradient-to-r from-[#f3f8ff] via-white to-[#f3fbfa] p-5 sm:flex-row sm:items-center sm:p-6">
           <div>
             <h1 className="text-3xl font-bold text-foreground">Usuários</h1>
             <p className="text-muted-foreground">Gerencie os usuários do sistema</p>

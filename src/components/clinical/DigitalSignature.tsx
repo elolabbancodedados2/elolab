@@ -21,6 +21,8 @@ interface DigitalSignatureProps {
   /** If the document is already signed, show the badge and disable re-signing. */
   alreadySigned?: boolean;
   signedAt?: string | null;
+  /** Prevent signing while the editor contains a version not persisted on the server. */
+  disabledReason?: string;
 }
 
 /**
@@ -49,6 +51,7 @@ export function DigitalSignature({
   compact = false,
   alreadySigned = false,
   signedAt = null,
+  disabledReason,
 }: DigitalSignatureProps) {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [signing, setSigning] = useState(false);
@@ -58,6 +61,10 @@ export function DigitalSignature({
   const { toast } = useToast();
 
   useEffect(() => {
+    if (disabledReason) setIsDialogOpen(false);
+  }, [disabledReason]);
+
+  useEffect(() => {
     if (!alreadySigned || documentType !== 'prontuario') return;
     (supabase as any).from('prontuario_assinaturas')
       .select('codigo_verificacao').eq('prontuario_id', documentId).maybeSingle()
@@ -65,6 +72,7 @@ export function DigitalSignature({
   }, [alreadySigned, documentId, documentType]);
 
   const handleSign = async () => {
+    if (disabledReason) return;
     setSigning(true);
     try {
       if (documentType !== 'prontuario') throw new Error('Assinatura verificável ainda não disponível para este documento.');
@@ -102,7 +110,7 @@ export function DigitalSignature({
       >
         <CheckCircle2 className="h-4 w-4 text-green-600 flex-shrink-0" />
         <div className="flex-1 min-w-0">
-          <p className="text-xs font-medium text-green-700">Assinado digitalmente</p>
+          <p className="text-xs font-medium text-green-700">Assinado eletronicamente</p>
           <p className="text-[10px] text-green-600/70 truncate">
             {signerName}{signerCRM ? ` — CRM ${signerCRM}` : ''}
             {signedAt && ` • ${new Date(signedAt).toLocaleString('pt-BR')}`}
@@ -144,18 +152,21 @@ export function DigitalSignature({
         variant="outline"
         size={compact ? 'sm' : 'default'}
         onClick={() => setIsDialogOpen(true)}
+        disabled={Boolean(disabledReason)}
+        aria-describedby={disabledReason ? 'signature-disabled-reason' : undefined}
         className="gap-1.5"
       >
         <FileKey className="h-3.5 w-3.5" />
-        {compact ? 'Assinar' : 'Assinatura Digital'}
+        {compact ? 'Assinar' : 'Assinatura eletrônica'}
       </Button>
+      {disabledReason && <p id="signature-disabled-reason" className="text-[10px] text-muted-foreground">{disabledReason}</p>}
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <KeyRound className="h-5 w-5 text-primary" />
-              Assinatura Digital do Documento
+              Assinatura eletrônica do prontuário
             </DialogTitle>
           </DialogHeader>
 
@@ -179,7 +190,7 @@ export function DigitalSignature({
                 <div>
                   <p className="font-medium text-sm">Assinatura eletrônica</p>
                   <p className="text-xs text-muted-foreground">
-                    Fecha o documento para edição e registra autor, CRM, data e hash na trilha de auditoria
+                Bloqueia o registro para edição e grava profissional, CRM, data e hash verificável no servidor.
                   </p>
                 </div>
               </div>
@@ -196,10 +207,9 @@ export function DigitalSignature({
             <div className="flex items-start gap-2 text-xs text-muted-foreground bg-amber-500/10 rounded p-2.5">
               <AlertTriangle className="h-3.5 w-3.5 text-amber-500 mt-0.5 flex-shrink-0" />
               <span>
-                Esta é uma assinatura eletrônica simples (MP 2.200-2/01, art. 10 §2º): vale entre
-                as partes e atende a exigência de imutabilidade do prontuário da CFM 1.821/07.
-                Para validade jurídica plena perante terceiros, assine o PDF exportado com seu
-                certificado ICP-Brasil no assinador gov.br.
+                Esta assinatura eletrônica simples não usa certificado ICP-Brasil e não substitui
+                uma assinatura digital qualificada. A verificação confirma a integridade do
+                conteúdo registrado no momento da assinatura.
               </span>
             </div>
           </div>

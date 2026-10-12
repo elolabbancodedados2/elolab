@@ -1,7 +1,7 @@
 import { nomeMedico } from '@/lib/formatters';
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { format, parseISO, isBefore, differenceInDays, addDays, isWithinInterval, startOfDay } from 'date-fns';
+import { format, isBefore, differenceInDays, addDays, isWithinInterval, startOfDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -27,19 +27,22 @@ import { Label } from '@/components/ui/label';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
-import { useSupabaseQuery } from '@/hooks/useSupabaseData';
+import { MAX_LINHAS_AUTO, useSupabaseQuery } from '@/hooks/useSupabaseData';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { mensagemDeErro } from '@/lib/erros';
 import { normalizarTexto, pacienteCorresponde } from '@/lib/buscaPaciente';
 import { parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   CalendarClock, AlertTriangle, CheckCircle2, Phone, Clock, Filter, Search,
   CalendarPlus, CalendarDays, TrendingUp, Loader2, CalendarIcon, RefreshCw, Ban,
   RotateCcw,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
+import { horarioAgendadoJaChegou } from '@/lib/retornoHorario';
+import { podeMarcarRetornoRealizado } from '@/lib/returnCompletion';
 
 interface Retorno {
   id: string;
@@ -82,9 +85,13 @@ export default function RetornosControl() {
   const [isCancelando, setIsCancelando] = useState(false);
   const [agora, setAgora] = useState(() => new Date());
   const queryClient = useQueryClient();
+  const { profile } = useSupabaseAuth();
+  const filtrosClinica = [{ column: 'clinica_id', operator: 'eq', value: profile?.clinica_id ?? '' }];
 
   const { data: retornos = [], isLoading: loadingRetornos, error: erroRetornos, refetch: refetchRetornos } = useSupabaseQuery<Retorno>('retornos', {
     orderBy: { column: 'data_retorno_prevista', ascending: true },
+    filters: filtrosClinica,
+    enabled: !!profile?.clinica_id,
   });
 
   const { data: pacientes = [], isLoading: loadingPacientes, error: erroPacientes, refetch: refetchPacientes } = useSupabaseQuery<{
@@ -96,13 +103,49 @@ export default function RetornosControl() {
     email: string | null;
   }>('pacientes', {
     select: 'id, nome, nome_social, cpf, telefone, email',
+    filters: filtrosClinica,
+    enabled: !!profile?.clinica_id,
   });
 
   const { data: medicos = [], isLoading: loadingMedicos, error: erroMedicos, refetch: refetchMedicos } = useSupabaseQuery<{ id: string; nome: string | null; crm: string; especialidade: string | null }>('medicos', {
     select: 'id, nome, crm, especialidade',
+    filters: filtrosClinica,
+    enabled: !!profile?.clinica_id,
   });
 
-  const isLoading = loadingRetornos || loadingPacientes || loadingMedicos;
+  const idsAgendamentosParaConcluir = useMemo(() => Array.from(new Set(
+    retornos
+      .filter(r =>
+        r.data_retorno_prevista <= todaySaoPauloDateOnly(agora) &&
+        !['realizado', 'cancelado'].includes(r.status || '') &&
+        r.agendamento_retorno_id,
+      )
+      .map(r => r.agendamento_retorno_id as string),
+  )).sort(), [retornos, agora]);
+  const {
+    data: agendamentosRetornoParaConcluir = [],
+    isLoading: loadingAgendamentosRetornoParaConcluir,
+    error: erroAgendamentosRetornoParaConcluir,
+    refetch: refetchAgendamentosRetornoParaConcluir,
+  } = useQuery<{ id: string; data: string; hora_inicio: string; status: string }[]>({
+    queryKey: ['retornos-agendamentos-para-concluir', profile?.clinica_id, idsAgendamentosParaConcluir],
+    enabled: !!profile?.clinica_id && idsAgendamentosParaConcluir.length > 0,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from('agendamentos')
+        .select('id, data, hora_inicio, status')
+        .eq('clinica_id', profile?.clinica_id)
+        .in('id', idsAgendamentosParaConcluir);
+      if (error) throw error;
+      return (data || []) as { id: string; data: string; hora_inicio: string; status: string }[];
+    },
+  });
+  const agendamentoRetornoPorId = useMemo(
+    () => new Map(agendamentosRetornoParaConcluir.map(a => [a.id, a])),
+    [agendamentosRetornoParaConcluir],
+  );
+
+  const isLoading = loadingRetornos || loadingPacientes || loadingMedicos || loadingAgendamentosRetornoParaConcluir;
 
   useEffect(() => {
     const timer = window.setInterval(() => setAgora(new Date()), 60_000);
@@ -126,7 +169,7 @@ export default function RetornosControl() {
   // vencimento era marcado como atrasado desde a abertura da tela.
   const hoje = useMemo(() => startOfDay(parseDateOnly(todaySaoPauloDateOnly(agora))!), [agora]);
   const retornosComStatus = useMemo(() => retornos.map(r => {
-    const dataRetorno = parseISO(r.data_retorno_prevista);
+    const dataRetorno = parseDateOnly(r.data_retorno_prevista)!;
     const diasAtraso = differenceInDays(hoje, dataRetorno);
     let statusCalculado = r.status || 'pendente';
     if (['pendente', 'agendado'].includes(statusCalculado) && isBefore(startOfDay(dataRetorno), hoje)) {
@@ -183,20 +226,11 @@ export default function RetornosControl() {
     if (isRealizando) return;
     setIsRealizando(true);
     try {
-      let updateQuery = supabase
-        .from('retornos')
-        .update({ status: 'realizado' } as any)
-        .eq('id', retorno.id)
-        .eq('clinica_id', retorno.clinica_id);
-      updateQuery = retorno.status
-        ? updateQuery.eq('status', retorno.status)
-        : updateQuery.is('status', null);
-      const { data, error } = await updateQuery
-        .select('id')
-        .maybeSingle();
-
+      const { data, error } = await (supabase as any).rpc('marcar_retorno_realizado_atomico', {
+        p_retorno_id: retorno.id,
+      });
       if (error) throw error;
-      if (!data) throw new Error('O retorno mudou desde que foi aberto. Atualize a lista antes de confirmar a presença.');
+      if (!data) throw new Error('O retorno mudou ou o agendamento ainda não terminou. Atualize a lista antes de confirmar a presença.');
       toast.success('Retorno marcado como realizado');
       void queryClient.invalidateQueries({ queryKey: ['retornos'] });
       setRealizando(null);
@@ -229,7 +263,7 @@ export default function RetornosControl() {
 
   const handleAgendarRetorno = (retorno: Retorno) => {
     setRetornoParaAgendar(retorno);
-    setDataAgendamento(parseISO(retorno.data_retorno_prevista));
+    setDataAgendamento(parseDateOnly(retorno.data_retorno_prevista) ?? undefined);
     setHoraAgendamento('09:00');
     setAgendarDialogOpen(true);
   };
@@ -246,7 +280,7 @@ export default function RetornosControl() {
         .single();
       if (error) throw error;
       setRetornoParaAgendar(retorno);
-      setDataAgendamento(parseISO(agendamento.data));
+      setDataAgendamento(parseDateOnly(agendamento.data) ?? undefined);
       setHoraAgendamento(agendamento.hora_inicio?.slice(0, 5) || '09:00');
       setAgendarDialogOpen(true);
     } catch (error) {
@@ -366,10 +400,11 @@ export default function RetornosControl() {
         setForaExpediente(avisoExpediente);
         return;
       }
-      const { data: agendamentoId, error } = await supabase.rpc('agendar_retorno_atomico', {
+      const { data: agendamentoId, error } = await (supabase as any).rpc('agendar_retorno_atomico', {
         p_retorno_id: retornoParaAgendar.id,
         p_data: data,
         p_hora: horaAgendamento,
+        p_confirmou_fora_expediente: confirmouForaExpediente,
       });
       if (error) throw error;
       if (!agendamentoId) throw new Error('O retorno não foi vinculado a um horário. Atualize a lista e tente novamente.');
@@ -414,11 +449,12 @@ export default function RetornosControl() {
     );
   }
 
-  const erroDeCarga = erroRetornos || erroPacientes || erroMedicos;
+  const erroDeCarga = erroRetornos || erroPacientes || erroMedicos || erroAgendamentosRetornoParaConcluir;
   if (erroDeCarga) return <ErrorState error={erroDeCarga} title="Não foi possível carregar o controle de retornos" onRetry={() => {
     void refetchRetornos();
     void refetchPacientes();
     void refetchMedicos();
+    void refetchAgendamentosRetornoParaConcluir();
   }} />;
 
   // Classes completas: Tailwind compila classes estáticas — o template
@@ -436,8 +472,8 @@ export default function RetornosControl() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-foreground flex items-center gap-2">
-            <CalendarClock className="h-8 w-8 text-primary" />
+          <h1 className="text-3xl font-bold text-[#0C1F54] flex items-center gap-2">
+            <CalendarClock className="h-8 w-8 text-[#005ECC]" />
             Controle de Retornos
           </h1>
           <p className="text-muted-foreground">Acompanhe retornos pendentes e atrasados</p>
@@ -446,6 +482,7 @@ export default function RetornosControl() {
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
+              aria-label="Buscar retornos por paciente ou médico"
               placeholder="Nome, CPF, telefone ou médico..."
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
@@ -453,7 +490,7 @@ export default function RetornosControl() {
             />
           </div>
           <Select value={filtroStatus} onValueChange={setFiltroStatus}>
-            <SelectTrigger className="h-11 w-full sm:w-44">
+            <SelectTrigger aria-label="Filtrar retornos por status" className="h-11 w-full sm:w-44">
               <Filter className="h-4 w-4 mr-2" />
               <SelectValue />
             </SelectTrigger>
@@ -485,6 +522,12 @@ export default function RetornosControl() {
           >
             Mostrar todos os retornos
           </Button>
+        </div>
+      )}
+
+      {retornos.length >= MAX_LINHAS_AUTO && (
+        <div className="rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning-foreground" role="status">
+          A lista atingiu o limite de {MAX_LINHAS_AUTO.toLocaleString('pt-BR')} retornos carregados. A lista e os indicadores podem estar incompletos.
         </div>
       )}
 
@@ -561,6 +604,17 @@ export default function RetornosControl() {
                     {filtrados.map((r) => {
                       const whatsapp = telefoneBrasileiroParaWhatsApp(getPacienteTelefone(r.paciente_id));
                       const dataRetornoFutura = isBefore(hoje, startOfDay(r.dataRetorno));
+                      const agendamentoDeHoje = r.agendamento_retorno_id
+                        ? agendamentoRetornoPorId.get(r.agendamento_retorno_id)
+                        : undefined;
+                      const horarioAindaNaoChegou = Boolean(
+                        r.data_retorno_prevista === todaySaoPauloDateOnly(agora) && r.agendamento_retorno_id &&
+                        (!agendamentoDeHoje || !horarioAgendadoJaChegou(agendamentoDeHoje.data, agendamentoDeHoje.hora_inicio, agora)),
+                      );
+                      const agendamentoSemComparecimento = ['cancelado', 'faltou'].includes(agendamentoDeHoje?.status || '');
+                      const atendimentoAindaAberto = Boolean(
+                        r.agendamento_retorno_id && !podeMarcarRetornoRealizado(agendamentoDeHoje?.status),
+                      );
                       return (
                       <motion.tr
                         key={r.id}
@@ -602,14 +656,24 @@ export default function RetornosControl() {
                                 {isAgendando ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />} Remarcar
                               </Button>
                             )}
-                            {!['realizado', 'cancelado'].includes(r.statusCalculado) && !dataRetornoFutura && (
+                            {!['realizado', 'cancelado'].includes(r.statusCalculado) && !dataRetornoFutura && !horarioAindaNaoChegou && !agendamentoSemComparecimento && !atendimentoAindaAberto && (
                               <Button size="sm" variant="outline" onClick={() => setRealizando(r)} className="gap-1">
                                 <CheckCircle2 className="h-3 w-3" /> Realizado
                               </Button>
                             )}
-                            {!['realizado', 'cancelado'].includes(r.statusCalculado) && dataRetornoFutura && (
+                            {!['realizado', 'cancelado'].includes(r.statusCalculado) && atendimentoAindaAberto && !agendamentoSemComparecimento && (
                               <span className="inline-flex items-center gap-1 px-2 text-xs text-muted-foreground" role="status">
-                                <Clock className="h-3 w-3" /> Disponível na data prevista
+                                <Clock className="h-3 w-3" /> Conclua o atendimento antes de marcar como realizado
+                              </span>
+                            )}
+                            {!['realizado', 'cancelado'].includes(r.statusCalculado) && (dataRetornoFutura || horarioAindaNaoChegou) && (
+                              <span className="inline-flex items-center gap-1 px-2 text-xs text-muted-foreground" role="status">
+                                <Clock className="h-3 w-3" /> {horarioAindaNaoChegou ? 'Disponível após o horário agendado' : 'Disponível na data prevista'}
+                              </span>
+                            )}
+                            {!['realizado', 'cancelado'].includes(r.statusCalculado) && agendamentoSemComparecimento && (
+                              <span className="inline-flex items-center gap-1 px-2 text-xs text-muted-foreground" role="status">
+                                <Ban className="h-3 w-3" /> Agendamento cancelado ou falta
                               </span>
                             )}
                             {r.statusCalculado === 'realizado' && (
@@ -668,10 +732,10 @@ export default function RetornosControl() {
               </div>
 
               <div className="space-y-2">
-                <Label>Data do Agendamento</Label>
+                <Label htmlFor="retorno-data">Data do Agendamento</Label>
                 <Popover>
                   <PopoverTrigger asChild>
-                    <Button variant="outline" className={cn("w-full justify-start text-left font-normal", !dataAgendamento && "text-muted-foreground")}>
+                    <Button id="retorno-data" type="button" aria-label="Selecionar data do agendamento" variant="outline" className={cn("w-full justify-start text-left font-normal", !dataAgendamento && "text-muted-foreground")}>
                       <CalendarIcon className="mr-2 h-4 w-4" />
                       {dataAgendamento ? format(dataAgendamento, 'dd/MM/yyyy', { locale: ptBR }) : 'Selecionar data'}
                     </Button>
@@ -690,8 +754,8 @@ export default function RetornosControl() {
               </div>
 
               <div className="space-y-2">
-                <Label>Horário</Label>
-                <Input type="time" value={horaAgendamento} onChange={e => setHoraAgendamento(e.target.value)} />
+                <Label htmlFor="retorno-horario">Horário</Label>
+                <Input id="retorno-horario" type="time" value={horaAgendamento} onChange={e => setHoraAgendamento(e.target.value)} />
               </div>
             </div>
           )}
@@ -744,7 +808,7 @@ export default function RetornosControl() {
         onOpenChange={(open) => !open && !isRealizando && setRealizando(null)}
         title="Marcar retorno como realizado"
         description={`Confirmar que ${realizando ? getPacienteNome(realizando.paciente_id) : 'paciente'} compareceu ao retorno${
-          realizando ? ` previsto para ${format(parseISO(realizando.data_retorno_prevista), 'dd/MM/yyyy')}` : ''
+          realizando ? ` previsto para ${format(parseDateOnly(realizando.data_retorno_prevista)!, 'dd/MM/yyyy')}` : ''
         }?`}
         confirmLabel="Sim, foi realizado"
         onConfirm={() => realizando && void marcarRealizado(realizando)}

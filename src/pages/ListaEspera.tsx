@@ -113,7 +113,7 @@ export default function ListaEspera() {
   const [isRemoving, setIsRemoving] = useState(false);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
 
-  const { user, profile } = useSupabaseAuth();
+  const { user, profile, hasAnyRole } = useSupabaseAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const medicosQuery = useMedicos();
@@ -134,6 +134,7 @@ export default function ListaEspera() {
     enabled: !!user && !!profile?.clinica_id,
   });
   const lista = listaQuery.data ?? [];
+  const podeRemoverPermanentemente = hasAnyRole(['admin']);
 
   const isLoading = listaQuery.isLoading || loadingMedicos;
 
@@ -320,10 +321,10 @@ export default function ListaEspera() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Lista de Espera</h1>
-          <p className="text-muted-foreground">Gerencie pacientes aguardando agendamento</p>
+          <h1 className="text-3xl font-bold text-[#0C1F54]">Lista de Espera</h1>
+          <p className="text-[#0C1F54]/65">Gerencie pacientes aguardando agendamento</p>
         </div>
-        <Button onClick={handleOpenNew} className="gap-2">
+        <Button onClick={handleOpenNew} className="gap-2 bg-[#005ECC] text-white hover:bg-[#004FAE]">
           <Plus className="h-4 w-4" />
           Adicionar à Lista
         </Button>
@@ -383,7 +384,7 @@ export default function ListaEspera() {
             <CardTitle>Pacientes na Lista ({filteredLista.length})</CardTitle>
             <div className="flex flex-col sm:flex-row gap-2">
               <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-40">
+                <SelectTrigger className="w-40" aria-label="Filtrar lista por status">
                   <SelectValue placeholder="Filtrar status" />
                 </SelectTrigger>
                 <SelectContent>
@@ -396,6 +397,7 @@ export default function ListaEspera() {
               <div className="relative w-full sm:w-72">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
+                  aria-label="Buscar paciente por nome, CPF, telefone ou e-mail"
                   placeholder="Nome, CPF, telefone ou e-mail..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
@@ -512,7 +514,7 @@ export default function ListaEspera() {
                                 <XCircle className="h-4 w-4" />
                               </Button>
                             )}
-                            <Button 
+                            {podeRemoverPermanentemente && <Button
                               aria-label={`Remover ${nome} permanentemente da lista de espera`}
                               title={`Remover ${nome} permanentemente`}
                               variant="ghost" 
@@ -522,7 +524,7 @@ export default function ListaEspera() {
                               disabled={isRemoving || updatingId !== null}
                             >
                               <XCircle className="h-4 w-4 text-destructive" />
-                            </Button>
+                            </Button>}
                           </div>
                         </TableCell>
                       </TableRow>
@@ -543,8 +545,9 @@ export default function ListaEspera() {
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label>Paciente *</Label>
+              <Label htmlFor="espera-paciente">Paciente *</Label>
               <PacienteCombobox
+                id="espera-paciente"
                 value={formData.paciente_id || null}
                 onChange={(id) => setFormData((form) => ({ ...form, paciente_id: id }))}
                 placeholder="Buscar paciente por nome, CPF ou telefone..."
@@ -553,12 +556,12 @@ export default function ListaEspera() {
             </div>
 
             <div className="space-y-2">
-              <Label>Especialidade *</Label>
+              <Label htmlFor="espera-especialidade">Especialidade *</Label>
               <Select
                 value={formData.especialidade}
                 onValueChange={(v) => setFormData({ ...formData, especialidade: v })}
               >
-                <SelectTrigger>
+                <SelectTrigger id="espera-especialidade">
                   <SelectValue placeholder="Selecione a especialidade" />
                 </SelectTrigger>
                 <SelectContent>
@@ -570,12 +573,12 @@ export default function ListaEspera() {
             </div>
 
             <div className="space-y-2">
-              <Label>Médico Preferencial</Label>
+              <Label htmlFor="espera-medico">Médico Preferencial</Label>
               <Select
                 value={formData.medico_id || '__any__'}
                 onValueChange={(v) => setFormData({ ...formData, medico_id: v === '__any__' ? '' : v })}
               >
-                <SelectTrigger>
+                <SelectTrigger id="espera-medico">
                   <SelectValue placeholder="Qualquer médico" />
                 </SelectTrigger>
                 <SelectContent>
@@ -591,12 +594,12 @@ export default function ListaEspera() {
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Prioridade</Label>
+                <Label htmlFor="espera-prioridade">Prioridade</Label>
                 <Select
                   value={formData.prioridade}
                   onValueChange={(v) => setFormData({ ...formData, prioridade: v })}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger id="espera-prioridade">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -607,12 +610,12 @@ export default function ListaEspera() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>Preferência de Horário</Label>
+                <Label htmlFor="espera-horario">Preferência de Horário</Label>
                 <Select
                   value={formData.preferencia_horario || '__any__'}
                   onValueChange={(v) => setFormData({ ...formData, preferencia_horario: v === '__any__' ? '' : v })}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger id="espera-horario">
                     <SelectValue placeholder="Qualquer" />
                   </SelectTrigger>
                   <SelectContent>
@@ -626,8 +629,9 @@ export default function ListaEspera() {
             </div>
 
             <div className="space-y-2">
-              <Label>Motivo</Label>
+              <Label htmlFor="espera-motivo">Motivo</Label>
               <Textarea
+                id="espera-motivo"
                 value={formData.motivo}
                 onChange={(e) => setFormData({ ...formData, motivo: e.target.value })}
                 placeholder="Motivo da consulta..."
@@ -636,8 +640,9 @@ export default function ListaEspera() {
             </div>
 
             <div className="space-y-2">
-              <Label>Observações</Label>
+              <Label htmlFor="espera-observacoes">Observações</Label>
               <Textarea
+                id="espera-observacoes"
                 value={formData.observacoes}
                 onChange={(e) => setFormData({ ...formData, observacoes: e.target.value })}
                 placeholder="Observações adicionais..."

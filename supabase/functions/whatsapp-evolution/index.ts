@@ -86,8 +86,10 @@ Deno.serve(async (req) => {
     const body: EvolutionRequest = await req.json()
     const { action, instance_name, session_id, conversation_id, to, message, media_base64, mime_type, file_name } = body
 
-    const ACOES_DE_ADMIN = new Set(['create_instance', 'delete_instance', 'get_qr_code'])
-    if (ACOES_DE_ADMIN.has(action) && !ehAdmin) {
+    // Toda a rota /agente-ia e as tabelas do WhatsApp são exclusivas de admin.
+    // Estas operações usam service_role, então a autorização precisa valer
+    // para envio, resumo e consulta de status também.
+    if (!ehAdmin) {
       return new Response(
         JSON.stringify({ error: 'Só um administrador da clínica pode gerenciar a conexão do WhatsApp.' }),
         { status: 403, headers: corsHeaders },

@@ -30,6 +30,8 @@ import { ErrorState } from '@/components/ErrorState';
 import { Skeleton } from '@/components/ui/skeleton';
 import { pacienteCorresponde } from '@/lib/buscaPaciente';
 import { formatDateTimeSaoPaulo } from '@/lib/dateOnly';
+import { deveNotificarRetificacao, perfilPodeRetificarResultado, podeRetificarResultado } from '@/lib/laudoWorkflow';
+import { cursorAposAtualizacaoWorklist, type CursorLaudo } from '@/lib/laudoWorklist';
 
 /**
  * Teto da worklist do laboratório.
@@ -78,13 +80,13 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
   const [isReleasingAll, setIsReleasingAll] = useState(false);
   const [releasingIds, setReleasingIds] = useState<Set<string>>(new Set());
   const [observacaoLaudo, setObservacaoLaudo] = useState('');
-  const [retificacao, setRetificacao] = useState<null | { id: string; parametro: string; resultado: string; unidade: string; referenciaMin: string; referenciaMax: string; referenciaTexto: string; metodo: string; critico: boolean; motivo: string }>(null);
+  const [retificacao, setRetificacao] = useState<null | { id: string; parametro: string; resultado: string; unidade: string; referenciaMin: string; referenciaMax: string; referenciaTexto: string; metodo: string; critico: boolean; motivo: string; liberado: boolean }>(null);
   const [historicoResultadoId, setHistoricoResultadoId] = useState<string | null>(null);
   const [historicoResultado, setHistoricoResultado] = useState<any[]>([]);
   const [carregandoHistorico, setCarregandoHistorico] = useState(false);
   const [salvandoRetificacao, setSalvandoRetificacao] = useState(false);
   const isBusy = isValidating || isReleasingAll || releasingIds.size > 0 || salvandoRetificacao;
-  const podeRetificarLiberado = !!profile?.roles.some((role) => role === 'admin' || role === 'enfermagem');
+  const podeRetificarLiberado = perfilPodeRetificarResultado(profile?.roles);
 
   const fetchData = useCallback(async () => {
     const requestId = ++fetchRequestRef.current;
@@ -114,7 +116,9 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
           convenios(nome),
           resultados_laboratorio(id, parametro, resultado, unidade, critico,
             valor_referencia_min, valor_referencia_max, valor_referencia_texto,
-            liberado, data_liberacao, metodo, exames(tipo_exame))
+            liberado, data_liberacao, validado_por, data_validacao, liberado_por, metodo,
+            validadores:profiles!resultados_laboratorio_validado_por_fkey(nome),
+            liberadores:profiles!resultados_laboratorio_liberado_por_fkey(nome), exames(tipo_exame))
         `)
         .eq('id', coletaId)
         .eq('clinica_id', profile.clinica_id)
@@ -135,7 +139,7 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
     unidade: String(res.unidade ?? ''), referenciaMin: res.valor_referencia_min == null ? '' : String(res.valor_referencia_min),
     referenciaMax: res.valor_referencia_max == null ? '' : String(res.valor_referencia_max),
     referenciaTexto: String(res.valor_referencia_texto ?? ''), metodo: String(res.metodo ?? ''),
-    critico: !!res.critico, motivo: '',
+    critico: !!res.critico, motivo: '', liberado: res.liberado === true,
   });
 
   const salvarRetificacao = async () => {
@@ -148,18 +152,29 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
     if (retificacao.motivo.trim().length < 10) { toast.error('Descreva o motivo da retificação (mínimo 10 caracteres).'); return; }
     setSalvandoRetificacao(true);
     try {
+      if (!profile?.clinica_id) throw new Error('Clínica não identificada. Atualize a sessão e tente novamente.');
+      // Read the persisted flag immediately before mutation, not from the modal-opening snapshot.
+      const { data: estadoPersistido, error: erroEstado } = await supabase.from('resultados_laboratorio')
+        .select('liberado').eq('id', retificacao.id).eq('clinica_id', profile.clinica_id).maybeSingle();
+      if (erroEstado) throw erroEstado;
+      if (!estadoPersistido) throw new Error('Resultado não encontrado na clínica atual. Atualize a tela.');
       const { error } = await (supabase as any).rpc('retificar_resultado_laboratorio', {
         p_resultado_id: retificacao.id, p_resultado: retificacao.resultado.trim(), p_unidade: retificacao.unidade,
         p_referencia_min: minimo, p_referencia_max: maximo, p_referencia_texto: retificacao.referenciaTexto,
         p_metodo: retificacao.metodo, p_critico: retificacao.critico, p_motivo: retificacao.motivo.trim(),
       });
       if (error) throw error;
-      const notificacao = await notificarResultadoLiberado(retificacao.id);
-      toast.success(notificacao === 'falhou'
-        ? 'Resultado retificado; a notificação não foi enviada. Avise o paciente diretamente.'
-        : notificacao === 'enfileirada'
-          ? 'Resultado retificado; a notificação entrou na fila de reenvio.'
-          : 'Resultado retificado e paciente notificado. A versão anterior foi preservada no histórico.');
+      const precisaNotificar = deveNotificarRetificacao(estadoPersistido.liberado, retificacao.liberado);
+      if (precisaNotificar) {
+        const notificacao = await notificarResultadoLiberado(retificacao.id);
+        toast.success(notificacao === 'falhou'
+          ? 'Retificação salva; notificação não enviada. Avise o paciente diretamente.'
+          : notificacao === 'enfileirada'
+            ? 'Retificação salva; notificação entrou na fila de reenvio.'
+            : 'Resultado retificado e paciente notificado. A versão anterior foi preservada no histórico.');
+      } else {
+        toast.success('Resultado corrigido antes da liberação. A versão anterior foi preservada no histórico.');
+      }
       setRetificacao(null); await fetchData(); onUpdate();
       if (historicoResultadoId === retificacao.id) await carregarHistorico(retificacao.id);
     } catch (error) { toast.error('Não foi possível retificar o resultado.', { description: mensagemDeErro(error) }); }
@@ -351,6 +366,9 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
         tipoExame: r.exames?.tipo_exame,
         liberado: r.liberado,
         dataLiberacao: r.data_liberacao,
+        validadoPor: r.validadores?.nome,
+        dataValidacao: r.data_validacao,
+        liberadoPor: r.liberadores?.nome,
       })),
     };
   };
@@ -502,7 +520,7 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
                     )}
                     <div className="mt-2 flex flex-wrap gap-2 border-t pt-2">
                       <Button size="sm" variant="ghost" className="h-7 gap-1 text-xs" onClick={() => void carregarHistorico(res.id)}><History className="h-3.5 w-3.5" />{historicoResultadoId === res.id ? 'Ocultar histórico' : 'Histórico de versões'}</Button>
-                      {res.liberado && podeRetificarLiberado && <Button size="sm" variant="outline" className="h-7 gap-1 text-xs" onClick={() => abrirRetificacao(res)}><PencilLine className="h-3.5 w-3.5" />Retificar laudo</Button>}
+                      {podeRetificarResultado(coleta.status, res.liberado === true) && podeRetificarLiberado && <Button size="sm" variant="outline" className="h-7 gap-1 text-xs" onClick={() => abrirRetificacao(res)}><PencilLine className="h-3.5 w-3.5" />{res.liberado ? 'Retificar laudo' : 'Corrigir resultado'}</Button>}
                     </div>
                     {historicoResultadoId === res.id && <div className="space-y-2 rounded-md bg-muted/40 p-3 text-xs">
                       {carregandoHistorico ? <p role="status">Carregando versões…</p> : historicoResultado.length === 0 ? <p>Nenhuma versão anterior registrada.</p> : historicoResultado.map((versao) => <div key={versao.id} className="border-b pb-2 last:border-0"><p className="font-medium">Versão {versao.numero_versao} · {formatDateTimeSaoPaulo(versao.alterado_em)}</p><p>Resultado anterior: {versao.registro_anterior?.resultado ?? '—'} {versao.registro_anterior?.unidade ?? ''}</p>{versao.motivo && <p>Motivo: {versao.motivo}</p>}</div>)}
@@ -517,7 +535,7 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
                         <Label className="space-y-1 text-xs">Referência textual<Input value={retificacao.referenciaTexto} onChange={(event) => setRetificacao({ ...retificacao, referenciaTexto: event.target.value })} /></Label>
                         <Label className="space-y-1 text-xs">Método<Input value={retificacao.metodo} onChange={(event) => setRetificacao({ ...retificacao, metodo: event.target.value })} /></Label>
                       </div>
-                      <div className="flex items-center gap-2"><Checkbox checked={retificacao.critico} onCheckedChange={(checked) => setRetificacao({ ...retificacao, critico: checked === true })} /><span className="text-sm">Marcar como resultado crítico</span></div>
+                      <div className="flex items-center gap-2"><Checkbox id="retificacao-critico" checked={retificacao.critico} onCheckedChange={(checked) => setRetificacao({ ...retificacao, critico: checked === true })} /><Label htmlFor="retificacao-critico" className="text-sm">Marcar como resultado crítico</Label></div>
                       <Label className="block space-y-1 text-xs">Justificativa obrigatória<Textarea value={retificacao.motivo} onChange={(event) => setRetificacao({ ...retificacao, motivo: event.target.value })} minLength={10} maxLength={1000} rows={2} placeholder="Registre o motivo clínico e técnico da retificação" /></Label>
                       <div className="flex justify-end gap-2"><Button variant="ghost" size="sm" onClick={() => setRetificacao(null)} disabled={salvandoRetificacao}>Cancelar</Button><Button size="sm" onClick={() => void salvarRetificacao()} disabled={salvandoRetificacao || retificacao.motivo.trim().length < 10}>{salvandoRetificacao ? 'Salvando…' : 'Salvar retificação'}</Button></div>
                     </div>}
@@ -528,8 +546,8 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
 
             {/* Observations */}
             <div className="space-y-1.5">
-              <Label className="text-xs">Observações do Laudo</Label>
-              <Textarea value={observacaoLaudo} onChange={e => setObservacaoLaudo(e.target.value)}
+              <Label htmlFor="observacoes-laudo" className="text-xs">Observacoes do Laudo</Label>
+              <Textarea id="observacoes-laudo" value={observacaoLaudo} onChange={e => setObservacaoLaudo(e.target.value)}
                 placeholder="Observações técnicas para o laudo impresso..." rows={2} />
             </div>
           </div>
@@ -575,12 +593,18 @@ export default function LaudosLab() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('todos');
   const [viewingId, setViewingId] = useState<string | null>(null);
-  const [cursorLaudos, setCursorLaudos] = useState<{ created_at: string; id: string } | null>(null);
+  const [cursorLaudos, setCursorLaudos] = useState<CursorLaudo>(null);
   const [hasOlderLaudos, setHasOlderLaudos] = useState(false);
   const [loadingOlderLaudos, setLoadingOlderLaudos] = useState(false);
   const [olderLaudosError, setOlderLaudosError] = useState<unknown>(null);
   const fetchRequestRef = useRef(0);
   const activeClinicRef = useRef<string | null>(null);
+  const cursorLaudosRef = useRef<CursorLaudo>(null);
+  const historicoCarregadoRef = useRef(false);
+  const atualizarCursorLaudos = useCallback((cursor: CursorLaudo) => {
+    cursorLaudosRef.current = cursor;
+    setCursorLaudos(cursor);
+  }, []);
 
   const fetchLaudos = useCallback(async () => {
     const clinicId = profile?.clinica_id ?? null;
@@ -589,7 +613,7 @@ export default function LaudosLab() {
 
     if (!clinicId) {
       setColetas([]);
-      setCursorLaudos(null);
+      atualizarCursorLaudos(null);
       setHasOlderLaudos(false);
       setLoadError(new Error('Clínica não identificada.'));
       setLoading(false);
@@ -626,11 +650,12 @@ export default function LaudosLab() {
 
       const linhas = data ?? [];
       const janela = linhas.slice(0, TETO_WORKLIST);
-      setHasOlderLaudos(linhas.length > TETO_WORKLIST);
-      setCursorLaudos(janela.length ? {
+      const cursorMaisRecente = janela.length ? {
         created_at: janela[janela.length - 1].created_at,
         id: janela[janela.length - 1].id,
-      } : null);
+      } : null;
+      atualizarCursorLaudos(cursorAposAtualizacaoWorklist(cursorLaudosRef.current, cursorMaisRecente, historicoCarregadoRef.current));
+      if (!historicoCarregadoRef.current) setHasOlderLaudos(linhas.length > TETO_WORKLIST);
 
       const comResultados = janela
         .filter((c: any) => (c.resultados_laboratorio ?? []).length > 0)
@@ -654,7 +679,7 @@ export default function LaudosLab() {
     } finally {
       if (requestId === fetchRequestRef.current && activeClinicRef.current === clinicId) setLoading(false);
     }
-  }, [profile?.clinica_id]);
+  }, [profile?.clinica_id, atualizarCursorLaudos]);
 
   const carregarLaudosAntigos = async () => {
     const clinicId = profile?.clinica_id;
@@ -683,10 +708,11 @@ export default function LaudosLab() {
 
       const linhas = data ?? [];
       const janela = linhas.slice(0, TETO_WORKLIST);
-      setCursorLaudos(janela.length ? {
+      atualizarCursorLaudos(janela.length ? {
         created_at: janela[janela.length - 1].created_at,
         id: janela[janela.length - 1].id,
       } : cursor);
+      historicoCarregadoRef.current = true;
       setHasOlderLaudos(linhas.length > TETO_WORKLIST);
       const comResultados = janela
         .filter((c: any) => (c.resultados_laboratorio ?? []).length > 0)
@@ -709,7 +735,8 @@ export default function LaudosLab() {
     activeClinicRef.current = clinicId;
     fetchRequestRef.current += 1;
     setColetas([]);
-    setCursorLaudos(null);
+    atualizarCursorLaudos(null);
+    historicoCarregadoRef.current = false;
     setHasOlderLaudos(false);
     setLoadingOlderLaudos(false);
     setOlderLaudosError(null);
@@ -787,10 +814,10 @@ export default function LaudosLab() {
   return (
     <div className="space-y-6 pb-8">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 rounded-2xl border border-[#d8e8fb] bg-gradient-to-r from-[#f4f8ff] via-white to-[#effaff] p-4 sm:p-5">
         <div>
           <h1 className="text-2xl font-bold font-display tracking-tight flex items-center gap-2">
-            <FileText className="h-6 w-6 text-primary" />
+            <span className="rounded-xl bg-[#e5f1ff] p-2 text-[#1766b3] ring-1 ring-[#d5e6fa]"><FileText className="h-5 w-5" /></span>
             Laudos Laboratoriais
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
@@ -805,14 +832,14 @@ export default function LaudosLab() {
       {/* KPIs */}
       <div className="grid gap-3 grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
         {[
-          { label: 'Total', value: coletas.length, icon: FileText, color: 'text-primary', filter: 'todos' },
-          { label: 'Pendentes', value: totalPendentes, icon: Clock, color: 'text-warning', filter: 'pendente' },
-          { label: 'Parciais', value: totalParciais, icon: AlertCircle, color: 'text-orange-500', filter: 'parcial' },
-          { label: 'Liberados', value: totalLiberados, icon: CheckCircle2, color: 'text-green-500', filter: 'liberado' },
-          { label: 'Alterados', value: totalAlterados, icon: AlertTriangle, color: 'text-destructive', filter: 'alterado' },
-          { label: 'Críticos', value: totalCriticos, icon: AlertCircle, color: 'text-destructive', filter: 'critico' },
+          { label: 'Total', value: coletas.length, icon: FileText, color: 'text-[#1766b3]', card: 'border-[#d8e8fb] bg-gradient-to-br from-white to-[#f1f7ff]', filter: 'todos' },
+          { label: 'Pendentes', value: totalPendentes, icon: Clock, color: 'text-[#8a5b00]', card: 'border-[#f1dfb8] bg-[#fffaf0]', filter: 'pendente' },
+          { label: 'Parciais', value: totalParciais, icon: AlertCircle, color: 'text-[#9a5710]', card: 'border-[#f2d9bb] bg-[#fff8ef]', filter: 'parcial' },
+          { label: 'Liberados', value: totalLiberados, icon: CheckCircle2, color: 'text-[#16734d]', card: 'border-[#ccebdd] bg-[#f3fbf6]', filter: 'liberado' },
+          { label: 'Alterados', value: totalAlterados, icon: AlertTriangle, color: 'text-[#6941a5]', card: 'border-[#e2d7f4] bg-[#faf7ff]', filter: 'alterado' },
+          { label: 'Cr\u00edticos', value: totalCriticos, icon: AlertCircle, color: 'text-[#b42332]', card: 'border-[#f2d0d4] bg-[#fff6f6]', filter: 'critico' },
         ].map(s => (
-          <Card key={s.label} className={cn(
+          <Card key={s.label} className={cn(s.card,
             'cursor-pointer hover:shadow-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
             statusFilter === s.filter && 'ring-2 ring-primary'
           )}
@@ -840,7 +867,7 @@ export default function LaudosLab() {
       {/* Search */}
       <div className="relative max-w-sm">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input className="pl-9" placeholder="Nome, CPF, telefone, código ou exame..."
+        <Input aria-label="Buscar laudos por paciente, CPF, telefone, código ou exame" className="pl-9" placeholder="Nome, CPF, telefone, código ou exame..."
           value={search} onChange={e => setSearch(e.target.value)} />
       </div>
 

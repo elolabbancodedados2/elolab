@@ -253,7 +253,7 @@ export function ImportadorDePlanilha() {
                     <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value={SEM_CAMPO}>Não importar</SelectItem>
-                      {CAMPOS_PACIENTE.map(c => (
+                      {campos.map(c => (
                         <SelectItem key={c.nome} value={c.nome}>
                           {c.rotulo}{c.obrigatorio ? ' *' : ''}
                         </SelectItem>

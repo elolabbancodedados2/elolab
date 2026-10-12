@@ -27,6 +27,9 @@ import { Database } from '@/integrations/supabase/types';
 import { ErrorState } from '@/components/ErrorState';
 import { User } from 'lucide-react';
 import { normalizarTexto } from '@/lib/buscaPaciente';
+import { formatarDataOcupacaoAntiga } from '@/lib/roomOccupancy';
+import { todaySaoPauloDateOnly } from '@/lib/dateOnly';
+import { Link } from 'react-router-dom';
 
 type StatusSala = Database['public']['Enums']['status_sala'];
 type EstadoSala = StatusSala | 'reservada';
@@ -89,6 +92,11 @@ const CORES = [
   '#3b82f6', '#ef4444', '#22c55e', '#f59e0b', '#8b5cf6',
   '#ec4899', '#06b6d4', '#f97316', '#14b8a6', '#6366f1',
 ];
+const NOMES_CORES: Record<string, string> = {
+  '#3b82f6': 'Azul', '#ef4444': 'Vermelho', '#22c55e': 'Verde',
+  '#f59e0b': 'Âmbar', '#8b5cf6': 'Roxo', '#ec4899': 'Rosa',
+  '#06b6d4': 'Ciano', '#f97316': 'Laranja', '#14b8a6': 'Turquesa', '#6366f1': 'Índigo',
+};
 
 const isLeito = (tipo: string) => tipo.startsWith('leito_');
 
@@ -118,6 +126,7 @@ const initialForm: SalaForm = {
 
 export default function Salas() {
   const { profile } = useSupabaseAuth();
+  const hoje = todaySaoPauloDateOnly();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingUpdatedAt, setEditingUpdatedAt] = useState<string | null>(null);
@@ -139,7 +148,7 @@ export default function Salas() {
     queryFn: async () => {
       let query = (supabase as any)
         .from('fila_atendimento')
-        .select('id, sala_id, status, agendamento_id, agendamentos(id, paciente_id, medico_id, pacientes(id, nome, nome_social), medicos(id, nome, crm, especialidade))')
+        .select('id, sala_id, status, agendamento_id, agendamentos(id, data, paciente_id, medico_id, pacientes(id, nome, nome_social), medicos(id, nome, crm, especialidade))')
         .in('status', ['em_atendimento', 'chamado', 'aguardando'])
         .not('sala_id', 'is', null);
       if (profile?.clinica_id) query = query.eq('clinica_id', profile.clinica_id);
@@ -342,7 +351,7 @@ export default function Salas() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Salas e Leitos</h1>
+          <h1 className="text-3xl font-bold text-[#0C1F54]">Salas e Leitos</h1>
           <p className="text-muted-foreground">Gerencie a disponibilidade de espaços físicos</p>
         </div>
         <Button onClick={() => handleOpen()} className="gap-2">
@@ -377,7 +386,7 @@ export default function Salas() {
       <div className="flex flex-wrap gap-3">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input className="pl-9 w-64" placeholder="Sala, cama, setor, equipamento..." value={search}
+          <Input aria-label="Buscar salas, leitos ou equipamentos" className="pl-9 w-64" placeholder="Sala, cama, setor, equipamento..." value={search}
             onChange={e => setSearch(e.target.value)} />
         </div>
         <Select value={filterTipo} onValueChange={setFilterTipo}>
@@ -450,6 +459,7 @@ export default function Salas() {
                           )}>
                             {ocupacoesSala.map((oc: any) => {
                               const ag = oc.agendamentos;
+                              const dataOcupacaoAntiga = formatarDataOcupacaoAntiga(ag?.data, hoje);
                               const pacNome = ag?.pacientes?.nome_social || ag?.pacientes?.nome;
                               const medNome = ag?.medicos?.nome;
                               const medEsp = ag?.medicos?.especialidade;
@@ -470,6 +480,10 @@ export default function Salas() {
                                   <Badge variant="secondary" className="text-[9px] w-fit">
                                     {oc.status === 'em_atendimento' ? 'Em atendimento' : oc.status === 'chamado' ? 'Paciente chamado' : 'Aguardando na fila'}
                                   </Badge>
+                                  {dataOcupacaoAntiga && <div className="flex flex-wrap items-center gap-2 text-[10px] text-warning-foreground">
+                                    <span>Registro de {dataOcupacaoAntiga}; confira a fila antes de liberar a sala.</span>
+                                    <Link className="min-h-11 inline-flex items-center text-primary underline" to="/fila">Abrir fila</Link>
+                                  </div>}
                                 </div>
                               );
                             })}
@@ -572,14 +586,14 @@ export default function Salas() {
             {/* Identificação */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <Label className="text-xs">Nome *</Label>
-                <Input value={form.nome} onChange={e => setForm(p => ({ ...p, nome: e.target.value }))}
+                <Label htmlFor="sala-nome" className="text-xs">Nome *</Label>
+                <Input id="sala-nome" value={form.nome} onChange={e => setForm(p => ({ ...p, nome: e.target.value }))}
                   placeholder="Consultório 1, Leito 201..." />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs">Tipo *</Label>
+                <Label htmlFor="sala-tipo" className="text-xs">Tipo *</Label>
                 <Select value={form.tipo} onValueChange={v => setForm(p => ({ ...p, tipo: v }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger id="sala-tipo"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="consultorio">Consultório</SelectItem>
                     <SelectItem value="exame">Sala de Exames</SelectItem>
@@ -603,24 +617,24 @@ export default function Salas() {
               </h4>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Setor / Ala</Label>
-                  <Input value={form.setor} onChange={e => setForm(p => ({ ...p, setor: e.target.value }))}
+                  <Label htmlFor="sala-setor" className="text-xs">Setor / Ala</Label>
+                  <Input id="sala-setor" value={form.setor} onChange={e => setForm(p => ({ ...p, setor: e.target.value }))}
                     placeholder="Ala Norte, Bloco B..." />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Andar</Label>
-                  <Input value={form.andar} onChange={e => setForm(p => ({ ...p, andar: e.target.value }))}
+                  <Label htmlFor="sala-andar" className="text-xs">Andar</Label>
+                  <Input id="sala-andar" value={form.andar} onChange={e => setForm(p => ({ ...p, andar: e.target.value }))}
                     placeholder="Térreo, 2º Andar..." />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Capacidade</Label>
-                  <Input type="number" min={1} value={form.capacidade}
+                  <Label htmlFor="sala-capacidade" className="text-xs">Capacidade</Label>
+                  <Input id="sala-capacidade" type="number" min={1} value={form.capacidade}
                     onChange={e => setForm(p => ({ ...p, capacidade: parseInt(e.target.value) || 1 }))} />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Status</Label>
+                  <Label htmlFor="sala-status" className="text-xs">Status</Label>
                   <Select value={form.status} onValueChange={(v: StatusSala) => setForm(p => ({ ...p, status: v }))}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectTrigger id="sala-status"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       {Object.entries(STATUS_LABELS).map(([k, v]) => (
                         <SelectItem key={k} value={k}>{v}</SelectItem>
@@ -641,14 +655,14 @@ export default function Salas() {
                   </h4>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1.5">
-                      <Label className="text-xs">Número da Cama</Label>
-                      <Input value={form.numero_cama} onChange={e => setForm(p => ({ ...p, numero_cama: e.target.value }))}
+                      <Label htmlFor="sala-cama" className="text-xs">Número da Cama</Label>
+                      <Input id="sala-cama" value={form.numero_cama} onChange={e => setForm(p => ({ ...p, numero_cama: e.target.value }))}
                         placeholder="A1, B2..." />
                     </div>
                     <div className="space-y-1.5">
-                      <Label className="text-xs">Gênero</Label>
+                      <Label htmlFor="sala-genero" className="text-xs">Gênero</Label>
                       <Select value={form.genero || '__none__'} onValueChange={v => setForm(p => ({ ...p, genero: v === '__none__' ? '' : v }))}>
-                        <SelectTrigger><SelectValue placeholder="Misto" /></SelectTrigger>
+                        <SelectTrigger id="sala-genero"><SelectValue placeholder="Misto" /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="__none__">Misto</SelectItem>
                           <SelectItem value="Masculino">Masculino</SelectItem>
@@ -669,20 +683,20 @@ export default function Salas() {
               </h4>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Horário Início</Label>
-                  <Input type="time" value={form.horario_inicio}
+                  <Label htmlFor="sala-horario-inicio" className="text-xs">Horário Início</Label>
+                  <Input id="sala-horario-inicio" type="time" value={form.horario_inicio}
                     onChange={e => setForm(p => ({ ...p, horario_inicio: e.target.value }))} />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Horário Fim</Label>
-                  <Input type="time" value={form.horario_fim}
+                  <Label htmlFor="sala-horario-fim" className="text-xs">Horário Fim</Label>
+                  <Input id="sala-horario-fim" type="time" value={form.horario_fim}
                     onChange={e => setForm(p => ({ ...p, horario_fim: e.target.value }))} />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Médico / Especialidade</Label>
+                  <Label htmlFor="sala-medico" className="text-xs">Médico / Especialidade</Label>
                   <Select value={form.medico_responsavel || '__none__'}
                     onValueChange={v => setForm(p => ({ ...p, medico_responsavel: v === '__none__' ? '' : v }))}>
-                    <SelectTrigger><SelectValue placeholder="Nenhum" /></SelectTrigger>
+                    <SelectTrigger id="sala-medico"><SelectValue placeholder="Nenhum" /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="__none__">Nenhum (livre)</SelectItem>
                       {(medicos as any[]).map(m => (
@@ -717,10 +731,10 @@ export default function Salas() {
             <Separator />
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <Label className="text-xs flex items-center gap-1"><Paintbrush className="h-3 w-3" />Cor de Identificação</Label>
-                <div className="flex gap-2 flex-wrap">
+                <Label id="sala-cor-label" className="text-xs flex items-center gap-1"><Paintbrush className="h-3 w-3" />Cor de Identificação</Label>
+                <div role="group" aria-labelledby="sala-cor-label" className="flex gap-2 flex-wrap">
                   {CORES.map(c => (
-                    <button key={c} onClick={() => setForm(p => ({ ...p, cor: c }))}
+                    <button key={c} type="button" aria-label={`Selecionar cor ${NOMES_CORES[c] || c}`} aria-pressed={form.cor === c} onClick={() => setForm(p => ({ ...p, cor: c }))}
                       className={cn(
                         'h-7 w-7 rounded-lg border-2 transition-all',
                         form.cor === c ? 'border-foreground scale-110' : 'border-transparent',
@@ -730,8 +744,8 @@ export default function Salas() {
                 </div>
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs">Observações</Label>
-                <Textarea value={form.observacoes} onChange={e => setForm(p => ({ ...p, observacoes: e.target.value }))}
+                <Label htmlFor="sala-observacoes" className="text-xs">Observações</Label>
+                <Textarea id="sala-observacoes" value={form.observacoes} onChange={e => setForm(p => ({ ...p, observacoes: e.target.value }))}
                   placeholder="Instruções de limpeza, restrições..." rows={3} />
               </div>
             </div>

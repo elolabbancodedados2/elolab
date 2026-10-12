@@ -1,4 +1,5 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test';
+import { mockPlanosPublicos } from './mockPlanosPublicos';
 
 const viewports = [
   { name: 'mobile', width: 375, height: 812 },
@@ -8,10 +9,11 @@ const viewports = [
 ];
 
 const publicPages = [
-  { name: 'landing', path: '/' },
-  { name: 'login', path: '/auth' },
-  { name: 'password-reset', path: '/redefinir-senha' },
-  { name: 'plans', path: '/planos' },
+  { name: 'landing', path: '/', heading: /organize a rotina da clínica/i },
+  { name: 'login', path: '/auth', heading: /acesse sua conta/i },
+  { name: 'password-reset', path: '/redefinir-senha', heading: /redefinir senha/i },
+  // Sem sessão, esta rota protege os planos e apresenta o login.
+  { name: 'plans-login', path: '/planos', heading: /acesse sua conta/i },
 ];
 
 type Finding = {
@@ -20,6 +22,7 @@ type Finding = {
   viewport: string;
   issue: string;
   count?: number;
+  targets?: string[];
 };
 
 async function inspect(page: Page, pageName: string, viewportName: string): Promise<Finding[]> {
@@ -77,10 +80,14 @@ async function inspect(page: Page, pageName: string, viewportName: string): Prom
       .filter((element) => {
         const rect = element.getBoundingClientRect();
         return rect.width < 40 || rect.height < 40;
-      }).length;
-    if (smallTargets) {
+      });
+    if (smallTargets.length) {
       findings.push({ severity: 'medium', page: pageName, viewport: viewportName,
-        issue: 'Alvos clicáveis menores que 40px podem ser difíceis de tocar.', count: smallTargets });
+        issue: 'Alvos clicáveis menores que 40px podem ser difíceis de tocar.', count: smallTargets.length,
+        targets: smallTargets.map((element) => {
+          const rect = element.getBoundingClientRect();
+          return `${element.getAttribute('aria-label') || element.textContent?.trim()}: ${rect.width}×${rect.height}px`;
+        }) });
     }
 
     return findings;
@@ -98,6 +105,8 @@ async function capture(page: Page, testInfo: TestInfo, name: string, findings: F
 
 test.describe('QA visual — UX, frontend e design', () => {
   test('páginas públicas: conteúdo, erros e dimensões responsivas', async ({ page }, testInfo) => {
+    test.setTimeout(120_000);
+    await mockPlanosPublicos(page);
     const runtimeErrors: string[] = [];
     page.on('pageerror', (error) => runtimeErrors.push(error.message));
 
@@ -106,8 +115,10 @@ test.describe('QA visual — UX, frontend e design', () => {
         await page.setViewportSize({ width: viewport.width, height: viewport.height });
         const response = await page.goto(route.path, { waitUntil: 'domcontentloaded' });
         expect(response?.status(), `${route.path} deve responder sem erro de servidor`).toBeLessThan(500);
-        await expect.poll(async () => ((await page.locator('body').innerText()) ?? '').trim().length,
-          { message: `${route.path} deve exibir conteúdo`, timeout: 15_000 }).toBeGreaterThan(30);
+        await expect(page.getByRole('heading', { name: route.heading }).first()).toBeVisible();
+        // O loader também tem texto. Inspecionar antes do conteúdo e do banner
+        // atrasado de cookies escondia os alvos pequenos, dependendo do timing.
+        await expect(page.getByRole('heading', { name: 'Política de Cookies e Privacidade' })).toBeVisible();
 
         const findings = await inspect(page, route.name, viewport.name);
         await capture(page, testInfo, `${route.name}-${viewport.name}`, findings);
@@ -147,6 +158,11 @@ test.describe('QA visual — UX, frontend e design', () => {
     );
     expect(reducedMotionEnabled).toBe(true);
 
+    // Aguarda o primeiro paint do MotionConfig, sem esperar a animação de 500ms
+    // terminar (o que esconderia uma regressão de movimento reduzido).
+    await page.evaluate(() => new Promise<void>((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+    }));
     const authCardTransform = await page.locator('form').evaluate((form) => {
       const motionCard = form.closest('div[class*="max-w-"]');
       return motionCard ? getComputedStyle(motionCard).transform : null;

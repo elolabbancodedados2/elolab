@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Bot,
@@ -64,6 +64,13 @@ interface QueueItem {
   agendado_para: string; created_at: string;
 }
 
+interface AutomationDeliveryClaim {
+  chave: string;
+  estado: 'claimed' | 'completed' | 'uncertain';
+  criado_em: string;
+  atualizado_em: string;
+}
+
 interface ClientErrorEvent {
   id: string; tipo: string; mensagem: string; origem: string | null;
   rota: string | null; release: string | null; created_at: string;
@@ -78,6 +85,7 @@ const AUTOMATIONS: Array<{
   endpoint: string | null;
   automationKey?: string;
   available?: boolean;
+  configurable?: boolean;
   unavailableReason?: string;
 }> = [
   {
@@ -109,12 +117,11 @@ const AUTOMATIONS: Array<{
   {
     key: 'faturamento_automatico',
     name: 'Faturamento Automático',
-    description: 'Cria lançamentos ao finalizar consultas',
+    description: 'Gera a cobrança no check-in ou ao finalizar o atendimento quando há preço cadastrado',
     icon: CheckCircle2,
     color: 'text-success',
     endpoint: null,
-    available: false,
-    unavailableReason: 'Ainda não existe um fluxo conectado para gerar a cobrança automaticamente.',
+    configurable: false,
   },
   {
     key: 'aniversariantes',
@@ -135,12 +142,11 @@ const AUTOMATIONS: Array<{
   {
     key: 'notificacao_resultado_exame',
     name: 'Notificação de Resultado de Exame',
-    description: 'Envia resultado de exame para paciente quando liberado',
+    description: 'Envia aviso ao liberar o laudo por e-mail com modelo ativo ou WhatsApp com sessão conectada',
     icon: Stethoscope,
     color: 'text-primary',
     endpoint: null,
-    available: false,
-    unavailableReason: 'O aviso automático após liberar o resultado ainda não está conectado.',
+    configurable: false,
   },
   {
     key: 'recibo_pagamento',
@@ -176,10 +182,13 @@ export default function Automacoes() {
   const [isRunning, setIsRunning] = useState<Record<string, boolean>>({});
   const [isToggling, setIsToggling] = useState<Record<string, boolean>>({});
   const [updatingQueue, setUpdatingQueue] = useState<Record<string, boolean>>({});
+  const [deliveryClaimsPage, setDeliveryClaimsPage] = useState(0);
+  const deliveryClaimsPageSize = 50;
   const runningLocks = useRef(new Set<string>());
   const togglingLocks = useRef(new Set<string>());
   const queueLocks = useRef(new Set<string>());
   const { profile } = useSupabaseAuth();
+  useEffect(() => { setDeliveryClaimsPage(0); }, [profile?.clinica_id]);
 
   const logsQuery = useSupabaseQuery<AutomationLog>('automation_logs', {
     orderBy: { column: 'created_at', ascending: false }, limit: 50, page: 0,
@@ -192,14 +201,27 @@ export default function Automacoes() {
   const queueQuery = useSupabaseQuery<QueueItem>('notification_queue', {
     orderBy: { column: 'created_at', ascending: false }, limit: 100, page: 0,
   });
+  const deliveryClaimsQuery = useSupabaseQuery<AutomationDeliveryClaim>('automation_delivery_claims', {
+    select: 'chave, estado, criado_em, atualizado_em',
+    orderBy: { column: 'atualizado_em', ascending: false }, limit: deliveryClaimsPageSize, page: deliveryClaimsPage,
+    filters: [
+      { column: 'estado', operator: 'in', value: '("claimed","uncertain")' },
+      { column: 'clinica_id', operator: 'eq', value: profile?.clinica_id },
+    ],
+    enabled: Boolean(profile?.clinica_id),
+  });
   const clientErrorsQuery = useSupabaseQuery<ClientErrorEvent>('client_error_events', {
     orderBy: { column: 'created_at', ascending: false }, limit: 100, page: 0,
   });
   const logs = logsQuery.data ?? [];
   const settings = settingsQuery.data ?? [];
   const queue = queueQuery.data ?? [];
+  const deliveryClaims = deliveryClaimsQuery.data ?? [];
+  const claimsHaveNextPage = deliveryClaims.length === deliveryClaimsPageSize;
+  const claimsNeedingReview = deliveryClaims
+    .filter((claim) => claim.estado === 'uncertain' || Date.now() - new Date(claim.criado_em).getTime() >= 10 * 60_000);
   const clientErrors = clientErrorsQuery.data ?? [];
-  const allQueries = [logsQuery, settingsQuery, queueQuery, clientErrorsQuery];
+  const allQueries = [logsQuery, settingsQuery, queueQuery, deliveryClaimsQuery, clientErrorsQuery];
   const isLoading = allQueries.some(query => query.isLoading);
   const failedQuery = allQueries.find(query => query.isError);
 
@@ -238,6 +260,12 @@ export default function Automacoes() {
   const toggleAutomation = async (key: string, currentState: boolean) => {
     if (togglingLocks.current.has(key)) return;
     const automation = AUTOMATIONS.find(a => a.key === key);
+    if (automation?.configurable === false) {
+      toast.info('Esta automação é executada pelo fluxo clínico.', {
+        description: 'O comportamento é automático e ainda não possui controle individual nesta tela.',
+      });
+      return;
+    }
     if (automation?.available === false) {
       toast.info('Esta automação ainda não está disponível.', { description: automation.unavailableReason });
       return;
@@ -367,7 +395,7 @@ export default function Automacoes() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col justify-between gap-4 rounded-2xl border border-[#dce9f6] bg-gradient-to-r from-[#f3f8ff] via-white to-[#f3fbfa] p-5 sm:flex-row sm:items-center sm:p-6">
         <div>
           <h1 className="text-3xl font-bold text-foreground">Automações</h1>
           <p className="text-muted-foreground">Gerencie as automações do sistema</p>
@@ -379,7 +407,7 @@ export default function Automacoes() {
       </div>
 
       <Tabs value={activeTab} onValueChange={changeTab} className="space-y-6">
-        <TabsList>
+        <TabsList className="h-auto w-full justify-start gap-1 overflow-x-auto rounded-xl border border-[#dce9f6] bg-[#f3f8ff] p-1.5 text-[#52647a]">
           <TabsTrigger value="automacoes">Automações</TabsTrigger>
           <TabsTrigger value="logs">Logs de Execução</TabsTrigger>
           <TabsTrigger value="fila">Fila de envios</TabsTrigger>
@@ -400,7 +428,9 @@ export default function Automacoes() {
               // um trigger para as novas, então este `?? true` só vale no
               // intervalo entre criar a clínica e o trigger rodar. Fica assim
               // mesmo para não voltar a discordar do backend.
-              const isActive = setting?.ativo ?? true;
+              // These event handlers currently do not read automation_settings;
+              // reflect their actual behavior instead of a stale stored switch.
+              const isActive = automation.configurable === false ? true : setting?.ativo ?? true;
               const available = automation.available !== false;
               const Icon = automation.icon;
 
@@ -426,14 +456,16 @@ export default function Automacoes() {
                       <div className="flex items-center gap-2">
                         <Switch
                           checked={available && isActive}
-                          aria-label={available
+                          aria-label={available && automation.configurable !== false
                             ? `${isActive ? 'Desativar' : 'Ativar'} ${automation.name}`
+                            : available
+                              ? `${automation.name}, automática sem controle individual`
                             : `${automation.name} indisponível`}
-                          disabled={!available || isToggling[automation.key]}
+                          disabled={!available || automation.configurable === false || isToggling[automation.key]}
                           onCheckedChange={() => toggleAutomation(automation.key, isActive)}
                         />
                         <span className="text-sm text-muted-foreground">
-                          {!available ? 'Em desenvolvimento' : isActive ? 'Ativo' : 'Inativo'}
+                          {!available ? 'Em desenvolvimento' : automation.configurable === false ? 'Automática' : isActive ? 'Ativo' : 'Inativo'}
                         </span>
                       </div>
                       {automation.endpoint && (
@@ -529,10 +561,11 @@ export default function Automacoes() {
           </Card>
         </TabsContent>
         <TabsContent value="fila" className="space-y-4">
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+          <p className="text-sm text-muted-foreground">Os cartões mostram o status das 100 mensagens mais recentes carregadas.</p>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
             {[
               ['Pendentes', 'pendente', Clock], ['Enviando', 'enviando', RefreshCw],
-              ['Com erro', 'erro', AlertTriangle], ['Enviados', 'enviado', CheckCircle2],
+              ['Resultado incerto', 'incerto', AlertTriangle], ['Com erro', 'erro', AlertTriangle], ['Enviados', 'enviado', CheckCircle2],
               ['Cancelados', 'cancelado', XCircle],
             ].map(([label, status, Icon]) => (
               <Card key={String(status)}><CardContent className="flex items-center justify-between p-5">
@@ -541,6 +574,20 @@ export default function Automacoes() {
               </CardContent></Card>
             ))}
           </div>
+          {(claimsNeedingReview.length > 0 || deliveryClaimsPage > 0 || claimsHaveNextPage) && <Card className="border-amber-300 bg-amber-50/70">
+            <CardHeader><CardTitle className="text-base">Reservas sem confirmação de envio</CardTitle><CardDescription>Confira os registros do provedor antes de repetir: o envio pode ter sido aceito antes de a função parar.</CardDescription></CardHeader>
+            <CardContent className="space-y-2">
+              {claimsNeedingReview.length === 0 ? <p className="text-sm text-muted-foreground">Nenhuma reserva vencida precisa de conferência nesta página.</p> : claimsNeedingReview.map((claim) => <div key={claim.chave} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-white/80 px-3 py-2 text-sm">
+                  <code className="break-all">{claim.chave}</code>
+                  <span className="text-muted-foreground">{formatarDataHora(claim.atualizado_em, '2-digit')}</span>
+                </div>)}
+              <div className="flex items-center justify-between pt-2">
+                <Button variant="outline" size="sm" disabled={deliveryClaimsPage === 0 || deliveryClaimsQuery.isFetching} onClick={() => setDeliveryClaimsPage(page => Math.max(0, page - 1))}>Anteriores</Button>
+                <span className="text-xs text-muted-foreground">Página {deliveryClaimsPage + 1}</span>
+                <Button variant="outline" size="sm" disabled={!claimsHaveNextPage || deliveryClaimsQuery.isFetching} onClick={() => setDeliveryClaimsPage(page => page + 1)}>Mais reservas</Button>
+              </div>
+            </CardContent>
+          </Card>}
           <Card>
             <CardHeader><CardTitle>Últimos envios</CardTitle><CardDescription>Até 100 mensagens recentes, com tentativas e detalhes de falha.</CardDescription></CardHeader>
             <CardContent><div className="overflow-x-auto rounded-md border"><Table>
@@ -550,7 +597,7 @@ export default function Automacoes() {
                   <TableCell className="whitespace-nowrap text-sm">{formatarDataHora(item.agendado_para)}</TableCell>
                   <TableCell><Badge variant="outline">{item.tipo}</Badge></TableCell>
                   <TableCell><div className="max-w-48 truncate font-medium">{item.destinatario_nome || item.destinatario_email || item.destinatario_telefone || 'Não informado'}</div></TableCell>
-                  <TableCell><Badge variant={item.status === 'erro' ? 'destructive' : item.status === 'enviado' ? 'default' : 'secondary'}>{item.status}</Badge></TableCell>
+                  <TableCell><Badge className={item.status === 'incerto' ? 'border-amber-500 text-amber-700' : undefined} variant={item.status === 'erro' ? 'destructive' : item.status === 'enviado' ? 'default' : 'secondary'}>{item.status === 'incerto' ? 'incerto · verificar' : item.status}</Badge></TableCell>
                   <TableCell>{item.tentativas}/{item.max_tentativas}</TableCell>
                   <TableCell><p className="max-w-64 truncate text-xs text-muted-foreground" title={item.erro_mensagem || item.assunto || ''}>{item.erro_mensagem || item.assunto || '—'}</p></TableCell>
                   <TableCell><div className="flex justify-end gap-1">

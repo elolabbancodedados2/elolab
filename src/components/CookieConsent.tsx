@@ -75,13 +75,13 @@ export function CookieConsent() {
 
           {/* Links */}
           <div className="flex flex-wrap gap-x-3 gap-y-2 text-xs mb-3 sm:mb-4">
-            <Link to="/politica-privacidade" className="text-primary hover:underline flex items-center gap-1">
+            <Link to="/politica-privacidade" className="inline-flex min-h-11 items-center gap-1 text-primary hover:underline">
               <Shield className="h-3 w-3" /> Política de Privacidade
             </Link>
-            <Link to="/politica-cookies" className="text-primary hover:underline">
+            <Link to="/politica-cookies" className="inline-flex min-h-11 items-center text-primary hover:underline">
               Política de Cookies
             </Link>
-            <Link to="/termos-uso" className="text-primary hover:underline">
+            <Link to="/termos-uso" className="inline-flex min-h-11 items-center text-primary hover:underline">
               Termos de Uso
             </Link>
           </div>
@@ -122,15 +122,15 @@ export function CookieConsent() {
 
           {/* Actions */}
           <div className="grid grid-cols-2 gap-2">
-            <Button onClick={handleAcceptAll} size="sm" className="flex-1">
+            <Button onClick={handleAcceptAll} size="sm" className="min-h-11 flex-1">
               Aceitar Todos
             </Button>
             {showDetails ? (
-              <Button onClick={handleSavePreferences} variant="secondary" size="sm" className="flex-1">
+              <Button onClick={handleSavePreferences} variant="secondary" size="sm" className="min-h-11 flex-1">
                 Salvar Preferências
               </Button>
             ) : (
-              <Button onClick={handleRejectOptional} variant="outline" size="sm" className="flex-1">
+              <Button onClick={handleRejectOptional} variant="outline" size="sm" className="min-h-11 flex-1">
                 Apenas Essenciais
               </Button>
             )}

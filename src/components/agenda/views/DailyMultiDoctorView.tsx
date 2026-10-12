@@ -136,7 +136,18 @@ function DoctorColumn({
             id={`slot:${medico.id}:${date}:${slot}`}
             data={{ medico_id: medico.id, data: date, hora_inicio: slot }}
             onClick={() => onSlotClick(medico.id, slot)}
-            className="absolute inset-x-0 hover:bg-primary/5 cursor-pointer"
+            onKeyDown={(event: React.KeyboardEvent<HTMLButtonElement>) => {
+              if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+              const slots = Array.from(columnRef.current?.querySelectorAll<HTMLButtonElement>('[data-agenda-slot]') || []);
+              const index = slots.indexOf(event.currentTarget);
+              const next = slots[index + (event.key === 'ArrowDown' ? 1 : -1)];
+              if (!next) return;
+              event.preventDefault();
+              next.focus();
+            }}
+            accessibleName={`Criar consulta ${slot} com ${nomeMedico(medico.nome || medico.crm)}`}
+            tabStop={toMinutes(slot) % 30 === 0}
+            className="absolute inset-x-0 cursor-pointer border-0 bg-transparent p-0 hover:bg-primary/5 focus-visible:z-30 focus-visible:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
             style={{ top: minutesToPx(toMinutes(slot) - START_HOUR * 60), height: SLOT_PX }}
           />
         ))}
@@ -181,13 +192,19 @@ function DoctorColumn({
   );
 }
 
-function DropSlot({ id, data, className, style, onClick }: any) {
+function DropSlot({ id, data, className, style, onClick, onKeyDown, accessibleName, tabStop }: any) {
   const { setNodeRef, isOver } = useDroppable({ id, data });
   return (
-    <div
+    <button
+      type="button"
       ref={setNodeRef}
       style={style}
       onClick={onClick}
+      onKeyDown={onKeyDown}
+      aria-label={accessibleName}
+      aria-haspopup="dialog"
+      tabIndex={tabStop ? 0 : -1}
+      data-agenda-slot="true"
       className={cn(className, isOver && 'bg-primary/10 ring-1 ring-primary/40 ring-inset')}
     />
   );

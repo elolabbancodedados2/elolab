@@ -29,7 +29,8 @@ export function MonthlyView({ date, agendamentos, colorFor, medicoById = {}, onD
   const dayLabels = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
 
   return (
-    <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
+    <div role="region" aria-label="Agenda mensal, deslize horizontal para ver a grade" tabIndex={0} className="overflow-x-auto rounded-2xl border border-[#D8E8F4] bg-white shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F7BFD]">
+      <div className="min-w-[770px]">
       <div className="grid grid-cols-7 border-b border-border/60 bg-muted/30">
         {dayLabels.map(d => (
           <div key={d} className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground text-center">{d}</div>
@@ -91,6 +92,7 @@ export function MonthlyView({ date, agendamentos, colorFor, medicoById = {}, onD
             </button>
           );
         })}
+      </div>
       </div>
     </div>
   );

@@ -29,6 +29,7 @@ import { pacienteCorresponde } from '@/lib/buscaPaciente';
 import { normalizeAgendaDate } from '@/lib/agendaDate';
 import { todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
+import { podeRemarcarAgendamento } from '@/lib/appointmentStatus';
 
 export type AgendaView = 'daily' | 'weekly' | 'monthly';
 
@@ -64,7 +65,7 @@ export function AgendaPage() {
   const pacienteIdDaRota = searchParams.get('paciente');
   const reagendarIdDaRota = searchParams.get('reagendar');
   const reagendarAplicadoRef = useRef<string | null>(null);
-  const { medicoId: myMedicoId, isMedicoOnly } = useCurrentMedico();
+  const { medicoId: myMedicoId, isMedicoOnly, isLoading: loadingCurrentMedico, error: currentMedicoError, refetch: refetchCurrentMedico } = useCurrentMedico();
   const [date, setDate] = useState(() => normalizeAgendaDate(lerPreferenciaAgenda('agenda:date')));
   const [view, setView] = useState<AgendaView>(() => {
     const preferencia = lerPreferenciaAgenda('agenda:view');
@@ -124,7 +125,7 @@ export function AgendaPage() {
     const ini = startOfWeek(startOfMonth(d), { weekStartsOn: 1 });
     return { inicio: format(ini, 'yyyy-MM-dd'), fim: format(addDays(ini, 41), 'yyyy-MM-dd') };
   }, [date, view]);
-  const agendaQuery = useAgendamentosPeriodo(periodo.inicio, periodo.fim);
+  const agendaQuery = useAgendamentosPeriodo(periodo.inicio, periodo.fim, { enabled: !isMedicoOnly || !!myMedicoId });
   const { data: allAppts = [], isLoading } = agendaQuery;
   const medicosQuery = useMedicos();
   const { data: medicos = [] } = medicosQuery;
@@ -350,6 +351,7 @@ export function AgendaPage() {
 
     if (active?.agendamento) {
       const ag = active.agendamento;
+      if (!podeRemarcarAgendamento(ag.status)) return;
       if (ag.medico_id === slotData.medico_id && ag.data === slotData.data && ag.hora_inicio.slice(0, 5) === slotData.hora_inicio) return;
 
       // Conflito real por sobreposição de janela (não apenas "menos de 30 min de distância")
@@ -448,6 +450,10 @@ export function AgendaPage() {
   };
 
   const doMove = async (ag: any, slot: { medico_id: string; data: string; hora_inicio: string }) => {
+    if (!podeRemarcarAgendamento(ag.status)) {
+      toast.error('Esta consulta nao pode ser remarcada depois que o atendimento comecou ou terminou.');
+      return;
+    }
     const oldStart = toMinutes(ag.hora_inicio?.slice(0, 5));
     const storedEnd = ag.hora_fim ? toMinutes(ag.hora_fim.slice(0, 5)) : null;
     if (!Number.isFinite(oldStart) || (ag.hora_fim && !Number.isFinite(storedEnd)) || (storedEnd !== null && storedEnd <= oldStart)) {
@@ -507,9 +513,9 @@ export function AgendaPage() {
     setDialogState({ open: true, initial: { medico_id, data: date, hora_inicio, status: 'agendado', tipo: 'consulta' } });
   };
 
-  if (isMedicoOnly && medicosQuery.isLoading) return <AgendaSkeleton />;
-  if (isMedicoOnly && medicosQuery.isError) {
-    return <ErrorState title="Não foi possível identificar seu vínculo médico" error={medicosQuery.error} onRetry={() => void medicosQuery.refetch()} />;
+  if (isMedicoOnly && loadingCurrentMedico) return <AgendaSkeleton />;
+  if (isMedicoOnly && currentMedicoError) {
+    return <ErrorState title="Não foi possível identificar seu vínculo médico" error={currentMedicoError} onRetry={() => void refetchCurrentMedico()} />;
   }
   if (isMedicoOnly && !myMedicoId) {
     return (

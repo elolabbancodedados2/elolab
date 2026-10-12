@@ -71,11 +71,11 @@ export default function PlatformRelatorioExecutivo() {
   const d = report.data;
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-[#DCEAF5] bg-gradient-to-r from-[#F1F7FF] via-white to-[#EBFBFD] p-5 sm:p-6">
         <div><h1 className="flex items-center gap-2 text-2xl font-bold"><FileBarChart /> Relatório Executivo</h1><p className="text-muted-foreground">Receita recorrente, crescimento, suporte, adoção e IA.</p></div>
         <div className="flex gap-2">
           <Select value={String(periodo)} onValueChange={mudarPeriodo}><SelectTrigger className="w-32" aria-label="Período do relatório"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="7">7 dias</SelectItem><SelectItem value="30">30 dias</SelectItem><SelectItem value="90">90 dias</SelectItem></SelectContent></Select>
-          <Button variant="outline" onClick={() => void report.refetch()} disabled={report.isFetching}><RefreshCw className={`mr-2 h-4 w-4 ${report.isFetching ? 'animate-spin' : ''}`} />Atualizar</Button>
+          <Button variant="outline" className="min-h-11 border-[#CFE0F0] bg-white text-[#0C1F54] hover:bg-[#F7FBFF]" onClick={() => void report.refetch()} disabled={report.isFetching}><RefreshCw className={`mr-2 h-4 w-4 ${report.isFetching ? 'animate-spin' : ''}`} />Atualizar</Button>
           <Button onClick={exportar} disabled={!d || report.isFetching}><Download className="mr-2 h-4 w-4" />CSV</Button>
         </div>
       </div>
@@ -104,7 +104,7 @@ export default function PlatformRelatorioExecutivo() {
 }
 
 function Metric({ icon: Icon, label, value, detail, alert = false }: { icon: typeof Activity; label: string; value: string | number; detail: string; alert?: boolean }) {
-  return <div className="rounded-lg border p-3"><div className="flex items-center gap-2 text-xs text-muted-foreground"><Icon className="h-4 w-4" />{label}</div><p className={alert ? 'mt-2 text-2xl font-bold text-destructive' : 'mt-2 text-2xl font-bold'}>{value}</p><p className="text-xs text-muted-foreground">{detail}</p></div>;
+  return <div className={`rounded-xl border border-[#E1ECF5] p-4 ${alert ? 'bg-[#FFF7F5]' : 'bg-[#F7FAFF]'}`}><div className="flex items-center gap-2 text-xs font-medium text-[#39516B]"><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-white text-[#005ECC] shadow-sm"><Icon className="h-4 w-4" /></span>{label}</div><p className={alert ? 'mt-3 text-2xl font-bold tracking-tight text-destructive' : 'mt-3 text-2xl font-bold tracking-tight text-[#0C1F54]'}>{value}</p><p className="text-xs text-muted-foreground">{detail}</p></div>;
 }
 function Line({ label, value, alert = false }: { label: string; value: string | number; alert?: boolean }) {
   return <div className="flex items-center justify-between rounded-md bg-muted/40 px-3 py-2 text-sm"><span>{label}</span><strong className={alert ? 'text-destructive' : ''}>{value}</strong></div>;

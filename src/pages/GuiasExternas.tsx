@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -27,6 +27,7 @@ import { todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
 import { mensagemDeErro } from '@/lib/erros';
 import { formatCPF, validateCPF } from '@/lib/formatters';
+import { pathLaudoAnteriorAposSalvar, pathsLaudoExternoAoFechar } from '@/lib/guiasExternasStorage';
 
 const FORMATADOR_DATA_HORA = new Intl.DateTimeFormat('pt-BR', {
   timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', year: '2-digit',
@@ -165,10 +166,10 @@ export default function GuiasExternas() {
 
   return (
     <div className="container mx-auto p-4 md:p-6 space-y-6">
-      <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex flex-wrap items-start justify-between gap-3">
+      <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex flex-wrap items-start justify-between gap-3 rounded-2xl border border-[#d8e8fb] bg-gradient-to-r from-[#f4f8ff] via-white to-[#effaff] p-4 sm:p-5">
         <div>
-          <h1 className="text-2xl md:text-3xl font-bold tracking-tight flex items-center gap-2">
-            <FileText className="h-7 w-7 text-primary" /> Guias Externas
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-[#102a56] flex items-center gap-2">
+            <span className="rounded-xl bg-[#e5f1ff] p-2 text-[#1766b3] ring-1 ring-[#d5e6fa]"><FileText className="h-5 w-5" /></span> Guias Externas
           </h1>
           <p className="text-muted-foreground text-sm mt-1">
             Receba pedidos de exames vindos de médicos e clínicas externas
@@ -186,12 +187,12 @@ export default function GuiasExternas() {
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
-          { label: 'Total', value: counts.total, color: 'text-foreground' },
-          { label: 'Aguardando', value: counts.recebida, color: 'text-amber-600' },
-          { label: 'Agendadas', value: counts.agendada, color: 'text-blue-600' },
-          { label: 'Na fila', value: counts.fila, color: 'text-emerald-600' },
+          { label: 'Total', value: counts.total, color: 'text-[#102a56]', card: 'border-[#d8e8fb] bg-gradient-to-br from-white to-[#f1f7ff]' },
+          { label: 'Aguardando', value: counts.recebida, color: 'text-[#8a5b00]', card: 'border-[#f1dfb8] bg-[#fffaf0]' },
+          { label: 'Agendadas', value: counts.agendada, color: 'text-[#175c9f]', card: 'border-[#cce2fa] bg-[#f4f9ff]' },
+          { label: 'Na fila', value: counts.fila, color: 'text-[#16734d]', card: 'border-[#ccebdd] bg-[#f3fbf6]' },
         ].map((s) => (
-          <Card key={s.label}>
+          <Card key={s.label} className={s.card}>
             <CardContent className="p-4">
               <p className="text-xs text-muted-foreground">{s.label}</p>
               <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
@@ -208,6 +209,7 @@ export default function GuiasExternas() {
               <div className="relative">
                 <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input
+                  aria-label="Buscar guias externas"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder="Buscar paciente, médico, convênio..."
@@ -215,7 +217,7 @@ export default function GuiasExternas() {
                 />
               </div>
               <Select value={filterStatus} onValueChange={setFilterStatus}>
-                <SelectTrigger className="w-[170px]"><SelectValue /></SelectTrigger>
+                <SelectTrigger aria-label="Filtrar guias externas por status" className="w-[190px]"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="todos">Todos status</SelectItem>
                   <SelectItem value="recebida">Recebidas</SelectItem>
@@ -496,34 +498,34 @@ function GuiaFormDialog({ open, onClose, clinicaId, userId, onSaved }: any) {
           </TabsList>
 
           <TabsContent value="paciente" className="space-y-3 pt-3">
-            <div><Label>Nome completo *</Label><Input value={form.paciente_nome} onChange={(e) => setForm({ ...form, paciente_nome: e.target.value })} /></div>
+            <div><Label htmlFor="guia-paciente-nome">Nome completo *</Label><Input id="guia-paciente-nome" value={form.paciente_nome} onChange={(e) => setForm({ ...form, paciente_nome: e.target.value })} /></div>
             <div className="grid grid-cols-2 gap-3">
-              <div><Label>CPF</Label><Input inputMode="numeric" autoComplete="off" placeholder="000.000.000-00" value={form.paciente_cpf} onChange={(e) => setForm({ ...form, paciente_cpf: formatCPF(e.target.value) })} /></div>
-              <div><Label>Data nascimento</Label><Input type="date" value={form.paciente_nascimento} onChange={(e) => setForm({ ...form, paciente_nascimento: e.target.value })} /></div>
+              <div><Label htmlFor="guia-paciente-cpf">CPF</Label><Input id="guia-paciente-cpf" inputMode="numeric" autoComplete="off" placeholder="000.000.000-00" value={form.paciente_cpf} onChange={(e) => setForm({ ...form, paciente_cpf: formatCPF(e.target.value) })} /></div>
+              <div><Label htmlFor="guia-paciente-nascimento">Data nascimento</Label><Input id="guia-paciente-nascimento" type="date" value={form.paciente_nascimento} onChange={(e) => setForm({ ...form, paciente_nascimento: e.target.value })} /></div>
             </div>
-            <div><Label>Telefone</Label><Input value={form.paciente_telefone} onChange={(e) => setForm({ ...form, paciente_telefone: e.target.value })} /></div>
+            <div><Label htmlFor="guia-paciente-telefone">Telefone</Label><Input id="guia-paciente-telefone" value={form.paciente_telefone} onChange={(e) => setForm({ ...form, paciente_telefone: e.target.value })} /></div>
           </TabsContent>
 
           <TabsContent value="medico" className="space-y-3 pt-3">
-            <div><Label>Nome do médico solicitante</Label><Input value={form.medico_externo_nome} onChange={(e) => setForm({ ...form, medico_externo_nome: e.target.value })} /></div>
+            <div><Label htmlFor="guia-medico-nome">Nome do médico solicitante</Label><Input id="guia-medico-nome" value={form.medico_externo_nome} onChange={(e) => setForm({ ...form, medico_externo_nome: e.target.value })} /></div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div className="col-span-2"><Label>CRM</Label><Input value={form.medico_externo_crm} onChange={(e) => setForm({ ...form, medico_externo_crm: e.target.value })} /></div>
-              <div><Label>UF</Label><Input maxLength={2} value={form.medico_externo_uf} onChange={(e) => setForm({ ...form, medico_externo_uf: e.target.value.toUpperCase() })} /></div>
+              <div className="col-span-2"><Label htmlFor="guia-medico-crm">CRM</Label><Input id="guia-medico-crm" value={form.medico_externo_crm} onChange={(e) => setForm({ ...form, medico_externo_crm: e.target.value })} /></div>
+              <div><Label htmlFor="guia-medico-uf">UF</Label><Input id="guia-medico-uf" value={form.medico_externo_uf} onChange={(e) => setForm({ ...form, medico_externo_uf: e.target.value.toUpperCase() })} /></div>
             </div>
-            <div><Label>Especialidade</Label><Input value={form.medico_externo_especialidade} onChange={(e) => setForm({ ...form, medico_externo_especialidade: e.target.value })} /></div>
+            <div><Label htmlFor="guia-medico-especialidade">Especialidade</Label><Input id="guia-medico-especialidade" value={form.medico_externo_especialidade} onChange={(e) => setForm({ ...form, medico_externo_especialidade: e.target.value })} /></div>
           </TabsContent>
 
           <TabsContent value="convenio" className="space-y-3 pt-3">
-            <div><Label>Convênio</Label><Input value={form.convenio_nome} onChange={(e) => setForm({ ...form, convenio_nome: e.target.value })} placeholder="Ex.: Unimed, Bradesco..." /></div>
+            <div><Label htmlFor="guia-convenio">Convênio</Label><Input id="guia-convenio" value={form.convenio_nome} onChange={(e) => setForm({ ...form, convenio_nome: e.target.value })} placeholder="Ex.: Unimed, Bradesco..." /></div>
             <div className="grid grid-cols-2 gap-3">
-              <div><Label>Nº autorização</Label><Input value={form.numero_autorizacao} onChange={(e) => setForm({ ...form, numero_autorizacao: e.target.value })} /></div>
-              <div><Label>Validade</Label><Input type="date" value={form.validade_autorizacao} onChange={(e) => setForm({ ...form, validade_autorizacao: e.target.value })} /></div>
+              <div><Label htmlFor="guia-autorizacao">Nº autorização</Label><Input id="guia-autorizacao" value={form.numero_autorizacao} onChange={(e) => setForm({ ...form, numero_autorizacao: e.target.value })} /></div>
+              <div><Label htmlFor="guia-validade">Validade</Label><Input id="guia-validade" type="date" value={form.validade_autorizacao} onChange={(e) => setForm({ ...form, validade_autorizacao: e.target.value })} /></div>
             </div>
 
             <div className="pt-2">
-              <Label>Anexo da guia (PDF/imagem)</Label>
+              <Label htmlFor="guia-anexo">Anexo da guia (PDF/imagem)</Label>
               <div className="flex items-center gap-2 mt-1">
-                <Input type="file" accept="application/pdf,image/jpeg,image/png,image/webp" onChange={(e) => e.target.files?.[0] && handleUpload(e.target.files[0])} disabled={uploading || saving} />
+                <Input id="guia-anexo" type="file" accept="application/pdf,image/jpeg,image/png,image/webp" onChange={(e) => e.target.files?.[0] && handleUpload(e.target.files[0])} disabled={uploading || saving} />
                 {uploading && <Loader2 className="h-4 w-4 animate-spin" />}
               </div>
               {form.anexo_nome && (
@@ -536,17 +538,15 @@ function GuiaFormDialog({ open, onClose, clinicaId, userId, onSaved }: any) {
 
           <TabsContent value="exames" className="space-y-3 pt-3">
             <div>
-              <Label>Exames solicitados (um por linha) *</Label>
-              <Textarea
-                rows={7}
-                value={form.exames_texto}
+              <Label htmlFor="guia-exames">Exames solicitados (um por linha) *</Label>
+              <Textarea id="guia-exames" rows={7} value={form.exames_texto}
                 onChange={(e) => setForm({ ...form, exames_texto: e.target.value })}
                 placeholder={'Hemograma completo\nGlicemia de jejum\nColesterol total e frações'}
               />
             </div>
             <div>
-              <Label>Observações</Label>
-              <Textarea rows={3} value={form.observacoes} onChange={(e) => setForm({ ...form, observacoes: e.target.value })} />
+              <Label htmlFor="guia-observacoes">Observações</Label>
+              <Textarea id="guia-observacoes" rows={3} value={form.observacoes} onChange={(e) => setForm({ ...form, observacoes: e.target.value })} />
             </div>
           </TabsContent>
         </Tabs>
@@ -577,6 +577,21 @@ function DetalheGuiaDialog({ guia, open, onClose, onChanged }: any) {
     laudo_externo_url: guia.laudo_externo_url || '', laudo_externo_nome: guia.laudo_externo_nome || '',
   });
   const [uploadingRetorno, setUploadingRetorno] = useState(false);
+  const laudosTemporariosRef = useRef<Set<string>>(new Set());
+  const dialogMontadoRef = useRef(false);
+  const anexoPersistidoInicialRef = useRef<string | null>(guia.laudo_externo_url || null);
+
+  useEffect(() => {
+    dialogMontadoRef.current = true;
+    return () => {
+      dialogMontadoRef.current = false;
+      const paths = pathsLaudoExternoAoFechar([...laudosTemporariosRef.current], anexoPersistidoInicialRef.current);
+      laudosTemporariosRef.current.clear();
+      if (paths.length) void supabase.storage.from('guias-externas').remove(paths).then(({ error }) => {
+        if (error) toast.warning('Não foi possível remover todos os PDFs temporários do parceiro.', { description: mensagemDeErro(error) });
+      });
+    };
+  }, []);
 
   const laboratoriosParceiros = useQuery({
     queryKey: ['lab-parceiros-guia', profile?.clinica_id], enabled: open && !!profile?.clinica_id,
@@ -611,7 +626,20 @@ function DetalheGuiaDialog({ guia, open, onClose, onChanged }: any) {
       if (error) throw error;
       if (!data) throw new Error('A guia não pertence à clínica atual ou mudou enquanto você editava.');
     },
-    onSuccess: () => { onChanged(); void eventosTerceirizacao.refetch(); toast.success('Acompanhamento do laboratório externo salvo.'); },
+    onSuccess: async () => {
+      const anexoAnterior = pathLaudoAnteriorAposSalvar(guia.laudo_externo_url, terceirizacao.laudo_externo_url);
+      const temporariosSubstituidos = pathsLaudoExternoAoFechar([...laudosTemporariosRef.current], terceirizacao.laudo_externo_url);
+      laudosTemporariosRef.current.clear();
+      if (temporariosSubstituidos.length) {
+        const { error } = await supabase.storage.from('guias-externas').remove(temporariosSubstituidos);
+        if (error) toast.warning('O acompanhamento foi salvo, mas um PDF temporário anterior não pôde ser removido.', { description: mensagemDeErro(error) });
+      }
+      if (anexoAnterior) {
+        const { error } = await supabase.storage.from('guias-externas').remove([anexoAnterior]);
+        if (error) toast.warning('O acompanhamento foi salvo, mas o PDF anterior não pôde ser removido.', { description: mensagemDeErro(error) });
+      }
+      onChanged(); void eventosTerceirizacao.refetch(); toast.success('Acompanhamento do laboratório externo salvo.');
+    },
     onError: (error: any) => toast.error('Não foi possível salvar o acompanhamento.', { description: mensagemDeErro(error) }),
   });
 
@@ -624,7 +652,19 @@ function DetalheGuiaDialog({ guia, open, onClose, onChanged }: any) {
       const path = `${profile.clinica_id}/retornos/${guia.id}-${Date.now()}.pdf`;
       const { error } = await supabase.storage.from('guias-externas').upload(path, file, { contentType: 'application/pdf', upsert: false });
       if (error) throw error;
+      if (!dialogMontadoRef.current) {
+        const { error: erroRemocao } = await supabase.storage.from('guias-externas').remove([path]);
+        if (erroRemocao) toast.warning('O diálogo fechou durante o envio e o PDF temporário não pôde ser removido.', { description: mensagemDeErro(erroRemocao) });
+        return;
+      }
+      const uploadAnterior = terceirizacao.laudo_externo_url;
+      laudosTemporariosRef.current.add(path);
       setTerceirizacao(current => ({ ...current, laudo_externo_url: path, laudo_externo_nome: file.name }));
+      if (uploadAnterior && uploadAnterior !== guia.laudo_externo_url && laudosTemporariosRef.current.has(uploadAnterior)) {
+        const { error: erroRemocao } = await supabase.storage.from('guias-externas').remove([uploadAnterior]);
+        if (erroRemocao) toast.warning('O PDF novo foi enviado, mas não foi possível remover a versão temporária anterior.', { description: mensagemDeErro(erroRemocao) });
+        else laudosTemporariosRef.current.delete(uploadAnterior);
+      }
       toast.success('Laudo do parceiro anexado. Salve o acompanhamento para concluir.');
     } catch (error) { toast.error('Não foi possível anexar o laudo.', { description: mensagemDeErro(error) }); }
     finally { setUploadingRetorno(false); }
@@ -706,7 +746,7 @@ function DetalheGuiaDialog({ guia, open, onClose, onChanged }: any) {
   };
 
   return (
-      <Dialog open={open} onOpenChange={onClose}>
+      <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen && !uploadingRetorno) onClose(); }}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -748,13 +788,16 @@ function DetalheGuiaDialog({ guia, open, onClose, onChanged }: any) {
           <Card className="border-border/70">
             <CardHeader className="border-b bg-muted/20 py-3"><CardTitle className="text-sm">Acompanhamento do laboratório parceiro</CardTitle><CardDescription>Parceiro, prazo, custo e retorno ficam vinculados a esta guia da clínica.</CardDescription></CardHeader>
             <CardContent className="space-y-3 p-4">
+              {laboratoriosParceiros.error && <ErrorState compact error={laboratoriosParceiros.error} onRetry={() => void laboratoriosParceiros.refetch()} />}
+              {laboratoriosParceiros.isLoading && <p role="status" className="text-xs text-muted-foreground">Carregando laboratórios parceiros…</p>}
+              {!laboratoriosParceiros.isLoading && !laboratoriosParceiros.error && laboratoriosParceiros.data?.length === 0 && <p className="text-xs text-muted-foreground">Nenhum laboratório parceiro ativo foi cadastrado.</p>}
               <div className="grid gap-3 sm:grid-cols-2">
-                <div className="space-y-1"><Label>Laboratório parceiro</Label><Select value={terceirizacao.laboratorio_id || '__none__'} onValueChange={(value) => setTerceirizacao(current => ({ ...current, laboratorio_id: value === '__none__' ? '' : value }))}><SelectTrigger><SelectValue placeholder="Selecione o parceiro" /></SelectTrigger><SelectContent><SelectItem value="__none__">Não definido</SelectItem>{(laboratoriosParceiros.data ?? []).map((laboratorio: any) => <SelectItem key={laboratorio.id} value={laboratorio.id}>{laboratorio.nome}</SelectItem>)}</SelectContent></Select></div>
-                <div className="space-y-1"><Label>Status do processamento externo</Label><Select value={terceirizacao.status_terceirizacao} onValueChange={(value) => setTerceirizacao(current => ({ ...current, status_terceirizacao: value, data_envio_laboratorio: value === 'enviado' && !current.data_envio_laboratorio ? new Date().toISOString() : current.data_envio_laboratorio, data_retorno_laboratorio: value === 'concluido' && !current.data_retorno_laboratorio ? new Date().toISOString() : current.data_retorno_laboratorio }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="nao_enviado">Não enviado</SelectItem><SelectItem value="enviado">Enviado</SelectItem><SelectItem value="em_processamento">Em processamento</SelectItem><SelectItem value="concluido">Concluído</SelectItem><SelectItem value="atrasado">Atrasado</SelectItem></SelectContent></Select></div>
-                <div className="space-y-1"><Label>Prazo previsto</Label><Input type="date" value={terceirizacao.prazo_laboratorio} onChange={(event) => setTerceirizacao(current => ({ ...current, prazo_laboratorio: event.target.value }))} /></div>
-                <div className="space-y-1"><Label>Custo do parceiro (R$)</Label><Input inputMode="decimal" value={terceirizacao.custo_laboratorio} onChange={(event) => setTerceirizacao(current => ({ ...current, custo_laboratorio: event.target.value }))} placeholder="0,00" /></div>
-                <div className="space-y-1"><Label>Enviado em</Label><Input type="datetime-local" value={paraDataHoraLocal(terceirizacao.data_envio_laboratorio)} onChange={(event) => setTerceirizacao(current => ({ ...current, data_envio_laboratorio: event.target.value ? new Date(event.target.value).toISOString() : '' }))} /></div>
-                <div className="space-y-1"><Label>Retornado em</Label><Input type="datetime-local" value={paraDataHoraLocal(terceirizacao.data_retorno_laboratorio)} onChange={(event) => setTerceirizacao(current => ({ ...current, data_retorno_laboratorio: event.target.value ? new Date(event.target.value).toISOString() : '' }))} /></div>
+                <div className="space-y-1"><Label htmlFor={`guia-${guia.id}-laboratorio`}>Laboratório parceiro</Label><Select value={terceirizacao.laboratorio_id || '__none__'} onValueChange={(value) => setTerceirizacao(current => ({ ...current, laboratorio_id: value === '__none__' ? '' : value }))}><SelectTrigger id={`guia-${guia.id}-laboratorio`}><SelectValue placeholder="Selecione o parceiro" /></SelectTrigger><SelectContent><SelectItem value="__none__">Não definido</SelectItem>{(laboratoriosParceiros.data ?? []).map((laboratorio: any) => <SelectItem key={laboratorio.id} value={laboratorio.id}>{laboratorio.nome}</SelectItem>)}</SelectContent></Select></div>
+                <div className="space-y-1"><Label htmlFor={`guia-${guia.id}-status-parceiro`}>Status do processamento externo</Label><Select value={terceirizacao.status_terceirizacao} onValueChange={(value) => setTerceirizacao(current => ({ ...current, status_terceirizacao: value, data_envio_laboratorio: value === 'enviado' && !current.data_envio_laboratorio ? new Date().toISOString() : current.data_envio_laboratorio, data_retorno_laboratorio: value === 'concluido' && !current.data_retorno_laboratorio ? new Date().toISOString() : current.data_retorno_laboratorio }))}><SelectTrigger id={`guia-${guia.id}-status-parceiro`}><SelectValue /></SelectTrigger><SelectContent><SelectItem value="nao_enviado">Não enviado</SelectItem><SelectItem value="enviado">Enviado</SelectItem><SelectItem value="em_processamento">Em processamento</SelectItem><SelectItem value="concluido">Concluído</SelectItem><SelectItem value="atrasado">Atrasado</SelectItem></SelectContent></Select></div>
+                <div className="space-y-1"><Label htmlFor={`guia-${guia.id}-prazo-parceiro`}>Prazo previsto</Label><Input id={`guia-${guia.id}-prazo-parceiro`} type="date" value={terceirizacao.prazo_laboratorio} onChange={(event) => setTerceirizacao(current => ({ ...current, prazo_laboratorio: event.target.value }))} /></div>
+                <div className="space-y-1"><Label htmlFor={`guia-${guia.id}-custo-parceiro`}>Custo do parceiro (R$)</Label><Input id={`guia-${guia.id}-custo-parceiro`} inputMode="decimal" value={terceirizacao.custo_laboratorio} onChange={(event) => setTerceirizacao(current => ({ ...current, custo_laboratorio: event.target.value }))} placeholder="0,00" /></div>
+                <div className="space-y-1"><Label htmlFor={`guia-${guia.id}-enviado-parceiro`}>Enviado em</Label><Input id={`guia-${guia.id}-enviado-parceiro`} type="datetime-local" value={paraDataHoraLocal(terceirizacao.data_envio_laboratorio)} onChange={(event) => setTerceirizacao(current => ({ ...current, data_envio_laboratorio: event.target.value ? new Date(event.target.value).toISOString() : '' }))} /></div>
+                <div className="space-y-1"><Label htmlFor={`guia-${guia.id}-retorno-parceiro`}>Retornado em</Label><Input id={`guia-${guia.id}-retorno-parceiro`} type="datetime-local" value={paraDataHoraLocal(terceirizacao.data_retorno_laboratorio)} onChange={(event) => setTerceirizacao(current => ({ ...current, data_retorno_laboratorio: event.target.value ? new Date(event.target.value).toISOString() : '' }))} /></div>
               </div>
               <div className="flex flex-wrap items-center gap-2 border-t pt-3">
                 <Button variant="outline" size="sm" asChild={false} onClick={() => document.getElementById(`laudo-parceiro-${guia.id}`)?.click()} disabled={uploadingRetorno}>{uploadingRetorno ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Upload className="mr-1 h-4 w-4" />}{terceirizacao.laudo_externo_nome || 'Anexar laudo PDF'}</Button>
@@ -762,7 +805,7 @@ function DetalheGuiaDialog({ guia, open, onClose, onChanged }: any) {
                 {terceirizacao.laudo_externo_url && <Button variant="ghost" size="sm" onClick={() => void abrirLaudoParceiro()}><ExternalLink className="mr-1 h-4 w-4" />Abrir PDF privado</Button>}
                 <Button size="sm" className="ml-auto" onClick={() => salvarTerceirizacao.mutate()} disabled={salvarTerceirizacao.isPending || uploadingRetorno}>{salvarTerceirizacao.isPending ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : null}Salvar acompanhamento</Button>
               </div>
-              <div className="border-t pt-3"><p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Histórico de acompanhamento</p>{eventosTerceirizacao.isLoading ? <p role="status" className="text-xs text-muted-foreground">Carregando histórico…</p> : (eventosTerceirizacao.data ?? []).length === 0 ? <p className="text-xs text-muted-foreground">As atualizações feitas após a migration aparecerão aqui.</p> : <ul className="space-y-1.5">{eventosTerceirizacao.data?.map((evento: any) => <li key={evento.id} className="flex justify-between gap-3 text-xs"><span>{evento.tipo === 'parceiro_registrado' ? 'Acompanhamento iniciado' : 'Acompanhamento atualizado'}</span><time className="text-muted-foreground">{formatarDataHoraSaoPaulo(evento.created_at, true)}</time></li>)}</ul>}</div>
+              <div className="border-t pt-3"><p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Histórico de acompanhamento</p>{eventosTerceirizacao.isLoading ? <p role="status" className="text-xs text-muted-foreground">Carregando histórico…</p> : eventosTerceirizacao.error ? <ErrorState compact error={eventosTerceirizacao.error} onRetry={() => void eventosTerceirizacao.refetch()} /> : (eventosTerceirizacao.data ?? []).length === 0 ? <p className="text-xs text-muted-foreground">As atualizações feitas após a migration aparecerão aqui.</p> : <ul className="space-y-1.5">{eventosTerceirizacao.data?.map((evento: any) => <li key={evento.id} className="flex justify-between gap-3 text-xs"><span>{evento.tipo === 'parceiro_registrado' ? 'Acompanhamento iniciado' : 'Acompanhamento atualizado'}</span><time className="text-muted-foreground">{formatarDataHoraSaoPaulo(evento.created_at, true)}</time></li>)}</ul>}</div>
             </CardContent>
           </Card>
 
@@ -777,12 +820,12 @@ function DetalheGuiaDialog({ guia, open, onClose, onChanged }: any) {
               <CardContent className="p-4 space-y-3">
                 <p className="text-sm font-medium">Agendar coleta</p>
                 <div className="grid grid-cols-2 gap-3">
-                  <div><Label>Data</Label><Input type="date" value={dataAg} onChange={(e) => setDataAg(e.target.value)} /></div>
-                  <div><Label>Hora</Label><Input type="time" value={horaAg} onChange={(e) => setHoraAg(e.target.value)} /></div>
+                  <div><Label htmlFor={`guia-${guia.id}-data-agendamento`}>Data</Label><Input id={`guia-${guia.id}-data-agendamento`} type="date" value={dataAg} onChange={(e) => setDataAg(e.target.value)} /></div>
+                  <div><Label htmlFor={`guia-${guia.id}-hora-agendamento`}>Hora</Label><Input id={`guia-${guia.id}-hora-agendamento`} type="time" value={horaAg} onChange={(e) => setHoraAg(e.target.value)} /></div>
                 </div>
                 <div className="flex gap-2 justify-end">
-                  <Button variant="ghost" size="sm" onClick={() => setAgendando(false)} disabled={gerarAgendamento.isPending}>Cancelar</Button>
-                  <Button size="sm" onClick={() => gerarAgendamento.mutate()} disabled={gerarAgendamento.isPending || enviarParaFila.isPending || updateStatus.isPending}>
+                  <Button variant="ghost" size="sm" onClick={() => setAgendando(false)} disabled={gerarAgendamento.isPending || uploadingRetorno}>Cancelar</Button>
+                  <Button size="sm" onClick={() => gerarAgendamento.mutate()} disabled={gerarAgendamento.isPending || enviarParaFila.isPending || updateStatus.isPending || uploadingRetorno}>
                     {gerarAgendamento.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />}
                     Confirmar agendamento
                   </Button>
@@ -795,15 +838,15 @@ function DetalheGuiaDialog({ guia, open, onClose, onChanged }: any) {
         <DialogFooter className="mt-4 flex-wrap gap-2">
           {guia.status !== 'cancelada' && guia.status !== 'finalizada' && guia.status !== 'encaminhada_fila' && (
             <>
-              <Button variant="outline" onClick={() => updateStatus.mutate({ status: 'cancelada' })} disabled={updateStatus.isPending || enviarParaFila.isPending || gerarAgendamento.isPending}>
+              <Button variant="outline" onClick={() => updateStatus.mutate({ status: 'cancelada' })} disabled={updateStatus.isPending || enviarParaFila.isPending || gerarAgendamento.isPending || uploadingRetorno}>
                 <X className="h-4 w-4 mr-1" /> Cancelar guia
               </Button>
               {!agendando && ['recebida', 'em_analise'].includes(guia.status) && (
-                <Button variant="outline" onClick={() => setAgendando(true)} disabled={updateStatus.isPending || enviarParaFila.isPending || gerarAgendamento.isPending} className="gap-1.5">
+                <Button variant="outline" onClick={() => setAgendando(true)} disabled={updateStatus.isPending || enviarParaFila.isPending || gerarAgendamento.isPending || uploadingRetorno} className="gap-1.5">
                   <CalendarPlus className="h-4 w-4" /> Agendar coleta
                 </Button>
               )}
-              <Button onClick={() => enviarParaFila.mutate()} disabled={enviarParaFila.isPending || gerarAgendamento.isPending || updateStatus.isPending} className="gap-1.5">
+              <Button onClick={() => enviarParaFila.mutate()} disabled={enviarParaFila.isPending || gerarAgendamento.isPending || updateStatus.isPending || uploadingRetorno} className="gap-1.5">
                 {enviarParaFila.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
                 Enviar para fila de coleta
               </Button>
@@ -826,6 +869,7 @@ function Info({ label, value }: { label: string; value: any }) {
 
 /* ─── Tokens do portal ─── */
 function TokensPortalDialog({ open, onClose, clinicaId, userId }: any) {
+  const { profile } = useSupabaseAuth();
   const queryClient = useQueryClient();
   const [descricao, setDescricao] = useState('');
 
@@ -902,8 +946,8 @@ function TokensPortalDialog({ open, onClose, clinicaId, userId }: any) {
 
         <div className="flex gap-2 items-end">
           <div className="flex-1">
-            <Label>Descrição (opcional)</Label>
-            <Input value={descricao} onChange={(e) => setDescricao(e.target.value)} placeholder="Ex.: Dr. José — Clínica Vida" />
+            <Label htmlFor="portal-guias-descricao">Descrição (opcional)</Label>
+            <Input id="portal-guias-descricao" value={descricao} onChange={(e) => setDescricao(e.target.value)} placeholder="Ex.: Dr. José — Clínica Vida" />
           </div>
           <Button onClick={() => criarToken.mutate()} disabled={criarToken.isPending} className="gap-1.5">
             <Plus className="h-4 w-4" /> Gerar link
@@ -927,14 +971,16 @@ function TokensPortalDialog({ open, onClose, clinicaId, userId }: any) {
                         </p>
                       </div>
                       <div className="flex items-center gap-2">
-                        <Switch checked={t.ativo} disabled={toggleAtivo.isPending || deletarToken.isPending} onCheckedChange={(v) => toggleAtivo.mutate({ id: t.id, ativo: v })} />
-                        <Button aria-label={`Excluir link ${t.descricao || 'genérico'}`} size="icon" variant="ghost" className="h-8 w-8 text-destructive" disabled={toggleAtivo.isPending || deletarToken.isPending} onClick={() => deletarToken.mutate(t.id)}>
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
+                        <Switch aria-label={`${t.ativo ? 'Desativar' : 'Ativar'} link ${t.descricao || 'genérico'}`} checked={t.ativo} disabled={toggleAtivo.isPending || deletarToken.isPending} onCheckedChange={(v) => toggleAtivo.mutate({ id: t.id, ativo: v })} />
+                        {profile?.roles?.includes('admin') && (
+                          <Button aria-label={`Excluir link ${t.descricao || 'genérico'}`} size="icon" variant="ghost" className="h-8 w-8 text-destructive" disabled={toggleAtivo.isPending || deletarToken.isPending} onClick={() => deletarToken.mutate(t.id)}>
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Input value={url} readOnly className="text-xs font-mono" />
+                      <Input aria-label={`Link do portal externo: ${t.descricao || 'genérico'}`} value={url} readOnly className="text-xs font-mono" />
                       <Button aria-label="Copiar link da guia" size="icon" variant="outline" className="h-9 w-9 shrink-0" onClick={() => void copiarLink(url)}>
                         <Copy className="h-3.5 w-3.5" />
                       </Button>

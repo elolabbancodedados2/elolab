@@ -26,6 +26,9 @@ const formatarHoraSaoPaulo = (valor: string | null | undefined, comData = false)
 
 interface ConversationsTabProps {
   conversations: WhatsAppConversation[];
+  hasMoreConversations: boolean;
+  isLoadingMoreConversations: boolean;
+  onLoadMoreConversations: () => void;
   onStatusChange: (conversationId: string, status: string) => void;
   isUpdating: boolean;
   onSendMessage: (conversation: WhatsAppConversation, message: string) => Promise<void>;
@@ -42,7 +45,7 @@ interface ConversationsTabProps {
   onCloseConversation: (conversation: WhatsAppConversation) => void;
 }
 
-export function ConversationsTab({ conversations, onStatusChange, isUpdating, onSendMessage, isSending, onMarkRead, onAddInternalNote, isAddingNote, onPriorityChange, onGenerateSummary, isGeneratingSummary, onSendMedia, isSendingMedia, isClosing, onCloseConversation }: ConversationsTabProps) {
+export function ConversationsTab({ conversations, hasMoreConversations, isLoadingMoreConversations, onLoadMoreConversations, onStatusChange, isUpdating, onSendMessage, isSending, onMarkRead, onAddInternalNote, isAddingNote, onPriorityChange, onGenerateSummary, isGeneratingSummary, onSendMedia, isSendingMedia, isClosing, onCloseConversation }: ConversationsTabProps) {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('todos');
   const [selected, setSelected] = useState<WhatsAppConversation | null>(null);
@@ -172,7 +175,7 @@ export function ConversationsTab({ conversations, onStatusChange, isUpdating, on
               {statusFilter !== 'todos' && ` (${statusFilter})`}
             </CardTitle>
           </CardHeader>
-          <CardContent className="p-0">
+          <CardContent className="space-y-2 p-0">
             <ScrollArea className="h-[500px]">
               <div className="divide-y">
                 {filtered.map((conv, i) => {
@@ -239,6 +242,13 @@ export function ConversationsTab({ conversations, onStatusChange, isUpdating, on
                 })}
               </div>
             </ScrollArea>
+            {hasMoreConversations && (
+              <div className="px-3 pb-3 text-center">
+                <Button size="sm" variant="outline" disabled={isLoadingMoreConversations} onClick={onLoadMoreConversations}>
+                  {isLoadingMoreConversations ? 'Carregando conversas…' : 'Carregar conversas anteriores'}
+                </Button>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
@@ -281,9 +291,33 @@ export function ConversationsTab({ conversations, onStatusChange, isUpdating, on
                 {selected.resumo_ia || 'Gere um resumo objetivo antes de transferir o atendimento.'}
               </p>
             </div>
+            {messagesQuery.hasOlderMessages && (
+              <div className="text-center">
+                <Button size="sm" variant="outline" disabled={messagesQuery.isLoadingOlderMessages} onClick={messagesQuery.loadOlderMessages}>
+                  {messagesQuery.isLoadingOlderMessages ? 'Carregando mensagens…' : 'Carregar mensagens anteriores'}
+                </Button>
+              </div>
+            )}
+            {messagesQuery.latestError && (
+              <ErrorState compact title="Não foi possível carregar as mensagens" error={messagesQuery.latestError} onRetry={() => void messagesQuery.refetch()} />
+            )}
+            {messagesQuery.historyError && (
+              <ErrorState compact title="Não foi possível carregar mensagens anteriores" error={messagesQuery.historyError} onRetry={messagesQuery.loadOlderMessages} />
+            )}
             <ScrollArea className="h-[380px] rounded-lg border bg-muted/20 p-3">
-              {messagesQuery.isError ? (
-                <ErrorState compact title="Não foi possível carregar as mensagens" error={messagesQuery.error} onRetry={() => void messagesQuery.refetch()} />
+              {messagesQuery.latestError ? (
+                messages.length > 0 ? (
+                  <div className="space-y-2 pr-3">
+                    {messages.map(message => (
+                      <div key={message.id} className={`flex ${message.direcao === 'saida' ? 'justify-end' : 'justify-start'}`}>
+                        <div className={`max-w-[82%] rounded-2xl px-3 py-2 text-sm ${message.direcao === 'saida' ? 'rounded-br-sm bg-primary text-primary-foreground' : 'rounded-bl-sm border bg-background'}`}>
+                          <p className="whitespace-pre-wrap break-words">{message.conteudo}</p>
+                          <p className={`mt-1 text-[10px] ${message.direcao === 'saida' ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>{formatarHoraSaoPaulo(message.created_at, true)}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : <p className="text-sm text-destructive">Não foi possível carregar as mensagens.</p>
               ) : messagesQuery.isLoading ? (
                 <p className="text-sm text-muted-foreground">Carregando mensagens...</p>
               ) : messages.length === 0 ? (

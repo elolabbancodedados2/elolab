@@ -205,4 +205,12 @@ describe('check-in com cobrança', () => {
     expect(result.success).toBe(true);
     expect(result.message).toContain('cobrança confirmada');
   });
+  it('allows a clinician to queue without creating or confirming billing', async () => {
+    const result = await checkinComCobranca(cobranca, 'normal', { deferBilling: true });
+    expect(result.success).toBe(true);
+    expect(result.billingOutcome).toBeUndefined();
+    expect(result.message).toContain('recepcao');
+    expect(mocks.createAutoBillingDetailed).not.toHaveBeenCalled();
+    expect(mocks.rpc).not.toHaveBeenCalled();
+  });
 });

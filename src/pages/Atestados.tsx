@@ -449,15 +449,15 @@ export default function Atestados() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 rounded-2xl border border-[#d8e8fb] bg-gradient-to-r from-[#f4f8ff] via-white to-[#effaff] p-4 sm:p-5">
         <div>
-          <h1 className="text-3xl font-bold text-foreground flex items-center gap-2">
-            <FileText className="h-8 w-8 text-primary" />
+          <h1 className="text-2xl font-bold tracking-tight text-[#102a56] flex items-center gap-2">
+            <span className="rounded-xl bg-[#e5f1ff] p-2 text-[#1766b3] ring-1 ring-[#d5e6fa]"><FileText className="h-5 w-5" /></span>
             Atestados e Documentos
           </h1>
-          <p className="text-muted-foreground">Emissão de atestados e declarações</p>
+          <p className="mt-1 text-sm text-muted-foreground">Emita declarações e atestados com dados conferidos do paciente.</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
           <Badge variant="outline" className="gap-1.5 text-xs">
             <FileSignature className="h-3.5 w-3.5 text-muted-foreground" />
             Assinatura manual
@@ -516,7 +516,7 @@ export default function Atestados() {
             <CardTitle>Documentos Emitidos ({filteredAtestados.length})</CardTitle>
             <div className="relative w-full sm:w-72">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input placeholder="Buscar por nome, CPF ou telefone..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="pl-9" />
+                <Input aria-label="Buscar atestados por nome, CPF ou telefone" placeholder="Buscar por nome, CPF ou telefone..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="pl-9" />
             </div>
           </div>
         </CardHeader>
@@ -591,9 +591,9 @@ export default function Atestados() {
             {/* Tipo + Template */}
             <div className="flex gap-3 items-end">
               <div className="flex-1 space-y-1.5">
-                <Label className="text-xs font-medium">Tipo de Documento *</Label>
+                <Label htmlFor="atestado-tipo" className="text-xs font-medium">Tipo de Documento *</Label>
                 <Select value={formData.tipo} onValueChange={v => setFormData({ ...formData, tipo: v })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger id="atestado-tipo"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {TIPOS_ATESTADO.map(t => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
                   </SelectContent>
@@ -607,8 +607,9 @@ export default function Atestados() {
             {/* Paciente + Médico */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Paciente *</Label>
+                <Label htmlFor="atestado-paciente" className="text-xs font-medium">Paciente *</Label>
                 <PacienteCombobox
+                  id="atestado-paciente"
                   value={formData.paciente_id}
                   onChange={id => setFormData(prev => ({ ...prev, paciente_id: id }))}
                 />
@@ -625,9 +626,9 @@ export default function Atestados() {
                 )}
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Médico *</Label>
+                <Label htmlFor="atestado-medico" className="text-xs font-medium">Médico *</Label>
                 <Select value={formData.medico_id} disabled={isMedicoOnly} onValueChange={v => setFormData({ ...formData, medico_id: v })}>
-                  <SelectTrigger><SelectValue placeholder="Selecione o médico" /></SelectTrigger>
+                  <SelectTrigger id="atestado-medico"><SelectValue placeholder="Selecione o médico" /></SelectTrigger>
                   <SelectContent>
                     {medicosDisponiveis.map(m => <SelectItem key={m.id} value={m.id}>{m.nome || m.crm} — {m.especialidade || 'CRM: ' + m.crm}</SelectItem>)}
                   </SelectContent>
@@ -637,10 +638,10 @@ export default function Atestados() {
 
             {/* Data de Emissão */}
             <div className="space-y-1.5">
-              <Label className="text-xs font-medium flex items-center gap-1">
+              <Label htmlFor="atestado-data-emissao" className="text-xs font-medium flex items-center gap-1">
                 <Calendar className="h-3 w-3" /> Data de Emissão
               </Label>
-              <Input type="date" max={today} required value={formData.data_emissao} onChange={e => setFormData({ ...formData, data_emissao: e.target.value })} className="w-48" />
+              <Input id="atestado-data-emissao" type="date" max={today} required value={formData.data_emissao} onChange={e => setFormData({ ...formData, data_emissao: e.target.value })} className="w-48" />
             </div>
 
             <Separator />
@@ -655,12 +656,12 @@ export default function Atestados() {
                 <p className="text-xs text-muted-foreground">Obrigatório para validação pelo RH. Informe o horário em que o paciente esteve na clínica.</p>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1">
-                    <Label className="text-xs">Horário de Início</Label>
-                    <Input type="time" value={formData.hora_inicio} onChange={e => setFormData({ ...formData, hora_inicio: e.target.value })} />
+                    <Label htmlFor="atestado-hora-inicio" className="text-xs">Horário de Início</Label>
+                    <Input id="atestado-hora-inicio" type="time" value={formData.hora_inicio} onChange={e => setFormData({ ...formData, hora_inicio: e.target.value })} />
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-xs">Horário de Fim</Label>
-                    <Input type="time" value={formData.hora_fim} onChange={e => setFormData({ ...formData, hora_fim: e.target.value })} />
+                    <Label htmlFor="atestado-hora-fim" className="text-xs">Horário de Fim</Label>
+                    <Input id="atestado-hora-fim" type="time" value={formData.hora_fim} onChange={e => setFormData({ ...formData, hora_fim: e.target.value })} />
                   </div>
                 </div>
               </div>
@@ -675,8 +676,9 @@ export default function Atestados() {
                 </h4>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div className="space-y-1">
-                    <Label className="text-xs">Dias de Afastamento *</Label>
+                    <Label htmlFor="atestado-dias" className="text-xs">Dias de Afastamento *</Label>
                     <Input
+                      id="atestado-dias"
                       type="number"
                       min={1}
                       value={formData.dias ?? ''}
@@ -689,12 +691,12 @@ export default function Atestados() {
                     />
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-xs">Data de Início</Label>
-                    <Input type="date" value={formData.data_inicio} onChange={e => updateDataInicio(e.target.value)} />
+                    <Label htmlFor="atestado-data-inicio" className="text-xs">Data de Início</Label>
+                    <Input id="atestado-data-inicio" type="date" value={formData.data_inicio} onChange={e => updateDataInicio(e.target.value)} />
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-xs">Data de Término (auto)</Label>
-                    <Input type="date" value={formData.data_fim} readOnly className="bg-muted" />
+                    <Label htmlFor="atestado-data-fim" className="text-xs">Data de Término (auto)</Label>
+                    <Input id="atestado-data-fim" type="date" value={formData.data_fim} readOnly className="bg-muted" />
                   </div>
                 </div>
                 {formData.dias && formData.data_inicio && formData.data_fim && (
@@ -715,9 +717,9 @@ export default function Atestados() {
                   Finalidade do Atestado
                 </h4>
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Finalidade / Apto para</Label>
+                  <Label htmlFor="atestado-finalidade" className="text-xs">Finalidade / Apto para</Label>
                   <Select value={formData.finalidade} onValueChange={v => setFormData({ ...formData, finalidade: v })}>
-                    <SelectTrigger><SelectValue placeholder="Selecione a finalidade" /></SelectTrigger>
+                    <SelectTrigger id="atestado-finalidade"><SelectValue placeholder="Selecione a finalidade" /></SelectTrigger>
                     <SelectContent>
                       {FINALIDADES_APTIDAO.map(finalidade => (
                         <SelectItem key={finalidade} value={finalidade}>{finalidade.replace(/^Apto para /, '')}</SelectItem>
@@ -727,6 +729,7 @@ export default function Atestados() {
                   </Select>
                   {formData.finalidade === 'custom' && (
                     <Input
+                      aria-label="Especificar finalidade do atestado"
                       placeholder="Descreva a finalidade..."
                       value={formData.motivo}
                       onChange={e => setFormData({ ...formData, motivo: e.target.value })}
@@ -765,8 +768,9 @@ export default function Atestados() {
             {/* Motivo */}
             {formData.tipo !== 'aptidao' && (
               <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Motivo / Justificativa</Label>
+                <Label htmlFor="atestado-motivo" className="text-xs font-medium">Motivo / Justificativa</Label>
                 <Input
+                  id="atestado-motivo"
                   placeholder="Motivo da emissão do atestado..."
                   value={formData.motivo}
                   onChange={e => setFormData({ ...formData, motivo: e.target.value })}
@@ -776,11 +780,12 @@ export default function Atestados() {
 
             {/* Observações / Corpo do Atestado */}
             <div className="space-y-1.5">
-              <Label className="text-xs font-medium">Texto do Atestado / Observações</Label>
+              <Label htmlFor="atestado-observacoes" className="text-xs font-medium">Texto do Atestado / Observações</Label>
               <p className="text-[11px] text-muted-foreground">
                 Variáveis disponíveis: {'{{nome_paciente}}'}, {'{{cpf_paciente}}'}, {'{{data_emissao}}'}, {'{{dias}}'}, {'{{data_inicio}}'}, {'{{data_fim}}'}, {'{{hora_inicio}}'}, {'{{hora_fim}}'}, {'{{medico_nome}}'}, {'{{medico_crm}}'}, {'{{cid}}'}
               </p>
               <Textarea
+                id="atestado-observacoes"
                 value={formData.observacoes}
                 onChange={e => setFormData({ ...formData, observacoes: e.target.value })}
                 placeholder="Texto do atestado ou observações adicionais..."

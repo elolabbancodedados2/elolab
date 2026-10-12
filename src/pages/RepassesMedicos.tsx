@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, CheckCircle2, HandCoins, Play, RefreshCw, Save } from 'lucide-react';
+import { AlertTriangle, BadgeCheck, CheckCircle2, Clock3, HandCoins, Play, RefreshCw, Save, Wallet } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -16,10 +16,11 @@ import { isValidDateOnly, todaySaoPauloDateOnly, toDateOnly } from '@/lib/dateOn
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { ErrorState } from '@/components/ErrorState';
 import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
+import { podeAprovarRepasse, podePagarRepasse, receitaOrigemQuitada } from '@/lib/repasseWorkflow';
 
 type TipoRepasse = 'percentual' | 'fixo';
 interface MedicoRepasse { id: string; nome: string | null; crm: string; tipo_repasse: TipoRepasse | null; percentual_repasse: number | null; valor_repasse_fixo: number | null }
-interface Repasse { id: string; valor_base: number; valor_repasse: number; percentual: number; tipo_calculo: TipoRepasse; valor_configurado: number | null; status: string; lancamento_pagamento_id?: string | null; medicos?: { nome: string | null; crm: string } | null }
+interface Repasse { id: string; lancamento_id: string; valor_base: number; valor_repasse: number; percentual: number; tipo_calculo: TipoRepasse; valor_configurado: number | null; status: string; lancamento_pagamento_id?: string | null; lancamentos?: { status: string } | null; medicos?: { nome: string | null; crm: string } | null }
 
 const moeda = (valor: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valor || 0);
 
@@ -69,7 +70,7 @@ function ConfiguracaoMedico({ medico, onSaved }: { medico: MedicoRepasse; onSave
     }
   };
 
-  return <div className="rounded-lg border p-4 space-y-3">
+  return <div className="space-y-3 rounded-xl border border-[#dceaf5] bg-gradient-to-br from-white to-[#f7fbfd] p-4 shadow-sm">
     <div className="flex flex-wrap items-center gap-2"><div><p className="font-medium">{medico.nome || medico.crm}</p><p className="text-xs text-muted-foreground">CRM {medico.crm}</p></div>{repasseZerado && <Badge variant="outline" className="border-warning/40 text-warning">Repasse zerado</Badge>}</div>
     <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
       <div className="space-y-1.5"><Label htmlFor={`tipo-${medico.id}`}>Tipo de repasse</Label><Select value={tipo} onValueChange={(value) => trocarTipo(value as TipoRepasse)} disabled={saving}><SelectTrigger id={`tipo-${medico.id}`} className="min-h-11"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="percentual">Percentual da receita</SelectItem><SelectItem value="fixo">Valor fixo por atendimento</SelectItem></SelectContent></Select></div>
@@ -96,22 +97,23 @@ export default function RepassesMedicos() {
   const [dataPagamentoRepasse, setDataPagamentoRepasse] = useState(() => todaySaoPauloDateOnly());
   const [observacoesPagamentoRepasse, setObservacoesPagamentoRepasse] = useState('');
   const medicosQuery = useQuery({ queryKey: ['medicos-repasse', profile?.clinica_id ?? null], enabled: !!user && !!profile?.clinica_id, queryFn: async () => {
-    const { data, error } = await (supabase as any).from('medicos').select('id,nome,crm,tipo_repasse,percentual_repasse,valor_repasse_fixo').eq('clinica_id', profile?.clinica_id ?? '').eq('ativo', true).order('nome');
+    const { data, error } = await (supabase as any).rpc('listar_medicos_repasse_equipe');
     if (error) throw error; return (data ?? []) as MedicoRepasse[];
   }});
   const medicos = medicosQuery.data ?? [];
   const repassesQuery = useQuery({ queryKey: ['repasses-medicos', profile?.clinica_id ?? null, competencia], enabled: competenciaValida && !!user && !!profile?.clinica_id, queryFn: async () => {
     const inicio = `${competencia}-01`;
     const fim = toDateOnly(new Date(Number(competencia.slice(0, 4)), Number(competencia.slice(5, 7)), 1));
-    return buscarEmBlocos<Repasse>(() => (supabase as any).from('repasses_medicos').select('*,medicos(nome,crm)')
+    return buscarEmBlocos<Repasse>(() => (supabase as any).from('repasses_medicos').select('*,medicos(nome,crm),lancamentos!repasses_medicos_lancamento_id_fkey(status)')
       .eq('clinica_id', profile?.clinica_id ?? '').gte('competencia', inicio).lt('competencia', fim)
       .order('created_at').order('id'));
   }});
   const repasses = repassesQuery.data ?? [];
   const repassesAtingiramLimite = repasses.length >= LIMITE_BUSCA_EM_BLOCOS;
+  const repassesComOrigemEstornada = repasses.filter(r => r.status !== 'cancelado' && !receitaOrigemQuitada(r.lancamentos?.status));
   const totais = useMemo(() => ({
-    base: repasses.filter(r => r.status !== 'cancelado').reduce((s, r) => s + Number(r.valor_base), 0),
-    devido: repasses.filter(r => r.status !== 'cancelado').reduce((s, r) => s + Number(r.valor_repasse), 0),
+    base: repasses.filter(r => r.status === 'pago' || (r.status !== 'cancelado' && receitaOrigemQuitada(r.lancamentos?.status))).reduce((s, r) => s + Number(r.valor_base), 0),
+    devido: repasses.filter(r => r.status === 'pago' || (r.status !== 'cancelado' && receitaOrigemQuitada(r.lancamentos?.status))).reduce((s, r) => s + Number(r.valor_repasse), 0),
     pago: repasses.filter(r => r.status === 'pago').reduce((s, r) => s + Number(r.valor_repasse), 0),
   }), [repasses]);
 
@@ -131,12 +133,21 @@ export default function RepassesMedicos() {
   };
   const mudarStatus = async (id: string, status: string) => {
     if (!profile?.clinica_id) { toast.error('Clínica não identificada. Atualize a sessão e tente novamente.'); return; }
+    const repasseAtual = repasses.find(repasse => repasse.id === id);
+    if (!repasseAtual) { toast.error('Repasse não encontrado na lista atualizada. Recarregue e tente novamente.'); return; }
     if (status === 'pago' && (!isValidDateOnly(dataPagamentoRepasse) || dataPagamentoRepasse > todaySaoPauloDateOnly())) {
       toast.error('Informe uma data de pagamento válida, igual ou anterior a hoje.');
       return;
     }
     setStatusProcessingId(id);
     try {
+      const { data: origemAtual, error: origemError } = await (supabase as any).from('lancamentos')
+        .select('status').eq('id', repasseAtual.lancamento_id).eq('clinica_id', profile.clinica_id).maybeSingle();
+      if (origemError) throw origemError;
+      if (!receitaOrigemQuitada(origemAtual?.status)) {
+        await queryClient.invalidateQueries({ queryKey: ['repasses-medicos'] });
+        throw new Error('A receita de origem foi estornada ou deixou de estar quitada. O repasse não pode avançar.');
+      }
       let jaRegistrado = false;
       if (status === 'pago') {
         const { data, error } = await (supabase as any).rpc('registrar_pagamento_repasse_medico', {
@@ -149,11 +160,11 @@ export default function RepassesMedicos() {
         if (!data?.success) throw new Error(data?.error || 'O pagamento não foi registrado.');
         jaRegistrado = Boolean(data.ja_registrado);
       } else {
-        const { data, error } = await (supabase as any).from('repasses_medicos').update({
-          status, aprovado_em: new Date().toISOString(),
-        }).eq('id', id).eq('clinica_id', profile.clinica_id).eq('status', 'pendente').select('id').maybeSingle();
+        const { data, error } = await (supabase as any).rpc('aprovar_repasse_medico', {
+          p_repasse_id: id,
+        });
         if (error) throw error;
-        if (!data) throw new Error('Este repasse já mudou de status. Atualize a lista antes de continuar.');
+        if (!data?.success) throw new Error(data?.error || 'Este repasse mudou de status. Atualize a lista antes de continuar.');
       }
       await queryClient.invalidateQueries({ queryKey: ['repasses-medicos'] });
       if (status === 'pago') {
@@ -179,13 +190,19 @@ export default function RepassesMedicos() {
   if (medicosQuery.isError) return <ErrorState title="Não foi possível carregar os médicos" error={medicosQuery.error} onRetry={() => void medicosQuery.refetch()} />;
   if (repassesQuery.isError) return <ErrorState title="Não foi possível carregar os repasses" error={repassesQuery.error} onRetry={() => void repassesQuery.refetch()} />;
 
-  return <div className="space-y-6">
-    <div><h1 className="text-2xl font-bold">Repasses médicos</h1><p className="text-sm text-muted-foreground">Configure valor fixo ou percentual e concilie honorários sobre receitas quitadas.</p></div>
-    <div className="flex flex-wrap items-end gap-3"><div className="space-y-1.5"><Label htmlFor="competencia">Competência</Label><Input id="competencia" className="min-h-11" type="month" value={competencia} onChange={e => setCompetencia(e.target.value)} disabled={processing} />{!competenciaValida && <p className="text-xs text-destructive">Selecione uma competência válida.</p>}</div><Button className="min-h-11" onClick={gerar} disabled={processing || !competenciaValida}>{processing ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4" />}Conciliar recebimentos</Button></div>
-    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{([['Base recebida', totais.base], ['Total de repasses', totais.devido], ['Pago', totais.pago], ['Em aberto', Math.max(0, totais.devido - totais.pago)]] as const).map(([label, valor]) => <Card key={label}><CardContent className="p-4"><p className="text-xs text-muted-foreground">{label}</p><p className="text-xl font-bold">{moeda(valor)}</p></CardContent></Card>)}</div>
-    <Card><CardHeader><CardTitle className="text-base">Regra por médico</CardTitle><CardDescription>Escolha uma regra e salve. Alterações valem para novas conciliações.</CardDescription></CardHeader><CardContent className="grid gap-3 xl:grid-cols-2">{medicosQuery.isLoading ? <p className="text-sm text-muted-foreground">Carregando médicos…</p> : medicos.length === 0 ? <p className="text-sm text-muted-foreground">Nenhum médico ativo cadastrado para esta clínica.</p> : medicos.map(medico => <ConfiguracaoMedico key={medico.id} medico={medico} onSaved={() => void queryClient.invalidateQueries({ queryKey: ['medicos-repasse'] })} />)}</CardContent></Card>
-    <Card>
-      <CardHeader>
+  return <div className="space-y-6 pb-8">
+    <div className="flex flex-col gap-4 rounded-2xl border border-[#d7e9f7] bg-gradient-to-r from-[#f1fbfd] via-white to-[#eff4ff] p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:p-5"><div><h1 className="flex items-center gap-2 text-2xl font-bold font-display tracking-tight"><span className="rounded-xl bg-[#eaf4ff] p-2 text-[#1766a8] ring-1 ring-[#d1e5f8]"><HandCoins className="h-5 w-5" /></span>Repasses médicos</h1><p className="mt-1 text-sm text-muted-foreground">Configure valor fixo ou percentual e concilie honorários sobre receitas quitadas.</p></div></div>
+    <div className="flex flex-wrap items-end gap-3 rounded-xl border border-[#dceaf5] bg-white p-4 shadow-sm"><div className="space-y-1.5"><Label htmlFor="competencia">Competência</Label><Input id="competencia" className="min-h-11 w-full sm:w-52" type="month" value={competencia} onChange={e => setCompetencia(e.target.value)} disabled={processing} />{!competenciaValida && <p className="text-xs text-destructive">Selecione uma competência válida.</p>}</div><Button className="min-h-11" onClick={gerar} disabled={processing || !competenciaValida}>{processing ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4" />}Conciliar recebimentos</Button></div>
+    {repassesComOrigemEstornada.length > 0 && <div role="alert" className="flex items-start gap-2 rounded-xl border border-[#f2d6d0] bg-[#fff5f2] p-3 text-sm text-[#914b43]"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /><p>{repassesComOrigemEstornada.length} repasse(s) estão vinculados a receitas que não aparecem mais como quitadas. Aprovação e pagamento ficam bloqueados; revise os casos que já constam como pagos.</p></div>}
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{([
+      { label: 'Base recebida', value: totais.base, icon: Wallet, color: 'text-[#1766a8]', bg: 'bg-[#eaf4ff]', border: 'border-[#d1e5f8]' },
+      { label: 'Total de repasses', value: totais.devido, icon: HandCoins, color: 'text-[#6559a6]', bg: 'bg-[#f0edff]', border: 'border-[#ddd8fa]' },
+      { label: 'Pago', value: totais.pago, icon: BadgeCheck, color: 'text-[#147765]', bg: 'bg-[#e5f7f2]', border: 'border-[#c5eadd]' },
+      { label: 'Em aberto', value: Math.max(0, totais.devido - totais.pago), icon: Clock3, color: 'text-[#916813]', bg: 'bg-[#fff8e8]', border: 'border-[#f3e6bf]' },
+    ] as const).map(({ label, value, icon: Icon, color, bg, border }) => <Card key={label} className={`h-full border bg-gradient-to-br from-white to-[#f8fbfd] shadow-sm transition-shadow hover:shadow-md ${border}`}><CardContent className="flex items-start justify-between gap-2 p-4"><div><p className="text-xs font-medium text-muted-foreground">{label}</p><p className={`mt-1 text-lg font-bold tabular-nums sm:text-xl ${color}`}>{moeda(value)}</p></div><span className={`rounded-xl p-2.5 ring-1 ring-inset ring-black/[0.03] ${bg}`}><Icon className={`h-4 w-4 ${color}`} /></span></CardContent></Card>)}</div>
+    <Card className="overflow-hidden border-[#dceaf5] shadow-sm"><CardHeader className="bg-gradient-to-r from-[#f5fbfd] to-white"><CardTitle className="text-base">Regra por médico</CardTitle><CardDescription>Escolha uma regra e salve. Alterações valem para novas conciliações.</CardDescription></CardHeader><CardContent className="grid gap-3 xl:grid-cols-2">{medicosQuery.isLoading ? <p className="text-sm text-muted-foreground">Carregando médicos…</p> : medicos.length === 0 ? <p className="text-sm text-muted-foreground">Nenhum médico ativo cadastrado para esta clínica.</p> : medicos.map(medico => <ConfiguracaoMedico key={medico.id} medico={medico} onSaved={() => void queryClient.invalidateQueries({ queryKey: ['medicos-repasse'] })} />)}</CardContent></Card>
+    <Card className="overflow-hidden border-[#dceaf5] shadow-sm">
+      <CardHeader className="bg-gradient-to-r from-[#f5fbfd] to-white">
         <CardTitle className="text-base"><HandCoins className="mr-2 inline h-4 w-4" />Fechamento</CardTitle>
         <CardDescription>O pagamento registrado gera uma despesa no Fluxo de Caixa. A transferência ao médico é realizada fora do EloLab.</CardDescription>
       </CardHeader>
@@ -198,10 +215,11 @@ export default function RepassesMedicos() {
               <TableCell>{r.medicos?.nome || r.medicos?.crm}<p className="text-xs text-muted-foreground">{r.tipo_calculo === 'fixo' ? `${moeda(r.valor_configurado || r.valor_repasse)} fixo` : `${r.percentual}%`}</p></TableCell>
               <TableCell className="text-right">{moeda(r.valor_base)}</TableCell>
               <TableCell className="text-right font-medium">{moeda(r.valor_repasse)}</TableCell>
-              <TableCell><Badge variant="outline">{r.status}</Badge>{r.status === 'pago' && !r.lancamento_pagamento_id && <p className="mt-1 text-[10px] text-warning">Pago antes do vínculo automático</p>}</TableCell>
+              <TableCell><Badge variant="outline" className={r.status === 'pago' ? 'border-[#c5eadd] bg-[#e5f7f2] text-[#147765]' : r.status === 'aprovado' ? 'border-[#d1e5f8] bg-[#eaf4ff] text-[#1766a8]' : 'border-[#f3e6bf] bg-[#fff8e8] text-[#916813]'}>{r.status === 'pago' ? 'Pago' : r.status === 'aprovado' ? 'Aprovado' : 'Pendente'}</Badge>{r.status === 'pago' && !r.lancamento_pagamento_id && <p className="mt-1 text-[10px] text-warning">Pago antes do vínculo automático</p>}</TableCell>
               <TableCell>
-                {r.status === 'pendente' && <Button size="sm" variant="outline" disabled={statusProcessingId !== null} onClick={() => void mudarStatus(r.id, 'aprovado')}>Aprovar</Button>}
-                {r.status === 'aprovado' && <Button size="sm" disabled={statusProcessingId !== null} onClick={() => { setFormaPagamentoRepasse('transferencia'); setDataPagamentoRepasse(todaySaoPauloDateOnly()); setObservacoesPagamentoRepasse(''); setRepassePagamentoConfirmar(r); }}><CheckCircle2 className="mr-1 h-4 w-4" />Registrar pagamento</Button>}
+                {podeAprovarRepasse(r.status, r.lancamentos?.status) && <Button size="sm" variant="outline" disabled={statusProcessingId !== null} onClick={() => void mudarStatus(r.id, 'aprovado')}>Aprovar</Button>}
+                {podePagarRepasse(r.status, r.lancamentos?.status) && <Button size="sm" disabled={statusProcessingId !== null} onClick={() => { setFormaPagamentoRepasse('transferencia'); setDataPagamentoRepasse(todaySaoPauloDateOnly()); setObservacoesPagamentoRepasse(''); setRepassePagamentoConfirmar(r); }}><CheckCircle2 className="mr-1 h-4 w-4" />Registrar pagamento</Button>}
+                {r.status !== 'pago' && r.status !== 'cancelado' && !receitaOrigemQuitada(r.lancamentos?.status) && <span className="text-xs text-[#a44f43]">Receita estornada</span>}
               </TableCell>
             </TableRow>)}</TableBody>
           </Table>

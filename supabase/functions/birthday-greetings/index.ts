@@ -1,7 +1,23 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { cronOrUserOk, cronForbidden, clinicaDoChamador } from '../_shared/cronAuth.ts';
+import { cronOrUserOk, cronForbidden, cronSecretOk, clinicaAdminDoChamador } from '../_shared/cronAuth.ts';
 import { corsPadrao } from '../_shared/cors.ts';
 import { sendBrandedBrevoRequest } from '../_shared/brevoEmail.ts';
+
+async function claimAutomationDelivery(supabase: any, clinicId: string, key: string): Promise<boolean> {
+  const { data, error } = await supabase.rpc('claim_automation_delivery', { p_clinica_id: clinicId, p_chave: key });
+  if (error) throw new Error(`Falha ao reservar automatic delivery: ${error.message}`);
+  return data === true;
+}
+
+async function finishAutomationDelivery(supabase: any, clinicId: string, key: string, state: 'completed' | 'uncertain' = 'completed') {
+  const { error } = await supabase.rpc('finish_automation_delivery', { p_clinica_id: clinicId, p_chave: key, p_estado: state });
+  if (error) console.error(`Falha ao finalizar reserva ${key}:`, error);
+}
+
+async function releaseAutomationDelivery(supabase: any, clinicId: string, key: string) {
+  const { error } = await supabase.rpc('release_automation_delivery', { p_clinica_id: clinicId, p_chave: key });
+  if (error) console.error(`Falha ao liberar reserva ${key}:`, error);
+}
 
 // Atribuído em cada request (reflete a origem permitida). Helpers
 // top-level (json/reply) capturam esta variável por closure.
@@ -55,7 +71,9 @@ Deno.serve(async (req) => {
     const [, mes, dia] = hojeBrasil.split('-')
 
     // Disparo manual só alcança a clínica de quem clicou; o cron segue global.
-    const clinicaAlvo = await clinicaDoChamador(req, supabase)
+    const chamadaDoCron = cronSecretOk(req)
+    const clinicaAlvo = chamadaDoCron ? null : await clinicaAdminDoChamador(req, supabase)
+    if (!chamadaDoCron && !clinicaAlvo) return cronForbidden(corsHeaders)
 
     const limitePacientes = 20_000
     const tamanhoPagina = 1_000
@@ -136,6 +154,9 @@ Deno.serve(async (req) => {
       }
       if (existing) continue
 
+      const deliveryKey = `birthday:${hojeBrasil}:${paciente.id}`
+      if (!(await claimAutomationDelivery(supabase, paciente.clinica_id, deliveryKey))) continue
+
       const conteudo = template.conteudo
         .replace(/\{\{paciente_nome\}\}/g, paciente.nome)
         .replace(/\{\{clinica_nome\}\}/g, 'EloLab Clínica')
@@ -159,6 +180,7 @@ Deno.serve(async (req) => {
         })
 
         if (emailRes.ok) {
+          await finishAutomationDelivery(supabase, paciente.clinica_id, deliveryKey)
           successCount++
           const { error: queueError } = await supabase.from('notification_queue').insert({
             template_id: template.id,
@@ -178,9 +200,12 @@ Deno.serve(async (req) => {
             console.error(`E-mail de aniversário enviado, mas não foi registrado na fila (${paciente.id}):`, queueError)
           }
         } else {
+          if (emailRes.status >= 500) await finishAutomationDelivery(supabase, paciente.clinica_id, deliveryKey, 'uncertain')
+          else await releaseAutomationDelivery(supabase, paciente.clinica_id, deliveryKey)
           errorCount++
         }
       } catch (err) {
+        await finishAutomationDelivery(supabase, paciente.clinica_id, deliveryKey, 'uncertain')
         errorCount++
       }
     }

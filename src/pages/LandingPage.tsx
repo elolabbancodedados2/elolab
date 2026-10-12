@@ -345,7 +345,7 @@ export default function LandingPage() {
                 <button
                   key={n.id}
                   onClick={() => scrollTo(n.id)}
-                  className="text-[13px] font-bold tracking-wide hover:text-[hsl(12,76%,61%)] transition-colors relative pb-1 group"
+                  className="min-h-11 min-w-11 text-[13px] font-bold tracking-wide hover:text-[hsl(12,76%,61%)] transition-colors relative pb-1 group"
                   style={{ color: C.dark }}
                 >
                   {n.l}
@@ -373,7 +373,7 @@ export default function LandingPage() {
               </Button>
             </div>
             <button
-              className="lg:hidden p-2"
+              className="lg:hidden min-h-11 min-w-11 p-2"
               style={{ color: C.dark }}
               onClick={() => setMobileMenu(!mobileMenu)}
               aria-label={mobileMenu ? 'Fechar menu de navegação' : 'Abrir menu de navegação'}
@@ -608,7 +608,7 @@ export default function LandingPage() {
             ) : plansError || plans.length === 0 ? (
               <div className="max-w-xl mx-auto text-center rounded-2xl bg-white/80 border border-[hsl(20,30%,90%)] p-6">
                 <p style={{ color: C.text }}>Não foi possível carregar os planos agora. Fale com a equipe para receber os valores vigentes.</p>
-                <a className="inline-block mt-3 font-semibold" style={{ color: C.coral }} href="https://wa.me/5511937687369" target="_blank" rel="noopener noreferrer">Consultar planos pelo WhatsApp</a>
+                <a className="inline-flex min-h-11 items-center mt-3 font-semibold" style={{ color: C.coral }} href="https://wa.me/5511937687369" target="_blank" rel="noopener noreferrer">Consultar planos pelo WhatsApp</a>
               </div>
             ) : <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
               {plans.map((plan) => (
@@ -785,7 +785,7 @@ export default function LandingPage() {
               <p className="text-sm" style={{ color: C.textL }}>
                 Ficou com alguma dúvida?{' '}
                 <a href="https://wa.me/5511937687369" target="_blank" rel="noopener noreferrer"
-                  className="font-bold hover:underline" style={{ color: C.coral }}>
+                  className="inline-flex min-h-11 items-center font-bold hover:underline" style={{ color: C.coral }}>
                   Fale agora com um especialista no WhatsApp
                 </a>
               </p>
@@ -843,12 +843,12 @@ export default function LandingPage() {
                 <div className="mt-4 flex gap-3">
                   <a href="https://wa.me/5511937687369" target="_blank" rel="noopener noreferrer"
                     aria-label="Falar com o EloLab pelo WhatsApp"
-                    className="w-9 h-9 rounded-lg flex items-center justify-center bg-white/10 hover:bg-white/20 transition-colors">
+                    className="w-11 h-11 rounded-lg flex items-center justify-center bg-white/10 hover:bg-white/20 transition-colors">
                     <Phone className="w-4 h-4 text-white/70" />
                   </a>
                   <a href="mailto:suporte@elolab.com.br"
                     aria-label="Enviar e-mail para o suporte do EloLab"
-                    className="w-9 h-9 rounded-lg flex items-center justify-center bg-white/10 hover:bg-white/20 transition-colors">
+                    className="w-11 h-11 rounded-lg flex items-center justify-center bg-white/10 hover:bg-white/20 transition-colors">
                     <Mail className="w-4 h-4 text-white/70" />
                   </a>
                 </div>
@@ -856,18 +856,18 @@ export default function LandingPage() {
               <div>
                 <h4 className="font-bold text-sm text-white mb-4">Produto</h4>
                 <ul className="space-y-2 text-sm text-white/50">
-                  <li><button onClick={() => scrollTo('recursos')} className="hover:text-white transition-colors">Recursos</button></li>
-                  <li><button onClick={() => scrollTo('modulos')} className="hover:text-white transition-colors">Módulos</button></li>
-                  <li><button onClick={() => scrollTo('planos')} className="hover:text-white transition-colors">Preços</button></li>
-                  <li><button onClick={() => scrollTo('produto-na-pratica')} className="hover:text-white transition-colors">Conheça os fluxos</button></li>
+                  <li><button onClick={() => scrollTo('recursos')} className="inline-flex min-h-11 min-w-11 items-center hover:text-white transition-colors">Recursos</button></li>
+                  <li><button onClick={() => scrollTo('modulos')} className="inline-flex min-h-11 min-w-11 items-center hover:text-white transition-colors">Módulos</button></li>
+                  <li><button onClick={() => scrollTo('planos')} className="inline-flex min-h-11 min-w-11 items-center hover:text-white transition-colors">Preços</button></li>
+                  <li><button onClick={() => scrollTo('produto-na-pratica')} className="inline-flex min-h-11 min-w-11 items-center hover:text-white transition-colors">Conheça os fluxos</button></li>
                 </ul>
               </div>
               <div>
                 <h4 className="font-bold text-sm text-white mb-4">Legal</h4>
                 <ul className="space-y-2 text-sm text-white/50">
-                  <li><a href="/politica-privacidade" className="hover:text-white transition-colors">Política de Privacidade</a></li>
-                  <li><a href="/politica-cookies" className="hover:text-white transition-colors">Política de Cookies</a></li>
-                  <li><a href="/termos-uso" className="hover:text-white transition-colors">Termos de Uso</a></li>
+                  <li><a href="/politica-privacidade" className="inline-flex min-h-11 min-w-11 items-center hover:text-white transition-colors">Política de Privacidade</a></li>
+                  <li><a href="/politica-cookies" className="inline-flex min-h-11 min-w-11 items-center hover:text-white transition-colors">Política de Cookies</a></li>
+                  <li><a href="/termos-uso" className="inline-flex min-h-11 min-w-11 items-center hover:text-white transition-colors">Termos de Uso</a></li>
                 </ul>
               </div>
               <div>

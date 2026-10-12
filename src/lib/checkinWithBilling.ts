@@ -16,12 +16,19 @@ export type CheckinWithBillingResult = OperationalTransitionResult & {
 export async function checkinComCobranca(
   cobranca: AutoBillingParams,
   prioridade: PrioridadeFila = 'normal',
+  options: { deferBilling?: boolean } = {},
 ): Promise<CheckinWithBillingResult> {
   if (!cobranca.clinicaId) {
     return { success: false, message: 'Não foi possível validar a clínica do atendimento. Atualize o perfil antes de fazer check-in.', actions: [] };
   }
   const checkin = await atomicCheckin(cobranca.agendamentoId, cobranca.clinicaId, prioridade);
   if (!checkin.success) return checkin;
+  if (options.deferBilling) {
+    return {
+      ...checkin,
+      message: 'Paciente encaminhado para a fila. A recepcao deve confirmar a cobranca antes do atendimento.',
+    };
+  }
 
   try {
     const billingOutcome = await createAutoBillingDetailed(cobranca);

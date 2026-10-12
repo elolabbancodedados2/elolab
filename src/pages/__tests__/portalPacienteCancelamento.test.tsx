@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
@@ -166,6 +167,33 @@ describe('PortalPaciente — cancelamento de consulta', () => {
     fireEvent.click(screen.getByRole('button', { name: /cancelar/i }));
     expect(await screen.findByRole('alertdialog')).toBeVisible();
   }
+
+  it('apresenta o painel de cuidado como uma região acessível e identifica as abas', async () => {
+    render(<PortalPaciente />);
+
+    expect(await screen.findByRole('region', { name: 'Resumo do seu cuidado' })).toBeVisible();
+    expect(await screen.findByText('Quinta-feira, 15 de outubro')).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /Agendar/i })).toHaveAccessibleName(/Agendar/i);
+    expect(screen.getByRole('tab', { name: /Consultas/i })).toHaveAccessibleName(/Consultas/i);
+    expect(screen.getByRole('tab', { name: /Exames/i })).toHaveAccessibleName(/Exames/i);
+    expect(screen.getByRole('tab', { name: /Receitas/i })).toHaveAccessibleName(/Receitas/i);
+    expect(screen.getByRole('tab', { name: /Histórico/i })).toHaveAccessibleName(/Histórico/i);
+    expect(screen.getByRole('tab', { name: /Financeiro/i })).toHaveAccessibleName(/Financeiro/i);
+    expect(screen.getByRole('tablist', { name: 'Seções do portal' })).toHaveAccessibleName('Seções do portal');
+    expect(screen.getAllByRole('tab')).toHaveLength(6);
+  });
+
+  it('permite navegar pelas abas com as setas do teclado', async () => {
+    render(<PortalPaciente />);
+    await screen.findByRole('region', { name: 'Resumo do seu cuidado' });
+
+    const user = userEvent.setup();
+    const consultasTab = screen.getByRole('tab', { name: /Consultas/i });
+    await user.click(consultasTab);
+    await user.keyboard('{ArrowRight}');
+
+    await waitFor(() => expect(screen.getByRole('tab', { name: /Exames/i })).toHaveFocus());
+  });
 
   it('pede confirmação e atualiza a consulta após o cancelamento', async () => {
     await iniciarCancelamento();

@@ -117,7 +117,7 @@ function FilaCard({ item, pos, pacienteNome, medicoNome, salaNome, canRemove, ac
         status === 'em_atendimento' && 'border-primary/40 shadow-lg shadow-primary/10 ring-1 ring-primary/20',
         status === 'finalizado' && 'opacity-60',
       )}>
-        <div className="flex items-center gap-4 p-4">
+        <div className="flex flex-wrap items-center gap-3 p-4 sm:flex-nowrap sm:gap-4">
           {/* Position badge */}
           <div className={cn(
             'h-12 w-12 rounded-xl flex items-center justify-center shrink-0 text-xl font-bold',
@@ -149,7 +149,7 @@ function FilaCard({ item, pos, pacienteNome, medicoNome, salaNome, canRemove, ac
           </div>
 
           {/* Timer */}
-          <div className="text-right shrink-0 mr-2">
+          <div className="ml-auto text-right shrink-0 sm:ml-0 sm:mr-2">
             <p className={cn('text-sm font-medium tabular-nums', corEspera(item.horario_chegada))}>
               <Timer className="h-3.5 w-3.5 inline mr-1" />
               {calcularEspera(item.horario_chegada)}
@@ -171,7 +171,7 @@ function FilaCard({ item, pos, pacienteNome, medicoNome, salaNome, canRemove, ac
 
         {/* Actions */}
         {status !== 'finalizado' && (
-          <div className="flex items-center gap-2 px-4 pb-3 pt-1 border-t border-border/50">
+          <div className="flex flex-wrap items-center gap-2 px-4 pb-3 pt-2 border-t border-border/50">
             {status === 'aguardando' && (
               <>
                 <Button size="sm" className="gap-1.5 h-11 px-3 text-xs sm:h-9" onClick={onChamar} disabled={actionsDisabled}>
@@ -251,16 +251,16 @@ export default function Fila() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { profile, hasAnyRole } = useSupabaseAuth();
-  const { medicoId: meuMedicoId, isMedicoOnly } = useCurrentMedico();
+  const { medicoId: meuMedicoId, isMedicoOnly, isLoading: loadingCurrentMedico, error: currentMedicoError, refetch: refetchCurrentMedico } = useCurrentMedico();
   const [apenasMeusEscolhido, setApenasMeus] = useState<boolean | null>(null);
   const apenasMeus = apenasMeusEscolhido ?? isMedicoOnly;
   const canRemoveFromQueue = hasAnyRole(['admin', 'recepcao']);
   const podeVerValorCobranca = hasAnyRole(['admin', 'recepcao']);
   const today = todaySaoPauloDateOnly();
 
-  const filaQuery = useFilaAtendimento();
+  const filaQuery = useFilaAtendimento({ enabled: !isMedicoOnly || !!meuMedicoId });
   const { data: fila = [], isLoading: loadingFila } = filaQuery;
-  const agendamentosQuery = useAgendamentos(today);
+  const agendamentosQuery = useAgendamentos(today, { enabled: !isMedicoOnly || !!meuMedicoId });
   const { data: agendamentos = [], isLoading: loadingAgendamentos } = agendamentosQuery;
   const medicosQuery = useMedicos();
   const { data: medicos = [] } = medicosQuery;
@@ -336,19 +336,16 @@ export default function Fila() {
    * Quem já tem triagem hoje. Só busca quando a clínica usa triagem — nas
    * outras a consulta seria peso morto em toda abertura da fila.
    */
-  const triagensQuery = useQuery({
+  const triagensQuery = useQuery<string[]>({
     queryKey: ['fila-triagens', profile?.clinica_id, today, idsAgendamentosHoje],
     staleTime: 15_000,
     refetchInterval: 15_000,
     refetchIntervalInBackground: false,
     queryFn: async () => {
       if (idsAgendamentosHoje.length === 0) return [];
-      const { data, error } = await supabase
-        .from('triagens')
-        .select('agendamento_id')
-        .eq('clinica_id', profile!.clinica_id!)
-        .in('agendamento_id', idsAgendamentosHoje)
-        .not('agendamento_id', 'is', null);
+      const { data, error } = await (supabase as any).rpc('listar_agendamentos_com_triagem', {
+        p_agendamento_ids: idsAgendamentosHoje,
+      });
       if (error) throw error;
       return (data ?? []).map((t: any) => t.agendamento_id as string);
     },
@@ -545,7 +542,7 @@ export default function Fila() {
           ? agendamento.observacoes
           : null,
         clinicaId: profile?.clinica_id,
-      }, prioridade);
+      }, prioridade, { deferBilling: isMedicoOnly });
       if (!result.success) throw new Error(result.message);
       refresh();
       setIsAddOpen(false);
@@ -553,6 +550,10 @@ export default function Fila() {
       setSelectedPrioridade('normal');
       if (result.actions.length === 0) {
         toast.info('Este agendamento já estava na fila.');
+      } else if (isMedicoOnly) {
+        toast.success('Paciente adicionado à fila!', {
+          description: 'A recepção deve confirmar a cobrança antes do atendimento.',
+        });
       } else {
         toast.success('Paciente adicionado à fila!', {
           description: prioridade === 'normal' ? undefined : `Prioridade ${prioridade} aplicada.`,
@@ -565,22 +566,7 @@ export default function Fila() {
     }
   };
 
-  // TTS voice call helper
-  const chamarPacienteVoz = (pacienteNome: string, salaNome: string) => {
-    if (!('speechSynthesis' in window)) return;
-    window.speechSynthesis.cancel();
-    const texto = `Paciente ${pacienteNome}, por favor dirija-se ${salaNome === '-' ? 'à recepção' : `à ${salaNome}`}.`;
-    for (let i = 0; i < 2; i++) {
-      const utterance = new SpeechSynthesisUtterance(texto);
-      utterance.lang = 'pt-BR';
-      utterance.rate = 0.9;
-      utterance.volume = 1.0;
-      const voices = window.speechSynthesis.getVoices();
-      const ptVoice = voices.find(v => v.lang.startsWith('pt-BR')) || voices.find(v => v.lang.startsWith('pt'));
-      if (ptVoice) utterance.voice = ptVoice;
-      window.speechSynthesis.speak(utterance);
-    }
-  };
+
 
   /**
    * Finaliza de verdade, já sabendo se agenda retorno.
@@ -661,9 +647,8 @@ export default function Fila() {
         return;
       }
 
-      const nome = getPacienteNome(agendamentoId);
-      const sala = getSalaNome(salaId);
-      chamarPacienteVoz(nome, sala);
+      // O Painel TV é o único dispositivo que anuncia chamadas; evita duas
+      // vozes simultâneas em recepção e sala de espera.
       refresh();
       toast.success(statusEsperado === 'chamado' ? '📢 Paciente chamado novamente!' : '📢 Paciente chamado!');
       return;
@@ -871,9 +856,9 @@ export default function Fila() {
   // O vínculo médico é necessário para aplicar o escopo individual da fila.
   // Sem esperar essa consulta, o primeiro render podia mostrar a fila da
   // clínica inteira antes de o filtro "só meus" ser resolvido.
-  if (isMedicoOnly && medicosQuery.isLoading) return <ListSkeleton items={4} />;
-  if (isMedicoOnly && medicosQuery.isError) {
-    return <ErrorState title="Não foi possível identificar seu vínculo médico" error={medicosQuery.error} onRetry={() => void medicosQuery.refetch()} />;
+  if (isMedicoOnly && loadingCurrentMedico) return <ListSkeleton items={4} />;
+  if (isMedicoOnly && currentMedicoError) {
+    return <ErrorState title="Não foi possível identificar seu vínculo médico" error={currentMedicoError} onRetry={() => void refetchCurrentMedico()} />;
   }
   if (isMedicoOnly && !meuMedicoId) {
     return (
@@ -887,10 +872,13 @@ export default function Fila() {
   return (
     <div className="space-y-6 pb-8">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+      <section className="relative overflow-hidden rounded-2xl border border-[#0F7BFD]/15 bg-gradient-to-br from-white via-[#F5FAFF] to-[#EAF4FF] px-5 py-5 shadow-sm sm:px-6">
+        <div aria-hidden="true" className="pointer-events-none absolute -right-8 -top-12 h-40 w-40 rounded-full bg-[#50E3FB]/15 blur-2xl" />
+        <div className="relative flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold font-display tracking-tight">Fila de Atendimento</h1>
-          <p className="text-sm text-muted-foreground mt-1">
+          <p className="mb-1 text-[11px] font-bold uppercase tracking-[0.16em] text-[#005ECC]">Atendimento da clínica</p>
+          <h1 className="text-2xl font-bold font-display tracking-tight text-[#0C1F54] sm:text-3xl">Fila de Atendimento</h1>
+          <p className="text-sm text-[#0C1F54]/65 mt-1">
             {format(parseDateOnly(today)!, "EEEE, dd 'de' MMMM", { locale: ptBR })} • Atualiza automaticamente
           </p>
         </div>
@@ -901,14 +889,15 @@ export default function Fila() {
               Só meus pacientes
             </label>
           )}
-          <Button variant="outline" size="sm" className="gap-2" onClick={refresh} aria-label="Atualizar fila">
+          <Button variant="outline" size="sm" className="gap-2 border-[#0C1F54]/15 bg-white text-[#0C1F54] hover:bg-[#EAF4FF]" onClick={refresh} aria-label="Atualizar fila">
             <RefreshCw className="h-4 w-4" />
           </Button>
-          <Button className="gap-2" onClick={() => setIsAddOpen(true)} disabled={filaQuery.isError || agendamentosQuery.isError}>
+          <Button className="gap-2 bg-[#005ECC] text-white hover:bg-[#004FAE]" onClick={() => setIsAddOpen(true)} disabled={filaQuery.isError || agendamentosQuery.isError}>
             <UserPlus className="h-4 w-4" /> Adicionar à Fila
           </Button>
         </div>
       </div>
+      </section>
 
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -919,13 +908,13 @@ export default function Fila() {
           { label: 'Urgentes', value: stats.urgentes, icon: AlertTriangle, color: 'text-destructive', bg: 'bg-destructive/10' },
         ].map(s => (
           <motion.div key={s.label} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
-            className="rounded-xl border bg-card px-4 py-3 flex items-center gap-3">
+            className="rounded-xl border border-[#D6E7F3] bg-white px-4 py-3 flex items-center gap-3 shadow-sm">
             <div className={cn('h-10 w-10 rounded-xl flex items-center justify-center shrink-0', s.bg)}>
               <s.icon className={cn('h-5 w-5', s.color)} />
             </div>
             <div>
-              <p className={cn('text-2xl font-bold tabular-nums', s.color)}>{s.value}</p>
-              <p className="text-xs text-muted-foreground">{s.label}</p>
+              <p className={cn('text-2xl font-bold tabular-nums text-[#0C1F54]', s.color)}>{s.value}</p>
+              <p className="text-xs text-[#0C1F54]/65">{s.label}</p>
             </div>
           </motion.div>
         ))}
@@ -1193,9 +1182,9 @@ export default function Fila() {
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-2">
-              <Label>Agendamento</Label>
+              <Label htmlFor="fila-agendamento">Agendamento</Label>
               <Select value={selectedAgendamento} onValueChange={setSelectedAgendamento}>
-                <SelectTrigger>
+                <SelectTrigger id="fila-agendamento">
                   <SelectValue placeholder="Selecionar agendamento..." />
                 </SelectTrigger>
                 <SelectContent>
@@ -1213,9 +1202,9 @@ export default function Fila() {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Prioridade</Label>
+              <Label htmlFor="fila-prioridade">Prioridade</Label>
               <Select value={selectedPrioridade} onValueChange={setSelectedPrioridade}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger id="fila-prioridade"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="normal">Normal</SelectItem>
                   <SelectItem value="preferencial">Preferencial (idoso/gestante)</SelectItem>

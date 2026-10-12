@@ -73,6 +73,7 @@ function ListaConversas({
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
           <Input
             className="pl-8 h-9 text-sm rounded-xl bg-muted/50 border-0 focus-visible:ring-1"
+            aria-label="Buscar conversas e equipe"
             placeholder="Buscar usuário..."
             value={search}
             onChange={e => setSearch(e.target.value)}
@@ -424,6 +425,7 @@ function ViewConversa({
           <Tooltip>
             <TooltipTrigger asChild>
               <button
+                aria-label={urgente ? 'Remover urgência' : 'Marcar como urgente'}
                 onClick={() => setUrgente(u => !u)}
                 className={cn(
                   'flex items-center justify-center h-8 w-8 rounded-full transition-colors shrink-0',
@@ -441,6 +443,7 @@ function ViewConversa({
           </Tooltip>
 
           <button
+            aria-label={showEmojis ? 'Ocultar emojis' : 'Mostrar emojis'}
             onClick={() => setShowEmojis(s => !s)}
             className={cn(
               'flex items-center justify-center h-8 w-8 rounded-full transition-colors shrink-0',
@@ -455,6 +458,7 @@ function ViewConversa({
           <Input
             ref={inputRef}
             className="flex-1 h-9 text-sm rounded-xl bg-muted/50 border-0 focus-visible:ring-1"
+            aria-label="Mensagem"
             placeholder="Mensagem..."
             value={texto}
             onChange={e => setTexto(e.target.value)}

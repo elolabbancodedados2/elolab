@@ -14,6 +14,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { mensagemDeErro } from '@/lib/erros';
+import { getSupportAccessStatus } from '@/lib/supportAccess';
 
 type SupportRequest = {
   id: string;
@@ -58,8 +59,7 @@ function dataHora(value: string | null) {
 }
 
 function statusAtual(request: SupportRequest): SupportRequest['status'] {
-  if (request.status === 'approved' && request.expires_at && new Date(request.expires_at).getTime() <= Date.now()) return 'expired';
-  return request.status;
+  return getSupportAccessStatus(request.status, request.expires_at);
 }
 
 export default function AcessoAssistido() {
@@ -224,9 +224,14 @@ export default function AcessoAssistido() {
 
   return (
     <div className="space-y-6 pb-8">
-      <header>
-        <h1 className="flex items-center gap-2 text-2xl font-bold"><ShieldCheck className="h-6 w-6 text-primary" /> Acesso assistido</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Acesso temporário, aprovado pela clínica e limitado a dados operacionais. Ações registradas em auditoria.</p>
+      <header className="rounded-2xl border border-[#dce9f6] bg-gradient-to-r from-[#f3f8ff] via-white to-[#f3fbfa] p-5 sm:p-6">
+        <div className="flex items-start gap-3">
+          <span className="rounded-xl bg-[#eaf4ff] p-2.5 text-[#1766a8] ring-1 ring-[#d1e5f8]"><ShieldCheck className="h-5 w-5" /></span>
+          <div>
+            <h1 className="text-2xl font-bold text-[#0c1f54]">Acesso assistido</h1>
+            <p className="mt-1 text-sm text-[#52647a]">Acesso temporário, aprovado pela clínica e limitado a dados operacionais. Ações registradas em auditoria.</p>
+          </div>
+        </div>
       </header>
 
       {plataforma && (

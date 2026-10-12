@@ -30,7 +30,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { toast } from 'sonner';
-import { useMedicos } from '@/hooks/useSupabaseData';
 import { supabase } from '@/integrations/supabase/client';
 import { StorageAvatarImage, StorageImg } from '@/components/StorageImage';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
@@ -40,12 +39,13 @@ import { ptBR } from 'date-fns/locale';
 import { MedicoAvailabilityManager } from '@/components/medicos/MedicoAvailabilityManager';
 import { normalizarTexto } from '@/lib/buscaPaciente';
 import { todaySaoPauloDateOnly, parseDateOnly } from '@/lib/dateOnly';
+import { autorizarLeituraHistoricoMedico } from '@/lib/prontuarioAudit';
 
 const UFS = [
   'AC','AL','AM','AP','BA','CE','DF','ES','GO','MA','MG','MS','MT','PA',
    'PB','PE','PI','PR','RJ','RN','RO','RR','RS','SC','SE','SP','TO',
  ];
- 
+
  const TIPOS_REGISTRO = [
    'CRM', 'CRP', 'CRO', 'CREFITO', 'COREN', 'CRMV', 'CRBM', 'CRN', 'CRF', 'CREF', 'CRTR', 'CRP', 'CRFA'
 ];
@@ -114,9 +114,10 @@ function EspecialidadeCombobox({ value, onChange, especialidadesExtras }: { valu
 
   return (
     <div className="mt-4 space-y-1.5">
-      <Label className="text-xs">Especialidade</Label>
+      <Label htmlFor="medico-especialidade" className="text-xs">Especialidade</Label>
       <div className="relative">
         <Input
+          id="medico-especialidade"
           ref={inputRef}
           value={open ? search : value}
           onChange={e => {
@@ -130,7 +131,7 @@ function EspecialidadeCombobox({ value, onChange, especialidadesExtras }: { valu
           autoComplete="off"
         />
         {value && !open && (
-          <button type="button" className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+          <button type="button" aria-label="Limpar especialidade" className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
             onClick={() => { onChange(''); setSearch(''); inputRef.current?.focus(); }}>
             <X className="h-4 w-4" />
           </button>
@@ -186,6 +187,7 @@ function MedicoProfilePanel({ medico, onClose, onEdit }: { medico: any; onClose:
   const prontuariosQuery = useQuery({
     queryKey: ['medico-prontuarios', user?.id ?? null, profile?.clinica_id ?? null, medico.id],
     queryFn: async () => {
+      await autorizarLeituraHistoricoMedico(medico.id);
       const { data, error } = await supabase.from('prontuarios')
         .select('id, data, queixa_principal, diagnostico_principal, pacientes(nome)')
         .eq('clinica_id', profile!.clinica_id!).eq('medico_id', medico.id).order('data', { ascending: false }).limit(30);
@@ -486,8 +488,16 @@ export default function Medicos() {
   const saveLock = useRef(false);
 
   const queryClient = useQueryClient();
-  const { profile } = useSupabaseAuth();
-  const medicosQuery = useMedicos();
+  const { user, profile } = useSupabaseAuth();
+  const medicosQuery = useQuery({
+    queryKey: ['medicos', user?.id ?? null, profile?.clinica_id ?? null, 'equipe-admin'],
+    enabled: !!user && !!profile?.clinica_id,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).rpc('listar_medicos_equipe_admin');
+      if (error) throw error;
+      return (data ?? []) as any[];
+    },
+  });
   const medicos = medicosQuery.data ?? [];
   const { isLoading } = medicosQuery;
 
@@ -619,14 +629,14 @@ export default function Medicos() {
         }
         toast.success('Médico atualizado com sucesso!');
       } else {
-        const { data: newMedico, error } = await supabase.from('medicos').insert(payload).select().single();
+        const { data: newMedico, error } = await supabase.from('medicos').insert(payload).select('id').single();
         if (error) throw error;
         toast.success('Médico cadastrado com sucesso!');
         if (email && newMedico) {
           try {
             const { data: funcData, error: funcError } = await supabase.from('funcionarios')
               .insert({ nome, email, cargo: 'Médico', departamento: formData.especialidade || 'Clínico', ativo: formData.ativo, clinica_id: profile?.clinica_id || null, pending_roles: ['medico'] } as any)
-              .select().single();
+              .select('id').single();
             if (funcError || !funcData) {
               toast.info('Médico cadastrado, mas o vínculo de acesso não foi criado. Revise a aba Funcionários antes de convidar.', {
                 description: funcError?.message,
@@ -717,7 +727,7 @@ export default function Medicos() {
     <TooltipProvider>
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 rounded-2xl border border-[#dce9f6] bg-gradient-to-r from-[#f3f8ff] via-white to-[#f3fbfa] p-5 sm:p-6">
           <div>
             <h1 className="text-3xl font-bold font-display text-foreground flex items-center gap-2">
               <Stethoscope className="h-8 w-8 text-primary" /> Corpo Clínico
@@ -732,12 +742,12 @@ export default function Medicos() {
         {/* Stats Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {[
-            { label: 'Total', value: medicos.length, icon: Users, color: 'text-primary', bg: 'bg-primary/10' },
-            { label: 'Ativos', value: totalAtivos, icon: ShieldCheck, color: 'text-emerald-600', bg: 'bg-emerald-500/10' },
-            { label: 'Inativos', value: totalInativos, icon: X, color: 'text-muted-foreground', bg: 'bg-muted' },
-            { label: 'Especialidades', value: especialidades.length, icon: Heart, color: 'text-rose-500', bg: 'bg-rose-500/10' },
+            { label: 'Total', value: medicos.length, icon: Users, color: 'text-[#1766a8]', bg: 'bg-[#eaf4ff]', border: 'border-[#d6e7f6]' },
+            { label: 'Ativos', value: totalAtivos, icon: ShieldCheck, color: 'text-[#168064]', bg: 'bg-[#e7f7f0]', border: 'border-[#d1ebdf]' },
+            { label: 'Inativos', value: totalInativos, icon: X, color: 'text-[#64748b]', bg: 'bg-[#f1f5f9]', border: 'border-[#e2e8f0]' },
+            { label: 'Especialidades', value: especialidades.length, icon: Heart, color: 'text-[#7450a8]', bg: 'bg-[#f1eafb]', border: 'border-[#e5daf4]' },
           ].map(s => (
-            <Card key={s.label} className="border-border/40">
+            <Card key={s.label} className={`${s.border} bg-white shadow-sm shadow-[#133453]/[0.03]`}>
               <CardContent className="p-4 flex items-center gap-3">
                 <div className={`h-10 w-10 rounded-xl ${s.bg} flex items-center justify-center`}>
                   <s.icon className={`h-5 w-5 ${s.color}`} />
@@ -927,7 +937,7 @@ export default function Medicos() {
                     <AvatarFallback className="bg-primary/10 text-primary text-lg">{(formData.nome || '??').slice(0, 2).toUpperCase()}</AvatarFallback>
                   </Avatar>
                   <div className="space-y-1">
-                    <Label className="text-xs font-medium">Foto de Perfil</Label>
+                    <Label htmlFor="foto-upload" className="text-xs font-medium">Foto de Perfil</Label>
                     <div className="flex gap-2">
                       <Button variant="outline" size="sm" className="gap-1 text-xs" disabled={uploadingPhoto}
                         onClick={() => document.getElementById('foto-upload')?.click()}>
@@ -940,8 +950,8 @@ export default function Medicos() {
                   </div>
                 </div>
                 <div className="flex items-center gap-3 p-3 rounded-lg border bg-muted/30">
-                  <Label className="text-sm">Ativo</Label>
-                  <Switch checked={formData.ativo} onCheckedChange={checked => setFormData(p => ({ ...p, ativo: checked }))} />
+                  <Label htmlFor="medico-ativo" className="text-sm">Ativo</Label>
+                  <Switch id="medico-ativo" checked={formData.ativo} onCheckedChange={checked => setFormData(p => ({ ...p, ativo: checked }))} />
                 </div>
               </div>
 
@@ -952,26 +962,26 @@ export default function Medicos() {
                 <h4 className="text-sm font-semibold text-muted-foreground mb-3 flex items-center gap-1.5"><User className="h-4 w-4" /> Dados Pessoais</h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-1.5">
-                    <Label className="text-xs">Nome Completo <span className="text-destructive">*</span></Label>
-                    <Input value={formData.nome} onChange={e => setFormData(p => ({ ...p, nome: e.target.value }))} placeholder="João da Silva" 
+                    <Label htmlFor="medico-nome" className="text-xs">Nome Completo <span className="text-destructive">*</span></Label>
+                    <Input id="medico-nome" value={formData.nome} onChange={e => setFormData(p => ({ ...p, nome: e.target.value }))} placeholder="João da Silva"
                       className={!formData.nome && formData.crm ? 'border-destructive/50' : ''} />
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-xs">CPF</Label>
-                    <Input value={formData.cpf} 
-                      onChange={e => setFormData(p => ({ ...p, cpf: formatCpf(e.target.value) }))} 
+                    <Label htmlFor="medico-cpf" className="text-xs">CPF</Label>
+                    <Input id="medico-cpf" value={formData.cpf}
+                      onChange={e => setFormData(p => ({ ...p, cpf: formatCpf(e.target.value) }))}
                       placeholder="000.000.000-00" maxLength={14} />
                     {formData.cpf && formData.cpf.replace(/\D/g, '').length > 0 && formData.cpf.replace(/\D/g, '').length < 11 && (
                       <p className="text-[10px] text-amber-500">CPF incompleto</p>
                     )}
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-xs">Data de nascimento (necessária para Memed)</Label>
-                    <Input type="date" value={formData.data_nascimento} onChange={e => setFormData(p => ({ ...p, data_nascimento: e.target.value }))} />
+                    <Label htmlFor="medico-nascimento" className="text-xs">Data de nascimento (necessária para Memed)</Label>
+                    <Input id="medico-nascimento" type="date" value={formData.data_nascimento} onChange={e => setFormData(p => ({ ...p, data_nascimento: e.target.value }))} />
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-xs">E-mail</Label>
-                    <Input type="email" value={formData.email} onChange={e => setFormData(p => ({ ...p, email: e.target.value }))} placeholder="medico@email.com"
+                    <Label htmlFor="medico-email" className="text-xs">E-mail</Label>
+                    <Input id="medico-email" type="email" value={formData.email} onChange={e => setFormData(p => ({ ...p, email: e.target.value }))} placeholder="medico@email.com"
                       className={formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email) ? 'border-destructive/50' : ''} />
                     {!editingId && formData.email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email) && (
                       <p className={`text-[10px] flex items-center gap-1 ${formData.ativo ? 'text-emerald-600' : 'text-muted-foreground'}`}>
@@ -984,9 +994,9 @@ export default function Medicos() {
                     )}
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-xs">Telefone</Label>
-                    <Input value={formData.telefone} 
-                      onChange={e => setFormData(p => ({ ...p, telefone: formatPhone(e.target.value) }))} 
+                    <Label htmlFor="medico-telefone" className="text-xs">Telefone</Label>
+                    <Input id="medico-telefone" value={formData.telefone}
+                      onChange={e => setFormData(p => ({ ...p, telefone: formatPhone(e.target.value) }))}
                       placeholder="(11) 99999-9999" maxLength={15} />
                   </div>
                 </div>
@@ -999,16 +1009,16 @@ export default function Medicos() {
                  <h4 className="text-sm font-semibold text-muted-foreground mb-3 flex items-center gap-1.5"><BadgeCheck className="h-4 w-4" /> Registro Profissional</h4>
                  <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                    <div className="space-y-1.5">
-                     <Label className="text-xs">Tipo <span className="text-destructive">*</span></Label>
+                     <Label htmlFor="medico-tipo-registro" className="text-xs">Tipo <span className="text-destructive">*</span></Label>
                      <Select value={formData.tipo_registro} onValueChange={v => setFormData(p => ({ ...p, tipo_registro: v }))}>
-                       <SelectTrigger><SelectValue /></SelectTrigger>
+                       <SelectTrigger id="medico-tipo-registro"><SelectValue /></SelectTrigger>
                        <SelectContent>{TIPOS_REGISTRO.map(tipo => <SelectItem key={tipo} value={tipo}>{tipo}</SelectItem>)}</SelectContent>
                      </Select>
                    </div>
                    <div className="space-y-1.5">
-                     <Label className="text-xs">Número <span className="text-destructive">*</span></Label>
-                     <Input value={formData.crm} 
-                       onChange={e => setFormData(p => ({ ...p, crm: e.target.value.replace(/\D/g, '').slice(0, 10) }))} 
+                     <Label htmlFor="medico-crm" className="text-xs">Número <span className="text-destructive">*</span></Label>
+                     <Input id="medico-crm" value={formData.crm}
+                       onChange={e => setFormData(p => ({ ...p, crm: e.target.value.replace(/\D/g, '').slice(0, 10) }))}
                        placeholder="123456"
                        className={!formData.crm && formData.nome ? 'border-destructive/50' : ''} />
                      {formData.tipo_registro === 'CRM' && formData.crm && (formData.crm.length < 4 || formData.crm.length > 10) && (
@@ -1016,24 +1026,24 @@ export default function Medicos() {
                      )}
                    </div>
                    <div className="space-y-1.5">
-                     <Label className="text-xs">UF <span className="text-destructive">*</span></Label>
+                     <Label htmlFor="medico-uf" className="text-xs">UF <span className="text-destructive">*</span></Label>
                      <Select value={formData.crm_uf} onValueChange={v => setFormData(p => ({ ...p, crm_uf: v }))}>
-                       <SelectTrigger><SelectValue /></SelectTrigger>
+                       <SelectTrigger id="medico-uf"><SelectValue /></SelectTrigger>
                        <SelectContent>{UFS.map(uf => <SelectItem key={uf} value={uf}>{uf}</SelectItem>)}</SelectContent>
                      </Select>
                    </div>
                    <div className="space-y-1.5">
-                    <Label className="text-xs">RQE</Label>
-                    <Input value={formData.rqe} onChange={e => setFormData(p => ({ ...p, rqe: e.target.value }))} placeholder="12345" />
+                    <Label htmlFor="medico-rqe" className="text-xs">RQE</Label>
+                    <Input id="medico-rqe" value={formData.rqe} onChange={e => setFormData(p => ({ ...p, rqe: e.target.value }))} placeholder="12345" />
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-xs">CNS</Label>
-                    <Input value={formData.cns} onChange={e => setFormData(p => ({ ...p, cns: e.target.value }))} placeholder="Cartão Nacional" />
+                    <Label htmlFor="medico-cns" className="text-xs">CNS</Label>
+                    <Input id="medico-cns" value={formData.cns} onChange={e => setFormData(p => ({ ...p, cns: e.target.value }))} placeholder="Cartão Nacional" />
                   </div>
                 </div>
 
                 {/* Especialidade with suggestions */}
-                <EspecialidadeCombobox 
+                <EspecialidadeCombobox
                   value={formData.especialidade}
                   onChange={(v) => setFormData(p => ({ ...p, especialidade: v }))}
                   especialidadesExtras={especialidades}
@@ -1046,9 +1056,9 @@ export default function Medicos() {
               <div>
                 <h4 className="text-sm font-semibold text-muted-foreground mb-3 flex items-center gap-1.5"><Clock className="h-4 w-4" /> Configurações de Agenda</h4>
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Intervalo Padrão de Consulta</Label>
+                  <Label htmlFor="medico-intervalo" className="text-xs">Intervalo Padrão de Consulta</Label>
                   <Select value={String(formData.intervalo_consulta)} onValueChange={v => setFormData(p => ({ ...p, intervalo_consulta: Number(v) }))}>
-                    <SelectTrigger className="w-full sm:w-64"><SelectValue /></SelectTrigger>
+                    <SelectTrigger id="medico-intervalo" className="w-full sm:w-64"><SelectValue /></SelectTrigger>
                     <SelectContent>{INTERVALOS.map(i => <SelectItem key={i} value={String(i)}>{i} minutos</SelectItem>)}</SelectContent>
                   </Select>
                 </div>

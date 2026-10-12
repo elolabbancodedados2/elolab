@@ -22,6 +22,7 @@ import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
+import { ErrorState } from '@/components/ErrorState';
 
 interface Regra {
   coluna: 'exigir_pagamento_previo' | 'exigir_triagem';
@@ -59,7 +60,7 @@ export function FluxoDoAtendimento() {
   const queryClient = useQueryClient();
   const [salvando, setSalvando] = useState<string | null>(null);
 
-  const { data: clinica, isLoading } = useQuery({
+  const { data: clinica, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['clinica-fluxo', profile?.clinica_id],
     enabled: !!profile?.clinica_id,
     queryFn: async () => {
@@ -77,6 +78,10 @@ export function FluxoDoAtendimento() {
   // papel aqui mostraria o interruptor habilitado para um admin que não é o
   // dono, e o clique morreria em RLS — pior que deixar desabilitado.
   const podeEditar = !!clinica?.owner_id && clinica.owner_id === user?.id;
+
+  if (isError) {
+    return <ErrorState title={'N\u00e3o foi poss\u00edvel carregar as regras do fluxo'} description={'As regras atuais n\u00e3o foram confirmadas. Recarregue antes de alterar o fluxo da cl\u00ednica.'} error={error} onRetry={() => void refetch()} />;
+  }
 
   async function alternar(regra: Regra, valor: boolean) {
     setSalvando(regra.coluna);

@@ -21,6 +21,7 @@ interface PatientListTableProps {
   onEdit: (paciente: any) => void;
   onDelete: (paciente: any) => void;
   podeExcluirPaciente?: boolean;
+  podeEditarPaciente?: boolean;
   onGeneratePortalLink: (id: string, nome: string) => void;
   /**
    * Gerar link do portal grava em paciente_portal_tokens, cujo RLS exige admin
@@ -34,7 +35,7 @@ interface PatientListTableProps {
 
 export const PatientListTable = memo(function PatientListTable({
   pacientes, totalPacientes, totalPacientesCarregado, hasFiltrosAtivos = false, onLimparFiltros, onView, onEdit, onDelete, onGeneratePortalLink,
-  podeGerarLinkPortal = true, podeExcluirPaciente = false, getConvenioNome, calcularIdade,
+  podeGerarLinkPortal = true, podeExcluirPaciente = false, podeEditarPaciente = true, getConvenioNome, calcularIdade,
   pagina, hasMore, isLoading = false, hasError = false, onPaginaChange,
 }: PatientListTableProps) {
   const tamanhoPagina = 50;
@@ -79,9 +80,9 @@ export const PatientListTable = memo(function PatientListTable({
                     <Link className="h-4 w-4" /> Portal
                   </Button>
                 )}
-                <Button variant="outline" onClick={() => onEdit(paciente)} className="h-11 min-w-0 flex-1 gap-1 px-2 text-xs" aria-label={`Editar ${paciente.nome}`}>
+                {podeEditarPaciente && <Button variant="outline" onClick={() => onEdit(paciente)} className="h-11 min-w-0 flex-1 gap-1 px-2 text-xs" aria-label={`Editar ${paciente.nome}`}>
                   <Edit className="h-4 w-4" /> Editar
-                </Button>
+                </Button>}
                 {podeExcluirPaciente && (
                   <Button variant="outline" onClick={() => onDelete(paciente)} className="h-11 min-w-0 flex-1 gap-1 px-2 text-xs text-destructive" aria-label={`Excluir ${paciente.nome}`}>
                     <Trash2 className="h-4 w-4" /> Excluir
@@ -194,11 +195,11 @@ export const PatientListTable = memo(function PatientListTable({
                           </Button>
                         </motion.div>
                       )}
-                      <motion.div whileHover={{ scale: 1.15 }} whileTap={{ scale: 0.9 }} transition={{ type: "spring", stiffness: 500, damping: 15 }}>
+                      {podeEditarPaciente && <motion.div whileHover={{ scale: 1.15 }} whileTap={{ scale: 0.9 }} transition={{ type: "spring", stiffness: 500, damping: 15 }}>
                         <Button variant="ghost" size="icon" onClick={() => onEdit(paciente)} title="Editar" aria-label={`Editar ${paciente.nome}`} className="h-11 w-11 rounded-xl hover:bg-accent/60">
                           <Edit className="h-4 w-4" />
                         </Button>
-                      </motion.div>
+                      </motion.div>}
                       {podeExcluirPaciente && (
                         <motion.div whileHover={{ scale: 1.15, rotate: 5 }} whileTap={{ scale: 0.9 }} transition={{ type: "spring", stiffness: 500, damping: 15 }}>
                           <Button variant="ghost" size="icon" onClick={() => onDelete(paciente)} title="Excluir ficha vazia" aria-label={`Excluir ${paciente.nome}`} className="h-11 w-11 rounded-xl hover:bg-destructive/10">

@@ -65,23 +65,37 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Buscar lançamentos receita vencidos e pendentes
+    // Buscar lançamentos receita vencidos e pendentes. A paginação por cursor
+    // evita o teto de 500 e não desloca linhas se novos registros forem criados.
     const hoje = new Intl.DateTimeFormat("en-CA", {
       timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit",
     }).format(new Date());
-    let query = supabase
-      .from("lancamentos")
-      .select("id, descricao, valor, valor_pago, desconto, acrescimo, status, data_vencimento, paciente_id, clinica_id, pacientes(nome, telefone, email)")
-      .eq("tipo", "receita")
-      .in("status", ["pendente", "parcial", "atrasado"])
-      .lt("data_vencimento", hoje)
-      .not("paciente_id", "is", null)
-      .limit(500);
-    if (filterClinicaId) query = query.eq("clinica_id", filterClinicaId);
-    if (requestedIds) query = query.in("id", requestedIds);
+    const batchSize = 500;
+    let cursor: { data_vencimento: string; id: string } | null = null;
+    const pendentes: any[] = [];
+    while (true) {
+      let query = supabase
+        .from("lancamentos")
+        .select("id, descricao, valor, valor_pago, desconto, acrescimo, status, data_vencimento, paciente_id, clinica_id, pacientes(clinica_id, nome, telefone, email)")
+        .eq("tipo", "receita")
+        .in("status", ["pendente", "parcial", "atrasado"])
+        .lt("data_vencimento", hoje)
+        .not("paciente_id", "is", null)
+        .order("data_vencimento", { ascending: true })
+        .order("id", { ascending: true });
+      if (filterClinicaId) query = query.eq("clinica_id", filterClinicaId);
+      if (requestedIds) query = query.in("id", requestedIds);
+      if (cursor) {
+        query = query.or(`data_vencimento.gt.${cursor.data_vencimento},and(data_vencimento.eq.${cursor.data_vencimento},id.gt.${cursor.id})`);
+      }
 
-    const { data: pendentes, error } = await query;
-    if (error) throw error;
+      const { data: pagina, error } = await query.range(0, batchSize - 1);
+      if (error) throw error;
+      pendentes.push(...(pagina || []));
+      if (requestedIds || (pagina?.length ?? 0) < batchSize) break;
+      const ultimo = pagina![pagina!.length - 1];
+      cursor = { data_vencimento: String(ultimo.data_vencimento), id: String(ultimo.id) };
+    }
 
     const results: any[] = [];
     const byClinica: Record<string, any[]> = {};
@@ -103,6 +117,10 @@ Deno.serve(async (req) => {
 
       for (const l of items) {
         const pac: any = (l as any).pacientes;
+        if (!pac || pac.clinica_id !== clinicaId) {
+          results.push({ id: l.id, sent: false, reason: "paciente_fora_da_clinica" });
+          continue;
+        }
         const hojeUtc = Date.parse(`${hoje}T00:00:00Z`);
         const vencimentoUtc = Date.parse(`${l.data_vencimento}T00:00:00Z`);
         const diasAtraso = Math.max(1, Math.floor((hojeUtc - vencimentoUtc) / 86400000));
@@ -118,12 +136,33 @@ Deno.serve(async (req) => {
           results.push({ id: l.id, sent: false, reason: "fora_da_regua" });
           continue;
         }
-        const { data: jaEnviado } = await supabase.from("notification_queue").select("id")
+        const { data: jaEnviado } = await supabase.from("notification_queue").select("id, status, tipo")
           .eq("clinica_id", clinicaId)
           .contains("dados_extras", { tipo_notificacao: "cobranca_inadimplente", lancamento_id: l.id, dias_atraso: diasAtraso })
-          .limit(1);
-        if (jaEnviado?.length) {
+          .order("created_at", { ascending: false });
+        const envioAtivo = jaEnviado?.find((item: any) => item.status !== "erro");
+        if (envioAtivo) {
           results.push({ id: l.id, sent: false, reason: "ja_enviado" });
+          continue;
+        }
+        const whatsappIndeterminado = jaEnviado?.find((item: any) => item.tipo === "whatsapp" && item.status === "erro");
+        if (whatsappIndeterminado) {
+          results.push({ id: l.id, sent: false, reason: "resultado_whatsapp_indeterminado" });
+          continue;
+        }
+        const emailComErro = jaEnviado?.find((item: any) => item.tipo === "email" && item.status === "erro");
+        if (emailComErro) {
+          const { data: reaberto, error: erroReabertura } = await supabase.from("notification_queue")
+            .update({ status: "pendente", tentativas: 0, erro_mensagem: null, agendado_para: new Date().toISOString(), iniciado_em: null })
+            .eq("id", emailComErro.id).eq("clinica_id", clinicaId).eq("status", "erro")
+            .select("id").maybeSingle();
+          if (erroReabertura) {
+            results.push({ id: l.id, sent: false, reason: "falha_ao_reabrir_email", error: erroReabertura.message });
+          } else if (reaberto) {
+            results.push({ id: l.id, sent: true, channel: "email_queue_retry" });
+          } else {
+            results.push({ id: l.id, sent: false, reason: "ja_enviado_ou_em_processamento" });
+          }
           continue;
         }
         const valorFmt = saldo.toLocaleString("pt-BR", {
@@ -144,11 +183,49 @@ Deno.serve(async (req) => {
             results.push({ id: l.id, sent: false, reason: "falha_ao_enfileirar_email", error: queueError.message });
             return;
           }
+          const { error: completeError } = await supabase.rpc("concluir_cobranca_inadimplente", {
+            p_clinica_id: clinicaId,
+            p_lancamento_id: l.id,
+            p_dias_atraso: diasAtraso,
+          });
+          if (completeError) console.error("Falha ao concluir reserva da cobrança", completeError.message);
           results.push({ id: l.id, sent: true, channel: "email_queue" });
+        };
+
+        const registrarWhatsAppIndeterminado = async (detalhe: string) => {
+          const { error: erroRegistro } = await supabase.from("notification_queue").insert({
+            tipo: "whatsapp", clinica_id: clinicaId,
+            destinatario_id: l.paciente_id, destinatario_telefone: pac.telefone, destinatario_nome: pac.nome,
+            assunto: "Resultado de cobrança WhatsApp indeterminado", conteudo: msg, status: "erro",
+            erro_mensagem: detalhe.slice(0, 1000), tentativas: 0,
+            dados_extras: { tipo_notificacao: "cobranca_inadimplente", lancamento_id: l.id, dias_atraso: diasAtraso, requer_revisao_manual: true },
+          });
+          if (erroRegistro) console.error("Falha ao registrar resultado WhatsApp indeterminado", erroRegistro.message);
+          const { error: erroConclusao } = await supabase.rpc("concluir_cobranca_inadimplente", {
+            p_clinica_id: clinicaId,
+            p_lancamento_id: l.id,
+            p_dias_atraso: diasAtraso,
+          });
+          if (erroConclusao) console.error("Falha ao concluir reserva da cobrança indeterminada", erroConclusao.message);
+          results.push({ id: l.id, sent: false, reason: "resultado_whatsapp_indeterminado", revisaoRegistrada: !erroRegistro, error: detalhe });
         };
 
         if (dryRun) {
           results.push({ id: l.id, sent: false, preview: msg, reason: "dry_run" });
+          continue;
+        }
+
+        const { data: reservado, error: erroReserva } = await supabase.rpc("claim_cobranca_inadimplente", {
+          p_clinica_id: clinicaId,
+          p_lancamento_id: l.id,
+          p_dias_atraso: diasAtraso,
+        });
+        if (erroReserva) {
+          results.push({ id: l.id, sent: false, reason: "falha_ao_reservar_cobranca", error: erroReserva.message });
+          continue;
+        }
+        if (reservado !== true) {
+          results.push({ id: l.id, sent: false, reason: "ja_enviado_ou_em_processamento" });
           continue;
         }
 
@@ -169,10 +246,22 @@ Deno.serve(async (req) => {
             body: JSON.stringify({ number: fmt, text: msg }),
           });
           const ok = r.ok;
+          if (!ok && (r.status >= 500 || r.status === 408)) {
+            await registrarWhatsAppIndeterminado(`Resposta HTTP ${r.status}; confirme o histórico do provedor antes de repetir.`);
+            continue;
+          }
           if (ok) await supabase.from("notification_queue").insert({ tipo: "whatsapp", clinica_id: clinicaId,
             destinatario_id: l.paciente_id, destinatario_telefone: pac.telefone, destinatario_nome: pac.nome,
             assunto: "Pagamento em aberto", conteudo: msg, status: "enviado", enviado_em: new Date().toISOString(),
             dados_extras: { tipo_notificacao: "cobranca_inadimplente", lancamento_id: l.id, dias_atraso: diasAtraso } });
+          if (ok) {
+            const { error: completeError } = await supabase.rpc("concluir_cobranca_inadimplente", {
+              p_clinica_id: clinicaId,
+              p_lancamento_id: l.id,
+              p_dias_atraso: diasAtraso,
+            });
+            if (completeError) console.error("Falha ao concluir reserva da cobrança", completeError.message);
+          }
           await supabase.from("automation_logs").insert({
             tipo: "cobranca_whatsapp",
             nome: "Cobrança inadimplente",
@@ -185,8 +274,7 @@ Deno.serve(async (req) => {
           else if (pac?.email) await enfileirarEmail();
           else results.push({ id: l.id, sent: false, reason: "falha_whatsapp_sem_email_alternativo" });
         } catch (err) {
-          if (pac?.email) await enfileirarEmail();
-          else results.push({ id: l.id, sent: false, reason: "falha_whatsapp_sem_email_alternativo", error: String(err) });
+          await registrarWhatsAppIndeterminado(`Falha de rede sem confirmação de entrega: ${String(err)}`);
         }
       }
     }

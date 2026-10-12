@@ -1,5 +1,12 @@
 import { valorRealizado, type LancamentoValores } from '@/lib/lancamentos';
 
+export function podeExportarContasCompletas(
+  contasAtingiramLimite: boolean,
+  pagamentosAtingiramLimite: boolean,
+): boolean {
+  return !contasAtingiramLimite && !pagamentosAtingiramLimite;
+}
+
 /**
  * Usa o livro de pagamentos detalhado quando a leitura está completa.
  * Se a tela atingiu o teto de paginação, usa `valor_pago` consolidado no

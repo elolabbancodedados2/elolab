@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, type ReactNode } from 'react';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import { format, parseISO, differenceInYears } from 'date-fns';
@@ -64,8 +64,61 @@ interface DoctorDashboardProps {
   userName: string;
 }
 
+export function DoctorDashboardKpiLink({ href, children }: { href: string | null; children: ReactNode }) {
+  return href ? <Link to={href}>{children}</Link> : <div>{children}</div>;
+}
+
+export function DoctorDashboardIdentityState({
+  isLoading = false,
+  error,
+  medicoId,
+  onRetry,
+}: {
+  isLoading?: boolean;
+  error?: unknown;
+  medicoId: string | null;
+  onRetry: () => void;
+}) {
+  if (isLoading) return <DashboardSkeleton />;
+  if (error) {
+    return (
+      <ErrorState
+        title="Não foi possível carregar seu cadastro profissional"
+        error={error}
+        onRetry={onRetry}
+      />
+    );
+  }
+  if (medicoId) return null;
+
+  return (
+    <Card role="status" className="border-[#d6e6f2] bg-white p-6 shadow-none sm:p-8">
+      <div className="mx-auto flex max-w-xl flex-col items-center gap-4 text-center">
+        <div className="grid h-12 w-12 place-items-center rounded-2xl bg-[#eaf4fb] text-[#0059cc]">
+          <Stethoscope className="h-6 w-6" aria-hidden="true" />
+        </div>
+        <div className="space-y-2">
+          <h2 className="text-lg font-semibold text-[#0c1f54]">Cadastro profissional não vinculado</h2>
+          <p className="text-sm leading-relaxed text-[#52647b]">
+            Não encontramos um cadastro médico associado a esta conta. Peça ao administrador da clínica para concluir o vínculo e depois tente novamente.
+          </p>
+        </div>
+        <Button variant="outline" onClick={onRetry} className="rounded-xl border-[#d6e6f2] text-[#0059cc]">
+          Tentar novamente
+        </Button>
+      </div>
+    </Card>
+  );
+}
+
 export function DoctorDashboard({ userName }: DoctorDashboardProps) {
-  const { currentMedico, medicoId } = useCurrentMedico();
+  const {
+    currentMedico,
+    medicoId,
+    isLoading: currentMedicoLoading,
+    error: currentMedicoError,
+    refetch: refetchCurrentMedico,
+  } = useCurrentMedico();
   const { user, profile } = useSupabaseAuth();
   const hoje = todaySaoPauloDateOnly();
   const amanhaDate = new Date(`${hoje}T00:00:00Z`);
@@ -192,6 +245,17 @@ export function DoctorDashboard({ userName }: DoctorDashboardProps) {
     atendimento_finalizado: 'Atendimento finalizado',
     aguardando_pagamento_adicional: 'Falta pagar o adicional',
   };
+
+  if (currentMedicoLoading || currentMedicoError || !medicoId) {
+    return (
+      <DoctorDashboardIdentityState
+        isLoading={currentMedicoLoading}
+        error={currentMedicoError}
+        medicoId={medicoId}
+        onRetry={() => { void refetchCurrentMedico(); }}
+      />
+    );
+  }
 
   if (agendamentosQuery.isError || contagensQuery.isError) {
     const error = agendamentosQuery.error || contagensQuery.error;
@@ -357,35 +421,40 @@ export function DoctorDashboard({ userName }: DoctorDashboardProps) {
         {/* ─── KPI Cards ─── */}
         <motion.div variants={stagger} className="grid gap-4 grid-cols-2 lg:grid-cols-4">
           {[
-            { title: 'Meus Pacientes', value: stats.meusPacientes, icon: Users, color: 'primary' as const, href: '/pacientes', subtitle: 'Vinculados à sua agenda' },
+            { title: 'Meus Pacientes', value: stats.meusPacientes, icon: Users, color: 'primary' as const, href: null, subtitle: 'Vinculados à sua agenda' },
             { title: 'Atendimentos/Mês', value: stats.atendimentosMes, icon: UserCheck, color: 'success' as const, href: '/agenda', subtitle: 'Consultas finalizadas' },
             { title: 'Prontuários/Mês', value: stats.prontuariosMes, icon: FileText, color: 'info' as const, href: '/prontuarios', subtitle: 'Registros clínicos' },
             { title: 'Prescrições/Mês', value: stats.prescricoesMes, icon: Pill, color: 'warning' as const, href: '/prescricoes', subtitle: 'Receitas emitidas' },
-          ].map((kpi, i) => (
-            <motion.div key={i} variants={fadeUp} custom={i}>
-              <Link to={kpi.href}>
-                <Card className="group relative overflow-hidden hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300 cursor-pointer border-border/40">
-                  <CardContent className="pt-5 pb-4">
-                    <div className="flex items-start justify-between mb-2">
-                      <div className="space-y-1 flex-1 min-w-0">
-                        <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest">{kpi.title}</p>
-                        <p className="text-2xl font-bold font-display tracking-tight tabular-nums">{kpi.value}</p>
-                        <p className="text-[11px] text-muted-foreground">{kpi.subtitle}</p>
-                      </div>
-                      <div className={cn('h-11 w-11 rounded-xl flex items-center justify-center ring-1 shrink-0 transition-transform group-hover:scale-110',
-                        `bg-${kpi.color}/8 ring-${kpi.color}/15`
-                      )}>
-                        <kpi.icon className={cn('h-5 w-5', `text-${kpi.color}`)} />
-                      </div>
+          ].map((kpi, i) => {
+            const card = (
+              <Card className={cn('group relative overflow-hidden border-border/40 transition-all duration-300', kpi.href && 'cursor-pointer hover:-translate-y-0.5 hover:shadow-lg')}>
+                <CardContent className="pt-5 pb-4">
+                  <div className="mb-2 flex items-start justify-between">
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">{kpi.title}</p>
+                      <p className="font-display text-2xl font-bold tracking-tight tabular-nums">{kpi.value}</p>
+                      <p className="text-[11px] text-muted-foreground">{kpi.subtitle}</p>
                     </div>
-                  </CardContent>
-                  <div className="absolute bottom-3 right-3 opacity-0 group-hover:opacity-100 transition-all">
+                    <div className={cn('flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ring-1 transition-transform group-hover:scale-110',
+                      `bg-${kpi.color}/8 ring-${kpi.color}/15`
+                    )}>
+                      <kpi.icon className={cn('h-5 w-5', `text-${kpi.color}`)} />
+                    </div>
+                  </div>
+                </CardContent>
+                {kpi.href && (
+                  <div className="absolute bottom-3 right-3 opacity-0 transition-all group-hover:opacity-100">
                     <ArrowUpRight className={cn('h-4 w-4', `text-${kpi.color}`)} />
                   </div>
-                </Card>
-              </Link>
-            </motion.div>
-          ))}
+                )}
+              </Card>
+            );
+            return (
+              <motion.div key={kpi.title} variants={fadeUp} custom={i}>
+                <DoctorDashboardKpiLink href={kpi.href}>{card}</DoctorDashboardKpiLink>
+              </motion.div>
+            );
+          })}
         </motion.div>
 
         {/* ─── Main Grid: Today's Schedule + Quick Actions + Stats ─── */}

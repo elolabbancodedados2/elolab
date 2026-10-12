@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -34,48 +34,59 @@ export function AutorizacaoConvenioModal({
 }: AutorizacaoConvenioModalProps) {
   const [autorizacoes, setAutorizacoes] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
   const [submitting, setSubmitting] = useState(false);
   const [showNewAuth, setShowNewAuth] = useState(false);
   const [convenios, setConvenios] = useState<any[]>([]);
   const [selectedConvenio, setSelectedConvenio] = useState(convenioId || '');
   const [descricao, setDescricao] = useState(procedimento);
   const [datosCarencia, setDadosCarencia] = useState('');
+  const loadRequestId = useRef(0);
 
-  useEffect(() => {
-    if (open) {
-      loadData();
-    }
-  }, [open, pacienteId]);
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
+    const requestId = ++loadRequestId.current;
     setLoading(true);
+    setLoadError(null);
     try {
-      // Load autorizacoes for this paciente
-      const { data: auths } = await (supabase as any)
+      const { data: auths, error: errorAutorizacoes } = await (supabase as any)
         .from('autorizacoes_convenio')
         .select('*, convenios(nome, telefone)')
         .eq('paciente_id', pacienteId)
         .order('data_solicitacao', { ascending: false });
+      if (errorAutorizacoes) throw errorAutorizacoes;
+      if (requestId !== loadRequestId.current) return;
 
       setAutorizacoes(auths || []);
 
-      // Load available convenios
-      const { data: convs } = await supabase
+      const { data: convs, error: errorConvenios } = await supabase
         .from('convenios')
         .select('id, nome, telefone, email, carencia')
         .eq('ativo', true)
         .order('nome');
+      if (errorConvenios) throw errorConvenios;
+      if (requestId !== loadRequestId.current) return;
 
       setConvenios(convs || []);
-      if (convs && convs.length > 0 && !selectedConvenio) {
-        setSelectedConvenio(convs[0].id);
-      }
+      const convenioAtual = convenioId && convs?.some(c => c.id === convenioId) ? convenioId : '';
+      setSelectedConvenio(convenioAtual || convs?.[0]?.id || '');
     } catch (e) {
-      console.error('Erro ao carregar dados:', e);
+      if (requestId === loadRequestId.current) setLoadError(e);
     } finally {
-      setLoading(false);
+      if (requestId === loadRequestId.current) setLoading(false);
     }
-  };
+  }, [pacienteId, convenioId]);
+
+  useEffect(() => {
+    if (!open) {
+      loadRequestId.current += 1;
+      return;
+    }
+    setSelectedConvenio(convenioId || '');
+    setDescricao(procedimento);
+    setDadosCarencia('');
+    setShowNewAuth(false);
+    void loadData();
+  }, [open, pacienteId, convenioId, procedimento, loadData]);
 
   const handleSolicitarAutorizacao = async () => {
     if (!selectedConvenio || !descricao.trim()) {
@@ -130,7 +141,10 @@ export function AutorizacaoConvenioModal({
   const selectedConvenioData = convenios.find(c => c.id === selectedConvenio);
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={(nextOpen) => {
+      if (!nextOpen && submitting) return;
+      onOpenChange(nextOpen);
+    }}>
       <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -151,6 +165,13 @@ export function AutorizacaoConvenioModal({
           {loading ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            </div>
+          ) : loadError ? (
+            <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm" role="alert">
+              <p className="mb-3 text-destructive">NÃ£o foi possÃ­vel carregar autorizaÃ§Ãµes e convÃªnios.</p>
+              <Button type="button" size="sm" variant="outline" onClick={() => void loadData()}>
+                Tentar novamente
+              </Button>
             </div>
           ) : autorizacoes.length === 0 && !showNewAuth ? (
             <Card className="border-dashed">
@@ -278,7 +299,7 @@ export function AutorizacaoConvenioModal({
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>
             Fechar
           </Button>
           {!showNewAuth && (

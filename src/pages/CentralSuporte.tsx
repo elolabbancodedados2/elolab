@@ -108,7 +108,7 @@ export default function CentralSuporte() {
       const requesterIds = [...new Set(rows.map((row: any) => row.solicitante_id))];
       const [clinicsResult, profilesResult] = await Promise.all([
         clinicIds.length ? (supabase as any).from('clinicas').select('id,nome').in('id', clinicIds) : Promise.resolve({ data: [], error: null }),
-        requesterIds.length ? (supabase as any).from('profiles').select('id,nome,email').in('id', requesterIds) : Promise.resolve({ data: [], error: null }),
+        requesterIds.length ? (supabase as any).from('profiles').select(isPlatformAdmin ? 'id,nome,email' : 'id,nome').in('id', requesterIds) : Promise.resolve({ data: [], error: null }),
       ]);
       if (clinicsResult.error) throw clinicsResult.error;
       if (profilesResult.error) throw profilesResult.error;
@@ -118,7 +118,7 @@ export default function CentralSuporte() {
         ...row,
         clinica_nome: clinicNames.get(row.clinica_id) || 'Clínica sem nome',
         solicitante_nome: requesters.get(row.solicitante_id)?.nome || 'Solicitante indisponível',
-        solicitante_email: requesters.get(row.solicitante_id)?.email || null,
+        solicitante_email: isPlatformAdmin ? requesters.get(row.solicitante_id)?.email || null : null,
       })) as Ticket[];
       return { items, total: count ?? inicio + items.length };
     },
@@ -250,7 +250,8 @@ export default function CentralSuporte() {
       if (filtroStatus !== 'all' && ticket.status !== filtroStatus) return false;
       if (filtroPrioridade !== 'all' && ticket.prioridade !== filtroPrioridade) return false;
       if (!term) return true;
-      return `${ticket.titulo} ${ticket.descricao} ${ticket.clinica_nome} ${ticket.solicitante_nome} ${ticket.solicitante_email || ''} ${ticket.categoria}`.toLocaleLowerCase('pt-BR').includes(term);
+      const searchableEmail = isPlatformAdmin ? ticket.solicitante_email || '' : '';
+      return `${ticket.titulo} ${ticket.descricao} ${ticket.clinica_nome} ${ticket.solicitante_nome} ${searchableEmail} ${ticket.categoria}`.toLocaleLowerCase('pt-BR').includes(term);
     }).sort((a, b) => {
       const aDue = new Date(a.sla_limite).getTime();
       const bDue = new Date(b.sla_limite).getTime();

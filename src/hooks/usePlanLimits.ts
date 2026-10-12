@@ -49,13 +49,10 @@ export function usePlanLimits() {
       const max_funcionarios_total = plano?.max_funcionarios_total ?? 999;
       const max_storage_mb = plano?.max_storage_mb ?? 100000;
 
-      const [{ count: funcCount }, { count: medCount }] = await Promise.all([
-        (supabase as any).from('funcionarios').select('id', { count: 'exact', head: true }).eq('clinica_id', clinicaId).eq('ativo', true),
-        (supabase as any).from('medicos').select('id', { count: 'exact', head: true }).eq('clinica_id', clinicaId).eq('ativo', true),
-      ]);
-
-      const funcionarios_total = funcCount ?? 0;
-      const medicos = medCount ?? 0;
+      const { data: counts, error: countError } = await (supabase as any).rpc('contar_equipe_ativa');
+      if (countError) throw countError;
+      const funcionarios_total = Number(counts?.[0]?.funcionarios ?? 0);
+      const medicos = Number(counts?.[0]?.medicos ?? 0);
 
       return {
         plano_nome: plano?.nome ?? null,

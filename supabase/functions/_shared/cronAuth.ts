@@ -107,6 +107,44 @@ export async function clinicaDoChamador(
   return (data as any)?.clinica_id ?? null;
 }
 
+/** Verifica um papel do usuário autenticado sem confiar em campos do body. */
+export async function usuarioTemAlgumPapel(
+  req: Request,
+  supabase: { from: (t: string) => any },
+  roles: string[],
+): Promise<boolean> {
+  const token = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '');
+  const parts = token.split('.');
+  if (parts.length !== 3) return false;
+
+  try {
+    const resto = parts[1].length % 4;
+    const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/') + '='.repeat(resto ? 4 - resto : 0);
+    const claims = JSON.parse(atob(b64));
+    if (claims?.role !== 'authenticated' || !claims?.sub) return false;
+    const { data, error } = await supabase
+      .from('user_roles')
+      .select('role')
+      .eq('user_id', claims.sub)
+      .in('role', roles)
+      .limit(1)
+      .maybeSingle();
+    return !error && !!data;
+  } catch {
+    return false;
+  }
+}
+
+/** Escopo usado pela tela de automações, que só é acessível a administradores. */
+export async function clinicaAdminDoChamador(
+  req: Request,
+  supabase: { from: (t: string) => any },
+): Promise<string | null> {
+  const clinicaId = await clinicaDoChamador(req, supabase);
+  if (!clinicaId || !(await usuarioTemAlgumPapel(req, supabase, ['admin']))) return null;
+  return clinicaId;
+}
+
 export function cronForbidden(corsHeaders: Record<string, string>): Response {
   return new Response(
     JSON.stringify({ error: 'Forbidden: esta função só pode ser disparada pelo agendador.' }),

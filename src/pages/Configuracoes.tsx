@@ -33,6 +33,7 @@ import { BackupRestore } from '@/components/BackupRestore';
 import { ImportadorDePlanilha } from '@/components/importacao/ImportadorDePlanilha';
 import { AuditLog } from '@/components/AuditLog';
 import { supabase } from '@/integrations/supabase/client';
+import { cn } from '@/lib/utils';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -323,11 +324,11 @@ function SalasManager() {
         <DialogContent>
           <DialogHeader><DialogTitle>{editId ? 'Editar Sala' : 'Nova Sala'}</DialogTitle><DialogDescription>Preencha os dados do espaço.</DialogDescription></DialogHeader>
           <div className="space-y-4">
-            <div><Label>Nome *</Label><Input value={form.nome} onChange={e => setForm({ ...form, nome: e.target.value })} placeholder="Consultório 1" /></div>
+            <div><Label htmlFor="sala-nome">Nome *</Label><Input id="sala-nome" value={form.nome} onChange={e => setForm({ ...form, nome: e.target.value })} placeholder="Consultório 1" /></div>
             <div>
-              <Label>Tipo</Label>
+              <Label id="sala-tipo-label">Tipo</Label>
               <Select value={form.tipo} onValueChange={v => setForm({ ...form, tipo: v })}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger aria-labelledby="sala-tipo-label"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="consultorio">Consultório</SelectItem>
                   <SelectItem value="exame">Sala de Exames</SelectItem>
@@ -338,8 +339,8 @@ function SalasManager() {
                 </SelectContent>
               </Select>
             </div>
-            <div><Label>Equipamentos</Label><Textarea value={form.equipamentos} onChange={e => setForm({ ...form, equipamentos: e.target.value })} placeholder="Maca, Esfigmomanômetro..." rows={2} /></div>
-            <div className="flex items-center gap-2"><Switch checked={form.ativo} onCheckedChange={v => setForm({ ...form, ativo: v })} /><Label>Ativa</Label></div>
+            <div><Label htmlFor="sala-equipamentos">Equipamentos</Label><Textarea id="sala-equipamentos" value={form.equipamentos} onChange={e => setForm({ ...form, equipamentos: e.target.value })} placeholder="Maca, Esfigmomanômetro..." rows={2} /></div>
+            <div className="flex items-center gap-2"><Switch id="sala-ativa" aria-label="Sala ativa" checked={form.ativo} onCheckedChange={v => setForm({ ...form, ativo: v })} /><Label htmlFor="sala-ativa">Ativa</Label></div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowForm(false)} disabled={saving}>Cancelar</Button>
@@ -368,7 +369,7 @@ export default function Configuracoes() {
   const { user, profile } = useSupabaseAuth();
   const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
-  const { planName, planSlug, hasActivePlan, isExempt: isPlanExempt, isTrial, trialEnd, trialDaysLeft, isLoading: loadingPlanoAtual, isError: erroPlanoAtual, error: erroConsultaPlano, refetch: recarregarPlanoAtual } = useUserPlan();
+  const { plan: assinaturaAtual, planName, planSlug, hasActivePlan, isExempt: isPlanExempt, isTrial, trialEnd, trialDaysLeft, isLoading: loadingPlanoAtual, isError: erroPlanoAtual, error: erroConsultaPlano, refetch: recarregarPlanoAtual } = useUserPlan();
   const { data: planos, isLoading: carregandoPlanos, isError: erroAoCarregarPlanos, error: erroListaPlanos } = usePlanos(!isPlanExempt);
   const navigate = useNavigate();
   const [showFaturas, setShowFaturas] = useState(false);
@@ -430,6 +431,16 @@ export default function Configuracoes() {
   const configLoadGeneration = useRef(0);
   const [loadedConfigScope, setLoadedConfigScope] = useState<string | null>(null);
   const currentConfigScope = `${user?.id ?? ''}:${profile?.clinica_id ?? ''}`;
+  const fimPeriodoPago = assinaturaAtual?.cobranca_modalidade === 'pre_pago' && assinaturaAtual.data_fim
+    ? new Intl.DateTimeFormat('pt-BR', { timeZone: 'UTC' }).format(new Date(`${assinaturaAtual.data_fim.slice(0, 10)}T00:00:00Z`))
+    : null;
+  const resumoPeriodo = isTrial && trialEnd
+    ? `Teste até ${trialEnd.toLocaleDateString('pt-BR')}`
+    : fimPeriodoPago
+      ? `Período pago até ${fimPeriodoPago}`
+      : assinaturaAtual?.cobranca_modalidade === 'recorrente'
+        ? 'Renovação automática'
+        : 'Consulte o histórico de faturas';
 
   const loadConfigs = useCallback(async () => {
     const generation = ++configLoadGeneration.current;
@@ -631,12 +642,12 @@ export default function Configuracoes() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col justify-between gap-3 rounded-2xl border border-[#dce9f6] bg-gradient-to-r from-[#f3f8ff] via-white to-[#f3fbfa] p-5 sm:flex-row sm:items-center sm:p-6">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Configurações</h1>
           <p className="text-sm text-muted-foreground">Gerencie todas as configurações do sistema</p>
         </div>
-        <Badge variant={isCloudSynced ? 'default' : 'secondary'} className="gap-1.5">
+        <Badge variant="outline" className={cn('gap-1.5 rounded-full bg-white/80', isCloudSynced ? 'border-[#cfe9dd] text-[#247453]' : 'border-[#dce9f6] text-[#52647a]')}>
           {isCloudSynced ? <Cloud className="h-3 w-3" /> : <CloudOff className="h-3 w-3" />}
           {isCloudSynced ? 'Sincronizado' : 'Local'}
         </Badge>
@@ -644,9 +655,9 @@ export default function Configuracoes() {
 
       <Tabs defaultValue={initialSettingsTab} className="space-y-6">
         <div className="-mx-1 overflow-x-auto pb-1 sm:mx-0 sm:overflow-visible">
-          <TabsList className="flex h-auto w-max min-w-full flex-nowrap gap-1 bg-muted/50 p-1 sm:w-full sm:flex-wrap">
+          <TabsList className="flex h-auto w-max min-w-full flex-nowrap gap-1 rounded-xl border border-[#dce9f6] bg-[#f3f8ff] p-1.5 sm:w-full sm:flex-wrap">
             {tabItems.map(tab => (
-              <TabsTrigger key={tab.value} value={tab.value} aria-label={tab.label} title={tab.label} className="shrink-0 gap-1.5 text-xs">
+              <TabsTrigger key={tab.value} value={tab.value} aria-label={tab.label} title={tab.label} className="shrink-0 gap-1.5 rounded-lg text-xs data-[state=active]:bg-white data-[state=active]:text-[#1766a8] data-[state=active]:shadow-sm">
                 <tab.icon className="h-3.5 w-3.5" />
                 <span>{tab.label}</span>
               </TabsTrigger>
@@ -665,44 +676,44 @@ export default function Configuracoes() {
               <CardContent className="space-y-6">
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
-                    <Label>Nome da Clínica *</Label>
-                    <Input value={configClinica.nomeClinica} onChange={e => setConfigClinica({ ...configClinica, nomeClinica: e.target.value })} placeholder="Nome da clínica" />
+                    <Label htmlFor="config-clinica-nome">Nome da Clínica *</Label>
+                    <Input id="config-clinica-nome" value={configClinica.nomeClinica} onChange={e => setConfigClinica({ ...configClinica, nomeClinica: e.target.value })} placeholder="Nome da clínica" />
                   </div>
                   <div className="space-y-2">
-                    <Label>CNPJ</Label>
-                    <Input value={configClinica.cnpj} onChange={e => setConfigClinica({ ...configClinica, cnpj: e.target.value })} placeholder="00.000.000/0001-00" />
+                    <Label htmlFor="config-clinica-cnpj">CNPJ</Label>
+                    <Input id="config-clinica-cnpj" value={configClinica.cnpj} onChange={e => setConfigClinica({ ...configClinica, cnpj: e.target.value })} placeholder="00.000.000/0001-00" />
                   </div>
                   <div className="space-y-2">
-                    <Label>CNES</Label>
-                    <Input value={configClinica.cnes} onChange={e => setConfigClinica({ ...configClinica, cnes: e.target.value })} placeholder="Código CNES" />
+                    <Label htmlFor="config-clinica-cnes">CNES</Label>
+                    <Input id="config-clinica-cnes" value={configClinica.cnes} onChange={e => setConfigClinica({ ...configClinica, cnes: e.target.value })} placeholder="Código CNES" />
                   </div>
                   <div className="space-y-2">
-                    <Label>Especialidade Principal</Label>
-                    <Input value={configClinica.especialidadePrincipal} onChange={e => setConfigClinica({ ...configClinica, especialidadePrincipal: e.target.value })} placeholder="Ex: Clínica Geral" />
+                    <Label htmlFor="config-clinica-especialidade">Especialidade Principal</Label>
+                    <Input id="config-clinica-especialidade" value={configClinica.especialidadePrincipal} onChange={e => setConfigClinica({ ...configClinica, especialidadePrincipal: e.target.value })} placeholder="Ex: Clínica Geral" />
                   </div>
                   <div className="space-y-2 md:col-span-2">
-                    <Label>Endereço Completo</Label>
-                    <Textarea value={configClinica.endereco} onChange={e => setConfigClinica({ ...configClinica, endereco: e.target.value })} rows={2} placeholder="Rua, número, bairro, cidade - UF, CEP" />
+                    <Label htmlFor="config-clinica-endereco">Endereço Completo</Label>
+                    <Textarea id="config-clinica-endereco" value={configClinica.endereco} onChange={e => setConfigClinica({ ...configClinica, endereco: e.target.value })} rows={2} placeholder="Rua, número, bairro, cidade - UF, CEP" />
                   </div>
                   <div className="space-y-2">
-                    <Label>Telefone Fixo</Label>
-                    <Input value={configClinica.telefone} onChange={e => setConfigClinica({ ...configClinica, telefone: e.target.value })} placeholder="(00) 0000-0000" />
+                    <Label htmlFor="config-clinica-telefone">Telefone Fixo</Label>
+                    <Input id="config-clinica-telefone" value={configClinica.telefone} onChange={e => setConfigClinica({ ...configClinica, telefone: e.target.value })} placeholder="(00) 0000-0000" />
                   </div>
                   <div className="space-y-2">
-                    <Label>Celular / WhatsApp</Label>
-                    <Input value={configClinica.celular} onChange={e => setConfigClinica({ ...configClinica, celular: e.target.value })} placeholder="(00) 00000-0000" />
+                    <Label htmlFor="config-clinica-celular">Celular / WhatsApp</Label>
+                    <Input id="config-clinica-celular" value={configClinica.celular} onChange={e => setConfigClinica({ ...configClinica, celular: e.target.value })} placeholder="(00) 00000-0000" />
                   </div>
                   <div className="space-y-2">
-                    <Label>Email</Label>
-                    <Input type="email" value={configClinica.email} onChange={e => setConfigClinica({ ...configClinica, email: e.target.value })} placeholder="contato@clinica.com" />
+                    <Label htmlFor="config-clinica-email">Email</Label>
+                    <Input id="config-clinica-email" type="email" value={configClinica.email} onChange={e => setConfigClinica({ ...configClinica, email: e.target.value })} placeholder="contato@clinica.com" />
                   </div>
                   <div className="space-y-2">
-                    <Label>Website</Label>
-                    <Input value={configClinica.website} onChange={e => setConfigClinica({ ...configClinica, website: e.target.value })} placeholder="https://www.clinica.com.br" />
+                    <Label htmlFor="config-clinica-website">Website</Label>
+                    <Input id="config-clinica-website" value={configClinica.website} onChange={e => setConfigClinica({ ...configClinica, website: e.target.value })} placeholder="https://www.clinica.com.br" />
                   </div>
                   <div className="space-y-2">
-                    <Label>URL do Logo</Label>
-                    <Input value={configClinica.logoUrl} onChange={e => setConfigClinica({ ...configClinica, logoUrl: e.target.value })} placeholder="https://..." />
+                    <Label htmlFor="config-clinica-logo">URL do Logo</Label>
+                    <Input id="config-clinica-logo" value={configClinica.logoUrl} onChange={e => setConfigClinica({ ...configClinica, logoUrl: e.target.value })} placeholder="https://..." />
                   </div>
                 </div>
 
@@ -710,12 +721,12 @@ export default function Configuracoes() {
                 <h3 className="font-semibold text-sm flex items-center gap-2"><Users className="h-4 w-4 text-primary" /> Responsável Técnico</h3>
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
-                    <Label>Nome do Responsável</Label>
-                    <Input value={configClinica.responsavelTecnico} onChange={e => setConfigClinica({ ...configClinica, responsavelTecnico: e.target.value })} placeholder="Dr(a). Nome Completo" />
+                    <Label htmlFor="config-clinica-responsavel">Nome do Responsável</Label>
+                    <Input id="config-clinica-responsavel" value={configClinica.responsavelTecnico} onChange={e => setConfigClinica({ ...configClinica, responsavelTecnico: e.target.value })} placeholder="Dr(a). Nome Completo" />
                   </div>
                   <div className="space-y-2">
-                    <Label>CRM do Responsável</Label>
-                    <Input value={configClinica.crmResponsavel} onChange={e => setConfigClinica({ ...configClinica, crmResponsavel: e.target.value })} placeholder="CRM/UF 00000" />
+                    <Label htmlFor="config-clinica-crm">CRM do Responsável</Label>
+                    <Input id="config-clinica-crm" value={configClinica.crmResponsavel} onChange={e => setConfigClinica({ ...configClinica, crmResponsavel: e.target.value })} placeholder="CRM/UF 00000" />
                   </div>
                 </div>
 
@@ -782,7 +793,7 @@ export default function Configuracoes() {
                         ) : (
                           <>
                             <Badge className="w-fit bg-green-500/10 text-green-700 border-green-200">✓ Ativo</Badge>
-                            <p className="text-xs text-muted-foreground">{trialEnd ? `Até ${trialEnd.toLocaleDateString('pt-BR')}` : 'Contínuo'}</p>
+                            <p className="text-xs text-muted-foreground">{resumoPeriodo}</p>
                           </>
                         )}
                       </div>
@@ -796,11 +807,11 @@ export default function Configuracoes() {
                           <h4 className="font-semibold text-sm">Próxima Renovação</h4>
                           <div className="grid gap-4 md:grid-cols-3">
                             <div className="p-3 bg-muted rounded-lg">
-                              <p className="text-xs text-muted-foreground">Data da Renovação</p>
-                              <p className="text-lg font-semibold mt-1">{trialEnd ? trialEnd.toLocaleDateString('pt-BR') : 'Mensal'}</p>
+                              <p className="text-xs text-muted-foreground">Vigência e renovação</p>
+                              <p className="text-sm font-semibold mt-1">{resumoPeriodo}</p>
                             </div>
                             <div className="p-3 bg-muted rounded-lg">
-                              <p className="text-xs text-muted-foreground">Valor Mensal</p>
+                              <p className="text-xs text-muted-foreground">Valor do plano</p>
                               <p className="text-lg font-semibold mt-1">
                                 {erroAoCarregarPlanos
                                   ? 'Preço indisponível'
@@ -813,9 +824,9 @@ export default function Configuracoes() {
                               {erroAoCarregarPlanos && <p className="text-xs text-destructive" title={erroListaPlanos instanceof Error ? erroListaPlanos.message : undefined}>Atualize os planos para consultar o valor.</p>}
                             </div>
                             <div className="p-3 bg-muted rounded-lg">
-                              <p className="text-xs text-muted-foreground">Status do Pagamento</p>
+                              <p className="text-xs text-muted-foreground">Modalidade de cobrança</p>
                               <p className="text-xs text-foreground mt-1 flex items-center gap-1">
-                                ✓ Ativo
+                                {assinaturaAtual?.cobranca_modalidade === 'pre_pago' ? 'Período pré-pago' : assinaturaAtual?.cobranca_modalidade === 'recorrente' ? 'Cartão recorrente' : 'Não informada'}
                               </p>
                             </div>
                           </div>
@@ -934,20 +945,20 @@ export default function Configuracoes() {
                 <h3 className="font-semibold text-sm">Horário Principal</h3>
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                   <div className="space-y-2">
-                    <Label>Abertura</Label>
-                    <Input type="time" value={configClinica.horarioAbertura} onChange={e => setConfigClinica({ ...configClinica, horarioAbertura: e.target.value })} />
+                    <Label htmlFor="horario-abertura">Abertura</Label>
+                    <Input id="horario-abertura" type="time" value={configClinica.horarioAbertura} onChange={e => setConfigClinica({ ...configClinica, horarioAbertura: e.target.value })} />
                   </div>
                   <div className="space-y-2">
-                    <Label>Fechamento</Label>
-                    <Input type="time" value={configClinica.horarioFechamento} onChange={e => setConfigClinica({ ...configClinica, horarioFechamento: e.target.value })} />
+                    <Label htmlFor="horario-fechamento">Fechamento</Label>
+                    <Input id="horario-fechamento" type="time" value={configClinica.horarioFechamento} onChange={e => setConfigClinica({ ...configClinica, horarioFechamento: e.target.value })} />
                   </div>
                   <div className="space-y-2">
-                    <Label>Início Almoço</Label>
-                    <Input type="time" value={configClinica.horarioAlmocoInicio} onChange={e => setConfigClinica({ ...configClinica, horarioAlmocoInicio: e.target.value })} />
+                    <Label htmlFor="horario-almoco-inicio">Início Almoço</Label>
+                    <Input id="horario-almoco-inicio" type="time" value={configClinica.horarioAlmocoInicio} onChange={e => setConfigClinica({ ...configClinica, horarioAlmocoInicio: e.target.value })} />
                   </div>
                   <div className="space-y-2">
-                    <Label>Fim Almoço</Label>
-                    <Input type="time" value={configClinica.horarioAlmocoFim} onChange={e => setConfigClinica({ ...configClinica, horarioAlmocoFim: e.target.value })} />
+                    <Label htmlFor="horario-almoco-fim">Fim Almoço</Label>
+                    <Input id="horario-almoco-fim" type="time" value={configClinica.horarioAlmocoFim} onChange={e => setConfigClinica({ ...configClinica, horarioAlmocoFim: e.target.value })} />
                   </div>
                 </div>
 
@@ -955,9 +966,9 @@ export default function Configuracoes() {
                 <h3 className="font-semibold text-sm">Consultas</h3>
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
-                    <Label>Duração Padrão</Label>
+                    <Label id="duracao-consulta-label">Duração Padrão</Label>
                     <Select value={configClinica.duracaoConsulta.toString()} onValueChange={v => setConfigClinica({ ...configClinica, duracaoConsulta: parseInt(v) })}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectTrigger aria-labelledby="duracao-consulta-label"><SelectValue /></SelectTrigger>
                       <SelectContent>
                         {[10, 15, 20, 25, 30, 40, 45, 50, 60].map(m => (
                           <SelectItem key={m} value={m.toString()}>{m} minutos</SelectItem>
@@ -966,9 +977,9 @@ export default function Configuracoes() {
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label>Intervalo entre Consultas</Label>
+                    <Label id="intervalo-consultas-label">Intervalo entre Consultas</Label>
                     <Select value={configClinica.intervaloConsultas.toString()} onValueChange={v => setConfigClinica({ ...configClinica, intervaloConsultas: parseInt(v) })}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectTrigger aria-labelledby="intervalo-consultas-label"><SelectValue /></SelectTrigger>
                       <SelectContent>
                         {[0, 5, 10, 15, 20, 30].map(m => (
                           <SelectItem key={m} value={m.toString()}>{m === 0 ? 'Sem intervalo' : `${m} minutos`}</SelectItem>
@@ -992,8 +1003,8 @@ export default function Configuracoes() {
                   <div className="p-4 rounded-lg border bg-muted/30">
                     <h4 className="text-sm font-medium mb-3">Horário de Sábado</h4>
                     <div className="grid grid-cols-2 gap-4 max-w-sm">
-                      <div className="space-y-1"><Label className="text-xs">Abertura</Label><Input type="time" value={configClinica.sabadoAbertura} onChange={e => setConfigClinica({ ...configClinica, sabadoAbertura: e.target.value })} /></div>
-                      <div className="space-y-1"><Label className="text-xs">Fechamento</Label><Input type="time" value={configClinica.sabadoFechamento} onChange={e => setConfigClinica({ ...configClinica, sabadoFechamento: e.target.value })} /></div>
+                      <div className="space-y-1"><Label htmlFor="sabado-abertura" className="text-xs">Abertura</Label><Input id="sabado-abertura" type="time" value={configClinica.sabadoAbertura} onChange={e => setConfigClinica({ ...configClinica, sabadoAbertura: e.target.value })} /></div>
+                      <div className="space-y-1"><Label htmlFor="sabado-fechamento" className="text-xs">Fechamento</Label><Input id="sabado-fechamento" type="time" value={configClinica.sabadoFechamento} onChange={e => setConfigClinica({ ...configClinica, sabadoFechamento: e.target.value })} /></div>
                     </div>
                   </div>
                 )}

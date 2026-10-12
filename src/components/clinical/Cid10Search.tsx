@@ -30,9 +30,15 @@ interface Cid10SearchProps {
   onChange: (value: string) => void;
   placeholder?: string;
   className?: string;
+  multiple?: boolean;
+  id?: string;
 }
 
-export function Cid10Search({ value, onChange, placeholder = "Buscar CID-10...", className }: Cid10SearchProps) {
+export function extractCid10Codes(value: string): string[] {
+  return [...new Set(value.match(/[A-Z]\d{2}(?:\.[A-Z0-9]{1,4})?/gi) || [])].map(code => code.toUpperCase());
+}
+
+export function Cid10Search({ value, onChange, placeholder = "Buscar CID-10...", className, multiple = true, id }: Cid10SearchProps) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [results, setResults] = useState<Cid10[]>([]);
@@ -63,10 +69,8 @@ export function Cid10Search({ value, onChange, placeholder = "Buscar CID-10...",
   // Parse initial value to extract CIDs (only on mount or when value changes externally)
   useEffect(() => {
     if (value) {
-      const cidMatches = value.match(/[A-Z]\d{2}(\.\d)?/g);
-      if (cidMatches) {
-        fetchCidDetails(cidMatches);
-      }
+      const cidMatches = extractCid10Codes(value);
+      if (cidMatches.length > 0) fetchCidDetails(cidMatches);
     }
   }, [value]);
 
@@ -115,6 +119,15 @@ export function Cid10Search({ value, onChange, placeholder = "Buscar CID-10...",
 
   const handleSelect = (cid: Cid10) => {
     const isAlreadySelected = selectedCids.some(c => c.codigo === cid.codigo);
+
+    if (!multiple) {
+      const next = isAlreadySelected ? [] : [cid];
+      setSelectedCids(next);
+      updateValue(next);
+      setSearch('');
+      setOpen(false);
+      return;
+    }
     
     if (isAlreadySelected) {
       const newSelected = selectedCids.filter(c => c.codigo !== cid.codigo);
@@ -151,6 +164,8 @@ export function Cid10Search({ value, onChange, placeholder = "Buscar CID-10...",
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
+              id={id}
+              aria-label={placeholder}
               placeholder={placeholder}
               value={search}
               onChange={(e) => {

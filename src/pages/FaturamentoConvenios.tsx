@@ -1,6 +1,6 @@
-import { useMemo, useRef, useState } from 'react';
+import { cloneElement, isValidElement, useId, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, FileDown, FileStack, Plus, RefreshCw, ShieldCheck } from 'lucide-react';
+import { AlertTriangle, BadgeCheck, FileDown, FileStack, Plus, RefreshCw, ShieldCheck, RotateCcw } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { Button } from '@/components/ui/button';
@@ -119,8 +119,15 @@ export default function FaturamentoConvenios() {
     if (!convenio) return toast.error('O convênio selecionado não está disponível. Atualize a tela e tente novamente.');
     setSaving(true);
     try {
-      const { error } = await (supabase as any).from('lotes_tiss').insert({ ...lotForm, numero_lote: lotForm.numero_lote.trim(), versao_tiss: convenio.versao_tiss || '04.01.00', clinica_id: profile?.clinica_id });
+      const { data, error } = await (supabase as any).rpc('criar_lote_tiss', {
+        p_convenio_id: lotForm.convenio_id,
+        p_competencia: lotForm.competencia,
+        p_numero_lote: lotForm.numero_lote.trim(),
+        p_quantidade_guias: lotForm.quantidade_guias,
+        p_valor_apresentado: lotForm.valor_apresentado,
+      });
       if (error) throw error;
+      if (!data?.success) throw new Error('O banco não confirmou a criação do lote.');
       setLotOpen(false); setLotForm(novoLoteForm());
       await queryClient.invalidateQueries({ queryKey: ['lotes-tiss'] }); toast.success('Lote criado.');
     } catch (error: any) {
@@ -175,16 +182,14 @@ export default function FaturamentoConvenios() {
     } finally { setSaving(false); }
   }
 
-  async function updateLot(id: string, status: string): Promise<boolean> {
+  async function updateLot(id: string): Promise<boolean> {
     if (loteEnviandoId) return false;
     if (!profile?.clinica_id) { toast.error('Clínica não identificada. Atualize a sessão e tente novamente.'); return false; }
     setLoteEnviandoId(id);
-    const changes: any = { status };
-    if (status === 'enviado') changes.enviado_em = new Date().toISOString();
     try {
-      const { data, error } = await (supabase as any).from('lotes_tiss').update(changes).eq('id', id).eq('clinica_id', profile.clinica_id).eq('status', 'rascunho').select('id').maybeSingle();
+      const { data, error } = await (supabase as any).rpc('registrar_envio_lote_tiss', { p_lote_id: id });
       if (error) throw error;
-      if (!data) throw new Error('O lote já foi alterado. Atualize a lista antes de registrar o envio.');
+      if (!data?.success) throw new Error('O lote já foi alterado. Atualize a lista antes de registrar o envio.');
       await queryClient.invalidateQueries({ queryKey: ['lotes-tiss'] }); toast.success('Envio registrado.');
       return true;
     } catch (error: any) { toast.error('Não foi possível atualizar o lote.', { description: error?.message }); return false; }
@@ -277,10 +282,6 @@ export default function FaturamentoConvenios() {
     }
     glosaAtualizacaoLock.current = true;
     setGlosaAtualizandoId(id);
-    const changes: any = { status };
-    if (status === 'recurso_enviado') changes.recurso_enviado_em = new Date().toISOString();
-    if (['aceita', 'mantida'].includes(status)) changes.resolvido_em = new Date().toISOString();
-    Object.assign(changes, extra);
     const statusEsperado: Record<typeof status, string> = {
       recurso_preparacao: glosas.find((item: any) => item.id === id)?.status === 'recurso_preparacao' ? 'recurso_preparacao' : 'pendente',
       recurso_enviado: 'recurso_preparacao',
@@ -288,9 +289,14 @@ export default function FaturamentoConvenios() {
       mantida: 'recurso_enviado',
     };
     try {
-      const { data, error } = await (supabase as any).from('glosas_convenio').update(changes).eq('id', id).eq('clinica_id', profile.clinica_id).eq('status', statusEsperado[status]).select('id').maybeSingle();
+      const { data, error } = await (supabase as any).rpc('atualizar_glosa_convenio', {
+        p_glosa_id: id,
+        p_status: status,
+        p_recurso_justificativa: status === 'recurso_preparacao' ? String(extra.recurso_justificativa || '') : null,
+        p_valor_recuperado: ['aceita', 'mantida'].includes(status) ? Number(extra.valor_recuperado || 0) : null,
+      });
       if (error) throw error;
-      if (!data) throw new Error('A glosa já mudou de status. Atualize a lista antes de continuar.');
+      if (!data?.success) throw new Error(`A glosa já mudou de status (${statusEsperado[status]}). Atualize a lista antes de continuar.`);
       await queryClient.invalidateQueries({ queryKey: ['glosas-convenio'] });
       toast.success(({ recurso_preparacao: 'Preparação do recurso registrada.', recurso_enviado: 'Recurso marcado como enviado.', aceita: 'Glosa aceita; valor recuperado registrado.', mantida: 'Decisão da operadora registrada.' })[status]);
       return true;
@@ -326,8 +332,8 @@ export default function FaturamentoConvenios() {
 
   function exportLot(lote: any) {
     const escape = (v: unknown) => String(v ?? '').replace(/[<>&'\"]/g, c => ({ '<':'&lt;','>':'&gt;','&':'&amp;',"'":'&apos;','\"':'&quot;' }[c]!));
-    const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<loteOperacional versaoTISS="${escape(lote.versao_tiss)}"><numero>${escape(lote.numero_lote)}</numero><competencia>${escape(lote.competencia)}</competencia><registroANS>${escape(lote.convenios?.registro_ans)}</registroANS><quantidadeGuias>${lote.quantidade_guias}</quantidadeGuias><valorApresentado>${Number(lote.valor_apresentado).toFixed(2)}</valorApresentado></loteOperacional>`;
-    const url = URL.createObjectURL(new Blob([xml], { type: 'application/xml' })); const a = document.createElement('a'); a.href = url; a.download = `lote-${lote.numero_lote}.xml`; a.click(); window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<!-- Resumo operacional EloLab; não é arquivo TISS de transmissão. -->\n<loteOperacional versaoTISS="${escape(lote.versao_tiss)}"><numero>${escape(lote.numero_lote)}</numero><competencia>${escape(lote.competencia)}</competencia><registroANS>${escape(lote.convenios?.registro_ans)}</registroANS><quantidadeGuias>${lote.quantidade_guias}</quantidadeGuias><valorApresentado>${Number(lote.valor_apresentado).toFixed(2)}</valorApresentado></loteOperacional>`;
+    const url = URL.createObjectURL(new Blob([xml], { type: 'application/xml' })); const a = document.createElement('a'); a.href = url; a.download = `resumo-operacional-lote-${lote.numero_lote}.xml`; a.click(); window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
   function abrirNovoLote() {
@@ -346,15 +352,18 @@ export default function FaturamentoConvenios() {
   if (glosasQuery.isError) return <ErrorState title="Não foi possível carregar as glosas" error={glosasQuery.error} onRetry={() => void glosasQuery.refetch()} />;
   if (isLoading) return <div className="rounded-lg border p-6 text-sm text-muted-foreground">Carregando faturamento de convênios…</div>;
 
-  return <div className="space-y-6">
-    <div><h1 className="text-2xl font-bold">Faturamento de Convênios</h1><p className="text-sm text-muted-foreground">Lotes TISS, retorno das operadoras, glosas e recursos.</p></div>
+  return <div className="space-y-6 pb-8">
+    <div className="flex flex-col gap-4 rounded-2xl border border-[#d7e9f7] bg-gradient-to-r from-[#f1fbfd] via-white to-[#eff4ff] p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:p-5"><div><h1 className="flex items-center gap-2 text-2xl font-bold font-display tracking-tight"><span className="rounded-xl bg-[#eaf4ff] p-2 text-[#1766a8] ring-1 ring-[#d1e5f8]"><FileStack className="h-5 w-5" /></span>Faturamento de Convênios</h1><p className="mt-1 text-sm text-muted-foreground">Lotes TISS, retorno das operadoras, glosas e recursos.</p></div><div className="flex flex-wrap items-center gap-2"><Button onClick={abrirNovoLote} disabled={convenios.length === 0}><Plus className="mr-2 h-4 w-4" />Novo lote</Button><Button variant="outline" onClick={abrirRegistroGlosa} disabled={lotesParaRegistrarGlosa.length === 0} title={lotesParaRegistrarGlosa.length === 0 ? 'Envie um lote antes de registrar uma glosa' : undefined}><AlertTriangle className="mr-2 h-4 w-4" />Registrar glosa</Button></div></div>
     {lotesComDivergenciaFinanceira.length > 0 && <div role="status" className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm text-warning-foreground"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0"/><p>{lotesComDivergenciaFinanceira.length} lote(s) têm diferença entre o total recebido e o conciliado no financeiro. Confira lançamentos existentes antes de conciliar, para evitar duplicidade.</p></div>}
     {consultasAtingiramLimite && <div role="alert" className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm text-warning-foreground"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning"/><p>A lista atingiu o limite de {LIMITE_BUSCA_EM_BLOCOS.toLocaleString('pt-BR')} registros. Os indicadores podem não incluir todos os lotes ou glosas.</p></div>}
+    {convenios.length === 0 && <p role="status" className="rounded-xl border border-[#dceaf5] bg-white p-3 text-sm text-muted-foreground">Cadastre e ative um convênio para criar lotes TISS.</p>}
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">{[
-      ['Apresentado', resumo.apresentado], ['Pago', resumo.pago], ['Glosado', resumo.glosado], ['Recuperado', resumo.recuperado],
-    ].map(([label, value]) => <Card key={String(label)}><CardContent className="p-4"><p className="text-xs text-muted-foreground">{label}</p><p className="text-xl font-bold">{brl(Number(value))}</p></CardContent></Card>)}</div>
-    <div className="flex flex-wrap items-center gap-2"><Button onClick={abrirNovoLote} disabled={convenios.length === 0}><Plus className="mr-2 h-4 w-4" />Novo lote</Button><Button variant="outline" onClick={abrirRegistroGlosa} disabled={lotesParaRegistrarGlosa.length === 0} title={lotesParaRegistrarGlosa.length === 0 ? 'Envie um lote antes de registrar uma glosa' : undefined}><AlertTriangle className="mr-2 h-4 w-4" />Registrar glosa</Button>{convenios.length === 0 && <p role="status" className="text-xs text-muted-foreground">Cadastre e ative um convênio para criar lotes TISS.</p>}</div>
-    <Tabs defaultValue="lotes"><TabsList><TabsTrigger value="lotes">Lotes ({lotes.length})</TabsTrigger><TabsTrigger value="glosas">Glosas ({glosas.length})</TabsTrigger></TabsList>
+      { label: 'Apresentado', value: resumo.apresentado, icon: FileStack, color: 'text-[#1766a8]', bg: 'bg-[#eaf4ff]', border: 'border-[#d1e5f8]' },
+      { label: 'Pago', value: resumo.pago, icon: BadgeCheck, color: 'text-[#147765]', bg: 'bg-[#e5f7f2]', border: 'border-[#c5eadd]' },
+      { label: 'Glosado', value: resumo.glosado, icon: AlertTriangle, color: 'text-[#b65a4d]', bg: 'bg-[#fff0ed]', border: 'border-[#f2d6d0]' },
+      { label: 'Recuperado', value: resumo.recuperado, icon: RotateCcw, color: 'text-[#6559a6]', bg: 'bg-[#f0edff]', border: 'border-[#ddd8fa]' },
+    ].map(({ label, value, icon: Icon, color, bg, border }) => <Card key={label} className={`h-full border bg-gradient-to-br from-white to-[#f8fbfd] shadow-sm transition-shadow hover:shadow-md ${border}`}><CardContent className="flex items-start justify-between gap-2 p-4"><div><p className="text-xs font-medium text-muted-foreground">{label}</p><p className={`mt-1 text-lg font-bold tabular-nums sm:text-xl ${color}`}>{brl(value)}</p></div><span className={`rounded-xl p-2.5 ring-1 ring-inset ring-black/[0.03] ${bg}`}><Icon className={`h-4 w-4 ${color}`} /></span></CardContent></Card>)}</div>
+    <Tabs defaultValue="lotes"><TabsList className="rounded-xl border border-[#d7e9f7] bg-[#f2f9fc] p-1"><TabsTrigger value="lotes">Lotes ({lotes.length})</TabsTrigger><TabsTrigger value="glosas">Glosas ({glosas.length})</TabsTrigger></TabsList>
       <TabsContent value="lotes">
         <Card>
           <CardHeader><CardTitle className="text-base"><FileStack className="mr-2 inline h-4 w-4" />Lotes registrados</CardTitle></CardHeader>
@@ -375,7 +384,7 @@ export default function FaturamentoConvenios() {
               <TableCell className="text-right"><span>{brl(l.valor_apresentado)}</span><p className="text-xs text-muted-foreground">Recebido: {brl(l.valor_pago)}</p><p className="text-xs text-muted-foreground">No financeiro: {brl(l.valor_conciliado_financeiro || 0)}</p></TableCell>
               <TableCell><Badge variant="outline">{l.status.replaceAll('_', ' ')}</Badge></TableCell>
               <TableCell><div className="flex flex-wrap gap-1">
-                <Button size="sm" variant="ghost" onClick={() => exportLot(l)} aria-label={`Exportar resumo XML do lote ${l.numero_lote}`}><FileDown className="h-4 w-4" /></Button>
+                <Button size="sm" variant="ghost" onClick={() => exportLot(l)} aria-label={`Baixar resumo XML do lote ${l.numero_lote}`} title="Baixar resumo operacional XML (não é arquivo TISS de transmissão)"><FileDown className="mr-1 h-4 w-4" />Baixar resumo XML</Button>
                 {l.status === 'rascunho' && <Button size="sm" disabled={loteEnviandoId !== null} onClick={() => setLoteParaConfirmarEnvio(l)}>{loteEnviandoId === l.id && <RefreshCw className="mr-1 h-3.5 w-3.5 animate-spin" />}Registrar envio</Button>}
                 {['enviado', 'processando', 'pago_parcial', 'pago'].includes(l.status) && <Button size="sm" variant="outline" onClick={() => abrirRetornoLote(l)}>{l.retorno_em ? 'Atualizar retorno' : 'Registrar retorno'}</Button>}
               </div></TableCell>
@@ -407,7 +416,7 @@ export default function FaturamentoConvenios() {
             onClick={event => {
               event.preventDefault();
               if (!loteParaConfirmarEnvio) return;
-              void updateLot(loteParaConfirmarEnvio.id, 'enviado').then(salvou => {
+              void updateLot(loteParaConfirmarEnvio.id).then(salvou => {
                 if (salvou) setLoteParaConfirmarEnvio(null);
               });
             }}
@@ -419,7 +428,7 @@ export default function FaturamentoConvenios() {
       </AlertDialogContent>
     </AlertDialog>
 
-    <Dialog open={lotOpen} onOpenChange={open => { if (!saving) setLotOpen(open); }}><DialogContent><DialogHeader><DialogTitle>Novo lote TISS</DialogTitle></DialogHeader><fieldset disabled={saving} className="contents"><div className="space-y-3"><Field label="Convênio"><Select value={lotForm.convenio_id} onValueChange={v => setLotForm(f => ({...f,convenio_id:v}))}><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger><SelectContent>{convenios.map((c:any)=><SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>)}</SelectContent></Select></Field><div className="grid grid-cols-2 gap-3"><Field label="Número do lote"><Input value={lotForm.numero_lote} onChange={e=>setLotForm(f=>({...f,numero_lote:e.target.value}))}/></Field><Field label="Competência"><Input type="month" value={lotForm.competencia.slice(0, 7)} onChange={e=>setLotForm(f=>({...f,competencia:e.target.value ? `${e.target.value}-01` : ''}))}/></Field><Field label="Quantidade de guias"><Input type="number" min="1" value={lotForm.quantidade_guias} onChange={e=>setLotForm(f=>({...f,quantidade_guias:Number(e.target.value)}))}/></Field><Field label="Valor apresentado"><Input type="number" min="0.01" step="0.01" value={lotForm.valor_apresentado} onChange={e=>setLotForm(f=>({...f,valor_apresentado:Number(e.target.value)}))}/></Field></div></div></fieldset><DialogFooter><Button variant="outline" onClick={() => setLotOpen(false)} disabled={saving}>Cancelar</Button><Button onClick={saveLot} disabled={saving}>{saving && <RefreshCw className="mr-2 h-4 w-4 animate-spin"/>}Salvar</Button></DialogFooter></DialogContent></Dialog>
+    <Dialog open={lotOpen} onOpenChange={open => { if (!saving) setLotOpen(open); }}><DialogContent><DialogHeader><DialogTitle>Novo lote TISS</DialogTitle></DialogHeader><fieldset disabled={saving} className="contents"><div className="space-y-3"><Field label="Convênio"><Select value={lotForm.convenio_id} onValueChange={v => setLotForm(f => ({...f,convenio_id:v}))}><SelectTrigger aria-label="Convênio"><SelectValue placeholder="Selecione" /></SelectTrigger><SelectContent>{convenios.map((c:any)=><SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>)}</SelectContent></Select></Field><div className="grid grid-cols-2 gap-3"><Field label="Número do lote"><Input value={lotForm.numero_lote} onChange={e=>setLotForm(f=>({...f,numero_lote:e.target.value}))}/></Field><Field label="Competência"><Input type="month" value={lotForm.competencia.slice(0, 7)} onChange={e=>setLotForm(f=>({...f,competencia:e.target.value ? `${e.target.value}-01` : ''}))}/></Field><Field label="Quantidade de guias"><Input type="number" min="1" value={lotForm.quantidade_guias} onChange={e=>setLotForm(f=>({...f,quantidade_guias:Number(e.target.value)}))}/></Field><Field label="Valor apresentado"><Input type="number" min="0.01" step="0.01" value={lotForm.valor_apresentado} onChange={e=>setLotForm(f=>({...f,valor_apresentado:Number(e.target.value)}))}/></Field></div></div></fieldset><DialogFooter><Button variant="outline" onClick={() => setLotOpen(false)} disabled={saving}>Cancelar</Button><Button onClick={saveLot} disabled={saving}>{saving && <RefreshCw className="mr-2 h-4 w-4 animate-spin"/>}Salvar</Button></DialogFooter></DialogContent></Dialog>
     <Dialog open={!!loteParaRetorno} onOpenChange={open => { if (!open && !savingRetornoLote) setLoteParaRetorno(null); }}>
       <DialogContent>
         <DialogHeader><DialogTitle>Registrar retorno da operadora</DialogTitle></DialogHeader>
@@ -448,7 +457,7 @@ export default function FaturamentoConvenios() {
           <div className="space-y-3">
             <Field label="Lote">
               <Select value={glosaForm.lote_id} onValueChange={v => setGlosaForm(f => ({ ...f, lote_id: v, valor_glosado: 0 }))}>
-                <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+              <SelectTrigger aria-label="Lote"><SelectValue placeholder="Selecione" /></SelectTrigger>
                 <SelectContent>{lotesParaRegistrarGlosa.map((l: any) => <SelectItem key={l.id} value={l.id}>{l.numero_lote} · {l.convenios?.nome}</SelectItem>)}</SelectContent>
               </Select>
             </Field>
@@ -477,8 +486,15 @@ export default function FaturamentoConvenios() {
       </DialogContent>
     </Dialog>
     <Dialog open={!!glosaParaRecurso} onOpenChange={open => { if (!open && glosaAtualizandoId === null) { setGlosaParaRecurso(null); setJustificativaRecurso(''); } }}><DialogContent><DialogHeader><DialogTitle>{glosaParaRecurso?.status === 'recurso_preparacao' ? 'Revisar recurso' : 'Preparar recurso de glosa'}</DialogTitle></DialogHeader><p className="text-sm text-muted-foreground">Glosa {glosaParaRecurso?.codigo_glosa} · {brl(Number(glosaParaRecurso?.valor_glosado || 0))}</p><Field label="Justificativa do recurso"><Textarea rows={5} disabled={glosaAtualizandoId !== null} value={justificativaRecurso} onChange={e=>setJustificativaRecurso(e.target.value)} placeholder="Descreva por que a cobrança deve ser revista pela operadora…" /></Field><p className="text-xs text-muted-foreground">Registre a justificativa antes de marcar o recurso como enviado.</p><DialogFooter><Button variant="outline" onClick={()=>setGlosaParaRecurso(null)} disabled={glosaAtualizandoId !== null}>Cancelar</Button><Button onClick={salvarJustificativaRecurso} disabled={glosaAtualizandoId !== null || justificativaRecurso.trim().length < 10}>{glosaAtualizandoId === glosaParaRecurso?.id && <RefreshCw className="mr-2 h-4 w-4 animate-spin"/>}Salvar justificativa</Button></DialogFooter></DialogContent></Dialog>
-    <Dialog open={!!glosaParaRetorno} onOpenChange={open => { if (!open && glosaAtualizandoId === null) setGlosaParaRetorno(null); }}><DialogContent><DialogHeader><DialogTitle>Registrar retorno da operadora</DialogTitle></DialogHeader><p className="text-sm text-muted-foreground">Glosa {glosaParaRetorno?.codigo_glosa} · valor original {brl(Number(glosaParaRetorno?.valor_glosado || 0))}</p><Field label="Decisão"><Select value={decisaoOperadora} disabled={glosaAtualizandoId !== null} onValueChange={value=>setDecisaoOperadora(value as 'aceita' | 'mantida')}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="aceita">Recurso aceito</SelectItem><SelectItem value="mantida">Glosa mantida</SelectItem></SelectContent></Select></Field>{decisaoOperadora === 'aceita' && <Field label="Valor recuperado"><Input type="number" min="0" max={glosaParaRetorno?.valor_glosado || 0} step="0.01" disabled={glosaAtualizandoId !== null} value={valorRecuperado} onChange={e=>setValorRecuperado(e.target.value)} /></Field>}<DialogFooter><Button variant="outline" onClick={()=>setGlosaParaRetorno(null)} disabled={glosaAtualizandoId !== null}>Cancelar</Button><Button onClick={salvarRetornoOperadora} disabled={glosaAtualizandoId !== null}>{glosaAtualizandoId === glosaParaRetorno?.id && <RefreshCw className="mr-2 h-4 w-4 animate-spin"/>}Registrar decisão</Button></DialogFooter></DialogContent></Dialog>
+    <Dialog open={!!glosaParaRetorno} onOpenChange={open => { if (!open && glosaAtualizandoId === null) setGlosaParaRetorno(null); }}><DialogContent><DialogHeader><DialogTitle>Registrar retorno da operadora</DialogTitle></DialogHeader><p className="text-sm text-muted-foreground">Glosa {glosaParaRetorno?.codigo_glosa} · valor original {brl(Number(glosaParaRetorno?.valor_glosado || 0))}</p><Field label="Decisão"><Select value={decisaoOperadora} disabled={glosaAtualizandoId !== null} onValueChange={value=>setDecisaoOperadora(value as 'aceita' | 'mantida')}><SelectTrigger aria-label="Decisão"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="aceita">Recurso aceito</SelectItem><SelectItem value="mantida">Glosa mantida</SelectItem></SelectContent></Select></Field>{decisaoOperadora === 'aceita' && <Field label="Valor recuperado"><Input type="number" min="0" max={glosaParaRetorno?.valor_glosado || 0} step="0.01" disabled={glosaAtualizandoId !== null} value={valorRecuperado} onChange={e=>setValorRecuperado(e.target.value)} /></Field>}<DialogFooter><Button variant="outline" onClick={()=>setGlosaParaRetorno(null)} disabled={glosaAtualizandoId !== null}>Cancelar</Button><Button onClick={salvarRetornoOperadora} disabled={glosaAtualizandoId !== null}>{glosaAtualizandoId === glosaParaRetorno?.id && <RefreshCw className="mr-2 h-4 w-4 animate-spin"/>}Registrar decisão</Button></DialogFooter></DialogContent></Dialog>
   </div>;
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) { return <div className="space-y-1.5"><Label>{label}</Label>{children}</div>; }
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  const controlId = useId();
+  const labelId = `${controlId}-label`;
+  const control = isValidElement(children)
+    ? cloneElement(children as React.ReactElement<Record<string, unknown>>, { id: controlId, 'aria-labelledby': labelId })
+    : children;
+  return <div className="space-y-1.5"><Label id={labelId} htmlFor={controlId}>{label}</Label>{control}</div>;
+}

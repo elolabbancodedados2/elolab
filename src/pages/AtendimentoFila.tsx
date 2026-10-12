@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { ClipboardCheck, Activity } from 'lucide-react';
 import { SectionFallback } from '@/components/ui/loading-skeleton';
+import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 
 /**
  * Casca "Fila / Triagem" — mesmo padrão de GestaoFluxo, Contas e RecepcaoCaixa.
@@ -20,9 +21,11 @@ const Loader = () => <SectionFallback />;
 
 export default function AtendimentoFila() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const { hasAnyRole } = useSupabaseAuth();
+  const podeAcessarTriagem = hasAnyRole(['admin', 'medico', 'enfermagem']);
   // Permite abrir direto na triagem (ex.: /fila?tab=triagem), que é para onde
   // a antiga rota /triagem redireciona.
-  const tab = searchParams.get('tab') === 'triagem' ? 'triagem' : 'fila';
+  const tab = podeAcessarTriagem && searchParams.get('tab') === 'triagem' ? 'triagem' : 'fila';
 
   const handleTabChange = (value: string) => {
     setSearchParams(value === 'triagem' ? { tab: 'triagem' } : {}, { replace: true });
@@ -31,23 +34,23 @@ export default function AtendimentoFila() {
   return (
     <div className="space-y-4">
       <Tabs value={tab} onValueChange={handleTabChange} className="w-full">
-        <TabsList className="grid w-full max-w-md grid-cols-2 mx-auto">
-          <TabsTrigger value="fila" className="gap-2">
+        <TabsList className={`grid w-full max-w-md ${podeAcessarTriagem ? 'grid-cols-2' : 'grid-cols-1'} mx-auto rounded-xl border border-[#D6E7F3] bg-[#EAF4FF] p-1`}>
+          <TabsTrigger value="fila" className="min-h-10 gap-2 rounded-lg data-[state=active]:bg-white data-[state=active]:text-[#0C1F54] data-[state=active]:shadow-sm">
             <ClipboardCheck className="h-4 w-4" />
             Fila
           </TabsTrigger>
-          <TabsTrigger value="triagem" className="gap-2">
+          {podeAcessarTriagem && <TabsTrigger value="triagem" className="min-h-10 gap-2 rounded-lg data-[state=active]:bg-white data-[state=active]:text-[#0C1F54] data-[state=active]:shadow-sm">
             <Activity className="h-4 w-4" />
             Triagem
-          </TabsTrigger>
+          </TabsTrigger>}
         </TabsList>
 
         <TabsContent value="fila" className="mt-4">
           <Suspense fallback={<Loader />}><Fila /></Suspense>
         </TabsContent>
-        <TabsContent value="triagem" className="mt-4">
+        {podeAcessarTriagem && <TabsContent value="triagem" className="mt-4">
           <Suspense fallback={<Loader />}><Triagem /></Suspense>
-        </TabsContent>
+        </TabsContent>}
       </Tabs>
     </div>
   );

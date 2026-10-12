@@ -17,9 +17,9 @@ export default function PrecosServicos() {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5 pb-8">
       <Tabs value={tab} onValueChange={handleTabChange} className="w-full">
-        <TabsList className="grid w-full max-w-md grid-cols-2 mx-auto">
+        <TabsList className="mx-auto grid w-full max-w-md grid-cols-2 rounded-xl border border-[#d7e9f7] bg-[#f2f9fc] p-1">
           <TabsTrigger value="precos" className="gap-2">
             <TestTubes className="h-4 w-4" />
             Tabela de Preços

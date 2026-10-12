@@ -11,6 +11,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 /** Constrói um mock encadeável do supabase-js com respostas programáveis. */
 function criarSupabaseMock(respostas: Record<string, any>) {
   const chamadas: Array<{ tabela: string; op: string; payload?: any }> = [];
+  const filtros: Array<{ tabela: string; coluna: string; valor: unknown }> = [];
 
   const construirQuery = (tabela: string, op: string, payload?: any) => {
     chamadas.push({ tabela, op, payload });
@@ -19,7 +20,7 @@ function criarSupabaseMock(respostas: Record<string, any>) {
 
     const encadeavel: any = {
       select: () => encadeavel,
-      eq: () => encadeavel,
+      eq: (coluna: string, valor: unknown) => { filtros.push({ tabela, coluna, valor }); return encadeavel; },
       neq: () => encadeavel,
       ilike: () => encadeavel,
       gt: () => encadeavel,
@@ -34,6 +35,7 @@ function criarSupabaseMock(respostas: Record<string, any>) {
 
   return {
     chamadas,
+    filtros,
     cliente: {
       auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: 'u1' } } }) },
       from: (tabela: string) => ({
@@ -63,93 +65,134 @@ beforeEach(() => {
   mockAtual = criarSupabaseMock({});
 });
 
-describe('check-in — o paciente nunca fica marcado como aguardando fora da fila', () => {
-  it('entra na fila antes de mudar o status do agendamento', async () => {
+describe('progresso de exame', () => {
+  it('só avança se clínica e status ainda forem os esperados', async () => {
     mockAtual = criarSupabaseMock({
-      'fila_atendimento.select': { data: [], error: null },
-      'fila_atendimento.insert': { data: { id: 'fila-1' }, error: null },
-      'agendamentos.update': { data: null, error: null },
+      'exames.update': { data: { id: 'exame-1' }, error: null },
     });
 
-    const { autoCheckin } = await import('@/lib/workflowAutomation');
-    const resultado = await autoCheckin('ag-1');
+    const { autoProgressExame } = await import('@/lib/workflowAutomation');
+    const resultado = await autoProgressExame({
+      exameId: 'exame-1', novoStatus: 'cancelado', statusAtual: 'solicitado',
+      pacienteId: 'paciente-1', pacienteNome: 'Paciente', medicoId: null,
+      tipoExame: 'Hemograma', clinicaId: 'clinica-1',
+    });
 
     expect(resultado.success).toBe(true);
-
-    const ordem = mockAtual.chamadas
-      .filter(c => (c.tabela === 'fila_atendimento' && c.op === 'insert')
-                || (c.tabela === 'agendamentos' && c.op === 'update'))
-      .map(c => `${c.tabela}.${c.op}`);
-
-    // A fila (artefato visível no painel) precisa vir primeiro: se ela falhar,
-    // nada mudou. O contrário deixava o agendamento "aguardando" sem fila.
-    expect(ordem[0]).toBe('fila_atendimento.insert');
-    expect(ordem[1]).toBe('agendamentos.update');
+    expect(mockAtual.filtros).toContainEqual({ tabela: 'exames', coluna: 'clinica_id', valor: 'clinica-1' });
+    expect(mockAtual.filtros).toContainEqual({ tabela: 'exames', coluna: 'status', valor: 'solicitado' });
   });
+});
 
-  it('grava a clínica no item da fila para ele continuar visível no isolamento', async () => {
+describe('cancelamento de consulta usa transicao atomica da agenda', () => {
+  it('nao atualiza status e fila em chamadas separadas', async () => {
     mockAtual = criarSupabaseMock({
-      'fila_atendimento.select': { data: [], error: null },
-      'fila_atendimento.insert': { data: { id: 'fila-1' }, error: null },
-      'agendamentos.update': { data: null, error: null },
+      'agendamentos.select': {
+        data: { data: '2026-10-11', hora_inicio: '10:00', medico_id: 'med-1', paciente_id: 'pac-1', clinica_id: 'clin-1', updated_at: '2026-10-11T09:00:00Z' },
+        error: null,
+      },
+      'rpc.alterar_status_agendamento_com_fila': {
+        data: { atualizado: true, fila_removida: 0 }, error: null,
+      },
     });
 
-    const { autoCheckin } = await import('@/lib/workflowAutomation');
-    const resultado = await autoCheckin('ag-1', 'clinica-1');
+    const { autoCancelarAgendamento } = await import('@/lib/workflowAutomation');
+    const resultado = await autoCancelarAgendamento({ agendamentoId: 'ag-1', motivo: 'cancelado' });
 
     expect(resultado.success).toBe(true);
-    const insercao = mockAtual.chamadas.find(
-      c => c.tabela === 'fila_atendimento' && c.op === 'insert',
-    );
-    expect(insercao?.payload).toMatchObject({ clinica_id: 'clinica-1' });
+    expect(mockAtual.chamadas.some(c => c.tabela === 'rpc:alterar_status_agendamento_com_fila')).toBe(true);
+    expect(mockAtual.chamadas.some(c => c.tabela === 'agendamentos' && c.op === 'update')).toBe(false);
+    expect(mockAtual.chamadas.some(c => c.tabela === 'fila_atendimento' && c.op === 'delete')).toBe(false);
   });
+});
 
-  it('falha ao entrar na fila não mexe no agendamento', async () => {
+describe('coleta de exame urgente', () => {
+  it('atualiza a coleta criada pelo banco para urgente', async () => {
     mockAtual = criarSupabaseMock({
-      'fila_atendimento.select': { data: [], error: null },
-      'fila_atendimento.insert': { data: null, error: { message: 'permissão negada' } },
+      'coletas_laboratorio.select': { data: [{ id: 'coleta-1' }], error: null },
+      'coletas_laboratorio.update': { data: { id: 'coleta-1' }, error: null },
     });
 
-    const { autoCheckin } = await import('@/lib/workflowAutomation');
-    const resultado = await autoCheckin('ag-1');
-
-    expect(resultado.success).toBe(false);
-    const mexeuNoAgendamento = mockAtual.chamadas.some(
-      c => c.tabela === 'agendamentos' && c.op === 'update',
-    );
-    expect(mexeuNoAgendamento, 'agendamento foi alterado apesar da falha na fila').toBe(false);
-  });
-
-  it('falha no status desfaz a entrada na fila', async () => {
-    mockAtual = criarSupabaseMock({
-      'fila_atendimento.select': { data: [], error: null },
-      'fila_atendimento.insert': { data: { id: 'fila-1' }, error: null },
-      'agendamentos.update': { data: null, error: { message: 'permissão negada' } },
+    const { autoCreateColeta } = await import('@/lib/workflowAutomation');
+    const resultado = await autoCreateColeta({
+      exameId: 'exame-1', pacienteId: 'paciente-1', medicoId: 'medico-1',
+      tipoExame: 'Hemograma Completo', urgente: true, clinicaId: 'clinica-1',
     });
-
-    const { autoCheckin } = await import('@/lib/workflowAutomation');
-    const resultado = await autoCheckin('ag-1');
-
-    expect(resultado.success).toBe(false);
-
-    // Sem a compensação, sobraria na fila um paciente que ninguém consegue chamar.
-    const desfezFila = mockAtual.chamadas.some(
-      c => c.tabela === 'fila_atendimento' && c.op === 'delete',
-    );
-    expect(desfezFila, 'entrada órfã ficou na fila').toBe(true);
-  });
-
-  it('paciente já na fila não é inserido de novo', async () => {
-    mockAtual = criarSupabaseMock({
-      'fila_atendimento.select': { data: [{ id: 'fila-existente' }], error: null },
-    });
-
-    const { autoCheckin } = await import('@/lib/workflowAutomation');
-    const resultado = await autoCheckin('ag-1');
 
     expect(resultado.success).toBe(true);
-    expect(resultado.message).toContain('já está na fila');
-    expect(mockAtual.chamadas.some(c => c.op === 'insert')).toBe(false);
+    expect(mockAtual.chamadas).toContainEqual({
+      tabela: 'coletas_laboratorio', op: 'update', payload: { urgente: true },
+    });
+  });
+});
+
+describe('check-in usa a transicao atomica do banco', () => {
+  it('chama a RPC e nao insere fila ou atualiza agenda diretamente', async () => {
+    mockAtual = criarSupabaseMock({
+      'rpc.realizar_checkin': {
+        data: { repetido: false, fila_id: 'fila-1', status_agendamento: 'aguardando' },
+        error: null,
+      },
+    });
+
+    const { autoCheckin } = await import('@/lib/workflowAutomation');
+    const result = await autoCheckin('ag-1', 'clinica-1');
+
+    expect(result.success).toBe(true);
+    const checkin = mockAtual.chamadas.find(c => c.tabela === 'rpc:realizar_checkin');
+    expect(checkin?.payload).toEqual({ p_agendamento_id: 'ag-1', p_prioridade: 'normal' });
+    expect(mockAtual.chamadas.some(c => c.tabela === 'fila_atendimento' && c.op === 'insert')).toBe(false);
+    expect(mockAtual.chamadas.some(c => c.tabela === 'agendamentos' && c.op === 'update')).toBe(false);
+  });
+
+  it('reconhece check-in repetido sem criar outra entrada', async () => {
+    mockAtual = criarSupabaseMock({
+      'rpc.realizar_checkin': {
+        data: { repetido: true, fila_id: 'fila-existente', status_agendamento: 'aguardando' },
+        error: null,
+      },
+    });
+
+    const { autoCheckin } = await import('@/lib/workflowAutomation');
+    const result = await autoCheckin('ag-1');
+
+    expect(result.success).toBe(true);
+    expect(result.message).toContain('fila');
+  });
+
+  it('mant?m a prioridade da triagem ao entrar pela RPC', async () => {
+    mockAtual = criarSupabaseMock({
+      'fila_atendimento.select': { data: [], error: null },
+      'rpc.realizar_checkin': {
+        data: { repetido: false, fila_id: 'fila-1', status_agendamento: 'aguardando' },
+        error: null,
+      },
+    });
+
+    const { autoTriagemParaFila } = await import('@/lib/workflowAutomation');
+    const result = await autoTriagemParaFila({
+      agendamentoId: 'ag-1',
+      classificacaoRisco: 'vermelho',
+      clinicaId: 'clin-1',
+    });
+
+    expect(result.success).toBe(true);
+    expect(mockAtual.chamadas.find(c => c.tabela === 'rpc:realizar_checkin')?.payload)
+      .toEqual({ p_agendamento_id: 'ag-1', p_prioridade: 'urgente' });
+    expect(mockAtual.chamadas.some(c => c.tabela === 'fila_atendimento' && c.op === 'insert')).toBe(false);
+  });
+
+  it('reporta falha da RPC sem alterar a agenda ou a fila diretamente', async () => {
+    mockAtual = criarSupabaseMock({
+      'rpc.realizar_checkin': { data: null, error: { message: 'sem permissao' } },
+    });
+
+    const { autoCheckin } = await import('@/lib/workflowAutomation');
+    const result = await autoCheckin('ag-1');
+
+    expect(result.success).toBe(false);
+    expect(mockAtual.chamadas.some(c => c.tabela === 'fila_atendimento' && c.op === 'insert')).toBe(false);
+    expect(mockAtual.chamadas.some(c => c.tabela === 'agendamentos' && c.op === 'update')).toBe(false);
   });
 });
 
@@ -593,6 +636,7 @@ describe('dispensacao - baixa de estoque transacional', () => {
       medicamentos: [{ nome: 'Dipirona 500mg', quantidade: '2' }],
       pacienteId: 'pac-1',
       pacienteNome: 'Maria',
+      prontuarioId: 'pront-1',
       userId: 'user-1',
     });
 
@@ -604,7 +648,23 @@ describe('dispensacao - baixa de estoque transacional', () => {
     expect(chamada?.payload).toMatchObject({
       p_item_id: 'item-1',
       p_quantidade: 2,
+      p_prontuario_id: 'pront-1',
       p_usuario_id: 'user-1',
     });
+  });
+
+  it('não permite baixar estoque sem prontuário vinculado', async () => {
+    const { autoDispensarMedicamentos } = await import('@/lib/workflowAutomation');
+    const resultado = await autoDispensarMedicamentos({
+      medicamentos: [{ nome: 'Dipirona 500mg', quantidade: '2' }],
+      pacienteId: 'pac-1',
+      pacienteNome: 'Maria',
+      prontuarioId: '',
+      userId: 'user-1',
+    });
+
+    expect(resultado.success).toBe(false);
+    expect(resultado.message).toContain('prontuário');
+    expect(mockAtual.chamadas.some(c => c.tabela === 'rpc:registrar_baixa_estoque')).toBe(false);
   });
 });

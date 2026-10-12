@@ -16,12 +16,12 @@ export default function GestaoFluxo() {
   return (
     <div className="space-y-4">
       <Tabs value={tab} onValueChange={value => setSearchParams(value === 'espera' ? { tab: 'espera' } : {}, { replace: true })} className="w-full">
-        <TabsList className="grid w-full max-w-md grid-cols-2 mx-auto">
-          <TabsTrigger value="salas" className="gap-2">
+        <TabsList className="mx-auto grid w-full max-w-md grid-cols-2 rounded-xl border border-[#D6E7F3] bg-[#EAF4FF] p-1">
+          <TabsTrigger value="salas" className="min-h-10 gap-2 rounded-lg data-[state=active]:bg-white data-[state=active]:text-[#0C1F54] data-[state=active]:shadow-sm">
             <DoorOpen className="h-4 w-4" />
             Salas
           </TabsTrigger>
-          <TabsTrigger value="espera" className="gap-2">
+          <TabsTrigger value="espera" className="min-h-10 gap-2 rounded-lg data-[state=active]:bg-white data-[state=active]:text-[#0C1F54] data-[state=active]:shadow-sm">
             <ClockAlert className="h-4 w-4" />
             Lista de Espera
           </TabsTrigger>

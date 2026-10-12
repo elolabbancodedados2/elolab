@@ -1,5 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { clinicaDoChamador, cronForbidden, cronOrUserOk, cronSecretOk } from '../_shared/cronAuth.ts'
+import { clinicaAdminDoChamador, cronForbidden, cronOrUserOk, cronSecretOk } from '../_shared/cronAuth.ts'
 import { corsPadrao } from '../_shared/cors.ts';
 import { consumoNotificacoes } from '../_shared/limitesClinica.ts';
 import { sendBrandedBrevoRequest } from '../_shared/brevoEmail.ts';
@@ -24,7 +24,7 @@ Deno.serve(async (req) => {
   try {
     const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
     const chamadaDoCron = req.headers.has('x-cron-secret') && cronSecretOk(req)
-    const clinicaId = chamadaDoCron ? null : await clinicaDoChamador(req, supabase)
+    const clinicaId = chamadaDoCron ? null : await clinicaAdminDoChamador(req, supabase)
     if (!chamadaDoCron && !clinicaId) return cronForbidden(corsHeaders)
 
     const { data: pendentes, error } = await supabase.rpc('reivindicar_notificacoes', {
@@ -45,6 +45,12 @@ Deno.serve(async (req) => {
         ...(!terminal ? { agendado_para: new Date(Date.now() + minutos * 60_000).toISOString() } : {}),
       }).eq('id', notif.id)
     }
+    const marcarIncerto = async (notif: NotificationItem, mensagem: string) => {
+      await supabase.from('notification_queue').update({
+        status: 'incerto', erro_mensagem: mensagem.slice(0, 1000),
+        ultimo_erro_em: new Date().toISOString(), iniciado_em: null,
+      }).eq('id', notif.id).eq('status', 'enviando')
+    }
     // Limite mensal de envios por clínica (Limites e Consumo). Contado uma vez
     // por clínica nesta execução e incrementado a cada envio bem-sucedido.
     const consumo = new Map<string, { usados: number; limite: number }>()
@@ -56,6 +62,7 @@ Deno.serve(async (req) => {
     }
 
     for (const notif of pendentes as NotificationItem[]) {
+      let envioExternoIniciado = false
       try {
         if (notif.clinica_id) {
           if (!consumo.has(notif.clinica_id)) consumo.set(notif.clinica_id, await consumoNotificacoes(supabase, notif.clinica_id))
@@ -69,14 +76,21 @@ Deno.serve(async (req) => {
         if (notif.tipo === 'email' && notif.destinatario_email) {
           const key = Deno.env.get('BREVO_API_KEY')
           if (!key) throw new Error('BREVO_API_KEY não configurada')
+          envioExternoIniciado = true
           const res = await sendBrandedBrevoRequest({
             method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
             body: JSON.stringify({ sender: { name: 'EloLab Clínica', email: 'noreply@elolab.com.br' },
               to: [{ email: notif.destinatario_email, name: notif.destinatario_nome || '' }],
               subject: notif.assunto || 'Notificação EloLab', htmlContent: notif.conteudo.replace(/\n/g, '<br>') }),
           })
-          if (!res.ok) { await falhar(notif, `Brevo HTTP ${res.status}`); errorCount++; continue }
-          await concluir(notif.id, notif.clinica_id); successCount++
+          if (!res.ok) {
+            if (res.status >= 500) await marcarIncerto(notif, `Brevo HTTP ${res.status}; confira o provedor antes de repetir`)
+            else await falhar(notif, `Brevo HTTP ${res.status}`)
+            errorCount++; continue
+          }
+          const { error: completionError } = await concluir(notif.id, notif.clinica_id)
+          if (completionError) { await marcarIncerto(notif, 'Brevo aceitou o envio, mas o status local não foi confirmado'); errorCount++; continue }
+          successCount++
         } else if (notif.tipo === 'whatsapp' && notif.destinatario_telefone) {
           const url = (Deno.env.get('EVOLUTION_API_URL') || '').replace(/\/+$/, '')
           const key = Deno.env.get('EVOLUTION_API_KEY')
@@ -85,16 +99,27 @@ Deno.serve(async (req) => {
             .eq('status', 'connected').eq('clinica_id', notif.clinica_id).limit(1).maybeSingle()
           if (!session?.instance_name) throw new Error('Nenhuma sessão WhatsApp conectada')
           const digits = notif.destinatario_telefone.replace(/\D/g, '')
+          envioExternoIniciado = true
           const res = await fetch(`${url}/message/sendText/${session.instance_name}`, {
             method: 'POST', headers: { 'Content-Type': 'application/json', apikey: key },
             body: JSON.stringify({ number: digits.length >= 10 ? digits : `55${digits}`, text: notif.conteudo }),
           })
-          if (!res.ok) { await falhar(notif, `Evolution ${res.status}: ${(await res.text()).slice(0, 700)}`); errorCount++; continue }
-          await concluir(notif.id, notif.clinica_id); successCount++
+          if (!res.ok) {
+            if (res.status >= 500) await marcarIncerto(notif, `Evolution HTTP ${res.status}; confira o provedor antes de repetir`)
+            else await falhar(notif, `Evolution ${res.status}: ${(await res.text()).slice(0, 700)}`)
+            errorCount++; continue
+          }
+          const { error: completionError } = await concluir(notif.id, notif.clinica_id)
+          if (completionError) { await marcarIncerto(notif, 'WhatsApp aceitou o envio, mas o status local não foi confirmado'); errorCount++; continue }
+          successCount++
         } else {
           await falhar(notif, `Canal "${notif.tipo}" sem destinatário válido ou não suportado`, false); errorCount++
         }
-      } catch (err) { await falhar(notif, String(err)); errorCount++ }
+      } catch (err) {
+        if (envioExternoIniciado) await marcarIncerto(notif, `Resultado do provedor incerto: ${String(err)}`)
+        else await falhar(notif, String(err))
+        errorCount++
+      }
     }
 
     const duration = Date.now() - startTime

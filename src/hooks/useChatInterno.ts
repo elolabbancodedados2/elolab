@@ -3,6 +3,8 @@ import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { canalUnico } from '@/lib/realtimeCanal';
+import { carregarHistoricoRecente } from '@/lib/chatMessageHistory';
+import { aplicarReciboLeitura } from '@/lib/chatReadReceipt';
 
 export interface ChatUsuario {
   id: string;
@@ -157,24 +159,28 @@ export function useChatInterno() {
     if (!user || !profile?.clinica_id) return;
     const requestId = ++fetchMensagensRequestRef.current;
     setLoading(true);
+    setErroCarregamento(null);
     // Evita exibir por um instante as mensagens da conversa anterior enquanto
     // a nova conversa carrega.
     setMensagens([]);
     try {
-      const { data, error } = await supabase
-        .from('chat_messages')
-        .select('*')
-        .eq('conversa_id', conversaId)
-        .eq('clinica_id', profile.clinica_id)
-        .order('created_at', { ascending: true });
+      const { messages: data, truncated } = await carregarHistoricoRecente(async (offset, limit) => {
+        const { data, error } = await supabase
+          .from('chat_messages')
+          .select('*')
+          .eq('conversa_id', conversaId)
+          .eq('clinica_id', profile.clinica_id)
+          .order('created_at', { ascending: false })
+          .order('id', { ascending: false })
+          .range(offset, offset + limit - 1);
+        if (error) throw error;
+        return data ?? [];
+      });
 
-      if (error) {
-        if (requestId === fetchMensagensRequestRef.current) setErroCarregamento(error);
-        return;
-      }
       if (requestId !== fetchMensagensRequestRef.current) return;
-      if (data) {
-        setMensagens(data as ChatMensagem[]);
+      setMensagens(data as ChatMensagem[]);
+      if (truncated) toast.warning('O histórico desta conversa foi limitado às mensagens mais recentes.');
+      {
         const unread = data.filter((m: any) => m.destinatario_id === user.id && !m.lida_em);
         if (unread.length > 0 && requestId === fetchMensagensRequestRef.current) {
           const { error: markError } = await supabase
@@ -201,13 +207,15 @@ export function useChatInterno() {
   const iniciarConversa = useCallback(async (outroUserId: string): Promise<ChatConversa | null> => {
     if (!user || !profile?.clinica_id) return null;
 
-    // Check for existing conversation (in either direction)
+    const participante1Id = user.id < outroUserId ? user.id : outroUserId;
+    const participante2Id = user.id < outroUserId ? outroUserId : user.id;
+
+    // Use a canonical participant order so both users resolve the same thread.
     const { data: existing, error: existingError } = await supabase
       .from('chat_conversations')
       .select('*')
-      .or(
-        `and(participante_1_id.eq.${user.id},participante_2_id.eq.${outroUserId}),and(participante_1_id.eq.${outroUserId},participante_2_id.eq.${user.id})`
-      )
+      .eq('participante_1_id', participante1Id)
+      .eq('participante_2_id', participante2Id)
       .eq('clinica_id', profile.clinica_id)
       .order('created_at', { ascending: true })
       .limit(1)
@@ -238,12 +246,38 @@ export function useChatInterno() {
     const { data: newConv, error } = await supabase
       .from('chat_conversations')
       .insert({
-        participante_1_id: user.id,
-        participante_2_id: outroUserId,
+        participante_1_id: participante1Id,
+        participante_2_id: participante2Id,
         clinica_id: profile.clinica_id,
       })
       .select()
       .maybeSingle();
+
+    if (error?.code === '23505') {
+      const { data: racedConv } = await supabase
+        .from('chat_conversations')
+        .select('*')
+        .eq('participante_1_id', participante1Id)
+        .eq('participante_2_id', participante2Id)
+        .eq('clinica_id', profile.clinica_id)
+        .maybeSingle();
+      if (racedConv) {
+        const outroUsuario = usuariosRef.current.find(u => u.id === outroUserId);
+        const conv: ChatConversa = {
+          id: racedConv.id,
+          participante_1_id: racedConv.participante_1_id,
+          participante_2_id: racedConv.participante_2_id,
+          ultima_mensagem_em: racedConv.ultima_mensagem_em,
+          preview: racedConv.preview,
+          outro_usuario: outroUsuario,
+          nao_lidas: 0,
+          urgente_nao_lida: false,
+        };
+        setConversaAtiva(conv);
+        void fetchConversas();
+        return conv;
+      }
+    }
 
     if (error || !newConv) {
       toast.error('Não foi possível iniciar a conversa.', { description: error?.message });
@@ -292,18 +326,6 @@ export function useChatInterno() {
       toast.error('Não foi possível enviar a mensagem.', { description: error?.message });
       return false;
     }
-
-    // Update conversation preview
-    const { error: previewError } = await supabase
-      .from('chat_conversations')
-      .update({
-        ultima_mensagem_em: new Date().toISOString(),
-        preview: texto.trim().slice(0, 100),
-      })
-      .eq('id', conv.id)
-      .eq('clinica_id', profile.clinica_id);
-
-    if (previewError) toast.warning('Mensagem enviada, mas a prévia da conversa não foi atualizada.');
 
     if (msg && conversaAtivaRef.current?.id === conv.id) {
       setMensagens(prev => adicionarMensagemEmOrdem(prev, msg as ChatMensagem));
@@ -387,8 +409,19 @@ export function useChatInterno() {
       .on(
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'chat_messages' },
-        () => {
+        (payload) => {
           // Refresh on read receipts
+          const updated = payload.new as ChatMensagem;
+          const activeConv = conversaAtivaRef.current;
+          if (activeConv && updated.conversa_id === activeConv.id && profile?.clinica_id
+            && updated.clinica_id === profile.clinica_id && updated.lida_em) {
+            setMensagens(previous => aplicarReciboLeitura(previous, {
+              id: updated.id,
+              conversa_id: updated.conversa_id,
+              clinica_id: updated.clinica_id!,
+              lida_em: updated.lida_em,
+            }, activeConv.id, profile.clinica_id!));
+          }
           fetchConversas();
         }
       )

@@ -46,8 +46,15 @@ const STATUSES: [string, string][] = [
   ['agendado', 'Agendado'],
   ['confirmado', 'Confirmado'],
   ['aguardando', 'Aguardando'],
+  ['aguardando_triagem', 'Aguardando triagem'],
+  ['em_triagem', 'Em triagem'],
+  ['fila_atendimento', 'Na fila de atendimento'],
   ['em_atendimento', 'Em atendimento'],
   ['finalizado', 'Finalizado'],
+  ['atendimento_finalizado', 'Atendimento finalizado'],
+  ['aguardando_pagamento', 'Aguardando pagamento'],
+  ['aguardando_pagamento_adicional', 'Aguardando pagamento adicional'],
+  ['pago', 'Pago'],
   ['cancelado', 'Cancelado'],
   ['faltou', 'Faltou'],
 ];
@@ -73,15 +80,15 @@ export function AgendaHeader(p: Props) {
   const activeFilters = p.medicoFilter.length + p.statusFilter.length + (p.search ? 1 : 0);
 
   return (
-    <div className="flex flex-col gap-3 pb-3 border-b border-border/60">
+    <div className="flex flex-col gap-4 rounded-2xl border border-[#D8E8F4] bg-[linear-gradient(118deg,#FFFFFF_12%,#F6FBFF_70%,#EAF8FC_100%)] p-3 shadow-[0_12px_32px_-26px_rgba(12,31,84,0.35)] sm:gap-5 sm:p-5">
       {/* Row 1: title + nav + view + primary actions */}
       <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
         <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
           <div className="flex min-w-0 items-center gap-2">
-          <h1 className="truncate text-lg font-semibold capitalize sm:text-xl">{label}</h1>
-          {isToday && p.view === 'daily' && <Badge variant="secondary" className="text-[10px]">HOJE</Badge>}
+          <h1 className="truncate text-lg font-semibold capitalize text-[#0C1F54] sm:text-xl">{label}</h1>
+          {isToday && p.view === 'daily' && <Badge className="border-[#CDEAFF] bg-[#EAF4FF] text-[#005ECC] hover:bg-[#EAF4FF]">HOJE</Badge>}
           </div>
-          <div className="flex w-full items-center rounded-md border sm:w-auto sm:shrink-0">
+          <div className="flex w-full items-center rounded-xl border border-[#D8E8F4] bg-white shadow-sm sm:w-auto sm:shrink-0">
             <Button variant="ghost" size="icon" className="h-11 w-11 shrink-0 sm:h-9 sm:w-9" onClick={() => nav(-1)} aria-label="Anterior">
               <ChevronLeft className="h-4 w-4" />
             </Button>
@@ -110,14 +117,14 @@ export function AgendaHeader(p: Props) {
         </div>
 
         <div className="flex w-full items-center gap-2 overflow-x-auto pb-1 sm:w-auto sm:overflow-visible sm:pb-0">
-          <div className="flex items-center gap-0.5 rounded-md border p-0.5">
-            <Button variant={p.view === 'daily' ? 'default' : 'ghost'} size="sm" className="h-11 px-3 sm:h-9" onClick={() => p.onViewChange('daily')} aria-label="Visualização diária">
+          <div className="flex items-center gap-0.5 rounded-xl border border-[#D8E8F4] bg-white p-1 shadow-sm">
+            <Button variant={p.view === 'daily' ? 'default' : 'ghost'} size="sm" className={cn('h-11 px-3 sm:h-9', p.view === 'daily' && 'bg-[#0C1F54] text-white hover:bg-[#142D68]')} onClick={() => p.onViewChange('daily')} aria-label="Visualização diária">
               <List className="h-3.5 w-3.5 md:mr-1" /> <span className="hidden md:inline">Dia</span>
             </Button>
-            <Button variant={p.view === 'weekly' ? 'default' : 'ghost'} size="sm" className="h-11 px-3 sm:h-9" onClick={() => p.onViewChange('weekly')} aria-label="Visualização semanal">
+            <Button variant={p.view === 'weekly' ? 'default' : 'ghost'} size="sm" className={cn('h-11 px-3 sm:h-9', p.view === 'weekly' && 'bg-[#0C1F54] text-white hover:bg-[#142D68]')} onClick={() => p.onViewChange('weekly')} aria-label="Visualização semanal">
               <LayoutGrid className="h-3.5 w-3.5 md:mr-1" /> <span className="hidden md:inline">Semana</span>
             </Button>
-            <Button variant={p.view === 'monthly' ? 'default' : 'ghost'} size="sm" className="h-11 px-3 sm:h-9" onClick={() => p.onViewChange('monthly')} aria-label="Visualização mensal">
+            <Button variant={p.view === 'monthly' ? 'default' : 'ghost'} size="sm" className={cn('h-11 px-3 sm:h-9', p.view === 'monthly' && 'bg-[#0C1F54] text-white hover:bg-[#142D68]')} onClick={() => p.onViewChange('monthly')} aria-label="Visualização mensal">
               <CalendarDays className="h-3.5 w-3.5 md:mr-1" /> <span className="hidden md:inline">Mês</span>
             </Button>
           </div>
@@ -156,7 +163,7 @@ export function AgendaHeader(p: Props) {
             </DropdownMenuContent>
           </DropdownMenu>
 
-          <Button size="sm" onClick={p.onNewAppointment} className="h-11 shrink-0 shadow-sm sm:h-9">
+          <Button size="sm" onClick={p.onNewAppointment} className="h-11 shrink-0 bg-[#005ECC] text-white shadow-md shadow-[#0F7BFD]/15 hover:bg-[#004FAE] sm:h-9">
             <Plus className="h-4 w-4 md:mr-1" /> <span className="hidden md:inline">Nova consulta</span>
           </Button>
         </div>
@@ -170,13 +177,14 @@ export function AgendaHeader(p: Props) {
             placeholder="Buscar paciente, CPF, telefone..."
             value={p.search}
             onChange={(e) => p.onSearchChange(e.target.value)}
-            className="h-11 pl-8 text-sm sm:h-9"
+            aria-label="Buscar paciente, CPF ou telefone"
+            className="h-11 border-[#D8E8F4] bg-white pl-8 text-sm focus-visible:ring-[#0F7BFD] sm:h-9"
           />
         </div>
 
         <Popover>
           <PopoverTrigger asChild>
-            <Button variant="outline" size="sm" className="h-11 sm:h-9">
+            <Button variant="outline" size="sm" className="h-11 border-[#D8E8F4] bg-white text-[#0C1F54] hover:bg-[#F3FAFF] sm:h-9">
               <Filter className="h-3.5 w-3.5 mr-1.5" /> Médicos
               {p.medicoFilter.length > 0 && <Badge variant="secondary" className="ml-1.5 h-4 px-1 text-[10px]">{p.medicoFilter.length}</Badge>}
             </Button>
@@ -204,7 +212,7 @@ export function AgendaHeader(p: Props) {
 
         <Popover>
           <PopoverTrigger asChild>
-            <Button variant="outline" size="sm" className="h-11 sm:h-9">
+            <Button variant="outline" size="sm" className="h-11 border-[#D8E8F4] bg-white text-[#0C1F54] hover:bg-[#F3FAFF] sm:h-9">
               <Filter className="h-3.5 w-3.5 mr-1.5" /> Status
               {p.statusFilter.length > 0 && <Badge variant="secondary" className="ml-1.5 h-4 px-1 text-[10px]">{p.statusFilter.length}</Badge>}
             </Button>
@@ -250,7 +258,7 @@ export function AgendaHeader(p: Props) {
 function Stat({ label, value, tone }: { label: string; value: number; tone?: 'success' | 'warning' | 'destructive' }) {
   return (
     <div className={cn(
-      'flex min-h-11 shrink-0 items-center gap-1.5 rounded-md border px-2 py-1 sm:min-h-0',
+      'flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg border border-[#D8E8F4] bg-white px-2 py-1 shadow-sm sm:min-h-0',
       tone === 'success' && 'border-success/30 bg-success/5',
       tone === 'warning' && 'border-warning/30 bg-warning/5',
       tone === 'destructive' && 'border-destructive/30 bg-destructive/5',

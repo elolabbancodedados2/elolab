@@ -34,11 +34,12 @@ import {
 } from 'recharts';
 import { isValidDateOnly, parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { valorRealizado } from '@/lib/lancamentos';
-import { valorRecebidoDaConta } from '@/lib/contasReceber';
+import { podeExportarContasCompletas, valorRecebidoDaConta } from '@/lib/contasReceber';
 import { ErrorState } from '@/components/ErrorState';
 import { pacienteCorresponde } from '@/lib/buscaPaciente';
 import { mensagemDeErro } from '@/lib/erros';
 import { MercadoPagoPointPayment } from '@/components/financeiro/MercadoPagoPointPayment';
+import { buscarDadosBasicosPacientes } from '@/lib/patientBasicData';
 
 type StatusPagamento = Database['public']['Enums']['status_pagamento'];
 
@@ -191,15 +192,16 @@ export default function ContasReceber() {
       // Em blocos: sem paginar, o servidor devolvia só as 1000 primeiras contas.
       const data = await buscarEmBlocos<any>(() => supabase
         .from('lancamentos')
-        .select('*, pacientes(nome,nome_social,cpf,telefone,email)')
+        .select('*')
         .eq('tipo', 'receita')
         .eq('clinica_id', profile?.clinica_id ?? '')
         .order('created_at', { ascending: false })
         .order('id', { ascending: true }));
+      const pacientesPorId = await buscarDadosBasicosPacientes(data.map(conta => conta.paciente_id));
       const today = todaySaoPauloDateOnly();
       return data.map(conta => {
         const vencido = ['pendente', 'parcial'].includes(conta.status) && !!conta.data_vencimento && conta.data_vencimento < today;
-        return { ...conta, vencido, status: vencido && conta.status === 'pendente' ? 'atrasado' as StatusPagamento : conta.status };
+        return { ...conta, pacientes: pacientesPorId.get(conta.paciente_id) ?? null, vencido, status: vencido && conta.status === 'pendente' ? 'atrasado' as StatusPagamento : conta.status };
       });
     },
     enabled: !!user && !!profile?.clinica_id,
@@ -219,6 +221,7 @@ export default function ContasReceber() {
   });
   const pagamentos = pagamentosQuery.data ?? [];
   const pagamentosAtingiramLimite = pagamentos.length >= LIMITE_BUSCA_EM_BLOCOS;
+  const exportacaoCompletaPermitida = podeExportarContasCompletas(contasAtingiramLimite, pagamentosAtingiramLimite);
   const lancamentosComPagamento = useMemo(
     () => new Set(pagamentos.map(pagamento => pagamento.lancamento_id)),
     [pagamentos],
@@ -628,10 +631,9 @@ export default function ContasReceber() {
     cancelamentoSubmissionLock.current = true;
     setIsCancelandoConta(true);
     try {
-      const { data: cancelado, error } = await supabase.from('lancamentos').update({
-        status: 'cancelado' as StatusPagamento,
-      }).eq('id', contaParaCancelar.id).eq('clinica_id', profile.clinica_id)
-        .in('status', ['pendente', 'atrasado']).select('id').maybeSingle();
+      const { data: cancelado, error } = await (supabase as any).rpc('cancelar_lancamento_pendente', {
+        p_lancamento_id: contaParaCancelar.id,
+      });
       if (error) throw error;
       if (!cancelado) throw new Error('Esta conta já foi alterada ou não está mais pendente. Atualize a lista.');
       toast.success('Conta cancelada.');
@@ -684,17 +686,18 @@ export default function ContasReceber() {
   return (
     <div className="space-y-6 pb-8">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 rounded-2xl border border-[#d7e9f7] bg-gradient-to-r from-[#f1fbfd] via-white to-[#eff4ff] p-4 shadow-sm sm:p-5">
         <div>
           <h1 className="text-2xl font-bold font-display tracking-tight flex items-center gap-2">
-            <TrendingUp className="h-6 w-6 text-success" /> Contas a Receber
+            <span className="rounded-xl bg-[#e5f7f2] p-2 text-[#147765] ring-1 ring-[#c5eadd]"><TrendingUp className="h-5 w-5" /></span> Contas a Receber
           </h1>
           <p className="text-sm text-muted-foreground mt-0.5">
             Receitas detalhadas — período por data de lançamento · {stats.countTotal} lançamento(s)
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" className="gap-1.5" onClick={exportarExcel}>
+          <Button variant="outline" size="sm" className="gap-1.5" onClick={exportarExcel}
+            disabled={!exportacaoCompletaPermitida} aria-describedby={!exportacaoCompletaPermitida ? 'contas-receber-limite-aviso' : undefined}>
             <Download className="h-4 w-4" /> Exportar
           </Button>
           <Button onClick={handleNew} className="gap-1.5">
@@ -704,7 +707,8 @@ export default function ContasReceber() {
       </div>
 
       {(contasAtingiramLimite || pagamentosAtingiramLimite) && (
-        <div role="status" className="rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm text-warning-foreground">
+        <div id="contas-receber-limite-aviso" role="status" className="rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm text-warning-foreground">
+          A exportação fica desativada enquanto os dados estiverem incompletos.{' '}
           {contasAtingiramLimite && <>A leitura atingiu {LIMITE_BUSCA_EM_BLOCOS.toLocaleString('pt-BR')} contas; a lista pode estar incompleta e os totais não devem ser usados para fechamento. </>}
           {pagamentosAtingiramLimite && <>A leitura atingiu {LIMITE_BUSCA_EM_BLOCOS.toLocaleString('pt-BR')} pagamentos; o recebido pode estar incompleto. Consulte o Fluxo de Caixa para recebimentos por período.</>}
         </div>
@@ -713,13 +717,13 @@ export default function ContasReceber() {
       {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
-          { label: 'Total Geral', value: stats.total, icon: DollarSign, color: 'text-primary', bg: 'bg-primary/10', border: 'border-primary/20' },
-          { label: 'Em aberto', value: stats.pendente, icon: Clock, color: 'text-warning', bg: 'bg-warning/10', border: 'border-warning/20', count: stats.countPendente },
-          { label: 'Vencido', value: stats.atrasado, icon: AlertCircle, color: 'text-destructive', bg: 'bg-destructive/10', border: 'border-destructive/20', count: stats.countAtrasado },
-          { label: 'Recebido nas contas filtradas', value: stats.pago, icon: Check, color: 'text-success', bg: 'bg-success/10', border: 'border-success/20', count: stats.countPago },
+          { label: 'Total Geral', value: stats.total, icon: DollarSign, color: 'text-[#1766a8]', bg: 'bg-[#eaf4ff]', border: 'border-[#d1e5f8]' },
+          { label: 'Em aberto', value: stats.pendente, icon: Clock, color: 'text-[#916813]', bg: 'bg-[#fff8e8]', border: 'border-[#f3e6bf]', count: stats.countPendente },
+          { label: 'Vencido', value: stats.atrasado, icon: AlertCircle, color: 'text-[#b65a4d]', bg: 'bg-[#fff0ed]', border: 'border-[#f2d6d0]', count: stats.countAtrasado },
+          { label: 'Recebido nas contas filtradas', value: stats.pago, icon: Check, color: 'text-[#147765]', bg: 'bg-[#e5f7f2]', border: 'border-[#c5eadd]', count: stats.countPago },
         ].map((s, i) => (
           <motion.div key={s.label} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}>
-            <Card className={cn('border', s.border)}>
+            <Card className={cn('h-full border bg-gradient-to-br from-white to-[#f8fbfd] shadow-sm transition-shadow hover:shadow-md', s.border)}>
               <CardContent className="py-4 px-5">
                 <div className="flex items-start justify-between">
                   <div>
@@ -729,7 +733,7 @@ export default function ContasReceber() {
                       <p className="text-[10px] text-muted-foreground">{s.count} conta(s)</p>
                     )}
                   </div>
-                  <div className={cn('h-10 w-10 rounded-xl flex items-center justify-center', s.bg)}>
+                  <div className={cn('h-10 w-10 rounded-xl flex items-center justify-center ring-1 ring-inset ring-black/[0.03]', s.bg)}>
                     <s.icon className={cn('h-5 w-5', s.color)} />
                   </div>
                 </div>
@@ -1001,7 +1005,7 @@ export default function ContasReceber() {
                 })}
               </div>
               <Select value={formData.categoria} onValueChange={v => setFormData({ ...formData, categoria: v })}>
-                <SelectTrigger className="h-8 text-xs mt-1">
+                <SelectTrigger id="receita-categoria" aria-label="Tipo de receita" className="h-8 text-xs mt-1">
                   <SelectValue placeholder="Ou selecione outra categoria..." />
                 </SelectTrigger>
                 <SelectContent>
@@ -1038,19 +1042,19 @@ export default function ContasReceber() {
             {/* Descrição */}
             <div className="space-y-1.5">
               <Label className="text-xs">Descrição *</Label>
-              <Textarea value={formData.descricao} onChange={e => setFormData({ ...formData, descricao: e.target.value })} placeholder="Detalhe o serviço..." rows={2} />
+              <Textarea aria-label="Descricao da receita" value={formData.descricao} onChange={e => setFormData({ ...formData, descricao: e.target.value })} placeholder="Detalhe o serviço..." rows={2} />
             </div>
 
             {/* Valor + Vencimento */}
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs">Valor (R$) *</Label>
-                <Input type="text" inputMode="decimal" placeholder="0,00" value={formData.valor} onChange={e => setFormData({ ...formData, valor: e.target.value })} />
+                <Input aria-label="Valor da receita em reais" type="text" inputMode="decimal" placeholder="0,00" value={formData.valor} onChange={e => setFormData({ ...formData, valor: e.target.value })} />
                 {formData.valor.trim() && valorReceitaInvalido && <p className="text-xs text-destructive" role="alert">Informe um valor maior que zero, com até duas casas decimais.</p>}
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs">Vencimento</Label>
-                <Input type="date" value={formData.data_vencimento} onChange={e => setFormData({ ...formData, data_vencimento: e.target.value })} />
+                <Input aria-label="Vencimento da receita" type="date" value={formData.data_vencimento} onChange={e => setFormData({ ...formData, data_vencimento: e.target.value })} />
               </div>
             </div>
 
@@ -1059,14 +1063,14 @@ export default function ContasReceber() {
               <div className="space-y-1.5">
                 <Label className="text-xs">Forma de Pagamento</Label>
                 <Select value={formData.forma_pagamento} onValueChange={v => setFormData({ ...formData, forma_pagamento: v })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger aria-label="Forma de pagamento ou centro de custo"><SelectValue /></SelectTrigger>
                   <SelectContent>{FORMAS_PAGAMENTO.map(f => <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs">Centro de Custo</Label>
                 <Select value={formData.centro_custo} onValueChange={v => setFormData({ ...formData, centro_custo: v })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger aria-label="Centro de custo"><SelectValue /></SelectTrigger>
                   <SelectContent>{CENTROS_CUSTO_RECEITA.map(c => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
@@ -1076,18 +1080,18 @@ export default function ContasReceber() {
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs">Competência</Label>
-                <Input type="month" value={formData.competencia} onChange={e => setFormData({ ...formData, competencia: e.target.value })} />
+                <Input aria-label="Competencia da receita" type="month" value={formData.competencia} onChange={e => setFormData({ ...formData, competencia: e.target.value })} />
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs">Nº Documento / NF</Label>
-                <Input value={formData.numero_documento} onChange={e => setFormData({ ...formData, numero_documento: e.target.value })} placeholder="Opcional" />
+                <Input aria-label="Numero do documento da receita" value={formData.numero_documento} onChange={e => setFormData({ ...formData, numero_documento: e.target.value })} placeholder="Opcional" />
               </div>
             </div>
 
             {/* Observações */}
             <div className="space-y-1.5">
               <Label className="text-xs">Observações</Label>
-              <Textarea value={formData.observacoes} onChange={e => setFormData({ ...formData, observacoes: e.target.value })} placeholder="Observações adicionais..." rows={2} />
+              <Textarea aria-label="Observacoes da receita" value={formData.observacoes} onChange={e => setFormData({ ...formData, observacoes: e.target.value })} placeholder="Observações adicionais..." rows={2} />
             </div>
           </fieldset>
           <DialogFooter>
@@ -1179,12 +1183,12 @@ export default function ContasReceber() {
               <div className="grid grid-cols-2 gap-2">
                 <div className="space-y-1">
                   <Label className="text-[10px]">Desconto (R$)</Label>
-                  <Input type="text" inputMode="decimal" placeholder="0,00" value={baixaData.desconto} onChange={e => setBaixaData({ ...baixaData, desconto: e.target.value })} className="h-8 text-xs" disabled={isSubmitting || baixaIncerta} />
+                  <Input aria-label="Desconto em reais" type="text" inputMode="decimal" placeholder="0,00" value={baixaData.desconto} onChange={e => setBaixaData({ ...baixaData, desconto: e.target.value })} className="h-8 text-xs" disabled={isSubmitting || baixaIncerta} />
                   {baixaData.desconto.trim() && parseMoneyInput(baixaData.desconto) === null && <p className="text-[10px] text-destructive" role="alert">Valor inválido.</p>}
                 </div>
                 <div className="space-y-1">
                   <Label className="text-[10px]">Acréscimo (R$)</Label>
-                  <Input type="text" inputMode="decimal" placeholder="0,00" value={baixaData.acrescimo} onChange={e => setBaixaData({ ...baixaData, acrescimo: e.target.value })} className="h-8 text-xs" disabled={isSubmitting || baixaIncerta} />
+                  <Input aria-label="Acrescimo em reais" type="text" inputMode="decimal" placeholder="0,00" value={baixaData.acrescimo} onChange={e => setBaixaData({ ...baixaData, acrescimo: e.target.value })} className="h-8 text-xs" disabled={isSubmitting || baixaIncerta} />
                   {baixaData.acrescimo.trim() && parseMoneyInput(baixaData.acrescimo) === null && <p className="text-[10px] text-destructive" role="alert">Valor inválido.</p>}
                 </div>
               </div>
@@ -1207,7 +1211,7 @@ export default function ContasReceber() {
 
               <div className="space-y-1">
                 <Label className="text-[10px]">Observações</Label>
-                <Textarea value={baixaData.observacoes} onChange={e => setBaixaData({ ...baixaData, observacoes: e.target.value })} placeholder="Opcional..." rows={2} className="resize-none text-xs" disabled={isSubmitting || baixaIncerta} />
+                <Textarea aria-label="Observacoes do recebimento" value={baixaData.observacoes} onChange={e => setBaixaData({ ...baixaData, observacoes: e.target.value })} placeholder="Opcional..." rows={2} className="resize-none text-xs" disabled={isSubmitting || baixaIncerta} />
               </div>
 
               {baixaIncerta && (
@@ -1249,7 +1253,7 @@ export default function ContasReceber() {
             <div className="space-y-1.5">
               <Label>Pagamento</Label>
               <Select value={pagamentoEstornoId} onValueChange={setPagamentoEstornoId} disabled={isEstornando}>
-                <SelectTrigger><SelectValue placeholder="Selecione o pagamento" /></SelectTrigger>
+                <SelectTrigger aria-label="Pagamento a estornar"><SelectValue placeholder="Selecione o pagamento" /></SelectTrigger>
                 <SelectContent>
                   {pagamentosEstornaveis.map(pagamento => {
                     const forma = FORMAS_PAGAMENTO.find(item =>

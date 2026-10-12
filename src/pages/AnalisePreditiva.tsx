@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { MAX_LINHAS_AUTO } from '@/hooks/useSupabaseData';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -15,6 +16,9 @@ import { ptBR } from 'date-fns/locale';
 import { parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { toast } from 'sonner';
 import { ErrorState } from '@/components/ErrorState';
+import { classificarRiscoFalta, correspondeFiltroRiscoFalta, formatarDataHoraRiscoFalta, formatarIndiceRisco } from '@/lib/riscoFaltas';
+
+const TAMANHO_PAGINA_PREDICOES = 500;
 
 interface PredictedNoShow {
   agendamento_id: string;
@@ -26,6 +30,7 @@ interface PredictedNoShow {
   probabilidade_no_show: number;
   motivos_risco: string[];
   recomendacoes: string;
+  updated_at?: string;
   telefone?: string;
   email?: string;
 }
@@ -34,21 +39,46 @@ export default function AnalisePreditiva() {
   const { profile } = useSupabaseAuth();
   const [filtroRisco, setFiltroRisco] = useState('todos');
   const [enviandoLembreteId, setEnviandoLembreteId] = useState<string | null>(null);
+  const [dataReferencia, setDataReferencia] = useState(() => todaySaoPauloDateOnly());
+  const [agora, setAgora] = useState(() => new Date());
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      const instante = new Date();
+      setAgora(instante);
+      setDataReferencia(todaySaoPauloDateOnly(instante));
+    }, 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const { data: predicoes = [], isLoading, isError, error, refetch } = useQuery({
-    queryKey: ['predicoes_no_show', profile?.clinica_id],
+    queryKey: ['predicoes_no_show', profile?.clinica_id, dataReferencia],
     queryFn: async () => {
       if (!profile?.clinica_id) return [];
 
-      const { data, error } = await (supabase as any).from('predicoes_no_show').select(`
-        agendamento_id,paciente_id,probabilidade_no_show,motivos_risco,recomendacoes,updated_at,
-        agendamentos!inner(data,hora_inicio,status,pacientes(nome,email,telefone),medicos(nome))
-      `).eq('clinica_id', profile.clinica_id)
-        .gte('agendamentos.data', todaySaoPauloDateOnly())
-        .in('agendamentos.status', ['agendado', 'confirmado'])
-        .order('probabilidade_no_show', { ascending: false });
-      if (error) throw error;
-      const predictions: PredictedNoShow[] = (data || []).map((row: any) => ({
+      let rows: any[] = [];
+      while (rows.length < MAX_LINHAS_AUTO) {
+        const from = rows.length;
+        const to = Math.min(from + TAMANHO_PAGINA_PREDICOES, MAX_LINHAS_AUTO) - 1;
+        const { data, error } = await (supabase as any).from('predicoes_no_show').select(`
+          agendamento_id,paciente_id,probabilidade_no_show,motivos_risco,recomendacoes,updated_at,
+          agendamentos!inner(data,hora_inicio,status,pacientes(nome,email,telefone),medicos(nome))
+        `).eq('clinica_id', profile.clinica_id)
+          .gte('agendamentos.data', dataReferencia)
+          .in('agendamentos.status', ['agendado', 'confirmado'])
+          .order('probabilidade_no_show', { ascending: false })
+          .order('agendamento_id', { ascending: true })
+          .range(from, to);
+        if (error) throw error;
+        const page = (data || []) as any[];
+        rows = rows.concat(page);
+        if (page.length < to - from + 1) break;
+      }
+      if (rows.length >= MAX_LINHAS_AUTO) {
+        console.warn(`[predicoes_no_show] atingiu o limite de ${MAX_LINHAS_AUTO} resultados carregados.`);
+      }
+
+      const predictions: PredictedNoShow[] = rows.map((row: any) => ({
         agendamento_id: row.agendamento_id,
         paciente_id: row.paciente_id,
         paciente_nome: row.agendamentos?.pacientes?.nome || 'Paciente',
@@ -57,6 +87,7 @@ export default function AnalisePreditiva() {
         medico_nome: row.agendamentos?.medicos?.nome || 'Médico',
         probabilidade_no_show: Number(row.probabilidade_no_show || 0),
         motivos_risco: row.motivos_risco || [],
+        updated_at: row.updated_at,
         recomendacoes: row.recomendacoes || 'Lembrete padrão',
         telefone: row.agendamentos?.pacientes?.telefone,
         email: row.agendamentos?.pacientes?.email,
@@ -67,17 +98,19 @@ export default function AnalisePreditiva() {
     enabled: !!profile?.clinica_id,
   });
 
-  const predicoesFiltradas = predicoes.filter((predicao) => {
-    if (filtroRisco === 'alto') return predicao.probabilidade_no_show >= 0.7;
-    if (filtroRisco === 'medio') return predicao.probabilidade_no_show >= 0.4 && predicao.probabilidade_no_show < 0.7;
-    if (filtroRisco === 'baixo') return predicao.probabilidade_no_show < 0.4;
-    return true;
-  });
+  const predicoesFiltradas = predicoes.filter(predicao =>
+    correspondeFiltroRiscoFalta(predicao.probabilidade_no_show, filtroRisco),
+  );
+  const atualizacoesValidas = predicoes
+    .map(predicao => predicao.updated_at ? Date.parse(predicao.updated_at) : Number.NaN)
+    .filter(Number.isFinite);
+  const ultimaAtualizacao = atualizacoesValidas.length > 0 ? Math.max(...atualizacoesValidas) : null;
+  const temPrevisaoAntiga = atualizacoesValidas.some(timestamp => agora.getTime() - timestamp > 2 * 60 * 60 * 1000);
+  const atingiuLimite = predicoes.length >= MAX_LINHAS_AUTO;
 
   const getRiskColor = (probabilidade: number): string => {
-    if (probabilidade >= 0.7) return 'text-destructive';
-    if (probabilidade >= 0.4) return 'text-warning';
-    return 'text-success';
+    const faixa = classificarRiscoFalta(probabilidade);
+    return faixa === 'alto' ? 'text-destructive' : faixa === 'medio' ? 'text-warning' : 'text-success';
   };
 
   const enviarLembrete = async (predicao: PredictedNoShow) => {
@@ -94,7 +127,7 @@ export default function AnalisePreditiva() {
         p_agendamento_id: predicao.agendamento_id,
       });
       if (error) throw error;
-      toast.success(data ? 'Lembrete enfileirado' : 'Lembrete já enviado nas últimas 20 horas');
+      toast.success(data ? 'Lembrete enfileirado' : 'Já existe um lembrete na fila ou enviado nas últimas 20 horas');
     } catch (error) {
       const mensagem = error && typeof error === 'object' && 'message' in error
         ? String(error.message)
@@ -108,15 +141,13 @@ export default function AnalisePreditiva() {
   };
 
   const getRiskBgColor = (probabilidade: number): string => {
-    if (probabilidade >= 0.7) return 'bg-destructive/10';
-    if (probabilidade >= 0.4) return 'bg-warning/10';
-    return 'bg-success/10';
+    const faixa = classificarRiscoFalta(probabilidade);
+    return faixa === 'alto' ? 'bg-destructive/10' : faixa === 'medio' ? 'bg-warning/10' : 'bg-success/10';
   };
 
   const getRiskLabel = (probabilidade: number): string => {
-    if (probabilidade >= 0.7) return 'ALTO RISCO';
-    if (probabilidade >= 0.4) return 'RISCO MÉDIO';
-    return 'BAIXO RISCO';
+    const faixa = classificarRiscoFalta(probabilidade);
+    return faixa === 'alto' ? 'ALTO RISCO' : faixa === 'medio' ? 'RISCO MÉDIO' : 'BAIXO RISCO';
   };
 
   const stats = {
@@ -124,8 +155,8 @@ export default function AnalisePreditiva() {
     altoRisco: predicoes.filter((p) => p.probabilidade_no_show >= 0.7).length,
     medioRisco: predicoes.filter((p) => p.probabilidade_no_show >= 0.4 && p.probabilidade_no_show < 0.7).length,
     baixoRisco: predicoes.filter((p) => p.probabilidade_no_show < 0.4).length,
-    probabilidadeMedia: predicoes.length > 0
-      ? Math.round((predicoes.reduce((sum, p) => sum + p.probabilidade_no_show, 0) / predicoes.length) * 100)
+    indiceMedio: predicoes.length > 0
+      ? formatarIndiceRisco(predicoes.reduce((sum, p) => sum + p.probabilidade_no_show, 0) / predicoes.length)
       : 0,
   };
 
@@ -141,11 +172,23 @@ export default function AnalisePreditiva() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold text-foreground">Risco de faltas</h1>
-        <p className="text-muted-foreground">
-          Estimativa baseada no histórico de comparecimento para ajudar a equipe a priorizar confirmações. Revise cada caso antes de entrar em contato.
+        <h1 className="text-3xl font-bold text-[#0C1F54]">Risco de faltas</h1>
+        <p className="text-[#0C1F54]/65">
+          Índice heurístico baseado no histórico para ajudar a equipe a priorizar confirmações; não é uma previsão estatística confirmada. Revise cada caso antes de entrar em contato.
+        </p>
+        <p className={cn('mt-2 text-xs', temPrevisaoAntiga ? 'text-warning' : 'text-muted-foreground')} role={temPrevisaoAntiga ? 'alert' : 'status'}>
+          {ultimaAtualizacao
+            ? `Último cálculo: ${formatarDataHoraRiscoFalta(ultimaAtualizacao)}.`
+            : 'Ainda não há previsões calculadas.'}
+          {temPrevisaoAntiga ? ' Algumas previsões têm mais de 2 horas; confira os dados antes de agir.' : ''}
         </p>
       </div>
+
+      {atingiuLimite && (
+        <div className="rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm text-warning-foreground" role="alert">
+          A lista atingiu o limite de {MAX_LINHAS_AUTO.toLocaleString('pt-BR')} previsões carregadas. A lista e os indicadores podem estar incompletos.
+        </div>
+      )}
 
       {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
@@ -175,8 +218,8 @@ export default function AnalisePreditiva() {
         </Card>
         <Card>
           <CardContent className="pt-4 pb-3">
-            <p className="text-[10px] text-muted-foreground font-semibold uppercase">Probabilidade média</p>
-            <p className="text-2xl font-bold tabular-nums">{stats.probabilidadeMedia}%</p>
+            <p className="text-[10px] text-muted-foreground font-semibold uppercase">Índice médio de risco</p>
+            <p className="text-2xl font-bold tabular-nums">{stats.indiceMedio}/100</p>
           </CardContent>
         </Card>
       </div>
@@ -187,7 +230,7 @@ export default function AnalisePreditiva() {
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <CardTitle>Agendamentos por Risco</CardTitle>
             <Select value={filtroRisco} onValueChange={setFiltroRisco}>
-              <SelectTrigger className="w-full sm:w-48">
+              <SelectTrigger aria-label="Filtrar agendamentos por nível de risco de falta" className="w-full border-[#D6E7F3] bg-white text-[#0C1F54] sm:w-48">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -233,7 +276,7 @@ export default function AnalisePreditiva() {
                     </div>
                     <div className="text-right shrink-0">
                       <Badge className={cn('text-lg font-bold', getRiskColor(pred.probabilidade_no_show))}>
-                        {(pred.probabilidade_no_show * 100).toFixed(0)}%
+                        {formatarIndiceRisco(pred.probabilidade_no_show)}/100
                       </Badge>
                       <p className="text-xs text-muted-foreground mt-1">{getRiskLabel(pred.probabilidade_no_show)}</p>
                     </div>
@@ -298,12 +341,12 @@ export default function AnalisePreditiva() {
       </Card>
 
       {/* Info box */}
-      <Card className="border-blue-200 dark:border-blue-800/30 bg-blue-50 dark:bg-blue-950/20">
+      <Card className="border-[#D6E7F3] bg-[#EAF4FF]">
         <CardContent className="pt-4 pb-4">
           <div className="flex gap-3">
-            <TrendingUp className="h-5 w-5 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
-            <div className="text-sm text-blue-900 dark:text-blue-300">
-              <p className="font-semibold mb-1">Como funciona o score?</p>
+            <TrendingUp className="h-5 w-5 text-[#005ECC] shrink-0 mt-0.5" />
+            <div className="text-sm text-[#0C1F54]">
+              <p className="font-semibold mb-1">Como funciona o índice?</p>
               <ul className="text-xs space-y-1">
                 <li>✓ Histórico real de faltas e cancelamentos do paciente</li>
                 <li>✓ Confirmação pendente e antecedência do agendamento</li>

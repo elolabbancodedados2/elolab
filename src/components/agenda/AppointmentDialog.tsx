@@ -17,7 +17,9 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { mensagemDeErro } from '@/lib/erros';
 import { useQueryClient } from '@tanstack/react-query';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
-import { appointmentStartHasPassed, todaySaoPauloDateOnly } from '@/lib/dateOnly';
+import { todaySaoPauloDateOnly } from '@/lib/dateOnly';
+import { appointmentEndMinutes } from '@/lib/agendaTime';
+import { appointmentPayloadForSave } from '@/lib/agendaAppointmentPayload';
 
 interface Props {
   open: boolean;
@@ -59,15 +61,12 @@ export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos,
   }, [open, initial]);
 
   const { data: paciente } = usePacienteResumo(form.paciente_id);
-  const canMarkNoShow = form.status === 'faltou' || appointmentStartHasPassed(form.data || '', form.hora_inicio || '');
   // Keep the current provider selectable when editing an existing booking,
   // even if that provider has since been deactivated. Inactive providers remain
   // unavailable for new appointments.
   const medicoInativoDaConsulta = editing
     ? medicos.find((m) => m.id === initial?.medico_id && m.ativo === false)
     : null;
-  const statusAtualForaDasOpcoesManuais = Boolean(form.status)
-    && !['agendado', 'confirmado', 'aguardando'].includes(form.status);
   const consultaSomenteLeitura = editing
     && !['agendado', 'confirmado', 'aguardando'].includes(initial?.status);
   const podeCancelarConsulta = editing
@@ -162,7 +161,8 @@ export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos,
         if (editing && a.id === initial?.id) return false;
         const ini = toMin(a.hora_inicio);
         if (ini === null) return false;
-        const fim = toMin(a.hora_fim) ?? ini + DURACAO_PADRAO;
+        const fim = appointmentEndMinutes(a.hora_inicio, a.hora_fim);
+        if (fim === null) return false;
         // Encostar (fim == início) não é conflito.
         const sobrepoe = ini < novoFim && fim > novoInicio;
         return sobrepoe && a.medico_id === form.medico_id;
@@ -178,7 +178,8 @@ export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos,
         if (a.paciente_id !== form.paciente_id) return false;
         const inicio = toMin(a.hora_inicio);
         if (inicio === null) return false;
-        const fim = toMin(a.hora_fim) ?? inicio + DURACAO_PADRAO;
+        const fim = appointmentEndMinutes(a.hora_inicio, a.hora_fim);
+        if (fim === null) return false;
         return inicio < novoFim && fim > novoInicio;
       });
       if (conflitoPaciente) {
@@ -191,7 +192,8 @@ export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos,
         if (a.sala_id !== form.sala_id) return false;
         const inicio = toMin(a.hora_inicio);
         if (inicio === null) return false;
-        const fim = toMin(a.hora_fim) ?? inicio + DURACAO_PADRAO;
+        const fim = appointmentEndMinutes(a.hora_inicio, a.hora_fim);
+        if (fim === null) return false;
         return inicio < novoFim && fim > novoInicio;
       });
       if (conflitoSala) {
@@ -270,11 +272,12 @@ export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos,
         sala_id: form.sala_id || null,
         observacoes: form.observacoes || null,
       };
+      const payloadToSave = appointmentPayloadForSave(payload, editing);
 
       let result;
       if (editing) {
         let updateQuery = supabase.from('agendamentos')
-          .update(payload)
+          .update(payloadToSave)
           .eq('id', initial.id)
           .eq('clinica_id', profile.clinica_id);
         updateQuery = initial.updated_at
@@ -287,7 +290,7 @@ export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos,
         }
       } else {
         payload.clinica_id = profile?.clinica_id;
-        result = await (supabase.from('agendamentos').insert(payload).select('id').single() as any);
+        result = await (supabase.from('agendamentos').insert(payloadToSave).select('id').single() as any);
       }
       if (result.error) throw result.error;
 
@@ -334,8 +337,14 @@ export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos,
       // que a recepção entenda.
       const violouSobreposicao =
         e?.code === '23P01' || String(e?.message || '').includes('agendamentos_sem_sobreposicao');
+      const sobrepoeBloqueio = String(e?.message || '').includes('AGENDA_BLOQUEIO_CONFLITO');
 
-      if (violouSobreposicao) {
+      if (sobrepoeBloqueio) {
+        toast.error('Horário bloqueado', {
+          description: 'Este período foi bloqueado para o profissional. Atualize a agenda e escolha outro horário.',
+        });
+        queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
+      } else if (violouSobreposicao) {
         const conflitoDeRecurso = String(e?.message || '').includes('AGENDA_RECURSO_CONFLITO');
         toast.error(conflitoDeRecurso ? 'Paciente ou sala acabaram de ser ocupados' : 'Este horário acabou de ser ocupado', {
           description: conflitoDeRecurso
@@ -353,17 +362,14 @@ export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos,
     if (!podeCancelarConsulta || !profile?.clinica_id) return;
     setDeleting(true);
     try {
-      let cancelQuery = supabase
-        .from('agendamentos')
-        .update({ status: 'cancelado' })
-        .eq('id', initial.id)
-        .eq('clinica_id', profile.clinica_id);
-      cancelQuery = initial.updated_at
-        ? cancelQuery.eq('updated_at', initial.updated_at)
-        : cancelQuery.is('updated_at', null);
-      const { data, error } = await (cancelQuery.select('id').maybeSingle() as any);
+      const { data, error } = await (supabase as any).rpc('alterar_status_agendamento_com_fila', {
+        p_agendamento_id: initial.id,
+        p_clinica_id: profile.clinica_id,
+        p_status: 'cancelado',
+        p_updated_at: initial.updated_at ?? null,
+      });
       if (error) throw error;
-      if (!data) throw new Error('Esta consulta foi atualizada por outra pessoa. Atualize a agenda e confira o estado antes de tentar novamente.');
+      if (!data?.atualizado) throw new Error('Esta consulta foi atualizada por outra pessoa. Atualize a agenda e confira o estado antes de tentar novamente.');
       toast.success('Consulta cancelada; o histórico foi preservado.');
       await queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
       setConfirmCancel(false);
@@ -394,8 +400,8 @@ export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos,
           </TabsList>
 
           <TabsContent value="paciente" className="space-y-3 mt-4">
-            <Label>Buscar paciente</Label>
-            <PacienteCombobox value={form.paciente_id} onChange={(id) => setForm((f: any) => ({ ...f, paciente_id: id }))} />
+            <Label htmlFor="appointment-patient">Buscar paciente</Label>
+            <PacienteCombobox id="appointment-patient" value={form.paciente_id} onChange={(id) => setForm((f: any) => ({ ...f, paciente_id: id }))} />
             {paciente && (
               <div className="rounded-md border p-3 text-sm space-y-1">
                 <div className="font-medium">{paciente.nome_social || paciente.nome}</div>
@@ -410,9 +416,9 @@ export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos,
 
           <TabsContent value="consulta" className="space-y-3 mt-4">
             <div>
-              <Label>Médico *</Label>
+              <Label htmlFor="appointment-doctor">Médico *</Label>
               <Select value={form.medico_id} onValueChange={(v) => setForm({ ...form, medico_id: v })}>
-                <SelectTrigger><SelectValue placeholder="Selecione o médico" /></SelectTrigger>
+                <SelectTrigger id="appointment-doctor"><SelectValue placeholder="Selecione o médico" /></SelectTrigger>
                 <SelectContent>
                   {[...medicos.filter(m => m.ativo !== false), ...(medicoInativoDaConsulta ? [medicoInativoDaConsulta] : [])].map(m => (
                     <SelectItem key={m.id} value={m.id}>
@@ -424,23 +430,23 @@ export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos,
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               <div>
-                <Label>Data *</Label>
-                <Input type="date" value={form.data} onChange={(e) => setForm({ ...form, data: e.target.value })} />
+                <Label htmlFor="appointment-date">Data *</Label>
+                <Input id="appointment-date" type="date" value={form.data} onChange={(e) => setForm({ ...form, data: e.target.value })} />
               </div>
               <div>
-                <Label>Início *</Label>
-                <Input type="time" value={form.hora_inicio} onChange={(e) => setForm({ ...form, hora_inicio: e.target.value })} />
+                <Label htmlFor="appointment-start">Início *</Label>
+                <Input id="appointment-start" type="time" value={form.hora_inicio} onChange={(e) => setForm({ ...form, hora_inicio: e.target.value })} />
               </div>
               <div>
-                <Label>Fim</Label>
-                <Input type="time" value={form.hora_fim} onChange={(e) => setForm({ ...form, hora_fim: e.target.value })} />
+                <Label htmlFor="appointment-end">Fim</Label>
+                <Input id="appointment-end" type="time" value={form.hora_fim} onChange={(e) => setForm({ ...form, hora_fim: e.target.value })} />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               <div>
-                <Label>Tipo</Label>
+                <Label htmlFor="appointment-type">Tipo</Label>
                 <Select value={form.tipo} onValueChange={(v) => setForm({ ...form, tipo: v })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger id="appointment-type"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="consulta">Consulta</SelectItem>
                     <SelectItem value="retorno">Retorno</SelectItem>
@@ -451,21 +457,23 @@ export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos,
                 </Select>
               </div>
               <div>
-                <Label>Status</Label>
-                <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v })} disabled={consultaSomenteLeitura}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {statusAtualForaDasOpcoesManuais && (
-                      <SelectItem value={form.status} disabled>
-                        {rotulosStatusOperacionais[form.status] || `Status atual: ${form.status}`}
-                      </SelectItem>
-                    )}
-                    <SelectItem value="agendado">Agendado</SelectItem>
-                    <SelectItem value="confirmado">Confirmado</SelectItem>
-                    <SelectItem value="aguardando">Aguardando</SelectItem>
-                    {canMarkNoShow && <SelectItem value="faltou">Faltou</SelectItem>}
-                  </SelectContent>
-                </Select>
+                <Label htmlFor="appointment-status">Status</Label>
+                {editing ? (
+                  <div id="appointment-status" className="flex h-10 items-center rounded-md border border-[#D8E8F4] bg-[#F6FAFD] px-3 text-sm text-[#0C1F54]" aria-label={`Status atual: ${rotulosStatusOperacionais[form.status] || form.status}`}>
+                    {rotulosStatusOperacionais[form.status] || form.status}
+                  </div>
+                ) : (
+                  <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v })} disabled={consultaSomenteLeitura}>
+                    <SelectTrigger id="appointment-status"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="agendado">Agendado</SelectItem>
+                      <SelectItem value="confirmado">Confirmado</SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {editing ? 'O status muda pelos fluxos de atendimento e fila.' : 'Aguardando e falta são registrados pelos fluxos de atendimento.'}
+                </p>
                 {/* 'em_atendimento' e 'finalizado' saíram do select manual:
                     são estados OPERACIONAIS, que nascem da fila e da
                     finalização com faturamento. Marcá-los à mão burlava o
@@ -474,9 +482,9 @@ export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos,
             </div>
             {salas.length > 0 && (
               <div>
-                <Label>Sala</Label>
+                <Label htmlFor="appointment-room">Sala</Label>
                 <Select value={form.sala_id || 'none'} onValueChange={(v) => setForm({ ...form, sala_id: v === 'none' ? '' : v })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger id="appointment-room"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">Sem sala</SelectItem>
                     {salas.map(s => <SelectItem key={s.id} value={s.id}>{s.nome}</SelectItem>)}
@@ -488,16 +496,16 @@ export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos,
 
           <TabsContent value="obs" className="space-y-3 mt-4">
             <div>
-              <Label>{['exame', 'exames'].includes(String(form.tipo || '').toLocaleLowerCase('pt-BR')) ? 'Nome do exame *' : 'Observações'}</Label>
-              <Textarea rows={4} value={form.observacoes} onChange={(e) => setForm({ ...form, observacoes: e.target.value })} placeholder={['exame', 'exames'].includes(String(form.tipo || '').toLocaleLowerCase('pt-BR')) ? 'Ex.: Hemograma completo ou 40301630 - Hemograma' : 'Motivo, sintomas, orientações...'} />
+              <Label htmlFor="appointment-notes">{['exame', 'exames'].includes(String(form.tipo || '').toLocaleLowerCase('pt-BR')) ? 'Nome do exame *' : 'Observações'}</Label>
+              <Textarea id="appointment-notes" rows={4} value={form.observacoes} onChange={(e) => setForm({ ...form, observacoes: e.target.value })} placeholder={['exame', 'exames'].includes(String(form.tipo || '').toLocaleLowerCase('pt-BR')) ? 'Ex.: Hemograma completo ou 40301630 - Hemograma' : 'Motivo, sintomas, orientações...'} />
             </div>
             {!editing && (
               <div className="flex items-center justify-between rounded-md border p-3">
-                <div className="flex items-center gap-2 text-sm">
+                <Label htmlFor="appointment-whatsapp" className="flex items-center gap-2 text-sm">
                   <MessageCircle className="h-4 w-4 text-primary" />
                   Enviar confirmação por WhatsApp
-                </div>
-                <Switch checked={form.send_whatsapp} onCheckedChange={(v) => setForm({ ...form, send_whatsapp: v })} />
+                </Label>
+                <Switch id="appointment-whatsapp" checked={form.send_whatsapp} onCheckedChange={(v) => setForm({ ...form, send_whatsapp: v })} />
               </div>
             )}
           </TabsContent>

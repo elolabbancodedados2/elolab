@@ -14,6 +14,7 @@ import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { TableSkeleton } from '@/components/ui/loading-skeleton';
 import { ErrorState } from '@/components/ErrorState';
 import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
+import { buscarDadosBasicosPacientes } from '@/lib/patientBasicData';
 
 export default function CobrancaInadimplentes() {
   const [sending, setSending] = useState(false);
@@ -26,9 +27,9 @@ export default function CobrancaInadimplentes() {
     enabled: !!clinicaId,
     queryFn: async () => {
       const hoje = todaySaoPauloDateOnly();
-      return buscarEmBlocos<any>(() => (supabase as any)
+      const cobrancas = await buscarEmBlocos<any>(() => (supabase as any)
         .from('lancamentos')
-        .select('id, descricao, valor, valor_pago, desconto, acrescimo, status, data_vencimento, paciente_id, pacientes(nome, telefone, email)')
+        .select('id, descricao, valor, valor_pago, desconto, acrescimo, status, data_vencimento, paciente_id')
         .eq('clinica_id', clinicaId)
         .eq('tipo', 'receita')
         .in('status', ['pendente', 'parcial', 'atrasado'])
@@ -36,6 +37,8 @@ export default function CobrancaInadimplentes() {
         .not('paciente_id', 'is', null)
         .order('data_vencimento', { ascending: true })
         .order('id', { ascending: true }), { bloco: 500, teto: LIMITE_BUSCA_EM_BLOCOS });
+      const pacientesPorId = await buscarDadosBasicosPacientes(cobrancas.map((conta: any) => conta.paciente_id));
+      return cobrancas.map((conta: any) => ({ ...conta, pacientes: pacientesPorId.get(conta.paciente_id) ?? null }));
     },
   });
   const data = cobrancasQuery.data ?? [];
@@ -65,7 +68,7 @@ export default function CobrancaInadimplentes() {
         processados += Number(resp?.processed || 0);
         const resultados = Array.isArray(resp?.results) ? resp.results : [];
         enviadosWhatsApp += resultados.filter((r: any) => r.sent && r.channel === 'whatsapp').length;
-        emailsEnfileirados += resultados.filter((r: any) => r.sent && r.channel === 'email_queue').length;
+        emailsEnfileirados += resultados.filter((r: any) => r.sent && ['email_queue', 'email_queue_retry'].includes(r.channel)).length;
         const semEnvio = resultados.filter((r: any) => !r.sent);
         naoEnviados += semEnvio.length;
         for (const resultado of semEnvio) {
@@ -78,6 +81,8 @@ export default function CobrancaInadimplentes() {
         fora_da_regua: 'fora da data prevista pela régua',
         ja_enviado: 'já enviados nesta etapa',
         falha_ao_enfileirar_email: 'falha ao enfileirar e-mail',
+        falha_ao_reabrir_email: 'falha ao retomar e-mail na fila',
+        resultado_whatsapp_indeterminado: 'resultado do WhatsApp indeterminado; confira a fila antes de reenviar',
         sem_contato: 'sem contato disponível',
         falha_whatsapp_sem_email_alternativo: 'falha no WhatsApp sem e-mail alternativo',
         dry_run: 'simulação, sem envio',
@@ -111,20 +116,20 @@ export default function CobrancaInadimplentes() {
   const totalDevido = data.reduce((a: number, l: any) => a + saldo(l), 0);
 
   return (
-    <div className="space-y-4 p-4 md:p-6">
-      <Card>
-        <CardHeader>
+    <div className="space-y-5 pb-8">
+      <Card className="overflow-hidden rounded-2xl border-[#d7e9f7] shadow-sm">
+        <CardHeader className="border-b border-[#e4eef6] bg-gradient-to-r from-[#f1fbfd] via-white to-[#eff4ff] p-4 sm:p-5">
           <div className="flex items-center justify-between flex-wrap gap-2">
             <div>
               <CardTitle className="flex items-center gap-2">
-                <AlertTriangle className="h-5 w-5 text-amber-600" />
+                <span className="rounded-xl bg-[#fff4df] p-2 text-[#9b6813] ring-1 ring-[#f4e3bb]"><AlertTriangle className="h-5 w-5" /></span>
                 Cobrança de inadimplentes
               </CardTitle>
               <CardDescription>
                 Pacientes com lançamentos vencidos e em aberto. A régua envia por WhatsApp ou, quando necessário, enfileira e-mail.
               </CardDescription>
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
             <Button variant="outline" onClick={() => void refetch()} disabled={cobrancasQuery.isFetching}>
                 <RefreshCw className="h-4 w-4 mr-2" /> Atualizar
               </Button>
@@ -135,14 +140,22 @@ export default function CobrancaInadimplentes() {
             </div>
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4 p-4 sm:p-5">
           {atingiuLimite && <div role="alert" className="mb-4 flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm text-warning-foreground"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /><p>A busca atingiu o limite de {LIMITE_BUSCA_EM_BLOCOS.toLocaleString('pt-BR')} lançamentos. Os totais e a lista podem estar incompletos.</p></div>}
           {data.length > comContato.length && <p role="status" className="mb-4 text-sm text-muted-foreground">{data.length - comContato.length} cobrança(s) estão fora da régua por falta de telefone e e-mail. Atualize o contato no cadastro do paciente para permitir o envio.</p>}
-          <div className="flex gap-2 mb-4 flex-wrap">
-            <Badge variant="secondary">{data.length} pendências vencidas</Badge>
-            <Badge className="bg-rose-100 text-rose-800">
-              Total devido: {totalDevido.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-            </Badge>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="rounded-xl border border-[#dceaf5] bg-[#f5faff] p-3.5">
+              <p className="text-xs font-medium text-muted-foreground">Pendências vencidas</p>
+              <p className="mt-1 text-xl font-semibold text-[#245b8f]">{data.length}</p>
+            </div>
+            <div className="rounded-xl border border-[#f3dddd] bg-[#fff7f6] p-3.5">
+              <p className="text-xs font-medium text-muted-foreground">Saldo em aberto</p>
+              <p className="mt-1 text-xl font-semibold text-[#a44f4b]">{totalDevido.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</p>
+            </div>
+            <div className="rounded-xl border border-[#d9eee6] bg-[#f3fbf7] p-3.5">
+              <p className="text-xs font-medium text-muted-foreground">Com contato para cobrança</p>
+              <p className="mt-1 text-xl font-semibold text-[#327b63]">{comContato.length}</p>
+            </div>
           </div>
           {cobrancasQuery.isError ? (
             <ErrorState title="Não foi possível carregar as pendências" error={cobrancasQuery.error} onRetry={() => void refetch()} />

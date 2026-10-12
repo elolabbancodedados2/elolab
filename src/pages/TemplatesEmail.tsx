@@ -2,6 +2,7 @@ import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
+import { podeGerenciarTemplatesEmail } from '@/lib/templatesEmailAccess';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -23,7 +24,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
-import { Plus, Edit2, Trash2, Copy } from 'lucide-react';
+import { Plus, Edit2, Trash2, Copy, Mail } from 'lucide-react';
 import DOMPurify from 'dompurify';
 
 const CATEGORIAS = [
@@ -75,6 +76,7 @@ const sanitizeTemplateHtml = (html: string) => DOMPurify.sanitize(html, {
 export default function TemplatesEmail() {
   const queryClient = useQueryClient();
   const { profile } = useSupabaseAuth();
+  const podeGerenciar = podeGerenciarTemplatesEmail(profile);
   const [showDialog, setShowDialog] = useState(false);
   const [form, setForm] = useState({
     nome: '',
@@ -266,11 +268,18 @@ export default function TemplatesEmail() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold">Templates de Email</h1>
-        <Button onClick={openNew} className="gap-2">
+      <div className="flex flex-col gap-3 rounded-2xl border border-[#d8e8fb] bg-gradient-to-r from-[#f4f8ff] via-white to-[#effaff] p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+        <div>
+          <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight text-[#102a56]">
+            <span className="rounded-xl bg-[#e5f1ff] p-2 text-[#1766b3] ring-1 ring-[#d5e6fa]"><Mail className="h-5 w-5" /></span>
+            Templates de e-mail
+          </h1>
+          <p className="mt-1 text-sm text-muted-foreground">Mensagens reutilizáveis da clínica com variáveis e pré-visualização.</p>
+          {!podeGerenciar && <p className="mt-1 text-xs text-muted-foreground" role="note">Visualização disponível; somente administradores podem alterar os modelos.</p>}
+        </div>
+        {podeGerenciar && <Button onClick={openNew} className="w-full gap-2 sm:w-auto">
           <Plus className="h-4 w-4" /> Novo Template
-        </Button>
+        </Button>}
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -290,7 +299,7 @@ export default function TemplatesEmail() {
               <CardHeader className="pb-3">
                 <div className="flex items-start justify-between">
                   <CardTitle className="text-base">{template.nome}</CardTitle>
-                  <Button
+                  {podeGerenciar && <Button
                     size="sm"
                     variant="ghost"
                     aria-label={template.ativo ? `Desativar modelo ${template.nome}` : `Ativar modelo ${template.nome}`}
@@ -299,20 +308,20 @@ export default function TemplatesEmail() {
                     className={template.ativo ? 'text-success' : 'text-muted-foreground'}
                   >
                     {template.ativo ? '●' : '○'}
-                  </Button>
+                  </Button>}
                 </div>
                 <Badge className="w-fit mt-2">{categoryObj?.label || template.categoria}</Badge>
               </CardHeader>
               <CardContent>
                 <p className="text-sm text-muted-foreground line-clamp-2 mb-4">{template.assunto}</p>
-                <div className="flex gap-2">
+                {podeGerenciar && <div className="flex gap-2">
                   <Button size="sm" variant="outline" aria-label={`Editar modelo ${template.nome}`} onClick={() => openEdit(template)}>
                     <Edit2 className="h-3 w-3" />
                   </Button>
                   <Button size="sm" variant="outline" aria-label={`Excluir modelo ${template.nome}`} onClick={() => setDeleteId(template.id)}>
                     <Trash2 className="h-3 w-3 text-destructive" />
                   </Button>
-                </div>
+                </div>}
               </CardContent>
             </Card>
           );
@@ -327,15 +336,17 @@ export default function TemplatesEmail() {
           <div className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
-                <label className="block text-sm font-medium mb-1">Nome</label>
+                <label htmlFor="email-template-nome" className="block text-sm font-medium mb-1">Nome</label>
                 <Input
+                  id="email-template-nome"
                   value={form.nome}
                   onChange={(e) => setForm({ ...form, nome: e.target.value })}
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Categoria</label>
+                <label htmlFor="email-template-categoria" className="block text-sm font-medium mb-1">Categoria</label>
                 <select
+                  id="email-template-categoria"
                   value={form.categoria}
                   onChange={(e) => setForm({ ...form, categoria: e.target.value })}
                    className="w-full px-3 py-2 border rounded-md bg-background text-foreground"
@@ -350,9 +361,10 @@ export default function TemplatesEmail() {
               </div>
               <div className="flex items-end gap-2">
                 <div className="flex-1">
-                  <label className="block text-sm font-medium mb-1">Ativo</label>
+                  <label htmlFor="email-template-ativo" className="block text-sm font-medium mb-1">Ativo</label>
                   <div className="flex items-center gap-2 h-10">
                     <Switch
+                      id="email-template-ativo"
                       checked={form.ativo}
                       onCheckedChange={(checked) =>
                         setForm({ ...form, ativo: checked })
@@ -367,8 +379,9 @@ export default function TemplatesEmail() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium mb-1">Assunto</label>
+              <label htmlFor="email-template-assunto" className="block text-sm font-medium mb-1">Assunto</label>
               <Input
+                id="email-template-assunto"
                 value={form.assunto}
                 onChange={(e) => setForm({ ...form, assunto: e.target.value })}
                 placeholder="Ex: {{paciente_nome}}, sua consulta foi confirmada"
@@ -389,10 +402,11 @@ export default function TemplatesEmail() {
               <TabsContent value="editar" className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="md:col-span-2">
-                    <label className="block text-sm font-medium mb-1">
+                    <label htmlFor="email-template-conteudo" className="block text-sm font-medium mb-1">
                       Conteúdo (HTML)
                     </label>
                     <Textarea
+                      id="email-template-conteudo"
                       ref={textareaRef}
                       value={form.conteudo}
                       onChange={(e) =>

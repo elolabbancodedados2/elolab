@@ -94,7 +94,7 @@ export const menuGroups: MenuGroup[] = [
     color: '#005ECC',
     roles: ['admin', 'recepcao', 'enfermagem', 'medico', 'financeiro'],
     items: [
-      { label: 'Agenda', icon: CalendarRange, href: '/agenda' },
+      { label: 'Agenda', icon: CalendarRange, href: '/agenda', roles: ['admin', 'recepcao', 'enfermagem', 'medico'] },
       { label: 'Recepção e caixa', icon: MonitorSmartphone, href: '/recepcao', roles: ['admin', 'recepcao', 'financeiro'] },
       { label: 'Fila e triagem', icon: ClipboardCheck, href: '/fila', roles: ['admin', 'recepcao', 'enfermagem', 'medico'] },
       { label: 'Salas e lista de espera', icon: DoorOpen, href: '/gestao-fluxo', roles: ['admin', 'recepcao'] },
@@ -106,10 +106,10 @@ export const menuGroups: MenuGroup[] = [
     label: 'Pacientes',
     icon: Users,
     color: '#005ECC',
-    roles: ['admin', 'recepcao', 'enfermagem', 'medico'],
+    roles: ['admin', 'recepcao', 'enfermagem', 'medico', 'financeiro'],
     items: [
       { label: 'Cadastro e histórico', icon: Users, href: '/pacientes', roles: ['admin', 'recepcao', 'enfermagem'] },
-      { label: 'Convênios', icon: Building2, href: '/convenios', roles: ['admin', 'recepcao'] },
+      { label: 'Convênios', icon: Building2, href: '/convenios', roles: ['admin', 'recepcao', 'financeiro'] },
       { label: 'Acesso ao portal do paciente', icon: UsersRound, href: '/portal-pacientes', roles: ['admin'] },
     ],
   },

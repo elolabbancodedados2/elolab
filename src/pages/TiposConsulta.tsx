@@ -86,7 +86,7 @@ export default function TiposConsulta() {
   const [deleting, setDeleting] = useState(false);
   const [activeTab, setActiveTab] = useState('tipos');
 
-  const { user, profile } = useSupabaseAuth();
+  const { user, profile, isAdmin } = useSupabaseAuth();
   const queryClient = useQueryClient();
   const conveniosQuery = useConvenios();
   const convenios = conveniosQuery.data ?? [];
@@ -150,6 +150,11 @@ export default function TiposConsulta() {
     if (tiposQuery.isError || tiposQuery.isLoading) { toast.error('Carregue os tipos de consulta antes de salvar.'); return; }
     if (!nome) { toast.error('Nome é obrigatório.'); return; }
     if (tipos.some((tipo) => normalizarTexto(tipo.nome) === normalizarTexto(nome) && tipo.id !== editTarget?.id)) { toast.error('Já existe um tipo de consulta com esse nome.'); return; }
+    const nomeFoiAlterado = !!editTarget && normalizarTexto(editTarget.nome) !== normalizarTexto(nome);
+    if (tipos.length >= LIMITE_BUSCA_EM_BLOCOS && (!editTarget || nomeFoiAlterado)) {
+      toast.error('A lista atingiu o limite de leitura. Não é possível validar nomes duplicados com segurança.');
+      return;
+    }
     if (typeof duracaoMinutos !== 'number' || !Number.isInteger(duracaoMinutos) || duracaoMinutos <= 0) { toast.error('Informe uma duração inteira maior que zero.'); return; }
     if (typeof valorParticular !== 'number' || !Number.isFinite(valorParticular) || valorParticular < 0) { toast.error('Informe um valor particular válido, igual ou maior que zero.'); return; }
     if (Math.abs(valorParticular * 100 - Math.round(valorParticular * 100)) > 1e-7) { toast.error('Informe o valor particular com no máximo duas casas decimais.'); return; }
@@ -205,12 +210,14 @@ export default function TiposConsulta() {
 
   const handleSavePreco = async (convenioId: string, valor: number) => {
     if (!precosTipo || !profile?.clinica_id) throw new Error('Clínica ou tipo de consulta não identificado.');
-    if (conveniosQuery.isError || precosQuery.isError || conveniosQuery.isLoading || precosQuery.isLoading || conveniosQuery.isFetching || precosQuery.isFetching) throw new Error('Aguarde o carregamento de convênios e preços antes de gravar.');
+    if (tiposQuery.isError || tiposQuery.isLoading || conveniosQuery.isError || precosQuery.isError || tiposQuery.isFetching || conveniosQuery.isLoading || precosQuery.isLoading || conveniosQuery.isFetching || precosQuery.isFetching) throw new Error('Aguarde o carregamento de tipos, convênios e preços antes de gravar.');
+    if (!tipos.some((tipo) => tipo.id === precosTipo.id)) throw new Error('O tipo de consulta não pertence à clínica atual ou não está mais disponível. Atualize a página e tente novamente.');
     if (!convenios.some((convenio) => convenio.id === convenioId) || !Number.isFinite(valor) || valor < 0) throw new Error('Convênio ou valor inválido.');
     if (!temNoMaximoDuasCasasDecimais(valor)) throw new Error('Informe o preço do convênio com no máximo duas casas decimais.');
     const existing = precos.find(
       p => p.tipo_consulta_id === precosTipo.id && p.convenio_id === convenioId
     );
+    if (!existing && precos.length >= LIMITE_BUSCA_EM_BLOCOS) throw new Error('A lista de preços atingiu o limite de leitura. Não é possível validar duplicidade com segurança.');
     try {
       if (existing) {
         const { data, error } = await supabase.from('precos_consulta_convenio')
@@ -236,18 +243,18 @@ export default function TiposConsulta() {
 
   return (
     <div className="space-y-6 pb-8">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 rounded-2xl border border-[#d7e9f7] bg-gradient-to-r from-[#f1fbfd] via-white to-[#eff4ff] p-4 shadow-sm sm:p-5">
         <div>
           <h1 className="text-2xl font-bold font-display tracking-tight flex items-center gap-2">
-            <Stethoscope className="h-6 w-6 text-primary" /> Tipos & Preços de Consulta
+            <span className="rounded-xl bg-[#eaf4ff] p-2 text-[#1766a8] ring-1 ring-[#d1e5f8]"><Stethoscope className="h-5 w-5" /></span> Tipos & Preços de Consulta
           </h1>
           <p className="text-sm text-muted-foreground mt-0.5">
             Cadastre tipos de consulta e defina preços por convênio
           </p>
         </div>
-        <Button onClick={openCreate} className="gap-1.5">
+        {isAdmin() && <Button onClick={openCreate} className="gap-1.5">
           <Plus className="h-4 w-4" /> Novo Tipo
-        </Button>
+        </Button>}
       </div>
 
       {/* Search */}
@@ -297,7 +304,7 @@ export default function TiposConsulta() {
               const precosConv = precos.filter(p => p.tipo_consulta_id === tipo.id);
               return (
                 <motion.div key={tipo.id} layout initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95 }} transition={{ delay: i * 0.03 }}>
-                  <Card className="group hover:shadow-md hover:-translate-y-0.5 transition-all">
+                  <Card className="group border-[#dceaf5] bg-gradient-to-br from-white to-[#f8fbfd] shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md">
                     <CardContent className="pt-5 pb-4 px-5">
                       <div className="flex items-start justify-between mb-3">
                         <div className="flex items-center gap-2.5">
@@ -334,12 +341,14 @@ export default function TiposConsulta() {
                         <Button variant="ghost" size="sm" className="flex-1 text-xs gap-1" onClick={() => openPrecos(tipo)}>
                           <Building2 className="h-3 w-3" /> Preços
                         </Button>
-                        <Button variant="ghost" size="sm" className="text-xs gap-1" onClick={() => openEdit(tipo)}>
-                          <Edit className="h-3 w-3" />
-                        </Button>
-                        <Button variant="ghost" size="sm" className="text-xs gap-1 text-destructive" onClick={() => setDeleteTarget(tipo)}>
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
+                        {isAdmin() && <>
+                          <Button aria-label={`Editar ${tipo.nome}`} variant="ghost" size="sm" className="text-xs gap-1" onClick={() => openEdit(tipo)}>
+                            <Edit className="h-3 w-3" />
+                          </Button>
+                          <Button aria-label={`Excluir ${tipo.nome}`} variant="ghost" size="sm" className="text-xs gap-1 text-destructive" onClick={() => setDeleteTarget(tipo)}>
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </>}
                       </div>
                     </CardContent>
                   </Card>
@@ -360,36 +369,36 @@ export default function TiposConsulta() {
           <fieldset disabled={saving} className="contents">
           <div className="space-y-4">
             <div className="space-y-1.5">
-              <Label className="text-xs">Nome *</Label>
-              <Input value={form.nome} onChange={e => setForm({ ...form, nome: e.target.value })} placeholder="Ex: Consulta Inicial" />
+              <Label htmlFor="tipo-nome" className="text-xs">Nome *</Label>
+              <Input id="tipo-nome" value={form.nome} onChange={e => setForm({ ...form, nome: e.target.value })} placeholder="Ex: Consulta Inicial" />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs">Descrição</Label>
-              <Textarea value={form.descricao} onChange={e => setForm({ ...form, descricao: e.target.value })} placeholder="Descrição opcional..." rows={2} />
+              <Label htmlFor="tipo-descricao" className="text-xs">Descrição</Label>
+              <Textarea id="tipo-descricao" value={form.descricao} onChange={e => setForm({ ...form, descricao: e.target.value })} placeholder="Descrição opcional..." rows={2} />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <Label className="text-xs">Duração (min)</Label>
-                <Input type="number" min={1} step={1} value={form.duracao_minutos} onChange={e => setForm({ ...form, duracao_minutos: e.target.value === '' ? '' : Number(e.target.value) })} />
+                <Label htmlFor="tipo-duracao" className="text-xs">Duração (min)</Label>
+                <Input id="tipo-duracao" type="number" min={1} step={1} value={form.duracao_minutos} onChange={e => setForm({ ...form, duracao_minutos: e.target.value === '' ? '' : Number(e.target.value) })} />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs">Valor Particular (R$)</Label>
-                <Input type="number" min={0} step="0.01" value={form.valor_particular} onChange={e => setForm({ ...form, valor_particular: e.target.value === '' ? '' : Number(e.target.value) })} />
+                <Label htmlFor="tipo-valor-particular" className="text-xs">Valor Particular (R$)</Label>
+                <Input id="tipo-valor-particular" type="number" min={0} step="0.01" value={form.valor_particular} onChange={e => setForm({ ...form, valor_particular: e.target.value === '' ? '' : Number(e.target.value) })} />
               </div>
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">Cor</Label>
               <div className="flex gap-2 flex-wrap">
                 {CORES.map(c => (
-                  <button key={c} onClick={() => setForm({ ...form, cor: c })}
+                  <button type="button" key={c} aria-label={`Cor ${c}`} aria-pressed={form.cor === c} onClick={() => setForm({ ...form, cor: c })}
                     className={cn('h-8 w-8 rounded-lg border-2 transition-all', form.cor === c ? 'border-foreground scale-110' : 'border-transparent')}
                     style={{ backgroundColor: c }} />
                 ))}
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <Switch checked={form.ativo} onCheckedChange={v => setForm({ ...form, ativo: v })} />
-              <Label className="text-xs">Ativo</Label>
+              <Switch id="tipo-ativo" checked={form.ativo} onCheckedChange={v => setForm({ ...form, ativo: v })} />
+              <Label htmlFor="tipo-ativo" className="text-xs">Ativo</Label>
             </div>
           </div>
           </fieldset>
@@ -493,7 +502,7 @@ function PrecoRow({ convenio, precoAtual, onSave }: {
       <TableCell className="text-xs text-muted-foreground font-mono">{convenio.codigo}</TableCell>
       <TableCell>
         {editing ? (
-          <Input type="number" min="0" step="0.01" value={valor} autoFocus disabled={saving}
+          <Input type="number" min="0" step="0.01" aria-label={`Preço para ${convenio.nome}`} value={valor} autoFocus disabled={saving}
             onChange={e => setValor(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && void save()}
             className="h-8 text-sm" />
@@ -510,7 +519,7 @@ function PrecoRow({ convenio, precoAtual, onSave }: {
             <Button aria-label="Cancelar edição do preço" variant="ghost" size="icon" className="h-7 w-7" disabled={saving} onClick={() => setEditing(false)}><X className="h-3.5 w-3.5" /></Button>
           </div>
         ) : (
-          <Button aria-label="Editar preço" variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setValor(precoAtual?.toString() ?? ''); setEditing(true); }}>
+          <Button aria-label={`Editar preço para ${convenio.nome}`} variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setValor(precoAtual?.toString() ?? ''); setEditing(true); }}>
             <Edit className="h-3.5 w-3.5" />
           </Button>
         )}

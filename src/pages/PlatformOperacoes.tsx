@@ -143,12 +143,12 @@ export default function PlatformOperacoes() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-[#DCEAF5] bg-gradient-to-r from-[#F1F7FF] via-white to-[#EBFBFD] p-5 sm:p-6">
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-bold"><Settings2 />Controle Operacional</h1>
           <p className="text-muted-foreground">Controles globais da plataforma. Mudanças de impacto exigem confirmação e ficam registradas na auditoria.</p>
         </div>
-        <Button variant="outline" onClick={() => { void estado.refetch(); void flags.refetch(); }} disabled={refreshing}>
+        <Button variant="outline" className="min-h-11 border-[#CFE0F0] bg-white text-[#0C1F54] hover:bg-[#F7FBFF]" onClick={() => { void estado.refetch(); void flags.refetch(); }} disabled={refreshing}>
           <RefreshCw className={`mr-2 h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />Atualizar
         </Button>
       </div>

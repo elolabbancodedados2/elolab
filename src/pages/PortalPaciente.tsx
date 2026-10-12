@@ -194,6 +194,8 @@ function NextAppointmentHero({ agendamentos }: { agendamentos: any[] }) {
   if (!proxima) return null;
 
   const dataConsulta = parseISO(proxima.data);
+  const dataConsultaFormatada = format(dataConsulta, "EEEE, dd 'de' MMMM", { locale: ptBR });
+  const dataConsultaLabel = dataConsultaFormatada.charAt(0).toLocaleUpperCase('pt-BR') + dataConsultaFormatada.slice(1);
   const diasRestantes = daysBetweenDateOnly(hojeNaClinica, proxima.data);
   const isHoje = proxima.data === hojeNaClinica;
 
@@ -203,41 +205,37 @@ function NextAppointmentHero({ agendamentos }: { agendamentos: any[] }) {
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.3 }}
     >
-      <Card className="overflow-hidden border-primary/30 bg-gradient-to-r from-primary/5 via-primary/10 to-primary/5">
-        <CardContent className="p-5">
-          <div className="flex items-center gap-2 mb-3">
-            <div className="p-1.5 rounded-lg bg-primary/20">
-              <Calendar className="h-4 w-4 text-primary" />
-            </div>
-            <span className="text-sm font-semibold text-primary uppercase tracking-wide">
-              Próxima Consulta
-            </span>
-            {isHoje && (
-              <Badge className="bg-primary text-primary-foreground text-[10px] animate-pulse">HOJE</Badge>
-            )}
-          </div>
-
-          <div className="flex items-center justify-between">
-            <div className="space-y-1">
-              <p className="text-lg font-bold">
-                {format(dataConsulta, "EEEE, dd 'de' MMMM", { locale: ptBR })}
-              </p>
-              <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                <span className="flex items-center gap-1">
-                  <Clock className="h-3.5 w-3.5" />
-                  {proxima.hora_inicio?.slice(0, 5)}
-                </span>
-                <span>{proxima.tipo || 'Consulta'}</span>
-                {proxima.medicos?.nome && (
-                  <span>{nomeMedico(proxima.medicos.nome)}</span>
-                )}
+      <Card className="overflow-hidden rounded-[1.4rem] border-[#d6e6f2] bg-white shadow-[0_14px_38px_-28px_rgba(12,31,84,0.35)]">
+        <CardContent className="relative p-5 sm:p-7">
+          <div className="absolute inset-y-0 left-0 w-1.5 bg-[#39c7d9]" aria-hidden="true" />
+          <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between sm:pl-1">
+            <div className="flex min-w-0 items-start gap-4">
+              <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-[#eaf4fb] text-[#0059cc] sm:h-14 sm:w-14">
+                <Calendar className="h-6 w-6" aria-hidden="true" />
+              </div>
+              <div className="min-w-0 space-y-1.5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="text-sm font-semibold text-[#0059cc]">Sua próxima consulta</h3>
+                  {isHoje && <Badge className="border-[#bcecf0] bg-[#e7f9fa] text-[#075f70]">Hoje</Badge>}
+                </div>
+                <p className="text-xl font-bold leading-tight text-[#0c1f54] sm:text-2xl">
+                  {dataConsultaLabel}
+                </p>
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-[#52647b]">
+                  <span className="inline-flex items-center gap-1.5">
+                    <Clock className="h-4 w-4 text-[#0059cc]" aria-hidden="true" />
+                    {proxima.hora_inicio?.slice(0, 5)}
+                  </span>
+                  <span>{proxima.tipo || 'Consulta'}</span>
+                  {proxima.medicos?.nome && <span>{nomeMedico(proxima.medicos.nome)}</span>}
+                </div>
               </div>
             </div>
 
             {!isHoje && diasRestantes > 0 && (
-              <div className="text-center px-4 py-2 rounded-xl bg-primary/10">
-                <p className="text-2xl font-bold text-primary tabular-nums">{diasRestantes}</p>
-                <p className="text-[10px] text-muted-foreground uppercase">dia{diasRestantes > 1 ? 's' : ''}</p>
+              <div className="flex shrink-0 items-center gap-3 rounded-2xl bg-[#edf6fb] px-4 py-3 sm:min-w-32 sm:flex-col sm:gap-0 sm:px-5 sm:py-4 sm:text-center">
+                <p className="text-2xl font-bold tabular-nums text-[#0059cc]">{diasRestantes}</p>
+                <p className="text-sm text-[#52647b]">dia{diasRestantes > 1 ? 's' : ''}</p>
               </div>
             )}
           </div>
@@ -368,6 +366,9 @@ export default function PortalPaciente() {
   const [prescricoes, setPrescricoes] = useState<any[]>([]);
   const [retornos, setRetornos] = useState<any[]>([]);
   const [ofertasEspera, setOfertasEspera] = useState<any[]>([]);
+  const [portalHasMore, setPortalHasMore] = useState({ agendamentos: false, exames: false, pagamentos: false, prescricoes: false });
+  const [loadingMore, setLoadingMore] = useState<string | null>(null);
+  const loadMoreLocks = useRef(new Set<string>());
   const [contactForm, setContactForm] = useState({ telefone: '', email: '' });
   const [contactSaving, setContactSaving] = useState(false);
   const [contactMessage, setContactMessage] = useState('');
@@ -500,12 +501,47 @@ export default function PortalPaciente() {
       setMedicos(valueOrEmpty(results[4]));
       setRetornos(valueOrEmpty(results[5]));
       setOfertasEspera(valueOrEmpty(results[6]));
+      setPortalHasMore({
+        agendamentos: (valueOrEmpty(results[0]) as any[]).length === 50,
+        exames: (valueOrEmpty(results[1]) as any[]).length === 30,
+        pagamentos: (valueOrEmpty(results[2]) as any[]).length === 20,
+        prescricoes: (valueOrEmpty(results[3]) as any[]).length === 50,
+      });
 
       if (results.some(result => result.status === 'rejected')) {
         setPortalDataError('Algumas informações não puderam ser carregadas. Tente atualizar.');
       }
     } finally {
       if (sessionId === portalSessionRef.current) setPortalDataLoading(false);
+    }
+  };
+
+  const loadMorePortalList = async (
+    action: 'get_agendamentos' | 'get_exames' | 'get_pagamentos' | 'get_prescricoes',
+    listKey: 'agendamentos' | 'exames' | 'pagamentos' | 'prescricoes',
+    currentItems: any[],
+    setItems: React.Dispatch<React.SetStateAction<any[]>>,
+    pageSize: number,
+  ) => {
+    if (!token.trim() || loadMoreLocks.current.has(action)) return;
+    loadMoreLocks.current.add(action);
+    const sessionId = portalSessionRef.current;
+    const accessToken = token;
+    setLoadingMore(action);
+    try {
+      const rows = await fetchData(accessToken, action, { offset: currentItems.length });
+      if (sessionId !== portalSessionRef.current) return;
+      const nextRows = Array.isArray(rows) ? rows : [];
+      setItems(previous => {
+        const existingIds = new Set(previous.map(row => row.id));
+        return [...previous, ...nextRows.filter(row => !existingIds.has(row.id))];
+      });
+      setPortalHasMore(previous => ({ ...previous, [listKey]: nextRows.length === pageSize }));
+    } catch (loadError) {
+      if (sessionId === portalSessionRef.current) setPortalDataError('NÃ£o foi possÃ­vel carregar mais registros. Tente novamente.');
+    } finally {
+      loadMoreLocks.current.delete(action);
+      setLoadingMore(null);
     }
   };
 
@@ -788,6 +824,7 @@ export default function PortalPaciente() {
     setPrescricoes([]);
     setRetornos([]);
     setOfertasEspera([]);
+    setPortalHasMore({ agendamentos: false, exames: false, pagamentos: false, prescricoes: false });
     setPortalDataLoading(false);
     setError('');
     setPortalDataError('');
@@ -940,7 +977,7 @@ export default function PortalPaciente() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-[#f1f5f7] text-[#0c1f54]">
       <AlertDialog
         open={agendamentoParaCancelar !== null}
         onOpenChange={(open) => {
@@ -1011,11 +1048,11 @@ export default function PortalPaciente() {
         </DialogContent>
       </Dialog>
       {/* ─── Header ─── */}
-      <header className="sticky top-0 z-50 border-b bg-card/80 backdrop-blur-xl px-4 py-3">
-        <div className="max-w-5xl mx-auto flex items-center justify-between">
+      <header className="sticky top-0 z-50 border-b border-[#dfe9ef] bg-white/95 px-4 py-3 backdrop-blur-xl">
+        <div className="mx-auto flex max-w-7xl items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-primary/10">
-              <HeartHandshake className="h-5 w-5 text-primary" />
+            <div className="rounded-xl bg-[#eaf4fb] p-2.5 text-[#0059cc]">
+              <HeartHandshake className="h-5 w-5" />
             </div>
             <div>
               <h1 className="text-lg font-bold font-display text-foreground">EloLab</h1>
@@ -1042,21 +1079,27 @@ export default function PortalPaciente() {
       </header>
 
       {/* ─── Main Content ─── */}
-      <main className="max-w-5xl mx-auto p-4 sm:p-6 space-y-6">
+      <main aria-label="Portal do paciente" className="mx-auto max-w-7xl px-4 py-6 sm:px-7 sm:py-8 lg:px-10">
         <motion.div
           variants={containerVariants}
           initial="hidden"
           animate="show"
-          className="space-y-6"
+          className="space-y-7 sm:space-y-8"
         >
           {/* ─── Welcome Hero ─── */}
-          <motion.div variants={itemVariants} className="space-y-1">
-            <h2 className="text-2xl sm:text-3xl font-bold font-display">
-              Olá, {profile?.nome?.split(' ')[0]} 👋
-            </h2>
-            <p className="text-muted-foreground">
-              Acompanhe suas consultas, exames e pagamentos.
-            </p>
+          <motion.div variants={itemVariants} className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div className="space-y-1.5">
+              <h2 className="font-display text-2xl font-bold tracking-tight text-[#0c1f54] sm:text-3xl">
+                Olá, {profile?.nome?.split(' ')[0]} 👋
+              </h2>
+              <p className="max-w-xl text-sm text-[#52647b] sm:text-base">
+                Acompanhe suas consultas, exames e pagamentos.
+              </p>
+            </div>
+            <div className="inline-flex w-fit items-center gap-2 rounded-full border border-[#d6e6f2] bg-white px-3 py-2 text-xs font-medium text-[#405875]">
+              <Shield className="h-4 w-4 text-[#008b9d]" aria-hidden="true" />
+              Seus dados em ambiente seguro
+            </div>
           </motion.div>
 
           {portalDataError && (
@@ -1079,31 +1122,33 @@ export default function PortalPaciente() {
           )}
           {actionError && <p role="alert" className="rounded-md border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive">{actionError}</p>}
 
-          <motion.div variants={itemVariants}>
-            <NextAppointmentHero agendamentos={agendamentos} />
-          </motion.div>
+          <section aria-label="Resumo do seu cuidado" className="space-y-4">
+            <motion.div variants={itemVariants}>
+              <NextAppointmentHero agendamentos={agendamentos} />
+            </motion.div>
 
-          {/* ─── KPI Stats ─── */}
-          <motion.div variants={itemVariants} className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {[
-              { icon: Calendar, label: 'Consultas', value: totalConsultas, accent: 'text-blue-600 bg-blue-500/10' },
-              { icon: Clock, label: 'Agendadas', value: consultasFuturas, accent: 'text-primary bg-primary/10' },
-              { icon: FlaskConical, label: 'Exames Pendentes', value: examesPendentes, accent: 'text-amber-600 bg-amber-500/10' },
-              { icon: FileText, label: 'Laudos Prontos', value: laudosDisponiveis, accent: 'text-green-600 bg-green-500/10' },
-            ].map(stat => (
-              <Card key={stat.label} className="hover:shadow-md transition-shadow">
-                <CardContent className="p-4 flex items-center gap-3">
-                  <div className={`p-2.5 rounded-xl ${stat.accent}`}>
-                    <stat.icon className="h-4 w-4" />
-                  </div>
-                  <div>
-                    <AnimatedNumber value={stat.value} />
-                    <p className="text-[11px] text-muted-foreground">{stat.label}</p>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </motion.div>
+            {/* ─── Resumo do paciente ─── */}
+            <motion.div variants={itemVariants} className="grid grid-cols-2 gap-3 md:grid-cols-4">
+              {[
+              { icon: Calendar, label: 'Consultas', value: totalConsultas, accent: 'text-[#0059cc] bg-[#eaf4fb]' },
+              { icon: Clock, label: 'Agendadas', value: consultasFuturas, accent: 'text-[#087b8a] bg-[#e7f8fa]' },
+              { icon: FlaskConical, label: 'Exames pendentes', value: examesPendentes, accent: 'text-[#8b6710] bg-[#fff6db]' },
+              { icon: FileText, label: 'Laudos prontos', value: laudosDisponiveis, accent: 'text-[#14744d] bg-[#e8f7ef]' },
+              ].map(stat => (
+                <Card key={stat.label} className="rounded-2xl border-[#dfe9ef] bg-white shadow-none transition-colors hover:border-[#bfd7e8]">
+                  <CardContent className="flex min-h-[92px] items-center gap-3 p-4 sm:gap-4 sm:p-5">
+                    <div className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${stat.accent}`}>
+                      <stat.icon className="h-[18px] w-[18px]" aria-hidden="true" />
+                    </div>
+                    <div>
+                      <AnimatedNumber value={stat.value} />
+                      <p className="text-xs text-[#52647b]">{stat.label}</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </motion.div>
+          </section>
 
           {/* ─── Allergy alert ─── */}
           {profile?.alergias && profile.alergias.length > 0 && (
@@ -1120,30 +1165,30 @@ export default function PortalPaciente() {
           {/* ─── Tabs ─── */}
           <motion.div variants={itemVariants}>
             <Tabs defaultValue="consultas" className="w-full">
-              <TabsList className="grid w-full grid-cols-3 sm:grid-cols-6 h-auto sm:h-12">
-                <TabsTrigger value="agendar" className="gap-1.5 data-[state=active]:bg-primary/10">
-                  <span className="text-lg">+</span>
-                  <span className="hidden sm:inline text-sm">Agendar</span>
-                </TabsTrigger>
-                <TabsTrigger value="consultas" className="gap-1.5 data-[state=active]:bg-primary/10">
+              <TabsList aria-label="Seções do portal" className="grid h-auto w-full grid-cols-3 gap-1.5 rounded-2xl border border-[#dfe9ef] bg-white p-1.5 md:grid-cols-6 md:gap-1">
+                <TabsTrigger value="agendar" className="h-12 flex-col gap-1 rounded-xl text-[#52647b] data-[state=active]:bg-[#eaf4fb] data-[state=active]:text-[#0059cc] md:flex-row md:gap-1.5">
                   <Calendar className="h-4 w-4" />
-                  <span className="hidden sm:inline text-sm">Consultas</span>
+                  <span className="text-[11px] sm:text-sm">Agendar</span>
                 </TabsTrigger>
-                <TabsTrigger value="exames" className="gap-1.5 data-[state=active]:bg-primary/10">
+                <TabsTrigger value="consultas" className="h-12 flex-col gap-1 rounded-xl text-[#52647b] data-[state=active]:bg-[#eaf4fb] data-[state=active]:text-[#0059cc] md:flex-row md:gap-1.5">
+                  <Calendar className="h-4 w-4" />
+                  <span className="text-[11px] sm:text-sm">Consultas</span>
+                </TabsTrigger>
+                <TabsTrigger value="exames" className="h-12 flex-col gap-1 rounded-xl text-[#52647b] data-[state=active]:bg-[#eaf4fb] data-[state=active]:text-[#0059cc] md:flex-row md:gap-1.5">
                   <FlaskConical className="h-4 w-4" />
-                  <span className="hidden sm:inline text-sm">Exames</span>
+                  <span className="text-[11px] sm:text-sm">Exames</span>
                 </TabsTrigger>
-                <TabsTrigger value="prescricoes" className="gap-1.5 data-[state=active]:bg-primary/10">
+                <TabsTrigger value="prescricoes" className="h-12 flex-col gap-1 rounded-xl text-[#52647b] data-[state=active]:bg-[#eaf4fb] data-[state=active]:text-[#0059cc] md:flex-row md:gap-1.5">
                   <Pill className="h-4 w-4" />
-                  <span className="hidden sm:inline text-sm">Receitas</span>
+                  <span className="text-[11px] sm:text-sm">Receitas</span>
                 </TabsTrigger>
-                <TabsTrigger value="historico" className="gap-1.5 data-[state=active]:bg-primary/10">
+                <TabsTrigger value="historico" className="h-12 flex-col gap-1 rounded-xl text-[#52647b] data-[state=active]:bg-[#eaf4fb] data-[state=active]:text-[#0059cc] md:flex-row md:gap-1.5">
                   <Heart className="h-4 w-4" />
-                  <span className="hidden sm:inline text-sm">Histórico</span>
+                  <span className="text-[11px] sm:text-sm">Histórico</span>
                 </TabsTrigger>
-                <TabsTrigger value="financeiro" className="gap-1.5 data-[state=active]:bg-primary/10">
+                <TabsTrigger value="financeiro" className="h-12 flex-col gap-1 rounded-xl text-[#52647b] data-[state=active]:bg-[#eaf4fb] data-[state=active]:text-[#0059cc] md:flex-row md:gap-1.5">
                   <CreditCard className="h-4 w-4" />
-                  <span className="hidden sm:inline text-sm">Financeiro</span>
+                  <span className="text-[11px] sm:text-sm">Financeiro</span>
                 </TabsTrigger>
               </TabsList>
 
@@ -1371,7 +1416,8 @@ export default function PortalPaciente() {
                     );
                   })
                 )}
-              </TabsContent>
+                {portalHasMore.agendamentos && <div className="flex justify-center pt-2"><Button variant="outline" disabled={loadingMore !== null} onClick={() => void loadMorePortalList('get_agendamentos', 'agendamentos', agendamentos, setAgendamentos, 50)}>{loadingMore === 'get_agendamentos' ? 'Carregando...' : 'Carregar mais consultas'}</Button></div>}
+</TabsContent>
 
               {/* ─── Exames Tab ─── */}
               <TabsContent value="exames" className="mt-4 space-y-3">
@@ -1416,6 +1462,7 @@ export default function PortalPaciente() {
                               </div>
                               <div className="flex items-center gap-2">
                                 <StatusBadge status={e.status} />
+                                {e.arquivo_resultado_indisponivel && <span className="text-xs text-muted-foreground" role="status">Solicite o laudo à clínica</span>}
                                 {e.arquivo_resultado && (
                                   <Button
                                     variant="outline"
@@ -1435,7 +1482,8 @@ export default function PortalPaciente() {
                     );
                   })
                 )}
-              </TabsContent>
+                {portalHasMore.exames && <div className="flex justify-center pt-2"><Button variant="outline" disabled={loadingMore !== null} onClick={() => void loadMorePortalList('get_exames', 'exames', exames, setExames, 30)}>{loadingMore === 'get_exames' ? 'Carregando...' : 'Carregar mais exames'}</Button></div>}
+</TabsContent>
 
               {/* ─── Prescrições Tab ─── */}
               <TabsContent value="prescricoes" className="mt-4 space-y-3">
@@ -1480,7 +1528,8 @@ export default function PortalPaciente() {
                     </motion.div>
                   ))
                 )}
-              </TabsContent>
+                {portalHasMore.prescricoes && <div className="flex justify-center pt-2"><Button variant="outline" disabled={loadingMore !== null} onClick={() => void loadMorePortalList('get_prescricoes', 'prescricoes', prescricoes, setPrescricoes, 50)}>{loadingMore === 'get_prescricoes' ? 'Carregando...' : 'Carregar mais prescricoes'}</Button></div>}
+</TabsContent>
 
               {/* ─── Histórico Médico Tab ─── */}
               <TabsContent value="historico" className="mt-4 space-y-3">
@@ -1573,11 +1622,11 @@ export default function PortalPaciente() {
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                       <div className="text-center p-3 rounded-xl bg-muted/50">
                         <p className="text-2xl font-bold text-primary tabular-nums">{agendamentos.length}</p>
-                        <p className="text-[10px] text-muted-foreground">Total Consultas</p>
+                        <p className="text-[10px] text-muted-foreground">Consultas carregadas</p>
                       </div>
                       <div className="text-center p-3 rounded-xl bg-muted/50">
                         <p className="text-2xl font-bold text-primary tabular-nums">{exames.length}</p>
-                        <p className="text-[10px] text-muted-foreground">Exames Realizados</p>
+                        <p className="text-[10px] text-muted-foreground">Exames carregados</p>
                       </div>
                       <div className="text-center p-3 rounded-xl bg-muted/50">
                         <p className="text-2xl font-bold text-primary tabular-nums">
@@ -1589,7 +1638,7 @@ export default function PortalPaciente() {
                         <p className="text-2xl font-bold text-primary tabular-nums">
                           {agendamentos.filter(a => a.status === 'finalizado').length}
                         </p>
-                        <p className="text-[10px] text-muted-foreground">Atendimentos</p>
+                        <p className="text-[10px] text-muted-foreground">Atendimentos carregados</p>
                       </div>
                     </div>
                   </CardContent>
@@ -1686,7 +1735,8 @@ export default function PortalPaciente() {
                     </motion.div>
                   ))
                 )}
-              </TabsContent>
+                {portalHasMore.pagamentos && <div className="flex justify-center pt-2"><Button variant="outline" disabled={loadingMore !== null} onClick={() => void loadMorePortalList('get_pagamentos', 'pagamentos', pagamentos, setPagamentos, 20)}>{loadingMore === 'get_pagamentos' ? 'Carregando...' : 'Carregar mais pagamentos'}</Button></div>}
+</TabsContent>
             </Tabs>
           </motion.div>
 

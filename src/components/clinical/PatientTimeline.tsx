@@ -17,6 +17,7 @@ import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { autorizarLeituraHistoricoPaciente } from '@/lib/prontuarioAudit';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import type jsPDF from 'jspdf';
 
@@ -67,9 +68,10 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
   const [aiOpen, setAiOpen] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
 
-  const { data: events, isLoading, error } = useQuery({
+  const { data: events, isLoading, error, refetch } = useQuery({
     queryKey: ['patient-timeline', user?.id ?? null, profile?.clinica_id ?? null, pacienteId, maxItems],
     queryFn: async () => {
+      await autorizarLeituraHistoricoPaciente(pacienteId);
       const allEvents: TimelineEvent[] = [];
       const lim = Math.max(maxItems, 100);
 
@@ -449,9 +451,14 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <p role="alert" className="text-sm text-destructive">
-            Não foi possível carregar o histórico clínico. Tente novamente.
-          </p>
+          <div className="space-y-3" role="alert">
+            <p className="text-sm text-destructive">
+              Não foi possível carregar o histórico clínico.
+            </p>
+            <Button type="button" size="sm" variant="outline" onClick={() => void refetch()}>
+              Tentar novamente
+            </Button>
+          </div>
         </CardContent>
       </Card>
     );

@@ -114,13 +114,13 @@ export default function PlatformSeguranca() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-[#DCEAF5] bg-gradient-to-r from-[#F1F7FF] via-white to-[#EBFBFD] p-5 sm:p-6">
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-bold"><ShieldCheck />Central de Segurança</h1>
           <p className="text-muted-foreground">Postura de acesso, MFA, sessões e operações sensíveis.</p>
           {query.data?.generated_at && <p className="mt-1 text-xs text-muted-foreground">Dados atualizados em {new Date(query.data.generated_at).toLocaleString('pt-BR')}</p>}
         </div>
-        <Button variant="outline" onClick={() => { void query.refetch(); }} disabled={query.isFetching}>
+        <Button variant="outline" className="min-h-11 border-[#CFE0F0] bg-white text-[#0C1F54] hover:bg-[#F7FBFF]" onClick={() => { void query.refetch(); }} disabled={query.isFetching}>
           <RefreshCw className={`mr-2 h-4 w-4 ${query.isFetching ? 'animate-spin' : ''}`} />Atualizar
         </Button>
       </div>

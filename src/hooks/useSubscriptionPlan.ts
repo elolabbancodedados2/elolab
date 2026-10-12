@@ -3,6 +3,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { toast } from 'sonner';
 import { redirecionarParaCheckout } from '@/lib/safeUrl';
+import { canAccessPlanFeature } from '@/lib/planFeatures';
+import { normalizarAssinaturaPlano } from '@/lib/subscriptionPlan';
 
 interface Plano {
   id: string;
@@ -16,14 +18,6 @@ interface Plano {
   destaque: boolean;
   ordem: number;
   trial_dias: number;
-}
-
-interface AssinaturaPlano {
-  plano_slug: string;
-  plano_nome: string;
-  status: string;
-  em_trial: boolean;
-  trial_fim: string | null;
 }
 
 export function usePlanos(enabled = true) {
@@ -49,36 +43,17 @@ export function useUserPlan() {
     queryKey: ['user_plan', user?.id],
     queryFn: async () => {
       if (!user) return null;
-      // First try active/trial plan
-      const { data: activePlan, error: activeError } = await supabase.rpc('get_user_plan' as any, {
-        _user_id: user.id,
-      });
-      if (activeError) throw activeError;
-      const active = (activePlan as unknown as AssinaturaPlano[])?.[0] || null;
-      if (active) return active;
-
-      // If no active plan, check for expired/cancelled
-      const { data: expiredData, error: expiredError } = await supabase
+      // Read only this user's row through RLS. The old SECURITY DEFINER RPC
+      // returned active plans only and omitted trial/term fields, so trial
+      // accounts could look unsubscribed and lose the correct feature state.
+      const { data, error } = await (supabase as any)
         .from('assinaturas_plano' as any)
-        .select('plano_slug, status, em_trial, trial_fim, planos!inner(nome)')
+        .select('plano_slug, status, em_trial, trial_fim, data_fim, cobranca_modalidade, planos!inner(nome)')
         .eq('user_id', user.id)
-        .in('status', ['expirada', 'cancelada'])
         .order('updated_at', { ascending: false })
         .limit(1);
-      if (expiredError) throw expiredError;
-
-      if (expiredData && (expiredData as any[]).length > 0) {
-        const exp = (expiredData as any[])[0];
-        return {
-          plano_slug: exp.plano_slug,
-          plano_nome: exp.planos?.nome || exp.plano_slug,
-          status: exp.status,
-          em_trial: exp.em_trial,
-          trial_fim: exp.trial_fim,
-        } as AssinaturaPlano;
-      }
-
-      return null;
+      if (error) throw error;
+      return normalizarAssinaturaPlano(data?.[0]);
     },
     // Platform admins have product access independent of a customer plan.
     // Do not surface a legacy/stale customer row as their subscription.
@@ -87,13 +62,7 @@ export function useUserPlan() {
   const assinatura = isPlatformAdmin ? null : assinaturaQuery.data;
 
   const hasFeature = (feature: string): boolean => {
-    if (isPlatformAdmin) return true;
-    if (!assinatura) return false;
-    if (assinatura.plano_slug === 'elolab-ultra') return true;
-    if (assinatura.plano_slug === 'elolab-max') {
-      return feature !== 'agente_ia';
-    }
-    return false;
+    return canAccessPlanFeature(assinatura, feature, isPlatformAdmin);
   };
 
   const isUltra = assinatura?.plano_slug === 'elolab-ultra';

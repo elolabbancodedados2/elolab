@@ -33,6 +33,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
 } from 'recharts';
 import { parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
+import { classifyAbcItem } from '@/lib/abcClassification';
 
 const CATEGORIAS = ['medicamentos', 'materiais_hospitalares', 'epis', 'escritorio', 'limpeza', 'outros'];
 const UNIDADES = ['unidade', 'comprimido', 'caixa', 'frasco', 'ampola', 'pacote', 'litro', 'kg', 'ml'];
@@ -223,9 +224,9 @@ export default function Estoque() {
 
     let accumulated = 0;
     return items.map(item => {
+      const classe = classifyAbcItem(accumulated, totalValor);
       accumulated += item.valor;
       const percentAcc = (accumulated / totalValor) * 100;
-      const classe = percentAcc <= 80 ? 'A' : percentAcc <= 95 ? 'B' : 'C';
       return { ...item, percentAcc: Math.round(percentAcc), classe };
     });
   }, [estoque]);
@@ -503,12 +504,12 @@ export default function Estoque() {
           <p className="text-muted-foreground">Controle de materiais e medicamentos</p>
         </div>
         <div className="flex items-center gap-2">
-          <div className="flex rounded-lg border overflow-hidden">
-            <Button variant={activeTab === 'produtos' ? 'default' : 'ghost'} size="sm" className="h-8 gap-1.5 rounded-none border-0 text-xs"
+          <div className="flex rounded-xl border border-sky-100 bg-sky-50/70 p-1">
+            <Button variant="ghost" size="sm" className={cn('h-9 gap-1.5 rounded-lg border-0 text-xs', activeTab === 'produtos' ? 'bg-white text-sky-800 shadow-sm hover:bg-white' : 'text-slate-600 hover:bg-white/70')}
               onClick={() => setActiveTab('produtos')}>
               <Package className="h-3.5 w-3.5" /> Produtos
             </Button>
-            <Button variant={activeTab === 'curva_abc' ? 'default' : 'ghost'} size="sm" className="h-8 gap-1.5 rounded-none border-0 border-l text-xs"
+            <Button variant="ghost" size="sm" className={cn('h-9 gap-1.5 rounded-lg border-0 text-xs', activeTab === 'curva_abc' ? 'bg-white text-sky-800 shadow-sm hover:bg-white' : 'text-slate-600 hover:bg-white/70')}
               onClick={() => setActiveTab('curva_abc')}>
               <BarChart3 className="h-3.5 w-3.5" /> Curva ABC
             </Button>
@@ -560,33 +561,33 @@ export default function Estoque() {
         </motion.div>
       )}
 
-      <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
-        <Card><CardContent className="pt-6">
+      <div className="grid gap-3 grid-cols-2 xl:grid-cols-4">
+        <Card className="border-sky-100 bg-sky-50/70"><CardContent className="pt-5 pb-5">
           <div className="flex items-center gap-4">
-            <div className="p-3 rounded-full bg-primary/10"><Package className="h-6 w-6 text-primary" /></div>
-            <div><p className="text-sm text-muted-foreground">Total de Itens</p>
-            <p className="text-2xl font-bold">{stats.total}</p></div>
+            <div className="p-3 rounded-xl bg-white text-sky-700 shadow-sm"><Package className="h-5 w-5" /></div>
+            <div><p className="text-xs font-medium text-sky-800/75">Total de itens</p>
+            <p className="text-2xl font-semibold tabular-nums text-slate-900">{stats.total}</p></div>
           </div>
         </CardContent></Card>
-        <Card><CardContent className="pt-6">
+        <Card className="border-rose-100 bg-rose-50/70"><CardContent className="pt-5 pb-5">
           <div className="flex items-center gap-4">
-            <div className="p-3 rounded-full bg-destructive/10"><AlertTriangle className="h-6 w-6 text-destructive" /></div>
-            <div><p className="text-sm text-muted-foreground">Estoque Crítico</p>
-            <p className="text-2xl font-bold text-destructive">{stats.critico}</p></div>
+            <div className="p-3 rounded-xl bg-white text-rose-600 shadow-sm"><AlertTriangle className="h-5 w-5" /></div>
+            <div><p className="text-xs font-medium text-rose-800/75">Estoque crítico</p>
+            <p className="text-2xl font-semibold tabular-nums text-rose-700">{stats.critico}</p></div>
           </div>
         </CardContent></Card>
-        <Card><CardContent className="pt-6">
+        <Card className="border-amber-100 bg-amber-50/80"><CardContent className="pt-5 pb-5">
           <div className="flex items-center gap-4">
-            <div className="p-3 rounded-full bg-accent"><Calendar className="h-6 w-6 text-accent-foreground" /></div>
-            <div><p className="text-sm text-muted-foreground">Vencendo ≤60d</p>
-            <p className="text-2xl font-bold">{stats.vencendo}</p></div>
+            <div className="p-3 rounded-xl bg-white text-amber-700 shadow-sm"><Calendar className="h-5 w-5" /></div>
+            <div><p className="text-xs font-medium text-amber-900/75">Vencendo em até 60 dias</p>
+            <p className="text-2xl font-semibold tabular-nums text-amber-800">{stats.vencendo}</p></div>
           </div>
         </CardContent></Card>
-        <Card><CardContent className="pt-6">
+        <Card className="border-indigo-100 bg-indigo-50/70"><CardContent className="pt-5 pb-5">
           <div className="flex items-center gap-4">
-            <div className="p-3 rounded-full bg-primary/10"><Package className="h-6 w-6 text-primary" /></div>
-            <div><p className="text-sm text-muted-foreground">Valor Total</p>
-            <p className="text-2xl font-bold">{formatCurrency(stats.valorTotal)}</p></div>
+            <div className="p-3 rounded-xl bg-white text-indigo-700 shadow-sm"><Package className="h-5 w-5" /></div>
+            <div><p className="text-xs font-medium text-indigo-800/75">Valor em estoque</p>
+            <p className="text-xl font-semibold tabular-nums text-slate-900">{formatCurrency(stats.valorTotal)}</p></div>
           </div>
         </CardContent></Card>
       </div>
@@ -892,7 +893,7 @@ export default function Estoque() {
                           </span>
                         </div>
                         <p className="text-sm font-bold mt-1 tabular-nums">
-                          {mov.tipo === 'entrada' ? '+' : '-'}{mov.quantidade} un.
+                          {mov.tipo === 'entrada' ? '+' : '-'}{mov.quantidade} {timelineItem?.unidade || 'unidade'}
                         </p>
                         {mov.motivo && <p className="text-xs text-muted-foreground mt-0.5">{mov.motivo}</p>}
                       </div>

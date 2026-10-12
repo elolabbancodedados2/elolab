@@ -27,7 +27,8 @@ export function WeeklyView({ date, agendamentos, colorFor, medicoById = {}, onDa
   const today = todaySaoPauloDateOnly();
 
   return (
-    <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
+    <div role="region" aria-label="Agenda semanal, deslize horizontal para ver os dias" tabIndex={0} className="overflow-x-auto rounded-2xl border border-[#D8E8F4] bg-white shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F7BFD]">
+      <div className="min-w-[770px]">
       <div className="grid grid-cols-7">
         {days.map(({ iso, date: d }) => {
           const dayAppts = agendamentos.filter(a => a.data === iso).sort((a, b) => a.hora_inicio.localeCompare(b.hora_inicio));
@@ -107,6 +108,7 @@ export function WeeklyView({ date, agendamentos, colorFor, medicoById = {}, onDa
             </div>
           );
         })}
+      </div>
       </div>
     </div>
   );

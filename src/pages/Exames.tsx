@@ -1,6 +1,6 @@
 import { formatCurrency } from '@/lib/formatters';
 import { useState, useMemo, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   Plus, Search, Eye, FileText, FileDown, Loader2, PlusCircle, X,
   AlertTriangle, Upload, ShieldCheck, Clock, Calendar, Tag, Building2, DollarSign, Trash2,
@@ -40,6 +40,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { Database } from '@/integrations/supabase/types';
 import { autoCreateColeta, autoProgressExame, autoVincularResultadoProntuario } from '@/lib/workflowAutomation';
+import { podeExcluirExame, proximaAcaoExame } from '@/lib/examesWorkflow';
 import { GerenciadorLaboratorios } from '@/components/GerenciadorLaboratorios';
 import { LancarResultado } from '@/components/exames/LancarResultado';
 import { parseDateOnly } from '@/lib/dateOnly';
@@ -48,11 +49,19 @@ import { gerarGuiaSolicitacaoExames, downloadPDF } from '@/lib/pdfGenerator';
 type StatusExame = Database['public']['Enums']['status_exame'];
 
 const STATUS_COLORS: Record<StatusExame, string> = {
-  solicitado: 'bg-warning/10 text-warning',
-  agendado: 'bg-info/10 text-info',
-  realizado: 'bg-primary/10 text-primary',
-  laudo_disponivel: 'bg-success/10 text-success',
-  cancelado: 'bg-muted text-muted-foreground',
+  solicitado: 'bg-[#eaf3ff] text-[#005ecc]',
+  agendado: 'bg-[#e8f5ff] text-[#0875cf]',
+  realizado: 'bg-[#e7f8fc] text-[#087e98]',
+  laudo_disponivel: 'bg-[#eaf8f3] text-[#16805f]',
+  cancelado: 'bg-slate-100 text-slate-600',
+};
+
+const STATUS_MARKERS: Record<StatusExame, string> = {
+  solicitado: 'bg-[#005ecc]',
+  agendado: 'bg-[#0875cf]',
+  realizado: 'bg-[#18a8c5]',
+  laudo_disponivel: 'bg-[#16805f]',
+  cancelado: 'bg-slate-400',
 };
 
 const STATUS_LABELS: Record<StatusExame, string> = {
@@ -797,6 +806,10 @@ export default function Exames() {
 
   const handleUpdateStatus = async (id: string, newStatus: StatusExame): Promise<boolean> => {
     if (updateStatusLock.current) return false;
+    if (!profile?.clinica_id) {
+      toast.error('Clínica não identificada. Atualize a sessão antes de alterar o exame.');
+      return false;
+    }
     updateStatusLock.current = true;
     setExameEmAtualizacao(id);
     try {
@@ -832,13 +845,14 @@ export default function Exames() {
       const result = await autoProgressExame({
         exameId: id,
         novoStatus: newStatus,
+        statusAtual: exame.status || 'solicitado',
         pacienteId: exame.paciente_id,
         pacienteNome: pac?.nome || 'Paciente',
         medicoId: exame.medico_solicitante_id,
         tipoExame: exame.tipo_exame,
         convenioId: pac?.convenio_id,
         resultado: exame.resultado || undefined,
-        clinicaId: profile?.clinica_id,
+        clinicaId: profile.clinica_id,
       });
       if (!result.success) throw new Error(result.message);
 
@@ -967,13 +981,15 @@ export default function Exames() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground flex items-center gap-2">
-            <FileText className="h-8 w-8 text-primary" />
-            Solicitação de Exames
-          </h1>
-          <p className="text-muted-foreground">Gerencie guias com TUSS, código livre ou código interno automático</p>
+      <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
+        <div className="flex items-start gap-3">
+          <div className="rounded-2xl bg-[#eaf4ff] p-3 text-[#005ecc] ring-1 ring-[#d8e8fb]">
+            <FileText className="h-6 w-6" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight text-[#102a56] md:text-3xl">Solicitação de exames</h1>
+            <p className="mt-1 text-sm text-muted-foreground">Crie guias e acompanhe cada exame até a liberação do laudo.</p>
+          </div>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => setIsManageTypesOpen(true)} className="gap-2">
@@ -984,7 +1000,7 @@ export default function Exames() {
       </div>
 
       {pacienteFiltroId && (
-        <div className="flex flex-col gap-2 rounded-lg border bg-muted/30 p-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-2 rounded-xl border border-[#d8e8fb] bg-[#f3f8ff] p-3 text-[#18345f] sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm">
             Exibindo exames de <span className="font-medium">{getPacienteNomePorId(pacienteFiltroId)}</span>.
           </p>
@@ -1009,7 +1025,7 @@ export default function Exames() {
           return (
             <Card
               key={key}
-              className="kpi-card cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              className="cursor-pointer border-[#e0eaf5] shadow-sm transition-colors hover:border-[#b8d5f2] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0f7bfd] focus-visible:ring-offset-2"
               role="button"
               tabIndex={0}
               aria-pressed={statusFilter === key}
@@ -1021,8 +1037,12 @@ export default function Exames() {
                 }
               }}
             >
-              <CardContent className="p-4 text-center">
-                <p className="text-2xl font-bold tabular-nums">{count}</p>
+              <CardContent className="p-4 text-left">
+                <div className="mb-3 flex items-center justify-between gap-2">
+                  <span className={cn('h-2.5 w-2.5 rounded-full', STATUS_MARKERS[key as StatusExame])} aria-hidden="true" />
+                  <span className="text-xs text-muted-foreground">{statusFilter === key ? 'Selecionado' : 'Filtrar'}</span>
+                </div>
+                <p className="text-2xl font-bold tabular-nums text-[#102a56]">{count}</p>
                 <Badge className={cn('mt-1', STATUS_COLORS[key as StatusExame])}>{label}</Badge>
               </CardContent>
             </Card>
@@ -1038,13 +1058,13 @@ export default function Exames() {
       )}
 
       {/* Table */}
-      <Card>
+      <Card className="border-[#e0eaf5] shadow-sm">
         <CardHeader>
           <div className="flex flex-col sm:flex-row gap-4 justify-between">
             <CardTitle>Exames ({filteredExames.length})</CardTitle>
             <div className="flex flex-col sm:flex-row gap-2">
               <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-40"><SelectValue placeholder="Filtrar" /></SelectTrigger>
+                <SelectTrigger className="w-40" aria-label="Filtrar exames por status"><SelectValue placeholder="Filtrar" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="todos">Todos</SelectItem>
                   {Object.entries(STATUS_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
@@ -1052,7 +1072,7 @@ export default function Exames() {
               </Select>
               <div className="relative w-full sm:w-72">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input placeholder="Buscar paciente ou exame..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="pl-10" />
+                <Input aria-label="Buscar por paciente ou exame" placeholder="Buscar paciente ou exame..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="pl-10" />
               </div>
             </div>
           </div>
@@ -1090,8 +1110,10 @@ export default function Exames() {
                 ) : (
                   filteredExames.map(exame => {
                     const step = getExameStep(exame.status || 'solicitado');
-                    const nextStatus = getNextStatus(exame.status || 'solicitado');
+                    const acaoSeguinte = proximaAcaoExame(exame.status || 'solicitado', exame.tipo_categorizado);
+                    const nextStatus = acaoSeguinte.destino === 'status' ? acaoSeguinte.status : null;
                     const nextLabel = getNextStatusLabel(exame.status || 'solicitado');
+                    const exameLaboratorial = (exame.tipo_categorizado || '').toLocaleLowerCase('pt-BR') === 'laboratorial';
                     return (
                     <TableRow key={exame.id}>
                       <TableCell className="font-medium">{getPacienteNome(exame)}</TableCell>
@@ -1144,14 +1166,26 @@ export default function Exames() {
                                 : nextLabel}
                             </Button>
                           )}
-                          {exame.status !== 'cancelado' && exame.status !== 'laudo_disponivel' && (
+                          {acaoSeguinte.destino === 'laboratorio' && (
+                            <Button asChild variant="outline" size="sm" className="text-xs gap-1">
+                              <Link to="/laboratorio">Abrir Laboratório</Link>
+                            </Button>
+                          )}
+                          {exameLaboratorial && exame.status !== 'cancelado' && exame.status !== 'laudo_disponivel' && acaoSeguinte.destino !== 'laboratorio' && (
+                            <Button asChild variant="ghost" size="sm" className="h-8 px-2 text-xs text-[#315b8f]">
+                              <Link to="/laboratorio">Coleta no Laboratório</Link>
+                            </Button>
+                          )}
+                          {!exameLaboratorial && exame.status !== 'cancelado' && exame.status !== 'laudo_disponivel' && (
                              <Button variant="ghost" size="icon" aria-label={`Cancelar exame ${exame.tipo_exame || exame.id}`} title="Cancelar solicitação" className="text-destructive/60 hover:text-destructive" onClick={() => setExameParaCancelar({ id: exame.id, nome: exame.tipo_exame || 'este exame' })} disabled={exameEmAtualizacao !== null}>
                               <X className="h-3.5 w-3.5" />
                             </Button>
                           )}
-                          <Button variant="ghost" size="icon" aria-label={`Excluir exame ${exame.tipo_exame || exame.id}`} className="text-destructive/60 hover:text-destructive" title="Excluir permanentemente" onClick={() => handleDeleteExame(exame.id)} disabled={exameEmAtualizacao !== null}>
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
+                          {podeExcluirExame(profile?.roles || []) && (
+                            <Button variant="ghost" size="icon" aria-label={`Excluir exame ${exame.tipo_exame || exame.id}`} className="text-destructive/60 hover:text-destructive" title="Excluir permanentemente" onClick={() => handleDeleteExame(exame.id)} disabled={exameEmAtualizacao !== null}>
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>

@@ -44,6 +44,7 @@ import { toast } from 'sonner';
 import RelatorioCustomizado from '@/components/relatorios/RelatorioCustomizado';
 import { valorRealizado } from '@/lib/lancamentos';
 import { ErrorState } from '@/components/ErrorState';
+import { podeAcessarRelatorioCompletoDePacientes, podeExportarFontesCompletas } from '@/lib/reportAccess';
 import { dateOnlyInTimeZone, inicioDoDiaEmFusoIso, parseDateOnly } from '@/lib/dateOnly';
 import {
   AreaChart,
@@ -140,7 +141,8 @@ export default function Relatorios() {
   const fimStr = format(periodoRange.end, 'yyyy-MM-dd');
   const { profile } = useSupabaseAuth();
   const podeVerAgenda = !!profile?.roles?.some(role => ['admin', 'medico', 'enfermagem'].includes(role));
-  const pacientesQuery = usePacientes();
+  const podeVerRelatorioPacientes = podeAcessarRelatorioCompletoDePacientes(profile?.roles);
+  const pacientesQuery = usePacientes(podeVerRelatorioPacientes);
   const pacientes = pacientesQuery.data ?? [];
   const agendamentosQuery = useAgendamentosPeriodo(inicioStr, fimStr, { enabled: podeVerAgenda, keepPrevious: true });
   const agendamentos = agendamentosQuery.data ?? [];
@@ -234,6 +236,7 @@ export default function Relatorios() {
     enabled: !!profile?.clinica_id && idsLancamentosPagos.length > 0,
   });
   const medicosQuery = useSupabaseQuery<any>('medicos', {
+    select: 'id, nome, crm, especialidade',
     orderBy: { column: 'nome', ascending: true },
     enabled: podeVerAgenda,
   });
@@ -513,8 +516,14 @@ export default function Relatorios() {
     })),
   ];
 
-  const executarExportacao = async (nome: string, acao: () => unknown | Promise<unknown>) => {
+  const executarExportacao = async (nome: string, acao: () => unknown | Promise<unknown>, fontes = ['lançamentos', 'pagamentos', 'histórico de pagamentos']) => {
     if (exportando) return;
+    if (!podeExportarFontesCompletas(fontes, fontesNoLimite)) {
+      toast.error(`Exportação de ${nome.toLowerCase()} bloqueada`, {
+        description: 'Uma das fontes atingiu o limite de leitura. Ajuste o período ou os filtros antes de exportar.',
+      });
+      return;
+    }
     setExportando(nome);
     try {
       await acao();
@@ -562,7 +571,7 @@ export default function Relatorios() {
       porTipo: dadosPorTipo.map(t => ({ tipo: t.name, quantidade: t.value })),
     });
     openPDF(doc);
-  });
+  }, ['agendamentos', 'médicos']);
 
   const handleExportPacientesExcel = () => executarExportacao('Pacientes para Excel', () => {
     exportarPacientes(pacientes.map(p => ({
@@ -573,7 +582,7 @@ export default function Relatorios() {
       email: p.email || '',
       sexo: p.sexo || '',
     })));
-  });
+  }, ['pacientes']);
 
   const handleExportAgendamentosExcel = () => executarExportacao('Agenda para Excel', () => {
     exportarAgendamentos(agendamentosFiltrados.map(a => ({
@@ -585,7 +594,7 @@ export default function Relatorios() {
       tipo: a.tipo || 'consulta',
       status: a.status || 'agendado',
     })));
-  });
+  }, ['agendamentos', 'médicos']);
 
   const handleExportEstoqueExcel = () => executarExportacao('Estoque para Excel', () => {
     exportarEstoque(estoque.map(e => ({
@@ -598,7 +607,7 @@ export default function Relatorios() {
       fornecedor: e.fornecedor || '',
       validade: e.validade || '',
     })));
-  });
+  }, ['estoque']);
 
   if (isLoading) {
     return (
@@ -618,19 +627,19 @@ export default function Relatorios() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      <section className="flex flex-col gap-5 rounded-[1.5rem] border border-[#DCE8F7] bg-gradient-to-br from-white via-[#F8FBFF] to-[#EEF5FF] p-5 shadow-sm sm:p-6 xl:flex-row xl:items-center xl:justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Relatórios da clínica</h1>
-          <p className="text-muted-foreground">Consulte dados por área, exporte arquivos ou salve relatórios personalizados. Para acompanhar tendências em painel, use Indicadores da clínica.</p>
-          <p className="mt-1 text-xs text-muted-foreground">
+          <h1 className="text-2xl font-bold tracking-tight text-[#0C1F54] sm:text-3xl">Relatórios da clínica</h1>
+          <p className="mt-1 max-w-3xl text-sm text-[#0C1F54]/70">Consulte dados por área, exporte arquivos ou salve relatórios personalizados. Para acompanhar tendências em painel, use Indicadores da clínica.</p>
+          <p className="mt-2 text-xs text-[#0C1F54]/60">
             {podeVerAgenda
               ? 'O período se aplica à agenda e ao financeiro. Pacientes e estoque mostram o cadastro e o saldo atuais.'
-              : 'O período se aplica ao financeiro. Pacientes e estoque mostram o cadastro e o saldo atuais.'}
+              : 'O período se aplica ao financeiro.'}
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2 rounded-2xl border border-white/80 bg-white/75 p-2 shadow-sm backdrop-blur-sm">
           <Select value={periodo} onValueChange={setPeriodo}>
-            <SelectTrigger className="w-44">
+            <SelectTrigger aria-label="Selecionar período dos relatórios" className="w-44 border-[#DCE8F7] bg-white text-[#0C1F54] focus:ring-[#005ECC]/30">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -650,30 +659,30 @@ export default function Relatorios() {
               <Input type="date" aria-label="Data final" className="w-40" value={customFim} min={customInicio || undefined} onChange={e => setCustomFim(e.target.value)} />
             </div>
           )}
-          <Button variant="outline" onClick={handleExportExcel} disabled={isFetching || !!exportando} className="gap-2" aria-label="Exportar financeiro para Excel">
+          <Button variant="outline" onClick={handleExportExcel} disabled={isFetching || !!exportando || !podeExportarFontesCompletas(['lançamentos', 'pagamentos', 'histórico de pagamentos'], fontesNoLimite)} className="gap-2" aria-label="Exportar financeiro para Excel">
             <FileSpreadsheet className="h-4 w-4" />
             Excel
           </Button>
-          <Button variant="outline" onClick={handleExportPDF} disabled={isFetching || !!exportando} className="gap-2" aria-label="Exportar financeiro para PDF">
+          <Button variant="outline" onClick={handleExportPDF} disabled={isFetching || !!exportando || !podeExportarFontesCompletas(['lançamentos', 'pagamentos', 'histórico de pagamentos'], fontesNoLimite)} className="gap-2" aria-label="Exportar financeiro para PDF">
             <FileText className="h-4 w-4" />
             PDF
           </Button>
-          <Button variant="outline" onClick={handleExportPacientesExcel} disabled={isFetching || !!exportando} className="gap-2" aria-label="Exportar pacientes para Excel">
+          {podeVerRelatorioPacientes && <Button variant="outline" onClick={handleExportPacientesExcel} disabled={isFetching || !!exportando || !podeExportarFontesCompletas(['pacientes'], fontesNoLimite)} className="gap-2" aria-label="Exportar pacientes para Excel">
             <Users className="h-4 w-4" />
             Pacientes
-          </Button>
+          </Button>}
           {podeVerAgenda && (
-            <Button variant="outline" onClick={handleExportAgendamentosExcel} disabled={isFetching || !!exportando} className="gap-2" aria-label="Exportar agendamentos para Excel">
+            <Button variant="outline" onClick={handleExportAgendamentosExcel} disabled={isFetching || !!exportando || !podeExportarFontesCompletas(['agendamentos', 'médicos'], fontesNoLimite)} className="gap-2" aria-label="Exportar agendamentos para Excel">
               <Calendar className="h-4 w-4" />
               Agenda
             </Button>
           )}
-          <Button variant="outline" onClick={handleExportEstoqueExcel} disabled={isFetching || !!exportando} className="gap-2" aria-label="Exportar estoque para Excel">
+          <Button variant="outline" onClick={handleExportEstoqueExcel} disabled={isFetching || !!exportando || !podeExportarFontesCompletas(['estoque'], fontesNoLimite)} className="gap-2" aria-label="Exportar estoque para Excel">
             <FileSpreadsheet className="h-4 w-4" />
             Estoque
           </Button>
         </div>
-      </div>
+      </section>
 
       {isFetching && <p role="status" className="text-sm text-muted-foreground">Atualizando dados do relatório…</p>}
       {exportando && <p role="status" aria-live="polite" className="text-sm text-muted-foreground">Gerando {exportando}…</p>}
@@ -791,7 +800,7 @@ export default function Relatorios() {
           <TabsTrigger value="dre">DRE</TabsTrigger>
           {podeVerAgenda && <TabsTrigger value="atendimentos">Atendimentos</TabsTrigger>}
           {podeVerAgenda && <TabsTrigger value="medicos">Por Médico</TabsTrigger>}
-          <TabsTrigger value="pacientes">Pacientes</TabsTrigger>
+          {podeVerRelatorioPacientes && <TabsTrigger value="pacientes">Pacientes</TabsTrigger>}
           <TabsTrigger value="estoque">Estoque</TabsTrigger>
           {podeVerAgenda && <TabsTrigger value="status">Status</TabsTrigger>}
         </TabsList>
@@ -1019,7 +1028,7 @@ export default function Relatorios() {
 
         {podeVerAgenda && <TabsContent value="atendimentos" className="space-y-6">
           <div className="flex justify-end">
-            <Button variant="outline" onClick={handleExportAtendimentosPDF} disabled={isFetching || !!exportando} className="gap-2">
+            <Button variant="outline" onClick={handleExportAtendimentosPDF} disabled={isFetching || !!exportando || !podeExportarFontesCompletas(['agendamentos', 'médicos'], fontesNoLimite)} className="gap-2">
               <FileText className="h-4 w-4" />
               Exportar PDF
             </Button>
@@ -1128,7 +1137,7 @@ export default function Relatorios() {
           </Card>
         </TabsContent>}
 
-        <TabsContent value="pacientes" className="space-y-6">
+        {podeVerRelatorioPacientes && <TabsContent value="pacientes" className="space-y-6">
           <div className="grid gap-4 md:grid-cols-3">
             <Card>
               <CardContent className="pt-6">
@@ -1187,7 +1196,7 @@ export default function Relatorios() {
               </div>
             </CardContent>
           </Card>
-        </TabsContent>
+        </TabsContent>}
 
         <TabsContent value="estoque" className="space-y-6">
           <div className="grid gap-4 md:grid-cols-3">

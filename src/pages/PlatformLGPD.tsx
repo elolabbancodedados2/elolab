@@ -165,12 +165,12 @@ export default function PlatformLGPD() {
 
   return (
     <div className="space-y-6 pb-8">
-      <header className="flex flex-wrap items-center justify-between gap-3">
+      <header className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-[#DCEAF5] bg-gradient-to-r from-[#F1F7FF] via-white to-[#EBFBFD] p-5 sm:p-6">
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-bold"><ShieldCheck className="h-6 w-6 text-primary" /> LGPD e Conformidade</h1>
           <p className="mt-1 text-sm text-muted-foreground">Acompanhe solicitações dos titulares e regras de retenção sem exibir conteúdo clínico.</p>
         </div>
-        <Button variant="outline" className="min-h-11" onClick={() => { void casos.refetch(); void politicas.refetch(); }} disabled={casos.isFetching || politicas.isFetching}>
+        <Button variant="outline" className="min-h-11 border-[#CFE0F0] bg-white text-[#0C1F54] hover:bg-[#F7FBFF]" onClick={() => { void casos.refetch(); void politicas.refetch(); }} disabled={casos.isFetching || politicas.isFetching}>
           <RefreshCw className={`mr-2 h-4 w-4 ${casos.isFetching || politicas.isFetching ? 'animate-spin' : ''}`} /> Atualizar
         </Button>
       </header>
