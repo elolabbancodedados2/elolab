@@ -190,26 +190,31 @@ function VitalSignsInput({ sinais, onChange, disabled = false }: { sinais: Sinai
           const Icon = f.icon;
           return (
             <div key={f.key} className="rounded-xl border border-border/60 bg-card p-2.5 space-y-1">
-              <Label className={`text-[10px] font-semibold flex items-center gap-1 ${f.accent}`}>
+              <Label htmlFor={f.dual ? undefined : `vital-${f.key}`} className={`text-xs font-semibold flex items-center gap-1 ${f.accent}`}>
                 <Icon className="h-3 w-3" />{f.label}
               </Label>
               {f.dual ? (
-                <div className="flex gap-1 items-center">
-                  <Input placeholder="120" value={sinais.pressao_sistolica} onChange={e => update('pressao_sistolica', e.target.value)} className="h-7 text-xs px-2" disabled={disabled} />
-                  <span className="text-muted-foreground text-xs font-bold">/</span>
-                  <Input placeholder="80" value={sinais.pressao_diastolica} onChange={e => update('pressao_diastolica', e.target.value)} className="h-7 text-xs px-2" disabled={disabled} />
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1">
+                    <Label htmlFor="vital-pa-sistolica" className="text-xs text-muted-foreground">Sistólica</Label>
+                    <Input id="vital-pa-sistolica" aria-label="Pressão arterial sistólica" inputMode="numeric" placeholder="120" value={sinais.pressao_sistolica} onChange={e => update('pressao_sistolica', e.target.value)} className="h-9 px-2 text-sm" disabled={disabled} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="vital-pa-diastolica" className="text-xs text-muted-foreground">Diastólica</Label>
+                    <Input id="vital-pa-diastolica" aria-label="Pressão arterial diastólica" inputMode="numeric" placeholder="80" value={sinais.pressao_diastolica} onChange={e => update('pressao_diastolica', e.target.value)} className="h-9 px-2 text-sm" disabled={disabled} />
+                  </div>
                 </div>
               ) : (
-                <Input placeholder={f.placeholder} value={(sinais as any)[f.field!] || ''} onChange={e => update(f.field!, e.target.value)} inputMode={['peso', 'altura', 'temperatura', 'glicemia', 'circunferencia_abdominal', 'circunferencia_craniana'].includes(f.field!) ? 'decimal' : 'numeric'} className="h-7 text-xs px-2" disabled={disabled} />
+                <Input id={`vital-${f.key}`} aria-label={f.label} placeholder={f.placeholder} value={(sinais as any)[f.field!] || ''} onChange={e => update(f.field!, e.target.value)} inputMode={['peso', 'altura', 'temperatura', 'glicemia', 'circunferencia_abdominal', 'circunferencia_craniana'].includes(f.field!) ? 'decimal' : 'numeric'} className="h-9 px-2 text-sm" disabled={disabled} />
               )}
             </div>
           );
         })}
         <div className="rounded-xl border border-border/60 bg-card p-2.5 space-y-1">
-          <Label className="text-[10px] font-semibold text-info">IMC</Label>
+          <Label className="text-xs font-semibold text-info">IMC</Label>
           <div className="h-7 flex items-center px-2 text-xs font-bold">
             {sinais.imc || '—'}
-            {imcClass && <span className={`ml-1 text-[9px] ${imcClass.color}`}>({imcClass.label})</span>}
+            {imcClass && <span className={`ml-1 text-xs ${imcClass.color}`}>({imcClass.label})</span>}
           </div>
         </div>
       </div>
@@ -277,19 +282,19 @@ function FichaPaciente({ paciente, convenioNome }: { paciente: any; convenioNome
                 {paciente.nome_social || paciente.nome}
               </h2>
               {paciente.nome_social && (
-                <p className="text-[11px] text-muted-foreground">Civil: {paciente.nome}</p>
+                <p className="text-xs text-muted-foreground">Civil: {paciente.nome}</p>
               )}
               <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
-                <Badge className="bg-primary/10 text-primary border-primary/20 text-[10px] font-bold px-2 py-0">
+                <Badge className="bg-primary/10 text-primary border-primary/20 text-xs font-bold px-2 py-0">
                   {paciente.data_nascimento ? `${idade} anos` : 'Idade N/I'}
                 </Badge>
                 {paciente.sexo && (
-                  <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                  <Badge variant="outline" className="text-xs px-1.5 py-0">
                     {paciente.sexo === 'masculino' ? '♂ Masc' : paciente.sexo === 'feminino' ? '♀ Fem' : 'Outro'}
                   </Badge>
                 )}
                 {paciente.data_nascimento && (
-                  <span className="text-[10px] text-muted-foreground">
+                  <span className="text-xs text-muted-foreground">
                     {new Date(paciente.data_nascimento + 'T12:00').toLocaleDateString('pt-BR')}
                   </span>
                 )}
@@ -540,14 +545,14 @@ function ProntuarioAuditLog({ prontuarioId, clinicaId }: { prontuarioId: string;
         </Button>
       </div>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-4">
-        <div className="space-y-1"><Label htmlFor="audit-data-inicial" className="text-[10px]">De</Label><Input id="audit-data-inicial" type="date" value={dataInicial} onChange={event => setDataInicial(event.target.value)} className="h-9" /></div>
-        <div className="space-y-1"><Label htmlFor="audit-data-final" className="text-[10px]">Até</Label><Input id="audit-data-final" type="date" value={dataFinal} onChange={event => setDataFinal(event.target.value)} className="h-9" /></div>
-        <div className="space-y-1"><Label htmlFor="audit-evento" className="text-[10px]">Evento</Label><Select value={acao} onValueChange={setAcao}><SelectTrigger id="audit-evento" className="h-9"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="todos">Todos</SelectItem>{[...new Set(logs.map(log => log.action))].map(evento => <SelectItem key={evento} value={evento}>{actionLabel(evento)}</SelectItem>)}</SelectContent></Select></div>
-        <div className="space-y-1"><Label htmlFor="audit-usuario" className="text-[10px]">Usuário (ID)</Label><Select value={userId} onValueChange={setUserId}><SelectTrigger id="audit-usuario" className="h-9"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="todos">Todos</SelectItem>{usuarios.map(log => <SelectItem key={log.user_id!} value={log.user_id!}>{log.user_name || log.user_id} · {log.user_id!.slice(0, 8)}</SelectItem>)}</SelectContent></Select></div>
+        <div className="space-y-1"><Label htmlFor="audit-data-inicial" className="text-xs">De</Label><Input id="audit-data-inicial" type="date" value={dataInicial} onChange={event => setDataInicial(event.target.value)} className="h-9" /></div>
+        <div className="space-y-1"><Label htmlFor="audit-data-final" className="text-xs">Até</Label><Input id="audit-data-final" type="date" value={dataFinal} onChange={event => setDataFinal(event.target.value)} className="h-9" /></div>
+        <div className="space-y-1"><Label htmlFor="audit-evento" className="text-xs">Evento</Label><Select value={acao} onValueChange={setAcao}><SelectTrigger id="audit-evento" className="h-9"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="todos">Todos</SelectItem>{[...new Set(logs.map(log => log.action))].map(evento => <SelectItem key={evento} value={evento}>{actionLabel(evento)}</SelectItem>)}</SelectContent></Select></div>
+        <div className="space-y-1"><Label htmlFor="audit-usuario" className="text-xs">Usuário (ID)</Label><Select value={userId} onValueChange={setUserId}><SelectTrigger id="audit-usuario" className="h-9"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="todos">Todos</SelectItem>{usuarios.map(log => <SelectItem key={log.user_id!} value={log.user_id!}>{log.user_name || log.user_id} · {log.user_id!.slice(0, 8)}</SelectItem>)}</SelectContent></Select></div>
       </div>
-      <p className="text-[10px] text-muted-foreground">{logsFiltrados.length} de {logs.length} eventos. O CSV contém os IDs do registro e do usuário, sem dados do paciente ou conteúdo clínico.</p>
+      <p className="text-xs text-muted-foreground">{logsFiltrados.length} de {logs.length} eventos. O CSV contém os IDs do registro e do usuário, sem dados do paciente ou conteúdo clínico.</p>
       {(!metadados.instituicaoCnes || !metadados.instituicaoCnpj) && (
-        <p className="text-[10px] text-warning">CNES ou CNPJ não configurado. O campo correspondente ficará vazio no arquivo; complete em Configurações da clínica.</p>
+        <p className="text-xs text-warning">CNES ou CNPJ não configurado. O campo correspondente ficará vazio no arquivo; complete em Configurações da clínica.</p>
       )}
       {logs.length === 0 ? (
         <p className="text-xs text-muted-foreground py-6 text-center">Nenhum registro de auditoria</p>
@@ -560,13 +565,13 @@ function ProntuarioAuditLog({ prontuarioId, clinicaId }: { prontuarioId: string;
               <Lock className="h-3 w-3 text-muted-foreground mt-0.5 flex-shrink-0" />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-1.5 flex-wrap">
-                  <Badge variant="outline" className="text-[9px] px-1.5 py-0">{actionLabel(log.action)}</Badge>
-                  <span className="text-[10px] text-muted-foreground">
+                  <Badge variant="outline" className="text-xs px-1.5 py-0">{actionLabel(log.action)}</Badge>
+                  <span className="text-xs text-muted-foreground">
                     {log.ts ? format(new Date(log.ts), "dd/MM/yy HH:mm", { locale: ptBR }) : '—'}
                   </span>
                 </div>
                 {(log.user_name || log.user_id) && (
-                  <p className="text-[10px] text-muted-foreground">
+                  <p className="text-xs text-muted-foreground">
                     por {log.user_name || 'Usuário'} · ID {log.user_id}{log.user_crm ? ` — CRM ${log.user_crm}` : ''}
                   </p>
                 )}
@@ -575,7 +580,7 @@ function ProntuarioAuditLog({ prontuarioId, clinicaId }: { prontuarioId: string;
           ))}
         </div>
       )}
-      <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground bg-muted/40 rounded-lg p-2">
+      <div className="flex items-center gap-1.5 text-xs text-muted-foreground bg-muted/40 rounded-lg p-2">
         <ShieldCheck className="h-3 w-3" />
         <span>Trilha cronológica deste registro. Eventos antigos podem ter dados incompletos.</span>
       </div>
@@ -634,9 +639,9 @@ function RelatedRecords({ pacienteId }: { pacienteId: string }) {
       <div className="flex items-center gap-2 min-w-0">
         <Icon className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
         <span className="font-medium truncate">{label}</span>
-        {sub && <span className="text-[10px] text-muted-foreground">{sub}</span>}
+        {sub && <span className="text-xs text-muted-foreground">{sub}</span>}
       </div>
-      {badge && <Badge className={`text-[9px] px-1.5 py-0 ${badgeClass}`}>{badge}</Badge>}
+      {badge && <Badge className={`text-xs px-1.5 py-0 ${badgeClass}`}>{badge}</Badge>}
     </div>
   );
 
@@ -751,6 +756,7 @@ export default function Prontuarios() {
   const routeOpenedRef = useRef(false);
   const routeKeyRef = useRef<string | null>(null);
   const [selectedPacienteId, setSelectedPacienteId] = useState<string | null>(null);
+  const [showPatientPicker, setShowPatientPicker] = useState(true);
   const [rascunhoParaAbrir, setRascunhoParaAbrir] = useState<Record<string, any> | null>(null);
   const [rascunhoParaEditarId, setRascunhoParaEditarId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -944,6 +950,7 @@ export default function Prontuarios() {
     if (routePacienteId && selectedPacienteId !== routePacienteId) {
       prescricoesRequestRef.current += 1;
       setSelectedPacienteId(routePacienteId);
+      setShowPatientPicker(false);
     }
   }, [routePacienteId, selectedPacienteId]);
 
@@ -1607,7 +1614,7 @@ export default function Prontuarios() {
             <p className="text-xs text-muted-foreground">Registro médico, evolução e prescrições do paciente</p>
           </div>
         </div>
-        <Badge className="bg-primary/10 text-primary border-primary/20 gap-1 text-[10px] rounded-full px-2.5 py-1">
+        <Badge className="bg-primary/10 text-primary border-primary/20 gap-1 text-xs rounded-full px-2.5 py-1">
           <ShieldCheck className="h-3 w-3" />Acesso clínico
         </Badge>
       </div>
@@ -1638,34 +1645,61 @@ export default function Prontuarios() {
       <div className="grid gap-5 lg:grid-cols-12">
         {/* ─── Patient List (Left column) ─── */}
         <div className="lg:col-span-3">
-          <Card className="overflow-hidden border-border/50">
-            <CardHeader className="pb-2 px-3 pt-3">
+          {selectedPacienteId && (
+            <div className="mb-2 flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-card px-3 py-2 lg:hidden">
+              <div className="min-w-0">
+                <p className="text-xs text-muted-foreground">Paciente selecionado</p>
+                <p className="truncate text-sm font-semibold text-foreground" aria-live="polite">
+                  {selectedPaciente?.nome || (pacienteSelecionadoQuery.isLoading ? 'Carregando paciente…' : 'Paciente')}
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                aria-expanded={showPatientPicker}
+                aria-controls="prontuario-patient-picker"
+                onClick={() => setShowPatientPicker(value => !value)}
+                className="min-h-10 shrink-0"
+              >
+                {showPatientPicker ? 'Fechar lista' : 'Trocar paciente'}
+              </Button>
+            </div>
+          )}
+          <Card
+            id="prontuario-patient-picker"
+            className={`overflow-hidden border-border/50 ${selectedPacienteId && !showPatientPicker ? 'hidden lg:block' : ''}`}
+          >
+            <CardHeader className="space-y-2 pb-2 px-3 pt-3">
+              <Label htmlFor="prontuario-busca-paciente" className="text-xs font-semibold">Buscar paciente</Label>
               <div className="relative">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                <Search aria-hidden="true" className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
                 <Input
+                  id="prontuario-busca-paciente"
+                  aria-label="Buscar paciente por nome, CPF, telefone ou e-mail"
                   placeholder="Nome, CPF, telefone ou e-mail..."
                   value={searchTerm}
                   onChange={e => setSearchTerm(e.target.value)}
-                  className="pl-8 h-8 text-xs"
+                  className="pl-8 h-10 text-sm"
                 />
               </div>
             </CardHeader>
             <CardContent className="p-0">
-              <ScrollArea className="h-[calc(100vh-240px)]">
+              <ScrollArea className="h-[38dvh] max-h-[420px] lg:h-[calc(100vh-240px)] lg:max-h-none">
                 {medicoId && (
                   <section aria-labelledby="open-medical-drafts" className="border-b border-[#DCE9F2] bg-[#F5FAFE] p-2.5">
                     <div className="mb-2 flex items-center justify-between gap-2">
-                      <h2 id="open-medical-drafts" className="text-[11px] font-bold text-[#0C1F54]">Rascunhos em aberto</h2>
-                      <Badge variant="outline" className="h-5 border-[#CFE2F1] bg-white text-[10px] text-[#005ECC]">
+                      <h2 id="open-medical-drafts" className="text-xs font-bold text-[#0C1F54]">Rascunhos em aberto</h2>
+                      <Badge variant="outline" className="h-5 border-[#CFE2F1] bg-white text-xs text-[#005ECC]">
                         {rascunhosAbertos.length}
                       </Badge>
                     </div>
                     {rascunhosQuery.isError ? (
                       <ErrorState compact title="Rascunhos indisponíveis" error={rascunhosQuery.error} onRetry={() => void rascunhosQuery.refetch()} />
                     ) : rascunhosQuery.isLoading ? (
-                      <p role="status" className="py-3 text-center text-[11px] text-muted-foreground">Carregando rascunhos…</p>
+                      <p role="status" className="py-3 text-center text-xs text-muted-foreground">Carregando rascunhos…</p>
                     ) : rascunhosAbertos.length === 0 ? (
-                      <p className="py-2 text-[11px] text-muted-foreground">Você não tem rascunhos para continuar.</p>
+                      <p className="py-2 text-xs text-muted-foreground">Você não tem rascunhos para continuar.</p>
                     ) : (
                       <div className="space-y-1.5">
                         {rascunhosAbertos.map((draft) => {
@@ -1679,14 +1713,15 @@ export default function Prontuarios() {
                               onClick={() => {
                                 setRascunhoParaAbrir(draft);
                                 setSelectedPacienteId(draft.paciente_id);
+                                setShowPatientPicker(false);
                               }}
                             >
                               <span className="min-w-0 flex-1">
                                 <span className="flex items-center justify-between gap-2">
-                                  <span className="truncate text-[11px] font-semibold text-[#0C1F54]">{paciente?.nome_social || paciente?.nome || 'Paciente'}</span>
-                                  <span className="shrink-0 text-[10px] text-[#005ECC]">Retomar</span>
+                                  <span className="truncate text-xs font-semibold text-[#0C1F54]">{paciente?.nome_social || paciente?.nome || 'Paciente'}</span>
+                                  <span className="shrink-0 text-xs text-[#005ECC]">Retomar</span>
                                 </span>
-                                <span className="mt-0.5 block truncate text-[10px] text-muted-foreground">
+                                <span className="mt-0.5 block truncate text-xs text-muted-foreground">
                                   {draft.queixa_principal?.trim() || 'Evolução sem queixa principal'}
                                   {draft.updated_at ? ` · salva ${format(new Date(draft.updated_at), 'dd/MM HH:mm', { locale: ptBR })}` : ''}
                                 </span>
@@ -1696,7 +1731,7 @@ export default function Prontuarios() {
                           );
                         })}
                         {rascunhosAbertos.length >= LIMITE_BUSCA_EM_BLOCOS && (
-                          <p role="status" className="text-[10px] text-warning-foreground">A lista atingiu o limite de consulta. Refine os rascunhos ou peça apoio ao administrador.</p>
+                          <p role="status" className="text-xs text-warning-foreground">A lista atingiu o limite de consulta. Refine os rascunhos ou peça apoio ao administrador.</p>
                         )}
                       </div>
                     )}
@@ -1722,6 +1757,7 @@ export default function Prontuarios() {
                         setRascunhoParaAbrir(null);
                         setErroPrescricoes(null);
                         setSelectedPacienteId(pac.id);
+                        setShowPatientPicker(false);
                       }}
                     />
                   );
@@ -1737,7 +1773,7 @@ export default function Prontuarios() {
                   </div>
                 )}
                 {!pacientesBuscaQuery.isError && !buscandoPacientes && pacientesBuscaQuery.data?.incompleta && (
-                  <p className="border-t px-3 py-2 text-[10px] text-muted-foreground" role="status">
+                  <p className="border-t px-3 py-2 text-xs text-muted-foreground" role="status">
                     Há mais resultados. Digite mais caracteres para refinar a busca.
                   </p>
                 )}
@@ -1775,7 +1811,7 @@ export default function Prontuarios() {
                 <Button onClick={() => handleNovoProntuario()} size="sm" className="gap-1.5 rounded-xl" disabled={!!erroMedicos || !!erroProntuarios}>
                   <Plus className="h-3.5 w-3.5" />Novo Atendimento
                 </Button>
-                <span className="text-[10px] text-muted-foreground flex-1">
+                <span className="text-xs text-muted-foreground flex-1">
                   {pacienteProntuarios.length} evolução(ões) registrada(s)
                 </span>
               </div>
@@ -1784,7 +1820,10 @@ export default function Prontuarios() {
               <Card className="border-border/50 overflow-hidden">
                 <Tabs defaultValue="evolucoes" className="w-full">
                   <div className="border-b border-border/40 px-4 pt-3">
-                    <TabsList className="bg-transparent h-auto p-0 gap-0">
+                    <TabsList
+                      aria-label="Abas da ficha do paciente"
+                      className="grid h-auto w-full grid-cols-3 gap-1 bg-transparent p-0 sm:flex sm:flex-wrap sm:gap-0"
+                    >
                       {[
                         { val: 'evolucoes', icon: FileText, label: 'Evoluções' },
                         { val: 'solicitacoes', icon: TestTube, label: 'Solicitações' },
@@ -1796,7 +1835,7 @@ export default function Prontuarios() {
                         <TabsTrigger
                           key={t.val}
                           value={t.val}
-                          className="gap-1 text-[11px] rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-3 py-2"
+                          className="min-h-11 justify-center gap-1 rounded-lg border border-transparent px-2 py-2 text-xs data-[state=active]:border-primary/30 data-[state=active]:bg-primary/5 data-[state=active]:shadow-none sm:min-h-9 sm:justify-start sm:px-3"
                         >
                           <t.icon className="h-3 w-3" />{t.label}
                         </TabsTrigger>
@@ -1836,15 +1875,15 @@ export default function Prontuarios() {
                               <div className="flex justify-between items-start">
                                 <div className="space-y-1 min-w-0">
                                   <div className="flex items-center gap-1.5 flex-wrap">
-                                    <Badge className="bg-primary/10 text-primary border-primary/20 text-[10px] font-bold px-1.5 py-0">
+                                    <Badge className="bg-primary/10 text-primary border-primary/20 text-xs font-bold px-1.5 py-0">
                                       {format(parseDateOnly(p.data)!, 'dd/MM/yyyy')}
                                     </Badge>
                                     {p.diagnostico_principal && (
-                                      <Badge variant="secondary" className="text-[10px] px-1.5 py-0">{p.diagnostico_principal}</Badge>
+                                      <Badge variant="secondary" className="text-xs px-1.5 py-0">{p.diagnostico_principal}</Badge>
                                     )}
                                   </div>
                                   <p className="text-xs font-semibold text-foreground truncate">{p.queixa_principal}</p>
-                                  {p.conduta && <p className="text-[11px] text-muted-foreground line-clamp-1">Conduta: {p.conduta}</p>}
+                                  {p.conduta && <p className="text-xs text-muted-foreground line-clamp-1">Conduta: {p.conduta}</p>}
                                 </div>
                                 <ChevronRight className="h-4 w-4 text-muted-foreground/50 group-hover:text-primary transition-colors flex-shrink-0 mt-1" />
                               </div>
@@ -1879,10 +1918,10 @@ export default function Prontuarios() {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                           <div className="border rounded-xl p-4 space-y-3">
                             <div className="flex items-center gap-2">
-                              <Badge variant="outline" className="text-[10px]">JSON</Badge>
+                              <Badge variant="outline" className="text-xs">JSON</Badge>
                               <span className="text-xs font-bold">HL7 FHIR R4</span>
                             </div>
-                            <p className="text-[11px] text-muted-foreground">Padrão internacional para interoperabilidade em saúde.</p>
+                            <p className="text-xs text-muted-foreground">Padrão internacional para interoperabilidade em saúde.</p>
                             <Button variant="outline" size="sm" className="w-full gap-1.5 text-xs" disabled={loadingHistorico || !!erroHistorico} onClick={async () => {
                               const ids = historicoEvolucoes.map((p: any) => p.id);
                               let complementosExportacao: Awaited<ReturnType<typeof carregarDadosCompletosExportacao>>;
@@ -1919,10 +1958,10 @@ export default function Prontuarios() {
                           </div>
                           <div className="border rounded-xl p-4 space-y-3">
                             <div className="flex items-center gap-2">
-                              <Badge variant="outline" className="text-[10px]">XML</Badge>
+                              <Badge variant="outline" className="text-xs">XML</Badge>
                               <span className="text-xs font-bold">XML clínico simplificado</span>
                             </div>
-                          <p className="text-[11px] text-muted-foreground">Documento XML com seções clínicas e anexos embutidos.</p>
+                          <p className="text-xs text-muted-foreground">Documento XML com seções clínicas e anexos embutidos.</p>
                             <Button variant="outline" size="sm" className="w-full gap-1.5 text-xs" disabled={loadingHistorico || !!erroHistorico} onClick={async () => {
                               const ids = historicoEvolucoes.map((p: any) => p.id);
                               let complementosExportacao: Awaited<ReturnType<typeof carregarDadosCompletosExportacao>>;
@@ -1957,7 +1996,7 @@ export default function Prontuarios() {
                             </Button>
                           </div>
                         </div>
-                        <p className="text-[10px] text-muted-foreground flex items-center gap-1">
+                        <p className="text-xs text-muted-foreground flex items-center gap-1">
                           <ShieldCheck className="h-3 w-3" />Art. 18 LGPD — direito de portabilidade dos dados.
                         </p>
                       </div>
@@ -2057,13 +2096,13 @@ export default function Prontuarios() {
           {/* Patient summary strip */}
           {selectedPaciente && (
             <div className="flex-shrink-0 flex items-center gap-3 px-3 py-2 bg-muted/30 rounded-xl text-xs border border-border/40">
-              <Badge className="bg-primary/10 text-primary border-primary/20 gap-1 font-bold text-[10px]">
+              <Badge className="bg-primary/10 text-primary border-primary/20 gap-1 font-bold text-xs">
                 <User className="h-2.5 w-2.5" />{selectedPaciente.nome}
               </Badge>
               <span className="text-muted-foreground">{selectedPaciente.data_nascimento ? `${calcularIdade(selectedPaciente.data_nascimento)}a` : 'N/I'}</span>
               {selectedPaciente.cpf && <span className="text-muted-foreground">• {selectedPaciente.cpf}</span>}
               <span className="text-muted-foreground">• {getConvenioNome(selectedPaciente.convenio_id)}</span>
-              <Badge className="ml-auto bg-success/10 text-success border-success/20 text-[9px] rounded-full px-2">
+              <Badge className="ml-auto bg-success/10 text-success border-success/20 text-xs rounded-full px-2">
                 <ShieldCheck className="h-2.5 w-2.5 mr-0.5" />LGPD
               </Badge>
             </div>
@@ -2092,7 +2131,7 @@ export default function Prontuarios() {
                     ))}
                 </SelectContent>
               </Select>
-              <p className="text-[11px] text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 A evolução será registrada no prontuário deste profissional.
               </p>
             </div>
@@ -2114,7 +2153,7 @@ export default function Prontuarios() {
                   : 'Rascunho em modo de leitura'}
               </span>
               {!isSigned && (
-                <Button variant="outline" size="sm" onClick={handleRequestEdit} disabled={!!erroPrescricoes} className="h-6 text-[10px] gap-1 border-warning/40 text-warning hover:bg-warning/10">
+                <Button variant="outline" size="sm" onClick={handleRequestEdit} disabled={!!erroPrescricoes} className="h-6 text-xs gap-1 border-warning/40 text-warning hover:bg-warning/10">
                   <PenLine className="h-3 w-3" />Solicitar Edição
                 </Button>
               )}
@@ -2134,7 +2173,10 @@ export default function Prontuarios() {
           {/* Scrollable content */}
           <ScrollArea className="flex-1 pr-4">
             <Tabs defaultValue="anamnese" className="w-full">
-                <TabsList className="mb-3 flex h-auto w-full justify-start gap-0.5 overflow-x-auto rounded-xl bg-muted/40 p-0.5">
+                <TabsList
+                  aria-label="Seções do prontuário"
+                  className="mb-3 grid h-auto w-full grid-cols-2 gap-1 rounded-xl bg-muted/40 p-1 sm:flex sm:flex-wrap sm:justify-start sm:gap-0.5"
+                >
                   {[
                     { val: 'anamnese', icon: ClipboardList, label: 'Anamnese' },
                     { val: 'exame', icon: Stethoscope, label: 'Exame' },
@@ -2146,7 +2188,7 @@ export default function Prontuarios() {
             { val: 'adendos', icon: ScrollText, label: 'Adendos' },
                     ...(user?.roles?.includes('admin') ? [{ val: 'auditoria', icon: Shield, label: 'Auditoria' }] : []),
                   ].map(t => (
-                    <TabsTrigger key={t.val} value={t.val} className="shrink-0 gap-1.5 rounded-lg px-3 py-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm">
+                    <TabsTrigger key={t.val} value={t.val} className="min-h-11 justify-start gap-1.5 rounded-lg px-2.5 py-2 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm sm:min-h-9 sm:justify-center sm:px-3 sm:py-1.5">
                       <t.icon className="h-3.5 w-3.5" />{t.label}
                     </TabsTrigger>
                   ))}
@@ -2157,7 +2199,7 @@ export default function Prontuarios() {
                   <fieldset disabled={isReadOnly || salvandoProntuario} className="contents">
                   {!currentProntuario.id && (
                     <div className="space-y-2">
-                      <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+                      <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
                         <BookOpen className="h-3 w-3" />Templates SOAP
                       </span>
                       <div className="flex flex-wrap gap-1.5">
@@ -2170,7 +2212,7 @@ export default function Prontuarios() {
                           { label: 'Ortopedia', data: { queixa_principal: 'Dor em ___', historia_doenca_atual: 'Dor há ___. Mecanismo do trauma: ___. Limitação funcional: ___.' } },
                           { label: 'Dermatologia', data: { queixa_principal: 'Lesão cutânea', historia_doenca_atual: 'Lesão em ___. Tipo: ___. Tamanho: ___cm. Prurido: ___.' } },
                         ].map(t => (
-                          <Button key={t.label} variant="outline" size="sm" className="text-[10px] h-6 gap-1 px-2" onClick={() => {
+                          <Button key={t.label} variant="outline" size="sm" className="text-xs h-6 gap-1 px-2" onClick={() => {
                             Object.entries(t.data).forEach(([f, v]) => { if (v) updateField(f, v); });
                             toast.success('Template aplicado', { description: `"${t.label}" preenchido.` });
                           }}>
@@ -2183,34 +2225,34 @@ export default function Prontuarios() {
                   )}
 
                   <Section icon={AlertTriangle} title="Queixa Principal *">
-                    <Textarea placeholder="Queixa principal..." value={currentProntuario.queixa_principal || ''} onChange={e => updateField('queixa_principal', e.target.value)} rows={2} />
+                    <Textarea aria-label="Queixa principal" placeholder="Queixa principal..." value={currentProntuario.queixa_principal || ''} onChange={e => updateField('queixa_principal', e.target.value)} rows={2} />
                   </Section>
                   <Section icon={FileText} title="História da Doença Atual (HDA)">
-                    <Textarea placeholder="Evolução cronológica, fatores de melhora/piora..." value={currentProntuario.historia_doenca_atual || ''} onChange={e => updateField('historia_doenca_atual', e.target.value)} rows={4} />
+                    <Textarea aria-label="História da doença atual" placeholder="Evolução cronológica, fatores de melhora/piora..." value={currentProntuario.historia_doenca_atual || ''} onChange={e => updateField('historia_doenca_atual', e.target.value)} rows={4} />
                   </Section>
                   <Section icon={History} title="Doenças Pregressas (HDP)" collapsible>
-                    <Textarea placeholder="Doenças prévias, cirurgias, internações..." value={currentProntuario.historia_patologica_pregressa || ''} onChange={e => updateField('historia_patologica_pregressa', e.target.value)} rows={3} />
+                    <Textarea aria-label="História patológica pregressa" placeholder="Doenças prévias, cirurgias, internações..." value={currentProntuario.historia_patologica_pregressa || ''} onChange={e => updateField('historia_patologica_pregressa', e.target.value)} rows={3} />
                   </Section>
                   <Section icon={ShieldCheck} title="Alergias e Medicamentos">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                       <div className="space-y-1">
-                        <Label className="text-[10px] flex items-center gap-1"><AlertTriangle className="h-2.5 w-2.5 text-destructive" />Alergias</Label>
-                        <Textarea placeholder="Medicamentos, alimentos..." value={currentProntuario.alergias_relatadas || ''} onChange={e => updateField('alergias_relatadas', e.target.value)} rows={2} className="border-destructive/30" />
+                        <Label className="text-xs flex items-center gap-1"><AlertTriangle className="h-2.5 w-2.5 text-destructive" />Alergias</Label>
+                        <Textarea aria-label="Alergias relatadas" placeholder="Medicamentos, alimentos..." value={currentProntuario.alergias_relatadas || ''} onChange={e => updateField('alergias_relatadas', e.target.value)} rows={2} className="border-destructive/30" />
                       </div>
                       <div className="space-y-1">
-                        <Label className="text-[10px] flex items-center gap-1"><Pill className="h-2.5 w-2.5" />Em uso</Label>
-                        <Textarea placeholder="Medicamentos em uso..." value={currentProntuario.medicamentos_em_uso || ''} onChange={e => updateField('medicamentos_em_uso', e.target.value)} rows={2} />
+                        <Label className="text-xs flex items-center gap-1"><Pill className="h-2.5 w-2.5" />Em uso</Label>
+                        <Textarea aria-label="Medicamentos em uso" placeholder="Medicamentos em uso..." value={currentProntuario.medicamentos_em_uso || ''} onChange={e => updateField('medicamentos_em_uso', e.target.value)} rows={2} />
                       </div>
                     </div>
                   </Section>
                   <Section icon={User} title="História Familiar" collapsible>
-                    <Textarea placeholder="DM, HAS, câncer, cardiopatias..." value={currentProntuario.historia_familiar || ''} onChange={e => updateField('historia_familiar', e.target.value)} rows={2} />
+                    <Textarea aria-label="História familiar" placeholder="DM, HAS, câncer, cardiopatias..." value={currentProntuario.historia_familiar || ''} onChange={e => updateField('historia_familiar', e.target.value)} rows={2} />
                   </Section>
                   <Section icon={Clipboard} title="História Social" collapsible>
-                    <Textarea placeholder="Tabagismo, etilismo, profissão..." value={currentProntuario.historia_social || ''} onChange={e => updateField('historia_social', e.target.value)} rows={2} />
+                    <Textarea aria-label="História social" placeholder="Tabagismo, etilismo, profissão..." value={currentProntuario.historia_social || ''} onChange={e => updateField('historia_social', e.target.value)} rows={2} />
                   </Section>
                   <Section icon={ClipboardList} title="Revisão de Sistemas" collapsible>
-                    <Textarea placeholder="Cardiovascular, respiratório, GI, neuro..." value={currentProntuario.revisao_sistemas || ''} onChange={e => updateField('revisao_sistemas', e.target.value)} rows={3} />
+                    <Textarea aria-label="Revisão de sistemas" placeholder="Cardiovascular, respiratório, GI, neuro..." value={currentProntuario.revisao_sistemas || ''} onChange={e => updateField('revisao_sistemas', e.target.value)} rows={3} />
                   </Section>
 
                   </fieldset></TabsContent>
@@ -2221,26 +2263,26 @@ export default function Prontuarios() {
                   <VitalSignsInput sinais={sinaisVitais} onChange={(value) => { setSinaisVitais(value); setHasUnsavedChanges(true); changeVersionRef.current += 1; }} />
                   <Separator />
                   <Section icon={Stethoscope} title="Exame Físico Geral">
-                    <Textarea placeholder="Estado geral, consciência, hidratação..." value={currentProntuario.exames_fisicos || ''} onChange={e => updateField('exames_fisicos', e.target.value)} rows={3} />
+                    <Textarea aria-label="Exame físico geral" placeholder="Estado geral, consciência, hidratação..." value={currentProntuario.exames_fisicos || ''} onChange={e => updateField('exames_fisicos', e.target.value)} rows={3} />
                   </Section>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <Section icon={EyeIcon} title="Cabeça e Pescoço" collapsible>
-                      <Textarea placeholder="Olhos, ouvidos, tireoide..." value={currentProntuario.exame_cabeca_pescoco || ''} onChange={e => updateField('exame_cabeca_pescoco', e.target.value)} rows={3} />
+                      <Textarea aria-label="Exame de cabeça e pescoço" placeholder="Olhos, ouvidos, tireoide..." value={currentProntuario.exame_cabeca_pescoco || ''} onChange={e => updateField('exame_cabeca_pescoco', e.target.value)} rows={3} />
                     </Section>
                     <Section icon={Heart} title="Tórax" collapsible>
-                      <Textarea placeholder="Ausculta cardíaca/pulmonar..." value={currentProntuario.exame_torax || ''} onChange={e => updateField('exame_torax', e.target.value)} rows={3} />
+                      <Textarea aria-label="Exame do tórax" placeholder="Ausculta cardíaca/pulmonar..." value={currentProntuario.exame_torax || ''} onChange={e => updateField('exame_torax', e.target.value)} rows={3} />
                     </Section>
                     <Section icon={Activity} title="Abdome" collapsible>
-                      <Textarea placeholder="Inspeção, palpação..." value={currentProntuario.exame_abdomen || ''} onChange={e => updateField('exame_abdomen', e.target.value)} rows={3} />
+                      <Textarea aria-label="Exame do abdome" placeholder="Inspeção, palpação..." value={currentProntuario.exame_abdomen || ''} onChange={e => updateField('exame_abdomen', e.target.value)} rows={3} />
                     </Section>
                     <Section icon={Bone} title="Membros" collapsible>
-                      <Textarea placeholder="Edema, pulsos, mobilidade..." value={currentProntuario.exame_membros || ''} onChange={e => updateField('exame_membros', e.target.value)} rows={3} />
+                      <Textarea aria-label="Exame dos membros" placeholder="Edema, pulsos, mobilidade..." value={currentProntuario.exame_membros || ''} onChange={e => updateField('exame_membros', e.target.value)} rows={3} />
                     </Section>
                     <Section icon={Brain} title="Neurológico" collapsible>
-                      <Textarea placeholder="Força, sensibilidade, reflexos..." value={currentProntuario.exame_neurologico || ''} onChange={e => updateField('exame_neurologico', e.target.value)} rows={3} />
+                      <Textarea aria-label="Exame neurológico" placeholder="Força, sensibilidade, reflexos..." value={currentProntuario.exame_neurologico || ''} onChange={e => updateField('exame_neurologico', e.target.value)} rows={3} />
                     </Section>
                     <Section icon={Stethoscope} title="Pele / Tegumentar" collapsible>
-                      <Textarea placeholder="Lesões, coloração, turgor..." value={currentProntuario.exame_pele || ''} onChange={e => updateField('exame_pele', e.target.value)} rows={3} />
+                      <Textarea aria-label="Exame da pele" placeholder="Lesões, coloração, turgor..." value={currentProntuario.exame_pele || ''} onChange={e => updateField('exame_pele', e.target.value)} rows={3} />
                     </Section>
                   </div>
 
@@ -2250,13 +2292,13 @@ export default function Prontuarios() {
                 <TabsContent value="diagnostico" className="space-y-4 pt-1">
                   <fieldset disabled={isReadOnly || salvandoProntuario} className="contents">
                   <Section icon={BookOpen} title="Hipótese Diagnóstica (CID-10)">
-                    <Cid10Search value={currentProntuario.hipotese_diagnostica || ''} onChange={v => updateField('hipotese_diagnostica', v)} />
+                    <Cid10Search ariaLabel="Hipótese diagnóstica CID-10" value={currentProntuario.hipotese_diagnostica || ''} onChange={v => updateField('hipotese_diagnostica', v)} />
                   </Section>
                   <Section icon={FileCheck} title="Diagnóstico Principal">
-                    <Cid10Search value={currentProntuario.diagnostico_principal || ''} onChange={v => updateField('diagnostico_principal', v)} placeholder="Buscar CID-10 principal..." multiple={false} />
+                    <Cid10Search ariaLabel="Diagnóstico principal CID-10" value={currentProntuario.diagnostico_principal || ''} onChange={v => updateField('diagnostico_principal', v)} placeholder="Buscar CID-10 principal..." multiple={false} />
                   </Section>
                   <Section icon={ClipboardList} title="Diagnósticos Secundários" collapsible>
-                    <Textarea placeholder="Comorbidades, um por linha" value={(currentProntuario.diagnosticos_secundarios || []).join('\n')} onChange={e => updateField('diagnosticos_secundarios', e.target.value.split('\n').filter(Boolean))} rows={3} />
+                    <Textarea aria-label="Diagnósticos secundários" placeholder="Comorbidades, um por linha" value={(currentProntuario.diagnosticos_secundarios || []).join('\n')} onChange={e => updateField('diagnosticos_secundarios', e.target.value.split('\n').filter(Boolean))} rows={3} />
                   </Section>
 
                   </fieldset></TabsContent>
@@ -2265,18 +2307,18 @@ export default function Prontuarios() {
                 <TabsContent value="conduta" className="space-y-4 pt-1">
                   <fieldset disabled={isReadOnly || salvandoProntuario} className="contents">
                   <div className="flex justify-end">
-                    <Button variant="outline" size="sm" onClick={() => setShowProtocols(true)} className="text-[10px] h-6 gap-1">
+                    <Button variant="outline" size="sm" onClick={() => setShowProtocols(true)} className="text-xs h-6 gap-1">
                       <CalendarCheck className="h-3 w-3" />Aplicar Protocolo Clínico
                     </Button>
                   </div>
                   <Section icon={FileCheck} title="Conduta">
-                    <Textarea placeholder="Conduta terapêutica, exames, encaminhamentos..." value={currentProntuario.conduta || ''} onChange={e => updateField('conduta', e.target.value)} rows={4} />
+                    <Textarea aria-label="Conduta" placeholder="Conduta terapêutica, exames, encaminhamentos..." value={currentProntuario.conduta || ''} onChange={e => updateField('conduta', e.target.value)} rows={4} />
                   </Section>
                   <Section icon={ClipboardList} title="Plano Terapêutico">
-                    <Textarea placeholder="Plano detalhado..." value={currentProntuario.plano_terapeutico || ''} onChange={e => updateField('plano_terapeutico', e.target.value)} rows={3} />
+                    <Textarea aria-label="Plano terapêutico" placeholder="Plano detalhado..." value={currentProntuario.plano_terapeutico || ''} onChange={e => updateField('plano_terapeutico', e.target.value)} rows={3} />
                   </Section>
                   <Section icon={User} title="Orientações ao Paciente">
-                    <Textarea placeholder="Cuidados, retorno, sinais de alarme..." value={currentProntuario.orientacoes_paciente || ''} onChange={e => updateField('orientacoes_paciente', e.target.value)} rows={3} />
+                    <Textarea aria-label="Orientações ao paciente" placeholder="Cuidados, retorno, sinais de alarme..." value={currentProntuario.orientacoes_paciente || ''} onChange={e => updateField('orientacoes_paciente', e.target.value)} rows={3} />
                   </Section>
                   {/* Procedimento feito na consulta vira cobrança no balcão.
                       Sem agendamento não há conta onde lançar. */}
@@ -2289,7 +2331,7 @@ export default function Prontuarios() {
                     </Section>
                   )}
                   <Section icon={ShieldCheck} title="Observações Internas" collapsible>
-                    <Textarea placeholder="Anotações internas (não imprime)..." value={currentProntuario.observacoes_internas || ''} onChange={e => updateField('observacoes_internas', e.target.value)} rows={2} className="border-dashed" />
+                    <Textarea aria-label="Observações internas" placeholder="Anotações internas (não imprime)..." value={currentProntuario.observacoes_internas || ''} onChange={e => updateField('observacoes_internas', e.target.value)} rows={2} className="border-dashed" />
                   </Section>
 
                   </fieldset></TabsContent>
@@ -2302,8 +2344,8 @@ export default function Prontuarios() {
                       <Pill className="h-3.5 w-3.5" />Receituário Digital
                     </span>
                     <div className="flex gap-1.5">
-                      <Button variant="outline" size="sm" onClick={() => setShowProtocols(true)} className="text-[10px] h-6 gap-1"><CalendarCheck className="h-3 w-3" />Protocolos</Button>
-                      <Button variant="outline" size="sm" onClick={handleAddPrescricao} className="text-[10px] h-6 gap-1"><Plus className="h-3 w-3" />Adicionar</Button>
+                      <Button variant="outline" size="sm" onClick={() => setShowProtocols(true)} className="text-xs h-6 gap-1"><CalendarCheck className="h-3 w-3" />Protocolos</Button>
+                      <Button variant="outline" size="sm" onClick={handleAddPrescricao} className="text-xs h-6 gap-1"><Plus className="h-3 w-3" />Adicionar</Button>
                     </div>
                   </div>
 
@@ -2318,11 +2360,11 @@ export default function Prontuarios() {
                       mudava. */}
                   {prescricoes.filter(p => p.medicamento && p.quantidade).length > 0 && (
                     <div className="flex items-center justify-between gap-2 rounded-lg border border-border/50 px-3 py-2">
-                      <p className="text-[10px] text-muted-foreground">
+                      <p className="text-xs text-muted-foreground">
                         Entregou o medicamento aqui na clínica? Dê baixa no estoque.
                       </p>
                       <Button
-                        variant="outline" size="sm" className="h-6 shrink-0 gap-1 text-[10px]"
+                        variant="outline" size="sm" className="h-6 shrink-0 gap-1 text-xs"
                         disabled={dispensando || salvandoProntuario}
                         onClick={dispensarNaClinica}
                       >
@@ -2331,7 +2373,7 @@ export default function Prontuarios() {
                       </Button>
                     </div>
                   )}
-                  <p className="text-[10px] text-muted-foreground flex items-center gap-1 bg-muted/40 rounded-lg p-2">
+                  <p className="text-xs text-muted-foreground flex items-center gap-1 bg-muted/40 rounded-lg p-2">
                     <BadgeCheck className="h-3 w-3" />
                     Prescrição sai sem assinatura digital — imprima e assine, ou assine o PDF no gov.br
                   </p>
@@ -2359,15 +2401,29 @@ export default function Prontuarios() {
                             <Button variant="ghost" size="sm" onClick={() => handleRemovePrescricao(i)} className="text-destructive h-6 w-6 p-0"><X className="h-3 w-3" /></Button>
                           </div>
                           <div className="grid grid-cols-2 md:grid-cols-3 gap-1.5">
-                            <div className="col-span-2 md:col-span-3">
-                              <Input placeholder="Nome do medicamento *" value={presc.medicamento} onChange={e => handleUpdatePrescricao(i, 'medicamento', e.target.value)} className="text-xs h-8" />
+                            <div className="col-span-2 space-y-1 md:col-span-3">
+                              <Label htmlFor={`prescricao-${i}-medicamento`} className="text-xs">Medicamento *</Label>
+                              <Input id={`prescricao-${i}-medicamento`} aria-label={`Medicamento ${i + 1}: nome`} placeholder="Nome do medicamento" value={presc.medicamento} onChange={e => handleUpdatePrescricao(i, 'medicamento', e.target.value)} className="h-9 text-sm" />
                             </div>
-                            <Input placeholder="Dosagem" value={presc.dosagem} onChange={e => handleUpdatePrescricao(i, 'dosagem', e.target.value)} className="text-xs h-8" />
-                            <Input placeholder="Posologia" value={presc.posologia} onChange={e => handleUpdatePrescricao(i, 'posologia', e.target.value)} className="text-xs h-8" />
-                            <Input placeholder="Duração" value={presc.duracao} onChange={e => handleUpdatePrescricao(i, 'duracao', e.target.value)} className="text-xs h-8" />
-                            <Input placeholder="Quantidade" value={presc.quantidade} onChange={e => handleUpdatePrescricao(i, 'quantidade', e.target.value)} className="text-xs h-8" />
-                            <div className="col-span-2">
-                              <Input placeholder="Observações" value={presc.observacoes} onChange={e => handleUpdatePrescricao(i, 'observacoes', e.target.value)} className="text-xs h-8" />
+                            <div className="space-y-1">
+                              <Label htmlFor={`prescricao-${i}-dosagem`} className="text-xs">Dosagem</Label>
+                              <Input id={`prescricao-${i}-dosagem`} aria-label={`Medicamento ${i + 1}: dosagem`} placeholder="Ex.: 500 mg" value={presc.dosagem} onChange={e => handleUpdatePrescricao(i, 'dosagem', e.target.value)} className="h-9 text-sm" />
+                            </div>
+                            <div className="space-y-1">
+                              <Label htmlFor={`prescricao-${i}-posologia`} className="text-xs">Posologia</Label>
+                              <Input id={`prescricao-${i}-posologia`} aria-label={`Medicamento ${i + 1}: posologia`} placeholder="Ex.: 1 comprimido a cada 8 h" value={presc.posologia} onChange={e => handleUpdatePrescricao(i, 'posologia', e.target.value)} className="h-9 text-sm" />
+                            </div>
+                            <div className="space-y-1">
+                              <Label htmlFor={`prescricao-${i}-duracao`} className="text-xs">Duração</Label>
+                              <Input id={`prescricao-${i}-duracao`} aria-label={`Medicamento ${i + 1}: duração do tratamento`} placeholder="Ex.: 7 dias" value={presc.duracao} onChange={e => handleUpdatePrescricao(i, 'duracao', e.target.value)} className="h-9 text-sm" />
+                            </div>
+                            <div className="space-y-1">
+                              <Label htmlFor={`prescricao-${i}-quantidade`} className="text-xs">Quantidade</Label>
+                              <Input id={`prescricao-${i}-quantidade`} aria-label={`Medicamento ${i + 1}: quantidade`} placeholder="Ex.: 21" value={presc.quantidade} onChange={e => handleUpdatePrescricao(i, 'quantidade', e.target.value)} className="h-9 text-sm" />
+                            </div>
+                            <div className="col-span-2 space-y-1 md:col-span-2">
+                              <Label htmlFor={`prescricao-${i}-observacoes`} className="text-xs">Observações</Label>
+                              <Input id={`prescricao-${i}-observacoes`} aria-label={`Medicamento ${i + 1}: observações`} placeholder="Instruções adicionais" value={presc.observacoes} onChange={e => handleUpdatePrescricao(i, 'observacoes', e.target.value)} className="h-9 text-sm" />
                             </div>
                           </div>
                         </div>
@@ -2379,7 +2435,7 @@ export default function Prontuarios() {
 
                 {/* ─── Anexos ─── */}
                 <TabsContent value="anexos" className="pt-1">
-                  <p className="text-[10px] text-muted-foreground flex items-center gap-1 bg-muted/40 rounded-lg p-2 mb-3">
+                  <p className="text-xs text-muted-foreground flex items-center gap-1 bg-muted/40 rounded-lg p-2 mb-3">
                     <Paperclip className="h-3 w-3" />Upload de PDFs, imagens e exames — LGPD.
                   </p>
                   {currentProntuario.id && selectedPacienteId ? (
@@ -2435,11 +2491,11 @@ export default function Prontuarios() {
                         >
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-1.5 flex-wrap">
-                              <Badge className="bg-primary/10 text-primary border-primary/20 text-[10px] font-bold px-1.5 py-0">
+                              <Badge className="bg-primary/10 text-primary border-primary/20 text-xs font-bold px-1.5 py-0">
                                 {format(parseDateOnly(ev.data)!, 'dd/MM/yyyy', { locale: ptBR })}
                               </Badge>
-                              {ev.medicos && <span className="text-[10px] text-muted-foreground">{nomeMedico(ev.medicos.nome || ev.medicos.crm)}</span>}
-                              {ev.diagnostico_principal && <Badge variant="secondary" className="text-[9px] px-1.5 py-0">{ev.diagnostico_principal}</Badge>}
+                              {ev.medicos && <span className="text-xs text-muted-foreground">{nomeMedico(ev.medicos.nome || ev.medicos.crm)}</span>}
+                              {ev.diagnostico_principal && <Badge variant="secondary" className="text-xs px-1.5 py-0">{ev.diagnostico_principal}</Badge>}
                             </div>
                             <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/40 group-hover:text-primary transition-colors flex-shrink-0" />
                           </div>
@@ -2447,9 +2503,9 @@ export default function Prontuarios() {
                           {ev.conduta && <p className="text-xs"><strong>Conduta:</strong> <span className="text-muted-foreground line-clamp-2">{ev.conduta}</span></p>}
                           {ev.sinais_vitais && Object.keys(ev.sinais_vitais).some(k => ev.sinais_vitais[k]) && (
                             <div className="flex flex-wrap gap-1 mt-1">
-                              {ev.sinais_vitais.pressao_sistolica && <Badge className="bg-destructive/10 text-destructive border-destructive/20 text-[9px] px-1.5 py-0">PA: {ev.sinais_vitais.pressao_sistolica}/{ev.sinais_vitais.pressao_diastolica}</Badge>}
-                              {ev.sinais_vitais.frequencia_cardiaca && <Badge className="bg-destructive/10 text-destructive border-destructive/20 text-[9px] px-1.5 py-0">FC: {ev.sinais_vitais.frequencia_cardiaca}</Badge>}
-                              {ev.sinais_vitais.temperatura && <Badge className="bg-warning/10 text-warning border-warning/20 text-[9px] px-1.5 py-0">T: {ev.sinais_vitais.temperatura}°C</Badge>}
+                              {ev.sinais_vitais.pressao_sistolica && <Badge className="bg-destructive/10 text-destructive border-destructive/20 text-xs px-1.5 py-0">PA: {ev.sinais_vitais.pressao_sistolica}/{ev.sinais_vitais.pressao_diastolica}</Badge>}
+                              {ev.sinais_vitais.frequencia_cardiaca && <Badge className="bg-destructive/10 text-destructive border-destructive/20 text-xs px-1.5 py-0">FC: {ev.sinais_vitais.frequencia_cardiaca}</Badge>}
+                              {ev.sinais_vitais.temperatura && <Badge className="bg-warning/10 text-warning border-warning/20 text-xs px-1.5 py-0">T: {ev.sinais_vitais.temperatura}°C</Badge>}
                             </div>
                           )}
                         </motion.div>
@@ -2481,11 +2537,11 @@ export default function Prontuarios() {
                     <ProntuarioAuditLog prontuarioId={currentProntuario.id} clinicaId={user?.clinica_id} />
                   ) : (
                     <div className="space-y-3">
-                      <p className="text-[10px] text-muted-foreground flex items-center gap-1 bg-muted/40 rounded-lg p-2">
+                      <p className="text-xs text-muted-foreground flex items-center gap-1 bg-muted/40 rounded-lg p-2">
                         <ShieldCheck className="h-3 w-3" />LGPD • CFM — Acessos registrados automaticamente.
                       </p>
                       <div className="space-y-1.5 text-xs">
-                        <h4 className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+                        <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
                           <Lock className="h-3 w-3" />Níveis de Acesso
                         </h4>
                         {[
@@ -2496,12 +2552,12 @@ export default function Prontuarios() {
                           { role: 'Financeiro', desc: 'Sem acesso ao prontuário clínico' },
                         ].map(r => (
                           <div key={r.role} className="flex items-center gap-2 border border-border/40 rounded-lg px-2.5 py-1.5">
-                            <Badge variant="outline" className="text-[9px] px-1.5 py-0">{r.role}</Badge>
-                            <span className="text-muted-foreground text-[11px]">{r.desc}</span>
+                            <Badge variant="outline" className="text-xs px-1.5 py-0">{r.role}</Badge>
+                            <span className="text-muted-foreground text-xs">{r.desc}</span>
                           </div>
                         ))}
                       </div>
-                      <p className="text-[11px] text-muted-foreground text-center py-4">Salve para ver a trilha de auditoria</p>
+                      <p className="text-xs text-muted-foreground text-center py-4">Salve para ver a trilha de auditoria</p>
                     </div>
                   )}
                 </TabsContent>}
@@ -2532,12 +2588,12 @@ export default function Prontuarios() {
                   />
                 )}
                 {autoSaveTime && !autoSaveError && (
-                  <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+                  <span className="text-xs text-muted-foreground flex items-center gap-1">
                     <Clock className="h-2.5 w-2.5" />Salvo às {autoSaveTime}
                   </span>
                 )}
                 {autoSaveError && (
-                  <span role="alert" className="text-[10px] text-destructive">
+                  <span role="alert" className="text-xs text-destructive">
                     Falha no salvamento automático: {autoSaveError}. Mantenha esta tela aberta e salve manualmente.
                   </span>
                 )}
@@ -2597,16 +2653,16 @@ export default function Prontuarios() {
           </DialogHeader>
           <div className="space-y-3">
             <div className="space-y-1">
-              <Label className="text-xs">Tipo do Exame *</Label>
-              <Input placeholder="Ex: Hemograma, Glicemia, TSH..." value={examForm.tipo_exame} onChange={e => setExamForm(f => ({ ...f, tipo_exame: e.target.value }))} className="text-xs" />
+              <Label htmlFor="solicitacao-exame-tipo" className="text-xs">Tipo do Exame *</Label>
+              <Input id="solicitacao-exame-tipo" aria-label="Nome do exame" placeholder="Ex: Hemograma, Glicemia, TSH..." value={examForm.tipo_exame} onChange={e => setExamForm(f => ({ ...f, tipo_exame: e.target.value }))} className="h-10 text-sm" />
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">Descrição</Label>
-              <Input placeholder="Detalhes adicionais" value={examForm.descricao} onChange={e => setExamForm(f => ({ ...f, descricao: e.target.value }))} className="text-xs" />
+              <Label htmlFor="solicitacao-exame-descricao" className="text-xs">Descrição</Label>
+              <Input id="solicitacao-exame-descricao" aria-label="Detalhes do exame" placeholder="Detalhes adicionais" value={examForm.descricao} onChange={e => setExamForm(f => ({ ...f, descricao: e.target.value }))} className="h-10 text-sm" />
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">Observações</Label>
-              <Textarea placeholder="Jejum, preparo..." value={examForm.observacoes} onChange={e => setExamForm(f => ({ ...f, observacoes: e.target.value }))} rows={2} className="text-xs" />
+              <Label htmlFor="solicitacao-exame-observacoes" className="text-xs">Observações</Label>
+              <Textarea id="solicitacao-exame-observacoes" aria-label="Orientações e preparo do exame" placeholder="Jejum, preparo..." value={examForm.observacoes} onChange={e => setExamForm(f => ({ ...f, observacoes: e.target.value }))} rows={2} className="text-sm" />
             </div>
           </div>
           <DialogFooter>
