@@ -31,7 +31,7 @@ BEGIN
       v_pais_travados := v_pais_travados + 1;
       IF v_pai.assinado IS TRUE THEN v_assinado := true; END IF;
     END LOOP;
-    IF v_pais_travados <> CASE WHEN OLD.prontuario_id IS NULL OR NEW.prontuario_id IS NULL THEN 1 ELSE 2 END THEN
+    IF v_pais_travados <> (CASE WHEN OLD.prontuario_id IS NULL OR NEW.prontuario_id IS NULL THEN 1 ELSE 2 END) THEN
       RAISE EXCEPTION 'Encounter dependency parent was not found.' USING ERRCODE = 'foreign_key_violation';
     END IF;
     IF v_assinado IS TRUE THEN

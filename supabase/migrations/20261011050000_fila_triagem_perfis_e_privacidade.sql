@@ -84,8 +84,8 @@ BEGIN
    LIMIT 1
    FOR UPDATE;
   IF FOUND THEN
-    IF CASE p_prioridade WHEN 'urgente' THEN 3 WHEN 'preferencial' THEN 2 ELSE 1 END
-       > CASE v_fila.prioridade WHEN 'urgente' THEN 3 WHEN 'preferencial' THEN 2 ELSE 1 END THEN
+    IF (CASE p_prioridade WHEN 'urgente' THEN 3 WHEN 'preferencial' THEN 2 ELSE 1 END)
+       > (CASE v_fila.prioridade WHEN 'urgente' THEN 3 WHEN 'preferencial' THEN 2 ELSE 1 END) THEN
       UPDATE public.fila_atendimento
          SET prioridade = p_prioridade
        WHERE id = v_fila.id

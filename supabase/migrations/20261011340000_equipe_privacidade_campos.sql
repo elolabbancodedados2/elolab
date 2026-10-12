@@ -1,4 +1,4 @@
-﻿-- Limita colunas pessoais sensíveis nas tabelas de equipe. As telas administrativas
+-- Limita colunas pessoais sensíveis nas tabelas de equipe. As telas administrativas
 -- recebem os dados completos por RPC com validação de papel e clínica.
 
 REVOKE SELECT ON TABLE public.medicos FROM PUBLIC, anon, authenticated;
