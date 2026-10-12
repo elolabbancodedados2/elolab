@@ -24,7 +24,7 @@ export function PatientSearchResult({ paciente, selecionado, detalhe, onSelect }
       </span>
       <span className="min-w-0 flex-1">
         <span className="block truncate text-xs font-semibold text-[#0c1f54]">{nome}</span>
-        <span className="block truncate text-[10px] text-[#52647b]">
+        <span className="block truncate text-xs text-[#52647b]">
           {detalhe || 'Data de nascimento não informada'}
           {paciente.cpf && ` · ${paciente.cpf}`}
         </span>

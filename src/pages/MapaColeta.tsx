@@ -28,6 +28,7 @@ import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { ageFromDateOnly } from '@/lib/dateOnly';
 import { pacienteCorresponde } from '@/lib/buscaPaciente';
 import { dadosTransicaoColeta } from '@/lib/mapaColetaWorkflow';
+import { LaboratorioSubnav } from '@/components/laboratorio/LaboratorioSubnav';
 
 const TUBOS = [
   { color: 'bg-purple-500', label: 'EDTA (Roxo)', nome: 'Roxo', volume: '4mL' },
@@ -568,6 +569,8 @@ export default function MapaColeta() {
           </Button>
         </div>
       </div>
+
+      <LaboratorioSubnav />
 
       {/* SLA Alert */}
       {slaBreaches.length > 0 && (

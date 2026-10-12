@@ -30,6 +30,7 @@ import { Link } from 'react-router-dom';
 import { PedidosLaboratorioPanel } from '@/pages/laboratorio/PedidosLaboratorioPanel';
 import { GestaoLaboratorioPanel } from '@/pages/laboratorio/GestaoLaboratorioPanel';
 import { IndicadoresLaboratorioPanel } from '@/pages/laboratorio/IndicadoresLaboratorioPanel';
+import { LaboratorioSubnav } from '@/components/laboratorio/LaboratorioSubnav';
 
 /**
  * Teto da worklist do laboratório.
@@ -580,6 +581,8 @@ export default function Laboratorio() {
           </Button>
         </div>
       </div>
+
+      <LaboratorioSubnav />
 
       <Dialog open={showLimparFila && podeGerenciarLaboratorio} onOpenChange={(o) => { setShowLimparFila(o); if (!o) setLimparMotivo(''); }}>
         <DialogContent>

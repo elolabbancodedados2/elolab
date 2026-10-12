@@ -48,7 +48,7 @@ const actionIcons = {
   queue: ClipboardList,
 };
 
-const cardBase = 'rounded-2xl border border-[#E0EBF2] bg-white shadow-[0_8px_24px_-18px_rgba(12,31,84,0.28)]';
+const cardBase = 'rounded-2xl border border-border/70 bg-card text-card-foreground shadow-sm';
 
 export function AdminDashboardOverview({
   nome,
@@ -73,7 +73,7 @@ export function AdminDashboardOverview({
   return (
     <div className="space-y-4 pb-8" data-testid="admin-dashboard-overview">
       <header className={`${cardBase} relative overflow-hidden p-5 sm:p-7`}>
-        <div aria-hidden="true" className="pointer-events-none absolute -right-12 -top-16 h-48 w-48 rounded-full bg-[#E0EBF2]/70" />
+        <div aria-hidden="true" className="pointer-events-none absolute -right-12 -top-16 h-48 w-48 rounded-full bg-primary/5" />
         <div className="relative flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="text-sm font-medium text-[#005ECC]">{dataLabel} <span className="mx-1 text-[#0C1F54]/30">·</span> {horarioLabel}</p>
@@ -82,7 +82,7 @@ export function AdminDashboardOverview({
           </div>
           <Link
             to="/agenda"
-            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#005ECC] px-4 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#004FAE] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F7BFD] focus-visible:ring-offset-2"
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           >
             <Plus className="h-4 w-4" /> Novo atendimento
           </Link>
@@ -116,17 +116,16 @@ export function AdminDashboardOverview({
         </div>
       </section>
 
-      <section aria-label="Indicadores do dia" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {cards.map(({ label, value, note, icon: Icon, accent }) => (
-          <article key={label} className={`${cardBase} relative overflow-hidden p-4 sm:p-5`}>
-            <div className="absolute inset-x-0 top-0 h-1" style={{ backgroundColor: accent }} />
+      <section aria-label="Indicadores do dia" className={`${cardBase} grid divide-y divide-border/70 overflow-hidden sm:grid-cols-2 sm:divide-y-0 sm:divide-x xl:grid-cols-4 xl:divide-x-0`}>
+        {cards.map(({ label, value, note, icon: Icon }) => (
+          <article key={label} className="relative min-w-0 p-4 sm:p-5 xl:border-r xl:border-border/70 xl:last:border-r-0">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <p className="text-xs font-semibold text-[#0C1F54]/65">{label}</p>
-                <p className="mt-2 truncate text-3xl font-bold tracking-tight text-[#0C1F54]">{value}</p>
-                <p className="mt-1 truncate text-[11px] text-[#0C1F54]/55">{note}</p>
+                <p className="text-xs font-semibold text-muted-foreground">{label}</p>
+                <p className="mt-2 truncate text-3xl font-bold tracking-tight text-foreground">{value}</p>
+                <p className="mt-1 truncate text-xs text-muted-foreground">{note}</p>
               </div>
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#EAF4FF] text-[#005ECC]">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
                 <Icon className="h-5 w-5" />
               </span>
             </div>
@@ -199,15 +198,15 @@ export function AdminDashboardOverview({
         <section aria-labelledby="dashboard-progress-title" className={`${cardBase} p-4 sm:p-5`}>
           <h2 id="dashboard-progress-title" className="text-base font-semibold text-[#0C1F54]">Atendimentos do dia</h2>
           <div className="mt-3 flex items-center gap-4">
-            <div className="relative h-28 w-28 shrink-0" role="img" aria-label={`${desempenhoSeguro}% concluídos`}>
-              <svg viewBox="0 0 100 100" className="h-full w-full -rotate-90">
-                <circle cx="50" cy="50" r="40" fill="none" stroke="#E0EBF2" strokeWidth="10" />
-                <circle cx="50" cy="50" r="40" fill="none" stroke="#0F7BFD" strokeWidth="10" strokeLinecap="round" strokeDasharray={`${2 * Math.PI * 40}`} strokeDashoffset={`${2 * Math.PI * 40 * (1 - desempenhoSeguro / 100)}`} />
+            <div className="relative h-28 w-28 shrink-0" role="progressbar" aria-label="Atendimentos concluídos" aria-valuemin={0} aria-valuemax={100} aria-valuenow={desempenhoSeguro}>
+              <svg viewBox="0 0 100 100" className="h-full w-full -rotate-90" aria-hidden="true">
+                <circle cx="50" cy="50" r="40" fill="none" className="stroke-muted" strokeWidth="10" />
+                <circle cx="50" cy="50" r="40" fill="none" className="stroke-primary" strokeWidth="10" strokeLinecap="round" strokeDasharray={`${2 * Math.PI * 40}`} strokeDashoffset={`${2 * Math.PI * 40 * (1 - desempenhoSeguro / 100)}`} />
               </svg>
-              <span className="absolute inset-0 flex flex-col items-center justify-center text-[#0C1F54]">
+              <div className="absolute inset-0 flex flex-col items-center justify-center text-foreground">
                 <span className="text-2xl font-bold tabular-nums">{desempenhoSeguro}%</span>
                 <span className="text-[10px] text-[#0C1F54]/55">concluídos</span>
-              </span>
+              </div>
             </div>
             <p className="text-xs leading-relaxed text-[#0C1F54]/65">{desempenho.descricao}</p>
           </div>

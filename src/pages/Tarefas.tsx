@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -24,13 +24,12 @@ import {
   Loader2, CalendarClock, User2, LayoutGrid, LayoutList, GripVertical, CircleX, RotateCcw,
 } from 'lucide-react';
 import { parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
-import { normalizarTexto } from '@/lib/buscaPaciente';
 import { useRecoverableDraft } from '@/hooks/useRecoverableDraft';
 import { DraftRecoveryNotice } from '@/components/DraftRecoveryNotice';
 import { withSafeRetry } from '@/lib/retry';
 import { ErrorState } from '@/components/ErrorState';
 import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
-import { getInitialTaskView } from './taskViewMode';
+import { getInitialTaskView, taskMatchesSearch } from './taskViewMode';
 
 // ─── Config ────────────────────────────────────────────────
 const statusConfig: Record<string, { label: string; icon: typeof Circle; colorClasses: string }> = {
@@ -295,6 +294,7 @@ export default function Tarefas() {
   const podeAbrirPaciente = isAdmin() || hasRole('recepcao') || hasRole('enfermagem');
   const [agora, setAgora] = useState(() => new Date());
   const [search, setSearch] = useState('');
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const [filterStatus, setFilterStatus] = useState('all');
   const [showNew, setShowNew] = useState(false);
   const [viewMode, setViewMode] = useState<'list' | 'kanban'>(() => getInitialTaskView(
@@ -312,6 +312,23 @@ export default function Tarefas() {
     const timer = window.setInterval(() => setAgora(new Date()), 60_000);
     return () => window.clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    const handleSearchShortcut = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const typing = target?.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target?.tagName || '');
+      const dialogOpen = Boolean(document.querySelector('[role="dialog"], [role="alertdialog"]'));
+      if (event.key === '/' && !typing && !dialogOpen && !event.metaKey && !event.ctrlKey && !event.altKey) {
+        event.preventDefault();
+        searchInputRef.current?.focus();
+      }
+      if (event.key === 'Escape' && target === searchInputRef.current && search) {
+        setSearch('');
+      }
+    };
+    window.addEventListener('keydown', handleSearchShortcut);
+    return () => window.removeEventListener('keydown', handleSearchShortcut);
+  }, [search]);
 
   const profilesQuery = useQuery({
     queryKey: ['profiles-tarefas', profile?.clinica_id, profile?.id],
@@ -432,9 +449,7 @@ export default function Tarefas() {
 
   const filtered = useMemo(() => {
     return enrichedTarefas.filter((t: any) => {
-      const termo = normalizarTexto(search);
-      const matchSearch = !termo || normalizarTexto(t.titulo).includes(termo) ||
-        normalizarTexto(t.descricao).includes(termo) || normalizarTexto(t.paciente?.nome).includes(termo);
+      const matchSearch = taskMatchesSearch(t, search);
       const matchStatus = filterStatus === 'all' ||
         (filterStatus === 'overdue' ? tarefaVencida(t, hoje) : t.status === filterStatus);
       return matchSearch && matchStatus;
@@ -567,24 +582,27 @@ export default function Tarefas() {
       <div className="flex flex-col gap-3 rounded-2xl border border-[#E0EBF2] bg-white p-3 shadow-[0_8px_24px_-20px_rgba(12,31,84,0.3)] sm:flex-row sm:flex-wrap sm:items-center sm:p-4">
         <div className="relative w-full flex-1 sm:max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Buscar tarefas..." value={search} onChange={(e) => setSearch(e.target.value)} className="h-11 border-[#D7E5F0] pl-10 focus-visible:ring-[#0F7BFD]" />
+          <Input ref={searchInputRef} aria-label="Buscar tarefas" aria-keyshortcuts="/ Escape" placeholder="Buscar por tarefa, pessoa ou categoria... ( / )" value={search} onChange={(e) => setSearch(e.target.value)} className="h-11 border-[#D7E5F0] pl-10 focus-visible:ring-[#0F7BFD]" />
         </div>
-        {viewMode === 'list' && (
-          <Select value={filterStatus} onValueChange={setFilterStatus}>
-            <SelectTrigger className="h-11 w-full sm:w-[180px]"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos os status</SelectItem>
-              <SelectItem value="overdue">Vencidas</SelectItem>
-              {Object.entries(statusConfig).map(([k, v]) => <SelectItem key={k} value={k}>{v.label}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        )}
-        {filterStatus !== 'all' && (
-          <Button variant="ghost" size="sm" className="text-xs gap-1" onClick={() => setFilterStatus('all')}>
-            Limpar filtro
+        <Select value={filterStatus} onValueChange={setFilterStatus}>
+          <SelectTrigger aria-label="Filtrar tarefas por status" className="h-11 w-full sm:w-[180px]"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos os status</SelectItem>
+            <SelectItem value="overdue">Vencidas</SelectItem>
+            {Object.entries(statusConfig).map(([k, v]) => <SelectItem key={k} value={k}>{v.label}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        {(filterStatus !== 'all' || search) && (
+          <Button variant="ghost" size="sm" className="h-11 gap-1 text-xs" onClick={() => { setSearch(''); setFilterStatus('all'); }}>
+            <CircleX className="h-3.5 w-3.5" /> Limpar busca e filtros
           </Button>
         )}
       </div>
+
+      <p className="-mt-2 px-1 text-xs text-muted-foreground" role="status" aria-live="polite">
+        {search || filterStatus !== 'all' ? `${filtered.length} de ${enrichedTarefas.length} tarefas` : `${enrichedTarefas.length} tarefas`}
+        <span className="ml-2 hidden sm:inline">Atalho: / para buscar · Esc para limpar</span>
+      </p>
 
       {/* Content */}
       {tarefasQuery.isError ? (

@@ -1169,15 +1169,27 @@ export default function Pacientes() {
               <Badge variant="secondary" className="text-xs">{temMaisPacientes ? `${inicioPagina + 50}+` : resumoPacientes.length}</Badge>
             </CardTitle>
             <div className="flex items-center gap-2 w-full sm:w-auto">
-              <div className="relative flex-1 sm:w-72">
+              <div className="relative flex-1 sm:w-80">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
                   aria-label="Buscar pacientes por nome, CPF ou telefone"
                   placeholder="Buscar nome, CPF, telefone, email..."
                   value={searchTerm}
                   onChange={(e) => { setPaginaPacientes(0); setSearchTerm(e.target.value); }}
-                className="h-11 pl-9"
+                  className="h-11 pl-9 pr-10"
                 />
+                {searchTerm && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-1 top-1 h-9 w-9 text-muted-foreground hover:text-foreground"
+                    aria-label="Limpar busca de pacientes"
+                    onClick={() => { setPaginaPacientes(0); setSearchTerm(''); }}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                )}
               </div>
               <Button
                 variant={showFilters ? 'default' : 'outline'}
@@ -1185,6 +1197,8 @@ export default function Pacientes() {
                 onClick={() => setShowFilters(!showFilters)}
                 className="relative h-11 w-11 shrink-0"
                 aria-label={showFilters ? 'Ocultar filtros' : 'Mostrar filtros'}
+                aria-expanded={showFilters}
+                aria-controls="filtros-pacientes"
               >
                 <Filter className="h-4 w-4" />
                 {activeFilters > 0 && (
@@ -1196,8 +1210,11 @@ export default function Pacientes() {
             </div>
           </div>
 
-          {showFilters && (
-            <div className="grid grid-cols-1 gap-3 border-t pt-3 sm:flex sm:flex-wrap">
+          <div
+            id="filtros-pacientes"
+            hidden={!showFilters}
+            className={cn(showFilters ? 'grid grid-cols-1 gap-3 border-t pt-3 sm:flex sm:flex-wrap' : 'hidden')}
+          >
               <div className="space-y-1">
                 <Label className="text-xs">Sexo</Label>
                 <Select value={filterSexo} onValueChange={(value) => { setPaginaPacientes(0); setFilterSexo(value); }}>
@@ -1239,8 +1256,7 @@ export default function Pacientes() {
                   </Button>
                 </div>
               )}
-            </div>
-          )}
+          </div>
         </CardHeader>
         <CardContent className="p-0">
           <PatientListTable

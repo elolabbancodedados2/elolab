@@ -563,7 +563,7 @@ export default function TriagemPage() {
             <Activity className="h-7 w-7 text-primary" />
             Triagem
           </h1>
-          <p className="text-sm text-muted-foreground mt-1 flex items-center gap-2">
+          <p aria-live="polite" className="text-sm text-muted-foreground mt-1 flex flex-wrap items-center gap-2">
             {format(parseDateOnly(today)!, "EEEE, dd 'de' MMMM", { locale: ptBR })} • Protocolo Manchester
             {!erroTriagens && !agendamentosQuery.isError && pendingTriagemCount > 0 && (
               <Badge variant="secondary" className="text-xs bg-warning/10 text-warning border-warning/20">
@@ -640,10 +640,10 @@ export default function TriagemPage() {
       </motion.div>}
 
       {/* Filter */}
-      <div className="flex gap-3 flex-wrap">
-        <div className="relative">
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+        <div className="relative w-full sm:w-64">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input className="pl-9 w-64" placeholder="Buscar paciente..." aria-label="Buscar triagem por paciente" value={search} onChange={e => setSearch(e.target.value)} />
+          <Input className="w-full pl-9" placeholder="Buscar paciente..." aria-label="Buscar triagem por paciente" value={search} onChange={e => setSearch(e.target.value)} />
         </div>
         {filterRisco !== 'todos' && (
           <Button variant="outline" size="sm" onClick={() => setFilterRisco('todos')} className="gap-1.5">
@@ -794,7 +794,7 @@ export default function TriagemPage() {
 
           <div className="space-y-5 py-2">
             {/* Patient & Appointment */}
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label htmlFor="triagem-paciente">Paciente *</Label>
                 <PacienteCombobox

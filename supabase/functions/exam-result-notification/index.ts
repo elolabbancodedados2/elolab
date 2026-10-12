@@ -1,5 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { cronForbidden, cronOrUserOk, clinicaDoChamador } from '../_shared/cronAuth.ts'
+import { cronForbidden, cronOrUserOk, clinicaDoChamador, usuarioTemAlgumPapel } from '../_shared/cronAuth.ts'
 import { corsPadrao } from '../_shared/cors.ts';
 import { sendBrandedBrevoRequest } from '../_shared/brevoEmail.ts';
 
@@ -21,7 +21,9 @@ Deno.serve(async (req) => {
     const appUrl = Deno.env.get('APP_URL') || 'https://app.elolab.com.br'
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
     const clinicaDoUsuario = await clinicaDoChamador(req, supabase)
-    if (!clinicaDoUsuario) return cronForbidden(corsHeaders)
+    if (!clinicaDoUsuario || !(await usuarioTemAlgumPapel(req, supabase, ['admin', 'medico', 'enfermagem']))) {
+      return cronForbidden(corsHeaders)
+    }
 
     const { resultado_id } = await req.json()
 
@@ -36,15 +38,17 @@ Deno.serve(async (req) => {
     const { data: resultado, error: resultError } = await supabase
       .from('resultados_laboratorio')
       .select(`
-        id, data_resultado, exame_id, coleta_id,
+        id, data_liberacao, liberado, exame_id, coleta_id, parametro,
         coletas_laboratorio!inner(
           paciente_id,
           clinica_id,
           pacientes!inner(nome, email, telefone)
         ),
-        tipos_exame_custom!inner(nome)
+        exames(tipo_exame)
       `)
       .eq('id', resultado_id)
+      .eq('liberado', true)
+      .not('data_liberacao', 'is', null)
       .eq('coletas_laboratorio.clinica_id', clinicaDoUsuario)
       .single()
 
@@ -57,11 +61,11 @@ Deno.serve(async (req) => {
 
     const coleta = Array.isArray(resultado.coletas_laboratorio) ? resultado.coletas_laboratorio[0] : resultado.coletas_laboratorio
     const paciente = coleta && (Array.isArray(coleta.pacientes) ? coleta.pacientes[0] : coleta.pacientes)
-    const tipoExameRel = Array.isArray(resultado.tipos_exame_custom) ? resultado.tipos_exame_custom[0] : resultado.tipos_exame_custom
-    if (!coleta || !paciente || !tipoExameRel) {
+    const exameRel = Array.isArray(resultado.exames) ? resultado.exames[0] : resultado.exames
+    const tipoExame = exameRel?.tipo_exame || resultado.parametro
+    if (!coleta || !paciente || !tipoExame) {
       return new Response(JSON.stringify({ error: 'Dados do resultado incompletos' }), { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
-    const tipoExame = tipoExameRel.nome
     const clinicaId = coleta.clinica_id
 
     // Fetch clinic config
@@ -89,7 +93,7 @@ Deno.serve(async (req) => {
     if (brevoApiKey && paciente?.email && template) {
       try {
         const portalLink = `${appUrl}/portal-paciente?resultado_id=${resultado_id}`
-        const [year, month, day] = resultado.data_resultado.split('-')
+        const [year, month, day] = resultado.data_liberacao.split('T')[0].split('-')
         const dataFormatada = `${day}/${month}/${year}`
 
         const conteudo = template.conteudo

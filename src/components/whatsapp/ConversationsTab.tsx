@@ -24,6 +24,35 @@ const formatarHoraSaoPaulo = (valor: string | null | undefined, comData = false)
   }).format(data);
 };
 
+type PreTriagem = Record<string, unknown>;
+
+function lerPreTriagens(conversation: WhatsAppConversation): PreTriagem[] {
+  const contexto = (conversation as WhatsAppConversation & { contexto?: unknown }).contexto;
+  if (!Array.isArray(contexto)) return [];
+  return contexto.filter((item): item is PreTriagem =>
+    item !== null && typeof item === 'object' && !Array.isArray(item),
+  );
+}
+
+function formatarValorPreTriagem(value: unknown): string | null {
+  if (typeof value === 'string') return value.trim() || null;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (Array.isArray(value)) {
+    const values = value.filter((item): item is string => typeof item === 'string').map(item => item.trim()).filter(Boolean);
+    return values.length ? values.join(', ') : null;
+  }
+  return null;
+}
+
+function formatarDataPreTriagem(value: unknown): string | null {
+  if (typeof value !== 'string' || !value.trim()) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return formatarValorPreTriagem(value);
+  return new Intl.DateTimeFormat('pt-BR', {
+    timeZone: 'America/Sao_Paulo', dateStyle: 'short', timeStyle: 'short',
+  }).format(date);
+}
+
 interface ConversationsTabProps {
   conversations: WhatsAppConversation[];
   hasMoreConversations: boolean;
@@ -56,6 +85,7 @@ export function ConversationsTab({ conversations, hasMoreConversations, isLoadin
   const notesQuery = useWhatsAppInternalNotes(selected?.id || null);
   const messages = messagesQuery.data || [];
   const notes = notesQuery.data || [];
+  const preTriagens = selected ? lerPreTriagens(selected) : [];
 
   useEffect(() => {
     if (!selected) return;
@@ -137,6 +167,8 @@ export function ConversationsTab({ conversations, hasMoreConversations, isLoadin
         ].map(s => (
           <button
             key={s.label}
+            type="button"
+            aria-pressed={statusFilter === s.filter}
             onClick={() => setStatusFilter(statusFilter === s.filter ? 'todos' : s.filter)}
             className={`rounded-xl border p-3 text-center transition-all hover:shadow-sm ${statusFilter === s.filter ? 'ring-2 ring-primary/30 border-primary/40' : ''}`}
           >
@@ -150,6 +182,7 @@ export function ConversationsTab({ conversations, hasMoreConversations, isLoadin
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input
+          aria-label="Buscar conversas por nome ou número"
           placeholder="Buscar por nome ou número..."
           value={search}
           onChange={e => setSearch(e.target.value)}
@@ -189,49 +222,56 @@ export function ConversationsTab({ conversations, hasMoreConversations, isLoadin
                       initial={{ opacity: 0, y: 5 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: i * 0.03 }}
-                      className="flex items-center gap-3 px-4 py-3 hover:bg-muted/40 transition-colors cursor-pointer"
-                      onClick={() => { setSelected(conv); if (conv.nao_lidas > 0) onMarkRead(conv.id); }}
+                      className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/40"
                     >
-                      <div className="relative">
-                        <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center">
-                          <User className="h-5 w-5 text-muted-foreground" />
-                        </div>
-                        {conv.status === 'ativo' && (
-                          <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-green-500 border-2 border-background" />
-                        )}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <p className="font-medium text-sm truncate">{name}</p>
-                          {getStatusIcon(conv.status)}
-                          {conv.nao_lidas > 0 && <Badge className="h-5 min-w-5 justify-center rounded-full px-1.5 text-[10px]">{conv.nao_lidas > 99 ? '99+' : conv.nao_lidas}</Badge>}
-                        </div>
-                        <p className="text-xs text-muted-foreground truncate">
-                          {phone !== name ? phone : 'WhatsApp'}
-                        </p>
-                        <p className="text-[10px] text-muted-foreground">
-                          {conv.profiles?.nome ? `Responsável: ${conv.profiles.nome}` : 'Sem responsável'} · Prioridade {conv.prioridade}
-                        </p>
-                        {conv.sla_limite_em && !conv.primeira_resposta_em && new Date(conv.sla_limite_em) < new Date() && (
-                          <p className="text-[10px] font-medium text-destructive">SLA de resposta vencido</p>
-                        )}
-                      </div>
-                      <div className="text-right flex-shrink-0 space-y-1">
+                      <button
+                        type="button"
+                        aria-label={`Abrir conversa com ${name}${conv.nao_lidas > 0 ? `, ${conv.nao_lidas > 99 ? '99 ou mais' : conv.nao_lidas} mensagens não lidas` : ''}`}
+                        aria-pressed={selected?.id === conv.id}
+                        onClick={() => { setSelected(conv); if (conv.nao_lidas > 0) onMarkRead(conv.id); }}
+                        className="flex min-w-0 flex-1 items-center gap-3 rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                      >
+                        <span className="relative shrink-0">
+                          <span className="flex h-10 w-10 items-center justify-center rounded-full bg-muted">
+                            <User aria-hidden="true" className="h-5 w-5 text-muted-foreground" />
+                          </span>
+                          {conv.status === 'ativo' && (
+                            <span aria-hidden="true" className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-background bg-green-500" />
+                          )}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="flex items-center gap-2">
+                            <span className="truncate text-sm font-medium">{name}</span>
+                            {getStatusIcon(conv.status)}
+                            {conv.nao_lidas > 0 && <span aria-hidden="true" className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-semibold text-primary-foreground">{conv.nao_lidas > 99 ? '99+' : conv.nao_lidas}</span>}
+                          </span>
+                          <span className="block truncate text-xs text-muted-foreground">
+                            {phone !== name ? phone : 'WhatsApp'}
+                          </span>
+                          <span className="block text-[10px] text-muted-foreground">
+                            {conv.profiles?.nome ? `Responsável: ${conv.profiles.nome}` : 'Sem responsável'} · Prioridade {conv.prioridade}
+                          </span>
+                          {conv.sla_limite_em && !conv.primeira_resposta_em && new Date(conv.sla_limite_em) < new Date() && (
+                            <span className="block text-[10px] font-medium text-destructive">SLA de resposta vencido</span>
+                          )}
+                        </span>
+                      </button>
+                      <div className="shrink-0 space-y-1 text-right">
                         {getStatusBadge(conv.status)}
                         <p className="text-[10px] text-muted-foreground">{timeAgo}</p>
                         <div className="flex justify-end gap-1 pt-1">
                           {conv.status === 'aguardando_humano' && (
-                            <Button size="sm" variant="outline" disabled={isUpdating} onClick={(event) => { event.stopPropagation(); onStatusChange(conv.id, 'em_atendimento_humano'); }}>
+                            <Button type="button" size="sm" variant="outline" disabled={isUpdating} onClick={() => onStatusChange(conv.id, 'em_atendimento_humano')}>
                               Assumir
                             </Button>
                           )}
                           {conv.status === 'em_atendimento_humano' && (
-                            <Button size="sm" variant="outline" disabled={isUpdating} onClick={(event) => { event.stopPropagation(); onStatusChange(conv.id, 'ativo'); }}>
+                            <Button type="button" size="sm" variant="outline" disabled={isUpdating} onClick={() => onStatusChange(conv.id, 'ativo')}>
                               Devolver à IA
                             </Button>
                           )}
                           {conv.status === 'em_atendimento_humano' && (
-                            <Button size="sm" variant="ghost" disabled={isClosing || isUpdating} onClick={(event) => { event.stopPropagation(); onCloseConversation(conv); }}>
+                            <Button type="button" size="sm" variant="ghost" disabled={isClosing || isUpdating} onClick={() => onCloseConversation(conv)}>
                               {isClosing ? 'Encerrando...' : 'Encerrar'}
                             </Button>
                           )}
@@ -268,6 +308,39 @@ export function ConversationsTab({ conversations, hasMoreConversations, isLoadin
             </Button>
           </CardHeader>
           <CardContent className="space-y-3">
+            {preTriagens.length > 0 && (
+              <section aria-label="Pré-triagem informada pelo paciente" className="rounded-lg border border-amber-200 bg-amber-50/60 p-3">
+                <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <h3 className="text-sm font-semibold text-foreground">Pré-triagem</h3>
+                    <p className="text-xs text-muted-foreground">Informações relatadas pelo paciente ao assistente.</p>
+                  </div>
+                  <Badge variant="outline" className="border-amber-300 bg-background text-amber-900">Uso interno</Badge>
+                </div>
+                <div className="space-y-3">
+                  {preTriagens.map((triagem, index) => {
+                    const campos = [
+                      ['Queixa principal', formatarValorPreTriagem(triagem.queixa_principal)],
+                      ['Sintomas', formatarValorPreTriagem(triagem.sintomas)],
+                      ['Duração dos sintomas', formatarValorPreTriagem(triagem.duracao_sintomas)],
+                      ['Medicamentos em uso', formatarValorPreTriagem(triagem.medicamentos_em_uso)],
+                      ['Registrado em', formatarDataPreTriagem(triagem.registrado_em)],
+                    ].filter((field): field is [string, string] => Boolean(field[1]));
+                    if (!campos.length) return null;
+                    return (
+                      <dl key={`${selected.id}-pretriagem-${index}`} className="grid gap-x-4 gap-y-2 border-t border-amber-200/80 pt-3 first:border-t-0 first:pt-0 sm:grid-cols-2">
+                        {campos.map(([label, value]) => (
+                          <div key={label} className="min-w-0">
+                            <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
+                            <dd className="mt-0.5 whitespace-pre-wrap break-words text-sm text-foreground">{value}</dd>
+                          </div>
+                        ))}
+                      </dl>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
             <div className="flex items-center justify-between gap-3">
               <span className="text-xs text-muted-foreground">Prioridade do atendimento</span>
               <Select value={selected.prioridade} onValueChange={priority => onPriorityChange(selected.id, priority)}>

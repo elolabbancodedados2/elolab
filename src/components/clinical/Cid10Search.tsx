@@ -32,13 +32,14 @@ interface Cid10SearchProps {
   className?: string;
   multiple?: boolean;
   id?: string;
+  ariaLabel?: string;
 }
 
 export function extractCid10Codes(value: string): string[] {
   return [...new Set(value.match(/[A-Z]\d{2}(?:\.[A-Z0-9]{1,4})?/gi) || [])].map(code => code.toUpperCase());
 }
 
-export function Cid10Search({ value, onChange, placeholder = "Buscar CID-10...", className, multiple = true, id }: Cid10SearchProps) {
+export function Cid10Search({ value, onChange, placeholder = "Buscar CID-10...", className, multiple = true, id, ariaLabel }: Cid10SearchProps) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [results, setResults] = useState<Cid10[]>([]);
@@ -165,7 +166,7 @@ export function Cid10Search({ value, onChange, placeholder = "Buscar CID-10...",
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               id={id}
-              aria-label={placeholder}
+              aria-label={ariaLabel || placeholder}
               placeholder={placeholder}
               value={search}
               onChange={(e) => {

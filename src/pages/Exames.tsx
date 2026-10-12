@@ -1029,13 +1029,13 @@ export default function Exames() {
               role="button"
               tabIndex={0}
               aria-pressed={statusFilter === key}
-              onClick={() => setStatusFilter(key)}
               onKeyDown={event => {
                 if (event.key === 'Enter' || event.key === ' ') {
                   event.preventDefault();
-                  setStatusFilter(key);
+                  setStatusFilter(current => current === key ? 'todos' : key);
                 }
               }}
+              onClick={() => setStatusFilter(current => current === key ? 'todos' : key)}
             >
               <CardContent className="p-4 text-left">
                 <div className="mb-3 flex items-center justify-between gap-2">
@@ -1060,7 +1060,7 @@ export default function Exames() {
       {/* Table */}
       <Card className="border-[#e0eaf5] shadow-sm">
         <CardHeader>
-          <div className="flex flex-col sm:flex-row gap-4 justify-between">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <CardTitle>Exames ({filteredExames.length})</CardTitle>
             <div className="flex flex-col sm:flex-row gap-2">
               <Select value={statusFilter} onValueChange={setStatusFilter}>
@@ -1072,14 +1072,23 @@ export default function Exames() {
               </Select>
               <div className="relative w-full sm:w-72">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input aria-label="Buscar por paciente ou exame" placeholder="Buscar paciente ou exame..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="pl-10" />
+                <Input aria-label="Buscar por paciente ou exame" placeholder="Buscar paciente ou exame..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className={cn('pl-10', searchTerm && 'pr-10')} />
+                {searchTerm && (
+                  <Button type="button" variant="ghost" size="icon" aria-label="Limpar busca" className="absolute right-1 top-1/2 h-8 w-8 -translate-y-1/2" onClick={() => setSearchTerm('')}>
+                    <X className="h-4 w-4" />
+                  </Button>
+                )}
               </div>
+              {(searchTerm.trim() || statusFilter !== 'todos') && (
+                <Button type="button" variant="ghost" className="min-h-10" onClick={limparFiltrosExames}>Limpar filtros</Button>
+              )}
             </div>
           </div>
         </CardHeader>
         <CardContent>
-          <div className="rounded-md border">
-            <Table>
+          <div className="overflow-hidden rounded-md border">
+            <div role="region" aria-label="Tabela de solicitações de exames" tabIndex={0} className="overflow-x-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              <Table className="min-w-[680px] sm:min-w-0">
               <TableHeader>
                 <TableRow>
                   <TableHead>Paciente</TableHead>
@@ -1194,6 +1203,7 @@ export default function Exames() {
                 )}
               </TableBody>
             </Table>
+            </div>
           </div>
         </CardContent>
       </Card>
