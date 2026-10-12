@@ -2509,9 +2509,9 @@ export default function Prontuarios() {
           </ScrollArea>
 
           {/* Footer */}
-          <DialogFooter className="flex-shrink-0 pt-3 border-t border-border/40">
-            <div className="flex items-center gap-2 w-full justify-between">
-              <div className="flex items-center gap-3 flex-1">
+          <DialogFooter className="flex-shrink-0 flex-col gap-3 border-t border-border/40 pt-3 sm:flex-row">
+            <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex min-w-0 items-center gap-3 sm:flex-1">
                 {currentProntuario.id && (
                   <DigitalSignature
                     documentId={currentProntuario.id}
@@ -2542,7 +2542,7 @@ export default function Prontuarios() {
                   </span>
                 )}
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap justify-end gap-2">
                 <Button variant="outline" size="sm" onClick={() => setShowExamSolicitation(true)} disabled={!currentProntuario.id || !medicoId || isRequestingExam} title={!currentProntuario.id ? 'Salve a evolução antes de solicitar o exame.' : !medicoId ? 'A solicitação exige um médico responsável vinculado à sua sessão.' : undefined} className="rounded-xl text-xs gap-1">
                   <TestTube className="h-3.5 w-3.5" />Solicitar Exame
                 </Button>
