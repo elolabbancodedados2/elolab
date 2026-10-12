@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import { AgendaHeader } from './AgendaHeader';
@@ -34,6 +34,9 @@ describe('AgendaHeader', () => {
     );
 
     expect(screen.getByRole('textbox', { name: 'Buscar paciente, CPF ou telefone' })).toBeInTheDocument();
+    const views = screen.getByRole('group', { name: 'Visualização da agenda' });
+    expect(within(views).getByRole('button', { name: 'Visualização diária' })).toHaveAttribute('aria-pressed', 'true');
+    expect(within(views).getByRole('button', { name: 'Visualização semanal' })).toHaveAttribute('aria-pressed', 'false');
     fireEvent.click(screen.getByRole('button', { name: /Nova consulta/ }));
     expect(onNewAppointment).toHaveBeenCalledOnce();
 

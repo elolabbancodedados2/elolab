@@ -37,6 +37,7 @@ import {
 import { dateOnlyInTimeZone, inicioDoDiaEmFusoIso, parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { valorRealizado } from '@/lib/lancamentos';
 import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
+import { OperationalDashboardOverview, type OperationalDashboardMetric } from '@/components/dashboard/OperationalDashboardOverview';
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
@@ -230,39 +231,158 @@ export function getDashboardLinksForRoles(roles: string[]): string[] {
   return role ? roleWorkspaces[role].actions.map(action => action.href) : [];
 }
 
-function RoleWorkspace({ roles }: { roles: string[] }) {
-  const role = dashboardRolePriority.find(item => roles.includes(item));
-  if (!role) return null;
-  const workspace = roleWorkspaces[role];
-  return <section aria-labelledby="role-workspace-title" className="rounded-2xl border border-primary/15 bg-primary/[0.03] p-4 md:p-5">
-    <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-      <div><h2 id="role-workspace-title" className="font-semibold">{workspace.title}</h2><p className="text-sm text-muted-foreground">{workspace.description}</p></div>
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">{workspace.actions.map(({ label, href, icon: Icon }) => <Button key={href} asChild variant="outline" className="min-h-11 justify-start bg-background"><Link to={href}><Icon className="mr-2 h-4 w-4" />{label}</Link></Button>)}</div>
-    </div>
-  </section>;
-}
-
 function OperationalDashboard({ roles, nome }: { roles: string[]; nome?: string | null }) {
+  const { profile } = useSupabaseAuth();
   const agora = useClinicClock();
   const hora = Number(new Intl.DateTimeFormat('en-US', {
     timeZone: 'America/Sao_Paulo', hour: '2-digit', hourCycle: 'h23',
   }).format(agora));
   const saudacao = hora < 12 ? 'Bom dia' : hora < 18 ? 'Boa tarde' : 'Boa noite';
-  const dataLocal = parseDateOnly(todaySaoPauloDateOnly(agora))!;
-  return <div className="space-y-6">
-    <Card className="overflow-hidden border-primary/15 bg-gradient-to-br from-primary/[0.06] via-card to-card">
-      <CardContent className="p-6 md:p-8">
-        <p className="text-sm font-medium text-primary">{saudacao}</p>
-        <h1 className="mt-1 text-2xl font-bold tracking-tight md:text-3xl">{nome?.split(' ')[0] || 'Olá'}</h1>
-        <p className="mt-2 text-sm capitalize text-muted-foreground">{format(dataLocal, "EEEE, d 'de' MMMM", { locale: ptBR })}</p>
-      </CardContent>
-    </Card>
-    <RoleWorkspace roles={roles} />
-    <Card>
-      <CardHeader><CardTitle className="text-base">Seu espaço de trabalho</CardTitle><CardDescription>Os atalhos exibidos respeitam as permissões atribuídas ao seu perfil.</CardDescription></CardHeader>
-      <CardContent className="flex items-start gap-3 text-sm text-muted-foreground"><ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-success" />Você verá apenas os módulos necessários para sua função. Se precisar de outro acesso, solicite ao administrador da clínica.</CardContent>
-    </Card>
-  </div>;
+  const hoje = todaySaoPauloDateOnly(agora);
+  const dataLocal = parseDateOnly(hoje)!;
+  const role = dashboardRolePriority.find(item => roles.includes(item));
+  const workspace = role ? roleWorkspaces[role] : null;
+  const isReception = roles.includes('recepcao');
+  const isNursing = roles.includes('enfermagem');
+  const isFinance = roles.includes('financeiro');
+  const clinicId = profile?.clinica_id;
+  const hasClinicWorkload = isReception || isNursing;
+
+  // Read only the counts and statuses this dashboard needs. Patient names and
+  // financial amounts remain in their dedicated, permission-scoped modules.
+  const clinicalSummaryQuery = useQuery({
+    queryKey: ['dashboard-operational-summary', clinicId, hoje],
+    enabled: Boolean(clinicId && hasClinicWorkload),
+    staleTime: 10_000,
+    refetchInterval: 30_000,
+    refetchIntervalInBackground: false,
+    queryFn: async () => {
+      if (!clinicId) throw new Error('Clínica não identificada.');
+      const [appointments, queue] = await Promise.all([
+        supabase.from('agendamentos')
+          .select('id', { count: 'exact', head: true })
+          .eq('clinica_id', clinicId)
+          .eq('data', hoje)
+          .neq('status', 'cancelado'),
+        (supabase as any).from('fila_atendimento')
+          .select('status, agendamentos!inner(data)')
+          .eq('agendamentos.data', hoje),
+      ]);
+      if (appointments.error) throw appointments.error;
+      if (queue.error) throw queue.error;
+      const queueStatuses = (queue.data || []).map((item: { status: string | null }) => item.status);
+      return {
+        appointments: appointments.count ?? 0,
+        waiting: queueStatuses.filter((status: string | null) => status === 'aguardando' || status === 'chamado').length,
+        inService: queueStatuses.filter((status: string | null) => status === 'em_atendimento').length,
+      };
+    },
+  });
+
+  const openTasksQuery = useQuery({
+    queryKey: ['dashboard-open-task-count', clinicId, profile?.id],
+    enabled: Boolean(clinicId && (isReception || isNursing || isFinance)),
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
+    queryFn: async () => {
+      if (!clinicId) throw new Error('Clínica não identificada.');
+      const { count, error } = await supabase.from('tarefas')
+        .select('id', { count: 'exact', head: true })
+        .eq('clinica_id', clinicId)
+        .in('status', ['pendente', 'em_andamento']);
+      if (error) throw error;
+      return count ?? 0;
+    },
+  });
+
+  const financeSummaryQuery = useQuery({
+    queryKey: ['dashboard-finance-counts', clinicId, hoje],
+    enabled: Boolean(clinicId && isFinance),
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
+    queryFn: async () => {
+      if (!clinicId) throw new Error('Clínica não identificada.');
+      const receitas = () => supabase.from('lancamentos')
+        .select('id', { count: 'exact', head: true })
+        .eq('clinica_id', clinicId)
+        .eq('tipo', 'receita');
+      const [abertas, vencidas] = await Promise.all([
+        receitas().in('status', ['pendente', 'atrasado', 'parcial']),
+        receitas().or(`status.eq.atrasado,and(status.in.(pendente,parcial),data_vencimento.lt.${hoje})`),
+      ]);
+      if (abertas.error) throw abertas.error;
+      if (vencidas.error) throw vencidas.error;
+      return { abertas: abertas.count ?? 0, vencidas: vencidas.count ?? 0 };
+    },
+  });
+
+  const metric = (
+    label: string,
+    href: string,
+    detail: string,
+    query: { isLoading: boolean; isError: boolean },
+    value: number,
+  ): OperationalDashboardMetric => ({
+    label,
+    href,
+    value: !clinicId ? '—' : query.isLoading ? '…' : query.isError ? '—' : value,
+    detail: !clinicId
+      ? 'Perfil sem clínica vinculada.'
+      : query.isLoading
+        ? 'Carregando dados do dia.'
+        : query.isError
+          ? 'Não foi possível atualizar. Abra o módulo para conferir.'
+          : detail,
+  });
+
+  const metrics: OperationalDashboardMetric[] = [];
+  if (hasClinicWorkload) {
+    const summary = clinicalSummaryQuery.data;
+    const hasClinicalError = clinicalSummaryQuery.isError;
+    metrics.push(
+      metric('Consultas de hoje', '/agenda', 'Agendamentos não cancelados.', clinicalSummaryQuery, summary?.appointments ?? 0),
+      metric('Aguardando', '/fila', 'Pacientes aguardando chamada.', clinicalSummaryQuery, summary?.waiting ?? 0),
+      metric('Em atendimento', '/fila', 'Atendimentos iniciados.', clinicalSummaryQuery, summary?.inService ?? 0),
+    );
+    if (hasClinicalError) {
+      for (const item of metrics) {
+        item.value = '—';
+        item.detail = 'Não foi possível atualizar. Abra o módulo para conferir.';
+      }
+    }
+  }
+
+  if (isFinance) {
+    const summary = financeSummaryQuery.data;
+    metrics.push(
+      metric('Contas a receber', '/contas?tab=receber', 'Recebíveis pendentes ou parciais.', financeSummaryQuery, summary?.abertas ?? 0),
+      metric('Contas vencidas', '/cobranca-inadimplentes', 'Recebíveis com vencimento ultrapassado.', financeSummaryQuery, summary?.vencidas ?? 0),
+    );
+  }
+
+  if (isReception || isNursing || isFinance) {
+    metrics.push(metric(
+      'Tarefas abertas',
+      '/tarefas',
+      'Pendentes ou em andamento na clínica.',
+      openTasksQuery,
+      openTasksQuery.data ?? 0,
+    ));
+  }
+
+  return (
+    <OperationalDashboardOverview
+      nome={nome || 'Olá'}
+      saudacao={saudacao}
+      dataLabel={format(dataLocal, "EEEE, d 'de' MMMM", { locale: ptBR })}
+      descricao={workspace?.description || 'Acesse os módulos disponíveis para o seu perfil.'}
+      metrics={metrics}
+      actions={workspace?.actions || []}
+      isProfileLinked={Boolean(clinicId)}
+    />
+  );
 }
 
 // ─── Main Dashboard ────────────────────────────────────────
@@ -634,7 +754,6 @@ function AdminDashboard() {
   return (
     <div className="space-y-6 pb-10">
       <OnboardingWizard />
-      <RoleWorkspace roles={user?.roles || []} />
       {fontesNoLimite.length > 0 && (
         <div role="alert" className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm text-warning-foreground">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />

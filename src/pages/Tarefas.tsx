@@ -492,13 +492,11 @@ export default function Tarefas() {
   return (
     <div className="space-y-5 pb-8">
       {/* Header */}
-      <section className="relative isolate overflow-hidden rounded-2xl border border-[#D8E8F4] bg-[linear-gradient(118deg,#FFFFFF_12%,#F3FAFF_67%,#E7F8FC_100%)] p-5 shadow-[0_12px_32px_-26px_rgba(12,31,84,0.35)] sm:p-7">
-        <div aria-hidden="true" className="pointer-events-none absolute -right-8 -top-16 h-52 w-52 rounded-full border-[26px] border-[#50E3FB]/15" />
-        <div className="relative flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+      <section className="rounded-2xl border border-[#E0EBF2] bg-white p-5 sm:flex sm:items-end sm:justify-between sm:gap-5 sm:p-6">
+        <div className="flex flex-col gap-5 sm:contents">
           <div className="max-w-xl">
-            <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.16em] text-[#005ECC]">Rotina da clínica</p>
             <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight text-[#0C1F54] sm:text-3xl">
-              <ListTodo className="h-6 w-6 text-[#0F7BFD]" /> Tarefas da equipe
+              <ListTodo aria-hidden="true" className="h-6 w-6 text-[#0F7BFD]" /> Tarefas da equipe
             </h1>
             <p className="mt-1.5 text-sm text-[#0C1F54]/65">Organize prioridades, acompanhe prazos e distribua o trabalho.</p>
           </div>
@@ -527,23 +525,25 @@ export default function Tarefas() {
       </section>
 
       {/* Stats */}
-      <motion.div variants={stagger} initial="hidden" animate="visible" className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+      <motion.div role="group" aria-label="Filtrar tarefas por status" variants={stagger} initial="hidden" animate="visible" className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         {[
           { label: 'Total', value: stats.total, icon: ListTodo, color: '#005ECC', bg: '#EAF4FF', filter: 'all' },
           { label: 'Pendentes', value: stats.pendentes, icon: Circle, color: '#0F7BFD', bg: '#EAF4FF', filter: 'pendente' },
           { label: 'Em Andamento', value: stats.emAndamento, icon: Clock, color: '#007F9E', bg: '#E1F9FD', filter: 'em_andamento' },
           { label: 'Concluídas', value: stats.concluidas, icon: CheckCircle2, color: '#0C1F54', bg: '#E0EBF2', filter: 'concluida' },
-          { label: 'Vencidas', value: stats.vencidas, icon: AlertTriangle, color: '#005ECC', bg: '#DFF4FA', filter: 'overdue' },
+          { label: 'Vencidas', value: stats.vencidas, icon: AlertTriangle, color: '#B42318', bg: '#FEF3F2', filter: 'overdue' },
         ].map((s, i) => (
           <motion.div key={s.label} variants={fadeUp} custom={i}>
             <button
+              type="button"
+              aria-pressed={filterStatus === s.filter}
               onClick={() => setFilterStatus(s.filter)}
               className={cn(
-                'relative min-h-[76px] w-full overflow-hidden rounded-2xl border border-[#E0EBF2] bg-white px-3 py-3 shadow-[0_8px_24px_-20px_rgba(12,31,84,0.35)] flex items-center gap-2 transition-all hover:border-[#B7D9FF] hover:shadow-md hover:-translate-y-0.5 text-left sm:gap-3 sm:px-4',
-                filterStatus === s.filter && 'ring-2 ring-[#0F7BFD]/30 shadow-md',
+                'relative min-h-[76px] w-full overflow-hidden rounded-xl border border-[#E0EBF2] bg-white px-3 py-3 flex items-center gap-2 transition-colors hover:border-[#B7D9FF] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F7BFD] focus-visible:ring-offset-2 text-left sm:gap-3 sm:px-4',
+                filterStatus === s.filter && 'border-[#9CC6F5] bg-[#F4F8FF]',
               )}
             >
-              <span className="absolute inset-x-0 top-0 h-1 bg-[#0F7BFD]/70" />
+              <span aria-hidden="true" className="absolute inset-x-0 top-0 h-1" style={{ backgroundColor: s.color }} />
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl" style={{ backgroundColor: s.bg, color: s.color }}>
                 <s.icon className="h-5 w-5" />
               </div>
