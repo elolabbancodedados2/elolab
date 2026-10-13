@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { invalidateSubscriptionAccess } from '@/lib/subscriptionAccess';
 
 export type PlanOrderStatus =
   | 'criando'
@@ -47,6 +48,7 @@ export interface CheckoutPlan {
 export interface BillingStatus {
   public_key: string | null;
   sandbox: boolean;
+  trial_elegivel: boolean;
   plano: CheckoutPlan | null;
   assinatura: {
     plano_slug: string;
@@ -70,8 +72,6 @@ export interface OrderPayer {
   city?: string;
   state?: string;
 }
-
-export type BoletoPayer = OrderPayer;
 
 export const OPEN_ORDER_STATUSES: PlanOrderStatus[] = ['criando', 'aguardando_pagamento', 'em_processamento'];
 
@@ -107,9 +107,10 @@ export function useCreateCardSubscription() {
         action: 'create_card_subscription',
         ...input,
       }),
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['user_plan'] });
       queryClient.invalidateQueries({ queryKey: ['billing_status'] });
+      if (result.status === 'aprovado') void invalidateSubscriptionAccess(queryClient);
     },
   });
 }
@@ -117,7 +118,7 @@ export function useCreateCardSubscription() {
 export function useCreatePlanOrder() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: { plano_slug: string; metodo: 'pix' | 'boleto'; pagador?: OrderPayer; device_id?: string }) =>
+    mutationFn: (input: { plano_slug: string; metodo: 'pix'; pagador?: OrderPayer; device_id?: string }) =>
       invokeCheckout<{ pedido: PlanOrder }>({ action: 'create_plan_order', ...input }).then((r) => r.pedido),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['billing_status'] }),
   });
@@ -134,6 +135,7 @@ export function usePlanOrder(pedidoId: string | null) {
       if (pedido.status === 'pago') {
         queryClient.invalidateQueries({ queryKey: ['user_plan'] });
         queryClient.invalidateQueries({ queryKey: ['billing_status'] });
+        void invalidateSubscriptionAccess(queryClient);
       }
       return pedido;
     },

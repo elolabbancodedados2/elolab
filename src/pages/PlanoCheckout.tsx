@@ -1,10 +1,11 @@
+import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { CardPayment, initMercadoPago } from '@mercadopago/sdk-react';
-import { addMonths, format } from 'date-fns';
+import { addMonths } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import {
-  AlertTriangle, ArrowLeft, Barcode, CalendarDays, Check, CheckCircle2, Clock, Copy, CreditCard, ExternalLink,
+  AlertTriangle, ArrowLeft, CalendarDays, Check, CheckCircle2, Clock, Copy, CreditCard, ExternalLink,
   Gift, Loader2, Lock, QrCode, RefreshCw, ShieldCheck, XCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -16,11 +17,13 @@ import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { ErrorState } from '@/components/ErrorState';
+import { descricaoComercialPlano } from '@/lib/planFeatures';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
+import { supabase } from '@/integrations/supabase/client';
 import { formatCEP, formatCNPJ, formatCPF } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
 import {
-  type BoletoPayer,
+  type OrderPayer,
   type PlanOrder,
   OPEN_ORDER_STATUSES,
   useBillingStatus,
@@ -53,10 +56,12 @@ const featureLabels: Record<string, string> = {
   agente_ia: 'Atendente de IA para a clínica',
 };
 
-function periodoLabel(meses: number) {
-  if (meses === 12) return 'ano';
-  if (meses === 1) return 'mês';
-  return `${meses} meses`;
+export function periodoLabel(meses: number) {
+  return meses === 1 ? 'mês' : `${meses} meses`;
+}
+
+function formatarDataUTC(data: string) {
+  return new Intl.DateTimeFormat('pt-BR', { timeZone: 'UTC' }).format(new Date(data));
 }
 
 function copiar(texto: string, rotulo: string) {
@@ -85,12 +90,11 @@ function useTempoRestante(expiraEm: string | null) {
 const metodos: { id: Metodo; titulo: string; descricao: string; icon: typeof CreditCard; selo?: string }[] = [
   { id: 'cartao', titulo: 'Cartão de crédito', descricao: 'Renova automaticamente', icon: CreditCard, selo: 'Recomendado' },
   { id: 'pix', titulo: 'Pix', descricao: 'Aprovação na hora', icon: QrCode },
-  { id: 'boleto', titulo: 'Boleto', descricao: 'Até 3 dias úteis', icon: Barcode },
 ];
 
 function SeletorMetodo({ valor, onChange, bloqueados }: { valor: Metodo; onChange: (m: Metodo) => void; bloqueados: Metodo[] }) {
   return (
-    <div role="radiogroup" aria-label="Forma de pagamento" className="grid gap-3 sm:grid-cols-3">
+    <div role="radiogroup" aria-label="Forma de pagamento" className="grid gap-3 sm:grid-cols-2">
       {metodos.map(({ id, titulo, descricao, icon: Icon, selo }) => {
         const ativo = valor === id;
         const bloqueado = bloqueados.includes(id);
@@ -132,11 +136,13 @@ function SeletorMetodo({ valor, onChange, bloqueados }: { valor: Metodo; onChang
 // ─── Cartão (assinatura recorrente) ─────────────────────────────────────────
 
 function PagamentoCartao({
-  planoSlug, valor, trialDias, publicKey, trialConsent, onAprovado,
+  planoSlug, valor, periodoMeses, trialDias, primeiraCobrancaEm, publicKey, trialConsent, onAprovado,
 }: {
   planoSlug: string;
   valor: number;
+  periodoMeses: number;
   trialDias: number;
+  primeiraCobrancaEm: string | null;
   publicKey: string | null;
   trialConsent: boolean;
   onAprovado: (info: { emTrial: boolean; emAnalise: boolean }) => void | Promise<void>;
@@ -147,16 +153,24 @@ function PagamentoCartao({
   const [erro, setErro] = useState<string | null>(null);
 
   useEffect(() => {
-    if (publicKey) initMercadoPago(publicKey, { locale: 'pt-BR' });
-  }, [publicKey]);
+    if (publicKey && (trialDias === 0 || trialConsent)) initMercadoPago(publicKey, { locale: 'pt-BR' });
+  }, [publicKey, trialDias, trialConsent]);
 
   if (!publicKey) {
     return (
       <Alert variant="destructive">
         <AlertTriangle className="h-4 w-4" />
-        <AlertTitle>Pagamento com cartão indisponível</AlertTitle>
-        <AlertDescription>A chave pública do Mercado Pago não está configurada. Use Pix ou boleto, ou tente mais tarde.</AlertDescription>
+        <AlertTitle>Cartão indisponível neste momento</AlertTitle>
+        <AlertDescription>Não foi possível disponibilizar o pagamento com cartão agora. Você pode pagar por Pix ou tentar novamente mais tarde.</AlertDescription>
       </Alert>
+    );
+  }
+
+  if (trialDias > 0 && !trialConsent) {
+    return (
+      <div className="rounded-lg border border-dashed bg-muted/30 p-4 text-sm text-muted-foreground" role="status">
+        Marque a autorização acima para carregar o formulário e iniciar o teste grátis. Nenhum cartão será enviado antes dessa confirmação.
+      </div>
     );
   }
 
@@ -166,8 +180,10 @@ function PagamentoCartao({
         <RefreshCw className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
         <p>
           {trialDias > 0
-            ? <>Nada é cobrado hoje. Após {trialDias} dias de teste, cobramos {brl(valor)} automaticamente a cada período. Cancele quando quiser.</>
-            : <>Cobrança automática de {brl(valor)} a cada período no mesmo cartão. Cancele quando quiser em Planos.</>}
+            ? <>Nada é cobrado hoje. Após {trialDias} dias de teste, cobramos {brl(valor)} automaticamente a cada {periodoLabel(periodoMeses)}. Cancele quando quiser.</>
+            : primeiraCobrancaEm
+              ? <>Nenhuma cobrança do plano hoje. A primeira cobrança de {brl(valor)} será em {primeiraCobrancaEm}; depois, renova automaticamente a cada {periodoLabel(periodoMeses)}. Cancele quando quiser em Planos.</>
+            : <>Cobrança automática de {brl(valor)} a cada {periodoLabel(periodoMeses)} no mesmo cartão. Cancele quando quiser em Planos.</>}
         </p>
       </div>
 
@@ -196,7 +212,7 @@ function PagamentoCartao({
               hideFormTitle: true,
               style: {
                 theme: 'default',
-                customVariables: { baseColor: '#10b981', borderRadiusMedium: '10px', borderRadiusLarge: '12px' },
+                customVariables: { baseColor: '#5B47E0', borderRadiusMedium: '10px', borderRadiusLarge: '12px' },
               },
               texts: { formSubmit: trialDias > 0 ? 'Começar teste grátis' : `Assinar por ${brl(valor)}` },
             },
@@ -204,7 +220,7 @@ function PagamentoCartao({
           onReady={() => setPronto(true)}
           onError={(error) => {
             console.error('Card Payment Brick:', error);
-            if (error?.type === 'critical') setErro('O formulário do cartão não carregou. Recarregue a página ou use Pix/boleto.');
+            if (error?.type === 'critical') setErro('O formulário do cartão não carregou. Recarregue a página ou use Pix.');
           }}
           onSubmit={async (formData) => {
             setErro(null);
@@ -273,18 +289,50 @@ function InstrucoesPix({ pedido }: { pedido: PlanOrder }) {
 
 // ─── Boleto ─────────────────────────────────────────────────────────────────
 
-const pagadorVazio: BoletoPayer = {
+const pagadorVazio: OrderPayer = {
   first_name: '', last_name: '', document: '', zip_code: '', street_name: '',
   street_number: '', neighborhood: '', city: '', state: '',
 };
 
-function FormularioPagador({
-  metodo, onSubmit, enviando,
-}: { metodo: 'pix' | 'boleto'; onSubmit: (p: BoletoPayer) => void; enviando: boolean }) {
-  const [p, setP] = useState<BoletoPayer>(pagadorVazio);
+function FormularioPix({
+  onSubmit,
+  enviando,
+  profileId,
+  profileName,
+}: {
+  onSubmit: (p: OrderPayer) => void;
+  enviando: boolean;
+  profileId: string | null;
+  profileName: string;
+}) {
+  const [p, setP] = useState<OrderPayer>(pagadorVazio);
   const [buscandoCep, setBuscandoCep] = useState(false);
-  const set = (campo: keyof BoletoPayer) => (e: React.ChangeEvent<HTMLInputElement>) => setP((prev) => ({ ...prev, [campo]: e.target.value }));
-  const boleto = metodo === 'boleto';
+  const set = (campo: keyof OrderPayer) => (e: React.ChangeEvent<HTMLInputElement>) => setP((prev) => ({ ...prev, [campo]: e.target.value }));
+
+  useEffect(() => {
+    const partes = profileName.trim().split(/\s+/).filter(Boolean);
+    if (!partes.length) return;
+    setP((prev) => ({
+      ...prev,
+      first_name: prev.first_name || partes[0],
+      last_name: prev.last_name || partes.slice(1).join(' '),
+    }));
+  }, [profileName]);
+
+  useEffect(() => {
+    if (!profileId) return;
+    let ativo = true;
+    void supabase.from('profiles').select('cpf_cnpj').eq('id', profileId).maybeSingle()
+      .then(({ data }) => {
+        const documento = data?.cpf_cnpj?.replace(/\D/g, '') ?? '';
+        if (!ativo || !documento) return;
+        setP((prev) => ({
+          ...prev,
+          document: prev.document || (documento.length > 11 ? formatCNPJ(documento) : formatCPF(documento)),
+        }));
+      });
+    return () => { ativo = false; };
+  }, [profileId]);
 
   const buscarCep = async (cep: string) => {
     const digits = cep.replace(/\D/g, '');
@@ -314,6 +362,9 @@ function FormularioPagador({
       className="grid gap-4 sm:grid-cols-6"
       onSubmit={(e) => { e.preventDefault(); onSubmit(p); }}
     >
+      <p className="sm:col-span-6 text-sm text-muted-foreground">
+        Nome e CPF/CNPJ salvos no seu perfil são preenchidos automaticamente. Os dados informados, inclusive o endereço, acompanham os dados do pagador enviados ao Mercado Pago para gerar esta cobrança Pix.
+      </p>
       <div className="space-y-1.5 sm:col-span-3">
         <Label htmlFor="b-nome">Nome</Label>
         <Input id="b-nome" required autoComplete="given-name" value={p.first_name} onChange={set('first_name')} />
@@ -332,7 +383,7 @@ function FormularioPagador({
           }}
         />
       </div>
-      {/* Endereço também no Pix: o Mercado Pago avalia payer.address em toda order. */}
+      {/* A integração atual inclui payer.address na order Pix. */}
       <>
         <div className="space-y-1.5 sm:col-span-3">
           <Label htmlFor="b-cep">CEP</Label>
@@ -370,8 +421,8 @@ function FormularioPagador({
         </div>
       </>
       <Button type="submit" size="lg" className="h-12 gap-2 sm:col-span-6" disabled={enviando}>
-        {enviando ? <Loader2 className="h-4 w-4 animate-spin" /> : boleto ? <Barcode className="h-4 w-4" /> : <QrCode className="h-4 w-4" />}
-        {enviando ? `Gerando ${boleto ? 'boleto' : 'Pix'}…` : `Gerar ${boleto ? 'boleto' : 'Pix'}`}
+        {enviando ? <Loader2 className="h-4 w-4 animate-spin" /> : <QrCode className="h-4 w-4" />}
+        {enviando ? 'Gerando Pix…' : 'Gerar Pix'}
       </Button>
     </form>
   );
@@ -487,11 +538,11 @@ export default function PlanoCheckout() {
   const { slug = '' } = useParams();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { refreshProfile, user: authUser } = useSupabaseAuth();
+  const { refreshProfile, profile } = useSupabaseAuth();
   const { data: status, isLoading, isError, error, refetch } = useBillingStatus(slug);
 
   // MercadoPago.js V2 em toda a página (não só no cartão): gera o Device ID
-  // enviado também nos pedidos Pix e boleto.
+  // enviado também nos pedidos Pix.
   useEffect(() => {
     if (status?.public_key) initMercadoPago(status.public_key, { locale: 'pt-BR' });
   }, [status?.public_key]);
@@ -499,7 +550,7 @@ export default function PlanoCheckout() {
 
   const [metodo, setMetodo] = useState<Metodo>(() => {
     const m = searchParams.get('metodo');
-    return m === 'pix' || m === 'boleto' ? m : 'cartao';
+    return m === 'pix' ? m : 'cartao';
   });
   const [pedidoId, setPedidoId] = useState<string | null>(null);
   const [sucesso, setSucesso] = useState<Sucesso | null>(null);
@@ -513,16 +564,28 @@ export default function PlanoCheckout() {
   const assinatura = status?.assinatura ?? null;
   const temPlanoAtivo = !!assinatura && ['ativa', 'trial'].includes(assinatura.status);
   const recorrenteAtiva = temPlanoAtivo && assinatura?.modalidade !== 'pre_pago';
-  const checkoutMetadata = authUser?.user_metadata as Record<string, unknown> | undefined;
-  const podeTrial = !!plano && plano.trial_dias > 0 && !temPlanoAtivo
-    && checkoutMetadata?.checkout_flow === 'saas_subscription'
-    && checkoutMetadata?.checkout_plan_slug === plano.slug;
+  const metodoCheckout: Metodo = recorrenteAtiva && metodo === 'pix' ? 'cartao' : metodo;
+  const solicitouTrial = searchParams.get('trial') === '1';
+  const trialElegivel = !!plano && plano.trial_dias > 0 && status?.trial_elegivel === true;
+  const podeTrial = trialElegivel && !!status?.public_key;
   const [usarTrial, setUsarTrial] = useState(searchParams.get('trial') === '1');
   const [trialConsent, setTrialConsent] = useState(false);
-  const trialDias = podeTrial && usarTrial && metodo === 'cartao' ? 3 : 0;
-  const trialEndEstimate = trialDias > 0 ? new Date(checkoutNow + 72 * 60 * 60 * 1000) : null;
+  const trialDias = podeTrial && usarTrial && metodoCheckout === 'cartao' ? plano.trial_dias : 0;
+  useEffect(() => {
+    setTrialConsent(false);
+  }, [plano?.slug, plano?.valor, plano?.periodo_meses, trialDias]);
+  const trialEndEstimate = trialDias > 0 ? new Date(checkoutNow + trialDias * 24 * 60 * 60 * 1000) : null;
+  const primeiraCobrancaAdiada = metodoCheckout === 'cartao' && assinatura?.modalidade === 'pre_pago' &&
+    assinatura.status === 'ativa' && assinatura.data_fim && new Date(assinatura.data_fim).getTime() > checkoutNow
+    ? assinatura.data_fim
+    : null;
+  const primeiraCobrancaEm = primeiraCobrancaAdiada ? formatarDataUTC(primeiraCobrancaAdiada) : null;
 
-  // Retoma um Pix/boleto do mesmo plano que ainda está aberto.
+  useEffect(() => {
+    if (recorrenteAtiva && metodo === 'pix') setMetodo('cartao');
+  }, [recorrenteAtiva, metodo]);
+
+  // Retoma pedido pré-pago ainda aberto, inclusive boleto emitido antes da retirada.
   useEffect(() => {
     const aberto = status?.pedido_aberto;
     if (aberto && aberto.plano_slug === slug && OPEN_ORDER_STATUSES.includes(aberto.status) && !pedidoId) {
@@ -555,7 +618,23 @@ export default function PlanoCheckout() {
     );
   }
 
-  const gerarPedido = (m: 'pix' | 'boleto', pagador?: BoletoPayer) => {
+  const pedidoAbertoDeOutroPlano = status?.pedido_aberto &&
+    OPEN_ORDER_STATUSES.includes(status.pedido_aberto.status) &&
+    status.pedido_aberto.plano_slug !== plano.slug
+    ? status.pedido_aberto
+    : null;
+  if (pedidoAbertoDeOutroPlano) {
+    const nomePlanoPendente = pedidoAbertoDeOutroPlano.plano_slug;
+    return (
+      <div className="mx-auto max-w-xl rounded-xl border border-info/20 bg-info/5 p-8 text-center">
+        <h1 className="text-xl font-semibold">Existe um pagamento pendente</h1>
+        <p className="mt-2 text-muted-foreground">Conclua ou cancele o pagamento de {nomePlanoPendente} antes de iniciar a contratação deste plano.</p>
+        <Button className="mt-5" onClick={() => navigate(`/planos/checkout/${encodeURIComponent(nomePlanoPendente)}`)}>Voltar ao pagamento pendente</Button>
+      </div>
+    );
+  }
+
+  const gerarPedido = (m: 'pix', pagador?: OrderPayer) => {
     criarPedido.mutate(
       { plano_slug: plano.slug, metodo: m, pagador, device_id: deviceIdMercadoPago() },
       {
@@ -592,7 +671,7 @@ export default function PlanoCheckout() {
   }
 
   const precoPeriodo = `${brl(plano.valor)}/${periodoLabel(plano.periodo_meses)}`;
-  const totalHoje = trialDias > 0 ? 0 : plano.valor;
+  const totalHoje = trialDias > 0 || primeiraCobrancaAdiada ? 0 : plano.valor;
   const features = (plano.features || []).filter((f) => featureLabels[f]).slice(0, 6);
 
   return (
@@ -617,13 +696,38 @@ export default function PlanoCheckout() {
         {/* Pagamento */}
         <section aria-labelledby="titulo-pagamento" className="space-y-6">
           <h2 id="titulo-pagamento" className="sr-only">Pagamento</h2>
-          <SeletorMetodo
-            valor={metodo}
-            onChange={(m) => { setMetodo(m); if (pedidoId && m === 'cartao') setPedidoId(null); }}
-            bloqueados={pedidoId ? (['cartao', 'pix', 'boleto'] as Metodo[]).filter((m) => m !== metodo) : recorrenteAtiva ? ['pix', 'boleto'] : []}
-          />
+          {solicitouTrial && trialElegivel && !status?.public_key && !temPlanoAtivo && (
+            <Alert>
+              <AlertTriangle className="h-4 w-4" />
+              <AlertTitle>O teste grátis não pode ser iniciado agora</AlertTitle>
+              <AlertDescription>O pagamento com cartão está indisponível. Se escolher Pix, o valor integral de {brl(plano.valor)} será cobrado hoje, sem período grátis.</AlertDescription>
+            </Alert>
+          )}
+          {solicitouTrial && !trialElegivel && !temPlanoAtivo && plano.trial_dias > 0 && (
+            <Alert variant="destructive">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertTitle>Esta conta não está elegível ao teste grátis</AlertTitle>
+              <AlertDescription>
+                O teste grátis já foi utilizado ou não está disponível para esta conta. Se continuar com cartão, o valor integral de {brl(plano.valor)} será cobrado hoje; nenhum período grátis será aplicado.
+              </AlertDescription>
+            </Alert>
+          )}
+          {solicitouTrial && podeTrial && metodoCheckout === 'pix' && (
+            <Alert>
+              <Gift className="h-4 w-4" />
+              <AlertTitle>O teste grátis não se aplica ao Pix</AlertTitle>
+              <AlertDescription>O Pix paga o período integral de {brl(plano.valor)} agora. Para usar os {plano.trial_dias} dias grátis, escolha o cartão; a cobrança recorrente só começa depois do teste.</AlertDescription>
+            </Alert>
+          )}
+          {!(metodoCheckout === 'boleto' && pedidoId) && (
+            <SeletorMetodo
+              valor={metodoCheckout}
+              onChange={(m) => { setMetodo(m); setTrialConsent(false); if (pedidoId && m === 'cartao') setPedidoId(null); }}
+              bloqueados={pedidoId ? (['cartao', 'pix'] as Metodo[]).filter((m) => m !== metodo) : recorrenteAtiva ? ['pix'] : []}
+            />
+          )}
 
-          {recorrenteAtiva && metodo === 'cartao' && assinatura?.plano_slug !== plano.slug && (
+          {recorrenteAtiva && metodoCheckout === 'cartao' && assinatura?.plano_slug !== plano.slug && (
             <Alert>
               <RefreshCw className="h-4 w-4" />
               <AlertTitle>Troca de plano</AlertTitle>
@@ -632,19 +736,19 @@ export default function PlanoCheckout() {
           )}
           {recorrenteAtiva && (
             <p className="text-xs text-muted-foreground">
-              Pix e boleto ficam disponíveis depois de cancelar a assinatura recorrente no cartão, para você não ser cobrado duas vezes.
+              Pix fica disponível depois de cancelar a assinatura recorrente no cartão, para você não ser cobrado duas vezes.
             </p>
           )}
 
           <div className="rounded-2xl border bg-card p-6 shadow-sm">
-            {metodo === 'cartao' && (
+            {metodoCheckout === 'cartao' && (
               <div className="space-y-5">
                 {podeTrial && (
                   <div className="flex items-center justify-between gap-4 rounded-lg border p-3">
                     <div className="flex items-center gap-3">
                       <Gift className="h-5 w-5 text-warning" />
                       <div>
-                        <Label htmlFor="usar-trial" className="font-medium">Começar com 3 dias grátis</Label>
+                        <Label htmlFor="usar-trial" className="font-medium">Começar com {plano.trial_dias} dias grátis</Label>
                         <p className="text-xs text-muted-foreground">O cartão pode receber uma validação temporária do Mercado Pago, estornada conforme as regras do emissor.</p>
                       </div>
                     </div>
@@ -655,11 +759,11 @@ export default function PlanoCheckout() {
                   <div className="space-y-3 rounded-xl border border-primary/25 bg-primary/5 p-4">
                     <div className="flex items-start gap-3 text-sm">
                       <CalendarDays className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-                      <p>Hoje: <strong>R$ 0,00</strong> pelo EloLab. Em <strong>{format(trialEndEstimate, "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}</strong>, começa a assinatura e será cobrado <strong>{brl(plano.valor)} por {periodoLabel(plano.periodo_meses)}</strong>, com renovação automática. Cancele em Planos antes desse horário para evitar a primeira mensalidade.</p>
+                      <p>Hoje: <strong>R$ 0,00</strong> pelo EloLab. Em <strong>{format(trialEndEstimate, "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}</strong>, começa a assinatura e será cobrado <strong>{brl(plano.valor)} por {periodoLabel(plano.periodo_meses)}</strong>, com renovação automática. Você pode cancelar em Planos antes desse horário; o acesso ao plano termina ao cancelar.</p>
                     </div>
                     <label htmlFor="consent-trial-recorrente" className="flex cursor-pointer items-start gap-3 text-sm leading-5">
                       <Checkbox id="consent-trial-recorrente" checked={trialConsent} onCheckedChange={(checked) => setTrialConsent(checked === true)} />
-                      <span>Autorizo a cobrança recorrente de {brl(plano.valor)} por {periodoLabel(plano.periodo_meses)} após o teste de 3 dias. Entendi que posso cancelar antes da primeira cobrança.</span>
+                      <span>Autorizo a cobrança recorrente de {brl(plano.valor)} por {periodoLabel(plano.periodo_meses)} após o teste de {trialDias} dias. Entendi que posso cancelar antes da cobrança e que o acesso termina no momento do cancelamento.</span>
                     </label>
                   </div>
                 )}
@@ -667,7 +771,9 @@ export default function PlanoCheckout() {
                   key={trialDias}
                   planoSlug={plano.slug}
                   valor={plano.valor}
+                  periodoMeses={plano.periodo_meses}
                   trialDias={trialDias}
+                  primeiraCobrancaEm={primeiraCobrancaEm}
                   publicKey={status?.public_key ?? null}
                   trialConsent={trialConsent}
                   onAprovado={async (info) => {
@@ -678,39 +784,31 @@ export default function PlanoCheckout() {
               </div>
             )}
 
-            {metodo !== 'cartao' && pedidoId && (
+            {metodoCheckout !== 'cartao' && pedidoId && (
               <PedidoEmAndamento
                 key={pedidoId}
                 pedidoId={pedidoId}
                 onPago={async (pedido) => { await refreshProfile(); setSucesso({ tipo: 'periodo', pedido }); }}
-                onNovo={() => setPedidoId(null)}
+                onNovo={() => { setPedidoId(null); setMetodo('pix'); }}
               />
             )}
 
-            {metodo === 'pix' && !pedidoId && (
+            {metodoCheckout === 'pix' && !pedidoId && (
               <div className="space-y-5">
                 <div className="flex items-start gap-3 rounded-lg border border-primary/20 bg-primary/5 p-3 text-left text-sm">
                   <Clock className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
                   <p>
-                    Pagamento único de {brl(plano.valor)} que libera 1 {periodoLabel(plano.periodo_meses)} de acesso
+                    Pagamento único de {brl(plano.valor)} que libera o acesso por {periodoLabel(plano.periodo_meses)}
                     {periodoFimEstimado && <> (até {format(periodoFimEstimado, 'dd/MM/yyyy')})</>}. Não renova sozinho:
                     pague o próximo período em Planos antes do vencimento.
                   </p>
                 </div>
-                <FormularioPagador metodo="pix" enviando={criarPedido.isPending} onSubmit={(p) => gerarPedido('pix', p)} />
-              </div>
-            )}
-
-            {metodo === 'boleto' && !pedidoId && (
-              <div className="space-y-5">
-                <div className="flex items-start gap-3 rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm">
-                  <Clock className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-                  <p>
-                    Pagamento único de {brl(plano.valor)} para 1 {periodoLabel(plano.periodo_meses)} de acesso. O boleto vence em
-                    3 dias úteis e o acesso é liberado quando o banco confirmar. Os dados abaixo são exigidos para emitir o boleto.
-                  </p>
-                </div>
-                <FormularioPagador metodo="boleto" enviando={criarPedido.isPending} onSubmit={(p) => gerarPedido('boleto', p)} />
+                <FormularioPix
+                  enviando={criarPedido.isPending}
+                  profileId={profile?.id ?? null}
+                  profileName={profile?.nome ?? ''}
+                  onSubmit={(p) => gerarPedido('pix', p)}
+                />
               </div>
             )}
           </div>
@@ -727,7 +825,7 @@ export default function PlanoCheckout() {
             <div className="bg-gradient-to-br from-primary/10 via-primary/5 to-transparent p-6">
               <p className="text-xs font-semibold uppercase tracking-wider text-primary">Resumo</p>
               <h2 id="titulo-resumo" className="mt-1 text-2xl font-bold">{plano.nome}</h2>
-              {plano.descricao && <p className="mt-1 text-sm text-muted-foreground">{plano.descricao}</p>}
+              {descricaoComercialPlano(plano.slug, plano.descricao) && <p className="mt-1 text-sm text-muted-foreground">{descricaoComercialPlano(plano.slug, plano.descricao)}</p>}
             </div>
             <div className="space-y-5 p-6">
               {features.length > 0 && (
@@ -746,7 +844,7 @@ export default function PlanoCheckout() {
                 </div>
                 <div className="flex justify-between">
                   <dt className="text-muted-foreground">Cobrança</dt>
-                  <dd>{metodo === 'cartao' ? 'Automática' : `Única · ${plano.periodo_meses === 12 ? '12 meses' : `${plano.periodo_meses} ${plano.periodo_meses === 1 ? 'mês' : 'meses'}`}`}</dd>
+                  <dd>{metodoCheckout === 'cartao' ? 'Automática' : `Única · ${plano.periodo_meses === 12 ? '12 meses' : `${plano.periodo_meses} ${plano.periodo_meses === 1 ? 'mês' : 'meses'}`}`}</dd>
                 </div>
                 {trialDias > 0 && (
                   <div className="flex justify-between text-success">
@@ -760,8 +858,10 @@ export default function PlanoCheckout() {
                 <span className="text-3xl font-extrabold tracking-tight">{brl(totalHoje)}</span>
               </div>
               <p className="text-xs text-muted-foreground">
-                {metodo === 'cartao'
-                  ? `Depois, ${precoPeriodo} no cartão até você cancelar.`
+                {metodoCheckout === 'cartao'
+                  ? primeiraCobrancaEm
+                    ? `A primeira cobrança será em ${primeiraCobrancaEm}. Depois, ${precoPeriodo} no cartão até você cancelar.`
+                    : `Depois, ${precoPeriodo} no cartão até você cancelar.`
                   : periodoFimEstimado
                     ? `Acesso até ${format(periodoFimEstimado, 'dd/MM/yyyy')} após a confirmação. Sem renovação automática.`
                     : 'Sem renovação automática.'}

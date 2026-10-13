@@ -5,6 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
+import { usePlanos } from '@/hooks/useSubscriptionPlan';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -23,7 +24,23 @@ import { passwordSchema } from '@/lib/passwordPolicy';
 import { AuthSwitch } from '@/components/ui/auth-switch';
 import { interpretarErroLogin, loginSchema, type LoginFormData } from '@/lib/authValidation';
 import logoHorizontal from '@/assets/elolab-logo-identidade.png';
-import authBackground from '@/assets/auth-background-elolab.png';
+
+function rotuloFrequencia(frequencia: string) {
+  switch (frequencia) {
+    case 'mensal': return 'mês';
+    case 'trimestral': return '3 meses';
+    case 'semestral': return '6 meses';
+    case 'anual': return '12 meses';
+    default: return 'período';
+  }
+}
+
+export function mensagemRetornoCheckout(status: string) {
+  if (status === 'success') return 'Pagamento aprovado. Acesse sua conta para acompanhar o plano.';
+  if (status === 'pending') return 'Pagamento em processamento. Acesse sua conta para acompanhar o status do plano.';
+  if (status === 'error') return 'Pagamento não foi concluído. Tente novamente ou escolha outra forma de pagamento.';
+  return null;
+}
 
 // ─── Schemas ───────────────────────────────────────────────
 const signupSchema = z.object({
@@ -75,6 +92,11 @@ export default function Auth() {
   const urlPlan = searchParams.get('plano') || '';
   const urlPlanMode = searchParams.get('modo') || '';
   const hasPlanIntent = /^[a-z0-9-]+$/i.test(urlPlan) && ['trial', 'buy'].includes(urlPlanMode);
+  const hasAnyPlanIntent = Boolean(urlPlan || urlPlanMode);
+  const destinoSemPlano = urlCadastro ? '/onboarding' : '/dashboard';
+  const { data: planos = [], isLoading: loadingPlanos, isError: erroPlanos } = usePlanos(hasPlanIntent);
+  const planoSelecionado = planos.find((plano) => plano.slug === urlPlan);
+  const planoIntentIndisponivel = hasAnyPlanIntent && (!hasPlanIntent || (!loadingPlanos && (erroPlanos || !planoSelecionado)));
 
   useEffect(() => {
     if (urlCodigo || urlCadastro) { setActiveTab('signup'); setDirection(1); }
@@ -83,20 +105,15 @@ export default function Auth() {
   // Feedback visual quando cliente volta do Mercado Pago checkout
   useEffect(() => {
     if (!urlMpStatus) return;
+    const message = mensagemRetornoCheckout(urlMpStatus);
     if (urlMpStatus === 'success') {
-      toast.success('Pagamento aprovado! Verifique seu email para o código de ativação.', {
-        duration: 8000,
-      });
+      toast.success(message!, { duration: 8000 });
       setActiveTab('signup');
       setDirection(1);
     } else if (urlMpStatus === 'pending') {
-      toast.info('Pagamento em processamento. Você receberá o código por email assim que for aprovado.', {
-        duration: 8000,
-      });
+      toast.info(message!, { duration: 8000 });
     } else if (urlMpStatus === 'error') {
-      toast.error('Pagamento não foi concluído. Tente novamente ou escolha outra forma de pagamento.', {
-        duration: 8000,
-      });
+      toast.error(message!, { duration: 8000 });
     }
   }, [urlMpStatus, urlRegistroId]);
 
@@ -111,10 +128,10 @@ export default function Auth() {
   useEffect(() => {
     const activationFinished = activationStatus === 'active' || (activationStatus === 'idle' && !urlCodigo && !hasPlanIntent);
     if (!authLoading && user && profile && activationFinished) {
-      if (hasPlanIntent) navigate(`/planos/checkout/${encodeURIComponent(urlPlan)}${urlPlanMode === 'trial' ? '?trial=1' : ''}`, { replace: true });
-      else navigate('/dashboard');
+      if (hasPlanIntent && planoSelecionado) navigate(`/planos/checkout/${encodeURIComponent(urlPlan)}${urlPlanMode === 'trial' ? '?trial=1' : ''}`, { replace: true });
+      else navigate(destinoSemPlano);
     }
-  }, [user, profile, authLoading, navigate, activationStatus, urlCodigo, hasPlanIntent]);
+  }, [user, profile, authLoading, navigate, activationStatus, urlCodigo, hasPlanIntent, planoSelecionado, urlPlan, urlPlanMode, destinoSemPlano]);
 
   const loginForm = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
@@ -186,7 +203,7 @@ export default function Auth() {
 
         toast.success('Login realizado!');
         if (hasPlanIntent) navigate(`/planos/checkout/${encodeURIComponent(urlPlan)}${urlPlanMode === 'trial' ? '?trial=1' : ''}`);
-        else navigate('/dashboard');
+        else navigate(destinoSemPlano);
       }
     } catch (e) {
       const feedback = interpretarErroLogin(e);
@@ -227,7 +244,7 @@ export default function Auth() {
     setPendingFactorId(null);
     toast.success('Login realizado!');
     if (hasPlanIntent) navigate(`/planos/checkout/${encodeURIComponent(urlPlan)}${urlPlanMode === 'trial' ? '?trial=1' : ''}`);
-    else navigate('/dashboard');
+    else navigate(destinoSemPlano);
   };
 
   const handleMfaCancel = async () => {
@@ -286,6 +303,10 @@ export default function Auth() {
   }, [user?.id, urlCodigo, authLoading, activateSubscription, resetSignupForm]);
 
   const onSignup = async (data: SignupForm) => {
+    if (hasAnyPlanIntent && (!hasPlanIntent || !planoSelecionado || loadingPlanos || erroPlanos)) {
+      toast.error('Este plano não está disponível agora. Escolha outro plano antes de criar sua conta.');
+      return;
+    }
     const email = data.email.trim().toLowerCase();
     const inviteCode = urlCodigo ? (data.codigoConvite || '').trim().toUpperCase() : '';
     if (urlCodigo && !inviteCode) {
@@ -379,7 +400,7 @@ export default function Auth() {
   // ─── Loading state ───────────────────────────────────────
   if (authLoading) {
     return (
-      <div className="min-h-svh flex items-center justify-center bg-[#edf5ff]">
+      <div className="min-h-svh flex items-center justify-center bg-background">
         <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
@@ -394,18 +415,21 @@ export default function Auth() {
 
   // ─── Render ──────────────────────────────────────────────
   return (
-    <div className="relative min-h-svh overflow-x-hidden bg-[#edf5ff] text-[#10264e]">
+    <div className="relative min-h-svh overflow-x-hidden bg-background text-foreground">
       <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden">
-        <img src={authBackground} alt="" className="absolute inset-0 h-full w-full object-cover object-center" />
+        <div className="absolute inset-0 bg-[linear-gradient(160deg,hsl(var(--background))_0%,hsl(var(--muted))_100%)]" />
+        <div className="absolute -left-32 top-24 h-[420px] w-[420px] rounded-full bg-primary/20 blur-3xl" />
+        <div className="absolute -right-24 bottom-0 h-[380px] w-[380px] rounded-full bg-highlight/20 blur-3xl" />
+        <div className="absolute left-1/2 top-1/3 h-[300px] w-[300px] -translate-x-1/2 rounded-full bg-primary/10 blur-3xl" />
         <div className="absolute inset-0 bg-white/20" />
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_50%_48%,rgba(255,255,255,0.06)_0%,rgba(237,245,255,0.12)_65%,rgba(237,245,255,0.35)_100%)]" />
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_50%_48%,rgba(255,255,255,0.06)_0%,rgba(241,238,254,0.12)_65%,rgba(241,238,254,0.35)_100%)]" />
       </div>
 
       <header className="relative z-20 flex h-[82px] items-center justify-between px-5 sm:px-8 xl:px-14">
         <Link to="/auth" aria-label="EloLab — início do acesso" className="inline-flex rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-4">
           <img src={logoHorizontal} alt="EloLab — tecnologia que cuida" className="w-[172px] object-contain sm:w-[205px]" />
         </Link>
-        <div className="hidden text-right text-xs leading-relaxed text-[#58739f] sm:block">
+        <div className="hidden text-right text-xs leading-relaxed text-muted-foreground sm:block">
           <p>Cuidar hoje.</p>
           <p>Construir o amanhã.</p>
           <span className="mt-2 ml-auto block h-0.5 w-7 rounded-full bg-primary" />
@@ -414,14 +438,14 @@ export default function Auth() {
 
       <main className="relative z-10 mx-auto grid min-h-[calc(100svh-154px)] w-full max-w-[1680px] grid-cols-1 items-center gap-7 px-4 py-5 sm:px-8 lg:grid-cols-[minmax(0,1fr)_minmax(420px,490px)_minmax(0,1fr)] lg:gap-8 xl:px-14">
         <aside className="hidden self-center lg:block">
-          <div className="max-w-[220px] border-l border-[#8ba9d4]/55 py-1 pl-4 text-xs font-medium uppercase tracking-[0.14em] text-[#58739f]">
-            <p className="-ml-[18px] flex items-center gap-2 font-semibold text-[#10264e]"><span className="h-5 w-1 rounded-full bg-primary" />Saúde</p>
+          <div className="max-w-[220px] border-l border-primary/30 py-1 pl-4 text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
+            <p className="-ml-[18px] flex items-center gap-2 font-semibold text-foreground"><span className="h-5 w-1 rounded-full bg-primary" />Saúde</p>
             <p className="mt-4">Gestão</p>
             <p className="mt-4">Tecnologia</p>
             <p className="mt-4">Pessoas</p>
           </div>
-          <p className="mt-6 max-w-[190px] text-sm leading-relaxed text-[#58739f]">Tudo o que sua clínica precisa, em um só lugar.</p>
-          <div className="mt-9 space-y-3 text-xs text-[#45658f]">
+          <p className="mt-6 max-w-[190px] text-sm leading-relaxed text-muted-foreground">Tudo o que sua clínica precisa, em um só lugar.</p>
+          <div className="mt-9 space-y-3 text-xs text-foreground">
             <div className="flex items-center gap-2.5"><CalendarDays className="h-4 w-4 text-primary" aria-hidden="true" />Agenda e atendimento</div>
             <div className="flex items-center gap-2.5"><ClipboardList className="h-4 w-4 text-primary" aria-hidden="true" />Prontuário e exames</div>
             <div className="flex items-center gap-2.5"><Stethoscope className="h-4 w-4 text-primary" aria-hidden="true" />Gestão da clínica</div>
@@ -432,14 +456,14 @@ export default function Auth() {
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-          className="relative z-10 mx-auto w-full max-w-[490px] rounded-[28px] border border-white/90 bg-white/65 px-6 py-7 shadow-[0_28px_90px_-38px_rgba(27,85,158,0.38)] backdrop-blur-2xl sm:px-10 sm:py-9"
+          className="relative z-10 mx-auto w-full max-w-[490px] rounded-[32px] border border-border/70 bg-card/80 px-6 py-7 shadow-[0_28px_90px_-38px_rgba(49,27,158,0.38)] backdrop-blur-2xl sm:px-10 sm:py-9"
         >
           <div className="mb-6 text-center">
-            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-[#6680a7]">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
               {activeTab === 'login' ? 'Bem-vindo à' : urlCodigo ? 'Convite EloLab' : 'Crie sua conta'}
             </p>
             <img src={logoHorizontal} alt="EloLab — tecnologia que cuida" className="mx-auto w-[178px] object-contain sm:w-[195px]" />
-            <p className="mx-auto mt-3 max-w-[300px] text-sm leading-relaxed text-[#58739f]">
+            <p className="mx-auto mt-3 max-w-[300px] text-sm leading-relaxed text-muted-foreground">
               {activeTab === 'login' ? 'Acesse sua conta e continue cuidando de vidas.' : 'Faça seu cadastro para começar com a EloLab.'}
             </p>
           </div>
@@ -457,8 +481,8 @@ export default function Auth() {
                   <Gift className="h-4 w-4 text-primary" />
                 </div>
                 <div>
-                  <p className="text-sm font-semibold text-[#10264e]">Convite da equipe detectado</p>
-                  <p className="text-xs text-[#6680a7]">Preencha seus dados para entrar na clínica.</p>
+                  <p className="text-sm font-semibold text-foreground">Convite da equipe detectado</p>
+                  <p className="text-xs text-muted-foreground">Preencha seus dados para entrar na clínica.</p>
                 </div>
               </motion.div>
             )}
@@ -474,9 +498,9 @@ export default function Auth() {
                 exit={{ opacity: 0, y: -6 }}
                 transition={{ duration: 0.2 }}
               >
-                <h2 className="sr-only">
+                <h1 className="text-center text-xl font-semibold tracking-tight text-foreground">
                   {activeTab === 'login' ? 'Acesse sua conta' : urlCodigo ? 'Aceite o convite' : 'Crie sua conta'}
-                </h2>
+                </h1>
                 <p className="sr-only">
                   {activeTab === 'login'
                     ? 'Entre com o e-mail e a senha cadastrados'
@@ -529,7 +553,7 @@ export default function Auth() {
                           <FormLabel className="sr-only">E-mail</FormLabel>
                           <FormControl>
                             <div className="relative">
-                              <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[#6680a7]/40" />
+                              <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/60" />
                               <Input
                                 aria-label="E-mail"
                                 type="email"
@@ -537,7 +561,7 @@ export default function Auth() {
                                 autoComplete="email"
                                 autoCapitalize="none"
                                 spellCheck={false}
-                                className="h-[50px] rounded-[14px] border-[#d8e5f7] bg-white/70 pl-11 text-[#10264e] placeholder:text-[#8297b7] focus:border-primary focus:bg-white focus:ring-primary/15"
+                                className="h-[50px] rounded-[14px] border-border bg-card/70 pl-11 text-foreground placeholder:text-muted-foreground focus:border-primary focus:bg-card focus:ring-primary/15"
                                 {...field}
                                 onChange={(event) => { setLoginFeedback(null); field.onChange(event); }}
                               />
@@ -555,13 +579,13 @@ export default function Auth() {
                           <FormLabel className="sr-only">Senha</FormLabel>
                           <FormControl>
                             <div className="relative">
-                              <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[#6680a7]/40" />
+                              <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/60" />
                               <Input
                                 aria-label="Senha"
                                 type={showPassword ? 'text' : 'password'}
                                 placeholder="••••••••"
                                 autoComplete="current-password"
-                                className="h-[50px] rounded-[14px] border-[#d8e5f7] bg-white/70 pl-11 pr-12 text-[#10264e] placeholder:text-[#8297b7] focus:border-primary focus:bg-white focus:ring-primary/15"
+                                className="h-[50px] rounded-[14px] border-border bg-card/70 pl-11 pr-12 text-foreground placeholder:text-muted-foreground focus:border-primary focus:bg-card focus:ring-primary/15"
                                 {...field}
                                 onChange={(event) => { setLoginFeedback(null); field.onChange(event); }}
                               />
@@ -573,8 +597,8 @@ export default function Auth() {
                                 aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'} onClick={() => setShowPassword(!showPassword)}
                               >
                                 {showPassword
-                                  ? <EyeOff className="h-4 w-4 text-[#6680a7]" />
-                                  : <Eye className="h-4 w-4 text-[#6680a7]" />}
+                                  ? <EyeOff className="h-4 w-4 text-muted-foreground" />
+                                  : <Eye className="h-4 w-4 text-muted-foreground" />}
                               </Button>
                             </div>
                           </FormControl>
@@ -584,10 +608,10 @@ export default function Auth() {
                     />
                     <Button
                       type="submit"
-                      className="h-[52px] w-full rounded-[14px] bg-gradient-to-r from-[#0765e8] via-[#0878f9] to-[#278dff] text-sm font-bold text-white shadow-[0_12px_24px_-12px_rgba(0,103,235,0.7)] transition hover:brightness-105 hover:shadow-[0_15px_28px_-12px_rgba(0,103,235,0.75)]"
+                      className="h-[52px] w-full rounded-[14px] bg-[image:var(--gradient-primary)] text-sm font-bold text-white shadow-glow transition hover:brightness-105 hover:shadow-[0_15px_28px_-12px_rgba(47,12,223,0.75)]"
                       disabled={isLoading}
                     >
-                      {isLoading ? <><Loader2 aria-hidden="true" className="mr-2 h-4 w-4 animate-spin" />Entrando…</> : 'Entrar'}
+                      {isLoading ? <><Loader2 aria-hidden="true" className="mr-2 h-4 w-4 animate-spin" />Acessando…</> : 'Acessar conta'}
                     </Button>
                     {/* Até aqui não havia saída para quem esquecia a senha: o app
                         não tinha nenhuma chamada de recuperação. */}
@@ -653,11 +677,33 @@ export default function Auth() {
                           <Gift className="h-4 w-4 text-primary" />
                           <AlertDescription>Convite da equipe identificado. Conclua o cadastro para entrar na clínica.</AlertDescription>
                         </Alert>
+                      ) : hasAnyPlanIntent ? (
+                        <Alert className="border-primary/20 bg-primary/5">
+                          <CreditCard className="h-4 w-4 text-primary" />
+                          <AlertDescription>
+                            {planoSelecionado ? (
+                              <span>
+                                Plano escolhido: <strong>{planoSelecionado.nome}</strong>
+                                {urlPlanMode === 'trial' && planoSelecionado.trial_dias > 0
+                                  ? ` · ${planoSelecionado.trial_dias} dias grátis · depois ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(planoSelecionado.valor)} por ${rotuloFrequencia(planoSelecionado.frequencia)}`
+                                  : ` · ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(planoSelecionado.valor)} por ${rotuloFrequencia(planoSelecionado.frequencia)}`}
+                                {' '}<Link to="/#planos" className="font-medium text-primary underline underline-offset-2">Alterar plano</Link>
+                              </span>
+                            ) : planoIntentIndisponivel ? (
+                              <span role="alert" className="flex flex-col items-start gap-2">
+                                <span>Este plano não está disponível no momento. Sua conta não será criada com uma contratação incompleta.</span>
+                                <Link to="/#planos" className="font-medium text-primary underline underline-offset-2">Ver planos disponíveis</Link>
+                              </span>
+                            ) : (
+                              <span role="status">Carregando os detalhes do plano escolhido…</span>
+                            )}
+                          </AlertDescription>
+                        </Alert>
                       ) : (
                         <Alert className="border-primary/20 bg-primary/5">
                           <CheckCircle2 className="h-4 w-4 text-primary" />
                           <AlertDescription>
-                            Crie sua conta com e-mail e senha. O convite da equipe é enviado separadamente pelo administrador da clínica.
+                            Crie sua conta para configurar sua clínica e começar a usar a EloLab.
                           </AlertDescription>
                         </Alert>
                       )}
@@ -669,8 +715,8 @@ export default function Auth() {
                           <FormLabel className="sr-only">Nome completo</FormLabel>
                             <FormControl>
                               <div className="relative">
-                                <User className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[#6680a7]/40" />
-                                <Input aria-label="Nome completo" placeholder="Maria Souza" autoComplete="name" className="h-[50px] rounded-[14px] border-[#d8e5f7] bg-white/70 pl-11 text-[#10264e] placeholder:text-[#8297b7] focus:border-primary focus:bg-white focus:ring-primary/15" {...field} />
+                                <User className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/60" />
+                                <Input aria-label="Nome completo" placeholder="Maria Souza" autoComplete="name" className="h-[50px] rounded-[14px] border-border bg-card/70 pl-11 text-foreground placeholder:text-muted-foreground focus:border-primary focus:bg-card focus:ring-primary/15" {...field} />
                               </div>
                             </FormControl>
                             <FormMessage />
@@ -685,13 +731,13 @@ export default function Auth() {
                           <FormLabel className="sr-only">Telefone (opcional)</FormLabel>
                             <FormControl>
                               <div className="relative">
-                                <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[#6680a7]/40" />
+                                <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/60" />
                                 <MaskedInput
                                   aria-label="Telefone (opcional)"
                                   mask="phone"
                                   placeholder="(11) 99999-9999"
                                   autoComplete="tel"
-                                  className="h-[50px] rounded-[14px] border-[#d8e5f7] bg-white/70 pl-11 text-[#10264e] placeholder:text-[#8297b7] focus:border-primary focus:bg-white focus:ring-primary/15"
+                                  className="h-[50px] rounded-[14px] border-border bg-card/70 pl-11 text-foreground placeholder:text-muted-foreground focus:border-primary focus:bg-card focus:ring-primary/15"
                                   value={field.value}
                                   onChange={field.onChange}
                                 />
@@ -726,12 +772,12 @@ export default function Auth() {
                               <FormLabel className="sr-only">CPF ou CNPJ (opcional)</FormLabel>
                               <FormControl>
                                 <div className="relative">
-                                  <FileText className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[#6680a7]/40" />
+                                  <FileText className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/60" />
                                   <Input
                                     aria-label="CPF ou CNPJ (opcional)"
                                     placeholder="000.000.000-00"
                                     autoComplete="off"
-                                    className="h-[50px] rounded-[14px] border-[#d8e5f7] bg-white/70 pl-11 text-[#10264e] placeholder:text-[#8297b7] focus:border-primary focus:bg-white focus:ring-primary/15"
+                                    className="h-[50px] rounded-[14px] border-border bg-card/70 pl-11 text-foreground placeholder:text-muted-foreground focus:border-primary focus:bg-card focus:ring-primary/15"
                                     value={field.value}
                                     onChange={handleCpfCnpjChange}
                                   />
@@ -750,8 +796,8 @@ export default function Auth() {
                             <FormLabel className="sr-only">E-mail</FormLabel>
                             <FormControl>
                               <div className="relative">
-                                <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[#6680a7]/40" />
-                                <Input aria-label="E-mail" type="email" placeholder="seu@email.com" autoComplete="email" className="h-[50px] rounded-[14px] border-[#d8e5f7] bg-white/70 pl-11 text-[#10264e] placeholder:text-[#8297b7] focus:border-primary focus:bg-white focus:ring-primary/15" {...field} />
+                                <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/60" />
+                                <Input aria-label="E-mail" type="email" placeholder="seu@email.com" autoComplete="email" className="h-[50px] rounded-[14px] border-border bg-card/70 pl-11 text-foreground placeholder:text-muted-foreground focus:border-primary focus:bg-card focus:ring-primary/15" {...field} />
                               </div>
                             </FormControl>
                             <FormMessage />
@@ -766,10 +812,10 @@ export default function Auth() {
                             <FormLabel className="sr-only">Senha</FormLabel>
                             <FormControl>
                               <div className="relative">
-                                <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[#6680a7]/40" />
-                                <Input aria-label="Senha" type={showPassword ? 'text' : 'password'} placeholder="••••••••" autoComplete="new-password" className="h-[50px] rounded-[14px] border-[#d8e5f7] bg-white/70 pl-11 pr-12 text-[#10264e] placeholder:text-[#8297b7] focus:border-primary focus:bg-white focus:ring-primary/15" {...field} />
+                                <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/60" />
+                                <Input aria-label="Senha" type={showPassword ? 'text' : 'password'} placeholder="••••••••" autoComplete="new-password" className="h-[50px] rounded-[14px] border-border bg-card/70 pl-11 pr-12 text-foreground placeholder:text-muted-foreground focus:border-primary focus:bg-card focus:ring-primary/15" {...field} />
                                 <Button type="button" variant="ghost" size="icon" className="absolute right-0 top-0 h-full px-3 hover:bg-transparent" aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'} onClick={() => setShowPassword(!showPassword)}>
-                                  {showPassword ? <EyeOff className="h-4 w-4 text-[#6680a7]" /> : <Eye className="h-4 w-4 text-[#6680a7]" />}
+                                  {showPassword ? <EyeOff className="h-4 w-4 text-muted-foreground" /> : <Eye className="h-4 w-4 text-muted-foreground" />}
                                 </Button>
                               </div>
                             </FormControl>
@@ -785,10 +831,10 @@ export default function Auth() {
                             <FormLabel className="sr-only">Confirmar senha</FormLabel>
                             <FormControl>
                               <div className="relative">
-                                <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[#6680a7]/40" />
-                                <Input aria-label="Confirmar senha" type={showConfirmPassword ? 'text' : 'password'} placeholder="••••••••" autoComplete="new-password" className="h-[50px] rounded-[14px] border-[#d8e5f7] bg-white/70 pl-11 pr-12 text-[#10264e] placeholder:text-[#8297b7] focus:border-primary focus:bg-white focus:ring-primary/15" {...field} />
+                                <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/60" />
+                                <Input aria-label="Confirmar senha" type={showConfirmPassword ? 'text' : 'password'} placeholder="••••••••" autoComplete="new-password" className="h-[50px] rounded-[14px] border-border bg-card/70 pl-11 pr-12 text-foreground placeholder:text-muted-foreground focus:border-primary focus:bg-card focus:ring-primary/15" {...field} />
                                 <Button type="button" variant="ghost" size="icon" className="absolute right-0 top-0 h-full px-3 hover:bg-transparent" aria-label={showConfirmPassword ? 'Ocultar confirmação de senha' : 'Mostrar confirmação de senha'} onClick={() => setShowConfirmPassword(!showConfirmPassword)}>
-                                  {showConfirmPassword ? <EyeOff className="h-4 w-4 text-[#6680a7]" /> : <Eye className="h-4 w-4 text-[#6680a7]" />}
+                                  {showConfirmPassword ? <EyeOff className="h-4 w-4 text-muted-foreground" /> : <Eye className="h-4 w-4 text-muted-foreground" />}
                                 </Button>
                               </div>
                             </FormControl>
@@ -798,25 +844,25 @@ export default function Auth() {
                       />
                       <Button
                         type="submit"
-                        className="h-[52px] w-full rounded-[14px] bg-gradient-to-r from-[#0765e8] via-[#0878f9] to-[#278dff] text-sm font-bold text-white shadow-[0_12px_24px_-12px_rgba(0,103,235,0.7)] transition hover:brightness-105"
-                        disabled={isLoading}
+                        className="h-[52px] w-full rounded-[14px] bg-[image:var(--gradient-primary)] text-sm font-bold text-white shadow-glow transition hover:brightness-105"
+                        disabled={isLoading || (hasAnyPlanIntent && (!hasPlanIntent || !planoSelecionado || loadingPlanos || erroPlanos))}
                       >
                         {isLoading ? <><Loader2 aria-hidden="true" className="mr-2 h-4 w-4 animate-spin" />Criando…</> : urlCodigo ? 'Aceitar convite e criar conta' : 'Criar conta'}
                       </Button>
                       {!urlCodigo && (
-                        <p className="text-center text-xs leading-relaxed text-[#6680a7]">
+                        <p className="text-center text-xs leading-relaxed text-muted-foreground">
                           Ao criar sua conta, você concorda com os <Link to="/termos-uso" className="text-primary underline underline-offset-2">Termos de Uso</Link> e a <Link to="/politica-privacidade" className="text-primary underline underline-offset-2">Política de Privacidade</Link>.
                         </p>
                       )}
-                      <Button
+                      {!hasPlanIntent && <Button
                         type="button"
                         variant="outline"
-                        className="h-[48px] w-full rounded-[14px] border-[#c7d9f1] bg-white/50 text-sm font-semibold text-primary hover:bg-white/90"
+                        className="h-[48px] w-full rounded-[14px] border-border bg-card/60 text-sm font-semibold text-primary hover:bg-card"
                         onClick={() => navigate('/#planos')}
                       >
                         <CreditCard className="mr-2 h-4 w-4" />
                         Assinar um Plano
-                      </Button>
+                      </Button>}
                     </form>
                   </Form>
                   </>
@@ -825,23 +871,23 @@ export default function Auth() {
             )}
           </AnimatePresence>
 
-          <div className="mt-6 border-t border-[#d7e4f4] pt-5 text-center">
-            <p className="flex items-center justify-center gap-2 text-xs font-medium text-[#52739d]">
+          <div className="mt-6 border-t border-border pt-5 text-center">
+            <p className="flex items-center justify-center gap-2 text-xs font-medium text-foreground">
               <Shield className="h-4 w-4 text-primary" aria-hidden="true" />
               Acesso protegido para sua clínica
             </p>
-            <p className="mt-1 text-xs text-[#7890b2]">Seus dados de acesso são tratados com cuidado.</p>
+            <p className="mt-1 text-xs text-muted-foreground">Seus dados de acesso são tratados com cuidado.</p>
           </div>
         </motion.div>
 
-        <aside className="hidden justify-self-end self-center text-[#58739f] xl:block">
-          <div className="border-l border-[#8ba9d4]/60 py-1 pl-4"><span className="text-xs">01</span></div>
-          <p className="mt-4 max-w-[135px] text-xs font-medium uppercase leading-relaxed tracking-[0.12em]">Sistema completo para clínicas</p>
-          <div className="mt-5 flex gap-1.5" aria-hidden="true"><span className="h-1 w-5 rounded-full bg-primary" /><span className="h-1 w-5 rounded-full bg-[#b9cce5]" /><span className="h-1 w-5 rounded-full bg-[#b9cce5]" /></div>
+        <aside className="hidden justify-self-end self-center text-muted-foreground xl:block">
+          <div className="border-l border-primary/30 py-1 pl-4"><span className="text-xs">01</span></div>
+          <p className="mt-4 max-w-[135px] text-xs font-medium uppercase leading-relaxed tracking-[0.12em]">Para a rotina da sua clínica</p>
+          <div className="mt-5 flex gap-1.5" aria-hidden="true"><span className="h-1 w-5 rounded-full bg-primary" /><span className="h-1 w-5 rounded-full bg-border" /><span className="h-1 w-5 rounded-full bg-border" /></div>
         </aside>
       </main>
 
-      <footer className="relative z-10 mx-auto flex w-full max-w-[1680px] flex-col items-center justify-between gap-4 px-5 pb-5 text-xs text-[#6680a7] sm:flex-row sm:px-8 xl:px-14">
+      <footer className="relative z-10 mx-auto flex w-full max-w-[1680px] flex-col items-center justify-between gap-4 px-5 pb-5 text-xs text-muted-foreground sm:flex-row sm:px-8 xl:px-14">
         <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 sm:justify-start">
           <span className="inline-flex items-center gap-2"><Shield className="h-4 w-4" aria-hidden="true" />Acesso por perfil</span>
           <span className="inline-flex items-center gap-2"><CalendarDays className="h-4 w-4" aria-hidden="true" />Agenda integrada</span>
