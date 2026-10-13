@@ -25,13 +25,13 @@ test.describe('QA — jornada real, sem criar dados', () => {
     await expect(page.getByLabel('CPF ou CNPJ (opcional)')).toBeVisible();
     await expect(page.getByLabel('Senha', { exact: true })).toBeVisible();
     await expect(page.getByLabel('Confirmar senha')).toBeVisible();
-    await expect(page.getByText(/convite da equipe é enviado separadamente/i)).toBeVisible();
+    await expect(page.getByLabel(/código de convite/i)).toHaveCount(0);
     await expect(page.getByLabel(/código de convite/i)).toHaveCount(0);
   });
 
   test('valida campos vazios sem chamar o serviço de login', async ({ page }) => {
     await page.goto('/auth');
-    await page.locator('form').getByRole('button', { name: 'Entrar', exact: true }).click();
+    await page.locator('form').getByRole('button', { name: 'Acessar conta', exact: true }).click();
     await expect(page.getByText('Informe seu e-mail.')).toBeVisible();
     await expect(page.getByText('Informe sua senha.')).toBeVisible();
     await expect(page).toHaveURL(/\/auth/);
@@ -56,7 +56,7 @@ test.describe('QA — jornada real, sem criar dados', () => {
     await page.goto('/auth');
     await page.getByLabel('E-mail').fill(emailAdmin);
     await page.getByLabel('Senha', { exact: true }).fill(senhaAdmin);
-    await page.getByRole('button', { name: 'Entrar', exact: true }).click();
+    await page.getByRole('button', { name: 'Acessar conta', exact: true }).click();
     await expect(page).toHaveURL(/\/dashboard/, { timeout: 30_000 });
     await expect(page.getByPlaceholder('Buscar...').first()).toBeVisible({ timeout: 15_000 });
 
