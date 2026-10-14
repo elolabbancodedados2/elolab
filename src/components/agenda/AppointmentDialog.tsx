@@ -20,6 +20,7 @@ import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { appointmentEndMinutes } from '@/lib/agendaTime';
 import { appointmentPayloadForSave } from '@/lib/agendaAppointmentPayload';
+import { describeAppointmentConflict } from '@/lib/agendaConflictMessage';
 
 interface Props {
   open: boolean;
@@ -169,7 +170,15 @@ export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos,
       });
 
       if (conflito) {
-        toast.error('Este médico já tem consulta neste horário.');
+        toast.error('Este médico já tem consulta neste horário.', {
+          description: describeAppointmentConflict({
+            resource: 'médico',
+            existingStart: conflito.hora_inicio,
+            existingEnd: conflito.hora_fim,
+            requestedStart: form.hora_inicio,
+            requestedEnd: form.hora_fim || `${String(Math.floor(novoFim / 60)).padStart(2, '0')}:${String(novoFim % 60).padStart(2, '0')}`,
+          }),
+        });
         setTab('consulta'); setSaving(false); return;
       }
 
@@ -183,7 +192,15 @@ export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos,
         return inicio < novoFim && fim > novoInicio;
       });
       if (conflitoPaciente) {
-        toast.error('Este paciente já tem outro atendimento neste horário.');
+        toast.error('Este paciente já tem outro atendimento neste horário.', {
+          description: describeAppointmentConflict({
+            resource: 'paciente',
+            existingStart: conflitoPaciente.hora_inicio,
+            existingEnd: conflitoPaciente.hora_fim,
+            requestedStart: form.hora_inicio,
+            requestedEnd: form.hora_fim || `${String(Math.floor(novoFim / 60)).padStart(2, '0')}:${String(novoFim % 60).padStart(2, '0')}`,
+          }),
+        });
         setTab('consulta'); setSaving(false); return;
       }
 
@@ -197,7 +214,15 @@ export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos,
         return inicio < novoFim && fim > novoInicio;
       });
       if (conflitoSala) {
-        toast.error('Esta sala já está reservada neste horário.', { description: 'Escolha outra sala ou outro horário.' });
+        toast.error('Esta sala já está reservada neste horário.', {
+          description: describeAppointmentConflict({
+            resource: 'sala',
+            existingStart: conflitoSala.hora_inicio,
+            existingEnd: conflitoSala.hora_fim,
+            requestedStart: form.hora_inicio,
+            requestedEnd: form.hora_fim || `${String(Math.floor(novoFim / 60)).padStart(2, '0')}:${String(novoFim % 60).padStart(2, '0')}`,
+          }),
+        });
         setTab('consulta'); setSaving(false); return;
       }
 

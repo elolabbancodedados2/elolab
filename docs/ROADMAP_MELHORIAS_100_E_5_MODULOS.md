@@ -20,7 +20,8 @@ Itens 1–100 são propostas de execução, não afirmações de que esses defei
 
 ### Agenda e agendamento online
 
-1. Bloquear conflitos de horário entre o mesmo profissional, paciente e sala; mostrar os dois compromissos conflitantes antes de salvar.
+1. [x] Bloquear conflitos de horário entre o mesmo profissional, paciente e sala; mostrar os dois compromissos conflitantes antes de salvar.
+**Entrega E30:** o bloqueio já existia; a lacuna era a mensagem genérica. Ao conflitar médico, paciente ou sala, o formulário agora informa o intervalo ocupado e o intervalo solicitado, e sugere a ação adequada. Evidência: teste regressivo red/green (4/4), TypeScript, build e ESLint sem erros (avisos `any` preexistentes em `AppointmentDialog.tsx`) passaram. Sem migration ou gravação clínica real.
 2. Revalidar disponibilidade no servidor no instante da confirmação para impedir que duas sessões reservem a mesma vaga.
 3. Adicionar uma reserva temporária com expiração no agendamento público; liberar a vaga automaticamente se o paciente abandonar o formulário.
 4. Permitir encaixar uma pessoa da lista de espera em uma vaga recém-liberada, preservando serviço, profissional e confirmação de horário.
