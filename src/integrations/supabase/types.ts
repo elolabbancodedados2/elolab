@@ -2116,6 +2116,7 @@ export type Database = {
           data_nascimento: string | null
           departamento: string | null
           email: string | null
+          edit_version: number
           especialidade: string | null
           id: string
           nome: string
@@ -2141,6 +2142,7 @@ export type Database = {
           data_nascimento?: string | null
           departamento?: string | null
           email?: string | null
+          edit_version?: number
           especialidade?: string | null
           id?: string
           nome: string
@@ -2166,6 +2168,7 @@ export type Database = {
           data_nascimento?: string | null
           departamento?: string | null
           email?: string | null
+          edit_version?: number
           especialidade?: string | null
           id?: string
           nome?: string
@@ -6187,6 +6190,16 @@ export type Database = {
       }
       reabrir_caixa_diario: { Args: { p_motivo: string }; Returns: Json }
       touch_my_account_session: { Args: { p_user_agent: string }; Returns: undefined }
+      sync_employee_roles_if_unchanged: {
+        Args: {
+          _ativo: boolean
+          _expected_version: number
+          _funcionario_id: string
+          _roles: Database["public"]["Enums"]["app_role"][]
+          _user_id: string | null
+        }
+        Returns: undefined
+      }
       reivindicar_notificacoes: {
         Args: { p_clinica_id?: string; p_limite?: number }
         Returns: {

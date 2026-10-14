@@ -38,6 +38,7 @@ interface FuncionarioWithRoles {
   cargo: string | null;
   departamento: string | null;
   ativo: boolean | null;
+  edit_version: number;
   user_id: string | null;
   roles: AppRole[];
   hasInvitation?: boolean;
@@ -316,9 +317,9 @@ export default function Funcionarios() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: async ({ id, data, userId }: { id: string; data: FormDataType; userId: string | null }) => {
+    mutationFn: async ({ id, data, userId, expectedVersion }: { id: string; data: FormDataType; userId: string | null; expectedVersion: number }) => {
       if (!profile?.clinica_id) throw new Error('Clínica não identificada.');
-      const { data: updatedFunc, error: funcError } = await supabase
+      const { data: updatedFunc, error: funcError } = await (supabase as any)
         .from('funcionarios')
         .update({
           nome: data.nome,
@@ -335,10 +336,18 @@ export default function Funcionarios() {
           cpf: data.cpf || null,
           carga_horaria: data.carga_horaria ? parseInt(data.carga_horaria) : null,
           turno: data.turno || 'integral',
-        } as any)
-        .eq('id', id).eq('clinica_id', profile.clinica_id).select('id').maybeSingle();
+        })
+        .eq('id', id)
+        .eq('clinica_id', profile.clinica_id)
+        .eq('edit_version', expectedVersion)
+        .select('id, edit_version')
+        .maybeSingle();
       if (funcError) throw funcError;
-      if (!updatedFunc) throw new Error('Funcionário não encontrado ou sem permissão para alterar.');
+      if (!updatedFunc) {
+        const conflict = new Error('Outra pessoa alterou esta ficha. Seus dados não foram salvos; atualize a lista e reabra a edição.');
+        conflict.name = 'EmployeeEditConflictError';
+        throw conflict;
+      }
 
       try {
         let linkedUserId = userId;
@@ -353,16 +362,19 @@ export default function Funcionarios() {
           linkedUserId = profiles?.id ?? null;
         }
         // O RPC troca os papéis numa única transação e preserva o último admin.
-        const { error: rolesError } = await supabase.rpc('sync_employee_roles' as any, {
+        const { error: rolesError } = await supabase.rpc('sync_employee_roles_if_unchanged' as any, {
           _funcionario_id: id,
           _user_id: linkedUserId,
           _roles: data.selectedRoles,
           _ativo: data.ativo,
+          _expected_version: updatedFunc.edit_version,
         } as any);
         if (rolesError) throw rolesError;
       } catch (error) {
-        const partialError = new Error(error instanceof Error ? error.message : String(error)) as Error & { funcionarioAtualizado?: boolean };
+        const concorrencia = (error as { code?: string } | null)?.code === '40001';
+        const partialError = new Error(error instanceof Error ? error.message : String(error)) as Error & { funcionarioAtualizado?: boolean; conflitoConcorrencia?: boolean };
         partialError.funcionarioAtualizado = true;
+        partialError.conflitoConcorrencia = concorrencia;
         throw partialError;
       }
     },
@@ -378,7 +390,17 @@ export default function Funcionarios() {
       setIsDialogOpen(false);
     },
     onError: (error: any) => {
-      if (error?.funcionarioAtualizado) {
+      if (error?.name === 'EmployeeEditConflictError') {
+        queryClient.invalidateQueries({ queryKey: ['funcionarios-with-roles'] });
+        toast.error('A ficha mudou desde que você abriu a edição.', { description: error.message });
+        setIsDialogOpen(false);
+      } else if (error?.conflitoConcorrencia) {
+        queryClient.invalidateQueries({ queryKey: ['funcionarios-with-roles'] });
+        toast.warning('Dados cadastrais salvos; permissões não alteradas.', {
+          description: 'Outra pessoa atualizou esta ficha antes da confirmação dos papéis. Reabra a edição para conferir os dados atuais.',
+        });
+        setIsDialogOpen(false);
+      } else if (error?.funcionarioAtualizado) {
         queryClient.invalidateQueries({ queryKey: ['funcionarios-with-roles'] });
         toast.warning('Dados atualizados, mas as permissões não foram sincronizadas.', {
           description: 'Revise o funcionário na lista e salve novamente para concluir o vínculo e as permissões.',
@@ -493,7 +515,7 @@ export default function Funcionarios() {
       return;
     }
     if (editingFunc) {
-      updateMutation.mutate({ id: editingFunc.id, data: normalizedData, userId: editingFunc.user_id });
+      updateMutation.mutate({ id: editingFunc.id, data: normalizedData, userId: editingFunc.user_id, expectedVersion: editingFunc.edit_version });
     } else {
       createMutation.mutate(normalizedData);
     }
