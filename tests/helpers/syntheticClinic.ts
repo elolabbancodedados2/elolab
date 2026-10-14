@@ -46,6 +46,7 @@ function syntheticSession(options: SyntheticClinicOptions = {}) {
       sub: TEST_USER_ID,
       aud: 'authenticated',
       role: 'authenticated',
+      session_id: '00000000-0000-4000-8000-000000000005',
       email: TEST_EMAIL,
       iat: now,
       exp: now + 3600,

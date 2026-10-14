@@ -50,16 +50,16 @@
 - Create: `src/lib/accountSessionDevice.ts`
 - Modify: `src/contexts/SupabaseAuthContext.tsx`
 - Test: `src/lib/__tests__/accountSessionDevice.test.ts`
-- Test: `src/contexts/__tests__/SupabaseAuthContext.test.tsx` (ou teste de integração de auth já existente).
+- Test: `tests/qa-security-sessions.spec.ts`
 
 **Interfaces:**
 - Produces: `describeAccountDevice(userAgent: string | null) -> string`.
 - Consumes: `touch_my_account_session` sem identificador de usuário/sessão fornecido pela UI.
 
-- [ ] **Step 1: Escrever testes** para Safari/iPhone, Chrome/Android, Edge/Windows, agente ausente/desconhecido e heartbeat sem usuário/sessão.
-- [ ] **Step 2: Confirmar falha inicial** dos testes do formatador.
-- [ ] **Step 3: Implementar o rótulo aproximado** sem dependência externa e enviar heartbeat junto da atividade autenticada visível, no máximo a cada cinco minutos; manter o timeout atual intacto.
-- [ ] **Step 4: Testar** normalização, ciclo de vida e ausência de chamadas quando deslogado.
+- [x] **Step 1: Escrever testes** para Safari/iPhone, Chrome/Android, Edge/Windows, agente ausente/desconhecido e heartbeat sem usuário/sessão.
+- [x] **Step 2: Confirmar falha inicial** dos testes do formatador.
+- [x] **Step 3: Implementar o rótulo aproximado** sem dependência externa e enviar heartbeat junto da atividade autenticada visível, no máximo a cada cinco minutos; manter o timeout atual intacto.
+- [x] **Step 4: Testar** normalização, ciclo de vida e ausência de chamadas quando deslogado.
 - [ ] **Step 5: Commit** `feat: record per-session account activity`.
 
 ### Task 3: Exibir sessões em Segurança
