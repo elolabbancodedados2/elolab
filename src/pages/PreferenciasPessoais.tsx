@@ -3,6 +3,7 @@ import { Bell, CalendarDays, LayoutPanelTop, Loader2, Save, SlidersHorizontal } 
 import { toast } from 'sonner';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { supabase } from '@/integrations/supabase/client';
+import { applyUIPreferences } from '@/lib/uiPreferences';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,6 +13,8 @@ import { Switch } from '@/components/ui/switch';
 
 type Preferences = {
   density: 'comfortable' | 'compact';
+  high_contrast: boolean;
+  text_size: 'normal' | 'large';
   start_page: '/dashboard' | '/agenda' | '/tarefas' | '/notificacoes';
   date_format: 'DD/MM/YYYY' | 'YYYY-MM-DD';
   browser_notifications: boolean;
@@ -19,7 +22,7 @@ type Preferences = {
 };
 
 const defaults: Preferences = {
-  density: 'comfortable', start_page: '/dashboard', date_format: 'DD/MM/YYYY',
+  density: 'comfortable', high_contrast: false, text_size: 'normal', start_page: '/dashboard', date_format: 'DD/MM/YYYY',
   browser_notifications: true, email_daily_summary: false,
 };
 
@@ -41,14 +44,14 @@ export default function PreferenciasPessoais() {
     setLoading(true); setLoadError(null);
     try {
       const { data, error } = await (supabase as any).from('user_preferences')
-        .select('density,start_page,date_format,browser_notifications,email_daily_summary')
+        .select('density,high_contrast,text_size,start_page,date_format,browser_notifications,email_daily_summary')
         .eq('user_id', user.id).eq('clinica_id', profile.clinica_id).maybeSingle();
       if (generation !== loadGeneration.current) return;
       if (error) setLoadError('Não foi possível carregar suas preferências. Tente novamente.');
       else {
         const next = data ? { ...defaults, ...data } as Preferences : defaults;
         setPreferences(next);
-        document.documentElement.dataset.density = next.density;
+        applyUIPreferences(next);
       }
     } catch {
       if (generation === loadGeneration.current) setLoadError('Não foi possível carregar suas preferências. Tente novamente.');
@@ -63,8 +66,9 @@ export default function PreferenciasPessoais() {
   }, [load]);
 
   function update<K extends keyof Preferences>(key: K, value: Preferences[K]) {
-    setPreferences(current => ({ ...current, [key]: value }));
-    if (key === 'density') document.documentElement.dataset.density = String(value);
+    const next = { ...preferences, [key]: value };
+    setPreferences(next);
+    applyUIPreferences(next);
   }
 
   async function save() {
@@ -100,14 +104,16 @@ export default function PreferenciasPessoais() {
     {loadError && <Alert variant="destructive"><AlertDescription className="flex flex-wrap items-center justify-between gap-3">{loadError}<Button variant="outline" size="sm" onClick={() => void load()}>Tentar novamente</Button></AlertDescription></Alert>}
     <fieldset disabled={loading || saving || !!loadError} className="space-y-5 border-0 p-0 m-0 min-w-0">
     <div className="grid gap-5 md:grid-cols-2">
-      <Card><CardHeader><CardTitle className="flex items-center gap-2 text-base"><LayoutPanelTop className="h-5 w-5" />Interface</CardTitle><CardDescription>Ajustes visuais aplicados só à sua sessão.</CardDescription></CardHeader><CardContent className="space-y-5">
+      <Card><CardHeader><CardTitle className="flex items-center gap-2 text-base"><LayoutPanelTop className="h-5 w-5" />Interface</CardTitle><CardDescription>Ajustes salvos para sua conta nesta clínica.</CardDescription></CardHeader><CardContent className="space-y-5">
         <div className="space-y-2"><Label htmlFor="density">Densidade de conteúdo</Label><Select value={preferences.density} onValueChange={v => update('density', v as Preferences['density'])}><SelectTrigger id="density"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="comfortable">Confortável</SelectItem><SelectItem value="compact">Compacta</SelectItem></SelectContent></Select><p className="text-xs text-muted-foreground">Compacta exibe mais informações por tela.</p></div>
-        <div className="space-y-2"><Label htmlFor="start-page">Página inicial</Label><Select value={preferences.start_page} onValueChange={v => update('start_page', v as Preferences['start_page'])}><SelectTrigger id="start-page"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="/dashboard">Dashboard</SelectItem><SelectItem value="/agenda">Agenda</SelectItem><SelectItem value="/tarefas">Tarefas</SelectItem><SelectItem value="/notificacoes">Notificações</SelectItem></SelectContent></Select></div>
+        <div className="space-y-2"><Label htmlFor="text-size">Tamanho do texto</Label><Select value={preferences.text_size} onValueChange={v => update('text_size', v as Preferences['text_size'])}><SelectTrigger id="text-size"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="normal">PadrÃ£o</SelectItem><SelectItem value="large">Maior</SelectItem></SelectContent></Select><p className="text-xs text-muted-foreground">Amplia o texto e os controles da interface.</p></div>
+        <div className="flex min-h-11 items-center justify-between gap-4"><div><Label htmlFor="high-contrast">Alto contraste</Label><p className="text-xs text-muted-foreground">ReforÃ§a texto, bordas e indicadores de foco.</p></div><Switch id="high-contrast" checked={preferences.high_contrast} onCheckedChange={v => update('high_contrast', v)} /></div>
+        <div className="space-y-2"><Label htmlFor="start-page">Página inicial</Label><Select value={preferences.start_page} onValueChange={v => update('start_page', v as Preferences['start_page'])}><SelectTrigger id="start-page"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="/dashboard">Dashboard</SelectItem>{profile?.roles.some(role => ['admin', 'recepcao', 'enfermagem', 'medico'].includes(role)) && <SelectItem value="/agenda">Agenda</SelectItem>}<SelectItem value="/tarefas">Tarefas</SelectItem><SelectItem value="/notificacoes">Notificações</SelectItem></SelectContent></Select><p className="text-xs text-muted-foreground">Aplicada ao abrir o painel inicial na próxima sessão.</p></div>
       </CardContent></Card>
       <Card><CardHeader><CardTitle className="flex items-center gap-2 text-base"><CalendarDays className="h-5 w-5" />Datas e avisos</CardTitle><CardDescription>Escolha como acompanhar sua rotina.</CardDescription></CardHeader><CardContent className="space-y-5">
-        <div className="space-y-2"><Label htmlFor="date-format">Formato de data</Label><Select value={preferences.date_format} onValueChange={v => update('date_format', v as Preferences['date_format'])}><SelectTrigger id="date-format"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="DD/MM/YYYY">DD/MM/AAAA</SelectItem><SelectItem value="YYYY-MM-DD">AAAA-MM-DD</SelectItem></SelectContent></Select></div>
+        <div className="space-y-2"><Label htmlFor="date-format">Formato curto de data</Label><Select value={preferences.date_format} onValueChange={v => update('date_format', v as Preferences['date_format'])}><SelectTrigger id="date-format"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="DD/MM/YYYY">DD/MM/AAAA</SelectItem><SelectItem value="YYYY-MM-DD">AAAA-MM-DD</SelectItem></SelectContent></Select><p className="text-xs text-muted-foreground">Aplicado às datas numéricas e aos vencimentos. Datas por extenso seguem o formato local.</p></div>
         <div className="flex min-h-11 items-center justify-between gap-4"><div><Label htmlFor="browser-notifications">Avisos no navegador</Label><p className="text-xs text-muted-foreground">Exibe alertas enquanto a plataforma estiver aberta.</p></div><Switch id="browser-notifications" checked={preferences.browser_notifications} onCheckedChange={v => update('browser_notifications', v)} /></div>
-        <div className="flex min-h-11 items-center justify-between gap-4"><div><Label htmlFor="daily-summary">Resumo diário por e-mail</Label><p className="text-xs text-muted-foreground">Receba um resumo operacional no e-mail da conta.</p></div><Switch id="daily-summary" checked={preferences.email_daily_summary} onCheckedChange={v => update('email_daily_summary', v)} /></div>
+        <div className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground" role="status"><span className="font-medium text-foreground">Resumo diário por e-mail indisponível.</span> O EloLab ainda não envia esse resumo; esta opção não está ativa e nenhum e-mail será enviado.</div>
       </CardContent></Card>
     </div>
     <div className="flex justify-end"><Button className="min-h-11 w-full sm:w-auto" onClick={() => void save()}>{saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}{saving ? 'Salvando…' : 'Salvar preferências'}</Button></div>

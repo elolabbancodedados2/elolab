@@ -95,10 +95,11 @@ export function LancarResultado({ exame, onFechar, aoSalvar }: Props) {
         if (!EXTENSOES_PERMITIDAS.has(extensaoOriginal) || (arquivo.type && !TIPOS_PERMITIDOS.has(arquivo.type))) {
           throw new Error('Use um arquivo PDF ou uma imagem JPG, PNG, WebP ou GIF.');
         }
-        // Caminho por clínica e paciente: é o que as políticas do bucket usam
-        // para não deixar uma clínica alcançar o anexo da outra.
+        // A policy do bucket valida o paciente no segmento após `exames/`
+        // contra a clínica da sessão. Manter esse formato é necessário para
+        // que upload, download e exportação usem o mesmo escopo tenant.
         const extensao = extensaoOriginal;
-        const caminho = `${profile.clinica_id}/${exame.paciente_id}/${exame.id}-${Date.now()}.${extensao}`;
+        const caminho = `exames/${exame.paciente_id}/${exame.id}-${Date.now()}.${extensao}`;
 
         const { error: erroUpload } = await supabase.storage
           .from('medical-attachments')

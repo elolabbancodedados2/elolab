@@ -92,18 +92,18 @@ export function DoctorDashboardIdentityState({
   if (medicoId) return null;
 
   return (
-    <Card role="status" className="border-[#d6e6f2] bg-white p-6 shadow-none sm:p-8">
+    <Card role="status" className="border-border bg-card p-6 shadow-none sm:p-8">
       <div className="mx-auto flex max-w-xl flex-col items-center gap-4 text-center">
-        <div className="grid h-12 w-12 place-items-center rounded-2xl bg-[#eaf4fb] text-[#0059cc]">
+        <div className="grid h-12 w-12 place-items-center rounded-2xl bg-primary/10 text-primary">
           <Stethoscope className="h-6 w-6" aria-hidden="true" />
         </div>
         <div className="space-y-2">
-          <h2 className="text-lg font-semibold text-[#0c1f54]">Cadastro profissional não vinculado</h2>
-          <p className="text-sm leading-relaxed text-[#52647b]">
+          <h2 className="text-lg font-semibold text-card-foreground">Cadastro profissional não vinculado</h2>
+          <p className="text-sm leading-relaxed text-muted-foreground">
             Não encontramos um cadastro médico associado a esta conta. Peça ao administrador da clínica para concluir o vínculo e depois tente novamente.
           </p>
         </div>
-        <Button variant="outline" onClick={onRetry} className="rounded-xl border-[#d6e6f2] text-[#0059cc]">
+        <Button variant="outline" onClick={onRetry} className="rounded-xl border-border text-primary">
           Tentar novamente
         </Button>
       </div>
@@ -270,430 +270,254 @@ export function DoctorDashboard({ userName }: DoctorDashboardProps) {
 
   if (agendamentosQuery.isLoading || contagensQuery.isLoading) return <DashboardSkeleton />;
 
+  const consultasOrdenadas = [...stats.consultasHoje].sort((a: any, b: any) => (a.hora_inicio || '').localeCompare(b.hora_inicio || ''));
+  const linkAtendimento = (ag: any) => `/prontuarios?paciente=${encodeURIComponent(ag.paciente_id)}&agendamento=${encodeURIComponent(ag.id)}`;
+  const iniciais = (nome?: string | null) => (nome || 'P').split(' ').filter(Boolean).map(p => p[0]).slice(0, 2).join('').toUpperCase();
+  const encerrado = (status: string) => ['finalizado', 'atendimento_finalizado', 'cancelado', 'faltou'].includes(status);
+  const proximoPaciente = stats.proximoPaciente as any;
+  const idadeProximo = proximoPaciente ? getAge(proximoPaciente.data_nascimento) : null;
+  const produtividade = [
+    { label: 'Atendimentos', value: stats.atendimentosMes, icon: UserCheck },
+    { label: 'Prontuários', value: stats.prontuariosMes, icon: FileText },
+    { label: 'Prescrições', value: stats.prescricoesMes, icon: Pill },
+    { label: 'Atestados', value: stats.atestadosMes, icon: ClipboardList },
+    { label: 'Exames solicitados', value: stats.examesMes, icon: TestTube },
+    { label: 'Encaminhamentos', value: stats.encaminhamentosMes, icon: Send },
+  ];
+  const maxProdutividade = Math.max(1, ...produtividade.map(item => item.value));
+
   return (
-    <div className="space-y-6 pb-10">
-      <motion.div variants={stagger} initial="hidden" animate="visible" className="space-y-6">
-        {/* ─── Welcome Hero (Doctor) ─── */}
-        <motion.div variants={fadeUp}>
-          <div className="relative overflow-hidden rounded-2xl border border-border/40 bg-card">
-            <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-info/5" />
-            <div className="absolute top-0 right-0 w-80 h-80 bg-primary/4 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3" />
-
-            <div className="relative p-6 md:p-8">
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-5">
-                <div className="flex items-center gap-4">
-                  <motion.div
-                    initial={{ scale: 0.8, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    transition={{ type: 'spring', stiffness: 200, damping: 15 }}
-                    className="relative"
-                  >
-                    <Avatar className="h-16 w-16 ring-2 ring-primary/20 shadow-lg">
-                      {currentMedico?.foto_url && <StorageAvatarImage bucket="patient-photos" path={currentMedico.foto_url} />}
-                      <AvatarFallback className="bg-gradient-to-br from-primary/15 to-primary/5 text-primary text-xl font-bold">
-                        {(currentMedico?.nome || 'DR').slice(0, 2).toUpperCase()}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="absolute -right-1 -bottom-1 h-5 w-5 rounded-full bg-success flex items-center justify-center shadow-md ring-2 ring-card">
-                      <Stethoscope className="h-2.5 w-2.5 text-success-foreground" />
-                    </div>
-                  </motion.div>
-                  <div>
-                    <h1 className="text-2xl md:text-3xl font-bold font-display tracking-tight">
-                      {saudacao},{' '}
-                      <span className="bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
-                        Dr(a). {firstName}
-                      </span>
-                    </h1>
-                    <div className="flex items-center gap-3 mt-1 flex-wrap">
-                      <p className="text-sm text-muted-foreground capitalize">{hojeFormatado}</p>
-                      <span className="text-border">•</span>
-                      <LiveClockComponent />
-                      {currentMedico?.especialidade && (
-                        <>
-                          <span className="text-border">•</span>
-                          <Badge variant="outline" className="text-[10px] gap-1 border-primary/20">
-                            <BadgeCheck className="h-3 w-3" />
-                            {currentMedico.especialidade}
-                          </Badge>
-                        </>
-                      )}
-                    </div>
-                    {currentMedico?.crm && (
-                      <p className="text-[11px] text-muted-foreground mt-0.5">
-                        CRM {currentMedico.crm}/{currentMedico.crm_uf || 'SP'}
-                        {currentMedico.rqe ? ` · RQE ${currentMedico.rqe}` : ''}
-                      </p>
-                    )}
-                  </div>
-                </div>
-                <div className="flex flex-wrap gap-2.5">
-                  <Button asChild size="default" className="shadow-lg shadow-primary/20 gap-2 rounded-full">
-                    <Link to="/prontuarios"><FileText className="h-4 w-4" />Novo Prontuário</Link>
-                  </Button>
-                  <Button variant="outline" size="default" asChild className="gap-2 rounded-full">
-                    <Link to="/agenda"><Calendar className="h-4 w-4" />Minha Agenda</Link>
-                  </Button>
-                </div>
-              </div>
-
-              {/* Mini Stats Strip */}
-              <motion.div variants={fadeUp} className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-6 pt-6 border-t border-border/20">
-                {[
-                  { label: 'Consultas Hoje', value: stats.totalHoje, icon: Calendar, color: 'text-primary', bg: 'bg-primary/8' },
-                  { label: 'Em Atendimento', value: stats.emAtendimento, icon: Activity, color: stats.emAtendimento > 0 ? 'text-primary' : 'text-muted-foreground', bg: stats.emAtendimento > 0 ? 'bg-primary/8' : 'bg-muted' },
-                  { label: 'Finalizados', value: stats.finalizadas, icon: CheckCircle2, color: 'text-success', bg: 'bg-success/8' },
-                  { label: 'Amanhã', value: stats.consultasAmanha, icon: Clock, color: 'text-info', bg: 'bg-info/8' },
-                ].map((s, i) => (
-                  <motion.div key={i} initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
-                    transition={{ delay: 0.2 + i * 0.05 }}
-                    className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-accent/30 transition-colors"
-                  >
-                    <div className={cn('h-9 w-9 rounded-lg flex items-center justify-center shrink-0', s.bg)}>
-                      <s.icon className={cn('h-4 w-4', s.color)} />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">{s.label}</p>
-                      <p className="text-sm font-bold tabular-nums">{s.value}</p>
-                    </div>
-                  </motion.div>
-                ))}
-              </motion.div>
+    <div className="space-y-5 pb-10">
+      <motion.div variants={stagger} initial="hidden" animate="visible" className="space-y-5">
+        {/* ─── Cabeçalho ─── */}
+        <motion.header variants={fadeUp} className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+          <div className="flex items-center gap-4">
+            <Avatar className="h-14 w-14 shadow-glow ring-4 ring-card">
+              {currentMedico?.foto_url && <StorageAvatarImage bucket="patient-photos" path={currentMedico.foto_url} />}
+              <AvatarFallback className="bg-[image:var(--gradient-primary)] text-lg font-extrabold text-white">
+                {(currentMedico?.nome || 'DR').slice(0, 2).toUpperCase()}
+              </AvatarFallback>
+            </Avatar>
+            <div className="min-w-0">
+              <p className="flex flex-wrap items-center gap-x-2 text-xs font-semibold text-muted-foreground first-letter:uppercase">
+                {hojeFormatado}<span className="opacity-40">·</span><LiveClockComponent />
+                {currentMedico?.especialidade && <><span className="opacity-40">·</span><span className="inline-flex items-center gap-1 normal-case text-primary"><BadgeCheck className="h-3 w-3" />{currentMedico.especialidade}</span></>}
+              </p>
+              <h1 className="text-[26px] font-light leading-tight tracking-[-0.03em] md:text-[32px]">
+                {saudacao}, <span className="font-extrabold">Dr(a). {firstName}</span>
+              </h1>
+              {currentMedico?.crm && (
+                <p className="text-[11px] text-muted-foreground">
+                  CRM {currentMedico.crm}/{currentMedico.crm_uf || 'SP'}{currentMedico.rqe ? ` · RQE ${currentMedico.rqe}` : ''}
+                </p>
+              )}
             </div>
           </div>
-        </motion.div>
-
-        {/* ─── Next Patient Alert ─── */}
-        {stats.proximaConsulta && stats.proximoPaciente && (
-          <motion.div variants={fadeUp}>
-            <Card className="border-primary/20 bg-gradient-to-r from-primary/5 to-transparent overflow-hidden">
-              <CardContent className="p-4 md:p-5">
-                <div className="flex items-center justify-between gap-4">
-                  <div className="flex items-center gap-4">
-                    <div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center ring-1 ring-primary/20">
-                      <Timer className="h-6 w-6 text-primary" />
-                    </div>
-                    <div>
-                      <p className="text-[11px] font-semibold text-primary uppercase tracking-widest">Próximo Paciente</p>
-                      <p className="font-bold text-lg">{stats.proximoPaciente.nome}</p>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <span className="text-sm text-muted-foreground tabular-nums">
-                          {stats.proximaConsulta.hora_inicio?.slice(0, 5)}
-                        </span>
-                        {stats.proximoPaciente.data_nascimento && (
-                          <>
-                            <span className="text-border">•</span>
-                            <span className="text-sm text-muted-foreground">
-                              {getAge(stats.proximoPaciente.data_nascimento)} anos
-                            </span>
-                          </>
-                        )}
-                        {stats.proximoPaciente.telefone && (
-                          <>
-                            <span className="text-border">•</span>
-                            <span className="text-sm text-muted-foreground flex items-center gap-1">
-                              <Phone className="h-3 w-3" />{stats.proximoPaciente.telefone}
-                            </span>
-                          </>
-                        )}
-                      </div>
-                      {stats.proximoPaciente.alergias && stats.proximoPaciente.alergias.length > 0 && (
-                        <div className="flex items-center gap-1 mt-1">
-                          <AlertTriangle className="h-3 w-3 text-destructive" />
-                          <span className="text-[11px] text-destructive font-medium">
-                            Alergias: {stats.proximoPaciente.alergias.join(', ')}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  <Button asChild className="rounded-full gap-2 shrink-0">
-                    <Link to={`/prontuarios?paciente=${encodeURIComponent(stats.proximaConsulta.paciente_id)}&agendamento=${encodeURIComponent(stats.proximaConsulta.id)}`}>
-                      <FileText className="h-4 w-4" />Atender
-                    </Link>
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
-        )}
-
-        {/* ─── KPI Cards ─── */}
-        <motion.div variants={stagger} className="grid gap-4 grid-cols-2 lg:grid-cols-4">
-          {[
-            { title: 'Meus Pacientes', value: stats.meusPacientes, icon: Users, color: 'primary' as const, href: null, subtitle: 'Vinculados à sua agenda' },
-            { title: 'Atendimentos/Mês', value: stats.atendimentosMes, icon: UserCheck, color: 'success' as const, href: '/agenda', subtitle: 'Consultas finalizadas' },
-            { title: 'Prontuários/Mês', value: stats.prontuariosMes, icon: FileText, color: 'info' as const, href: '/prontuarios', subtitle: 'Registros clínicos' },
-            { title: 'Prescrições/Mês', value: stats.prescricoesMes, icon: Pill, color: 'warning' as const, href: '/prescricoes', subtitle: 'Receitas emitidas' },
-          ].map((kpi, i) => {
-            const card = (
-              <Card className={cn('group relative overflow-hidden border-border/40 transition-all duration-300', kpi.href && 'cursor-pointer hover:-translate-y-0.5 hover:shadow-lg')}>
-                <CardContent className="pt-5 pb-4">
-                  <div className="mb-2 flex items-start justify-between">
-                    <div className="min-w-0 flex-1 space-y-1">
-                      <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">{kpi.title}</p>
-                      <p className="font-display text-2xl font-bold tracking-tight tabular-nums">{kpi.value}</p>
-                      <p className="text-[11px] text-muted-foreground">{kpi.subtitle}</p>
-                    </div>
-                    <div className={cn('flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ring-1 transition-transform group-hover:scale-110',
-                      `bg-${kpi.color}/8 ring-${kpi.color}/15`
-                    )}>
-                      <kpi.icon className={cn('h-5 w-5', `text-${kpi.color}`)} />
-                    </div>
-                  </div>
-                </CardContent>
-                {kpi.href && (
-                  <div className="absolute bottom-3 right-3 opacity-0 transition-all group-hover:opacity-100">
-                    <ArrowUpRight className={cn('h-4 w-4', `text-${kpi.color}`)} />
-                  </div>
-                )}
-              </Card>
-            );
-            return (
-              <motion.div key={kpi.title} variants={fadeUp} custom={i}>
-                <DoctorDashboardKpiLink href={kpi.href}>{card}</DoctorDashboardKpiLink>
-              </motion.div>
-            );
-          })}
-        </motion.div>
-
-        {/* ─── Main Grid: Today's Schedule + Quick Actions + Stats ─── */}
-        <motion.div variants={fadeUp} className="grid gap-6 lg:grid-cols-12">
-          {/* Today's Schedule (7/12) */}
-          <Card className="lg:col-span-7 border-border/40">
-            <CardHeader className="pb-2">
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <Calendar className="h-4 w-4 text-primary" />
-                    Agenda de Hoje
-                  </CardTitle>
-                  <CardDescription>
-                    {stats.totalHoje} consulta{stats.totalHoje !== 1 ? 's' : ''} ativa{stats.totalHoje !== 1 ? 's' : ''}
-                    {stats.canceladasHoje > 0 && ` · ${stats.canceladasHoje} cancelada${stats.canceladasHoje !== 1 ? 's' : ''}`}
-                  </CardDescription>
-                </div>
-                <Button variant="ghost" size="sm" asChild className="text-xs gap-1">
-                  <Link to="/agenda">Ver completa <ArrowRight className="h-3 w-3" /></Link>
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {stats.consultasHoje.length > 0 ? (
-                <div className="space-y-2">
-                  {stats.consultasHoje
-                    .sort((a, b) => a.hora_inicio.localeCompare(b.hora_inicio))
-                    .map((ag, idx) => {
-                      const paciente = (ag as any).pacientes;
-                      const age = paciente ? getAge(paciente.data_nascimento) : null;
-                      const hasAlergias = paciente?.alergias && paciente.alergias.length > 0;
-                      const isCurrent = ag.status === 'em_atendimento';
-
-                      return (
-                        <motion.div
-                          key={ag.id}
-                          initial={{ opacity: 0, x: -10 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          transition={{ delay: idx * 0.03 }}
-                          className={cn(
-                            'flex items-center justify-between rounded-xl border p-3.5 transition-all group',
-                            isCurrent
-                              ? 'border-primary/30 bg-primary/5 shadow-sm'
-                              : 'border-border/40 hover:bg-accent/30'
-                          )}
-                        >
-                          <div className="flex items-center gap-3 flex-1 min-w-0">
-                            <div className={cn(
-                              'h-11 w-11 rounded-lg flex flex-col items-center justify-center text-xs font-bold tabular-nums shrink-0',
-                              isCurrent ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground',
-                            )}>
-                              <span className="text-sm leading-none">{ag.hora_inicio?.slice(0, 5)}</span>
-                              {ag.hora_fim && <span className="text-[9px] opacity-60">{ag.hora_fim?.slice(0, 5)}</span>}
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center gap-2">
-                                <p className="font-medium text-sm truncate">
-                                  {paciente?.nome || 'Paciente não encontrado'}
-                                </p>
-                                {hasAlergias && (
-                                  <AlertTriangle className="h-3.5 w-3.5 text-destructive shrink-0" />
-                                )}
-                              </div>
-                              <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-                                {age !== null && <span>{age} anos</span>}
-                                {paciente?.sexo && (
-                                  <>
-                                    <span className="text-border">•</span>
-                                    <span>{paciente.sexo === 'M' ? 'Masculino' : paciente.sexo === 'F' ? 'Feminino' : paciente.sexo}</span>
-                                  </>
-                                )}
-                                {ag.tipo && (
-                                  <>
-                                    <span className="text-border">•</span>
-                                    <span className="capitalize">{ag.tipo}</span>
-                                  </>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2 shrink-0">
-                            <Badge variant="outline" className={cn('text-[10px] capitalize', statusColor[ag.status] || '')}>
-                              {statusLabel[ag.status] || ag.status}
-                            </Badge>
-                            {!['finalizado', 'atendimento_finalizado', 'cancelado', 'faltou'].includes(ag.status) && ag.paciente_id && (
-                               <Button variant="ghost" size="icon" aria-label="Abrir prontuário" className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity" asChild>
-                                <Link to={`/prontuarios?paciente=${encodeURIComponent(ag.paciente_id)}&agendamento=${encodeURIComponent(ag.id)}`}>
-                                  <FileText className="h-4 w-4" />
-                                </Link>
-                              </Button>
-                            )}
-                          </div>
-                        </motion.div>
-                      );
-                    })}
-                </div>
-              ) : (
-                <div className="flex flex-col items-center justify-center py-12 text-center">
-                  <Calendar className="h-12 w-12 text-muted-foreground/20 mb-3" />
-                  <p className="text-sm text-muted-foreground">Sem consultas para hoje</p>
-                  <p className="text-[11px] text-muted-foreground mt-1">
-                    {stats.consultasAmanha > 0 ? `${stats.consultasAmanha} consulta(s) amanhã` : 'Agenda livre'}
-                  </p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Right Column: Quick Actions + Clinical Stats (5/12) */}
-          <div className="lg:col-span-5 space-y-6">
-            {/* Quick Clinical Actions */}
-            <Card className="border-border/40">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <Zap className="h-4 w-4 text-warning" />
-                  Ações Rápidas
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-3 gap-2">
-                  {[
-                    { icon: FileText, label: 'Prontuário', href: '/prontuarios', color: 'bg-primary/10 text-primary' },
-                    { icon: Pill, label: 'Prescrição', href: '/prescricoes', color: 'bg-warning/10 text-warning' },
-                    { icon: ClipboardList, label: 'Atestado', href: '/atestados', color: 'bg-info/10 text-info' },
-                    { icon: TestTube, label: 'Exames', href: '/exames', color: 'bg-destructive/10 text-destructive' },
-                    { icon: Send, label: 'Encaminhar', href: '/encaminhamentos', color: 'bg-success/10 text-success' },
-                    { icon: Eye, label: 'Fila', href: '/fila', color: 'bg-accent text-accent-foreground' },
-                  ].map((action, i) => (
-                    <Link key={i} to={action.href}
-                      className="group flex flex-col items-center gap-2 p-3 rounded-xl hover:bg-accent/50 transition-all"
-                    >
-                      <div className={cn('h-11 w-11 rounded-xl flex items-center justify-center transition-transform group-hover:scale-110 group-hover:shadow-md', action.color)}>
-                        <action.icon className="h-5 w-5" />
-                      </div>
-                      <span className="text-[11px] font-medium text-muted-foreground group-hover:text-foreground transition-colors text-center leading-tight">
-                        {action.label}
-                      </span>
-                    </Link>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Clinical Statistics */}
-            <Card className="border-border/40">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <Target className="h-4 w-4 text-primary" />
-                  Produtividade do Mês
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-1">
-                {[
-                  { label: 'Atendimentos', value: stats.atendimentosMes, icon: UserCheck, color: 'text-success', bg: 'bg-success/8' },
-                  { label: 'Prontuários', value: stats.prontuariosMes, icon: FileText, color: 'text-info', bg: 'bg-info/8' },
-                  { label: 'Prescrições', value: stats.prescricoesMes, icon: Pill, color: 'text-warning', bg: 'bg-warning/8' },
-                  { label: 'Atestados', value: stats.atestadosMes, icon: ClipboardList, color: 'text-primary', bg: 'bg-primary/8' },
-                  { label: 'Exames Solicitados', value: stats.examesMes, icon: TestTube, color: 'text-destructive', bg: 'bg-destructive/8' },
-                  { label: 'Encaminhamentos', value: stats.encaminhamentosMes, icon: Send, color: 'text-success', bg: 'bg-success/8' },
-                ].map((stat, i) => (
-                  <div key={i} className="flex items-center justify-between py-2.5 border-b border-border/30 last:border-0">
-                    <div className="flex items-center gap-2.5">
-                      <div className={cn('h-7 w-7 rounded-lg flex items-center justify-center', stat.bg)}>
-                        <stat.icon className={cn('h-3.5 w-3.5', stat.color)} />
-                      </div>
-                      <span className="text-sm text-muted-foreground">{stat.label}</span>
-                    </div>
-                    <span className="text-sm font-bold tabular-nums">{stat.value}</span>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-
-            {/* Doctor Info Card */}
-            {currentMedico && (
-              <Card className="border-border/40">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <BadgeCheck className="h-4 w-4 text-primary" />
-                    Dados Profissionais
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2.5 text-sm">
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground">CRM</span>
-                    <Badge variant="outline">{currentMedico.crm}/{currentMedico.crm_uf || 'SP'}</Badge>
-                  </div>
-                  {currentMedico.especialidade && (
-                    <div className="flex items-center justify-between">
-                      <span className="text-muted-foreground">Especialidade</span>
-                      <span className="font-medium">{currentMedico.especialidade}</span>
-                    </div>
-                  )}
-                  {currentMedico.rqe && (
-                    <div className="flex items-center justify-between">
-                      <span className="text-muted-foreground">RQE</span>
-                      <span className="font-medium">{currentMedico.rqe}</span>
-                    </div>
-                  )}
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground">Intervalo Consulta</span>
-                    <Badge variant="secondary" className="tabular-nums">{currentMedico.intervalo_consulta ?? 30} min</Badge>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
+          <div className="flex flex-wrap gap-2.5">
+            <Button asChild><Link to="/prontuarios"><FileText className="h-4 w-4" />Novo prontuário</Link></Button>
+            <Button variant="outline" asChild><Link to="/agenda"><Calendar className="h-4 w-4" />Minha agenda</Link></Button>
           </div>
-        </motion.div>
+        </motion.header>
 
-        {/* ─── Secondary KPIs ─── */}
-        <motion.div variants={stagger} className="grid gap-4 grid-cols-2 lg:grid-cols-4">
-          {[
-            { title: 'Atestados Emitidos', value: stats.atestadosMes, icon: ClipboardList, color: 'info' as const, href: '/atestados' },
-            { title: 'Exames Solicitados', value: stats.examesMes, icon: TestTube, color: 'warning' as const, href: '/exames' },
-            { title: 'Encaminhamentos', value: stats.encaminhamentosMes, icon: Send, color: 'success' as const, href: '/encaminhamentos' },
-            { title: 'Consultas Amanhã', value: stats.consultasAmanha, icon: Calendar, color: 'primary' as const, href: '/agenda' },
-          ].map((kpi, i) => (
-            <motion.div key={i} variants={fadeUp} custom={i}>
-              <Link to={kpi.href}>
-                <Card className="group relative overflow-hidden hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300 cursor-pointer border-border/40">
-                  <CardContent className="pt-5 pb-4">
-                    <div className="flex items-start justify-between">
-                      <div className="space-y-1">
-                        <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest">{kpi.title}</p>
-                        <p className="text-2xl font-bold tabular-nums">{kpi.value}</p>
+        <div className="grid gap-5 xl:grid-cols-[300px_minmax(0,1fr)]">
+          {/* ─── Coluna de pacientes do dia (estilo trilho + lista) ─── */}
+          <motion.aside variants={fadeUp} aria-labelledby="pacientes-hoje-title" className="rounded-[24px] border border-border/60 bg-card p-4 shadow-xs xl:sticky xl:top-24 xl:self-start">
+            <div className="mb-3 flex items-center justify-between px-1">
+              <h2 id="pacientes-hoje-title" className="text-lg font-extrabold tracking-tight">Pacientes de hoje</h2>
+              <span className="rounded-full bg-accent px-2.5 py-0.5 text-xs font-extrabold text-primary">{stats.totalHoje}</span>
+            </div>
+            {consultasOrdenadas.length > 0 ? (
+              <ul className="space-y-1">
+                {consultasOrdenadas.map((ag: any) => {
+                  const paciente = ag.pacientes;
+                  const ativo = ag.status === 'em_atendimento' || ag.id === stats.proximaConsulta?.id;
+                  const alergico = paciente?.alergias && paciente.alergias.length > 0;
+                  const conteudo = (
+                    <>
+                      <span className={cn(
+                        'flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl text-xs font-extrabold',
+                        ativo ? 'bg-[image:var(--gradient-primary)] text-white shadow-glow' : 'bg-accent text-primary',
+                      )}>{iniciais(paciente?.nome)}</span>
+                      <span className="min-w-0 flex-1">
+                        <span className="flex items-center gap-1.5">
+                          <span className={cn('truncate text-sm font-bold', encerrado(ag.status) && 'text-muted-foreground line-through decoration-1')}>{paciente?.nome || 'Paciente não encontrado'}</span>
+                          {alergico && <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-destructive" aria-label="Paciente com alergias" />}
+                        </span>
+                        <span className="block truncate text-[11px] text-muted-foreground">{statusLabel[ag.status] || ag.status}{ag.tipo ? ` · ${ag.tipo}` : ''}</span>
+                      </span>
+                      <span className="text-xs font-extrabold tabular-nums text-muted-foreground">{ag.hora_inicio?.slice(0, 5)}</span>
+                    </>
+                  );
+                  const classe = cn('flex items-center gap-3 rounded-2xl p-2 transition', ativo ? 'bg-accent' : 'hover:bg-muted/60');
+                  return (
+                    <li key={ag.id}>
+                      {!encerrado(ag.status) && ag.paciente_id
+                        ? <Link to={linkAtendimento(ag)} className={classe}>{conteudo}</Link>
+                        : <div className={classe}>{conteudo}</div>}
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : (
+              <div className="flex flex-col items-center rounded-2xl border border-dashed border-border bg-muted/40 px-4 py-8 text-center">
+                <Calendar className="mb-2 h-7 w-7 text-primary" />
+                <p className="text-sm font-bold">Sem consultas para hoje</p>
+                <p className="mt-1 text-xs text-muted-foreground">Use o tempo livre para revisar laudos e retornos pendentes.</p>
+              </div>
+            )}
+            <Link to="/agenda" className="mt-3 flex items-center justify-between rounded-2xl bg-muted/60 px-3 py-2.5 text-xs font-bold transition hover:bg-accent">
+              <span className="flex items-center gap-2"><Clock className="h-3.5 w-3.5 text-primary" />Amanhã: {stats.consultasAmanha} consulta{stats.consultasAmanha !== 1 ? 's' : ''}</span>
+              <ArrowRight className="h-3.5 w-3.5 text-primary" />
+            </Link>
+          </motion.aside>
+
+          <div className="min-w-0 space-y-5">
+            {/* ─── Destaque + indicadores ─── */}
+            <motion.div variants={fadeUp} className="grid gap-4 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1fr)] lg:grid-rows-[auto_auto]">
+              <section aria-labelledby="proximo-paciente-title" className="relative overflow-hidden rounded-[24px] bg-[image:var(--gradient-hero)] p-6 text-white shadow-glow lg:row-span-2">
+                <div aria-hidden="true" className="pointer-events-none absolute -bottom-20 -right-16 h-60 w-60 rounded-full bg-highlight/40 blur-3xl" />
+                <div className="relative flex h-full flex-col">
+                  <h2 id="proximo-paciente-title" className="text-xs font-bold uppercase tracking-[0.12em] text-white/80">Próximo paciente</h2>
+                  {stats.proximaConsulta && proximoPaciente ? (
+                    <>
+                      <p className="mt-3 text-[52px] font-light leading-none tracking-[-0.04em] tabular-nums">{stats.proximaConsulta.hora_inicio?.slice(0, 5)}</p>
+                      <div className="mt-4 flex items-center gap-3">
+                        <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white text-sm font-extrabold text-primary">{iniciais(proximoPaciente.nome)}</span>
+                        <span className="min-w-0">
+                          <span className="block truncate text-lg font-bold">{proximoPaciente.nome}{idadeProximo !== null ? `, ${idadeProximo}` : ''}</span>
+                          <span className="flex items-center gap-1 truncate text-xs text-white/75">
+                            {stats.proximaConsulta.tipo || 'Consulta'}
+                            {proximoPaciente.telefone && <><span className="opacity-50">·</span><Phone className="h-3 w-3" />{proximoPaciente.telefone}</>}
+                          </span>
+                        </span>
                       </div>
-                      <div className={cn('h-10 w-10 rounded-xl flex items-center justify-center ring-1 shrink-0 group-hover:scale-110 transition-transform',
-                        `bg-${kpi.color}/8 ring-${kpi.color}/15`
-                      )}>
-                        <kpi.icon className={cn('h-4.5 w-4.5', `text-${kpi.color}`)} />
+                      <div className="mt-4 flex flex-wrap gap-1.5">
+                        <span className="rounded-full border border-white/20 bg-white/10 px-2.5 py-1 text-[11px] font-semibold">{statusLabel[stats.proximaConsulta.status] || stats.proximaConsulta.status}</span>
+                        {proximoPaciente.alergias?.length > 0 && (
+                          <span className="inline-flex items-center gap-1 rounded-full border border-red-200/40 bg-red-500/25 px-2.5 py-1 text-[11px] font-bold">
+                            <AlertTriangle className="h-3 w-3" />Alergias: {proximoPaciente.alergias.join(', ')}
+                          </span>
+                        )}
+                      </div>
+                      <div className="mt-auto flex flex-wrap gap-2 pt-6">
+                        <Link to={linkAtendimento(stats.proximaConsulta)} className="inline-flex min-h-10 items-center gap-2 rounded-full bg-white px-4 text-sm font-bold text-primary transition hover:bg-white/90">
+                          Iniciar atendimento <ArrowRight className="h-4 w-4" />
+                        </Link>
+                        <Link to="/fila" className="inline-flex min-h-10 items-center gap-2 rounded-full border border-white/30 px-4 text-sm font-semibold transition hover:bg-white/10">Ver fila</Link>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="mt-4">
+                      <CheckCircle2 className="h-8 w-8 text-highlight" />
+                      <p className="mt-3 text-xl font-bold">Nenhum paciente pendente</p>
+                      <p className="mt-1 max-w-xs text-sm text-white/75">{stats.consultasAmanha > 0 ? `Amanhã você tem ${stats.consultasAmanha} consulta(s) agendada(s).` : 'Sua agenda está livre por enquanto.'}</p>
+                    </div>
+                  )}
+                </div>
+              </section>
+              {[
+                { label: 'Consultas hoje', value: stats.totalHoje, note: stats.canceladasHoje > 0 ? `${stats.canceladasHoje} cancelada(s)` : `${stats.confirmadas} confirmada(s)`, tone: 'border border-border/60 bg-card' },
+                { label: 'Em atendimento', value: stats.emAtendimento, note: 'agora no consultório', tone: 'bg-highlight text-highlight-foreground' },
+                { label: 'Finalizados', value: stats.finalizadas, note: stats.totalHoje > 0 ? `${Math.round(stats.finalizadas / stats.totalHoje * 100)}% do dia` : 'sem atendimentos', tone: 'bg-foreground text-background' },
+                { label: 'Amanhã', value: stats.consultasAmanha, note: 'consultas agendadas', tone: 'bg-accent text-accent-foreground' },
+              ].map(kpi => (
+                <div key={kpi.label} className={cn('flex min-w-0 flex-col rounded-[22px] p-5 shadow-xs', kpi.tone)}>
+                  <p className="text-xs font-semibold opacity-75">{kpi.label}</p>
+                  <p className="mt-3 text-[36px] font-light leading-none tracking-[-0.03em] tabular-nums">{kpi.value}</p>
+                  <p className="mt-auto pt-3 text-xs opacity-75">{kpi.note}</p>
+                </div>
+              ))}
+            </motion.div>
+
+            {/* ─── Indicadores do mês ─── */}
+            <div className="grid grid-cols-2 gap-4 min-[1360px]:grid-cols-4">
+              {[
+                { title: 'Meus Pacientes', value: stats.meusPacientes, icon: Users, href: null, subtitle: 'Vinculados à sua agenda' },
+                { title: 'Atendimentos/Mês', value: stats.atendimentosMes, icon: UserCheck, href: '/agenda', subtitle: 'Consultas finalizadas' },
+                { title: 'Prontuários/Mês', value: stats.prontuariosMes, icon: FileText, href: '/prontuarios', subtitle: 'Registros clínicos' },
+                { title: 'Prescrições/Mês', value: stats.prescricoesMes, icon: Pill, href: '/prescricoes', subtitle: 'Receitas emitidas' },
+              ].map((kpi) => (
+                <div key={kpi.title}>
+                  <DoctorDashboardKpiLink href={kpi.href}>
+                    <Card className={cn('group relative h-full overflow-hidden rounded-[22px]', kpi.href && 'cursor-pointer transition hover:-translate-y-0.5 hover:shadow-md')}>
+                      <CardContent className="p-5">
+                        <div className="flex items-start justify-between gap-3">
+                          <p className="min-w-0 text-xs font-semibold leading-tight text-muted-foreground">{kpi.title}</p>
+                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-accent text-primary"><kpi.icon className="h-4 w-4" /></span>
+                        </div>
+                        <p className="mt-2 text-[30px] font-light leading-none tracking-[-0.03em] tabular-nums">{kpi.value}</p>
+                        <p className="mt-2 text-[11px] text-muted-foreground">{kpi.subtitle}</p>
+                      </CardContent>
+                      {kpi.href && <ArrowUpRight className="absolute bottom-4 right-4 h-4 w-4 text-primary opacity-0 transition group-hover:opacity-100" />}
+                    </Card>
+                  </DoctorDashboardKpiLink>
+                </div>
+              ))}
+            </div>
+
+            <motion.div variants={fadeUp} className="grid gap-5 lg:grid-cols-2">
+              {/* ─── Ações clínicas ─── */}
+              <Card className="rounded-[22px]">
+                <CardHeader className="pb-3"><CardTitle className="text-base">Ações rápidas</CardTitle><CardDescription>Documentos e pedidos mais usados no consultório</CardDescription></CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-3 gap-2.5">
+                    {[
+                      { icon: FileText, label: 'Prontuário', href: '/prontuarios', tone: 'bg-[image:var(--gradient-primary)] text-white shadow-glow' },
+                      { icon: Pill, label: 'Prescrição', href: '/prescricoes', tone: 'bg-highlight text-highlight-foreground' },
+                      { icon: ClipboardList, label: 'Atestado', href: '/atestados', tone: 'bg-foreground text-background' },
+                      { icon: TestTube, label: 'Exames', href: '/exames', tone: 'bg-accent text-accent-foreground' },
+                      { icon: Send, label: 'Encaminhar', href: '/encaminhamentos', tone: 'bg-accent text-accent-foreground' },
+                      { icon: Eye, label: 'Fila', href: '/fila', tone: 'bg-accent text-accent-foreground' },
+                    ].map(action => (
+                      <Link key={action.label} to={action.href} className={cn('flex min-h-[84px] flex-col justify-between rounded-2xl p-3 transition hover:-translate-y-0.5 hover:shadow-md', action.tone)}>
+                        <action.icon className="h-5 w-5" />
+                        <span className="text-xs font-bold">{action.label}</span>
+                      </Link>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* ─── Produtividade ─── */}
+              <Card className="rounded-[22px]">
+                <CardHeader className="pb-3"><CardTitle className="text-base">Produtividade do mês</CardTitle><CardDescription>O que você registrou desde o dia 1º</CardDescription></CardHeader>
+                <CardContent className="space-y-3">
+                  {produtividade.map(item => (
+                    <div key={item.label} className="space-y-1.5">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="flex items-center gap-2 text-muted-foreground"><item.icon className="h-3.5 w-3.5 text-primary" />{item.label}</span>
+                        <span className="font-extrabold tabular-nums">{item.value}</span>
+                      </div>
+                      <div className="h-2 overflow-hidden rounded-full bg-muted">
+                        <div className="h-full rounded-full bg-[image:var(--gradient-primary)]" style={{ width: `${Math.max(4, item.value / maxProdutividade * 100)}%` }} />
                       </div>
                     </div>
+                  ))}
+                </CardContent>
+              </Card>
+            </motion.div>
+
+            {currentMedico && (
+              <motion.div variants={fadeUp}>
+                <Card className="rounded-[22px]">
+                  <CardContent className="grid gap-3 p-5 sm:grid-cols-4">
+                    {[
+                      { label: 'CRM', value: `${currentMedico.crm}/${currentMedico.crm_uf || 'SP'}` },
+                      { label: 'Especialidade', value: currentMedico.especialidade || 'Não informada' },
+                      { label: 'RQE', value: currentMedico.rqe || '—' },
+                      { label: 'Intervalo de consulta', value: `${currentMedico.intervalo_consulta ?? 30} min` },
+                    ].map(item => (
+                      <div key={item.label} className="rounded-2xl bg-muted/60 px-4 py-3">
+                        <p className="text-[11px] font-semibold text-muted-foreground">{item.label}</p>
+                        <p className="truncate text-sm font-extrabold">{item.value}</p>
+                      </div>
+                    ))}
                   </CardContent>
                 </Card>
-              </Link>
-            </motion.div>
-          ))}
-        </motion.div>
+              </motion.div>
+            )}
+          </div>
+        </div>
       </motion.div>
     </div>
   );

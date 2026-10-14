@@ -27,12 +27,12 @@ Deno.serve(async req=>{
   if(platformAdminError||isPlatformAdmin!==true) return json({error:'Apenas administradores da plataforma'},403)
   const service=createClient(url,serviceKey)
 
-  const brevo=Deno.env.get('BREVO_API_KEY')||'', mp=Deno.env.get('MERCADOPAGO_ACCESS_TOKEN')||'', openai=Deno.env.get('OPENAI_API_KEY')||''
+  const brevo=Deno.env.get('BREVO_API_KEY')||'', mp=Deno.env.get('MERCADOPAGO_ACCESS_TOKEN')||'', nvidia=Deno.env.get('NVIDIA_API_KEY')||''
   const evoUrl=(Deno.env.get('EVOLUTION_API_URL')||'').replace(/\/+$/,''), evoKey=Deno.env.get('EVOLUTION_API_KEY')||''
   const checks=await Promise.all([
     external('email','E-mail (Brevo)','https://api.brevo.com/v3/account',{'api-key':brevo},!!brevo),
     external('pagamentos','Mercado Pago','https://api.mercadopago.com/users/me',{Authorization:`Bearer ${mp}`},!!mp),
-    external('ia','OpenAI','https://api.openai.com/v1/models',{Authorization:`Bearer ${openai}`},!!openai),
+    external('ia','NVIDIA','https://integrate.api.nvidia.com/v1/models',{Authorization:`Bearer ${nvidia}`},!!nvidia),
     external('whatsapp_api','Evolution API',`${evoUrl}/instance/fetchInstances`,{apikey:evoKey},!!evoUrl&&!!evoKey),
   ])
   const sessoesQuery=service.from('whatsapp_sessions').select('*',{count:'exact',head:true}).eq('status','connected')

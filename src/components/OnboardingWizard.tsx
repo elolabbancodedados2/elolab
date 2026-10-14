@@ -56,10 +56,14 @@ export function OnboardingWizard() {
 
   useEffect(() => {
     if (!profile) return;
+    let timer: number | undefined;
+    let cancelled = false;
 
     // Check localStorage first (instant, avoids flicker)
     const localKey = `onboarding_done_${profile.id}`;
     if (localStorage.getItem(localKey) === 'true') return;
+    const dismissedKey = `onboarding_dismissed_${profile.id}`;
+    if (sessionStorage.getItem(dismissedKey) === 'true') return;
 
     const checkOnboarding = async () => {
       const { data, error } = await supabase
@@ -77,11 +81,20 @@ export function OnboardingWizard() {
         // Already completed — cache locally so we never ask again
         localStorage.setItem(localKey, 'true');
       } else {
-        setTimeout(() => setOpen(true), 1200);
+        if (!cancelled) timer = window.setTimeout(() => setOpen(true), 1200);
       }
     };
-    checkOnboarding();
+    void checkOnboarding();
+    return () => {
+      cancelled = true;
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
   }, [profile]);
+
+  const handleDismiss = () => {
+    if (profile) sessionStorage.setItem(`onboarding_dismissed_${profile.id}`, 'true');
+    setOpen(false);
+  };
 
   const handleComplete = async () => {
     if (profile) {
@@ -114,7 +127,7 @@ export function OnboardingWizard() {
   const isLast = step === steps.length - 1;
 
   return (
-    <Dialog open={open} onOpenChange={(v) => { if (!v) handleComplete(); }}>
+    <Dialog open={open} onOpenChange={(v) => { if (!v) handleDismiss(); }}>
       <DialogContent className="sm:max-w-md p-0 overflow-hidden border-0">
         {/* Progress bar */}
         <div className="h-1 bg-muted">
@@ -189,10 +202,10 @@ export function OnboardingWizard() {
           {/* Skip */}
           {!isLast && (
             <button
-              onClick={handleComplete}
+              onClick={handleDismiss}
               className="mt-4 text-xs text-muted-foreground hover:text-foreground transition-colors"
             >
-              Pular tour
+              Fechar por agora
             </button>
           )}
         </div>

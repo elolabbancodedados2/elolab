@@ -9,6 +9,7 @@ import {
   PlugZap,
 } from 'lucide-react';
 import { FluxoDoAtendimento } from '@/components/configuracoes/FluxoDoAtendimento';
+import { formatDate } from '@/lib/formatters';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -48,6 +49,9 @@ import { IntegracoesClinica } from '@/components/configuracoes/IntegracoesClinic
 import { AgendamentoOnlineConfig } from '@/components/configuracoes/AgendamentoOnlineConfig';
 import { CONFIG_SEGURANCA_ATUALIZADA_EVENT, chaveDaClinica, lerConfigsClinicaComVersoes } from '@/lib/configClinica';
 
+export function textoAcaoPlano(planSlug: string | null) {
+  return planSlug === 'elolab-ultra' ? 'Gerenciar plano' : 'Fazer Upgrade';
+}
 
 
 
@@ -367,7 +371,7 @@ function SalasManager() {
 export default function Configuracoes() {
   const { theme, setTheme } = useTheme();
   const { user, profile } = useSupabaseAuth();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const { plan: assinaturaAtual, planName, planSlug, hasActivePlan, isExempt: isPlanExempt, isTrial, trialEnd, trialDaysLeft, isLoading: loadingPlanoAtual, isError: erroPlanoAtual, error: erroConsultaPlano, refetch: recarregarPlanoAtual } = useUserPlan();
   const { data: planos, isLoading: carregandoPlanos, isError: erroAoCarregarPlanos, error: erroListaPlanos } = usePlanos(!isPlanExempt);
@@ -405,7 +409,7 @@ export default function Configuracoes() {
       return data;
     },
     onSuccess: () => {
-      toast.success('Assinatura cancelada. Acesso mantido até o fim do período pago.');
+      toast.success('Plano cancelado. O acesso foi encerrado e nenhuma cobrança futura será feita.');
       setShowCancelPlan(false);
       queryClient.invalidateQueries({ queryKey: ['user_plan'] });
     },
@@ -429,13 +433,15 @@ export default function Configuracoes() {
   const [loadingConfig, setLoadingConfig] = useState(true);
   const [configLoadError, setConfigLoadError] = useState<unknown>(null);
   const configLoadGeneration = useRef(0);
+  const clinicId = profile?.clinica_id;
+  const currentUserId = user?.id;
   const [loadedConfigScope, setLoadedConfigScope] = useState<string | null>(null);
   const currentConfigScope = `${user?.id ?? ''}:${profile?.clinica_id ?? ''}`;
   const fimPeriodoPago = assinaturaAtual?.cobranca_modalidade === 'pre_pago' && assinaturaAtual.data_fim
     ? new Intl.DateTimeFormat('pt-BR', { timeZone: 'UTC' }).format(new Date(`${assinaturaAtual.data_fim.slice(0, 10)}T00:00:00Z`))
     : null;
   const resumoPeriodo = isTrial && trialEnd
-    ? `Teste até ${trialEnd.toLocaleDateString('pt-BR')}`
+    ? `Teste até ${formatDate(trialEnd, 'short')}`
     : fimPeriodoPago
       ? `Período pago até ${fimPeriodoPago}`
       : assinaturaAtual?.cobranca_modalidade === 'recorrente'
@@ -453,7 +459,7 @@ export default function Configuracoes() {
     setIsCloudSynced(false);
     setConfigLoadError(null);
     setLoadingConfig(true);
-    if (!user?.id || !profile?.clinica_id) {
+    if (!currentUserId || !clinicId) {
       setConfigLoadError(new Error('Sessão ou clínica não identificada.'));
       setLoadingConfig(false);
       return;
@@ -463,8 +469,8 @@ export default function Configuracoes() {
         // Chaves da clínica vêm da linha compartilhada da clínica; antes a
         // leitura era só das linhas do próprio usuário, e um segundo admin
         // abria esta tela vazia.
-        profile?.clinica_id
-          ? lerConfigsClinicaComVersoes(profile.clinica_id).then(
+        clinicId
+          ? lerConfigsClinicaComVersoes(clinicId).then(
               ({ configs, updatedAtByKey }) => ({
                 data: Object.entries(configs).map(([chave, valor]) => ({ chave, valor })),
                 versions: updatedAtByKey,
@@ -473,11 +479,11 @@ export default function Configuracoes() {
               (error) => ({ data: [] as Array<{ chave: string; valor: any }>, versions: {}, error }),
             )
           : Promise.resolve({ data: [] as Array<{ chave: string; valor: any }>, versions: {}, error: null }),
-        profile?.clinica_id
+        clinicId
           ? supabase
               .from('clinicas')
               .select('nome, cnpj')
-              .eq('id', profile.clinica_id)
+              .eq('id', clinicId)
               .maybeSingle()
           : Promise.resolve({ data: null, error: null }),
       ]);
@@ -486,7 +492,7 @@ export default function Configuracoes() {
       if (configResult.error) throw configResult.error;
       if (clinicaResult.error) throw clinicaResult.error;
 
-      setLoadedConfigScope(`${user!.id}:${profile!.clinica_id}`);
+      setLoadedConfigScope(`${currentUserId}:${clinicId}`);
       setConfigVersions(configResult.versions);
       const data = configResult.data;
       const clinicaBase = clinicaResult.data;
@@ -515,7 +521,7 @@ export default function Configuracoes() {
     } finally {
       if (generation === configLoadGeneration.current) setLoadingConfig(false);
     }
-  }, [profile?.clinica_id, user?.id]);
+  }, [clinicId, currentUserId]);
 
   useEffect(() => { loadConfigs(); }, [loadConfigs]);
 
@@ -630,8 +636,9 @@ export default function Configuracoes() {
 
   if (loadingConfig || (!configLoadError && loadedConfigScope !== currentConfigScope)) {
     return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      <div role="status" aria-live="polite" className="flex items-center justify-center gap-3 py-20 text-muted-foreground">
+        <Loader2 aria-hidden="true" className="h-8 w-8 animate-spin" />
+        <span>Carregando as configurações…</span>
       </div>
     );
   }
@@ -642,22 +649,31 @@ export default function Configuracoes() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col justify-between gap-4 rounded-2xl border border-[#dce9f6] bg-gradient-to-r from-[#f3f8ff] via-white to-[#f3fbfa] p-5 sm:flex-row sm:items-center sm:p-6">
+      <div className="flex flex-col justify-between gap-4 rounded-2xl border border-border bg-gradient-to-r from-background via-card to-accent p-5 sm:flex-row sm:items-center sm:p-6">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">Configurações</h1>
           <p className="mt-1 max-w-prose text-sm text-muted-foreground">Gerencie os dados e as preferências da sua clínica.</p>
         </div>
-        <Badge variant="outline" role="status" className={cn('w-fit gap-1.5 rounded-full bg-white/80', isCloudSynced ? 'border-[#cfe9dd] text-[#247453]' : 'border-[#dce9f6] text-[#52647a]')}>
+        <Badge variant="outline" role="status" className={cn('w-fit gap-1.5 rounded-full bg-card/80', isCloudSynced ? 'border-success/30 bg-success/10 text-success' : 'border-border text-muted-foreground')}>
           {isCloudSynced ? <Cloud className="h-3 w-3" /> : <CloudOff className="h-3 w-3" />}
           {isCloudSynced ? 'Sincronizado' : 'Local'}
         </Badge>
       </div>
 
-      <Tabs defaultValue={initialSettingsTab} className="space-y-5 sm:space-y-6">
-        <div className="-mx-4 overflow-x-auto overscroll-x-contain px-4 pb-2 sm:-mx-1 sm:px-1">
-          <TabsList aria-label="Seções das configurações" className="flex h-auto w-max min-w-full flex-nowrap justify-start gap-1 rounded-xl border border-[#dce9f6] bg-[#f3f8ff] p-1.5 xl:w-full xl:flex-wrap">
+      <Tabs
+        value={initialSettingsTab}
+        onValueChange={(value) => setSearchParams((previous) => {
+          const next = new URLSearchParams(previous);
+          if (value === 'clinica') next.delete('tab');
+          else next.set('tab', value);
+          return next;
+        }, { replace: true })}
+        className="space-y-5 sm:space-y-6"
+      >
+        <div className="-mx-4 overflow-x-auto overscroll-x-contain px-4 pb-2 sm:-mx-1 sm:px-1 lg:overflow-visible">
+          <TabsList aria-label="Seções das configurações" className="flex h-auto w-max min-w-full flex-nowrap justify-start gap-1 rounded-xl border border-border bg-muted/60 p-1.5 lg:w-full lg:flex-wrap">
             {tabItems.map(tab => (
-              <TabsTrigger key={tab.value} value={tab.value} title={tab.label} className="min-h-9 shrink-0 gap-2 rounded-lg px-3 text-xs data-[state=active]:bg-white data-[state=active]:text-[#1766a8] data-[state=active]:shadow-sm">
+              <TabsTrigger key={tab.value} value={tab.value} title={tab.label} className="min-h-9 shrink-0 gap-2 rounded-lg px-3 text-xs data-[state=active]:bg-card data-[state=active]:text-primary data-[state=active]:shadow-sm">
                 <tab.icon aria-hidden="true" className="h-4 w-4" />
                 <span>{tab.label}</span>
               </TabsTrigger>
@@ -804,7 +820,7 @@ export default function Configuracoes() {
                         <Separator />
                         <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-warning/30 bg-warning/5 p-4">
                           <div className="space-y-1">
-                            <p className="font-medium text-foreground">Teste sem cobranças até o fim do período</p>
+                            <p className="font-medium text-foreground">Teste sem cobrança até o fim do período</p>
                             <p className="text-sm text-muted-foreground">Cancele aqui antes da primeira cobrança. O cancelamento encerra o acesso ao plano imediatamente.</p>
                           </div>
                           <Button variant="destructive" className="gap-2" onClick={() => setShowCancelPlan(true)}>
@@ -819,10 +835,14 @@ export default function Configuracoes() {
                         <Separator />
 
                         <div className="space-y-4">
-                          <h4 className="font-semibold text-sm">Próxima Renovação</h4>
+                          <h4 className="font-semibold text-sm">
+                            {assinaturaAtual?.cobranca_modalidade === 'recorrente' ? 'Próxima renovação' : 'Período vigente'}
+                          </h4>
                           <div className="grid gap-4 md:grid-cols-3">
                             <div className="p-3 bg-muted rounded-lg">
-                              <p className="text-xs text-muted-foreground">Vigência e renovação</p>
+                              <p className="text-xs text-muted-foreground">
+                                {assinaturaAtual?.cobranca_modalidade === 'recorrente' ? 'Vigência e renovação' : 'Vigência do plano'}
+                              </p>
                               <p className="text-sm font-semibold mt-1">{resumoPeriodo}</p>
                             </div>
                             <div className="p-3 bg-muted rounded-lg">
@@ -854,7 +874,7 @@ export default function Configuracoes() {
                     <div className="flex flex-wrap gap-2">
                       <Button variant="outline" className="gap-2" onClick={() => navigate('/planos')}>
                         <CreditCard className="h-4 w-4" />
-                        Fazer Upgrade
+                        {textoAcaoPlano(planSlug)}
                       </Button>
                       <Button variant="outline" className="gap-2" onClick={() => setShowFaturas(true)}>
                         <Receipt className="h-4 w-4" />
@@ -900,7 +920,7 @@ export default function Configuracoes() {
                     <TableBody>
                       {faturas.map((f: any) => (
                         <TableRow key={f.id}>
-                          <TableCell className="text-xs">{f.data_criacao ? new Date(f.data_criacao).toLocaleDateString('pt-BR') : '—'}</TableCell>
+                          <TableCell className="text-xs">{f.data_criacao ? formatDate(f.data_criacao, 'short') : '—'}</TableCell>
                           <TableCell className="text-xs">{f.descricao || f.tipo || 'Assinatura'}</TableCell>
                           <TableCell className="text-xs font-semibold">
                             {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(f.valor_pago || f.valor || 0)}

@@ -1,8 +1,9 @@
+import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { nomeMedico } from '@/lib/formatters';
 import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { FileEdit, Plus, Lock, Loader2, ScrollText } from 'lucide-react';
-import { format } from 'date-fns';
+
 import { ptBR } from 'date-fns/locale';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';

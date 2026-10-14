@@ -7,7 +7,7 @@ interface AuthSwitchProps {
 }
 export function AuthSwitch({ activeTab, onTabChange }: AuthSwitchProps) {
   return (
-    <div className="relative flex w-full rounded-2xl bg-muted/50 p-1 border border-border/40">
+    <div role="group" aria-label="Modo de acesso" className="relative flex w-full rounded-2xl bg-muted/50 p-1 border border-border/40">
       {/* Animated pill background */}
       <motion.div
         className="absolute top-1 bottom-1 rounded-xl bg-card shadow-sm border border-border/30"
@@ -22,6 +22,7 @@ export function AuthSwitch({ activeTab, onTabChange }: AuthSwitchProps) {
       <button
         type="button"
         onClick={() => onTabChange("login")}
+        aria-pressed={activeTab === "login"}
         className={cn(
           "relative z-10 flex-1 py-2.5 text-sm font-semibold rounded-xl transition-colors duration-200",
           activeTab === "login"
@@ -34,6 +35,7 @@ export function AuthSwitch({ activeTab, onTabChange }: AuthSwitchProps) {
       <button
         type="button"
         onClick={() => onTabChange("signup")}
+        aria-pressed={activeTab === "signup"}
         className={cn(
           "relative z-10 flex-1 py-2.5 text-sm font-semibold rounded-xl transition-colors duration-200",
           activeTab === "signup"

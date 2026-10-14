@@ -61,6 +61,14 @@ describe('Tarefas', () => {
     expect(screen.getByRole('button', { name: 'Iniciar tarefa Confirmar agenda da manhã' })).toBeInTheDocument();
   });
 
+  it('usa o token destrutivo no indicador de tarefas vencidas', () => {
+    render(<MemoryRouter><Tarefas /></MemoryRouter>);
+    const vencidas = screen.getByRole('button', { name: /Vencidas/ });
+    const iconSurface = vencidas.querySelector('svg')?.parentElement;
+
+    expect(iconSurface).toHaveClass('bg-destructive/10', 'text-destructive');
+  });
+
   it('permite buscar por categoria, informa o total e limpa a busca com Escape', () => {
     render(<MemoryRouter><Tarefas /></MemoryRouter>);
     const search = screen.getByRole('textbox', { name: 'Buscar tarefas' });

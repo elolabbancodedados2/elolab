@@ -130,7 +130,7 @@ export default function PlatformIncidentes() {
 
   return (
     <div className="space-y-6 pb-8">
-      <header className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#dce9f6] bg-gradient-to-r from-[#f3f8ff] via-white to-[#f3fbfa] p-5 sm:p-6">
+      <header className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#e6e2f7] bg-gradient-to-r from-[#f6f4ff] via-white to-[#f0edff] p-5 sm:p-6">
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-bold"><AlertTriangle className="h-6 w-6 text-primary" /> Gestão de incidentes</h1>
           <p className="mt-1 text-sm text-muted-foreground">Registre impacto, mantenha a linha do tempo e acompanhe a resolução da plataforma.</p>

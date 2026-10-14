@@ -1,7 +1,8 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
-import { RouteAccessibility, getRouteAnnouncement } from '@/components/RouteAccessibility';
+import { RouteAccessibility } from '@/components/RouteAccessibility';
+import { getRouteAnnouncement } from '@/config/routeLabels';
 
 function NavigationHarness() {
   const navigate = useNavigate();
@@ -17,8 +18,11 @@ function NavigationHarness() {
 describe('RouteAccessibility', () => {
   it('gera nomes legíveis inclusive para rotas sem rótulo cadastrado', () => {
     expect(getRouteAnnouncement('/pacientes')).toBe('Pacientes carregado');
-    expect(getRouteAnnouncement('/relatorios-agendados')).toBe('Relatorios agendados carregado');
-    expect(getRouteAnnouncement('/')).toBe('Página carregada');
+    expect(getRouteAnnouncement('/admin/relatorios-agendados')).toBe('Relatórios agendados carregado');
+    expect(getRouteAnnouncement('/gestao-fluxo')).toBe('Salas e lista de espera carregado');
+    expect(getRouteAnnouncement('/relatorios/salvos')).toBe('Relatórios salvos carregado');
+    expect(getRouteAnnouncement('/agendar/clinica-teste')).toBe('Agendamento online carregado');
+    expect(getRouteAnnouncement('/')).toBe('Início carregado');
   });
 
   it('move o foco ao conteúdo e anuncia a navegação interna', async () => {

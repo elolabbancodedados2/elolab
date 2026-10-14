@@ -80,7 +80,7 @@ export default function PainelAdmin() {
 
   return (
     <main className="mx-auto w-full max-w-7xl space-y-8 pb-10">
-      <header className="flex flex-col gap-4 rounded-2xl border border-[#dce9f6] bg-gradient-to-r from-[#f3f8ff] via-white to-[#f3fbfa] p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
+      <header className="flex flex-col gap-4 rounded-2xl border border-[#e6e2f7] bg-gradient-to-r from-[#f6f4ff] via-white to-[#f0edff] p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
         <div>
           <div className="mb-2 flex items-center gap-2 text-sm font-medium text-primary">
             <Shield className="h-4 w-4" /> Gestão EloLab

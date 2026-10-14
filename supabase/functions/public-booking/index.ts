@@ -98,7 +98,7 @@ Deno.serve(async (req) => {
     const clinicaId = String(body.clinica_id || '');
     const ip = clientIp(req);
 
-    if (await checarRateLimit(db, { chave: `public-booking:${ip}`, limite: 60, janelaSegundos: 60 })) {
+    if (await checarRateLimit(db, { chave: `public-booking:${ip}`, limite: 60, janelaSegundos: 60, failClosed: true })) {
       return json({ error: 'Muitas tentativas. Aguarde um instante.' }, 429);
     }
     if (!UUID.test(clinicaId)) return json({ error: 'Link de agendamento inválido.' }, 404);
@@ -188,8 +188,8 @@ Deno.serve(async (req) => {
       if (slot.error) return json({ error: slot.error, code: 'slot_unavailable' }, 409);
 
       // Tentativas para horários inválidos não consomem a cota do paciente.
-      if (await checarRateLimit(db, { chave: `public-booking-book:${ip}`, limite: 10, janelaSegundos: 3600 })
-        || await checarRateLimit(db, { chave: `public-booking-cpf:${clinicaId}:${cpfDigitos}`, limite: 3, janelaSegundos: 86400 })) {
+      if (await checarRateLimit(db, { chave: `public-booking-book:${ip}`, limite: 10, janelaSegundos: 3600, failClosed: true })
+        || await checarRateLimit(db, { chave: `public-booking-cpf:${clinicaId}:${cpfDigitos}`, limite: 3, janelaSegundos: 86400, failClosed: true })) {
         return json({ error: 'Limite de agendamentos atingido. Entre em contato com a clínica.' }, 429);
       }
 

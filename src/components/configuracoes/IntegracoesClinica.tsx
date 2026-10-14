@@ -14,6 +14,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { useMedicos } from '@/hooks/useSupabaseData';
 import { ErrorState } from '@/components/ErrorState';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
+import { formatDateInTimeZone } from '@/lib/datePreference';
 
 interface Campo {
   id: string; rotulo: string; tipo: 'texto' | 'segredo' | 'selecao'; publico?: boolean; obrigatorio?: boolean;
@@ -47,7 +48,7 @@ const formatarDataConexao = (valor: string | null | undefined) => {
   const data = new Date(valor);
   return Number.isNaN(data.getTime())
     ? 'data indisponível'
-    : data.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+    : formatDateInTimeZone(data);
 };
 
 /**

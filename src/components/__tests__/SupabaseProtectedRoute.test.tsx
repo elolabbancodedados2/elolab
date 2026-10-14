@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { MemoryRouter, Routes, Route } from 'react-router-dom';
+import { MemoryRouter, Routes, Route, Outlet } from 'react-router-dom';
 import { SupabaseProtectedRoute } from '@/components/SupabaseProtectedRoute';
 
 // Mock useSupabaseAuth
@@ -24,6 +24,7 @@ const renderWithRouter = (ui: React.ReactElement) =>
         <Route path="/protegido" element={ui} />
         <Route path="/auth" element={<div>Tela de login</div>} />
         <Route path="/dashboard" element={<div>Painel da clínica</div>} />
+        <Route path="/planos" element={<div>Escolha de plano</div>} />
       </Routes>
     </MemoryRouter>
   );
@@ -184,7 +185,7 @@ describe('SupabaseProtectedRoute', () => {
     expect(screen.getByText('Checkout protegido')).toBeInTheDocument();
   });
 
-  it('bloqueia comprador pendente que tenta abrir outro plano', () => {
+  it('permite que comprador pendente troque de plano antes do primeiro pagamento', () => {
     mockUseSupabaseAuth.mockReturnValue({
       user: { id: '3', email: 'comprador@test.com', user_metadata: { checkout_flow: 'saas_subscription', checkout_plan_slug: 'pro' } },
       profile: { clinica_id: null, roles: [] },
@@ -198,7 +199,46 @@ describe('SupabaseProtectedRoute', () => {
       </SupabaseProtectedRoute>,
       'ultra'
     );
-    expect(screen.queryByText('Checkout protegido')).not.toBeInTheDocument();
-    expect(screen.getByText('Acesso Pendente')).toBeInTheDocument();
+    expect(screen.getByText('Checkout protegido')).toBeInTheDocument();
+  });
+
+  it('retoma o checkout salvo quando comprador pendente entra pelo dashboard', () => {
+    mockUseSupabaseAuth.mockReturnValue({
+      user: { id: '3', email: 'comprador@test.com', user_metadata: { checkout_flow: 'saas_subscription', checkout_plan_slug: 'pro' } },
+      profile: { clinica_id: null, roles: [] },
+      isLoading: false,
+      isPlatformAdmin: false,
+      hasAnyRole: () => false,
+    });
+    render(
+      <MemoryRouter initialEntries={['/dashboard']}>
+        <Routes>
+          <Route path="/dashboard" element={<SupabaseProtectedRoute><div>Painel da clínica</div></SupabaseProtectedRoute>} />
+          <Route path="/planos/checkout/:slug" element={<div>Checkout retomado</div>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(screen.getByText('Checkout retomado')).toBeInTheDocument();
+    expect(screen.queryByText('Painel da clínica')).not.toBeInTheDocument();
+  });
+
+  it('permite ao comprador pendente voltar à escolha pública de planos', () => {
+    mockUseSupabaseAuth.mockReturnValue({
+      user: { id: '3', email: 'comprador@test.com', user_metadata: { checkout_flow: 'saas_subscription', checkout_plan_slug: 'pro' } },
+      profile: { clinica_id: null, roles: [] },
+      isLoading: false,
+      isPlatformAdmin: false,
+      hasAnyRole: () => false,
+    });
+    render(
+      <MemoryRouter initialEntries={['/planos']}>
+        <Routes>
+          <Route element={<SupabaseProtectedRoute><Outlet /></SupabaseProtectedRoute>}>
+            <Route path="/planos" element={<SupabaseProtectedRoute allowedRoles={['admin' as any]} permitirCompradorPendente><div>Escolha de plano</div></SupabaseProtectedRoute>} />
+          </Route>
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(screen.getByText('Escolha de plano')).toBeInTheDocument();
   });
 });

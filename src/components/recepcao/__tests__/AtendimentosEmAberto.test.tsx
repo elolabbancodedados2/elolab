@@ -58,6 +58,7 @@ describe('atendimentos antigos em aberto', () => {
     expect(await screen.findByRole('heading', { name: 'Marcar como não realizado?' })).toBeInTheDocument();
     expect(screen.getByText(/cobrança pendente, ela será cancelada/i)).toBeInTheDocument();
     expect(mocks.atomicMarkNoShow).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Confirmar cancelamento' }).className).toContain('bg-destructive');
 
     fireEvent.click(screen.getByRole('button', { name: 'Confirmar cancelamento' }));
     await waitFor(() => expect(mocks.atomicMarkNoShow).toHaveBeenCalledWith('appointment-1', 'clinic-1'));

@@ -43,10 +43,25 @@ export function SupabaseProtectedRoute({
   //   dono da plataforma — administra o EloLab, e não pertence a clínica alguma
   const checkoutSlug = location.pathname.match(/^\/planos\/checkout\/([^/]+)$/)?.[1];
   const metadata = user.user_metadata as Record<string, unknown> | undefined;
-  const compradorPendente = Boolean(
-    permitirCompradorPendente && checkoutSlug && profile && !profile.clinica_id && profile.roles.length === 0 &&
-    metadata?.checkout_flow === 'saas_subscription' && metadata?.checkout_plan_slug === decodeURIComponent(checkoutSlug)
+  const checkoutIntentSlug = typeof metadata?.checkout_plan_slug === 'string' && /^[a-z0-9-]+$/i.test(metadata.checkout_plan_slug)
+    ? metadata.checkout_plan_slug
+    : null;
+  const compradorSemClinica = Boolean(
+    profile && !profile.clinica_id && profile.roles.length === 0 &&
+    metadata?.checkout_flow === 'saas_subscription' && checkoutIntentSlug
   );
+  const compradorPendente = Boolean(
+    compradorSemClinica && (
+      location.pathname === '/planos' || (permitirCompradorPendente && checkoutSlug)
+    )
+  );
+
+  // A confirmação/login pode voltar sem os parâmetros originais da compra.
+  // Preserve a jornada pelo slug salvo no cadastro, permitindo também escolher
+  // outro plano antes do primeiro pagamento.
+  if (compradorSemClinica && !compradorPendente && !isPlatformAdmin && checkoutIntentSlug) {
+    return <Navigate to={`/planos/checkout/${encodeURIComponent(checkoutIntentSlug)}`} replace />;
+  }
   if (!profile || (profile.roles.length === 0 && !isPlatformAdmin && !compradorPendente)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background p-4">

@@ -125,9 +125,9 @@ export function AgendamentoOnlineConfig() {
             </div>
 
             <div className="space-y-1.5">
-              <Label>Link da clínica</Label>
+              <Label htmlFor="agendamento-link-clinica">Link da clínica</Label>
               <div className="flex gap-2">
-                <Input readOnly value={link} className="font-mono text-xs" />
+                <Input id="agendamento-link-clinica" readOnly value={link} className="font-mono text-xs" />
                 <Button type="button" variant="outline" size="icon" aria-label="Copiar link"
                   onClick={copiarLink}><Copy className="h-4 w-4" /></Button>
                 <Button type="button" variant="outline" size="icon" aria-label="Abrir link" asChild>

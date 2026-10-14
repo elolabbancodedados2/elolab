@@ -82,24 +82,24 @@ export default function PortalPacientesClinica() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      <section className="relative overflow-hidden rounded-3xl border border-[#d6e5ef] bg-gradient-to-br from-[#e0ebf2] via-[#f4f8fb] to-white p-6 shadow-sm sm:p-8">
-        <div className="absolute -right-10 -top-16 h-56 w-56 rounded-full bg-[#005ecc]/[0.06] blur-2xl" aria-hidden="true" />
+      <section className="relative overflow-hidden rounded-3xl border border-[#dad6ef] bg-gradient-to-br from-[#ece9f8] via-[#f5f4fb] to-white p-6 shadow-sm sm:p-8">
+        <div className="absolute -right-10 -top-16 h-56 w-56 rounded-full bg-[#5b47e0]/[0.06] blur-2xl" aria-hidden="true" />
         <div className="relative flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
           <div className="max-w-2xl">
-            <span className="inline-flex items-center gap-2 rounded-full border border-[#005ecc]/15 bg-white/80 px-3 py-1 text-xs font-semibold text-[#005ecc]">
+            <span className="inline-flex items-center gap-2 rounded-full border border-[#5b47e0]/15 bg-white/80 px-3 py-1 text-xs font-semibold text-[#5b47e0]">
               <ShieldCheck className="h-3.5 w-3.5" /> Acesso seguro e individual
             </span>
-            <h1 className="mt-4 text-2xl font-bold tracking-tight text-[#0c1f54] sm:text-3xl">Acesso ao Portal do Paciente</h1>
-            <p className="mt-2 max-w-xl text-sm leading-relaxed text-[#52647b] sm:text-base">Compartilhe com cada paciente um acesso privado às informações liberadas pela clínica.</p>
+            <h1 className="mt-4 text-2xl font-bold tracking-tight text-[#17122b] sm:text-3xl">Acesso ao Portal do Paciente</h1>
+            <p className="mt-2 max-w-xl text-sm leading-relaxed text-[#6a6485] sm:text-base">Compartilhe com cada paciente um acesso privado às informações liberadas pela clínica.</p>
           </div>
-          <div className="hidden h-20 w-20 shrink-0 items-center justify-center rounded-3xl border border-white/80 bg-white/75 text-[#005ecc] shadow-sm sm:flex">
+          <div className="hidden h-20 w-20 shrink-0 items-center justify-center rounded-3xl border border-white/80 bg-white/75 text-[#5b47e0] shadow-sm sm:flex">
             <UsersRound className="h-9 w-9" aria-hidden="true" />
           </div>
         </div>
       </section>
 
       <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1.35fr)_minmax(250px,0.65fr)]">
-      <Card className="overflow-hidden rounded-3xl border-[#e3ebf2] shadow-sm">
+      <Card className="overflow-hidden rounded-3xl border-[#e6e3f2] shadow-sm">
         <CardHeader>
           <CardTitle className="flex items-center gap-2"><Link2 className="h-5 w-5 text-primary" />Enviar acesso</CardTitle>
           <CardDescription>O link é individual e permite consultar somente as informações disponíveis para aquele paciente.</CardDescription>
@@ -143,20 +143,20 @@ export default function PortalPacientesClinica() {
                 </Button>
               </div>
               {!paciente?.telefone && <p className="text-xs text-muted-foreground">Cadastre um telefone para preparar o envio pelo WhatsApp; você também pode copiar o link.</p>}
-              <p className="text-xs text-[#52647b]">Por segurança, este link substitui os anteriores e vale por até um ano.</p>
+              <p className="text-xs text-[#6a6485]">Por segurança, este link substitui os anteriores e vale por até um ano.</p>
             </div>
           )}
 
-          <div className="flex gap-3 rounded-xl border border-[#d6e5ef] bg-[#f4f8fb] p-4 text-sm text-[#52647b]">
+          <div className="flex gap-3 rounded-xl border border-[#dad6ef] bg-[#f5f4fb] p-4 text-sm text-[#6a6485]">
             <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
             <p>Compartilhe este link somente com o paciente ou responsável autorizado. O endereço contém uma credencial individual de acesso.</p>
           </div>
         </CardContent>
       </Card>
 
-      <Card className="rounded-3xl border-[#e3ebf2] shadow-sm">
+      <Card className="rounded-3xl border-[#e6e3f2] shadow-sm">
         <CardHeader>
-          <CardTitle className="text-[#0c1f54]">Como funciona</CardTitle>
+          <CardTitle className="text-[#17122b]">Como funciona</CardTitle>
           <CardDescription>Três passos para compartilhar o acesso.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-5">
@@ -166,11 +166,11 @@ export default function PortalPacientesClinica() {
             'Copie o link ou abra o WhatsApp para compartilhar.',
           ].map((etapa, index) => (
             <div key={etapa} className="flex items-start gap-3">
-              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#e0ebf2] text-xs font-bold text-[#005ecc]">{index + 1}</span>
-              <p className="pt-1 text-sm leading-relaxed text-[#52647b]">{etapa}</p>
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#ece9f8] text-xs font-bold text-[#5b47e0]">{index + 1}</span>
+              <p className="pt-1 text-sm leading-relaxed text-[#6a6485]">{etapa}</p>
             </div>
           ))}
-          <div className="flex items-center gap-2 border-t border-[#e3ebf2] pt-4 text-xs font-medium text-[#52647b]">
+          <div className="flex items-center gap-2 border-t border-[#e6e3f2] pt-4 text-xs font-medium text-[#6a6485]">
             <Check className="h-4 w-4 text-[#00875a]" /> O link novo desativa o anterior.
           </div>
         </CardContent>

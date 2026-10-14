@@ -1,6 +1,7 @@
+import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { format, formatDistanceToNow } from 'date-fns';
+import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Ban, Edit, Shield, UserCheck, UserX, Loader2, Clock, Circle, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -229,7 +230,7 @@ export default function Usuarios() {
   return (
     <TooltipProvider>
       <div className="space-y-6">
-        <div className="flex flex-col justify-between items-start gap-4 rounded-2xl border border-[#dce9f6] bg-gradient-to-r from-[#f3f8ff] via-white to-[#f3fbfa] p-5 sm:flex-row sm:items-center sm:p-6">
+        <div className="flex flex-col justify-between items-start gap-4 rounded-2xl border border-[#e6e2f7] bg-gradient-to-r from-[#f6f4ff] via-white to-[#f0edff] p-5 sm:flex-row sm:items-center sm:p-6">
           <div>
             <h1 className="text-3xl font-bold text-foreground">Usuários</h1>
             <p className="text-muted-foreground">Gerencie os usuários do sistema</p>

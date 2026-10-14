@@ -18,10 +18,13 @@ import { DEFAULT_LOCAL_SUPABASE_URL, resolveLocalQaSupabaseConfig } from '../scr
  * a instância.
  *
  * ─── COMO RODAR ──────────────────────────────────────────────────────────────
- * Use somente contas sinteticas em duas clinicas no Supabase local descartavel:
+ * Use somente contas sintéticas em duas clínicas no Supabase local descartável,
+ * com os fixtures sintéticos indicados abaixo. Cada tabela da matriz precisa de
+ * pelo menos uma linha da clínica B; linhas vazias não contam como prova de RLS:
  * QA_SUPABASE_URL=http://127.0.0.1:54321
  * QA_SUPABASE_ANON_KEY=<chave-anon-local>
  * QA_CLINICA_A_EMAIL/PASSWORD e QA_CLINICA_B_EMAIL/PASSWORD
+ * QA_CLINICA_A_PACIENTE_ID e QA_CLINICA_B_PACIENTE_ID (um paciente sintético por clínica)
  * Acoes WhatsApp exigem QA_WHATSAPP_STUB_CONFIRMED=ELOLAB_LOCAL_STUB.
  * Sem essas variaveis, os testes sao pulados e nenhum backend e acessado.
  */
@@ -32,7 +35,14 @@ const ANON_KEY = QA_SUPABASE?.anonKey || '';
 const CONTA_A = { email: process.env.QA_CLINICA_A_EMAIL, senha: process.env.QA_CLINICA_A_PASSWORD };
 const CONTA_B = { email: process.env.QA_CLINICA_B_EMAIL, senha: process.env.QA_CLINICA_B_PASSWORD };
 const temAsDuasContas = Boolean(CONTA_A.email && CONTA_A.senha && CONTA_B.email && CONTA_B.senha);
+const PACIENTE_A_ID = process.env.QA_CLINICA_A_PACIENTE_ID;
+const PACIENTE_B_ID = process.env.QA_CLINICA_B_PACIENTE_ID;
+const temPacientesDeControle = Boolean(PACIENTE_A_ID && PACIENTE_B_ID);
 const whatsappStubConfirmed = process.env.QA_WHATSAPP_STUB_CONFIRMED === 'ELOLAB_LOCAL_STUB';
+
+const TABELAS_COM_CLINICA_ID = [
+  'agendamentos', 'prontuarios', 'prescricoes', 'lancamentos', 'retornos', 'feedbacks_nps',
+] as const;
 /** Faz login e devolve o access_token. */
 async function entrar(
   request: APIRequestContext,
@@ -61,17 +71,40 @@ function cabecalhos(token: string) {
 
 test.describe('Isolamento entre clínicas', () => {
   test.skip(
-    (!QA_SUPABASE || !temAsDuasContas),
-    'Defina Supabase QA local e QA_CLINICA_A/B_EMAIL/PASSWORD para contas descartaveis em duas clinicas locais.',
+    (!QA_SUPABASE?.disposable || !temAsDuasContas || !temPacientesDeControle),
+    'Defina Supabase QA local descartável (QA_SUPABASE_DISPOSABLE=ELOLAB_LOCAL_DISPOSABLE), contas A/B e pacientes sintéticos próprios das duas clínicas.',
   );
 
   let tokenA = '';
+  let tokenB = '';
+  let clinicaAId = '';
+  let clinicaBId = '';
   let sessaoDaClinicaB: string | null = null;
 
   test.beforeAll(async ({ playwright }) => {
     const request = await playwright.request.newContext();
     tokenA = await entrar(request, CONTA_A.email!, CONTA_A.senha!);
-    const tokenB = await entrar(request, CONTA_B.email!, CONTA_B.senha!);
+    tokenB = await entrar(request, CONTA_B.email!, CONTA_B.senha!);
+
+    // Positivos de controle: cada usuário precisa ler o próprio paciente
+    // sintético antes de se tentar provar o isolamento entre os tenants.
+    const [pacienteA, pacienteB] = await Promise.all([
+      request.get(`${SUPABASE_URL}/rest/v1/pacientes?id=eq.${PACIENTE_A_ID}&select=id,clinica_id`, {
+        headers: cabecalhos(tokenA),
+      }),
+      request.get(`${SUPABASE_URL}/rest/v1/pacientes?id=eq.${PACIENTE_B_ID}&select=id,clinica_id`, {
+        headers: cabecalhos(tokenB),
+      }),
+    ]);
+    if (!pacienteA.ok() || !pacienteB.ok()) {
+      throw new Error(`Não foi possível validar os pacientes de controle (A=${pacienteA.status()}, B=${pacienteB.status()}).`);
+    }
+    const [linhasA, linhasB] = await Promise.all([pacienteA.json(), pacienteB.json()]);
+    if (linhasA.length !== 1 || linhasB.length !== 1 || !linhasA[0].clinica_id || !linhasB[0].clinica_id) {
+      throw new Error('Os dois pacientes de controle precisam existir e pertencer a uma clínica.');
+    }
+    clinicaAId = linhasA[0].clinica_id;
+    clinicaBId = linhasB[0].clinica_id;
 
     // A clínica B lista as próprias sessões — é assim que descobrimos um id
     // real para tentar alcançar de fora. Em produção, um atacante obteria
@@ -87,32 +120,57 @@ test.describe('Isolamento entre clínicas', () => {
     await request.dispose();
   });
 
-  test('A não lê registros de pacientes de B', async ({ request }) => {
-    // O RLS é a primeira linha: mesmo autenticada, a clínica A só enxerga o
-    // que é dela. Comparamos clinica_id para garantir que nada de fora entrou.
-    const resposta = await request.get(
-      `${SUPABASE_URL}/rest/v1/pacientes?select=id,clinica_id&limit=200`,
+  test('contas e pacientes de controle pertencem a clínicas diferentes', async ({ request }) => {
+    expect(Boolean(clinicaAId)).toBe(true);
+    expect(Boolean(clinicaBId)).toBe(true);
+    expect(clinicaAId !== clinicaBId).toBe(true);
+
+    const respostaA = await request.get(
+      `${SUPABASE_URL}/rest/v1/pacientes?id=eq.${PACIENTE_A_ID}&select=id,clinica_id`,
       { headers: cabecalhos(tokenA) },
     );
-    expect(resposta.ok()).toBe(true);
+    const respostaB = await request.get(
+      `${SUPABASE_URL}/rest/v1/pacientes?id=eq.${PACIENTE_B_ID}&select=id,clinica_id`,
+      { headers: cabecalhos(tokenB) },
+    );
+    expect(respostaA.ok()).toBe(true);
+    expect(respostaB.ok()).toBe(true);
+    const [linhasA, linhasB] = await Promise.all([respostaA.json(), respostaB.json()]);
+    expect(linhasA.length).toBe(1);
+    expect(linhasA[0]?.clinica_id === clinicaAId).toBe(true);
+    expect(linhasB.length).toBe(1);
+    expect(linhasB[0]?.clinica_id === clinicaBId).toBe(true);
 
-    const pacientes = await resposta.json();
-    const clinicas = new Set(pacientes.map((p: any) => p.clinica_id));
-    expect(
-      clinicas.size,
-      `A enxergou pacientes de ${clinicas.size} clínicas diferentes: ${[...clinicas].join(', ')}`,
-    ).toBeLessThanOrEqual(1);
+    const leituraCruzada = await request.get(
+      `${SUPABASE_URL}/rest/v1/pacientes?id=eq.${PACIENTE_B_ID}&select=id`,
+      { headers: cabecalhos(tokenA) },
+    );
+    expect(leituraCruzada.ok()).toBe(true);
+    const linhasCruzadas = await leituraCruzada.json();
+    expect(linhasCruzadas.length).toBe(0);
   });
 
-  for (const tabela of ['agendamentos', 'prontuarios', 'prescricoes', 'lancamentos', 'retornos', 'feedbacks_nps']) {
-    test(`A enxerga somente sua clínica em ${tabela}`, async ({ request }) => {
-      const resposta = await request.get(`${SUPABASE_URL}/rest/v1/${tabela}?select=id,clinica_id&limit=500`, {
-        headers: cabecalhos(tokenA),
-      });
-      expect(resposta.ok(), await resposta.text()).toBe(true);
-      const linhas = await resposta.json();
-      const clinicas = new Set(linhas.map((linha: any) => linha.clinica_id).filter(Boolean));
-      expect(clinicas.size, `VAZAMENTO: ${tabela} devolveu ${clinicas.size} clínicas`).toBeLessThanOrEqual(1);
+  for (const tabela of TABELAS_COM_CLINICA_ID) {
+    test(`A não lê por ID linhas sintéticas de B em ${tabela}`, async ({ request }) => {
+      expect(clinicaAId !== clinicaBId).toBe(true);
+      const urlB = new URL(`/rest/v1/${tabela}`, SUPABASE_URL);
+      urlB.searchParams.set('select', 'id,clinica_id');
+      urlB.searchParams.set('clinica_id', `eq.${clinicaBId}`);
+      urlB.searchParams.set('limit', '100');
+      const respostaB = await request.get(urlB.toString(), { headers: cabecalhos(tokenB) });
+      expect(respostaB.ok(), `${tabela}: clínica B não conseguiu ler os próprios fixtures`).toBe(true);
+      const linhasB = await respostaB.json();
+      expect(linhasB.length, `${tabela}: falta fixture sintético em B; lista vazia não prova RLS`).toBeGreaterThan(0);
+      expect(linhasB.every((linha: any) => linha.clinica_id === clinicaBId)).toBe(true);
+
+      const idsB = linhasB.map((linha: any) => linha.id);
+      const urlCruzada = new URL(`/rest/v1/${tabela}`, SUPABASE_URL);
+      urlCruzada.searchParams.set('select', 'id');
+      urlCruzada.searchParams.set('id', `in.(${idsB.join(',')})`);
+      const respostaA = await request.get(urlCruzada.toString(), { headers: cabecalhos(tokenA) });
+      expect(respostaA.ok(), `${tabela}: resposta cruzada falhou com status ${respostaA.status()}`).toBe(true);
+      const linhasCruzadas = await respostaA.json();
+      expect(linhasCruzadas.length).toBe(0);
     });
   }
 

@@ -244,6 +244,7 @@ export function AtendimentosEmAberto() {
                 setConfirmandoNaoRealizado(null);
                 if (atendimento) void naoAconteceu(atendimento);
               }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               Confirmar cancelamento
             </AlertDialogAction>

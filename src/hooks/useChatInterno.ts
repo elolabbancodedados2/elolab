@@ -95,13 +95,14 @@ export function useChatInterno() {
   }, [user, profile?.clinica_id]);
 
   // Fetch conversations for current user
+  const clinicId = profile?.clinica_id;
   const fetchConversas = useCallback(async () => {
-    if (!user || !profile?.clinica_id) return;
+    if (!user || !clinicId) return;
     const { data, error } = await supabase
       .from('chat_conversations')
       .select('*')
       .or(`participante_1_id.eq.${user.id},participante_2_id.eq.${user.id}`)
-      .eq('clinica_id', profile.clinica_id)
+      .eq('clinica_id', clinicId)
       .order('ultima_mensagem_em', { ascending: false });
 
     if (error) {
@@ -117,7 +118,7 @@ export function useChatInterno() {
           .from('chat_messages')
           .select('conversa_id, urgente')
           .in('conversa_id', conversationIds)
-          .eq('clinica_id', profile!.clinica_id!)
+          .eq('clinica_id', clinicId)
           .eq('destinatario_id', user.id)
           .is('lida_em', null)
           .order('created_at', { ascending: true })
@@ -152,7 +153,7 @@ export function useChatInterno() {
     });
     setConversas(enriched);
     setTotalNaoLidas(enriched.reduce((sum, c) => sum + c.nao_lidas, 0));
-  }, [user, profile?.clinica_id]);
+  }, [user, clinicId]);
 
   // Fetch messages for a specific conversation
   const fetchMensagens = useCallback(async (conversaId: string) => {

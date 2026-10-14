@@ -17,7 +17,10 @@ describe('histÃ³rico completo no portal do paciente', () => {
   });
 
   it('nÃ£o expÃµe laudo HTTPS de origem externa sem compatibilidade com o validador da tela', () => {
-    expect(portalFunction).toMatch(/fileUrl\.hostname === configuredHost/);
+    expect(portalFunction).toContain('extrairCaminhoAnexoClinico');
+    expect(portalFunction).toContain('laudoPertenceAoPaciente(caminhoLaudo, pacienteId, pacienteClinicaId');
+    expect(portalFunction).toMatch(/createSignedUrl\(caminhoLaudo, 300\)/);
+    expect(portalFunction).not.toContain('fileUrl.hostname');
     expect(portalFunction).toMatch(/arquivo_resultado: null, arquivo_resultado_indisponivel: true/);
     expect(portalPage).toContain('Solicite o laudo');
   });

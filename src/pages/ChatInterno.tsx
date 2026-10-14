@@ -1,3 +1,4 @@
+import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -15,7 +16,7 @@ import { cn } from '@/lib/utils';
 import { useChatInterno, type ChatConversa, type ChatUsuario, type ChatMensagem } from '@/hooks/useChatInterno';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { ErrorState } from '@/components/ErrorState';
-import { format, isToday, isYesterday, differenceInMinutes } from 'date-fns';
+import { isToday, isYesterday, differenceInMinutes } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery } from '@tanstack/react-query';
@@ -681,12 +682,12 @@ export default function ChatInterno() {
   if (!user) return null;
 
   return (
-    <div className="flex h-[calc(100vh-3.5rem)] min-h-0 flex-col overflow-hidden rounded-2xl border border-[#dce9f6] bg-white shadow-sm shadow-[#133453]/[0.03] supports-[height:100dvh]:h-[calc(100dvh-3.5rem)]">
+    <div className="flex h-[calc(100vh-3.5rem)] min-h-0 flex-col overflow-hidden rounded-2xl border border-[#e6e2f7] bg-white shadow-sm shadow-[#241D3F]/[0.03] supports-[height:100dvh]:h-[calc(100dvh-3.5rem)]">
       {/* Header */}
-      <div className="border-b border-[#dce9f6] bg-gradient-to-r from-[#f3f8ff] via-white to-[#f3fbfa] px-5 py-4 sm:px-6">
+      <div className="border-b border-[#e6e2f7] bg-gradient-to-r from-[#f6f4ff] via-white to-[#f0edff] px-5 py-4 sm:px-6">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <span className="rounded-xl bg-[#eaf4ff] p-2 text-[#1766a8] ring-1 ring-[#d1e5f8]"><MessageSquare className="h-5 w-5" /></span>
+            <span className="rounded-xl bg-[#f0edff] p-2 text-[#5240d6] ring-1 ring-[#ddd7f7]"><MessageSquare className="h-5 w-5" /></span>
             <div>
               <h1 className="text-2xl font-bold text-foreground">Chat Interno</h1>
               <p className="text-sm text-muted-foreground">
@@ -717,7 +718,7 @@ export default function ChatInterno() {
       <div className="flex min-h-0 flex-1 overflow-hidden">
         {/* Sidebar */}
         <div className={cn(
-          'min-h-0 w-full md:w-80 border-r border-[#e2ebf4] bg-[#f8fbff] flex-shrink-0',
+          'min-h-0 w-full md:w-80 border-r border-[#e5e2f4] bg-[#f9f8ff] flex-shrink-0',
           conversaAtiva ? 'hidden md:flex md:flex-col' : 'flex flex-col',
         )}>
           <ChatSidebar
@@ -746,8 +747,8 @@ export default function ChatInterno() {
             />
           ) : (
             <div className="flex-1 flex items-center justify-center">
-              <div className="max-w-sm rounded-3xl border border-[#dce9f6] bg-gradient-to-br from-[#f5faff] to-white p-8 text-center shadow-sm shadow-[#133453]/[0.03]">
-                <div className="h-16 w-16 rounded-2xl bg-[#eaf4ff] flex items-center justify-center mx-auto mb-4 text-[#1766a8] ring-1 ring-[#d1e5f8]">
+              <div className="max-w-sm rounded-3xl border border-[#e6e2f7] bg-gradient-to-br from-[#f8f7ff] to-white p-8 text-center shadow-sm shadow-[#241D3F]/[0.03]">
+                <div className="h-16 w-16 rounded-2xl bg-[#f0edff] flex items-center justify-center mx-auto mb-4 text-[#5240d6] ring-1 ring-[#ddd7f7]">
                   <MessageSquare className="h-8 w-8" />
                 </div>
                 <p className="text-lg font-semibold text-foreground">Selecione uma conversa</p>

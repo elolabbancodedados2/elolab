@@ -107,7 +107,13 @@ export interface FiltrosBuscaPacientes {
   nascimentoAte?: string;
 }
 
-export async function buscarPacientes(termo: string, limite = 20, filtros: FiltrosBuscaPacientes = {}, somenteFinanceiro = false): Promise<ResultadoBuscaPacientes> {
+export async function buscarPacientes(
+  termo: string,
+  limite = 20,
+  filtros: FiltrosBuscaPacientes = {},
+  somenteFinanceiro = false,
+  campos = CAMPOS,
+): Promise<ResultadoBuscaPacientes> {
   const busca = termo.trim();
   if (somenteFinanceiro) {
     const { data, error } = await (supabase as any).rpc('buscar_pacientes_resumo_financeiro', {
@@ -125,7 +131,7 @@ export async function buscarPacientes(termo: string, limite = 20, filtros: Filtr
     return { pacientes: pacientes.slice(0, limite), incompleta: pacientes.length > limite };
   }
   const criarConsulta = () => {
-    let query = (supabase as any).from('pacientes').select(CAMPOS);
+    let query = (supabase as any).from('pacientes').select(campos);
     if (filtros.sexo) query = query.eq('sexo', filtros.sexo);
     if (filtros.convenio === 'particular') query = query.is('convenio_id', null);
     else if (filtros.convenio) query = query.eq('convenio_id', filtros.convenio);
@@ -213,7 +219,12 @@ export async function buscarPacientes(termo: string, limite = 20, filtros: Filtr
   return executar([...condicoesTexto, ...condicoesPorMascara(digitos)]);
 }
 
-export function useBuscaPacientes(termo: string, opcoes?: { limite?: number; enabled?: boolean; filtros?: FiltrosBuscaPacientes }) {
+export function useBuscaPacientes(termo: string, opcoes?: {
+  limite?: number;
+  enabled?: boolean;
+  filtros?: FiltrosBuscaPacientes;
+  select?: 'id,nome,cpf,email' | typeof CAMPOS;
+}) {
   const { user, profile } = useSupabaseAuth();
   const limite = opcoes?.limite ?? 20;
   const somenteFinanceiro = !!profile?.roles?.includes('financeiro') &&
@@ -228,7 +239,7 @@ export function useBuscaPacientes(termo: string, opcoes?: { limite?: number; ena
   }, [termo]);
 
   const query = useQuery({
-    queryKey: ['busca-pacientes', user?.id ?? null, profile?.clinica_id ?? null, debounced, limite, opcoes?.filtros],
+    queryKey: ['busca-pacientes', user?.id ?? null, profile?.clinica_id ?? null, debounced, limite, opcoes?.filtros, opcoes?.select],
     enabled: opcoes?.enabled !== false && !!profile?.clinica_id,
     placeholderData: (previousData, previousQuery) => {
       const [prefixo, usuarioAnterior, clinicaAnterior] = previousQuery?.queryKey ?? [];
@@ -243,7 +254,7 @@ export function useBuscaPacientes(termo: string, opcoes?: { limite?: number; ena
       return previousData;
     },
     staleTime: 30_000,
-    queryFn: () => buscarPacientes(debounced, limite, opcoes?.filtros, somenteFinanceiro),
+    queryFn: () => buscarPacientes(debounced, limite, opcoes?.filtros, somenteFinanceiro, opcoes?.select),
   });
 
   // A consulta atual leva 250 ms para começar. Enquanto isso, React Query pode

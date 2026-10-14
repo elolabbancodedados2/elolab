@@ -24,6 +24,7 @@ Deno.serve(async (req) => {
       chave: `accept-invite:${clientIp(req)}`,
       limite: 20,
       janelaSegundos: 60,
+      failClosed: true,
     })) {
       return json({ success: false, error: "Muitas tentativas. Aguarde alguns segundos." }, 429);
     }

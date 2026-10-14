@@ -12,10 +12,10 @@ export function StatsCards({ sessions, stats }: StatsCardsProps) {
 
   return (
     <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-      <Card className="border-[#d6e7f6] bg-gradient-to-br from-[#f2f8ff] to-white shadow-sm shadow-[#133453]/[0.03]">
+      <Card className="border-[#dbd6f6] bg-gradient-to-br from-[#f5f3fe] to-white shadow-sm shadow-[#241D3F]/[0.03]">
         <CardContent className="pt-6">
           <div className="flex items-center gap-4">
-            <div className="rounded-xl bg-[#e5f1ff] p-3 text-[#1766a8]">
+            <div className="rounded-xl bg-[#ece8ff] p-3 text-[#5240d6]">
               <Smartphone className="h-5 w-5" />
             </div>
             <div>
@@ -25,10 +25,10 @@ export function StatsCards({ sessions, stats }: StatsCardsProps) {
           </div>
         </CardContent>
       </Card>
-      <Card className="border-[#d7e8fb] bg-gradient-to-br from-[#f5faff] to-white shadow-sm shadow-[#133453]/[0.03]">
+      <Card className="border-[#ddd7fb] bg-gradient-to-br from-[#f8f7ff] to-white shadow-sm shadow-[#241D3F]/[0.03]">
         <CardContent className="pt-6">
           <div className="flex items-center gap-4">
-            <div className="rounded-xl bg-[#e7f4fb] p-3 text-[#287b9b]">
+            <div className="rounded-xl bg-[#eae7fb] p-3 text-[#3b289b]">
               <MessageSquare className="h-5 w-5" />
             </div>
             <div>
@@ -38,7 +38,7 @@ export function StatsCards({ sessions, stats }: StatsCardsProps) {
           </div>
         </CardContent>
       </Card>
-      <Card className="border-[#d7efe9] bg-gradient-to-br from-[#f2fbf8] to-white shadow-sm shadow-[#133453]/[0.03]">
+      <Card className="border-[#d7efe9] bg-gradient-to-br from-[#f2fbf8] to-white shadow-sm shadow-[#241D3F]/[0.03]">
         <CardContent className="pt-6">
           <div className="flex items-center gap-4">
             <div className="rounded-xl bg-[#e1f5ee] p-3 text-[#168064]">
@@ -51,7 +51,7 @@ export function StatsCards({ sessions, stats }: StatsCardsProps) {
           </div>
         </CardContent>
       </Card>
-      <Card className="border-[#e7ddf7] bg-gradient-to-br from-[#faf7ff] to-white shadow-sm shadow-[#133453]/[0.03]">
+      <Card className="border-[#e7ddf7] bg-gradient-to-br from-[#faf7ff] to-white shadow-sm shadow-[#241D3F]/[0.03]">
         <CardContent className="pt-6">
           <div className="flex items-center gap-4">
             <div className="rounded-xl bg-[#efe7fb] p-3 text-[#7450a8]">

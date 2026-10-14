@@ -1,5 +1,5 @@
 import { formatCurrency } from '@/lib/formatters';
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { printReceiptPdf, type ReceiptData } from '@/lib/pdfReceipt';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -13,6 +13,8 @@ import { checkinComCobranca } from '@/lib/checkinWithBilling';
 import { atomicConcludeQueue, atomicStartAppointment as autoIniciarAtendimento } from '@/lib/operationalTransitions';
 import { PainelDoDia } from '@/components/recepcao/PainelDoDia';
 import { ErrorState } from '@/components/ErrorState';
+import { ActionableEmptyState } from '@/components/ActionableEmptyState';
+import { PageHeader } from '@/components/PageHeader';
 import { AtendimentosEmAberto } from '@/components/recepcao/AtendimentosEmAberto';
 import { FinalizarAtendimentoDialog } from '@/components/fila/FinalizarAtendimentoDialog';
 import { useAgendamentosPeriodo, useMedicos, useSalas } from '@/hooks/useSupabaseData';
@@ -119,7 +121,7 @@ function corEspera(ts: string | null): string {
   if (!ts) return 'text-muted-foreground';
   const mins = Math.floor((Date.now() - new Date(ts).getTime()) / 60000);
   if (mins < 15) return 'text-success';
-  if (mins < 30) return 'text-warning';
+  if (mins < 30) return 'text-warning-foreground';
   return 'text-destructive';
 }
 
@@ -215,6 +217,12 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
    const [encaixeMedicoId, setEncaixeMedicoId] = useState('');
    const [encaixeTipo, setEncaixeTipo] = useState('');
    const [salvandoEncaixe, setSalvandoEncaixe] = useState(false);
+   const encaixeTriggerRef = useRef<HTMLButtonElement>(null);
+
+  const abrirEncaixe = (trigger: HTMLButtonElement) => {
+    encaixeTriggerRef.current = trigger;
+    setEncaixeOpen(true);
+  };
 
   // Refresh timer every 30s
   useEffect(() => {
@@ -253,7 +261,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
       return data || [];
     },
   });
-  const filaItems = filaRecepcaoQuery.data ?? [];
+  const filaItems = useMemo(() => filaRecepcaoQuery.data ?? [], [filaRecepcaoQuery.data]);
 
   const agendamentoIdsHoje = useMemo(() => agendamentos.map((ag: any) => ag.id), [agendamentos]);
   const {
@@ -1092,15 +1100,12 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
 
   // ─── Render ───────────────────────────────────────────
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} className="space-y-1 rounded-2xl border border-[#D8E8F4] bg-[linear-gradient(118deg,#FFFFFF_12%,#F3FAFF_67%,#E7F8FC_100%)] px-5 py-4 shadow-[0_12px_32px_-26px_rgba(12,31,84,0.35)]">
-        <h1 className="text-2xl font-bold tracking-tight text-[#0C1F54]">Painel de Recepção</h1>
-        <p className="text-[#0C1F54]/65 text-sm">
-          {format(parseDateOnly(today)!, "EEEE, d 'de' MMMM", { locale: ptBR })} — Fluxo completo do paciente
-        </p>
-      </motion.div>
-
+    <div className="space-y-4">
+      <PageHeader
+        title="Painel de Recepção"
+        description={`${format(parseDateOnly(today)!, "EEEE, d 'de' MMMM", { locale: ptBR })} · Fluxo completo do paciente`}
+        icon={<Users />}
+      />
 
       {/* Stats */}
       {/* As quatro caixas de contagem viraram o painel do dia: as mesmas
@@ -1132,8 +1137,9 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
           />
         </div>
         <Button
+          ref={encaixeTriggerRef}
           variant="outline" size="sm" className="gap-1.5 shrink-0"
-          onClick={() => setEncaixeOpen(true)}
+          onClick={(event) => abrirEncaixe(event.currentTarget)}
         >
           <UserPlus className="h-4 w-4" /> Encaixe sem agendamento
         </Button>
@@ -1145,8 +1151,8 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
             página para fora da área visível. O contêiner rola na horizontal e
             cada aba para de encolher, então "Atendimento (12)" continua
             legível em vez de virar "Atend...". */}
-        <div className="overflow-x-auto -mx-1 px-1 pb-1">
-          <TabsList className="w-max min-w-full justify-start bg-muted/50 p-1 gap-1">
+        <div className="overflow-x-auto -mx-1 px-1 pb-1 lg:overflow-visible">
+          <TabsList className="w-max min-w-full justify-start bg-muted/50 p-1 gap-1 lg:w-full lg:flex-wrap">
             <TabsTrigger value="todos" className="shrink-0 data-[state=active]:bg-background">
               Todos ({enriched.length})
             </TabsTrigger>
@@ -1181,10 +1187,33 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
             </div>
           ) : filtered.length === 0 ? (
             <Card className="border-dashed">
-              <CardContent className="py-12 text-center">
-                <Users className="h-10 w-10 mx-auto text-muted-foreground/40 mb-3" />
-                <p className="text-muted-foreground font-medium">Nenhum paciente nesta etapa</p>
-                <p className="text-sm text-muted-foreground/70 mt-1">Os pacientes aparecerão aqui conforme chegarem</p>
+              <CardContent className="py-4">
+                <ActionableEmptyState
+                  title={search.trim()
+                    ? 'Nenhum paciente encontrado'
+                    : activeTab === 'todos'
+                      ? 'Nenhum paciente agendado para hoje'
+                      : 'Nenhum paciente nesta etapa'}
+                  description={search.trim()
+                    ? `Não encontramos “${search.trim()}” na recepção de hoje.`
+                    : activeTab === 'todos'
+                      ? 'Registre um encaixe para iniciar o atendimento ou volte quando os pacientes chegarem.'
+                      : 'Você pode conferir as outras etapas ou registrar um atendimento sem agendamento.'}
+                  actionLabel={search.trim()
+                    ? 'Limpar busca'
+                    : activeTab === 'todos'
+                      ? 'Criar encaixe'
+                      : 'Ver todos os pacientes'}
+                  onAction={search.trim()
+                    ? () => setSearch('')
+                    : activeTab === 'todos'
+                      ? (event) => abrirEncaixe(event.currentTarget)
+                      : () => setActiveTab('todos')}
+                  actionIcon={search.trim() ? XCircle : activeTab === 'todos' ? UserPlus : Users}
+                  secondaryLabel={!search.trim() && activeTab !== 'todos' ? 'Criar encaixe' : undefined}
+                  onSecondaryAction={(event) => abrirEncaixe(event.currentTarget)}
+                  className="py-12"
+                />
               </CardContent>
             </Card>
           ) : (
@@ -1261,7 +1290,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
                                         'h-6 px-2.5 rounded-full flex items-center text-[10px] font-medium transition-colors',
                                         i < step && 'bg-success/10 text-success',
                                         i === step && 'bg-primary/10 text-primary ring-1 ring-primary/20',
-                                        i > step && 'bg-muted text-muted-foreground/50',
+                                        i > step && 'bg-muted text-muted-foreground',
                                       )}>
                                         {i < step ? <Check className="h-3 w-3" /> : label}
                                       </div>
@@ -1753,7 +1782,13 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
 
       {/* ─── Encaixe (walk-in) ─── */}
       <Dialog open={encaixeOpen} onOpenChange={a => { if (!a && !salvandoEncaixe) setEncaixeOpen(false); }}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent
+          className="sm:max-w-md"
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            requestAnimationFrame(() => encaixeTriggerRef.current?.focus());
+          }}
+        >
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <UserPlus className="h-5 w-5 text-primary" /> Encaixe sem agendamento

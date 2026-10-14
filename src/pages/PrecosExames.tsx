@@ -23,6 +23,7 @@ import { TableSkeleton } from '@/components/ui/loading-skeleton';
 import { ErrorState } from '@/components/ErrorState';
 import { normalizarTexto } from '@/lib/buscaPaciente';
 import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
+import { PageHeader } from '@/components/PageHeader';
 
 const CATALOGO_EXAMES: { nome: string; tuss: string }[] = [
   { nome: 'Hemograma Completo', tuss: '40304361' },
@@ -462,7 +463,7 @@ function PrecosInternos() {
                       <TableCell className="text-right">{p.custo > 0 ? fmt(p.custo) : '—'}</TableCell>
                       <TableCell className="text-right">
                         {margem === null ? <span className="text-muted-foreground">—</span> : (
-                          <Badge variant={margem >= 50 ? 'default' : margem >= 20 ? 'secondary' : 'destructive'} className="text-xs">
+                          <Badge variant={margem >= 50 ? 'success' : margem >= 20 ? 'secondary' : 'destructive'} className="text-xs">
                             {margem.toFixed(0)}%
                           </Badge>
                         )}
@@ -829,15 +830,14 @@ function PrecosConvenio() {
 export default function PrecosExames() {
   return (
     <div className="space-y-6 pb-8">
-      <div className="rounded-2xl border border-[#d7e9f7] bg-gradient-to-r from-[#f1fbfd] via-white to-[#eff4ff] p-4 shadow-sm sm:p-5">
-        <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-          <span className="rounded-xl bg-[#eaf4ff] p-2 text-[#1766a8] ring-1 ring-[#d1e5f8]"><DollarSign className="h-5 w-5" /></span> Tabela de Preços de Exames
-        </h1>
-        <p className="mt-1 text-muted-foreground text-sm">Gerencie preços de exames internos (particular) e por convênio</p>
-      </div>
+      <PageHeader
+        title="Tabela de Preços de Exames"
+        description="Gerencie preços de exames internos (particular) e por convênio"
+        icon={<DollarSign />}
+      />
 
       <Tabs defaultValue="particular" className="space-y-4">
-        <TabsList className="rounded-xl border border-[#d7e9f7] bg-[#f2f9fc] p-1">
+        <TabsList className="rounded-xl border border-border bg-muted/70 p-1 text-muted-foreground">
           <TabsTrigger value="particular" className="gap-1.5">
             <Stethoscope className="h-3.5 w-3.5" /> Particular / Interno
           </TabsTrigger>

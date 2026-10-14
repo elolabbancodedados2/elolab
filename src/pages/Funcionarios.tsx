@@ -21,10 +21,12 @@ import { AppRole, useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { ConvidarFuncionarioDialog } from '@/components/ConvidarFuncionarioDialog';
+import { PageHeader } from '@/components/PageHeader';
 import { SectionFallback } from '@/components/ui/loading-skeleton';
 import { ErrorState } from '@/components/ErrorState';
 import { normalizarTexto } from '@/lib/buscaPaciente';
 import { validateCPF } from '@/lib/formatters';
+import { ActionableEmptyState } from '@/components/ActionableEmptyState';
 
 interface FuncionarioWithRoles {
   id: string;
@@ -535,27 +537,28 @@ export default function Funcionarios() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 rounded-2xl border border-[#dce9f6] bg-gradient-to-r from-[#f3f8ff] via-white to-[#f3fbfa] p-5 sm:p-6">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground">Funcionários</h1>
-          <p className="text-muted-foreground">Gerencie a equipe e suas permissões de acesso</p>
-        </div>
-        <div className="flex gap-2">
-          <ConvidarFuncionarioDialog
-            trigger={
-              <Button variant="outline" className="gap-2 border-[#d3e3f2] bg-white text-[#315675] hover:bg-[#f3f8ff]">
-                <Mail className="h-4 w-4" />Convidar por e-mail
-              </Button>
-            }
-          />
-          <Button variant="outline" onClick={handleOpenCustomize} className="gap-2 border-[#d3e3f2] bg-white text-[#315675] hover:bg-[#f3f8ff]">
-            <Settings2 className="h-4 w-4" />Personalizar perfis
-          </Button>
-          <Button onClick={() => handleOpenDialog()} className="gap-2">
-            <Plus className="h-4 w-4" />Novo Funcionário
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        title="Funcionários"
+        description="Gerencie a equipe e suas permissões de acesso"
+        icon={<Users />}
+        actions={
+          <>
+            <ConvidarFuncionarioDialog
+              trigger={
+                <Button variant="outline" className="gap-2 border-border bg-card text-foreground hover:bg-accent">
+                  <Mail className="h-4 w-4" />Convidar por e-mail
+                </Button>
+              }
+            />
+            <Button variant="outline" onClick={handleOpenCustomize} className="gap-2 border-border bg-card text-foreground hover:bg-accent">
+              <Settings2 className="h-4 w-4" />Personalizar perfis
+            </Button>
+            <Button onClick={() => handleOpenDialog()} className="gap-2">
+              <Plus className="h-4 w-4" />Novo Funcionário
+            </Button>
+          </>
+        }
+      />
 
       <Card>
         <CardHeader>
@@ -565,7 +568,7 @@ export default function Funcionarios() {
             </CardTitle>
             <div className="relative w-full sm:w-80">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input placeholder="Buscar por nome ou e-mail..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-10" />
+              <Input aria-label="Buscar funcionários por nome ou e-mail" placeholder="Buscar por nome ou e-mail..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-10" />
             </div>
           </div>
         </CardHeader>
@@ -585,17 +588,26 @@ export default function Funcionarios() {
               <TableBody>
               {filteredFuncionarios.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8">
+                    <TableCell colSpan={6} className="p-0">
                       {normalizedSearch ? (
-                        <div className="space-y-2">
-                          <p className="text-muted-foreground">Nenhum funcionário corresponde a “{searchTerm.trim()}”.</p>
-                          <Button type="button" variant="link" onClick={() => setSearchTerm('')}>Limpar busca</Button>
-                        </div>
+                        <ActionableEmptyState
+                          icon={Search}
+                          title="Nenhum funcionário encontrado"
+                          description={`Não encontramos funcionários para “${searchTerm.trim()}”.`}
+                          actionLabel="Limpar busca"
+                          onAction={() => setSearchTerm('')}
+                          className="px-4 py-8"
+                        />
                       ) : (
-                        <div className="space-y-2">
-                          <p className="text-muted-foreground">Nenhum funcionário cadastrado nesta clínica.</p>
-                          <Button type="button" variant="link" onClick={() => handleOpenDialog()}>Cadastrar funcionário</Button>
-                        </div>
+                        <ActionableEmptyState
+                          icon={Users}
+                          title="Nenhum funcionário cadastrado"
+                          description="Cadastre sua equipe para definir permissões e enviar convites com o acesso adequado."
+                          actionLabel="Cadastrar funcionário"
+                          actionIcon={Plus}
+                          onAction={() => handleOpenDialog()}
+                          className="px-4 py-8"
+                        />
                       )}
                     </TableCell>
                   </TableRow>
@@ -665,9 +677,9 @@ export default function Funcionarios() {
                             {func.user_id && (
                               <Tooltip>
                                 <TooltipTrigger asChild>
-                                  <div className="flex items-center justify-center w-8 h-8">
+                                  <span role="status" aria-label="Conta vinculada" tabIndex={0} className="flex h-8 w-8 items-center justify-center rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
                                     <CheckCircle className="h-4 w-4 text-success" />
-                                  </div>
+                                  </span>
                                 </TooltipTrigger>
                                 <TooltipContent>Conta vinculada</TooltipContent>
                               </Tooltip>

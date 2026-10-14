@@ -5,6 +5,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { Button } from '@/components/ui/button';
 import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
+import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -18,6 +19,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { toast } from 'sonner';
 import { ErrorState } from '@/components/ErrorState';
 import { isValidDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
+import { PageHeader } from '@/components/PageHeader';
+import { Link } from 'react-router-dom';
 
 const brl = (value: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value || 0);
 const temNoMaximoDuasCasas = (value: number) => Number.isFinite(value)
@@ -353,17 +356,27 @@ export default function FaturamentoConvenios() {
   if (isLoading) return <div className="rounded-lg border p-6 text-sm text-muted-foreground">Carregando faturamento de convênios…</div>;
 
   return <div className="space-y-6 pb-8">
-    <div className="flex flex-col gap-4 rounded-2xl border border-[#d7e9f7] bg-gradient-to-r from-[#f1fbfd] via-white to-[#eff4ff] p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:p-5"><div><h1 className="flex items-center gap-2 text-2xl font-bold font-display tracking-tight"><span className="rounded-xl bg-[#eaf4ff] p-2 text-[#1766a8] ring-1 ring-[#d1e5f8]"><FileStack className="h-5 w-5" /></span>Faturamento de Convênios</h1><p className="mt-1 text-sm text-muted-foreground">Lotes TISS, retorno das operadoras, glosas e recursos.</p></div><div className="flex flex-wrap items-center gap-2"><Button onClick={abrirNovoLote} disabled={convenios.length === 0}><Plus className="mr-2 h-4 w-4" />Novo lote</Button><Button variant="outline" onClick={abrirRegistroGlosa} disabled={lotesParaRegistrarGlosa.length === 0} title={lotesParaRegistrarGlosa.length === 0 ? 'Envie um lote antes de registrar uma glosa' : undefined}><AlertTriangle className="mr-2 h-4 w-4" />Registrar glosa</Button></div></div>
+    <PageHeader
+      title="Faturamento de Convênios"
+      description="Lotes TISS, retorno das operadoras, glosas e recursos."
+      icon={<FileStack />}
+      actions={(
+        <>
+          <Button onClick={abrirNovoLote} disabled={convenios.length === 0} className="disabled:bg-none disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100 disabled:shadow-none"><Plus className="mr-2 h-4 w-4" />Novo lote</Button>
+          <Button variant="outline" onClick={abrirRegistroGlosa} disabled={lotesParaRegistrarGlosa.length === 0} className="disabled:border-border disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100" title={lotesParaRegistrarGlosa.length === 0 ? 'Envie um lote antes de registrar uma glosa' : undefined}><AlertTriangle className="mr-2 h-4 w-4" />Registrar glosa</Button>
+        </>
+      )}
+    />
     {lotesComDivergenciaFinanceira.length > 0 && <div role="status" className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm text-warning-foreground"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0"/><p>{lotesComDivergenciaFinanceira.length} lote(s) têm diferença entre o total recebido e o conciliado no financeiro. Confira lançamentos existentes antes de conciliar, para evitar duplicidade.</p></div>}
     {consultasAtingiramLimite && <div role="alert" className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm text-warning-foreground"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning"/><p>A lista atingiu o limite de {LIMITE_BUSCA_EM_BLOCOS.toLocaleString('pt-BR')} registros. Os indicadores podem não incluir todos os lotes ou glosas.</p></div>}
-    {convenios.length === 0 && <p role="status" className="rounded-xl border border-[#dceaf5] bg-white p-3 text-sm text-muted-foreground">Cadastre e ative um convênio para criar lotes TISS.</p>}
+    {convenios.length === 0 && <p role="status" className="rounded-xl border border-border bg-card p-3 text-sm text-muted-foreground">Cadastre e ative um <Link to="/convenios" className="font-medium text-foreground underline underline-offset-4">convênio</Link> para criar lotes TISS. Registre glosas depois de marcar um lote como enviado.</p>}
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">{[
-      { label: 'Apresentado', value: resumo.apresentado, icon: FileStack, color: 'text-[#1766a8]', bg: 'bg-[#eaf4ff]', border: 'border-[#d1e5f8]' },
-      { label: 'Pago', value: resumo.pago, icon: BadgeCheck, color: 'text-[#147765]', bg: 'bg-[#e5f7f2]', border: 'border-[#c5eadd]' },
-      { label: 'Glosado', value: resumo.glosado, icon: AlertTriangle, color: 'text-[#b65a4d]', bg: 'bg-[#fff0ed]', border: 'border-[#f2d6d0]' },
-      { label: 'Recuperado', value: resumo.recuperado, icon: RotateCcw, color: 'text-[#6559a6]', bg: 'bg-[#f0edff]', border: 'border-[#ddd8fa]' },
-    ].map(({ label, value, icon: Icon, color, bg, border }) => <Card key={label} className={`h-full border bg-gradient-to-br from-white to-[#f8fbfd] shadow-sm transition-shadow hover:shadow-md ${border}`}><CardContent className="flex items-start justify-between gap-2 p-4"><div><p className="text-xs font-medium text-muted-foreground">{label}</p><p className={`mt-1 text-lg font-bold tabular-nums sm:text-xl ${color}`}>{brl(value)}</p></div><span className={`rounded-xl p-2.5 ring-1 ring-inset ring-black/[0.03] ${bg}`}><Icon className={`h-4 w-4 ${color}`} /></span></CardContent></Card>)}</div>
-    <Tabs defaultValue="lotes"><TabsList className="rounded-xl border border-[#d7e9f7] bg-[#f2f9fc] p-1"><TabsTrigger value="lotes">Lotes ({lotes.length})</TabsTrigger><TabsTrigger value="glosas">Glosas ({glosas.length})</TabsTrigger></TabsList>
+      { label: 'Apresentado', value: resumo.apresentado, icon: FileStack, color: 'text-primary', bg: 'bg-primary/10', border: 'border-primary/20' },
+      { label: 'Pago', value: resumo.pago, icon: BadgeCheck, color: 'text-success', bg: 'bg-success/10', border: 'border-success/20' },
+      { label: 'Glosado', value: resumo.glosado, icon: AlertTriangle, color: 'text-destructive', bg: 'bg-destructive/10', border: 'border-destructive/20' },
+      { label: 'Recuperado', value: resumo.recuperado, icon: RotateCcw, color: 'text-info', bg: 'bg-info/10', border: 'border-info/20' },
+    ].map(({ label, value, icon: Icon, color, bg, border }) => <Card key={label} className={`h-full border bg-card shadow-sm transition-shadow hover:shadow-md ${border}`}><CardContent className="flex items-start justify-between gap-2 p-4"><div><p className="text-xs font-medium text-muted-foreground">{label}</p><p className={`mt-1 text-lg font-bold tabular-nums sm:text-xl ${color}`}>{brl(value)}</p></div><span className={`rounded-xl p-2.5 border border-border ${bg}`}><Icon className={`h-4 w-4 ${color}`} /></span></CardContent></Card>)}</div>
+    <Tabs defaultValue="lotes"><TabsList className="rounded-xl border border-border bg-muted p-1"><TabsTrigger value="lotes">Lotes ({lotes.length})</TabsTrigger><TabsTrigger value="glosas">Glosas ({glosas.length})</TabsTrigger></TabsList>
       <TabsContent value="lotes">
         <Card>
           <CardHeader><CardTitle className="text-base"><FileStack className="mr-2 inline h-4 w-4" />Lotes registrados</CardTitle></CardHeader>
@@ -380,7 +393,7 @@ export default function FaturamentoConvenios() {
             <TableBody>{lotesFiltrados.map((l: any) => <TableRow key={l.id}>
               <TableCell className="font-medium">{l.numero_lote}<p className="text-[10px] text-muted-foreground">TISS {l.versao_tiss} · {l.quantidade_guias} guias</p></TableCell>
               <TableCell>{l.convenios?.nome}</TableCell>
-              <TableCell>{new Date(`${l.competencia}T12:00:00`).toLocaleDateString('pt-BR', { month: '2-digit', year: 'numeric' })}</TableCell>
+              <TableCell>{format(new Date(`${l.competencia}T12:00:00`), 'MM/yyyy')}</TableCell>
               <TableCell className="text-right"><span>{brl(l.valor_apresentado)}</span><p className="text-xs text-muted-foreground">Recebido: {brl(l.valor_pago)}</p><p className="text-xs text-muted-foreground">No financeiro: {brl(l.valor_conciliado_financeiro || 0)}</p></TableCell>
               <TableCell><Badge variant="outline">{l.status.replaceAll('_', ' ')}</Badge></TableCell>
               <TableCell><div className="flex flex-wrap gap-1">

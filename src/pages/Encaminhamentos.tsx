@@ -1,3 +1,4 @@
+import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { nomeMedico } from '@/lib/formatters';
 import { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
@@ -5,7 +6,7 @@ import {
   Search, ArrowRightLeft, Filter, FileText, Clock, CheckCircle2,
   AlertTriangle, Plus, Eye, Loader2, Stethoscope, User, Send, Edit,
 } from 'lucide-react';
-import { format } from 'date-fns';
+
 import { ptBR } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { mensagemDeErro } from '@/lib/erros';
@@ -37,6 +38,8 @@ import { EncaminhamentoMedico } from '@/components/clinical/EncaminhamentoMedico
 import { parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { ErrorState } from '@/components/ErrorState';
 import { normalizarTexto, pacienteCorresponde } from '@/lib/buscaPaciente';
+import { PageHeader } from '@/components/PageHeader';
+import { Link } from 'react-router-dom';
 
 interface EncaminhamentoData {
   id: string;
@@ -66,7 +69,7 @@ interface EncaminhamentoData {
 
 const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
   pendente: { label: 'Pendente', className: 'border-[#f1dfb8] bg-[#fff8e8] text-[#8a5b00]' },
-  em_andamento: { label: 'Em Andamento', className: 'border-[#cce2fa] bg-[#edf6ff] text-[#175c9f]' },
+  em_andamento: { label: 'Em Andamento', className: 'border-[#d4ccfa] bg-[#f1eefe] text-[#2e179f]' },
   concluido: { label: 'Concluído', className: 'border-[#ccebdd] bg-[#effaf4] text-[#16734d]' },
   cancelado: { label: 'Cancelado', className: 'border-slate-200 bg-slate-50 text-slate-600' },
 };
@@ -262,16 +265,11 @@ export default function Encaminhamentos() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 rounded-2xl border border-[#d8e8fb] bg-gradient-to-r from-[#f4f8ff] via-white to-[#effaff] p-4 sm:p-5">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-[#102a56] flex items-center gap-2">
-            <span className="rounded-xl bg-[#e5f1ff] p-2 text-[#1766b3] ring-1 ring-[#d5e6fa]"><ArrowRightLeft className="h-5 w-5" /></span>
-            Encaminhamentos
-          </h1>
-          <p className="text-muted-foreground">Referências e contra-referências médicas</p>
-        </div>
-      </div>
+      <PageHeader
+        title="Encaminhamentos"
+        description="Referências e contra-referências médicas"
+        icon={<ArrowRightLeft />}
+      />
 
       {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -281,19 +279,19 @@ export default function Encaminhamentos() {
             <p className="text-xs text-muted-foreground">Total</p>
           </CardContent>
         </Card>
-        <Card className={cn("kpi-card cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", statusFilter === 'pendente' && "ring-2 ring-amber-500")} role="button" tabIndex={0} aria-pressed={statusFilter === 'pendente'} onClick={() => setStatusFilter('pendente')} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setStatusFilter('pendente'); } }}>
+        <Card className={cn("kpi-card cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", statusFilter === 'pendente' && "ring-2 ring-warning")} role="button" tabIndex={0} aria-pressed={statusFilter === 'pendente'} onClick={() => setStatusFilter('pendente')} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setStatusFilter('pendente'); } }}>
           <CardContent className="p-4">
             <div className="text-2xl font-bold tabular-nums text-warning">{stats.pendentes}</div>
             <p className="text-xs text-muted-foreground">Pendentes</p>
           </CardContent>
         </Card>
-        <Card className={cn("kpi-card cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", statusFilter === 'em_andamento' && "ring-2 ring-blue-500")} role="button" tabIndex={0} aria-pressed={statusFilter === 'em_andamento'} onClick={() => setStatusFilter('em_andamento')} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setStatusFilter('em_andamento'); } }}>
+        <Card className={cn("kpi-card cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", statusFilter === 'em_andamento' && "ring-2 ring-info")} role="button" tabIndex={0} aria-pressed={statusFilter === 'em_andamento'} onClick={() => setStatusFilter('em_andamento')} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setStatusFilter('em_andamento'); } }}>
           <CardContent className="p-4">
             <div className="text-2xl font-bold tabular-nums text-info">{stats.emAndamento}</div>
             <p className="text-xs text-muted-foreground">Em Andamento</p>
           </CardContent>
         </Card>
-        <Card className={cn("kpi-card cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", statusFilter === 'concluido' && "ring-2 ring-green-500")} role="button" tabIndex={0} aria-pressed={statusFilter === 'concluido'} onClick={() => setStatusFilter('concluido')} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setStatusFilter('concluido'); } }}>
+        <Card className={cn("kpi-card cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", statusFilter === 'concluido' && "ring-2 ring-success")} role="button" tabIndex={0} aria-pressed={statusFilter === 'concluido'} onClick={() => setStatusFilter('concluido')} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setStatusFilter('concluido'); } }}>
           <CardContent className="p-4">
             <div className="text-2xl font-bold tabular-nums text-success">{stats.concluidos}</div>
             <p className="text-xs text-muted-foreground">Concluídos</p>
@@ -302,8 +300,9 @@ export default function Encaminhamentos() {
       </div>
 
       {/* Main Content */}
-      <div className="grid gap-6 lg:grid-cols-3">
+      <div className={cn('grid gap-6', medicoId ? 'lg:grid-cols-3' : 'grid-cols-1')}>
         {/* Patient List */}
+        {medicoId && (
         <Card className="lg:col-span-1">
           <CardHeader className="pb-3">
             <CardTitle className="text-lg flex items-center gap-2">
@@ -373,9 +372,10 @@ export default function Encaminhamentos() {
             )}
           </CardContent>
         </Card>
+        )}
 
         {/* Referral Panel */}
-        <div className="lg:col-span-2">
+        <div className={cn(medicoId ? 'lg:col-span-2' : 'mx-auto w-full max-w-3xl')}>
           {selectedPacienteId && pacienteSelecionadoQuery.isError ? (
             <ErrorState
               title="Não foi possível carregar o paciente selecionado"
@@ -395,14 +395,22 @@ export default function Encaminhamentos() {
             />
           ) : (
             <Card>
-              <CardContent className="py-16">
+              <CardContent className={cn('text-center', medicoId ? 'py-16' : 'py-8')}>
                 <div className="text-center text-muted-foreground">
-                  <ArrowRightLeft className="h-12 w-12 mx-auto mb-4 opacity-20" />
+                  <ArrowRightLeft className="mx-auto mb-3 h-10 w-10 opacity-30" />
                   <p className="font-medium">
                     {!medicoId
-                      ? 'Seu perfil não está vinculado a um médico. Encaminhamentos requerem perfil médico.'
+                      ? 'Seu usuário não está vinculado a um cadastro médico ativo. Um médico identificado precisa constar como origem do encaminhamento.'
                       : 'Selecione um paciente para gerenciar encaminhamentos'}
                   </p>
+                  {!medicoId && profile?.roles?.includes('admin') && (
+                    <Button asChild variant="outline" size="sm" className="mt-4">
+                      <Link to="/equipe">Gerenciar corpo clínico</Link>
+                    </Button>
+                  )}
+                  {!medicoId && !profile?.roles?.includes('admin') && (
+                    <p className="mt-2 text-sm">Peça ao administrador para revisar seu vínculo com o cadastro médico da clínica.</p>
+                  )}
                 </div>
               </CardContent>
             </Card>

@@ -40,6 +40,7 @@ Deno.serve(async (req) => {
       chave: `checkout:${clientIp(req)}`,
       limite: 10,
       janelaSegundos: 60,
+      failClosed: true,
     })
     if (limitado) {
       return new Response(
