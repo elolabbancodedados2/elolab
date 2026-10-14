@@ -2,6 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { checarRateLimit, clientIp } from "../_shared/rateLimit.ts";
 import { corsPadrao } from '../_shared/cors.ts';
 import { extrairCaminhoAnexoClinico, laudoPertenceAoPaciente } from '../_shared/medicalAttachmentPath.ts';
+import { attachPortalPreparationInstructions } from '../../../src/lib/portalAppointmentPreparation.ts';
 import { horariosLivres, validarHorario as validatePortalSlot, agoraEmBrasilia, horarioConsultaPassou } from '../_shared/horarios.ts';
 import { limiteDataRemarcacao, recusarDataAlemDoLimite, remarcarAgendamento } from './remarcacao.ts';
 
@@ -161,7 +162,23 @@ Deno.serve(async (req) => {
           .order("id", { ascending: true })
           .range(offset, offset + 49);
         if (error) throw error;
-        result = data || [];
+        const appointments = data || [];
+        const activeTypes = new Set(appointments
+          .filter((appointment) => appointment.data >= todayISO()
+            && ["agendado", "confirmado", "aguardando"].includes(String(appointment.status || "")))
+          .map((appointment) => String(appointment.tipo || "").trim().toLocaleLowerCase("pt-BR"))
+          .filter(Boolean));
+        let configuredTypes: Array<{ nome: string; instrucoes_preparo: string | null }> = [];
+        if (activeTypes.size > 0) {
+          const { data, error: typesError } = await supabase
+            .from("tipos_consulta")
+            .select("nome, instrucoes_preparo")
+            .eq("clinica_id", pacienteClinicaId)
+            .not("instrucoes_preparo", "is", null);
+          if (typesError) throw typesError;
+          configuredTypes = (data || []).filter((type) => activeTypes.has(String(type.nome || "").trim().toLocaleLowerCase("pt-BR")));
+        }
+        result = attachPortalPreparationInstructions(appointments, configuredTypes, todayISO());
         break;
       }
 

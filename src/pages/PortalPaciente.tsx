@@ -22,7 +22,7 @@ import {
   Calendar, FlaskConical, CreditCard, User, ExternalLink, Lock,
   Star, MessageSquare, CheckCircle2, HeartHandshake, Clock,
   Activity, FileText, Phone, Shield, Sparkles, ChevronRight,
-  Heart, Pill, AlertTriangle, Download, RefreshCw,
+  Heart, Pill, AlertTriangle, Download, RefreshCw, ClipboardCheck,
   LogOut,
 } from 'lucide-react';
 import { parseISO } from 'date-fns';
@@ -1349,6 +1349,15 @@ export default function PortalPaciente() {
                                         {nomeMedico(a.medicos.nome)}
                                         {a.medicos.especialidade && ` — ${a.medicos.especialidade}`}
                                       </p>
+                                    )}
+                                    {!passado && ['agendado', 'confirmado', 'aguardando'].includes(a.status) && a.instrucoes_preparo && (
+                                      <div role="note" aria-label="Instruções de preparo" className="mt-3 flex gap-2 rounded-lg border border-primary/20 bg-primary/[0.04] p-3 text-xs text-foreground">
+                                        <ClipboardCheck className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
+                                        <div className="min-w-0">
+                                          <p className="mb-1 font-semibold">Orientações para sua consulta</p>
+                                          <p className="whitespace-pre-wrap">{a.instrucoes_preparo}</p>
+                                        </div>
+                                      </div>
                                     )}
                                   </div>
                                 </div>

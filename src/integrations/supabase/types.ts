@@ -5284,6 +5284,7 @@ export type Database = {
           descricao: string | null
           duracao_minutos: number | null
           id: string
+          instrucoes_preparo: string | null
           nome: string
           updated_at: string | null
           valor_particular: number | null
@@ -5296,6 +5297,7 @@ export type Database = {
           descricao?: string | null
           duracao_minutos?: number | null
           id?: string
+          instrucoes_preparo?: string | null
           nome: string
           updated_at?: string | null
           valor_particular?: number | null
@@ -5308,6 +5310,7 @@ export type Database = {
           descricao?: string | null
           duracao_minutos?: number | null
           id?: string
+          instrucoes_preparo?: string | null
           nome?: string
           updated_at?: string | null
           valor_particular?: number | null
