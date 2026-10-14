@@ -87,18 +87,19 @@ SECURITY DEFINER
 SET search_path = ''
 AS $$
   SELECT
-    activity.session_id,
-    activity.created_at,
-    activity.last_activity_at,
-    activity.user_agent,
-    activity.session_id = NULLIF(auth.jwt() ->> 'session_id', '')::uuid AS is_current
-  FROM public.account_session_activity AS activity
-  JOIN auth.sessions AS auth_session
-    ON auth_session.id = activity.session_id
-   AND auth_session.user_id = activity.user_id
-  WHERE activity.user_id = auth.uid()
+    auth_session.id AS session_id,
+    COALESCE(activity.created_at, auth_session.created_at) AS created_at,
+    COALESCE(activity.last_activity_at, auth_session.refreshed_at, auth_session.updated_at, auth_session.created_at) AS last_activity_at,
+    COALESCE(activity.user_agent, auth_session.user_agent, '') AS user_agent,
+    auth_session.id = NULLIF(auth.jwt() ->> 'session_id', '')::uuid AS is_current
+  FROM auth.sessions AS auth_session
+  LEFT JOIN public.account_session_activity AS activity
+    ON activity.session_id = auth_session.id
+   AND activity.user_id = auth_session.user_id
+  WHERE auth_session.user_id = auth.uid()
     AND (auth_session.not_after IS NULL OR auth_session.not_after > statement_timestamp())
-  ORDER BY is_current DESC, activity.last_activity_at DESC;
+  ORDER BY is_current DESC,
+    COALESCE(activity.last_activity_at, auth_session.refreshed_at, auth_session.updated_at, auth_session.created_at) DESC;
 $$;
 
 REVOKE ALL ON FUNCTION public.touch_my_account_session(text) FROM PUBLIC, anon;

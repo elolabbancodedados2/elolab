@@ -47,6 +47,7 @@ import { abrirUrlSegura, checkoutUrlSeguro } from '@/lib/safeUrl';
 import { clearClinicaInfoCache } from '@/lib/pdfGenerator';
 import { IntegracoesClinica } from '@/components/configuracoes/IntegracoesClinica';
 import { AgendamentoOnlineConfig } from '@/components/configuracoes/AgendamentoOnlineConfig';
+import { AccountSessionsPanel } from '@/components/security/AccountSessionsPanel';
 import { CONFIG_SEGURANCA_ATUALIZADA_EVENT, chaveDaClinica, lerConfigsClinicaComVersoes } from '@/lib/configClinica';
 
 export function textoAcaoPlano(planSlug: string | null) {
@@ -1190,6 +1191,7 @@ export default function Configuracoes() {
                     </Select>
                   </SettingRow>
                 </div>
+                <AccountSessionsPanel />
                 <div className="mt-6 p-4 rounded-xl border bg-primary/5 space-y-3">
                   <div className="flex gap-3">
                     <Shield className="h-5 w-5 text-primary shrink-0 mt-0.5" />

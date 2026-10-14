@@ -16,13 +16,22 @@ describe('RPCs de sessões da própria conta', () => {
     expect(migration).toMatch(/CREATE(?: OR REPLACE)? FUNCTION public\.list_my_account_sessions\(\)/i);
     expect(migration).toMatch(/auth\.uid\(\)/i);
     expect(migration).toMatch(/auth\.jwt\(\)[\s\S]*?session_id/i);
-    expect(migration).toMatch(/JOIN auth\.sessions[\s\S]*?\.id\s*=\s*[^\n]*session_id[\s\S]*?\.user_id\s*=\s*auth\.uid\(\)/i);
+    expect(migration).toMatch(/FROM auth\.sessions AS auth_session[\s\S]*?LEFT JOIN public\.account_session_activity AS activity[\s\S]*?activity\.user_id\s*=\s*auth_session\.user_id/i);
+    expect(migration).toMatch(/WHERE auth_session\.user_id\s*=\s*auth\.uid\(\)/i);
     expect(migration).toMatch(/not_after IS NULL[\s\S]*?not_after > statement_timestamp\(\)/i);
     expect(migration).not.toMatch(/list_my_account_sessions\([^)]/i);
   });
 
   it('remove os metadados quando o Auth apaga a sessão proprietária', () => {
     expect(migration).toMatch(/session_id uuid NOT NULL REFERENCES auth\.sessions\(id\) ON DELETE CASCADE/i);
+  });
+
+  it('inclui sessões Auth próprias ainda sem heartbeat do EloLab', () => {
+    const listFunction = migration.split('CREATE OR REPLACE FUNCTION public.list_my_account_sessions()')[1] ?? '';
+    expect(listFunction).toMatch(/FROM auth\.sessions AS auth_session[\s\S]*?LEFT JOIN public\.account_session_activity AS activity/i);
+    expect(listFunction).toMatch(/WHERE auth_session\.user_id = auth\.uid\(\)/i);
+    expect(listFunction).toMatch(/COALESCE\(activity\.user_agent, auth_session\.user_agent, ''\)/i);
+    expect(listFunction).toMatch(/COALESCE\(activity\.last_activity_at, auth_session\.refreshed_at, auth_session\.updated_at, auth_session\.created_at\)/i);
   });
 
   it('sanitiza o agente, limita seu tamanho e atualiza uma linha por conta/sessão', () => {
