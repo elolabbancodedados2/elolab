@@ -1354,6 +1354,54 @@ export type Database = {
           },
         ]
       }
+      configuracoes_clinica_versoes: {
+        Row: {
+          alterado_por: string | null
+          chave: string
+          clinica_id: string
+          criado_em: string
+          id: string
+          operacao: string
+          restaurada_de: string | null
+          valor: Json
+        }
+        Insert: {
+          alterado_por?: string | null
+          chave: string
+          clinica_id: string
+          criado_em?: string
+          id?: string
+          operacao?: string
+          restaurada_de?: string | null
+          valor: Json
+        }
+        Update: {
+          alterado_por?: string | null
+          chave?: string
+          clinica_id?: string
+          criado_em?: string
+          id?: string
+          operacao?: string
+          restaurada_de?: string | null
+          valor?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "configuracoes_clinica_versoes_clinica_id_fkey"
+            columns: ["clinica_id"]
+            isOneToOne: false
+            referencedRelation: "clinicas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "configuracoes_clinica_versoes_restaurada_de_fkey"
+            columns: ["restaurada_de"]
+            isOneToOne: false
+            referencedRelation: "configuracoes_clinica_versoes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       consentimentos_lgpd: {
         Row: {
           aceito: boolean
@@ -5946,6 +5994,14 @@ export type Database = {
       }
     }
     Functions: {
+      restaurar_configuracao_clinica_versao: {
+        Args: { p_versao_esperada: string; p_versao_id: string }
+        Returns: string
+      }
+      salvar_configuracao_clinica_segura: {
+        Args: { p_chave: string; p_valor: Json; p_versao_esperada: string | null }
+        Returns: string
+      }
       alterar_status_agendamento_com_fila: {
         Args: {
           p_agendamento_id: string
