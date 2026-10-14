@@ -23,7 +23,7 @@ interface Campo {
 interface Integracao { id: string; nome: string; descricao: string; escopo: 'clinica' | 'profissional'; campos: Campo[]; documentacao?: string }
 interface Conexao {
   provedor: string; referencia_id: string | null; status: 'conectado' | 'erro' | 'desconectado';
-  config: Record<string, string>; segredo_dica: string | null; ultimo_erro: string | null; conectado_em: string; updated_at: string;
+  config: Record<string, string>; ultimo_erro: string | null; ultimo_teste_em: string | null; conectado_em: string; updated_at: string;
 }
 
 async function chamar<T>(body: Record<string, unknown>, funcao = 'clinic-integrations'): Promise<T> {
@@ -38,7 +38,7 @@ async function chamar<T>(body: Record<string, unknown>, funcao = 'clinic-integra
 }
 
 const STATUS: Record<Conexao['status'], { rotulo: string; variante: 'outline' | 'destructive' | 'secondary' }> = {
-  conectado: { rotulo: 'Credencial salva', variante: 'outline' },
+  conectado: { rotulo: 'Conectada', variante: 'outline' },
   erro: { rotulo: 'Com erro', variante: 'destructive' },
   desconectado: { rotulo: 'Desconectado', variante: 'secondary' },
 };
@@ -49,6 +49,13 @@ const formatarDataConexao = (valor: string | null | undefined) => {
   return Number.isNaN(data.getTime())
     ? 'data indisponível'
     : formatDateInTimeZone(data);
+};
+
+const formatarDataHoraConexao = (valor: string) => {
+  const data = new Date(valor);
+  return Number.isNaN(data.getTime()) ? 'data indisponível' : new Intl.DateTimeFormat('pt-BR', {
+    timeZone: 'America/Sao_Paulo', dateStyle: 'short', timeStyle: 'short',
+  }).format(data);
 };
 
 /**
@@ -65,6 +72,7 @@ export function IntegracoesClinica() {
     queryKey: ['integracoes-clinica', user?.id ?? null, profile?.clinica_id ?? null],
     queryFn: () => chamar<{ catalogo: Integracao[]; conexoes: Conexao[] }>({ action: 'list' }),
     enabled: !!user && !!profile?.clinica_id,
+    refetchInterval: 60_000,
   });
   const [aberta, setAberta] = useState<{ integracao: Integracao; referencia_id: string | null; versaoEsperada: string | null } | null>(null);
   const [valores, setValores] = useState<Record<string, string>>({});
@@ -155,9 +163,16 @@ export function IntegracoesClinica() {
         <div className="min-w-0">
           <p className="truncate font-medium">{titulo ?? integracao.nome}</p>
           <p className="text-xs text-muted-foreground">
-          {ativa ? <>{integracao.id === 'mercado_pago' && c.config.nickname ? `Conta ${c.config.nickname} · ` : ''}{integracao.id === 'mercado_pago' ? 'conectada' : `Credencial ${c.segredo_dica ?? 'salva'}`} · desde {formatarDataConexao(c.conectado_em)}</> : 'Opcional · não conectado'}
+          {ativa ? <>{integracao.id === 'mercado_pago' && c.config.nickname ? `Conta ${c.config.nickname} · ` : ''}{integracao.id === 'mercado_pago' ? 'conectada' : 'credencial salva'} · desde {formatarDataConexao(c.conectado_em)}</> : 'Opcional · não conectado'}
           </p>
-          {c?.status === 'erro' && c.ultimo_erro && <p className="mt-1 text-xs text-destructive">{c.ultimo_erro}</p>}
+          {ativa && (
+            <p className="mt-1 text-xs text-muted-foreground" role="status">
+              {c.ultimo_teste_em
+                ? <time dateTime={c.ultimo_teste_em}>{c.status === 'erro' ? 'Última tentativa de sincronização' : 'Última sincronização'}: {formatarDataHoraConexao(c.ultimo_teste_em)}</time>
+                : 'Nenhuma sincronização registrada'}
+            </p>
+          )}
+          {c?.status === 'erro' && <p className="mt-1 text-xs text-destructive" role="alert">Falha na última comunicação. Revise a conexão ou contate o suporte.</p>}
         </div>
         <div className="flex items-center gap-2">
           {c && <Badge variant={STATUS[c.status].variante}>{integracao.id === 'mercado_pago' && c.status === 'conectado' ? 'Conta conectada' : STATUS[c.status].rotulo}</Badge>}

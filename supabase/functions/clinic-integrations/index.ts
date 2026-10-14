@@ -50,10 +50,16 @@ Deno.serve(async (req) => {
 
     if (action === 'list') {
       const { data, error } = await service.from('integracoes_clinica')
-        .select('provedor, referencia_id, status, config, segredo_dica, ultimo_erro, ultimo_teste_em, conectado_em, updated_at')
+        .select('provedor, referencia_id, status, config, ultimo_erro, ultimo_teste_em, conectado_em, updated_at')
         .eq('clinica_id', clinicaId);
       if (error) throw error;
-      return json({ catalogo: CATALOGO_INTEGRACOES, conexoes: data ?? [] });
+      const conexoes = (data ?? []).map((conexao: any) => ({
+        ...conexao,
+        ultimo_erro: conexao.status === 'erro'
+          ? 'Falha ao comunicar com o provedor. Confira a conexão ou contate o suporte.'
+          : null,
+      }));
+      return json({ catalogo: CATALOGO_INTEGRACOES, conexoes });
     }
 
     const provedor = String(body.provedor || '');
