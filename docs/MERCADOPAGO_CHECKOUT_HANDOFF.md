@@ -144,3 +144,18 @@ Esta seção substitui as pendências antigas acima quando houver divergência:
 - **Ainda depende do responsável pela conta:** concluir a validação por telefone exigida pelo painel do Mercado Pago, salvar/confirmar os tópicos e URL, e fazer checkout real de teste no navegador para observar autorização, cancelamento, Pix e webhook entregue pelo painel. O Playwright foi sintético e não substitui essa validação de conta.
 - **Revisão pendente:** revogação OAuth continua adiada porque a assinatura HMAC cobre o ID da query, não autentica por si só `action`/`user_id` do corpo.
 - **Publicação:** as migrations novas e alterações locais ainda exigem revisão antes de publicar. Não houve deploy, aplicação de migration no Supabase (local ou remoto), alteração de produção, stage ou commit.
+
+## Rechecagem do deploy completo — 14/10/2026
+
+Esta seção atualiza os estados anteriores que diziam que as alterações ainda estavam somente no checkout.
+
+- **Release publicado:** snapshot `d8221152dbcf7b1b66f9bf3c4d1fa41ab03f8ca7`, branch Git `codex/local-full-release-20261013235452`. A imagem `elolab-web-rag:local-d822115` publica esse build ID em `/version.json`.
+- **App:** a faixa persistente de atualização aparece no app e orienta reportar erro/instabilidade para `contato@focussdev.art` ou `(33) 98412-3591`. `/healthz`, `/`, `/auth`, `/dashboard` e `/planos` responderam HTTP 200.
+- **Banco:** as 14 migrations identificadas como ausentes foram aplicadas; comparação posterior confirmou que nenhum timestamp existente em `supabase/migrations` ficou sem registro no ledger. Foi necessário reconciliar tabelas de diagnósticos que faltavam apesar do ledger antigo afirmar que a migration base havia rodado. O backup pré-alteração validado está em `/var/backups/elolab/pre-local-complete-20261014T030207Z.dump`.
+- **Edge Functions:** fontes do release copiadas para o volume do runtime e reiniciadas. `trial-with-payment` responde 410 sem efeitos de cobrança; `hello` responde 404. O código anterior dessas duas rotas foi preservado em `/var/backups/elolab/closeout-20261014T033937Z/retired-functions.tar.gz`. O diretório `_secrets` e o entrypoint `main` foram preservados. A configuração `supabase/config.toml` foi sincronizada; o Compose self-hosted não a monta no Edge Runtime, mas ela permanece como configuração fonte para CLI.
+- **Sandbox depois do deploy:** `npm run test:mp-sandbox` confirmou usuário de teste e passou em 15/15 cenários. A order aprovada desse teste permanece no sandbox conforme o comportamento documentado do script; nenhuma credencial de produção foi instalada ou usada.
+- **Ainda pendente:** checkout visual completo no navegador e entrega real de webhook pelo painel Mercado Pago precisam de conta/usuário de teste acessível e confirmação dos tópicos/URL no painel. A validação de RLS/exportação/FHIR contra o runtime Supabase precisa de projeto descartável; o marcador de QA descartável não está configurado. O teste sintético local passou, mas não substitui esses checks.
+- **Sem destino externo configurado:** não há `rclone` nem `restic` na VPS. O backup produzido nesta operação está na própria VPS; falta um bucket/destino externo autorizado e suas credenciais provisionadas fora do chat. Também continuam sem evidência o ensaio de restore e RPO/RTO.
+- **Produção financeira:** o checkout continua usando a configuração sandbox documentada. A mudança para credenciais reais exige autorização específica e não foi feita nesta publicação.
+
+A URL da PR será registrada após sua criação e o resultado do CI.

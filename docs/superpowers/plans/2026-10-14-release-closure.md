@@ -38,7 +38,7 @@
 - [x] Add a persistent banner above the application routes with concise update status and instructions to report errors/instability.
 - [x] Add `mailto:contato@focussdev.art` and `tel:+5533984123591` links with accessible names and responsive wrapping.
 - [x] Test first: `UpdateSupportBanner.test.tsx` failed because the component did not exist; the focused test then passed, and the full Vitest suite passed (233 files, 1,232 tests). Production build and public route smoke remain part of the VPS release check.
-- [ ] Commit the banner and its test on the isolated release branch.
+- [x] Commit the banner and its test on the isolated release branch (`10b78a3`).
 
 ### Task 2: Reconcile release provenance and VPS drift
 
@@ -48,36 +48,36 @@
 - [x] Confirm all local migration versions are registered remotely.
 - [x] The remote trial route had zero logged requests in the available 30-day window and the local product docs say its old flow was removed. Quarantine the old source and replace the route with a no-side-effect 410 tombstone; replace the default `hello` sample route with a controlled 404. Preserve `_secrets` and runtime `main`.
 - [x] Make the Docker build accept `APP_BUILD_ID`/`VITE_APP_BUILD_ID`, so archive-based VPS builds embed the exact commit instead of a timestamp fallback.
-- [ ] Record the published snapshot SHA and a reproducible Git path without changing `main` prematurely.
+- [x] Record the published snapshot SHA (`d8221152dbcf7b1b66f9bf3c4d1fa41ab03f8ca7`) and reproducible Git branch; keep `main` unchanged pending review gates.
 
 ### Task 3: Close safe sandbox billing validation
 
 **Files:** Existing `scripts/mercadopago-sandbox-e2e.ts` and handoff documentation only if results change.
 
-- [ ] Confirm sandbox credential presence without printing values; execute only the sandbox E2E workflow if it uses test users.
-- [ ] Verify whether browser checkout, cancellation, Pix, and panel webhook delivery can be proven with available test accounts and visible browser access.
-- [ ] Record blockers that require the account owner; never switch to live credentials in this task.
+- [x] Confirm sandbox credential presence without printing values; `npm run test:mp-sandbox` passed 15/15 using test users.
+- [x] Check browser checkout, cancellation, Pix, and panel webhook availability; these require an authenticated account-owner session and visible browser, neither available here.
+- [x] Record account-owner blockers; no live credentials were installed or used.
 
 ### Task 4: Close isolated authorization/export validation
 
 **Files:** Existing QA scripts/tests and operational notes.
 
-- [ ] Run only verification that uses a disposable/synthetic database and avoids production patient records.
-- [ ] Verify the deployed policy and export behavior where a disposable Supabase environment is available.
-- [ ] Keep incomplete LGPD scope and unverified legacy Storage paths explicitly marked.
+- [x] Run verification with synthetic data only; local isolated SQL/policy and existing authorization/export tests passed without production patient records.
+- [ ] Verify deployed policy/export behavior against a disposable Supabase project (blocked: no disposable project/access configured).
+- [x] Keep incomplete LGPD scope and unverified legacy Storage paths explicitly marked.
 
 ### Task 5: Close continuity controls where credentials permit
 
 **Files:** `docs/EASYPANEL-VPS.md` and operational scripts/config only if a safe destination already exists.
 
-- [ ] Inspect current backup, restore, alerting, and deployment-gate configuration without reading secret values or customer data.
-- [ ] Configure/verify off-VPS backup and independent monitoring only if an authorized destination and credentials already exist.
-- [ ] Document a tested rollback/restore path; otherwise provide the exact missing external prerequisites.
+- [x] Inspect backup, restore, alerting, and deployment-gate configuration without exposing secret values or customer data.
+- [ ] Configure/verify off-VPS backup and independent monitoring (blocked: no authorized destination or provisioned credentials exist).
+- [x] Document rollback to the retained prior image; document restore, offsite, and RPO/RTO prerequisites that remain.
 
 ### Task 6: Publish the reconciled source branch
 
 **Files:** Git history and PR metadata.
 
-- [ ] Commit the support banner and release notes on the isolated release branch.
-- [ ] Push the branch and open/update a reviewable PR if authenticated GitHub access is available.
+- [x] Commit the support banner and release notes on the isolated release branch.
+- [ ] Push the final docs update and open a reviewable PR.
 - [ ] Merge only if required CI passes and the deployment trigger is known safe; otherwise leave the PR ready and identify the gating condition.

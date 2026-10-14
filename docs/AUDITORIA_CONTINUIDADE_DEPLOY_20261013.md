@@ -61,3 +61,14 @@ Legenda: **Presente no código/docs** = mecanismo ou procedimento descrito; **Pa
 - O QA local valida o checkout corrente; não vincula o build publicado a um commit e não prova que as mudanças locais estejam no runtime. O checkout segue com alterações locais não publicadas.
 - Smoke Playwright somente de leitura contra `https://app.elolab.com.br`: 4/4 passaram (landing, renderização da tela de login, bundle/service worker/version.json e cabeçalhos de segurança). O teste apenas preencheu o campo de login com endereço fictício; não submeteu credenciais nem gravou dados. Isso confirma o runtime atual, mas não mapeia o build para um SHA.
 - Rechecagem posterior ao build local: `/healthz` permanece HTTP 200 e `/version.json` continua em `18f672af47db28dc09774881a27c3bca147b3748ee4d0b3e20c8fe8376ce598b`; o build local `8ed7faebb0bb8405` não está no runtime.
+
+## Rechecagem pós-publicação — 14/10/2026
+
+- Release ativo: `d8221152dbcf7b1b66f9bf3c4d1fa41ab03f8ca7`; imagem `elolab-web-rag:local-d822115`. O build ID remoto coincide com esse SHA. `/healthz`, `/`, `/auth`, `/dashboard` e `/planos` responderam HTTP 200.
+- O deploy manual usou `stop-first` porque o serviço Swarm publica a porta em modo host e `start-first` não consegue iniciar duas réplicas na única VPS. A imagem anterior `elolab-web-rag:local-3b8f961` permanece local para rollback.
+- As migrações locais estão todas registradas no banco; backup pré-migration foi validado. O código das Edge Functions foi sincronizado e os endpoints antigos receberam respostas controladas 410/404.
+- **Proteção de release:** a API do GitHub confirma proteção em `main`, com aprovação de uma pessoa, resolução das conversas e checks obrigatórios (`Typecheck & Lint`, `Unit & Integration Tests`, `E2E Tests`, `validate`). O release está em branch separada; não integrar à `main` até esses gates e o gatilho do Easypanel estarem confirmados.
+- **Recuperação:** `rclone` e `restic` não estão instalados/configurados; o backup pré-release está no mesmo servidor. Destino offsite, credenciais, teste de restore isolado e RPO/RTO continuam pendentes.
+- **Observabilidade:** o monitor da aplicação ainda depende do Supabase na própria VPS. Não foi encontrado destino de alertas independente nem prova de recebimento externo.
+- O usuário pediu uma faixa global no app para informar atualização e indicar o suporte: `contato@focussdev.art` e `(33) 98412-3591`. O componente foi adicionado ao topo do app; o teste focal e a suíte Vitest completa passaram.
+- GitHub: branch protegida com `main` como base; PR ainda será aberta após registrar esta atualização documental. Nenhuma integração ou merge foi realizado.
