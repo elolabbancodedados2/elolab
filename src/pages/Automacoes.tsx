@@ -32,6 +32,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { ErrorState } from '@/components/ErrorState';
 import { cn } from '@/lib/utils';
+import { resumirErroFilaNotificacao } from '@/lib/notificationQueueErrorSummary';
 
 interface AutomationLog {
   id: string;
@@ -58,8 +59,7 @@ interface AutomationSetting {
 
 interface QueueItem {
   id: string; tipo: string; destinatario_nome: string | null;
-  destinatario_email: string | null; destinatario_telefone: string | null;
-  assunto: string | null; status: string; tentativas: number;
+  status: string; tentativas: number;
   max_tentativas: number; erro_mensagem: string | null;
   agendado_para: string; created_at: string;
 }
@@ -199,6 +199,7 @@ export default function Automacoes() {
   });
 
   const queueQuery = useSupabaseQuery<QueueItem>('notification_queue', {
+    select: 'id, tipo, destinatario_nome, status, tentativas, max_tentativas, erro_mensagem, agendado_para, created_at',
     orderBy: { column: 'created_at', ascending: false }, limit: 100, page: 0,
   });
   const deliveryClaimsQuery = useSupabaseQuery<AutomationDeliveryClaim>('automation_delivery_claims', {
@@ -591,18 +592,18 @@ export default function Automacoes() {
           <Card>
             <CardHeader><CardTitle>Últimos envios</CardTitle><CardDescription>Até 100 mensagens recentes, com tentativas e detalhes de falha.</CardDescription></CardHeader>
             <CardContent><div className="overflow-x-auto rounded-md border"><Table>
-              <TableHeader><TableRow><TableHead>Agendado</TableHead><TableHead>Canal</TableHead><TableHead>Destinatário</TableHead><TableHead>Status</TableHead><TableHead>Tentativas</TableHead><TableHead>Detalhe</TableHead><TableHead className="text-right">Ações</TableHead></TableRow></TableHeader>
+              <TableHeader><TableRow><TableHead>Próxima tentativa / agendado</TableHead><TableHead>Canal</TableHead><TableHead>Destinatário</TableHead><TableHead>Status</TableHead><TableHead>Tentativas</TableHead><TableHead>Detalhe</TableHead><TableHead className="text-right">Ações</TableHead></TableRow></TableHeader>
               <TableBody>{queue.length === 0 ? <TableRow><TableCell colSpan={7} className="py-8 text-center text-muted-foreground">Nenhum envio na fila</TableCell></TableRow> : queue.map(item => (
                 <TableRow key={item.id}>
                   <TableCell className="whitespace-nowrap text-sm">{formatarDataHora(item.agendado_para)}</TableCell>
                   <TableCell><Badge variant="outline">{item.tipo}</Badge></TableCell>
-                  <TableCell><div className="max-w-48 truncate font-medium">{item.destinatario_nome || item.destinatario_email || item.destinatario_telefone || 'Não informado'}</div></TableCell>
+                  <TableCell><div className="max-w-48 truncate font-medium">{item.destinatario_nome || 'Destinatário'}</div></TableCell>
                   <TableCell><Badge className={item.status === 'incerto' ? 'border-amber-500 text-amber-700' : undefined} variant={item.status === 'erro' ? 'destructive' : item.status === 'enviado' ? 'default' : 'secondary'}>{item.status === 'incerto' ? 'incerto · verificar' : item.status}</Badge></TableCell>
                   <TableCell>{item.tentativas}/{item.max_tentativas}</TableCell>
-                  <TableCell><p className="max-w-64 truncate text-xs text-muted-foreground" title={item.erro_mensagem || item.assunto || ''}>{item.erro_mensagem || item.assunto || '—'}</p></TableCell>
+                  <TableCell><p className="max-w-64 truncate text-xs text-muted-foreground" title={item.erro_mensagem ? resumirErroFilaNotificacao(item.erro_mensagem) : ''}>{item.erro_mensagem ? resumirErroFilaNotificacao(item.erro_mensagem) : '—'}</p></TableCell>
                   <TableCell><div className="flex justify-end gap-1">
                     {(item.status === 'erro' || item.status === 'cancelado') && <Button size="sm" variant="outline" disabled={updatingQueue[item.id]} onClick={() => updateQueueItem(item.id, 'retry')}><RefreshCw className={cn('mr-1 h-3 w-3', updatingQueue[item.id] && 'animate-spin')} />Repetir</Button>}
-                    {(item.status === 'pendente' || item.status === 'erro') && <Button size="icon" variant="ghost" title="Cancelar" aria-label={`Cancelar envio para ${item.destinatario_nome || item.destinatario_email || item.destinatario_telefone || 'destinatário'}`} disabled={updatingQueue[item.id]} onClick={() => updateQueueItem(item.id, 'cancel')}><XCircle className="h-4 w-4" /></Button>}
+                    {(item.status === 'pendente' || item.status === 'erro') && <Button size="icon" variant="ghost" title="Cancelar" aria-label={`Cancelar envio para ${item.destinatario_nome || 'destinatário'}`} disabled={updatingQueue[item.id]} onClick={() => updateQueueItem(item.id, 'cancel')}><XCircle className="h-4 w-4" /></Button>}
                   </div></TableCell>
                 </TableRow>
               ))}</TableBody>
