@@ -5994,6 +5994,10 @@ export type Database = {
       }
     }
     Functions: {
+      clinic_onboarding_overview: {
+        Args: never
+        Returns: Json
+      }
       restaurar_configuracao_clinica_versao: {
         Args: { p_versao_esperada: string; p_versao_id: string }
         Returns: string
