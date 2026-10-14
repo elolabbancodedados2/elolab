@@ -84,6 +84,30 @@ export type Database = {
         }
         Relationships: []
       }
+      account_session_activity: {
+        Row: {
+          created_at: string
+          last_activity_at: string
+          session_id: string
+          user_agent: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          last_activity_at?: string
+          session_id: string
+          user_agent?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          last_activity_at?: string
+          session_id?: string
+          user_agent?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       agendamentos: {
         Row: {
           clinica_id: string | null
@@ -6011,6 +6035,16 @@ export type Database = {
           id: string
         }[]
       }
+      list_my_account_sessions: {
+        Args: never
+        Returns: {
+          created_at: string
+          is_current: boolean
+          last_activity_at: string
+          session_id: string
+          user_agent: string
+        }[]
+      }
       limpar_logs_antigos: { Args: never; Returns: number }
       limpar_rate_limit_antigos: { Args: never; Returns: number }
       link_portal_paciente: { Args: { p_paciente_id: string }; Returns: string }
@@ -6152,6 +6186,7 @@ export type Database = {
         Returns: Json
       }
       reabrir_caixa_diario: { Args: { p_motivo: string }; Returns: Json }
+      touch_my_account_session: { Args: { p_user_agent: string }; Returns: undefined }
       reivindicar_notificacoes: {
         Args: { p_clinica_id?: string; p_limite?: number }
         Returns: {
