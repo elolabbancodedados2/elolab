@@ -8,7 +8,8 @@ Este documento mantém 100 oportunidades distintas em módulos existentes e cinc
 
 - Produção: `app.elolab.com.br` respondeu em `/healthz`, landing, login e assets. O smoke de produção existente passou em 4/4 cenários em 14/10/2026. A revisão publicada continua sem proveniência direta no `version.json` (`local-…`); o item transversal E1 corrige esse problema localmente.
 - Integração anterior: o PR #20 está em `main` no merge `b128889258a6ef7aa0e5eadf198b00fce61a3562`.
-- Checkout principal observado: `codex/whatsapp-safe-schema-stage` em `147dbc15704c3fd621cbf4c7f43bc25e832292c6`, com 332 entradas locais (229 arquivos rastreados alterados e mais de 100 novos/renomeados). Há alterações de UI, fluxos clínicos, Edge Functions, testes e migrations. Foram preservadas e ainda precisam de reconciliação, auditoria e validação próprias; este programa trabalha no worktree limpo baseado no `main` publicado.
+- Checkout principal observado: `codex/whatsapp-safe-schema-stage` em `147dbc15704c3fd621cbf4c7f43bc25e832292c6`, com 332 entradas no `git status`. A comparação de conteúdo com `origin/main`, limitada ao código, testes, configuração e documentação do produto e excluindo protótipos/capturas, reduziu o delta real a 23 caminhos. A suíte local passou, mas parte dessas diferenças conflita com decisões recentes do produto e não foi copiada.
+- Diferenças locais que ficam fora da integração: a faixa de suporte ativa seria substituída por um aviso de manutenção expirado (7–8/10); o menu claro da referência visual seria trocado por um gradiente escuro; a compactação recente da Recepção seria revertida; e a tela de Suporte perderia ajustes de rolagem. Remoções de stubs legados que continuam respondendo 410 não serão integradas sem verificar o comportamento remoto. O checkout original continua intacto.
 - Melhoria entregue neste programa: **E1 — versão do build identifica a revisão**. Dockerfile consome `GIT_SHA` do Easypanel, o workflow passa `${GITHUB_SHA}` e `/version.json` mantém o valor. Evidência: teste focado 3/3, suíte Vitest 234 arquivos/1.236 testes, TypeScript, quatro checks estáticos, ESLint focal, build real com SHA conhecido e `git diff --check` passaram. Commit `b64cb42`.
 
 ## Melhorias em módulos existentes
@@ -149,21 +150,21 @@ Itens 1–100 são propostas de execução, não afirmações de que esses defei
 
 Todos os módulos abaixo exigem rota, navegação por papel, contratos Supabase com isolamento por clínica, trilha de auditoria, loading/erro/vazio, acesso por teclado, testes de permissão e jornada sintética. Só contam como completos depois de fluxo autenticado em ambiente QA descartável e validação dos dados/regra pela função responsável.
 
-### N1. Central de trabalho por perfil
+### N1. Minha fila de trabalho
 
-Fila de trabalho que agrega agenda próxima, exames atrasados, pendências de recepção e tarefas já existentes, com filtros por unidade/período e atalhos para os módulos atuais. Não cria uma segunda fonte de dados; cada cartão aponta para o registro de origem. Perfis veem apenas os itens que já podem acessar. Critério de conclusão: contagens reconciliam com os módulos de origem, filtros não atravessam clínicas e nenhuma ação duplicada é criada.
+Caixa de entrada pessoal das tarefas atribuídas ao usuário atual, separada do quadro que gerencia todas as tarefas da clínica. Organiza itens vencidos, de hoje e futuros, apresenta contadores reconciliados com a fonte e mantém links de origem. Não cria uma segunda tabela nem mostra tarefas de outro responsável. Critério de conclusão: filtros de responsável e clínica são validados no servidor/RLS, a ordenação é determinística e o estado vazio diferencia fila concluída de nenhuma tarefa atribuída.
 
-### N2. Linha do tempo operacional do paciente
+### N2. Teleconsulta
 
-Visão cronológica de eventos clínicos e administrativos com origem, data, autor e permissão por evento; permite navegar ao recurso original sem duplicar conteúdo. Dados financeiros e de cobrança de planos ficam em domínios separados. Critério de conclusão: ordenação estável, paginação, ocultação por papel, export auditada e ausência de dados fora da clínica em testes RLS.
+Jornada remota vinculada ao agendamento: sala de espera, presença, consentimento e encerramento, com registro do link no histórico. Não grava áudio/vídeo nem substitui o prontuário. Critério de conclusão: links de sessão não enumeráveis e expirados, permissão por clínica/papel, entrada/saída auditadas e teste sintético de queda/reconexão.
 
 ### N3. Qualidade e segurança assistencial
 
 Registro restrito de incidente, quase incidente, risco, análise, ação corretiva, responsável e prazo, com opção de relatório sem exposição ampla da identidade do notificador. Inclui estados, revisão por qualidade e indicadores por categoria. Critério de conclusão: acesso mínimo, auditoria de leitura/alteração, fluxo de retificação e teste de confidencialidade entre perfis/clínicas.
 
-### N4. Programas de cuidado longitudinal
+### N4. Higienização de salas e controle de infecção
 
-Planos de acompanhamento definidos por profissional: objetivos, etapas, consultas, exames e lembretes; evolução vinculada a eventos clínicos existentes. O sistema organiza seguimento, sem diagnosticar nem recomendar condutas autônomas. Critério de conclusão: consentimento/canal respeitado, profissional responsável identificável, alertas configuráveis e validação clínica das regras antes de produção.
+Fluxo operacional de limpeza entre atendimentos, checklist por sala, registro de responsável/horário e inspeções de rotina. Exibe disponibilidade da sala somente depois dos itens obrigatórios definidos pela clínica. Critério de conclusão: checklists versionados, registro imutável de execução e revisão, alertas de pendência e testes de isolamento por unidade.
 
 ### N5. Equipamentos, manutenção e calibração
 
@@ -172,6 +173,7 @@ Cadastro patrimonial de equipamento por unidade, responsável, validade de calib
 ## Execução e contagem
 
 - [x] E1 — Identificação verificável da revisão do build.
+- [x] Auditar checkout local: 23 diferenças de conteúdo selecionadas contra `main`; os itens conflitantes com faixa de suporte, referência visual e densidade da Recepção ficaram preservados no checkout original e fora da integração.
 - [ ] Fazer triagem dos itens 1–100 no checkout local e retirar duplicatas antes de iniciar cada pacote.
 - [ ] Implementar, validar e registrar cada pacote antes de seguir ao próximo; atualizar este arquivo sem contar testes ou documentos como melhoria funcional.
 - [ ] Completar e testar N1–N5 como módulos com persistência, autorização e fluxo utilizável; não contar protótipos nem páginas somente de navegação.
