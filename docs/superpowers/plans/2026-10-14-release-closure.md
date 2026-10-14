@@ -42,11 +42,12 @@
 
 ### Task 2: Reconcile release provenance and VPS drift
 
-**Files:** `supabase/config.toml`; `docs/EASYPANEL-VPS.md`; release notes as needed.
+**Files:** `Dockerfile`; `supabase/config.toml`; `docs/EASYPANEL-VPS.md`; release notes as needed.
 
 - [ ] Compare local config with VPS config and runtime wiring; synchronize the config file only after confirming its source and runtime role.
 - [ ] Confirm all local migration versions are registered remotely.
 - [ ] Compare remote-only Edge Function directories; preserve unknown/secret directories and establish whether `trial-with-payment` is referenced before any removal.
+- [x] Make the Docker build accept `APP_BUILD_ID`/`VITE_APP_BUILD_ID`, so archive-based VPS builds embed the exact commit instead of a timestamp fallback.
 - [ ] Record the published snapshot SHA and a reproducible Git path without changing `main` prematurely.
 
 ### Task 3: Close safe sandbox billing validation
