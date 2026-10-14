@@ -32,6 +32,7 @@ import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
 import { dateOnlyInTimeZone, inicioDoDiaEmFusoIso, parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { calculateAttendanceRate } from '@/lib/analyticsKpis';
+import { AccessibleChartTable } from '@/components/analytics/AccessibleChartTable';
 
 const COLORS = ['hsl(var(--primary))', 'hsl(var(--success))', 'hsl(var(--warning))', 'hsl(var(--info))', 'hsl(var(--destructive))'];
 const STATUS_FINALIZADO = new Set(['finalizado', 'atendimento_finalizado']);
@@ -197,6 +198,8 @@ export default function Analytics() {
   const timestampRange = useMemo(() => limitesTimestampSaoPaulo(range.from, range.to), [range]);
   const rangeDays = differenceInDays(range.to, range.from) + 1;
   const kpiPeriod = `${format(range.from, 'dd/MM/yyyy')} a ${format(range.to, 'dd/MM/yyyy')} (horário de São Paulo)`;
+  const selectedPeriodFilter = ['Janela selecionada'];
+  const appointmentChartFilters = [showComparison ? 'Comparação com o intervalo anterior ligada' : 'Comparação com o intervalo anterior desligada'];
   const prevRange = useMemo(() => ({
     from: subDays(range.from, rangeDays),
     to: subDays(range.to, rangeDays),
@@ -748,6 +751,13 @@ export default function Analytics() {
                     {showComparison && <Legend />}
                   </BarChart>
                 </ResponsiveContainer>
+                <AccessibleChartTable
+                  title="Agendamentos por dia"
+                  period={kpiPeriod}
+                  filters={appointmentChartFilters}
+                  columns={[{ key: 'dia', label: 'Dia' }, { key: 'agendamentos', label: 'Agendamentos' }, ...(showComparison ? [{ key: 'anterior', label: 'Período anterior' }] : [])]}
+                  rows={agPorDia.map(point => ({ dia: point.dia, agendamentos: point.agendamentos, ...(showComparison ? { anterior: point.anterior ?? 0 } : {}) }))}
+                />
               </CardContent>
             </Card>
 
@@ -767,6 +777,13 @@ export default function Analytics() {
                     <Tooltip />
                   </PieChart>
                 </ResponsiveContainer>
+                <AccessibleChartTable
+                  title="Status dos agendamentos"
+                  period={kpiPeriod}
+                  filters={selectedPeriodFilter}
+                  columns={[{ key: 'status', label: 'Status' }, { key: 'quantidade', label: 'Agendamentos' }]}
+                  rows={statusAgendamentos.map(item => ({ status: item.name, quantidade: item.value }))}
+                />
               </CardContent>
             </Card>
           </div>
@@ -817,6 +834,13 @@ export default function Analytics() {
                   })}
                 </div>
               )}
+              <AccessibleChartTable
+                title="Produtividade por médico"
+                period={kpiPeriod}
+                filters={selectedPeriodFilter}
+                columns={[{ key: 'medico', label: 'Médico' }, { key: 'especialidade', label: 'Especialidade' }, { key: 'agendamentos', label: 'Agendamentos' }, { key: 'finalizados', label: 'Finalizados' }, { key: 'taxa', label: 'Taxa de finalização (%)' }]}
+                rows={produtividade.map(item => ({ medico: nomeMedico(item.nome), especialidade: item.especialidade, agendamentos: item.total, finalizados: item.finalizados, taxa: item.total > 0 ? Math.round((item.finalizados / item.total) * 100) : 0 }))}
+              />
             </CardContent>
           </Card>
         </TabsContent>
@@ -859,6 +883,13 @@ export default function Analytics() {
                   <Legend />
                 </AreaChart>
               </ResponsiveContainer>
+                <AccessibleChartTable
+                  title="Fluxo de caixa"
+                  period={kpiPeriod}
+                  filters={selectedPeriodFilter}
+                  columns={[{ key: 'dia', label: 'Dia' }, { key: 'receitas', label: 'Receitas (R$)' }, { key: 'despesas', label: 'Despesas (R$)' }, { key: 'saldo', label: 'Saldo (R$)' }]}
+                  rows={fluxoCaixa}
+                />
             </CardContent>
           </Card>
         </TabsContent>
@@ -881,6 +912,13 @@ export default function Analytics() {
                     <Tooltip />
                   </PieChart>
                 </ResponsiveContainer>
+                <AccessibleChartTable
+                  title="Classificação de risco das triagens"
+                  period={kpiPeriod}
+                  filters={selectedPeriodFilter}
+                  columns={[{ key: 'classificacao', label: 'Classificação' }, { key: 'quantidade', label: 'Triagens' }]}
+                  rows={classificacaoRisco.map(item => ({ classificacao: item.name, quantidade: item.value }))}
+                />
               </CardContent>
             </Card>
 
