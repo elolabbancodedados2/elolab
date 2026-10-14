@@ -5,6 +5,7 @@ import { extrairCaminhoAnexoClinico, laudoPertenceAoPaciente } from '../_shared/
 import { attachPortalPreparationInstructions } from '../../../src/lib/portalAppointmentPreparation.ts';
 import { horariosLivres, validarHorario as validatePortalSlot, agoraEmBrasilia, horarioConsultaPassou } from '../_shared/horarios.ts';
 import { limiteDataRemarcacao, recusarDataAlemDoLimite, remarcarAgendamento } from './remarcacao.ts';
+import { assinarDocumentosPortal } from '../_shared/portalDocuments.ts';
 
 /** Data de hoje em "YYYY-MM-DD", para comparar com colunas `date` do Postgres. */
 function todayISO(): string {
@@ -80,7 +81,7 @@ Deno.serve(async (req) => {
     const tokenHash = await sha256Hex(String(token));
     let { data: tokenData, error: tokenError } = await supabase
       .from("paciente_portal_tokens")
-      .select("*, pacientes(id, nome, email, telefone, foto_url, cpf, data_nascimento, sexo, alergias, observacoes, clinica_id)")
+      .select("*, pacientes(id, nome, email, telefone, foto_url, cpf, data_nascimento, sexo, alergias, observacoes, clinica_id, ativo)")
       .eq("token", tokenHash)
       .eq("ativo", true)
       .gte("expires_at", new Date().toISOString())
@@ -93,7 +94,7 @@ Deno.serve(async (req) => {
     if (!tokenData) {
       ({ data: tokenData, error: tokenError } = await supabase
         .from("paciente_portal_tokens")
-        .select("*, pacientes(id, nome, email, telefone, foto_url, cpf, data_nascimento, sexo, alergias, observacoes, clinica_id)")
+        .select("*, pacientes(id, nome, email, telefone, foto_url, cpf, data_nascimento, sexo, alergias, observacoes, clinica_id, ativo)")
         .eq("token", String(token))
         .eq("ativo", true)
         .gte("expires_at", new Date().toISOString())
@@ -112,7 +113,7 @@ Deno.serve(async (req) => {
     // com médicos de outras clínicas.
     const pacienteClinicaId =
       (tokenData as any).pacientes?.clinica_id ?? (tokenData as any).clinica_id ?? null;
-    if (!pacienteId || !pacienteClinicaId || pacienteClinicaId !== (tokenData as any).clinica_id) {
+    if (!pacienteId || !pacienteClinicaId || pacienteClinicaId !== (tokenData as any).clinica_id || (tokenData as any).pacientes?.ativo === false) {
       return new Response(JSON.stringify({ error: "Token inválido" }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -323,6 +324,35 @@ Deno.serve(async (req) => {
           }
           return { ...exame, arquivo_resultado: signed.signedUrl };
         }));
+        break;
+      }
+
+      case "get_documentos": {
+        const { data, error } = await supabase
+          .from("documentos_portal_paciente")
+          .select("anexo_id,paciente_id,clinica_id,publicado,validade_ate,origem,anexo:anexos_prontuario!inner(id,paciente_id,clinica_id,prontuario_id,nome_arquivo,tipo_arquivo,categoria,url_arquivo)")
+          .eq("paciente_id", pacienteId)
+          .eq("clinica_id", pacienteClinicaId)
+          .eq("publicado", true)
+          .or(`validade_ate.is.null,validade_ate.gte.${todayISO()}`)
+          .order("anexo_id", { ascending: true })
+          .range(offset, offset + 29);
+        if (error) throw error;
+
+        result = await assinarDocumentosPortal(
+          data || [],
+          pacienteId,
+          pacienteClinicaId,
+          todayISO(),
+          Deno.env.get("SUPABASE_URL")!,
+          async (path, expiresIn) => {
+            const { data: signed, error: signError } = await supabase.storage
+              .from("medical-attachments")
+              .createSignedUrl(path, expiresIn);
+            if (signError) console.error("Não foi possível assinar documento do portal");
+            return { signedUrl: signed?.signedUrl, error: signError };
+          },
+        );
         break;
       }
 

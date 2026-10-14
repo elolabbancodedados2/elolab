@@ -43,11 +43,11 @@
 
 ### 3. Serviço seguro do portal
 
-- [ ] Escrever testes falhando para rejeitar URL/path fora do bucket ou da pasta daquele paciente/prontuário, documento expirado, publicação revogada e link com validade diferente de 300 segundos.
-- [ ] Implementar helper puro para conferir escopo e vigência; assinar apenas após validação da publicação, anexo, paciente e clínica.
-- [ ] Implementar ação `get_documentos` paginada e idempotente, retornando apenas metadados selecionados e URL assinada; não retornar path privado, token ou erro do Storage.
-- [ ] Recusar sessão de portal se o paciente estiver inativo, inclusive se houver token antigo em corrida com revogação.
-- [ ] Rodar Vitest do contrato, Deno tests e PGlite/mocks de sucesso, erro de storage, validade, revogação e isolamento entre clínicas; commitar.
+- [x] Escrever testes falhando para rejeitar URL/path fora do bucket ou da pasta daquele paciente/prontuário, documento expirado, publicação revogada e link com validade diferente de 300 segundos.
+- [x] Implementar helper puro para conferir escopo e vigência; assinar apenas após validação da publicação, anexo, paciente e clínica.
+- [x] Implementar ação `get_documentos` paginada e idempotente, retornando apenas metadados selecionados e URL assinada; não retornar path privado, token ou erro do Storage.
+- [x] Recusar sessão de portal se o paciente estiver inativo, inclusive se houver token antigo em corrida com revogação.
+- [x] Rodar Vitest do contrato, Deno tests e PGlite/mocks de sucesso, erro de storage, validade, revogação e isolamento entre clínicas; commitar.
 
 ### 4. Lista no portal
 
