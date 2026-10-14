@@ -91,4 +91,16 @@ describe('CentralNotificacoes — leitura em lote', () => {
     expect(screen.getByRole('button', { name: /Marcar 0/ })).toBeDisabled();
     expect(state.upsert).not.toHaveBeenCalled();
   });
+
+  it('mostra contagem agrupada e abre a origem do evento sem duplicar a leitura', async () => {
+    state.data = [item(), item({ message: 'Cópia repetida' })];
+    render(<CentralNotificacoes />);
+
+    expect(screen.getByText('2 ocorrências')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Tarefa pendente/ }));
+
+    expect(state.navigate).toHaveBeenCalledWith('/tarefas');
+    await waitFor(() => expect(state.upsert).toHaveBeenCalledOnce());
+    expect(state.upsert.mock.calls[0][0]).toHaveLength(1);
+  });
 });
