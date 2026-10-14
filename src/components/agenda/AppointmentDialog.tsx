@@ -452,6 +452,7 @@ export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos,
                     <SelectItem value="retorno">Retorno</SelectItem>
                     <SelectItem value="exame">Exame</SelectItem>
                     <SelectItem value="procedimento">Procedimento</SelectItem>
+                    <SelectItem value="telemedicina">Teleconsulta</SelectItem>
                     {tipos.map(t => <SelectItem key={t.id} value={t.nome}>{t.nome}</SelectItem>)}
                   </SelectContent>
                 </Select>

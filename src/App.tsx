@@ -122,6 +122,7 @@ const VerificarAssinatura = lazy(() => import("@/pages/VerificarAssinatura"));
 const FaturamentoConvenios = lazy(() => import("@/pages/FaturamentoConvenios"));
 const RepassesMedicos = lazy(() => import("@/pages/RepassesMedicos"));
 const Interoperabilidade = lazy(() => import("@/pages/Interoperabilidade"));
+const Teleconsulta = lazy(() => import("@/pages/Teleconsulta"));
 import { CookieConsent } from "@/components/CookieConsent";
 import { UpdateSupportBanner } from "@/components/UpdateSupportBanner";
 import { BrandLoadingScreen } from "@/components/BrandLoadingScreen";
@@ -230,6 +231,7 @@ function App() {
                         <Route path="/politica-cookies" element={<PoliticaCookies />} />
                         <Route path="/termos-uso" element={<TermosUso />} />
                         <Route path="/portal-paciente" element={<PortalPaciente />} />
+                        <Route path="/teleconsulta/:sessionId" element={<Teleconsulta />} />
                         <Route path="/agendar/:clinicaId" element={<AgendamentoOnline />} />
                         <Route path="/portal-guias/:token" element={<PortalGuias />} />
                         <Route path="/verificar-assinatura/:codigo" element={<VerificarAssinatura />} />

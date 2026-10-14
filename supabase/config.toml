@@ -138,3 +138,7 @@ verify_jwt = true
 # Reprocessamento manual restrito a administradores ativos da plataforma.
 [functions.platform-reprocess-job]
 verify_jwt = true
+
+# A sala aceita links de convidado; a função valida manualmente cada token e o JWT do profissional.
+[functions.teleconsulta]
+verify_jwt = false

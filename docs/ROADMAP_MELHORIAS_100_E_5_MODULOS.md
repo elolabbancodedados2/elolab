@@ -188,7 +188,9 @@ Auditoria: conclusão registra no `audit_log` somente o ID da tarefa e a transi�
 
 ### N2. Teleconsulta
 
-Jornada remota vinculada ao agendamento: sala de espera, presença, consentimento e encerramento, com registro do link no histórico. Não grava áudio/vídeo nem substitui o prontuário. Critério de conclusão: links de sessão não enumeráveis e expirados, permissão por clínica/papel, entrada/saída auditadas e teste sintético de queda/reconexão.
+Jornada remota vinculada ao agendamento: sala de espera, presença, consentimento e encerramento. O histórico registra eventos sem guardar a credencial do link. Não grava áudio/vídeo nem substitui o prontuário. Critério de conclusão: links não enumeráveis e expirados, permissão por clínica/papel, entrada/saída auditadas e teste sintético de queda/reconexão.
+
+**N2 entregue e validado:** tipo telemedicina reativado; sessões com token de 256 bits (persistido como hash), consentimento dos dois lados, sala WebRTC sem gravação, sinalização efêmera, auditoria de eventos sem dado clínico e retenção limitada. Edge Function autentica equipe e valida papel/clínica/agendamento; browser não tem grants nas tabelas. Evidência: Vitest 3/3, Deno 3/3 + `deno check`, Playwright Chromium 1/1 com dois participantes, áudio/vídeo sintéticos e reconexão (offer/answer repetidos), TypeScript/build/checks do repositório e parse SQL 13/13 aprovados. Migration e função permanecem locais aguardando o deploy final autorizado pelo usuário.
 
 ### N3. Qualidade e segurança assistencial
 

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useDraggable } from '@dnd-kit/core';
 import { useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
-import { CheckCircle2, PlayCircle, Ban, Trash2, Edit3, User, Receipt } from 'lucide-react';
+import { CheckCircle2, PlayCircle, Ban, Trash2, Edit3, User, Receipt, Video } from 'lucide-react';
 import {
   ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger,
 } from '@/components/ui/context-menu';
@@ -69,6 +69,7 @@ function toMinutes(t: string) {
 const TIPO_LABEL: Record<string, string> = {
   consulta: 'Consulta', retorno: 'Retorno', exame: 'Exame', procedimento: 'Procedimento',
   checkup: 'Check-up', avaliacao: 'Avaliação', cirurgia: 'Cirurgia',
+  telemedicina: 'Teleconsulta',
   triagem: 'Triagem', coleta: 'Coleta', enfermagem: 'Enfermagem', vacina: 'Vacina', curativo: 'Curativo',
 };
 
@@ -414,6 +415,28 @@ export function AppointmentCard({ agendamento, color, minutesToPx, onClick, conv
       </ContextMenuTrigger>
       <ContextMenuContent className="w-56">
         <ContextMenuItem onSelect={onClick}><Edit3 className="mr-2 h-4 w-4" /> Abrir / editar</ContextMenuItem>
+        {agendamento.tipo === 'telemedicina' && roles.some(role => ['admin', 'medico'].includes(role)) && <ContextMenuItem
+          disabled={ocupado || !['agendado', 'confirmado', 'aguardando'].includes(agendamento.status)}
+          onSelect={async () => {
+            setOcupado(true);
+            try {
+              const { data, error } = await supabase.functions.invoke('teleconsulta', { body: { action: 'create', agendamento_id: agendamento.id } });
+              if (error) throw error;
+              const guestUrl = `${window.location.origin}/teleconsulta/${data.session_id}#${data.guest_token}`;
+              try {
+                await navigator.clipboard.writeText(guestUrl);
+                toast.success('Link seguro copiado', { description: 'Envie o link ao paciente por um canal privado.' });
+              } catch {
+                window.prompt('Copie o link seguro e envie ao paciente por um canal privado:', guestUrl);
+                toast.info('O link da sala está pronto para compartilhar.');
+              }
+              navigate(`/teleconsulta/${data.session_id}`);
+            } catch (error) {
+              toast.error('Não foi possível criar a sala', { description: mensagemDeErro(error) });
+            } finally { setOcupado(false); }
+          }}>
+          <Video className="mr-2 h-4 w-4" /> Criar sala e copiar link
+        </ContextMenuItem>}
         <ContextMenuSeparator />
         {podeAbrirFicha && <ContextMenuItem
           disabled={!agendamento.paciente_id}
