@@ -117,7 +117,8 @@ Itens 1–100 são propostas de execução, não afirmações de que esses defei
 73. Exigir reautenticação para trocar e-mail do administrador principal ou reduzir controles de segurança.
 74. [x] Fornecer prévia “o que este perfil consegue acessar” antes de salvar uma mudança de papel.
 **Entrega E4:** a mesma prévia é exibida no cadastro/edição de profissional e no convite; calcula a união de telas com o filtro real do menu, atualiza com os papéis selecionados e avisa que dados continuam protegidos pelas permissões da clínica/RLS. Evidência: Vitest de regra e componentes 7/7; suíte completa 240 arquivos/1.253 testes; Playwright sintético autenticado da equipe 1/1; TypeScript, build, checks de colunas/falhas/permissões/acessibilidade passaram; ESLint 0 erros (21 avisos existentes de `any` nas telas tocadas). Sem alteração de autorização ou schema.
-75. Informar sessões ativas, dispositivo aproximado e última atividade ao titular da conta.
+75. [x] Informar sessões ativas, dispositivo aproximado e última atividade ao titular da conta.
+**Entrega E5:** painel na aba Segurança lista sessões Auth próprias ainda válidas, identifica o dispositivo de forma aproximada e sinaliza sessões sem heartbeat como atividade/renovação conhecida; não expõe IP nem ID completo e não permite revogação. Evidência: suíte completa 243 arquivos/1.269 testes; Playwright sintético 1/1; typecheck, build e checks de colunas/falhas/permissões/acessibilidade passaram; ESLint 0 erros (20 avisos preexistentes em Configurações). Migration local criada e revisada, ainda não aplicada.
 76. Revogar sessões após desativação do profissional conforme política documentada.
 77. Avisar sobre último administrador ativo e impedir a remoção acidental do acesso administrativo da clínica.
 78. Fazer auditoria de acessos por intervalo e exportar o resultado com limite de permissão.

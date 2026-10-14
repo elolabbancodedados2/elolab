@@ -45,7 +45,7 @@
 - [x] **Step 2: Rodar os testes** e confirmar falha porque a migration e as RPCs ainda não existem.
 - [x] **Step 3: Criar tabela privada e RPCs** com `SECURITY DEFINER`, `SET search_path = ''`, sessão extraída do JWT, filtro próprio, listagem das sessões Auth próprias ainda válidas via `LEFT JOIN` dos metadados, retorno apenas do necessário, limpeza de sessões expiradas no heartbeat e remoção em cascata de sessões apagadas pelo Auth.
 - [x] **Step 4: Atualizar os tipos gerados localmente** para a tabela/RPCs e rodar os testes de contrato, typecheck e checks de permissões.
-- [ ] **Step 5: Commit** `feat: add owner-scoped account session metadata`.
+- [x] **Step 5: Commit** `feat: add owner-scoped account session metadata`.
 
 ### Task 2: Registrar atividade e estimar dispositivo
 
@@ -63,7 +63,7 @@
 - [x] **Step 2: Confirmar falha inicial** dos testes do formatador.
 - [x] **Step 3: Implementar o rótulo aproximado** sem dependência externa e enviar heartbeat junto da atividade autenticada visível, no máximo a cada cinco minutos; manter o timeout atual intacto.
 - [x] **Step 4: Testar** normalização, ciclo de vida e ausência de chamadas quando deslogado.
-- [ ] **Step 5: Commit** `feat: record per-session account activity`.
+- [x] **Step 5: Commit** `feat: record per-session account activity`.
 
 ### Task 3: Exibir sessões em Segurança
 
@@ -92,4 +92,4 @@
 - [x] **Step 1: Rodar** suíte Vitest completa, Playwright sintético relevante, TypeScript, build, checks de colunas/falhas/permissões/acessibilidade e lint dos arquivos tocados.
 - [x] **Step 2: Revisar** migration e diff buscando leitura cross-user, função executável por `anon`, segredo, IP ou escrita fora do registro de sessão.
 - [x] **Step 3: Registrar #75 como entregue** apenas depois de todas as validações; documentar que a migration foi criada localmente e ainda não foi aplicada.
-- [ ] **Step 4: Commit** `docs: record account session visibility validation`.
+- [x] **Step 4: Commit** `docs: record account session visibility validation`.
