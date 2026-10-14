@@ -57,6 +57,13 @@ import { cpfValido } from '@/lib/importacao/campos';
 import { canViewPatientClinicalTimeline, canViewPatientFinancialTab } from '@/lib/patientBasicData';
 import { autorizarLeituraHistoricoPaciente } from '@/lib/prontuarioAudit';
 import { revokePatientPortalLinks } from '@/lib/patientPortalAccess';
+import {
+  contactConfirmationSourceLabel,
+  describeContactVerification,
+  recordPatientContactVerification,
+  type ContactConfirmationSource,
+  type PatientContactChannel,
+} from '@/lib/patientContactVerification';
 
 interface PacienteFormData {
   nome: string;
@@ -190,6 +197,9 @@ export default function Pacientes() {
   const [linkPortalGerado, setLinkPortalGerado] = useState<{ nome: string; url: string } | null>(null);
   const [portalRevokeTarget, setPortalRevokeTarget] = useState<{ id: string; nome: string } | null>(null);
   const [isRevokingPortal, setIsRevokingPortal] = useState(false);
+  const [confirmingContact, setConfirmingContact] = useState<{ patientId: string; channel: PatientContactChannel } | null>(null);
+  const [contactConfirmSource, setContactConfirmSource] = useState<ContactConfirmationSource>('paciente');
+  const [isSavingContactConfirmation, setIsSavingContactConfirmation] = useState(false);
   const [cepLoading, setCepLoading] = useState(false);
   const [cepError, setCepError] = useState('');
   const cepLookupRef = useRef(0);
@@ -1141,6 +1151,30 @@ export default function Pacientes() {
     }
   };
 
+  const handleConfirmPatientContact = async () => {
+    if (!confirmingContact || isSavingContactConfirmation) return;
+    setIsSavingContactConfirmation(true);
+    try {
+      await recordPatientContactVerification(
+        confirmingContact.patientId,
+        confirmingContact.channel,
+        contactConfirmSource,
+      );
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ['paciente-lista-selecionado', authProfile?.clinica_id, confirmingContact.patientId],
+        }),
+        queryClient.invalidateQueries({ queryKey: ['pacientes-lista-detalhes', authProfile?.clinica_id] }),
+      ]);
+      setConfirmingContact(null);
+      toast.success(`${confirmingContact.channel === 'telefone' ? 'Telefone' : 'E-mail'} confirmado.`);
+    } catch (error) {
+      toast.error('Não foi possível confirmar o contato.', { description: mensagemDeErro(error) });
+    } finally {
+      setIsSavingContactConfirmation(false);
+    }
+  };
+
   const copiarLinkPortalExibido = async () => {
     if (!linkPortalGerado) return;
     try {
@@ -1860,8 +1894,30 @@ export default function Pacientes() {
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
                       <InfoField icon={FileText} label="CPF" value={selectedPaciente.cpf} />
                       <InfoField icon={Calendar} label="Nascimento" value={selectedPaciente.data_nascimento ? formatDate(selectedPaciente.data_nascimento, 'short') : null} />
-                      <InfoField icon={Phone} label="Telefone" value={selectedPaciente.telefone} />
-                      <InfoField icon={Mail} label="Email" value={selectedPaciente.email} />
+                      <div className="space-y-1.5">
+                        <InfoField icon={Phone} label="Telefone" value={selectedPaciente.telefone} />
+                        <p className="text-[11px] text-muted-foreground">
+                          {describeContactVerification(selectedPaciente.telefone_confirmado_em, selectedPaciente.telefone_confirmacao_origem)}
+                        </p>
+                        {podeGerarLinkPortal && (
+                          <Button size="sm" variant="outline" className="min-h-9 text-xs" disabled={!selectedPaciente.telefone}
+                            onClick={() => { setContactConfirmSource('paciente'); setConfirmingContact({ patientId: selectedPaciente.id, channel: 'telefone' }); }}>
+                            Confirmar telefone
+                          </Button>
+                        )}
+                      </div>
+                      <div className="space-y-1.5">
+                        <InfoField icon={Mail} label="E-mail" value={selectedPaciente.email} />
+                        <p className="text-[11px] text-muted-foreground">
+                          {describeContactVerification(selectedPaciente.email_confirmado_em, selectedPaciente.email_confirmacao_origem)}
+                        </p>
+                        {podeGerarLinkPortal && (
+                          <Button size="sm" variant="outline" className="min-h-9 text-xs" disabled={!selectedPaciente.email}
+                            onClick={() => { setContactConfirmSource('paciente'); setConfirmingContact({ patientId: selectedPaciente.id, channel: 'email' }); }}>
+                            Confirmar e-mail
+                          </Button>
+                        )}
+                      </div>
                       <InfoField icon={Building2} label="Convênio" value={getConvenioNome(selectedPaciente.convenio_id)} />
                       <InfoField icon={CreditCard} label="Carteira" value={selectedPaciente.numero_carteira} />
                       <InfoField icon={Users} label="Estado civil" value={ESTADO_CIVIL_OPTIONS.find(option => option.value === selectedPaciente.estado_civil)?.label} />
@@ -2649,6 +2705,35 @@ export default function Pacientes() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog open={!!confirmingContact} onOpenChange={(open) => {
+        if (!open && !isSavingContactConfirmation) setConfirmingContact(null);
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirmar {confirmingContact?.channel === 'telefone' ? 'telefone' : 'e-mail'}</DialogTitle>
+            <DialogDescription>
+              Registre com quem a equipe confirmou este contato. Se o valor for alterado depois, a confirmação será removida automaticamente.
+            </DialogDescription>
+          </DialogHeader>
+          <Label htmlFor="origem-confirmacao-contato">Confirmado com</Label>
+          <Select value={contactConfirmSource} onValueChange={(value) => setContactConfirmSource(value as ContactConfirmationSource)}>
+            <SelectTrigger id="origem-confirmacao-contato"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="paciente">Paciente</SelectItem>
+              <SelectItem value="responsavel">Responsável</SelectItem>
+              <SelectItem value="equipe">Equipe consultou o cadastro</SelectItem>
+            </SelectContent>
+          </Select>
+          <DialogFooter>
+            <Button variant="outline" disabled={isSavingContactConfirmation} onClick={() => setConfirmingContact(null)}>Cancelar</Button>
+            <Button disabled={isSavingContactConfirmation} onClick={() => void handleConfirmPatientContact()}>
+              {isSavingContactConfirmation ? 'Salvando…' : 'Registrar confirmação'}
+            </Button>
+          </DialogFooter>
+          <span className="sr-only">Origem: {contactConfirmationSourceLabel(contactConfirmSource)}</span>
+        </DialogContent>
+      </Dialog>
 
       {/* Autorizações de convênio do paciente selecionado */}
       {selectedPaciente && (
