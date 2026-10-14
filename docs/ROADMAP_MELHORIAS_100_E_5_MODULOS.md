@@ -131,7 +131,8 @@ Itens 1–100 são propostas de execução, não afirmações de que esses defei
 
 ### Comunicação, notificações e automações
 
-81. Agrupar notificações repetidas sobre o mesmo evento e permitir abrir o recurso correspondente.
+81. [x] Agrupar notificações repetidas sobre o mesmo evento e permitir abrir o recurso correspondente.
+**Entrega E11:** a Central agrupa itens pela combinação origem/tipo e ID, mostra quantas ocorrências foram unificadas e conserva o evento como não lido se qualquer cópia estiver pendente; abrir o grupo navega para a origem e registra uma leitura única. Evidência: Vitest 6/6, Playwright sintético 1/1, TypeScript, build, checks de colunas/falhas/permissões/acessibilidade aprovados. Sem migration.
 82. [x] Marcar notificações lidas em lote sem perder o estado de outras sessões.
 **Entrega E10:** a central já marca somente as notificações não lidas atualmente visíveis e persiste o estado por chave usuário/clínica/origem/item; RLS impede alterar estado de outra conta ou clínica, e o upsert é compartilhado entre sessões. Evidência de auditoria: componente/política RLS 4/4 testes, TypeScript e acessibilidade aprovados. Sem mudança de comportamento ou migration nesta auditoria.
 83. Mostrar fila, tentativas, próxima tentativa e erro resumido de mensagens sem expor token ou conteúdo sensível.
