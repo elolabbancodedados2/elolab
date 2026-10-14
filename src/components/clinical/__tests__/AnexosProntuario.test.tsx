@@ -59,7 +59,9 @@ describe('AnexosProntuario', () => {
     mocks.storageFrom.mockReturnValue({ upload: mocks.upload, remove: mocks.remove, createSignedUrl: mocks.createSignedUrl });
     mocks.publicationSelect.mockReturnValue({ in: mocks.publicationIn });
     mocks.publicationIn.mockResolvedValue({ data: [], error: null });
-    mocks.rpc.mockResolvedValue({ data: { publicado: true }, error: null });
+    mocks.rpc.mockImplementation((name: string) => name === 'registrar_acesso_documento_clinico'
+      ? Promise.resolve({ data: 'audit-id', error: null })
+      : Promise.resolve({ data: { publicado: true }, error: null }));
     mocks.from.mockImplementation((table: string) => table === 'documentos_portal_paciente'
       ? { select: mocks.publicationSelect }
       : { insert: mocks.insert, delete: mocks.delete });
@@ -123,6 +125,33 @@ describe('AnexosProntuario', () => {
     resolver({ data: { signedUrl: 'https://storage.example/signed-file' }, error: null });
 
     await waitFor(() => expect(navegar).toHaveBeenCalledWith('https://storage.example/signed-file'));
+    abrir.mockRestore();
+  });
+
+  it('registra visualização antes de mostrar o anexo', async () => {
+    mocks.createSignedUrl.mockResolvedValue({ data: { signedUrl: 'https://storage.example/signed-file' }, error: null });
+    render(<AnexosProntuario prontuarioId="prontuario-1" pacienteId="paciente-1" anexos={[anexo]} onAnexoAdicionado={vi.fn()} onAnexoRemovido={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Visualizar anexo resultado.pdf' }));
+
+    expect(await screen.findByRole('dialog')).toBeVisible();
+    expect(mocks.rpc).toHaveBeenCalledWith('registrar_acesso_documento_clinico', {
+      p_tipo: 'anexo_prontuario', p_documento_id: 'anexo-1', p_acao: 'visualizacao',
+    });
+  });
+
+  it('não baixa o anexo se a auditoria do download falhar', async () => {
+    mocks.createSignedUrl.mockResolvedValue({ data: { signedUrl: 'https://storage.example/signed-file' }, error: null });
+    mocks.rpc.mockResolvedValue({ data: null, error: new Error('Auditoria indisponível') });
+    const aba = { opener: window, close: vi.fn(), location: { replace: vi.fn() } } as unknown as Window;
+    const abrir = vi.spyOn(window, 'open').mockReturnValue(aba);
+    render(<AnexosProntuario prontuarioId="prontuario-1" pacienteId="paciente-1" anexos={[anexo]} onAnexoAdicionado={vi.fn()} onAnexoRemovido={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Baixar anexo resultado.pdf' }));
+
+    await waitFor(() => expect(aba.close).toHaveBeenCalledOnce());
+    expect(aba.location.replace).not.toHaveBeenCalled();
+    expect(mocks.toast).toHaveBeenCalledWith(expect.objectContaining({ title: 'Não foi possível registrar o download' }));
     abrir.mockRestore();
   });
 

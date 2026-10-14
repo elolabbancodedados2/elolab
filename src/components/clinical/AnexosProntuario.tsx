@@ -44,6 +44,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { todaySaoPauloDateOnly } from '@/lib/dateOnly';
+import { registrarAcessoDocumentoClinico } from '@/lib/clinicalDocumentAudit';
 
 const BUCKET = 'medical-attachments';
 
@@ -377,6 +378,12 @@ export function AnexosProntuario({
       });
       return;
     }
+    try {
+      await registrarAcessoDocumentoClinico('anexo_prontuario', anexo.id, 'visualizacao');
+    } catch (error) {
+      toast({ title: 'Não foi possível registrar o acesso', description: error instanceof Error ? error.message : 'Tente novamente.', variant: 'destructive' });
+      return;
+    }
     setPreviewUrl(url);
     setPreviewType(anexo.tipo_arquivo);
     setIsPreviewOpen(true);
@@ -387,10 +394,14 @@ export function AnexosProntuario({
     // bloqueado pelo navegador como pop-up não solicitado.
     const aba = window.open('about:blank', '_blank');
     if (aba) aba.opener = null;
+    if (!aba) {
+      toast({ title: 'Download bloqueado', description: 'Permita a abertura de uma nova aba para baixar este anexo.', variant: 'destructive' });
+      return;
+    }
 
     const url = await signedUrlFor(anexo.url_arquivo);
     if (!url) {
-      aba?.close();
+      aba.close();
       toast({
         title: 'Erro',
         description: 'Não foi possível baixar o anexo.',
@@ -398,12 +409,11 @@ export function AnexosProntuario({
       });
       return;
     }
-    if (!aba) {
-      toast({
-        title: 'Download bloqueado',
-        description: 'Permita a abertura de uma nova aba para baixar este anexo.',
-        variant: 'destructive',
-      });
+    try {
+      await registrarAcessoDocumentoClinico('anexo_prontuario', anexo.id, 'exportacao');
+    } catch (error) {
+      aba.close();
+      toast({ title: 'Não foi possível registrar o download', description: error instanceof Error ? error.message : 'Tente novamente.', variant: 'destructive' });
       return;
     }
     aba.location.replace(url);

@@ -39,6 +39,7 @@ import { pacienteCorresponde } from '@/lib/buscaPaciente';
 import { PacienteCombobox } from '@/components/patients/PacienteCombobox';
 import { usePacienteResumo } from '@/hooks/useBuscaPacientes';
 import { atestadoTemplateVersionLabel, selectedAtestadoTemplateId } from '@/lib/atestadoTemplateProvenance';
+import { registrarAcessoDocumentoClinico } from '@/lib/clinicalDocumentAudit';
 
 interface Atestado {
   id: string;
@@ -387,7 +388,15 @@ export default function Atestados() {
     toast.success('Atestado duplicado — ajuste os dados e emita.');
   };
 
-  const handleView = (atestado: Atestado) => { setSelectedAtestado(atestado); setIsViewOpen(true); };
+  const handleView = async (atestado: Atestado) => {
+    try {
+      await registrarAcessoDocumentoClinico('atestado', atestado.id, 'visualizacao');
+      setSelectedAtestado(atestado);
+      setIsViewOpen(true);
+    } catch (error) {
+      toast.error('Não foi possível registrar o acesso ao atestado.', { description: mensagemDeErro(error) });
+    }
+  };
 
   const handlePrint = async (atestado: Atestado) => {
     const paciente = atestado.pacientes;
@@ -420,6 +429,7 @@ export default function Atestados() {
           versaoModelo: atestadoTemplateVersionLabel(atestado) || undefined,
         }
       );
+      await registrarAcessoDocumentoClinico('atestado', atestado.id, 'impressao');
       openPDF(doc);
     } catch (error) {
       toast.error('Não foi possível preparar o atestado para impressão.', { description: mensagemDeErro(error) });

@@ -33,6 +33,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { ClinicalAlertsDisplay, useClinicalAlerts } from '@/components/ClinicalAlertsDisplay';
 import { consolidateAlerts, ClinicalAlert } from '@/lib/clinicalAlerts';
 import { allergyOverrideJustificationError, requiresAllergyOverrideJustification } from '@/lib/allergyOverride';
+import { registrarAcessoDocumentoClinico } from '@/lib/clinicalDocumentAudit';
 import { LoadingButton } from '@/components/ui/loading-button';
 import { ErrorState } from '@/components/ErrorState';
 import { mensagemDeErro } from '@/lib/erros';
@@ -353,6 +354,7 @@ export default function Prescricoes() {
   const savePrescriptionLock = useRef(false);
   const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
   const [pdfFileName, setPdfFileName] = useState('');
+  const [pdfPrescriptionId, setPdfPrescriptionId] = useState<string | null>(null);
   const [downloadingPrescriptionId, setDownloadingPrescriptionId] = useState<string | null>(null);
   const [memedOpening, setMemedOpening] = useState(false);
   const [clinicalAlerts, setClinicalAlerts] = useState<ClinicalAlert[]>([]);
@@ -590,7 +592,7 @@ export default function Prescricoes() {
       if (erroUploadPdf) throw erroUploadPdf;
       arquivoPdfEnviado = true;
 
-      const { error } = await (supabase.from('prescricoes') as any).insert({
+      const { data: prescricaoSalva, error } = await (supabase.from('prescricoes') as any).insert({
         paciente_id: form.paciente_id,
         medico_id: form.medico_id,
         clinica_id: profile.clinica_id,
@@ -605,8 +607,10 @@ export default function Prescricoes() {
         justificativa_alerta: requiresAllergyOverrideJustification(clinicalAlerts)
           ? allergyOverrideJustification.trim()
           : null,
-      });
+      }).select('id').single();
       if (error) throw error;
+      if (!prescricaoSalva?.id) throw new Error('A receita foi salva sem retornar seu identificador. Atualize o histórico antes de baixar.');
+      setPdfPrescriptionId(prescricaoSalva.id);
 
       void refetch();
       const safeName = paciente.nome.replace(/\s+/g, '_').slice(0, 25);
@@ -655,8 +659,14 @@ export default function Prescricoes() {
     await executeSaveAndPdf(paciente, medico);
   };
 
-  const handleDownload = () => {
-    if (!pdfBlob) return;
+  const handleDownload = async () => {
+    if (!pdfBlob || !pdfPrescriptionId) return;
+    try {
+      await registrarAcessoDocumentoClinico('prescricao', pdfPrescriptionId, 'exportacao');
+    } catch (error) {
+      toast.error('Não foi possível registrar o download.', { description: mensagemDeErro(error) });
+      return;
+    }
     const url = URL.createObjectURL(pdfBlob);
     const a = document.createElement('a');
     a.href = url;
@@ -674,6 +684,7 @@ export default function Prescricoes() {
         .download(prescricao.arquivo_pdf);
       if (error) throw error;
       if (!data) throw new Error('O arquivo não foi encontrado. Atualize a lista e tente novamente.');
+      await registrarAcessoDocumentoClinico('prescricao', prescricao.id, 'exportacao');
       const url = URL.createObjectURL(data);
       const anchor = document.createElement('a');
       const nomePaciente = String(prescricao.pacientes?.nome_social || prescricao.pacientes?.nome || 'paciente')

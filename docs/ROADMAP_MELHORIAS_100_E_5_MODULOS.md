@@ -89,7 +89,7 @@ Itens 1–100 são propostas de execução, não afirmações de que esses defei
 37. [x] Pedir confirmação quando o contexto do paciente mudar enquanto um formulário clínico está aberto (E52).
 38. [x] Anexar documentos com validação de tipo/tamanho e indicar estado de envio, falha recuperável e conclusão (auditoria: validação de MIME e 10 MB, estado de envio, retenção do arquivo para nova tentativa e confirmação de sucesso já existiam; não contado).
 39. [x] Buscar documentos por paciente, tipo, autor e período respeitando as permissões clínicas existentes (E53).
-40. Registrar visualização, assinatura, impressão e exportação de documentos clínicos na auditoria acessível.
+40. [x] Registrar visualização, assinatura, impressão e exportação de documentos clínicos na auditoria acessível (E54; assinatura e exportação do prontuário já tinham trilha; E54 adiciona acesso/impressão/baixar anexos, atestados e receitas).
 
 **E49 entregue e validado localmente:** o resumo da última triagem identifica valores ausentes como “Não aferido”, mantém unidade explícita e preserva zero como valor existente; não altera séries históricas nem classificação clínica. Evidências: Vitest integral 295 arquivos/1.439 testes, testes focados 12/12, TypeScript, acessibilidade, colunas, falhas silenciosas e `git diff --check` aprovados. Build local aprovado (Vite/PWA). Sem alteração remota.
 
@@ -100,6 +100,8 @@ Itens 1–100 são propostas de execução, não afirmações de que esses defei
 **E52 entregue e validado localmente:** mudança de paciente via seleção ou rota pede confirmação quando uma evolução está aberta. O profissional pode salvar antes da troca, descartar explicitamente ou continuar no contexto atual; falha de salvamento mantém a ficha atual aberta. Evidências: teste focado 2/2, Vitest integral 298 arquivos/1.445 testes, TypeScript e checks de acessibilidade, permissões, colunas, falhas silenciosas e `git diff --check` aprovados. Build pós-commit aprovado e SHA conferido com HEAD.
 
 **E53 entregue e validado localmente:** a aba Anexos de Documentos Clínicos pesquisa anexos por paciente, tipo MIME, autor e período no horário de São Paulo. A consulta passa por RLS, e a abertura gera URL assinada sob as políticas do bucket privado; cada busca limita a lista a 1.000 resultados e orienta quando refinar filtros. Evidências: Vitest integral 299 arquivos/1.449 testes, testes de filtro 4/4, TypeScript, build e checks de colunas, falhas silenciosas, permissões e acessibilidade aprovados. Sem migration, leitura de dados clínicos reais ou alteração remota.
+
+**E54 entregue e validado localmente:** visualização e impressão de atestados, visualização/baixar anexos e exportar PDFs de prescrição gravam `access` em `audit_log` via RPC; a trilha exibe a coleção “Documentos clínicos” e a ação correspondente. A assinatura eletrônica de prontuários e exportação do prontuário já tinham eventos próprios e seguem cobertas. O RPC confirma papel e clínica, usa tipo e ID do documento, e grava somente evento/tipo, sem nome ou conteúdo clínico. Evidências: Vitest integral 300 arquivos/1.454 testes, recorte focado 16/16, PGlite aplicou a migration e validou os quatro tipos, autor, rejeição de clínica/ação/papel e conteúdo mínimo, TypeScript, build e checks de colunas, falhas silenciosas, permissões e acessibilidade aprovados. Migration `20261014230000_auditoria_acoes_documentos_clinicos.sql` criada e não aplicada remotamente.
 
 ### Exames e laboratório
 
@@ -248,4 +250,4 @@ Cadastro patrimonial de equipamento por unidade, responsável, validade de calib
 - [ ] Fazer triagem dos itens 1–100 no checkout local e retirar duplicatas antes de iniciar cada pacote.
 - [ ] Implementar, validar e registrar cada pacote antes de seguir ao próximo; atualizar este arquivo sem contar testes ou documentos como melhoria funcional.
 - [x] Completar e testar N1–N5 como módulos com persistência, autorização e fluxo utilizável em ambiente sintético/descartável; nenhum módulo depende só de navegação.
-- [ ] Entregar melhorias funcionais distintas nos módulos existentes: **52/100** concluídas; E14 e os itens cobertos por comportamento existente não entram na contagem. N1–N5 são a meta separada de módulos novos.
+- [ ] Entregar melhorias funcionais distintas nos módulos existentes: **53/100** concluídas; E14 e os itens cobertos por comportamento existente não entram na contagem. N1–N5 são a meta separada de módulos novos.
