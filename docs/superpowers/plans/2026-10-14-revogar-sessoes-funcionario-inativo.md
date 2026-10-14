@@ -23,4 +23,4 @@
 ### Task 2: Registrar entrega
 
 - [x] Marcar roadmap #76 e registrar que a migration continua local.
-- [ ] Commit `docs: record staff session revocation`.
+- [x] Commit `docs: record staff session revocation`.
