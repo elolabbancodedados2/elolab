@@ -32,6 +32,7 @@ Itens 1–100 são propostas de execução, não afirmações de que esses defei
 **Entrega E35:** tipos de consulta podem ter até 2.000 caracteres de orientação de preparo. O Portal do Paciente mostra a orientação apenas quando o token ativo consulta os próprios agendamentos e a consulta é futura e ativa; o texto é obtido por tipo dentro da mesma clínica e nunca enviado por mensagem. Evidência: Vitest focado 2/2 e contrato do portal existente 3/3, migration validada no PGlite (texto válido persiste e 2.001 caracteres são rejeitados), TypeScript, build, acessibilidade e permissões passaram. Sem uso de Docker.
 **Entrega E36:** a fila mostra se o canal Realtime está conectado, conectando ou em contingência. Quando cai, explica que o polling continua a cada 15 segundos e aponta a atualização manual já disponível. Evidência: Fila e testes de status 6/6, TypeScript, build e checks de acessibilidade/permissão passaram; sem mudança de banco.
 **Entrega E37:** ao remover da fila, recepção/admin selecionam motivo categorizado. A RPC valida clínica, perfil, estado e motivo, preserva o compare-and-set e grava o evento junto com a remoção; a tela mostra as dez saídas recentes da clínica, incluindo quando o atendimento voltou para a recepção. Evidência: Fila e testes focados 6/6, execução real da migration e teste de autorização/atomicidade em PGlite, TypeScript, build e checks de acessibilidade/permissão passaram.
+**Entrega E38:** antes de criar ficha de paciente, o servidor procura até cinco possíveis duplicatas por telefone normalizado ou nome+nascimento, dentro da clínica. A recepção pode localizar uma ficha ou confirmar que quer criar outra; os telefones aparecem mascarados e nenhum prontuário é mesclado automaticamente. CPF já usa unicidade por clínica. Evidência: testes focados 15/15, migration e cenários de correspondência/isolamento/permissão no PGlite, TypeScript, build e checks de acessibilidade/permissão passaram.
 5. [x] Registrar o motivo de cancelamento e oferecer reagendamento com os dados do compromisso anterior já preenchidos (E33; o prefill já existia e a lacuna era persistir o motivo).
 6. [x] Mostrar mudanças de profissional, horário, sala e status em histórico consultável por usuários autorizados (trigger e tela já existiam; E34 tornou valores de agenda legíveis).
 7. [x] Evitar submissão dupla em criação, cancelamento e reagendamento (já protegido por constraint de sobreposição no banco, estado de salvamento no formulário e compare-and-set `updated_at` nos fluxos de alteração; auditado, sem chave de idempotência separada e sem contagem).
@@ -42,7 +43,7 @@ Itens 1–100 são propostas de execução, não afirmações de que esses defei
 ### Recepção, fila e lista de espera
 
 11. Oferecer check-in com validação de paciente, compromisso e unidade antes de criar um atendimento.
-12. Sinalizar possíveis cadastros duplicados no check-in e permitir revisão sem mesclar automaticamente prontuários.
+12. [x] Sinalizar possíveis cadastros duplicados no check-in e permitir revisão sem mesclar automaticamente prontuários (E38; busca feita antes da criação da ficha).
 13. Explicar por que um atendimento está bloqueado e qual perfil autorizado pode liberá-lo.
 14. Ordenar a fila por prioridade configurada pela clínica e mostrar os fatores que determinaram a ordem.
 15. [x] Atualizar a fila em tempo real com indicador de conexão e alternativa de atualização manual quando o canal cair (E36; polling existente segue ativo em contingência).
@@ -225,4 +226,4 @@ Cadastro patrimonial de equipamento por unidade, responsável, validade de calib
 - [ ] Fazer triagem dos itens 1–100 no checkout local e retirar duplicatas antes de iniciar cada pacote.
 - [ ] Implementar, validar e registrar cada pacote antes de seguir ao próximo; atualizar este arquivo sem contar testes ou documentos como melhoria funcional.
 - [x] Completar e testar N1–N5 como módulos com persistência, autorização e fluxo utilizável em ambiente sintético/descartável; nenhum módulo depende só de navegação.
-- [ ] Entregar melhorias funcionais distintas nos módulos existentes: **36/100** concluídas; E14 e os itens cobertos por comportamento existente não entram na contagem. N1–N5 são a meta separada de módulos novos.
+- [ ] Entregar melhorias funcionais distintas nos módulos existentes: **37/100** concluídas; E14 e os itens cobertos por comportamento existente não entram na contagem. N1–N5 são a meta separada de módulos novos.

@@ -97,6 +97,15 @@ interface PacienteFormData {
   is_menor: boolean;
 }
 
+interface PossiblePatientDuplicate {
+  id: string;
+  nome: string;
+  nome_social: string | null;
+  data_nascimento: string | null;
+  telefone_final: string | null;
+  motivos: string[];
+}
+
 const initialFormData: PacienteFormData = {
   nome: '', nome_social: '', cpf: '', data_nascimento: '', telefone: '', email: '',
   preferencia_canal_lembrete: 'ambos', horario_contato_inicio: '08:00', horario_contato_fim: '20:00',
@@ -159,6 +168,8 @@ const minutosDaHora = (hora: string | null | undefined): number | null => {
 export default function Pacientes() {
   const [searchTerm, setSearchTerm] = useState('');
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [possibleDuplicatesOpen, setPossibleDuplicatesOpen] = useState(false);
+  const [possibleDuplicates, setPossibleDuplicates] = useState<PossiblePatientDuplicate[]>([]);
   const [isViewOpen, setIsViewOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [selectedPacienteId, setSelectedPacienteId] = useState<string | null>(null);
@@ -182,6 +193,7 @@ export default function Pacientes() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const pacienteSaveLockRef = useRef(false);
+  const duplicateReviewConfirmedRef = useRef(false);
   const pacienteDeleteLockRef = useRef(false);
   const exameSaveLockRef = useRef(false);
   const [showFilters, setShowFilters] = useState(false);
@@ -964,6 +976,27 @@ export default function Pacientes() {
     pacienteSaveLockRef.current = true;
     setIsSubmitting(true);
     try {
+      if (!selectedPacienteId && !duplicateReviewConfirmedRef.current) {
+        const { data: matches, error: duplicateCheckError } = await supabase.rpc('buscar_possiveis_duplicidades_paciente', {
+          p_nome: formData.nome.trim(),
+          p_data_nascimento: formData.data_nascimento || null,
+          p_telefone: formData.telefone,
+          p_excluir: null,
+        });
+        if (duplicateCheckError) {
+          toast.error('Não foi possível conferir cadastros parecidos', {
+            description: 'A busca não gravou nada. Tente salvar novamente para conferir antes de criar a ficha.',
+          });
+          return;
+        }
+        if (matches?.length) {
+          setPossibleDuplicates(matches);
+          setPossibleDuplicatesOpen(true);
+          return;
+        }
+      }
+      duplicateReviewConfirmedRef.current = false;
+
       const dataToSave: any = {
         nome: formData.nome.trim(),
         nome_social: formData.nome_social || null,
@@ -2469,6 +2502,58 @@ export default function Pacientes() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Review possible duplicates before creating a new patient record. */}
+      <AlertDialog open={possibleDuplicatesOpen} onOpenChange={setPossibleDuplicatesOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confira estes cadastros antes de continuar</AlertDialogTitle>
+            <AlertDialogDescription>
+              Encontramos fichas com o mesmo telefone ou com nome e nascimento iguais. Revise manualmente; nenhum cadastro será mesclado.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <ul className="max-h-64 space-y-2 overflow-y-auto">
+            {possibleDuplicates.map((candidate) => (
+              <li key={candidate.id} className="rounded-lg border p-3 text-sm">
+                <p className="font-medium">{candidate.nome_social || candidate.nome}</p>
+                <p className="text-xs text-muted-foreground">
+                  {candidate.data_nascimento ? `Nascimento: ${formatDate(candidate.data_nascimento, 'short')}` : 'Nascimento não informado'}
+                  {candidate.telefone_final ? ` · Telefone termina em ${candidate.telefone_final}` : ''}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {candidate.motivos.map((reason) => reason === 'telefone' ? 'Telefone coincidente' : 'Nome e nascimento coincidem').join(' · ')}
+                </p>
+                <Button
+                  type="button"
+                  variant="link"
+                  size="sm"
+                  className="h-auto px-0 pt-1"
+                  onClick={() => {
+                    setSearchTerm(candidate.nome);
+                    setPossibleDuplicatesOpen(false);
+                    setIsFormOpen(false);
+                  }}
+                >
+                  Localizar esta ficha na lista
+                </Button>
+              </li>
+            ))}
+          </ul>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Voltar ao cadastro</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                event.preventDefault();
+                duplicateReviewConfirmedRef.current = true;
+                setPossibleDuplicatesOpen(false);
+                void handleSave();
+              }}
+            >
+              Continuar com novo cadastro
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Delete Dialog */}
       <AlertDialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>

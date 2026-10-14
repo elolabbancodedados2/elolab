@@ -6100,6 +6100,17 @@ export type Database = {
         Args: { p_fila_id: string; p_status_esperado: string; p_motivo: string }
         Returns: { removido: boolean; atendimento_reaberto: boolean }
       }
+      buscar_possiveis_duplicidades_paciente: {
+        Args: { p_nome: string; p_data_nascimento: string | null; p_telefone: string; p_excluir?: string | null }
+        Returns: Array<{
+          id: string
+          nome: string
+          nome_social: string | null
+          data_nascimento: string | null
+          telefone_final: string | null
+          motivos: string[]
+        }>
+      }
       accept_employee_invitation: {
         Args: { _token: string; _user_id: string }
         Returns: Json
