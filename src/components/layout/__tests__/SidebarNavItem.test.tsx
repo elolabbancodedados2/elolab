@@ -43,4 +43,17 @@ describe('SidebarNavItem', () => {
 
     expect(screen.getByRole('link', { name: 'Visão geral' })).toBeInTheDocument();
   });
+
+  it('uses a light pill with dark text for the selected destination', () => {
+    render(
+      <MemoryRouter initialEntries={['/dashboard']}>
+        <SidebarNavItem
+          item={{ label: 'Overview', icon: Home, href: '/dashboard' }}
+          collapsed={false}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole('link', { name: 'Overview' })).toHaveClass('bg-white', 'text-[#171717]');
+  });
 });

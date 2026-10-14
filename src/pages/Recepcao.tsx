@@ -1100,7 +1100,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
 
   // ─── Render ───────────────────────────────────────────
   return (
-    <div className="space-y-4">
+    <div className="space-y-1">
       <PageHeader
         title="Painel de Recepção"
         description={`${format(parseDateOnly(today)!, "EEEE, d 'de' MMMM", { locale: ptBR })} · Fluxo completo do paciente`}
@@ -1125,7 +1125,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
       />
 
       {/* Search + Tabs */}
-      <motion.div variants={fadeUp} initial="hidden" animate="visible" className="flex flex-col sm:flex-row gap-3">
+      <motion.div variants={fadeUp} initial="hidden" animate="visible" className="flex flex-col sm:flex-row gap-2">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
@@ -1174,7 +1174,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
           </TabsList>
         </div>
 
-        <div className="mt-4">
+        <div className="mt-0">
           {agendaHojeQuery.isError ? (
             <ErrorState title="Não foi possível carregar a agenda de hoje" error={agendaHojeQuery.error} onRetry={() => void agendaHojeQuery.refetch()} />
           ) : filaRecepcaoQuery.isError ? (
@@ -1217,7 +1217,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
               </CardContent>
             </Card>
           ) : (
-            <motion.div variants={stagger} initial="hidden" animate="visible" className="space-y-2">
+            <motion.div variants={stagger} initial="hidden" animate="visible" className="space-y-1">
               <AnimatePresence mode="popLayout">
                 {filtered.map(({ ag, pac, med, sala, fila, lanc, step }) => (
                   <motion.div

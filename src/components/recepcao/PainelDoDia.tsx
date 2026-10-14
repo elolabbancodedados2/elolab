@@ -272,7 +272,7 @@ export function PainelDoDia({ atendimentos, clinicaId, hoje, onFiltrar, abaAtiva
               <p className={cn('mt-1 text-xl font-bold tabular-nums leading-none', c.tom)}>
                 {c.valor}
               </p>
-              <p className="mt-auto pt-1 text-xs leading-snug text-muted-foreground">
+              <p title={c.detalhe} className="mt-auto pt-1 text-xs leading-snug text-muted-foreground xl:truncate">
                 {c.detalhe}
               </p>
             </button>

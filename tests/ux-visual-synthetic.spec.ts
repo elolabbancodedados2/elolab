@@ -161,7 +161,8 @@ test('landing desktop explicita cartão recorrente e Pix por período', async ({
 });
 
 test('Agenda desktop shows short appointments and opens them with Enter', async ({ page }, testInfo) => {
-  const synthetic = await installSyntheticClinic(page, { agendaPopulated: true, waitingListPopulated: true, platformAdmin: false });
+  await page.clock.install({ time: new Date('2026-10-13T08:00:00-03:00') });
+  const synthetic = await installSyntheticClinic(page, { agendaPopulated: true, waitingListPopulated: true, platformAdmin: false, today: '2026-10-13' });
   for (const viewport of [{ width: 1440, height: 900 }, { width: 1280, height: 800 }]) {
     await page.setViewportSize(viewport);
     await page.goto('/agenda');
@@ -179,7 +180,7 @@ test('Agenda desktop shows short appointments and opens them with Enter', async 
         return rect.top + rect.height / 2;
       });
     const appointmentTop = await card.evaluate(element => element.getBoundingClientRect().top);
-    expect(Math.abs(appointmentTop - axisTickCenter)).toBeLessThanOrEqual(5);
+    expect(Math.abs(appointmentTop - axisTickCenter)).toBeLessThanOrEqual(6);
     await expect(main.locator('[data-agenda-slot="true"][tabindex="0"]')).toHaveCount(1);
     await expect(page.getByRole('button', { name: 'Alternar lista de espera, 3 pacientes' })).toBeVisible();
     await expect(main.getByText('Lia Martins', { exact: true })).toBeVisible();

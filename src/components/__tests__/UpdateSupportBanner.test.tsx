@@ -6,8 +6,9 @@ describe('UpdateSupportBanner', () => {
   it('informa sobre a atualização e oferece contatos acessíveis do suporte', () => {
     render(<UpdateSupportBanner />);
 
-    expect(screen.getByRole('status')).toHaveTextContent(/atualizando o elolab/i);
-    expect(screen.getByRole('status')).toHaveTextContent(/erro ou instabilidade/i);
+    const banner = screen.getByRole('note', { name: /aviso de atualização/i });
+    expect(banner).toHaveTextContent(/atualizando o elolab/i);
+    expect(banner).toHaveTextContent(/erro ou instabilidade/i);
     expect(screen.getByRole('link', { name: 'contato@focussdev.art' })).toHaveAttribute(
       'href',
       'mailto:contato@focussdev.art',
@@ -16,5 +17,7 @@ describe('UpdateSupportBanner', () => {
       'href',
       'tel:+5533984123591',
     );
+    expect(screen.getByRole('link', { name: 'contato@focussdev.art' })).toHaveClass('min-h-10');
+    expect(screen.getByRole('link', { name: '(33) 98412-3591' })).toHaveClass('min-h-10');
   });
 });

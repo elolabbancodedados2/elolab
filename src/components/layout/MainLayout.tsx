@@ -34,7 +34,7 @@ export function MainLayout() {
       <Version20Announcement />
 
       {/* Desktop Sidebar */}
-      <nav className="hidden lg:block" aria-label="Menu principal">
+      <nav className="hidden h-full shrink-0 bg-[#D1D1D7] p-3 lg:block" aria-label="Menu principal">
         <Sidebar />
       </nav>
 

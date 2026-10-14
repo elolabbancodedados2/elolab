@@ -198,7 +198,17 @@ export default function CentralSuporte() {
   const ultimaMensagemId = mensagens.data?.at(-1)?.id;
   useEffect(() => {
     const viewport = messagesViewportRef.current;
-    if (viewport && ultimaMensagemId) viewport.scrollTop = viewport.scrollHeight;
+    if (!viewport || !ultimaMensagemId) return;
+    let secondFrame = 0;
+    const firstFrame = window.requestAnimationFrame(() => {
+      secondFrame = window.requestAnimationFrame(() => {
+        viewport.scrollTop = viewport.scrollHeight;
+      });
+    });
+    return () => {
+      window.cancelAnimationFrame(firstFrame);
+      window.cancelAnimationFrame(secondFrame);
+    };
   }, [selecionado?.id, ultimaMensagemId]);
 
   const criar = async () => {
@@ -453,7 +463,7 @@ export default function CentralSuporte() {
           </CardContent>
         </Card>
 
-        <Card className="lg:sticky lg:top-4 lg:flex lg:h-[calc(100vh-2rem)] lg:max-h-[calc(100vh-2rem)] lg:flex-col lg:self-start lg:overflow-hidden">
+        <Card className="lg:sticky lg:top-4 lg:flex lg:h-[calc(100dvh-18rem)] lg:max-h-[calc(100dvh-18rem)] lg:flex-col lg:self-start lg:overflow-hidden">
           <CardHeader className="shrink-0">
             <CardTitle className="text-base">{selecionado?.titulo || 'Detalhes do chamado'}</CardTitle>
             {!selecionado && <CardDescription>Selecione um chamado para ver as mensagens.</CardDescription>}
@@ -469,7 +479,7 @@ export default function CentralSuporte() {
                   {isPlatformAdmin && <span>{selecionado.clinica_nome} · {selecionado.solicitante_nome}{selecionado.solicitante_email ? ` (${selecionado.solicitante_email})` : ''}</span>}
                   <span>{selecionado.primeira_resposta_em ? `Primeira resposta: ${formatarData(selecionado.primeira_resposta_em)}` : `Prazo da primeira resposta: ${formatarData(selecionado.sla_limite)}`}</span>
                 </div>
-                <div ref={messagesViewportRef} aria-live="polite" className="max-h-72 space-y-2 overflow-auto rounded-md border p-3 lg:max-h-40 lg:min-h-0 lg:flex-1">
+                <div ref={messagesViewportRef} aria-live="polite" className="max-h-72 space-y-2 overflow-auto rounded-md border p-3 lg:max-h-40 lg:min-h-24 lg:flex-1">
                   {mensagens.isLoading ? (
                     <p role="status" className="text-sm text-muted-foreground">Carregando mensagens…</p>
                   ) : mensagens.isError ? (

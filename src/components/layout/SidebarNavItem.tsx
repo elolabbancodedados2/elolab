@@ -38,8 +38,8 @@ export function SidebarNavItem({ item, collapsed, groupColor, onNavigate }: Side
         const itemIsActive = isItemActive(isActive);
         return cn(
           'group relative flex min-h-11 items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-all duration-150',
-          'text-sidebar-foreground/80 hover:text-white hover:bg-white/[0.06]',
-          itemIsActive && !item.external && 'font-bold text-white bg-[image:var(--gradient-primary)] shadow-glow hover:bg-[image:var(--gradient-primary)]',
+          'text-[#171717]/80 hover:text-[#171717] hover:bg-black/[0.04]',
+          itemIsActive && !item.external && 'font-semibold text-[#171717] bg-white shadow-sm hover:bg-white',
           collapsed && 'justify-center px-2',
           !collapsed && 'ml-1'
         );
@@ -77,8 +77,8 @@ export function SidebarNavItem({ item, collapsed, groupColor, onNavigate }: Side
               className={cn(
                 'ml-auto flex h-5 items-center justify-center rounded-full px-2 text-[10px] font-bold tabular-nums ring-1',
                 typeof item.badge === 'number'
-                  ? 'min-w-[18px] bg-highlight text-highlight-foreground ring-transparent'
-                  : 'bg-white/10 text-sidebar-foreground ring-white/10 uppercase tracking-wide'
+                  ? 'min-w-[18px] bg-[#171717] text-white ring-transparent'
+                  : 'bg-black/[0.04] text-[#171717]/70 ring-black/[0.08] uppercase tracking-wide'
               )}
             >
               {item.badge}
@@ -103,7 +103,7 @@ export function SidebarNavItem({ item, collapsed, groupColor, onNavigate }: Side
           >
             {item.label}
             {item.badge != null && item.badge !== 0 && item.badge !== '' && (
-              <span className="flex h-[17px] min-w-[17px] items-center justify-center rounded-full bg-primary/10 px-1 text-[9px] font-bold text-primary">
+              <span className="flex h-[17px] min-w-[17px] items-center justify-center rounded-full bg-black/5 px-1 text-[9px] font-bold text-[#171717]">
                 {item.badge}
               </span>
             )}

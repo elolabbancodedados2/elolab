@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { ChevronLeft, ChevronDown, LayoutDashboard, PanelLeftOpen, Search, ShieldCheck } from 'lucide-react';
-import logoHorizontal from '@/assets/elolab-logo-identidade-dark.png';
+import logoHorizontal from '@/assets/elolab-logo-identidade.png';
 import logoMark from '@/assets/elolab-symbol-identidade.png';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -114,11 +114,9 @@ export function Sidebar({ forceExpanded = false, onNavigate }: SidebarProps) {
   return (
     <aside
       className={cn(
-        'flex h-screen flex-col transition-all duration-300 ease-out',
-        'bg-sidebar text-sidebar-foreground border-r border-sidebar-border',
+        'flex h-full min-h-0 flex-col overflow-hidden rounded-[28px] border border-white/80 bg-[#F4F4F6] text-[#171717] shadow-sm transition-all duration-300 ease-out',
         isCollapsed ? 'w-[72px]' : 'w-[286px]'
       )}
-      style={{ background: 'var(--gradient-sidebar)' }}
     >
       {/* ─── Header ─── */}
       <div className={cn(
@@ -139,7 +137,7 @@ export function Sidebar({ forceExpanded = false, onNavigate }: SidebarProps) {
             size="icon"
             onClick={() => setCollapsed(true)}
             aria-label="Recolher menu lateral"
-            className="h-9 w-9 rounded-xl text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-sidebar-accent/70"
+            className="h-9 w-9 rounded-xl text-[#171717]/55 hover:text-[#171717] hover:bg-black/[0.04]"
           >
             <ChevronLeft className="h-3.5 w-3.5" />
           </Button>
@@ -165,8 +163,8 @@ export function Sidebar({ forceExpanded = false, onNavigate }: SidebarProps) {
               className={cn(
                 'flex min-h-12 items-center justify-center gap-2.5 rounded-xl px-2 text-sm font-semibold transition-all',
                 navigationMode === 'app'
-                  ? 'bg-white/10 text-white shadow-sm ring-1 ring-white/15'
-                  : 'text-sidebar-foreground/70 hover:bg-white/5 hover:text-white',
+                  ? 'bg-[#171717] text-white shadow-sm'
+                  : 'text-[#171717]/65 hover:bg-black/[0.04] hover:text-[#171717]',
               )}
             >
               <LayoutDashboard className="h-4 w-4 shrink-0" />
@@ -180,7 +178,7 @@ export function Sidebar({ forceExpanded = false, onNavigate }: SidebarProps) {
               disabled
               title="O vínculo da clínica da conta proprietária ainda não foi configurado."
               aria-label="App: vínculo da clínica ainda não configurado"
-              className="flex min-h-12 justify-center gap-2.5 rounded-xl px-2 text-sm font-semibold"
+              className="flex min-h-12 justify-center gap-2.5 rounded-xl px-2 text-sm font-semibold text-[#171717]/45"
             >
               <LayoutDashboard className="h-4 w-4 shrink-0" />
               {!isCollapsed && <span>App</span>}
@@ -194,8 +192,8 @@ export function Sidebar({ forceExpanded = false, onNavigate }: SidebarProps) {
             className={cn(
               'flex min-h-12 items-center justify-center gap-2.5 rounded-xl px-2 text-sm font-semibold transition-all',
               navigationMode === 'platform'
-                ? 'bg-white/10 text-white shadow-sm ring-1 ring-white/15'
-                : 'text-sidebar-foreground/70 hover:bg-white/5 hover:text-white',
+                ? 'bg-[#171717] text-white shadow-sm'
+                : 'text-[#171717]/65 hover:bg-black/[0.04] hover:text-[#171717]',
             )}
           >
             <ShieldCheck className="h-4 w-4 shrink-0" />
@@ -207,7 +205,7 @@ export function Sidebar({ forceExpanded = false, onNavigate }: SidebarProps) {
       {!isCollapsed && (
         <div className="px-4 pb-4">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-sidebar-foreground/50" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#171717]/45" />
             <Input
               aria-label="Buscar no menu"
               name="menu-search"
@@ -215,7 +213,7 @@ export function Sidebar({ forceExpanded = false, onNavigate }: SidebarProps) {
               placeholder="Buscar no menu"
               value={search}
               onChange={e => setSearch(e.target.value)}
-              className="h-10 rounded-full border-white/10 bg-white/5 pl-10 text-sm text-white placeholder:text-sidebar-foreground/50 focus-visible:bg-white/10 focus-visible:ring-sidebar-primary/40"
+              className="h-10 rounded-full border-black/[0.08] bg-white/70 pl-10 text-sm text-[#171717] placeholder:text-[#171717]/45 focus-visible:bg-white focus-visible:ring-[#171717]/20"
             />
           </div>
         </div>
@@ -231,7 +229,7 @@ export function Sidebar({ forceExpanded = false, onNavigate }: SidebarProps) {
                 size="icon"
                 onClick={() => setCollapsed(false)}
                 aria-label="Expandir menu lateral"
-                className="h-10 w-full rounded-xl text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-sidebar-accent/70"
+                className="h-10 w-full rounded-xl text-[#171717]/50 hover:text-[#171717] hover:bg-black/[0.04]"
               >
                 <PanelLeftOpen className="h-3.5 w-3.5" />
               </Button>
@@ -242,7 +240,7 @@ export function Sidebar({ forceExpanded = false, onNavigate }: SidebarProps) {
       )}
 
       {/* ─── Navigation ─── */}
-      <ScrollArea className="flex-1 px-3 py-2">
+      <ScrollArea className="min-h-0 flex-1 px-3 py-2">
         <nav className="flex flex-col gap-1">
           {searchedGroups.map((group) => (
             <SidebarMenuGroup
@@ -261,9 +259,9 @@ export function Sidebar({ forceExpanded = false, onNavigate }: SidebarProps) {
       {/* ─── Footer ─── */}
       {!isCollapsed && (
         <div className="shrink-0 px-3 pb-4 pt-2">
-          <div className="rounded-2xl bg-sidebar-accent px-4 py-3">
-            <p className="text-[13px] font-bold text-white">EloLab</p>
-            <p className="text-xs leading-relaxed text-sidebar-foreground/70">Agenda, pacientes e finanças da clínica em um só lugar.</p>
+          <div className="rounded-2xl bg-white/70 px-4 py-3">
+            <p className="text-[13px] font-bold text-[#171717]">EloLab</p>
+            <p className="text-xs leading-relaxed text-[#171717]/60">Agenda, pacientes e finanças da clínica em um só lugar.</p>
           </div>
         </div>
       )}
@@ -301,11 +299,11 @@ function SidebarMenuGroup({ group, collapsed, isOpen, onToggle, currentPath, onN
             whileTap={{ scale: 0.97 }}
             transition={{ type: 'spring', stiffness: 400, damping: 20 }}
             className={cn(
-              'w-full flex items-center gap-3 rounded-xl px-3 py-2 text-[10.5px] font-bold uppercase tracking-[0.12em] transition-all duration-200',
+              'w-full flex items-center gap-3 rounded-full px-3 py-2.5 text-sm font-medium transition-all duration-200',
               collapsed && 'justify-center',
               hasActiveChild
-                ? 'text-white/90'
-                : 'text-sidebar-foreground/55 hover:text-white/85',
+                ? 'bg-[#171717] text-white shadow-sm hover:text-white'
+                : 'text-[#171717]/75 hover:bg-black/[0.04] hover:text-[#171717]',
             )}
           >
             {collapsed ? (
@@ -314,8 +312,8 @@ function SidebarMenuGroup({ group, collapsed, isOpen, onToggle, currentPath, onN
                 transition={{ type: 'spring', stiffness: 400, damping: 15 }}
                 className="h-9 w-9 rounded-xl flex items-center justify-center transition-all shadow-sm"
                 style={{
-                  backgroundColor: `${group.color}26`,
-                  color: group.color,
+                  backgroundColor: hasActiveChild ? 'rgba(255,255,255,.14)' : 'rgba(23,23,23,.05)',
+                  color: hasActiveChild ? '#fff' : '#171717',
                 }}
               >
                 <GroupIcon className="h-4 w-4" />
@@ -325,8 +323,8 @@ function SidebarMenuGroup({ group, collapsed, isOpen, onToggle, currentPath, onN
                 <div
                   className="h-6 w-6 rounded-lg flex items-center justify-center shrink-0 transition-all"
                   style={{
-                    backgroundColor: `${group.color}26`,
-                    color: group.color,
+                    backgroundColor: hasActiveChild ? 'rgba(255,255,255,.14)' : 'rgba(23,23,23,.05)',
+                    color: hasActiveChild ? '#fff' : '#171717',
                   }}
                 >
                   <GroupIcon className="h-3.5 w-3.5" />
@@ -336,7 +334,7 @@ function SidebarMenuGroup({ group, collapsed, isOpen, onToggle, currentPath, onN
                   animate={{ rotate: isOpen ? 180 : 0 }}
                   transition={{ duration: 0.25, ease: 'easeInOut' }}
                 >
-                  <ChevronDown className="h-3.5 w-3.5 text-sidebar-foreground/40" />
+                  <ChevronDown className="h-3.5 w-3.5 text-current/50" />
                 </motion.div>
               </>
             )}
@@ -359,7 +357,7 @@ function SidebarMenuGroup({ group, collapsed, isOpen, onToggle, currentPath, onN
             transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
             className="overflow-hidden"
           >
-            <div className="flex flex-col gap-1 py-1.5 pl-1">
+            <div className="flex flex-col gap-1 py-1.5 pl-3">
               {group.items.map((item, idx) => (
                 <motion.div
                   key={item.href}
