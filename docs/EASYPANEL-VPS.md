@@ -92,6 +92,12 @@ pois o Vite as incorpora no bundle. Defina a porta `8080`, health check
 `/healthz` e domínio HTTPS `app.elolab.com.br`. Não é necessário volume no
 frontend.
 
+O builder Docker do Easypanel fornece `GIT_SHA` como argumento de build. O
+Dockerfile encaminha esse valor ao build do Vite, então `/version.json` e os
+eventos do navegador identificam a revisão de origem mesmo quando o contexto
+de build não contém `.git`. O workflow de CI envia o mesmo SHA ao validar a
+imagem.
+
 **Não habilite Auto Deploy direto do branch `main` sem proteção de branch.** O
 webhook Git do Easypanel não aguarda o resultado do GitHub Actions: pode iniciar
 um deploy antes de typecheck, verificações, testes, auditoria e build terminarem.

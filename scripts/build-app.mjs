@@ -1,24 +1,8 @@
 #!/usr/bin/env node
-import { execFileSync } from 'node:child_process';
 import { readdir, readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { build } from 'vite';
-
-function resolveBuildId() {
-  const configured = process.env.APP_BUILD_ID || process.env.VITE_APP_BUILD_ID;
-  if (configured) return configured;
-
-  try {
-    const commit = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
-    const changes = execFileSync('git', ['status', '--porcelain', '--untracked-files=all'], { encoding: 'utf8' }).trim();
-    if (!changes) return commit;
-
-    const timestamp = new Date().toISOString().replaceAll(/[-:.]/g, '');
-    return `${commit}-dirty-${timestamp}`;
-  } catch {
-    return `local-${new Date().toISOString().replaceAll(/[-:.]/g, '')}`;
-  }
-}
+import { resolveBuildId } from './resolve-build-id.mjs';
 
 const buildId = resolveBuildId();
 process.env.APP_BUILD_ID = buildId;
