@@ -40,6 +40,14 @@ describe('ConsentimentoLGPD', () => {
     mocks.maybeSingle.mockResolvedValue({ data: { id: 'consent-1' }, error: null });
   });
 
+  it('does not show consent as missing or allow edits when history could not be loaded', () => {
+    render(<ConsentimentoLGPD pacienteId="pac-1" pacienteNome="Ana" consentimentos={[]} isError onConsentimentoRegistrado={vi.fn()} />);
+
+    expect(screen.getByText(/Não foi possível carregar o histórico/)).toBeVisible();
+    expect(screen.queryByText(/consentimento obrigatório para tratamento de dados ainda não foi registrado/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Novo Consentimento' })).toBeDisabled();
+  });
+
   it('não confirma o aceite se o banco devolver erro', async () => {
     const atualizado = vi.fn();
     mocks.single.mockResolvedValue({ data: null, error: new Error('RLS negou a gravação') });

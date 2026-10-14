@@ -50,6 +50,7 @@ import { Paciente } from '@/types';
 import { cn, sanitizeText } from '@/lib/utils';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { useCurrentMedico } from '@/hooks/useCurrentMedico';
+import { loadPatientConsentRecords } from '@/lib/patientConsentRecords';
 import { gerarProntuarioPDF, downloadPDF, openPDF } from '@/lib/pdfGenerator';
 import { ageFromDateOnly, isValidDateOnly, parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { logAudit } from '@/lib/auditTrail';
@@ -738,6 +739,15 @@ export default function Pacientes() {
 
   const filteredPacientes = pacientes;
   const selectedPaciente = pacienteSelecionadoDetalhe ?? pacientes.find((p) => p.id === selectedPacienteId) ?? pacienteDeepLink ?? null;
+  const consentimentosPacienteQuery = useQuery({
+    queryKey: ['consentimentos-paciente', authProfile?.clinica_id, selectedPaciente?.id],
+    enabled: Boolean(authProfile?.clinica_id && selectedPaciente?.id),
+    queryFn: () => {
+      if (!authProfile?.clinica_id || !selectedPaciente?.id) throw new Error('Clínica ou paciente não identificado.');
+      return loadPatientConsentRecords(authProfile.clinica_id, selectedPaciente.id);
+    },
+    staleTime: 0,
+  });
   const stats = {
     total: resumoEstatisticas?.total ?? '—',
     comConvenio: resumoEstatisticas?.com_convenio ?? '—',
@@ -1884,8 +1894,10 @@ export default function Pacientes() {
                     <ConsentimentoLGPD
                       pacienteId={selectedPaciente.id}
                       pacienteNome={selectedPaciente.nome}
-                      consentimentos={[]}
-                      onConsentimentoRegistrado={() => { /* refetch é feito internamente pelo componente */ }}
+                      consentimentos={consentimentosPacienteQuery.data ?? []}
+                      isLoading={consentimentosPacienteQuery.isLoading}
+                      isError={consentimentosPacienteQuery.isError}
+                      onConsentimentoRegistrado={() => { void consentimentosPacienteQuery.refetch(); }}
                     />
                   </TabsContent>
 
