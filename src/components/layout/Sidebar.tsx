@@ -1,4 +1,4 @@
-import { useId, useState, useEffect } from 'react';
+import { useId, useState, useEffect, useRef } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
@@ -49,6 +49,8 @@ export function Sidebar({ forceExpanded = false, onNavigate }: SidebarProps) {
   const { hasFeature, isLoading: isPlanLoading, isError: isPlanError } = useUserPlan();
   const location = useLocation();
   const [search, setSearch] = useState('');
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const focusSearchAfterExpandRef = useRef(false);
   const navigationMode = isPlatformAdmin && !profile?.clinica_id
     ? 'platform'
     : getNavigationMode(location.pathname, isPlatformAdmin);
@@ -71,6 +73,30 @@ export function Sidebar({ forceExpanded = false, onNavigate }: SidebarProps) {
     }
   });
   const isCollapsed = collapsed && !forceExpanded;
+
+  useEffect(() => {
+    if (!isCollapsed && focusSearchAfterExpandRef.current) {
+      searchInputRef.current?.focus();
+      focusSearchAfterExpandRef.current = false;
+    }
+  }, [isCollapsed]);
+
+  useEffect(() => {
+    const handleShortcut = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        if (isCollapsed) {
+          focusSearchAfterExpandRef.current = true;
+          setCollapsed(false);
+        } else {
+          searchInputRef.current?.focus();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleShortcut);
+    return () => window.removeEventListener('keydown', handleShortcut);
+  }, [isCollapsed]);
 
   const roleFilteredMenuGroups = getFilteredMenuGroups(
     profile?.roles || [],
@@ -228,12 +254,20 @@ export function Sidebar({ forceExpanded = false, onNavigate }: SidebarProps) {
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#171717]/45" />
             <Input
+              ref={searchInputRef}
               aria-label="Buscar no menu"
+              aria-keyshortcuts="Control+K Meta+K"
               name="menu-search"
               autoComplete="off"
               placeholder="Buscar no menu"
               value={search}
               onChange={e => setSearch(e.target.value)}
+              onKeyDown={event => {
+                if (event.key === 'Escape' && search) {
+                  event.preventDefault();
+                  setSearch('');
+                }
+              }}
               className="h-10 rounded-full border-black/[0.08] bg-white/70 pl-10 text-sm text-[#171717] placeholder:text-[#171717]/45 focus-visible:bg-white focus-visible:ring-[#171717]/30"
             />
           </div>

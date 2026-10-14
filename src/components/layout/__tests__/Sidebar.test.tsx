@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -138,5 +138,29 @@ describe('busca e preferências do menu lateral', () => {
 
     expect(screen.getByRole('textbox', { name: 'Buscar no menu' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Prontuários' })).toBeInTheDocument();
+  });
+
+  it('abre e foca a busca com Ctrl+K mesmo quando o menu está recolhido', async () => {
+    const user = userEvent.setup();
+    renderSidebar('/dashboard', false);
+    await user.click(screen.getByRole('button', { name: 'Recolher menu lateral' }));
+
+    fireEvent.keyDown(window, { key: 'k', ctrlKey: true });
+
+    const search = screen.getByRole('textbox', { name: 'Buscar no menu' });
+    expect(search).toHaveFocus();
+  });
+
+  it('limpa a busca ao pressionar Escape', async () => {
+    const user = userEvent.setup();
+    renderSidebar('/dashboard', false);
+    const search = screen.getByRole('textbox', { name: 'Buscar no menu' });
+    await user.type(search, 'agenda');
+    expect(screen.queryByRole('link', { name: 'Dashboard' })).not.toBeInTheDocument();
+
+    fireEvent.keyDown(search, { key: 'Escape' });
+
+    expect(search).toHaveValue('');
+    expect(screen.getByRole('link', { name: 'Dashboard' })).toBeInTheDocument();
   });
 });

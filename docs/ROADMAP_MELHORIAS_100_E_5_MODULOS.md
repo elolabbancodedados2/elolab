@@ -109,6 +109,8 @@ Itens 1–100 são propostas de execução, não afirmações de que esses defei
 
 **E57 entregue e validado localmente:** rejeição e recoleta exigem uma causa categorizada validada novamente na RPC; “Outro” requer explicação de 5 a 300 caracteres e demais detalhes têm limite de 300. A descrição legível e o código da causa são salvos no histórico com responsável e horário; uma nova amostra mantém o vínculo com a anterior. O trigger de status não gera um segundo evento para a mesma rejeição. Evidências: teste de payload 4/4, Vitest integral 302 arquivos/1.466 testes, migration executada em PostgreSQL efêmero PGlite com trigger de auditoria, validação de categoria/limites, isolamento entre clínicas, autoria/data, rejeição sem duplicidade e vínculo de recoleta; TypeScript e checks finais aprovados. Migration `20261014233000_motivos_estruturados_amostras.sql` local, não aplicada remotamente.
 
+**E58 entregue e validado localmente:** `Ctrl/Cmd+K` expande o menu quando recolhido e leva o foco direto à busca; `Esc` limpa o termo e restaura os destinos. O atalho está identificado para tecnologia assistiva. Evidências: testes de regressão 2/2 (ambos falharam antes da implementação), Vitest integral 302 arquivos/1.468 testes, TypeScript, ESLint focal, acessibilidade e build aprovados.
+
 ### Exames e laboratório
 
 41. [x] Etiquetar amostras com identificador legível e código de barras sem incluir dados pessoais na etiqueta (E55).
@@ -166,7 +168,7 @@ Itens 1–100 são propostas de execução, não afirmações de que esses defei
 78. Fazer auditoria de acessos por intervalo e exportar o resultado com limite de permissão.
 79. [x] Detectar alterações de papel concorrentes e pedir recarga em vez de sobrescrever a versão mais recente.
 **Entrega E9:** versão monotônica `edit_version` com compare-and-set tanto na gravação dos dados quanto na RPC de papéis sob `FOR UPDATE`; em conflito, nenhuma ficha antiga sobrescreve a versão mais nova e a UI orienta recarregar/reabrir. RPC legada segue para compatibilidade. Evidência: suíte completa 247 arquivos/1.286 testes; E2E de equipe 4/4; TypeScript, build, checks de colunas/falhas/permissões/acessibilidade passaram; ESLint sem erros (19 avisos `any` legados em Funcionarios.tsx). Migration criada localmente e não aplicada.
-80. [x] Tornar a busca do menu lateral tolerante a acentos e nomes de grupos, orientar quando não houver resultado e permitir abrir categorias no modo recolhido (E56).
+80. [x] Tornar a busca do menu lateral tolerante a acentos e nomes de grupos, orientar quando não houver resultado, permitir abrir categorias no modo recolhido (E56) e oferecer atalho de teclado para localizar destinos (E58).
 
 ### Comunicação, notificações e automações
 
@@ -256,4 +258,4 @@ Cadastro patrimonial de equipamento por unidade, responsável, validade de calib
 - [ ] Fazer triagem dos itens 1–100 no checkout local e retirar duplicatas antes de iniciar cada pacote.
 - [ ] Implementar, validar e registrar cada pacote antes de seguir ao próximo; atualizar este arquivo sem contar testes ou documentos como melhoria funcional.
 - [x] Completar e testar N1–N5 como módulos com persistência, autorização e fluxo utilizável em ambiente sintético/descartável; nenhum módulo depende só de navegação.
-- [ ] Entregar melhorias funcionais distintas nos módulos existentes: **56/100** concluídas; E14 e os itens cobertos por comportamento existente não entram na contagem. N1–N5 são a meta separada de módulos novos.
+- [ ] Entregar melhorias funcionais distintas nos módulos existentes: **57/100** concluídas; E14 e os itens cobertos por comportamento existente não entram na contagem. N1–N5 são a meta separada de módulos novos.
