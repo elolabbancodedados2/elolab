@@ -12,6 +12,11 @@ test('fila pessoal respeita o escopo da clínica, responsável e permite conclui
 
   await page.goto('/minha-fila');
   await expect(page.getByRole('heading', { name: 'Minha fila de trabalho' })).toBeVisible();
+  await page.getByRole('button', { name: /Conta Online/ }).click();
+  await expect(page.getByText('Clinic QA synthetic · Recepção')).toBeVisible();
+  await page.keyboard.press('Escape');
+  expect(synthetic.requests.some((entry) => entry.startsWith('GET /rest/v1/clinicas?')
+    && entry.includes(`id=eq.${synthetic.clinicId}`))).toBe(true);
   await expect(page.getByText('Confirmar retorno da pessoa QA')).toBeVisible();
   await expect(page.getByText('Revisar pendência de hoje QA')).toBeVisible();
   await expect(page.getByText('Tarefa QA de outra pessoa')).toHaveCount(0);

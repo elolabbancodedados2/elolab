@@ -111,7 +111,8 @@ Itens 1–100 são propostas de execução, não afirmações de que esses defei
 
 ### Equipe, permissões e segurança
 
-71. Mostrar a clínica e o papel ativo no cabeçalho para evitar ações no contexto errado.
+71. [x] Mostrar a clínica e o papel ativo no cabeçalho para evitar ações no contexto errado.
+**Entrega E3:** navbar identifica clínica e papel principal, com nome lido por clínica e cache segregado pela chave `clinica_id`; no mobile, o contexto também aparece ao abrir o menu da conta. Evidência: 3/3 testes de navbar, jornada Playwright sintética, TypeScript, checks de colunas/falhas/permissões/acessibilidade e build passaram.
 72. Permitir suspender convite expirado e gerar novo link sem invalidar convites de outras pessoas.
 73. Exigir reautenticação para trocar e-mail do administrador principal ou reduzir controles de segurança.
 74. Fornecer prévia “o que este perfil consegue acessar” antes de salvar uma mudança de papel.
