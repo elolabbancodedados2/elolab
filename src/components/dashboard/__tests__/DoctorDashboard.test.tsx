@@ -22,10 +22,13 @@ describe('estado de vínculo profissional no painel médico', () => {
 
   it('explica como resolver a ausência de vínculo e permite tentar de novo', () => {
     const onRetry = vi.fn();
-    render(<DoctorDashboardIdentityState medicoId={null} onRetry={onRetry} />);
+    const { container } = render(<DoctorDashboardIdentityState medicoId={null} onRetry={onRetry} />);
 
     expect(screen.getByRole('heading', { name: 'Cadastro profissional não vinculado' })).toBeInTheDocument();
     expect(screen.getByText(/Peça ao administrador da clínica para concluir o vínculo/i)).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveClass('border-border', 'bg-card');
+    expect(screen.getByRole('heading', { name: 'Cadastro profissional não vinculado' })).toHaveClass('text-card-foreground');
+    expect(container.querySelector('.text-primary')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Tentar novamente' }));
     expect(onRetry).toHaveBeenCalledOnce();
   });

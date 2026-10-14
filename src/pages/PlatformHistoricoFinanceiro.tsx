@@ -65,14 +65,14 @@ export default function PlatformHistoricoFinanceiro() {
 
   return (
     <div className="space-y-6 pb-8">
-      <header className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-[#DCEAF5] bg-gradient-to-r from-[#F1F7FF] via-white to-[#EBFBFD] p-5 sm:p-6">
+      <header className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-[#E6E2F7] bg-gradient-to-r from-[#F4F2FF] via-white to-[#f0edff] p-5 sm:p-6">
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-bold"><History className="h-6 w-6 text-primary" /> Histórico financeiro</h1>
           <p className="mt-1 text-sm text-muted-foreground">Variações de MRR e churn calculados a partir dos eventos de assinatura; não representam valores recebidos.</p>
         </div>
         <div className="flex gap-2">
           <Select value={days} onValueChange={setDays}><SelectTrigger className="w-32" aria-label="Período"><SelectValue /></SelectTrigger><SelectContent>{['30', '90', '180', '365'].map((value) => <SelectItem key={value} value={value}>{value} dias</SelectItem>)}</SelectContent></Select>
-          <Button variant="outline" className="min-h-11 border-[#CFE0F0] bg-white text-[#0C1F54] hover:bg-[#F7FBFF]" onClick={() => void history.refetch()} disabled={history.isFetching}><RefreshCw className={`mr-2 h-4 w-4 ${history.isFetching ? 'animate-spin' : ''}`} /> Atualizar</Button>
+          <Button variant="outline" className="min-h-11 border-[#DCD7F0] bg-white text-[#17122B] hover:bg-[#F9F8FF]" onClick={() => void history.refetch()} disabled={history.isFetching}><RefreshCw className={`mr-2 h-4 w-4 ${history.isFetching ? 'animate-spin' : ''}`} /> Atualizar</Button>
         </div>
       </header>
 
@@ -101,7 +101,7 @@ export default function PlatformHistoricoFinanceiro() {
             <CardContent className="space-y-2">
               {visibleEvents.map((event) => {
                 const delta = Number(event.mrr_delta || 0);
-                return <article key={event.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#E5EDF5] bg-[#FBFDFF] p-3">
+                return <article key={event.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#E8E5F5] bg-[#FCFBFF] p-3">
                   <div><p className="font-medium">{event.clinica_nome || 'Clínica não vinculada'}</p><p className="text-xs text-muted-foreground">{eventLabels[event.event_type] || event.event_type} · {event.old_plan_slug || event.old_status || '—'} → {event.new_plan_slug || event.new_status || '—'} · {dateTime(event.occurred_at)}</p><p className="text-xs text-muted-foreground">{sourceLabels[event.source] || event.source}</p></div>
                   <div className="flex items-center gap-2">{delta !== 0 && (delta > 0 ? <ArrowUpRight className="h-4 w-4 text-success" /> : <ArrowDownRight className="h-4 w-4 text-destructive" />)}<Badge variant={delta < 0 ? 'destructive' : 'outline'}>{delta > 0 ? '+' : ''}{currency(delta)}</Badge></div>
                 </article>;

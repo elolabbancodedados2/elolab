@@ -126,17 +126,17 @@ export default function VitaisGraficos() {
   return (
     <div className="space-y-6">
       <div className="flex items-start gap-3">
-        <div className="rounded-2xl bg-[#eaf4ff] p-3 text-[#1769c2] shadow-sm ring-1 ring-[#d8e8fb]">
+        <div className="rounded-2xl bg-[#f0edff] p-3 text-[#3317c2] shadow-sm ring-1 ring-[#e3dffb]">
           <Heart className="h-6 w-6" />
         </div>
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-[#102a56] md:text-3xl">Sinais vitais</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-[#1c1636] md:text-3xl">Sinais vitais</h1>
           <p className="mt-1 text-sm text-muted-foreground">Acompanhe a evolução clínica com medições da triagem e do prontuário.</p>
         </div>
       </div>
 
       {/* Seletor de paciente */}
-      <Card className="border-[#dce9f7] bg-gradient-to-r from-white to-[#f3f8ff] shadow-sm">
+      <Card className="border-[#e0dcf7] bg-gradient-to-r from-white to-[#f6f4ff] shadow-sm">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Droplets className="h-5 w-5" />
@@ -154,10 +154,10 @@ export default function VitaisGraficos() {
       {!selectedPacienteId ? (
         <Card>
           <CardContent className="py-12 text-center">
-            <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#edf6ff] text-[#2476ce]">
+            <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#f1eefe] text-[#4024ce]">
               <Droplets className="h-7 w-7" />
             </div>
-            <p className="font-medium text-[#18345f]">Selecione um paciente para visualizar o histórico</p>
+            <p className="font-medium text-[#24185f]">Selecione um paciente para visualizar o histórico</p>
             <p className="mt-1 text-sm text-muted-foreground">As medições ficam organizadas por data e atendimento.</p>
           </CardContent>
         </Card>
@@ -168,10 +168,10 @@ export default function VitaisGraficos() {
       ) : vitais.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center">
-            <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#edf6ff] text-[#2476ce]">
+            <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#f1eefe] text-[#4024ce]">
               <AlertCircle className="h-7 w-7" />
             </div>
-            <p className="font-medium text-[#18345f]">Nenhuma medição encontrada</p>
+            <p className="font-medium text-[#24185f]">Nenhuma medição encontrada</p>
             <p className="mt-1 text-sm text-muted-foreground">Quando houver sinais vitais na triagem ou no prontuário, eles aparecerão aqui.</p>
           </CardContent>
         </Card>
@@ -248,13 +248,13 @@ export default function VitaisGraficos() {
                 unit: '/10',
               },
             ].map((item) => (
-              <Card key={item.label} className="border-[#e0eaf5] shadow-sm transition-shadow hover:shadow-md">
+              <Card key={item.label} className="border-[#e3e0f5] shadow-sm transition-shadow hover:shadow-md">
                 <CardContent className="pt-4 pb-3">
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-[10px] text-muted-foreground font-semibold uppercase">
                       {item.label}
                     </p>
-                    <span className="rounded-lg bg-[#edf6ff] p-1.5 text-[#2878cb]">
+                    <span className="rounded-lg bg-[#f1eefe] p-1.5 text-[#4328cb]">
                       <item.icon className="h-4 w-4" />
                     </span>
                   </div>
@@ -295,7 +295,7 @@ export default function VitaisGraficos() {
                     <Line
                       type="monotone"
                       dataKey="pressaoSistolica"
-                      stroke="#0c1f54"
+                      stroke="#17122b"
                       name="Sistólica (mmHg)"
                       strokeWidth={2}
                       isAnimationActive={true}
@@ -303,7 +303,7 @@ export default function VitaisGraficos() {
                     <Line
                       type="monotone"
                       dataKey="pressaoDiastolica"
-                      stroke="#0f7bfd"
+                      stroke="#7b6cf6"
                       name="Diastólica (mmHg)"
                       strokeWidth={2}
                     />
@@ -336,7 +336,7 @@ export default function VitaisGraficos() {
                     <Line
                       type="monotone"
                       dataKey="frequenciaCardiaca"
-                      stroke="#50bde3"
+                      stroke="#6850e3"
                       name="FC (bpm)"
                       strokeWidth={2}
                     />
@@ -365,7 +365,7 @@ export default function VitaisGraficos() {
                       contentStyle={{ backgroundColor: 'var(--background)', border: '1px solid var(--border)' }}
                       labelStyle={{ color: 'var(--foreground)' }}
                     />
-                    <Bar dataKey="peso" fill="#0f7bfd" name="Peso (kg)" />
+                    <Bar dataKey="peso" fill="#7b6cf6" name="Peso (kg)" />
                   </BarChart>
                 </ResponsiveContainer>
               </CardContent>

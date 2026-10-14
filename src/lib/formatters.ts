@@ -70,6 +70,9 @@ export function formatDate(date: Date | string, format: 'short' | 'long' | 'iso'
 
   switch (format) {
     case 'short':
+      if (typeof document !== 'undefined' && document.documentElement.dataset.dateFormat === 'YYYY-MM-DD') {
+        return toDateOnly(d);
+      }
       return d.toLocaleDateString('pt-BR');
     case 'long':
       return d.toLocaleDateString('pt-BR', {
@@ -85,6 +88,14 @@ export function formatDate(date: Date | string, format: 'short' | 'long' | 'iso'
     default:
       return d.toLocaleDateString('pt-BR');
   }
+}
+
+/** Data e hora locais usando o formato de data curto definido nas preferências. */
+export function formatDateTimePreference(date: Date | string): string {
+  const value = typeof date === 'string' ? new Date(date) : date;
+  if (Number.isNaN(value.getTime())) return 'Data indisponível';
+  const time = value.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  return `${formatDate(value, 'short')} às ${time}`;
 }
 
 export function formatTime(date: Date | string): string {

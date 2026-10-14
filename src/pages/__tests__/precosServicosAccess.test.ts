@@ -6,7 +6,7 @@ const exames = readFileSync('src/pages/PrecosExames.tsx', 'utf8');
 
 describe('acessibilidade e permissões dos preços e serviços', () => {
   it('mostra ações de cadastro de tipos apenas para administradores', () => {
-    expect(tipos).toMatch(/isAdmin\(\)\s*&&\s*<Button[^>]*onClick=\{openCreate\}/);
+    expect(tipos).toMatch(/actions=\{isAdmin\(\)\s*&&\s*\([\s\S]*<Button\s+onClick=\{openCreate\}/);
     expect(tipos).toMatch(/isAdmin\(\)\s*&&\s*<>[\s\S]*onClick=\{\(\) => openEdit\(tipo\)\}/);
     expect(tipos).toMatch(/isAdmin\(\)\s*&&\s*<>[\s\S]*onClick=\{\(\) => setDeleteTarget\(tipo\)\}/);
   });

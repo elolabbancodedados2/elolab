@@ -13,6 +13,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { ErrorState } from '@/components/ErrorState';
 import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
+import { useUserPlan } from '@/hooks/useSubscriptionPlan';
 
 type StepKey = 'team' | 'schedule' | 'services' | 'whatsapp' | 'appointment';
 type ApiStep = { key: StepKey; complete: boolean; count: number };
@@ -26,14 +27,14 @@ type Overview = {
 
 const definitions = {
   team: {
-    title: 'Monte sua equipe',
-    description: 'Convide ao menos uma pessoa e atribua o perfil adequado para o trabalho diário.',
-    action: 'Gerenciar equipe', href: '/equipe', icon: UsersRound,
+    title: 'Equipe e acessos',
+    description: 'A conta de administrador já garante acesso à clínica. Convites para médicos e funcionários são opcionais; profissionais e horários são configurados na próxima etapa.',
+    action: 'Gerenciar equipe', href: '/equipe?aba=funcionarios', icon: UsersRound,
   },
   schedule: {
     title: 'Configure os horários',
-    description: 'Defina o horário de funcionamento e a disponibilidade semanal de pelo menos um profissional.',
-    action: 'Configurar horário da clínica', href: '/configuracoes', icon: Clock3,
+    description: 'Cadastre ou selecione um médico e informe em quais dias e horários ele atende.',
+    action: 'Configurar disponibilidade', href: '/equipe?aba=medicos', icon: Clock3,
   },
   services: {
     title: 'Cadastre seus serviços',
@@ -47,13 +48,14 @@ const definitions = {
   },
   appointment: {
     title: 'Crie a primeira agenda',
-    description: 'Cadastre o primeiro agendamento real para validar o fluxo da recepção.',
-    action: 'Abrir agenda', href: '/agenda', icon: CalendarCheck,
+    description: 'Crie um agendamento para conferir o fluxo completo com profissional, serviço e horário.',
+    action: 'Criar primeiro agendamento', href: '/agenda', icon: CalendarCheck,
   },
 } satisfies Record<StepKey, { title: string; description: string; action: string; href: string; icon: typeof UsersRound }>;
 
 export default function OnboardingClinica() {
   const { user, profile, isLoading: authLoading, refreshProfile } = useSupabaseAuth();
+  const { hasFeature, isLoading: planLoading } = useUserPlan();
   const query = useQuery({
     queryKey: ['clinic-onboarding', user?.id ?? null, profile?.clinica_id ?? null],
     enabled: !!user && !!profile?.clinica_id,
@@ -65,7 +67,7 @@ export default function OnboardingClinica() {
     staleTime: 0,
   });
 
-  if (authLoading || (!!profile?.clinica_id && query.isLoading)) {
+  if (authLoading || planLoading || (!!profile?.clinica_id && query.isLoading)) {
     return <div className="space-y-5" role="status" aria-live="polite" aria-busy="true" aria-label="Carregando onboarding">
       <Skeleton className="h-24 w-full" />
       <Skeleton className="h-52 w-full" />
@@ -111,7 +113,7 @@ export default function OnboardingClinica() {
       <Card>
         <CardContent className="pt-6">
           <div className="mb-2 flex items-center justify-between gap-3 text-sm">
-            <span className="font-medium">{overview.completed_steps} de {overview.total_steps} etapas concluídas</span>
+            <span className="font-medium">{overview.completed_steps} de {overview.total_steps} etapas essenciais concluídas</span>
             <span className="font-semibold text-primary">{overview.progress}%</span>
           </div>
           <Progress value={overview.progress} aria-label={`${overview.progress}% do onboarding concluído`} />
@@ -128,9 +130,14 @@ export default function OnboardingClinica() {
     <section className="grid gap-4 md:grid-cols-2" aria-label="Etapas do onboarding">
       {overview.steps.map((step, index) => {
         const definition = definitions[step.key];
+        const upsellAgentIA = step.key === 'whatsapp' && !hasFeature('agente_ia');
+        const title = upsellAgentIA ? 'Atendente de IA no WhatsApp' : definition.title;
+        const description = upsellAgentIA
+          ? 'Disponível no EloLab Ultra. Esta etapa é opcional e não impede a clínica de começar a usar o EloLab Pro.'
+          : definition.description;
         const Icon = definition.icon;
         const countLabel = {
-          team: step.count === 0 ? 'Nenhuma outra pessoa ativa com função de acesso' : step.count === 1 ? '1 pessoa ativa com função de acesso' : `${step.count} pessoas ativas com função de acesso`,
+          team: step.count === 0 ? 'Nenhum usuário ativo com função de acesso' : step.count === 1 ? '1 usuário ativo com função de acesso' : `${step.count} usuários ativos com função de acesso`,
           schedule: step.count === 0 ? 'Nenhum profissional com horários disponíveis ainda' : step.count === 1 ? '1 profissional com horários disponíveis' : `${step.count} profissionais com horários disponíveis`,
           services: step.count === 0 ? 'Nenhum serviço ativo ainda' : step.count === 1 ? '1 serviço ativo' : `${step.count} serviços ativos`,
           whatsapp: step.count === 0 ? 'Nenhuma sessão conectada ainda' : step.count === 1 ? '1 sessão conectada' : `${step.count} sessões conectadas`,
@@ -144,23 +151,23 @@ export default function OnboardingClinica() {
               </div>
               <div className="min-w-0">
                 <div className="mb-1 flex flex-wrap items-center gap-2">
-                  <CardTitle className="text-base">{step.key === 'whatsapp' ? definition.title : `${overview.steps.slice(0, index + 1).filter((item) => item.key !== 'whatsapp').length}. ${definition.title}`}</CardTitle>
-                  <Badge variant={step.complete ? 'outline' : 'secondary'}>{step.complete ? 'Concluída' : 'Pendente'}</Badge>
+                  <CardTitle className="text-base">{step.key === 'whatsapp' ? title : `${overview.steps.slice(0, index + 1).filter((item) => item.key !== 'whatsapp').length}. ${title}`}</CardTitle>
+                  <Badge variant={step.complete ? 'outline' : 'secondary'}>{step.complete ? 'Concluída' : step.key === 'whatsapp' ? 'Opcional' : 'Pendente'}</Badge>
                 </div>
-                <CardDescription>{definition.description}</CardDescription>
+                <CardDescription>{description}</CardDescription>
               </div>
             </div>
           </CardHeader>
           <CardContent>
             <p className="mb-3 text-sm text-muted-foreground">{countLabel}</p>
             <Button asChild variant={step.complete ? 'outline' : 'default'} className="w-full sm:w-auto">
-              <Link to={definition.href}>{step.complete ? 'Revisar' : definition.action}<ArrowRight className="ml-2 h-4 w-4" /></Link>
+              <Link to={upsellAgentIA ? '/planos' : definition.href}>{step.complete && step.key !== 'team' ? 'Revisar' : upsellAgentIA ? 'Ver planos' : definition.action}<ArrowRight className="ml-2 h-4 w-4" /></Link>
             </Button>
             {step.key === 'schedule' && <Button asChild variant="link" className="ml-0 mt-2 w-full sm:ml-2 sm:mt-0 sm:w-auto">
-              <Link to="/equipe">Configurar disponibilidade dos profissionais<ArrowRight className="ml-2 h-4 w-4" /></Link>
+              <Link to="/configuracoes?tab=horarios">Configurar horário de funcionamento<ArrowRight className="ml-2 h-4 w-4" /></Link>
             </Button>}
             {step.key === 'schedule' && !step.complete && <p className="mt-2 text-xs text-muted-foreground">
-              Ao cadastrar um profissional novo, salve o cadastro e depois edite-o para incluir os horários disponíveis.
+              Se você também atende, use o e-mail desta conta no perfil médico e aceite o convite com esta mesma conta. Não é necessário criar outro usuário; depois, edite o cadastro e configure os horários.
             </p>}
           </CardContent>
         </Card>;

@@ -30,6 +30,7 @@ import { CardGridSkeleton } from '@/components/ui/loading-skeleton';
 import { ErrorState } from '@/components/ErrorState';
 import { normalizarTexto } from '@/lib/buscaPaciente';
 import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
+import { PageHeader } from '@/components/PageHeader';
 
 const fmt = (v: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
@@ -37,8 +38,8 @@ const temNoMaximoDuasCasasDecimais = (valor: number) =>
   Math.abs(valor * 100 - Math.round(valor * 100)) < 1e-7;
 
 const CORES = [
-  '#6366f1', '#10b981', '#f59e0b', '#ef4444', '#0ea5e9',
-  '#8b5cf6', '#ec4899', '#14b8a6', '#f97316', '#64748b',
+  '#6366f1', '#10b981', '#f59e0b', '#ef4444', '#320ee9',
+  '#8b5cf6', '#ec4899', '#14b8a6', '#f97316', '#6a648b',
 ];
 
 interface TipoConsulta {
@@ -243,19 +244,16 @@ export default function TiposConsulta() {
 
   return (
     <div className="space-y-6 pb-8">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 rounded-2xl border border-[#d7e9f7] bg-gradient-to-r from-[#f1fbfd] via-white to-[#eff4ff] p-4 shadow-sm sm:p-5">
-        <div>
-          <h1 className="text-2xl font-bold font-display tracking-tight flex items-center gap-2">
-            <span className="rounded-xl bg-[#eaf4ff] p-2 text-[#1766a8] ring-1 ring-[#d1e5f8]"><Stethoscope className="h-5 w-5" /></span> Tipos & Preços de Consulta
-          </h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            Cadastre tipos de consulta e defina preços por convênio
-          </p>
-        </div>
-        {isAdmin() && <Button onClick={openCreate} className="gap-1.5">
-          <Plus className="h-4 w-4" /> Novo Tipo
-        </Button>}
-      </div>
+      <PageHeader
+        title="Tipos & Preços de Consulta"
+        description="Cadastre tipos de consulta e defina preços por convênio"
+        icon={<Stethoscope />}
+        actions={isAdmin() && (
+          <Button onClick={openCreate} className="gap-1.5">
+            <Plus className="h-4 w-4" /> Novo Tipo
+          </Button>
+        )}
+      />
 
       {/* Search */}
       <div className="relative max-w-sm">
@@ -304,7 +302,7 @@ export default function TiposConsulta() {
               const precosConv = precos.filter(p => p.tipo_consulta_id === tipo.id);
               return (
                 <motion.div key={tipo.id} layout initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95 }} transition={{ delay: i * 0.03 }}>
-                  <Card className="group border-[#dceaf5] bg-gradient-to-br from-white to-[#f8fbfd] shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md">
+                  <Card className="group border-[#e6e2f7] bg-gradient-to-br from-white to-[#faf9fd] shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md">
                     <CardContent className="pt-5 pb-4 px-5">
                       <div className="flex items-start justify-between mb-3">
                         <div className="flex items-center gap-2.5">

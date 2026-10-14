@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ChevronLeft, Users } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { getPrioridadeListaEspera } from '@/lib/listaEsperaPrioridade';
 import { ErrorState } from '@/components/ErrorState';
 import { Skeleton } from '@/components/ui/skeleton';
 
@@ -34,11 +35,7 @@ function WaitingCard({ item }: { item: Item }) {
     data: { waiting: item },
   });
   const paciente = item.pacientes;
-  const prioColor: Record<string, string> = {
-    alta: 'bg-destructive/10 text-destructive border-destructive/20',
-    media: 'bg-warning/10 text-warning border-warning/20',
-    baixa: 'bg-muted text-muted-foreground border-border',
-  };
+  const prioridade = item.prioridade ? getPrioridadeListaEspera(item.prioridade) : null;
   return (
     <div
       ref={setNodeRef}
@@ -52,9 +49,9 @@ function WaitingCard({ item }: { item: Item }) {
       <div className="text-sm font-medium truncate">{paciente?.nome_social || paciente?.nome || 'Paciente'}</div>
       {paciente?.telefone && <div className="text-[11px] text-muted-foreground">{paciente.telefone}</div>}
       <div className="flex flex-wrap gap-1 mt-2">
-        {item.prioridade && (
-          <Badge variant="outline" className={cn('text-[10px]', prioColor[item.prioridade])}>
-            {item.prioridade}
+        {prioridade && (
+          <Badge variant="outline" className={cn('text-[10px]', prioridade.className)}>
+            {prioridade.label}
           </Badge>
         )}
         {item.especialidade && <Badge variant="outline" className="text-[10px]">{item.especialidade}</Badge>}

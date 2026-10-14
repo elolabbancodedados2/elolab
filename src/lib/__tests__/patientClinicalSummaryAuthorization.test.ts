@@ -27,10 +27,10 @@ describe('patient-clinical-summary authorization', () => {
 
   it('does not send clinical data to the AI gateway when there is no auditable record', () => {
     const noAuditCoverageIndex = source.indexOf('if (!pront.data?.length)');
-    const gatewayIndex = source.indexOf('https://ai.gateway.lovable.dev/v1/chat/completions');
+    const providerIndex = source.indexOf('NVIDIA_API_KEY');
 
     expect(noAuditCoverageIndex).toBeGreaterThan(-1);
-    expect(gatewayIndex).toBeGreaterThan(noAuditCoverageIndex);
-    expect(source.slice(noAuditCoverageIndex, gatewayIndex)).toMatch(/status:\s*403/);
+    expect(providerIndex).toBeGreaterThan(noAuditCoverageIndex);
+    expect(source.slice(noAuditCoverageIndex, providerIndex)).toMatch(/status:\s*403/);
   });
 });

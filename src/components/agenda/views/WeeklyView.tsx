@@ -27,7 +27,7 @@ export function WeeklyView({ date, agendamentos, colorFor, medicoById = {}, onDa
   const today = todaySaoPauloDateOnly();
 
   return (
-    <div role="region" aria-label="Agenda semanal, deslize horizontal para ver os dias" tabIndex={0} className="overflow-x-auto rounded-2xl border border-[#D8E8F4] bg-white shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F7BFD]">
+    <div role="region" aria-label="Agenda semanal, deslize horizontal para ver os dias" tabIndex={0} className="overflow-x-auto rounded-2xl border border-border bg-card shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
       <div className="min-w-[770px]">
       <div className="grid grid-cols-7">
         {days.map(({ iso, date: d }) => {
@@ -91,7 +91,7 @@ export function WeeklyView({ date, agendamentos, colorFor, medicoById = {}, onDa
                       'w-full rounded-md bg-card border border-border/60 hover:shadow-sm hover:border-primary/40 text-left px-2 py-1.5 text-[11px] transition-all leading-tight',
                       a.status === 'cancelado' && 'opacity-50 line-through',
                     )}
-                    style={{ borderLeft: `3px solid ${colorFor(a)}` }}
+                    style={{ borderLeft: `1px solid ${colorFor(a)}` }}
                   >
                     <div className="font-medium tabular-nums">{a.hora_inicio.slice(0, 5)}</div>
                     <div className="truncate text-muted-foreground">

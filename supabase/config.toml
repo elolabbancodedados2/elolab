@@ -30,6 +30,9 @@ verify_jwt = true
 [functions.whatsapp-evolution]
 verify_jwt = true
 
+[functions.whatsapp-agent-knowledge]
+verify_jwt = true
+
 [functions.whatsapp-notifications]
 verify_jwt = true
 
@@ -66,6 +69,9 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.patient-clinical-summary]
+verify_jwt = true
+
+[functions.patient-lgpd-memed-export]
 verify_jwt = true
 
 [functions.delinquency-whatsapp-reminder]

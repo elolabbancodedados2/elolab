@@ -35,6 +35,9 @@ describe('AgendaHeader', () => {
     );
 
     expect(screen.getByRole('textbox', { name: 'Buscar paciente, CPF ou telefone' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Sábado, 10 de out' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Visualização diária' }).className).toContain('bg-foreground');
+    expect(screen.getByRole('button', { name: 'Nova consulta' }).className).toContain('bg-primary');
     fireEvent.click(screen.getByRole('button', { name: 'Limpar busca' }));
     expect(onSearchChange).toHaveBeenCalledWith('');
     fireEvent.click(screen.getByRole('button', { name: /Nova consulta/ }));

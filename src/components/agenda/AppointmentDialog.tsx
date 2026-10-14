@@ -459,7 +459,7 @@ export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos,
               <div>
                 <Label htmlFor="appointment-status">Status</Label>
                 {editing ? (
-                  <div id="appointment-status" className="flex h-10 items-center rounded-md border border-[#D8E8F4] bg-[#F6FAFD] px-3 text-sm text-[#0C1F54]" aria-label={`Status atual: ${rotulosStatusOperacionais[form.status] || form.status}`}>
+                  <div id="appointment-status" className="flex h-10 items-center rounded-md border border-border bg-muted px-3 text-sm text-foreground" aria-label={`Status atual: ${rotulosStatusOperacionais[form.status] || form.status}`}>
                     {rotulosStatusOperacionais[form.status] || form.status}
                   </div>
                 ) : (
@@ -559,7 +559,7 @@ export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos,
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={deleting}>Manter consulta</AlertDialogCancel>
-            <AlertDialogAction onClick={(event) => { event.preventDefault(); void handleDelete(); }} disabled={deleting}>
+            <AlertDialogAction onClick={(event) => { event.preventDefault(); void handleDelete(); }} disabled={deleting} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
               {deleting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Cancelando…</> : 'Confirmar cancelamento'}
             </AlertDialogAction>
           </AlertDialogFooter>

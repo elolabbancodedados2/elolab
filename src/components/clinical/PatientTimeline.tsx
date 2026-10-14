@@ -1,7 +1,9 @@
-import { nomeMedico } from '@/lib/formatters';
+import { formatWithDatePreference as format } from '@/lib/datePreference';
+import { formatDateTimePreference, nomeMedico } from '@/lib/formatters';
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { format } from 'date-fns';
+import { useNavigate } from 'react-router-dom';
+
 import { ptBR } from 'date-fns/locale';
 import {
   FileText, Pill, TestTube, FileCheck, ArrowRight, Calendar, Clock,
@@ -61,6 +63,7 @@ const TYPE_META: Record<EventType, { label: string; color: string; icon: JSX.Ele
 
 export function PatientTimeline({ pacienteId, className, maxItems = 50 }: PatientTimelineProps) {
   const { user, profile } = useSupabaseAuth();
+  const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [activeFilter, setActiveFilter] = useState<EventType | 'todos'>('todos');
   const [aiLoading, setAiLoading] = useState(false);
@@ -532,6 +535,16 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
               <div className="space-y-6">
                 {filtered.map((event) => {
                   const meta = TYPE_META[event.type];
+                  const roles = profile?.roles ?? [];
+                  const canOpenClinical = roles.includes('admin') || roles.includes('medico');
+                  const canOpenExams = canOpenClinical || roles.includes('enfermagem');
+                  const action = event.type === 'agendamento' && canOpenClinical
+                    ? { label: 'Abrir atendimento', href: `/prontuarios?${new URLSearchParams({ paciente: pacienteId, agendamento: event.id.replace(/^ag-/, '') })}` }
+                    : event.type === 'exame' && canOpenExams
+                      ? { label: 'Ver exames deste paciente', href: `/exames?${new URLSearchParams({ paciente: pacienteId })}` }
+                      : event.type === 'triagem' && (canOpenClinical || roles.includes('enfermagem'))
+                        ? { label: 'Abrir triagem do paciente', href: `/triagem?${new URLSearchParams({ buscarPaciente: pacienteId })}` }
+                        : null;
                   return (
                     <div key={`${event.type}-${event.id}`} className="relative flex gap-4">
                       <div
@@ -556,10 +569,11 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
                         <p className="text-xs text-muted-foreground mt-1 flex items-center gap-2 flex-wrap">
                           <span className="flex items-center gap-1">
                             <Calendar className="h-3 w-3" />
-                            {format(event.date, "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+                            {formatDateTimePreference(event.date)}
                           </span>
                           {event.medicoNome && <span>• {nomeMedico(event.medicoNome)}</span>}
                         </p>
+                        {action && <Button type="button" size="sm" variant="outline" className="mt-2 min-h-9" onClick={() => navigate(action.href)}>{action.label}<ArrowRight className="ml-2 h-3.5 w-3.5" /></Button>}
                       </div>
                     </div>
                   );

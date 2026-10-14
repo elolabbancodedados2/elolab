@@ -102,9 +102,10 @@ export async function clinicaDoChamador(
   }
   if (!sub) return null;
 
-  const { data } = await supabase
-    .from('profiles').select('clinica_id').eq('id', sub).maybeSingle();
-  return (data as any)?.clinica_id ?? null;
+  const { data, error } = await supabase
+    .from('profiles').select('clinica_id, ativo').eq('id', sub).maybeSingle();
+  if (error || !data || data.ativo === false) return null;
+  return data.clinica_id ?? null;
 }
 
 /** Verifica um papel do usuário autenticado sem confiar em campos do body. */

@@ -1,3 +1,4 @@
+import { formatWithDatePreference as format } from '@/lib/datePreference';
 /**
  * Os pagamentos de uma cobrança, com estorno.
  *
@@ -12,7 +13,7 @@
  */
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { format } from 'date-fns';
+
 import { ptBR } from 'date-fns/locale';
 import { Undo2, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';

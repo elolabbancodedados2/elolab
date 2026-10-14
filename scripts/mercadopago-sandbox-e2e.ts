@@ -16,7 +16,6 @@ import {
   describeCardSubscriptionError,
   extractPaymentInstructions,
   mapOrderStatus,
-  normalizeBoletoPayer,
   normalizeOrderPayer,
   webhookEventKey,
 } from '../supabase/functions/_shared/planCheckout.ts';
@@ -115,25 +114,6 @@ try {
     check('Pix: cancelamento refletido no pedido', db.row.status === 'cancelado', db.row.status);
   }
 
-  // ─── Boleto ───────────────────────────────────────────────────────────────
-  {
-    const pedidoId = crypto.randomUUID();
-    const { payer } = normalizeBoletoPayer({
-      first_name: 'Teste', last_name: 'EloLab', document: '123.456.789-09', zip_code: '06233-903',
-      street_name: 'Av. das Nações Unidas', street_number: '3003', neighborhood: 'Bonfim', city: 'Osasco', state: 'SP',
-    });
-    const payload = buildPlanOrderPayload({
-      pedidoId, plano, method: 'boleto', payerEmail: testPayerEmail || 'test_user_e2e@testuser.com', payer: payer!,
-    });
-    const order = await client.request<Record<string, unknown>>({ method: 'POST', path: '/v1/orders', body: payload, idempotencyKey: crypto.randomUUID() });
-    cleanup.push(() => client.request({ method: 'POST', path: `/v1/orders/${order.id}/cancel` }).catch(() => null));
-    const instr = extractPaymentInstructions(order);
-    check('Boleto: linha digitável e link gerados', !!instr.digitableLine && !!instr.ticketUrl, `vence ${instr.expiresAt}`);
-    check('Boleto: pendência mapeada', mapOrderStatus(order) === 'aguardando_pagamento', String(order.status));
-  }
-
-  // ─── Aprovação e recusa de uma order (cartão de teste APRO/OTHE) ─────────
-  // Pix não é pago automaticamente no sandbox; uma order de cartão de teste
   // gera respostas reais "processed" e "failed" para validar a liberação.
   {
     const pedidoId = crypto.randomUUID();

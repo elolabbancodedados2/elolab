@@ -30,8 +30,73 @@ import { normalizeAgendaDate } from '@/lib/agendaDate';
 import { todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { podeRemarcarAgendamento } from '@/lib/appointmentStatus';
+import { agendaScreenReaderInstructions, criarAnunciosAgenda } from './agendaDndAccessibility';
 
 export type AgendaView = 'daily' | 'weekly' | 'monthly';
+
+type MobileAgendaAppointment = {
+  id: string;
+  hora_inicio: string;
+  hora_fim?: string | null;
+  medico_id?: string | null;
+  tipo?: string | null;
+  status?: string | null;
+  pacientes?: { nome_social?: string | null; nome?: string | null } | null;
+};
+
+function MobileDailyAppointments({
+  appointments,
+  medicoById,
+  onCardClick,
+}: {
+  appointments: MobileAgendaAppointment[];
+  medicoById: Record<string, { nome?: string | null; crm?: string | null } | undefined>;
+  onCardClick: (appointment: MobileAgendaAppointment) => void;
+}) {
+  const ordered = [...appointments].sort((a, b) => a.hora_inicio.localeCompare(b.hora_inicio));
+
+  if (ordered.length === 0) {
+    return (
+      <div className="rounded-xl border border-dashed border-border bg-card px-4 py-10 text-center xl:hidden">
+        <p className="font-medium text-foreground">Nenhuma consulta neste dia</p>
+        <p className="mt-1 text-sm text-muted-foreground">Escolha outra data ou crie um novo agendamento.</p>
+      </div>
+    );
+  }
+
+  return (
+    <section className="space-y-2 xl:hidden" aria-label="Consultas do dia em ordem de horário">
+      <p className="px-1 text-sm text-muted-foreground">{ordered.length} consulta{ordered.length === 1 ? '' : 's'} neste dia</p>
+      {ordered.map(appointment => {
+        const patient = appointment.pacientes?.nome_social || appointment.pacientes?.nome || 'Paciente';
+        const medico = appointment.medico_id ? medicoById[appointment.medico_id] : undefined;
+        const doctor = medico?.nome || medico?.crm || 'Profissional não informado';
+        const start = appointment.hora_inicio?.slice(0, 5) || '—';
+        const end = appointment.hora_fim?.slice(0, 5);
+        const status = appointment.status?.replace(/_/g, ' ') || 'agendado';
+
+        return (
+          <button
+            key={appointment.id}
+            type="button"
+            onClick={() => onCardClick(appointment)}
+            aria-label={`Abrir consulta de ${patient} às ${start}`}
+            className="flex min-h-16 w-full items-center gap-3 rounded-xl border border-border bg-card px-3 py-3 text-left shadow-sm transition-colors hover:border-primary/40 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <span className="w-[4.5rem] shrink-0 text-sm font-semibold tabular-nums text-foreground">
+              {start}{end ? <span className="block text-xs font-normal text-muted-foreground">até {end}</span> : null}
+            </span>
+            <span className="min-w-0 flex-1 border-l border-border pl-3">
+              <span className="block truncate text-sm font-semibold text-foreground">{patient}</span>
+              <span className="mt-0.5 block truncate text-xs text-muted-foreground">{doctor}{appointment.tipo ? ` · ${appointment.tipo}` : ''}</span>
+            </span>
+            <span className="shrink-0 rounded-full bg-accent px-2 py-1 text-[10px] font-medium capitalize text-accent-foreground">{status}</span>
+          </button>
+        );
+      })}
+    </section>
+  );
+}
 
 const VIEWS_AGENDA: AgendaView[] = ['daily', 'weekly', 'monthly'];
 
@@ -178,14 +243,18 @@ export function AgendaPage() {
       return data;
     },
   });
+  const reagendamentoLoading = reagendamentoQuery.isLoading;
+  const reagendamentoError = reagendamentoQuery.isError;
+  const reagendamentoData = reagendamentoQuery.data;
+  const refetchReagendamento = reagendamentoQuery.refetch;
 
   useEffect(() => {
     if (!reagendarIdDaRota) {
       reagendarAplicadoRef.current = null;
       return;
     }
-    if (!profile?.clinica_id || reagendamentoQuery.isLoading || reagendarAplicadoRef.current === reagendarIdDaRota) return;
-    if (reagendamentoQuery.isError) {
+    if (!profile?.clinica_id || reagendamentoLoading || reagendarAplicadoRef.current === reagendarIdDaRota) return;
+    if (reagendamentoError) {
       reagendarAplicadoRef.current = reagendarIdDaRota;
       toast.error('Não foi possível carregar o atendimento para reagendar.', {
         description: 'Tente novamente ou abra a Agenda e crie a consulta manualmente.',
@@ -193,13 +262,13 @@ export function AgendaPage() {
           label: 'Tentar de novo',
           onClick: () => {
             reagendarAplicadoRef.current = null;
-            void reagendamentoQuery.refetch();
+            void refetchReagendamento();
           },
         },
       });
       return;
     }
-    const origem = reagendamentoQuery.data;
+    const origem = reagendamentoData;
     if (!origem) {
       toast.error('O atendimento original não foi encontrado nesta clínica.');
       const params = new URLSearchParams(searchParams);
@@ -232,7 +301,7 @@ export function AgendaPage() {
     const params = new URLSearchParams(searchParams);
     params.delete('reagendar');
     setSearchParams(params, { replace: true });
-  }, [reagendarIdDaRota, profile?.clinica_id, reagendamentoQuery.isLoading, reagendamentoQuery.isError, reagendamentoQuery.data, reagendamentoQuery.refetch, searchParams, setSearchParams]);
+  }, [reagendarIdDaRota, profile?.clinica_id, reagendamentoLoading, reagendamentoError, reagendamentoData, refetchReagendamento, searchParams, setSearchParams]);
 
   // A lista de espera abre esta rota para criar a consulta. Valide o vínculo e
   // o estado no servidor antes de carregar o paciente no formulário.
@@ -315,10 +384,15 @@ export function AgendaPage() {
   }), [dayAppts]);
 
   const sensors = useSensors(
-    useSensor(KeyboardSensor),
+    // Enter fica livre para abrir a consulta; Espaço pega e solta o card.
+    useSensor(KeyboardSensor, {
+      keyboardCodes: { start: ['Space'], cancel: ['Escape'], end: ['Space', 'Enter'] },
+    }),
     useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 8 } }),
   );
+
+  const anunciosArraste = useMemo(() => criarAnunciosAgenda(medicoById), [medicoById]);
 
   const handleDragStart = (e: DragStartEvent) => setActiveDrag(e.active.data.current);
 
@@ -573,18 +647,32 @@ export function AgendaPage() {
         ) : isLoading || medicosQuery.isLoading || bloqueiosQuery.isLoading || conveniosQuery.isLoading || tiposQuery.isLoading || salasQuery.isLoading ? (
           <AgendaSkeleton />
         ) : (
-          <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+          <DndContext
+            sensors={sensors}
+            accessibility={{ announcements: anunciosArraste, screenReaderInstructions: agendaScreenReaderInstructions }}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+          >
             {view === 'daily' && (
-              <DailyMultiDoctorView
-                date={date}
-                medicos={medicoFilter.length ? visibleMedicos.filter((m: any) => medicoFilter.includes(m.id)) : visibleMedicos}
-                agendamentos={dayAppts}
-                bloqueios={bloqueios}
-                colorFor={colorFor}
-                convenioById={Object.fromEntries((convenios as any[]).map(c => [c.id, c]))}
-                onSlotClick={handleSlotClick}
-                onCardClick={(a: any) => setDialogState({ open: true, initial: a })}
-              />
+              <>
+                <div className="hidden xl:block">
+                  <DailyMultiDoctorView
+                    date={date}
+                    medicos={medicoFilter.length ? visibleMedicos.filter((m: any) => medicoFilter.includes(m.id)) : visibleMedicos}
+                    agendamentos={dayAppts}
+                    bloqueios={bloqueios}
+                    colorFor={colorFor}
+                    convenioById={Object.fromEntries((convenios as any[]).map(c => [c.id, c]))}
+                    onSlotClick={handleSlotClick}
+                    onCardClick={(a: any) => setDialogState({ open: true, initial: a })}
+                  />
+                </div>
+                <MobileDailyAppointments
+                  appointments={dayAppts}
+                  medicoById={medicoById}
+                  onCardClick={(appointment) => setDialogState({ open: true, initial: appointment })}
+                />
+              </>
             )}
             {view === 'weekly' && (
               <WeeklyView

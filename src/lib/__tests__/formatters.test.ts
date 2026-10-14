@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect } from 'vitest';
 import {
   formatCPF,
   formatCNPJ,
@@ -105,12 +105,17 @@ describe('parseCurrency', () => {
 });
 
 describe('formatDate', () => {
+  afterEach(() => { delete document.documentElement.dataset.dateFormat; });
   it('formato short', () => {
     const result = formatDate('2024-01-15', 'short');
     expect(result).toMatch(/15/);
   });
   it('formato iso', () => {
     expect(formatDate('2024-01-15T10:00:00Z', 'iso')).toBe('2024-01-15');
+  });
+  it('usa o formato curto de data escolhido nas preferências', () => {
+    document.documentElement.dataset.dateFormat = 'YYYY-MM-DD';
+    expect(formatDate('2024-01-15', 'short')).toBe('2024-01-15');
   });
   it('aceita Date object', () => {
     const d = new Date(2024, 0, 15);

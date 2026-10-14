@@ -1,4 +1,5 @@
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { formatWithDatePreference as format } from '@/lib/datePreference';
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useQuery } from '@tanstack/react-query';
@@ -8,7 +9,7 @@ import {
   Barcode, Calendar, Pill, Building2, ShieldAlert, TrendingDown,
   History, BarChart3, Trash2, Bell,
 } from 'lucide-react';
-import { format } from 'date-fns';
+
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -154,23 +155,24 @@ export default function Estoque() {
   });
   const movimentacoes = movimentacoesQuery.data ?? [];
 
-  const daysUntilValidity = (validade: string | null) => {
+  const hoje = todaySaoPauloDateOnly();
+  const daysUntilValidity = useCallback((validade: string | null) => {
     if (!validade || !/^\d{4}-\d{2}-\d{2}$/.test(validade)) return null;
     const dataValidade = new Date(`${validade}T00:00:00Z`);
     if (!Number.isFinite(dataValidade.getTime()) || dataValidade.toISOString().slice(0, 10) !== validade) return null;
     const due = dataValidade.getTime();
-    const today = Date.parse(`${todaySaoPauloDateOnly()}T00:00:00Z`);
+    const today = Date.parse(`${hoje}T00:00:00Z`);
     return Math.floor((due - today) / 86400000);
-  };
+  }, [hoje]);
 
-  const getValidadeInfo = (validade: string | null) => {
+  const getValidadeInfo = useCallback((validade: string | null) => {
     const dias = daysUntilValidity(validade);
     if (dias === null) return null;
     if (dias < 0) return { label: 'Vencido', color: 'destructive' as const, dias };
     if (dias <= 30) return { label: `${dias}d`, color: 'destructive' as const, dias };
     if (dias <= 60) return { label: `${dias}d`, color: 'secondary' as const, dias };
     return null;
-  };
+  }, [daysUntilValidity]);
 
   const filteredProdutos = useMemo(() => {
     return (estoque as any[]).filter(p => {
@@ -188,7 +190,7 @@ export default function Estoque() {
       if (filterAlerta === 'ponto_pedido') return matchSearch && matchCategoria && p.ponto_pedido && p.quantidade <= p.ponto_pedido;
       return matchSearch && matchCategoria;
     });
-  }, [estoque, searchTerm, filterCategoria, filterAlerta]);
+  }, [estoque, searchTerm, filterCategoria, filterAlerta, getValidadeInfo]);
 
   const getStatus = (produto: any) => {
     if (produto.quantidade <= 0) return { label: 'Sem estoque', variant: 'destructive' as const };
@@ -209,7 +211,7 @@ export default function Estoque() {
         return Number(p.quantidade) > 0 && info !== null && info.dias >= 0 && info.dias <= 60;
       }).length,
     };
-  }, [estoque]);
+  }, [estoque, getValidadeInfo]);
 
   // ─── ABC Curve Analysis ─────────────────────────────────
   const abcData = useMemo(() => {
@@ -452,7 +454,7 @@ export default function Estoque() {
     }).sort((a, b) => {
       return (daysUntilValidity(a.validade) ?? Number.MAX_SAFE_INTEGER) - (daysUntilValidity(b.validade) ?? Number.MAX_SAFE_INTEGER);
     });
-  }, [estoque]);
+  }, [estoque, daysUntilValidity]);
 
   const isMedicamento = formData.categoria === 'medicamentos';
   const timelineItem = (estoque as any[]).find(p => p.id === timelineItemId);
@@ -818,10 +820,10 @@ export default function Estoque() {
                                     <History className="h-4 w-4 text-muted-foreground" />
                                   </Button>
                                   <Button variant="ghost" size="icon" aria-label={`Registrar entrada de ${produto.nome}`} onClick={() => handleMovimentacao(produto, 'entrada')} title="Entrada">
-                                    <ArrowDown className="h-4 w-4 text-primary" />
+                                    <ArrowDown className="h-4 w-4 text-success" />
                                   </Button>
                                   <Button variant="ghost" size="icon" aria-label={`Registrar saída de ${produto.nome}`} onClick={() => handleMovimentacao(produto, 'saida')} title="Saída">
-                                    <ArrowUp className="h-4 w-4 text-destructive" />
+                                    <ArrowUp className="h-4 w-4 text-muted-foreground" />
                                   </Button>
                                    <Button variant="ghost" size="icon" aria-label={`Editar item ${produto.nome}`} onClick={() => handleEdit(produto)}>
                                     <Edit className="h-4 w-4" />
@@ -881,11 +883,11 @@ export default function Estoque() {
                     >
                       <div className={cn(
                         'absolute -left-6 top-1 h-4 w-4 rounded-full border-2 border-background z-10',
-                        mov.tipo === 'entrada' ? 'bg-primary' : 'bg-destructive',
+                        mov.tipo === 'entrada' ? 'bg-success' : 'bg-muted-foreground',
                       )} />
                       <div className="flex-1 bg-card border rounded-lg p-3">
                         <div className="flex items-center justify-between">
-                          <Badge variant={mov.tipo === 'entrada' ? 'default' : 'destructive'} className="text-[10px]">
+                          <Badge variant={mov.tipo === 'entrada' ? 'success' : 'secondary'} className="text-[10px]">
                             {mov.tipo === 'entrada' ? '↓ Entrada' : '↑ Saída'}
                           </Badge>
                           <span className="text-[10px] text-muted-foreground">

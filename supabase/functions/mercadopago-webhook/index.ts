@@ -2,7 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsPadrao } from '../_shared/cors.ts';
 import { sendBrandedBrevoRequest } from '../_shared/brevoEmail.ts';
 import { mapAuthorizedPaymentInvoice } from '../_shared/mercadoPagoInvoice.ts';
-import { mercadoPagoPaymentResource } from '../_shared/mercadoPagoWebhookRouting.ts';
+import { mercadoPagoPaymentResource, oauthRevocationSellerId, oauthRevocationTarget, resolveMercadoPagoWebhookDataId } from '../_shared/mercadoPagoWebhookRouting.ts';
 import { isValidMercadoPagoSignature } from '../_shared/mercadoPagoSignature.ts';
 import { createMercadoPagoClient } from '../_shared/mercadoPagoClient.ts';
 import { isOrderNotification, webhookEventKey } from '../_shared/planCheckout.ts';
@@ -10,16 +10,10 @@ import { syncPlanOrderFromGateway } from '../_shared/platformPlanOrders.ts';
 import { syncPlatformPlan } from '../_shared/platformPlanSync.ts';
 import { syncMercadoPagoPointOrder } from '../_shared/mercadoPagoPointOrders.ts';
 
-// Atribuído em cada request (reflete a origem permitida). Helpers
-// top-level (json/reply) capturam esta variável por closure.
-let corsHeaders: Record<string, string> = {};
-
-;
-
 const MP_API_BASE = "https://api.mercadopago.com";
 
 Deno.serve(async (req) => {
-  corsHeaders = { ...corsPadrao(req),};
+  const corsHeaders = { ...corsPadrao(req) };
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
@@ -30,6 +24,7 @@ Deno.serve(async (req) => {
   );
 
   let logId: string | undefined;
+  let claimToken: string | undefined;
 
   try {
     // Handle redirect back_urls (GET) — user returning from checkout
@@ -50,14 +45,12 @@ Deno.serve(async (req) => {
     const body = await req.text();
     const data = JSON.parse(body);
     const requestUrl = new URL(req.url);
-    const dataId = requestUrl.searchParams.get("data.id") ||
-      requestUrl.searchParams.get("data_id") ||
-      data.data?.id?.toString() ||
-      "";
-    console.log("Webhook recebido:", JSON.stringify(data));
-
     const internalSecret = req.headers.get('x-elolab-internal');
     const trustedInternal = !!internalSecret && internalSecret === Deno.env.get('CRON_SECRET');
+    const queryDataId = requestUrl.searchParams.get("data.id") ?? requestUrl.searchParams.get("data_id");
+    const bodyDataId = data.data?.id == null ? "" : String(data.data.id);
+    const dataId = resolveMercadoPagoWebhookDataId(queryDataId, bodyDataId || null, trustedInternal);
+    console.log('Webhook recebido:', { type: data.type, action: data.action, dataId });
     // Validate signature — MERCADOPAGO_WEBHOOK_SECRET é obrigatório.
     // Se ausente, recusamos webhooks para impedir spoofing (ativar conta de graça
     // sem ter pago). Configure em Supabase Dashboard → Edge Functions → Secrets.
@@ -88,16 +81,38 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Check for idempotency — prevent duplicate processing. Orders não têm ID
-    // por notificação; a chave inclui ação e status (ver webhookEventKey).
-    const eventId = webhookEventKey(data);
-    const { data: existingLog } = await supabase
-      .from("mercadopago_webhook_logs")
-      .select("id, processado")
-      .eq("event_id", eventId)
-      .maybeSingle();
+    const isOAuthRevocation = data.type === 'mp-connect' && data.action === 'application.deauthorized';
+    const revocationTarget = isOAuthRevocation ? oauthRevocationTarget(data, dataId || null) : null;
+    if (isOAuthRevocation && !revocationTarget) {
+      return new Response(JSON.stringify({ error: 'OAuth revocation identifiers do not match signed data id' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
-    if (existingLog && existingLog.processado) {
+    // The HMAC authenticates data.id, request-id and ts, but not action/user_id.
+    // No independent authoritative confirmation is available locally, so keep
+    // revocations pending until one is added and bound to this seller.
+    const authoritativeRevocationSellerId: string | null = null;
+    const revokedSellerId = isOAuthRevocation
+      ? oauthRevocationSellerId(data, dataId || null, authoritativeRevocationSellerId)
+      : null;
+
+    // Claim atomically; Orders retain action+status in webhookEventKey.
+    const eventId = webhookEventKey(data);
+    const { data: claimRows, error: claimError } = await supabase.rpc('claim_mercadopago_webhook', {
+      p_event_id: eventId,
+      p_event_type: data.type || data.action || 'unknown',
+      p_data_id: data.data?.id == null ? null : String(data.data.id),
+      p_payload: data,
+      p_lease_seconds: 300,
+    });
+    if (claimError) throw new Error(`Falha ao adquirir webhook: ${claimError.message}`);
+    const claim = Array.isArray(claimRows) ? claimRows[0] : null;
+    if (!claim?.log_id || !claim?.claim_status) throw new Error('Resposta inválida ao adquirir webhook');
+    logId = claim.log_id;
+
+    if (claim.claim_status === 'processed') {
       console.log("Webhook already processed:", eventId);
       return new Response(JSON.stringify({ received: true, duplicate: true }), {
         status: 200,
@@ -105,44 +120,38 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Log webhook event (or update if idempotency key already exists)
-    logId = existingLog?.id;
-    if (!logId) {
-      const { data: newLog, error: logError } = await supabase
-        .from("mercadopago_webhook_logs")
-        .insert({
-          event_type: data.type || data.action || "unknown",
-          event_id: eventId,
-          data_id: data.data?.id?.toString(),
-          payload: data,
-          tentativas: 1,
-        })
-        .select("id")
-        .single();
-
-      if (logError?.code === "23505") {
-        // Entrega concorrente do mesmo evento: a outra execução processa.
-        return new Response(JSON.stringify({ received: true, duplicate: true }), {
-          status: 200,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      if (logError) {
-        console.error("Failed to create webhook log:", logError);
-        return new Response(JSON.stringify({ error: "Failed to log webhook" }), {
-          status: 500,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      logId = newLog.id;
+    if (claim.claim_status === 'busy') {
+      return new Response(JSON.stringify({ error: 'Webhook em processamento; tente novamente' }), {
+        status: 503,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json', 'Retry-After': '30' },
+      });
     }
+    if (claim.claim_status !== 'claimed' || !claim.claim_token) throw new Error('Webhook não foi adquirido');
+    claimToken = claim.claim_token;
 
     // O tópico mp-connect comunica autorização/revogação de OAuth da conta da
     // clínica. A vinculação é gravada pelo callback OAuth; a revogação remove
     // a cópia local dos dados de acesso para que ela não possa mais ser usada.
     if (data.type === 'mp-connect') {
-      const sellerId = String(data.user_id ?? data.data?.id ?? '');
-      if (data.action === 'application.deauthorized' && sellerId) {
+      if (isOAuthRevocation && revocationTarget && !revokedSellerId) {
+        const { error: deferError } = await supabase.from('mercadopago_webhook_logs')
+          .update({ erro_mensagem: 'Revogação OAuth adiada: ação e vendedor do corpo não têm confirmação autoritativa local' })
+          .eq('id', logId);
+        if (deferError) throw deferError;
+        await releaseWebhookClaim(supabase, logId, claimToken);
+        return new Response(JSON.stringify({
+          received: true,
+          deferred: true,
+          reason: 'Confirme a revogação nas configurações da conta do vendedor e desconecte localmente antes de remover os tokens.',
+        }), {
+          // Mercado Pago acknowledges notifications only on HTTP 200/201.
+          // Keep the event pending for manual review, but stop retrying an
+          // event that cannot be authenticated strongly enough to act on.
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      if (revokedSellerId) {
         const { error: revokeError } = await supabase.from('integracoes_clinica')
           .update({
             status: 'desconectado',
@@ -152,10 +161,10 @@ Deno.serve(async (req) => {
             updated_at: new Date().toISOString(),
           })
           .eq('provedor', 'mercado_pago')
-          .filter('config->>mp_user_id', 'eq', sellerId);
+          .filter('config->>mp_user_id', 'eq', revokedSellerId);
         if (revokeError) throw revokeError;
       }
-      await supabase.from('mercadopago_webhook_logs').update({ processado: true }).eq('id', logId);
+      await markWebhookProcessed(supabase, logId, claimToken);
       return new Response(JSON.stringify({ received: true }), {
         status: 200,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -176,7 +185,7 @@ Deno.serve(async (req) => {
         if (pointOrder) {
           const result = await syncMercadoPagoPointOrder(supabase, pointOrderId, data.user_id);
           console.log('Order Point da clínica sincronizada:', pointOrderId, JSON.stringify(result));
-          await supabase.from('mercadopago_webhook_logs').update({ processado: true }).eq('id', logId);
+          await markWebhookProcessed(supabase, logId, claimToken);
           return new Response(JSON.stringify({ received: true }), {
             status: 200,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -188,10 +197,7 @@ Deno.serve(async (req) => {
     const mpToken = Deno.env.get("MERCADOPAGO_ACCESS_TOKEN");
     if (!mpToken) {
       console.error("MERCADOPAGO_ACCESS_TOKEN não configurado");
-      await supabase
-        .from("mercadopago_webhook_logs")
-        .update({ erro_mensagem: "Missing MERCADOPAGO_ACCESS_TOKEN" })
-        .eq("id", logId);
+      await releaseWebhookClaim(supabase, logId, claimToken, 'Missing MERCADOPAGO_ACCESS_TOKEN');
       return new Response(JSON.stringify({ error: "Mercado Pago não configurado" }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -306,10 +312,7 @@ Deno.serve(async (req) => {
     }
 
     // Mark webhook as processed
-    await supabase
-      .from("mercadopago_webhook_logs")
-      .update({ processado: true })
-      .eq("id", logId);
+    await markWebhookProcessed(supabase, logId, claimToken);
 
     return new Response(JSON.stringify({ received: true }), {
       status: 200,
@@ -317,18 +320,37 @@ Deno.serve(async (req) => {
     });
   } catch (error: any) {
     console.error("Erro no webhook:", error);
-    if (logId) {
-      await supabase
-        .from("mercadopago_webhook_logs")
-        .update({ erro_mensagem: error?.message || "Erro ao processar webhook" })
-        .eq("id", logId);
-    }
+    if (logId && claimToken) await releaseWebhookClaim(supabase, logId, claimToken, error?.message || 'Erro ao processar webhook');
     return new Response(JSON.stringify({ error: "Erro ao processar webhook" }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });
+
+async function markWebhookProcessed(supabase: any, id: string | undefined, token: string | undefined) {
+  if (!id) throw new Error('Webhook sem registro de auditoria');
+  if (!token) throw new Error('Webhook sem token de aquisição');
+  const { data, error } = await supabase
+    .from('mercadopago_webhook_logs')
+    .update({ processado: true, erro_mensagem: null, claim_token: null, lease_until: null })
+    .eq('id', id)
+    .eq('claim_token', token)
+    .select('id')
+    .maybeSingle();
+  if (error) throw new Error(`Falha ao confirmar processamento do webhook: ${error.message}`);
+  if (!data) throw new Error('Lease do webhook expirou ou foi substituído antes da confirmação');
+}
+
+async function releaseWebhookClaim(supabase: any, id: string | undefined, token: string | undefined, message?: string) {
+  if (!id || !token) return;
+  const { error } = await supabase
+    .from('mercadopago_webhook_logs')
+    .update({ claim_token: null, lease_until: null, ...(message ? { erro_mensagem: message } : {}) })
+    .eq('id', id)
+    .eq('claim_token', token);
+  if (error) console.error('Falha ao liberar aquisição do webhook:', error.message);
+}
 
 async function processPaymentNotification(
   paymentId: string,
@@ -360,7 +382,7 @@ async function processPaymentNotification(
           .from("mercadopago_webhook_logs")
           .update({ erro_mensagem: `Failed to fetch payment after ${maxRetries} retries` })
           .eq("id", logId);
-        return;
+        throw new Error(`Failed to fetch payment ${paymentId} after ${maxRetries} retries`);
       }
 
       const payment = await response.json();
@@ -379,11 +401,12 @@ async function processPaymentNotification(
       const status = statusMap[payment.status] || payment.status;
 
       // Update pagamentos_mercadopago by external_reference
-      const { data: pagamentos } = await supabase
+      const { data: pagamentos, error: pagamentosError } = await supabase
         .from("pagamentos_mercadopago")
         .select("id, lancamento_id")
         .eq("mp_external_reference", payment.external_reference)
         .limit(1);
+      if (pagamentosError) throw new Error(`Failed to find payment: ${pagamentosError.message}`);
 
       if (pagamentos && pagamentos.length > 0) {
         const { error: updateError } = await supabase
@@ -429,12 +452,13 @@ async function processPaymentNotification(
 
       // Check if this payment is for a registro_pendente (public checkout)
       if (payment.external_reference && payment.status === "approved") {
-        const { data: registro } = await supabase
+        const { data: registro, error: registroError } = await supabase
           .from("registros_pendentes")
           .select("*")
           .eq("id", payment.external_reference)
           .eq("status", "aguardando_pagamento")
           .maybeSingle();
+        if (registroError) throw new Error(`Failed to find pending registration: ${registroError.message}`);
 
         if (registro) {
           console.log("Activating registro_pendente:", registro.id);
@@ -446,17 +470,17 @@ async function processPaymentNotification(
             })
             .eq("id", registro.id);
 
-          if (!regError) {
-            // Send activation email with invite code AFTER payment approval
-            await sendActivationEmail(registro, supabase);
-          }
+          if (regError) throw new Error(`Failed to activate pending registration: ${regError.message}`);
+          // Send activation email with invite code AFTER payment approval
+          await sendActivationEmail(registro, supabase);
         }
 
-        const { data: assinaturaMp } = await supabase
+        const { data: assinaturaMp, error: assinaturaMpError } = await supabase
           .from("assinaturas_mercadopago")
           .select("id, detalhes")
           .contains("detalhes", { checkout_reference: payment.external_reference })
           .maybeSingle();
+        if (assinaturaMpError) throw new Error(`Failed to find plan subscription: ${assinaturaMpError.message}`);
 
         if (assinaturaMp) {
           const detalhes = (assinaturaMp.detalhes || {}) as Record<string, unknown>;
@@ -482,13 +506,14 @@ async function processPaymentNotification(
           }
 
           if (userId && planoId && planoSlug) {
-            const { data: existingPlan } = await supabase
+            const { data: existingPlan, error: existingPlanError } = await supabase
               .from("assinaturas_plano")
               .select("id")
               .eq("user_id", userId)
               .order("created_at", { ascending: false })
               .limit(1)
               .maybeSingle();
+            if (existingPlanError) throw new Error(`Failed to find application plan: ${existingPlanError.message}`);
 
             if (existingPlan?.id) {
               const { error: planError } = await supabase
@@ -546,6 +571,7 @@ async function processPaymentNotification(
       tentativas: maxRetries,
     })
     .eq("id", logId);
+  throw new Error(`Failed to process payment ${paymentId} after ${maxRetries} retries`);
 }
 
 async function processAuthorizedSubscriptionPaymentNotification(
@@ -669,7 +695,7 @@ async function processSubscriptionNotification(
           .from("mercadopago_webhook_logs")
           .update({ erro_mensagem: `Failed to fetch subscription after ${maxRetries} retries` })
           .eq("id", logId);
-        return;
+        throw new Error(`Failed to fetch subscription ${preapprovalId} after ${maxRetries} retries`);
       }
 
       const preapproval = await response.json();
@@ -686,26 +712,31 @@ async function processSubscriptionNotification(
       const status = statusMap[preapproval.status] || preapproval.status;
 
       // Update assinaturas_mercadopago with full preapproval details
-      let { data: existingAssinatura } = await supabase
+  const { data: assinaturaEncontrada, error: existingAssinaturaError } = await supabase
         .from("assinaturas_mercadopago")
         .select("id, detalhes")
         .eq("mp_preapproval_id", preapprovalId)
         .maybeSingle();
+      if (existingAssinaturaError) throw existingAssinaturaError;
+
+      let existingAssinatura = assinaturaEncontrada;
 
       // Assinatura no cartão cuja resposta de criação se perdeu: o registro
       // local existe sem ID do gateway e é localizado pelo external_reference.
       if (!existingAssinatura && preapproval.external_reference) {
-        const { data: byReference } = await supabase
+        const { data: byReference, error: referenceError } = await supabase
           .from("assinaturas_mercadopago")
           .select("id, detalhes")
           .is("mp_preapproval_id", null)
           .filter("detalhes->>checkout_reference", "eq", String(preapproval.external_reference))
           .maybeSingle();
+        if (referenceError) throw referenceError;
         if (byReference) {
-          await supabase
+          const { error: attachIdError } = await supabase
             .from("assinaturas_mercadopago")
             .update({ mp_preapproval_id: preapprovalId })
             .eq("id", byReference.id);
+          if (attachIdError) throw attachIdError;
           existingAssinatura = byReference;
         }
       }
@@ -751,13 +782,14 @@ async function processSubscriptionNotification(
 
           // Activate or update the user's plan subscription
           if (userId && planoId && planoSlug) {
-            const { data: existingPlan } = await supabase
+            const { data: existingPlan, error: existingPlanError } = await supabase
               .from("assinaturas_plano")
               .select("id")
               .eq("user_id", userId)
               .order("created_at", { ascending: false })
               .limit(1)
               .maybeSingle();
+            if (existingPlanError) throw existingPlanError;
 
             if (existingPlan?.id) {
               // Update existing plan subscription
@@ -858,12 +890,13 @@ async function processSubscriptionNotification(
 
         // Also handle registro_pendente if external_reference exists
         if (preapproval.external_reference) {
-          const { data: registro } = await supabase
+          const { data: registro, error: registroError } = await supabase
             .from("registros_pendentes")
             .select("*")
             .eq("id", preapproval.external_reference)
             .eq("status", "aguardando_pagamento")
             .maybeSingle();
+          if (registroError) throw registroError;
 
           if (registro) {
             console.log("Activating registro_pendente from subscription:", registro.id);
@@ -875,10 +908,9 @@ async function processSubscriptionNotification(
               })
               .eq("id", registro.id);
 
-            if (!regError) {
-              // Send activation email with invite code AFTER subscription approval
-              await sendActivationEmail(registro, supabase);
-            }
+            if (regError) throw regError;
+            // Send activation email with invite code AFTER subscription approval
+            await sendActivationEmail(registro, supabase);
           }
         }
       }
@@ -903,6 +935,7 @@ async function processSubscriptionNotification(
       tentativas: maxRetries,
     })
     .eq("id", logId);
+  throw new Error(`Failed to process subscription ${preapprovalId} after ${maxRetries} retries`);
 }
 
 // Send activation email with invite code after payment/subscription approval

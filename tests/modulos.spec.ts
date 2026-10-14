@@ -30,7 +30,7 @@ const ROTAS_PUBLICAS = [
 ];
 
 /** Todos os módulos autenticados, por área do sistema. */
-const MODULOS_PROTEGIDOS: Array<{ area: string; rotas: string[] }> = [
+export const MODULOS_PROTEGIDOS: Array<{ area: string; rotas: string[] }> = [
   {
     area: 'Atendimento',
     rotas: [

@@ -55,7 +55,7 @@ export function ConfirmDialog({
                 className={cn(
                   'h-5 w-5',
                   variant === 'destructive' && 'text-destructive',
-                  variant === 'warning' && 'text-warning',
+                  variant === 'warning' && 'text-warning-foreground',
                   variant === 'default' && 'text-primary'
                 )}
               />
@@ -75,8 +75,8 @@ export function ConfirmDialog({
             }}
             disabled={isLoading}
             className={cn(
-              variant === 'destructive' && 'bg-destructive hover:bg-destructive/90',
-              variant === 'warning' && 'bg-warning hover:bg-warning/90'
+              variant === 'destructive' && 'bg-destructive text-destructive-foreground hover:bg-destructive/90',
+              variant === 'warning' && 'bg-warning text-warning-foreground hover:bg-warning/90'
             )}
           >
             {isLoading ? 'Processando...' : confirmLabel}

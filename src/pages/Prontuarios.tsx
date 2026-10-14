@@ -1,4 +1,5 @@
-import { nomeMedico } from '@/lib/formatters';
+import { formatWithDatePreference as format } from '@/lib/datePreference';
+import { formatDate, nomeMedico } from '@/lib/formatters';
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -12,9 +13,10 @@ import {
   TestTube, ArrowRight, UserCheck, BadgeCheck, Share2, MessageCircle, ExternalLink,
   Hash, MapPin, Fingerprint, FileEdit, ScrollText,
 } from 'lucide-react';
-import { format } from 'date-fns';
+
 import { ptBR } from 'date-fns/locale';
 import { Button } from '@/components/ui/button';
+import { PageHeader } from '@/components/PageHeader';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
@@ -38,7 +40,7 @@ import {
   ClinicalSafetyPanel,
 } from '@/components/clinical';
 import { ProntuarioAdendos } from '@/components/clinical/ProntuarioAdendos';
-import { useMedicos, useAgendamentos, useSupabaseQuery } from '@/hooks/useSupabaseData';
+import { useMedicos, useAgendamentos, useAgendamentosPeriodo, useSupabaseQuery } from '@/hooks/useSupabaseData';
 import { useCurrentMedico } from '@/hooks/useCurrentMedico';
 import { supabase } from '@/integrations/supabase/client';
 import { agruparBaixasEstoque } from '@/lib/stockPrescriptionDeductions';
@@ -267,9 +269,10 @@ function FichaPaciente({ paciente, convenioNome }: { paciente: any; convenioNome
   return (
     <div className="space-y-4">
       {/* Header strip */}
-      <div className="rounded-2xl overflow-hidden border border-border/60 bg-card">
-        <div className="bg-gradient-to-r from-primary/8 via-primary/4 to-transparent p-5">
-          <div className="flex items-start gap-4">
+      <div className="rounded-[24px] overflow-hidden border border-border/60 bg-card shadow-xs">
+        <div className="relative overflow-hidden bg-[image:var(--gradient-hero)] p-5 text-white">
+          <div aria-hidden="true" className="pointer-events-none absolute -bottom-16 -right-12 h-40 w-40 rounded-full bg-highlight/40 blur-3xl" />
+          <div className="relative flex items-start gap-4">
             <PatientPhoto
               pacienteId={paciente.id}
               pacienteNome={paciente.nome}
@@ -278,24 +281,24 @@ function FichaPaciente({ paciente, convenioNome }: { paciente: any; convenioNome
               editable={false}
             />
             <div className="flex-1 min-w-0">
-              <h2 className="text-lg font-bold text-foreground truncate">
+              <h2 className="break-words text-xl font-extrabold leading-tight text-white [overflow-wrap:anywhere]">
                 {paciente.nome_social || paciente.nome}
               </h2>
               {paciente.nome_social && (
-                <p className="text-xs text-muted-foreground">Civil: {paciente.nome}</p>
+                <p className="text-xs text-white/75">Civil: {paciente.nome}</p>
               )}
               <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
-                <Badge className="bg-primary/10 text-primary border-primary/20 text-xs font-bold px-2 py-0">
+                <Badge className="border-white/25 bg-white/15 px-2 py-0 text-xs font-bold text-white">
                   {paciente.data_nascimento ? `${idade} anos` : 'Idade N/I'}
                 </Badge>
                 {paciente.sexo && (
-                  <Badge variant="outline" className="text-xs px-1.5 py-0">
+                  <Badge variant="outline" className="border-white/25 px-1.5 py-0 text-xs text-white">
                     {paciente.sexo === 'masculino' ? '♂ Masc' : paciente.sexo === 'feminino' ? '♀ Fem' : 'Outro'}
                   </Badge>
                 )}
                 {paciente.data_nascimento && (
-                  <span className="text-xs text-muted-foreground">
-                    {new Date(paciente.data_nascimento + 'T12:00').toLocaleDateString('pt-BR')}
+                  <span className="text-xs text-white/75">
+                    {formatDate(paciente.data_nascimento, 'short')}
                   </span>
                 )}
               </div>
@@ -794,6 +797,13 @@ export default function Prontuarios() {
   });
   const { data: convenios = [], error: erroConvenios, refetch: refetchConvenios } = useSupabaseQuery<any>('convenios', { orderBy: { column: 'nome', ascending: true } });
   const { medicoId, isMedicoOnly } = useCurrentMedico();
+  // Pacientes agendados hoje para o médico logado: aparecem no topo da lista
+  // para abrir o prontuário sem precisar buscar pelo nome.
+  const hojeAgenda = todaySaoPauloDateOnly();
+  const agendaHojeQuery = useAgendamentosPeriodo(hojeAgenda, hojeAgenda, { enabled: !!medicoId });
+  const agendaHoje = useMemo(() => (agendaHojeQuery.data ?? [])
+    .filter((ag: any) => ag.medico_id === medicoId && ag.paciente_id && !['cancelado', 'faltou'].includes(ag.status))
+    .sort((a: any, b: any) => (a.hora_inicio || '').localeCompare(b.hora_inicio || '')), [agendaHojeQuery.data, medicoId]);
   const rascunhosQuery = useQuery<RascunhoNaFila[]>({
     queryKey: ['prontuarios-rascunhos-abertos', user?.id, user?.clinica_id, medicoId],
     enabled: !!user?.clinica_id && !!medicoId,
@@ -1068,7 +1078,7 @@ export default function Prontuarios() {
 
       const existing = pacienteProntuarios.find((p: any) => p.agendamento_id === routeAgendamentoId);
       if (existing) {
-        void handleViewProntuario(existing);
+        void handleViewProntuarioRef.current(existing);
       } else {
         handleNovoProntuario(routeAgendamentoId, agendamento.medico_id);
       }
@@ -1089,7 +1099,6 @@ export default function Prontuarios() {
     erroProntuarios,
     erroMedicos,
     pacienteProntuarios,
-    handleViewProntuario,
     handleNovoProntuario,
     user?.clinica_id,
     searchParams,
@@ -1150,6 +1159,11 @@ export default function Prontuarios() {
     }
   };
 
+  const handleViewProntuarioRef = useRef(handleViewProntuario);
+  handleViewProntuarioRef.current = handleViewProntuario;
+  const handleRequestEditRef = useRef(handleRequestEdit);
+  handleRequestEditRef.current = handleRequestEdit;
+
   useEffect(() => {
     if (!rascunhoParaAbrir || selectedPacienteId !== rascunhoParaAbrir.paciente_id) return;
     if (pacienteSelecionadoQuery.isLoading || loadingProntuarios) return;
@@ -1173,7 +1187,7 @@ export default function Prontuarios() {
     }
 
     setRascunhoParaAbrir(null);
-    void handleViewProntuario(draft).then((opened) => {
+    void handleViewProntuarioRef.current(draft).then((opened) => {
       if (opened) setRascunhoParaEditarId(draft.id);
     });
   }, [rascunhoParaAbrir, selectedPacienteId, pacienteSelecionadoQuery.isLoading, pacienteSelecionadoQuery.isError, selectedPaciente, loadingProntuarios, erroProntuarios, pacienteProntuarios, historicoAuditadoPacienteId]);
@@ -1181,7 +1195,7 @@ export default function Prontuarios() {
   useEffect(() => {
     if (!rascunhoParaEditarId || !isProntuarioOpen || currentProntuario.id !== rascunhoParaEditarId) return;
     setRascunhoParaEditarId(null);
-    void handleRequestEdit();
+    void handleRequestEditRef.current();
   }, [rascunhoParaEditarId, isProntuarioOpen, currentProntuario.id]);
 
   const updateField = (field: string, value: any) => {
@@ -1603,21 +1617,16 @@ export default function Prontuarios() {
     <div className="space-y-5">
       {erroMedicos && <ErrorState compact error={erroMedicos} title="Lista de médicos indisponível" description="Não é possível iniciar um atendimento ou assinar um prontuário sem carregar os dados do médico." onRetry={() => { void refetchMedicos(); }} />}
       {erroConvenios && <ErrorState compact error={erroConvenios} title="Convênios indisponíveis" description="A ficha pode ser consultada, mas o convênio do paciente não será identificado até atualizar os dados." onRetry={() => { void refetchConvenios(); }} />}
-      {/* Page header */}
-      <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-3">
-          <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center">
-            <ClipboardList className="h-5 w-5 text-primary" />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold text-foreground tracking-tight">Prontuário Eletrônico</h1>
-            <p className="text-xs text-muted-foreground">Registro médico, evolução e prescrições do paciente</p>
-          </div>
-        </div>
-        <Badge className="shrink-0 bg-primary/10 text-primary border-primary/20 gap-1 text-xs rounded-full px-2.5 py-1">
-          <ShieldCheck className="h-3 w-3" />Acesso clínico
-        </Badge>
-      </div>
+      <PageHeader
+        title="Prontuário Eletrônico"
+        description="Registro médico, evolução e prescrições do paciente"
+        icon={<ClipboardList />}
+        actions={(
+          <Badge className="shrink-0 gap-1 rounded-full border-primary/20 bg-primary/10 px-2.5 py-1 text-xs text-primary">
+            <ShieldCheck className="h-3 w-3" />Acesso clínico
+          </Badge>
+        )}
+      />
 
       {routePacienteNaoEncontrado && (
         <div role="alert" className="flex flex-col gap-3 rounded-lg border border-warning/30 bg-warning/5 p-4 sm:flex-row sm:items-center sm:justify-between">
@@ -1668,7 +1677,7 @@ export default function Prontuarios() {
           )}
           <Card
             id="prontuario-patient-picker"
-            className={`overflow-hidden border-border/50 ${selectedPacienteId && !showPatientPicker ? 'hidden lg:block' : ''}`}
+            className={`overflow-hidden rounded-[24px] border-border/60 ${selectedPacienteId && !showPatientPicker ? 'hidden lg:block' : ''}`}
           >
             <CardHeader className="space-y-2 pb-2 px-3 pt-3">
               <Label htmlFor="prontuario-busca-paciente" className="text-xs font-semibold">Buscar paciente</Label>
@@ -1677,7 +1686,7 @@ export default function Prontuarios() {
                 <Input
                   id="prontuario-busca-paciente"
                   aria-label="Buscar paciente por nome, CPF, telefone ou e-mail"
-                  placeholder="Nome, CPF, telefone ou e-mail..."
+                  placeholder="Nome, CPF ou telefone"
                   value={searchTerm}
                   onChange={e => setSearchTerm(e.target.value)}
                   className="pl-8 h-10 text-sm"
@@ -1686,11 +1695,50 @@ export default function Prontuarios() {
             </CardHeader>
             <CardContent className="p-0">
               <ScrollArea className="h-[38dvh] max-h-[420px] lg:h-[calc(100vh-240px)] lg:max-h-none">
+                {medicoId && agendaHoje.length > 0 && (
+                  <section aria-labelledby="pacientes-hoje-prontuario" className="border-b border-border/60 p-2.5">
+                    <div className="mb-2 flex items-center justify-between gap-2 px-1">
+                      <h2 id="pacientes-hoje-prontuario" className="text-xs font-extrabold uppercase tracking-[0.08em] text-foreground">Pacientes de hoje</h2>
+                      <span className="rounded-full bg-accent px-2 py-0.5 text-xs font-extrabold text-primary">{agendaHoje.length}</span>
+                    </div>
+                    <ul className="space-y-1">
+                      {agendaHoje.map((ag: any) => {
+                        const nome = ag.pacientes?.nome_social || ag.pacientes?.nome || 'Paciente';
+                        const ativo = ag.paciente_id === selectedPacienteId;
+                        const encerrado = ['finalizado', 'atendimento_finalizado', 'pago'].includes(ag.status);
+                        return (
+                          <li key={ag.id}>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                prescricoesRequestRef.current += 1;
+                                setRascunhoParaAbrir(null);
+                                setErroPrescricoes(null);
+                                setSelectedPacienteId(ag.paciente_id);
+                                setShowPatientPicker(false);
+                              }}
+                              className={`flex min-h-11 w-full items-center gap-2.5 rounded-2xl p-2 text-left transition ${ativo ? 'bg-accent' : 'hover:bg-muted/60'}`}
+                            >
+                              <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-[11px] font-extrabold ${ativo ? 'bg-[image:var(--gradient-primary)] text-white shadow-glow' : 'bg-accent text-primary'}`}>
+                                {nome.split(' ').filter(Boolean).map((p: string) => p[0]).slice(0, 2).join('').toUpperCase()}
+                              </span>
+                              <span className="min-w-0 flex-1">
+                                <span className={`block truncate text-xs font-bold ${encerrado ? 'text-muted-foreground line-through' : 'text-foreground'}`}>{nome}</span>
+                                <span className="block truncate text-[11px] text-muted-foreground">{ag.tipo || 'Consulta'}</span>
+                              </span>
+                              <span className="text-[11px] font-extrabold tabular-nums text-muted-foreground">{ag.hora_inicio?.slice(0, 5)}</span>
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </section>
+                )}
                 {medicoId && (
-                  <section aria-labelledby="open-medical-drafts" className="border-b border-[#DCE9F2] bg-[#F5FAFE] p-2.5">
+                  <section aria-labelledby="open-medical-drafts" className="border-b border-[#E0DCF2] bg-[#F7F5FE] p-2.5">
                     <div className="mb-2 flex items-center justify-between gap-2">
-                      <h2 id="open-medical-drafts" className="text-xs font-bold text-[#0C1F54]">Rascunhos em aberto</h2>
-                      <Badge variant="outline" className="h-5 border-[#CFE2F1] bg-white text-xs text-[#005ECC]">
+                      <h2 id="open-medical-drafts" className="text-xs font-bold text-[#17122B]">Rascunhos em aberto</h2>
+                      <Badge variant="outline" className="h-5 border-[#D5CFF1] bg-white text-xs text-[#5B47E0]">
                         {rascunhosAbertos.length}
                       </Badge>
                     </div>
@@ -1709,7 +1757,7 @@ export default function Prontuarios() {
                               key={draft.id}
                               type="button"
                               variant="ghost"
-                              className="h-auto min-h-11 w-full justify-start whitespace-normal rounded-lg border border-[#DCE9F2] bg-white px-2.5 py-2 text-left hover:border-[#B7D9FF] hover:bg-[#EFF7FF]"
+                              className="h-auto min-h-11 w-full justify-start whitespace-normal rounded-lg border border-[#E0DCF2] bg-white px-2.5 py-2 text-left hover:border-[#CFC6FF] hover:bg-[#F2F0FE]"
                               onClick={() => {
                                 setRascunhoParaAbrir(draft);
                                 setSelectedPacienteId(draft.paciente_id);
@@ -1718,15 +1766,15 @@ export default function Prontuarios() {
                             >
                               <span className="min-w-0 flex-1">
                                 <span className="flex items-center justify-between gap-2">
-                                  <span className="truncate text-xs font-semibold text-[#0C1F54]">{paciente?.nome_social || paciente?.nome || 'Paciente'}</span>
-                                  <span className="shrink-0 text-xs text-[#005ECC]">Retomar</span>
+                                  <span className="truncate text-xs font-semibold text-[#17122B]">{paciente?.nome_social || paciente?.nome || 'Paciente'}</span>
+                                  <span className="shrink-0 text-xs text-[#5B47E0]">Retomar</span>
                                 </span>
                                 <span className="mt-0.5 block truncate text-xs text-muted-foreground">
                                   {draft.queixa_principal?.trim() || 'Evolução sem queixa principal'}
                                   {draft.updated_at ? ` · salva ${format(new Date(draft.updated_at), 'dd/MM HH:mm', { locale: ptBR })}` : ''}
                                 </span>
                               </span>
-                              <ArrowRight className="ml-2 h-3.5 w-3.5 shrink-0 text-[#0F7BFD]" aria-hidden="true" />
+                              <ArrowRight className="ml-2 h-3.5 w-3.5 shrink-0 text-[#7B6CF6]" aria-hidden="true" />
                             </Button>
                           );
                         })}
@@ -1793,19 +1841,27 @@ export default function Prontuarios() {
           ) : selectedPacienteId && pacienteSelecionadoQuery.isLoading ? (
             <Card><CardContent className="space-y-3 py-6"><Skeleton className="h-8 w-48" /><Skeleton className="h-24" /></CardContent></Card>
           ) : !selectedPaciente ? (
-            <Card className="border-border/50">
-              <CardContent className="flex flex-col items-center justify-center py-20 text-muted-foreground">
-                <FileText className="h-10 w-10 mb-3 opacity-20" />
-                <p className="text-sm">Selecione um paciente à esquerda</p>
+            <Card className="relative overflow-hidden rounded-[24px] border-dashed border-border/70">
+              <div aria-hidden="true" className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full bg-primary/10 blur-3xl" />
+              <CardContent className="relative flex flex-col items-center justify-center gap-3 py-10 text-muted-foreground lg:py-20">
+                <span className="flex h-16 w-16 items-center justify-center rounded-3xl bg-[image:var(--gradient-primary)] text-white shadow-glow">
+                  <FileText className="h-7 w-7" />
+                </span>
+                <p className="text-lg font-extrabold text-foreground">Escolha um paciente para começar</p>
+                <p className="text-center text-sm">
+                  <span className="lg:hidden">Selecione um paciente na lista acima para abrir o prontuário.</span>
+                  <span className="hidden lg:inline">Selecione um paciente na lista à esquerda para abrir o prontuário.</span>
+                </p>
               </CardContent>
             </Card>
           ) : (
-            <>
-              {/* Patient file card */}
-              <FichaPaciente paciente={selectedPaciente} convenioNome={getConvenioNome(selectedPaciente.convenio_id)} />
+            <div className="grid min-w-0 gap-4 xl:grid-cols-12 xl:items-start">
+              <aside aria-label="Contexto clínico do paciente" className="min-w-0 space-y-3 xl:col-span-4 xl:sticky xl:top-4">
+                <FichaPaciente paciente={selectedPaciente} convenioNome={getConvenioNome(selectedPaciente.convenio_id)} />
+                <ClinicalSafetyPanel compact pacienteId={selectedPacienteId!} alergias={selectedPaciente.alergias} />
+              </aside>
 
-              <ClinicalSafetyPanel pacienteId={selectedPacienteId!} alergias={selectedPaciente.alergias} />
-
+              <section aria-label="Evoluções e ações do prontuário" className="min-w-0 space-y-4 xl:col-span-8">
               {/* Actions bar */}
               <div className="flex items-center gap-2">
                 <Button onClick={() => handleNovoProntuario()} size="sm" className="gap-1.5 rounded-xl" disabled={!!erroMedicos || !!erroProntuarios}>
@@ -1848,9 +1904,11 @@ export default function Prontuarios() {
                       {erroProntuarios ? (
                         <ErrorState compact error={erroProntuarios} title="Histórico indisponível" onRetry={() => { void refetchProntuarios(); }} />
                       ) : pacienteProntuarios.length === 0 ? (
-                        <div className="flex flex-col items-center py-14 text-muted-foreground">
-                          <FileText className="h-8 w-8 opacity-20 mb-2" />
-                          <p className="text-xs">Nenhuma evolução registrada</p>
+                        <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-border bg-muted/40 px-4 py-12 text-center">
+                          <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[image:var(--gradient-primary)] text-white shadow-glow"><FileText className="h-5 w-5" /></span>
+                          <p className="text-sm font-bold text-foreground">Nenhuma evolução registrada</p>
+                          <p className="max-w-sm text-xs text-muted-foreground">O primeiro atendimento deste paciente aparecerá aqui, com queixa, exame físico, conduta e prescrições.</p>
+                          <Button size="sm" className="mt-1" onClick={() => handleNovoProntuario()} disabled={!!erroMedicos || !!erroProntuarios}><Plus className="h-3.5 w-3.5" />Iniciar primeiro atendimento</Button>
                         </div>
                       ) : (
                         <div className="space-y-2">
@@ -2004,7 +2062,8 @@ export default function Prontuarios() {
                   </div>
                 </Tabs>
               </Card>
-            </>
+              </section>
+            </div>
           )}
         </div>
       </div>

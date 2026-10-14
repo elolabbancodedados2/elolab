@@ -1,31 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-
-const ROUTE_LABELS: Record<string, string> = {
-  '/dashboard': 'Painel principal',
-  '/agenda': 'Agenda',
-  '/pacientes': 'Pacientes',
-  '/fila': 'Fila de atendimento',
-  '/prontuarios': 'Prontuários',
-  '/financeiro': 'Financeiro',
-  '/notificacoes': 'Central de notificações',
-  '/meu-historico': 'Meu histórico',
-  '/indicadores': 'Indicadores de produtividade',
-  '/configuracoes': 'Configurações',
-};
-
-export function getRouteAnnouncement(pathname: string): string {
-  const exactLabel = ROUTE_LABELS[pathname];
-  if (exactLabel) return `${exactLabel} carregado`;
-
-  const segment = pathname.split('/').filter(Boolean).pop();
-  if (!segment) return 'Página carregada';
-
-  const readable = decodeURIComponent(segment)
-    .replace(/[-_]+/g, ' ')
-    .replace(/^./, (letter) => letter.toUpperCase());
-  return `${readable} carregado`;
-}
+import { getRouteAnnouncement } from '@/config/routeLabels';
 
 /**
  * Keeps client-side navigation perceivable for keyboard and screen-reader users.

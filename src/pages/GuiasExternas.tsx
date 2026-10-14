@@ -166,10 +166,10 @@ export default function GuiasExternas() {
 
   return (
     <div className="container mx-auto p-4 md:p-6 space-y-6">
-      <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex flex-wrap items-start justify-between gap-3 rounded-2xl border border-[#d8e8fb] bg-gradient-to-r from-[#f4f8ff] via-white to-[#effaff] p-4 sm:p-5">
+      <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex flex-wrap items-start justify-between gap-3 rounded-2xl border border-[#e3dffb] bg-gradient-to-r from-[#f6f4ff] via-white to-[#f3f1ff] p-4 sm:p-5">
         <div>
-          <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-[#102a56] flex items-center gap-2">
-            <span className="rounded-xl bg-[#e5f1ff] p-2 text-[#1766b3] ring-1 ring-[#d5e6fa]"><FileText className="h-5 w-5" /></span> Guias Externas
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-[#1c1636] flex items-center gap-2">
+            <span className="rounded-xl bg-[#ece8ff] p-2 text-[#5240d6] ring-1 ring-[#e0dbfa]"><FileText className="h-5 w-5" /></span> Guias Externas
           </h1>
           <p className="text-muted-foreground text-sm mt-1">
             Receba pedidos de exames vindos de médicos e clínicas externas
@@ -187,9 +187,9 @@ export default function GuiasExternas() {
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
-          { label: 'Total', value: counts.total, color: 'text-[#102a56]', card: 'border-[#d8e8fb] bg-gradient-to-br from-white to-[#f1f7ff]' },
+          { label: 'Total', value: counts.total, color: 'text-[#1c1636]', card: 'border-[#e3dffb] bg-gradient-to-br from-white to-[#f4f2ff]' },
           { label: 'Aguardando', value: counts.recebida, color: 'text-[#8a5b00]', card: 'border-[#f1dfb8] bg-[#fffaf0]' },
-          { label: 'Agendadas', value: counts.agendada, color: 'text-[#175c9f]', card: 'border-[#cce2fa] bg-[#f4f9ff]' },
+          { label: 'Agendadas', value: counts.agendada, color: 'text-[#2e179f]', card: 'border-[#d4ccfa] bg-[#f6f5fe]' },
           { label: 'Na fila', value: counts.fila, color: 'text-[#16734d]', card: 'border-[#ccebdd] bg-[#f3fbf6]' },
         ].map((s) => (
           <Card key={s.label} className={s.card}>

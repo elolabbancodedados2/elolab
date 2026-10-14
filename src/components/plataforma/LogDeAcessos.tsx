@@ -1,3 +1,4 @@
+import { formatWithDatePreference as format } from '@/lib/datePreference';
 /**
  * Quem entrou na clínica de qual cliente, quando, por quanto tempo e por quê.
  *
@@ -10,7 +11,7 @@
  * sessão aberta?" — sessão aberta é acesso a prontuário que ninguém fechou.
  */
 import { useQuery } from '@tanstack/react-query';
-import { format } from 'date-fns';
+
 import { ptBR } from 'date-fns/locale';
 import { ShieldCheck, DoorOpen, Clock } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';

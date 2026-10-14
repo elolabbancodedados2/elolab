@@ -1,8 +1,10 @@
+import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { useQuery } from '@tanstack/react-query';
-import { format } from 'date-fns';
+import { useNavigate } from 'react-router-dom';
+
 import { useState } from 'react';
 import { AlertTriangle, Send, Loader2, MessageCircle, RefreshCw, Mail } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -15,8 +17,11 @@ import { TableSkeleton } from '@/components/ui/loading-skeleton';
 import { ErrorState } from '@/components/ErrorState';
 import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
 import { buscarDadosBasicosPacientes } from '@/lib/patientBasicData';
+import { ActionableEmptyState } from '@/components/ActionableEmptyState';
+import { PageHeader } from '@/components/PageHeader';
 
 export default function CobrancaInadimplentes() {
+  const navigate = useNavigate();
   const [sending, setSending] = useState(false);
   const [sendProgress, setSendProgress] = useState({ batch: 0, total: 0 });
   const { profile } = useSupabaseAuth();
@@ -117,19 +122,13 @@ export default function CobrancaInadimplentes() {
 
   return (
     <div className="space-y-5 pb-8">
-      <Card className="overflow-hidden rounded-2xl border-[#d7e9f7] shadow-sm">
-        <CardHeader className="border-b border-[#e4eef6] bg-gradient-to-r from-[#f1fbfd] via-white to-[#eff4ff] p-4 sm:p-5">
-          <div className="flex items-center justify-between flex-wrap gap-2">
-            <div>
-              <CardTitle className="flex items-center gap-2">
-                <span className="rounded-xl bg-[#fff4df] p-2 text-[#9b6813] ring-1 ring-[#f4e3bb]"><AlertTriangle className="h-5 w-5" /></span>
-                Cobrança de inadimplentes
-              </CardTitle>
-              <CardDescription>
-                Pacientes com lançamentos vencidos e em aberto. A régua envia por WhatsApp ou, quando necessário, enfileira e-mail.
-              </CardDescription>
-            </div>
-            <div className="flex flex-wrap gap-2">
+      <Card className="overflow-hidden rounded-2xl border-[#e3dff7] shadow-sm">
+        <CardHeader className="border-b border-[#e7e4f6] bg-gradient-to-r from-[#f6f4ff] via-white to-[#f2f0ff] p-4 sm:p-5">
+          <PageHeader
+            title={'Cobran\u00e7a de inadimplentes'}
+            description={'Pacientes com lan\u00e7amentos vencidos e em aberto. A r\u00e9gua envia por WhatsApp ou, quando necess\u00e1rio, enfileira e-mail.'}
+            icon={<AlertTriangle />}
+            actions={<div className="flex flex-wrap gap-2">
             <Button variant="outline" onClick={() => void refetch()} disabled={cobrancasQuery.isFetching}>
                 <RefreshCw className="h-4 w-4 mr-2" /> Atualizar
               </Button>
@@ -137,16 +136,16 @@ export default function CobrancaInadimplentes() {
                 {sending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Send className="h-4 w-4 mr-2" />}
                 {sending ? `Processando ${sendProgress.batch}/${sendProgress.total}…` : 'Processar régua de cobrança'}
               </Button>
-            </div>
-          </div>
+            </div>}
+          />
         </CardHeader>
         <CardContent className="space-y-4 p-4 sm:p-5">
           {atingiuLimite && <div role="alert" className="mb-4 flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm text-warning-foreground"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /><p>A busca atingiu o limite de {LIMITE_BUSCA_EM_BLOCOS.toLocaleString('pt-BR')} lançamentos. Os totais e a lista podem estar incompletos.</p></div>}
           {data.length > comContato.length && <p role="status" className="mb-4 text-sm text-muted-foreground">{data.length - comContato.length} cobrança(s) estão fora da régua por falta de telefone e e-mail. Atualize o contato no cadastro do paciente para permitir o envio.</p>}
           <div className="grid gap-3 sm:grid-cols-3">
-            <div className="rounded-xl border border-[#dceaf5] bg-[#f5faff] p-3.5">
+            <div className="rounded-xl border border-[#e6e2f7] bg-[#f8f7ff] p-3.5">
               <p className="text-xs font-medium text-muted-foreground">Pendências vencidas</p>
-              <p className="mt-1 text-xl font-semibold text-[#245b8f]">{data.length}</p>
+              <p className="mt-1 text-xl font-semibold text-[#36248f]">{data.length}</p>
             </div>
             <div className="rounded-xl border border-[#f3dddd] bg-[#fff7f6] p-3.5">
               <p className="text-xs font-medium text-muted-foreground">Saldo em aberto</p>
@@ -164,9 +163,13 @@ export default function CobrancaInadimplentes() {
           ) : isLoading ? (
             <TableSkeleton rows={5} cols={5} />
           ) : !data?.length ? (
-            <div className="text-center py-12 text-emerald-700">
-              ✅ Nenhum paciente inadimplente no momento.
-            </div>
+            <ActionableEmptyState
+              title="Nenhuma pendência vencida"
+              description="Não há contas vencidas vinculadas a pacientes. Consulte todas as contas a receber para acompanhar os próximos vencimentos."
+              actionLabel="Abrir contas a receber"
+              onAction={() => navigate('/contas?tab=receber')}
+              className="text-emerald-700"
+            />
           ) : (
             <ScrollArea className="h-[520px]">
               <Table>

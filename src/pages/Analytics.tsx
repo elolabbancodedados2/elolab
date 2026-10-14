@@ -1,3 +1,4 @@
+import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { nomeMedico } from '@/lib/formatters';
 import { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
@@ -20,7 +21,7 @@ import {
   ArrowUp, ArrowDown, Filter, Download,
   Star, FileBarChart,
 } from 'lucide-react';
-import { format, addDays, subDays, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, differenceInDays } from 'date-fns';
+import { addDays, subDays, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, differenceInDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { valorRealizado } from '@/lib/lancamentos';
@@ -124,27 +125,27 @@ interface KPICardProps {
   change?: number | null;
   icon: React.ReactNode;
   description?: string;
-  tone: 'blue' | 'teal' | 'violet' | 'amber';
+  tone: 'primary' | 'success' | 'accent' | 'warning';
 }
 
 const KPI_TONES = {
-  blue: 'border-[#dce8f7] from-[#f4f8ff] to-white',
-  teal: 'border-[#d9eee6] from-[#f1fbf7] to-white',
-  violet: 'border-[#e7def7] from-[#f8f5ff] to-white',
-  amber: 'border-[#f0e4cf] from-[#fff9ef] to-white',
+  primary: 'border-primary/20 from-primary/5 to-card',
+  success: 'border-success/20 from-success/5 to-card',
+  accent: 'border-border from-accent to-card',
+  warning: 'border-warning/20 from-warning/5 to-card',
 } as const;
 
 const KPI_ICON_TONES = {
-  blue: 'bg-[#eaf4ff] text-[#1766a8] ring-[#d1e5f8]',
-  teal: 'bg-[#e8f7f0] text-[#328266] ring-[#d1ecdf]',
-  violet: 'bg-[#f0eafd] text-[#7254a6] ring-[#e3d8f5]',
-  amber: 'bg-[#fff2db] text-[#9b6813] ring-[#f1dfb8]',
+  primary: 'bg-primary/10 text-primary ring-primary/20',
+  success: 'bg-success/10 text-success ring-success/20',
+  accent: 'bg-accent text-accent-foreground ring-border',
+  warning: 'bg-warning/10 text-warning-foreground ring-warning/20',
 } as const;
 
 function KPICard({ title, value, change, icon, description, tone }: KPICardProps) {
   return (
-    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
-      <Card className={cn('border bg-gradient-to-br shadow-sm transition-shadow hover:shadow-md', KPI_TONES[tone])}>
+    <div data-testid="analytics-kpi" className="h-full">
+      <Card className={cn('h-full border bg-gradient-to-br shadow-sm transition-shadow hover:shadow-md', KPI_TONES[tone])}>
         <CardContent className="pt-6">
           <div className="flex items-center justify-between">
             <div>
@@ -164,7 +165,7 @@ function KPICard({ title, value, change, icon, description, tone }: KPICardProps
           </div>
         </CardContent>
       </Card>
-    </motion.div>
+    </div>
   );
 }
 
@@ -490,7 +491,7 @@ export default function Analytics() {
   if (semDados) {
     return (
       <div className="pb-8">
-        <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-[#d7e9f7] bg-gradient-to-r from-[#f1fbfd] via-white to-[#eff4ff] p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+        <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-border bg-gradient-to-r from-accent/70 via-card to-accent/70 p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-2xl font-bold font-display tracking-tight">Indicadores da clínica</h1>
             <p className="mt-1 text-sm text-muted-foreground">Escolha outro período para consultar os indicadores.</p>
@@ -548,10 +549,10 @@ export default function Analytics() {
   return (
     <div className="space-y-6 pb-8">
       {/* Header + Period Selector */}
-      <div className="flex flex-col gap-4 rounded-2xl border border-[#d7e9f7] bg-gradient-to-r from-[#f1fbfd] via-white to-[#eff4ff] p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:p-5">
+      <div className="flex flex-col gap-4 rounded-2xl border border-border bg-gradient-to-r from-accent/70 via-card to-accent/70 p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:p-5">
         <div>
           <h1 className="text-2xl font-bold font-display tracking-tight flex items-center gap-2">
-            <span className="rounded-xl bg-[#eaf4ff] p-2 text-[#1766a8] ring-1 ring-[#d1e5f8]"><Activity className="h-5 w-5" /></span> Indicadores da clínica
+            <span className="rounded-xl bg-primary/10 p-2 text-primary ring-1 ring-primary/20"><Activity className="h-5 w-5" /></span> Indicadores da clínica
           </h1>
           <p className="text-sm text-muted-foreground mt-1">Acompanhe tendências e compare períodos. Para relatórios detalhados e exportações, acesse Relatórios.</p>
         </div>
@@ -628,7 +629,7 @@ export default function Analytics() {
           value={baseComparecimento > 0 ? `${taxaComparecimento}%` : '—'}
           change={showComparison ? (baseComparecimento > 0 ? calcChange(taxaComparecimento, prevTaxaComp) : null) : undefined}
           icon={<Users className="h-6 w-6 text-primary" />}
-          tone="blue"
+          tone="primary"
           description={baseComparecimento > 0
             ? `${compareceram} compareceram de ${baseComparecimento} consultas com desfecho (${faltaram} faltas). Pagamento prévio não conta como presença.`
             : 'Sem consultas com desfecho no período. Pagamento prévio não conta como presença.'}
@@ -638,7 +639,7 @@ export default function Analytics() {
           value={receitaTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
           change={showComparison ? calcChange(receitaTotal, prevReceita) : undefined}
           icon={<DollarSign className="h-6 w-6 text-primary" />}
-          tone="teal"
+          tone="success"
           description={`Margem: ${margemLucro === null ? '—' : `${margemLucro}%`}`}
         />
         <KPICard
@@ -646,7 +647,7 @@ export default function Analytics() {
           value={atendimentosComRecebimento.size > 0 ? ticketMedio.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '—'}
           change={showComparison ? calcChange(ticketMedio, ticketMedioAnterior) : undefined}
           icon={<TrendingUp className="h-6 w-6 text-primary" />}
-          tone="violet"
+          tone="accent"
           description={`Média por atendimento com recebimento · Lucro: ${lucroLiquido.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`}
         />
         <KPICard
@@ -654,7 +655,7 @@ export default function Analytics() {
           value={totalAg}
           change={showComparison ? calcChange(totalAg, prevTotalAg) : undefined}
           icon={<CalendarIcon className="h-6 w-6 text-primary" />}
-          tone="amber"
+          tone="warning"
           description={`${cancelados} cancelados (${taxaCancelamento}%)`}
         />
       </div>

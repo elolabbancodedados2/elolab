@@ -18,6 +18,8 @@ interface EmptyStateProps {
     label: string;
     onClick: () => void;
   };
+  /** Sugestões curtas do que o usuário pode fazer nesta tela. */
+  tips?: string[];
   children?: ReactNode;
   className?: string;
 }
@@ -28,24 +30,43 @@ export function EmptyState({
   description,
   action,
   secondaryAction,
+  tips,
   children,
   className,
 }: EmptyStateProps) {
   return (
-    <Card className={cn("p-8 md:p-12", className)}>
-      <div className="flex flex-col items-center justify-center text-center space-y-6">
+    <Card className={cn("relative overflow-hidden border-dashed p-8 md:p-12", className)}>
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full bg-primary/10 blur-3xl"
+      />
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute -bottom-20 -left-16 h-56 w-56 rounded-full bg-highlight/15 blur-3xl"
+      />
+      <div className="relative flex flex-col items-center justify-center text-center space-y-6">
         <div className="relative">
-          <div className="h-20 w-20 rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center">
-            <Icon className="h-10 w-10 text-primary" />
+          <div className="h-20 w-20 rounded-3xl bg-[image:var(--gradient-primary)] shadow-glow flex items-center justify-center rotate-[-4deg]">
+            <Icon className="h-9 w-9 text-white rotate-[4deg]" />
           </div>
-          <div className="absolute -right-1 -bottom-1 h-6 w-6 rounded-full bg-muted flex items-center justify-center">
-            <span className="text-sm">✨</span>
+          <div className="absolute -right-2 -bottom-2 h-7 w-7 rounded-full bg-highlight text-highlight-foreground ring-4 ring-card flex items-center justify-center">
+            <span className="text-xs font-black">+</span>
           </div>
         </div>
         <div className="space-y-2 max-w-md">
           <h2 className="text-xl font-semibold font-display">{title}</h2>
           <p className="text-muted-foreground">{description}</p>
         </div>
+        {tips && tips.length > 0 && (
+          <ul className="grid w-full max-w-lg gap-2 text-left sm:grid-cols-2">
+            {tips.map(tip => (
+              <li key={tip} className="flex items-start gap-2 rounded-2xl bg-accent/70 px-3 py-2.5 text-sm text-accent-foreground">
+                <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" aria-hidden="true" />
+                {tip}
+              </li>
+            ))}
+          </ul>
+        )}
         {(action || secondaryAction || children) && (
           <div className="flex flex-wrap justify-center gap-3 mt-2">
             {action && (

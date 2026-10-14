@@ -26,35 +26,35 @@ export default function Equipe() {
       <Tabs value={tab} onValueChange={setTab} className="w-full">
         <TabsList
           aria-label="Seções da equipe"
-          className="h-auto w-full justify-start gap-1 overflow-x-auto rounded-xl border border-sky-100 bg-sky-50/70 p-1.5 text-slate-500 shadow-sm"
+          className="h-auto w-full justify-start gap-1 overflow-x-auto rounded-xl border border-border bg-muted/70 p-1.5 text-muted-foreground"
         >
-          <TabsTrigger value="medicos" className="h-10 shrink-0 gap-2 rounded-lg px-4 data-[state=active]:bg-white data-[state=active]:text-sky-800 data-[state=active]:shadow-sm focus-visible:ring-sky-500">
+          <TabsTrigger value="medicos" className="h-10 shrink-0 gap-2 rounded-lg px-4 data-[state=active]:bg-card data-[state=active]:text-primary data-[state=active]:shadow-sm focus-visible:ring-ring">
             <Stethoscope className="h-4 w-4" />
             Equipe Médica
           </TabsTrigger>
-          <TabsTrigger value="funcionarios" className="h-10 shrink-0 gap-2 rounded-lg px-4 data-[state=active]:bg-white data-[state=active]:text-sky-800 data-[state=active]:shadow-sm focus-visible:ring-sky-500">
+          <TabsTrigger value="funcionarios" className="h-10 shrink-0 gap-2 rounded-lg px-4 data-[state=active]:bg-card data-[state=active]:text-primary data-[state=active]:shadow-sm focus-visible:ring-ring">
             <UserCog className="h-4 w-4" />
             Funcionários
           </TabsTrigger>
-          <TabsTrigger value="convites" className="h-10 shrink-0 gap-2 rounded-lg px-4 data-[state=active]:bg-white data-[state=active]:text-sky-800 data-[state=active]:shadow-sm focus-visible:ring-sky-500">
+          <TabsTrigger value="convites" className="h-10 shrink-0 gap-2 rounded-lg px-4 data-[state=active]:bg-card data-[state=active]:text-primary data-[state=active]:shadow-sm focus-visible:ring-ring">
             <Mail className="h-4 w-4" />
             Convites
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="medicos" className="mt-5 focus-visible:ring-sky-500">
+        <TabsContent value="medicos" className="mt-5 focus-visible:ring-ring">
           <Suspense fallback={<SectionFallback />}>
             <Medicos />
           </Suspense>
         </TabsContent>
 
-        <TabsContent value="funcionarios" className="mt-5 focus-visible:ring-sky-500">
+        <TabsContent value="funcionarios" className="mt-5 focus-visible:ring-ring">
           <Suspense fallback={<SectionFallback />}>
             <Funcionarios />
           </Suspense>
         </TabsContent>
 
-        <TabsContent value="convites" className="mt-5 focus-visible:ring-sky-500">
+        <TabsContent value="convites" className="mt-5 focus-visible:ring-ring">
           <ConvitesList />
         </TabsContent>
       </Tabs>

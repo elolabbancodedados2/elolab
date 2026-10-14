@@ -19,12 +19,12 @@ export default function PrecosServicos() {
   return (
     <div className="space-y-5 pb-8">
       <Tabs value={tab} onValueChange={handleTabChange} className="w-full">
-        <TabsList className="mx-auto grid w-full max-w-md grid-cols-2 rounded-xl border border-[#d7e9f7] bg-[#f2f9fc] p-1">
-          <TabsTrigger value="precos" className="gap-2">
+        <TabsList className="mx-auto grid w-full max-w-md grid-cols-2 rounded-xl border border-border bg-muted/70 p-1 text-muted-foreground">
+          <TabsTrigger value="precos" className="gap-2 rounded-lg data-[state=active]:bg-card data-[state=active]:text-primary data-[state=active]:shadow-sm focus-visible:ring-ring">
             <TestTubes className="h-4 w-4" />
             Tabela de Preços
           </TabsTrigger>
-          <TabsTrigger value="tipos" className="gap-2">
+          <TabsTrigger value="tipos" className="gap-2 rounded-lg data-[state=active]:bg-card data-[state=active]:text-primary data-[state=active]:shadow-sm focus-visible:ring-ring">
             <Stethoscope className="h-4 w-4" />
             Tipos de Consulta
           </TabsTrigger>

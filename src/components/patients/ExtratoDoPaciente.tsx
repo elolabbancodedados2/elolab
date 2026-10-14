@@ -1,3 +1,4 @@
+import { formatWithDatePreference as format } from '@/lib/datePreference';
 /**
  * Extrato financeiro do paciente.
  *
@@ -12,7 +13,7 @@
  * paciente deve seria pior que não ter nenhuma.
  */
 import { useQuery } from '@tanstack/react-query';
-import { format } from 'date-fns';
+
 import { ptBR } from 'date-fns/locale';
 import { Wallet, AlertTriangle, CheckCircle2, ChevronRight, ChevronDown } from 'lucide-react';
 import { useEffect, useState } from 'react';
