@@ -208,10 +208,12 @@ Fluxo operacional de limpeza entre atendimentos, checklist por sala, registro de
 
 Cadastro patrimonial de equipamento por unidade, responsável, validade de calibração, manutenção preventiva/corretiva, ordem de serviço, documentos e histórico. Estoque atual continua como fonte independente para materiais consumíveis. Critério de conclusão: alerta de vencimento, bloqueio configurável de equipamento indisponível em sala, trilha de auditoria e testes de permissão/unidade.
 
+**N5 entregue localmente:** patrimônio geral por clínica/sala, responsável ativo, garantia/calibração/periodicidade, ordens preventivas/corretivas/inspeção/calibração, conclusão com evidência, documentos PDF/imagem em bucket privado, auditoria transacional e bloqueio de sala configurável por ativo indisponível. O painel LIS mantém os analisadores como fonte própria, sem duplicar equipamento laboratorial; estoque de consumíveis permanece separado. Admin cadastra patrimônio; enfermagem mantém ativos e ordens; recepção abre solicitação. Evidência: Vitest de contrato 2/2, Playwright Chromium sintético 1/1 (cadastro, ordem, documento e indisponibilidade), PostgreSQL efêmero PGlite aplicou migration com N4 e executou a lógica de clínica/sala, OS, storage/auditoria e bloqueio; 275 arquivos/1.369 testes Vitest, TypeScript, `deno check`, ESLint focal e checks do repositório aprovados; parser SQL 62/62 e PL/pgSQL 8/8. Sem deploy ou dados reais. Plano: `docs/superpowers/plans/2026-10-14-patrimonio-equipamentos.md`.
+
 ## Execução e contagem
 
 - [x] E1 — Identificação verificável da revisão do build.
 - [x] Auditar checkout local: 23 diferenças de conteúdo selecionadas contra `main`; os itens conflitantes com faixa de suporte, referência visual e densidade da Recepção ficaram preservados no checkout original e fora da integração.
 - [ ] Fazer triagem dos itens 1–100 no checkout local e retirar duplicatas antes de iniciar cada pacote.
 - [ ] Implementar, validar e registrar cada pacote antes de seguir ao próximo; atualizar este arquivo sem contar testes ou documentos como melhoria funcional.
-- [ ] Completar e testar N1–N5 como módulos com persistência, autorização e fluxo utilizável; N1–N4 estão implementados localmente, N5 pendente. Não contar protótipos nem páginas somente de navegação.
+- [x] Completar e testar N1–N5 como módulos com persistência, autorização e fluxo utilizável em ambiente sintético/descartável; nenhum módulo depende só de navegação.

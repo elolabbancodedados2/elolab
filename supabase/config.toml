@@ -150,3 +150,7 @@ verify_jwt = true
 # Workflow autenticado de checklist, inspeção e liberação de salas.
 [functions.higiene-salas]
 verify_jwt = true
+
+# Gestão autenticada de ativos, ordens de serviço e documentos privados.
+[functions.patrimonio-equipamentos]
+verify_jwt = true

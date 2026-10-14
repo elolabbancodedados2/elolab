@@ -46,6 +46,7 @@ const Exames = lazy(() => import("@/pages/Exames"));
 const Triagem = lazy(() => import("@/pages/Triagem"));
 const Salas = lazy(() => import("@/pages/Salas"));
 const HigieneSalas = lazy(() => import("@/pages/HigieneSalas"));
+const PatrimonioEquipamentos = lazy(() => import("@/pages/PatrimonioEquipamentos"));
 const ListaEspera = lazy(() => import("@/pages/ListaEspera"));
 const FluxoCaixa = lazy(() => import("@/pages/FluxoCaixa"));
 const Templates = lazy(() => import("@/pages/Templates"));
@@ -353,6 +354,7 @@ function App() {
                           <Route path="/vitais-graficos" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico', 'enfermagem']}><VitaisGraficos /></SupabaseProtectedRoute>} />
                           <Route path="/seguranca-assistencial" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico', 'enfermagem']}><SegurancaAssistencial /></SupabaseProtectedRoute>} />
                           <Route path="/higiene-salas" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem']}><HigieneSalas /></SupabaseProtectedRoute>} />
+                          <Route path="/patrimonio-equipamentos" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem']}><PatrimonioEquipamentos /></SupabaseProtectedRoute>} />
                           <Route path="/analise-preditiva" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao']}><AnalisePreditiva /></SupabaseProtectedRoute>} />
                         </Route>
 
