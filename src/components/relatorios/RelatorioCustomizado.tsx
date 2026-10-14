@@ -1,5 +1,6 @@
 import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Filter, Download, Printer, Loader2, FileSpreadsheet, RefreshCw, Star, Calendar as CalendarIcon } from 'lucide-react';
@@ -280,7 +281,8 @@ function formatCell(val: any, fmt?: ColumnDef['format']): string {
 }
 
 export default function RelatorioCustomizado() {
-  const { profile, isLoading: authLoading } = useSupabaseAuth();
+  const queryClient = useQueryClient();
+  const { user, profile, isLoading: authLoading } = useSupabaseAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const podeVerRelatorioPacientes = podeAcessarRelatorioCompletoDePacientes(profile?.roles);
@@ -320,6 +322,8 @@ export default function RelatorioCustomizado() {
     destinatarios: '',
     formato: 'csv',
   });
+  const [savedReport, setSavedReport] = useState<{ id: string; userId: string; updatedAt: string; ativo: boolean } | null>(null);
+  const canUpdateSavedReport = !!savedReport && savedReport.userId === user?.id;
   const [saving, setSaving] = useState(false);
   const [executarAposRestauro, setExecutarAposRestauro] = useState(false);
   const restauradoIdRef = useRef<string | null>(null);
@@ -414,6 +418,21 @@ export default function RelatorioCustomizado() {
     }
 
     const config = salvo.config && typeof salvo.config === 'object' ? salvo.config : {};
+    if (typeof salvo.id === 'string' && typeof salvo.user_id === 'string' && typeof salvo.updated_at === 'string') {
+      setSavedReport({ id: salvo.id, userId: salvo.user_id, updatedAt: salvo.updated_at, ativo: salvo.ativo !== false });
+      setSaveForm({
+        nome: typeof salvo.nome === 'string' ? salvo.nome : '',
+        descricao: typeof salvo.descricao === 'string' ? salvo.descricao : '',
+        frequencia: ['diaria', 'semanal', 'mensal'].includes(salvo.frequencia) ? salvo.frequencia : 'nenhuma',
+        dia_semana: String(salvo.dia_semana ?? 1),
+        dia_mes: String(salvo.dia_mes ?? 1),
+        hora: typeof salvo.hora === 'string' ? salvo.hora.slice(0, 5) : '08:00',
+        destinatarios: Array.isArray(salvo.destinatarios) ? salvo.destinatarios.join(', ') : '',
+        formato: 'csv',
+      });
+    } else {
+      setSavedReport(null);
+    }
     const novoDataset = salvo.dataset as DatasetKey;
     if (novoDataset !== dataset) ignorarResetDatasetRef.current = true;
     setDataset(novoDataset);
@@ -707,7 +726,7 @@ export default function RelatorioCustomizado() {
               <Printer className="h-4 w-4 mr-2" /> Imprimir / PDF
             </Button>
             <Button variant="outline" onClick={() => setSaveOpen(true)}>
-              <Star className="h-4 w-4 mr-2" /> Salvar / Agendar
+              <Star className="h-4 w-4 mr-2" /> {canUpdateSavedReport ? 'Atualizar salvo' : 'Salvar / Agendar'}
             </Button>
           </div>
           {!loading && rows.length === 0 && (
@@ -815,7 +834,7 @@ export default function RelatorioCustomizado() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Star className="h-5 w-5 text-primary" />
-              Salvar relatório como favorito
+              {canUpdateSavedReport ? 'Atualizar relatório salvo' : 'Salvar relatório como favorito'}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
@@ -895,7 +914,8 @@ export default function RelatorioCustomizado() {
                   }
                   const { data: { user } } = await supabase.auth.getUser();
                   if (!user) throw new Error('Sem sessão');
-                  const { data: prof } = await supabase.from('profiles').select('clinica_id').eq('id', user.id).maybeSingle();
+                  const clinicaId = profile?.clinica_id;
+                  if (!clinicaId) throw new Error('Clínica não identificada');
                   const config = {
                     dataInicio, dataFim, statusFilter, medicoFilter, convenioFilter,
                     textoBusca, limite: Number(limite), valorMin, valorMax,
@@ -911,14 +931,19 @@ export default function RelatorioCustomizado() {
                   }
                   const payload: any = {
                     user_id: user.id,
-                    clinica_id: prof?.clinica_id,
+                    clinica_id: clinicaId,
                     nome: saveForm.nome,
                     descricao: saveForm.descricao || null,
                     dataset,
                     config,
                     formato: saveForm.formato,
                     destinatarios: dests,
-                    ativo: true,
+                    ativo: canUpdateSavedReport && savedReport ? savedReport.ativo : true,
+                    frequencia: null,
+                    dia_semana: null,
+                    dia_mes: null,
+                    hora: null,
+                    proxima_execucao: null,
                   };
                   if (saveForm.frequencia !== 'nenhuma') {
                     payload.frequencia = saveForm.frequencia;
@@ -932,11 +957,28 @@ export default function RelatorioCustomizado() {
                       Number(saveForm.dia_mes),
                     );
                   }
-                  const { error } = await (supabase as any).from('relatorios_salvos').insert(payload);
-                  if (error) throw error;
-                  toast.success('Relatório salvo com sucesso');
+                  if (canUpdateSavedReport && savedReport && savedReport.userId === user.id) {
+                    const { data, error } = await (supabase as any)
+                      .from('relatorios_salvos')
+                      .update(payload)
+                      .eq('id', savedReport.id)
+                      .eq('user_id', user.id)
+                      .eq('clinica_id', clinicaId)
+                      .eq('updated_at', savedReport.updatedAt)
+                      .select('id')
+                      .maybeSingle();
+                    if (error) throw error;
+                    if (!data) throw new Error('O relatório mudou ou não está mais disponível. Reabra-o antes de salvar alterações.');
+                    toast.success('Relatório atualizado');
+                  } else {
+                    const { error } = await (supabase as any).from('relatorios_salvos').insert(payload);
+                    if (error) throw error;
+                    toast.success('Relatório salvo com sucesso');
+                  }
+                  await queryClient.invalidateQueries({ queryKey: ['relatorios-salvos'] });
                   setSaveOpen(false);
                   setSaveForm({ nome: '', descricao: '', frequencia: 'nenhuma', dia_semana: '1', dia_mes: '1', hora: '08:00', destinatarios: '', formato: 'csv' });
+                  setSavedReport(null);
                 } catch (e: any) {
                   toast.error(e.message || 'Erro ao salvar');
                 } finally {
@@ -945,7 +987,7 @@ export default function RelatorioCustomizado() {
               }}
             >
               {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Star className="h-4 w-4 mr-2" />}
-              Salvar
+              {canUpdateSavedReport ? 'Salvar alterações' : 'Salvar'}
             </Button>
           </DialogFooter>
         </DialogContent>

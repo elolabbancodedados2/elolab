@@ -151,7 +151,11 @@ export default function RelatoriosSalvos() {
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => navigate('/relatorios', { state: { relatorioSalvo: { id: it.id, dataset: it.dataset, config: it.config } } })}
+                      onClick={() => navigate('/relatorios', { state: { relatorioSalvo: {
+                        id: it.id, user_id: it.user_id, updated_at: it.updated_at, dataset: it.dataset, config: it.config,
+                        nome: it.nome, descricao: it.descricao, frequencia: it.frequencia, dia_semana: it.dia_semana,
+                        dia_mes: it.dia_mes, hora: it.hora, destinatarios: it.destinatarios, formato: it.formato, ativo: it.ativo,
+                      } } })}
                       aria-label={`Abrir filtros do relatório ${it.nome}`}
                     >
                       <SlidersHorizontal className="h-4 w-4" />

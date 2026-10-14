@@ -154,7 +154,8 @@ Itens 1–100 são propostas de execução, não afirmações de que esses defei
 
 ### Indicadores, integrações e configurações
 
-91. Permitir salvar filtros de relatórios por usuário e manter o escopo da clínica na consulta.
+91. [x] Atualizar filtros e agenda de um relatório salvo sem criar duplicata, com compare-and-set do dono e da clínica.
+**Entrega E20 (item substituto após auditoria):** o isolamento de relatórios por proprietário/clínica e a restauração de todos os filtros já existiam, então o item original não foi contado outra vez. Ao abrir um relatório próprio, a tela agora preenche nome, descrição, frequência, destinatários e formato; salvar atualiza o registro existente somente se `id`, `user_id`, `clinica_id` e `updated_at` ainda coincidirem. Agendas pausadas continuam pausadas e, ao converter em favorito, os campos de agendamento são limpos. Administradores que abrem relatório de outra pessoa criam uma cópia com sua própria autoria. Evidência: Playwright sintético 1/1 confirmou PATCH filtrado e limpeza da agenda; Vitest de contrato 3/3. Sem migration.
 92. Mostrar definição, fonte e janela temporal de cada KPI para que dois relatórios não usem critérios diferentes.
 93. Permitir exportar gráficos como tabela acessível com período e filtros no cabeçalho.
 94. Programar relatório somente depois de confirmar fuso, destinatários autorizados e canal de entrega ativo.
