@@ -60,6 +60,8 @@ export default function RelatoriosSalvos() {
         toast.error('Relatório já está em processamento', { description: 'Aguarde a conclusão da execução atual antes de tentar novamente.' });
       } else if (resultado.skipped) {
         toast.error('Relatório não executado', { description: 'A fonte de dados salva não é válida para este relatório.' });
+      } else if (resultado.delivery === 'recipients_invalid') {
+        toast.error('Relatório não enviado', { description: 'Um ou mais destinatários foram desativados ou perderam acesso à fonte. Edite a lista antes da próxima execução.' });
       } else if (resultado.delivery === 'not_configured' || !resultado.sent_to) {
         toast.error('Relatório não enviado', { description: 'Confira os destinatários e a configuração de envio de e-mail da clínica.' });
       } else {

@@ -322,12 +322,56 @@ export default function RelatorioCustomizado() {
     destinatarios: '',
     formato: 'csv',
   });
+  const [timezoneConfirmed, setTimezoneConfirmed] = useState(false);
+  const [preflightLoading, setPreflightLoading] = useState(false);
+  const [preflight, setPreflight] = useState<{
+    emailConfigured: boolean;
+    timezone: string;
+    recipients: Array<{ id: string; nome: string; email: string }>;
+  } | null>(null);
+  const [preflightError, setPreflightError] = useState('');
   const [savedReport, setSavedReport] = useState<{ id: string; userId: string; updatedAt: string; ativo: boolean } | null>(null);
   const canUpdateSavedReport = !!savedReport && savedReport.userId === user?.id;
   const [saving, setSaving] = useState(false);
   const [executarAposRestauro, setExecutarAposRestauro] = useState(false);
   const restauradoIdRef = useRef<string | null>(null);
   const ignorarResetDatasetRef = useRef(false);
+
+  useEffect(() => {
+    if (!saveOpen) return;
+    let cancelled = false;
+    setTimezoneConfirmed(false);
+    setPreflight(null);
+    setPreflightError('');
+    setPreflightLoading(true);
+    void (supabase as any).functions.invoke('scheduled-reports-runner', {
+      body: { action: 'preflight', dataset },
+    }).then(({ data, error }: { data: any; error: any }) => {
+      if (cancelled) return;
+      if (error) throw error;
+      if (!data || typeof data.emailConfigured !== 'boolean' || !Array.isArray(data.recipients)) {
+        throw new Error('Resposta inválida ao verificar o envio agendado.');
+      }
+      if (data.timezone !== 'America/Sao_Paulo') throw new Error('O fuso horário retornado pelo servidor não é compatível com este agendamento.');
+      const recipients = data.recipients.filter((item: any) => typeof item?.email === 'string' && typeof item?.id === 'string');
+      setPreflight({
+        emailConfigured: data.emailConfigured,
+        timezone: data.timezone,
+        recipients,
+      });
+      const emailsPermitidos = new Set(recipients.map((item: { email: string }) => item.email.toLocaleLowerCase('pt-BR')));
+      setSaveForm((current) => ({
+        ...current,
+        destinatarios: current.destinatarios.split(',').map((email) => email.trim())
+          .filter((email) => emailsPermitidos.has(email.toLocaleLowerCase('pt-BR'))).join(', '),
+      }));
+    }).catch((error: unknown) => {
+      if (!cancelled) setPreflightError(error instanceof Error ? error.message : 'Não foi possível verificar o envio agendado.');
+    }).finally(() => {
+      if (!cancelled) setPreflightLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [saveOpen, dataset]);
 
   const { data: medicos = [] } = useMedicos();
   const { data: convenios = [] } = useConvenios();
@@ -893,9 +937,42 @@ export default function RelatorioCustomizado() {
               </div>
             </div>
             {saveForm.frequencia !== 'nenhuma' && (
-              <div>
-                <Label className="text-xs">Destinatários (e-mails separados por vírgula)</Label>
-                <Textarea aria-label="E-mails destinatarios do relatorio" rows={2} value={saveForm.destinatarios} onChange={e => setSaveForm({ ...saveForm, destinatarios: e.target.value })} placeholder="gestor@clinica.com, financeiro@clinica.com" />
+              <div className="space-y-3 rounded-md border p-3">
+                <div>
+                  <p className="text-sm font-medium">Destinatários autorizados</p>
+                  <p className="text-xs text-muted-foreground">Somente contas ativas desta clínica com acesso a {DATASETS[dataset].label.toLocaleLowerCase('pt-BR')}.</p>
+                </div>
+                {preflightLoading && <p role="status" className="text-sm text-muted-foreground">Verificando canal e permissões…</p>}
+                {preflightError && <p role="alert" className="text-sm text-destructive">{preflightError}</p>}
+                {!preflightLoading && preflight && !preflight.emailConfigured && (
+                  <p role="alert" className="text-sm text-destructive">O canal de e-mail está sem configuração válida ou indisponível. O agendamento fica bloqueado até a integração estar ativa.</p>
+                )}
+                {!preflightLoading && preflight?.recipients.length === 0 && (
+                  <p role="status" className="text-sm text-muted-foreground">Nenhum membro ativo com acesso a esta fonte pode receber o relatório.</p>
+                )}
+                {preflight?.recipients.map((recipient) => {
+                  const selected = saveForm.destinatarios.split(',').map((email) => email.trim().toLocaleLowerCase('pt-BR')).includes(recipient.email.toLocaleLowerCase('pt-BR'));
+                  return (
+                    <label key={recipient.id} className="flex cursor-pointer items-center gap-2 text-sm">
+                      <Checkbox
+                        aria-label={`Destinatário ${recipient.nome} (${recipient.email})`}
+                        checked={selected}
+                        onCheckedChange={(checked) => {
+                          const current = saveForm.destinatarios.split(',').map((email) => email.trim()).filter(Boolean);
+                          const next = checked
+                            ? [...current.filter((email) => email.toLocaleLowerCase('pt-BR') !== recipient.email.toLocaleLowerCase('pt-BR')), recipient.email]
+                            : current.filter((email) => email.toLocaleLowerCase('pt-BR') !== recipient.email.toLocaleLowerCase('pt-BR'));
+                          setSaveForm({ ...saveForm, destinatarios: next.join(', ') });
+                        }}
+                      />
+                      <span>{recipient.nome} <span className="text-muted-foreground">({recipient.email})</span></span>
+                    </label>
+                  );
+                })}
+                <label className="flex cursor-pointer items-start gap-2 border-t pt-3 text-sm">
+                  <Checkbox aria-label="Confirmo o fuso horário de Brasília" checked={timezoneConfirmed} onCheckedChange={(checked) => setTimezoneConfirmed(checked === true)} />
+                  <span>Confirmo que horários e períodos usam o fuso de Brasília (<code>America/Sao_Paulo</code>).</span>
+                </label>
               </div>
             )}
             <p className="text-xs text-muted-foreground">
@@ -905,7 +982,7 @@ export default function RelatorioCustomizado() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setSaveOpen(false)}>Cancelar</Button>
             <Button
-              disabled={saving || !saveForm.nome}
+              disabled={saving || !saveForm.nome || (saveForm.frequencia !== 'nenhuma' && (preflightLoading || !preflight?.emailConfigured || !timezoneConfirmed || saveForm.destinatarios.trim().length === 0))}
               onClick={async () => {
                 setSaving(true);
                 try {
@@ -922,12 +999,15 @@ export default function RelatorioCustomizado() {
                     tipoLancamento, groupBy, colunas: Array.from(visibleCols),
                   };
                   const dests = saveForm.destinatarios.split(',').map(s => s.trim()).filter(Boolean);
-                  const emailsInvalidos = dests.filter(email => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email));
-                  if (saveForm.frequencia !== 'nenhuma' && dests.length === 0) {
-                    throw new Error('Informe ao menos um e-mail para agendar o envio.');
-                  }
-                  if (emailsInvalidos.length > 0) {
-                    throw new Error(`Confira os e-mails: ${emailsInvalidos.join(', ')}`);
+                  if (saveForm.frequencia !== 'nenhuma') {
+                    if (!preflight?.emailConfigured) throw new Error('O canal de e-mail precisa estar ativo e acessível antes de agendar.');
+                    if (!timezoneConfirmed) throw new Error('Confirme o fuso horário de Brasília para agendar o relatório.');
+                    const emailsAutorizados = new Set((preflight?.recipients ?? []).map((recipient) => recipient.email.toLocaleLowerCase('pt-BR')));
+                    const unicos = [...new Set(dests.map((email) => email.toLocaleLowerCase('pt-BR')))];
+                    if (dests.length === 0) throw new Error('Selecione ao menos um membro autorizado para receber o relatório.');
+                    if (unicos.length !== dests.length || unicos.some((email) => !emailsAutorizados.has(email))) {
+                      throw new Error('Atualize a lista e selecione somente destinatários autorizados da clínica.');
+                    }
                   }
                   const payload: any = {
                     user_id: user.id,
@@ -937,7 +1017,7 @@ export default function RelatorioCustomizado() {
                     dataset,
                     config,
                     formato: saveForm.formato,
-                    destinatarios: dests,
+                    destinatarios: saveForm.frequencia === 'nenhuma' ? [] : dests,
                     ativo: canUpdateSavedReport && savedReport ? savedReport.ativo : true,
                     frequencia: null,
                     dia_semana: null,

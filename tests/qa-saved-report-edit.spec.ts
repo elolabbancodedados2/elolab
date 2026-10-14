@@ -56,3 +56,72 @@ test('atualiza filtros do relatório próprio sem duplicar o agendamento', async
   });
   expect(synthetic.assertAllWritesAreMocked()).toBe(true);
 });
+
+test('agenda somente com canal ativo, destinatario da lista e confirmacao de Brasilia', async ({ page }, testInfo) => {
+  const appOrigin = new URL(String(testInfo.project.use.baseURL)).origin;
+  const synthetic = await installSyntheticClinic(page, { appOrigin });
+  const writes: Array<{ method: string; body: unknown }> = [];
+  const recipient = { id: '00000000-0000-4000-8000-000000000951', nome: 'Financeiro QA', email: 'financeiro@qa.invalid' };
+  const preflights: unknown[] = [];
+
+  await page.route('http://127.0.0.1:54321/functions/v1/scheduled-reports-runner', async route => {
+    const body = route.request().postDataJSON() as { action?: string; dataset?: string };
+    preflights.push(body);
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ emailConfigured: true, timezone: 'America/Sao_Paulo', recipients: [recipient] }) });
+  });
+  await page.route('http://127.0.0.1:54321/rest/v1/relatorios_salvos*', async route => {
+    if (route.request().method() === 'GET') {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
+      return;
+    }
+    writes.push({ method: route.request().method(), body: route.request().postDataJSON() });
+    await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify([{ id: '00000000-0000-4000-8000-000000000952' }]) });
+  });
+
+  await page.goto('/relatorios');
+  await page.getByRole('button', { name: 'Salvar / Agendar' }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByRole('textbox', { name: 'Nome do relatorio salvo' }).fill('Relatório agendado QA');
+  await dialog.getByRole('combobox', { name: 'Frequencia de envio' }).click();
+  await page.getByRole('option', { name: 'Diária' }).click();
+
+  await expect.poll(() => preflights.length).toBeGreaterThan(0);
+  expect(preflights[0]).toMatchObject({ action: 'preflight', dataset: 'lancamentos' });
+  await expect(dialog.getByRole('checkbox', { name: 'Destinatário Financeiro QA (financeiro@qa.invalid)' })).toBeVisible();
+  const save = dialog.getByRole('button', { name: 'Salvar' });
+  await dialog.getByRole('checkbox', { name: 'Destinatário Financeiro QA (financeiro@qa.invalid)' }).check();
+  await expect(save).toBeDisabled();
+  await dialog.getByRole('checkbox', { name: 'Confirmo o fuso horário de Brasília' }).check();
+  await expect(save).toBeEnabled();
+  await save.click();
+
+  await expect.poll(() => writes.length).toBe(1);
+  expect(writes[0].method).toBe('POST');
+  expect(writes[0].body).toMatchObject({
+    dataset: 'lancamentos', frequencia: 'diaria', destinatarios: [recipient.email], hora: '08:00:00',
+  });
+  expect(synthetic.assertAllWritesAreMocked()).toBe(true);
+});
+test('bloqueia agenda quando o canal de e-mail nao esta ativo', async ({ page }, testInfo) => {
+  const appOrigin = new URL(String(testInfo.project.use.baseURL)).origin;
+  const synthetic = await installSyntheticClinic(page, { appOrigin });
+  let writes = 0;
+  await page.route('http://127.0.0.1:54321/functions/v1/scheduled-reports-runner', async route => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ emailConfigured: false, timezone: 'America/Sao_Paulo', recipients: [{ id: synthetic.userId, nome: 'Conta QA', email: 'qa@example.invalid' }] }) });
+  });
+  await page.route('http://127.0.0.1:54321/rest/v1/relatorios_salvos*', async route => {
+    if (route.request().method() !== 'GET') writes++;
+    await route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
+  });
+
+  await page.goto('/relatorios');
+  await page.getByRole('button', { name: 'Salvar / Agendar' }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByRole('textbox', { name: 'Nome do relatorio salvo' }).fill('Canal indisponível QA');
+  await dialog.getByRole('combobox', { name: 'Frequencia de envio' }).click();
+  await page.getByRole('option', { name: 'Diária' }).click();
+  await expect(dialog.getByRole('alert')).toContainText('canal de e-mail está sem configuração válida ou indisponível');
+  await expect(dialog.getByRole('button', { name: 'Salvar' })).toBeDisabled();
+  expect(writes).toBe(0);
+  expect(synthetic.assertAllWritesAreMocked()).toBe(true);
+});
