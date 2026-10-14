@@ -60,6 +60,7 @@ import { UnsavedChangesDialog } from '@/components/ConfirmDialog';
 import { ExportacaoClinicaProtegida } from '@/components/clinical/ExportacaoClinicaProtegida';
 import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
 import { filtrarRascunhosAbertos, nomeAutorRascunho } from '@/lib/prontuarioDrafts';
+import { needsPatientContextChangeConfirmation } from '@/lib/patientContextChange';
 
 // ─── Types ─────────────────────────────────────────────────
 interface PrescricaoForm {
@@ -759,6 +760,10 @@ export default function Prontuarios() {
   const routeOpenedRef = useRef(false);
   const routeKeyRef = useRef<string | null>(null);
   const [selectedPacienteId, setSelectedPacienteId] = useState<string | null>(null);
+  const [pendingPatientContextChange, setPendingPatientContextChange] = useState<{
+    pacienteId: string;
+    source: 'route' | 'picker';
+  } | null>(null);
   const [showPatientPicker, setShowPatientPicker] = useState(true);
   const [rascunhoParaAbrir, setRascunhoParaAbrir] = useState<Record<string, any> | null>(null);
   const [rascunhoParaEditarId, setRascunhoParaEditarId] = useState<string | null>(null);
@@ -913,6 +918,30 @@ export default function Prontuarios() {
       .sort((a, b) => (parseDateOnly(b.data)?.getTime() || 0) - (parseDateOnly(a.data)?.getTime() || 0));
   }, [prontuarios, selectedPacienteId, isMedicoOnly, medicoId]);
 
+  const applyPatientContextChange = useCallback((pacienteId: string) => {
+    prescricoesRequestRef.current += 1;
+    setRascunhoParaAbrir(null);
+    setErroPrescricoes(null);
+    setSelectedPacienteId(pacienteId);
+    setShowPatientPicker(false);
+  }, []);
+
+  const requestPatientContextChange = useCallback((pacienteId: string, source: 'route' | 'picker' = 'picker') => {
+    if (pacienteId === selectedPacienteId) {
+      setShowPatientPicker(false);
+      return;
+    }
+    if (needsPatientContextChangeConfirmation(
+      isProntuarioOpen,
+      currentProntuario.paciente_id,
+      pacienteId,
+    )) {
+      setPendingPatientContextChange({ pacienteId, source });
+      return;
+    }
+    applyPatientContextChange(pacienteId);
+  }, [applyPatientContextChange, currentProntuario.paciente_id, isProntuarioOpen, selectedPacienteId]);
+
   // ─── Handlers ────────────────────────────────────────────
   const handleNovoProntuario = useCallback((agendamentoId?: string | null, medicoResponsavelId?: string | null) => {
     if (!selectedPacienteId) return false;
@@ -958,11 +987,9 @@ export default function Prontuarios() {
   // preparamos uma nova para o médico responsável.
   useEffect(() => {
     if (routePacienteId && selectedPacienteId !== routePacienteId) {
-      prescricoesRequestRef.current += 1;
-      setSelectedPacienteId(routePacienteId);
-      setShowPatientPicker(false);
+      requestPatientContextChange(routePacienteId, 'route');
     }
-  }, [routePacienteId, selectedPacienteId]);
+  }, [requestPatientContextChange, routePacienteId, selectedPacienteId]);
 
   const carregarPrescricoes = async (prontuarioId: string, requestId = ++prescricoesRequestRef.current) => {
     try {
@@ -1474,6 +1501,48 @@ export default function Prontuarios() {
   // não recriar o setInterval a cada tecla — bug anterior fazia o auto-save
   // nunca disparar em digitação contínua. Usamos ref para acessar o valor
   // mais recente dentro do interval sem depender dele.
+  const finishPatientContextChange = () => {
+    if (!pendingPatientContextChange) return;
+    applyPatientContextChange(pendingPatientContextChange.pacienteId);
+    setCurrentProntuario({});
+    setPrescricoes([]);
+    setSinaisVitais(emptySinaisVitais);
+    setHasUnsavedChanges(false);
+    setPendingPatientContextChange(null);
+    setIsProntuarioOpen(false);
+  };
+
+  const handleSaveAndChangePatient = async () => {
+    if (!pendingPatientContextChange || salvandoProntuario) return;
+    if (hasUnsavedChanges) {
+      const savingVersion = changeVersionRef.current;
+      setSalvandoProntuario(true);
+      try {
+        const savedId = await performSave(true);
+        if (!savedId || changeVersionRef.current !== savingVersion) {
+          toast.error('Nao foi possivel salvar antes da troca', {
+            description: 'A evolucao permaneceu aberta. Corrija os campos obrigatorios e tente novamente.',
+          });
+          return;
+        }
+      } finally {
+        setSalvandoProntuario(false);
+      }
+    }
+    finishPatientContextChange();
+  };
+
+  const cancelPatientContextChange = () => {
+    if (pendingPatientContextChange?.source === 'route') {
+      const params = new URLSearchParams(searchParams);
+      params.delete('paciente');
+      params.delete('agendamento');
+      setSearchParams(params, { replace: true });
+    }
+    setRascunhoParaAbrir(null);
+    setPendingPatientContextChange(null);
+  };
+
   const performSaveRef = useRef(performSave);
   useEffect(() => { performSaveRef.current = performSave; });
   useEffect(() => {
@@ -1711,11 +1780,9 @@ export default function Prontuarios() {
                             <button
                               type="button"
                               onClick={() => {
-                                prescricoesRequestRef.current += 1;
                                 setRascunhoParaAbrir(null);
                                 setErroPrescricoes(null);
-                                setSelectedPacienteId(ag.paciente_id);
-                                setShowPatientPicker(false);
+                                requestPatientContextChange(ag.paciente_id, 'picker');
                               }}
                               className={`flex min-h-11 w-full items-center gap-2.5 rounded-2xl p-2 text-left transition ${ativo ? 'bg-accent' : 'hover:bg-muted/60'}`}
                             >
@@ -1760,8 +1827,7 @@ export default function Prontuarios() {
                               className="h-auto min-h-11 w-full justify-start whitespace-normal rounded-lg border border-[#E0DCF2] bg-white px-2.5 py-2 text-left hover:border-[#CFC6FF] hover:bg-[#F2F0FE]"
                               onClick={() => {
                                 setRascunhoParaAbrir(draft);
-                                setSelectedPacienteId(draft.paciente_id);
-                                setShowPatientPicker(false);
+                                requestPatientContextChange(draft.paciente_id, 'picker');
                               }}
                             >
                               <span className="min-w-0 flex-1">
@@ -1803,11 +1869,9 @@ export default function Prontuarios() {
                       selecionado={isSelected}
                       detalhe={pac.data_nascimento ? `${calcularIdade(pac.data_nascimento)} anos` : 'Data de nascimento não informada'}
                       onSelect={() => {
-                        prescricoesRequestRef.current += 1;
                         setRascunhoParaAbrir(null);
                         setErroPrescricoes(null);
-                        setSelectedPacienteId(pac.id);
-                        setShowPatientPicker(false);
+                        requestPatientContextChange(pac.id, 'picker');
                       }}
                     />
                   );
@@ -2690,6 +2754,37 @@ export default function Prontuarios() {
                 }}
               />
             </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={!!pendingPatientContextChange}
+        onOpenChange={open => { if (!open) cancelPatientContextChange(); }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Trocar o contexto do paciente?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Uma evolução está aberta. Confirme para fechar este formulário e abrir o outro paciente. Os dados clínicos não serão transferidos.
+          </p>
+          <DialogFooter className="flex-wrap gap-2">
+            <Button variant="outline" onClick={cancelPatientContextChange} disabled={salvandoProntuario}>
+              Continuar nesta evolução
+            </Button>
+            {hasUnsavedChanges ? (
+              <>
+                <Button variant="destructive" onClick={finishPatientContextChange} disabled={salvandoProntuario}>
+                  Descartar e trocar
+                </Button>
+                <Button onClick={handleSaveAndChangePatient} disabled={salvandoProntuario}>
+                  {salvandoProntuario ? 'Salvando…' : 'Salvar e trocar'}
+                </Button>
+              </>
+            ) : (
+              <Button onClick={finishPatientContextChange}>Trocar paciente</Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
