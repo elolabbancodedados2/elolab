@@ -171,7 +171,8 @@ describe('PortalPaciente — cancelamento de consulta', () => {
   it('apresenta o painel de cuidado como uma região acessível e identifica as abas', async () => {
     render(<PortalPaciente />);
 
-    expect(await screen.findByRole('region', { name: 'Resumo do seu cuidado' })).toBeVisible();
+    const resumo = await screen.findByRole('region', { name: 'Resumo do seu cuidado' });
+    await waitFor(() => expect(resumo).toBeVisible());
     expect(await screen.findByText('Quinta-feira, 15 de outubro')).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /Agendar/i })).toHaveAccessibleName(/Agendar/i);
     expect(screen.getByRole('tab', { name: /Consultas/i })).toHaveAccessibleName(/Consultas/i);

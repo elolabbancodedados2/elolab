@@ -471,6 +471,9 @@ export type Database = {
           dias: number | null
           id: string
           medico_id: string | null
+          modelo_atestado_atualizado_em: string | null
+          modelo_atestado_id: string | null
+          modelo_atestado_nome: string | null
           motivo: string | null
           observacoes: string | null
           paciente_id: string | null
@@ -487,6 +490,9 @@ export type Database = {
           dias?: number | null
           id?: string
           medico_id?: string | null
+          modelo_atestado_atualizado_em?: string | null
+          modelo_atestado_id?: string | null
+          modelo_atestado_nome?: string | null
           motivo?: string | null
           observacoes?: string | null
           paciente_id?: string | null
@@ -503,6 +509,9 @@ export type Database = {
           dias?: number | null
           id?: string
           medico_id?: string | null
+          modelo_atestado_atualizado_em?: string | null
+          modelo_atestado_id?: string | null
+          modelo_atestado_nome?: string | null
           motivo?: string | null
           observacoes?: string | null
           paciente_id?: string | null
