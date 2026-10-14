@@ -3,12 +3,13 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { podeGerenciarTemplatesEmail } from '@/lib/templatesEmailAccess';
+import { analyzeTemplatePreview } from '@/lib/templatePreview';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -46,28 +47,6 @@ const VARIAVEIS_GRUPOS = {
   'Estoque': ['item_nome', 'quantidade_atual', 'quantidade_minima', 'localizacao'],
 };
 
-const VALORES_EXEMPLO = {
-  paciente_nome: 'João Silva',
-  cpf: '123.456.789-10',
-  data: '15/04/2026',
-  horario: '14:30',
-  medico_nome: 'Dr. Carlos Santos',
-  tipo_consulta: 'Consulta Clínica',
-  clinica_nome: 'Clínica Médica',
-  clinica_endereco: 'Rua Principal, 100 — São Paulo/SP',
-  clinica_telefone: '(11) 3000-0000',
-  tipo_exame: 'Hemograma Completo',
-  data_resultado: '14/04/2026',
-  link_portal: 'https://app.elolab.com.br/portal',
-  descricao: 'Consulta Clínica',
-  valor: 'R$ 150,00',
-  forma_pagamento: 'Cartão de Crédito',
-  item_nome: 'Luva Nitrílica P',
-  quantidade_atual: '5',
-  quantidade_minima: '20',
-  localizacao: 'Armário A1',
-};
-
 const sanitizeTemplateHtml = (html: string) => DOMPurify.sanitize(html, {
   USE_PROFILES: { html: true },
   FORBID_TAGS: ['script', 'style', 'iframe', 'object', 'embed', 'form'],
@@ -87,6 +66,7 @@ export default function TemplatesEmail() {
   });
   const [editId, setEditId] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [activationCandidate, setActivationCandidate] = useState<any | null>(null);
   const [previewTab, setPreviewTab] = useState('editar');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -116,18 +96,12 @@ export default function TemplatesEmail() {
       const conteudoSeguro = sanitizeTemplateHtml(form.conteudo);
       if (!conteudoSeguro.trim()) throw new Error('O conteúdo ficou vazio após remover elementos não permitidos.');
 
-      // Extract variables from content
-      const regex = /\{\{(\w+)\}\}/g;
-      const variaveis: string[] = [];
-      let match;
-      while ((match = regex.exec(`${form.assunto}\n${conteudoSeguro}`)) !== null) {
-        if (!variaveis.includes(match[1])) {
-          variaveis.push(match[1]);
-        }
-      }
-      const desconhecidas = variaveis.filter(variable => !(variable in VALORES_EXEMPLO));
-      if (desconhecidas.length > 0) {
-        throw new Error(`Variáveis sem valor de substituição: ${desconhecidas.map(variable => `{{${variable}}}`).join(', ')}`);
+      const preview = analyzeTemplatePreview({
+        name: form.nome, category: form.categoria, subject: form.assunto, content: conteudoSeguro,
+      });
+      const variaveis = preview.usedVariables;
+      if (form.ativo && preview.missingVariables.length > 0) {
+        throw new Error(`Antes de ativar, resolva as variáveis sem valor para esta categoria: ${preview.missingVariables.map(variable => `{{${variable}}}`).join(', ')}`);
       }
 
       if (editId) {
@@ -166,6 +140,7 @@ export default function TemplatesEmail() {
       toast.success(editId ? 'Template atualizado!' : 'Template criado!');
       queryClient.invalidateQueries({ queryKey: ['templates'] });
       setShowDialog(false);
+      setActivationCandidate(null);
       setForm({ nome: '', categoria: '', assunto: '', conteudo: '', ativo: true });
       setEditId(null);
     },
@@ -188,6 +163,7 @@ export default function TemplatesEmail() {
     onSuccess: () => {
       toast.success('Template atualizado!');
       queryClient.invalidateQueries({ queryKey: ['templates'] });
+      setActivationCandidate(null);
     },
     onError: (error: any) => toast.error(error.message),
   });
@@ -247,20 +223,23 @@ export default function TemplatesEmail() {
   };
 
   const getRenderedPreview = () => {
-    let html = form.assunto;
-    Object.entries(VALORES_EXEMPLO).forEach(([key, value]) => {
-      html = html.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), String(value));
-    });
-    return html;
+    return formPreview.renderedSubject;
   };
 
+  const formPreview = analyzeTemplatePreview({
+      name: form.nome, category: form.categoria, subject: form.assunto, content: form.conteudo,
+  });
+
   const getContentPreview = () => {
-    let html = form.conteudo;
-    Object.entries(VALORES_EXEMPLO).forEach(([key, value]) => {
-      html = html.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), String(value));
-    });
-    return sanitizeTemplateHtml(html);
+    return sanitizeTemplateHtml(formPreview.renderedContent);
   };
+
+  const activationPreview = activationCandidate ? analyzeTemplatePreview({
+    name: activationCandidate.nome,
+    category: activationCandidate.categoria,
+    subject: activationCandidate.assunto || '',
+    content: sanitizeTemplateHtml(activationCandidate.conteudo || ''),
+  }) : null;
 
   if (templatesQuery.isError) {
     return <ErrorState title="Não foi possível carregar os modelos de e-mail" error={templatesQuery.error} onRetry={() => void templatesQuery.refetch()} />;
@@ -294,6 +273,12 @@ export default function TemplatesEmail() {
           </Card>
         ) : templates.map((template: any) => {
           const categoryObj = CATEGORIAS.find((c) => c.value === template.categoria);
+          const templatePreview = analyzeTemplatePreview({
+            name: template.nome,
+            category: template.categoria,
+            subject: template.assunto || '',
+            content: template.conteudo || '',
+          });
           return (
             <Card key={template.id} className={!template.ativo ? 'opacity-60' : ''}>
               <CardHeader className="pb-3">
@@ -303,7 +288,9 @@ export default function TemplatesEmail() {
                     size="sm"
                     variant="ghost"
                     aria-label={template.ativo ? `Desativar modelo ${template.nome}` : `Ativar modelo ${template.nome}`}
-                    onClick={() => toggleMutation.mutate({ id: template.id, ativo: template.ativo })}
+                    onClick={() => template.ativo
+                      ? toggleMutation.mutate({ id: template.id, ativo: true })
+                      : setActivationCandidate(template)}
                     disabled={toggleMutation.isPending}
                     className={template.ativo ? 'text-success' : 'text-muted-foreground'}
                   >
@@ -314,6 +301,9 @@ export default function TemplatesEmail() {
               </CardHeader>
               <CardContent>
                 <p className="text-sm text-muted-foreground line-clamp-2 mb-4">{template.assunto}</p>
+                {template.ativo && templatePreview.missingVariables.length > 0 && <p className="mb-3 text-xs text-destructive" role="alert">
+                  Modelo ativo com variáveis sem suporte para esta categoria: {templatePreview.missingVariables.map(variable => `{{${variable}}}`).join(', ')}.
+                </p>}
                 {podeGerenciar && <div className="flex gap-2">
                   <Button size="sm" variant="outline" aria-label={`Editar modelo ${template.nome}`} onClick={() => openEdit(template)}>
                     <Edit2 className="h-3 w-3" />
@@ -448,6 +438,13 @@ export default function TemplatesEmail() {
               </TabsContent>
 
               <TabsContent value="preview" className="space-y-4">
+                <p className="text-sm text-muted-foreground">Prévia sintética: os dados exibidos são exemplos e não pertencem a pacientes reais.</p>
+                {formPreview.missingVariables.length > 0 && <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm" role="alert">
+                  <p className="font-medium">Variáveis que precisam ser corrigidas antes de ativar:</p>
+                  <ul className="mt-1 list-inside list-disc">
+                    {formPreview.missingVariables.map(variable => <li key={variable}><code>{`{{${variable}}}`}</code></li>)}
+                  </ul>
+                </div>}
                 <div className="border rounded-lg p-4 bg-card">
                   <div className="mb-4 pb-4 border-b">
                     <p className="text-xs text-muted-foreground mb-1">Assunto:</p>
@@ -475,6 +472,44 @@ export default function TemplatesEmail() {
             >
               {editId ? 'Atualizar' : 'Criar'}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!activationCandidate} onOpenChange={(open) => {
+        if (!toggleMutation.isPending && !open) setActivationCandidate(null);
+      }}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Prévia antes de ativar</DialogTitle>
+            <DialogDescription>Confira a mensagem com valores sintéticos. A ativação fica bloqueada se houver variável sem suporte ou sem valor de exemplo.</DialogDescription>
+          </DialogHeader>
+          {activationCandidate && activationPreview && <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">Modelo: <span className="font-medium text-foreground">{activationCandidate.nome}</span></p>
+            {activationPreview.missingVariables.length > 0 && <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm" role="alert">
+              <p className="font-medium">Corrija estas variáveis antes de ativar:</p>
+              <ul className="mt-1 list-inside list-disc">
+                {activationPreview.missingVariables.map(variable => <li key={variable}><code>{`{{${variable}}}`}</code></li>)}
+              </ul>
+            </div>}
+            <div className="rounded-lg border bg-card p-4">
+              <p className="mb-1 text-xs text-muted-foreground">Assunto</p>
+              <p className="mb-4 border-b pb-4 font-semibold">{activationPreview.renderedSubject || '(vazio)'}</p>
+              <p className="mb-2 text-xs text-muted-foreground">Conteúdo</p>
+              <div className="prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: sanitizeTemplateHtml(activationPreview.renderedContent) }} />
+            </div>
+          </div>}
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setActivationCandidate(null)} disabled={toggleMutation.isPending}>Cancelar</Button>
+            {activationCandidate && <Button variant="outline" onClick={() => {
+              const candidate = activationCandidate;
+              setActivationCandidate(null);
+              openEdit(candidate);
+            }}>Editar modelo</Button>}
+            <Button
+              disabled={!activationCandidate || !activationPreview || activationPreview.missingVariables.length > 0 || toggleMutation.isPending}
+              onClick={() => activationCandidate && toggleMutation.mutate({ id: activationCandidate.id, ativo: false })}
+            >Ativar modelo</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
