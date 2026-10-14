@@ -22,6 +22,7 @@ const LandingPage = lazy(() => import("@/pages/LandingPage"));
 const BoasVindasClinica = lazy(() => import("@/pages/BoasVindasClinica"));
 const DemonstracaoClinica = lazy(() => import("@/pages/DemonstracaoClinica"));
 const Dashboard = lazy(() => import("@/pages/Dashboard"));
+const MinhaFilaTarefas = lazy(() => import("@/pages/MinhaFilaTarefas"));
 const Agenda = lazy(() => import("@/pages/Agenda"));
 const Pacientes = lazy(() => import("@/pages/Pacientes"));
 const AtendimentoFila = lazy(() => import("@/pages/AtendimentoFila"));
@@ -288,6 +289,7 @@ function App() {
                           <Route path="/templates" element={<Navigate to="/todos-templates" replace />} />
                           <Route path="/lista-espera" element={<Navigate to="/gestao-fluxo?tab=espera" replace />} />
                           <Route path="/tarefas" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'financeiro', 'medico']}><Tarefas /></SupabaseProtectedRoute>} />
+                          <Route path="/minha-fila" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'financeiro', 'medico']}><MinhaFilaTarefas /></SupabaseProtectedRoute>} />
                           <Route path="/recepcao" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'financeiro']}><RecepcaoCaixa /></SupabaseProtectedRoute>} />
                           <Route path="/caixa" element={<Navigate to="/recepcao?tab=caixa" replace />} />
                           <Route path="/caixa-diario" element={<Navigate to="/recepcao?tab=caixa" replace />} />

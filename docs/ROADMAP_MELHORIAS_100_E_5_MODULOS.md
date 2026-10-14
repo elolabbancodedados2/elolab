@@ -156,6 +156,9 @@ Todos os módulos abaixo exigem rota, navegação por papel, contratos Supabase 
 
 Caixa de entrada pessoal das tarefas atribuídas ao usuário atual, separada do quadro que gerencia todas as tarefas da clínica. Organiza itens vencidos, de hoje e futuros, apresenta contadores reconciliados com a fonte e mantém links de origem. Não cria uma segunda tabela nem mostra tarefas de outro responsável. Critério de conclusão: filtros de responsável e clínica são validados no servidor/RLS, a ordenação é determinística e o estado vazio diferencia fila concluída de nenhuma tarefa atribuída.
 
+**N1 entregue e validado:** rota e menu próprios; leitura filtrada no PostgREST por `clinica_id` e `responsavel_id`, agrupamento determinístico de prazos, estados vazios distintos, link ao paciente por papel e conclusão com checagem de versão. Evidência: Vitest focado 5/5, Playwright sintético 1/1 (inclui tarefas de outra pessoa e outra clínica), TypeScript, build e checks de colunas/falhas/permissões/acessibilidade passaram. Sem migration.
+Auditoria: conclusão registra no `audit_log` somente o ID da tarefa e a transição de status, sem copiar título, descrição ou dados de paciente.
+
 ### N2. Teleconsulta
 
 Jornada remota vinculada ao agendamento: sala de espera, presença, consentimento e encerramento, com registro do link no histórico. Não grava áudio/vídeo nem substitui o prontuário. Critério de conclusão: links de sessão não enumeráveis e expirados, permissão por clínica/papel, entrada/saída auditadas e teste sintético de queda/reconexão.

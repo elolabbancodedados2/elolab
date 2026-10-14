@@ -21,6 +21,7 @@ import {
   BotMessageSquare,
   ActivitySquare,
   ListChecks,
+  Inbox,
   TestTubes,
   BookMarked,
   LucideIcon,
@@ -86,6 +87,7 @@ export const menuGroups: MenuGroup[] = [
     items: [
       { label: 'Dashboard', icon: LayoutDashboard, href: '/dashboard' },
       { label: 'Tarefas', icon: ListChecks, href: '/tarefas', roles: ['admin', 'recepcao', 'enfermagem', 'financeiro', 'medico'] },
+      { label: 'Minha fila', icon: Inbox, href: '/minha-fila', roles: ['admin', 'recepcao', 'enfermagem', 'financeiro', 'medico'] },
     ],
   },
   {
