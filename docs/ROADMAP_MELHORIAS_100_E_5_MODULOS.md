@@ -125,7 +125,8 @@ Itens 1–100 são propostas de execução, não afirmações de que esses defei
 77. [x] Avisar sobre último administrador ativo e impedir a remoção acidental do acesso administrativo da clínica.
 **Entrega E8:** ao editar administrador vinculado ativo, a prévia avisa antes do salvamento quando a mudança remover o papel admin ou inativar a conta; orienta cadastrar outro administrador. A proteção autoritativa e transacional continua no banco. Evidência: regra + componente 7/7 testes, TypeScript, build e check de acessibilidade aprovados.
 78. Fazer auditoria de acessos por intervalo e exportar o resultado com limite de permissão.
-79. Detectar alterações de papel concorrentes e pedir recarga em vez de sobrescrever a versão mais recente.
+79. [x] Detectar alterações de papel concorrentes e pedir recarga em vez de sobrescrever a versão mais recente.
+**Entrega E9:** versão monotônica `edit_version` com compare-and-set tanto na gravação dos dados quanto na RPC de papéis sob `FOR UPDATE`; em conflito, nenhuma ficha antiga sobrescreve a versão mais nova e a UI orienta recarregar/reabrir. RPC legada segue para compatibilidade. Evidência: suíte completa 247 arquivos/1.286 testes; E2E de equipe 4/4; TypeScript, build, checks de colunas/falhas/permissões/acessibilidade passaram; ESLint sem erros (19 avisos `any` legados em Funcionarios.tsx). Migration criada localmente e não aplicada.
 80. Adicionar teste automatizado de negação por perfil e isolamento de clínica para cada nova rota e operação.
 
 ### Comunicação, notificações e automações

@@ -24,4 +24,4 @@
 ### Task 2: Registrar entrega
 
 - [x] Marcar roadmap #79 após validação.
-- [ ] Commit `docs: record team edit concurrency validation`.
+- [x] Commit `docs: record team edit concurrency validation`.
