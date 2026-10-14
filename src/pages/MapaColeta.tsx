@@ -22,6 +22,7 @@ import { mensagemDeErro } from '@/lib/erros';
 import { differenceInMinutes } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { sampleLabelHtml } from '@/lib/sampleLabel';
+import { buildSampleReasonPayload, SAMPLE_REJECTION_REASONS } from '@/lib/sampleRejection';
 import { canalUnico } from '@/lib/realtimeCanal';
 import { ErrorState } from '@/components/ErrorState';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
@@ -106,6 +107,7 @@ export default function MapaColeta() {
   const [detailId, setDetailId] = useState<string | null>(null);
   const [eventoTipo, setEventoTipo] = useState('transporte');
   const [eventoLocal, setEventoLocal] = useState('');
+  const [eventoMotivoCodigo, setEventoMotivoCodigo] = useState('');
   const [eventoMotivo, setEventoMotivo] = useState('');
   const [savingEvento, setSavingEvento] = useState(false);
   const [processingIds, setProcessingIds] = useState<Set<string>>(new Set());
@@ -279,6 +281,7 @@ export default function MapaColeta() {
   const handleRecoleta = (id: string) => {
     setEventoTipo('recoleta');
     setEventoLocal('');
+    setEventoMotivoCodigo('');
     setEventoMotivo('');
     setDetailId(id);
   };
@@ -297,22 +300,29 @@ export default function MapaColeta() {
       toast.error('Informe o local da amostra.');
       return;
     }
-    if (['rejeicao', 'recoleta'].includes(eventoTipo) && eventoMotivo.trim().length < 5) {
-      toast.error('Informe um motivo com pelo menos 5 caracteres.');
+    const exigeMotivoEstruturado = ['rejeicao', 'recoleta'].includes(eventoTipo);
+    const motivoEstruturado = exigeMotivoEstruturado
+      ? buildSampleReasonPayload(eventoMotivoCodigo, eventoMotivo)
+      : null;
+    if (exigeMotivoEstruturado && !motivoEstruturado) {
+      toast.error(eventoMotivoCodigo === 'outro'
+        ? 'Explique o motivo selecionado em pelo menos 5 caracteres.'
+        : 'Selecione um motivo para continuar.');
       return;
     }
     setSavingEvento(true);
     try {
+      const detalhesEvento = motivoEstruturado ?? (eventoMotivo.trim() ? { motivo: eventoMotivo.trim() } : {});
       const { data, error } = await (supabase as any).rpc('laboratorio_registrar_evento_amostra', {
         p_coleta_id: amostra.id,
         p_tipo: eventoTipo,
         p_local: eventoLocal.trim() || null,
-        p_detalhes: eventoMotivo.trim() ? { motivo: eventoMotivo.trim() } : {},
+        p_detalhes: detalhesEvento,
       });
       if (error) throw error;
       const resultId = typeof data === 'string' ? data : amostra.id;
       toast.success(eventoTipo === 'recoleta' ? 'Nova amostra criada e vinculada à anterior' : 'Movimentação registrada no histórico');
-      setEventoLocal(''); setEventoMotivo(''); setEventoTipo('transporte');
+      setEventoLocal(''); setEventoMotivoCodigo(''); setEventoMotivo(''); setEventoTipo('transporte');
       await Promise.all([fetchColetas(), eventosAmostraQuery.refetch()]);
       if (eventoTipo === 'recoleta') setDetailId(resultId);
     } catch (error) {
@@ -788,13 +798,38 @@ export default function MapaColeta() {
               <section className="space-y-3 rounded-xl border bg-muted/10 p-3">
                 <p className="text-sm font-semibold">Registrar movimentação</p>
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="space-y-1"><Label htmlFor="lab-amostra-evento">Evento</Label><Select value={eventoTipo} onValueChange={setEventoTipo}><SelectTrigger id="lab-amostra-evento"><SelectValue /></SelectTrigger><SelectContent>
+                  <div className="space-y-1"><Label htmlFor="lab-amostra-evento">Evento</Label><Select value={eventoTipo} onValueChange={value => { setEventoTipo(value); setEventoMotivoCodigo(''); setEventoMotivo(''); setEventoLocal(''); }}><SelectTrigger id="lab-amostra-evento"><SelectValue /></SelectTrigger><SelectContent>
                     <SelectItem value="recebida">Recebimento no laboratório</SelectItem><SelectItem value="transporte">Transporte</SelectItem><SelectItem value="armazenamento">Armazenamento</SelectItem><SelectItem value="observacao">Observação</SelectItem>
                     {(detailItem.status === 'coletado' || detailItem.status === 'em_analise') && <SelectItem value="rejeicao">Rejeitar amostra</SelectItem>}
                     {['coletado', 'em_analise', 'rejeitada'].includes(detailItem.status) && <SelectItem value="recoleta">Solicitar recoleta</SelectItem>}
                   </SelectContent></Select></div>
+                  {['rejeicao', 'recoleta'].includes(eventoTipo) && (
+                    <>
+                      <div className="space-y-1">
+                        <Label htmlFor="lab-amostra-motivo-categoria">Motivo</Label>
+                        <Select value={eventoMotivoCodigo} onValueChange={value => { setEventoMotivoCodigo(value); setEventoMotivo(''); }}>
+                          <SelectTrigger id="lab-amostra-motivo-categoria"><SelectValue placeholder="Selecione o motivo" /></SelectTrigger>
+                          <SelectContent>
+                            {SAMPLE_REJECTION_REASONS.map(reason => <SelectItem key={reason.code} value={reason.code}>{reason.label}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1">
+                        <Label htmlFor="lab-amostra-motivo-detalhe">
+                          {eventoMotivoCodigo === 'outro' ? 'Explique o motivo' : 'Detalhe adicional (opcional)'}
+                        </Label>
+                        <Input
+                          id="lab-amostra-motivo-detalhe"
+                          value={eventoMotivo}
+                          onChange={event => setEventoMotivo(event.target.value)}
+                          maxLength={300}
+                          placeholder={eventoMotivoCodigo === 'outro' ? 'Mínimo de 5 caracteres' : 'Até 300 caracteres'}
+                        />
+                      </div>
+                    </>
+                  )}
                   {['transporte', 'armazenamento'].includes(eventoTipo) && <div className="space-y-1"><Label htmlFor="lab-amostra-local">Local</Label><Input id="lab-amostra-local" value={eventoLocal} onChange={(event) => setEventoLocal(event.target.value)} maxLength={120} placeholder="Ex.: setor de bioquímica" /></div>}
-                  {['rejeicao', 'recoleta', 'observacao'].includes(eventoTipo) && <div className="space-y-1 sm:col-span-2"><Label htmlFor="lab-amostra-motivo">{eventoTipo === 'observacao' ? 'Observação' : 'Motivo'}</Label><Input id="lab-amostra-motivo" value={eventoMotivo} onChange={(event) => setEventoMotivo(event.target.value)} maxLength={500} placeholder="Descreva a ocorrência" /></div>}
+                  {eventoTipo === 'observacao' && <div className="space-y-1 sm:col-span-2"><Label htmlFor="lab-amostra-motivo">Observação</Label><Input id="lab-amostra-motivo" value={eventoMotivo} onChange={(event) => setEventoMotivo(event.target.value)} maxLength={500} placeholder="Descreva a ocorrência" /></div>}
                 </div>
                 <div className="flex justify-end"><Button size="sm" onClick={() => void registrarEventoAmostra()} disabled={savingEvento} className="gap-2">{savingEvento && <Loader2 className="h-4 w-4 animate-spin" />} Registrar evento</Button></div>
               </section>

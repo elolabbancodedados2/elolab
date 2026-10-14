@@ -17,11 +17,17 @@ vi.mock('@/hooks/useSubscriptionPlan', () => ({
 
 beforeEach(() => {
   localStorage.clear();
+  vi.stubGlobal('ResizeObserver', class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  });
   vi.spyOn(window, 'scrollTo').mockImplementation(() => undefined);
 });
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
   localStorage.clear();
 });
 
@@ -86,5 +92,51 @@ describe('Sidebar alterna áreas para a dona da plataforma', () => {
     expect(within(selector).getByRole('link', { name: 'Painel Admin' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Clientes' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Pacientes' })).not.toBeInTheDocument();
+  });
+});
+
+describe('busca e preferências do menu lateral', () => {
+  it('encontra os itens pelo nome do grupo e ignora acentos na busca', async () => {
+    const user = userEvent.setup();
+    renderSidebar('/dashboard', false);
+    const search = screen.getByRole('textbox', { name: 'Buscar no menu' });
+
+    await user.type(search, 'atendimento');
+    expect(screen.getByRole('link', { name: 'Agenda' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Recepção e caixa' })).toBeInTheDocument();
+
+    await user.clear(search);
+    await user.type(search, 'clinica');
+    expect(screen.getByRole('link', { name: 'Prontuários' })).toBeInTheDocument();
+  });
+
+  it('explica quando a busca não encontra telas e permite limpar o filtro', async () => {
+    const user = userEvent.setup();
+    renderSidebar('/dashboard', false);
+    await user.type(screen.getByRole('textbox', { name: 'Buscar no menu' }), 'sem resultado');
+
+    expect(screen.getByText('Nenhuma tela encontrada')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Limpar busca do menu' }));
+    expect(screen.getByRole('link', { name: 'Dashboard' })).toBeInTheDocument();
+  });
+
+  it('continua navegável quando o navegador bloqueia o armazenamento local', () => {
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new DOMException('bloqueado'); });
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new DOMException('bloqueado'); });
+
+    renderSidebar('/dashboard', false);
+
+    expect(screen.getByRole('link', { name: 'Dashboard' })).toBeInTheDocument();
+  });
+
+  it('abre o menu ao selecionar uma categoria no modo recolhido', async () => {
+    const user = userEvent.setup();
+    renderSidebar('/dashboard', false);
+    await user.click(screen.getByRole('button', { name: 'Recolher menu lateral' }));
+
+    await user.click(screen.getByRole('button', { name: 'Expandir menu: Clínica' }));
+
+    expect(screen.getByRole('textbox', { name: 'Buscar no menu' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Prontuários' })).toBeInTheDocument();
   });
 });

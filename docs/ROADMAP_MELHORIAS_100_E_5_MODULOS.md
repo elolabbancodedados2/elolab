@@ -103,14 +103,17 @@ Itens 1–100 são propostas de execução, não afirmações de que esses defei
 
 **E54 entregue e validado localmente:** visualização e impressão de atestados, visualização/baixar anexos e exportar PDFs de prescrição gravam `access` em `audit_log` via RPC; a trilha exibe a coleção “Documentos clínicos” e a ação correspondente. A assinatura eletrônica de prontuários e exportação do prontuário já tinham eventos próprios e seguem cobertas. O RPC confirma papel e clínica, usa tipo e ID do documento, e grava somente evento/tipo, sem nome ou conteúdo clínico. Evidências: Vitest integral 300 arquivos/1.454 testes, recorte focado 16/16, PGlite aplicou a migration e validou os quatro tipos, autor, rejeição de clínica/ação/papel e conteúdo mínimo, TypeScript, build e checks de colunas, falhas silenciosas, permissões e acessibilidade aprovados. Migration `20261014230000_auditoria_acoes_documentos_clinicos.sql` criada e não aplicada remotamente.
 
-
 **E55 entregue e validado localmente:** etiquetas da coleta mostram o ID da amostra em texto legível e código de barras Code 39, além do tipo de tubo, sem nome, idade, sexo, exame ou data. O ID é normalizado para maiúsculas e caracteres fora do alfabeto Code 39 são recusados para codificação; texto do tubo é escapado antes da impressão. Evidências: teste focal 4/4, Vitest integral 301 arquivos/1.458 testes, TypeScript, ESLint (0 erros; avisos `any` preexistentes em `MapaColeta.tsx`), acessibilidade e `git diff --check` aprovados. Sem migration ou acesso a dados clínicos reais.
+
+**E56 entregue e validado localmente:** o menu busca por nome do grupo e dos destinos sem diferenciar acentos, mostra uma orientação com ação para limpar quando nada corresponde, e deixa clicar nos ícones de categoria recolhida para reabrir o menu. As preferências de recolhimento/grupos deixam de derrubar a navegação quando o navegador bloqueia `localStorage`; foco de teclado fica visível. Auditoria de rota: 75 destinos do menu correspondem às rotas da aplicação. Evidências: Sidebar + SidebarNavItem 12/12, Vitest integral 302 arquivos/1.466 testes, TypeScript, ESLint sem erros e check de acessibilidade aprovado. Mantida a paleta cinza clara, grupo ativo escuro e destino atual em pílula branca, conforme a referência visual.
+
+**E57 entregue e validado localmente:** rejeição e recoleta exigem uma causa categorizada validada novamente na RPC; “Outro” requer explicação de 5 a 300 caracteres e demais detalhes têm limite de 300. A descrição legível e o código da causa são salvos no histórico com responsável e horário; uma nova amostra mantém o vínculo com a anterior. O trigger de status não gera um segundo evento para a mesma rejeição. Evidências: teste de payload 4/4, Vitest integral 302 arquivos/1.466 testes, migration executada em PostgreSQL efêmero PGlite com trigger de auditoria, validação de categoria/limites, isolamento entre clínicas, autoria/data, rejeição sem duplicidade e vínculo de recoleta; TypeScript e checks finais aprovados. Migration `20261014233000_motivos_estruturados_amostras.sql` local, não aplicada remotamente.
 
 ### Exames e laboratório
 
 41. [x] Etiquetar amostras com identificador legível e código de barras sem incluir dados pessoais na etiqueta (E55).
-42. Registrar coleta, recebimento, transferência e rejeição da amostra com responsável e horário.
-43. Exigir motivo estruturado ao rejeitar amostra e oferecer nova coleta vinculada ao pedido original.
+42. [x] Registrar coleta, recebimento, transferência e rejeição da amostra com responsável e horário (auditoria: trilha por trigger/RPC já existia; E57 elimina evento duplicado na rejeição; sem contagem separada).
+43. [x] Exigir motivo estruturado ao rejeitar amostra e oferecer nova coleta vinculada ao pedido original (E57).
 44. Destacar resultados críticos até que um profissional autorizado confirme ciência e conduta.
 45. Preservar resultado anterior e trilha completa quando um exame for retificado.
 46. Separar intervalo de referência de resultado observado e mostrar método/laboratório usado no laudo.
@@ -163,7 +166,7 @@ Itens 1–100 são propostas de execução, não afirmações de que esses defei
 78. Fazer auditoria de acessos por intervalo e exportar o resultado com limite de permissão.
 79. [x] Detectar alterações de papel concorrentes e pedir recarga em vez de sobrescrever a versão mais recente.
 **Entrega E9:** versão monotônica `edit_version` com compare-and-set tanto na gravação dos dados quanto na RPC de papéis sob `FOR UPDATE`; em conflito, nenhuma ficha antiga sobrescreve a versão mais nova e a UI orienta recarregar/reabrir. RPC legada segue para compatibilidade. Evidência: suíte completa 247 arquivos/1.286 testes; E2E de equipe 4/4; TypeScript, build, checks de colunas/falhas/permissões/acessibilidade passaram; ESLint sem erros (19 avisos `any` legados em Funcionarios.tsx). Migration criada localmente e não aplicada.
-80. Adicionar teste automatizado de negação por perfil e isolamento de clínica para cada nova rota e operação.
+80. [x] Tornar a busca do menu lateral tolerante a acentos e nomes de grupos, orientar quando não houver resultado e permitir abrir categorias no modo recolhido (E56).
 
 ### Comunicação, notificações e automações
 
@@ -253,4 +256,4 @@ Cadastro patrimonial de equipamento por unidade, responsável, validade de calib
 - [ ] Fazer triagem dos itens 1–100 no checkout local e retirar duplicatas antes de iniciar cada pacote.
 - [ ] Implementar, validar e registrar cada pacote antes de seguir ao próximo; atualizar este arquivo sem contar testes ou documentos como melhoria funcional.
 - [x] Completar e testar N1–N5 como módulos com persistência, autorização e fluxo utilizável em ambiente sintético/descartável; nenhum módulo depende só de navegação.
-- [ ] Entregar melhorias funcionais distintas nos módulos existentes: **54/100** concluídas; E14 e os itens cobertos por comportamento existente não entram na contagem. N1–N5 são a meta separada de módulos novos.
+- [ ] Entregar melhorias funcionais distintas nos módulos existentes: **56/100** concluídas; E14 e os itens cobertos por comportamento existente não entram na contagem. N1–N5 são a meta separada de módulos novos.
