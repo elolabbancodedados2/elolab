@@ -1,7 +1,8 @@
 import { getRoleAccessPreview } from '@/lib/roleAccessPreview';
 import type { AppRole } from '@/contexts/SupabaseAuthContext';
+import { AlertTriangle } from 'lucide-react';
 
-export function RoleAccessPreview({ roles }: { roles: AppRole[] }) {
+export function RoleAccessPreview({ roles, warnAboutLastAdmin = false }: { roles: AppRole[]; warnAboutLastAdmin?: boolean }) {
   const areas = getRoleAccessPreview(roles);
   const screenCount = areas.reduce((total, area) => total + area.items.length, 0);
 
@@ -29,6 +30,12 @@ export function RoleAccessPreview({ roles }: { roles: AppRole[] }) {
             </div>
           </details>
         </>
+      )}
+      {warnAboutLastAdmin && (
+        <p role="status" className="mt-3 flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/10 p-3 text-xs text-warning-foreground">
+          <AlertTriangle aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>Esta mudança remove ou desativa um administrador ativo. Cadastre outro administrador primeiro; o servidor bloqueará a mudança se esta for a última conta administrativa ativa.</span>
+        </p>
       )}
     </section>
   );

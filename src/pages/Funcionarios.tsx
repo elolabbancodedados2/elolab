@@ -28,6 +28,7 @@ import { normalizarTexto } from '@/lib/buscaPaciente';
 import { validateCPF } from '@/lib/formatters';
 import { ActionableEmptyState } from '@/components/ActionableEmptyState';
 import { RoleAccessPreview } from '@/components/RoleAccessPreview';
+import { shouldWarnAboutLastAdmin } from '@/lib/lastAdminWarning';
 
 interface FuncionarioWithRoles {
   id: string;
@@ -878,7 +879,16 @@ export default function Funcionarios() {
                   </div>
                 ))}
               </div>
-              <RoleAccessPreview roles={formData.selectedRoles} />
+              <RoleAccessPreview
+                roles={formData.selectedRoles}
+                warnAboutLastAdmin={Boolean(editingFunc && shouldWarnAboutLastAdmin({
+                  userLinked: Boolean(editingFunc.user_id),
+                  currentActive: editingFunc.ativo,
+                  currentRoles: editingFunc.roles,
+                  nextActive: formData.ativo,
+                  nextRoles: formData.selectedRoles,
+                }))}
+              />
             </div>
           </div>
           </fieldset>

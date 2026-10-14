@@ -23,4 +23,11 @@ describe('RoleAccessPreview', () => {
     expect(screen.queryByText('Agenda')).not.toBeInTheDocument();
     expect(screen.getByText(/acesso aos dados continua sujeito às permissões da clínica/i)).toBeInTheDocument();
   });
+
+  it('shows a preventive warning before removing an active administrator', () => {
+    render(<RoleAccessPreview roles={['recepcao']} warnAboutLastAdmin />);
+
+    expect(screen.getByRole('status')).toHaveTextContent(/Cadastre outro administrador primeiro/i);
+    expect(screen.getByRole('status')).toHaveTextContent(/servidor bloqueará a mudança/i);
+  });
 });
