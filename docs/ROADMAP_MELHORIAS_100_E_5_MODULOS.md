@@ -74,6 +74,8 @@ Itens 1–100 são propostas de execução, não afirmações de que esses defei
 29. [x] Permitir inativar e reativar um cadastro sem apagar dados clínicos nem quebrar referências históricas (E46; motivo categorizado, trilha de eventos, bloqueio de agenda/fila e revogação do portal).
 30. Mostrar no portal documentos disponíveis, validade e origem, com links de curta duração para arquivos privados.
 
+**E47 entregue e validado localmente:** publicação/revogação auditada por RPC, catálogo separado do anexo clínico, portal com origem/validade e links privados de 300 segundos; tokens de pacientes inativos são recusados. Evidências: Vitest 293 arquivos/1.433 testes, Deno 10/10, PGlite migration/RLS/isolamento, TypeScript, build e checks de acessibilidade/permissões/colunas/falhas aprovados. Migration e função ainda locais, sem alteração remota. Plano: docs/superpowers/plans/2026-10-14-documentos-portal-paciente.md.
+
 ### Prontuário e documentos clínicos
 
 31. Recuperar rascunhos clínicos após recarga ou perda de conexão, identificando autor e data do último salvamento.
@@ -234,4 +236,4 @@ Cadastro patrimonial de equipamento por unidade, responsável, validade de calib
 - [ ] Fazer triagem dos itens 1–100 no checkout local e retirar duplicatas antes de iniciar cada pacote.
 - [ ] Implementar, validar e registrar cada pacote antes de seguir ao próximo; atualizar este arquivo sem contar testes ou documentos como melhoria funcional.
 - [x] Completar e testar N1–N5 como módulos com persistência, autorização e fluxo utilizável em ambiente sintético/descartável; nenhum módulo depende só de navegação.
-- [ ] Entregar melhorias funcionais distintas nos módulos existentes: **45/100** concluídas; E14 e os itens cobertos por comportamento existente não entram na contagem. N1–N5 são a meta separada de módulos novos.
+- [ ] Entregar melhorias funcionais distintas nos módulos existentes: **46/100** concluídas; E14 e os itens cobertos por comportamento existente não entram na contagem. N1–N5 são a meta separada de módulos novos.

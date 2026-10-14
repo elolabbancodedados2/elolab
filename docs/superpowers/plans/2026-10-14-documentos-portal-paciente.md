@@ -58,9 +58,9 @@
 
 ### 5. Fechamento E47
 
-- [ ] Rodar `npx vitest run`, `deno test` dos arquivos do portal, checks de permissões/colunas/falhas/acessibilidade, `git diff --check` e build.
-- [ ] Revisar fluxo de autorização, RLS, links e ausência de path/URL permanente em payload.
-- [ ] Atualizar item 30 e contagem para 46/100 com evidências; commitar e confirmar build ID igual ao commit e worktree limpo.
+- [x] Rodar `npx vitest run`, `deno test` dos arquivos do portal, checks de permissões/colunas/falhas/acessibilidade, `git diff --check` e build.
+- [x] Revisar fluxo de autorização, RLS, links e ausência de path/URL permanente em payload.
+- [x] Atualizar item 30 e contagem para 46/100 com evidências; commitar e confirmar build ID igual ao commit e worktree limpo.
 
 ## Foco de revisão
 
