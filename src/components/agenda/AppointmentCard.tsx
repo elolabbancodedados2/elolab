@@ -17,6 +17,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import { FinalizarAtendimentoDialog } from '@/components/fila/FinalizarAtendimentoDialog';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { podeRemarcarAgendamento } from '@/lib/appointmentStatus';
+import { APPOINTMENT_CANCELLATION_REASONS, isAppointmentCancellationReason } from '@/lib/appointmentCancellation';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 interface Props {
   agendamento: any;
@@ -134,6 +136,7 @@ export function AppointmentCard({ agendamento, color, minutesToPx, onClick, conv
   const [finalizandoCard, setFinalizandoCard] = useState(false);
   /** Confirmação antes de cancelar/remover a consulta. */
   const [cancelandoCard, setCancelandoCard] = useState(false);
+  const [motivoCancelamento, setMotivoCancelamento] = useState('');
 
   const invalidarAgendaEFila = () => {
     void queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
@@ -317,6 +320,10 @@ export function AppointmentCard({ agendamento, color, minutesToPx, onClick, conv
   };
   const remove = async () => {
     if (ocupado) return;
+    if (!isAppointmentCancellationReason(motivoCancelamento)) {
+      toast.error('Selecione o motivo do cancelamento');
+      return;
+    }
     if (!profile?.clinica_id) {
       toast.error('Não foi possível identificar a clínica. Atualize a sessão e tente novamente.');
       return;
@@ -325,9 +332,18 @@ export function AppointmentCard({ agendamento, color, minutesToPx, onClick, conv
     // Cancela e remove a fila junto — a confirmação é o ConfirmDialog abaixo
     // (antes era window.confirm nativo, fora do padrão do app).
     try {
-      await alterarStatusComFila('cancelado');
+      const { data, error } = await (supabase as any).rpc('cancelar_agendamento_com_motivo', {
+        p_agendamento_id: agendamento.id,
+        p_clinica_id: profile.clinica_id,
+        p_updated_at: agendamento.updated_at ?? null,
+        p_motivo_cancelamento: motivoCancelamento,
+      });
+      if (error) throw error;
+      const resultado = Array.isArray(data) ? data[0] : data;
+      if (!resultado?.atualizado) throw new Error('A consulta mudou ou foi finalizada desde que a agenda foi carregada. Confira o status antes de tentar novamente.');
       invalidarAgendaEFila();
       setCancelandoCard(false);
+      setMotivoCancelamento('');
       toast.success('Consulta cancelada');
     } catch (error) {
       toast.error('Erro ao cancelar a consulta', { description: mensagemDeErro(error) });
@@ -468,7 +484,7 @@ export function AppointmentCard({ agendamento, color, minutesToPx, onClick, conv
       />
       <ConfirmDialog
         open={cancelandoCard}
-        onOpenChange={(o) => { if (!o) setCancelandoCard(false); }}
+        onOpenChange={(o) => { if (!o) { setCancelandoCard(false); setMotivoCancelamento(''); } }}
         title="Cancelar esta consulta?"
         description="O histórico do paciente é preservado; o horário volta a ficar disponível e o paciente sai da fila de atendimento."
         confirmLabel="Cancelar consulta"
@@ -476,7 +492,21 @@ export function AppointmentCard({ agendamento, color, minutesToPx, onClick, conv
         onConfirm={remove}
         isLoading={ocupado}
         closeOnConfirm={false}
-      />
+      >
+        <div className="ml-13 mt-3 space-y-2">
+          <label htmlFor={`motivo-cancelamento-${agendamento.id}`} className="text-sm font-medium">Motivo do cancelamento</label>
+          <Select value={motivoCancelamento} onValueChange={setMotivoCancelamento}>
+            <SelectTrigger id={`motivo-cancelamento-${agendamento.id}`} aria-label="Motivo do cancelamento" disabled={ocupado}>
+              <SelectValue placeholder="Selecione um motivo" />
+            </SelectTrigger>
+            <SelectContent>
+              {APPOINTMENT_CANCELLATION_REASONS.map((reason) => (
+                <SelectItem key={reason.value} value={reason.value}>{reason.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </ConfirmDialog>
     </ContextMenu>
   );
 }

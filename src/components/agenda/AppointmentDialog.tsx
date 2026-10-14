@@ -21,6 +21,7 @@ import { todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { appointmentEndMinutes } from '@/lib/agendaTime';
 import { appointmentPayloadForSave } from '@/lib/agendaAppointmentPayload';
 import { describeAppointmentConflict } from '@/lib/agendaConflictMessage';
+import { APPOINTMENT_CANCELLATION_REASONS, appointmentCancellationReasonLabel, isAppointmentCancellationReason } from '@/lib/appointmentCancellation';
 
 interface Props {
   open: boolean;
@@ -40,6 +41,7 @@ export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos,
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
+  const [motivoCancelamento, setMotivoCancelamento] = useState('');
   const [form, setForm] = useState<any>({});
   const [foraExpediente, setForaExpediente] = useState<string | null>(null);
 
@@ -58,6 +60,7 @@ export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos,
         send_whatsapp: false,
       });
       setTab('paciente');
+      setMotivoCancelamento('');
     }
   }, [open, initial]);
 
@@ -385,13 +388,17 @@ export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos,
 
   const handleDelete = async () => {
     if (!podeCancelarConsulta || !profile?.clinica_id) return;
+    if (!isAppointmentCancellationReason(motivoCancelamento)) {
+      toast.error('Selecione o motivo do cancelamento');
+      return;
+    }
     setDeleting(true);
     try {
-      const { data, error } = await (supabase as any).rpc('alterar_status_agendamento_com_fila', {
+      const { data, error } = await (supabase as any).rpc('cancelar_agendamento_com_motivo', {
         p_agendamento_id: initial.id,
         p_clinica_id: profile.clinica_id,
-        p_status: 'cancelado',
         p_updated_at: initial.updated_at ?? null,
+        p_motivo_cancelamento: motivoCancelamento,
       });
       if (error) throw error;
       if (!data?.atualizado) throw new Error('Esta consulta foi atualizada por outra pessoa. Atualize a agenda e confira o estado antes de tentar novamente.');
@@ -414,6 +421,11 @@ export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos,
           <DialogDescription>
             {form.data} · {form.hora_inicio || '—'}
           </DialogDescription>
+          {editing && form.status === 'cancelado' && (
+            <p className="text-sm text-muted-foreground">
+              Motivo do cancelamento: <span className="font-medium text-foreground">{appointmentCancellationReasonLabel(initial?.motivo_cancelamento) ?? 'Não informado'}</span>
+            </p>
+          )}
         </DialogHeader>
 
         <fieldset disabled={saving || deleting || consultaSomenteLeitura} className="min-w-0">
@@ -583,6 +595,19 @@ export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos,
             <AlertDialogTitle>Cancelar consulta?</AlertDialogTitle>
             <AlertDialogDescription>A consulta deixará de ocupar o horário. O registro será mantido no histórico.</AlertDialogDescription>
           </AlertDialogHeader>
+          <div className="space-y-2">
+            <label htmlFor="appointment-cancellation-reason" className="text-sm font-medium">Motivo do cancelamento</label>
+            <Select value={motivoCancelamento} onValueChange={setMotivoCancelamento}>
+              <SelectTrigger id="appointment-cancellation-reason" aria-label="Motivo do cancelamento" disabled={deleting}>
+                <SelectValue placeholder="Selecione um motivo" />
+              </SelectTrigger>
+              <SelectContent>
+                {APPOINTMENT_CANCELLATION_REASONS.map((reason) => (
+                  <SelectItem key={reason.value} value={reason.value}>{reason.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={deleting}>Manter consulta</AlertDialogCancel>
             <AlertDialogAction onClick={(event) => { event.preventDefault(); void handleDelete(); }} disabled={deleting} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">

@@ -128,6 +128,7 @@ export type Database = {
           liberado_sem_triagem_por: string | null
           medico_id: string | null
           motivo_liberacao: string | null
+          motivo_cancelamento: string | null
           observacoes: string | null
           paciente_id: string
           sala_id: string | null
@@ -154,6 +155,7 @@ export type Database = {
           liberado_sem_triagem_por?: string | null
           medico_id?: string | null
           motivo_liberacao?: string | null
+          motivo_cancelamento?: string | null
           observacoes?: string | null
           paciente_id: string
           sala_id?: string | null
@@ -180,6 +182,7 @@ export type Database = {
           liberado_sem_triagem_por?: string | null
           medico_id?: string | null
           motivo_liberacao?: string | null
+          motivo_cancelamento?: string | null
           observacoes?: string | null
           paciente_id?: string
           sala_id?: string | null
@@ -6020,6 +6023,15 @@ export type Database = {
           p_clinica_id: string
           p_status: string
           p_updated_at: string | null
+        }
+        Returns: { atualizado: boolean; fila_removida: number }
+      }
+      cancelar_agendamento_com_motivo: {
+        Args: {
+          p_agendamento_id: string
+          p_clinica_id: string
+          p_updated_at: string | null
+          p_motivo_cancelamento: string
         }
         Returns: { atualizado: boolean; fila_removida: number }
       }
