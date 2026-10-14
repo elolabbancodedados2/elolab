@@ -78,7 +78,9 @@ Itens 1–100 são propostas de execução, não afirmações de que esses defei
 
 ### Prontuário e documentos clínicos
 
-31. Recuperar rascunhos clínicos após recarga ou perda de conexão, identificando autor e data do último salvamento.
+31. [x] Recuperar rascunhos clínicos após recarga ou perda de conexão, identificando autor e data do último salvamento (E48: autor nominal e timestamp completo; autosave e retomada já existiam no checkout).
+
+**E48 entregue e validado localmente:** fila de retomada mantém o escopo do médico autenticado, identifica o autor pelo cadastro, usa o nome do perfil como fallback e exibe dd/MM/yyyy HH:mm do último updated_at. IDs internos nunca viram rótulos. Evidências: Vitest 293 arquivos/1.435 testes, TypeScript e checks de acessibilidade/permissões/colunas/falhas silenciosas. Sem mudanças de persistência local ou dados clínicos no browser.
 32. Manter adendos imutáveis que referenciem a evolução original sem sobrescrever o texto assinado.
 33. Mostrar a versão do modelo clínico usada em cada documento assinado.
 34. Alertar sobre alergia registrada antes de prescrição, com confirmação explícita e registro da justificativa quando aplicável.
@@ -236,4 +238,4 @@ Cadastro patrimonial de equipamento por unidade, responsável, validade de calib
 - [ ] Fazer triagem dos itens 1–100 no checkout local e retirar duplicatas antes de iniciar cada pacote.
 - [ ] Implementar, validar e registrar cada pacote antes de seguir ao próximo; atualizar este arquivo sem contar testes ou documentos como melhoria funcional.
 - [x] Completar e testar N1–N5 como módulos com persistência, autorização e fluxo utilizável em ambiente sintético/descartável; nenhum módulo depende só de navegação.
-- [ ] Entregar melhorias funcionais distintas nos módulos existentes: **46/100** concluídas; E14 e os itens cobertos por comportamento existente não entram na contagem. N1–N5 são a meta separada de módulos novos.
+- [ ] Entregar melhorias funcionais distintas nos módulos existentes: **47/100** concluídas; E14 e os itens cobertos por comportamento existente não entram na contagem. N1–N5 são a meta separada de módulos novos.

@@ -59,7 +59,7 @@ import { buscarPorIdsEmLotes, buscarTodasAsPaginas, combinarEventosAuditoria, Ev
 import { UnsavedChangesDialog } from '@/components/ConfirmDialog';
 import { ExportacaoClinicaProtegida } from '@/components/clinical/ExportacaoClinicaProtegida';
 import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
-import { filtrarRascunhosAbertos } from '@/lib/prontuarioDrafts';
+import { filtrarRascunhosAbertos, nomeAutorRascunho } from '@/lib/prontuarioDrafts';
 
 // ─── Types ─────────────────────────────────────────────────
 interface PrescricaoForm {
@@ -1771,7 +1771,9 @@ export default function Prontuarios() {
                                 </span>
                                 <span className="mt-0.5 block truncate text-xs text-muted-foreground">
                                   {draft.queixa_principal?.trim() || 'Evolução sem queixa principal'}
-                                  {draft.updated_at ? ` · salva ${format(new Date(draft.updated_at), 'dd/MM HH:mm', { locale: ptBR })}` : ''}
+                                </span>
+                                <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">
+                                  Autor: {nomeAutorRascunho(draft.medico_id, medicos, user?.nome)} · Último salvamento: {draft.updated_at ? format(new Date(draft.updated_at), 'dd/MM/yyyy HH:mm', { locale: ptBR }) : 'data indisponível'}
                                 </span>
                               </span>
                               <ArrowRight className="ml-2 h-3.5 w-3.5 shrink-0 text-[#7B6CF6]" aria-hidden="true" />
