@@ -55,4 +55,16 @@ describe('PatientListTable portal access actions', () => {
 
     expect(onRevokePortalLinks).toHaveBeenCalledWith('patient-1', 'Ana Silva');
   });
+
+  it('shows missing phone and email in the contact list on mobile and desktop layouts', () => {
+    render(
+      <PatientListTable
+        {...baseProps}
+        pacientes={[{ id: 'patient-2', nome: 'João Lima', telefone: null, email: '', data_nascimento: null, convenio_id: null }]}
+        totalPacientes={1}
+      />,
+    );
+
+    expect(screen.getAllByText('Sem telefone e e-mail')).toHaveLength(2);
+  });
 });

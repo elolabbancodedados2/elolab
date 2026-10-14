@@ -1,11 +1,12 @@
 import { memo } from 'react';
 import { motion } from 'framer-motion';
-import { Eye, Edit, Trash2, Link, Unlink, Phone, Mail, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Eye, Edit, Trash2, Link, Unlink, Phone, Mail, AlertTriangle, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ActionableEmptyState } from '@/components/ActionableEmptyState';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { PatientPhoto, AllergyAlert } from '@/components/clinical';
+import { describeMissingPatientContacts } from '@/lib/patientContactCompleteness';
 
 interface PatientListTableProps {
   pacientes: any[];
@@ -76,6 +77,7 @@ export const PatientListTable = memo(function PatientListTable({
           renderEmptyState()
         ) : pacientesVisiveis.map((paciente) => {
           const idade = calcularIdade(paciente.data_nascimento);
+          const contatoAusente = describeMissingPatientContacts(paciente);
           return (
             <article key={paciente.id} className="p-4">
               <button type="button" className="flex min-h-11 w-full items-start gap-3 rounded-lg text-left outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => onView(paciente)}>
@@ -87,6 +89,7 @@ export const PatientListTable = memo(function PatientListTable({
                     <Badge variant="outline" className="max-w-full truncate text-[10px]">{getConvenioNome(paciente.convenio_id)}</Badge>
                   </span>
                   {paciente.telefone && <span className="mt-1.5 flex items-center gap-1.5 text-xs text-muted-foreground"><Phone className="h-3 w-3" />{paciente.telefone}</span>}
+                  {contatoAusente && <span className="mt-1.5 flex items-center gap-1.5 text-xs text-warning-foreground"><AlertTriangle aria-hidden="true" className="h-3 w-3" />{contatoAusente}</span>}
                 </span>
                 <Eye className="mt-2 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
               </button>
@@ -139,6 +142,7 @@ export const PatientListTable = memo(function PatientListTable({
           ) : (
             pacientesVisiveis.map((paciente) => {
               const idade = calcularIdade(paciente.data_nascimento);
+              const contatoAusente = describeMissingPatientContacts(paciente);
               return (
                 <TableRow key={paciente.id} className="cursor-pointer hover:bg-muted/50" onClick={() => onView(paciente)}>
                   <TableCell>
@@ -177,6 +181,11 @@ export const PatientListTable = memo(function PatientListTable({
                       {paciente.email && (
                         <div className="flex items-center gap-1.5 text-muted-foreground truncate max-w-[180px]">
                           <Mail className="h-3 w-3" />{paciente.email}
+                        </div>
+                      )}
+                      {contatoAusente && (
+                        <div className="mt-1 flex items-center gap-1.5 text-xs text-warning-foreground">
+                          <AlertTriangle aria-hidden="true" className="h-3 w-3" />{contatoAusente}
                         </div>
                       )}
                     </div>
