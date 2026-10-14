@@ -365,9 +365,15 @@ export default function Funcionarios() {
         throw partialError;
       }
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['funcionarios-with-roles'] });
-      toast.success('Funcionário atualizado com sucesso!');
+      if (variables.data.ativo) {
+        toast.success('Funcionário atualizado com sucesso!');
+      } else {
+        toast.success('Funcionário inativado e sessões encerradas.', {
+          description: 'Uma sessão já aberta pode continuar válida até o token atual expirar.',
+        });
+      }
       setIsDialogOpen(false);
     },
     onError: (error: any) => {
