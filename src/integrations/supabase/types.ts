@@ -5998,6 +5998,14 @@ export type Database = {
         Args: never
         Returns: Json
       }
+      platform_executive_report: {
+        Args: { p_days: number }
+        Returns: Json
+      }
+      public_availability_check: {
+        Args: never
+        Returns: Json
+      }
       restaurar_configuracao_clinica_versao: {
         Args: { p_versao_esperada: string; p_versao_id: string }
         Returns: string
