@@ -123,6 +123,7 @@ const FaturamentoConvenios = lazy(() => import("@/pages/FaturamentoConvenios"));
 const RepassesMedicos = lazy(() => import("@/pages/RepassesMedicos"));
 const Interoperabilidade = lazy(() => import("@/pages/Interoperabilidade"));
 const Teleconsulta = lazy(() => import("@/pages/Teleconsulta"));
+const SegurancaAssistencial = lazy(() => import("@/pages/SegurancaAssistencial"));
 import { CookieConsent } from "@/components/CookieConsent";
 import { UpdateSupportBanner } from "@/components/UpdateSupportBanner";
 import { BrandLoadingScreen } from "@/components/BrandLoadingScreen";
@@ -349,6 +350,7 @@ function App() {
                           <Route path="/seguranca" element={<SupabaseProtectedRoute><Seguranca /></SupabaseProtectedRoute>} />
                           <Route path="/lgpd-pacientes" element={<SupabaseProtectedRoute allowedRoles={['admin']}><LgpdPacientes /></SupabaseProtectedRoute>} />
                           <Route path="/vitais-graficos" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico', 'enfermagem']}><VitaisGraficos /></SupabaseProtectedRoute>} />
+                          <Route path="/seguranca-assistencial" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico', 'enfermagem']}><SegurancaAssistencial /></SupabaseProtectedRoute>} />
                           <Route path="/analise-preditiva" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao']}><AnalisePreditiva /></SupabaseProtectedRoute>} />
                         </Route>
 

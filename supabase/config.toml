@@ -142,3 +142,7 @@ verify_jwt = true
 # A sala aceita links de convidado; a função valida manualmente cada token e o JWT do profissional.
 [functions.teleconsulta]
 verify_jwt = false
+
+# Relatos clínicos passam por validação de JWT, papel, clínica e trilha de acesso na Edge Function.
+[functions.seguranca-assistencial]
+verify_jwt = true

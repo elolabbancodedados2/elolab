@@ -196,6 +196,8 @@ Jornada remota vinculada ao agendamento: sala de espera, presença, consentiment
 
 Registro restrito de incidente, quase incidente, risco, análise, ação corretiva, responsável e prazo, com opção de relatório sem exposição ampla da identidade do notificador. Inclui estados, revisão por qualidade e indicadores por categoria. Critério de conclusão: acesso mínimo, auditoria de leitura/alteração, fluxo de retificação e teste de confidencialidade entre perfis/clínicas.
 
+**N3 entregue e validado:** relatório de evento/quase incidente/condição insegura com identidade confidencial por padrão, status, revisor, responsável, prazo, análise e ação corretiva; indicador por categoria; sem vínculo ou coleta de identificador do paciente. O relator pode pedir retificação e o admin pode aprovar/recusar; a versão anterior fica preservada. Edge Function autoriza por papel e clínica, impede leitura alheia por perfil e registra acesso sem duplicar narrativa. Criação, revisão e retificação com auditoria são transacionais e otimizadas por versão. Evidência: Vitest 3/3, Deno 4/4 + `deno check`, Playwright Chromium sintético 1/1, TypeScript, build, ESLint e checks do repositório aprovados; parser PostgreSQL 35/35 e PL/pgSQL 4/4. A migration permanece local para o deploy final autorizado pelo usuário.
+
 ### N4. Higienização de salas e controle de infecção
 
 Fluxo operacional de limpeza entre atendimentos, checklist por sala, registro de responsável/horário e inspeções de rotina. Exibe disponibilidade da sala somente depois dos itens obrigatórios definidos pela clínica. Critério de conclusão: checklists versionados, registro imutável de execução e revisão, alertas de pendência e testes de isolamento por unidade.

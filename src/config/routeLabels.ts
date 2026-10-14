@@ -63,6 +63,7 @@ const labelsByPath: Record<string, string> = {
   '/seguranca': 'Segurança da conta',
   '/lgpd-pacientes': 'Privacidade de pacientes',
   '/vitais-graficos': 'Sinais vitais',
+  '/seguranca-assistencial': 'Qualidade e segurança assistencial',
   '/analise-preditiva': 'Risco de faltas',
   '/admin/clinicas': 'Clínicas',
   '/admin/crm': 'Carteira de clientes',
