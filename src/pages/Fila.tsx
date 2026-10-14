@@ -3,6 +3,7 @@ import { Switch } from '@/components/ui/switch';
 import { useCurrentMedico } from '@/hooks/useCurrentMedico';
 import { nomeMedico } from '@/lib/formatters';
 import { formatCurrency } from '@/lib/formatters';
+import { filaRealtimeMessage, filaRealtimeState } from '@/lib/filaRealtimeStatus';
 import { forwardRef, useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -247,6 +248,7 @@ export default function Fila() {
   const [motivoLiberacao, setMotivoLiberacao] = useState('');
   const [salvandoLiberacao, setSalvandoLiberacao] = useState(false);
   const [now, setNow] = useState(Date.now());
+  const [realtimeStatus, setRealtimeStatus] = useState('CONNECTING');
   const [busyQueueId, setBusyQueueId] = useState<string | null>(null);
   const queueActionLock = useRef<string | null>(null);
 
@@ -392,6 +394,7 @@ export default function Fila() {
     );
 
   const isLoading = loadingFila || loadingAgendamentos || carregandoRegrasClinica;
+  const queueRealtimeState = filaRealtimeState(realtimeStatus);
 
   // Realtime subscription for instant queue updates
   useEffect(() => {
@@ -411,7 +414,7 @@ export default function Fila() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'triagens' }, () => {
         queryClient.invalidateQueries({ queryKey: ['fila-triagens', profile?.clinica_id] });
       })
-      .subscribe();
+      .subscribe((status) => setRealtimeStatus(status));
 
     // Timer update every 30s for wait time display
     const interval = setInterval(() => setNow(Date.now()), 30000);
@@ -924,6 +927,25 @@ export default function Fila() {
         icon={<Users />}
         actions={
           <>
+            <Badge
+              variant="outline"
+              role="status"
+              aria-live="polite"
+              className={cn(
+                'max-w-[min(18rem,45vw)] whitespace-normal text-left text-[10px] leading-tight sm:text-xs',
+                queueRealtimeState === 'connected' && 'border-success/40 text-success',
+                queueRealtimeState === 'connecting' && 'border-muted-foreground/30 text-muted-foreground',
+                queueRealtimeState === 'fallback' && 'border-warning/50 bg-warning/10 text-warning-foreground',
+              )}
+            >
+              <span aria-hidden="true" className={cn(
+                'mr-1.5 h-2 w-2 shrink-0 rounded-full',
+                queueRealtimeState === 'connected' && 'bg-success',
+                queueRealtimeState === 'connecting' && 'animate-pulse bg-muted-foreground',
+                queueRealtimeState === 'fallback' && 'bg-warning',
+              )} />
+              {filaRealtimeMessage(queueRealtimeState)}
+            </Badge>
             {meuMedicoId && (
               <label className="flex min-h-11 items-center gap-2 rounded-lg px-2 text-sm text-muted-foreground">
                 <Switch checked={apenasMeus} onCheckedChange={(v) => setApenasMeus(v)} aria-label="Mostrar só meus pacientes" />
