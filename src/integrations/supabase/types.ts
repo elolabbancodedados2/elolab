@@ -3180,6 +3180,53 @@ export type Database = {
           },
         ]
       }
+      notification_template_versions: {
+        Row: {
+          action: string
+          actor_type: string
+          author_id: string | null
+          author_name: string | null
+          clinica_id: string | null
+          created_at: string
+          id: string
+          revision: number
+          snapshot: Json
+          template_id: string
+        }
+        Insert: {
+          action: string
+          actor_type: string
+          author_id?: string | null
+          author_name?: string | null
+          clinica_id?: string | null
+          created_at?: string
+          id?: string
+          revision: number
+          snapshot: Json
+          template_id: string
+        }
+        Update: {
+          action?: string
+          actor_type?: string
+          author_id?: string | null
+          author_name?: string | null
+          clinica_id?: string | null
+          created_at?: string
+          id?: string
+          revision?: number
+          snapshot?: Json
+          template_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notification_template_versions_clinica_id_fkey"
+            columns: ["clinica_id"]
+            isOneToOne: false
+            referencedRelation: "clinicas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       paciente_comorbidades: {
         Row: {
           ativo: boolean

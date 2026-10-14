@@ -25,7 +25,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
-import { Plus, Edit2, Trash2, Copy, Mail } from 'lucide-react';
+import { Plus, Edit2, Trash2, Copy, Mail, History } from 'lucide-react';
 import DOMPurify from 'dompurify';
 
 const CATEGORIAS = [
@@ -67,6 +67,7 @@ export default function TemplatesEmail() {
   const [editId, setEditId] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [activationCandidate, setActivationCandidate] = useState<any | null>(null);
+  const [historyTemplate, setHistoryTemplate] = useState<{ id: string; name: string } | null>(null);
   const [previewTab, setPreviewTab] = useState('editar');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -85,6 +86,22 @@ export default function TemplatesEmail() {
     enabled: !!profile?.clinica_id,
   });
   const templates = templatesQuery.data || [];
+
+  const historyQuery = useQuery({
+    queryKey: ['notification-template-versions', profile?.clinica_id, historyTemplate?.id],
+    queryFn: async () => {
+      if (!profile?.clinica_id || !historyTemplate?.id) return [];
+      const { data, error } = await supabase
+        .from('notification_template_versions')
+        .select('id, revision, action, actor_type, author_name, created_at, snapshot')
+        .eq('template_id', historyTemplate.id)
+        .eq('clinica_id', profile.clinica_id)
+        .order('revision', { ascending: false });
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!profile?.clinica_id && !!historyTemplate?.id,
+  });
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -308,6 +325,9 @@ export default function TemplatesEmail() {
                   <Button size="sm" variant="outline" aria-label={`Editar modelo ${template.nome}`} onClick={() => openEdit(template)}>
                     <Edit2 className="h-3 w-3" />
                   </Button>
+                  <Button size="sm" variant="outline" aria-label={`Histórico do modelo ${template.nome}`} onClick={() => setHistoryTemplate({ id: template.id, name: template.nome })}>
+                    <History className="h-3 w-3" />
+                  </Button>
                   <Button size="sm" variant="outline" aria-label={`Excluir modelo ${template.nome}`} onClick={() => setDeleteId(template.id)}>
                     <Trash2 className="h-3 w-3 text-destructive" />
                   </Button>
@@ -511,6 +531,44 @@ export default function TemplatesEmail() {
               onClick={() => activationCandidate && toggleMutation.mutate({ id: activationCandidate.id, ativo: false })}
             >Ativar modelo</Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!historyTemplate} onOpenChange={(open) => { if (!open) setHistoryTemplate(null); }}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Histórico: {historyTemplate?.name}</DialogTitle>
+            <DialogDescription>Versões registradas pelo banco com a autoria disponível no momento da alteração.</DialogDescription>
+          </DialogHeader>
+          {historyQuery.isLoading ? <p role="status">Carregando histórico…</p>
+            : historyQuery.isError ? <p role="alert" className="text-sm text-destructive">Não foi possível carregar o histórico. Tente novamente.</p>
+              : (historyQuery.data || []).length === 0 ? <p className="text-sm text-muted-foreground">Nenhuma versão disponível para este modelo.</p>
+                : <ol className="space-y-3">
+                  {(historyQuery.data || []).map((version) => {
+                    const snapshot = version.snapshot && typeof version.snapshot === 'object' && !Array.isArray(version.snapshot)
+                      ? version.snapshot as Record<string, unknown>
+                      : {};
+                    const actionLabel = {
+                      baseline: 'Estado inicial, autor não registrado',
+                      created: 'Criado',
+                      updated: 'Alterado',
+                      deleted: 'Removido',
+                    }[version.action] || version.action;
+                    const authorLabel = version.author_name || (version.actor_type === 'legacy' ? 'Autor não registrado' : 'Sistema');
+                    return <li key={version.id} className="rounded-lg border p-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="font-medium">Versão {version.revision} · {actionLabel}</p>
+                        <time className="text-xs text-muted-foreground" dateTime={version.created_at}>{new Date(version.created_at).toLocaleString('pt-BR')}</time>
+                      </div>
+                      <p className="mt-1 text-sm text-muted-foreground">Autor: {authorLabel}</p>
+                      <p className="mt-2 text-sm">Assunto: {String(snapshot.assunto || '(sem assunto)')}</p>
+                      <details className="mt-2">
+                        <summary className="cursor-pointer text-sm font-medium">Ver conteúdo salvo</summary>
+                        <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded bg-muted p-3 text-xs">{String(snapshot.conteudo || '(vazio)')}</pre>
+                      </details>
+                    </li>;
+                  })}
+                </ol>}
         </DialogContent>
       </Dialog>
 
