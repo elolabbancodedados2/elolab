@@ -4208,12 +4208,16 @@ export type Database = {
       }
       prescricoes: {
         Row: {
+          alerta_confirmado_em: string | null
+          alerta_confirmado_por: string | null
+          alertas_seguranca: Json
           clinica_id: string
           created_at: string | null
           data_emissao: string | null
           dosagem: string | null
           duracao: string | null
           id: string
+          justificativa_alerta: string | null
           medicamento: string
           medico_id: string | null
           observacoes: string | null
@@ -4225,12 +4229,16 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          alerta_confirmado_em?: string | null
+          alerta_confirmado_por?: string | null
+          alertas_seguranca?: Json
           clinica_id: string
           created_at?: string | null
           data_emissao?: string | null
           dosagem?: string | null
           duracao?: string | null
           id?: string
+          justificativa_alerta?: string | null
           medicamento: string
           medico_id?: string | null
           observacoes?: string | null
@@ -4242,12 +4250,16 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          alerta_confirmado_em?: string | null
+          alerta_confirmado_por?: string | null
+          alertas_seguranca?: Json
           clinica_id?: string
           created_at?: string | null
           data_emissao?: string | null
           dosagem?: string | null
           duracao?: string | null
           id?: string
+          justificativa_alerta?: string | null
           medicamento?: string
           medico_id?: string | null
           observacoes?: string | null

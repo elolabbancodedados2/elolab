@@ -83,7 +83,7 @@ Itens 1–100 são propostas de execução, não afirmações de que esses defei
 **E48 entregue e validado localmente:** fila de retomada mantém o escopo do médico autenticado, identifica o autor pelo cadastro, usa o nome do perfil como fallback e exibe dd/MM/yyyy HH:mm do último updated_at. IDs internos nunca viram rótulos. Evidências: Vitest 293 arquivos/1.435 testes, TypeScript e checks de acessibilidade/permissões/colunas/falhas silenciosas. Sem mudanças de persistência local ou dados clínicos no browser.
 32. [x] Manter adendos imutáveis que referenciem a evolução original sem sobrescrever o texto assinado (já coberto no checkout auditado; excluído da contagem).
 33. [x] Mostrar a versão do modelo clínico usada em cada documento assinado (E50: procedência do modelo nos atestados emitidos).
-34. Alertar sobre alergia registrada antes de prescrição, com confirmação explícita e registro da justificativa quando aplicável.
+34. [x] Alertar sobre alergia registrada antes de prescrição, com confirmação explícita e registro da justificativa quando aplicável (E51: justificativa obrigatória para risco alérgico ignorável).
 35. [x] Diferenciar dado ausente de resultado normal nos sinais vitais e no resumo clínico (E49).
 36. Sinalizar campos copiados de atendimento anterior para o profissional revisar antes da assinatura.
 37. Pedir confirmação quando o contexto do paciente mudar enquanto um formulário clínico está aberto.
@@ -94,6 +94,8 @@ Itens 1–100 são propostas de execução, não afirmações de que esses defei
 **E49 entregue e validado localmente:** o resumo da última triagem identifica valores ausentes como “Não aferido”, mantém unidade explícita e preserva zero como valor existente; não altera séries históricas nem classificação clínica. Evidências: Vitest integral 295 arquivos/1.439 testes, testes focados 12/12, TypeScript, acessibilidade, colunas, falhas silenciosas e `git diff --check` aprovados. Build local aprovado (Vite/PWA). Sem alteração remota.
 
 **E50 entregue e validado localmente:** atestados guardam ID, nome e timestamp da revisão do modelo selecionado, capturados e protegidos por trigger; detalhe e PDF mostram a procedência no fuso de São Paulo. Metadados não copiam conteúdo nem CID, e modelos globais ou sem modelo continuam suportados. Evidências: Vitest integral 296 arquivos/1.441 testes; recorte 30/30; PGlite 6 assertions (snapshot, revisão estável, modelo global, isolamento de clínica, imutabilidade e ausência de modelo); TypeScript, acessibilidade, permissões, colunas, falhas silenciosas e `git diff --check` aprovados. Build pós-commit aprovado e SHA conferido com HEAD. Migration não aplicada remotamente. O PDF continua sem assinatura digital; a procedência do modelo não substitui assinatura/autenticidade.
+
+**E51 entregue e validado localmente:** a geração interna de prescrição exige justificativa clínica de 20 a 1.000 caracteres para prosseguir diante de alerta ignorável de alergia; alergia direta continua bloqueante. Alertas, justificativa, usuário e horário ficam em snapshot imutável da prescrição. Evidências: Vitest integral 297 arquivos/1.443 testes; recorte 47/47; PGlite 11 assertions (regras de justificativa/tamanho, autenticação, autoria/hora, imutabilidade, outros alertas e fluxo sem alertas); TypeScript e checks de acessibilidade, permissões, colunas, falhas silenciosas e `git diff --check` aprovados. Build pós-commit aprovado e SHA conferido com HEAD. Migration ainda não aplicada remotamente. O alerta e a justificativa cobrem o fluxo de emissão interno do PDF; a integração externa Memed preserva fluxo separado.
 
 ### Exames e laboratório
 
@@ -242,4 +244,4 @@ Cadastro patrimonial de equipamento por unidade, responsável, validade de calib
 - [ ] Fazer triagem dos itens 1–100 no checkout local e retirar duplicatas antes de iniciar cada pacote.
 - [ ] Implementar, validar e registrar cada pacote antes de seguir ao próximo; atualizar este arquivo sem contar testes ou documentos como melhoria funcional.
 - [x] Completar e testar N1–N5 como módulos com persistência, autorização e fluxo utilizável em ambiente sintético/descartável; nenhum módulo depende só de navegação.
-- [ ] Entregar melhorias funcionais distintas nos módulos existentes: **49/100** concluídas; E14 e os itens cobertos por comportamento existente não entram na contagem. N1–N5 são a meta separada de módulos novos.
+- [ ] Entregar melhorias funcionais distintas nos módulos existentes: **50/100** concluídas; E14 e os itens cobertos por comportamento existente não entram na contagem. N1–N5 são a meta separada de módulos novos.

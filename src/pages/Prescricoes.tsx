@@ -32,6 +32,7 @@ import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { ClinicalAlertsDisplay, useClinicalAlerts } from '@/components/ClinicalAlertsDisplay';
 import { consolidateAlerts, ClinicalAlert } from '@/lib/clinicalAlerts';
+import { allergyOverrideJustificationError, requiresAllergyOverrideJustification } from '@/lib/allergyOverride';
 import { LoadingButton } from '@/components/ui/loading-button';
 import { ErrorState } from '@/components/ErrorState';
 import { mensagemDeErro } from '@/lib/erros';
@@ -355,6 +356,7 @@ export default function Prescricoes() {
   const [downloadingPrescriptionId, setDownloadingPrescriptionId] = useState<string | null>(null);
   const [memedOpening, setMemedOpening] = useState(false);
   const [clinicalAlerts, setClinicalAlerts] = useState<ClinicalAlert[]>([]);
+  const [allergyOverrideJustification, setAllergyOverrideJustification] = useState('');
   const [showAlertsDialog, setShowAlertsDialog] = useState(false);
   const { dismissAlert } = useClinicalAlerts();
 
@@ -405,6 +407,8 @@ export default function Prescricoes() {
 
   const handleOpen = () => {
     setForm({ paciente_id: '', medico_id: medicoId || '', data_emissao: today, medicamentos_texto: '' });
+    setClinicalAlerts([]);
+    setAllergyOverrideJustification('');
     setIsFormOpen(true);
   };
 
@@ -501,6 +505,7 @@ export default function Prescricoes() {
     if (alerts.length > 0) {
       const hasCriticalAlerts = alerts.some(a => a.severity === 'critical' && !a.canIgnore);
       setClinicalAlerts(alerts);
+      setAllergyOverrideJustification('');
       setShowAlertsDialog(true);
       if (hasCriticalAlerts) {
         toast.error('⚠️ Alertas de segurança críticos! Resolva antes de prescrever.');
@@ -594,6 +599,12 @@ export default function Prescricoes() {
         data_emissao: form.data_emissao,
         tipo: 'simples',
         arquivo_pdf: arquivoPdfPath,
+        alertas_seguranca: clinicalAlerts.map(({ id, severity, title, message, action, canIgnore }) => ({
+          id, severity, title, message, action: action ?? null, canIgnore,
+        })),
+        justificativa_alerta: requiresAllergyOverrideJustification(clinicalAlerts)
+          ? allergyOverrideJustification.trim()
+          : null,
       });
       if (error) throw error;
 
@@ -629,6 +640,11 @@ export default function Prescricoes() {
 
   // Chamado pelo dialog de alertas quando o médico confirma prescrever apesar dos avisos
   const handleConfirmDespiteAlerts = async () => {
+    const justificationError = allergyOverrideJustificationError(clinicalAlerts, allergyOverrideJustification);
+    if (justificationError) {
+      toast.error('Justificativa obrigatória', { description: justificationError });
+      return;
+    }
     setGerando(true);
     const paciente = selectedPaciente;
     const medico = medicos.find(m => m.id === form.medico_id);
@@ -1055,6 +1071,23 @@ export default function Prescricoes() {
 
           <div className="space-y-4">
             <ClinicalAlertsDisplay alerts={clinicalAlerts} onDismiss={dismissAlert} />
+            {requiresAllergyOverrideJustification(clinicalAlerts) && (
+              <div className="space-y-2 rounded-lg border border-warning/40 bg-warning/5 p-3">
+                <Label htmlFor="prescricao-justificativa-alergia">Justificativa clínica para prosseguir *</Label>
+                <Textarea
+                  id="prescricao-justificativa-alergia"
+                  aria-describedby="prescricao-justificativa-alergia-ajuda"
+                  value={allergyOverrideJustification}
+                  onChange={event => setAllergyOverrideJustification(event.target.value)}
+                  placeholder="Registre a avaliação clínica e o motivo para prosseguir apesar do risco de reação cruzada."
+                  maxLength={1000}
+                  rows={3}
+                />
+                <p id="prescricao-justificativa-alergia-ajuda" className="text-xs text-muted-foreground">
+                  Mínimo de 20 caracteres. A justificativa ficará registrada junto à prescrição.
+                </p>
+              </div>
+            )}
           </div>
 
           <DialogFooter className="gap-2">
@@ -1062,7 +1095,10 @@ export default function Prescricoes() {
               Voltar à Prescrição
             </Button>
             {!clinicalAlerts.some(a => a.severity === 'critical' && !a.canIgnore) && (
-              <Button onClick={handleConfirmDespiteAlerts} disabled={gerando}>
+              <Button
+                onClick={handleConfirmDespiteAlerts}
+                disabled={gerando || !!allergyOverrideJustificationError(clinicalAlerts, allergyOverrideJustification)}
+              >
                 {gerando ? 'Gerando receita...' : 'Confirmar e Gerar Receita'}
               </Button>
             )}
