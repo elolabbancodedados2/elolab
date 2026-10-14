@@ -51,10 +51,10 @@
 
 ### 4. Lista no portal
 
-- [ ] Escrever teste falhando para a aba Documentos mostrar nome, origem, validade e aviso de link de cinco minutos, sem renderizar a publicação quando a carga falha.
-- [ ] Carregar documentos em endpoint separado dentro da carga tolerante já existente; tratar ausência/falha sem expor documentos antigos nem quebrar as demais abas.
-- [ ] Acrescentar a aba Documentos com estado vazio/erro, download seguro e informação clara de validade do documento versus expiração temporária do link.
-- [ ] Rodar teste de UI focal, check de acessibilidade, TypeScript e build; commitar.
+- [x] Escrever teste falhando para a aba Documentos mostrar nome, origem, validade e aviso de link de cinco minutos, sem renderizar a publicação quando a carga falha.
+- [x] Carregar documentos em endpoint separado dentro da carga tolerante já existente; tratar ausência/falha sem expor documentos antigos nem quebrar as demais abas.
+- [x] Acrescentar a aba Documentos com estado vazio/erro, download seguro e informação clara de validade do documento versus expiração temporária do link.
+- [x] Rodar teste de UI focal, check de acessibilidade, TypeScript e build; commitar.
 
 ### 5. Fechamento E47
 

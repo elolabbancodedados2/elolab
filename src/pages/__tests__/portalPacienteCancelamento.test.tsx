@@ -179,8 +179,9 @@ describe('PortalPaciente — cancelamento de consulta', () => {
     expect(screen.getByRole('tab', { name: /Receitas/i })).toHaveAccessibleName(/Receitas/i);
     expect(screen.getByRole('tab', { name: /Histórico/i })).toHaveAccessibleName(/Histórico/i);
     expect(screen.getByRole('tab', { name: /Financeiro/i })).toHaveAccessibleName(/Financeiro/i);
+    expect(screen.getByRole('tab', { name: /Documentos/i })).toHaveAccessibleName(/Documentos/i);
     expect(screen.getByRole('tablist', { name: 'Seções do portal' })).toHaveAccessibleName('Seções do portal');
-    expect(screen.getAllByRole('tab')).toHaveLength(6);
+    expect(screen.getAllByRole('tab')).toHaveLength(7);
   });
 
   it('permite navegar pelas abas com as setas do teclado', async () => {
