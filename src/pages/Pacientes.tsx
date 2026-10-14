@@ -56,6 +56,7 @@ import { logAudit } from '@/lib/auditTrail';
 import { cpfValido } from '@/lib/importacao/campos';
 import { canViewPatientClinicalTimeline, canViewPatientFinancialTab } from '@/lib/patientBasicData';
 import { autorizarLeituraHistoricoPaciente } from '@/lib/prontuarioAudit';
+import { revokePatientPortalLinks } from '@/lib/patientPortalAccess';
 
 interface PacienteFormData {
   nome: string;
@@ -187,6 +188,8 @@ export default function Pacientes() {
   /** Modal de guias/senhas de autorização do convênio do paciente. */
   const [showAutorizacao, setShowAutorizacao] = useState(false);
   const [linkPortalGerado, setLinkPortalGerado] = useState<{ nome: string; url: string } | null>(null);
+  const [portalRevokeTarget, setPortalRevokeTarget] = useState<{ id: string; nome: string } | null>(null);
+  const [isRevokingPortal, setIsRevokingPortal] = useState(false);
   const [cepLoading, setCepLoading] = useState(false);
   const [cepError, setCepError] = useState('');
   const cepLookupRef = useRef(0);
@@ -1122,6 +1125,22 @@ export default function Pacientes() {
     }
   };
 
+  const handleRevokePortalLinks = async () => {
+    if (!portalRevokeTarget || isRevokingPortal) return;
+    setIsRevokingPortal(true);
+    try {
+      const revokedCount = await revokePatientPortalLinks(portalRevokeTarget.id);
+      setPortalRevokeTarget(null);
+      toast.success(revokedCount > 0
+        ? `${revokedCount} link${revokedCount === 1 ? '' : 's'} do portal revogado${revokedCount === 1 ? '' : 's'}.`
+        : 'Nenhum link ativo do portal encontrado.');
+    } catch (error) {
+      toast.error('Não foi possível revogar os links do portal.', { description: mensagemDeErro(error) });
+    } finally {
+      setIsRevokingPortal(false);
+    }
+  };
+
   const copiarLinkPortalExibido = async () => {
     if (!linkPortalGerado) return;
     try {
@@ -1330,6 +1349,7 @@ export default function Pacientes() {
             onDelete={handleDeleteClick}
             podeEditarPaciente={podeEditarPaciente}
             onGeneratePortalLink={handleGeneratePortalLink}
+            onRevokePortalLinks={(id, nome) => setPortalRevokeTarget({ id, nome })}
             podeGerarLinkPortal={podeGerarLinkPortal}
             podeExcluirPaciente={isAdmin()}
             getConvenioNome={getConvenioNome}
@@ -2606,6 +2626,29 @@ export default function Pacientes() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={!!portalRevokeTarget} onOpenChange={(open) => {
+        if (!open && !isRevokingPortal) setPortalRevokeTarget(null);
+      }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Revogar acesso ao portal?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Todos os links ativos de {portalRevokeTarget?.nome} serão invalidados. Novas consultas ao portal serão bloqueadas; dados que já estejam abertos na tela do paciente não podem ser apagados remotamente.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isRevokingPortal}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={isRevokingPortal}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={(event) => { event.preventDefault(); void handleRevokePortalLinks(); }}
+            >
+              {isRevokingPortal ? 'Revogando…' : 'Revogar links'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Autorizações de convênio do paciente selecionado */}
       {selectedPaciente && (

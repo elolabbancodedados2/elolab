@@ -1,6 +1,6 @@
 import { memo } from 'react';
 import { motion } from 'framer-motion';
-import { Eye, Edit, Trash2, Link, Phone, Mail, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Eye, Edit, Trash2, Link, Unlink, Phone, Mail, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ActionableEmptyState } from '@/components/ActionableEmptyState';
 import { Badge } from '@/components/ui/badge';
@@ -25,6 +25,7 @@ interface PatientListTableProps {
   podeExcluirPaciente?: boolean;
   podeEditarPaciente?: boolean;
   onGeneratePortalLink: (id: string, nome: string) => void;
+  onRevokePortalLinks: (id: string, nome: string) => void;
   /**
    * Gerar link do portal grava em paciente_portal_tokens, cujo RLS exige admin
    * ou recepção. Enfermagem alcança esta tela e era recusada no clique — o
@@ -36,7 +37,7 @@ interface PatientListTableProps {
 }
 
 export const PatientListTable = memo(function PatientListTable({
-  pacientes, totalPacientes, totalPacientesCarregado, hasFiltrosAtivos = false, onLimparFiltros, onCreate, onView, onEdit, onDelete, onGeneratePortalLink,
+  pacientes, totalPacientes, totalPacientesCarregado, hasFiltrosAtivos = false, onLimparFiltros, onCreate, onView, onEdit, onDelete, onGeneratePortalLink, onRevokePortalLinks,
   podeGerarLinkPortal = true, podeExcluirPaciente = false, podeEditarPaciente = true, getConvenioNome, calcularIdade,
   pagina, hasMore, isLoading = false, hasError = false, onPaginaChange,
 }: PatientListTableProps) {
@@ -94,6 +95,11 @@ export const PatientListTable = memo(function PatientListTable({
                 {podeGerarLinkPortal && (
                   <Button variant="outline" onClick={() => onGeneratePortalLink(paciente.id, paciente.nome)} className="h-11 min-w-0 flex-1 gap-1 px-2 text-xs" aria-label={`Gerar link do portal para ${paciente.nome}`}>
                     <Link className="h-4 w-4" /> Portal
+                  </Button>
+                )}
+                {podeGerarLinkPortal && (
+                  <Button variant="outline" onClick={() => onRevokePortalLinks(paciente.id, paciente.nome)} className="h-11 min-w-0 flex-1 gap-1 px-2 text-xs text-destructive" aria-label={`Revogar links do portal de ${paciente.nome}`}>
+                    <Unlink className="h-4 w-4" /> Revogar
                   </Button>
                 )}
                 {podeEditarPaciente && <Button variant="outline" onClick={() => onEdit(paciente)} className="h-11 min-w-0 flex-1 gap-1 px-2 text-xs" aria-label={`Editar ${paciente.nome}`}>
@@ -198,6 +204,13 @@ export const PatientListTable = memo(function PatientListTable({
                         <motion.div whileHover={{ scale: 1.15 }} whileTap={{ scale: 0.9 }} transition={{ type: "spring", stiffness: 500, damping: 15 }}>
                           <Button variant="ghost" size="icon" onClick={() => onGeneratePortalLink(paciente.id, paciente.nome)} title="Link do portal" aria-label={`Gerar link do portal para ${paciente.nome}`} className="h-11 w-11 rounded-xl hover:bg-accent/60">
                             <Link className="h-4 w-4" />
+                          </Button>
+                        </motion.div>
+                      )}
+                      {podeGerarLinkPortal && (
+                        <motion.div whileHover={{ scale: 1.15 }} whileTap={{ scale: 0.9 }} transition={{ type: "spring", stiffness: 500, damping: 15 }}>
+                          <Button variant="ghost" size="icon" onClick={() => onRevokePortalLinks(paciente.id, paciente.nome)} title="Revogar links do portal" aria-label={`Revogar links do portal de ${paciente.nome}`} className="h-11 w-11 rounded-xl text-destructive hover:bg-destructive/10">
+                            <Unlink className="h-4 w-4" />
                           </Button>
                         </motion.div>
                       )}
