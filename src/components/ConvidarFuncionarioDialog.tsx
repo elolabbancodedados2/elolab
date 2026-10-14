@@ -11,8 +11,10 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { usePlanLimits } from '@/hooks/usePlanLimits';
+import { RoleAccessPreview } from '@/components/RoleAccessPreview';
+import type { AppRole } from '@/contexts/SupabaseAuthContext';
 
-type Role = 'admin' | 'medico' | 'recepcao' | 'enfermagem' | 'financeiro';
+type Role = AppRole;
 
 const ROLES: { value: Role; label: string }[] = [
   { value: 'admin', label: 'Administrador' },
@@ -142,6 +144,7 @@ export function ConvidarFuncionarioDialog({ trigger }: ConvidarFuncionarioDialog
                 </label>
               ))}
             </div>
+            <RoleAccessPreview roles={roles} />
           </div>
 
           {willExceed && (

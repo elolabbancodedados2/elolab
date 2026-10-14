@@ -27,6 +27,7 @@ import { ErrorState } from '@/components/ErrorState';
 import { normalizarTexto } from '@/lib/buscaPaciente';
 import { validateCPF } from '@/lib/formatters';
 import { ActionableEmptyState } from '@/components/ActionableEmptyState';
+import { RoleAccessPreview } from '@/components/RoleAccessPreview';
 
 interface FuncionarioWithRoles {
   id: string;
@@ -871,6 +872,7 @@ export default function Funcionarios() {
                   </div>
                 ))}
               </div>
+              <RoleAccessPreview roles={formData.selectedRoles} />
             </div>
           </div>
           </fieldset>

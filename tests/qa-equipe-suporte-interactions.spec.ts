@@ -114,6 +114,12 @@ test('team dialogs cancel safely and restore focus on desktop', async ({ page },
   await expect(employeeDialog).toBeVisible();
   await expect(employeeDialog.getByLabel('Nome completo *')).toBeVisible();
   await expect(employeeDialog.getByRole('heading', { name: 'Permissões de Acesso' })).toBeVisible();
+  const accessPreview = employeeDialog.getByRole('region', { name: 'Prévia de acesso' });
+  await expect(accessPreview).toContainText('Selecione um papel');
+  await employeeDialog.getByRole('checkbox', { name: 'Recepção' }).click();
+  await expect(accessPreview).toContainText('Agenda');
+  await expect(accessPreview).not.toContainText('Contas a receber e a pagar');
+  await employeeDialog.getByRole('checkbox', { name: 'Recepção' }).click();
   const employeeDialogGeometry = await employeeDialog.evaluate((dialog) => {
     const box = dialog.getBoundingClientRect();
     return { top: Math.round(box.top), bottom: Math.round(box.bottom), scrollHeight: dialog.scrollHeight, clientHeight: dialog.clientHeight };

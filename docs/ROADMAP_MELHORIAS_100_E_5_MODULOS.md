@@ -115,7 +115,8 @@ Itens 1–100 são propostas de execução, não afirmações de que esses defei
 **Entrega E3:** navbar identifica clínica e papel principal, com nome lido por clínica e cache segregado pela chave `clinica_id`; no mobile, o contexto também aparece ao abrir o menu da conta. Evidência: 3/3 testes de navbar, jornada Playwright sintética, TypeScript, checks de colunas/falhas/permissões/acessibilidade e build passaram.
 72. Permitir suspender convite expirado e gerar novo link sem invalidar convites de outras pessoas.
 73. Exigir reautenticação para trocar e-mail do administrador principal ou reduzir controles de segurança.
-74. Fornecer prévia “o que este perfil consegue acessar” antes de salvar uma mudança de papel.
+74. [x] Fornecer prévia “o que este perfil consegue acessar” antes de salvar uma mudança de papel.
+**Entrega E4:** a mesma prévia é exibida no cadastro/edição de profissional e no convite; calcula a união de telas com o filtro real do menu, atualiza com os papéis selecionados e avisa que dados continuam protegidos pelas permissões da clínica/RLS. Evidência: Vitest de regra e componentes 7/7; suíte completa 240 arquivos/1.253 testes; Playwright sintético autenticado da equipe 1/1; TypeScript, build, checks de colunas/falhas/permissões/acessibilidade passaram; ESLint 0 erros (21 avisos existentes de `any` nas telas tocadas). Sem alteração de autorização ou schema.
 75. Informar sessões ativas, dispositivo aproximado e última atividade ao titular da conta.
 76. Revogar sessões após desativação do profissional conforme política documentada.
 77. Avisar sobre último administrador ativo e impedir a remoção acidental do acesso administrativo da clínica.
