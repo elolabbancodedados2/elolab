@@ -58,6 +58,7 @@ import { cpfValido } from '@/lib/importacao/campos';
 import { canViewPatientClinicalTimeline, canViewPatientFinancialTab } from '@/lib/patientBasicData';
 import { autorizarLeituraHistoricoPaciente } from '@/lib/prontuarioAudit';
 import { revokePatientPortalLinks } from '@/lib/patientPortalAccess';
+import { PATIENT_STATUS_REASON_LABELS, PATIENT_STATUS_REASONS, isValidPatientStatusReason, setPatientActiveStatus, type PatientStatusReason } from '@/lib/patientStatus';
 import {
   contactConfirmationSourceLabel,
   describeContactVerification,
@@ -201,6 +202,9 @@ export default function Pacientes() {
   const [confirmingContact, setConfirmingContact] = useState<{ patientId: string; channel: PatientContactChannel } | null>(null);
   const [contactConfirmSource, setContactConfirmSource] = useState<ContactConfirmationSource>('paciente');
   const [isSavingContactConfirmation, setIsSavingContactConfirmation] = useState(false);
+  const [patientStatusTarget, setPatientStatusTarget] = useState<{ id: string; nome: string; ativo: boolean } | null>(null);
+  const [patientStatusReason, setPatientStatusReason] = useState<string>('');
+  const [isSavingPatientStatus, setIsSavingPatientStatus] = useState(false);
   const [cepLoading, setCepLoading] = useState(false);
   const [cepError, setCepError] = useState('');
   const cepLookupRef = useRef(0);
@@ -214,6 +218,7 @@ export default function Pacientes() {
   const [filterSexo, setFilterSexo] = useState<string>('todos');
   const [filterConvenio, setFilterConvenio] = useState<string>('todos');
   const [filterIdade, setFilterIdade] = useState<string>('todos');
+  const [filterStatusPaciente, setFilterStatusPaciente] = useState<'ativos' | 'inativos' | 'todos'>('ativos');
   const [formSection, setFormSection] = useState<string>('pessoal');
   // Prontuário inline state
   const [prontuarioList, setProntuarioList] = useState<any[]>([]);
@@ -278,7 +283,8 @@ export default function Pacientes() {
     if (filterIdade === 'idoso') nascimentoAte = dataLimite(60);
     return { sexo: filterSexo === 'todos' ? undefined : filterSexo, convenio: filterConvenio === 'todos' ? undefined : filterConvenio, nascimentoApos, nascimentoAte };
   }, [filterSexo, filterConvenio, filterIdade, hoje, dataLimite]);
-  const { data: resultadoBusca, isLoading, isFetching: isBuscandoPacientes, error: pacientesError, refetch } = useBuscaPacientes(searchTerm, { limite: limiteBusca, filtros: filtrosBusca });
+  const statusBuscaPaciente = podeEditarPaciente ? filterStatusPaciente : 'ativos';
+  const { data: resultadoBusca, isLoading, isFetching: isBuscandoPacientes, error: pacientesError, refetch } = useBuscaPacientes(searchTerm, { limite: limiteBusca, filtros: filtrosBusca, status: statusBuscaPaciente });
   const resumoPacientes = resultadoBusca?.pacientes ?? [];
   const inicioPagina = paginaPacientes * 50;
   const resumosVisiveis = resumoPacientes.slice(inicioPagina, inicioPagina + 50);
@@ -756,7 +762,7 @@ export default function Pacientes() {
   };
   const temMaisPacientes = resumoPacientes.length > inicioPagina + 50;
 
-  const activeFilters = [Boolean(searchTerm.trim()), filterSexo !== 'todos', filterConvenio !== 'todos', filterIdade !== 'todos'].filter(Boolean).length;
+  const activeFilters = [Boolean(searchTerm.trim()), filterSexo !== 'todos', filterConvenio !== 'todos', filterIdade !== 'todos', podeEditarPaciente && filterStatusPaciente !== 'ativos'].filter(Boolean).length;
   const atualizarListasPacientes = () => {
     void queryClient.invalidateQueries({ queryKey: ['busca-pacientes'] });
     void queryClient.invalidateQueries({ queryKey: ['pacientes-lista-detalhes'] });
@@ -770,6 +776,29 @@ export default function Pacientes() {
     setFilterSexo('todos');
     setFilterConvenio('todos');
     setFilterIdade('todos');
+    setFilterStatusPaciente('ativos');
+  };
+
+  const handleChangePatientStatus = async () => {
+    if (!patientStatusTarget || !isValidPatientStatusReason(patientStatusReason) || isSavingPatientStatus) return;
+    setIsSavingPatientStatus(true);
+    try {
+      const result = await setPatientActiveStatus(patientStatusTarget.id, !patientStatusTarget.ativo, patientStatusReason as PatientStatusReason);
+      setPatientStatusTarget(null);
+      setPatientStatusReason('');
+      atualizarListasPacientes();
+      if (result.alterado) {
+        toast.success(result.ativo ? 'Paciente reativado.' : 'Paciente inativado.', {
+          description: result.ativo ? 'A ficha pode voltar a receber agendamentos e acesso ao portal.' : 'A ficha e o histórico foram preservados; novos agendamentos e acesso ao portal foram bloqueados.',
+        });
+      } else {
+        toast.info('O paciente já estava nesse status.');
+      }
+    } catch (error) {
+      toast.error('Não foi possível alterar o status do paciente.', { description: mensagemDeErro(error) });
+    } finally {
+      setIsSavingPatientStatus(false);
+    }
   };
 
   const handleNew = () => {
@@ -1366,6 +1395,19 @@ export default function Pacientes() {
                   </SelectContent>
                 </Select>
               </div>
+              {podeEditarPaciente && (
+                <div className="space-y-1">
+                  <Label className="text-xs">Status do cadastro</Label>
+                  <Select value={filterStatusPaciente} onValueChange={(value: 'ativos' | 'inativos' | 'todos') => { setPaginaPacientes(0); setFilterStatusPaciente(value); }}>
+                    <SelectTrigger aria-label="Filtrar pacientes por status" className="h-11 w-full text-xs sm:w-36"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ativos">Ativos</SelectItem>
+                      <SelectItem value="inativos">Inativos</SelectItem>
+                      <SelectItem value="todos">Todos</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
               {activeFilters > 0 && (
                 <div className="flex items-end">
                   <Button variant="ghost" size="sm" className="h-11 text-xs gap-1" onClick={clearPatientFilters}>
@@ -1391,6 +1433,10 @@ export default function Pacientes() {
             onView={handleView}
             onEdit={handleEdit}
             onDelete={handleDeleteClick}
+            onChangeStatus={(paciente) => {
+              setPatientStatusTarget({ id: paciente.id, nome: paciente.nome, ativo: paciente.ativo !== false });
+              setPatientStatusReason('');
+            }}
             podeEditarPaciente={podeEditarPaciente}
             onGeneratePortalLink={handleGeneratePortalLink}
             onRevokePortalLinks={(id, nome) => setPortalRevokeTarget({ id, nome })}
@@ -2713,6 +2759,43 @@ export default function Pacientes() {
               onClick={(event) => { event.preventDefault(); void handleRevokePortalLinks(); }}
             >
               {isRevokingPortal ? 'Revogando…' : 'Revogar links'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={!!patientStatusTarget} onOpenChange={(open) => {
+        if (!open && !isSavingPatientStatus) {
+          setPatientStatusTarget(null);
+          setPatientStatusReason('');
+        }
+      }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{patientStatusTarget?.ativo ? 'Inativar paciente?' : 'Reativar paciente?'}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {patientStatusTarget?.ativo
+                ? `A ficha de ${patientStatusTarget.nome} e os registros clínicos e financeiros serão preservados. A inativação bloqueia novos agendamentos e invalida os links do portal. Cancele ou conclua compromissos atuais e futuros antes de continuar.`
+                : `A ficha de ${patientStatusTarget?.nome} e todo o histórico serão preservados. A reativação permite novos agendamentos; será necessário gerar um novo link do portal.`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <Label htmlFor="motivo-status-paciente">Motivo administrativo</Label>
+          <Select value={patientStatusReason} onValueChange={setPatientStatusReason}>
+            <SelectTrigger id="motivo-status-paciente"><SelectValue placeholder="Selecione um motivo" /></SelectTrigger>
+            <SelectContent>
+              {PATIENT_STATUS_REASONS.map((reason) => (
+                <SelectItem key={reason} value={reason}>{PATIENT_STATUS_REASON_LABELS[reason]}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isSavingPatientStatus}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={isSavingPatientStatus || !isValidPatientStatusReason(patientStatusReason)}
+              className={patientStatusTarget?.ativo ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90' : undefined}
+              onClick={(event) => { event.preventDefault(); void handleChangePatientStatus(); }}
+            >
+              {isSavingPatientStatus ? 'Salvando…' : patientStatusTarget?.ativo ? 'Inativar paciente' : 'Reativar paciente'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
