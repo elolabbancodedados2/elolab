@@ -4,6 +4,7 @@ import { useCurrentMedico } from '@/hooks/useCurrentMedico';
 import { nomeMedico } from '@/lib/formatters';
 import { formatCurrency } from '@/lib/formatters';
 import { filaRealtimeMessage, filaRealtimeState } from '@/lib/filaRealtimeStatus';
+import { generateFilaShiftHandoff } from '@/lib/filaShiftHandoff';
 import { FILA_REMOVAL_REASONS, filaRemovalReasonLabel, isFilaRemovalReason } from '@/lib/filaRemoval';
 import { forwardRef, useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -12,13 +13,13 @@ import {
   UserPlus, Play, Check, Loader2, Clock, ArrowUp, ArrowDown,
   Users, CheckCircle2, Bell, XCircle, Stethoscope, AlertTriangle,
   RefreshCw, Timer, LockOpen,
-  FileText,
+  FileText, ClipboardCopy,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -225,6 +226,7 @@ export default function Fila() {
   const [selectedPrioridade, setSelectedPrioridade] = useState('normal');
   const [isSaving, setIsSaving] = useState(false);
   const [removeId, setRemoveId] = useState<string | null>(null);
+  const [isHandoffOpen, setIsHandoffOpen] = useState(false);
   const [motivoSaida, setMotivoSaida] = useState('');
   const [isRemoving, setIsRemoving] = useState(false);
   /**
@@ -945,6 +947,26 @@ export default function Fila() {
     );
   }
 
+  const handoffText = generateFilaShiftHandoff({
+    date: format(parseDateOnly(today)!, 'dd/MM/yyyy', { locale: ptBR }),
+    generatedAt: format(new Date(now), 'HH:mm'),
+    waiting: aguardandoJornada.length,
+    triage: filaAguardandoTriagem.length,
+    inConsultation: emAtendimentoJornada.length,
+    blockedByPayment: filaAguardandoPagamento.length,
+    outsideToday: filaParaRevisar.length,
+    urgent: stats.urgentes,
+    overdue: acimaDeTrinta([...aguardandoJornada, ...filaAguardandoTriagem], item => item.horario_chegada),
+  });
+  const copyHandoffText = async () => {
+    try {
+      await navigator.clipboard.writeText(handoffText);
+      toast.success('Resumo de passagem de turno copiado.');
+    } catch {
+      toast.error('Não foi possível copiar o resumo neste dispositivo.');
+    }
+  };
+
   return (
     <div className="space-y-6 pb-8">
       <PageHeader
@@ -953,6 +975,15 @@ export default function Fila() {
         icon={<Users />}
         actions={
           <>
+            <Button
+              variant="outline"
+              className="shrink-0 gap-2"
+              onClick={() => setIsHandoffOpen(true)}
+              disabled={isLoading || filaQuery.isError || agendamentosQuery.isError}
+            >
+              <ClipboardCopy aria-hidden="true" className="h-4 w-4" />
+              Passagem de turno
+            </Button>
             <Badge
               variant="outline"
               role="status"
@@ -987,6 +1018,24 @@ export default function Fila() {
           </>
         }
       />
+
+      <Dialog open={isHandoffOpen} onOpenChange={setIsHandoffOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Passagem de turno</DialogTitle>
+            <DialogDescription>Resumo operacional da fila visível. Não inclui nomes nem informações clínicas.</DialogDescription>
+          </DialogHeader>
+          <pre aria-label="Resumo operacional da fila" className="max-h-[55vh] overflow-y-auto whitespace-pre-wrap rounded-lg border bg-muted/30 p-4 text-sm font-sans">
+            {handoffText}
+          </pre>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsHandoffOpen(false)}>Fechar</Button>
+            <Button onClick={() => void copyHandoffText()} className="gap-2">
+              <ClipboardCopy aria-hidden="true" className="h-4 w-4" /> Copiar resumo
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <section aria-labelledby="fila-etapas-heading" className="space-y-2">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
