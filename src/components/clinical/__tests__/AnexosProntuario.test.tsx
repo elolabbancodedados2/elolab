@@ -8,6 +8,9 @@ const mocks = vi.hoisted(() => ({
   createSignedUrl: vi.fn(),
   getUser: vi.fn(),
   from: vi.fn(),
+  rpc: vi.fn(),
+  publicationIn: vi.fn(),
+  publicationSelect: vi.fn(),
   insert: vi.fn(),
   delete: vi.fn(),
   eq: vi.fn(),
@@ -19,6 +22,7 @@ vi.mock('@/integrations/supabase/client', () => ({
     storage: { from: mocks.storageFrom },
     auth: { getUser: mocks.getUser },
     from: mocks.from,
+    rpc: mocks.rpc,
   },
 }));
 vi.mock('@/hooks/use-toast', () => ({ useToast: () => ({ toast: mocks.toast }) }));
@@ -53,7 +57,12 @@ describe('AnexosProntuario', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.storageFrom.mockReturnValue({ upload: mocks.upload, remove: mocks.remove, createSignedUrl: mocks.createSignedUrl });
-    mocks.from.mockReturnValue({ insert: mocks.insert, delete: mocks.delete });
+    mocks.publicationSelect.mockReturnValue({ in: mocks.publicationIn });
+    mocks.publicationIn.mockResolvedValue({ data: [], error: null });
+    mocks.rpc.mockResolvedValue({ data: { publicado: true }, error: null });
+    mocks.from.mockImplementation((table: string) => table === 'documentos_portal_paciente'
+      ? { select: mocks.publicationSelect }
+      : { insert: mocks.insert, delete: mocks.delete });
     mocks.delete.mockReturnValue({ eq: mocks.eq });
     mocks.eq.mockResolvedValue({ error: null });
     mocks.upload.mockResolvedValue({ data: { path: 'prontuario-1/arquivo.pdf' }, error: null });
@@ -115,5 +124,46 @@ describe('AnexosProntuario', () => {
 
     await waitFor(() => expect(navegar).toHaveBeenCalledWith('https://storage.example/signed-file'));
     abrir.mockRestore();
+  });
+
+  it('permits an authorized clinician to publish an attachment with origin and future validity', async () => {
+    render(<AnexosProntuario prontuarioId="prontuario-1" pacienteId="paciente-1" anexos={[anexo]} podeGerenciarPortal onAnexoAdicionado={vi.fn()} onAnexoRemovido={vi.fn()} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Disponibilizar no portal para resultado.pdf' }));
+    fireEvent.change(screen.getByLabelText('Validade do documento'), { target: { value: '2027-01-10' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Publicar documento no portal' }));
+
+    await waitFor(() => expect(mocks.rpc).toHaveBeenCalledWith('gerenciar_documento_portal_paciente', {
+      p_anexo_id: 'anexo-1',
+      p_publicado: true,
+      p_validade_ate: '2027-01-10',
+      p_origem: 'clinica',
+    }));
+    expect(await screen.findByText(/Disponível no portal/)).toBeVisible();
+  });
+
+  it('revokes a published attachment through the scoped publication RPC', async () => {
+    mocks.publicationIn.mockResolvedValue({
+      data: [{ anexo_id: 'anexo-1', publicado: true, validade_ate: '2027-01-10', origem: 'externo' }],
+      error: null,
+    });
+    render(<AnexosProntuario prontuarioId="prontuario-1" pacienteId="paciente-1" anexos={[anexo]} podeGerenciarPortal onAnexoAdicionado={vi.fn()} onAnexoRemovido={vi.fn()} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Revogar documento do portal para resultado.pdf' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmar revogação do portal' }));
+
+    await waitFor(() => expect(mocks.rpc).toHaveBeenCalledWith('gerenciar_documento_portal_paciente', {
+      p_anexo_id: 'anexo-1',
+      p_publicado: false,
+      p_validade_ate: '2027-01-10',
+      p_origem: 'externo',
+    }));
+  });
+
+  it('does not show portal publication controls without explicit permission', () => {
+    render(<AnexosProntuario prontuarioId="prontuario-1" pacienteId="paciente-1" anexos={[anexo]} onAnexoAdicionado={vi.fn()} onAnexoRemovido={vi.fn()} />);
+
+    expect(screen.queryByRole('button', { name: /portal para resultado\.pdf/i })).not.toBeInTheDocument();
+    expect(mocks.from).not.toHaveBeenCalledWith('documentos_portal_paciente');
   });
 });

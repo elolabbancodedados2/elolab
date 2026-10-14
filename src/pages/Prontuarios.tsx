@@ -673,7 +673,7 @@ function RelatedRecords({ pacienteId }: { pacienteId: string }) {
 }
 
 // ─── Anexos Wrapper ────────────────────────────────────────
-function AnexosWrapper({ pacienteId, prontuarioId, readOnly }: { pacienteId: string; prontuarioId: string; readOnly: boolean }) {
+function AnexosWrapper({ pacienteId, prontuarioId, readOnly, podeGerenciarPortal }: { pacienteId: string; prontuarioId: string; readOnly: boolean; podeGerenciarPortal: boolean }) {
   const [anexos, setAnexos] = useState<any[]>([]);
   const [erro, setErro] = useState<unknown>(null);
   const [loading, setLoading] = useState(true);
@@ -694,7 +694,7 @@ function AnexosWrapper({ pacienteId, prontuarioId, readOnly }: { pacienteId: str
   useEffect(() => { loadAnexos(); }, [loadAnexos]);
   if (loading) return <Skeleton className="h-32 w-full" />;
   if (erro) return <ErrorState compact error={erro} title="Não foi possível carregar os anexos" onRetry={() => { void loadAnexos(); }} />;
-  return <AnexosProntuario pacienteId={pacienteId} prontuarioId={prontuarioId} anexos={anexos} readOnly={readOnly} onAnexoAdicionado={loadAnexos} onAnexoRemovido={loadAnexos} />;
+  return <AnexosProntuario pacienteId={pacienteId} prontuarioId={prontuarioId} anexos={anexos} readOnly={readOnly} podeGerenciarPortal={podeGerenciarPortal} onAnexoAdicionado={loadAnexos} onAnexoRemovido={loadAnexos} />;
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -2498,7 +2498,7 @@ export default function Prontuarios() {
                     <Paperclip className="h-3 w-3" />Upload de PDFs, imagens e exames — LGPD.
                   </p>
                   {currentProntuario.id && selectedPacienteId ? (
-                    <AnexosWrapper pacienteId={selectedPacienteId} prontuarioId={currentProntuario.id} readOnly={isReadOnly || salvandoProntuario} />
+                    <AnexosWrapper pacienteId={selectedPacienteId} prontuarioId={currentProntuario.id} readOnly={isReadOnly || salvandoProntuario} podeGerenciarPortal={user?.roles?.some((role) => ['admin', 'medico'].includes(role)) ?? false} />
                   ) : (
                     <div className="flex flex-col items-center py-10 text-muted-foreground">
                       <Paperclip className="h-8 w-8 opacity-20 mb-2" />

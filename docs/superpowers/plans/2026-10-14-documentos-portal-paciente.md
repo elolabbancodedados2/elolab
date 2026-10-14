@@ -36,10 +36,10 @@
 
 ### 2. Publicação na ficha de anexos
 
-- [ ] Escrever teste falhando para carregar status de publicação, exigir origem e permitir validade em data futura ou sem vencimento.
-- [ ] Acrescentar permissão explícita ao wrapper da página de prontuários; não oferecer controles para perfis sem admin/médico nem em fichas somente leitura.
-- [ ] Adicionar diálogo por anexo com origem categorizada, validade opcional, publicar/revogar via RPC e atualização após sucesso; não alterar nem sobrescrever a linha do anexo assinado.
-- [ ] Validar testes focados e TypeScript; commitar.
+- [x] Escrever teste falhando para carregar status de publicação, exigir origem e permitir validade em data futura ou sem vencimento.
+- [x] Acrescentar permissão explícita ao wrapper da página de prontuários; não oferecer controles para perfis sem admin/médico A ficha somente leitura nao bloqueia a gestao dos metadados isolados de publicacao.
+- [x] Adicionar diálogo por anexo com origem categorizada, validade opcional, publicar/revogar via RPC e atualização após sucesso; não alterar nem sobrescrever a linha do anexo assinado.
+- [x] Validar testes focados e TypeScript; commitar.
 
 ### 3. Serviço seguro do portal
 

@@ -1,5 +1,5 @@
 import { formatWithDatePreference as format } from '@/lib/datePreference';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 import { 
@@ -23,6 +23,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
+  DialogDescription,
 } from '@/components/ui/dialog';
 import {
   Select,
@@ -42,6 +43,7 @@ import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
+import { todaySaoPauloDateOnly } from '@/lib/dateOnly';
 
 const BUCKET = 'medical-attachments';
 
@@ -93,6 +95,15 @@ interface AnexosProntuarioProps {
   onAnexoAdicionado: () => void;
   onAnexoRemovido: () => void;
   readOnly?: boolean;
+  podeGerenciarPortal?: boolean;
+}
+
+interface PublicacaoPortal {
+  anexo_id: string;
+  publicado: boolean;
+  validade_ate: string | null;
+  origem: 'clinica' | 'externo';
+  publicado_em?: string | null;
 }
 
 const CATEGORIAS = [
@@ -112,6 +123,7 @@ export function AnexosProntuario({
   onAnexoAdicionado,
   onAnexoRemovido,
   readOnly = false,
+  podeGerenciarPortal = false,
 }: AnexosProntuarioProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
@@ -122,7 +134,88 @@ export function AnexosProntuario({
   const [categoria, setCategoria] = useState('documento');
   const [descricao, setDescricao] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [publicacoesPortal, setPublicacoesPortal] = useState<Record<string, PublicacaoPortal>>({});
+  const [portalStatusLoading, setPortalStatusLoading] = useState(true);
+  const [portalStatusError, setPortalStatusError] = useState(false);
+  const [portalTarget, setPortalTarget] = useState<Anexo | null>(null);
+  const [portalOrigin, setPortalOrigin] = useState<'clinica' | 'externo'>('clinica');
+  const [portalValidity, setPortalValidity] = useState('');
+  const [savingPortalStatus, setSavingPortalStatus] = useState(false);
   const { toast } = useToast();
+  const attachmentIds = anexos.map((anexo) => anexo.id).sort().join(',');
+
+  useEffect(() => {
+    if (!podeGerenciarPortal || !attachmentIds) {
+      setPublicacoesPortal({});
+      setPortalStatusError(false);
+      setPortalStatusLoading(false);
+      return;
+    }
+
+    let ativo = true;
+    setPortalStatusLoading(true);
+    setPortalStatusError(false);
+    void supabase.from('documentos_portal_paciente')
+      .select('anexo_id,publicado,validade_ate,origem,publicado_em')
+      .in('anexo_id', attachmentIds.split(','))
+      .then(({ data, error }: any) => {
+        if (!ativo) return;
+        if (error) throw error;
+        setPublicacoesPortal(Object.fromEntries((data ?? []).map((item: PublicacaoPortal) => [item.anexo_id, item])));
+      })
+      .catch((error) => {
+        if (!ativo) return;
+        setPortalStatusError(true);
+        toast({ title: 'Não foi possível verificar as publicações no portal', description: 'Atualize a ficha antes de alterar a disponibilidade.', variant: 'destructive' });
+        console.error('Erro ao verificar publicação de anexos no portal:', error);
+      })
+      .finally(() => { if (ativo) setPortalStatusLoading(false); });
+    return () => { ativo = false; };
+  }, [attachmentIds, podeGerenciarPortal, toast]);
+
+  const openPortalManager = (anexo: Anexo) => {
+    const atual = publicacoesPortal[anexo.id];
+    setPortalOrigin(atual?.origem ?? 'clinica');
+    setPortalValidity(atual?.validade_ate ?? '');
+    setPortalTarget(anexo);
+  };
+
+  const handleSavePortalStatus = async () => {
+    if (!portalTarget || savingPortalStatus || portalStatusError) return;
+    const atual = publicacoesPortal[portalTarget.id];
+    const publicar = !atual?.publicado;
+    if (publicar && portalValidity && portalValidity < todaySaoPauloDateOnly()) {
+      toast({ title: 'Validade vencida', description: 'Informe hoje ou uma data futura.', variant: 'destructive' });
+      return;
+    }
+    setSavingPortalStatus(true);
+    try {
+      const { data, error } = await (supabase as any).rpc('gerenciar_documento_portal_paciente', {
+        p_anexo_id: portalTarget.id,
+        p_publicado: publicar,
+        p_validade_ate: portalValidity || null,
+        p_origem: portalOrigin,
+      });
+      if (error) throw error;
+      if (!data || typeof data.publicado !== 'boolean') throw new Error('O servidor não confirmou a disponibilidade do documento.');
+      setPublicacoesPortal((current) => ({
+        ...current,
+        [portalTarget.id]: {
+          anexo_id: portalTarget.id,
+          publicado: data.publicado,
+          validade_ate: data.validade_ate ?? null,
+          origem: data.origem ?? portalOrigin,
+          publicado_em: data.publicado_em ?? null,
+        },
+      }));
+      setPortalTarget(null);
+      toast({ title: publicar ? 'Documento disponibilizado no portal' : 'Documento removido do portal' });
+    } catch (error) {
+      toast({ title: 'Não foi possível atualizar o portal', description: error instanceof Error ? error.message : 'Tente novamente.', variant: 'destructive' });
+    } finally {
+      setSavingPortalStatus(false);
+    }
+  };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -391,9 +484,24 @@ export function AnexosProntuario({
                           {format(new Date(anexo.created_at), 'dd/MM/yyyy HH:mm')}
                         </p>
                       )}
+                      {podeGerenciarPortal && !portalStatusLoading && !portalStatusError && publicacoesPortal[anexo.id]?.publicado && (
+                        <p className="text-xs text-emerald-700 mt-2">
+                          Disponível no portal · {publicacoesPortal[anexo.id].origem === 'externo' ? 'Origem externa' : 'Documento da clínica'} · {publicacoesPortal[anexo.id].validade_ate ? `válido até ${format(new Date(`${publicacoesPortal[anexo.id].validade_ate}T12:00:00`), 'dd/MM/yyyy')}` : 'sem vencimento'}
+                        </p>
+                      )}
                     </div>
                   </div>
                   <div className="flex justify-end gap-1 mt-3">
+                    {podeGerenciarPortal && !portalStatusLoading && !portalStatusError && (
+                      <Button
+                        variant={publicacoesPortal[anexo.id]?.publicado ? 'outline' : 'secondary'}
+                        size="sm"
+                        aria-label={`${publicacoesPortal[anexo.id]?.publicado ? 'Revogar documento do portal' : 'Disponibilizar no portal'} para ${anexo.nome_arquivo}`}
+                        onClick={() => openPortalManager(anexo)}
+                      >
+                        {publicacoesPortal[anexo.id]?.publicado ? 'Revogar do portal' : 'Disponibilizar no portal'}
+                      </Button>
+                    )}
                     <Button
                       variant="ghost"
                       size="icon"
@@ -506,6 +614,43 @@ export function AnexosProntuario({
                   Enviar
                 </>
               )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!portalTarget} onOpenChange={(open) => { if (!open && !savingPortalStatus) setPortalTarget(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{publicacoesPortal[portalTarget?.id ?? '']?.publicado ? 'Revogar documento do portal' : 'Disponibilizar documento no portal'}</DialogTitle>
+            <DialogDescription>
+              {portalTarget?.nome_arquivo}. O paciente receberá acesso a um link privado, criado quando abrir o documento e válido por cinco minutos.
+            </DialogDescription>
+          </DialogHeader>
+          {!publicacoesPortal[portalTarget?.id ?? '']?.publicado && (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label>Origem do documento</Label>
+                <Select value={portalOrigin} onValueChange={(value: 'clinica' | 'externo') => setPortalOrigin(value)}>
+                  <SelectTrigger aria-label="Origem do documento"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="clinica">Da clínica</SelectItem>
+                    <SelectItem value="externo">Externo</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="validade-documento-portal">Validade do documento</Label>
+                <Input id="validade-documento-portal" type="date" min={todaySaoPauloDateOnly()} value={portalValidity} onChange={(event) => setPortalValidity(event.target.value)} />
+                <p className="text-xs text-muted-foreground">Deixe em branco para não definir vencimento.</p>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPortalTarget(null)} disabled={savingPortalStatus}>Cancelar</Button>
+            <Button onClick={handleSavePortalStatus} disabled={savingPortalStatus || portalStatusError}>
+              {savingPortalStatus ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+              {publicacoesPortal[portalTarget?.id ?? '']?.publicado ? 'Confirmar revogação do portal' : 'Publicar documento no portal'}
             </Button>
           </DialogFooter>
         </DialogContent>
