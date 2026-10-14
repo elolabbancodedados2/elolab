@@ -3,6 +3,13 @@ export interface PlanFeatureAccess {
   status: string;
 }
 
+export function descricaoComercialPlano(slug: string, descricao: string | null | undefined): string {
+  if (slug === 'elolab-max') {
+    return 'Gestão completa da rotina da clínica. O Agente de IA está disponível no EloLab Ultra.';
+  }
+  return descricao ?? '';
+}
+
 export function canAccessPlanFeature(
   assinatura: PlanFeatureAccess | null | undefined,
   feature: string,

@@ -799,6 +799,21 @@ export default function Configuracoes() {
                       </div>
                     </div>
 
+                    {isTrial && assinaturaAtual?.cobranca_modalidade === 'recorrente' && (
+                      <>
+                        <Separator />
+                        <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-warning/30 bg-warning/5 p-4">
+                          <div className="space-y-1">
+                            <p className="font-medium text-foreground">Teste sem cobranças até o fim do período</p>
+                            <p className="text-sm text-muted-foreground">Cancele aqui antes da primeira cobrança. O cancelamento encerra o acesso ao plano imediatamente.</p>
+                          </div>
+                          <Button variant="destructive" className="gap-2" onClick={() => setShowCancelPlan(true)}>
+                            ✕ Cancelar teste grátis
+                          </Button>
+                        </div>
+                      </>
+                    )}
+
                     {!isTrial && (
                       <>
                         <Separator />
@@ -845,9 +860,11 @@ export default function Configuracoes() {
                         <Receipt className="h-4 w-4" />
                         Ver Faturas
                       </Button>
-                      <Button variant="destructive" className="gap-2" onClick={() => setShowCancelPlan(true)}>
-                        ✕ Cancelar Plano
-                      </Button>
+                      {!isTrial && assinaturaAtual?.cobranca_modalidade !== 'pre_pago' && (
+                        <Button variant="destructive" className="gap-2" onClick={() => setShowCancelPlan(true)}>
+                          ✕ Cancelar Plano
+                        </Button>
+                      )}
                     </div>
                   </>
                 )}
@@ -912,16 +929,16 @@ export default function Configuracoes() {
             }}>
               <DialogContent>
                 <DialogHeader>
-                  <DialogTitle>Cancelar assinatura?</DialogTitle>
+                  <DialogTitle>{isTrial ? 'Cancelar teste grátis?' : 'Cancelar assinatura?'}</DialogTitle>
                   <DialogDescription>
-                    Sua assinatura será cancelada no Mercado Pago. Você manterá acesso até o fim do período já pago.
+                    O Mercado Pago cancelará a cobrança recorrente agora. Ao confirmar, o acesso ao plano será encerrado e nenhuma cobrança futura será feita.
                   </DialogDescription>
                 </DialogHeader>
                 <DialogFooter>
                   <Button variant="outline" onClick={() => setShowCancelPlan(false)} disabled={cancelPlanMutation.isPending}>Manter assinatura</Button>
                   <Button variant="destructive" disabled={cancelPlanMutation.isPending} onClick={confirmarCancelamentoPlano}>
                     {cancelPlanMutation.isPending && <Loader2 className="h-4 w-4 animate-spin mr-1" />}
-                    Confirmar cancelamento
+                    {isTrial ? 'Cancelar teste grátis' : 'Confirmar cancelamento'}
                   </Button>
                 </DialogFooter>
               </DialogContent>
