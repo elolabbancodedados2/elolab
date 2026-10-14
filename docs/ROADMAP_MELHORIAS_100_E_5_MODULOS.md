@@ -22,8 +22,9 @@ Itens 1–100 são propostas de execução, não afirmações de que esses defei
 
 1. [x] Bloquear conflitos de horário entre o mesmo profissional, paciente e sala; mostrar os dois compromissos conflitantes antes de salvar.
 **Entrega E30:** o bloqueio já existia; a lacuna era a mensagem genérica. Ao conflitar médico, paciente ou sala, o formulário agora informa o intervalo ocupado e o intervalo solicitado, e sugere a ação adequada. Evidência: teste regressivo red/green (4/4), TypeScript, build e ESLint sem erros (avisos `any` preexistentes em `AppointmentDialog.tsx`) passaram. Sem migration ou gravação clínica real.
-2. Revalidar disponibilidade no servidor no instante da confirmação para impedir que duas sessões reservem a mesma vaga.
-3. Adicionar uma reserva temporária com expiração no agendamento público; liberar a vaga automaticamente se o paciente abandonar o formulário.
+2. [x] Revalidar disponibilidade no servidor no instante da confirmação para impedir que duas sessões reservem a mesma vaga. **Auditoria:** já era garantido por `agendar_consulta_online_atomico` com lock transacional e validação de conflitos; não contado como melhoria.
+3. [x] Adicionar uma reserva temporária com expiração no agendamento público; liberar a vaga automaticamente se o paciente abandonar o formulário.
+**Entrega E31:** ao escolher um horário, o servidor cria uma reserva de cinco minutos sob lock transacional; o formulário só continua depois da confirmação. A lista deixa de oferecer faixas sobrepostas, a troca de seleção tenta liberar a reserva anterior e reservas abandonadas expiram automaticamente. Token aleatório só é devolvido ao próprio navegador e o banco armazena seu SHA-256; RLS e grants impedem acesso pelo cliente. Evidência: Vitest completo 277 arquivos/1.376 testes; Playwright Chromium 9/9; PGlite PostgreSQL descartável validou migration, disputa pela vaga, confirmação/consumo, isolamento entre clínicas e expiração; parser SQL 18/18 e PL/pgSQL 3/3; TypeScript, `deno check`, build e checks de colunas/falhas/permissões/acessibilidade passaram. Migration e Edge Function continuam locais, sem gravação real.
 4. Permitir encaixar uma pessoa da lista de espera em uma vaga recém-liberada, preservando serviço, profissional e confirmação de horário.
 5. Registrar o motivo de cancelamento e oferecer reagendamento com os dados do compromisso anterior já preenchidos.
 6. Mostrar mudanças de profissional, horário, sala e status em histórico consultável por usuários autorizados.
@@ -218,3 +219,4 @@ Cadastro patrimonial de equipamento por unidade, responsável, validade de calib
 - [ ] Fazer triagem dos itens 1–100 no checkout local e retirar duplicatas antes de iniciar cada pacote.
 - [ ] Implementar, validar e registrar cada pacote antes de seguir ao próximo; atualizar este arquivo sem contar testes ou documentos como melhoria funcional.
 - [x] Completar e testar N1–N5 como módulos com persistência, autorização e fluxo utilizável em ambiente sintético/descartável; nenhum módulo depende só de navegação.
+- [ ] Entregar melhorias funcionais distintas nos módulos existentes: **30/100** concluídas; E14 foi auditoria de comportamento existente e não entra na contagem. N1–N5 são a meta separada de módulos novos.
