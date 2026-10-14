@@ -42,11 +42,11 @@
 
 ### Task 2: Reconcile release provenance and VPS drift
 
-**Files:** `Dockerfile`; `supabase/config.toml`; `docs/EASYPANEL-VPS.md`; release notes as needed.
+**Files:** `Dockerfile`; `supabase/config.toml`; `supabase/functions/trial-with-payment/*`; `supabase/functions/hello/*`; `docs/EASYPANEL-VPS.md`; release notes as needed.
 
-- [ ] Compare local config with VPS config and runtime wiring; synchronize the config file only after confirming its source and runtime role.
-- [ ] Confirm all local migration versions are registered remotely.
-- [ ] Compare remote-only Edge Function directories; preserve unknown/secret directories and establish whether `trial-with-payment` is referenced before any removal.
+- [x] Confirm the Supabase Compose stack does not mount `supabase/config.toml`; it is still the source config for CLI use. Sync its local function blocks to `/etc/easypanel/projects/elolab/app/code/supabase/config.toml` after keeping a dated copy.
+- [x] Confirm all local migration versions are registered remotely.
+- [x] The remote trial route had zero logged requests in the available 30-day window and the local product docs say its old flow was removed. Quarantine the old source and replace the route with a no-side-effect 410 tombstone; replace the default `hello` sample route with a controlled 404. Preserve `_secrets` and runtime `main`.
 - [x] Make the Docker build accept `APP_BUILD_ID`/`VITE_APP_BUILD_ID`, so archive-based VPS builds embed the exact commit instead of a timestamp fallback.
 - [ ] Record the published snapshot SHA and a reproducible Git path without changing `main` prematurely.
 
