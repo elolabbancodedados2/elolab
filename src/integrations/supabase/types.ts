@@ -3300,6 +3300,10 @@ export type Database = {
           estado: string | null
           estado_civil: string | null
           foto_url: string | null
+          preferencia_canal_lembrete: string
+          horario_contato_inicio: string
+          horario_contato_fim: string
+          fuso_horario_contato: string
           gestante: boolean
           id: string
           logradouro: string | null
@@ -3334,6 +3338,10 @@ export type Database = {
           estado?: string | null
           estado_civil?: string | null
           foto_url?: string | null
+          preferencia_canal_lembrete?: string
+          horario_contato_inicio?: string
+          horario_contato_fim?: string
+          fuso_horario_contato?: string
           gestante?: boolean
           id?: string
           logradouro?: string | null
@@ -3368,6 +3376,10 @@ export type Database = {
           estado?: string | null
           estado_civil?: string | null
           foto_url?: string | null
+          preferencia_canal_lembrete?: string
+          horario_contato_inicio?: string
+          horario_contato_fim?: string
+          fuso_horario_contato?: string
           gestante?: boolean
           id?: string
           logradouro?: string | null

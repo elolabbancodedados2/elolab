@@ -3,6 +3,7 @@ import { clinicaAdminDoChamador, cronForbidden, cronOrUserOk, cronSecretOk } fro
 import { corsPadrao } from '../_shared/cors.ts';
 import { consumoNotificacoes } from '../_shared/limitesClinica.ts';
 import { checkNotificationSendLimits } from '../_shared/notificationRateLimit.ts';
+import { canaisDeLembrete, dentroDaJanelaDeContato } from '../_shared/notificationDeliveryPolicy.ts';
 import { sendBrandedBrevoRequest } from '../_shared/brevoEmail.ts';
 
 // Atribuído em cada request (reflete a origem permitida). Helpers
@@ -14,6 +15,7 @@ interface NotificationItem {
   destinatario_telefone: string | null; destinatario_nome: string | null
   assunto: string | null; conteudo: string; tentativas: number
   max_tentativas: number; clinica_id: string | null
+  destinatario_id: string | null; dados_extras: Record<string, unknown> | null
 }
 
 Deno.serve(async (req) => {
@@ -85,9 +87,73 @@ Deno.serve(async (req) => {
             continue
           }
         }
-        const destination = notif.tipo === 'whatsapp'
+        let destination = notif.tipo === 'whatsapp'
           ? notif.destinatario_telefone
           : notif.tipo === 'email' ? notif.destinatario_email : null
+        const dadosExtras = notif.dados_extras || {}
+        const lembreteDeConsulta = dadosExtras.tipo_notificacao === 'confirmacao_agendamento'
+          || ['24h', '24h_whatsapp', '2h', '2h_whatsapp'].includes(String(dadosExtras.tipo_lembrete || ''))
+        if (lembreteDeConsulta) {
+          if (!notif.destinatario_id || !notif.clinica_id) throw new Error('Não foi possível confirmar as preferências do destinatário.')
+          const { data: paciente, error: patientError } = await supabase.from('pacientes')
+            .select('email, telefone, preferencia_canal_lembrete, horario_contato_inicio, horario_contato_fim, fuso_horario_contato')
+            .eq('id', notif.destinatario_id).eq('clinica_id', notif.clinica_id).maybeSingle()
+          if (patientError || !paciente) throw new Error('Não foi possível confirmar as preferências do destinatário.')
+          if (typeof dadosExtras.agendamento_id === 'string') {
+            const { data: agendamento, error: appointmentError } = await supabase.from('agendamentos')
+              .select('data, hora_inicio, status')
+              .eq('id', dadosExtras.agendamento_id).eq('clinica_id', notif.clinica_id).maybeSingle()
+            if (appointmentError) throw new Error('Não foi possível validar a consulta do lembrete.')
+            const agoraClinica = new Intl.DateTimeFormat('sv-SE', {
+              timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit',
+              hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+            }).format(new Date()).replace(' ', 'T')
+            const horaConsulta = agendamento?.hora_inicio ? String(agendamento.hora_inicio).slice(0, 5) : ''
+            const consultaAindaFutura = agendamento
+              && ['agendado', 'confirmado'].includes(agendamento.status)
+              && /^\d{4}-\d{2}-\d{2}$/.test(String(agendamento.data))
+              && /^([01]\d|2[0-3]):[0-5]\d$/.test(horaConsulta)
+              && `${agendamento.data}T${horaConsulta}` > agoraClinica
+            if (!consultaAindaFutura) {
+              const { error: cancelError } = await supabase.from('notification_queue').update({
+                status: 'cancelado', erro_mensagem: 'A consulta não está mais elegível para lembrete.', iniciado_em: null,
+              }).eq('id', notif.id).eq('status', 'enviando')
+              if (cancelError) throw cancelError
+              errorCount++
+              continue
+            }
+          }
+          const canaisPermitidos = canaisDeLembrete(paciente.preferencia_canal_lembrete, !!paciente.email, !!paciente.telefone)
+          const permitido = notif.tipo === 'whatsapp' ? canaisPermitidos.whatsapp
+            : notif.tipo === 'email' ? canaisPermitidos.email : false
+          if (!permitido) {
+            const { error: cancelError } = await supabase.from('notification_queue').update({
+              status: 'cancelado', erro_mensagem: 'Preferência do paciente não permite este canal.', iniciado_em: null,
+            }).eq('id', notif.id).eq('status', 'enviando')
+            if (cancelError) throw cancelError
+            errorCount++
+            continue
+          }
+          if (notif.tipo === 'whatsapp') {
+            notif.destinatario_telefone = paciente.telefone
+            destination = paciente.telefone
+          }
+          if (notif.tipo === 'email') {
+            notif.destinatario_email = paciente.email
+            destination = paciente.email
+          }
+          if (!dentroDaJanelaDeContato(new Date(), paciente.horario_contato_inicio, paciente.horario_contato_fim, paciente.fuso_horario_contato)) {
+            const { error: deferError } = await supabase.from('notification_queue').update({
+              status: 'pendente', tentativas: Math.max(0, notif.tentativas - 1),
+              agendado_para: new Date(Date.now() + 60 * 60_000).toISOString(),
+              erro_mensagem: 'Fora da janela de contato do paciente; nova tentativa agendada.',
+              ultimo_erro_em: new Date().toISOString(), iniciado_em: null,
+            }).eq('id', notif.id).eq('status', 'enviando')
+            if (deferError) throw deferError
+            errorCount++
+            continue
+          }
+        }
         if (destination) {
           const rateLimit = await checkNotificationSendLimits(supabase, {
             clinicId: notif.clinica_id,

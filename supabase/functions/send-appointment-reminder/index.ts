@@ -2,6 +2,9 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { cronOrUserOk, cronForbidden, cronSecretOk, clinicaDoChamador, usuarioTemAlgumPapel } from '../_shared/cronAuth.ts';
 import { corsPadrao } from '../_shared/cors.ts';
 import { sendBrevoEmail as sendSharedBrevoEmail } from '../_shared/brevoEmail.ts';
+import { checkNotificationSendLimits } from '../_shared/notificationRateLimit.ts';
+import { consumoNotificacoes } from '../_shared/limitesClinica.ts';
+import { canaisDeLembrete, dentroDaJanelaDeContato, type PreferenciaCanalLembrete } from '../_shared/notificationDeliveryPolicy.ts';
 
 // Atribuído em cada request (reflete a origem permitida). Helpers
 // top-level (json/reply) capturam esta variável por closure.
@@ -36,12 +39,25 @@ interface Agendamento {
     nome: string
     email: string | null
     telefone: string | null
+    preferencia_canal_lembrete: PreferenciaCanalLembrete | null
+    horario_contato_inicio: string | null
+    horario_contato_fim: string | null
+    fuso_horario_contato: string | null
   }
   medicos: {
     crm: string
     nome: string | null
     especialidade: string | null
   }
+}
+
+async function enqueueRateLimitedReminder(supabase: any, reminder: Record<string, unknown>): Promise<void> {
+  const { error } = await supabase.from('notification_queue').insert({
+    ...reminder,
+    status: 'pendente',
+    agendado_para: new Date(Date.now() + 60_000).toISOString(),
+  });
+  if (error) throw new Error('Não foi possível reagendar o lembrete limitado.');
 }
 
 Deno.serve(async (req) => {
@@ -92,6 +108,18 @@ Deno.serve(async (req) => {
     // connected instance would send one clinic's messages through another
     // clinic's number when the cron processes multiple tenants.
     const clinicConfigCache: Record<string, any> = {}
+    const notificationUsageCache = new Map<string, { usados: number; limite: number }>()
+    const clinicCanSendNotification = async (clinicId: string) => {
+      if (!notificationUsageCache.has(clinicId)) {
+        notificationUsageCache.set(clinicId, await consumoNotificacoes(supabase, clinicId))
+      }
+      const usage = notificationUsageCache.get(clinicId)!
+      return usage.usados < usage.limite
+    }
+    const countNotificationSent = (clinicId: string) => {
+      const usage = notificationUsageCache.get(clinicId)
+      if (usage) usage.usados++
+    }
     const whatsappInstanceCache: Record<string, string | null> = {}
     const whatsappInstancesUsed = new Set<string>()
 
@@ -123,7 +151,7 @@ Deno.serve(async (req) => {
 
       const { data: agendamento, error: agendamentoError } = await supabase
         .from('agendamentos')
-        .select('id, data, hora_inicio, tipo, clinica_id, pacientes!inner(id, nome, telefone), medicos!inner(nome, crm)')
+        .select('id, data, hora_inicio, tipo, clinica_id, pacientes!inner(id, nome, telefone, preferencia_canal_lembrete, horario_contato_inicio, horario_contato_fim, fuso_horario_contato), medicos!inner(nome, crm)')
         .eq('id', agendamentoId)
         .eq('clinica_id', clinicaAlvo)
         .maybeSingle();
@@ -142,7 +170,13 @@ Deno.serve(async (req) => {
       if (!modelo) throw new Error('Nenhum modelo ativo de confirmação por WhatsApp foi encontrado.');
 
       const paciente = (agendamento as any).pacientes;
-      if (!paciente?.telefone) throw new Error('O paciente não tem telefone cadastrado para receber a confirmação.');
+      if (!paciente?.telefone) throw new Error('Telefone ausente para confirmação.');
+      const canaisConfirmacao = canaisDeLembrete(paciente?.preferencia_canal_lembrete, false, !!paciente?.telefone);
+      if (!canaisConfirmacao.whatsapp) {
+        return new Response(JSON.stringify({ success: true, message: 'A preferência do paciente não permite confirmação por WhatsApp.', stats: { processados: 1, sucesso: 0, erros: 0, ignorados: 1 } }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
       const medico = (agendamento as any).medicos;
       const { data: clinica, error: clinicaError } = await supabase
         .from('clinicas')
@@ -222,6 +256,10 @@ Deno.serve(async (req) => {
       } else if (agendamentos24h && agendamentos24h.length > 0) {
         for (const ag of agendamentos24h as unknown as Agendamento[]) {
           if (!isAutomationActive(settings, ag.clinica_id, 'lembrete_consulta_24h')) continue
+          const paciente = ag.pacientes
+          const canais = canaisDeLembrete(paciente?.preferencia_canal_lembrete, !!paciente?.email, !!paciente?.telefone)
+          if (paciente?.preferencia_canal_lembrete === 'nenhum') continue
+          const dentroDaJanela = dentroDaJanelaDeContato(new Date(), paciente?.horario_contato_inicio, paciente?.horario_contato_fim, paciente?.fuso_horario_contato)
 
           const [existingEmailResult, existingWhatsAppResult] = await Promise.all([
             supabase.from('notification_queue').select('id')
@@ -244,7 +282,6 @@ Deno.serve(async (req) => {
           totalProcessed++
           let hasAnyChannel = false
 
-          const paciente = ag.pacientes
           const medico = ag.medicos
           const medicoNome = medico.nome ? `Dr(a). ${medico.nome}` : `Dr(a). CRM ${medico.crm}`
           const template24h = templateForClinic(templates || [], ag.clinica_id, '24h')
@@ -255,10 +292,16 @@ Deno.serve(async (req) => {
           const clinicaEndereco = clinicConfig ? `${clinicConfig.endereco || ''} — ${clinicConfig.cidade || ''} / ${clinicConfig.uf || ''}` : 'Endereço da clínica'
 
           // === SEND VIA EMAIL ===
-          if (brevoApiKey && paciente?.email && template24h && !existingEmail) {
+          if (brevoApiKey && canais.email && paciente?.email && template24h && !existingEmail) {
             hasAnyChannel = true
             const emailDeliveryKey = `appointment:${ag.id}:24h:email`
             if (await claimAutomationDelivery(supabase, ag.clinica_id, emailDeliveryKey)) {
+            if (!(await clinicCanSendNotification(ag.clinica_id))) {
+              await releaseAutomationDelivery(supabase, ag.clinica_id, emailDeliveryKey)
+              totalErrors++
+              errors.push('Limite mensal de notificações da clínica atingido; lembrete não enviado.')
+              continue
+            }
             const conteudo = template24h.conteudo
               .replace(/\{\{paciente_nome\}\}/g, paciente.nome)
               .replace(/\{\{data\}\}/g, formatDate(ag.data))
@@ -270,11 +313,30 @@ Deno.serve(async (req) => {
             const assunto = (template24h.assunto || 'Lembrete de Consulta')
               .replace(/\{\{clinica_nome\}\}/g, clinicaNome)
 
+            const rateLimit = dentroDaJanela ? await checkNotificationSendLimits(supabase, {
+              clinicId: ag.clinica_id, channel: 'email', destination: paciente.email,
+              hashSecret: Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '',
+            }) : 'window'
+            if (rateLimit) {
+              await enqueueRateLimitedReminder(supabase, {
+                template_id: template24h.id, tipo: 'email', destinatario_id: ag.paciente_id,
+                destinatario_email: paciente.email, destinatario_nome: paciente.nome, assunto, conteudo,
+                dados_extras: { agendamento_id: ag.id, tipo_lembrete: '24h' }, clinica_id: ag.clinica_id,
+              })
+              await releaseAutomationDelivery(supabase, ag.clinica_id, emailDeliveryKey)
+              totalErrors++
+              errors.push(rateLimit === 'window'
+                ? 'Lembrete fora da janela de contato; reagendado na fila.'
+                : 'Envio de lembrete adiado por limite de volume e transferido para a fila.')
+              continue
+            }
+
             try {
               const emailRes = await sendSharedBrevoEmail({ to: { email: paciente.email, name: paciente.nome }, subject: assunto, html: conteudo.replace(/\n/g, '<br>'), senderName: clinicaNome })
 
               if (emailRes.ok) {
                 await finishAutomationDelivery(supabase, ag.clinica_id, emailDeliveryKey)
+                countNotificationSent(ag.clinica_id)
                 totalSuccess++
                 const { error: queueError } = await supabase.from('notification_queue').insert({
                   template_id: template24h.id,
@@ -318,15 +380,38 @@ Deno.serve(async (req) => {
           if (whatsappInstanceName) whatsappInstancesUsed.add(ag.clinica_id)
 
           // === SEND VIA WHATSAPP ===
-          if (whatsappInstanceName && paciente?.telefone && !existingWhatsApp) {
+          if (whatsappInstanceName && canais.whatsapp && paciente?.telefone && !existingWhatsApp) {
             hasAnyChannel = true
             const whatsappDeliveryKey = `appointment:${ag.id}:24h:whatsapp`
             if (await claimAutomationDelivery(supabase, ag.clinica_id, whatsappDeliveryKey)) {
+            if (!(await clinicCanSendNotification(ag.clinica_id))) {
+              await releaseAutomationDelivery(supabase, ag.clinica_id, whatsappDeliveryKey)
+              totalErrors++
+              errors.push('Limite mensal de notificações da clínica atingido; lembrete não enviado.')
+              continue
+            }
+            const whatsappMsg = `⏰ *Lembrete de Consulta - ${clinicaNome}*\n\nOlá, ${paciente.nome}!\n\nLembramos que você tem uma consulta amanhã:\n📅 Data: ${formatDate(ag.data)}\n🕐 Horário: ${ag.hora_inicio}\n👨‍⚕️ Médico: ${medicoNome}\n📋 Tipo: ${ag.tipo || 'Consulta'}\n\nNão se esqueça de trazer seus documentos e exames anteriores.\n\nResponda *CONFIRMAR* para confirmar sua presença.\n\n_${clinicaNome}_`
+            const rateLimit = dentroDaJanela ? await checkNotificationSendLimits(supabase, {
+              clinicId: ag.clinica_id, channel: 'whatsapp', destination: paciente.telefone,
+              hashSecret: Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '',
+            }) : 'window'
+            if (rateLimit) {
+              await enqueueRateLimitedReminder(supabase, {
+                tipo: 'whatsapp', destinatario_id: ag.paciente_id, destinatario_telefone: paciente.telefone,
+                destinatario_nome: paciente.nome, conteudo: whatsappMsg,
+                dados_extras: { agendamento_id: ag.id, tipo_lembrete: '24h_whatsapp' }, clinica_id: ag.clinica_id,
+              })
+              await releaseAutomationDelivery(supabase, ag.clinica_id, whatsappDeliveryKey)
+              totalErrors++
+              errors.push(rateLimit === 'window'
+                ? 'Lembrete fora da janela de contato; reagendado na fila.'
+                : 'Envio de lembrete adiado por limite de volume e transferido para a fila.')
+              continue
+            }
             try {
-              const whatsappMsg = `⏰ *Lembrete de Consulta - ${clinicaNome}*\n\nOlá, ${paciente.nome}!\n\nLembramos que você tem uma consulta amanhã:\n📅 Data: ${formatDate(ag.data)}\n🕐 Horário: ${ag.hora_inicio}\n👨‍⚕️ Médico: ${medicoNome}\n📋 Tipo: ${ag.tipo || 'Consulta'}\n\nNão se esqueça de trazer seus documentos e exames anteriores.\n\nResponda *CONFIRMAR* para confirmar sua presença.\n\n_${clinicaNome}_`
-
               await sendWhatsAppMessage(evolutionApiUrl!, evolutionApiKey!, whatsappInstanceName, paciente.telefone, whatsappMsg)
               await finishAutomationDelivery(supabase, ag.clinica_id, whatsappDeliveryKey)
+              countNotificationSent(ag.clinica_id)
 
               const { error: queueError } = await supabase.from('notification_queue').insert({
                 tipo: 'whatsapp',
@@ -351,7 +436,7 @@ Deno.serve(async (req) => {
             }
           }
           }
-          if (!hasAnyChannel && !existingEmail && !existingWhatsApp) {
+          if (!hasAnyChannel && !existingEmail && !existingWhatsApp && paciente?.preferencia_canal_lembrete !== 'nenhum') {
             totalErrors++
             errors.push(`Nenhum canal de envio está disponível para a consulta ${ag.id}.`)
           }
@@ -374,6 +459,10 @@ Deno.serve(async (req) => {
           const appointmentTime = new Date(`${todayStr}T${ag.hora_inicio.slice(0, 5)}:00-03:00`)
 
           if (appointmentTime < twoHoursFromNow || appointmentTime > threeHoursFromNow) continue
+          const paciente = ag.pacientes
+          const canais = canaisDeLembrete(paciente?.preferencia_canal_lembrete, !!paciente?.email, !!paciente?.telefone)
+          if (paciente?.preferencia_canal_lembrete === 'nenhum') continue
+          const dentroDaJanela = dentroDaJanelaDeContato(new Date(), paciente?.horario_contato_inicio, paciente?.horario_contato_fim, paciente?.fuso_horario_contato)
 
           const [existingEmailResult, existingWhatsAppResult] = await Promise.all([
             supabase.from('notification_queue').select('id')
@@ -396,7 +485,6 @@ Deno.serve(async (req) => {
           totalProcessed++
           let hasAnyChannel = false
 
-          const paciente = ag.pacientes
           const medico = ag.medicos
           const medicoNome = medico.nome ? `Dr(a). ${medico.nome}` : `Dr(a). CRM ${medico.crm}`
           const template2h = templateForClinic(templates || [], ag.clinica_id, '2h')
@@ -406,10 +494,16 @@ Deno.serve(async (req) => {
           const clinicaNome2h = clinicConfig2h?.nome_fantasia || 'Clínica Médica'
 
           // === SEND VIA EMAIL ===
-          if (brevoApiKey && paciente?.email && template2h && !existingEmail) {
+          if (brevoApiKey && canais.email && paciente?.email && template2h && !existingEmail) {
             hasAnyChannel = true
             const emailDeliveryKey = `appointment:${ag.id}:2h:email`
             if (await claimAutomationDelivery(supabase, ag.clinica_id, emailDeliveryKey)) {
+            if (!(await clinicCanSendNotification(ag.clinica_id))) {
+              await releaseAutomationDelivery(supabase, ag.clinica_id, emailDeliveryKey)
+              totalErrors++
+              errors.push('Limite mensal de notificações da clínica atingido; lembrete não enviado.')
+              continue
+            }
             const conteudo = template2h.conteudo
               .replace(/\{\{paciente_nome\}\}/g, paciente.nome)
               .replace(/\{\{horario\}\}/g, ag.hora_inicio)
@@ -420,11 +514,30 @@ Deno.serve(async (req) => {
               .replace(/\{\{horario\}\}/g, ag.hora_inicio)
               .replace(/\{\{clinica_nome\}\}/g, clinicaNome2h)
 
+            const rateLimit = dentroDaJanela ? await checkNotificationSendLimits(supabase, {
+              clinicId: ag.clinica_id, channel: 'email', destination: paciente.email,
+              hashSecret: Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '',
+            }) : 'window'
+            if (rateLimit) {
+              await enqueueRateLimitedReminder(supabase, {
+                template_id: template2h.id, tipo: 'email', destinatario_id: ag.paciente_id,
+                destinatario_email: paciente.email, destinatario_nome: paciente.nome, assunto, conteudo,
+                dados_extras: { agendamento_id: ag.id, tipo_lembrete: '2h' }, clinica_id: ag.clinica_id,
+              })
+              await releaseAutomationDelivery(supabase, ag.clinica_id, emailDeliveryKey)
+              totalErrors++
+              errors.push(rateLimit === 'window'
+                ? 'Lembrete fora da janela de contato; reagendado na fila.'
+                : 'Envio de lembrete adiado por limite de volume e transferido para a fila.')
+              continue
+            }
+
             try {
               const emailRes = await sendSharedBrevoEmail({ to: { email: paciente.email, name: paciente.nome }, subject: assunto, html: conteudo.replace(/\n/g, '<br>'), senderName: clinicaNome2h })
 
               if (emailRes.ok) {
                 await finishAutomationDelivery(supabase, ag.clinica_id, emailDeliveryKey)
+                countNotificationSent(ag.clinica_id)
                 totalSuccess++
                 const { error: queueError } = await supabase.from('notification_queue').insert({
                   template_id: template2h.id,
@@ -466,15 +579,38 @@ Deno.serve(async (req) => {
           if (whatsappInstanceName) whatsappInstancesUsed.add(ag.clinica_id)
 
           // === SEND VIA WHATSAPP ===
-          if (whatsappInstanceName && paciente?.telefone && !existingWhatsApp) {
+          if (whatsappInstanceName && canais.whatsapp && paciente?.telefone && !existingWhatsApp) {
             hasAnyChannel = true
             const whatsappDeliveryKey = `appointment:${ag.id}:2h:whatsapp`
             if (await claimAutomationDelivery(supabase, ag.clinica_id, whatsappDeliveryKey)) {
+            if (!(await clinicCanSendNotification(ag.clinica_id))) {
+              await releaseAutomationDelivery(supabase, ag.clinica_id, whatsappDeliveryKey)
+              totalErrors++
+              errors.push('Limite mensal de notificações da clínica atingido; lembrete não enviado.')
+              continue
+            }
+            const whatsappMsg = `⏰ *Lembrete - ${clinicaNome2h}*\n\nOlá, ${paciente.nome}! Sua consulta é daqui a 2 horas:\n🕐 Horário: ${ag.hora_inicio}\n👨‍⚕️ Médico: ${medicoNome}\n\nEstamos esperando por você!\n\n_${clinicaNome2h}_`
+            const rateLimit = dentroDaJanela ? await checkNotificationSendLimits(supabase, {
+              clinicId: ag.clinica_id, channel: 'whatsapp', destination: paciente.telefone,
+              hashSecret: Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '',
+            }) : 'window'
+            if (rateLimit) {
+              await enqueueRateLimitedReminder(supabase, {
+                tipo: 'whatsapp', destinatario_id: ag.paciente_id, destinatario_telefone: paciente.telefone,
+                destinatario_nome: paciente.nome, conteudo: whatsappMsg,
+                dados_extras: { agendamento_id: ag.id, tipo_lembrete: '2h_whatsapp' }, clinica_id: ag.clinica_id,
+              })
+              await releaseAutomationDelivery(supabase, ag.clinica_id, whatsappDeliveryKey)
+              totalErrors++
+              errors.push(rateLimit === 'window'
+                ? 'Lembrete fora da janela de contato; reagendado na fila.'
+                : 'Envio de lembrete adiado por limite de volume e transferido para a fila.')
+              continue
+            }
             try {
-              const whatsappMsg = `⏰ *Lembrete - ${clinicaNome2h}*\n\nOlá, ${paciente.nome}! Sua consulta é daqui a 2 horas:\n🕐 Horário: ${ag.hora_inicio}\n👨‍⚕️ Médico: ${medicoNome}\n\nEstamos esperando por você!\n\n_${clinicaNome2h}_`
-
               await sendWhatsAppMessage(evolutionApiUrl!, evolutionApiKey!, whatsappInstanceName, paciente.telefone, whatsappMsg)
               await finishAutomationDelivery(supabase, ag.clinica_id, whatsappDeliveryKey)
+              countNotificationSent(ag.clinica_id)
 
               const { error: queueError } = await supabase.from('notification_queue').insert({
                 tipo: 'whatsapp',
@@ -499,7 +635,7 @@ Deno.serve(async (req) => {
             }
           }
           }
-          if (!hasAnyChannel && !existingEmail && !existingWhatsApp) {
+          if (!hasAnyChannel && !existingEmail && !existingWhatsApp && paciente?.preferencia_canal_lembrete !== 'nenhum') {
             totalErrors++
             errors.push(`Nenhum canal de envio está disponível para a consulta ${ag.id}.`)
           }
@@ -574,7 +710,7 @@ async function carregarAgendamentos(
     const fim = Math.min(inicio + tamanhoPagina, limite) - 1
     const { data: pagina, error } = await consultaBase(`
       id, data, hora_inicio, status, tipo, paciente_id, medico_id, clinica_id,
-      pacientes!inner(nome, email, telefone),
+      pacientes!inner(nome, email, telefone, preferencia_canal_lembrete, horario_contato_inicio, horario_contato_fim, fuso_horario_contato),
       medicos!inner(crm, nome, especialidade)
     `, inicio, fim)
     if (error) return { data: null, error: new Error(`Erro ao buscar consultas: ${error.message}`) }

@@ -64,6 +64,10 @@ interface PacienteFormData {
   data_nascimento: string;
   telefone: string;
   email: string;
+  preferencia_canal_lembrete: 'ambos' | 'email' | 'whatsapp' | 'nenhum';
+  horario_contato_inicio: string;
+  horario_contato_fim: string;
+  fuso_horario_contato: string;
   sexo: string;
   estado_civil: string;
   profissao: string;
@@ -95,6 +99,8 @@ interface PacienteFormData {
 
 const initialFormData: PacienteFormData = {
   nome: '', nome_social: '', cpf: '', data_nascimento: '', telefone: '', email: '',
+  preferencia_canal_lembrete: 'ambos', horario_contato_inicio: '08:00', horario_contato_fim: '20:00',
+  fuso_horario_contato: 'America/Sao_Paulo',
   sexo: '', estado_civil: '', profissao: '', tipo_sanguineo: '',
   cep: '', logradouro: '', numero: '', complemento: '', bairro: '', cidade: '', estado: '',
   convenio_id: '', numero_carteira: '', validade_carteira: '',
@@ -776,6 +782,10 @@ export default function Pacientes() {
       data_nascimento: paciente.data_nascimento || '',
       telefone: paciente.telefone || '',
       email: paciente.email || '',
+      preferencia_canal_lembrete: paciente.preferencia_canal_lembrete || 'ambos',
+      horario_contato_inicio: String(paciente.horario_contato_inicio || '08:00').slice(0, 5),
+      horario_contato_fim: String(paciente.horario_contato_fim || '20:00').slice(0, 5),
+      fuso_horario_contato: paciente.fuso_horario_contato || 'America/Sao_Paulo',
       sexo: paciente.sexo || '',
       estado_civil: paciente.estado_civil || '',
       profissao: paciente.profissao || '',
@@ -944,6 +954,11 @@ export default function Pacientes() {
         return;
       }
     }
+    if (!formData.horario_contato_inicio || !formData.horario_contato_fim || formData.horario_contato_inicio === formData.horario_contato_fim) {
+      setFormSection('pessoal');
+      toast.error('Janela de contato inválida', { description: 'Informe horários diferentes para início e fim da janela de lembretes.' });
+      return;
+    }
 
     const comorbidadesParaSalvar = [...formData.comorbidades];
     pacienteSaveLockRef.current = true;
@@ -956,6 +971,10 @@ export default function Pacientes() {
         data_nascimento: formData.data_nascimento || null,
         telefone: formData.telefone || null,
         email: formData.email.trim().toLocaleLowerCase('pt-BR') || null,
+        preferencia_canal_lembrete: formData.preferencia_canal_lembrete,
+        horario_contato_inicio: formData.horario_contato_inicio,
+        horario_contato_fim: formData.horario_contato_fim,
+        fuso_horario_contato: formData.fuso_horario_contato,
         sexo: formData.sexo || null,
         estado_civil: formData.estado_civil || null,
         profissao: formData.profissao.trim() || null,
@@ -1370,6 +1389,44 @@ export default function Pacientes() {
                   <div className="space-y-2">
                     <Label htmlFor="paciente-email">Email</Label>
                     <Input id="paciente-email" type="email" value={formData.email} onChange={e => setFormData({ ...formData, email: e.target.value })} placeholder="email@exemplo.com" />
+                  </div>
+                  <div className="md:col-span-2 rounded-lg border p-4 space-y-3">
+                    <div>
+                      <Label htmlFor="paciente-canal-lembrete">Lembretes de consulta</Label>
+                      <p className="text-sm text-muted-foreground">Escolha os canais permitidos e o horário local para contato.</p>
+                    </div>
+                    <Select value={formData.preferencia_canal_lembrete} onValueChange={(v: PacienteFormData['preferencia_canal_lembrete']) => setFormData({ ...formData, preferencia_canal_lembrete: v })}>
+                      <SelectTrigger id="paciente-canal-lembrete"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="ambos">E-mail e WhatsApp (quando cadastrados)</SelectItem>
+                        <SelectItem value="email">Somente e-mail</SelectItem>
+                        <SelectItem value="whatsapp">Somente WhatsApp</SelectItem>
+                        <SelectItem value="nenhum">Não enviar lembretes</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div className="space-y-2">
+                        <Label htmlFor="paciente-inicio-contato">A partir de</Label>
+                        <Input id="paciente-inicio-contato" type="time" value={formData.horario_contato_inicio} onChange={e => setFormData({ ...formData, horario_contato_inicio: e.target.value })} />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="paciente-fim-contato">Até (exclusive)</Label>
+                        <Input id="paciente-fim-contato" type="time" value={formData.horario_contato_fim} onChange={e => setFormData({ ...formData, horario_contato_fim: e.target.value })} />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="paciente-fuso-contato">Fuso horário</Label>
+                        <Select value={formData.fuso_horario_contato} onValueChange={v => setFormData({ ...formData, fuso_horario_contato: v })}>
+                          <SelectTrigger id="paciente-fuso-contato"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="America/Noronha">Fernando de Noronha (UTC−02)</SelectItem>
+                            <SelectItem value="America/Sao_Paulo">Brasília, São Paulo (UTC−03)</SelectItem>
+                            <SelectItem value="America/Manaus">Manaus (UTC−04)</SelectItem>
+                            <SelectItem value="America/Rio_Branco">Rio Branco (UTC−05)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground">O início é incluído e o fim não. A janela pode atravessar a meia-noite; se o horário for igual nos dois campos, nenhum lembrete será enviado.</p>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="paciente-estado-civil">Estado Civil</Label>
