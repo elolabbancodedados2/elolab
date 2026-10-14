@@ -132,7 +132,8 @@ Itens 1–100 são propostas de execução, não afirmações de que esses defei
 ### Comunicação, notificações e automações
 
 81. Agrupar notificações repetidas sobre o mesmo evento e permitir abrir o recurso correspondente.
-82. Marcar notificações lidas em lote sem perder o estado de outras sessões.
+82. [x] Marcar notificações lidas em lote sem perder o estado de outras sessões.
+**Entrega E10:** a central já marca somente as notificações não lidas atualmente visíveis e persiste o estado por chave usuário/clínica/origem/item; RLS impede alterar estado de outra conta ou clínica, e o upsert é compartilhado entre sessões. Evidência de auditoria: componente/política RLS 4/4 testes, TypeScript e acessibilidade aprovados. Sem mudança de comportamento ou migration nesta auditoria.
 83. Mostrar fila, tentativas, próxima tentativa e erro resumido de mensagens sem expor token ou conteúdo sensível.
 84. Permitir pausar/reiniciar automação com trilha de autor e prévia do alcance da mudança.
 85. Exigir revisão humana para mensagens de IA que alterem agendamento ou registrem informação no prontuário.
