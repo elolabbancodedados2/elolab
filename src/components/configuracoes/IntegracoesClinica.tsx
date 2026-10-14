@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ExternalLink, KeyRound, Loader2, PlugZap, Unplug } from 'lucide-react';
+import { ExternalLink, KeyRound, Loader2, PlugZap, Unplug, CircleCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -77,6 +77,7 @@ export function IntegracoesClinica() {
   const [aberta, setAberta] = useState<{ integracao: Integracao; referencia_id: string | null; versaoEsperada: string | null } | null>(null);
   const [valores, setValores] = useState<Record<string, string>>({});
   const [salvando, setSalvando] = useState(false);
+  const [testando, setTestando] = useState<string | null>(null);
 
   useEffect(() => {
     const retornoOAuth = searchParams.get('mercado_pago');
@@ -133,6 +134,30 @@ export function IntegracoesClinica() {
     }
   };
 
+  const testarConexao = async (integracao: Integracao) => {
+    setTestando(integracao.id);
+    try {
+      const result = await chamar<{ healthy: boolean; code?: string }>({ action: 'test', provedor: integracao.id });
+      if (result.healthy) {
+        toast.success('Conexão validada', { description: 'O Mercado Pago respondeu e a conta vinculada confere.' });
+      } else {
+        const orientacoes: Record<string, string> = {
+          not_connected: 'Conecte a conta Mercado Pago e tente novamente.',
+          credential_expired: 'A autorização expirou. Reconecte a conta Mercado Pago para renovar o acesso.',
+          credential_rejected: 'A autorização pode ter expirado ou sido revogada. Reconecte a conta Mercado Pago.',
+          identity_mismatch: 'A conta vinculada não corresponde à conexão salva. Reconecte a conta correta.',
+          provider_unavailable: 'O Mercado Pago não respondeu agora. Confira a disponibilidade e tente novamente em instantes.',
+        };
+        toast.error('Não foi possível validar a conexão', { description: orientacoes[result.code ?? ''] ?? 'Revise a conexão ou contate o suporte.' });
+      }
+      await queryClient.invalidateQueries({ queryKey: ['integracoes-clinica'] });
+    } catch (e: any) {
+      toast.error('Não foi possível testar a conexão', { description: e.message || 'Revise a conexão ou contate o suporte.' });
+    } finally {
+      setTestando(null);
+    }
+  };
+
   const desconectar = async (integracao: Integracao, referencia_id: string | null) => {
     const detalhe = integracao.id === 'mercado_pago'
       ? 'O EloLab apagará a autorização salva. Para revogar também o acesso da aplicação, faça isso nas configurações da sua conta Mercado Pago.'
@@ -176,6 +201,12 @@ export function IntegracoesClinica() {
         </div>
         <div className="flex items-center gap-2">
           {c && <Badge variant={STATUS[c.status].variante}>{integracao.id === 'mercado_pago' && c.status === 'conectado' ? 'Conta conectada' : STATUS[c.status].rotulo}</Badge>}
+          {integracao.id === 'mercado_pago' && ativa && (
+            <Button size="sm" variant="outline" disabled={testando !== null || salvando} aria-label={`Testar conexão ${integracao.nome}`} onClick={() => void testarConexao(integracao)}>
+              {testando === integracao.id ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <CircleCheck className="mr-1.5 h-3.5 w-3.5" />}
+              Testar conexão
+            </Button>
+          )}
           <Button size="sm" variant={ativa ? 'outline' : 'default'} disabled={salvando}
             onClick={() => integracao.id === 'mercado_pago' ? void conectarMercadoPago() : abrir(integracao, referencia_id)}>
             {integracao.id === 'mercado_pago' ? <ExternalLink className="mr-1.5 h-3.5 w-3.5" /> : <KeyRound className="mr-1.5 h-3.5 w-3.5" />}

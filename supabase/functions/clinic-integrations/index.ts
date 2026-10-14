@@ -10,8 +10,9 @@
  */
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsPadrao } from '../_shared/cors.ts';
-import { cifrar, dicaDoSegredo } from '../_shared/integracoes.ts';
+import { cifrar, credencialDaClinica, dicaDoSegredo, registrarResultado } from '../_shared/integracoes.ts';
 import { CATALOGO_INTEGRACOES, integracaoDoCatalogo } from '../_shared/catalogoIntegracoes.ts';
+import { testarConexaoMercadoPago } from '../_shared/mercadoPagoConnectionCheck.ts';
 
 let corsHeaders: Record<string, string> = {};
 
@@ -65,6 +66,37 @@ Deno.serve(async (req) => {
     const provedor = String(body.provedor || '');
     const integracao = integracaoDoCatalogo(provedor);
     if (!integracao) return json({ error: 'Integração não disponível.' }, 404);
+    if (action === 'test') {
+      if (provedor !== 'mercado_pago' || integracao.escopo !== 'clinica') {
+        return json({ healthy: false, code: 'provider_unavailable' });
+      }
+      const savedConnection = await credencialDaClinica(service, clinicaId, provedor);
+      if (!savedConnection || savedConnection.status !== 'conectado' || !savedConnection.segredo) {
+        return json({ healthy: false, code: 'not_connected', checked_at: new Date().toISOString() });
+      }
+      let secret: { access_token?: string; token_expires_at?: string; mp_user_id?: string };
+      try {
+        secret = JSON.parse(savedConnection.segredo);
+      } catch {
+        await registrarResultado(service, clinicaId, provedor, 'Falha ao comunicar com o provedor.');
+        return json({ healthy: false, code: 'credential_rejected', checked_at: new Date().toISOString() });
+      }
+      const accessToken = String(secret.access_token ?? '');
+      const sellerId = String(secret.mp_user_id ?? savedConnection.config.mp_user_id ?? '');
+      const expiry = Date.parse(String(secret.token_expires_at ?? savedConnection.config.token_expires_at ?? ''));
+      if (!accessToken || !sellerId) {
+        await registrarResultado(service, clinicaId, provedor, 'Falha ao comunicar com o provedor.');
+        return json({ healthy: false, code: 'credential_rejected', checked_at: new Date().toISOString() });
+      }
+      if (!Number.isFinite(expiry) || expiry <= Date.now()) {
+        await registrarResultado(service, clinicaId, provedor, 'Falha ao comunicar com o provedor.');
+        return json({ healthy: false, code: 'credential_expired', checked_at: new Date().toISOString() });
+      }
+
+      const result = await testarConexaoMercadoPago(accessToken, sellerId);
+      await registrarResultado(service, clinicaId, provedor, result.healthy ? null : 'Falha ao comunicar com o provedor.');
+      return json({ ...result, checked_at: new Date().toISOString() });
+    }
     if (provedor === 'mercado_pago' && action === 'connect') {
       return json({ error: 'Conecte sua conta pelo fluxo seguro de autorização do Mercado Pago.' }, 400);
     }
