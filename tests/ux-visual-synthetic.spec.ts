@@ -342,8 +342,9 @@ test('clinical interoperability desktop protects export behind patient selection
 
   await expect(page.getByRole('heading', { name: 'Interoperabilidade clínica' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Exportar JSON FHIR' })).toBeDisabled();
-  await expect(page.getByRole('note')).toContainText('Guarde e compartilhe somente em ambiente autorizado');
-  await expect(page.getByRole('note')).toContainText('links privados temporários, válidos por 1 hora');
+  const interoperabilityNotice = page.getByRole('main').getByRole('note');
+  await expect(interoperabilityNotice).toContainText('Guarde e compartilhe somente em ambiente autorizado');
+  await expect(interoperabilityNotice).toContainText('links privados temporários, válidos por 1 hora');
   expect(synthetic.writes.filter(write => !write.includes('/rpc/'))).toEqual([]);
 });
 
