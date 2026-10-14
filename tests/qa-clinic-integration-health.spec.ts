@@ -54,3 +54,27 @@ test('testa Mercado Pago com orientacao de correcao e sem gravar dados de pagame
   expect(actions).toEqual([{ action: 'test', provedor: 'mercado_pago' }]);
   expect(synthetic.writes.filter((write) => /\/rest\/v1\/(pagamentos_mercadopago|lancamentos|mercadopago_point_orders)/.test(write))).toEqual([]);
 });
+
+test('recusa dominio de autorizacao inesperado antes de iniciar OAuth', async ({ page }, testInfo) => {
+  const appOrigin = new URL(String(testInfo.project.use.baseURL)).origin;
+  const synthetic = await installSyntheticClinic(page, { appOrigin });
+  const startRequests: Array<Record<string, unknown>> = [];
+  const externalNavigations: string[] = [];
+  page.on('request', request => {
+    if (new URL(request.url()).hostname === 'evil.invalid') externalNavigations.push(request.url());
+  });
+  await page.route('http://127.0.0.1:54321/functions/v1/clinic-integrations', async route => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ catalogo: [{ id: 'mercado_pago', nome: 'Mercado Pago', descricao: 'Conexão de pagamentos', escopo: 'clinica', campos: [] }], conexoes: [] }) });
+  });
+  await page.route('http://127.0.0.1:54321/functions/v1/mercadopago-oauth', async route => {
+    startRequests.push(route.request().postDataJSON() as Record<string, unknown>);
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ authorization_url: 'https://evil.invalid/authorization' }) });
+  });
+
+  await page.goto('/configuracoes?tab=integracoes');
+  await page.getByRole('button', { name: 'Conectar Mercado Pago' }).click();
+  await expect(page.getByText('O endereço de autorização retornado não é válido.')).toBeVisible();
+  expect(startRequests).toEqual([{ action: 'start' }]);
+  expect(externalNavigations).toEqual([]);
+  expect(synthetic.writes.filter((write) => /\/rest\/v1\/(pagamentos_mercadopago|lancamentos|mercadopago_point_orders)/.test(write))).toEqual([]);
+});
