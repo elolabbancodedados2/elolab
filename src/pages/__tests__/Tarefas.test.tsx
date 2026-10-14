@@ -46,7 +46,9 @@ describe('Tarefas', () => {
   beforeEach(() => {
     mocks.mutateTask.mockClear();
     mocks.roles = ['recepcao'];
+    mocks.tarefas.splice(1);
     mocks.tarefas[0].status = 'pendente';
+    mocks.tarefas[0].responsavel_id = null;
     Object.defineProperty(window, 'matchMedia', {
       configurable: true,
       value: mockMatchMedia(true),
@@ -80,6 +82,29 @@ describe('Tarefas', () => {
 
     fireEvent.keyDown(search, { key: 'Escape' });
     expect(search).toHaveValue('');
+  });
+
+  it('filtra tarefas atribuídas ao usuário e limpa o filtro pessoal', () => {
+    mocks.tarefas[0].responsavel_id = 'staff-1';
+    mocks.tarefas.push({ ...mocks.tarefas[0], id: 'task-2', titulo: 'Acompanhar retorno', responsavel_id: null });
+    render(<MemoryRouter><Tarefas /></MemoryRouter>);
+    const minhasTarefas = screen.getByRole('button', { name: 'Minhas tarefas' });
+
+    expect(minhasTarefas).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(minhasTarefas);
+
+    expect(minhasTarefas).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByText('1 de 2 tarefas')).toBeInTheDocument();
+    expect(screen.getByText(/Confirmar agenda/)).toBeInTheDocument();
+    expect(screen.queryByText('Acompanhar retorno')).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Buscar tarefas' }), { target: { value: 'retorno' } });
+    expect(screen.getByText('0 de 2 tarefas')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Limpar busca e filtros' }));
+    expect(minhasTarefas).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByText(/Confirmar agenda/)).toBeInTheDocument();
+    expect(screen.getByText('Acompanhar retorno')).toBeInTheDocument();
   });
 
   it('foca a busca com o atalho / quando o foco não está em um campo de texto', () => {

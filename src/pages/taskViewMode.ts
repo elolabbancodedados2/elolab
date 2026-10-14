@@ -13,6 +13,10 @@ type SearchableTask = {
   criador?: { nome?: string | null } | null;
 };
 
+type AssignableTask = {
+  responsavel_id?: string | null;
+};
+
 export function getInitialTaskView(hasCoarsePointer: boolean): TaskViewMode {
   return hasCoarsePointer ? 'list' : 'kanban';
 }
@@ -31,4 +35,8 @@ export function taskMatchesSearch(task: SearchableTask, search: string): boolean
     task.responsavel?.nome,
     task.criador?.nome,
   ].some((value) => normalizarTexto(value).includes(term));
+}
+
+export function taskMatchesAssignee(task: AssignableTask, onlyMine: boolean, userId: string | null | undefined): boolean {
+  return !onlyMine || (!!userId && task.responsavel_id === userId);
 }

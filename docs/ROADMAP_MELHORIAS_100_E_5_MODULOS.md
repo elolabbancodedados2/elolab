@@ -16,6 +16,8 @@ Este documento mantém 100 oportunidades distintas em módulos existentes e cinc
 
 Itens 1–100 são propostas de execução, não afirmações de que esses defeitos já foram confirmados. A triagem compara cada item com o checkout local, o build publicado e os testes antes de implementá-lo.
 
+**Entrega E2 — filtro pessoal em Tarefas:** botão acessível “Minhas tarefas” restringe à atribuição do usuário autenticado, combina com busca/status e pode ser limpo pela barra ou pelo estado vazio. Sem migration ou gravação. Evidência: 16/16 testes focados, TypeScript, build e `git diff --check` passaram. A suíte geral marcou 1 falha intermitente fora do escopo (visibilidade da região do Portal); o arquivo isolado passou 28/28.
+
 ### Agenda e agendamento online
 
 1. Bloquear conflitos de horário entre o mesmo profissional, paciente e sala; mostrar os dois compromissos conflitantes antes de salvar.
