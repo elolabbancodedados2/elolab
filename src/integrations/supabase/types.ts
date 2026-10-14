@@ -2155,6 +2155,64 @@ export type Database = {
           },
         ]
       }
+      fila_atendimento_eventos: {
+        Row: {
+          agendamento_id: string | null
+          atendimento_reaberto: boolean
+          clinica_id: string
+          fila_id: string
+          id: string
+          motivo: string
+          ocorreu_em: string
+          paciente_id: string | null
+          removido_por: string
+        }
+        Insert: {
+          agendamento_id?: string | null
+          atendimento_reaberto?: boolean
+          clinica_id: string
+          fila_id: string
+          id?: string
+          motivo: string
+          ocorreu_em?: string
+          paciente_id?: string | null
+          removido_por: string
+        }
+        Update: {
+          agendamento_id?: string | null
+          atendimento_reaberto?: boolean
+          clinica_id?: string
+          fila_id?: string
+          id?: string
+          motivo?: string
+          ocorreu_em?: string
+          paciente_id?: string | null
+          removido_por?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fila_atendimento_eventos_agendamento_id_fkey"
+            columns: ["agendamento_id"]
+            isOneToOne: false
+            referencedRelation: "agendamentos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fila_atendimento_eventos_clinica_id_fkey"
+            columns: ["clinica_id"]
+            isOneToOne: false
+            referencedRelation: "clinicas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fila_atendimento_eventos_paciente_id_fkey"
+            columns: ["paciente_id"]
+            isOneToOne: false
+            referencedRelation: "pacientes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       funcionarios: {
         Row: {
           ativo: boolean | null
@@ -6037,6 +6095,10 @@ export type Database = {
           p_motivo_cancelamento: string
         }
         Returns: { atualizado: boolean; fila_removida: number }
+      }
+      remover_item_fila_com_motivo: {
+        Args: { p_fila_id: string; p_status_esperado: string; p_motivo: string }
+        Returns: { removido: boolean; atendimento_reaberto: boolean }
       }
       accept_employee_invitation: {
         Args: { _token: string; _user_id: string }

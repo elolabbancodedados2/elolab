@@ -4,6 +4,7 @@ import { useCurrentMedico } from '@/hooks/useCurrentMedico';
 import { nomeMedico } from '@/lib/formatters';
 import { formatCurrency } from '@/lib/formatters';
 import { filaRealtimeMessage, filaRealtimeState } from '@/lib/filaRealtimeStatus';
+import { FILA_REMOVAL_REASONS, filaRemovalReasonLabel, isFilaRemovalReason } from '@/lib/filaRemoval';
 import { forwardRef, useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -224,6 +225,7 @@ export default function Fila() {
   const [selectedPrioridade, setSelectedPrioridade] = useState('normal');
   const [isSaving, setIsSaving] = useState(false);
   const [removeId, setRemoveId] = useState<string | null>(null);
+  const [motivoSaida, setMotivoSaida] = useState('');
   const [isRemoving, setIsRemoving] = useState(false);
   /**
    * Finalização pendente, esperando a resposta sobre retorno.
@@ -264,6 +266,21 @@ export default function Fila() {
 
   const filaQuery = useFilaAtendimento({ enabled: !isMedicoOnly || !!meuMedicoId });
   const { data: fila = [], isLoading: loadingFila } = filaQuery;
+  const eventosSaidaQuery = useQuery({
+    queryKey: ['fila-atendimento-eventos', profile?.clinica_id],
+    enabled: Boolean(profile?.clinica_id && canRemoveFromQueue),
+    queryFn: async () => {
+      if (!profile?.clinica_id) return [];
+      const { data, error } = await supabase
+        .from('fila_atendimento_eventos')
+        .select('id, motivo, ocorreu_em, atendimento_reaberto, pacientes(nome, nome_social)')
+        .eq('clinica_id', profile.clinica_id)
+        .order('ocorreu_em', { ascending: false })
+        .limit(10);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
   const agendamentosQuery = useAgendamentos(today, { enabled: !isMedicoOnly || !!meuMedicoId });
   const { data: agendamentos = [], isLoading: loadingAgendamentos } = agendamentosQuery;
   const medicosQuery = useMedicos();
@@ -505,6 +522,7 @@ export default function Fila() {
     queryClient.invalidateQueries({ queryKey: ['fila-triagens', profile?.clinica_id] });
     queryClient.invalidateQueries({ queryKey: ['clinica-exige-pagamento', profile?.clinica_id] });
     queryClient.invalidateQueries({ queryKey: ['fila-liberacao-pagamento', profile?.clinica_id] });
+    queryClient.invalidateQueries({ queryKey: ['fila-atendimento-eventos', profile?.clinica_id] });
   };
 
   const withQueueAction = async (id: string, action: () => Promise<void>) => {
@@ -746,16 +764,22 @@ export default function Fila() {
     withQueueAction(id, () => performStatusUpdate(id, status, agendamentoId));
 
   const performRemove = async (id: string) => {
+    if (!isFilaRemovalReason(motivoSaida)) {
+      toast.error('Selecione o motivo da saída da fila');
+      return;
+    }
     const item = fila.find(f => f.id === id);
     if (!item) {
       refresh();
       setRemoveId(null);
+      setMotivoSaida('');
       toast.warning('Este item já saiu da fila. A lista foi atualizada.');
       return;
     }
-    const { data, error } = await (supabase as any).rpc('remover_item_fila_atomico', {
+    const { data, error } = await supabase.rpc('remover_item_fila_com_motivo', {
       p_fila_id: id,
       p_status_esperado: String(item.status),
+      p_motivo: motivoSaida,
     });
     if (error) {
       toast.error('Falha ao remover da fila', { description: mensagemDeErro(error) });
@@ -765,6 +789,7 @@ export default function Fila() {
     if (data?.removido !== true) {
       refresh();
       setRemoveId(null);
+      setMotivoSaida('');
       toast.warning(canRemoveFromQueue
         ? 'O estado do paciente mudou. A fila foi atualizada.'
         : 'Seu perfil nao pode remover itens da fila.');
@@ -776,6 +801,7 @@ export default function Fila() {
         : 'O agendamento foi preservado.',
     });
     setRemoveId(null);
+    setMotivoSaida('');
     refresh();
   };
 
@@ -1273,6 +1299,46 @@ export default function Fila() {
         </div>
       )}
 
+      {canRemoveFromQueue && (
+        <section aria-labelledby="fila-saidas-heading">
+          <Card>
+            <CardHeader>
+              <CardTitle id="fila-saidas-heading" className="text-base">Saídas recentes da fila</CardTitle>
+              <CardDescription>Registro por clínica dos últimos dez itens removidos.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {eventosSaidaQuery.isPending ? (
+                <p role="status" className="text-sm text-muted-foreground">Carregando histórico…</p>
+              ) : eventosSaidaQuery.isError ? (
+                <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                  <span className="text-muted-foreground">Não foi possível carregar o histórico de saídas.</span>
+                  <Button variant="outline" size="sm" onClick={() => void eventosSaidaQuery.refetch()}>Tentar novamente</Button>
+                </div>
+              ) : eventosSaidaQuery.data.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Nenhuma saída registrada ainda.</p>
+              ) : (
+                <ul className="divide-y">
+                  {eventosSaidaQuery.data.map((event) => (
+                    <li key={event.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm first:pt-0 last:pb-0">
+                      <div className="min-w-0">
+                        <p className="truncate font-medium">{event.pacientes?.nome_social || event.pacientes?.nome || 'Paciente removido'}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {filaRemovalReasonLabel(event.motivo)}
+                          {event.atendimento_reaberto ? ' · atendimento devolvido à recepção' : ''}
+                        </p>
+                      </div>
+                      <time dateTime={event.ocorreu_em} className="shrink-0 text-xs text-muted-foreground">
+                        {format(new Date(event.ocorreu_em), 'dd/MM/yyyy HH:mm', { locale: ptBR })}
+                      </time>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </CardContent>
+          </Card>
+        </section>
+      )}
+
       {/* Add to Queue Dialog */}
       <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
         <DialogContent className="max-w-md">
@@ -1325,7 +1391,9 @@ export default function Fila() {
       </Dialog>
 
       {/* Confirm removal dialog */}
-      <AlertDialog open={!!removeId} onOpenChange={(open) => !open && !isRemoving && setRemoveId(null)}>
+      <AlertDialog open={!!removeId} onOpenChange={(open) => {
+        if (!open && !isRemoving) { setRemoveId(null); setMotivoSaida(''); }
+      }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Remover da fila?</AlertDialogTitle>
@@ -1333,10 +1401,23 @@ export default function Fila() {
               O paciente será removido da fila. Se o atendimento estiver em andamento, o agendamento volta para “aguardando” e poderá ser chamado novamente.
             </AlertDialogDescription>
           </AlertDialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="fila-motivo-saida">Motivo da saída</Label>
+            <Select value={motivoSaida} onValueChange={setMotivoSaida}>
+              <SelectTrigger id="fila-motivo-saida" aria-label="Motivo da saída da fila" disabled={isRemoving}>
+                <SelectValue placeholder="Selecione um motivo" />
+              </SelectTrigger>
+              <SelectContent>
+                {FILA_REMOVAL_REASONS.map((reason) => (
+                  <SelectItem key={reason.value} value={reason.value}>{reason.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isRemoving}>Cancelar</AlertDialogCancel>
             <AlertDialogAction
-              disabled={isRemoving}
+              disabled={isRemoving || !isFilaRemovalReason(motivoSaida)}
               onClick={(event) => {
                 event.preventDefault();
                 if (removeId) void handleRemover(removeId);
