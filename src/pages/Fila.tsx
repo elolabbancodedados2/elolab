@@ -35,7 +35,7 @@ import { useFilaAtendimento, useAgendamentos, useMedicos, useSalas } from '@/hoo
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { podeAtender, saldoDevedor } from '@/lib/liberacaoAtendimento';
 import { passouPelaTriagem } from '@/lib/liberacaoTriagem';
-import { ordenarFilaPorPrioridade } from '@/lib/filaPrioridade';
+import { descricaoRegraPrioridadeFila, ordenarFilaPorPrioridade } from '@/lib/filaPrioridade';
 import { podeIniciarAgendamento, separarFilaAtivaPorData } from '@/lib/filaPorData';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 
@@ -135,12 +135,10 @@ const FilaCard = forwardRef<HTMLDivElement, {
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <p className="font-semibold text-base truncate">{pacienteNome}</p>
-              {prioridade !== 'normal' && (
-                <div className="flex items-center gap-1">
-                  <span className={cn('h-2 w-2 rounded-full', prioCfg.dot)} />
-                  <span className="text-[11px] text-muted-foreground">{prioCfg.label}</span>
-                </div>
-              )}
+              <div className="flex items-center gap-1" aria-label={`Prioridade ${prioCfg.label.toLowerCase()}`}>
+                <span aria-hidden="true" className={cn('h-2 w-2 rounded-full', prioCfg.dot)} />
+                <span className="text-[11px] text-muted-foreground">{prioCfg.label}</span>
+              </div>
             </div>
             <div className="flex items-center gap-3 mt-0.5 flex-wrap text-sm text-muted-foreground">
               <span className="flex items-center gap-1">
@@ -1040,6 +1038,7 @@ export default function Fila() {
       <section aria-labelledby="fila-etapas-heading" className="space-y-2">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h2 id="fila-etapas-heading" className="text-sm font-semibold text-foreground">Jornada dos atendimentos</h2>
+          <p className="w-full text-xs text-muted-foreground">{descricaoRegraPrioridadeFila()}</p>
           {stats.urgentes > 0 && (
             <p className="inline-flex items-center gap-1.5 text-xs font-semibold text-destructive" role="status">
               <AlertTriangle aria-hidden="true" className="h-3.5 w-3.5" />
