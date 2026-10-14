@@ -146,3 +146,7 @@ verify_jwt = false
 # Relatos clínicos passam por validação de JWT, papel, clínica e trilha de acesso na Edge Function.
 [functions.seguranca-assistencial]
 verify_jwt = true
+
+# Workflow autenticado de checklist, inspeção e liberação de salas.
+[functions.higiene-salas]
+verify_jwt = true

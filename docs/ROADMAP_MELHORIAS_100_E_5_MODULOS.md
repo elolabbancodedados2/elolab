@@ -202,6 +202,8 @@ Registro restrito de incidente, quase incidente, risco, análise, ação correti
 
 Fluxo operacional de limpeza entre atendimentos, checklist por sala, registro de responsável/horário e inspeções de rotina. Exibe disponibilidade da sala somente depois dos itens obrigatórios definidos pela clínica. Critério de conclusão: checklists versionados, registro imutável de execução e revisão, alertas de pendência e testes de isolamento por unidade.
 
+**N4 entregue e validado localmente:** nova versão de checklist por clínica; execução imutável por sala, responsável e horário; inspeção append-only por admin/enfermagem; rejeição mantém o bloqueio; aprovação libera a sala atomicamente. A tela de Salas não permite mais marcar limpeza como pronta manualmente, e o banco bloqueia a transição autenticada direta para disponível. Edge Function verifica JWT, perfil ativo, papel e clínica. Evidência: Vitest de contrato 2/2, Playwright Chromium sintético 1/1, PostgreSQL efêmero PGlite aplicou a migration e executou o fluxo de RPCs (clínica/papel, itens obrigatórios, rejeição, aprovação, auditoria imutável e bloqueio do bypass), TypeScript, build, `deno check`, ESLint sem erros e checks de permissões/colunas/falhas/acessibilidade; parser PostgreSQL 48/48 instruções e PL/pgSQL 6/6 funções. A Edge Function e o schema Supabase remoto seguem sem deploy; nenhuma gravação clínica real. Plano: `docs/superpowers/plans/2026-10-14-higiene-salas.md`.
+
 ### N5. Equipamentos, manutenção e calibração
 
 Cadastro patrimonial de equipamento por unidade, responsável, validade de calibração, manutenção preventiva/corretiva, ordem de serviço, documentos e histórico. Estoque atual continua como fonte independente para materiais consumíveis. Critério de conclusão: alerta de vencimento, bloqueio configurável de equipamento indisponível em sala, trilha de auditoria e testes de permissão/unidade.
@@ -212,4 +214,4 @@ Cadastro patrimonial de equipamento por unidade, responsável, validade de calib
 - [x] Auditar checkout local: 23 diferenças de conteúdo selecionadas contra `main`; os itens conflitantes com faixa de suporte, referência visual e densidade da Recepção ficaram preservados no checkout original e fora da integração.
 - [ ] Fazer triagem dos itens 1–100 no checkout local e retirar duplicatas antes de iniciar cada pacote.
 - [ ] Implementar, validar e registrar cada pacote antes de seguir ao próximo; atualizar este arquivo sem contar testes ou documentos como melhoria funcional.
-- [ ] Completar e testar N1–N5 como módulos com persistência, autorização e fluxo utilizável; não contar protótipos nem páginas somente de navegação.
+- [ ] Completar e testar N1–N5 como módulos com persistência, autorização e fluxo utilizável; N1–N4 estão implementados localmente, N5 pendente. Não contar protótipos nem páginas somente de navegação.

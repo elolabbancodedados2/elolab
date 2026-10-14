@@ -530,10 +530,10 @@ export default function Salas() {
                             </Button>
                           )}
                           {statusExibido === 'limpeza' && (
-                            <Button size="sm" variant="outline" className="min-h-11 text-xs gap-1"
-                              onClick={() => handleChangeStatus(sala, 'disponivel')} disabled={updatingSalaId !== null}>
-                              {updatingSalaId === sala.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Paintbrush className="h-3 w-3" />}
-                              {updatingSalaId === sala.id ? 'Salvando...' : 'Pronta'}
+                            <Button asChild size="sm" variant="outline" className="min-h-11 text-xs gap-1">
+                              <Link to="/higiene-salas" aria-label={`Inspecionar higienização de ${sala.nome}`}>
+                                <Paintbrush className="h-3 w-3" />Inspecionar
+                              </Link>
                             </Button>
                           )}
                           {statusExibido === 'manutencao' && (
