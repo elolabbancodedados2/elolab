@@ -14,13 +14,22 @@ test('fila de notificações mostra próxima tentativa e resumo sem dados privad
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify([{
-        id: '00000000-0000-4000-8000-000000000401', tipo: 'email',
-        destinatario_nome: 'Paciente QA', destinatario_email: 'paciente@example.test',
-        destinatario_telefone: '+5511999999999', assunto: 'Assunto clínico privado', conteudo: 'Conteúdo clínico privado',
-        status: 'pendente', tentativas: 2, max_tentativas: 3, erro_mensagem: rawSecret,
-        agendado_para: '2026-10-14T14:30:00.000Z', created_at: '2026-10-14T14:00:00.000Z',
-      }]),
+      body: JSON.stringify([
+        {
+          id: '00000000-0000-4000-8000-000000000401', tipo: 'email',
+          destinatario_nome: 'Paciente QA', destinatario_email: 'paciente@example.test',
+          destinatario_telefone: '+5511999999999', assunto: 'Assunto clínico privado', conteudo: 'Conteúdo clínico privado',
+          status: 'pendente', tentativas: 2, max_tentativas: 3, erro_mensagem: rawSecret,
+          agendado_para: '2026-10-14T14:30:00.000Z', created_at: '2026-10-14T14:00:00.000Z',
+        },
+        {
+          id: '00000000-0000-4000-8000-000000000402', tipo: 'whatsapp',
+          destinatario_nome: 'Paciente QA 2', destinatario_telefone: '+5511988887777', conteudo: 'Mensagem privada',
+          status: 'pendente', tentativas: 1, max_tentativas: 3,
+          erro_mensagem: 'Intervalo mínimo para este número ainda não foi atingido; envio reagendado.',
+          agendado_para: '2026-10-14T14:31:00.000Z', created_at: '2026-10-14T14:01:00.000Z',
+        },
+      ]),
     });
   });
 
@@ -29,6 +38,7 @@ test('fila de notificações mostra próxima tentativa e resumo sem dados privad
   await expect(page.getByText('Próxima tentativa / agendado')).toBeVisible();
   await expect(page.getByText('2/3', { exact: true })).toBeVisible();
   await expect(page.getByText('Falha no processamento do envio. Consulte o suporte da clínica.')).toBeVisible();
+  await expect(page.getByText('O intervalo mínimo entre mensagens para este destinatário ainda não passou; a fila tentará novamente.')).toBeVisible();
   await expect(page.getByText(/super-secret-token|diagnóstico confidencial|Conteúdo clínico privado|Assunto clínico privado|paciente@example.test|9999999999/)).toHaveCount(0);
   expect(selectedColumns).not.toMatch(/conteudo|assunto|destinatario_email|destinatario_telefone/);
   expect(synthetic.assertAllWritesAreMocked()).toBe(true);

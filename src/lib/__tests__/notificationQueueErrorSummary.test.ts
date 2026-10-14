@@ -21,4 +21,11 @@ describe('resumirErroFilaNotificacao', () => {
     expect(resumirErroFilaNotificacao('BREVO_API_KEY não configurada')).toBe('A integração do canal está incompleta. Revise as configurações da clínica.');
     expect(resumirErroFilaNotificacao('EVOLUTION_API_URL/KEY não configurados')).toBe('A integração do canal está incompleta. Revise as configurações da clínica.');
   });
+
+  it('explica limites de frequência sem exibir identificador do destinatário', () => {
+    expect(resumirErroFilaNotificacao('Limite de envios por minuto da clínica atingido; envio reagendado.'))
+      .toBe('O limite de envios por minuto da clínica foi atingido; a fila tentará novamente.');
+    expect(resumirErroFilaNotificacao('Intervalo mínimo para este número ainda não foi atingido; envio reagendado.'))
+      .toBe('O intervalo mínimo entre mensagens para este destinatário ainda não passou; a fila tentará novamente.');
+  });
 });

@@ -2,6 +2,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { clinicaAdminDoChamador, cronForbidden, cronOrUserOk, cronSecretOk } from '../_shared/cronAuth.ts'
 import { corsPadrao } from '../_shared/cors.ts';
 import { consumoNotificacoes } from '../_shared/limitesClinica.ts';
+import { checkNotificationSendLimits } from '../_shared/notificationRateLimit.ts';
 import { sendBrandedBrevoRequest } from '../_shared/brevoEmail.ts';
 
 // Atribuído em cada request (reflete a origem permitida). Helpers
@@ -45,6 +46,17 @@ Deno.serve(async (req) => {
         ...(!terminal ? { agendado_para: new Date(Date.now() + minutos * 60_000).toISOString() } : {}),
       }).eq('id', notif.id)
     }
+    const adiarPorLimite = async (notif: NotificationItem, mensagem: string) => {
+      const { error } = await supabase.from('notification_queue').update({
+        status: 'pendente',
+        tentativas: Math.max(0, notif.tentativas - 1),
+        agendado_para: new Date(Date.now() + 60_000).toISOString(),
+        erro_mensagem: mensagem,
+        ultimo_erro_em: new Date().toISOString(),
+        iniciado_em: null,
+      }).eq('id', notif.id).eq('status', 'enviando')
+      if (error) throw error
+    }
     const marcarIncerto = async (notif: NotificationItem, mensagem: string) => {
       await supabase.from('notification_queue').update({
         status: 'incerto', erro_mensagem: mensagem.slice(0, 1000),
@@ -69,6 +81,25 @@ Deno.serve(async (req) => {
           const c = consumo.get(notif.clinica_id)!
           if (c.usados >= c.limite) {
             await falhar(notif, `Limite mensal de ${c.limite} notificações da clínica atingido. Fale com o suporte para ampliar.`, false)
+            errorCount++
+            continue
+          }
+        }
+        const destination = notif.tipo === 'whatsapp'
+          ? notif.destinatario_telefone
+          : notif.tipo === 'email' ? notif.destinatario_email : null
+        if (destination) {
+          const rateLimit = await checkNotificationSendLimits(supabase, {
+            clinicId: notif.clinica_id,
+            channel: notif.tipo,
+            destination,
+            hashSecret: Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '',
+          })
+          if (rateLimit) {
+            const detail = rateLimit === 'clinic'
+              ? 'Limite de envios por minuto da clínica atingido; envio reagendado.'
+              : 'Intervalo mínimo para este número ainda não foi atingido; envio reagendado.'
+            await adiarPorLimite(notif, detail)
             errorCount++
             continue
           }

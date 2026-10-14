@@ -6,6 +6,12 @@ export function resumirErroFilaNotificacao(erro: string | null | undefined): str
   if (!normalizado) return FALHA_GENERICA;
 
   if (/limite mensal/.test(normalizado)) return 'O limite mensal de envios da clínica foi atingido.';
+  if (/limite de envios por minuto da clínica/.test(normalizado)) {
+    return 'O limite de envios por minuto da clínica foi atingido; a fila tentará novamente.';
+  }
+  if (/intervalo mínimo para este número/.test(normalizado)) {
+    return 'O intervalo mínimo entre mensagens para este destinatário ainda não passou; a fila tentará novamente.';
+  }
   if (/^(brevo_api_key não configurada|evolution_api_url\/key não configurados)$/.test(normalizado)) {
     return 'A integração do canal está incompleta. Revise as configurações da clínica.';
   }
