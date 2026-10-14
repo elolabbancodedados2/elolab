@@ -103,9 +103,12 @@ Itens 1–100 são propostas de execução, não afirmações de que esses defei
 
 **E54 entregue e validado localmente:** visualização e impressão de atestados, visualização/baixar anexos e exportar PDFs de prescrição gravam `access` em `audit_log` via RPC; a trilha exibe a coleção “Documentos clínicos” e a ação correspondente. A assinatura eletrônica de prontuários e exportação do prontuário já tinham eventos próprios e seguem cobertas. O RPC confirma papel e clínica, usa tipo e ID do documento, e grava somente evento/tipo, sem nome ou conteúdo clínico. Evidências: Vitest integral 300 arquivos/1.454 testes, recorte focado 16/16, PGlite aplicou a migration e validou os quatro tipos, autor, rejeição de clínica/ação/papel e conteúdo mínimo, TypeScript, build e checks de colunas, falhas silenciosas, permissões e acessibilidade aprovados. Migration `20261014230000_auditoria_acoes_documentos_clinicos.sql` criada e não aplicada remotamente.
 
+
+**E55 entregue e validado localmente:** etiquetas da coleta mostram o ID da amostra em texto legível e código de barras Code 39, além do tipo de tubo, sem nome, idade, sexo, exame ou data. O ID é normalizado para maiúsculas e caracteres fora do alfabeto Code 39 são recusados para codificação; texto do tubo é escapado antes da impressão. Evidências: teste focal 4/4, Vitest integral 301 arquivos/1.458 testes, TypeScript, ESLint (0 erros; avisos `any` preexistentes em `MapaColeta.tsx`), acessibilidade e `git diff --check` aprovados. Sem migration ou acesso a dados clínicos reais.
+
 ### Exames e laboratório
 
-41. Etiquetar amostras com identificador legível e código de barras sem incluir dados pessoais na etiqueta.
+41. [x] Etiquetar amostras com identificador legível e código de barras sem incluir dados pessoais na etiqueta (E55).
 42. Registrar coleta, recebimento, transferência e rejeição da amostra com responsável e horário.
 43. Exigir motivo estruturado ao rejeitar amostra e oferecer nova coleta vinculada ao pedido original.
 44. Destacar resultados críticos até que um profissional autorizado confirme ciência e conduta.
@@ -250,4 +253,4 @@ Cadastro patrimonial de equipamento por unidade, responsável, validade de calib
 - [ ] Fazer triagem dos itens 1–100 no checkout local e retirar duplicatas antes de iniciar cada pacote.
 - [ ] Implementar, validar e registrar cada pacote antes de seguir ao próximo; atualizar este arquivo sem contar testes ou documentos como melhoria funcional.
 - [x] Completar e testar N1–N5 como módulos com persistência, autorização e fluxo utilizável em ambiente sintético/descartável; nenhum módulo depende só de navegação.
-- [ ] Entregar melhorias funcionais distintas nos módulos existentes: **53/100** concluídas; E14 e os itens cobertos por comportamento existente não entram na contagem. N1–N5 são a meta separada de módulos novos.
+- [ ] Entregar melhorias funcionais distintas nos módulos existentes: **54/100** concluídas; E14 e os itens cobertos por comportamento existente não entram na contagem. N1–N5 são a meta separada de módulos novos.

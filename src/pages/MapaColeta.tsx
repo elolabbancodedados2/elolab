@@ -21,7 +21,7 @@ import { toast } from 'sonner';
 import { mensagemDeErro } from '@/lib/erros';
 import { differenceInMinutes } from 'date-fns';
 import { cn } from '@/lib/utils';
-import { escapeHtml } from '@/lib/html';
+import { sampleLabelHtml } from '@/lib/sampleLabel';
 import { canalUnico } from '@/lib/realtimeCanal';
 import { ErrorState } from '@/components/ErrorState';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
@@ -58,12 +58,6 @@ const sexoPaciente = (sexo: unknown) => {
   if (['f', 'feminino', 'female'].includes(valor)) return 'F';
   if (['o', 'outro', 'other'].includes(valor)) return 'O';
   return '—';
-};
-const sexoParaEtiqueta = (sexo: unknown) => {
-  const codigo = sexoPaciente(sexo);
-  if (codigo === 'M') return 'Masc';
-  if (codigo === 'F') return 'Fem';
-  return codigo === 'O' ? 'Outro' : '?';
 };
 const dataHoraClinica = (instant = new Date()) => new Intl.DateTimeFormat('pt-BR', {
   timeZone: 'America/Sao_Paulo',
@@ -336,21 +330,21 @@ export default function MapaColeta() {
       toast.error('O navegador bloqueou a janela de impressão. Permita pop-ups para gerar as etiquetas.');
       return;
     }
-    const impressoEm = dataHoraClinica();
-    w.document.write(`<html><head><title>Etiquetas</title><style>
-        body{font-family:monospace;font-size:12px}
-        .label{border:1px dashed #999;padding:8px;margin:4px 0;page-break-inside:avoid}
-        .code{font-size:16px;font-weight:bold;letter-spacing:2px}
+    const labels = selectedItems.map(item => sampleLabelHtml({
+      codigoAmostra: item.codigo_amostra,
+      tubo: item.tubo ?? item.tipo_amostra ?? '',
+    })).join('');
+    w.document.write(`<html><head><meta charset="utf-8"><title>Etiquetas de amostras</title><style>
+        body{font-family:Arial,sans-serif;font-size:12px}
+        .label{box-sizing:border-box;width:58mm;min-height:30mm;border:1px dashed #999;padding:3mm;margin:2mm 0;page-break-inside:avoid;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1.5mm}
+        .sample-code{font-family:monospace;font-size:16px;font-weight:bold;letter-spacing:2px}
+        .barcode svg{display:block;width:48mm;height:12mm}
+        .tube{font-size:10px}
+        .barcode-error{font-size:9px;color:#900}
         @media print{.no-print{display:none}}</style></head><body>
-        <button class="no-print" id="imprimir-mapa">🖨️ Imprimir</button>
+        <button class="no-print" id="imprimir-mapa">Imprimir</button>
         <h3 class="no-print">${selected.size} etiqueta(s)</h3>
-        ${selectedItems.map(i => `<div class="label">
-          <div class="code">${escapeHtml(i.codigo_amostra)}</div>
-          <div><strong>${escapeHtml(nomePaciente(i.pacientes))}</strong></div>
-          <div>${calcAge(i.pacientes?.data_nascimento) ?? '?'}a — ${sexoParaEtiqueta(i.pacientes?.sexo)}</div>
-          <div>Tubo: ${escapeHtml(i.tubo ?? i.tipo_amostra)} | Exame: ${escapeHtml(i.exames?.tipo_exame ?? '—')}</div>
-          <div>${escapeHtml(impressoEm)}</div>
-        </div>`).join('')}</body></html>`);
+        ${labels}</body></html>`);
     w.document.close();
     w.document.getElementById('imprimir-mapa')?.addEventListener('click', () => w.print());
     toast.success(`${selected.size} etiqueta(s) gerada(s)`);
