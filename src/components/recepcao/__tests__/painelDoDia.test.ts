@@ -22,7 +22,7 @@ describe('resumoDoDia', () => {
   it('dia vazio não inventa número nem valor', () => {
     const r = resumoDoDia([], []);
     expect(r).toMatchObject({
-      total: 0, chegaram: 0, naoChegaram: 0, proximo: null,
+      total: 0, chegaram: 0, naoChegaram: 0, proximo: null, atrasados: 0, primeiroAtrasado: null, horariosPendentesInformados: 0,
       noBalcao: 0, aReceberBalcao: 0, esperandoChamada: 0,
       emAtendimento: 0, devendoAdicional: 0, valorAdicional: 0,
       recebidoTotal: 0, aReceberTotal: 0,
@@ -36,12 +36,25 @@ describe('resumoDoDia', () => {
       atendimento({ step: 0, ag: { id: 'b', status: 'confirmado', hora_inicio: '10:00:00' } }),
       atendimento({ step: 1, ag: { id: 'c', status: 'aguardando', hora_inicio: '09:00:00' } }),
       atendimento({ step: 4, ag: { id: 'd', status: 'finalizado', hora_inicio: '07:00:00' } }),
-    ], []);
+    ], [], new Date('2026-10-13T09:00:00-03:00'));
 
     expect(r.total).toBe(4);
     expect(r.chegaram).toBe(2);
     expect(r.naoChegaram).toBe(2);
-    expect(r.proximo).toBe('08:30');
+    expect(r.proximo).toBe('10:00');
+    expect(r.atrasados).toBe(1);
+    expect(r.primeiroAtrasado).toBe('08:30');
+  });
+
+  it('não anuncia horário passado como próximo quando todos os pacientes pendentes estão atrasados', () => {
+    const r = resumoDoDia([
+      atendimento({ step: 0, ag: { id: 'a', status: 'confirmado', hora_inicio: '08:00:00' } }),
+      atendimento({ step: 0, ag: { id: 'b', status: 'confirmado', hora_inicio: '09:00:00' } }),
+    ], [], new Date('2026-10-13T09:31:00-03:00'));
+
+    expect(r.proximo).toBeNull();
+    expect(r.atrasados).toBe(2);
+    expect(r.primeiroAtrasado).toBe('08:00');
   });
 
   it('3. soma o que falta receber no balcão', () => {

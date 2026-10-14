@@ -178,12 +178,12 @@ export default function PlatformIA() {
 
   return (
     <div className="space-y-6 pb-8">
-      <header className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-[#DCEAF5] bg-gradient-to-r from-[#F1F7FF] via-white to-[#EBFBFD] p-5 sm:p-6">
+      <header className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-[#E6E2F7] bg-gradient-to-r from-[#F4F2FF] via-white to-[#f0edff] p-5 sm:p-6">
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-bold"><Bot className="h-6 w-6 text-primary" /> Governança da IA</h1>
           <p className="mt-1 text-sm text-muted-foreground">Modelos, limites, prompts versionados e consumo agregado da plataforma.</p>
         </div>
-        <Button className="min-h-11 border-[#CFE0F0] bg-white text-[#0C1F54] hover:bg-[#F7FBFF]" variant="outline" onClick={() => { void config.refetch(); void usage.refetch(); void versions.refetch(); }} disabled={publish.isPending || config.isFetching || usage.isFetching || versions.isFetching}>
+        <Button className="min-h-11 border-[#DCD7F0] bg-white text-[#17122B] hover:bg-[#F9F8FF]" variant="outline" onClick={() => { void config.refetch(); void usage.refetch(); void versions.refetch(); }} disabled={publish.isPending || config.isFetching || usage.isFetching || versions.isFetching}>
           <RefreshCw className={`mr-2 h-4 w-4 ${config.isFetching || usage.isFetching || versions.isFetching ? 'animate-spin' : ''}`} /> Atualizar dados
         </Button>
       </header>
@@ -197,7 +197,7 @@ export default function PlatformIA() {
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {usage.isLoading ? [1, 2, 3, 4].map((item) => <Skeleton key={item} className="h-24 w-full" />) : stats.map((stat) => (
-            <Card key={stat.label} className="rounded-xl border-[#E1ECF5] bg-[#F7FAFF] shadow-sm"><CardContent className="py-4">
+            <Card key={stat.label} className="rounded-xl border-[#E9E6F5] bg-[#F9F7FF] shadow-sm"><CardContent className="py-4">
               <p className="text-xs text-muted-foreground">{stat.label}</p>
               <p className="mt-1 break-words text-2xl font-bold tabular-nums">{stat.value}</p>
             </CardContent></Card>

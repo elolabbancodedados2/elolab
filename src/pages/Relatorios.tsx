@@ -1,7 +1,8 @@
+import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { addDays, format, startOfMonth, endOfMonth, subMonths, eachDayOfInterval } from 'date-fns';
+import { addDays, startOfMonth, endOfMonth, subMonths, eachDayOfInterval } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import {
   FileText,
@@ -336,11 +337,6 @@ export default function Relatorios() {
     });
     return [...eventosAntigos, ...eventosIndividuais];
   }, [lancamentosFiltrados, pagamentos, lancamentosComHistoricoPagamentoQuery.data, inicioStr, fimStr]);
-  const vencimentosNoPeriodo = (l: any) => {
-    const dia = (l.data_vencimento || l.data)?.slice(0, 10);
-    return !!dia && dia >= inicioStr && dia <= fimStr;
-  };
-
   // Estatísticas gerais
   const estatisticas = useMemo(() => {
     const totalAtendimentos = agendamentosFiltrados.length;
@@ -364,7 +360,10 @@ export default function Relatorios() {
 
     // Pendente é o que ainda está em aberto: aqui `valor` é o certo.
     const pendentes = lancamentosFiltrados
-      .filter(l => ['pendente', 'parcial', 'atrasado'].includes(l.status) && vencimentosNoPeriodo(l))
+      .filter(l => {
+        const dia = (l.data_vencimento || l.data)?.slice(0, 10);
+        return ['pendente', 'parcial', 'atrasado'].includes(l.status) && !!dia && dia >= inicioStr && dia <= fimStr;
+      })
       .reduce((acc, l) => acc + saldoEmAberto(l), 0);
 
     const taxaComparecimento = atendimentosComDesfecho > 0
@@ -386,7 +385,7 @@ export default function Relatorios() {
       pendentes,
       taxaComparecimento,
     };
-  }, [agendamentosFiltrados, lancamentosFiltrados, eventosFinanceiros, inicioStr, fimStr, pagamentos]);
+  }, [agendamentosFiltrados, lancamentosFiltrados, eventosFinanceiros, inicioStr, fimStr]);
 
   // Dados por dia
   const dadosDiarios = useMemo(() => {
@@ -627,19 +626,19 @@ export default function Relatorios() {
 
   return (
     <div className="space-y-6">
-      <section className="flex flex-col gap-5 rounded-[1.5rem] border border-[#DCE8F7] bg-gradient-to-br from-white via-[#F8FBFF] to-[#EEF5FF] p-5 shadow-sm sm:p-6 xl:flex-row xl:items-center xl:justify-between">
+      <section className="flex flex-col gap-5 rounded-[1.5rem] border border-border bg-card p-5 shadow-sm sm:p-6 xl:flex-row xl:items-center xl:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-[#0C1F54] sm:text-3xl">Relatórios da clínica</h1>
-          <p className="mt-1 max-w-3xl text-sm text-[#0C1F54]/70">Consulte dados por área, exporte arquivos ou salve relatórios personalizados. Para acompanhar tendências em painel, use Indicadores da clínica.</p>
-          <p className="mt-2 text-xs text-[#0C1F54]/60">
+          <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">Relatórios da clínica</h1>
+          <p className="mt-1 max-w-3xl text-sm text-muted-foreground">Consulte dados por área, exporte arquivos ou salve relatórios personalizados. Para acompanhar tendências em painel, use Indicadores da clínica.</p>
+          <p className="mt-2 text-xs text-muted-foreground">
             {podeVerAgenda
               ? 'O período se aplica à agenda e ao financeiro. Pacientes e estoque mostram o cadastro e o saldo atuais.'
               : 'O período se aplica ao financeiro.'}
           </p>
         </div>
-        <div className="flex flex-wrap gap-2 rounded-2xl border border-white/80 bg-white/75 p-2 shadow-sm backdrop-blur-sm">
+        <div className="flex flex-wrap gap-2 rounded-2xl border border-border bg-background p-2 shadow-sm">
           <Select value={periodo} onValueChange={setPeriodo}>
-            <SelectTrigger aria-label="Selecionar período dos relatórios" className="w-44 border-[#DCE8F7] bg-white text-[#0C1F54] focus:ring-[#005ECC]/30">
+            <SelectTrigger aria-label="Selecionar período dos relatórios" className="w-44 border-border bg-background text-foreground focus-visible:ring-ring">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -1121,7 +1120,7 @@ export default function Relatorios() {
                           <TableCell className="text-right">
                             <Badge className={cn(
                               medico.taxa >= 80 && 'bg-success/10 text-success',
-                              medico.taxa >= 50 && medico.taxa < 80 && 'bg-warning/10 text-warning',
+                              medico.taxa >= 50 && medico.taxa < 80 && 'bg-warning/10 text-warning-foreground',
                               medico.taxa < 50 && 'bg-destructive/10 text-destructive'
                             )}>
                               {medico.taxa}%

@@ -74,13 +74,13 @@ export default function AgenteIA() {
   return (
     <FeatureGate feature="agente_ia" hasAccess={hasFeature('agente_ia')} requiredPlan="EloLab Ultra">
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 rounded-2xl border border-[#dce9f6] bg-gradient-to-r from-[#f3f8ff] via-white to-[#f3fbfa] p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
+      <div className="flex flex-col gap-4 rounded-2xl border border-border bg-gradient-to-r from-background via-card to-accent p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
         <div>
           <h1 className="text-3xl font-bold flex items-center gap-2">
-            <span className="rounded-xl bg-[#eaf4ff] p-2.5 text-[#1766a8] ring-1 ring-[#d1e5f8]"><Bot className="h-5 w-5" /></span>
+            <span className="rounded-xl bg-primary/10 p-2.5 text-primary ring-1 ring-border"><Bot className="h-5 w-5" /></span>
             Agente de IA - WhatsApp
           </h1>
-          <p className="text-[#52647a]">
+          <p className="text-muted-foreground">
             Configure e gerencie o atendimento automatizado via WhatsApp
           </p>
         </div>
@@ -89,16 +89,16 @@ export default function AgenteIA() {
       <StatsCards sessions={sessions} stats={stats} />
 
       <Tabs defaultValue="sessions" className="space-y-4">
-        <TabsList className="h-auto w-full justify-start gap-1 overflow-x-auto rounded-xl border border-[#dce9f6] bg-[#f3f8ff] p-1.5 text-[#52647a]">
-          <TabsTrigger value="sessions" className="flex items-center gap-2 rounded-lg data-[state=active]:bg-white data-[state=active]:text-[#1766a8] data-[state=active]:shadow-sm">
+        <TabsList className="h-auto w-full justify-start gap-1 overflow-x-auto rounded-xl border border-border bg-muted/60 p-1.5 text-muted-foreground">
+          <TabsTrigger value="sessions" className="flex items-center gap-2 rounded-lg data-[state=active]:bg-card data-[state=active]:text-primary data-[state=active]:shadow-sm">
             <Smartphone className="h-4 w-4" />
             Sessões WhatsApp
           </TabsTrigger>
-          <TabsTrigger value="agents" className="flex items-center gap-2 rounded-lg data-[state=active]:bg-white data-[state=active]:text-[#1766a8] data-[state=active]:shadow-sm">
+          <TabsTrigger value="agents" className="flex items-center gap-2 rounded-lg data-[state=active]:bg-card data-[state=active]:text-primary data-[state=active]:shadow-sm">
             <Bot className="h-4 w-4" />
             Configurar Agentes
           </TabsTrigger>
-          <TabsTrigger value="conversations" className="flex items-center gap-2 rounded-lg data-[state=active]:bg-white data-[state=active]:text-[#1766a8] data-[state=active]:shadow-sm">
+          <TabsTrigger value="conversations" className="flex items-center gap-2 rounded-lg data-[state=active]:bg-card data-[state=active]:text-primary data-[state=active]:shadow-sm">
             <MessageSquare className="h-4 w-4" />
             Conversas
           </TabsTrigger>

@@ -1,5 +1,6 @@
+import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { nomeMedico } from '@/lib/formatters';
-import { format } from 'date-fns';
+
 import { motion, AnimatePresence } from 'framer-motion';
 import { ptBR } from 'date-fns/locale';
 import { FileText, Download, Printer } from 'lucide-react';

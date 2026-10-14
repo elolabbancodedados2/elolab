@@ -224,12 +224,12 @@ export default function AcessoAssistido() {
 
   return (
     <div className="space-y-6 pb-8">
-      <header className="rounded-2xl border border-[#dce9f6] bg-gradient-to-r from-[#f3f8ff] via-white to-[#f3fbfa] p-5 sm:p-6">
+      <header className="rounded-2xl border border-border bg-gradient-to-r from-background via-card to-accent p-5 sm:p-6">
         <div className="flex items-start gap-3">
-          <span className="rounded-xl bg-[#eaf4ff] p-2.5 text-[#1766a8] ring-1 ring-[#d1e5f8]"><ShieldCheck className="h-5 w-5" /></span>
+          <span className="rounded-xl bg-primary/10 p-2.5 text-primary ring-1 ring-border"><ShieldCheck className="h-5 w-5" /></span>
           <div>
-            <h1 className="text-2xl font-bold text-[#0c1f54]">Acesso assistido</h1>
-            <p className="mt-1 text-sm text-[#52647a]">Acesso temporário, aprovado pela clínica e limitado a dados operacionais. Ações registradas em auditoria.</p>
+            <h1 className="text-2xl font-bold text-foreground">Acesso assistido</h1>
+            <p className="mt-1 text-sm text-[#6a6485]">Acesso temporário, aprovado pela clínica e limitado a dados operacionais. Ações registradas em auditoria.</p>
           </div>
         </div>
       </header>

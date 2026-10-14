@@ -5,6 +5,8 @@
   */
 
 import { supabase } from '@/integrations/supabase/client';
+import type { Json } from '@/integrations/supabase/types';
+import { buscarTodasAsPaginas } from '@/lib/prontuarioAuditExport';
 
 /**
  * As tabelas lgpd_* ainda não constam no types.ts gerado. Usamos este alias em
@@ -17,26 +19,81 @@ import { supabase } from '@/integrations/supabase/client';
  * comentário anterior (20260414140000) nunca foi aplicada.
  */
 const db = supabase as any;
+const lgpdAuditRpc = supabase as unknown as {
+  rpc: (name: string, args: Record<string, string>) => Promise<{ error: { message: string } | null }>;
+};
 
 export interface PatientDataExport {
-  profile: any;
-  paciente: any;
-  agendamentos: any[];
-  prontuarios: any[];
-  prescricoes: any[];
-  exames: any[];
-  triagens: any[];
-  atestados: any[];
-  encaminhamentos: any[];
-  lancamentos: any[];
-  retornos: any[];
-  lista_espera: any[];
-  paciente_comorbidades: any[];
-  prontuario_adendos: any[];
-  lgpd_access_request_log: any[];
-  attachments: any[];
-  audit_log: any[];
-  consent_log: any[];
+  [key: string]: unknown;
+  paciente: Record<string, unknown>;
+  agendamentos: Array<Record<string, unknown>>;
+  prontuarios: Array<Record<string, unknown>>;
+  prescricoes: Array<Record<string, unknown>>;
+  memed_prescricoes: Array<Record<string, unknown>>;
+  exames: Array<Record<string, unknown>>;
+  triagens: Array<Record<string, unknown>>;
+  atestados: Array<Record<string, unknown>>;
+  encaminhamentos: Array<Record<string, unknown>>;
+  lancamentos: Array<Record<string, unknown>>;
+  retornos: Array<Record<string, unknown>>;
+  lista_espera: Array<Record<string, unknown>>;
+  paciente_comorbidades: Array<Record<string, unknown>>;
+  prontuario_adendos: Array<Record<string, unknown>>;
+  lgpd_access_request_log: Array<Record<string, unknown>>;
+  attachments: Array<Record<string, unknown>>;
+  audit_log: Array<Record<string, unknown>>;
+  consent_log: Array<Record<string, unknown>>;
+  consentimentos_lgpd: Array<Record<string, unknown>>;
+  pedidos_laboratorio: Array<Record<string, unknown>>;
+  coletas_laboratorio: Array<Record<string, unknown>>;
+  resultados_laboratorio: Array<Record<string, unknown>>;
+  prontuario_diagnosticos: Array<Record<string, unknown>>;
+  prontuario_acessos: Array<Record<string, unknown>>;
+  prontuario_assinaturas: Array<Record<string, unknown>>;
+  guias_externas: Array<Record<string, unknown>>;
+  whatsapp_conversations: Array<Record<string, unknown>>;
+  whatsapp_messages: Array<Record<string, unknown>>;
+  whatsapp_agent_actions: Array<Record<string, unknown>>;
+  pagamentos_mercadopago: Array<Record<string, unknown>>;
+  pagamentos: Array<Record<string, unknown>>;
+  assinaturas_mercadopago: Array<Record<string, unknown>>;
+  paciente_portal_tokens: Array<Record<string, unknown>>;
+  interoperability_exports: Array<Record<string, unknown>>;
+  tarefas: Array<Record<string, unknown>>;
+  retornos_agendados: Array<Record<string, unknown>>;
+  notificacoes_agendadas: Array<Record<string, unknown>>;
+  notas_fiscais: Array<Record<string, unknown>>;
+  autorizacoes_convenio: Array<Record<string, unknown>>;
+  avaliacoes_atendimento: Array<Record<string, unknown>>;
+  vitais_historico: Array<Record<string, unknown>>;
+  predicoes_no_show: Array<Record<string, unknown>>;
+  feedbacks_nps: Array<Record<string, unknown>>;
+  lancamento_itens: Array<Record<string, unknown>>;
+  movimentacoes_estoque: Array<Record<string, unknown>>;
+  fila_atendimento: Array<Record<string, unknown>>;
+}
+
+const MAX_ATTACHMENT_EXPORT_BYTES = 30 * 1024 * 1024;
+
+function storagePathForPatientAttachment(stored: string): string {
+  if (!stored.startsWith('http')) return stored;
+  const marker = '/storage/v1/object/';
+  const markerIndex = stored.indexOf(marker);
+  if (markerIndex < 0) throw new Error('O anexo aponta para um armazenamento externo e não pode ser incluído automaticamente.');
+  const objectPath = stored.slice(markerIndex + marker.length).split('?')[0];
+  const bucketMarker = 'medical-attachments/';
+  const bucketIndex = objectPath.indexOf(bucketMarker);
+  if (bucketIndex < 0) throw new Error('Não foi possível identificar o caminho privado do anexo.');
+  return decodeURIComponent(objectPath.slice(bucketIndex + bucketMarker.length));
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+  }
+  return btoa(binary);
 }
 
 /**
@@ -51,144 +108,306 @@ export async function exportPatientData(pacienteId: string): Promise<PatientData
       .single();
     if (pacienteError) throw pacienteError;
 
-    const data: any = { paciente };
-    const buscar = async (chave: string, tabela: string, coluna: string) => {
-      const { data: registros, error } = await db
-        .from(tabela)
-        .select('*')
-        .eq(coluna, pacienteId);
-      if (error) throw new Error(`Falha ao exportar ${chave}: ${error.message}`);
-      data[chave] = registros || [];
-      return registros || [];
+    const { data: pedidoExportacao, error: erroPedidoExportacao } = await db
+      .from('lgpd_access_request_log')
+      .insert({ paciente_id: pacienteId, request_type: 'export', status: 'pending' })
+      .select('id,requested_at')
+      .single();
+    if (erroPedidoExportacao || !pedidoExportacao?.id) {
+      throw new Error(
+        `Não foi possível registrar o pedido de exportação; o arquivo não foi gerado${erroPedidoExportacao?.message ? `: ${erroPedidoExportacao.message}` : '.'}`
+      );
+    }
+
+    // Signed charts/files require an explicit audit event before their RLS
+    // policies allow a read. Never synthesize a visualizacao event for export.
+    const { error: erroAuditoriaExportacao } = await lgpdAuditRpc.rpc('registrar_exportacao_lgpd_paciente', {
+      p_paciente_id: pacienteId,
+    });
+    if (erroAuditoriaExportacao) {
+      throw new Error(`Não foi possível registrar o acesso clínico da exportação: ${erroAuditoriaExportacao.message}`);
+    }
+
+    const data = { paciente } as unknown as PatientDataExport;
+    const buscar = async (chave: string, tabela: string, coluna: string, campos = '*') => {
+      try {
+        const registros = await buscarTodasAsPaginas((inicio, fim) => db
+          .from(tabela)
+          .select(campos)
+          .eq(coluna, pacienteId)
+          .order('id', { ascending: true })
+          .range(inicio, fim));
+        data[chave] = registros;
+        return registros;
+      } catch (error) {
+        throw new Error(`Falha ao exportar ${chave}: ${error instanceof Error ? error.message : 'erro desconhecido'}`);
+      }
     };
 
-    await buscar('agendamentos', 'agendamentos', 'paciente_id');
-    const prontuarios = await buscar('prontuarios', 'prontuarios', 'paciente_id');
-    await buscar('exames', 'exames', 'paciente_id');
-    await buscar('triagens', 'triagens', 'paciente_id');
-    await buscar('atestados', 'atestados', 'paciente_id');
-    await buscar('encaminhamentos', 'encaminhamentos', 'paciente_id');
-    await buscar('lancamentos', 'lancamentos', 'paciente_id');
-    await buscar('retornos', 'retornos', 'paciente_id');
-    await buscar('lista_espera', 'lista_espera', 'paciente_id');
-    await buscar('paciente_comorbidades', 'paciente_comorbidades', 'paciente_id');
+    const buscarEmLotes = async (consultas: Array<[string, string, string, string?]>) => {
+      const tamanhoLote = 5;
+      for (let inicio = 0; inicio < consultas.length; inicio += tamanhoLote) {
+        const lote = consultas.slice(inicio, inicio + tamanhoLote);
+        await Promise.all(lote.map(([chave, tabela, coluna, campos]) => buscar(chave, tabela, coluna, campos)));
+      }
+    };
 
+    await buscarEmLotes([
+      ['agendamentos', 'agendamentos', 'paciente_id'],
+      ['prontuarios', 'prontuarios', 'paciente_id'],
+      ['triagens', 'triagens', 'paciente_id'],
+      ['atestados', 'atestados', 'paciente_id'],
+      ['encaminhamentos', 'encaminhamentos', 'paciente_id'],
+      ['lancamentos', 'lancamentos', 'paciente_id'],
+      ['retornos', 'retornos', 'paciente_id'],
+      ['lista_espera', 'lista_espera', 'paciente_id'],
+      ['paciente_comorbidades', 'paciente_comorbidades', 'paciente_id'],
+      ['consentimentos_lgpd', 'consentimentos_lgpd', 'paciente_id',
+        'id,paciente_id,tipo_consentimento,versao_termo,aceito,data_aceite,ip_aceite,revogado,data_revogacao,motivo_revogacao,documento_assinado_url,created_at,updated_at'],
+      ['pedidos_laboratorio', 'pedidos_laboratorio', 'paciente_id'],
+      ['coletas_laboratorio', 'coletas_laboratorio', 'paciente_id'],
+      ['resultados_laboratorio', 'resultados_laboratorio', 'paciente_id'],
+      ['guias_externas', 'guias_externas', 'paciente_id',
+        'id,clinica_id,origem,status,paciente_id,paciente_nome,paciente_cpf,paciente_nascimento,paciente_telefone,paciente_email,paciente_sexo,medico_externo_nome,medico_externo_crm,medico_externo_uf,medico_externo_especialidade,medico_externo_contato,convenio_id,convenio_nome,numero_autorizacao,validade_autorizacao,exames_solicitados,observacoes,anexo_nome,data_recebimento,data_agendamento,hora_agendamento,agendamento_id,registrado_por,created_at,updated_at'],
+      ['autorizacoes_convenio', 'autorizacoes_convenio', 'paciente_id'],
+      ['retornos_agendados', 'retornos_agendados', 'paciente_id'],
+      ['notificacoes_agendadas', 'notificacoes_agendadas', 'paciente_id',
+        'id,paciente_id,tipo,conteudo,data_envio,status,tentativas,created_at'],
+      ['notas_fiscais', 'notas_fiscais', 'paciente_id',
+        'id,numero_nf,serie_nf,lancamento_id,paciente_id,valor,xml_nfe,status,data_emissao,data_autorizacao,created_at'],
+      ['avaliacoes_atendimento', 'avaliacoes_atendimento', 'paciente_id'],
+      ['vitais_historico', 'vitais_historico', 'paciente_id'],
+      ['predicoes_no_show', 'predicoes_no_show', 'paciente_id'],
+      ['feedbacks_nps', 'feedbacks_nps', 'paciente_id'],
+      ['tarefas', 'tarefas', 'paciente_id'],
+      ['interoperability_exports', 'interoperability_exports', 'paciente_id',
+        'id,clinica_id,paciente_id,formato,quantidade_recursos,exportado_por,created_at'],
+      ['pagamentos_mercadopago', 'pagamentos_mercadopago', 'paciente_id',
+        'id,lancamento_id,paciente_id,agendamento_id,mp_payment_id,mp_preference_id,mp_external_reference,valor,valor_pago,moeda,status,tipo,metodo_pagamento,data_criacao,data_aprovacao,data_vencimento,data_expiracao,descricao,parcelas,created_at,updated_at'],
+      ['assinaturas_mercadopago', 'assinaturas_mercadopago', 'paciente_id',
+        'id,paciente_id,mp_preapproval_id,mp_plan_id,nome_plano,descricao,valor,frequencia,dia_cobranca,status,data_inicio,data_fim,proximo_pagamento,created_at,updated_at'],
+      ['paciente_portal_tokens', 'paciente_portal_tokens', 'paciente_id',
+        'id,paciente_id,ativo,ultimo_acesso,created_at,expires_at'],
+    ]);
+    const agendamentos = data.agendamentos as Array<{ id: string }>;
+    const prontuarios = data.prontuarios as Array<{ id: string }>;
+    const lancamentos = data.lancamentos as Array<{ id: string }>;
     const prontuarioIds = (prontuarios as Array<{ id: string }>).map((p) => p.id);
+    data.exames = await buscarTodasAsPaginas((inicio, fim) => {
+      let query = db.from('exames').select('*');
+      query = prontuarioIds.length > 0
+        ? query.or(`paciente_id.eq.${pacienteId},prontuario_id.in.(${prontuarioIds.join(',')})`)
+        : query.eq('paciente_id', pacienteId);
+      return query.order('id', { ascending: true }).range(inicio, fim);
+    });
+
+    // Memed prescriptions are service-role-only; retrieve them through a
+    // clinic-scoped Edge Function instead of weakening table RLS for the browser.
+    const { data: memedExport, error: memedExportError } = await supabase.functions.invoke(
+      'patient-lgpd-memed-export',
+      { body: { pacienteId } },
+    );
+    if (memedExportError || !Array.isArray(memedExport?.memed_prescricoes)) {
+      throw new Error(`Falha ao exportar prescrições Memed${memedExportError?.message ? `: ${memedExportError.message}` : '.'}`);
+    }
+    data.memed_prescricoes = memedExport.memed_prescricoes as Array<Record<string, unknown>>;
+    const lancamentoIds = (lancamentos as Array<{ id: string }>).map((lancamento) => lancamento.id);
+    if (lancamentoIds.length > 0) {
+      data.lancamento_itens = await buscarTodasAsPaginas((inicio, fim) => db
+        .from('lancamento_itens').select('*').in('lancamento_id', lancamentoIds)
+        .order('id', { ascending: true }).range(inicio, fim));
+      data.pagamentos = await buscarTodasAsPaginas((inicio, fim) => db.from('pagamentos')
+        .select('id,lancamento_id,forma_pagamento,valor,parcelas,data_pagamento,observacoes,estornado_em,motivo_estorno,created_at')
+        .in('lancamento_id', lancamentoIds).order('id', { ascending: true }).range(inicio, fim));
+    } else data.lancamento_itens = [];
+    const agendamentoIds = (agendamentos as Array<{ id: string }>).map((agendamento) => agendamento.id);
+    if (lancamentoIds.length === 0) data.pagamentos = [];
+    if (agendamentoIds.length > 0) {
+      data.fila_atendimento = await buscarTodasAsPaginas((inicio, fim) => db.from('fila_atendimento')
+        .select('*').in('agendamento_id', agendamentoIds)
+        .order('id', { ascending: true }).range(inicio, fim));
+    } else data.fila_atendimento = [];
+    const pagamentosMp = data.pagamentos_mercadopago as Array<Record<string, unknown>>;
+    if (lancamentoIds.length > 0 || agendamentoIds.length > 0) {
+      const filtrosPagamento = [
+        ...(lancamentoIds.length > 0 ? [`lancamento_id.in.(${lancamentoIds.join(',')})`] : []),
+        ...(agendamentoIds.length > 0 ? [`agendamento_id.in.(${agendamentoIds.join(',')})`] : []),
+      ];
+      const pagamentosRelacionados = await buscarTodasAsPaginas((inicio, fim) => db
+        .from('pagamentos_mercadopago')
+        .select('id,lancamento_id,paciente_id,agendamento_id,mp_payment_id,mp_preference_id,mp_external_reference,valor,valor_pago,moeda,status,tipo,metodo_pagamento,data_criacao,data_aprovacao,data_vencimento,data_expiracao,descricao,parcelas,created_at,updated_at')
+        .or(filtrosPagamento.join(',')).order('id', { ascending: true }).range(inicio, fim));
+      const idsPagamento = new Set(pagamentosMp.map((pagamento) => pagamento.id));
+      for (const pagamento of pagamentosRelacionados as Array<Record<string, unknown>>) {
+        if (!idsPagamento.has(pagamento.id)) pagamentosMp.push(pagamento);
+      }
+    }
+
     const buscarPorProntuarios = async (chave: string, tabela: string) => {
       if (prontuarioIds.length === 0) {
         data[chave] = [];
         return;
       }
-      const { data: registros, error } = await db
-        .from(tabela)
-        .select('*')
-        .in('prontuario_id', prontuarioIds);
-      if (error) throw new Error(`Falha ao exportar ${chave}: ${error.message}`);
-      data[chave] = registros || [];
+      data[chave] = await buscarTodasAsPaginas((inicio, fim) => db
+        .from(tabela).select('*').in('prontuario_id', prontuarioIds)
+        .order('id', { ascending: true }).range(inicio, fim));
     };
-    await buscarPorProntuarios('prescricoes', 'prescricoes');
-    await buscarPorProntuarios('attachments', 'anexos_prontuario');
+    data.prescricoes = await buscarTodasAsPaginas((inicio, fim) => {
+      let query = db.from('prescricoes').select('*');
+      query = prontuarioIds.length > 0
+        ? query.or(`paciente_id.eq.${pacienteId},prontuario_id.in.(${prontuarioIds.join(',')})`)
+        : query.eq('paciente_id', pacienteId);
+      return query.order('id', { ascending: true }).range(inicio, fim);
+    });
+    const anexos = await buscarTodasAsPaginas((inicio, fim) => {
+      let query = db.from('anexos_prontuario').select('*');
+      query = prontuarioIds.length > 0
+        ? query.or(`paciente_id.eq.${pacienteId},prontuario_id.in.(${prontuarioIds.join(',')})`)
+        : query.eq('paciente_id', pacienteId);
+      return query.order('id', { ascending: true }).range(inicio, fim);
+    });
+    const prontuariosComAnexoAssinado = [...new Set((anexos as Array<{ prontuario_id?: string | null }>)
+      .map((anexo) => anexo.prontuario_id).filter((id): id is string => Boolean(id)))];
+    if (prontuariosComAnexoAssinado.length > 0) {
+      const { error: erroAuditoriaArquivos } = await lgpdAuditRpc.rpc('registrar_exportacao_lgpd_paciente', {
+        p_paciente_id: pacienteId,
+      });
+      if (erroAuditoriaArquivos) {
+        throw new Error(`Não foi possível renovar a autorização auditada dos anexos: ${erroAuditoriaArquivos.message}`);
+      }
+    }
+    const anexosComConteudo: Array<Record<string, unknown>> = [];
+    let totalAttachmentBytes = 0;
+    for (const anexo of (anexos || []) as Array<Record<string, unknown>>) {
+      const storedPath = String(anexo.url_arquivo || '');
+      if (!storedPath) throw new Error(`O anexo ${String(anexo.nome_arquivo || anexo.id)} não possui caminho de arquivo.`);
+      const path = storagePathForPatientAttachment(storedPath);
+      const { data: arquivo, error: erroArquivo } = await supabase.storage
+        .from('medical-attachments')
+        .download(path);
+      if (erroArquivo || !arquivo) {
+        throw new Error(`Falha ao incluir o anexo "${String(anexo.nome_arquivo || anexo.id)}" na exportação${erroArquivo?.message ? `: ${erroArquivo.message}` : '.'}`);
+      }
+      totalAttachmentBytes += arquivo.size;
+      if (totalAttachmentBytes > MAX_ATTACHMENT_EXPORT_BYTES) {
+        throw new Error('Os anexos ultrapassam 30 MB. A exportação foi interrompida para evitar um arquivo incompleto; solicite a preparação assistida ao suporte.');
+      }
+      const { url_arquivo: _caminhoInterno, ...metadados } = anexo;
+      anexosComConteudo.push({
+        ...metadados,
+        nome_arquivo: anexo.nome_arquivo,
+        tipo_arquivo: anexo.tipo_arquivo || arquivo.type || 'application/octet-stream',
+        tamanho_bytes: arquivo.size,
+        conteudo_base64: bytesToBase64(new Uint8Array(await arquivo.arrayBuffer())),
+      });
+    }
+    data.attachments = anexosComConteudo;
     await buscarPorProntuarios('prontuario_adendos', 'prontuario_adendos');
+    await buscarPorProntuarios('prontuario_diagnosticos', 'prontuario_diagnosticos');
+    await buscarPorProntuarios('prontuario_assinaturas', 'prontuario_assinaturas');
+    await buscarPorProntuarios('movimentacoes_estoque', 'movimentacoes_estoque');
+    if (prontuarioIds.length > 0) {
+      data.prontuario_acessos = await buscarTodasAsPaginas((inicio, fim) => db
+        .from('prontuario_acessos').select('*')
+        .or(`paciente_id.eq.${pacienteId},prontuario_id.in.(${prontuarioIds.join(',')})`)
+        .order('id', { ascending: true }).range(inicio, fim));
+    } else {
+      await buscar('prontuario_acessos', 'prontuario_acessos', 'paciente_id');
+    }
 
-    // Audit log do paciente
-    const { data: auditLog, error: auditError } = await supabase
-      .from('audit_log')
-      .select('*')
-      .eq('record_id', pacienteId);
-    if (auditError) throw auditError;
+    const whatsappConversations = await buscar('whatsapp_conversations', 'whatsapp_conversations', 'paciente_id',
+      'id,paciente_id,remote_jid,status,ultima_mensagem_at,created_at,updated_at');
+    const whatsappConversationIds = (whatsappConversations as Array<{ id: string }>).map((conversation) => conversation.id);
+    if (whatsappConversationIds.length > 0) {
+      data.whatsapp_messages = await buscarTodasAsPaginas((inicio, fim) => db.from('whatsapp_messages')
+        .select('id,conversation_id,message_id,direcao,tipo,conteudo,status,created_at')
+        .in('conversation_id', whatsappConversationIds).order('id', { ascending: true }).range(inicio, fim));
+      data.whatsapp_agent_actions = await buscarTodasAsPaginas((inicio, fim) => db.from('whatsapp_agent_actions')
+        .select('id,conversation_id,tipo_acao,dados_entrada,dados_saida,sucesso,erro_mensagem,duracao_ms,created_at')
+        .in('conversation_id', whatsappConversationIds).order('id', { ascending: true }).range(inicio, fim));
+    } else {
+      data.whatsapp_messages = [];
+      data.whatsapp_agent_actions = [];
+    }
+    if (agendamentoIds.length > 0) {
+      const avaliacoesAgendamento = await buscarTodasAsPaginas((inicio, fim) => db.from('feedbacks_nps')
+        .select('*').in('agendamento_id', agendamentoIds)
+        .order('id', { ascending: true }).range(inicio, fim));
+      const nps = data.feedbacks_nps as Array<Record<string, unknown>>;
+      const npsIds = new Set(nps.map((item) => item.id));
+      for (const avaliacao of avaliacoesAgendamento as Array<Record<string, unknown>>) {
+        if (!npsIds.has(avaliacao.id)) nps.push(avaliacao);
+      }
+    }
 
-    data.audit_log = auditLog || [];
+    // Include audit events for the patient and the related records in this export.
+    const relatedRecordIds = [...new Set([
+      pacienteId,
+      ...agendamentoIds,
+      ...prontuarioIds,
+      ...lancamentoIds,
+      ...(data.exames as Array<{ id: string }>).map((item) => item.id),
+      ...(data.prescricoes as Array<{ id: string }>).map((item) => item.id),
+      ...(data.attachments as Array<{ id: string }>).map((item) => item.id),
+    ])];
+    const auditRows: Array<Record<string, unknown>> = [];
+    for (let start = 0; start < relatedRecordIds.length; start += 100) {
+      const batchIds = relatedRecordIds.slice(start, start + 100);
+      const auditBatch = await buscarTodasAsPaginas((inicio, fim) => supabase
+        .from('audit_log').select('*').in('record_id', batchIds)
+        .order('id', { ascending: true }).range(inicio, fim));
+      auditRows.push(...auditBatch as Array<Record<string, unknown>>);
+    }
+    data.audit_log = [...new Map(auditRows.map((item) => [item.id, item])).values()];
 
     // Consentimentos LGPD
-    const { data: consentLog, error: consentError } = await db
-      .from('lgpd_consent_log')
-      .select('*')
-      .eq('paciente_id', pacienteId);
-    if (consentError) throw consentError;
+    data.consent_log = await buscarTodasAsPaginas((inicio, fim) => db
+      .from('lgpd_consent_log').select('*').eq('paciente_id', pacienteId)
+      .order('id', { ascending: true }).range(inicio, fim));
+    data.lgpd_access_request_log = await buscarTodasAsPaginas((inicio, fim) => db
+      .from('lgpd_access_request_log').select('*').eq('paciente_id', pacienteId)
+      .order('id', { ascending: true }).range(inicio, fim));
 
-    data.consent_log = consentLog || [];
+    const { data: authData, error: authError } = await supabase.auth.getUser();
+    if (authError || !authData.user?.id) {
+      throw new Error('Não foi possível identificar o responsável; o arquivo não foi gerado. O pedido segue registrado para análise.');
+    }
 
-    const { data: accessRequests, error: accessError } = await db
+    const preparadoEm = new Date().toISOString();
+    const { data: pedidoPreparado, error: erroPreparacao } = await db
       .from('lgpd_access_request_log')
-      .select('*')
-      .eq('paciente_id', pacienteId);
-    if (accessError) throw accessError;
-    data.lgpd_access_request_log = accessRequests || [];
+      .update({
+        responsavel_id: authData.user.id,
+        evidencia: 'Pacote JSON preparado e download iniciado no navegador; escopo e entrega formal ao titular ainda precisam de conferência.',
+        updated_at: preparadoEm,
+      })
+      .eq('id', pedidoExportacao.id)
+      .eq('status', 'pending')
+      .select('id,status,responsavel_id,evidencia')
+      .maybeSingle();
+    if (erroPreparacao || !pedidoPreparado) {
+      throw new Error(
+        `Os dados foram reunidos, mas a auditoria não confirmou a preparação; o arquivo não foi gerado${erroPreparacao?.message ? `: ${erroPreparacao.message}` : '.'}`
+      );
+    }
 
-    return data;
+    const requestLog = data.lgpd_access_request_log as Array<Record<string, unknown>>;
+    const existingRequestIndex = requestLog.findIndex((request) => request.id === pedidoExportacao.id);
+    const pendingRequest = {
+      ...(existingRequestIndex >= 0 ? requestLog[existingRequestIndex] : {}),
+      paciente_id: pacienteId,
+      request_type: 'export',
+      requested_at: pedidoExportacao.requested_at,
+      ...pedidoPreparado,
+    };
+    if (existingRequestIndex >= 0) requestLog[existingRequestIndex] = pendingRequest;
+    else requestLog.push(pendingRequest);
+
+    return data as PatientDataExport;
   } catch (error) {
     console.error('Error exporting patient data:', error);
     throw error;
   }
-}
-
-/**
- * Direito ao esquecimento (Right to be forgotten)
- * Deletar todos os dados de um paciente
- * ⚠️ IRREVERSÍVEL - Requer confirmação
- */
-export async function deletePatientData(
-  pacienteId: string,
-  reason?: string
-): Promise<{ deletedRecords: number; success: boolean }> {
-  const tables = [
-    'anexos_prontuario',
-    'prescricoes',
-    'exames',
-    'triagens',
-    'prontuarios',
-    'agendamentos',
-    'pacientes', // Delete paciente por último (FK constraints)
-  ];
-
-  // O registro vem ANTES de apagar, e um erro aqui interrompe tudo: apagar os
-  // dados de um paciente sem deixar registro de quem pediu, quando e por quê é
-  // pior do que não apagar — é justamente o que a LGPD exige comprovar.
-  const { error: erroLog } = await db.from('lgpd_deletion_log').insert({
-    paciente_id: pacienteId,
-    deleted_at: new Date().toISOString(),
-    reason: reason || 'Right to be forgotten request',
-    deleted_by: (await supabase.auth.getUser()).data.user?.id,
-  });
-
-  if (erroLog) {
-    throw new Error(
-      `Não foi possível registrar a exclusão, então nada foi apagado: ${erroLog.message}`
-    );
-  }
-
-  // Ordem importa por causa das chaves estrangeiras.
-  //
-  // `.select('id')` é o que faz o PostgREST devolver as linhas removidas — sem
-  // ele a resposta vem vazia e não há como saber se algo foi apagado. A versão
-  // anterior contava tabelas percorridas, não registros, e devolvia
-  // success: true mesmo quando o RLS barrava tudo: a tela dizia ao paciente que
-  // seus dados foram apagados sem que nada tivesse saído do banco.
-  let totalDeleted = 0;
-  const falhas: string[] = [];
-
-  for (const table of tables) {
-    const { data: removidos, error } = await db
-      .from(table)
-      .delete()
-      .eq(table === 'pacientes' ? 'id' : 'paciente_id', pacienteId)
-      .select('id');
-
-    if (error) {
-      falhas.push(`${table}: ${error.message}`);
-      continue;
-    }
-    totalDeleted += removidos?.length ?? 0;
-  }
-
-  if (falhas.length) {
-    throw new Error(
-      `Exclusão incompleta — ${totalDeleted} registro(s) apagado(s) antes da falha. ` +
-        `Tabelas com erro: ${falhas.join('; ')}`
-    );
-  }
-
-  return { deletedRecords: totalDeleted, success: true };
 }
 
 /**
@@ -261,7 +480,7 @@ export async function hasRevokedConsent(pacienteId: string): Promise<boolean> {
  */
 export async function correctPatientData(
   pacienteId: string,
-  updates: Record<string, any>
+  updates: Record<string, Json>
 ): Promise<void> {
   try {
     // Log de correção para auditoria

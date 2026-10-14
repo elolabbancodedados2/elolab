@@ -17,6 +17,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
+import { PageHeader } from '@/components/PageHeader';
 import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
 
 type InviteStatus = 'aceito' | 'expirado' | 'pendente';
@@ -286,6 +287,11 @@ export function ConvitesList() {
 
   return (
     <div className="space-y-4">
+      <PageHeader
+        title="Convites"
+        description="Acompanhe o acesso da equipe e mantenha os convites sob controle."
+        icon={<Mail />}
+      />
       <Alert>
         <Mail className="h-4 w-4" />
         <AlertTitle>Como funciona o convite</AlertTitle>
@@ -313,19 +319,19 @@ export function ConvitesList() {
         <Card>
           <CardHeader className="pb-2">
             <CardDescription>Pendentes</CardDescription>
-            <CardTitle className="text-2xl text-amber-600">{pendentes}</CardTitle>
+            <p className="text-2xl font-semibold text-warning-foreground">{pendentes}</p>
           </CardHeader>
         </Card>
         <Card>
           <CardHeader className="pb-2">
             <CardDescription>Aceitos</CardDescription>
-            <CardTitle className="text-2xl text-emerald-600">{aceitos}</CardTitle>
+            <p className="text-2xl font-semibold text-success">{aceitos}</p>
           </CardHeader>
         </Card>
         <Card>
           <CardHeader className="pb-2">
             <CardDescription>Expirados</CardDescription>
-            <CardTitle className="text-2xl text-red-600">{expirados}</CardTitle>
+            <p className="text-2xl font-semibold text-destructive">{expirados}</p>
           </CardHeader>
         </Card>
       </div>
@@ -395,8 +401,8 @@ export function ConvitesList() {
               description="Convide funcionários pela aba Funcionários para começar."
             />
           ) : (
-            <div className="overflow-x-auto">
-              <Table>
+            <div role="region" aria-label="Tabela de convites enviados" tabIndex={0} className="max-w-full overflow-x-auto rounded-md border border-border/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+              <Table aria-label="Convites enviados">
                 <TableHeader>
                   <TableRow>
                     <TableHead>Nome / E-mail</TableHead>
@@ -466,7 +472,7 @@ export function ConvitesList() {
                               ) : (
                                 <RefreshCw className="h-3.5 w-3.5" />
                               )}
-                              <span className="ml-1 hidden sm:inline">Reenviar</span>
+                              <span className="ml-1 hidden 2xl:inline">Reenviar</span>
                             </Button>
                           )}
                           {inv.status !== 'aceito' && (

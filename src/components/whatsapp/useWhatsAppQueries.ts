@@ -59,7 +59,7 @@ export function useWhatsAppConversations(allowed = true) {
         table: 'whatsapp_conversations',
         filter: `clinica_id=eq.${clinicId}`,
       }, () => {
-        void queryClient.invalidateQueries({ queryKey });
+        void queryClient.invalidateQueries({ queryKey: ['whatsapp-conversations', clinicId, profileId] });
       })
       .subscribe();
 

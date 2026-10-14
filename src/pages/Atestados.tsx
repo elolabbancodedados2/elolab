@@ -1,3 +1,4 @@
+import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { nomeMedico } from '@/lib/formatters';
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
@@ -7,9 +8,10 @@ import {
   Clock, Calendar, AlertTriangle, ShieldCheck, Clipboard,
   BadgeCheck, BookOpen, X, FileSignature,
 } from 'lucide-react';
-import { format, addDays } from 'date-fns';
+import { addDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Button } from '@/components/ui/button';
+import { PageHeader } from '@/components/PageHeader';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -448,16 +450,12 @@ export default function Atestados() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 rounded-2xl border border-[#d8e8fb] bg-gradient-to-r from-[#f4f8ff] via-white to-[#effaff] p-4 sm:p-5">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-[#102a56] flex items-center gap-2">
-            <span className="rounded-xl bg-[#e5f1ff] p-2 text-[#1766b3] ring-1 ring-[#d5e6fa]"><FileText className="h-5 w-5" /></span>
-            Atestados e Documentos
-          </h1>
-          <p className="mt-1 text-sm text-muted-foreground">Emita declarações e atestados com dados conferidos do paciente.</p>
-        </div>
-        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+        <PageHeader
+          title="Atestados e Documentos"
+          description="Emita declarações e atestados com dados conferidos do paciente."
+          icon={<FileText />}
+          actions={(
+            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
           <Badge variant="outline" className="gap-1.5 text-xs">
             <FileSignature className="h-3.5 w-3.5 text-muted-foreground" />
             Assinatura manual
@@ -465,8 +463,9 @@ export default function Atestados() {
           <Button onClick={handleNew} className="gap-2" disabled={!medicosDisponiveis.length}>
             <Plus className="h-4 w-4" />Novo Atestado
           </Button>
-        </div>
-      </div>
+            </div>
+          )}
+        />
 
       {!medicosDisponiveis.length && (
         <div role="alert" className="rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm text-warning-foreground">
@@ -543,7 +542,7 @@ export default function Atestados() {
                         </div>
                         <p className="font-semibold text-foreground">{atestados.length === 0 ? 'Nenhum atestado encontrado' : 'Nenhum resultado para essa busca'}</p>
                         <p className="text-sm text-muted-foreground mt-1">{atestados.length === 0 ? 'Emita o primeiro atestado para o paciente' : 'Tente outro nome ou limpe a busca.'}</p>
-                        {atestados.length === 0 ? <Button className="mt-4 gap-2" onClick={handleNew}><Plus className="h-4 w-4" />Novo Atestado</Button> : <Button variant="link" size="sm" onClick={() => setSearchTerm('')}>Limpar busca</Button>}
+                        {atestados.length === 0 ? <Button className="mt-4 gap-2" onClick={handleNew} disabled={!medicosDisponiveis.length}><Plus className="h-4 w-4" />Novo Atestado</Button> : <Button variant="link" size="sm" onClick={() => setSearchTerm('')}>Limpar busca</Button>}
                       </div>
                     </TableCell>
                   </TableRow>

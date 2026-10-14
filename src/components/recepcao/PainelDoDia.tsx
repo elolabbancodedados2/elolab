@@ -17,7 +17,6 @@
  */
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { motion } from 'framer-motion';
 import {
   Users, Clock, Wallet, CheckCircle2, Stethoscope, AlertTriangle, Banknote,
 } from 'lucide-react';
@@ -73,7 +72,7 @@ export interface PagamentoDoDia {
  * `atendimentos` é o `enriched` da Recepção; `recebidos` são eventos de
  * pagamento e estorno ocorridos no dia civil de São Paulo.
  */
-export function resumoDoDia(atendimentos: any[], recebidos: PagamentoDoDia[]) {
+export function resumoDoDia(atendimentos: any[], recebidos: PagamentoDoDia[], agora = new Date()) {
   const chegaram = atendimentos.filter(e => e.step >= 1);
   const naoChegaram = atendimentos.filter(e => e.step === 0);
   const noBalcao = atendimentos.filter(e => e.step === 1);
@@ -99,11 +98,24 @@ export function resumoDoDia(atendimentos: any[], recebidos: PagamentoDoDia[]) {
     }, {})
   ).sort((a, b) => b[1] - a[1]);
 
+  const horaAtual = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  }).format(agora);
+  const horariosPendentes = naoChegaram
+    .map(e => e.ag?.hora_inicio?.slice(0, 5))
+    .filter((hora): hora is string => typeof hora === 'string' && /^\d{2}:\d{2}$/.test(hora))
+    .sort();
+  const horariosAtrasados = horariosPendentes.filter(hora => hora < horaAtual);
+  const proximo = horariosPendentes.find(hora => hora >= horaAtual) ?? null;
+
   return {
     total: atendimentos.length,
     chegaram: chegaram.length,
     naoChegaram: naoChegaram.length,
-    proximo: naoChegaram[0]?.ag?.hora_inicio?.slice(0, 5) ?? null,
+    proximo,
+    atrasados: horariosAtrasados.length,
+    primeiroAtrasado: horariosAtrasados[0] ?? null,
+    horariosPendentesInformados: horariosPendentes.length,
     noBalcao: noBalcao.length,
     aReceberBalcao: somar(noBalcao),
     esperandoChamada: esperandoChamada.length,
@@ -170,14 +182,20 @@ export function PainelDoDia({ atendimentos, clinicaId, hoje, onFiltrar, abaAtiva
     {
       id: 'nao-chegaram', icone: Clock, titulo: 'Ainda não chegaram',
       valor: String(n.naoChegaram),
-      detalhe: n.proximo ? `Próximo às ${n.proximo}` : 'Todos chegaram',
-      aba: 'checkin', tom: 'text-info',
+      detalhe: n.atrasados > 0
+        ? `Atrasado desde ${n.primeiroAtrasado}`
+        : n.proximo
+          ? `Próximo às ${n.proximo}`
+          : n.naoChegaram > 0
+            ? n.horariosPendentesInformados === 0 ? 'Horário não informado' : 'Horários previstos já passaram'
+            : n.total > 0 ? 'Todos chegaram' : 'Sem pacientes pendentes',
+      aba: 'checkin', tom: n.atrasados > 0 ? 'text-warning-foreground' : 'text-info', alerta: n.atrasados > 0,
     },
     {
       id: 'balcao', icone: Wallet, titulo: 'Falta pagar',
       valor: String(n.noBalcao),
       detalhe: n.aReceberBalcao > 0 ? `${formatCurrency(n.aReceberBalcao)} no balcão` : 'Nada em aberto',
-      aba: 'balcao', tom: 'text-warning', alerta: n.noBalcao > 0,
+      aba: 'balcao', tom: 'text-warning-foreground', alerta: n.noBalcao > 0,
     },
     {
       id: 'esperando', icone: CheckCircle2, titulo: 'Pagos, esperando',
@@ -196,7 +214,7 @@ export function PainelDoDia({ atendimentos, clinicaId, hoje, onFiltrar, abaAtiva
       valor: String(n.devendoAdicional),
       detalhe: n.devendoAdicional > 0
         ? `${formatCurrency(n.valorAdicional)} a cobrar na saída`
-        : 'Nenhum procedimento em aberto',
+        : 'Sem adicional em aberto',
       aba: 'atendimento', tom: 'text-destructive', alerta: n.devendoAdicional > 0,
     },
     {
@@ -227,43 +245,43 @@ export function PainelDoDia({ atendimentos, clinicaId, hoje, onFiltrar, abaAtiva
         </div>
       )}
       <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-2">
-        {cartoes.map((c, i) => {
+        {cartoes.map((c) => {
           const Icone = c.icone;
           const clicavel = !!c.aba;
           const ativo = c.aba && c.aba === abaAtiva;
           return (
-            <motion.button
+            <button
               key={c.id}
               type="button"
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.03 }}
               onClick={() => c.aba && onFiltrar(c.aba)}
               disabled={!clicavel}
+              aria-pressed={clicavel ? Boolean(ativo) : undefined}
               className={cn(
-                'rounded-xl border bg-card px-3 py-2.5 text-left transition-colors',
+                'flex h-full min-h-[5.75rem] flex-col rounded-xl border bg-card px-3 py-2.5 text-left shadow-sm transition-colors xl:min-h-20 xl:py-2',
                 clicavel ? 'hover:bg-accent/50 cursor-pointer' : 'cursor-default',
                 ativo ? 'border-primary ring-1 ring-primary/30' : 'border-border/50',
                 c.alerta && !ativo && 'border-current/30'
               )}
             >
-              <div className={cn('flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide', c.tom)}>
-                <Icone className="h-3 w-3" />
-                <span className="truncate">{c.titulo}</span>
+              {/* Em 1440 px os sete cartões ficam com ~150 px: rótulo e detalhe
+                  quebram em duas linhas em vez de virar "Ainda não chega…". */}
+              <div className={cn('flex min-h-[1.875rem] items-start gap-1.5 text-xs font-semibold uppercase leading-tight tracking-wide', c.tom)}>
+                <Icone className="mt-px h-3 w-3 shrink-0" aria-hidden="true" />
+                <span>{c.titulo}</span>
               </div>
-              <p className={cn('mt-0.5 text-xl font-bold tabular-nums leading-none', c.tom)}>
+              <p className={cn('mt-1 text-xl font-bold tabular-nums leading-none', c.tom)}>
                 {c.valor}
               </p>
-              <p className="mt-1 text-[10px] text-muted-foreground truncate" title={c.detalhe}>
+              <p title={c.detalhe} className="mt-auto pt-1 text-xs leading-snug text-muted-foreground xl:truncate">
                 {c.detalhe}
               </p>
-            </motion.button>
+            </button>
           );
         })}
       </div>
 
       {n.porForma.length > 0 && (
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-[10px] text-muted-foreground">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-xs text-muted-foreground">
           <span className="font-semibold uppercase tracking-wide">Movimentos líquidos hoje:</span>
           {n.porForma.map(([forma, valor]) => (
             <span key={forma} className="tabular-nums">

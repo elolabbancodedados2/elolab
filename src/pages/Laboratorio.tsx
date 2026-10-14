@@ -1,7 +1,7 @@
 import { nomeMedico } from '@/lib/formatters';
 import { PacienteCombobox } from '@/components/patients/PacienteCombobox';
 import { motion, AnimatePresence } from 'framer-motion';
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useInfiniteQuery, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -23,6 +23,8 @@ import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { ErrorState } from '@/components/ErrorState';
+import { ActionableEmptyState } from '@/components/ActionableEmptyState';
+import { PageHeader } from '@/components/PageHeader';
 import { pacienteCorresponde } from '@/lib/buscaPaciente';
 import { dadosAoRegistrarColeta, podeGerenciarLaboratorioPorPapel, podeRegistrarResultado, STATUS_COLETA_LABELS } from '@/lib/laboratorioWorkflow';
 import { dateOnlyInTimeZone, parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
@@ -72,7 +74,7 @@ function dataHoraDaClinicaParaIso(value: string): string | null {
 
 import {
   FlaskConical, Search, Plus, TestTube, ClipboardCheck, AlertTriangle,
-  Clock, CheckCircle2, XCircle, Eye, Printer, Tag, Barcode,
+  Clock, CheckCircle2, XCircle, Eye, Printer, Tag,
   User, Droplets, MapPin, Package, FileText, Link2, Filter,
   TrendingUp, Activity, Calendar, ArrowRight, Trash2, RotateCcw,
   Download, Zap, Timer, Shield, Loader2,
@@ -80,7 +82,7 @@ import {
 
 const statusColors: Record<string, string> = {
   pendente: 'border border-[#f1dfb8] bg-[#fff8e8] text-[#8a5b00]',
-  coletado: 'border border-[#cce2fa] bg-[#edf6ff] text-[#175c9f]',
+  coletado: 'border border-[#d4ccfa] bg-[#f1eefe] text-[#2e179f]',
   em_analise: 'border border-[#c8eaf1] bg-[#edfbff] text-[#087e98]',
   validado: 'border border-[#ccebdd] bg-[#effaf4] text-[#16734d]',
   liberado: 'border border-[#ccebdd] bg-[#effaf4] text-[#16734d]',
@@ -141,6 +143,8 @@ export default function Laboratorio() {
 
   const [showResultados, setShowResultados] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState('worklist');
+  const worklistTabRef = useRef<HTMLButtonElement>(null);
+  const focusWorklistAfterFilter = useRef(false);
   const queryClient = useQueryClient();
   const { user, profile } = useSupabaseAuth();
   const podeGerenciarLaboratorio = podeGerenciarLaboratorioPorPapel(profile?.roles);
@@ -157,6 +161,12 @@ export default function Laboratorio() {
     const timer = window.setInterval(() => setAgora(new Date()), 60_000);
     return () => window.clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    if (activeTab !== 'worklist' || !focusWorklistAfterFilter.current) return;
+    focusWorklistAfterFilter.current = false;
+    worklistTabRef.current?.focus();
+  }, [activeTab]);
 
   const previewLimpar = useQuery({
     queryKey: ['preview-limpar-fila-lab', profile?.clinica_id, limparDias],
@@ -478,7 +488,7 @@ export default function Laboratorio() {
       liberados: todayItems.filter((c: any) => c.status === 'liberado').length,
       cancelados: todayItems.filter((c: any) => c.status === 'cancelado').length,
       urgentes: todayItems.filter((c: any) => c.urgente).length,
-      total: todayItems.length,
+      total: todayItems.filter((c: any) => c.status !== 'cancelado').length,
     };
   }, [coletas, hojeNaClinica]);
 
@@ -554,6 +564,8 @@ export default function Laboratorio() {
 
   const filtrarPipeline = (filter: string) => {
     setDateFilter('hoje');
+    focusWorklistAfterFilter.current = true;
+    setActiveTab('worklist');
     if (filter === 'urgente') {
       setStatusFilter('todos');
       setUrgentOnly(current => !current);
@@ -565,22 +577,23 @@ export default function Laboratorio() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-[#d8e8fb] bg-gradient-to-r from-[#f4f8ff] via-white to-[#effaff] p-4 sm:p-5">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <span className="rounded-xl bg-[#e5f1ff] p-2 text-[#1766b3] ring-1 ring-[#d5e6fa]"><FlaskConical className="h-5 w-5" /></span> Laboratório
-          </h1>
-          <p className="text-muted-foreground">Central de gestão laboratorial — worklist, coletas e resultados</p>
-        </div>
-        <div className="flex items-center gap-2">
-          {podeGerenciarLaboratorio && <Button variant="outline" onClick={() => setShowLimparFila(true)}>
-            Limpar fila antiga
-          </Button>}
-          <Button onClick={() => { resetColetaForm(); setShowNewColeta(true); }}>
-            <Plus className="h-4 w-4 mr-2" /> Nova Coleta
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        title="Laboratório"
+        description="Central de gestão laboratorial — worklist, coletas e resultados"
+        icon={<FlaskConical />}
+        actions={
+          <>
+            {podeGerenciarLaboratorio && (
+              <Button variant="outline" onClick={() => setShowLimparFila(true)}>
+                Limpar fila antiga
+              </Button>
+            )}
+            <Button onClick={() => { resetColetaForm(); setShowNewColeta(true); }}>
+              <Plus aria-hidden="true" className="mr-2 h-4 w-4" /> Nova coleta
+            </Button>
+          </>
+        }
+      />
 
       <LaboratorioSubnav />
 
@@ -655,80 +668,29 @@ export default function Laboratorio() {
         </div>
       )}
 
-      {/* ─── Pipeline Visual + KPIs ─── */}
-      <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
-        {[
-          { label: 'Pendente', value: stats.pendentes, icon: Clock, color: 'text-warning', bg: 'bg-warning/10', border: 'border-warning/30', filter: 'pendente' },
-          { label: 'Coletado', value: stats.coletados, icon: TestTube, color: 'text-info', bg: 'bg-info/10', border: 'border-info/30', filter: 'coletado' },
-          { label: 'Em Análise', value: stats.emAnalise, icon: Activity, color: 'text-primary', bg: 'bg-primary/10', border: 'border-primary/30', filter: 'em_analise' },
-          { label: 'Validado', value: stats.validados, icon: Shield, color: 'text-success', bg: 'bg-success/10', border: 'border-success/30', filter: 'validado' },
-          { label: 'Liberado', value: stats.liberados, icon: CheckCircle2, color: 'text-success', bg: 'bg-success/10', border: 'border-success/30', filter: 'liberado' },
-          { label: 'Urgentes', value: stats.urgentes, icon: Zap, color: 'text-destructive', bg: 'bg-destructive/10', border: 'border-destructive/30', filter: 'urgente' },
-        ].map((s, idx) => (
-          <motion.div key={s.label} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: idx * 0.04 }}>
-            <Card className={cn('relative border cursor-pointer hover:shadow-md transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
-              s.border,
-              (statusFilter === s.filter || (s.filter === 'urgente' && urgentOnly)) && 'ring-2 ring-primary'
-            )}
-              role="button"
-              tabIndex={0}
-              aria-pressed={s.filter === 'urgente' ? urgentOnly : statusFilter === s.filter && dateFilter === 'hoje' && !urgentOnly}
-              onClick={() => filtrarPipeline(s.filter)}
-              onKeyDown={event => {
-                if (event.key === 'Enter' || event.key === ' ') {
-                  event.preventDefault();
-                  filtrarPipeline(s.filter);
-                }
-              }}>
-              <CardContent className="pt-3 pb-2 flex items-center gap-2">
-                <div className={cn('h-9 w-9 rounded-lg flex items-center justify-center shrink-0', s.bg)}>
-                  <s.icon className={cn('h-4 w-4', s.color)} />
-                </div>
-                <div>
-                  <p className={cn('text-xl font-bold tabular-nums', s.color)}>{s.value}</p>
-                  <p className="text-[10px] text-muted-foreground font-medium">{s.label}</p>
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
-        ))}
-      </div>
-
-      {/* Completion bar */}
-      <Card>
-        <CardContent className="pt-4 pb-3">
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-sm font-medium">Taxa de conclusão hoje</p>
-            <span className="text-sm font-bold text-primary">{completionRate}%</span>
-          </div>
-          <Progress value={completionRate} className="h-2" />
-          <p className="text-xs text-muted-foreground mt-1">
-            {stats.liberados + stats.validados} de {stats.total} amostras concluídas
-          </p>
-        </CardContent>
-      </Card>
-
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList>
-          <TabsTrigger value="worklist" className="gap-1"><ClipboardCheck className="h-3.5 w-3.5" />Worklist</TabsTrigger>
-          <TabsTrigger value="pipeline" className="gap-1"><Activity className="h-3.5 w-3.5" />Pipeline</TabsTrigger>
-          <TabsTrigger value="pedidos" className="gap-1"><TestTube className="h-3.5 w-3.5" />Pedidos</TabsTrigger>
-          {podeGerenciarLaboratorio && <TabsTrigger value="gestao" className="gap-1"><Package className="h-3.5 w-3.5" />Gestão do laboratório</TabsTrigger>}
-          <TabsTrigger value="indicadores" className="gap-1"><Activity className="h-3.5 w-3.5" />Indicadores</TabsTrigger>
-        </TabsList>
+        <div className="max-w-full overflow-x-auto md:overflow-visible">
+          <TabsList aria-label="Seções do laboratório" className="h-auto w-max min-w-full flex-nowrap justify-start gap-1 md:w-full md:flex-wrap">
+            <TabsTrigger ref={worklistTabRef} value="worklist" className="gap-1"><ClipboardCheck className="h-3.5 w-3.5" />Worklist</TabsTrigger>
+            <TabsTrigger value="pipeline" className="gap-1"><Activity className="h-3.5 w-3.5" />Pipeline</TabsTrigger>
+            <TabsTrigger value="pedidos" className="gap-1"><TestTube className="h-3.5 w-3.5" />Pedidos</TabsTrigger>
+            {podeGerenciarLaboratorio && <TabsTrigger value="gestao" className="gap-1"><Package className="h-3.5 w-3.5" />Gestão do laboratório</TabsTrigger>}
+            <TabsTrigger value="indicadores" className="gap-1"><Activity className="h-3.5 w-3.5" />Indicadores</TabsTrigger>
+          </TabsList>
+        </div>
 
         {/* ─── Worklist Tab ─── */}
         <TabsContent value="worklist" className="space-y-4">
           {/* Filters */}
-          <div className="flex flex-wrap gap-3 items-center">
-            <div className="relative flex-1 min-w-[200px] max-w-md">
+          <div data-testid="lab-worklist-filters" className="grid grid-cols-2 items-center gap-3 sm:grid-cols-3 xl:flex xl:flex-wrap">
+            <div className="relative col-span-2 min-w-0 sm:col-span-2 xl:col-span-1 xl:min-w-[200px] xl:max-w-md xl:flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input placeholder="Buscar paciente, código ou CPF..." value={search}
+              <Input aria-label="Buscar coletas por paciente, código ou CPF" placeholder="Buscar paciente, código ou CPF..." value={search}
                 onChange={(e) => setSearch(e.target.value)} className="pl-10" />
             </div>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="w-full xl:w-36"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="todos">Todos Status</SelectItem>
                 {Object.entries(statusLabels).map(([k, v]) => (
@@ -737,14 +699,14 @@ export default function Laboratorio() {
               </SelectContent>
             </Select>
             <Select value={setorFilter} onValueChange={setSetorFilter}>
-              <SelectTrigger className="w-44"><SelectValue placeholder="Todos os setores" /></SelectTrigger>
+              <SelectTrigger className="w-full xl:w-44"><SelectValue placeholder="Todos os setores" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="todos">Todos os setores</SelectItem>
                 {(setoresQuery.data ?? []).map((setor) => <SelectItem key={setor.id} value={setor.id}>{setor.nome}</SelectItem>)}
               </SelectContent>
             </Select>
             <Select value={dateFilter} onValueChange={setDateFilter}>
-              <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="w-full xl:w-32"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="hoje">Hoje</SelectItem>
                 <SelectItem value="ontem">Ontem</SelectItem>
@@ -752,7 +714,7 @@ export default function Laboratorio() {
                 <SelectItem value="todos">Todos</SelectItem>
               </SelectContent>
             </Select>
-            <Badge variant="outline" className="text-xs">
+            <Badge data-testid="lab-result-count" variant="outline" className="col-span-2 justify-self-start text-xs sm:col-span-1 xl:ml-auto">
               {filtered.length} resultado(s)
             </Badge>
           </div>
@@ -773,23 +735,29 @@ export default function Laboratorio() {
                 ))}
               </div>
             ) : filtered.length === 0 ? (
-              <Card><CardContent className="py-12 text-center">
-                <div className="h-16 w-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-4">
-                  <FlaskConical className="h-8 w-8 text-primary" />
-                </div>
-                <p className="font-semibold text-foreground">
-                  {coletasQuery.hasNextPage ? 'Nenhuma coleta encontrada entre os registros carregados' : 'Nenhuma coleta encontrada'}
-                </p>
-                <p className="text-sm text-muted-foreground mt-1">
-                  {coletasQuery.hasNextPage
-                    ? 'Ajuste os filtros ou carregue coletas anteriores para ampliar a busca.'
-                    : 'Ajuste os filtros ou registre uma nova coleta.'}
-                </p>
-                {!coletasQuery.hasNextPage && (
-                  <Button className="mt-4 gap-2" onClick={() => { resetColetaForm(); setShowNewColeta(true); }}>
-                    <Plus className="h-4 w-4" /> Nova Coleta
-                  </Button>
-                )}
+              <Card><CardContent className="py-3">
+                <ActionableEmptyState
+                  title={search.trim() || statusFilter !== 'todos' || setorFilter !== 'todos' || urgentOnly
+                    ? 'Nenhuma coleta corresponde aos filtros'
+                    : coletasQuery.hasNextPage ? 'Nenhuma coleta nesta página' : 'Nenhuma coleta neste período'}
+                  description={coletasQuery.hasNextPage
+                    ? 'Carregue mais registros para ampliar a busca ou ajuste os filtros aplicados.'
+                    : 'Amplie o período para consultar outras coletas ou registre uma nova coleta.'}
+                  actionLabel={coletasQuery.hasNextPage ? 'Carregar mais registros' : dateFilter !== 'todos' ? 'Ver todos os períodos' : 'Nova coleta'}
+                  onAction={coletasQuery.hasNextPage
+                    ? () => void coletasQuery.fetchNextPage()
+                    : dateFilter !== 'todos'
+                      ? () => setDateFilter('todos')
+                      : () => { resetColetaForm(); setShowNewColeta(true); }}
+                  secondaryLabel={search.trim() || statusFilter !== 'todos' || setorFilter !== 'todos' || dateFilter !== 'hoje' || urgentOnly
+                    ? 'Limpar filtros'
+                    : undefined}
+                  onSecondaryAction={() => {
+                    setSearch(''); setStatusFilter('todos'); setSetorFilter('todos'); setDateFilter('hoje'); setUrgentOnly(false);
+                  }}
+                  actionIcon={coletasQuery.hasNextPage || dateFilter !== 'todos' ? undefined : Plus}
+                  className="py-9"
+                />
               </CardContent></Card>
             ) : (
               filtered.map((coleta: any) => {
@@ -805,7 +773,7 @@ export default function Laboratorio() {
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="font-semibold">{coleta.pacientes?.nome}</span>
                             <Badge variant="outline" className="font-mono text-[10px] gap-1">
-                              <Barcode className="h-3 w-3" />{coleta.codigo_amostra}
+                              <Tag className="h-3 w-3" />{coleta.codigo_amostra}
                             </Badge>
                             <Badge className={statusColors[coleta.status]}>{statusLabels[coleta.status]}</Badge>
                             {coleta.laboratorio_setores?.nome && <Badge variant="secondary">{coleta.laboratorio_setores.nome}</Badge>}
@@ -889,8 +857,70 @@ export default function Laboratorio() {
 
         {/* ─── Pipeline Tab ─── */}
         <TabsContent value="pipeline" className="space-y-4">
-          <p className="text-sm text-muted-foreground">Visão Kanban do fluxo laboratorial de hoje</p>
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+          <section aria-labelledby="lab-pipeline-summary-title" className="space-y-3">
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <h2 id="lab-pipeline-summary-title" className="text-base font-semibold">Resumo de hoje</h2>
+                <p className="text-sm text-muted-foreground">
+                  {stats.total > 0 ? 'Selecione um indicador para abrir a Worklist filtrada.' : 'Nenhuma amostra ativa ou concluída hoje.'}
+                </p>
+              </div>
+              {stats.total > 0 && (
+                <p className="text-sm text-muted-foreground">Conclusão: <span className="font-semibold text-primary">{completionRate}%</span> · {stats.liberados + stats.validados} de {stats.total} amostras</p>
+              )}
+            </div>
+            {stats.total > 0 && <Progress value={completionRate} className="h-2" />}
+            <div data-testid="lab-pipeline-kpis" className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+              {[
+                { label: 'Pendente', value: stats.pendentes, icon: Clock, color: 'text-warning', bg: 'bg-warning/10', border: 'border-warning/30', filter: 'pendente' },
+                { label: 'Coletado', value: stats.coletados, icon: TestTube, color: 'text-info', bg: 'bg-info/10', border: 'border-info/30', filter: 'coletado' },
+                { label: 'Em Análise', value: stats.emAnalise, icon: Activity, color: 'text-primary', bg: 'bg-primary/10', border: 'border-primary/30', filter: 'em_analise' },
+                { label: 'Validado', value: stats.validados, icon: Shield, color: 'text-success', bg: 'bg-success/10', border: 'border-success/30', filter: 'validado' },
+                { label: 'Liberado', value: stats.liberados, icon: CheckCircle2, color: 'text-success', bg: 'bg-success/10', border: 'border-success/30', filter: 'liberado' },
+                { label: 'Urgentes', value: stats.urgentes, icon: Zap, color: 'text-destructive', bg: 'bg-destructive/10', border: 'border-destructive/30', filter: 'urgente' },
+              ].map((s, idx) => (
+                <motion.div key={s.label} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: idx * 0.04 }}>
+                  <Card className={cn('relative cursor-pointer border transition-all hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+                    s.border,
+                    (statusFilter === s.filter || (s.filter === 'urgente' && urgentOnly)) && 'ring-2 ring-primary'
+                  )}
+                    role="button"
+                    tabIndex={0}
+                    aria-pressed={s.filter === 'urgente' ? urgentOnly : statusFilter === s.filter && dateFilter === 'hoje' && !urgentOnly}
+                    onClick={() => filtrarPipeline(s.filter)}
+                    onKeyDown={event => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        filtrarPipeline(s.filter);
+                      }
+                    }}>
+                    <CardContent className="flex items-center gap-2 pt-3 pb-2">
+                      <div className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-lg', s.bg)}>
+                        <s.icon className={cn('h-4 w-4', s.color)} />
+                      </div>
+                      <div>
+                        <p className={cn('text-xl font-bold tabular-nums', s.color)}>{s.value}</p>
+                        <p className="text-[10px] font-medium text-muted-foreground">{s.label}</p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </motion.div>
+              ))}
+            </div>
+          </section>
+          {stats.total === 0 ? (
+            <ActionableEmptyState
+              title="Nenhuma amostra no fluxo hoje"
+              description="Registre uma coleta para iniciar o acompanhamento das etapas laboratoriais."
+              actionLabel="Registrar coleta"
+              onAction={() => { resetColetaForm(); setShowNewColeta(true); }}
+              actionIcon={Plus}
+              className="rounded-xl border bg-card py-12"
+            />
+          ) : (
+            <>
+              <p className="text-sm text-muted-foreground">Visão Kanban do fluxo laboratorial de hoje</p>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
             {PIPELINE_STEPS.map(step => {
               const items = (coletas || []).filter((c: any) =>
                 c.status === step && c.created_at && dateOnlyInTimeZone(new Date(c.created_at), FUSO_CLINICA) === hojeNaClinica
@@ -945,7 +975,9 @@ export default function Laboratorio() {
                 </Card>
               );
             })}
-          </div>
+              </div>
+            </>
+          )}
         </TabsContent>
 
         <TabsContent value="pedidos" className="space-y-4">
@@ -1030,7 +1062,7 @@ export default function Laboratorio() {
             {/* Rastreabilidade */}
             <div className="bg-primary/5 border border-primary/20 rounded-lg p-4 space-y-2">
               <h4 className="text-sm font-semibold flex items-center gap-2">
-                <Barcode className="h-4 w-4 text-primary" />Rastreabilidade
+                <Activity className="h-4 w-4 text-primary" />Rastreabilidade
               </h4>
               <p className="text-xs text-muted-foreground">Código gerado automaticamente ao salvar.</p>
               <div className="space-y-1.5">
@@ -1337,7 +1369,7 @@ export default function Laboratorio() {
               <Button type="button" variant="outline" onClick={() => setShowNewColeta(false)}>Cancelar</Button>
               <Button type="submit" disabled={!newColetaForm.paciente_id || createColeta.isPending} className="gap-1">
                 {createColeta.isPending && <Clock className="h-4 w-4 animate-spin" />}
-                <Barcode className="h-4 w-4" />Registrar Coleta
+                <TestTube className="h-4 w-4" />Registrar Coleta
               </Button>
             </DialogFooter>
             </fieldset>
@@ -1430,7 +1462,7 @@ export default function Laboratorio() {
                 </form>
               </CardContent>
             </Card> : (
-              <div role="status" className="rounded-xl border border-[#d8e8fb] bg-[#f4f8ff] p-4 text-sm text-[#315b8f]">
+              <div role="status" className="rounded-xl border border-[#e3dffb] bg-[#f6f4ff] p-4 text-sm text-[#41318f]">
                 A amostra não está mais aberta para lançamento. Isso preserva a conferência e a trilha de auditoria do resultado.
               </div>
             )}

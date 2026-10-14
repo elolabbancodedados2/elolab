@@ -1,3 +1,4 @@
+import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Download, Upload, Database, Trash2, HardDrive, AlertTriangle, CheckCircle } from 'lucide-react';
@@ -35,7 +36,7 @@ import {
   previaRestauracao,
   BackupData 
 } from '@/lib/backup';
-import { format } from 'date-fns';
+
 import { ptBR } from 'date-fns/locale';
 
 const COLLECTION_LABELS: Record<string, string> = {
@@ -451,7 +452,11 @@ export function BackupRestore() {
             <Button variant="outline" onClick={() => setShowPreview(false)}>
               Cancelar
             </Button>
-            <Button onClick={handleRestore} disabled={restoring}>
+            <Button
+              variant={overwrite ? 'destructive' : 'default'}
+              onClick={handleRestore}
+              disabled={restoring}
+            >
               {restoring ? (
                 <>Restaurando...</>
               ) : (

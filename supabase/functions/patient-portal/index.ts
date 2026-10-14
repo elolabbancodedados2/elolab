@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { checarRateLimit, clientIp } from "../_shared/rateLimit.ts";
 import { corsPadrao } from '../_shared/cors.ts';
+import { extrairCaminhoAnexoClinico, laudoPertenceAoPaciente } from '../_shared/medicalAttachmentPath.ts';
 import { horariosLivres, validarHorario as validatePortalSlot, agoraEmBrasilia, horarioConsultaPassou } from '../_shared/horarios.ts';
 import { limiteDataRemarcacao, recusarDataAlemDoLimite, remarcarAgendamento } from './remarcacao.ts';
 
@@ -51,6 +52,7 @@ Deno.serve(async (req) => {
       chave: `portal:${clientIp(req)}`,
       limite: 60,
       janelaSegundos: 60,
+      failClosed: true,
     });
     if (limitado) {
       return new Response(
@@ -289,18 +291,15 @@ Deno.serve(async (req) => {
             return { ...exame, resultado: null, arquivo_resultado: null };
           }
           if (!exame.arquivo_resultado) return exame;
-          if (/^https:\/\//i.test(exame.arquivo_resultado)) {
-            const configuredHost = new URL(Deno.env.get("SUPABASE_URL")!).hostname;
-            try {
-              const fileUrl = new URL(exame.arquivo_resultado);
-              if (fileUrl.protocol === "https:" && fileUrl.hostname === configuredHost) return exame;
-            } catch {
-              // Hide malformed or untrusted external links from the patient portal.
-            }
+          const caminhoLaudo = extrairCaminhoAnexoClinico(
+            exame.arquivo_resultado,
+            Deno.env.get("SUPABASE_URL")!,
+          );
+          if (!laudoPertenceAoPaciente(caminhoLaudo, pacienteId, pacienteClinicaId, new Set())) {
             return { ...exame, arquivo_resultado: null, arquivo_resultado_indisponivel: true };
           }
           const { data: signed, error: signError } = await supabase.storage
-            .from("medical-attachments").createSignedUrl(exame.arquivo_resultado, 300);
+            .from("medical-attachments").createSignedUrl(caminhoLaudo, 300);
           if (signError) {
             console.error("Não foi possível assinar o laudo do portal", exame.id, signError.message);
             return { ...exame, arquivo_resultado: null };

@@ -754,7 +754,7 @@ export default function LaudosLab() {
       fetchRequestRef.current += 1;
       supabase.removeChannel(channel);
     };
-  }, [fetchLaudos, profile?.clinica_id]);
+  }, [fetchLaudos, profile?.clinica_id, atualizarCursorLaudos]);
 
   const getExamesLiberados = (c: any) =>
     (c.resultados_laboratorio ?? []).filter((r: any) => r.liberado === true);
@@ -815,10 +815,10 @@ export default function LaudosLab() {
   return (
     <div className="space-y-6 pb-8">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 rounded-2xl border border-[#d8e8fb] bg-gradient-to-r from-[#f4f8ff] via-white to-[#effaff] p-4 sm:p-5">
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 rounded-2xl border border-[#e3dffb] bg-gradient-to-r from-[#f6f4ff] via-white to-[#f3f1ff] p-4 sm:p-5">
         <div>
           <h1 className="text-2xl font-bold font-display tracking-tight flex items-center gap-2">
-            <span className="rounded-xl bg-[#e5f1ff] p-2 text-[#1766b3] ring-1 ring-[#d5e6fa]"><FileText className="h-5 w-5" /></span>
+            <span className="rounded-xl bg-[#ece8ff] p-2 text-[#5240d6] ring-1 ring-[#e0dbfa]"><FileText className="h-5 w-5" /></span>
             Laudos Laboratoriais
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
@@ -835,7 +835,7 @@ export default function LaudosLab() {
       {/* KPIs */}
       <div className="grid gap-3 grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
         {[
-          { label: 'Total', value: coletas.length, icon: FileText, color: 'text-[#1766b3]', card: 'border-[#d8e8fb] bg-gradient-to-br from-white to-[#f1f7ff]', filter: 'todos' },
+          { label: 'Total', value: coletas.length, icon: FileText, color: 'text-[#5240d6]', card: 'border-[#e3dffb] bg-gradient-to-br from-white to-[#f4f2ff]', filter: 'todos' },
           { label: 'Pendentes', value: totalPendentes, icon: Clock, color: 'text-[#8a5b00]', card: 'border-[#f1dfb8] bg-[#fffaf0]', filter: 'pendente' },
           { label: 'Parciais', value: totalParciais, icon: AlertCircle, color: 'text-[#9a5710]', card: 'border-[#f2d9bb] bg-[#fff8ef]', filter: 'parcial' },
           { label: 'Liberados', value: totalLiberados, icon: CheckCircle2, color: 'text-[#16734d]', card: 'border-[#ccebdd] bg-[#f3fbf6]', filter: 'liberado' },

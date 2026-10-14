@@ -1,5 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { corsPadrao } from '../_shared/cors.ts';
+import { extrairCaminhoAnexoClinico, laudoPertenceAoPaciente } from '../_shared/medicalAttachmentPath.ts';
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const ref = (type: string, id: string) => ({ reference: `${type}/${id}` })
@@ -84,6 +85,15 @@ Deno.serve(async (req) => {
     const laudosComArquivo = (exames ?? []).filter((exame: any) =>
       ['realizado', 'laudo_disponivel'].includes(exame.status || '') && exame.arquivo_resultado,
     )
+    const prontuarioIdsDoPaciente = new Set<string>((prontuarios ?? []).map((prontuario: any) => prontuario.id))
+    const caminhosLaudo = new Map<string, string>()
+    for (const exame of laudosComArquivo) {
+      const caminho = extrairCaminhoAnexoClinico(exame.arquivo_resultado, url)
+      if (!laudoPertenceAoPaciente(caminho, paciente.id, paciente.clinica_id, prontuarioIdsDoPaciente)) {
+        throw new Error('O caminho de um laudo não corresponde ao paciente; a exportação foi interrompida.')
+      }
+      caminhosLaudo.set(exame.id, caminho)
+    }
     const urlsLaudo = new Map<string, string>()
     // Assina em lotes para não abrir uma chamada concorrente por exame em
     // pacientes com histórico extenso. O bucket continua privado; os links
@@ -93,7 +103,7 @@ Deno.serve(async (req) => {
       const urls = await Promise.all(lote.map(async (exame: any) => {
         const { data, error } = await admin.storage
           .from('medical-attachments')
-          .createSignedUrl(exame.arquivo_resultado, 60 * 60)
+          .createSignedUrl(caminhosLaudo.get(exame.id)!, 60 * 60)
         if (error || !data?.signedUrl) throw new Error('Não foi possível incluir um laudo anexado na exportação.')
         return [exame.id, data.signedUrl] as const
       }))

@@ -7,6 +7,7 @@ import { AlertTriangle, Bell, CalendarDays, CheckCheck, CircleDollarSign, Clipbo
 import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { ErrorState } from '@/components/ErrorState';
+import { PageHeader } from '@/components/PageHeader';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -62,7 +63,21 @@ export default function CentralNotificacoes() {
   if(query.isLoading)return <div className="space-y-5" aria-label="Carregando notificações"><Skeleton className="h-16 max-w-xl"/><Skeleton className="h-10 w-full"/>{[1,2,3,4].map(i=><Skeleton key={i} className="h-24 w-full"/>)}</div>;
   if(query.isError)return <ErrorState title="Não foi possível abrir a central" error={query.error} onRetry={()=>query.refetch()}/>;
   return <div className="mx-auto max-w-5xl space-y-5 pb-10">
-    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"><div><h1 className="flex items-center gap-2 text-2xl font-bold"><Bell className="h-6 w-6 text-primary"/>Central de notificações</h1><p className="mt-1 text-sm text-muted-foreground">Consultas, tarefas e pendências importantes para o seu perfil.</p></div><div className="flex flex-wrap gap-2"><Button variant="outline" onClick={()=>query.refetch()} disabled={query.isFetching}><RefreshCw className={cn('mr-2 h-4 w-4',query.isFetching&&'animate-spin')}/>Atualizar</Button><Button onClick={()=>markRead.mutate(unreadVisiveis)} disabled={!unreadVisiveis.length||markRead.isPending}><CheckCheck className="mr-2 h-4 w-4"/>Marcar {unreadVisiveis.length} visível{unreadVisiveis.length===1?'':'is'} como lida{unreadVisiveis.length===1?'':'s'}</Button></div></div>
+    <PageHeader
+      title="Central de notificações"
+      description="Consultas, tarefas e pendências importantes para o seu perfil."
+      icon={<Bell />}
+      actions={<>
+        <Button variant="outline" onClick={()=>query.refetch()} disabled={query.isFetching}>
+          <RefreshCw className={cn('mr-2 h-4 w-4',query.isFetching&&'animate-spin')}/>
+          Atualizar
+        </Button>
+        <Button onClick={()=>markRead.mutate(unreadVisiveis)} disabled={!unreadVisiveis.length||markRead.isPending}>
+          <CheckCheck className="mr-2 h-4 w-4"/>
+          Marcar {unreadVisiveis.length} visível{unreadVisiveis.length===1?'':'is'} como lida{unreadVisiveis.length===1?'':'s'}
+        </Button>
+      </>}
+    />
     <div className="flex flex-col gap-3"><div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between"><Tabs value={category} onValueChange={v=>setCategory(v as Category)} className="overflow-x-auto"><TabsList className="h-auto min-w-max flex-wrap justify-start"><TabsTrigger value="all">Todas</TabsTrigger>{Object.entries(categoryMeta).map(([key,m])=><TabsTrigger key={key} value={key}>{m.label}</TabsTrigger>)}</TabsList></Tabs><div className="flex flex-wrap items-center gap-2"><Select value={period} onValueChange={v=>setPeriod(v as typeof period)}><SelectTrigger className="w-40" aria-label="Período das notificações"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">Qualquer período</SelectItem><SelectItem value="7d">Últimos 7 dias</SelectItem><SelectItem value="30d">Últimos 30 dias</SelectItem></SelectContent></Select><Button variant={onlyUnread?'secondary':'outline'} size="sm" onClick={()=>setOnlyUnread(v=>!v)} aria-pressed={onlyUnread}>{onlyUnread?'Mostrando não lidas':'Mostrar apenas não lidas'}</Button></div></div><div className="relative max-w-md"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"/><Input value={search} onChange={event=>setSearch(event.target.value)} placeholder="Buscar por título ou conteúdo" aria-label="Buscar notificações" className="pl-9"/></div></div>
     <div className="flex items-center justify-between text-sm text-muted-foreground" aria-live="polite"><span>{filtered.length} {filtered.length===1?'notificação':'notificações'}</span>{unread.length>0&&<Badge variant="secondary">{unread.length} não {unread.length===1?'lida':'lidas'} no conjunto carregado</Badge>}</div>
     {reachedLimit&&<p className="text-xs text-muted-foreground" role="status">Exibindo até as 250 notificações mais recentes. A busca e os filtros consideram este conjunto.</p>}

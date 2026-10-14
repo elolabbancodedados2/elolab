@@ -342,8 +342,8 @@ export default function Templates() {
 
   return (
     <div className="space-y-6">
-      <div className="rounded-2xl border border-[#d8e8fb] bg-gradient-to-r from-[#f4f8ff] via-white to-[#effaff] p-4 sm:p-5">
-        <h1 className="text-2xl font-bold tracking-tight text-[#102a56]">Modelos clínicos</h1>
+      <div className="rounded-2xl border border-[#e3dffb] bg-gradient-to-r from-[#f6f4ff] via-white to-[#f3f1ff] p-4 sm:p-5">
+        <h1 className="text-2xl font-bold tracking-tight text-[#1c1636]">Modelos clínicos</h1>
         <p className="text-muted-foreground">Modelos reutilizáveis para prescrições e atestados</p>
       </div>
 
@@ -388,7 +388,7 @@ export default function Templates() {
           ) : (
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               {filteredPrescriptionTemplates.map((template) => (
-                <Card key={template.id} className="border-[#dce9f8] shadow-sm transition-shadow hover:shadow-md">
+                <Card key={template.id} className="border-[#e1dcf8] shadow-sm transition-shadow hover:shadow-md">
                   <CardHeader>
                     <div className="flex items-start justify-between">
                       <div>
@@ -456,7 +456,7 @@ export default function Templates() {
           ) : (
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               {filteredCertificateTemplates.map((template) => (
-                <Card key={template.id} className="border-[#dce9f8] shadow-sm transition-shadow hover:shadow-md">
+                <Card key={template.id} className="border-[#e1dcf8] shadow-sm transition-shadow hover:shadow-md">
                   <CardHeader>
                     <div className="flex items-start justify-between">
                       <div>

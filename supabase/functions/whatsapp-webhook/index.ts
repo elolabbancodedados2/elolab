@@ -1,6 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { corsPadrao } from '../_shared/cors.ts';
 import { findUniquePatientIdByPhone, isWhatsAppToolAllowed, normalizeBrazilianPhone, parseExplicitConfirmation } from '../_shared/whatsappAgentPolicy.ts';
+import { createNvidiaChatCompletion, DEFAULT_NVIDIA_CHAT_MODEL } from '../_shared/nvidia.ts';
 
 // Atribuído em cada request (reflete a origem permitida). Helpers
 // top-level (json/reply) capturam esta variável por closure.
@@ -17,7 +18,9 @@ Deno.serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const evolutionApiUrl = (Deno.env.get('EVOLUTION_API_URL') || '').replace(/\/+$/, '')
     const evolutionApiKey = Deno.env.get('EVOLUTION_API_KEY') || ''
-    const openaiApiKey = Deno.env.get('OPENAI_API_KEY')
+    const nvidiaApiKey = Deno.env.get('NVIDIA_API_KEY')
+    const nvidiaModel = Deno.env.get('NVIDIA_CHAT_MODEL') || DEFAULT_NVIDIA_CHAT_MODEL
+    const embeddingApiKey = Deno.env.get('OPENAI_API_KEY') || ''
     const openaiModel = Deno.env.get('OPENAI_MODEL') || 'gpt-4o-mini'
 
     if (!evolutionApiUrl || !evolutionApiKey) {
@@ -309,7 +312,7 @@ Deno.serve(async (req) => {
               continue
             }
 
-            if (!openaiApiKey) {
+            if (!nvidiaApiKey) {
               console.error('[AI] OPENAI_API_KEY não configurada para sessão:', session.id)
               continue
             }
@@ -404,16 +407,26 @@ DADOS DO PACIENTE:
               }
             }
 
-            // Construir system prompt baseado no tipo e humor do agente
-            const systemPrompt = buildSystemPrompt(agent, patientContext)
+            // Busca híbrida contextualiza apenas dúvidas operacionais com fontes
+            // desta clínica. Mensagens e dados do paciente nunca são indexados.
+            const knowledge = await retrieveAgentKnowledge(
+              supabase,
+              embeddingApiKey,
+              session.clinica_id,
+              agent.id,
+              messageContent,
+            )
+
+            // Construir system prompt baseado no tipo, humor e fontes do agente
+            const systemPrompt = buildSystemPrompt(agent, patientContext, knowledge.context, knowledge.configured)
 
             // Atendimento IA via OpenAI Responses API. A chave permanece no
             // backend e nunca é enviada ao navegador ou ao WhatsApp.
             let responseText = ''
             try {
-              responseText = await runOpenAIAgent({
-                apiKey: openaiApiKey,
-                model: openaiModel,
+              responseText = await runNvidiaAgent({
+                apiKey: nvidiaApiKey,
+                model: nvidiaModel,
                 agent,
                 systemPrompt,
                 conversationHistory,
@@ -423,7 +436,7 @@ DADOS DO PACIENTE:
                 clinicaId: session.clinica_id,
               })
             } catch (error) {
-              console.error('[AI] OpenAI error:', error)
+              console.error('[AI] NVIDIA error:', error instanceof Error ? error.message : 'unknown')
               responseText = 'No momento estou com dificuldade para responder. Vou encaminhar seu atendimento para nossa equipe humana.'
               await supabase
                 .from('whatsapp_conversations')
@@ -558,6 +571,122 @@ DADOS DO PACIENTE:
     )
   }
 })
+
+async function runNvidiaAgent({
+  apiKey,
+  model,
+  agent,
+  systemPrompt,
+  conversationHistory,
+  messageContent,
+  supabase,
+  conversation,
+  clinicaId,
+}: {
+  apiKey: string
+  model: string
+  agent: any
+  systemPrompt: string
+  conversationHistory: any[]
+  messageContent: string
+  supabase: any
+  conversation: any
+  clinicaId?: string | null
+}): Promise<string> {
+  const tools = getAgentTools(agent.tipo, agent.habilidades).map((tool: any) => ({
+    type: 'function',
+    function: {
+      name: tool.name,
+      description: tool.description,
+      parameters: tool.parameters,
+    },
+  }))
+  const messages = [
+    { role: 'system', content: systemPrompt },
+    ...conversationHistory,
+    { role: 'user', content: messageContent },
+  ]
+  const maxTokens = Math.min(Math.max(Number(agent.max_tokens) || 600, 256), 2000)
+  const temperature = Math.min(Math.max(Number(agent.temperatura) || 0.2, 0), 1)
+  const firstResult = await createNvidiaChatCompletion({
+    apiKey,
+    model,
+    messages,
+    tools,
+    toolChoice: 'auto',
+    maxTokens,
+    temperature,
+  })
+  const firstMessage = firstResult.choices?.[0]?.message
+  const functionCalls = Array.isArray(firstMessage?.tool_calls) ? firstMessage.tool_calls : []
+  if (functionCalls.length === 0) {
+    return typeof firstMessage?.content === 'string' && firstMessage.content.trim()
+      ? firstMessage.content.trim()
+      : 'NÃ£o consegui formular uma resposta agora. Vou encaminhar para nossa equipe.'
+  }
+
+  const toolMessages: any[] = []
+  let immediateResponse: string | null = null
+  for (const call of functionCalls) {
+    let args: any = {}
+    try {
+      args = JSON.parse(call.function?.arguments || '{}')
+    } catch {
+      args = {}
+    }
+    const toolStartedAt = Date.now()
+    const toolName = call.function?.name
+    const toolResult = await executeAgentTool(
+      supabase,
+      toolName,
+      args,
+      conversation,
+      clinicaId,
+      agent.habilidades,
+    )
+    if (toolResult.requires_confirmation && typeof toolResult.message === 'string') {
+      immediateResponse = toolResult.message
+    }
+    await supabase.from('whatsapp_agent_actions').insert({
+      conversation_id: conversation.id,
+      clinica_id: clinicaId || null,
+      tipo_acao: toolName,
+      dados_entrada: { campos: Object.keys(args) },
+      dados_saida: { success: Boolean(toolResult.success), has_message: Boolean(toolResult.message) },
+      sucesso: Boolean(toolResult.success),
+      erro_mensagem: toolResult.error || null,
+      duracao_ms: Date.now() - toolStartedAt,
+    })
+    toolMessages.push({
+      role: 'tool',
+      tool_call_id: call.id,
+      name: toolName,
+      content: JSON.stringify(toolResult),
+    })
+  }
+
+  if (immediateResponse) return immediateResponse
+
+  // Keep the action chain bounded: after one tool round, ask for text only.
+  const finalResult = await createNvidiaChatCompletion({
+    apiKey,
+    model,
+    messages: [
+      ...messages,
+      { ...firstMessage, role: 'assistant', content: firstMessage.content || null },
+      ...toolMessages,
+    ],
+    maxTokens,
+    temperature,
+  })
+  const finalText = finalResult.choices?.[0]?.message?.content
+  if (typeof finalText === 'string' && finalText.trim()) return finalText.trim()
+  await supabase.from('whatsapp_conversations')
+    .update({ status: 'aguardando_humano' })
+    .eq('id', conversation.id)
+    .eq('clinica_id', clinicaId)
+  return 'NÃ£o consegui concluir o atendimento. Vou encaminhar para nossa equipe.'
+}
 
 async function runOpenAIAgent({
   apiKey,
@@ -702,7 +831,75 @@ async function createSafetyIdentifier(value: string): Promise<string> {
     .join('')
 }
 
-function buildSystemPrompt(agent: any, patientContext: string): string {
+async function retrieveAgentKnowledge(
+  supabase: any,
+  apiKey: string,
+  clinicId: string,
+  agentId: string,
+  queryText: string,
+): Promise<{ configured: boolean; context: string }> {
+  if (!apiKey) return { configured: false, context: '' }
+  try {
+    const { data: firstDocument, error: existsError } = await supabase
+      .from('whatsapp_agent_knowledge')
+      .select('id')
+      .eq('clinica_id', clinicId)
+      .eq('agent_id', agentId)
+      .limit(1)
+      .maybeSingle()
+
+    if (existsError || !firstDocument) return { configured: false, context: '' }
+
+    const embeddingResponse = await fetch('https://api.openai.com/v1/embeddings', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'text-embedding-3-small',
+        input: queryText.trim().slice(0, 2000),
+      }),
+      signal: AbortSignal.timeout(12000),
+    })
+    if (!embeddingResponse.ok) {
+      console.error('[AI] Knowledge embedding unavailable:', embeddingResponse.status)
+      return { configured: true, context: '' }
+    }
+
+    const embeddingPayload = await embeddingResponse.json()
+    const vector = embeddingPayload?.data?.[0]?.embedding
+    if (!Array.isArray(vector) || vector.length !== 1536 || vector.some((value: unknown) => typeof value !== 'number' || !Number.isFinite(value))) {
+      console.error('[AI] Knowledge embedding returned an invalid vector')
+      return { configured: true, context: '' }
+    }
+
+    const { data, error } = await supabase.rpc('search_whatsapp_agent_knowledge', {
+      _clinica_id: clinicId,
+      _agent_id: agentId,
+      _query_embedding: `[${vector.join(',')}]`,
+      _query_text: queryText.trim().slice(0, 2000),
+      _match_count: 4,
+    })
+    if (error) {
+      console.error('[AI] Knowledge search unavailable:', error.code || 'database_error')
+      return { configured: true, context: '' }
+    }
+
+    const context = (Array.isArray(data) ? data : [])
+      .map((document: any) => {
+        const title = String(document.titulo || '').slice(0, 160)
+        const content = String(document.conteudo || '').slice(0, 3500)
+        return title && content ? `FONTE: ${title}\n${content}` : ''
+      })
+      .filter(Boolean)
+      .join('\n\n')
+
+    return { configured: true, context }
+  } catch (error) {
+    console.error('[AI] Knowledge retrieval failed:', error instanceof Error ? error.name : 'unknown_error')
+    return { configured: true, context: '' }
+  }
+}
+
+function buildSystemPrompt(agent: any, patientContext: string, knowledgeContext = '', knowledgeConfigured = false): string {
   const toneByStyle: Record<string, string> = {
     profissional: 'Use linguagem profissional, precisa e objetiva.',
     amigavel: 'Seja caloroso, acolhedor e empatico.',
@@ -724,6 +921,12 @@ ${toneByStyle[agent.humor] || toneByStyle.profissional}
 HABILIDADES HABILITADAS: ${capabilityInstructions || 'Nenhuma acao clinica esta habilitada. Responda apenas informacoes gerais e ofereca atendimento humano.'}
 
 ${agent.instrucoes_personalizadas || ''}
+
+${knowledgeConfigured
+    ? knowledgeContext
+      ? `FONTES OPERACIONAIS DA CLÍNICA (use somente o que for relevante):\n${knowledgeContext}\n\nSe essas fontes não responderem à pergunta operacional, não invente; ofereça encaminhamento humano.`
+      : 'A base de conhecimento da clínica está ativa, mas não há uma fonte suficientemente relacionada a esta pergunta. Não invente informações da clínica; ofereça encaminhamento humano.'
+    : ''}
 
 ${patientContext}
 

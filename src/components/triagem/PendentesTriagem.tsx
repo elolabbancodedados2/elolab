@@ -18,8 +18,8 @@ type Props = {
 export function PendentesTriagem({ loading, appointments, onTriage }: Props) {
   if (loading) {
     return (
-      <div role="status" aria-live="polite" className="flex items-center gap-2 rounded-xl border border-[#D8E8F4] bg-white p-4 text-sm text-[#0C1F54]/70">
-        <LoaderCircle className="h-4 w-4 animate-spin text-[#005ECC]" />
+      <div role="status" aria-live="polite" className="flex items-center gap-2 rounded-xl border border-[#E3DFF5] bg-white p-4 text-sm text-[#17122B]/70">
+        <LoaderCircle className="h-4 w-4 animate-spin text-[#5B47E0]" />
         Carregando pacientes aguardando triagem
       </div>
     );

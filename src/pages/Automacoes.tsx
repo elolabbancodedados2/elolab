@@ -395,7 +395,7 @@ export default function Automacoes() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col justify-between gap-4 rounded-2xl border border-[#dce9f6] bg-gradient-to-r from-[#f3f8ff] via-white to-[#f3fbfa] p-5 sm:flex-row sm:items-center sm:p-6">
+      <div className="flex flex-col justify-between gap-4 rounded-2xl border border-border bg-gradient-to-r from-background via-card to-accent p-5 sm:flex-row sm:items-center sm:p-6">
         <div>
           <h1 className="text-3xl font-bold text-foreground">Automações</h1>
           <p className="text-muted-foreground">Gerencie as automações do sistema</p>
@@ -407,7 +407,7 @@ export default function Automacoes() {
       </div>
 
       <Tabs value={activeTab} onValueChange={changeTab} className="space-y-6">
-        <TabsList className="h-auto w-full justify-start gap-1 overflow-x-auto rounded-xl border border-[#dce9f6] bg-[#f3f8ff] p-1.5 text-[#52647a]">
+        <TabsList className="h-auto w-full justify-start gap-1 overflow-x-auto rounded-xl border border-border bg-muted/60 p-1.5 text-muted-foreground">
           <TabsTrigger value="automacoes">Automações</TabsTrigger>
           <TabsTrigger value="logs">Logs de Execução</TabsTrigger>
           <TabsTrigger value="fila">Fila de envios</TabsTrigger>

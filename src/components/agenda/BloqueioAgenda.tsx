@@ -1,7 +1,8 @@
+import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { nomeMedico } from '@/lib/formatters';
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { format, parseISO } from 'date-fns';
+import { parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Ban, Plus, Trash2, Calendar } from 'lucide-react';
 import { Button } from '@/components/ui/button';

@@ -7,6 +7,7 @@ const TEST_EMAIL = 'qa-admin@elolab.test';
 const LOCAL_SUPABASE_ORIGIN = 'http://127.0.0.1:54321';
 type SyntheticClinicOptions = {
   appOrigin?: string;
+  today?: string;
   authenticated?: boolean;
   role?: string;
   platformAdmin?: boolean;
@@ -99,7 +100,7 @@ export async function installSyntheticClinic(page: Page, options: SyntheticClini
     email_daily_summary: false,
   };
   const appOrigin = options.appOrigin ?? 'http://127.0.0.1:4173';
-  const todaySaoPaulo = new Intl.DateTimeFormat('en-CA', {
+  const todaySaoPaulo = options.today ?? new Intl.DateTimeFormat('en-CA', {
     timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit',
   }).format(new Date());
   const overdueReturnDate = new Date(`${todaySaoPaulo}T12:00:00-03:00`);

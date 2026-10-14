@@ -30,6 +30,7 @@ import { normalizarTexto } from '@/lib/buscaPaciente';
 import { formatarDataOcupacaoAntiga } from '@/lib/roomOccupancy';
 import { todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { Link } from 'react-router-dom';
+import { PageHeader } from '@/components/PageHeader';
 
 type StatusSala = Database['public']['Enums']['status_sala'];
 type EstadoSala = StatusSala | 'reservada';
@@ -89,11 +90,11 @@ const EQUIPAMENTOS_SUGERIDOS = [
 ];
 
 const CORES = [
-  '#3b82f6', '#ef4444', '#22c55e', '#f59e0b', '#8b5cf6',
+  '#6a55f2', '#ef4444', '#22c55e', '#f59e0b', '#8b5cf6',
   '#ec4899', '#06b6d4', '#f97316', '#14b8a6', '#6366f1',
 ];
 const NOMES_CORES: Record<string, string> = {
-  '#3b82f6': 'Azul', '#ef4444': 'Vermelho', '#22c55e': 'Verde',
+  '#6a55f2': 'Azul', '#ef4444': 'Vermelho', '#22c55e': 'Verde',
   '#f59e0b': 'Âmbar', '#8b5cf6': 'Roxo', '#ec4899': 'Rosa',
   '#06b6d4': 'Ciano', '#f97316': 'Laranja', '#14b8a6': 'Turquesa', '#6366f1': 'Índigo',
 };
@@ -120,7 +121,7 @@ interface SalaForm {
 const initialForm: SalaForm = {
   nome: '', tipo: 'consultorio', capacidade: 1, status: 'disponivel',
   medico_responsavel: '', equipamentos: [], setor: '', andar: '',
-  horario_inicio: '07:00', horario_fim: '19:00', cor: '#3b82f6',
+  horario_inicio: '07:00', horario_fim: '19:00', cor: '#6a55f2',
   genero: '', numero_cama: '', observacoes: '',
 };
 
@@ -189,7 +190,7 @@ export default function Salas() {
         status: sala.status || 'disponivel', medico_responsavel: sala.medico_responsavel || '',
         equipamentos: sala.equipamentos || [], setor: sala.setor || '', andar: sala.andar || '',
         horario_inicio: sala.horario_inicio || '07:00', horario_fim: sala.horario_fim || '19:00',
-        cor: sala.cor || '#3b82f6', genero: sala.genero || '', numero_cama: sala.numero_cama || '',
+        cor: sala.cor || '#6a55f2', genero: sala.genero || '', numero_cama: sala.numero_cama || '',
         observacoes: sala.observacoes || '',
       });
     } else {
@@ -349,15 +350,16 @@ export default function Salas() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-[#0C1F54]">Salas e Leitos</h1>
-          <p className="text-muted-foreground">Gerencie a disponibilidade de espaços físicos</p>
-        </div>
-        <Button onClick={() => handleOpen()} className="gap-2">
-          <Plus className="h-4 w-4" /> Nova Sala / Leito
-        </Button>
-      </div>
+      <PageHeader
+        title="Salas e Leitos"
+        description="Gerencie a disponibilidade de espaços físicos"
+        icon={<DoorOpen />}
+        actions={
+          <Button onClick={() => handleOpen()} className="gap-2">
+            <Plus className="h-4 w-4" /> Nova Sala / Leito
+          </Button>
+        }
+      />
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3">
@@ -417,7 +419,7 @@ export default function Salas() {
                   return (
                     <Card key={sala.id} className="relative overflow-hidden">
                       <div className="absolute top-0 left-0 right-0 h-1.5"
-                        style={{ backgroundColor: sala.cor || '#3b82f6' }} />
+                        style={{ backgroundColor: sala.cor || '#6a55f2' }} />
                       <CardContent className="p-4 space-y-3">
                         <div className="flex items-start justify-between">
                           <div>

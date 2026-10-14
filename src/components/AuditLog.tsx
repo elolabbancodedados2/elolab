@@ -1,4 +1,5 @@
-import { useMemo, useState, useEffect } from 'react';
+import { formatWithDatePreference as format } from '@/lib/datePreference';
+import { useMemo, useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { History, Filter, RefreshCw, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -18,10 +19,11 @@ import {
   COLLECTION_LABELS,
   ACTION_LABELS 
 } from '@/lib/auditTrail';
-import { format, parseISO } from 'date-fns';
+import { parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { exportAuditEntriesAsCsv, exportAuditEntriesAsJson } from '@/lib/auditExport';
 
 const ACTION_COLORS = {
@@ -39,23 +41,28 @@ export function AuditLog() {
   const [filterSearch, setFilterSearch] = useState<string>('');
   const [filterUser, setFilterUser] = useState<string>('');
   const [loading, setLoading] = useState(false);
+  const requestId = useRef(0);
 
-  const loadEntries = async () => {
+  const loadEntries = useCallback(async () => {
+    const currentRequest = ++requestId.current;
     setLoading(true);
-    const filters: any = {};
+    const filters: Parameters<typeof getAuditLog>[0] = {};
     if (filterCollection !== 'all') filters.collection = filterCollection;
     if (filterAction !== 'all') filters.action = filterAction;
     if (filterStartDate) filters.startDate = new Date(`${filterStartDate}T00:00:00`).toISOString();
     if (filterEndDate) filters.endDate = new Date(`${filterEndDate}T23:59:59.999`).toISOString();
 
-    const data = await getAuditLog(filters);
-    setEntries(data);
-    setLoading(false);
-  };
+    try {
+      const data = await getAuditLog(filters);
+      if (currentRequest === requestId.current) setEntries(data);
+    } finally {
+      if (currentRequest === requestId.current) setLoading(false);
+    }
+  }, [filterAction, filterCollection, filterEndDate, filterStartDate]);
 
   useEffect(() => {
-    loadEntries();
-  }, [filterCollection, filterAction, filterStartDate, filterEndDate]);
+    void loadEntries();
+  }, [loadEntries]);
 
   const filteredEntries = useMemo(() => {
     const q = filterSearch.trim().toLowerCase();
@@ -94,7 +101,7 @@ export function AuditLog() {
             </CardDescription>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={loadEntries} disabled={loading}>
+            <Button variant="outline" size="sm" onClick={loadEntries} disabled={loading} aria-label="Atualizar histórico">
               <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
             </Button>
             <Button variant="outline" size="sm" onClick={() => exportAuditEntriesAsCsv(filteredEntries, 'audit_log.csv')}>
@@ -109,28 +116,46 @@ export function AuditLog() {
       <CardContent>
         {/* Filters */}
         <div className="grid grid-cols-2 md:grid-cols-6 gap-2 mb-4">
-          <Select value={filterCollection} onValueChange={setFilterCollection}>
-            <SelectTrigger><SelectValue placeholder="Coleção" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todas</SelectItem>
-              {Object.entries(COLLECTION_LABELS).map(([k, v]) => (
-                <SelectItem key={k} value={k}>{v}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={filterAction} onValueChange={setFilterAction}>
-            <SelectTrigger><SelectValue placeholder="Ação" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todas</SelectItem>
-              {Object.entries(ACTION_LABELS).map(([k, v]) => (
-                <SelectItem key={k} value={k}>{v}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Input type="date" value={filterStartDate} onChange={(e) => setFilterStartDate(e.target.value)} placeholder="De" />
-          <Input type="date" value={filterEndDate} onChange={(e) => setFilterEndDate(e.target.value)} placeholder="Até" />
-          <Input value={filterSearch} onChange={(e) => setFilterSearch(e.target.value)} placeholder="Buscar..." />
-          <Input value={filterUser} onChange={(e) => setFilterUser(e.target.value)} placeholder="Usuário..." />
+          <div className="space-y-1">
+            <Label htmlFor="audit-collection" className="text-xs text-muted-foreground">Coleção</Label>
+            <Select value={filterCollection} onValueChange={setFilterCollection}>
+              <SelectTrigger id="audit-collection" aria-label="Filtrar por coleção"><SelectValue placeholder="Todas" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todas</SelectItem>
+                {Object.entries(COLLECTION_LABELS).map(([k, v]) => (
+                  <SelectItem key={k} value={k}>{v}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="audit-action" className="text-xs text-muted-foreground">Ação</Label>
+            <Select value={filterAction} onValueChange={setFilterAction}>
+              <SelectTrigger id="audit-action" aria-label="Filtrar por ação"><SelectValue placeholder="Todas" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todas</SelectItem>
+                {Object.entries(ACTION_LABELS).map(([k, v]) => (
+                  <SelectItem key={k} value={k}>{v}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="audit-start-date" className="text-xs text-muted-foreground">De</Label>
+            <Input id="audit-start-date" type="date" aria-label="Data inicial" value={filterStartDate} onChange={(e) => setFilterStartDate(e.target.value)} />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="audit-end-date" className="text-xs text-muted-foreground">Até</Label>
+            <Input id="audit-end-date" type="date" aria-label="Data final" value={filterEndDate} onChange={(e) => setFilterEndDate(e.target.value)} />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="audit-search" className="text-xs text-muted-foreground">Buscar</Label>
+            <Input id="audit-search" aria-label="Buscar no histórico" value={filterSearch} onChange={(e) => setFilterSearch(e.target.value)} placeholder="Ação ou registro" />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="audit-user" className="text-xs text-muted-foreground">Usuário</Label>
+            <Input id="audit-user" aria-label="Filtrar por usuário" value={filterUser} onChange={(e) => setFilterUser(e.target.value)} placeholder="Nome ou e-mail" />
+          </div>
         </div>
 
         {/* Entries */}

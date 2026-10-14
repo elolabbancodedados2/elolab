@@ -48,6 +48,8 @@ export function useRecoverableDraft<T>({
   const initialSerialized = useMemo(() => JSON.stringify(initialValue), [initialValue]);
   const serialized = JSON.stringify(value);
   const dirty = serialized !== initialSerialized;
+  const valueRef = useRef(value);
+  valueRef.current = value;
   const restoreRef = useRef(onRestore);
   restoreRef.current = onRestore;
 
@@ -68,7 +70,7 @@ export function useRecoverableDraft<T>({
     if (!target) return;
     const timeout = window.setTimeout(() => {
       const timestamp = new Date();
-      const envelope: DraftEnvelope<T> = { version: 1, savedAt: timestamp.toISOString(), value };
+      const envelope: DraftEnvelope<T> = { version: 1, savedAt: timestamp.toISOString(), value: valueRef.current };
       try {
         target.setItem(key, JSON.stringify(envelope));
         setSavedAt(timestamp);

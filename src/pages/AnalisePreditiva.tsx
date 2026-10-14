@@ -1,3 +1,4 @@
+import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -11,11 +12,13 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { AlertCircle, TrendingUp, Zap, Phone, Mail, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { format } from 'date-fns';
+
 import { ptBR } from 'date-fns/locale';
 import { parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { toast } from 'sonner';
 import { ErrorState } from '@/components/ErrorState';
+import { ActionableEmptyState } from '@/components/ActionableEmptyState';
+import { useNavigate } from 'react-router-dom';
 import { classificarRiscoFalta, correspondeFiltroRiscoFalta, formatarDataHoraRiscoFalta, formatarIndiceRisco } from '@/lib/riscoFaltas';
 
 const TAMANHO_PAGINA_PREDICOES = 500;
@@ -36,6 +39,7 @@ interface PredictedNoShow {
 }
 
 export default function AnalisePreditiva() {
+  const navigate = useNavigate();
   const { profile } = useSupabaseAuth();
   const [filtroRisco, setFiltroRisco] = useState('todos');
   const [enviandoLembreteId, setEnviandoLembreteId] = useState<string | null>(null);
@@ -172,8 +176,8 @@ export default function AnalisePreditiva() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold text-[#0C1F54]">Risco de faltas</h1>
-        <p className="text-[#0C1F54]/65">
+        <h1 className="text-3xl font-bold text-[#17122B]">Risco de faltas</h1>
+        <p className="text-[#17122B]/65">
           Índice heurístico baseado no histórico para ajudar a equipe a priorizar confirmações; não é uma previsão estatística confirmada. Revise cada caso antes de entrar em contato.
         </p>
         <p className={cn('mt-2 text-xs', temPrevisaoAntiga ? 'text-warning' : 'text-muted-foreground')} role={temPrevisaoAntiga ? 'alert' : 'status'}>
@@ -230,7 +234,7 @@ export default function AnalisePreditiva() {
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <CardTitle>Agendamentos por Risco</CardTitle>
             <Select value={filtroRisco} onValueChange={setFiltroRisco}>
-              <SelectTrigger aria-label="Filtrar agendamentos por nível de risco de falta" className="w-full border-[#D6E7F3] bg-white text-[#0C1F54] sm:w-48">
+              <SelectTrigger aria-label="Filtrar agendamentos por nível de risco de falta" className="w-full border-[#E2DEF3] bg-white text-[#17122B] sm:w-48">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -250,10 +254,16 @@ export default function AnalisePreditiva() {
               <Skeleton className="h-20" />
             </div>
           ) : predicoesFiltradas.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              <AlertCircle className="h-10 w-10 mx-auto mb-2 opacity-50" />
-              <p>Nenhum agendamento encontrado nesta categoria</p>
-            </div>
+            <ActionableEmptyState
+              title={predicoes.length === 0 ? 'Nenhuma previsão disponível para hoje' : 'Nenhum agendamento nesta faixa de risco'}
+              description={predicoes.length === 0
+                ? 'As previsões aparecem para agendamentos futuros confirmados quando há dados calculados. Você pode consultar a agenda enquanto isso.'
+                : 'Há agendamentos em outras faixas. Mostre todos os níveis para voltar à lista completa.'}
+              actionLabel={predicoes.length === 0 ? 'Abrir agenda' : undefined}
+              onAction={predicoes.length === 0 ? () => navigate('/agenda') : undefined}
+              secondaryLabel={predicoes.length > 0 ? 'Mostrar todos os riscos' : undefined}
+              onSecondaryAction={predicoes.length > 0 ? () => setFiltroRisco('todos') : undefined}
+            />
           ) : (
             <div className="space-y-3">
               {predicoesFiltradas.map((pred) => (
@@ -341,11 +351,11 @@ export default function AnalisePreditiva() {
       </Card>
 
       {/* Info box */}
-      <Card className="border-[#D6E7F3] bg-[#EAF4FF]">
+      <Card className="border-[#E2DEF3] bg-[#F0EDFF]">
         <CardContent className="pt-4 pb-4">
           <div className="flex gap-3">
-            <TrendingUp className="h-5 w-5 text-[#005ECC] shrink-0 mt-0.5" />
-            <div className="text-sm text-[#0C1F54]">
+            <TrendingUp className="h-5 w-5 text-[#5B47E0] shrink-0 mt-0.5" />
+            <div className="text-sm text-[#17122B]">
               <p className="font-semibold mb-1">Como funciona o índice?</p>
               <ul className="text-xs space-y-1">
                 <li>✓ Histórico real de faltas e cancelamentos do paciente</li>

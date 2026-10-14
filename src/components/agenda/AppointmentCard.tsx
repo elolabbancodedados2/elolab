@@ -94,6 +94,18 @@ export function AppointmentCard({ agendamento, color, minutesToPx, onClick, conv
   const cancelled = agendamento.status === 'cancelado';
   const done = agendamento.status === 'finalizado';
   const tipoLabel = TIPO_LABEL[agendamento.tipo as string] || agendamento.tipo;
+  const statusLabel = STATUS_LABEL[agendamento.status] || agendamento.status;
+  // Cards de 15/20 min têm menos de 30px: horário e paciente vão numa linha só.
+  const compact = duration < 30;
+  const horaInicio = agendamento.hora_inicio.slice(0, 5);
+  const horaFim = agendamento.hora_fim?.slice(0, 5);
+  const accessibleName = [
+    `Consulta de ${patientName}`,
+    horaFim ? `${horaInicio} às ${horaFim}` : `às ${horaInicio}`,
+    tipoLabel,
+    convenioName,
+    statusLabel,
+  ].filter(Boolean).join(', ');
 
   const style: React.CSSProperties = {
     position: 'absolute',
@@ -331,15 +343,36 @@ export function AppointmentCard({ agendamento, color, minutesToPx, onClick, conv
         style={style}
         {...attributes}
         {...listeners}
+        aria-roledescription="consulta"
+        aria-label={accessibleName}
         onClick={(e) => { e.stopPropagation(); onClick(); }}
+        onKeyDown={(e) => {
+          // Enter abre a consulta; Espaço continua com o sensor de arraste.
+          // Durante o arraste por teclado, Enter apenas solta o card.
+          if (e.key === 'Enter' && !e.repeat && !isDragging) {
+            e.preventDefault();
+            e.stopPropagation();
+            onClick();
+            return;
+          }
+          listeners?.onKeyDown?.(e);
+        }}
       className={cn(
         'group rounded-md bg-card shadow-sm border border-border/60 hover:shadow-md hover:border-primary/40',
         'cursor-grab active:cursor-grabbing overflow-hidden transition-all',
-        'px-1.5 py-1 text-xs',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
+        compact ? 'px-1.5 py-0 text-[11px] leading-none' : 'px-1.5 py-1 text-xs',
         cancelled && 'opacity-60 line-through',
         done && 'opacity-70',
       )}
     >
+      {compact ? (
+      <div className="flex h-full min-w-0 items-center gap-1" title={`${horaInicio} · ${patientName}`}>
+        <span className="shrink-0 tabular-nums font-medium text-foreground">{horaInicio}</span>
+        <span className="min-w-0 flex-1 truncate font-medium text-foreground">{patientName}</span>
+        <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', STATUS_DOT[agendamento.status] || 'bg-muted')} />
+      </div>
+      ) : (
       <div className="flex items-start gap-1.5 min-w-0">
         <div
           className="shrink-0 h-6 w-6 rounded-full flex items-center justify-center text-[10px] font-semibold text-white shadow-sm"
@@ -350,7 +383,7 @@ export function AppointmentCard({ agendamento, color, minutesToPx, onClick, conv
         </div>
         <div className="flex-1 min-w-0 leading-tight">
           <div className="flex items-center gap-1 font-medium text-foreground truncate">
-            <span className="tabular-nums">{agendamento.hora_inicio.slice(0, 5)}</span>
+            <span className="tabular-nums">{horaInicio}</span>
             {agendamento.hora_fim && duration >= 30 && (
               <span className="text-muted-foreground text-[10px]">–{agendamento.hora_fim.slice(0, 5)}</span>
             )}
@@ -371,11 +404,12 @@ export function AppointmentCard({ agendamento, color, minutesToPx, onClick, conv
           )}
           {duration >= 60 && (
             <div className="mt-0.5 text-[10px] text-muted-foreground/70 truncate">
-              {STATUS_LABEL[agendamento.status] || agendamento.status}
+              {statusLabel}
             </div>
           )}
         </div>
       </div>
+      )}
       </div>
       </ContextMenuTrigger>
       <ContextMenuContent className="w-56">
@@ -399,7 +433,7 @@ export function AppointmentCard({ agendamento, color, minutesToPx, onClick, conv
           <ContextMenuItem disabled={ocupado} onSelect={() => setFinalizandoCard(true)}>Finalizar</ContextMenuItem>
         )}
         <ContextMenuSeparator />
-        <ContextMenuItem disabled={ocupado || !['agendado', 'confirmado', 'aguardando'].includes(agendamento.status)} onSelect={() => setStatus('faltou')} className="text-warning"><Ban className="mr-2 h-4 w-4" /> Marcar faltou</ContextMenuItem>
+        <ContextMenuItem disabled={ocupado || !['agendado', 'confirmado', 'aguardando'].includes(agendamento.status)} onSelect={() => setStatus('faltou')} className="text-warning-foreground"><Ban className="mr-2 h-4 w-4" /> Marcar faltou</ContextMenuItem>
         <ContextMenuSeparator />
         <ContextMenuItem disabled={ocupado || !['agendado', 'confirmado', 'aguardando', 'aguardando_triagem', 'em_triagem'].includes(agendamento.status)} onSelect={() => setCancelandoCard(true)} className="text-destructive"><Trash2 className="mr-2 h-4 w-4" /> Cancelar consulta</ContextMenuItem>
       </ContextMenuContent>

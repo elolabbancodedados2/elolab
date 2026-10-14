@@ -102,7 +102,9 @@ export default defineConfig(({ mode }) => ({
         cleanupOutdatedCaches: true,
         clientsClaim: true,
         skipWaiting: true,
-        globPatterns: ["**/*.{js,css,ico,png,svg,woff2}"],
+        // Raster images use the runtime image cache below, so installation
+        // does not download every screen's artwork before the user needs it.
+        globPatterns: ["**/*.{js,css,ico,svg,woff2}"],
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
         runtimeCaching: [
           {

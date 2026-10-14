@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
@@ -18,6 +17,11 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
+import {
+  calcularMargemLucro,
+  formatarPercentualFinanceiro,
+  formatarValorAbreviadoFinanceiro,
+} from '@/lib/financeiroCalculations';
 import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
 import { MAX_LINHAS_AUTO, useLancamentos } from '@/hooks/useSupabaseData';
 import { addDays, format, startOfMonth, endOfMonth, subMonths, addMonths } from 'date-fns';
@@ -29,16 +33,10 @@ import {
 import { dateOnlyInTimeZone, inicioDoDiaEmFusoIso, parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { valorRealizado } from '@/lib/lancamentos';
 import { ErrorState } from '@/components/ErrorState';
+import { PageHeader } from '@/components/PageHeader';
 
 const fmt = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
-const fmtShort = (v: number) => {
-  if (Math.abs(v) >= 1000000) return `R$ ${(v / 1000000).toFixed(1)}M`;
-  if (Math.abs(v) >= 1000) return `R$ ${(v / 1000).toFixed(1)}k`;
-  return fmt(v);
-};
-
-const fadeUp = { hidden: { opacity: 0, y: 12 }, visible: { opacity: 1, y: 0, transition: { duration: 0.3 } } };
-const stagger = { hidden: {}, visible: { transition: { staggerChildren: 0.06 } } };
+const fmtShort = formatarValorAbreviadoFinanceiro;
 
 const CATEGORIAS_RECEITA: Record<string, string> = {
   consulta: 'Consultas', retorno: 'Retornos', procedimento: 'Procedimentos',
@@ -237,7 +235,7 @@ export default function Financeiro() {
     const totalReceitas = Object.values(receitasPorCat).reduce((a, b) => a + b, 0);
     const totalDespesas = Object.values(despesasPorCat).reduce((a, b) => a + b, 0);
     const lucroOperacional = totalReceitas - totalDespesas;
-    const margemLucro = totalReceitas > 0 ? (lucroOperacional / totalReceitas) * 100 : 0;
+    const margemLucro = calcularMargemLucro(totalReceitas, lucroOperacional);
 
     return {
       receitasPorCat: Object.entries(receitasPorCat)
@@ -287,64 +285,61 @@ export default function Financeiro() {
 
   return (
     <div className="space-y-6 pb-8">
-      {/* Header with month navigation */}
-      <div className="flex items-center justify-between flex-wrap gap-4 rounded-2xl border border-[#d7e9f7] bg-gradient-to-r from-[#f1fbfd] via-white to-[#eff4ff] p-4 shadow-sm sm:p-5">
-        <div>
-          <h1 className="text-2xl font-bold font-display tracking-tight flex items-center gap-2">
-            <span className="rounded-xl bg-[#e2f2fc] p-2 text-[#1766a8] ring-1 ring-[#cfe5f5]"><DollarSign className="h-5 w-5" /></span> Painel Financeiro
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Análise completa de receitas, despesas e resultados
-          </p>
-        </div>
-        <div className="flex items-center gap-2 rounded-xl border border-[#dceaf5] bg-white/90 p-1 shadow-sm">
-          <Button aria-label="Mês anterior" variant="ghost" size="icon" className="h-8 w-8 rounded-lg text-[#34749f] hover:bg-[#eaf5fb]" onClick={() => setCurrentDate(subMonths(currentDate, 1))}>
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <span className="min-w-[120px] text-center text-sm font-bold capitalize text-[#173b61]">
-            {format(currentDate, 'MMMM yyyy', { locale: ptBR })}
-          </span>
-          <Button aria-label="Próximo mês" variant="ghost" size="icon" className="h-8 w-8 rounded-lg text-[#34749f] hover:bg-[#eaf5fb]" onClick={() => setCurrentDate(addMonths(currentDate, 1))}>
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        title="Painel Financeiro"
+        description="Análise completa de receitas, despesas e resultados"
+        icon={<DollarSign />}
+        className="rounded-2xl border border-border bg-gradient-to-r from-accent/70 via-card to-accent/70 p-4 shadow-sm sm:p-5"
+        actions={(
+          <div className="flex items-center gap-2 rounded-xl border border-border bg-card/90 p-1 shadow-sm">
+            <Button aria-label="Mês anterior" variant="ghost" size="icon" className="h-8 w-8 rounded-lg text-primary hover:bg-accent" onClick={() => setCurrentDate(subMonths(currentDate, 1))}>
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <span className="min-w-[120px] text-center text-sm font-bold capitalize text-foreground">
+              {format(currentDate, 'MMMM yyyy', { locale: ptBR })}
+            </span>
+            <Button aria-label="Próximo mês" variant="ghost" size="icon" className="h-8 w-8 rounded-lg text-primary hover:bg-accent" onClick={() => setCurrentDate(addMonths(currentDate, 1))}>
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
+      />
 
       {/* KPIs */}
-      <motion.div variants={stagger} initial="hidden" animate="visible" className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
           {
             label: 'Receita Recebida', value: kpis.recebido, icon: CheckCircle2,
-            color: 'text-[#147765]', bg: 'bg-[#e5f7f2]', border: 'border-[#c5eadd]',
+            color: 'text-success', bg: 'bg-success/10', border: 'border-success/20',
             var: kpis.varReceita,
             varNovaBase: kpis.receitaSemBaseAnterior,
             varGoodWhenUp: true,
           },
           {
             label: 'A Receber', value: kpis.aReceber, icon: Clock,
-            color: 'text-[#2167a5]', bg: 'bg-[#eaf4ff]', border: 'border-[#d1e5f8]',
+            color: 'text-primary', bg: 'bg-primary/10', border: 'border-primary/20',
             varNovaBase: false,
             sub: kpis.countPendentesReceber > 0 ? `${kpis.countPendentesReceber} em aberto` : undefined,
             varGoodWhenUp: false,
           },
           {
             label: 'Despesas Pagas', value: kpis.totalDespesas, icon: TrendingDown,
-            color: 'text-[#b65a4d]', bg: 'bg-[#fff0ed]', border: 'border-[#f2d6d0]',
+            color: 'text-destructive', bg: 'bg-destructive/10', border: 'border-destructive/20',
             var: kpis.varDespesa,
             varNovaBase: kpis.despesaSemBaseAnterior,
             varGoodWhenUp: false,
           },
           {
             label: 'Resultado Líquido', value: kpis.saldo, icon: DollarSign,
-            color: kpis.saldo >= 0 ? 'text-[#147765]' : 'text-[#b65a4d]',
-            bg: kpis.saldo >= 0 ? 'bg-[#e5f7f2]' : 'bg-[#fff0ed]',
-            border: kpis.saldo >= 0 ? 'border-[#c5eadd]' : 'border-[#f2d6d0]',
+            color: kpis.saldo >= 0 ? 'text-success' : 'text-destructive',
+            bg: kpis.saldo >= 0 ? 'bg-success/10' : 'bg-destructive/10',
+            border: kpis.saldo >= 0 ? 'border-success/20' : 'border-destructive/20',
             varNovaBase: false,
             varGoodWhenUp: true,
           },
-        ].map((s, i) => (
-          <motion.div key={s.label} variants={fadeUp}>
-            <Card className={cn('h-full border bg-gradient-to-br from-white to-[#f8fbfd] shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md', s.border)}>
+        ].map((s) => (
+          <div key={s.label}>
+            <Card className={cn('h-full border bg-gradient-to-br from-card to-muted/30 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md', s.border)}>
               <CardContent className="py-4 px-5">
                 <div className="flex items-start justify-between">
                   <div>
@@ -355,7 +350,7 @@ export default function Financeiro() {
                     ) : s.var !== undefined && s.var !== 0 && (
                       <div className={cn('flex items-center gap-0.5 text-[10px] mt-0.5', (s.var > 0) === s.varGoodWhenUp ? 'text-success' : 'text-destructive')}>
                         {s.var > 0 ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />}
-                        {Math.abs(s.var).toFixed(1)}% vs mês anterior
+                        {formatarPercentualFinanceiro(Math.abs(s.var))} vs mês anterior
                       </div>
                     )}
                     {s.sub && <p className="text-[10px] text-muted-foreground mt-0.5">{s.sub}</p>}
@@ -366,9 +361,9 @@ export default function Financeiro() {
                 </div>
               </CardContent>
             </Card>
-          </motion.div>
+          </div>
         ))}
-      </motion.div>
+      </div>
 
       {lancamentos.length >= MAX_LINHAS_AUTO && (
         <div role="alert" className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm text-warning-foreground">
@@ -394,7 +389,7 @@ export default function Financeiro() {
           { label: 'Atrasos acumulados', value: fmt(kpis.vencido), icon: AlertTriangle, color: 'text-destructive', sub: `${kpis.countContasVencidas} ${kpis.countContasVencidas === 1 ? 'conta vencida' : 'contas vencidas'} até hoje` },
           { label: 'A Pagar', value: fmt(kpis.aPagar), icon: CreditCard, color: 'text-warning', sub: kpis.countPendentesPagar > 0 ? `${kpis.countPendentesPagar} em aberto` : undefined },
           { label: 'Taxa Recebimento', value: `${kpis.taxaRecebimento.toFixed(0)}%`, icon: Target, color: 'text-primary', sub: 'Contas com vencimento no mês' },
-          { label: 'Margem Lucro', value: `${dre.margemLucro.toFixed(1)}%`, icon: Percent, color: dre.margemLucro >= 0 ? 'text-success' : 'text-destructive' },
+          { label: 'Margem de lucro', value: dre.margemLucro === null ? '—' : formatarPercentualFinanceiro(dre.margemLucro), icon: Percent, color: dre.margemLucro === null ? 'text-muted-foreground' : dre.margemLucro >= 0 ? 'text-success' : 'text-destructive', sub: dre.margemLucro === null ? 'Sem receita para calcular no período' : undefined },
         ].map((s, i) => (
           <Card key={s.label} className="border">
             <CardContent className="py-3 px-4 flex items-center gap-3">
@@ -510,15 +505,19 @@ export default function Financeiro() {
               {/* Resultado */}
               <div className={cn(
                 'rounded-lg border p-4 flex items-center justify-between',
-                dre.lucroOperacional >= 0 ? 'bg-primary/5 border-primary/20' : 'bg-destructive/5 border-destructive/20'
+                dre.totalReceitas === 0 && dre.totalDespesas === 0
+                  ? 'bg-muted/30 border-border'
+                  : dre.lucroOperacional >= 0 ? 'bg-primary/5 border-primary/20' : 'bg-destructive/5 border-destructive/20'
               )}>
                 <div>
                   <p className="text-xs font-bold uppercase tracking-wider">Resultado Operacional</p>
-                  <p className="text-[10px] text-muted-foreground mt-0.5">Margem: {dre.margemLucro.toFixed(1)}%</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">{dre.margemLucro === null ? 'Sem receita para calcular a margem no período.' : `Margem: ${formatarPercentualFinanceiro(dre.margemLucro)}`}</p>
                 </div>
                 <span className={cn(
                   'text-3xl font-black tabular-nums',
-                  dre.lucroOperacional >= 0 ? 'text-success' : 'text-destructive'
+                  dre.totalReceitas === 0 && dre.totalDespesas === 0
+                    ? 'text-muted-foreground'
+                    : dre.lucroOperacional >= 0 ? 'text-success' : 'text-destructive'
                 )}>
                   {dre.lucroOperacional >= 0 ? '' : '-'}{fmt(Math.abs(dre.lucroOperacional))}
                 </span>
@@ -604,10 +603,10 @@ export default function Financeiro() {
             { label: 'Caixa Diário', desc: 'Abrir/fechar caixa, receber pagamentos', icon: HandCoins, href: '/caixa', color: 'text-success', bg: 'bg-success/10' },
             { label: 'Contas a Receber', desc: 'Cobranças, recebimentos por categoria', icon: TrendingUp, href: '/contas-receber', color: 'text-primary', bg: 'bg-primary/10' },
             { label: 'Contas a Pagar', desc: 'Fornecedores, salários e despesas', icon: CreditCard, href: '/contas-pagar', color: 'text-destructive', bg: 'bg-destructive/10' },
-            { label: 'Fluxo de Caixa', desc: 'Visão mensal de entradas e saídas', icon: Wallet, href: '/fluxo-caixa', color: 'text-blue-500', bg: 'bg-blue-500/10' },
-            { label: 'Tabela de Preços', desc: 'Preços de exames por convênio', icon: Receipt, href: '/precos-exames', color: 'text-orange-500', bg: 'bg-orange-500/10' },
-            { label: 'Tipos de Consulta', desc: 'Valores, durações e categorias', icon: Stethoscope, href: '/tipos-consulta', color: 'text-violet-500', bg: 'bg-violet-500/10' },
-            { label: 'Relatórios', desc: 'Exportações e análises detalhadas', icon: BarChart3, href: '/relatorios', color: 'text-teal-500', bg: 'bg-teal-500/10' },
+            { label: 'Fluxo de Caixa', desc: 'Visão mensal de entradas e saídas', icon: Wallet, href: '/fluxo-caixa', color: 'text-info', bg: 'bg-info/10' },
+            { label: 'Tabela de Preços', desc: 'Preços de exames por convênio', icon: Receipt, href: '/precos-exames', color: 'text-warning-foreground', bg: 'bg-warning/10' },
+            { label: 'Tipos de Consulta', desc: 'Valores, durações e categorias', icon: Stethoscope, href: '/tipos-consulta', color: 'text-accent-foreground', bg: 'bg-accent' },
+            { label: 'Relatórios', desc: 'Exportações e análises detalhadas', icon: BarChart3, href: '/relatorios', color: 'text-info', bg: 'bg-info/10' },
             { label: 'Pagamentos', desc: 'Histórico de pagamentos e recibos', icon: FileText, href: '/pagamentos', color: 'text-muted-foreground', bg: 'bg-muted' },
           ].map((item) => (
             <Card key={item.href} role="link" tabIndex={0} aria-label={`Abrir ${item.label}`}
