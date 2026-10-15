@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
-import { MAX_LINHAS_AUTO, useAgendamentosPeriodo, useSupabaseQuery, useEstoque, useMedicos, useFilaAtendimento } from '@/hooks/useSupabaseData';
+import { MAX_LINHAS_AUTO, useAgendamentosPeriodo, useSupabaseQuery, useEstoque, useMedicos, useFilaAtendimento, useMinhasTarefasPendentes } from '@/hooks/useSupabaseData';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useCurrentMedico } from '@/hooks/useCurrentMedico';
@@ -20,7 +20,7 @@ import {
   Activity, Stethoscope, Package, FileText, TrendingUp, TrendingDown,
   Sparkles, CheckCircle2, AlertTriangle, Wallet, Plus, BarChart3,
   ClipboardList, HeartPulse, Bell,
-  ShieldCheck, Target, Timer, Megaphone, Pill, Eye,
+  ShieldCheck, Target, Timer, Megaphone, Pill, Eye, ListChecks,
 } from 'lucide-react';
 import { DashboardSkeleton } from '@/components/ui/loading-skeleton';
 import { ErrorState } from '@/components/ErrorState';
@@ -283,6 +283,9 @@ function OperationalDashboard({ roles, nome }: { roles: string[]; nome?: string 
 
   const agendaQuery = useAgendamentosPeriodo(hoje, hoje);
   const filaQuery = useFilaAtendimento();
+  const tarefasQuery = useMinhasTarefasPendentes();
+  const minhasTarefas = tarefasQuery.data ?? [];
+  const tarefasAtrasadas = minhasTarefas.filter(t => t.data_vencimento && t.data_vencimento < hoje).length;
   const agenda = useMemo(() => (agendaQuery.data ?? [])
     .filter(item => item.status !== 'cancelado')
     .sort((a, b) => (a.hora_inicio || '').localeCompare(b.hora_inicio || '')), [agendaQuery.data]);
@@ -367,6 +370,22 @@ function OperationalDashboard({ roles, nome }: { roles: string[]; nome?: string 
               })}</ul>}
           </CardContent>
         </Card>
+        {minhasTarefas.length > 0 && <Card className="rounded-[22px]">
+          <CardHeader className="flex-row items-center justify-between space-y-0">
+            <CardTitle className="text-lg">Minhas tarefas</CardTitle>
+            <Link to="/tarefas" className="text-xs font-bold text-primary hover:underline">Ver todas</Link>
+          </CardHeader>
+          <CardContent>
+            {tarefasAtrasadas > 0 && <p className="mb-2 flex items-center gap-1.5 text-xs font-bold text-destructive"><AlertTriangle className="h-3.5 w-3.5" />{tarefasAtrasadas} atrasada{tarefasAtrasadas > 1 ? 's' : ''}</p>}
+            <ul className="divide-y divide-dashed divide-border">{minhasTarefas.slice(0, 4).map(t => (
+              <li key={t.id} className="flex items-center gap-3 py-2">
+                <ListChecks className="h-4 w-4 shrink-0 text-primary" />
+                <span className="min-w-0 flex-1 truncate text-sm font-medium">{t.titulo}</span>
+                {t.data_vencimento && <span className={cn('shrink-0 text-xs font-bold tabular-nums', t.data_vencimento < hoje ? 'text-destructive' : 'text-muted-foreground')}>{format(parseDateOnly(t.data_vencimento)!, 'dd/MM', { locale: ptBR })}</span>}
+              </li>
+            ))}</ul>
+          </CardContent>
+        </Card>}
         {tips.length > 0 && <Card className="rounded-[22px] border-dashed">
           <CardHeader><CardTitle className="flex items-center gap-2 text-base"><Sparkles className="h-4 w-4 text-primary" />Dicas para o seu turno</CardTitle></CardHeader>
           <CardContent><ul className="space-y-2">{tips.map(tip => <li key={tip} className="flex items-start gap-2 text-sm text-muted-foreground"><span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />{tip}</li>)}</ul></CardContent>
@@ -508,6 +527,9 @@ function AdminDashboard() {
   const { data: estoque = [], isLoading: loadingEstoque } = estoqueQuery;
   const filaQuery = useFilaAtendimento();
   const { data: fila = [], isLoading: loadingFila } = filaQuery;
+  const tarefasQuery = useMinhasTarefasPendentes();
+  const { data: minhasTarefas = [] } = tarefasQuery;
+  const tarefasAtrasadas = useMemo(() => minhasTarefas.filter(t => t.data_vencimento && t.data_vencimento < hoje).length, [minhasTarefas, hoje]);
 
   const resumoQuery = useQuery({
     queryKey: ['dashboard-admin-resumo', user?.clinica_id, seisMeses],
@@ -548,7 +570,7 @@ function AdminDashboard() {
   const { data: resumo, isLoading: loadingResumo } = resumoQuery;
   const totalPacientes = resumo?.totalPacientes ?? 0;
 
-  const isLoading = loadingResumo || loadingAgendamentos || loadingLancamentos || pagamentosQuery.isLoading || loadingMedicos || loadingEstoque || loadingFila;
+  const isLoading = loadingResumo || loadingAgendamentos || loadingLancamentos || pagamentosQuery.isLoading || loadingMedicos || loadingEstoque || loadingFila || tarefasQuery.isLoading;
 
   const hojeFormatado = format(parseDateOnly(hoje)!, "EEEE, d 'de' MMMM", { locale: ptBR });
   const horaAtual = Number(new Intl.DateTimeFormat('en-US', { timeZone: 'America/Sao_Paulo', hour: '2-digit', hourCycle: 'h23' }).format(agora));
@@ -904,6 +926,8 @@ function AdminDashboard() {
               ...(stats.filaAguardando > 0 ? [{ id: 'fila', titulo: 'Pacientes na fila', detalhe: `${stats.filaAguardando} aguardando atendimento`, href: '/fila', tom: 'attention' as const }] : []),
               ...(stats.inadimplente > 0 ? [{ id: 'financeiro', titulo: 'Valores em atraso', detalhe: `${formatCurrency(stats.inadimplente)} em aberto`, href: '/cobranca-inadimplentes', tom: 'attention' as const }] : []),
               ...(stats.estoqueBaixo > 0 ? [{ id: 'estoque', titulo: 'Estoque baixo', detalhe: `${stats.estoqueBaixo} item(ns) precisam de reposição`, href: '/estoque', tom: 'info' as const }] : []),
+              ...(tarefasAtrasadas > 0 ? [{ id: 'tarefas', titulo: 'Tarefas atrasadas', detalhe: `${tarefasAtrasadas} tarefa(s) sua(s) venceram`, href: '/tarefas', tom: 'attention' as const }]
+                : minhasTarefas.length > 0 ? [{ id: 'tarefas', titulo: 'Minhas tarefas', detalhe: `${minhasTarefas.length} pendente(s)`, href: '/tarefas', tom: 'info' as const }] : []),
             ]}
             desempenho={{ percentual: stats.taxaFinalizacao, descricao: `${stats.consultasFinalizadas} de ${stats.totalHoje} consultas finalizadas hoje` }}
             fluxoFinanceiro={stats.monthlyChartData.some((item) => (Number.isFinite(item.receitas) && item.receitas !== 0) || (Number.isFinite(item.despesas) && item.despesas !== 0)) ? stats.monthlyChartData : []}

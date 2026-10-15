@@ -397,3 +397,29 @@ export function useFilaAtendimento(options?: { enabled?: boolean }) {
     enabled: options?.enabled,
   });
 }
+
+/**
+ * Tarefas pendentes/em andamento atribuídas ao usuário logado. Nenhum painel
+ * (admin, médico ou operacional) mostrava isso: a única forma de saber era
+ * abrir a tela de Tarefas por conta própria.
+ */
+export function useMinhasTarefasPendentes(options?: { enabled?: boolean }) {
+  const { user, profile } = useSupabaseAuth();
+  return useQuery({
+    queryKey: ['minhas-tarefas-pendentes', user?.id ?? null, profile?.id ?? null, profile?.clinica_id ?? null],
+    enabled: (options?.enabled ?? true) && !!profile?.id && !!profile?.clinica_id,
+    staleTime: 60_000,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('tarefas')
+        .select('id, titulo, data_vencimento, prioridade, status')
+        .eq('clinica_id', profile!.clinica_id!)
+        .eq('responsavel_id', profile!.id)
+        .in('status', ['pendente', 'em_andamento'])
+        .order('data_vencimento', { ascending: true, nullsFirst: false })
+        .limit(MAX_LINHAS_AUTO);
+      if (error) throw error;
+      return (data ?? []) as Array<{ id: string; titulo: string; data_vencimento: string | null; prioridade: string; status: string }>;
+    },
+  });
+}
