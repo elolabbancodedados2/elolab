@@ -293,6 +293,27 @@ Deno.serve(async (req) => {
               continue
             }
 
+            // O modelo nem sempre escolhe cancelar_agendamento mesmo com o ID
+            // disponivel no contexto. Quando ja sabemos (sem IA) que ha uma
+            // unica consulta futura e a intencao da conversa e cancelar,
+            // tratamos a mensagem atual como o motivo diretamente, a menos
+            // que ela pareca estar trocando de intencao.
+            const priorReceptionState = (Array.isArray(conversation.contexto) ? conversation.contexto : [])
+              .find((item: any) => item?.kind === 'reception_state' && Date.parse(item.expires_at) > Date.now())
+            const switchingIntent = /remarc|reagend|trocar.*consulta|agendar|marcar/i.test(messageContent)
+            if (priorReceptionState?.intent === 'cancelar_agendamento' && !switchingIntent
+              && conversation.paciente_id && isWhatsAppToolAllowed('cancelar_agendamento', agent.habilidades)
+              && Array.isArray(priorReceptionState.data?.agendamentos) && priorReceptionState.data.agendamentos.length === 1) {
+              const toolResult = await executeAgentTool(supabase, 'cancelar_agendamento',
+                { agendamento_id: priorReceptionState.data.agendamentos[0].id, motivo: messageContent },
+                conversation, session.clinica_id, agent.habilidades)
+              const reply = plainWhatsAppText(toolResult.message || 'Não consegui preparar o cancelamento. Pode tentar novamente?')
+              await sendWhatsAppMessage(evolutionApiUrl, evolutionApiKey, instanceName, remoteJid, reply)
+              await supabase.from('whatsapp_messages').insert({ conversation_id: conversation.id, clinica_id: session.clinica_id,
+                direcao: 'saida', tipo: 'texto', conteudo: reply })
+              continue
+            }
+
             if (!nvidiaApiKey) {
               console.error('[AI] OPENAI_API_KEY não configurada para sessão:', session.id)
               continue
