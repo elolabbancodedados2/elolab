@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700;800&family=Inter:wght@400;500;600;700;800&display=swap');
 
 .brand-loader {
   min-height: 100vh;
@@ -7,9 +7,9 @@
   place-items: center;
   padding: 24px;
   background:
-    radial-gradient(ellipse at 50% 42%, rgba(106, 85, 242, 0.1), transparent 34%),
-    #f6f5fb;
-  color: #17122b;
+    radial-gradient(ellipse at 50% 42%, rgba(16, 128, 202, 0.08), transparent 34%),
+    #ededf3;
+  color: #1b1b1f;
   text-align: center;
 }
 
@@ -50,14 +50,14 @@
   inset: 0 auto 0 0;
   width: 38%;
   border-radius: inherit;
-  background: linear-gradient(90deg, #8b7bff, #5b47e0);
+  background: linear-gradient(90deg, #1080CA, #2ED5E7);
   animation: brand-loader-glide 1.35s ease-in-out infinite;
 }
 
 .brand-loader__message {
   margin: 0;
-  color: #17122b;
-  font-family: 'Manrope', system-ui, sans-serif;
+  color: #1b1b1f;
+  font-family: 'Inter', system-ui, sans-serif;
   font-size: 16px;
   font-weight: 600;
   letter-spacing: -0.02em;
@@ -65,7 +65,7 @@
 
 .brand-loader__detail {
   margin: 7px 0 0;
-  color: #6a6485;
+  color: #6b6a63;
   font-size: 13px;
   line-height: 1.55;
 }
@@ -77,17 +77,17 @@
   justify-content: center;
   margin-top: 19px;
   padding: 0 16px;
-  border: 1px solid rgba(91, 71, 224, 0.24);
+  border: 1px solid rgba(17, 17, 17, 0.16);
   border-radius: 11px;
   background: #fff;
-  color: #5b47e0;
+  color: #111111;
   font-size: 13px;
   font-weight: 600;
   text-decoration: none;
 }
 
 .brand-loader__retry:focus-visible {
-  outline: 3px solid rgba(91, 71, 224, 0.34);
+  outline: 3px solid rgba(17, 17, 17, 0.3);
   outline-offset: 3px;
 }
 
@@ -108,105 +108,105 @@
 
 @layer base {
   :root {
-    --button-ripple-color: rgba(23, 18, 43, 0.06);
+    --button-ripple-color: rgba(17, 17, 17, 0.06);
 
-    /* EloLab — Clássico Premium: violeta, âmbar e azul-noite */
-    --brand: 248 86% 64%;
+    /* EloLab v2 — "Intellecta": preto/branco/cinza + acento azul→ciano da logo */
+    --brand: 204 85% 43%;
     --brand-foreground: 0 0% 100%;
-    --brand-light: 250 60% 96%;
-    --brand-hover: 248 71% 54%;
-    --brand-glow: 246 100% 74%;
+    --brand-light: 204 70% 95%;
+    --brand-hover: 204 85% 36%;
+    --brand-glow: 186 79% 54%;
 
-    /* Primary */
-    --primary: 248 71% 58%;
+    /* Primary — ação primária em preto, não na cor de marca */
+    --primary: 240 6% 10%;
     --primary-foreground: 0 0% 100%;
-    --primary-glow: 246 100% 74%;
+    --primary-glow: 204 85% 43%;
 
-    /* Destaque quente (âmbar) para cards de chamada */
-    --highlight: 36 100% 64%;
-    --highlight-foreground: 30 100% 12%;
+    /* Destaque (verde-limão) para blocos "em andamento" e confirmações pontuais */
+    --highlight: 73 87% 63%;
+    --highlight-foreground: 73 100% 12%;
 
-    /* Success */
+    /* Success — mantém o significado semântico, não muda */
     --success: 152 69% 30%;
     --success-foreground: 0 0% 100%;
 
     /* Background & Surfaces */
-    --background: 250 47% 97%;
-    --foreground: 252 41% 12%;
+    --background: 240 20% 95%;
+    --foreground: 240 10% 12%;
 
     /* Cards */
     --card: 0 0% 100%;
-    --card-foreground: 252 41% 12%;
+    --card-foreground: 240 10% 12%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 252 41% 12%;
+    --popover-foreground: 240 10% 12%;
 
     /* Secondary */
-    --secondary: 250 45% 94%;
-    --secondary-foreground: 252 41% 14%;
+    --secondary: 240 14% 95%;
+    --secondary-foreground: 240 10% 14%;
 
     /* Muted */
-    --muted: 250 40% 94%;
-    --muted-foreground: 250 14% 42%;
+    --muted: 240 14% 95%;
+    --muted-foreground: 240 6% 40%;
 
     /* Accent */
-    --accent: 250 60% 95%;
-    --accent-foreground: 252 41% 14%;
+    --accent: 240 14% 95%;
+    --accent-foreground: 240 10% 14%;
 
-    /* Destructive */
+    /* Destructive — mantém o significado semântico, não muda */
     --destructive: 0 72% 48%;
     --destructive-foreground: 0 0% 100%;
 
-    /* Warning */
+    /* Warning — mantém o significado semântico, não muda */
     --warning: 34 92% 42%;
     --warning-foreground: 34 30% 10%;
 
-    /* Info */
+    /* Info — mantém o significado semântico, não muda */
     --info: 220 85% 52%;
     --info-foreground: 0 0% 100%;
 
     /* Borders */
-    --border: 250 26% 88%;
-    --input: 250 24% 85%;
-    --ring: 248 71% 58%;
+    --border: 240 10% 88%;
+    --input: 240 10% 84%;
+    --ring: 240 6% 10%;
 
-    --radius: 0.875rem;
+    --radius: 1rem;
 
-    /* Shadows (tom violeta-noite) */
-    --shadow-xs: 0 1px 2px 0 hsl(252 41% 20% / 0.04);
-    --shadow-sm: 0 1px 3px 0 hsl(252 41% 20% / 0.05), 0 1px 2px -1px hsl(252 41% 20% / 0.04);
-    --shadow-md: 0 6px 16px -6px hsl(252 41% 20% / 0.1), 0 2px 4px -2px hsl(252 41% 20% / 0.04);
-    --shadow-lg: 0 16px 32px -12px hsl(252 41% 20% / 0.16), 0 4px 8px -4px hsl(252 41% 20% / 0.05);
-    --shadow-xl: 0 28px 56px -16px hsl(252 41% 20% / 0.2), 0 8px 16px -6px hsl(252 41% 20% / 0.06);
-    --shadow-glow: 0 12px 28px -12px hsl(var(--brand) / 0.55);
+    /* Shadows — sombra suave neutra, sem tingir de marca */
+    --shadow-xs: 0 1px 2px 0 hsl(240 20% 10% / 0.04);
+    --shadow-sm: 0 1px 3px 0 hsl(240 20% 10% / 0.06), 0 1px 2px -1px hsl(240 20% 10% / 0.04);
+    --shadow-md: 0 6px 16px -6px hsl(240 20% 10% / 0.12), 0 2px 4px -2px hsl(240 20% 10% / 0.05);
+    --shadow-lg: 0 16px 32px -12px hsl(240 20% 10% / 0.18), 0 4px 8px -4px hsl(240 20% 10% / 0.06);
+    --shadow-xl: 0 28px 56px -16px hsl(240 20% 10% / 0.22), 0 8px 16px -6px hsl(240 20% 10% / 0.07);
+    --shadow-glow: 0 12px 28px -12px hsl(var(--brand) / 0.5);
     --shadow-glow-success: 0 12px 28px -12px hsl(var(--success) / 0.45);
 
     /* Gradients */
-    --gradient-primary: linear-gradient(135deg, #8b7bff 0%, #5b47e0 100%);
-    --gradient-hero: linear-gradient(140deg, #8b7bff 0%, #4b37d0 100%);
-    --gradient-highlight: linear-gradient(135deg, #ffc66b 0%, #ffa733 100%);
-    --gradient-card: linear-gradient(180deg, hsl(0 0% 100%) 0%, hsl(250 47% 99%) 100%);
-    --gradient-sidebar: #17122b;
-    --gradient-surface: linear-gradient(135deg, #f6f5fb 0%, #ece9f8 100%);
+    --gradient-primary: linear-gradient(135deg, #1080CA 0%, #2ED5E7 100%);
+    --gradient-hero: linear-gradient(140deg, #111111 0%, #2b2b33 100%);
+    --gradient-highlight: linear-gradient(135deg, #CFF34D 0%, #9FE62B 100%);
+    --gradient-card: linear-gradient(180deg, hsl(0 0% 100%) 0%, hsl(240 20% 99%) 100%);
+    --gradient-sidebar: linear-gradient(180deg, #F3F3F6 0%, #F3F3F6 55%, #8E82DD 100%);
+    --gradient-surface: linear-gradient(135deg, #f6f6f8 0%, #ececf1 100%);
 
-    /* Sidebar escura */
-    --sidebar-background: 252 41% 12%;
-    --sidebar-foreground: 250 26% 78%;
-    --sidebar-primary: 246 100% 76%;
+    /* Rail de navegação — claro, com degradê lilás na base (não mais escura) */
+    --sidebar-background: 240 20% 96%;
+    --sidebar-foreground: 240 6% 40%;
+    --sidebar-primary: 240 6% 10%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 252 37% 18%;
-    --sidebar-accent-foreground: 0 0% 100%;
-    --sidebar-border: 252 30% 20%;
-    --sidebar-ring: 246 100% 74%;
-    --sidebar-muted: 252 32% 22%;
+    --sidebar-accent: 240 14% 92%;
+    --sidebar-accent-foreground: 240 10% 12%;
+    --sidebar-border: 240 10% 88%;
+    --sidebar-ring: 204 85% 43%;
+    --sidebar-muted: 240 10% 90%;
 
     /* Charts */
-    --chart-1: 248 86% 64%;
-    --chart-2: 36 100% 60%;
-    --chart-3: 330 78% 60%;
-    --chart-4: 190 80% 44%;
-    --chart-5: 160 60% 40%;
-    --chart-6: 220 88% 56%;
+    --chart-1: 204 85% 43%;
+    --chart-2: 73 87% 63%;
+    --chart-3: 255 56% 69%;
+    --chart-4: 186 79% 54%;
+    --chart-5: 0 72% 58%;
+    --chart-6: 34 92% 55%;
   }
 
 }
@@ -257,7 +257,7 @@ html[data-text-size='large'] {
 
   body {
     @apply bg-background text-foreground antialiased;
-    font-family: 'Manrope', system-ui, -apple-system, sans-serif;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
     font-feature-settings: 'tnum' 0;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -267,8 +267,14 @@ html[data-text-size='large'] {
   }
 
   h1, h2, h3, h4, h5, h6 {
-    font-family: 'Manrope', system-ui, -apple-system, sans-serif;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
     @apply tracking-tight;
+  }
+
+  /* Título de saudação (ex.: "Bom dia, Dra. Marina!") — única concessão tipográfica
+     mais lúdica; não usar em dado clínico, valor monetário ou tabela. */
+  .font-greeting {
+    font-family: 'Baloo 2', 'Inter', system-ui, sans-serif;
   }
 
   /* Custom scrollbar — ultra-thin */

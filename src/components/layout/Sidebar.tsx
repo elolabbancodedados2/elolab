@@ -114,7 +114,7 @@ export function Sidebar({ forceExpanded = false, onNavigate }: SidebarProps) {
   return (
     <aside
       className={cn(
-        'flex h-full min-h-0 flex-col overflow-hidden rounded-[28px] border border-white/80 bg-[#F4F4F6] text-[#171717] shadow-sm transition-all duration-300 ease-out',
+        'flex h-full min-h-0 flex-col overflow-hidden rounded-[28px] border border-white/80 bg-sidebar text-sidebar-accent-foreground shadow-sm transition-all duration-300 ease-out',
         isCollapsed ? 'w-[72px]' : 'w-[286px]'
       )}
     >
@@ -137,7 +137,7 @@ export function Sidebar({ forceExpanded = false, onNavigate }: SidebarProps) {
             size="icon"
             onClick={() => setCollapsed(true)}
             aria-label="Recolher menu lateral"
-            className="h-9 w-9 rounded-xl text-[#171717]/55 hover:text-[#171717] hover:bg-black/[0.04]"
+            className="h-9 w-9 rounded-xl text-sidebar-accent-foreground/55 hover:text-sidebar-accent-foreground hover:bg-black/[0.04]"
           >
             <ChevronLeft className="h-3.5 w-3.5" />
           </Button>
@@ -163,8 +163,8 @@ export function Sidebar({ forceExpanded = false, onNavigate }: SidebarProps) {
               className={cn(
                 'flex min-h-12 items-center justify-center gap-2.5 rounded-xl px-2 text-sm font-semibold transition-all',
                 navigationMode === 'app'
-                  ? 'bg-[#171717] text-white shadow-sm'
-                  : 'text-[#171717]/65 hover:bg-black/[0.04] hover:text-[#171717]',
+                  ? 'bg-sidebar-primary text-white shadow-sm'
+                  : 'text-sidebar-accent-foreground/65 hover:bg-black/[0.04] hover:text-sidebar-accent-foreground',
               )}
             >
               <LayoutDashboard className="h-4 w-4 shrink-0" />
@@ -178,7 +178,7 @@ export function Sidebar({ forceExpanded = false, onNavigate }: SidebarProps) {
               disabled
               title="O vínculo da clínica da conta proprietária ainda não foi configurado."
               aria-label="App: vínculo da clínica ainda não configurado"
-              className="flex min-h-12 justify-center gap-2.5 rounded-xl px-2 text-sm font-semibold text-[#171717]/45"
+              className="flex min-h-12 justify-center gap-2.5 rounded-xl px-2 text-sm font-semibold text-sidebar-accent-foreground/45"
             >
               <LayoutDashboard className="h-4 w-4 shrink-0" />
               {!isCollapsed && <span>App</span>}
@@ -192,8 +192,8 @@ export function Sidebar({ forceExpanded = false, onNavigate }: SidebarProps) {
             className={cn(
               'flex min-h-12 items-center justify-center gap-2.5 rounded-xl px-2 text-sm font-semibold transition-all',
               navigationMode === 'platform'
-                ? 'bg-[#171717] text-white shadow-sm'
-                : 'text-[#171717]/65 hover:bg-black/[0.04] hover:text-[#171717]',
+                ? 'bg-sidebar-primary text-white shadow-sm'
+                : 'text-sidebar-accent-foreground/65 hover:bg-black/[0.04] hover:text-sidebar-accent-foreground',
             )}
           >
             <ShieldCheck className="h-4 w-4 shrink-0" />
@@ -205,7 +205,7 @@ export function Sidebar({ forceExpanded = false, onNavigate }: SidebarProps) {
       {!isCollapsed && (
         <div className="px-4 pb-4">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#171717]/45" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-sidebar-accent-foreground/45" />
             <Input
               aria-label="Buscar no menu"
               name="menu-search"
@@ -213,7 +213,7 @@ export function Sidebar({ forceExpanded = false, onNavigate }: SidebarProps) {
               placeholder="Buscar no menu"
               value={search}
               onChange={e => setSearch(e.target.value)}
-              className="h-10 rounded-full border-black/[0.08] bg-white/70 pl-10 text-sm text-[#171717] placeholder:text-[#171717]/45 focus-visible:bg-white focus-visible:ring-[#171717]/20"
+              className="h-10 rounded-full border-black/[0.08] bg-white/70 pl-10 text-sm text-sidebar-accent-foreground placeholder:text-sidebar-accent-foreground/45 focus-visible:bg-white focus-visible:ring-sidebar-accent-foreground/20"
             />
           </div>
         </div>
@@ -229,7 +229,7 @@ export function Sidebar({ forceExpanded = false, onNavigate }: SidebarProps) {
                 size="icon"
                 onClick={() => setCollapsed(false)}
                 aria-label="Expandir menu lateral"
-                className="h-10 w-full rounded-xl text-[#171717]/50 hover:text-[#171717] hover:bg-black/[0.04]"
+                className="h-10 w-full rounded-xl text-sidebar-accent-foreground/50 hover:text-sidebar-accent-foreground hover:bg-black/[0.04]"
               >
                 <PanelLeftOpen className="h-3.5 w-3.5" />
               </Button>
@@ -260,8 +260,8 @@ export function Sidebar({ forceExpanded = false, onNavigate }: SidebarProps) {
       {!isCollapsed && (
         <div className="shrink-0 px-3 pb-4 pt-2">
           <div className="rounded-2xl bg-white/70 px-4 py-3">
-            <p className="text-[13px] font-bold text-[#171717]">EloLab</p>
-            <p className="text-xs leading-relaxed text-[#171717]/60">Agenda, pacientes e finanças da clínica em um só lugar.</p>
+            <p className="text-[13px] font-bold text-sidebar-accent-foreground">EloLab</p>
+            <p className="text-xs leading-relaxed text-sidebar-accent-foreground/60">Agenda, pacientes e finanças da clínica em um só lugar.</p>
           </div>
         </div>
       )}
@@ -302,8 +302,8 @@ function SidebarMenuGroup({ group, collapsed, isOpen, onToggle, currentPath, onN
               'w-full flex items-center gap-3 rounded-full px-3 py-2.5 text-sm font-medium transition-all duration-200',
               collapsed && 'justify-center',
               hasActiveChild
-                ? 'bg-[#171717] text-white shadow-sm hover:text-white'
-                : 'text-[#171717]/75 hover:bg-black/[0.04] hover:text-[#171717]',
+                ? 'bg-sidebar-primary text-white shadow-sm hover:text-white'
+                : 'text-sidebar-accent-foreground/75 hover:bg-black/[0.04] hover:text-sidebar-accent-foreground',
             )}
           >
             {collapsed ? (
