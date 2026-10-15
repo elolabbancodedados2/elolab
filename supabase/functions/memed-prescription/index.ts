@@ -99,6 +99,26 @@ async function memedPrescriptionRequest(prescriptionId: string, prescriberToken:
   return { response, data };
 }
 
+async function registrarStatusMemed(
+  service: any,
+  clinicaId: string,
+  medicoId: string,
+  status: 'conectado' | 'erro',
+  ultimoErro: string | null,
+) {
+  const agora = new Date().toISOString();
+  const { data: existente } = await service.from('integracoes_clinica')
+    .select('id').eq('clinica_id', clinicaId).eq('provedor', 'memed').eq('referencia_id', medicoId).maybeSingle();
+  const linha = { status, ultimo_erro: ultimoErro, ultimo_teste_em: agora, updated_at: agora };
+  if (existente) {
+    await service.from('integracoes_clinica').update(linha).eq('id', (existente as any).id);
+  } else {
+    await service.from('integracoes_clinica').insert({
+      clinica_id: clinicaId, provedor: 'memed', referencia_id: medicoId, config: {}, conectado_em: agora, ...linha,
+    });
+  }
+}
+
 async function tokenPrescritorMemed(medicoId: string): Promise<string> {
   const result = await memedRequest(`/sinapse-prescricao/usuarios/${encodeURIComponent(medicoId)}`, 'GET');
   const token = result.data?.data?.attributes?.token;
@@ -168,7 +188,9 @@ Deno.serve(async (req) => {
       const numeroRegistro = digits((medico as any).crm);
       const uf = String((medico as any).crm_uf ?? '').trim().toUpperCase();
       if (!partes.nome || !partes.sobrenome || cpfMedico.length !== 11 || !nascimentoMedico || !numeroRegistro || uf.length !== 2) {
-        return json({ error: 'Complete nome e sobrenome, CPF, data de nascimento, conselho, número e UF do médico.' }, 422);
+        const mensagem = 'Complete nome e sobrenome, CPF, data de nascimento, conselho, número e UF do médico.';
+        await registrarStatusMemed(service, clinicaId, medicoId, 'erro', mensagem).catch(() => {});
+        return json({ error: mensagem }, 422);
       }
       const pacienteNome = String((paciente as any).nome ?? '').trim();
       const sexo = String((paciente as any).sexo ?? '').toLowerCase();
@@ -200,15 +222,20 @@ Deno.serve(async (req) => {
       if (!result.response.ok) {
         // Não registrar nem devolver URL, chaves, token ou corpo da resposta Memed.
         console.error('[memed-prescription] API request failed', { status: result.response.status });
-        return json({ error: 'A Memed não conseguiu validar ou cadastrar este prescritor. Confira os dados profissionais.' }, 502);
+        const mensagem = 'A Memed não conseguiu validar ou cadastrar este prescritor. Confira os dados profissionais.';
+        await registrarStatusMemed(service, clinicaId, medicoId, 'erro', mensagem).catch(() => {});
+        return json({ error: mensagem }, 502);
       }
 
       const token = result.data?.data?.attributes?.token;
       if (typeof token !== 'string' || !token) {
         console.error('[memed-prescription] API response missing prescriber token');
-        return json({ error: 'A Memed não retornou o token do prescritor.' }, 502);
+        const mensagem = 'A Memed não retornou o token do prescritor.';
+        await registrarStatusMemed(service, clinicaId, medicoId, 'erro', mensagem).catch(() => {});
+        return json({ error: mensagem }, 502);
       }
 
+      await registrarStatusMemed(service, clinicaId, medicoId, 'conectado', null).catch(() => {});
       return json({ token, scriptUrl: ambienteMemed().scriptUrl, ambiente: Deno.env.get('MEMED_AMBIENTE') ?? 'homologacao' });
     }
 
