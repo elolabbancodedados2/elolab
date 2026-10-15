@@ -260,7 +260,7 @@ export function ConversationsTab({ conversations, hasMoreConversations, isLoadin
                         {getStatusBadge(conv.status)}
                         <p className="text-[10px] text-muted-foreground">{timeAgo}</p>
                         <div className="flex justify-end gap-1 pt-1">
-                          {conv.status === 'aguardando_humano' && (
+                          {(conv.status === 'aguardando_humano' || conv.status === 'ativo') && (
                             <Button type="button" size="sm" variant="outline" disabled={isUpdating} onClick={() => onStatusChange(conv.id, 'em_atendimento_humano')}>
                               Assumir
                             </Button>

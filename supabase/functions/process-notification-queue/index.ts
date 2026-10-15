@@ -3,6 +3,7 @@ import { clinicaAdminDoChamador, cronForbidden, cronOrUserOk, cronSecretOk } fro
 import { corsPadrao } from '../_shared/cors.ts';
 import { consumoNotificacoes } from '../_shared/limitesClinica.ts';
 import { sendBrandedBrevoRequest } from '../_shared/brevoEmail.ts';
+import { normalizeWhatsAppPhone, notificationHtml } from '../_shared/patientJourneyDelivery.ts';
 
 // Atribuído em cada request (reflete a origem permitida). Helpers
 // top-level (json/reply) capturam esta variável por closure.
@@ -12,7 +13,7 @@ interface NotificationItem {
   id: string; tipo: string; destinatario_email: string | null
   destinatario_telefone: string | null; destinatario_nome: string | null
   assunto: string | null; conteudo: string; tentativas: number
-  max_tentativas: number; clinica_id: string | null
+  max_tentativas: number; clinica_id: string | null; dados_extras?: Record<string, unknown>
 }
 
 Deno.serve(async (req) => {
@@ -64,6 +65,11 @@ Deno.serve(async (req) => {
     for (const notif of pendentes as NotificationItem[]) {
       let envioExternoIniciado = false
       try {
+        if (notif.dados_extras?.journey === true) {
+          const { data: valid, error: validationError } = await supabase.rpc('validar_notificacao_jornada', { p_id: notif.id })
+          if (validationError) throw new Error('Falha ao validar a origem da notificação')
+          if (!valid) continue
+        }
         if (notif.clinica_id) {
           if (!consumo.has(notif.clinica_id)) consumo.set(notif.clinica_id, await consumoNotificacoes(supabase, notif.clinica_id))
           const c = consumo.get(notif.clinica_id)!
@@ -81,7 +87,7 @@ Deno.serve(async (req) => {
             method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
             body: JSON.stringify({ sender: { name: 'EloLab Clínica', email: 'noreply@elolab.com.br' },
               to: [{ email: notif.destinatario_email, name: notif.destinatario_nome || '' }],
-              subject: notif.assunto || 'Notificação EloLab', htmlContent: notif.conteudo.replace(/\n/g, '<br>') }),
+              subject: notif.assunto || 'Notificação EloLab', htmlContent: notificationHtml(notif.conteudo, notif.dados_extras?.journey === true) }),
           })
           if (!res.ok) {
             if (res.status >= 500) await marcarIncerto(notif, `Brevo HTTP ${res.status}; confira o provedor antes de repetir`)
@@ -98,11 +104,11 @@ Deno.serve(async (req) => {
           const { data: session } = await supabase.from('whatsapp_sessions').select('instance_name')
             .eq('status', 'connected').eq('clinica_id', notif.clinica_id).limit(1).maybeSingle()
           if (!session?.instance_name) throw new Error('Nenhuma sessão WhatsApp conectada')
-          const digits = notif.destinatario_telefone.replace(/\D/g, '')
+          const number = normalizeWhatsAppPhone(notif.destinatario_telefone)
           envioExternoIniciado = true
           const res = await fetch(`${url}/message/sendText/${session.instance_name}`, {
             method: 'POST', headers: { 'Content-Type': 'application/json', apikey: key },
-            body: JSON.stringify({ number: digits.length >= 10 ? digits : `55${digits}`, text: notif.conteudo }),
+            body: JSON.stringify({ number, text: notif.conteudo }),
           })
           if (!res.ok) {
             if (res.status >= 500) await marcarIncerto(notif, `Evolution HTTP ${res.status}; confira o provedor antes de repetir`)

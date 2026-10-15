@@ -18,6 +18,7 @@ export async function createNvidiaChatCompletion({
   maxTokens = 512,
   temperature = 0.2,
   timeoutMs = 45000,
+  enableThinking,
 }: {
   apiKey: string
   model?: string
@@ -27,6 +28,7 @@ export async function createNvidiaChatCompletion({
   maxTokens?: number
   temperature?: number
   timeoutMs?: number
+  enableThinking?: boolean
 }) {
   const safeMaxTokens = Math.min(Math.max(Math.floor(maxTokens), 64), 4096)
   const body: Record<string, unknown> = {
@@ -40,6 +42,7 @@ export async function createNvidiaChatCompletion({
 
   if (tools?.length) body.tools = tools
   if (toolChoice) body.tool_choice = toolChoice
+  if (enableThinking !== undefined) body.chat_template_kwargs = { enable_thinking: enableThinking }
 
   const response = await fetch(NVIDIA_CHAT_COMPLETIONS_URL, {
     method: 'POST',

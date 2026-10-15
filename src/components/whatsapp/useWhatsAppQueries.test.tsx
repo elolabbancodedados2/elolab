@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => {
     realtimeHandler: undefined as ((payload: unknown) => void) | undefined,
     invalidateQueries: vi.fn(),
     removeChannel: vi.fn(),
+    rpc: vi.fn(),
     useInfiniteQuery: vi.fn((_options: unknown) => ({ data: undefined })),
     infiniteQueryOptions: undefined as any,
     clinicId: 'clinic-1',
@@ -34,6 +35,7 @@ vi.mock('@/integrations/supabase/client', () => ({
   supabase: {
     channel: vi.fn(() => mocks.channel),
     removeChannel: mocks.removeChannel,
+    rpc: mocks.rpc,
   },
 }));
 
@@ -41,7 +43,49 @@ vi.mock('@/contexts/SupabaseAuthContext', () => ({
   useSupabaseAuth: () => ({ profile: { clinica_id: mocks.clinicId, id: mocks.profileId } }),
 }));
 
-import { useWhatsAppConversations } from './useWhatsAppQueries';
+import { useWhatsAppConversations, useWhatsAppSessions, useWhatsAppStats } from './useWhatsAppQueries';
+import { useQuery } from '@tanstack/react-query';
+
+describe('session pairing updates', () => {
+  it('refreshes QR and connection state without requiring a reload', () => {
+    renderHook(() => useWhatsAppSessions());
+    expect(useQuery).toHaveBeenCalledWith(expect.objectContaining({ refetchInterval: 5_000, refetchIntervalInBackground: false, refetchOnWindowFocus: true }));
+  });
+  it('does not poll when the user cannot access the feature', () => {
+    vi.clearAllMocks();
+    renderHook(() => useWhatsAppSessions(false));
+    expect(useQuery).toHaveBeenCalledWith(expect.objectContaining({ enabled: false, refetchInterval: false }));
+  });
+});
+
+describe('dashboard counters', () => {
+  it('reads aggregate counters from the authenticated clinic RPC and propagates failures', async () => {
+    vi.clearAllMocks();
+    const stats = { messages: 1, conversations: 2, actions: 3, ai_bookings: 4, confirmed_today: 5, no_shows_today: 6, delivery_failures: 7 };
+    mocks.rpc.mockResolvedValueOnce({ data: stats, error: null });
+    renderHook(() => useWhatsAppStats());
+    const options = vi.mocked(useQuery).mock.calls.at(-1)![0];
+    const queryFn = options.queryFn as () => Promise<unknown>;
+    await expect(queryFn()).resolves.toEqual(stats);
+    expect(mocks.rpc).toHaveBeenCalledWith('whatsapp_dashboard_stats');
+    mocks.rpc.mockResolvedValueOnce({ data: null, error: new Error('unavailable') });
+    await expect(queryFn()).rejects.toThrow('unavailable');
+  });
+  it('refreshes counters while the panel is open', () => {
+    vi.clearAllMocks();
+    renderHook(() => useWhatsAppStats());
+    expect(useQuery).toHaveBeenCalledWith(expect.objectContaining({
+      refetchInterval: 15_000, refetchIntervalInBackground: false,
+    }));
+  });
+  it('does not poll counters without access', () => {
+    vi.clearAllMocks();
+    renderHook(() => useWhatsAppStats(false));
+    expect(useQuery).toHaveBeenCalledWith(expect.objectContaining({
+      enabled: false, refetchInterval: false,
+    }));
+  });
+});
 
 describe('useWhatsAppConversations', () => {
   beforeEach(() => {

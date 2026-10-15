@@ -314,8 +314,8 @@ export default function Fila() {
   });
 
   /**
-   * O RLS financeiro oculta cobranÃ§as de consulta de mÃ©dicos e enfermagem.
-   * A RPC retorna apenas a decisÃ£o de liberaÃ§Ã£o, sem expor valores ou itens
+   * O RLS financeiro oculta cobranças de consulta de médicos e enfermagem.
+   * A RPC retorna apenas a decisão de liberação, sem expor valores ou itens
    * financeiros, e usa as mesmas regras do bloqueio no banco.
    */
   const { data: liberacoesPagamento = [], isLoading: verificandoPagamento, isError: erroVerificacaoPagamento } = useQuery({

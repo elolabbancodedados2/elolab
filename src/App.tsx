@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { friendlyErrorMessage } from "@/components/ErrorState";
 import { BrowserRouter, Routes, Route, Navigate, useSearchParams } from "react-router-dom";
 import { SupabaseAuthProvider } from "@/contexts/SupabaseAuthContext";
+import { useWhatsAppBookingNotifications } from "@/hooks/useWhatsAppBookingNotifications";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { SupabaseProtectedRoute } from "@/components/SupabaseProtectedRoute";
 import { MainLayout } from "@/components/layout/MainLayout";
@@ -148,6 +149,7 @@ const queryClient = new QueryClient({
  * Renders nothing — children are passed through.
  */
 function AppInitializer({ children }: { children: React.ReactNode }) {
+  useWhatsAppBookingNotifications();
   return <>{children}</>;
 }
 

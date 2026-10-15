@@ -13,6 +13,7 @@ import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { ErrorState } from '@/components/ErrorState';
 import { ActionableEmptyState } from '@/components/ActionableEmptyState';
 import { PageHeader } from '@/components/PageHeader';
+import { DeleteConfirmDialog } from '@/components/ConfirmDialog';
 import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
 
 const FORMATADOR_DATA_HORA = new Intl.DateTimeFormat('pt-BR', {
@@ -31,6 +32,7 @@ export default function RelatoriosSalvos() {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [toDelete, setToDelete] = useState<{ id: string; nome: string } | null>(null);
 
   const itemsQuery = useQuery({
     queryKey: ['relatorios-salvos', user?.id ?? null, profile?.clinica_id ?? null],
@@ -80,7 +82,6 @@ export default function RelatoriosSalvos() {
   };
 
   const remove = async (id: string) => {
-    if (!confirm('Excluir este relatório?')) return;
     if (!profile?.clinica_id) { toast.error('Clínica não identificada.'); return; }
     const { data, error } = await (supabase as any).from('relatorios_salvos').delete().eq('id', id).eq('clinica_id', profile.clinica_id).select('id');
     if (error) { toast.error('Não foi possível excluir o relatório.', { description: mensagemDeErro(error) }); return; }
@@ -164,7 +165,7 @@ export default function RelatoriosSalvos() {
                     {it.frequencia && <Button size="sm" variant="outline" aria-label={`${it.ativo ? 'Pausar' : 'Ativar'} agendamento de ${it.nome}`} title={it.ativo ? 'Pausar agendamento automático' : 'Ativar agendamento automático'} onClick={() => toggleAtivo(it)} disabled={busyId !== null}>
                       {it.ativo ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
                     </Button>}
-                    <Button size="sm" variant="outline" aria-label="Excluir relatório salvo" onClick={() => remove(it.id)} disabled={busyId !== null}>
+                    <Button size="sm" variant="outline" aria-label="Excluir relatório salvo" onClick={() => setToDelete({ id: it.id, nome: it.nome })} disabled={busyId !== null}>
                       <Trash2 className="h-4 w-4 text-destructive" />
                     </Button>
                   </div>
@@ -174,6 +175,12 @@ export default function RelatoriosSalvos() {
           )}
         </CardContent>
       </Card>
+      <DeleteConfirmDialog
+        open={toDelete !== null}
+        onOpenChange={(open) => { if (!open) setToDelete(null); }}
+        itemName={toDelete?.nome ?? ''}
+        onConfirm={() => { if (toDelete) remove(toDelete.id); setToDelete(null); }}
+      />
     </div>
   );
 }

@@ -102,9 +102,9 @@ export function dateRangeInTimeZoneIso(
   endDate: string | undefined,
   timeZone: string,
 ): { gte?: string; lt?: string } {
-  if (startDate && !isValidDateOnly(startDate)) throw new Error('Data inicial invÃ¡lida.');
-  if (endDate && !isValidDateOnly(endDate)) throw new Error('Data final invÃ¡lida.');
-  if (startDate && endDate && startDate > endDate) throw new Error('Intervalo de datas invÃ¡lido.');
+  if (startDate && !isValidDateOnly(startDate)) throw new Error('Data inicial inválida.');
+  if (endDate && !isValidDateOnly(endDate)) throw new Error('Data final inválida.');
+  if (startDate && endDate && startDate > endDate) throw new Error('Intervalo de datas inválido.');
 
   const nextDay = endDate
     ? new Date(Date.parse(`${endDate}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10)

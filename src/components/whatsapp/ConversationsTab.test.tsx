@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ConversationsTab } from './ConversationsTab';
 import type { WhatsAppConversation } from './types';
 
@@ -37,6 +37,22 @@ const conversation = {
 } as WhatsAppConversation & { contexto: unknown };
 
 describe('ConversationsTab pré-triagem', () => {
+  beforeEach(() => {
+    vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
+  });
+  it('permite assumir uma conversa ativa sem esperar uma transferência da IA', async () => {
+    const onStatusChange = vi.fn();
+    render(<ConversationsTab conversations={[{ ...conversation, status: 'ativo' }]}
+      hasMoreConversations={false} isLoadingMoreConversations={false} onLoadMoreConversations={vi.fn()}
+      onStatusChange={onStatusChange} isUpdating={false} onSendMessage={vi.fn(async () => {})}
+      isSending={false} onMarkRead={vi.fn()} onAddInternalNote={vi.fn(async () => {})}
+      isAddingNote={false} onPriorityChange={vi.fn()} onGenerateSummary={vi.fn()}
+      isGeneratingSummary={false} onSendMedia={vi.fn(async () => {})} isSendingMedia={false}
+      isClosing={false} onCloseConversation={vi.fn()} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Assumir' }));
+    expect(onStatusChange).toHaveBeenCalledWith(conversation.id, 'em_atendimento_humano');
+  });
+
   it('mostra o contexto apenas no painel interno após abrir a conversa e rotula os dados', async () => {
     const user = userEvent.setup();
     const onMarkRead = vi.fn();

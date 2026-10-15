@@ -539,7 +539,7 @@ export default function PortalPaciente() {
       });
       setPortalHasMore(previous => ({ ...previous, [listKey]: nextRows.length === pageSize }));
     } catch (loadError) {
-      if (sessionId === portalSessionRef.current) setPortalDataError('NÃ£o foi possÃ­vel carregar mais registros. Tente novamente.');
+      if (sessionId === portalSessionRef.current) setPortalDataError('Não foi possível carregar mais registros. Tente novamente.');
     } finally {
       loadMoreLocks.current.delete(action);
       setLoadingMore(null);

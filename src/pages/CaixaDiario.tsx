@@ -1828,6 +1828,7 @@ export default function CaixaDiario() {
                       className="h-6 w-6 shrink-0"
                       onClick={() => { setPacienteId(null); setPacienteNome(''); }}
                       title="Remover paciente"
+                      aria-label="Remover paciente selecionado"
                     >
                       <X className="h-3 w-3" />
                     </Button>
