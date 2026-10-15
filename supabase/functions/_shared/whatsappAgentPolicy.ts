@@ -21,7 +21,10 @@ const toolCapabilities: Record<string, WhatsAppAgentCapability> = {
 
 export function normalizeMedicalSpecialty(value: string): string {
   const text = value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim().replace(/\s+/g, ' ');
-  const aliases: Record<string, string> = { 'clinico geral': 'clinica geral', 'medicina geral': 'clinica geral', ginecologista: 'ginecologia', gineocologista: 'ginecologia', ginecologistas: 'ginecologia' };
+  const aliases: Record<string, string> = {
+    'clinico geral': 'clinica geral', 'medicina geral': 'clinica geral', clinico: 'clinica geral', clinica: 'clinica geral',
+    ginecologista: 'ginecologia', gineocologista: 'ginecologia', ginecologistas: 'ginecologia', ginecologo: 'ginecologia',
+  };
   return aliases[text] || text;
 }
 

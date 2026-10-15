@@ -36,4 +36,14 @@ describe('WhatsApp patient-service webhook policy', () => {
     expect(source).toContain('findUniquePatientIdByPhone(phoneNumber, candidates || [])');
     expect(source).not.toMatch(/select\('id'\)[\s\S]{0,250}telefone\.ilike/);
   });
+
+  it('answers a chosen specialty directly instead of re-listing it when the model repeats itself', () => {
+    const shortcut = source.indexOf("priorReceptionState?.data?.medicos");
+    const matchCheck = source.indexOf('normalizeMedicalSpecialty(messageContent)', shortcut);
+    const toolCall = source.indexOf("executeAgentTool(supabase, 'consultar_disponibilidade'", shortcut);
+
+    expect(shortcut).toBeGreaterThan(-1);
+    expect(matchCheck).toBeGreaterThan(shortcut);
+    expect(toolCall).toBeGreaterThan(matchCheck);
+  });
 });

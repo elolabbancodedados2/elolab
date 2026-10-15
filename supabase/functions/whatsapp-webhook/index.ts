@@ -314,6 +314,27 @@ Deno.serve(async (req) => {
               continue
             }
 
+            // Mesma limitacao: depois de listar especialidades, o modelo as
+            // vezes lista de novo em vez de consultar a disponibilidade da
+            // especialidade que o paciente acabou de escolher. Quando a
+            // mensagem bate com uma especialidade ja oferecida, consulta
+            // direto em vez de repetir a pergunta.
+            if (!priorReceptionState?.data?.agendamentos && Array.isArray(priorReceptionState?.data?.medicos)
+              && priorReceptionState.data.medicos.length > 0 && isWhatsAppToolAllowed('consultar_disponibilidade', agent.habilidades)) {
+              const wanted = normalizeMedicalSpecialty(messageContent)
+              const matches = wanted && priorReceptionState.data.medicos.some((m: any) => normalizeMedicalSpecialty(String(m.especialidade || '')).includes(wanted))
+              if (matches) {
+                const toolResult = await executeAgentTool(supabase, 'consultar_disponibilidade',
+                  { especialidade: messageContent, data_preferencia: todaySaoPauloDateOnly() },
+                  conversation, session.clinica_id, agent.habilidades)
+                const reply = plainWhatsAppText(toolResult.message || 'Não consegui consultar a disponibilidade. Pode tentar novamente?')
+                await sendWhatsAppMessage(evolutionApiUrl, evolutionApiKey, instanceName, remoteJid, reply)
+                await supabase.from('whatsapp_messages').insert({ conversation_id: conversation.id, clinica_id: session.clinica_id,
+                  direcao: 'saida', tipo: 'texto', conteudo: reply })
+                continue
+              }
+            }
+
             if (!nvidiaApiKey) {
               console.error('[AI] OPENAI_API_KEY não configurada para sessão:', session.id)
               continue
@@ -648,6 +669,7 @@ async function runNvidiaAgent({
     }
     const toolStartedAt = Date.now()
     const toolName = call.function?.name
+    console.log(`[Agent] tool call: ${toolName}`)
     const toolResult = await executeAgentTool(
       supabase,
       toolName,
