@@ -33,6 +33,19 @@ describe('reception tools', () => {
     const tools = load().getAgentTools('geral', ['informacoes_clinica','cancelar_agendamento','reagendar_agendamento','consultar_agendamentos_paciente']);
     expect(tools.map((tool: any) => tool.name)).toEqual(expect.arrayContaining(['consultar_informacoes_clinica','cancelar_agendamento','reagendar_agendamento','confirmar_presenca']));
   });
+  it('gives each agenda-change tool its own parameters so the model cannot confuse them', () => {
+    const tools = load().getAgentTools('geral', ['cancelar_agendamento', 'reagendar_agendamento', 'consultar_agendamentos_paciente'])
+    const byName = Object.fromEntries(tools.map((tool: any) => [tool.name, tool.parameters]))
+    expect(byName.cancelar_agendamento.required).toEqual(['agendamento_id', 'motivo'])
+    expect(byName.cancelar_agendamento.properties).not.toHaveProperty('data')
+    expect(byName.cancelar_agendamento.properties).not.toHaveProperty('hora_inicio')
+    expect(byName.reagendar_agendamento.required).toEqual(['agendamento_id', 'medico_id', 'data', 'hora_inicio'])
+    expect(byName.reagendar_agendamento.properties).not.toHaveProperty('motivo')
+    expect(byName.confirmar_presenca.required).toEqual(['agendamento_id'])
+    expect(byName.confirmar_presenca.properties).not.toHaveProperty('motivo')
+    expect(byName.confirmar_presenca.properties).not.toHaveProperty('data')
+    expect(byName.confirmar_presenca.properties).not.toHaveProperty('hora_inicio')
+  })
   it('returns only clinic registered address', async () => {
     const db = database({ configuracoes_clinica: [{ valor: { nomeClinica: 'Clínica DEMO', endereco: 'Rua fictícia, 10' } }] });
     const result = await load().executeAgentTool(db, 'consultar_informacoes_clinica', { assunto: 'endereco' }, conversation, 'clinic1', ['informacoes_clinica']);

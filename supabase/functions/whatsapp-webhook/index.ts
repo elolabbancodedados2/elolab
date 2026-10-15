@@ -1022,18 +1022,30 @@ function getAgentTools(_tipo: string, habilidades: unknown): any[] {
     name: 'consultar_informacoes_clinica', description: 'Consulta somente informacoes cadastradas: endereco, horarios, contato, precos particulares, convenios e preparo de exames.',
     parameters: { type: 'object', properties: { assunto: { type: 'string', enum: ['geral','endereco','horarios','precos','convenios','preparo'] }, exame: { type: 'string', description: 'Nome do exame, quando perguntar preparo' } }, required: ['assunto'] },
   } })
-  for (const name of ['cancelar_agendamento','reagendar_agendamento','confirmar_presenca']) {
-    tools.push({ type: 'function', function: { name,
-      description: name === 'cancelar_agendamento' ? 'Prepara cancelamento da propria consulta; exige motivo e SIM.' : name === 'reagendar_agendamento' ? 'Prepara remarcacao da propria consulta para horario livre; preserva consulta original ate SIM.' : 'Prepara confirmacao de presenca para uma consulta existente; exige SIM.',
-      parameters: { type: 'object', properties: {
-        agendamento_id: { type: 'string', description: 'ID retornado por consultar_agendamentos_paciente; nunca inventar' },
-        motivo: { type: 'string', description: 'Motivo informado pelo paciente para cancelamento' },
-        medico_id: { type: 'string', description: 'ID retornado pela consulta de disponibilidade' },
-        data: { type: 'string', description: 'Nova data YYYY-MM-DD para remarcacao' },
-        hora_inicio: { type: 'string', description: 'Novo horario HH:MM para remarcacao' },
-      }, required: ['agendamento_id'] },
-    } })
-  }
+  const agendamentoIdProp = { agendamento_id: { type: 'string', description: 'ID retornado por consultar_agendamentos_paciente; nunca inventar' } }
+  tools.push({ type: 'function', function: {
+    name: 'cancelar_agendamento',
+    description: 'Usar somente quando o paciente pedir para cancelar a propria consulta; exige motivo e SIM. Nao usar para remarcar nem para confirmar presenca.',
+    parameters: { type: 'object', properties: {
+      ...agendamentoIdProp,
+      motivo: { type: 'string', description: 'Motivo informado pelo paciente para o cancelamento' },
+    }, required: ['agendamento_id', 'motivo'] },
+  } })
+  tools.push({ type: 'function', function: {
+    name: 'reagendar_agendamento',
+    description: 'Usar somente quando o paciente pedir para remarcar/trocar o horario da propria consulta para um novo horario livre; preserva a consulta original ate SIM. Nao usar para cancelar nem para confirmar presenca.',
+    parameters: { type: 'object', properties: {
+      ...agendamentoIdProp,
+      medico_id: { type: 'string', description: 'ID retornado pela consulta de disponibilidade' },
+      data: { type: 'string', description: 'Nova data YYYY-MM-DD para a remarcacao' },
+      hora_inicio: { type: 'string', description: 'Novo horario HH:MM para a remarcacao' },
+    }, required: ['agendamento_id', 'medico_id', 'data', 'hora_inicio'] },
+  } })
+  tools.push({ type: 'function', function: {
+    name: 'confirmar_presenca',
+    description: 'Usar somente quando o paciente disser explicitamente que vai comparecer e quiser confirmar presenca numa consulta ja existente; exige SIM. Nao usar para cancelar nem para remarcar.',
+    parameters: { type: 'object', properties: agendamentoIdProp, required: ['agendamento_id'] },
+  } })
 
   if (['consultar_disponibilidade', 'criar_agendamento', 'consultar_agendamentos_paciente', 'cancelar_agendamento', 'reagendar_agendamento'].some((item) => enabled.includes(item))) {
     tools.push({ type: 'function', function: {
