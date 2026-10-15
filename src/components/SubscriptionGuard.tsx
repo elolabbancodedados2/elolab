@@ -4,8 +4,9 @@ import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ShieldAlert, CreditCard, LogOut, Eye } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
+import { canOpenPlanManagementWhileBlocked, subscriptionAccessQueryKey } from '@/lib/subscriptionAccess';
 
 interface SubscriptionGuardProps {
   children: React.ReactNode;
@@ -26,10 +27,11 @@ interface SubscriptionGuardProps {
  */
 export function SubscriptionGuard({ children }: SubscriptionGuardProps) {
   const { user, profile } = useSupabaseAuth();
+  const { pathname } = useLocation();
   const [modoLeitura, setModoLeitura] = useState(false);
 
   const { data: bloqueado, isLoading } = useQuery({
-    queryKey: ['acesso-bloqueado', user?.id],
+    queryKey: subscriptionAccessQueryKey(user?.id),
     enabled: !!user && !!profile,
     staleTime: 1000 * 60 * 5,
     queryFn: async () => {
@@ -42,7 +44,7 @@ export function SubscriptionGuard({ children }: SubscriptionGuardProps) {
   });
 
   if (!user || !profile || isLoading) return <>{children}</>;
-  if (!bloqueado || modoLeitura) return <>{children}</>;
+  if (!bloqueado || modoLeitura || canOpenPlanManagementWhileBlocked(pathname)) return <>{children}</>;
 
   return <SubscriptionBlockedScreen onContinuarLeitura={() => setModoLeitura(true)} />;
 }

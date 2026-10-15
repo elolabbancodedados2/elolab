@@ -1,8 +1,9 @@
+import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { useState } from 'react';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { format, addDays, addWeeks, addMonths, parseISO } from 'date-fns';
+import { addDays, addWeeks, addMonths, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { 
   CalendarCheck, 

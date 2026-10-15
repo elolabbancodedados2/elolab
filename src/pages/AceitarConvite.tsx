@@ -36,6 +36,7 @@ export default function AceitarConvite() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [telefone, setTelefone] = useState('');
   const [existingAccount, setExistingAccount] = useState(false);
+  const [currentAccountMatches, setCurrentAccountMatches] = useState(false);
 
   useEffect(() => {
     if (!token) {
@@ -52,6 +53,15 @@ export default function AceitarConvite() {
         });
         if (newResp && (newResp as any).success && (newResp as any).invite) {
           const inv = (newResp as any).invite;
+          let matchingAccount = false;
+          try {
+            const { data: sessionData } = await supabase.auth.getUser();
+            const signedInEmail = sessionData.user?.email?.trim().toLowerCase();
+            const invitationEmail = String(inv.email || '').trim().toLowerCase();
+            matchingAccount = !!signedInEmail && signedInEmail === invitationEmail;
+          } catch {
+            // A falha em detectar a sessão não deve invalidar um convite válido.
+          }
           setInvitation({
             source: 'new',
             email: inv.email,
@@ -59,6 +69,8 @@ export default function AceitarConvite() {
             clinica_nome: inv.clinica_nome,
             funcionario: inv.nome ? { nome: inv.nome, cargo: null } : undefined,
           });
+          setExistingAccount(matchingAccount);
+          setCurrentAccountMatches(matchingAccount);
           setLoading(false);
           return;
         }
@@ -182,6 +194,7 @@ export default function AceitarConvite() {
         if (error) throw error;
         if (data?.code === 'account_exists') {
           setExistingAccount(true);
+          setCurrentAccountMatches(false);
           setPassword('');
           setConfirmPassword('');
           toast.info('Este e-mail já possui uma conta. Digite a senha atual para aceitar o convite.');
@@ -354,7 +367,9 @@ export default function AceitarConvite() {
               </span>
             )}
             {existingAccount
-              ? 'Entre com sua senha atual para aceitar o convite'
+              ? currentAccountMatches
+                ? 'Esta conta já está conectada. Aceite o convite para adicionar os acessos à sua conta.'
+                : 'Entre com sua senha atual para aceitar o convite'
               : 'Crie uma senha para entrar na clínica.'}
           </CardDescription>
         </CardHeader>
@@ -388,7 +403,7 @@ export default function AceitarConvite() {
               </div>
             )}
 
-            <div className="space-y-2">
+            {!currentAccountMatches && <div className="space-y-2">
               <Label htmlFor="password">{existingAccount ? 'Senha atual' : 'Senha'}</Label>
               <Input
                 id="password"
@@ -399,7 +414,7 @@ export default function AceitarConvite() {
                 required
                 minLength={existingAccount ? undefined : invitation?.source === 'new' ? 8 : 6}
               />
-            </div>
+            </div>}
 
             {!existingAccount && <div className="space-y-2">
               <Label htmlFor="confirmPassword">Confirmar Senha</Label>
@@ -433,7 +448,7 @@ export default function AceitarConvite() {
                   {existingAccount ? 'Aceitando convite...' : 'Criando conta...'}
                 </>
               ) : (
-                existingAccount ? 'Entrar e Aceitar Convite' : 'Criar Conta e Acessar'
+                currentAccountMatches ? 'Aceitar convite com esta conta' : existingAccount ? 'Entrar e Aceitar Convite' : 'Criar Conta e Acessar'
               )}
             </Button>
           </form>

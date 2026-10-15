@@ -139,7 +139,7 @@ test.describe('QA visual — UX, frontend e design', () => {
     await page.goto('/auth', { waitUntil: 'domcontentloaded' });
     const fields = page.locator('input:not([type="hidden"])');
     await expect(fields.first()).toBeVisible();
-    await page.locator('form').getByRole('button', { name: 'Entrar', exact: true }).click();
+    await page.locator('form').getByRole('button', { name: 'Acessar conta', exact: true }).click();
     await expect(page.getByText('Informe seu e-mail.')).toBeVisible();
     await expect(page.getByText('Informe sua senha.')).toBeVisible();
     expect(requestsToAuth, 'formulário vazio não deve chamar autenticação').toBe(0);

@@ -72,6 +72,45 @@ describe('Tarefas', () => {
     expect(total).toHaveAttribute('aria-pressed', 'false');
   });
 
+  it('usa o token destrutivo no indicador de tarefas vencidas', () => {
+    render(<MemoryRouter><Tarefas /></MemoryRouter>);
+    const vencidas = screen.getByRole('button', { name: /Vencidas/ });
+    const iconSurface = vencidas.querySelector('svg')?.parentElement;
+
+    expect(iconSurface).toHaveClass('bg-destructive/10', 'text-destructive');
+  });
+
+  it('permite buscar por categoria, informa o total e limpa a busca com Escape', () => {
+    render(<MemoryRouter><Tarefas /></MemoryRouter>);
+    const search = screen.getByRole('textbox', { name: 'Buscar tarefas' });
+
+    expect(screen.getByRole('combobox', { name: 'Filtrar tarefas por status' })).toBeInTheDocument();
+    fireEvent.change(search, { target: { value: 'administrativo' } });
+    expect(screen.getByRole('status')).toHaveTextContent('1 de 1 tarefas');
+    expect(screen.getByText('Confirmar agenda da manhã')).toBeInTheDocument();
+
+    fireEvent.keyDown(search, { key: 'Escape' });
+    expect(search).toHaveValue('');
+  });
+
+  it('foca a busca com o atalho / quando o foco não está em um campo de texto', () => {
+    render(<MemoryRouter><Tarefas /></MemoryRouter>);
+    const search = screen.getByRole('textbox', { name: 'Buscar tarefas' });
+
+    fireEvent.keyDown(window, { key: '/' });
+    expect(search).toHaveFocus();
+  });
+
+  it('preserva o foco do diálogo enquanto um modal está aberto', () => {
+    render(<MemoryRouter><Tarefas /></MemoryRouter>);
+    const search = screen.getByRole('textbox', { name: 'Buscar tarefas' });
+    fireEvent.click(screen.getByRole('button', { name: 'Nova Tarefa' }));
+
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: '/' });
+    expect(search).not.toHaveFocus();
+  });
+
   it('mantém o Kanban no ponteiro preciso', () => {
     window.matchMedia = mockMatchMedia(false);
     render(<MemoryRouter><Tarefas /></MemoryRouter>);

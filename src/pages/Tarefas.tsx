@@ -1,10 +1,12 @@
-import { useState, useMemo, useCallback, useEffect } from 'react';
+import { formatWithDatePreference as format } from '@/lib/datePreference';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { Link as RouterLink } from 'react-router-dom';
 import { PacienteCombobox } from '@/components/patients/PacienteCombobox';
+import { ActionableEmptyState } from '@/components/ActionableEmptyState';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,7 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
-import { format } from 'date-fns';
+
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import {
@@ -24,13 +26,12 @@ import {
   Loader2, CalendarClock, User2, LayoutGrid, LayoutList, GripVertical, CircleX, RotateCcw,
 } from 'lucide-react';
 import { parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
-import { normalizarTexto } from '@/lib/buscaPaciente';
 import { useRecoverableDraft } from '@/hooks/useRecoverableDraft';
 import { DraftRecoveryNotice } from '@/components/DraftRecoveryNotice';
 import { withSafeRetry } from '@/lib/retry';
 import { ErrorState } from '@/components/ErrorState';
 import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
-import { getInitialTaskView } from './taskViewMode';
+import { getInitialTaskView, taskMatchesSearch } from './taskViewMode';
 
 // ─── Config ────────────────────────────────────────────────
 const statusConfig: Record<string, { label: string; icon: typeof Circle; colorClasses: string }> = {
@@ -90,7 +91,7 @@ function KanbanCard({ tarefa, hoje, onUpdate, onDelete, onDragStart, canOpenPati
         draggable={draggable}
         onDragStart={draggable ? (e) => onDragStart(e, tarefa.id) : undefined}
         className={cn(
-          'group rounded-2xl border border-[#E0EBF2] bg-white p-3 shadow-[0_8px_24px_-20px_rgba(12,31,84,0.35)] transition-all hover:border-[#B7D9FF] hover:shadow-md hover:-translate-y-0.5',
+          'group rounded-2xl border border-[#ECE9F8] bg-white p-3 shadow-[0_8px_24px_-20px_rgba(23,18,43,0.35)] transition-all hover:border-[#CFC6FF] hover:shadow-md hover:-translate-y-0.5',
           draggable && 'cursor-grab active:cursor-grabbing',
           isDragging && 'opacity-50 scale-[0.98]',
           vencida && 'border-destructive/40',
@@ -194,7 +195,7 @@ function TarefaCard({ tarefa, hoje, onUpdate, onDelete, canOpenPatient, updating
   return (
     <motion.div variants={fadeUp} layout>
       <Card className={cn(
-        'group rounded-2xl border-[#E0EBF2] bg-white shadow-[0_8px_24px_-20px_rgba(12,31,84,0.35)] transition-all duration-200 hover:border-[#B7D9FF] hover:shadow-md hover:-translate-y-0.5',
+        'group rounded-2xl border-[#ECE9F8] bg-white shadow-[0_8px_24px_-20px_rgba(23,18,43,0.35)] transition-all duration-200 hover:border-[#CFC6FF] hover:shadow-md hover:-translate-y-0.5',
         vencida && 'border-destructive/40 shadow-destructive/5',
         venceHoje && 'border-warning/40 shadow-warning/5',
         tarefa.status === 'concluida' && 'opacity-60',
@@ -295,6 +296,7 @@ export default function Tarefas() {
   const podeAbrirPaciente = isAdmin() || hasRole('recepcao') || hasRole('enfermagem');
   const [agora, setAgora] = useState(() => new Date());
   const [search, setSearch] = useState('');
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const [filterStatus, setFilterStatus] = useState('all');
   const [showNew, setShowNew] = useState(false);
   const [viewMode, setViewMode] = useState<'list' | 'kanban'>(() => getInitialTaskView(
@@ -312,6 +314,23 @@ export default function Tarefas() {
     const timer = window.setInterval(() => setAgora(new Date()), 60_000);
     return () => window.clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    const handleSearchShortcut = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const typing = target?.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target?.tagName || '');
+      const dialogOpen = Boolean(document.querySelector('[role="dialog"], [role="alertdialog"]'));
+      if (event.key === '/' && !typing && !dialogOpen && !event.metaKey && !event.ctrlKey && !event.altKey) {
+        event.preventDefault();
+        searchInputRef.current?.focus();
+      }
+      if (event.key === 'Escape' && target === searchInputRef.current && search) {
+        setSearch('');
+      }
+    };
+    window.addEventListener('keydown', handleSearchShortcut);
+    return () => window.removeEventListener('keydown', handleSearchShortcut);
+  }, [search]);
 
   const profilesQuery = useQuery({
     queryKey: ['profiles-tarefas', profile?.clinica_id, profile?.id],
@@ -432,9 +451,7 @@ export default function Tarefas() {
 
   const filtered = useMemo(() => {
     return enrichedTarefas.filter((t: any) => {
-      const termo = normalizarTexto(search);
-      const matchSearch = !termo || normalizarTexto(t.titulo).includes(termo) ||
-        normalizarTexto(t.descricao).includes(termo) || normalizarTexto(t.paciente?.nome).includes(termo);
+      const matchSearch = taskMatchesSearch(t, search);
       const matchStatus = filterStatus === 'all' ||
         (filterStatus === 'overdue' ? tarefaVencida(t, hoje) : t.status === filterStatus);
       return matchSearch && matchStatus;
@@ -492,32 +509,34 @@ export default function Tarefas() {
   return (
     <div className="space-y-5 pb-8">
       {/* Header */}
-      <section className="rounded-2xl border border-[#E0EBF2] bg-white p-5 sm:flex sm:items-end sm:justify-between sm:gap-5 sm:p-6">
-        <div className="flex flex-col gap-5 sm:contents">
+      <section className="relative isolate overflow-hidden rounded-2xl border border-border bg-gradient-to-r from-card via-card to-primary/5 p-5 shadow-sm sm:p-7">
+        <div aria-hidden="true" className="pointer-events-none absolute -right-8 -top-16 h-52 w-52 rounded-full border-[26px] border-primary/15" />
+        <div className="relative flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
           <div className="max-w-xl">
-            <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight text-[#0C1F54] sm:text-3xl">
-              <ListTodo aria-hidden="true" className="h-6 w-6 text-[#0F7BFD]" /> Tarefas da equipe
+            <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.16em] text-primary">Rotina da clínica</p>
+            <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
+              <ListTodo className="h-6 w-6 text-primary" /> Tarefas da equipe
             </h1>
-            <p className="mt-1.5 text-sm text-[#0C1F54]/65">Organize prioridades, acompanhe prazos e distribua o trabalho.</p>
+            <p className="mt-1.5 text-sm text-muted-foreground">Organize prioridades, acompanhe prazos e distribua o trabalho.</p>
           </div>
           <div className="grid w-full grid-cols-1 items-center gap-2 sm:w-auto sm:grid-cols-[auto_auto]">
-          <div className="flex rounded-xl border border-[#D7E5F0] bg-white/90 p-1 shadow-sm">
+          <div className="flex rounded-xl border border-border bg-card/90 p-1 shadow-sm">
             <Button
               variant={viewMode === 'kanban' ? 'default' : 'ghost'}
-              size="sm" className={cn('h-10 gap-1.5 rounded-lg border-0 px-3 text-xs', viewMode === 'kanban' && 'bg-[#0C1F54] text-white hover:bg-[#142D68]')}
+              size="sm" className={cn('h-10 gap-1.5 rounded-lg border-0 px-3 text-xs', viewMode === 'kanban' && 'bg-foreground text-background hover:bg-foreground/90')}
               onClick={() => setViewMode('kanban')}
             >
               <LayoutGrid className="h-3.5 w-3.5" /> Kanban
             </Button>
             <Button
               variant={viewMode === 'list' ? 'default' : 'ghost'}
-              size="sm" className={cn('h-10 gap-1.5 rounded-lg border-0 px-3 text-xs', viewMode === 'list' && 'bg-[#0C1F54] text-white hover:bg-[#142D68]')}
+              size="sm" className={cn('h-10 gap-1.5 rounded-lg border-0 px-3 text-xs', viewMode === 'list' && 'bg-foreground text-background hover:bg-foreground/90')}
               onClick={() => setViewMode('list')}
             >
               <LayoutList className="h-3.5 w-3.5" /> Lista
             </Button>
           </div>
-          <Button onClick={() => setShowNew(true)} className="h-11 w-full gap-2 bg-[#005ECC] text-white shadow-md shadow-[#0F7BFD]/15 hover:bg-[#004FAE] sm:w-auto">
+          <Button onClick={() => setShowNew(true)} className="h-11 w-full gap-2 bg-primary text-primary-foreground shadow-md shadow-primary/15 hover:bg-primary/90 sm:w-auto">
             <Plus className="h-4 w-4" /> Nova Tarefa
           </Button>
           </div>
@@ -527,11 +546,11 @@ export default function Tarefas() {
       {/* Stats */}
       <motion.div role="group" aria-label="Filtrar tarefas por status" variants={stagger} initial="hidden" animate="visible" className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         {[
-          { label: 'Total', value: stats.total, icon: ListTodo, color: '#005ECC', bg: '#EAF4FF', filter: 'all' },
-          { label: 'Pendentes', value: stats.pendentes, icon: Circle, color: '#0F7BFD', bg: '#EAF4FF', filter: 'pendente' },
-          { label: 'Em Andamento', value: stats.emAndamento, icon: Clock, color: '#007F9E', bg: '#E1F9FD', filter: 'em_andamento' },
-          { label: 'Concluídas', value: stats.concluidas, icon: CheckCircle2, color: '#0C1F54', bg: '#E0EBF2', filter: 'concluida' },
-          { label: 'Vencidas', value: stats.vencidas, icon: AlertTriangle, color: '#B42318', bg: '#FEF3F2', filter: 'overdue' },
+          { label: 'Total', value: stats.total, icon: ListTodo, stripe: 'bg-primary/70', iconBg: 'bg-primary/10', iconColor: 'text-primary', filter: 'all' },
+          { label: 'Pendentes', value: stats.pendentes, icon: Circle, stripe: 'bg-warning/70', iconBg: 'bg-warning/10', iconColor: 'text-warning-foreground', filter: 'pendente' },
+          { label: 'Em Andamento', value: stats.emAndamento, icon: Clock, stripe: 'bg-info/70', iconBg: 'bg-info/10', iconColor: 'text-info', filter: 'em_andamento' },
+          { label: 'Concluídas', value: stats.concluidas, icon: CheckCircle2, stripe: 'bg-success/70', iconBg: 'bg-success/10', iconColor: 'text-success', filter: 'concluida' },
+          { label: 'Vencidas', value: stats.vencidas, icon: AlertTriangle, stripe: 'bg-destructive/70', iconBg: 'bg-destructive/10', iconColor: 'text-destructive', filter: 'overdue' },
         ].map((s, i) => (
           <motion.div key={s.label} variants={fadeUp} custom={i}>
             <button
@@ -539,17 +558,17 @@ export default function Tarefas() {
               aria-pressed={filterStatus === s.filter}
               onClick={() => setFilterStatus(s.filter)}
               className={cn(
-                'relative min-h-[76px] w-full overflow-hidden rounded-xl border border-[#E0EBF2] bg-white px-3 py-3 flex items-center gap-2 transition-colors hover:border-[#B7D9FF] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F7BFD] focus-visible:ring-offset-2 text-left sm:gap-3 sm:px-4',
-                filterStatus === s.filter && 'border-[#9CC6F5] bg-[#F4F8FF]',
+                'relative min-h-[76px] w-full overflow-hidden rounded-2xl border border-border bg-card px-3 py-3 shadow-sm flex items-center gap-2 transition-all hover:border-primary/30 hover:shadow-md hover:-translate-y-0.5 text-left sm:gap-3 sm:px-4',
+                filterStatus === s.filter && 'ring-2 ring-primary/30 shadow-md',
               )}
             >
-              <span aria-hidden="true" className="absolute inset-x-0 top-0 h-1" style={{ backgroundColor: s.color }} />
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl" style={{ backgroundColor: s.bg, color: s.color }}>
+              <span className={cn('absolute inset-x-0 top-0 h-1', s.stripe)} />
+              <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', s.iconBg, s.iconColor)}>
                 <s.icon className="h-5 w-5" />
               </div>
               <div>
-                <p className="text-xl font-bold tabular-nums text-[#0C1F54]">{s.value}</p>
-                <p className="text-[11px] font-medium text-[#0C1F54]/60">{s.label}</p>
+                <p className="text-xl font-bold tabular-nums text-foreground">{s.value}</p>
+                <p className="text-[11px] font-medium text-muted-foreground">{s.label}</p>
               </div>
             </button>
           </motion.div>
@@ -564,27 +583,30 @@ export default function Tarefas() {
       )}
 
       {/* Filters */}
-      <div className="flex flex-col gap-3 rounded-2xl border border-[#E0EBF2] bg-white p-3 shadow-[0_8px_24px_-20px_rgba(12,31,84,0.3)] sm:flex-row sm:flex-wrap sm:items-center sm:p-4">
+      <div className="flex flex-col gap-3 rounded-2xl border border-[#ECE9F8] bg-white p-3 shadow-[0_8px_24px_-20px_rgba(23,18,43,0.3)] sm:flex-row sm:flex-wrap sm:items-center sm:p-4">
         <div className="relative w-full flex-1 sm:max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Buscar tarefas..." value={search} onChange={(e) => setSearch(e.target.value)} className="h-11 border-[#D7E5F0] pl-10 focus-visible:ring-[#0F7BFD]" />
+          <Input ref={searchInputRef} aria-label="Buscar tarefas" aria-keyshortcuts="/ Escape" placeholder="Buscar por tarefa, pessoa ou categoria... ( / )" value={search} onChange={(e) => setSearch(e.target.value)} className="h-11 border-[#DBD7F0] pl-10 focus-visible:ring-[#7B6CF6]" />
         </div>
-        {viewMode === 'list' && (
-          <Select value={filterStatus} onValueChange={setFilterStatus}>
-            <SelectTrigger className="h-11 w-full sm:w-[180px]"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos os status</SelectItem>
-              <SelectItem value="overdue">Vencidas</SelectItem>
-              {Object.entries(statusConfig).map(([k, v]) => <SelectItem key={k} value={k}>{v.label}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        )}
-        {filterStatus !== 'all' && (
-          <Button variant="ghost" size="sm" className="text-xs gap-1" onClick={() => setFilterStatus('all')}>
-            Limpar filtro
+        <Select value={filterStatus} onValueChange={setFilterStatus}>
+          <SelectTrigger aria-label="Filtrar tarefas por status" className="h-11 w-full sm:w-[180px]"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos os status</SelectItem>
+            <SelectItem value="overdue">Vencidas</SelectItem>
+            {Object.entries(statusConfig).map(([k, v]) => <SelectItem key={k} value={k}>{v.label}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        {(filterStatus !== 'all' || search) && (
+          <Button variant="ghost" size="sm" className="h-11 gap-1 text-xs" onClick={() => { setSearch(''); setFilterStatus('all'); }}>
+            <CircleX className="h-3.5 w-3.5" /> Limpar busca e filtros
           </Button>
         )}
       </div>
+
+      <p className="-mt-2 px-1 text-xs text-muted-foreground" role="status" aria-live="polite">
+        {search || filterStatus !== 'all' ? `${filtered.length} de ${enrichedTarefas.length} tarefas` : `${enrichedTarefas.length} tarefas`}
+        <span className="ml-2 hidden sm:inline">Atalho: / para buscar · Esc para limpar</span>
+      </p>
 
       {/* Content */}
       {tarefasQuery.isError ? (
@@ -610,16 +632,19 @@ export default function Tarefas() {
       ) : filtered.length === 0 ? (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
           <Card>
-            <CardContent className="flex flex-col items-center justify-center py-16 text-center">
-              <ListTodo className="h-14 w-14 text-muted-foreground/20 mb-4" />
-              <p className="font-semibold text-lg">
-                {enrichedTarefas.length === 0 ? 'Ainda não há tarefas cadastradas' : 'Nenhuma tarefa corresponde à busca e ao filtro'}
-              </p>
-              {enrichedTarefas.length > 0 ? (
-                <Button variant="link" onClick={() => { setSearch(''); setFilterStatus('all'); }} className="mt-2 h-11">Limpar busca e filtro</Button>
-              ) : (
-                <Button onClick={() => setShowNew(true)} className="mt-4 gap-2"><Plus className="h-4 w-4" />Nova Tarefa</Button>
-              )}
+            <CardContent className="py-4">
+              <ActionableEmptyState
+                title={enrichedTarefas.length === 0 ? 'Ainda não há tarefas cadastradas' : 'Nenhuma tarefa corresponde à busca e ao filtro'}
+                description={enrichedTarefas.length === 0
+                  ? 'Crie uma tarefa para organizar pendências e acompanhar quem será responsável.'
+                  : 'Tente outro termo ou remova os filtros para voltar a ver suas tarefas.'}
+                actionLabel={enrichedTarefas.length === 0 ? 'Nova tarefa' : 'Limpar busca e filtro'}
+                onAction={enrichedTarefas.length === 0
+                  ? () => setShowNew(true)
+                  : () => { setSearch(''); setFilterStatus('all'); }}
+                actionIcon={enrichedTarefas.length === 0 ? Plus : undefined}
+                className="py-12"
+              />
             </CardContent>
           </Card>
         </motion.div>
@@ -632,14 +657,14 @@ export default function Tarefas() {
             return (
               <div
                 key={col.key}
-                className="min-h-[340px] rounded-2xl border border-[#DCE9F2] bg-[#F6FAFD] p-3 transition-colors sm:min-h-[400px]"
+                className="min-h-[340px] rounded-2xl border border-[#E0DCF2] bg-[#F7F6FD] p-3 transition-colors sm:min-h-[400px]"
                 onDragOver={handleDragOver}
                 onDrop={(e) => handleDrop(e, col.key)}
               >
                 <div className="flex items-center gap-2 mb-3 px-1">
-                  <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#EAF4FF] text-[#005ECC]"><ColIcon className="h-4 w-4" /></span>
-                  <h3 className="text-sm font-bold text-[#0C1F54]">{col.label}</h3>
-                  <Badge variant="outline" className="ml-auto h-6 border-[#D6E7F3] bg-white text-[10px] text-[#005ECC]">{colTasks.length}</Badge>
+                  <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#F0EDFF] text-[#5B47E0]"><ColIcon className="h-4 w-4" /></span>
+                  <h3 className="text-sm font-bold text-[#17122B]">{col.label}</h3>
+                  <Badge variant="outline" className="ml-auto h-6 border-[#E2DEF3] bg-white text-[10px] text-[#5B47E0]">{colTasks.length}</Badge>
                 </div>
                 <div className="space-y-2">
                   <AnimatePresence mode="popLayout">

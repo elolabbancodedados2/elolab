@@ -8,6 +8,7 @@ import { ErrorState } from '@/components/ErrorState';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { formatDateInTimeZone } from '@/lib/datePreference';
 
 type ColetaIndicador = {
   id: string;
@@ -66,7 +67,7 @@ export function IndicadoresLaboratorioPanel() {
       const rows = coletas.filter((item) => new Date(item.created_at).toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' }) === chave);
       lista.push({
         chave,
-        dia: dia.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit' }),
+        dia: formatDateInTimeZone(dia),
         amostras: rows.length,
         liberadas: rows.filter((item) => item.resultados_laboratorio?.some((resultado) => resultado.liberado)).length,
         recoletas: rows.filter((item) => item.status === 'rejeitada' || !!item.recoleta_de_id).length,

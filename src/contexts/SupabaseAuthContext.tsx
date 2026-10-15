@@ -74,16 +74,17 @@ export function SupabaseAuthProvider({ children }: { children: ReactNode }) {
   const [platformAdminLevel, setPlatformAdminLevel] = useState<PlatformAdminLevel | null>(null);
   const [isClinicaOwner, setIsClinicaOwner] = useState(false);
   const previousDataScope = useRef<string | null>(null);
+  const userId = user?.id;
 
   // Impersonação troca a clínica sem trocar o usuário. Limpar o cache nesse
   // momento evita que uma tela renderize por alguns instantes dados da clínica
   // anterior enquanto as consultas protegidas por RLS são refeitas.
   useEffect(() => {
-    const scope = user ? `${user.id}:${profile?.clinica_id || 'platform'}` : null;
+    const scope = userId ? `${userId}:${profile?.clinica_id || 'platform'}` : null;
     const previous = previousDataScope.current;
     if (previous !== null && previous !== scope) queryClient.clear();
     previousDataScope.current = scope;
-  }, [user?.id, profile?.clinica_id, queryClient]);
+  }, [userId, profile?.clinica_id, queryClient]);
 
   const fetchProfile = async (userId: string) => {
     try {

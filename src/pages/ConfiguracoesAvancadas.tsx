@@ -28,6 +28,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { DeleteConfirmDialog } from '@/components/ConfirmDialog';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -37,6 +38,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { ErrorState } from '@/components/ErrorState';
+import { PageHeader } from '@/components/PageHeader';
 
 /* ─── Types ─── */
 interface SystemHealth {
@@ -296,6 +298,7 @@ export function IntegracoesTab() {
 export function EspecialidadesTab() {
   const queryClient = useQueryClient();
   const { profile } = useSupabaseAuth();
+  const [toDelete, setToDelete] = useState<Especialidade | null>(null);
 
   const especialidadesQuery = useQuery({
     queryKey: ['especialidades', profile?.id ?? null, profile?.clinica_id ?? null],
@@ -343,10 +346,13 @@ export function EspecialidadesTab() {
     toast.success('Especialidade atualizada');
   };
 
-  const removerEspecialidade = async (esp: Especialidade) => {
+  const pedirRemocaoEspecialidade = (esp: Especialidade) => {
     if (especialidadesQuery.isLoading || especialidadesQuery.isError) return toast.error('Carregue as especialidades antes de excluir.');
     if (!profile?.clinica_id || esp.clinica_id !== profile.clinica_id) return toast.info('As especialidades padrão são compartilhadas e não podem ser excluídas.');
-    if (!window.confirm(`Excluir a especialidade "${esp.nome}"?`)) return;
+    setToDelete(esp);
+  };
+
+  const removerEspecialidade = async (esp: Especialidade) => {
     const { data, error } = await (supabase as any).from('especialidades_destino').delete()
       .eq('id', esp.id).eq('clinica_id', profile.clinica_id).select('id');
     if (error) return toast.error('Não foi possível excluir', { description: error.message });
@@ -382,7 +388,7 @@ export function EspecialidadesTab() {
                   </Badge>
                   {esp.clinica_id === profile?.clinica_id && <>
                     <Button size="sm" variant="outline" aria-label={`Editar ${esp.nome}`} onClick={() => void editarEspecialidade(esp)}><Edit className="h-3 w-3" /></Button>
-                    <Button size="sm" variant="outline" className="text-red-600" aria-label={`Excluir ${esp.nome}`} onClick={() => void removerEspecialidade(esp)}><Trash2 className="h-3 w-3" /></Button>
+                    <Button size="sm" variant="outline" className="text-red-600" aria-label={`Excluir ${esp.nome}`} onClick={() => pedirRemocaoEspecialidade(esp)}><Trash2 className="h-3 w-3" /></Button>
                   </>}
                 </div>
               </div>
@@ -390,6 +396,12 @@ export function EspecialidadesTab() {
           </div>}
         </CardContent>
       </Card>
+      <DeleteConfirmDialog
+        open={toDelete !== null}
+        onOpenChange={(open) => { if (!open) setToDelete(null); }}
+        itemName={toDelete?.nome ?? ''}
+        onConfirm={() => { if (toDelete) void removerEspecialidade(toDelete); setToDelete(null); }}
+      />
     </motion.div>
   );
 }
@@ -722,10 +734,11 @@ export function LGPDAvancadoTab() {
 export default function ConfiguracoesAvancadas() {
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Configurações Avançadas</h1>
-        <p className="text-muted-foreground mt-2">Gerenciamento completo dos serviços e conformidade</p>
-      </div>
+      <PageHeader
+        title="Configurações Avançadas"
+        description="Gerencie integrações, especialidades, documentos e conformidade da clínica."
+        icon={<Settings />}
+      />
 
       <Tabs defaultValue="status" className="w-full">
         <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 h-auto">

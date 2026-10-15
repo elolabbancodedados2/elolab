@@ -1,13 +1,9 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { corsPadrao } from '../_shared/cors.ts';
 
-// Atribuído em cada request (reflete a origem permitida). Helpers
-// top-level (json/reply) capturam esta variável por closure.
-let headers: Record<string, string> = {};
-
-const reply=(body:unknown,status=200)=>new Response(JSON.stringify(body),{status,headers})
 Deno.serve(async(req)=>{
-  headers = { ...corsPadrao(req), 'Content-Type': 'application/json' };
+ const headers = { ...corsPadrao(req), 'Content-Type': 'application/json' };
+ const reply=(body:unknown,status=200)=>new Response(JSON.stringify(body),{status,headers});
  if(req.method==='OPTIONS')return new Response('ok',{headers})
  try{
   const admin=createClient(Deno.env.get('SUPABASE_URL')!,Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)

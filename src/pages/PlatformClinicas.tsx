@@ -1,4 +1,5 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
+import { formatDateInTimeZone } from '@/lib/datePreference';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
@@ -61,7 +62,7 @@ const STATUS_LABELS: Record<string, string> = {
 function dataFormatada(value: string | null) {
   if (!value) return '—';
   const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? 'Data indisponível' : parsed.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+  return Number.isNaN(parsed.getTime()) ? 'Data indisponível' : formatDateInTimeZone(parsed);
 }
 
 function dataHoraFormatada(value: string | null) {
@@ -243,7 +244,7 @@ export default function PlatformClinicas() {
 
   return (
     <div className="space-y-6 p-6">
-      <div className="flex flex-col items-start justify-between gap-4 rounded-2xl border border-[#dce9f6] bg-gradient-to-r from-[#f3f8ff] via-white to-[#f3fbfa] p-5 sm:flex-row sm:p-6">
+      <div className="flex flex-col items-start justify-between gap-4 rounded-2xl border border-[#e6e2f7] bg-gradient-to-r from-[#f6f4ff] via-white to-[#f0edff] p-5 sm:flex-row sm:p-6">
         <div>
           <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
             <Crown className="h-7 w-7 text-primary" /> Plataforma — Clínicas

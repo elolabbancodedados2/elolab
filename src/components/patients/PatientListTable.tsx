@@ -1,7 +1,8 @@
 import { memo } from 'react';
 import { motion } from 'framer-motion';
-import { Eye, Edit, Trash2, Link, Phone, Mail, Users, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Eye, Edit, Trash2, Link, Phone, Mail, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { ActionableEmptyState } from '@/components/ActionableEmptyState';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { PatientPhoto, AllergyAlert } from '@/components/clinical';
@@ -17,6 +18,7 @@ interface PatientListTableProps {
   hasError?: boolean;
   onPaginaChange: (pagina: number) => void;
   onLimparFiltros: () => void;
+  onCreate?: () => void;
   onView: (paciente: any) => void;
   onEdit: (paciente: any) => void;
   onDelete: (paciente: any) => void;
@@ -34,29 +36,43 @@ interface PatientListTableProps {
 }
 
 export const PatientListTable = memo(function PatientListTable({
-  pacientes, totalPacientes, totalPacientesCarregado, hasFiltrosAtivos = false, onLimparFiltros, onView, onEdit, onDelete, onGeneratePortalLink,
+  pacientes, totalPacientes, totalPacientesCarregado, hasFiltrosAtivos = false, onLimparFiltros, onCreate, onView, onEdit, onDelete, onGeneratePortalLink,
   podeGerarLinkPortal = true, podeExcluirPaciente = false, podeEditarPaciente = true, getConvenioNome, calcularIdade,
   pagina, hasMore, isLoading = false, hasError = false, onPaginaChange,
 }: PatientListTableProps) {
   const tamanhoPagina = 50;
   const paginaAtual = pagina;
   const pacientesVisiveis = pacientes;
+  const vazioPorBusca = totalPacientes !== 0;
+  const estadoVazio = !totalPacientesCarregado
+    ? { title: 'Verificando o cadastro de pacientes', description: 'A lista será atualizada assim que a consulta terminar.' }
+    : totalPacientes === 0
+      ? { title: 'Ainda não há pacientes cadastrados', description: 'Cadastre o primeiro paciente para iniciar o atendimento nesta clínica.' }
+      : totalPacientes === null
+        ? { title: 'Não foi possível confirmar o cadastro', description: 'Os indicadores estão indisponíveis. A lista permanece preservada.' }
+        : { title: 'Nenhum paciente corresponde à busca e aos filtros atuais', description: 'Tente ajustar os termos ou remova os filtros para voltar a ver os pacientes.' };
+  const renderEmptyState = () => (
+    !totalPacientesCarregado || totalPacientes === null ? (
+      <div role="status" className="px-4 py-10 text-center text-sm text-muted-foreground">
+        <p className="font-medium">{estadoVazio.title}</p>
+        <p className="mt-1">{estadoVazio.description}</p>
+      </div>
+    ) : (
+      <ActionableEmptyState
+        title={estadoVazio.title}
+        description={estadoVazio.description}
+        actionLabel={hasFiltrosAtivos && vazioPorBusca ? 'Limpar busca e filtros' : totalPacientes === 0 && onCreate ? 'Novo paciente' : undefined}
+        onAction={hasFiltrosAtivos && vazioPorBusca ? onLimparFiltros : totalPacientes === 0 ? onCreate : undefined}
+        className="px-4 py-8"
+      />
+    )
+  );
 
   return (
     <div>
-      <div className="divide-y sm:hidden">
+      <div className="divide-y lg:hidden">
         {isLoading ? <div className="px-4 py-12 text-center text-muted-foreground">Carregando pacientes…</div> : hasError ? <div className="px-4 py-12 text-center text-destructive">Não foi possível carregar esta página.</div> : pacientes.length === 0 ? (
-          <div className="px-4 py-12 text-center text-muted-foreground">
-            <Users className="mx-auto mb-2 h-8 w-8 opacity-40" />
-            <p>{!totalPacientesCarregado
-              ? 'Verificando o cadastro de pacientes…'
-              : totalPacientes === 0
-                ? 'Ainda não há pacientes cadastrados'
-                : totalPacientes === null
-                  ? 'Não foi possível confirmar se há pacientes cadastrados. Atualize os indicadores e tente novamente.'
-                  : 'Nenhum paciente corresponde à busca e aos filtros atuais'}</p>
-            {hasFiltrosAtivos && totalPacientes !== 0 && <Button variant="link" onClick={onLimparFiltros} className="mt-2 h-11">Limpar busca e filtros</Button>}
-          </div>
+          renderEmptyState()
         ) : pacientesVisiveis.map((paciente) => {
           const idade = calcularIdade(paciente.data_nascimento);
           return (
@@ -93,8 +109,8 @@ export const PatientListTable = memo(function PatientListTable({
           );
         })}
       </div>
-      <div className="hidden overflow-x-auto sm:block">
-      <Table>
+      <div className="hidden overflow-x-auto lg:block">
+      <Table className="[&_th]:px-2 [&_td]:px-2">
         <TableHeader>
           <TableRow>
             <TableHead>Paciente</TableHead>
@@ -112,17 +128,7 @@ export const PatientListTable = memo(function PatientListTable({
             <TableRow><TableCell colSpan={6} className="py-12 text-center text-destructive">Não foi possível carregar esta página.</TableCell></TableRow>
           ) : pacientes.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={6} className="text-center py-12 text-muted-foreground">
-                <Users className="h-8 w-8 mx-auto mb-2 opacity-40" />
-                <p>{!totalPacientesCarregado
-                  ? 'Verificando o cadastro de pacientes…'
-                  : totalPacientes === 0
-                    ? 'Ainda não há pacientes cadastrados'
-                    : totalPacientes === null
-                      ? 'Não foi possível confirmar se há pacientes cadastrados. Atualize os indicadores e tente novamente.'
-                      : 'Nenhum paciente corresponde à busca e aos filtros atuais'}</p>
-                {hasFiltrosAtivos && totalPacientes !== 0 && <Button variant="link" onClick={onLimparFiltros} className="mt-2 h-11">Limpar busca e filtros</Button>}
-              </TableCell>
+              <TableCell colSpan={6} className="py-3">{renderEmptyState()}</TableCell>
             </TableRow>
           ) : (
             pacientesVisiveis.map((paciente) => {
@@ -154,7 +160,7 @@ export const PatientListTable = memo(function PatientListTable({
                       </div>
                     </div>
                   </TableCell>
-                  <TableCell className="hidden md:table-cell text-sm">{paciente.cpf || '—'}</TableCell>
+                  <TableCell className="hidden whitespace-nowrap text-sm md:table-cell">{paciente.cpf || '—'}</TableCell>
                   <TableCell className="hidden sm:table-cell">
                     <div className="space-y-0.5 text-sm">
                       {paciente.telefone && (
@@ -174,7 +180,7 @@ export const PatientListTable = memo(function PatientListTable({
                       {getConvenioNome(paciente.convenio_id)}
                     </Badge>
                   </TableCell>
-                  <TableCell className="hidden lg:table-cell">
+                  <TableCell className="hidden whitespace-nowrap lg:table-cell">
                     <span className="text-sm tabular-nums">
                       {paciente.data_nascimento
                         ? Number.isFinite(idade) && idade >= 0 ? `${idade} anos` : <span className="text-muted-foreground">Data inválida</span>

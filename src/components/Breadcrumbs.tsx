@@ -1,64 +1,6 @@
-import { menuGroups } from '@/config/sidebarMenu';
 import { useLocation, Link } from 'react-router-dom';
 import { ChevronRight, Home } from 'lucide-react';
-
-const routeLabels: Record<string, string> = {
-  dashboard: 'Dashboard',
-  pacientes: 'Pacientes',
-  agenda: 'Agenda',
-  fila: 'Fila de Atendimento',
-  prontuarios: 'Prontuários',
-  prescricoes: 'Prescrições',
-  atestados: 'Atestados',
-  medicos: 'Médicos',
-  funcionarios: 'Funcionários',
-  exames: 'Exames',
-  triagem: 'Triagem',
-  salas: 'Salas',
-  'lista-espera': 'Lista de Espera',
-  templates: 'Templates',
-  encaminhamentos: 'Encaminhamentos',
-  financeiro: 'Financeiro',
-  'contas-receber': 'Contas a Receber',
-  'contas-pagar': 'Contas a Pagar',
-  'fluxo-caixa': 'Fluxo de Caixa',
-  pagamentos: 'Pagamentos',
-  relatorios: 'Relatórios',
-  estoque: 'Estoque',
-  convenios: 'Convênios',
-  usuarios: 'Usuários',
-  configuracoes: 'Configurações',
-  automacoes: 'Automações',
-  'agente-ia': 'Agente IA',
-  analytics: 'Analytics',
-  planos: 'Planos',
-  laboratorio: 'Laboratório',
-  'precos-exames': 'Preços de Exames',
-  tarefas: 'Tarefas',
-  'meu-historico': 'Meu histórico',
-  indicadores: 'Indicadores de produtividade',
-  notificacoes: 'Notificações',
-};
-
-// Rótulo pelo caminho completo, vindo do menu lateral: assim rotas novas não
-// aparecem como slug cru ("recepcao", "gestao-fluxo") no topo da tela.
-const rotulosDoMenu: Record<string, string> = Object.fromEntries(
-  menuGroups.flatMap((g) => g.items.map((i) => [i.href, i.label] as const)),
-);
-const rotulosExtras: Record<string, string> = {
-  '/preferencias': 'Minhas preferências',
-  '/seguranca': 'Segurança da conta',
-  '/feedback': 'Enviar feedback',
-  '/treinamento': 'Treinamento',
-  '/vitais-graficos': 'Sinais vitais',
-  '/analise-preditiva': 'Análise preditiva',
-  '/admin': 'Plataforma',
-};
-
-function rotuloDaRota(path: string, segmento: string): string {
-  return rotulosExtras[path] || rotulosDoMenu[path] || routeLabels[segmento]
-    || segmento.replace(/-/g, ' ').replace(/^./, (c) => c.toUpperCase());
-}
+import { getRouteLabel } from '@/config/routeLabels';
 
 export function Breadcrumbs() {
   const location = useLocation();
@@ -69,22 +11,22 @@ export function Breadcrumbs() {
   }
 
   return (
-    <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-sm text-muted-foreground mb-4">
-      <Link to="/dashboard" aria-label="Voltar ao painel" className="flex items-center gap-1 hover:text-foreground transition-colors">
+    <nav aria-label="Breadcrumb" className="mb-4 flex items-center gap-1.5 text-sm text-muted-foreground">
+      <Link to="/dashboard" aria-label="Voltar ao painel" className="flex items-center gap-1 transition-colors hover:text-foreground">
         <Home className="h-3.5 w-3.5" />
       </Link>
-      {segments.map((segment, i) => {
-        const path = '/' + segments.slice(0, i + 1).join('/');
-        const label = rotuloDaRota(path, segment);
-        const isLast = i === segments.length - 1;
+      {segments.map((segment, index) => {
+        const path = `/${segments.slice(0, index + 1).join('/')}`;
+        const label = getRouteLabel(path);
+        const isLast = index === segments.length - 1;
 
         return (
           <span key={path} className="flex items-center gap-1.5">
             <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/50" />
             {isLast ? (
-              <span className="font-medium text-foreground">{label}</span>
+              <span aria-current="page" className="font-medium text-foreground">{label}</span>
             ) : (
-              <Link to={path} className="hover:text-foreground transition-colors">{label}</Link>
+              <Link to={path} className="transition-colors hover:text-foreground">{label}</Link>
             )}
           </span>
         );

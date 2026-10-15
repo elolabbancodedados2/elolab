@@ -20,4 +20,13 @@ describe('escopo da Edge Function Memed', () => {
     expect(/service\.rpc\('registrar_prescricao_memed_local'/i.test(source)).toBe(true);
     expect(/from\('prescricoes'\)\.select\('id'\)[\s\S]*?maybeSingle\(\)/i.test(source)).toBe(false);
   });
+
+  it('requires step-up MFA before preparing or recording a prescription', () => {
+    const authCheck = source.indexOf("if (!user) return json({ error: 'Não autenticado.' }, 401);");
+    const mfaCheck = source.indexOf('mfaRequiredResponse(req, user, corsHeaders)');
+    const clinicLookup = source.indexOf("from('profiles').select('clinica_id')");
+    expect(authCheck).toBeGreaterThan(-1);
+    expect(mfaCheck).toBeGreaterThan(authCheck);
+    expect(mfaCheck).toBeLessThan(clinicLookup);
+  });
 });

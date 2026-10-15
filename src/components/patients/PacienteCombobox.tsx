@@ -5,6 +5,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { cn } from '@/lib/utils';
 import { useBuscaPacientes, usePacienteResumo, type PacienteResumo } from '@/hooks/useBuscaPacientes';
+import { formatDate } from '@/lib/formatters';
 
 interface Props {
   value: string | null | undefined;
@@ -79,7 +80,7 @@ export function PacienteCombobox({ value, onChange, placeholder = 'Nome, CPF ou 
                     <div className="min-w-0">
                       <div className="truncate font-medium">{p.nome_social || p.nome}</div>
                       <div className="truncate text-xs text-muted-foreground">
-                        {[p.cpf && `CPF ${p.cpf}`, p.telefone, p.data_nascimento && new Date(`${p.data_nascimento}T12:00:00`).toLocaleDateString('pt-BR')]
+                        {[p.cpf && `CPF ${p.cpf}`, p.telefone, p.data_nascimento && formatDate(p.data_nascimento, 'short')]
                           .filter(Boolean).join(' · ')}
                       </div>
                     </div>

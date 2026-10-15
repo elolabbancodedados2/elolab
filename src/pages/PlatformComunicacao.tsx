@@ -160,17 +160,17 @@ export default function PlatformComunicacao() {
 
   return (
     <div className="space-y-6 pb-8">
-      <header className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-[#DCEAF5] bg-gradient-to-r from-[#F1F7FF] via-white to-[#EBFBFD] p-5 sm:p-6">
+      <header className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-[#E6E2F7] bg-gradient-to-r from-[#F4F2FF] via-white to-[#f0edff] p-5 sm:p-6">
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-bold"><Megaphone className="h-6 w-6 text-primary" /> Comunicação global</h1>
           <p className="mt-1 text-sm text-muted-foreground">Envie avisos para todas as clínicas, uma clínica específica ou clientes de um plano.</p>
         </div>
-        <Button variant="outline" className="min-h-11 border-[#CFE0F0] bg-white text-[#0C1F54] hover:bg-[#F7FBFF]" onClick={() => { void clinics.refetch(); void plans.refetch(); void announcements.refetch(); }} disabled={updatingOptions}>
+        <Button variant="outline" className="min-h-11 border-[#DCD7F0] bg-white text-[#17122B] hover:bg-[#F9F8FF]" onClick={() => { void clinics.refetch(); void plans.refetch(); void announcements.refetch(); }} disabled={updatingOptions}>
           <RefreshCw className={`mr-2 h-4 w-4 ${updatingOptions ? 'animate-spin' : ''}`} />Atualizar dados
         </Button>
       </header>
 
-      <Card className="rounded-2xl border-[#E1ECF5] shadow-sm">
+      <Card className="rounded-2xl border-[#E9E6F5] shadow-sm">
         <CardHeader>
           <CardTitle>Novo comunicado</CardTitle>
           <CardDescription>Defina o público e o período de exibição. Comunicados críticos devem informar impacto e orientação com clareza.</CardDescription>
@@ -235,7 +235,7 @@ export default function PlatformComunicacao() {
         </CardContent>
       </Card>
 
-      <Card className="rounded-2xl border-[#E1ECF5] shadow-sm">
+      <Card className="rounded-2xl border-[#E9E6F5] shadow-sm">
         <CardHeader>
           <CardTitle>Histórico de comunicados</CardTitle>
           <CardDescription>Até os 100 comunicados mais recentes.</CardDescription>
@@ -299,7 +299,7 @@ export default function PlatformComunicacao() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={endAnnouncement.isPending}>Manter publicado</AlertDialogCancel>
-            <AlertDialogAction onClick={(event) => { event.preventDefault(); if (announcementToEnd) endAnnouncement.mutate(announcementToEnd); }} disabled={endAnnouncement.isPending}>
+            <AlertDialogAction onClick={(event) => { event.preventDefault(); if (announcementToEnd) endAnnouncement.mutate(announcementToEnd); }} disabled={endAnnouncement.isPending} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
               {endAnnouncement.isPending ? 'Encerrando…' : 'Encerrar agora'}
             </AlertDialogAction>
           </AlertDialogFooter>

@@ -1,5 +1,6 @@
+import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { useState } from 'react';
-import { format } from 'date-fns';
+
 import { Shield, CheckCircle, XCircle, FileText, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';

@@ -2,6 +2,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { checarRateLimit, clientIp } from '../_shared/rateLimit.ts'
 import { corsPadrao } from '../_shared/cors.ts';
 import { sendBrandedBrevoRequest } from '../_shared/brevoEmail.ts';
+import { legacyPublicCheckoutResponse } from '../_shared/legacyPublicCheckout.ts'
 
 // Atribuído em cada request (reflete a origem permitida). Helpers
 // top-level (json/reply) capturam esta variável por closure.
@@ -21,6 +22,10 @@ Deno.serve(async (req) => {
     })
   }
 
+  // Landing and signup purchases now continue through the authenticated,
+  // transparent plan checkout. Retire direct calls to the hosted flow.
+  return legacyPublicCheckoutResponse(corsHeaders)
+
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -35,6 +40,7 @@ Deno.serve(async (req) => {
       chave: `checkout:${clientIp(req)}`,
       limite: 10,
       janelaSegundos: 60,
+      failClosed: true,
     })
     if (limitado) {
       return new Response(
@@ -50,7 +56,7 @@ Deno.serve(async (req) => {
     const normalizedEmail = typeof email === 'string' ? email.trim().toLowerCase().slice(0, 254) : ''
     const normalizedPhone = typeof telefone === 'string' ? telefone.trim().slice(0, 30) : null
     const normalizedClinic = typeof clinica === 'string' ? clinica.trim().slice(0, 160) : null
-    const safeNameForEmail = normalizedName.replace(/[&<>"']/g, (char) => ({
+    const safeNameForEmail = normalizedName.replace(/[&<>"']/g, (char: string) => ({
       '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
     })[char] || char)
 
@@ -241,9 +247,7 @@ Deno.serve(async (req) => {
         }
       } catch (mpErr) {
         console.error('Erro Mercado Pago:', mpErr)
-        checkoutError = mpErr instanceof Error
-          ? `Erro ao conectar com Mercado Pago: ${mpErr.message}`
-          : 'Erro ao conectar com Mercado Pago'
+        checkoutError = `Erro ao conectar com Mercado Pago: ${String(mpErr)}`
       }
     }
 
@@ -305,9 +309,7 @@ Deno.serve(async (req) => {
         }
       } catch (emailErr) {
         console.error('Erro ao enviar email:', emailErr)
-        emailError = emailErr instanceof Error
-          ? `Erro ao enviar email: ${emailErr.message}`
-          : 'Erro ao enviar email'
+        emailError = `Erro ao enviar email: ${String(emailErr)}`
       }
     }
 

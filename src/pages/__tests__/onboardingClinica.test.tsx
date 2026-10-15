@@ -10,11 +10,13 @@ const mocks = vi.hoisted(() => ({
     isLoading: false,
     refreshProfile: vi.fn(),
   },
+  plan: { hasFeature: vi.fn(() => true), isLoading: false },
 }));
 
 vi.mock('@tanstack/react-query', () => ({ useQuery: mocks.useQuery }));
 vi.mock('@/contexts/SupabaseAuthContext', () => ({ useSupabaseAuth: () => mocks.auth }));
 vi.mock('@/integrations/supabase/client', () => ({ supabase: { rpc: vi.fn() } }));
+vi.mock('@/hooks/useSubscriptionPlan', () => ({ useUserPlan: () => mocks.plan }));
 
 import OnboardingClinica from '@/pages/OnboardingClinica';
 
@@ -26,6 +28,8 @@ describe('OnboardingClinica', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.auth.profile = { id: 'user-1', clinica_id: 'clinica-1' };
+    mocks.plan.hasFeature.mockReturnValue(true);
+    mocks.plan.isLoading = false;
   });
 
   it('mostra o erro e permite tentar novamente quando a consulta falha', () => {
@@ -77,8 +81,8 @@ describe('OnboardingClinica', () => {
     mocks.useQuery.mockReturnValue({
       data: {
         completed_steps: 1,
-        total_steps: 5,
-        progress: 20,
+        total_steps: 4,
+        progress: 25,
         completed_at: null,
         steps: [
           { key: 'team', complete: true, count: 1 },
@@ -96,11 +100,42 @@ describe('OnboardingClinica', () => {
 
     renderPage();
 
-    expect(screen.getByText('1 de 5 etapas concluídas')).toBeVisible();
-    expect(screen.getByText('1 pessoa ativa com função de acesso')).toBeVisible();
+    expect(screen.getByText('1 de 4 etapas essenciais concluídas')).toBeVisible();
+    expect(screen.getByText('Opcional')).toBeVisible();
+    expect(screen.getByText('1 usuário ativo com função de acesso')).toBeVisible();
+    expect(screen.getByRole('heading', { name: /Equipe e acessos/ })).toBeVisible();
+    expect(screen.getByText(/A conta de administrador já garante acesso à clínica/)).toBeVisible();
+    expect(screen.getByRole('link', { name: /Gerenciar equipe/ })).toHaveAttribute('href', '/equipe?aba=funcionarios');
+    expect(screen.queryByText(/Convide ao menos uma pessoa/)).not.toBeInTheDocument();
     expect(screen.getByText('1 profissional com horários disponíveis')).toBeVisible();
     expect(screen.getByRole('link', { name: /Cadastrar serviço/ })).toHaveAttribute('href', '/precos-servicos?tab=tipos');
     expect(screen.getByRole('link', { name: /Conectar WhatsApp/ })).toHaveAttribute('href', '/agente-ia');
-    expect(screen.getByRole('link', { name: /Configurar disponibilidade dos profissionais/ })).toHaveAttribute('href', '/equipe');
+    expect(screen.getByRole('link', { name: /Configurar disponibilidade/ })).toHaveAttribute('href', '/equipe?aba=medicos');
+    expect(screen.getByRole('link', { name: /Configurar horário de funcionamento/ })).toHaveAttribute('href', '/configuracoes?tab=horarios');
+    expect(screen.getByText(/aceite o convite com esta mesma conta/)).toBeVisible();
+  });
+
+  it('encaminha clientes Pro para os planos em vez de um recurso exclusivo do Ultra', () => {
+    mocks.plan.hasFeature.mockReturnValue(false);
+    mocks.useQuery.mockReturnValue({
+      data: {
+        completed_steps: 1,
+        total_steps: 4,
+        progress: 25,
+        completed_at: null,
+        steps: [{ key: 'whatsapp', complete: false, count: 0 }],
+      },
+      isError: false,
+      isLoading: false,
+      isFetching: false,
+      refetch: vi.fn(),
+    });
+
+    renderPage();
+
+    expect(screen.getByText('Atendente de IA no WhatsApp')).toBeVisible();
+    expect(screen.getByText(/Disponível no EloLab Ultra/)).toBeVisible();
+    expect(screen.getByRole('link', { name: /Ver planos/ })).toHaveAttribute('href', '/planos');
+    expect(screen.queryByRole('link', { name: /Conectar WhatsApp/ })).not.toBeInTheDocument();
   });
 });

@@ -247,7 +247,7 @@ export default function PlatformBackups() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={restoreBusy}>Voltar</AlertDialogCancel>
-            <AlertDialogAction onClick={event => { event.preventDefault(); void decidir(); }} disabled={restoreBusy}>
+            <AlertDialogAction onClick={event => { event.preventDefault(); void decidir(); }} disabled={restoreBusy} className={restoreDecision?.approve ? undefined : 'bg-destructive text-destructive-foreground hover:bg-destructive/90'}>
               {restoreBusy ? 'Salvando…' : restoreDecision?.approve ? 'Confirmar aprovação' : 'Confirmar rejeição'}
             </AlertDialogAction>
           </AlertDialogFooter>

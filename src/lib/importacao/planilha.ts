@@ -142,7 +142,7 @@ export async function lerArquivo(arquivo: File): Promise<Planilha> {
   }
   if (nome.endsWith('.csv') || nome.endsWith('.txt')) {
     // Exportação de sistema antigo costuma vir em Windows-1252: lido como
-    // UTF-8, "José" chega como "JosÃ©". O caractere de substituição (U+FFFD)
+    // UTF-8, um nome acentuado vira texto corrompido. O caractere de substituição (U+FFFD)
     // denuncia a leitura errada, e aí relemos com a codificação certa.
     const bytes = new Uint8Array(await arquivo.arrayBuffer());
     let texto = new TextDecoder('utf-8').decode(bytes);

@@ -1,3 +1,4 @@
+import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -13,7 +14,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { cn } from '@/lib/utils';
 import { useChatInterno, type ChatConversa, type ChatUsuario, type ChatMensagem } from '@/hooks/useChatInterno';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
-import { format, isToday, isYesterday } from 'date-fns';
+import { isToday, isYesterday } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { toast } from 'sonner';
 
@@ -62,8 +63,9 @@ function ListaConversas({
   const idsComConversa = new Set(conversasComUsuarios.map(c => c.outro_usuario?.id).filter(Boolean));
   const semConversa = usuarios.filter(u => !idsComConversa.has(u.id));
 
-  const filtrados = search
-    ? usuarios.filter(u => u.nome.toLowerCase().includes(search.toLowerCase()))
+  const searchTerm = search.trim().toLocaleLowerCase('pt-BR');
+  const filtrados = searchTerm
+    ? usuarios.filter(u => `${u.nome} ${u.email}`.toLocaleLowerCase('pt-BR').includes(searchTerm))
     : [];
 
   return (
@@ -72,12 +74,17 @@ function ListaConversas({
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
           <Input
-            className="pl-8 h-9 text-sm rounded-xl bg-muted/50 border-0 focus-visible:ring-1"
+            className={cn('pl-8 h-10 text-sm rounded-xl bg-muted/50 border-0 focus-visible:ring-1', search && 'pr-10')}
             aria-label="Buscar conversas e equipe"
             placeholder="Buscar usuário..."
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
+          {searchTerm && (
+            <Button type="button" variant="ghost" size="icon" aria-label="Limpar busca" onClick={() => setSearch('')} className="absolute right-1 top-1/2 h-8 w-8 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+              <X className="h-4 w-4" />
+            </Button>
+          )}
         </div>
       </div>
       <ScrollArea className="flex-1">
@@ -96,7 +103,7 @@ function ListaConversas({
           )}
 
           {/* Normal view: conversations then other users */}
-          {!search && (
+          {!searchTerm && (
             <>
               {conversasComUsuarios.length > 0 && (
                 <>
@@ -463,7 +470,7 @@ function ViewConversa({
             value={texto}
             onChange={e => setTexto(e.target.value)}
             onKeyDown={e => {
-              if (e.key === 'Enter' && !e.shiftKey) {
+              if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
                 e.preventDefault();
                 handleEnviar();
               }
@@ -522,14 +529,16 @@ export function ChatPanel() {
   return (
     <>
       {/* Floating Button */}
-      <div className="fixed bottom-6 right-6 z-50 hidden lg:block">
+      <div className="fixed bottom-6 right-6 z-50 hidden lg:block xl:bottom-auto xl:right-[26rem] xl:top-3">
         <Button
           size="icon"
           className={cn(
-            'h-14 w-14 rounded-full shadow-xl relative transition-all duration-300',
+            'h-14 w-14 rounded-full shadow-xl relative transition-all duration-300 xl:h-11 xl:w-11',
             aberto && 'rotate-0',
-            totalNaoLidas > 0 && !aberto && 'animate-bounce',
+            totalNaoLidas > 0 && !aberto && 'ring-4 ring-primary/15',
           )}
+          aria-label={aberto ? 'Fechar chat interno' : `Abrir chat interno${totalNaoLidas ? `, ${totalNaoLidas} mensagens não lidas` : ''}`}
+          aria-expanded={aberto}
           onClick={() => {
             setAberto(o => !o);
             if (aberto) {
@@ -544,9 +553,7 @@ export function ChatPanel() {
                 <X className="h-5 w-5" />
               </motion.div>
             ) : (
-              <motion.div key="msg" initial={{ rotate: 90, opacity: 0 }} animate={{ rotate: 0, opacity: 1 }} exit={{ rotate: -90, opacity: 0 }} transition={{ duration: 0.15 }}>
-                <MessageCircle className="h-5 w-5" />
-              </motion.div>
+              <MessageCircle className="h-5 w-5" />
             )}
           </AnimatePresence>
           {totalNaoLidas > 0 && !aberto && (

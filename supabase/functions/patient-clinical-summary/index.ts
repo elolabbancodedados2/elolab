@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsPadrao } from '../_shared/cors.ts';
+import { createNvidiaChatCompletion, DEFAULT_NVIDIA_CHAT_MODEL } from '../_shared/nvidia.ts';
 
 // Atribuído em cada request (reflete a origem permitida). Helpers
 // top-level (json/reply) capturam esta variável por closure.
@@ -42,14 +43,14 @@ Deno.serve(async (req) => {
       });
     }
 
-    const supabase = createClient(
+    const serviceClient = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
     const [{ data: profile }, { data: roles }] = await Promise.all([
-      supabase.from("profiles").select("clinica_id").eq("id", user.id).maybeSingle(),
-      supabase.from("user_roles").select("role").eq("user_id", user.id),
+      serviceClient.from("profiles").select("clinica_id").eq("id", user.id).maybeSingle(),
+      serviceClient.from("user_roles").select("role").eq("user_id", user.id),
     ]);
     const clinicaId = (profile as { clinica_id?: string | null } | null)?.clinica_id;
     const podeAcessar = (roles || []).some((role: { role: string }) => ["admin", "medico"].includes(role.role));
@@ -60,18 +61,43 @@ Deno.serve(async (req) => {
     }
 
     // Coletar dados clínicos
+    const { error: auditError } = await authClient.rpc("registrar_visualizacao_historico_paciente", {
+      p_paciente_id: paciente_id,
+    });
+    if (auditError) {
+      return new Response(JSON.stringify({ error: "Leitura do histórico clínico não autorizada" }), {
+        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Use o JWT do usuário nas consultas clínicas para que a RLS restrinja
+    // rascunhos ao profissional responsÃ¡vel, inclusive nesta Edge Function.
     const [pac, pront, presc, exam, atest, comorb] = await Promise.all([
-      supabase.from("pacientes").select("nome, data_nascimento, sexo, alergias, observacoes").eq("id", paciente_id).eq("clinica_id", clinicaId).maybeSingle(),
-      supabase.from("prontuarios").select("data, queixa_principal, hipotese_diagnostica, conduta").eq("paciente_id", paciente_id).eq("clinica_id", clinicaId).order("data", { ascending: false }).limit(20),
-      supabase.from("prescricoes").select("data_emissao, medicamento, dosagem, posologia").eq("paciente_id", paciente_id).eq("clinica_id", clinicaId).order("data_emissao", { ascending: false }).limit(20),
-      supabase.from("exames").select("data_solicitacao, tipo_exame, resultado, status").eq("paciente_id", paciente_id).eq("clinica_id", clinicaId).order("data_solicitacao", { ascending: false }).limit(20),
-      supabase.from("atestados").select("data_emissao, motivo, dias").eq("paciente_id", paciente_id).eq("clinica_id", clinicaId).order("data_emissao", { ascending: false }).limit(10),
-      (supabase as any).from("paciente_comorbidades").select("codigo_cid, descricao, ativo").eq("paciente_id", paciente_id).eq("clinica_id", clinicaId),
+      authClient.from("pacientes").select("nome, data_nascimento, sexo, alergias, observacoes").eq("id", paciente_id).eq("clinica_id", clinicaId).maybeSingle(),
+      authClient.from("prontuarios").select("data, queixa_principal, hipotese_diagnostica, conduta").eq("paciente_id", paciente_id).eq("clinica_id", clinicaId).order("data", { ascending: false }).limit(20),
+      authClient.from("prescricoes").select("data_emissao, medicamento, dosagem, posologia").eq("paciente_id", paciente_id).eq("clinica_id", clinicaId).order("data_emissao", { ascending: false }).limit(20),
+      authClient.from("exames").select("data_solicitacao, tipo_exame, resultado, status").eq("paciente_id", paciente_id).eq("clinica_id", clinicaId).order("data_solicitacao", { ascending: false }).limit(20),
+      authClient.from("atestados").select("data_emissao, motivo, dias").eq("paciente_id", paciente_id).eq("clinica_id", clinicaId).order("data_emissao", { ascending: false }).limit(10),
+      (authClient as any).from("paciente_comorbidades").select("codigo_cid, descricao, ativo").eq("paciente_id", paciente_id).eq("clinica_id", clinicaId),
     ]);
+
+    if (pac.error || pront.error || presc.error || exam.error || atest.error || comorb.error) {
+      return new Response(JSON.stringify({ error: "Não foi possível carregar os dados autorizados do paciente" }), {
+        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     if (!pac.data) {
       return new Response(JSON.stringify({ error: "Paciente não encontrado" }), {
         status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // A RPC registra a leitura em prontuários existentes. Sem ao menos um
+    // registro auditável, não envie outros dados clínicos ao provedor de IA.
+    if (!pront.data?.length) {
+      return new Response(JSON.stringify({ error: "Não há histórico auditável disponível para gerar o resumo" }), {
+        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
@@ -84,36 +110,23 @@ Deno.serve(async (req) => {
       comorbidades: comorb.data,
     };
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY não configurada");
+    const nvidiaApiKey = Deno.env.get("NVIDIA_API_KEY");
+    if (!nvidiaApiKey) throw new Error("NVIDIA_API_KEY não configurada");
 
-    const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          {
-            role: "system",
-            content:
-              "Você é um assistente médico. Gere um resumo clínico estruturado em pt-BR a partir dos dados fornecidos. Use seções: 1) Identificação, 2) Comorbidades e alergias, 3) Histórico recente de consultas, 4) Medicações em uso, 5) Exames relevantes, 6) Pontos de atenção / recomendações. Seja objetivo, em markdown, sem inventar dados.",
-          },
-          { role: "user", content: "Dados do paciente:\n" + JSON.stringify(ctx, null, 2) },
-        ],
-      }),
+    const data = await createNvidiaChatCompletion({
+      apiKey: nvidiaApiKey,
+      model: Deno.env.get("NVIDIA_MEDICAL_MODEL") || Deno.env.get("NVIDIA_CHAT_MODEL") || DEFAULT_NVIDIA_CHAT_MODEL,
+      messages: [
+        {
+          role: "system",
+          content:
+            "Você é um assistente médico. Gere um resumo clínico estruturado em pt-BR a partir dos dados fornecidos. Use seções: 1) Identificação, 2) Comorbidades e alergias, 3) Histórico recente de consultas, 4) Medicações em uso, 5) Exames relevantes, 6) Pontos de atenção / recomendações. Seja objetivo, em markdown, sem inventar dados.",
+        },
+        { role: "user", content: "Dados do paciente:\n" + JSON.stringify(ctx, null, 2) },
+      ],
+      maxTokens: 2048,
+      temperature: 0.1,
     });
-
-    if (!aiResp.ok) {
-      const t = await aiResp.text();
-      return new Response(JSON.stringify({ error: "Falha IA", detail: t }), {
-        status: aiResp.status, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    const data = await aiResp.json();
     const summary = data.choices?.[0]?.message?.content ?? "";
 
     return new Response(JSON.stringify({ summary }), {

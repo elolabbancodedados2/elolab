@@ -31,6 +31,7 @@ describe('AdminDashboardOverview', () => {
     expect(screen.getByRole('heading', { name: 'Agenda de hoje' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Precisa de atenção' })).toBeInTheDocument();
     expect(screen.getByText('R$ 1.250,00')).toBeInTheDocument();
+    expect(screen.getByRole('progressbar', { name: 'Atendimentos concluídos' })).toHaveAttribute('aria-valuenow', '38');
 
     const agenda = screen.getByRole('region', { name: 'Agenda de hoje' });
     expect(within(agenda).getByText('Mariana Costa')).toBeInTheDocument();

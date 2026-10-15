@@ -19,6 +19,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { cronSecretOk, cronForbidden } from '../_shared/cronAuth.ts'
 import { corsPadrao } from '../_shared/cors.ts';
+import { limparBackupsExpirados } from './retention.ts'
 
 // Atribuído em cada request (reflete a origem permitida). Helpers
 // top-level (json/reply) capturam esta variável por closure.
@@ -240,46 +241,18 @@ Deno.serve(async (req) => {
 
     // ─── Retenção ───
     const limite = new Date(Date.now() - GUARDAR_DIAS * 86400_000).toISOString()
-    let apagados = 0
-    try {
-      const { data: antigos } = await supabase.storage.from('backups').list('', { limit: 1000 })
-      const vencidos = (antigos ?? [])
-        .filter((o) => o.metadata && o.created_at && o.created_at < limite)
-        .map((o) => o.name)
-      if (vencidos.length > 0) {
-        await supabase.storage.from('backups').remove(vencidos)
-        apagados = vencidos.length
-      }
-
-      // As pastas de arquivo também vencem. Sem isto o bucket só cresce, e a
-      // cópia dos anexos passaria a ser o maior custo de armazenamento da
-      // clínica sem ninguém perceber.
-      const { data: pastas } = await supabase.storage
-        .from('backups-arquivos').list('', { limit: 1000 })
-      for (const pasta of pastas ?? []) {
-        if (pasta.metadata) continue
-        // O nome da pasta é o carimbo ISO com ':' e '.' trocados por '-'.
-        const quando = pasta.name.replace(
-          /^(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})-(\d+)Z$/,
-          '$1T$2:$3:$4.$5Z',
-        )
-        if (quando >= limite) continue
-        const { data: dentro } = await supabase.storage
-          .from('backups-arquivos').list(pasta.name, { limit: 1000 })
-        const caminhos = (dentro ?? []).map((o) => `${pasta.name}/${o.name}`)
-        if (caminhos.length > 0) await supabase.storage.from('backups-arquivos').remove(caminhos)
-      }
-    } catch (e) {
-      console.error('limpeza de backups antigos falhou:', e)
+    const limpeza = await limparBackupsExpirados(supabase.storage, limite)
+    if (limpeza.falhas.length > 0) {
+      console.error('limpeza de backups antigos parcial:', limpeza.falhas)
     }
 
     await registrar({
-      status: completo && falhasDeArquivo.length === 0 ? 'sucesso' : 'parcial',
+      status: completo && falhasDeArquivo.length === 0 && limpeza.falhas.length === 0 ? 'sucesso' : 'parcial',
       registros_processados: total,
       registros_sucesso: total,
       duracao_ms: duracao,
-      erro_mensagem: completo ? null
-        : [...falhas, ...truncadas.map((t) => `${t}: truncada`)].join('; '),
+      erro_mensagem: completo && limpeza.falhas.length === 0 ? null
+        : [...falhas, ...truncadas.map((t) => `${t}: truncada`), ...limpeza.falhas].join('; '),
       detalhes: {
         arquivo: nome,
         tabelas: Object.keys(dados).length,
@@ -290,8 +263,10 @@ Deno.serve(async (req) => {
         // A mensagem no log, e não só no JSON: quem investiga uma falha de
         // backup não tem o arquivo em mãos, tem a tabela de log.
         arquivos_erros: falhasDeArquivo.slice(0, 5),
-        completo: completo && falhasDeArquivo.length === 0,
-        antigos_apagados: apagados,
+        completo: completo && falhasDeArquivo.length === 0 && limpeza.falhas.length === 0,
+        antigos_remocao_tentada: limpeza.tentados,
+        antigos_apagados: limpeza.apagados,
+        antigos_falhas: limpeza.falhas.slice(0, 10),
       },
     })
 
@@ -299,7 +274,12 @@ Deno.serve(async (req) => {
       success: true,
       arquivo_guardado: true,
       arquivo: nome,
-      completo,
+      completo: completo && falhasDeArquivo.length === 0 && limpeza.falhas.length === 0,
+      limpeza: {
+        tentados: limpeza.tentados,
+        apagados: limpeza.apagados,
+        falhas: limpeza.falhas,
+      },
       registros: total,
       tabelas: Object.keys(dados).length,
       duracao_ms: duracao,

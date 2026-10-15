@@ -1,3 +1,4 @@
+import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -10,7 +11,7 @@ import { AlertCircle, CheckCircle2, Clock, XCircle, Loader2, Phone } from 'lucid
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { format } from 'date-fns';
+
 import { parseDateOnly } from '@/lib/dateOnly';
 
 interface AutorizacaoConvenioModalProps {
@@ -168,7 +169,7 @@ export function AutorizacaoConvenioModal({
             </div>
           ) : loadError ? (
             <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm" role="alert">
-              <p className="mb-3 text-destructive">NÃ£o foi possÃ­vel carregar autorizaÃ§Ãµes e convÃªnios.</p>
+              <p className="mb-3 text-destructive">Não foi possível carregar autorizações e convênios.</p>
               <Button type="button" size="sm" variant="outline" onClick={() => void loadData()}>
                 Tentar novamente
               </Button>

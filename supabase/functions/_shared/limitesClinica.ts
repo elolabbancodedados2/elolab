@@ -62,31 +62,102 @@ export async function usuariosNoLimite(service: SupabaseClient, clinicaId: strin
   return { atingido: usados >= limites.max_users, usados, limite: limites.max_users };
 }
 
-/** Tokens de IA do mês corrente já atingiram o limite? */
-export async function tokensIaNoLimite(service: SupabaseClient, clinicaId: string, limitePadrao?: number) {
-  const limites = await limitesDaClinica(service, clinicaId, {
-    max_ai_tokens: limitePadrao && limitePadrao > 0 ? limitePadrao : LIMITES_PADRAO.max_ai_tokens,
+export interface ReservaTokensIa {
+  aceita: boolean;
+  reservaId: string | null;
+  usados: number;
+  limite: number;
+}
+
+/** Define o cleanup seguro quando uma requisição falha depois da reserva. */
+export function decidirAcoesFalhaIa(providerRespondeu: boolean, reservaPendente: boolean) {
+  return {
+    liberarReserva: reservaPendente && !providerRespondeu,
+    registrarUsoFalho: !providerRespondeu,
+  };
+}
+
+/**
+ * Reserva tokens de forma atômica no banco. O valor enviado deve incluir uma
+ * estimativa conservadora da entrada e todo o máximo de saída permitido.
+ */
+export async function reservarTokensIa(
+  service: SupabaseClient,
+  clinicaId: string,
+  tokensReservados: number,
+  limitePadrao?: number,
+): Promise<ReservaTokensIa> {
+  if (!Number.isSafeInteger(tokensReservados) || tokensReservados < 1) {
+    throw new Error('Estimativa inválida para reservar tokens de IA.');
+  }
+  const maxAiTokens = Number.isSafeInteger(limitePadrao) && (limitePadrao ?? 0) > 0
+    ? limitePadrao!
+    : LIMITES_PADRAO.max_ai_tokens;
+  const { data, error } = await service.rpc('platform_ai_reserve_tokens', {
+    p_clinica_id: clinicaId,
+    p_tokens_reservados: tokensReservados,
+    p_limite_padrao: maxAiTokens,
   });
-  const { data, error } = await service
-    .from('platform_ai_usage')
-    .select('input_tokens, output_tokens')
-    .eq('clinica_id', clinicaId)
-    .gte('created_at', inicioDoMesISO())
-    .limit(50_000);
-  if (error) {
-    console.error('[limites] falha ao somar tokens de IA:', error.message);
+  if (error || !data || typeof data !== 'object') {
+    console.error('[limites] falha ao reservar tokens de IA:', error?.message);
     throw new Error('Não foi possível validar o limite de uso da IA. Tente novamente.');
   }
-  // A API do Supabase limita a leitura. Ao atingir o teto, a soma pode estar
-  // incompleta; bloquear temporariamente evita liberar IA com cota subcontada.
-  if ((data ?? []).length >= 50_000) {
-    return { atingido: true, usados: limites.max_ai_tokens, limite: limites.max_ai_tokens };
+  const result = data as { accepted?: unknown; reservation_id?: unknown; used?: unknown; limit?: unknown };
+  if (typeof result.accepted !== 'boolean') {
+    throw new Error('Resposta inválida ao reservar tokens de IA.');
   }
-  const usados = (data ?? []).reduce(
-    (acc: number, r: any) => acc + Number(r.input_tokens || 0) + Number(r.output_tokens || 0),
-    0,
-  );
-  return { atingido: usados >= limites.max_ai_tokens, usados, limite: limites.max_ai_tokens };
+  return {
+    aceita: result.accepted,
+    reservaId: typeof result.reservation_id === 'string' ? result.reservation_id : null,
+    usados: Number(result.used ?? 0),
+    limite: Number(result.limit ?? maxAiTokens),
+  };
+}
+
+/** Liquida a reserva e grava o consumo de sucesso atomicamente no banco. */
+export async function liquidarReservaTokensIa(
+  service: SupabaseClient,
+  input: {
+    reservaId: string;
+    clinicaId: string;
+    usuarioId: string;
+    operacao: string;
+    modelo: string;
+    inputTokens: number;
+    outputTokens: number;
+    duracaoMs: number;
+  },
+): Promise<void> {
+  const { error } = await service.rpc('platform_ai_settle_tokens', {
+    p_reservation_id: input.reservaId,
+    p_clinica_id: input.clinicaId,
+    p_user_id: input.usuarioId,
+    p_operacao: input.operacao,
+    p_modelo: input.modelo,
+    p_input_tokens: input.inputTokens,
+    p_output_tokens: input.outputTokens,
+    p_duracao_ms: input.duracaoMs,
+  });
+  if (error) throw new Error('Não foi possível registrar o consumo da IA. Tente novamente.');
+}
+
+/** Libera uma reserva quando a chamada ao provedor falha antes de consumir tokens. */
+export async function liberarReservaTokensIa(
+  service: SupabaseClient,
+  reservaId: string,
+  clinicaId: string,
+): Promise<void> {
+  const { error } = await service.rpc('platform_ai_release_tokens', {
+    p_reservation_id: reservaId,
+    p_clinica_id: clinicaId,
+  });
+  if (error) throw new Error('Não foi possível liberar a reserva de tokens da IA.');
+}
+
+/** Reserva um token por byte de entrada, além de margem para o envelope do provedor. */
+export function estimarTokensEntradaConservador(...textos: string[]): number {
+  const bytes = textos.reduce((total, texto) => total + new TextEncoder().encode(texto).byteLength, 0);
+  return bytes + 256;
 }
 
 /** Notificações ENVIADAS no mês corrente e o limite da clínica. */

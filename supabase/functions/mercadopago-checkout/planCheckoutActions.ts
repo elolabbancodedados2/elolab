@@ -4,7 +4,7 @@
 //   card_token_id e status "authorized"). O token vem do Card Payment Brick;
 //   o número do cartão nunca passa pelo EloLab.
 // - create_plan_order / get_plan_order / cancel_plan_order: pagamento único de
-//   um período por Pix ou boleto (/v1/orders).
+//   um período por Pix (/v1/orders).
 //
 // Preço, período e ativação são sempre decididos no servidor.
 
@@ -18,7 +18,6 @@ import {
   normalizeOrderPayer,
   periodMonthsFor,
   PLAN_ORDER_OPEN_STATUSES,
-  type PlanOrderMethod,
 } from '../_shared/planCheckout.ts';
 import { applyGatewayOrder, sanitizeOrderSnapshot, syncPlanOrderFromGateway } from '../_shared/platformPlanOrders.ts';
 import { syncPlatformPlan } from '../_shared/platformPlanSync.ts';
@@ -35,8 +34,10 @@ export interface PlanCheckoutContext {
   headers: Record<string, string>;
 }
 
+type GatewayRequest = (preapprovalId: string) => Promise<unknown>;
+type CreateCardGatewayRequest = (payload: Record<string, unknown>, deviceId: string | null) => Promise<Record<string, unknown>>;
+
 const APP_URL = 'https://app.elolab.com.br';
-const FREE_TRIAL_DAYS = 3;
 const ORDER_CLIENT_FIELDS =
   'id, plano_slug, metodo, valor, periodo_meses, status, status_detail, ticket_url, qr_code, qr_code_base64, digitable_line, barcode_content, expira_em, pago_em, periodo_inicio, periodo_fim, created_at';
 
@@ -49,6 +50,11 @@ function reply(payload: unknown, status: number, headers: Record<string, string>
 
 function isSandbox() {
   return (Deno.env.get('MERCADOPAGO_ENV') || '').toLowerCase() === 'sandbox';
+}
+
+export function trialDaysForPlan(plano: { trial_dias?: unknown } | null | undefined): number {
+  const days = Number(plano?.trial_dias ?? 0);
+  return Number.isSafeInteger(days) && days > 0 ? days : 0;
 }
 
 /**
@@ -89,7 +95,17 @@ async function loadCurrentPlan(supabase: SupabaseLike, userId: string) {
   return data;
 }
 
-async function validateBuyerCheckout(ctx: PlanCheckoutContext, slug: string) {
+async function hasTrialHistory(supabase: SupabaseLike, userId: string): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('platform_plan_trial_claims')
+    .select('user_id')
+    .eq('user_id', userId)
+    .maybeSingle();
+  if (error) throw error;
+  return Boolean(data);
+}
+
+async function validateBuyerCheckout(ctx: PlanCheckoutContext) {
   const { data: profile, error } = await ctx.supabase.from('profiles').select('clinica_id').eq('id', ctx.user.id).maybeSingle();
   if (error) throw error;
   const { data: roles, error: roleError } = await ctx.supabase.from('user_roles').select('role').eq('user_id', ctx.user.id);
@@ -97,7 +113,10 @@ async function validateBuyerCheckout(ctx: PlanCheckoutContext, slug: string) {
   const hasClinicRole = (roles || []).length > 0;
   if (!profile?.clinica_id && !hasClinicRole) {
     const metadata = ctx.user.user_metadata || {};
-    if (metadata.checkout_flow !== 'saas_subscription' || metadata.checkout_plan_slug !== slug) {
+    // O comprador pode trocar de plano antes do primeiro pagamento. O slug
+    // inicial em user_metadata identifica a jornada de compra, mas não deve
+    // impedir a escolha de outro plano ativo no catálogo.
+    if (metadata.checkout_flow !== 'saas_subscription') {
       throw new Error('Este cadastro não tem uma contratação pendente válida para este plano. Volte à página de planos e inicie a contratação.');
     }
     const email = (ctx.user.email || '').trim().toLowerCase();
@@ -163,9 +182,10 @@ export async function billingStatus(body: Record<string, unknown>, ctx: PlanChec
   const plano = body.plano_slug ? await loadActivePlan(ctx.supabase, body.plano_slug) : null;
   if (body.plano_slug && !plano) return reply({ error: 'Plano não encontrado' }, 404, ctx.headers);
 
-  if (plano) await validateBuyerCheckout(ctx, plano.slug);
+  if (plano) await validateBuyerCheckout(ctx);
 
   const current = await loadCurrentPlan(ctx.supabase, ctx.user.id);
+  const trialHistory = await hasTrialHistory(ctx.supabase, ctx.user.id);
   let clinic: unknown = null;
   if (current && ['ativa', 'trial'].includes(String(current.status))) {
     // Recupera de uma interrupção entre a confirmação do gateway e a criação da clínica.
@@ -184,7 +204,7 @@ export async function billingStatus(body: Record<string, unknown>, ctx: PlanChec
         descricao: plano.descricao,
         valor: Number(plano.valor),
         frequencia: plano.frequencia || 'mensal',
-        trial_dias: FREE_TRIAL_DAYS,
+        trial_dias: trialDaysForPlan(plano),
         features: plano.features || [],
         periodo_meses: periodMonthsFor(plano.frequencia),
       }
@@ -200,17 +220,27 @@ export async function billingStatus(body: Record<string, unknown>, ctx: PlanChec
       }
       : null,
     pedido_aberto: clientOrder(open),
+    trial_elegivel: Boolean(!current && !trialHistory),
     provisionamento: clinic,
   }, 200, ctx.headers);
 }
 
 // ─── Cartão: assinatura recorrente ──────────────────────────────────────────
 
-export async function createCardSubscription(body: Record<string, unknown>, ctx: PlanCheckoutContext) {
+export async function createCardSubscription(
+  body: Record<string, unknown>,
+  ctx: PlanCheckoutContext,
+  gatewayRequest?: CreateCardGatewayRequest,
+) {
   const { supabase, user, headers } = ctx;
   const plano = await loadActivePlan(supabase, body.plano_slug);
   if (!plano) return reply({ error: 'Plano não encontrado' }, 404, headers);
-  await validateBuyerCheckout(ctx, plano.slug);
+  await validateBuyerCheckout(ctx);
+
+  const openPlanOrder = await loadOpenOrder(supabase, user.id);
+  if (openPlanOrder) {
+    return reply({ error: 'Há um pagamento Pix pendente. Conclua ou cancele esse pedido antes de iniciar uma assinatura no cartão.' }, 409, headers);
+  }
 
   const cardTokenId = typeof body.card_token_id === 'string' ? body.card_token_id.trim() : '';
   if (!/^[A-Za-z0-9-]{16,64}$/.test(cardTokenId)) {
@@ -218,13 +248,15 @@ export async function createCardSubscription(body: Record<string, unknown>, ctx:
   }
 
   const requestedTrialDays = body.trial_dias === undefined || body.trial_dias === null ? 0 : Number(body.trial_dias);
-  if (requestedTrialDays !== 0 && requestedTrialDays !== FREE_TRIAL_DAYS) {
+  const configuredTrialDays = trialDaysForPlan(plano);
+  if (
+    !Number.isSafeInteger(requestedTrialDays)
+    || requestedTrialDays < 0
+    || (requestedTrialDays > 0 && requestedTrialDays !== configuredTrialDays)
+  ) {
     return reply({ error: 'Período de teste inválido para este plano' }, 400, headers);
   }
-  if (requestedTrialDays === FREE_TRIAL_DAYS && ctx.user.user_metadata?.checkout_flow !== 'saas_subscription') {
-    return reply({ error: 'O teste grátis exige um cadastro iniciado pela página de contratação.' }, 403, headers);
-  }
-  if (requestedTrialDays === FREE_TRIAL_DAYS && body.trial_consent !== true) {
+  if (requestedTrialDays > 0 && body.trial_consent !== true) {
     return reply({ error: 'É necessário autorizar claramente a cobrança recorrente após o teste.' }, 400, headers);
   }
 
@@ -236,8 +268,8 @@ export async function createCardSubscription(body: Record<string, unknown>, ctx:
     return reply({ error: 'Este plano já está ativo para esta conta' }, 409, headers);
   }
   // Teste grátis só para quem ainda não tem plano ativo.
-  if (requestedTrialDays > 0 && current) {
-    return reply({ error: 'O teste grátis está disponível somente para uma primeira contratação da conta' }, 409, headers);
+  if (requestedTrialDays > 0 && (current || await hasTrialHistory(supabase, user.id))) {
+    return reply({ error: 'O teste grátis está disponível somente uma vez por conta e não pode ser reutilizado.' }, 409, headers);
   }
 
   const client = createMercadoPagoClient({ accessToken: ctx.mpToken });
@@ -287,7 +319,7 @@ export async function createCardSubscription(body: Record<string, unknown>, ctx:
         trial_consent: trialEnd ? {
           accepted: true,
           accepted_at: new Date().toISOString(),
-          terms_version: 'recurring-trial-3d-v1',
+          terms_version: `recurring-trial-${requestedTrialDays}d-v1`,
         } : null,
         start_date: startDate?.toISOString() || null,
       },
@@ -295,6 +327,26 @@ export async function createCardSubscription(body: Record<string, unknown>, ctx:
     .select('id, detalhes')
     .single();
   if (localError) throw localError;
+
+  if (trialEnd) {
+    const { error: claimError } = await supabase
+      .from('platform_plan_trial_claims')
+      .insert({
+        user_id: user.id,
+        plano_slug: plano.slug,
+        trial_days: requestedTrialDays,
+        checkout_reference: crypto.randomUUID(),
+        status: 'reserved',
+      });
+    if (claimError) {
+      // Unique user_id makes trial eligibility atomic even across concurrent requests.
+      await supabase
+        .from('assinaturas_mercadopago')
+        .update({ status: 'cancelada' })
+        .eq('id', local.id);
+      return reply({ error: 'O teste grátis já foi utilizado ou está sendo iniciado nesta conta.' }, 409, headers);
+    }
+  }
 
   const payload = buildCardSubscriptionPayload({
     externalReference,
@@ -310,8 +362,11 @@ export async function createCardSubscription(body: Record<string, unknown>, ctx:
   try {
     // Uma tentativa só: repetir um POST de assinatura sem idempotência poderia
     // criar duas assinaturas no cartão do cliente.
-    preapproval = await createMercadoPagoClient({ accessToken: ctx.mpToken, maxAttempts: 1, timeoutMs: 30000 })
-      .request({ method: 'POST', path: '/preapproval', body: payload, deviceId: normalizeDeviceId(body.device_id) });
+    const deviceId = normalizeDeviceId(body.device_id);
+    preapproval = gatewayRequest
+      ? await gatewayRequest(payload, deviceId)
+      : await createMercadoPagoClient({ accessToken: ctx.mpToken, maxAttempts: 1, timeoutMs: 30000 })
+        .request({ method: 'POST', path: '/preapproval', body: payload, deviceId });
   } catch (error) {
     const apiError = error instanceof MercadoPagoApiError ? error : null;
     const described = describeCardSubscriptionError(apiError?.status ?? null, apiError?.body ?? null);
@@ -324,6 +379,18 @@ export async function createCardSubscription(body: Record<string, unknown>, ctx:
         detalhes: { ...local.detalhes, erro_checkout: described.code, erro_http: apiError?.status ?? null },
       })
       .eq('id', local.id);
+    // Uma recusa 4xx é definitiva: nenhum teste foi iniciado, então a pessoa
+    // pode corrigir os dados e tentar de novo. Em timeout/5xx, manter a reserva
+    // evita criar um segundo trial caso o gateway tenha recebido a primeira
+    // solicitação e a resposta tenha se perdido.
+    if (trialEnd && described.code !== 'falha_comunicacao') {
+      const { error: claimReleaseError } = await supabase
+        .from('platform_plan_trial_claims')
+        .delete()
+        .eq('user_id', user.id)
+        .eq('status', 'reserved');
+      if (claimReleaseError) console.error('Não foi possível liberar a reserva do teste após recusa definitiva.');
+    }
     return reply({ error: described.message, code: described.code }, described.httpStatus, headers);
   }
 
@@ -352,6 +419,14 @@ export async function createCardSubscription(body: Record<string, unknown>, ctx:
     .eq('id', local.id);
   if (updateError) throw updateError;
 
+  if (trialEnd) {
+    const { error: claimUpdateError } = await supabase
+      .from('platform_plan_trial_claims')
+      .update({ status: gatewayStatus === 'authorized' ? 'started' : 'pending', gateway_subscription_id: String(preapproval.id) })
+      .eq('user_id', user.id);
+    if (claimUpdateError) throw claimUpdateError;
+  }
+
   if (gatewayStatus === 'authorized') {
     await syncPlatformPlan(supabase, {
       assinaturaId: local.id,
@@ -372,7 +447,79 @@ export async function createCardSubscription(body: Record<string, unknown>, ctx:
   }, 200, headers);
 }
 
-// ─── Pix / boleto: pagamento único de um período ────────────────────────────
+/** Cancela somente a assinatura recorrente atualmente vinculada ao plano ativo do usuário. */
+export async function cancelPlanSubscription(
+  body: Record<string, unknown>,
+  ctx: PlanCheckoutContext,
+  gatewayRequest?: GatewayRequest,
+) {
+  const { supabase, user, headers, mpToken } = ctx;
+  const { data: current, error: currentError } = await supabase
+    .from('assinaturas_plano')
+    .select('mp_assinatura_id, cobranca_modalidade')
+    .eq('user_id', user.id)
+    .in('status', ['ativa', 'trial'])
+    .maybeSingle();
+  if (currentError) throw currentError;
+  if (!current?.mp_assinatura_id || current.cobranca_modalidade === 'pre_pago') {
+    return reply({ error: 'Não há assinatura recorrente ativa para cancelar.' }, 404, headers);
+  }
+
+  const { data: assinatura, error: assinaturaLookupError } = await supabase
+    .from('assinaturas_mercadopago')
+    .select('id, mp_preapproval_id')
+    .eq('id', current.mp_assinatura_id)
+    .eq('status', 'ativa')
+    .filter('detalhes->>user_id', 'eq', user.id)
+    .maybeSingle();
+  if (assinaturaLookupError) throw assinaturaLookupError;
+  if (!assinatura?.mp_preapproval_id) return reply({ error: 'A assinatura ativa vinculada ao plano não foi encontrada.' }, 404, headers);
+
+  try {
+    if (gatewayRequest) await gatewayRequest(String(assinatura.mp_preapproval_id));
+    else await createMercadoPagoClient({ accessToken: mpToken }).request({
+      method: 'PUT',
+      path: `/preapproval/${encodeURIComponent(String(assinatura.mp_preapproval_id))}`,
+      body: { status: 'cancelled' },
+    });
+  } catch (error) {
+    console.error('Falha ao cancelar no Mercado Pago:', error);
+    return reply({ error: error instanceof Error ? error.message : 'Erro ao cancelar no Mercado Pago' }, 502, headers);
+  }
+
+  const cancelledAt = new Date().toISOString();
+  const { data: updatedGateway, error: gatewayUpdateError } = await supabase
+    .from('assinaturas_mercadopago')
+    .update({ status: 'cancelada', data_fim: cancelledAt.slice(0, 10) })
+    .eq('id', assinatura.id)
+    .select('id')
+    .maybeSingle();
+  if (gatewayUpdateError) throw gatewayUpdateError;
+  if (!updatedGateway) throw new Error('Mercado Pago cancelou a assinatura, mas o registro local correspondente não foi atualizado.');
+
+  const { data: updatedPlan, error: planUpdateError } = await supabase
+    .from('assinaturas_plano')
+    .update({ status: 'cancelada', data_cancelamento: cancelledAt, updated_at: cancelledAt })
+    .eq('user_id', user.id)
+    .eq('mp_assinatura_id', assinatura.id)
+    .in('status', ['ativa', 'trial'])
+    .select('id')
+    .maybeSingle();
+  if (planUpdateError) throw planUpdateError;
+  if (!updatedPlan) throw new Error('Mercado Pago cancelou a assinatura, mas o plano ativo correspondente não foi atualizado.');
+
+  const motivo = typeof body.motivo === 'string' ? body.motivo.slice(0, 500) : null;
+  await supabase.from('audit_log').insert({
+    action: 'SUBSCRIPTION_CANCELLED',
+    collection: 'assinaturas_mercadopago',
+    record_id: assinatura.id,
+    user_id: user.id,
+    details: { mp_preapproval_id: assinatura.mp_preapproval_id, cancelled_at: cancelledAt, motivo },
+  });
+  return reply({ success: true, cancelled_at: cancelledAt }, 200, headers);
+}
+
+// ─── Pix: pagamento único de um período ────────────────────────────────────
 
 /** Device ID gerado pelo MercadoPago.js V2 no navegador; opcional e só alfanumérico. */
 function normalizeDeviceId(value: unknown): string | null {
@@ -386,13 +533,24 @@ async function postOrder(
   deviceId: string | null,
 ) {
   try {
-    const order = await createOrderWithMercadoPagoSdk(
+    const criada = await createOrderWithMercadoPagoSdk(
       ctx.mpToken,
       payload,
       String(row.idempotency_key),
       deviceId,
     );
-    return { order, error: null as MercadoPagoApiError | null };
+    // O POST pode retornar dados iniciais sem o Pix completo. O GET é a
+    // resposta canônica documentada para carregar as instruções de pagamento.
+    if (criada.id) {
+      try {
+        const atualizada = await createMercadoPagoClient({ accessToken: ctx.mpToken, maxAttempts: 2 })
+          .request<Record<string, unknown>>({ method: 'GET', path: `/v1/orders/${encodeURIComponent(String(criada.id))}` });
+        if (String(atualizada.id) === String(criada.id)) return { order: atualizada, error: null as MercadoPagoApiError | null };
+      } catch (refreshError) {
+        console.warn('Não foi possível atualizar os dados do pedido recém-criado:', refreshError instanceof MercadoPagoApiError ? refreshError.status : 'falha de comunicação');
+      }
+    }
+    return { order: criada, error: null as MercadoPagoApiError | null };
   } catch (error) {
     if (error instanceof MercadoPagoApiError) {
       // Pedido recusado volta 4xx com a order em "data".
@@ -408,17 +566,17 @@ async function postOrder(
 
 export async function createPlanOrder(body: Record<string, unknown>, ctx: PlanCheckoutContext) {
   const { supabase, user, headers } = ctx;
-  const metodo = body.metodo === 'pix' || body.metodo === 'boleto' ? body.metodo as PlanOrderMethod : null;
-  if (!metodo) return reply({ error: 'Forma de pagamento inválida' }, 400, headers);
+  const metodo = body.metodo === 'pix' ? 'pix' : null;
+  if (!metodo) return reply({ error: 'Forma de pagamento inválida. Use cartão ou Pix.' }, 400, headers);
 
   const plano = await loadActivePlan(supabase, body.plano_slug);
   if (!plano) return reply({ error: 'Plano não encontrado' }, 404, headers);
-  await validateBuyerCheckout(ctx, plano.slug);
+  await validateBuyerCheckout(ctx);
 
   const payerEmail = payerEmailFor(user);
   if (!payerEmail) return reply({ error: 'A conta precisa ter um e-mail válido' }, 400, headers);
 
-  // Endereço exigido em Pix e boleto: o Mercado Pago avalia payer.address na qualidade da integração.
+  // O Mercado Pago avalia payer.address na qualidade da integração Pix.
   const normalized = normalizeOrderPayer((body.pagador || {}) as Record<string, unknown>, true);
   if (!normalized.payer) return reply({ error: normalized.errors.join('. '), campos: normalized.errors }, 400, headers);
   const payer = normalized.payer;
@@ -426,7 +584,7 @@ export async function createPlanOrder(body: Record<string, unknown>, ctx: PlanCh
   const current = await loadCurrentPlan(supabase, user.id);
   if (hasActiveRecurring(current)) {
     return reply({
-      error: 'Sua conta tem uma assinatura recorrente no cartão. Cancele-a em Planos antes de pagar por Pix ou boleto, para não ser cobrado duas vezes.',
+      error: 'Sua conta tem uma assinatura recorrente no cartão. Cancele-a em Planos antes de pagar por Pix, para não ser cobrado duas vezes.',
     }, 409, headers);
   }
 
@@ -509,8 +667,6 @@ export async function createPlanOrder(body: Record<string, unknown>, ctx: PlanCh
         ? 'Não foi possível falar com o Mercado Pago agora. Nenhuma cobrança foi gerada; tente novamente em instantes.'
         : error?.status === 402
         ? 'O Mercado Pago recusou o pagamento. Confira os dados e tente outra forma de pagamento.'
-        : metodo === 'boleto'
-        ? 'O Mercado Pago não aceitou os dados do boleto. Confira CPF/CNPJ e endereço.'
         : 'O Mercado Pago não conseguiu gerar o Pix. Tente novamente.',
       code: communication ? 'falha_comunicacao' : error?.status === 402 ? 'recusado' : 'dados_invalidos',
     }, communication ? 503 : 422, headers);

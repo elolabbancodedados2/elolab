@@ -1,3 +1,4 @@
+import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { nomeMedico } from '@/lib/formatters';
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -24,7 +25,7 @@ import {
   Heart, Pill, AlertTriangle, Download, RefreshCw,
   LogOut,
 } from 'lucide-react';
-import { format, parseISO } from 'date-fns';
+import { parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { ageFromDateOnly, appointmentStartHasPassed, daysBetweenDateOnly, parseDateOnly, todayDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { abrirUrlSegura, checkoutUrlSeguro, storageUrlSeguro } from '@/lib/safeUrl';
@@ -205,25 +206,25 @@ function NextAppointmentHero({ agendamentos }: { agendamentos: any[] }) {
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.3 }}
     >
-      <Card className="overflow-hidden rounded-[1.4rem] border-[#d6e6f2] bg-white shadow-[0_14px_38px_-28px_rgba(12,31,84,0.35)]">
+      <Card className="overflow-hidden rounded-[1.4rem] border-[#dbd6f2] bg-white shadow-[0_14px_38px_-28px_rgba(23,18,43,0.35)]">
         <CardContent className="relative p-5 sm:p-7">
           <div className="absolute inset-y-0 left-0 w-1.5 bg-[#39c7d9]" aria-hidden="true" />
           <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between sm:pl-1">
             <div className="flex min-w-0 items-start gap-4">
-              <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-[#eaf4fb] text-[#0059cc] sm:h-14 sm:w-14">
+              <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-[#efecfb] text-[#5240d6] sm:h-14 sm:w-14">
                 <Calendar className="h-6 w-6" aria-hidden="true" />
               </div>
               <div className="min-w-0 space-y-1.5">
                 <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="text-sm font-semibold text-[#0059cc]">Sua próxima consulta</h3>
+                  <h3 className="text-sm font-semibold text-[#5240d6]">Sua próxima consulta</h3>
                   {isHoje && <Badge className="border-[#bcecf0] bg-[#e7f9fa] text-[#075f70]">Hoje</Badge>}
                 </div>
-                <p className="text-xl font-bold leading-tight text-[#0c1f54] sm:text-2xl">
+                <p className="text-xl font-bold leading-tight text-[#17122b] sm:text-2xl">
                   {dataConsultaLabel}
                 </p>
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-[#52647b]">
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-[#6a6485]">
                   <span className="inline-flex items-center gap-1.5">
-                    <Clock className="h-4 w-4 text-[#0059cc]" aria-hidden="true" />
+                    <Clock className="h-4 w-4 text-[#5240d6]" aria-hidden="true" />
                     {proxima.hora_inicio?.slice(0, 5)}
                   </span>
                   <span>{proxima.tipo || 'Consulta'}</span>
@@ -233,9 +234,9 @@ function NextAppointmentHero({ agendamentos }: { agendamentos: any[] }) {
             </div>
 
             {!isHoje && diasRestantes > 0 && (
-              <div className="flex shrink-0 items-center gap-3 rounded-2xl bg-[#edf6fb] px-4 py-3 sm:min-w-32 sm:flex-col sm:gap-0 sm:px-5 sm:py-4 sm:text-center">
-                <p className="text-2xl font-bold tabular-nums text-[#0059cc]">{diasRestantes}</p>
-                <p className="text-sm text-[#52647b]">dia{diasRestantes > 1 ? 's' : ''}</p>
+              <div className="flex shrink-0 items-center gap-3 rounded-2xl bg-[#efedfb] px-4 py-3 sm:min-w-32 sm:flex-col sm:gap-0 sm:px-5 sm:py-4 sm:text-center">
+                <p className="text-2xl font-bold tabular-nums text-[#5240d6]">{diasRestantes}</p>
+                <p className="text-sm text-[#6a6485]">dia{diasRestantes > 1 ? 's' : ''}</p>
               </div>
             )}
           </div>
@@ -538,7 +539,7 @@ export default function PortalPaciente() {
       });
       setPortalHasMore(previous => ({ ...previous, [listKey]: nextRows.length === pageSize }));
     } catch (loadError) {
-      if (sessionId === portalSessionRef.current) setPortalDataError('NÃ£o foi possÃ­vel carregar mais registros. Tente novamente.');
+      if (sessionId === portalSessionRef.current) setPortalDataError('Não foi possível carregar mais registros. Tente novamente.');
     } finally {
       loadMoreLocks.current.delete(action);
       setLoadingMore(null);
@@ -977,7 +978,7 @@ export default function PortalPaciente() {
   };
 
   return (
-    <div className="min-h-screen bg-[#f1f5f7] text-[#0c1f54]">
+    <div className="min-h-screen bg-[#f2f1f7] text-[#17122b]">
       <AlertDialog
         open={agendamentoParaCancelar !== null}
         onOpenChange={(open) => {
@@ -1048,10 +1049,10 @@ export default function PortalPaciente() {
         </DialogContent>
       </Dialog>
       {/* ─── Header ─── */}
-      <header className="sticky top-0 z-50 border-b border-[#dfe9ef] bg-white/95 px-4 py-3 backdrop-blur-xl">
+      <header className="sticky top-0 z-50 border-b border-[#e2dfef] bg-white/95 px-4 py-3 backdrop-blur-xl">
         <div className="mx-auto flex max-w-7xl items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="rounded-xl bg-[#eaf4fb] p-2.5 text-[#0059cc]">
+            <div className="rounded-xl bg-[#efecfb] p-2.5 text-[#5240d6]">
               <HeartHandshake className="h-5 w-5" />
             </div>
             <div>
@@ -1089,14 +1090,14 @@ export default function PortalPaciente() {
           {/* ─── Welcome Hero ─── */}
           <motion.div variants={itemVariants} className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div className="space-y-1.5">
-              <h2 className="font-display text-2xl font-bold tracking-tight text-[#0c1f54] sm:text-3xl">
+              <h2 className="font-display text-2xl font-bold tracking-tight text-[#17122b] sm:text-3xl">
                 Olá, {profile?.nome?.split(' ')[0]} 👋
               </h2>
-              <p className="max-w-xl text-sm text-[#52647b] sm:text-base">
+              <p className="max-w-xl text-sm text-[#6a6485] sm:text-base">
                 Acompanhe suas consultas, exames e pagamentos.
               </p>
             </div>
-            <div className="inline-flex w-fit items-center gap-2 rounded-full border border-[#d6e6f2] bg-white px-3 py-2 text-xs font-medium text-[#405875]">
+            <div className="inline-flex w-fit items-center gap-2 rounded-full border border-[#dbd6f2] bg-white px-3 py-2 text-xs font-medium text-[#494075]">
               <Shield className="h-4 w-4 text-[#008b9d]" aria-hidden="true" />
               Seus dados em ambiente seguro
             </div>
@@ -1130,19 +1131,19 @@ export default function PortalPaciente() {
             {/* ─── Resumo do paciente ─── */}
             <motion.div variants={itemVariants} className="grid grid-cols-2 gap-3 md:grid-cols-4">
               {[
-              { icon: Calendar, label: 'Consultas', value: totalConsultas, accent: 'text-[#0059cc] bg-[#eaf4fb]' },
+              { icon: Calendar, label: 'Consultas', value: totalConsultas, accent: 'text-[#5240d6] bg-[#efecfb]' },
               { icon: Clock, label: 'Agendadas', value: consultasFuturas, accent: 'text-[#087b8a] bg-[#e7f8fa]' },
               { icon: FlaskConical, label: 'Exames pendentes', value: examesPendentes, accent: 'text-[#8b6710] bg-[#fff6db]' },
               { icon: FileText, label: 'Laudos prontos', value: laudosDisponiveis, accent: 'text-[#14744d] bg-[#e8f7ef]' },
               ].map(stat => (
-                <Card key={stat.label} className="rounded-2xl border-[#dfe9ef] bg-white shadow-none transition-colors hover:border-[#bfd7e8]">
+                <Card key={stat.label} className="rounded-2xl border-[#e2dfef] bg-white shadow-none transition-colors hover:border-[#c6bfe8]">
                   <CardContent className="flex min-h-[92px] items-center gap-3 p-4 sm:gap-4 sm:p-5">
                     <div className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${stat.accent}`}>
                       <stat.icon className="h-[18px] w-[18px]" aria-hidden="true" />
                     </div>
                     <div>
                       <AnimatedNumber value={stat.value} />
-                      <p className="text-xs text-[#52647b]">{stat.label}</p>
+                      <p className="text-xs text-[#6a6485]">{stat.label}</p>
                     </div>
                   </CardContent>
                 </Card>
@@ -1165,28 +1166,28 @@ export default function PortalPaciente() {
           {/* ─── Tabs ─── */}
           <motion.div variants={itemVariants}>
             <Tabs defaultValue="consultas" className="w-full">
-              <TabsList aria-label="Seções do portal" className="grid h-auto w-full grid-cols-3 gap-1.5 rounded-2xl border border-[#dfe9ef] bg-white p-1.5 md:grid-cols-6 md:gap-1">
-                <TabsTrigger value="agendar" className="h-12 flex-col gap-1 rounded-xl text-[#52647b] data-[state=active]:bg-[#eaf4fb] data-[state=active]:text-[#0059cc] md:flex-row md:gap-1.5">
+              <TabsList aria-label="Seções do portal" className="grid h-auto w-full grid-cols-3 gap-1.5 rounded-2xl border border-[#e2dfef] bg-white p-1.5 md:grid-cols-6 md:gap-1">
+                <TabsTrigger value="agendar" className="h-12 flex-col gap-1 rounded-xl text-[#6a6485] data-[state=active]:bg-[#efecfb] data-[state=active]:text-[#5240d6] md:flex-row md:gap-1.5">
                   <Calendar className="h-4 w-4" />
                   <span className="text-[11px] sm:text-sm">Agendar</span>
                 </TabsTrigger>
-                <TabsTrigger value="consultas" className="h-12 flex-col gap-1 rounded-xl text-[#52647b] data-[state=active]:bg-[#eaf4fb] data-[state=active]:text-[#0059cc] md:flex-row md:gap-1.5">
+                <TabsTrigger value="consultas" className="h-12 flex-col gap-1 rounded-xl text-[#6a6485] data-[state=active]:bg-[#efecfb] data-[state=active]:text-[#5240d6] md:flex-row md:gap-1.5">
                   <Calendar className="h-4 w-4" />
                   <span className="text-[11px] sm:text-sm">Consultas</span>
                 </TabsTrigger>
-                <TabsTrigger value="exames" className="h-12 flex-col gap-1 rounded-xl text-[#52647b] data-[state=active]:bg-[#eaf4fb] data-[state=active]:text-[#0059cc] md:flex-row md:gap-1.5">
+                <TabsTrigger value="exames" className="h-12 flex-col gap-1 rounded-xl text-[#6a6485] data-[state=active]:bg-[#efecfb] data-[state=active]:text-[#5240d6] md:flex-row md:gap-1.5">
                   <FlaskConical className="h-4 w-4" />
                   <span className="text-[11px] sm:text-sm">Exames</span>
                 </TabsTrigger>
-                <TabsTrigger value="prescricoes" className="h-12 flex-col gap-1 rounded-xl text-[#52647b] data-[state=active]:bg-[#eaf4fb] data-[state=active]:text-[#0059cc] md:flex-row md:gap-1.5">
+                <TabsTrigger value="prescricoes" className="h-12 flex-col gap-1 rounded-xl text-[#6a6485] data-[state=active]:bg-[#efecfb] data-[state=active]:text-[#5240d6] md:flex-row md:gap-1.5">
                   <Pill className="h-4 w-4" />
                   <span className="text-[11px] sm:text-sm">Receitas</span>
                 </TabsTrigger>
-                <TabsTrigger value="historico" className="h-12 flex-col gap-1 rounded-xl text-[#52647b] data-[state=active]:bg-[#eaf4fb] data-[state=active]:text-[#0059cc] md:flex-row md:gap-1.5">
+                <TabsTrigger value="historico" className="h-12 flex-col gap-1 rounded-xl text-[#6a6485] data-[state=active]:bg-[#efecfb] data-[state=active]:text-[#5240d6] md:flex-row md:gap-1.5">
                   <Heart className="h-4 w-4" />
                   <span className="text-[11px] sm:text-sm">Histórico</span>
                 </TabsTrigger>
-                <TabsTrigger value="financeiro" className="h-12 flex-col gap-1 rounded-xl text-[#52647b] data-[state=active]:bg-[#eaf4fb] data-[state=active]:text-[#0059cc] md:flex-row md:gap-1.5">
+                <TabsTrigger value="financeiro" className="h-12 flex-col gap-1 rounded-xl text-[#6a6485] data-[state=active]:bg-[#efecfb] data-[state=active]:text-[#5240d6] md:flex-row md:gap-1.5">
                   <CreditCard className="h-4 w-4" />
                   <span className="text-[11px] sm:text-sm">Financeiro</span>
                 </TabsTrigger>

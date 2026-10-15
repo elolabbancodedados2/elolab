@@ -1,6 +1,7 @@
+import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { useQuery } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
-import { format } from 'date-fns';
+
 import { ptBR } from 'date-fns/locale';
 import { Activity, Heart, Thermometer, Scale, TrendingUp } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -309,9 +310,9 @@ export function VitalSignsChart({ pacienteId, className }: VitalSignsChartProps)
                   type="monotone" 
                   dataKey="peso" 
                   name="Peso"
-                  stroke="#3b82f6" 
+                  stroke="#6a55f2"
                   strokeWidth={2}
-                  dot={{ fill: '#3b82f6' }}
+                  dot={{ fill: '#6a55f2' }}
                   connectNulls
                 />
               </LineChart>

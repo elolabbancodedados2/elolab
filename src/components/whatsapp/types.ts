@@ -2,9 +2,9 @@ export type WhatsAppAgentCapability =
   | 'informacoes_clinica'
   | 'consultar_disponibilidade'
   | 'criar_agendamento'
-  | 'consultar_agendamentos_paciente'
   | 'cancelar_agendamento'
   | 'reagendar_agendamento'
+  | 'consultar_agendamentos_paciente'
   | 'registrar_triagem';
 
 export const WHATSAPP_AGENT_CAPABILITIES: Array<{
@@ -16,8 +16,8 @@ export const WHATSAPP_AGENT_CAPABILITIES: Array<{
   { value: 'consultar_disponibilidade', label: 'Consultar horários', description: 'Verifica os horários livres e profissionais disponíveis.' },
   { value: 'criar_agendamento', label: 'Marcar consultas', description: 'Agenda uma consulta após o paciente escolher dia e horário.' },
   { value: 'consultar_agendamentos_paciente', label: 'Consultar minhas consultas', description: 'Mostra apenas os próximos agendamentos do número que chamou.' },
-  { value: 'cancelar_agendamento', label: 'Desmarcar consultas', description: 'Solicita confirmação do paciente antes de cancelar.' },
-  { value: 'reagendar_agendamento', label: 'Remarcar consultas', description: 'Confirma o novo horário com o paciente antes de alterar.' },
+  { value: 'cancelar_agendamento', label: 'Cancelar consultas', description: 'Cancela consultas do paciente após informar o motivo e confirmar com SIM.' },
+  { value: 'reagendar_agendamento', label: 'Reagendar consultas', description: 'Troca o horário de consultas do paciente após escolher a nova data e confirmar com SIM.' },
   { value: 'registrar_triagem', label: 'Fazer pré-triagem', description: 'Registra sintomas para a equipe; não fornece diagnóstico.' },
 ];
 
@@ -93,6 +93,10 @@ export interface WhatsAppStats {
   messages: number;
   conversations: number;
   actions: number;
+  ai_bookings: number;
+  confirmed_today: number;
+  no_shows_today: number;
+  delivery_failures: number;
 }
 
 export interface NewAgentForm {
@@ -119,8 +123,6 @@ export const defaultAgentForm: NewAgentForm = {
     'consultar_disponibilidade',
     'criar_agendamento',
     'consultar_agendamentos_paciente',
-    'cancelar_agendamento',
-    'reagendar_agendamento',
   ],
   humor: 'profissional',
   instrucoes_personalizadas: '',

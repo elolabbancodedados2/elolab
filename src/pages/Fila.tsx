@@ -1,8 +1,9 @@
+import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { Switch } from '@/components/ui/switch';
 import { useCurrentMedico } from '@/hooks/useCurrentMedico';
 import { nomeMedico } from '@/lib/formatters';
 import { formatCurrency } from '@/lib/formatters';
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { forwardRef, useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -34,10 +35,12 @@ import { passouPelaTriagem } from '@/lib/liberacaoTriagem';
 import { ordenarFilaPorPrioridade } from '@/lib/filaPrioridade';
 import { podeIniciarAgendamento, separarFilaAtivaPorData } from '@/lib/filaPorData';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
-import { format } from 'date-fns';
+
 import { ptBR } from 'date-fns/locale';
 import { dateOnlyInTimeZone, parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { ListSkeleton } from '@/components/ui/loading-skeleton';
+import { ActionableEmptyState } from '@/components/ActionableEmptyState';
+import { PageHeader } from '@/components/PageHeader';
 import { ErrorState } from '@/components/ErrorState';
 import { canalUnico } from '@/lib/realtimeCanal';
 
@@ -54,7 +57,7 @@ function corEspera(horarioChegada: string | null): string {
   if (!horarioChegada) return 'text-muted-foreground';
   const mins = Math.floor((Date.now() - new Date(horarioChegada).getTime()) / 60000);
   if (mins < 15) return 'text-success';
-  if (mins < 30) return 'text-warning';
+  if (mins < 30) return 'text-warning-foreground';
   return 'text-destructive font-semibold';
 }
 
@@ -76,7 +79,7 @@ const ocorreuNoDiaDaClinica = (dataHora: string | null | undefined, data: string
 };
 
 const STATUS_CONFIG = {
-  aguardando: { label: 'Aguardando', color: 'bg-warning/10 text-warning border-warning/20' },
+  aguardando: { label: 'Aguardando', color: 'bg-warning/10 text-warning-foreground border-warning/20' },
   em_atendimento: { label: 'Em Atendimento', color: 'bg-primary/10 text-primary border-primary/20' },
   finalizado: { label: 'Finalizado', color: 'bg-success/10 text-success border-success/20' },
   chamado: { label: 'Chamado', color: 'bg-info/10 text-info border-info/20' },
@@ -85,10 +88,9 @@ const STATUS_CONFIG = {
 const PRIORIDADE_CONFIG = {
   normal: { label: 'Normal', dot: 'bg-muted-foreground' },
   preferencial: { label: 'Preferencial', dot: 'bg-warning' },
-  urgente: { label: 'Urgente', dot: 'bg-destructive animate-pulse' },
+  urgente: { label: 'Urgente', dot: 'bg-destructive animate-pulse motion-reduce:animate-none' },
 };
 
-const stagger = { hidden: {}, visible: { transition: { staggerChildren: 0.06 } } };
 const cardAnim = {
   hidden: { opacity: 0, x: -16 },
   visible: { opacity: 1, x: 0, transition: { duration: 0.3 } },
@@ -96,7 +98,7 @@ const cardAnim = {
 };
 
 // ─── Queue Card ────────────────────────────────────────────
-function FilaCard({ item, pos, pacienteNome, medicoNome, salaNome, canRemove, actionsDisabled, isBusy, onIniciar, onFinalizar, onChamar, onRemover, onAbrirProntuario, now }: {
+const FilaCard = forwardRef<HTMLDivElement, {
   item: any; pos: number; pacienteNome: string; medicoNome: string; salaNome: string;
   canRemove: boolean;
   actionsDisabled: boolean; isBusy: boolean;
@@ -104,14 +106,14 @@ function FilaCard({ item, pos, pacienteNome, medicoNome, salaNome, canRemove, ac
   /** Volta ao prontuário de quem já está em atendimento (aba fechada, recarga). */
   onAbrirProntuario?: () => void;
   now: number;
-}) {
+}>(function FilaCard({ item, pos, pacienteNome, medicoNome, salaNome, canRemove, actionsDisabled, isBusy, onIniciar, onFinalizar, onChamar, onRemover, onAbrirProntuario, now }, ref) {
   const status = item.status as keyof typeof STATUS_CONFIG;
   const prioridade = (item.prioridade || 'normal') as keyof typeof PRIORIDADE_CONFIG;
   const cfg = STATUS_CONFIG[status] ?? STATUS_CONFIG.aguardando;
   const prioCfg = PRIORIDADE_CONFIG[prioridade] ?? PRIORIDADE_CONFIG.normal;
 
   return (
-    <motion.div variants={cardAnim} layout>
+    <motion.div ref={ref} variants={cardAnim} layout initial={false} data-testid="fila-card">
       <div aria-busy={isBusy} className={cn(
         'rounded-2xl border bg-card transition-all duration-200',
         status === 'em_atendimento' && 'border-primary/40 shadow-lg shadow-primary/10 ring-1 ring-primary/20',
@@ -212,7 +214,7 @@ function FilaCard({ item, pos, pacienteNome, medicoNome, salaNome, canRemove, ac
       </div>
     </motion.div>
   );
-}
+});
 
 // ─── Main Page ─────────────────────────────────────────────
 export default function Fila() {
@@ -312,8 +314,8 @@ export default function Fila() {
   });
 
   /**
-   * O RLS financeiro oculta cobranÃ§as de consulta de mÃ©dicos e enfermagem.
-   * A RPC retorna apenas a decisÃ£o de liberaÃ§Ã£o, sem expor valores ou itens
+   * O RLS financeiro oculta cobranças de consulta de médicos e enfermagem.
+   * A RPC retorna apenas a decisão de liberação, sem expor valores ou itens
    * financeiros, e usa as mesmas regras do bloqueio no banco.
    */
   const { data: liberacoesPagamento = [], isLoading: verificandoPagamento, isError: erroVerificacaoPagamento } = useQuery({
@@ -845,13 +847,58 @@ export default function Fila() {
 
   // Stats
   const stats = {
-    // Conta também quem está bloqueado por pagamento/triagem; continuam na
-    // fila ativa, embora apareçam em uma seção separada até serem liberados.
-    aguardando: filaAtivaCompleta.filter(f => f.status === 'aguardando' || f.status === 'chamado').length,
-    emAtendimento: filaAtivaCompleta.filter(f => f.status === 'em_atendimento').length,
     finalizadosHoje: filaFinalizadaHoje.length,
     urgentes: filaAtivaCompleta.filter(f => f.prioridade === 'urgente').length,
   };
+  const aguardandoJornada = [
+    ...filaAguardandoPagamento,
+    ...filaAtiva.filter(item => item.status === 'aguardando' || item.status === 'chamado'),
+  ];
+  const emAtendimentoJornada = filaAtivaCompleta.filter(item => item.status === 'em_atendimento');
+  const minutosDesde = (timestamp: string | null | undefined) => {
+    if (!timestamp) return null;
+    const value = Date.parse(timestamp);
+    return Number.isFinite(value) ? Math.max(0, Math.floor((now - value) / 60_000)) : null;
+  };
+  const maiorEspera = (items: typeof filaAtivaCompleta, timestamp: (item: (typeof filaAtivaCompleta)[number]) => string | null | undefined) =>
+    Math.max(0, ...items.map(item => minutosDesde(timestamp(item)) ?? 0));
+  const acimaDeTrinta = (items: typeof filaAtivaCompleta, timestamp: (item: (typeof filaAtivaCompleta)[number]) => string | null | undefined) =>
+    items.filter(item => (minutosDesde(timestamp(item)) ?? 0) > 30).length;
+  const triagemDisponivel = hasAnyRole(['admin', 'medico', 'enfermagem']);
+  const primeiroPendenteTriagem = filaAguardandoTriagem[0];
+  const agendamentoPendenteTriagem = primeiroPendenteTriagem
+    ? agendamentos.find(item => item.id === primeiroPendenteTriagem.agendamento_id)
+    : null;
+  const etapasJornada = [
+    {
+      id: 'aguardando', label: 'Aguardando', value: aguardandoJornada.length,
+      icon: Clock, color: 'text-warning-foreground', surface: 'bg-warning/10',
+      elapsed: maiorEspera(aguardandoJornada, item => item.horario_chegada),
+      overdue: acimaDeTrinta(aguardandoJornada, item => item.horario_chegada),
+      caption: 'na fila para chamada',
+    },
+    {
+      id: 'triagem', label: 'Triagem', value: filaAguardandoTriagem.length,
+      icon: Stethoscope, color: 'text-info', surface: 'bg-info/10',
+      elapsed: maiorEspera(filaAguardandoTriagem, item => item.horario_chegada),
+      overdue: acimaDeTrinta(filaAguardandoTriagem, item => item.horario_chegada),
+      caption: 'aguardando avaliação',
+    },
+    {
+      id: 'atendimento', label: 'Em atendimento', value: emAtendimentoJornada.length,
+      icon: Play, color: 'text-primary', surface: 'bg-primary/10',
+      elapsed: maiorEspera(emAtendimentoJornada, item => item.updated_at || item.created_at),
+      overdue: 0,
+      caption: 'com profissional',
+    },
+    {
+      id: 'finalizado', label: 'Finalizado', value: stats.finalizadosHoje,
+      icon: CheckCircle2, color: 'text-success', surface: 'bg-success/10',
+      elapsed: null,
+      overdue: 0,
+      caption: 'hoje',
+    },
+  ];
 
   // O vínculo médico é necessário para aplicar o escopo individual da fila.
   // Sem esperar essa consulta, o primeiro render podia mostrar a fila da
@@ -871,54 +918,88 @@ export default function Fila() {
 
   return (
     <div className="space-y-6 pb-8">
-      {/* Header */}
-      <section className="relative overflow-hidden rounded-2xl border border-[#0F7BFD]/15 bg-gradient-to-br from-white via-[#F5FAFF] to-[#EAF4FF] px-5 py-5 shadow-sm sm:px-6">
-        <div aria-hidden="true" className="pointer-events-none absolute -right-8 -top-12 h-40 w-40 rounded-full bg-[#50E3FB]/15 blur-2xl" />
-        <div className="relative flex flex-col sm:flex-row sm:items-end justify-between gap-4">
-        <div>
-          <p className="mb-1 text-[11px] font-bold uppercase tracking-[0.16em] text-[#005ECC]">Atendimento da clínica</p>
-          <h1 className="text-2xl font-bold font-display tracking-tight text-[#0C1F54] sm:text-3xl">Fila de Atendimento</h1>
-          <p className="text-sm text-[#0C1F54]/65 mt-1">
-            {format(parseDateOnly(today)!, "EEEE, dd 'de' MMMM", { locale: ptBR })} • Atualiza automaticamente
-          </p>
-        </div>
-        <div className="flex gap-2">
-          {meuMedicoId && (
-            <label className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Switch checked={apenasMeus} onCheckedChange={(v) => setApenasMeus(v)} aria-label="Mostrar só meus pacientes" />
-              Só meus pacientes
-            </label>
-          )}
-          <Button variant="outline" size="sm" className="gap-2 border-[#0C1F54]/15 bg-white text-[#0C1F54] hover:bg-[#EAF4FF]" onClick={refresh} aria-label="Atualizar fila">
-            <RefreshCw className="h-4 w-4" />
-          </Button>
-          <Button className="gap-2 bg-[#005ECC] text-white hover:bg-[#004FAE]" onClick={() => setIsAddOpen(true)} disabled={filaQuery.isError || agendamentosQuery.isError}>
-            <UserPlus className="h-4 w-4" /> Adicionar à Fila
-          </Button>
-        </div>
-      </div>
-      </section>
+      <PageHeader
+        title="Fila de Atendimento"
+        description={`${format(parseDateOnly(today)!, "EEEE, dd 'de' MMMM", { locale: ptBR })} · Atualiza automaticamente`}
+        icon={<Users />}
+        actions={
+          <>
+            {meuMedicoId && (
+              <label className="flex min-h-11 items-center gap-2 rounded-lg px-2 text-sm text-muted-foreground">
+                <Switch checked={apenasMeus} onCheckedChange={(v) => setApenasMeus(v)} aria-label="Mostrar só meus pacientes" />
+                Só meus pacientes
+              </label>
+            )}
+            <Button variant="outline" size="icon" className="shrink-0" onClick={refresh} aria-label="Atualizar fila" title="Atualizar fila">
+              <RefreshCw className="h-4 w-4" />
+            </Button>
+            <Button className="shrink-0 gap-2" onClick={() => setIsAddOpen(true)} disabled={filaQuery.isError || agendamentosQuery.isError}>
+              <UserPlus aria-hidden="true" className="h-4 w-4" /> Adicionar à fila
+            </Button>
+          </>
+        }
+      />
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        {[
-          { label: 'Aguardando', value: stats.aguardando, icon: Clock, color: 'text-warning', bg: 'bg-warning/10' },
-          { label: 'Em Atendimento', value: stats.emAtendimento, icon: Play, color: 'text-primary', bg: 'bg-primary/10' },
-          { label: 'Finalizados Hoje', value: stats.finalizadosHoje, icon: CheckCircle2, color: 'text-success', bg: 'bg-success/10' },
-          { label: 'Urgentes', value: stats.urgentes, icon: AlertTriangle, color: 'text-destructive', bg: 'bg-destructive/10' },
-        ].map(s => (
-          <motion.div key={s.label} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
-            className="rounded-xl border border-[#D6E7F3] bg-white px-4 py-3 flex items-center gap-3 shadow-sm">
-            <div className={cn('h-10 w-10 rounded-xl flex items-center justify-center shrink-0', s.bg)}>
-              <s.icon className={cn('h-5 w-5', s.color)} />
-            </div>
-            <div>
-              <p className={cn('text-2xl font-bold tabular-nums text-[#0C1F54]', s.color)}>{s.value}</p>
-              <p className="text-xs text-[#0C1F54]/65">{s.label}</p>
-            </div>
-          </motion.div>
-        ))}
-      </div>
+      <section aria-labelledby="fila-etapas-heading" className="space-y-2">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 id="fila-etapas-heading" className="text-sm font-semibold text-foreground">Jornada dos atendimentos</h2>
+          {stats.urgentes > 0 && (
+            <p className="inline-flex items-center gap-1.5 text-xs font-semibold text-destructive" role="status">
+              <AlertTriangle aria-hidden="true" className="h-3.5 w-3.5" />
+              {stats.urgentes} urgente{stats.urgentes === 1 ? '' : 's'}
+            </p>
+          )}
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+          {etapasJornada.map((etapa) => {
+            const Icon = etapa.icon;
+            return (
+              <Card key={etapa.id} id={`fila-etapa-${etapa.id}`} className="border-border/70 shadow-sm">
+                <CardContent className="flex min-h-[102px] items-center gap-3 p-3">
+                  <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', etapa.surface)}>
+                    <Icon aria-hidden="true" className={cn('h-5 w-5', etapa.color)} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <h3 className="truncate text-xs font-semibold text-foreground">{etapa.label}</h3>
+                      <span className={cn('text-2xl font-bold tabular-nums', etapa.color)}>{etapa.value}</span>
+                    </div>
+                    <p className="truncate text-[11px] text-muted-foreground">{etapa.caption}</p>
+                    {etapa.id === 'triagem' && primeiroPendenteTriagem && (
+                      <p className="mt-0.5 truncate text-[10px] font-medium text-foreground" title={getPacienteNome(primeiroPendenteTriagem.agendamento_id)}>
+                        {getPacienteNome(primeiroPendenteTriagem.agendamento_id)} · aguardando {calcularEspera(primeiroPendenteTriagem.horario_chegada)}
+                      </p>
+                    )}
+                    {etapa.overdue > 0 ? (
+                      <p className="mt-1 flex items-center gap-1 text-[10px] font-semibold text-destructive" role="status">
+                        <Timer aria-hidden="true" className="h-3 w-3" />
+                        {etapa.overdue} acima de 30 min · maior espera {etapa.elapsed} min
+                      </p>
+                    ) : etapa.elapsed !== null ? (
+                      <p className="mt-1 text-[10px] text-muted-foreground">
+                        {etapa.value > 0 ? `Maior tempo: ${etapa.elapsed} min` : 'Sem pacientes nesta etapa'}
+                      </p>
+                    ) : etapa.id === 'finalizado' ? (
+                      <p className="mt-1 text-[10px] text-muted-foreground">{etapa.value > 0 ? 'Últimos atendimentos concluídos' : 'Ainda sem conclusões'}</p>
+                    ) : null}
+                    {etapa.id === 'triagem' && triagemDisponivel && primeiroPendenteTriagem && agendamentoPendenteTriagem?.paciente_id && (
+                      <Button
+                        type="button"
+                        variant="link"
+                        size="sm"
+                        className="mt-1 h-auto min-h-8 px-0 text-xs"
+                        onClick={() => navigate(`/fila?tab=triagem&paciente=${encodeURIComponent(agendamentoPendenteTriagem.paciente_id)}&agendamento=${encodeURIComponent(agendamentoPendenteTriagem.id)}`)}
+                      >
+                        Registrar próxima triagem
+                      </Button>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      </section>
 
       {/* Queue */}
       {filaQuery.isError ? (
@@ -930,26 +1011,24 @@ export default function Fila() {
       ) : filaAtiva.length === 0 ? (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
           <Card>
-            <CardContent className="flex flex-col items-center justify-center py-16 text-center">
-              <Users className="h-14 w-14 text-muted-foreground/20 mb-4" />
-              <p className="font-semibold text-lg">
-                {filaAtivaCompleta.length > 0 || filaParaRevisar.length > 0
+            <CardContent className="py-4">
+              <ActionableEmptyState
+                title={filaAtivaCompleta.length > 0 || filaParaRevisar.length > 0
                   ? 'Nenhum paciente liberado para chamada'
                   : 'Fila vazia'}
-              </p>
-              <p className="text-sm text-muted-foreground mt-1 mb-6">
-                {filaAtivaCompleta.length > 0 || filaParaRevisar.length > 0
-                  ? 'Confira as pendências e os itens para revisão abaixo.'
-                  : 'Nenhum paciente aguardando atendimento agora.'}
-              </p>
-              <Button onClick={() => setIsAddOpen(true)} className="gap-2">
-                <UserPlus className="h-4 w-4" /> Adicionar Paciente
-              </Button>
+                description={filaAtivaCompleta.length > 0 || filaParaRevisar.length > 0
+                  ? 'Confira as pendências e os itens para revisão abaixo. Ações de chamada ficam disponíveis após a liberação.'
+                  : 'Não há pacientes aguardando agora. Adicione alguém que já chegou à clínica ou aguarde a recepção encaminhar o próximo atendimento.'}
+                actionLabel="Adicionar à fila"
+                onAction={() => setIsAddOpen(true)}
+                actionIcon={UserPlus}
+                className="py-12"
+              />
             </CardContent>
           </Card>
         </motion.div>
       ) : (
-        <motion.div variants={stagger} initial="hidden" animate="visible" className="space-y-3">
+        <div className="space-y-3">
           <AnimatePresence mode="popLayout">
             {filaAtiva.map((item, idx) => (
               <FilaCard
@@ -976,7 +1055,7 @@ export default function Fila() {
               />
             ))}
           </AnimatePresence>
-        </motion.div>
+        </div>
       )}
 
       {triagemLigada && triagensQuery.isError && (
@@ -1032,7 +1111,7 @@ export default function Fila() {
           Só aparece quando a clínica ligou a trava. */}
       {filaAguardandoPagamento.length > 0 && (
         <div className="rounded-xl border border-warning/30 bg-warning/5 p-4 space-y-2">
-          <p className="text-xs font-medium text-warning flex items-center gap-2">
+          <p className="text-xs font-medium text-warning-foreground flex items-center gap-2">
             <AlertTriangle className="h-3.5 w-3.5" />
             {filaAguardandoPagamento.length === 1
               ? (filaAguardandoPagamento[0].cobranca_estado === 'pendente'
@@ -1075,7 +1154,7 @@ export default function Fila() {
                     <Timer className="h-3 w-3 inline mr-1" />
                     {calcularEspera(item.horario_chegada)}
                   </span>
-                  <Badge variant="outline" className="text-[10px] border-warning/40 text-warning tabular-nums">
+                  <Badge variant="outline" className="text-[10px] border-warning/40 text-warning-foreground tabular-nums">
                     {item.cobranca_estado === 'pendente'
                       ? 'Confirmando cobrança'
                       : verificandoPagamento

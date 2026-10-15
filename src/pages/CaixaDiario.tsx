@@ -40,6 +40,7 @@ import { Label } from '@/components/ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { SectionFallback } from '@/components/ui/loading-skeleton';
+import { PageHeader } from '@/components/PageHeader';
 import { todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { mesmoValor, diferencaEmReais, parseValorContado } from '@/lib/dinheiro';
 import { calcularSaldoGaveta, calcularTotaisCaixa, validarResultadoRpcCaixa } from '@/lib/caixaDiario';
@@ -1023,43 +1024,36 @@ export default function CaixaDiario() {
   return (
     <div className="space-y-6 p-4 md:p-6">
       {/* ─── Header ─── */}
-      <div className="flex flex-col items-start justify-between gap-3 rounded-2xl border border-[#D8E8F4] bg-[linear-gradient(118deg,#FFFFFF_12%,#F3FAFF_67%,#E7F8FC_100%)] px-4 py-4 shadow-[0_12px_32px_-26px_rgba(12,31,84,0.35)] sm:flex-row sm:items-center sm:px-5">
-        <div className="flex items-center gap-3">
-          <div className={cn(
-            'p-2.5 rounded-xl',
-            isOpen ? 'bg-success/10' : 'bg-muted'
-          )}>
-            <DollarSign className={cn('h-6 w-6', isOpen ? 'text-success' : 'text-muted-foreground')} />
+      <PageHeader
+        title="Caixa Diário"
+        description={(
+          <span className="inline-flex items-center gap-1.5">
+            <CalendarDays aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+            {new Date(`${today}T12:00:00`).toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}
+          </span>
+        )}
+        icon={<DollarSign />}
+        actions={(
+          <div className="flex items-center gap-2">
+            <Badge className={cn(
+              'gap-1.5 px-3 py-1 text-xs font-medium',
+              isOpen
+                ? 'bg-success/10 text-success border-success/20'
+                : 'bg-muted text-muted-foreground border-border'
+            )}>
+              <span className={cn('h-2 w-2 rounded-full', isOpen ? 'bg-success animate-pulse' : 'bg-muted-foreground')} />
+              {isOpen ? 'Caixa Aberto' : 'Caixa Fechado'}
+            </Badge>
+            {isOpen && caixaHoje?.operador_abertura && (
+              <span className="text-xs text-muted-foreground">por {caixaHoje.operador_abertura}</span>
+            )}
           </div>
-          <div>
-            <h1 className="text-2xl font-bold text-[#0C1F54]">Caixa Diário</h1>
-            <p className="flex items-center gap-1 text-sm text-[#0C1F54]/65">
-              <CalendarDays className="h-3.5 w-3.5" />
-              {new Date(`${today}T12:00:00`).toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}
-            </p>
-          </div>
-        </div>
+        )}
+      />
 
-        <div className="flex items-center gap-2">
-          <Badge className={cn(
-            'gap-1.5 px-3 py-1 text-xs font-medium',
-            isOpen
-              ? 'bg-success/10 text-success border-success/20'
-              : 'bg-muted text-muted-foreground border-border'
-          )}>
-            <span className={cn('h-2 w-2 rounded-full', isOpen ? 'bg-success animate-pulse' : 'bg-muted-foreground')} />
-            {isOpen ? 'Caixa Aberto' : 'Caixa Fechado'}
-          </Badge>
-          {isOpen && caixaHoje?.operador_abertura && (
-            <span className="text-xs text-muted-foreground">por {caixaHoje.operador_abertura}</span>
-          )}
-        </div>
-      </div>
-
-      {/* ─── Tabs ─── */}
       <Tabs value={activeTabPermitida} onValueChange={setActiveTab}>
         <div className="overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0">
-          <TabsList className="inline-flex h-auto w-auto min-w-full gap-0.5 rounded-xl border border-[#D8E8F4] bg-[#EAF4FF] p-1 md:min-w-0">
+          <TabsList className="inline-flex h-auto w-auto min-w-full gap-0.5 rounded-xl border border-border bg-muted/60 p-1 md:w-full md:min-w-0 md:flex-wrap md:justify-center">
             {[
               { v: 'hoje', l: 'Caixa Hoje', i: Receipt },
               { v: 'historico', l: 'Histórico', i: History },
@@ -1072,7 +1066,7 @@ export default function CaixaDiario() {
                 { v: 'relatorios', l: 'Relatórios', i: ClipboardList },
               ] : []),
             ].map(tab => (
-              <TabsTrigger key={tab.v} value={tab.v} className="min-h-10 gap-1.5 whitespace-nowrap rounded-lg px-3 text-xs data-[state=active]:bg-white data-[state=active]:text-[#0C1F54] data-[state=active]:shadow-sm">
+              <TabsTrigger key={tab.v} value={tab.v} className="min-h-10 gap-1.5 whitespace-nowrap rounded-lg px-3 text-xs data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-sm">
                 <tab.i className="h-3.5 w-3.5" /> {tab.l}
               </TabsTrigger>
             ))}
@@ -1464,7 +1458,7 @@ export default function CaixaDiario() {
                               <p className="text-[10px] text-muted-foreground">Fechamento</p>
                             </>
                           ) : (
-                            <Badge variant={cx.aberto ? 'default' : 'secondary'} className="text-[10px]">
+                            <Badge variant={cx.aberto ? 'outline' : 'secondary'} className={cn('text-[10px]', cx.aberto && 'bg-success/10 text-success border-success/20')}>
                               {cx.aberto ? 'Aberto' : 'Sem fechamento'}
                             </Badge>
                           )}
@@ -1834,6 +1828,7 @@ export default function CaixaDiario() {
                       className="h-6 w-6 shrink-0"
                       onClick={() => { setPacienteId(null); setPacienteNome(''); }}
                       title="Remover paciente"
+                      aria-label="Remover paciente selecionado"
                     >
                       <X className="h-3 w-3" />
                     </Button>
@@ -2158,7 +2153,7 @@ export default function CaixaDiario() {
                 </div>
                 <div className="p-3 rounded-lg bg-muted/50">
                   <p className="text-xs text-muted-foreground">Status</p>
-                  <Badge variant={showDetalhesCaixa.aberto ? 'default' : 'secondary'} className="mt-1">
+                  <Badge variant={showDetalhesCaixa.aberto ? 'outline' : 'secondary'} className={cn('mt-1', showDetalhesCaixa.aberto && 'bg-success/10 text-success border-success/20')}>
                     {showDetalhesCaixa.aberto ? 'Aberto' : 'Fechado'}
                   </Badge>
                 </div>

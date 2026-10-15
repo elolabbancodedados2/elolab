@@ -10,7 +10,7 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
 import {
-  ChevronLeft, ChevronRight, Filter, Plus, Palette, Ban, Search,
+  ChevronLeft, ChevronRight, Filter, Plus, Palette, Ban, Search, X,
   CalendarDays, LayoutGrid, List, MoreHorizontal, Users2, Printer, Keyboard, Pin,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -64,11 +64,12 @@ export function AgendaHeader(p: Props) {
   const [dateDraft, setDateDraft] = useState(safeDate);
   useEffect(() => setDateDraft(safeDate), [safeDate]);
   const d = parseISO(safeDate);
-  const label = p.view === 'monthly'
+  const formattedLabel = p.view === 'monthly'
     ? format(d, "MMMM 'de' yyyy", { locale: ptBR })
     : p.view === 'weekly'
       ? `Semana de ${format(d, "d 'de' MMM", { locale: ptBR })}`
       : format(d, "EEEE, d 'de' MMM", { locale: ptBR });
+  const label = formattedLabel.replace(/^./u, (first) => first.toLocaleUpperCase('pt-BR'));
 
   const nav = (dir: -1 | 1) => {
     const next = p.view === 'monthly' ? addMonths(d, dir) : p.view === 'weekly' ? addWeeks(d, dir) : addDays(d, dir);
@@ -80,15 +81,15 @@ export function AgendaHeader(p: Props) {
   const activeFilters = p.medicoFilter.length + p.statusFilter.length + (p.search ? 1 : 0);
 
   return (
-    <div className="flex flex-col gap-4 rounded-2xl border border-[#D8E8F4] bg-[linear-gradient(118deg,#FFFFFF_12%,#F6FBFF_70%,#EAF8FC_100%)] p-3 shadow-[0_12px_32px_-26px_rgba(12,31,84,0.35)] sm:gap-5 sm:p-5">
+    <div className="relative flex flex-col gap-4 overflow-hidden rounded-[24px] border border-border/60 bg-card p-3 shadow-xs sm:gap-5 sm:p-5">
       {/* Row 1: title + nav + view + primary actions */}
       <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
         <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
           <div className="flex min-w-0 items-center gap-2">
-          <h1 className="truncate text-lg font-semibold capitalize text-[#0C1F54] sm:text-xl">{label}</h1>
-          {isToday && p.view === 'daily' && <Badge className="border-[#CDEAFF] bg-[#EAF4FF] text-[#005ECC] hover:bg-[#EAF4FF]">HOJE</Badge>}
+          <h1 className="truncate text-xl font-extrabold tracking-[-0.03em] text-foreground sm:text-[26px]">{label}</h1>
+          {isToday && p.view === 'daily' && <Badge className="border-transparent bg-highlight text-highlight-foreground hover:bg-highlight">HOJE</Badge>}
           </div>
-          <div className="flex w-full items-center rounded-xl border border-[#D8E8F4] bg-white shadow-sm sm:w-auto sm:shrink-0">
+          <div className="flex w-full items-center rounded-full border border-border bg-card px-1 shadow-xs sm:w-auto sm:shrink-0">
             <Button variant="ghost" size="icon" className="h-11 w-11 shrink-0 sm:h-9 sm:w-9" onClick={() => nav(-1)} aria-label="Anterior">
               <ChevronLeft className="h-4 w-4" />
             </Button>
@@ -117,19 +118,19 @@ export function AgendaHeader(p: Props) {
         </div>
 
         <div className="flex w-full items-center gap-2 overflow-x-auto pb-1 sm:w-auto sm:overflow-visible sm:pb-0">
-          <div role="group" aria-label="Visualização da agenda" className="flex items-center gap-0.5 rounded-xl border border-[#D8E8F4] bg-white p-1 shadow-sm">
-            <Button aria-pressed={p.view === 'daily'} variant={p.view === 'daily' ? 'default' : 'ghost'} size="sm" className={cn('h-11 px-3 sm:h-9', p.view === 'daily' && 'bg-[#0C1F54] text-white hover:bg-[#142D68]')} onClick={() => p.onViewChange('daily')} aria-label="Visualização diária">
+          <div role="group" aria-label="Visualização da agenda" className="flex items-center gap-0.5 rounded-full border border-border bg-muted/70 p-1">
+            <Button aria-pressed={p.view === 'daily'} variant={p.view === 'daily' ? 'default' : 'ghost'} size="sm" className={cn('h-11 px-3 sm:h-9', p.view === 'daily' && 'bg-foreground text-background hover:bg-foreground/90')} onClick={() => p.onViewChange('daily')} aria-label="Visualização diária">
               <List className="h-3.5 w-3.5 md:mr-1" /> <span className="hidden md:inline">Dia</span>
             </Button>
-            <Button aria-pressed={p.view === 'weekly'} variant={p.view === 'weekly' ? 'default' : 'ghost'} size="sm" className={cn('h-11 px-3 sm:h-9', p.view === 'weekly' && 'bg-[#0C1F54] text-white hover:bg-[#142D68]')} onClick={() => p.onViewChange('weekly')} aria-label="Visualização semanal">
+            <Button aria-pressed={p.view === 'weekly'} variant={p.view === 'weekly' ? 'default' : 'ghost'} size="sm" className={cn('h-11 px-3 sm:h-9', p.view === 'weekly' && 'bg-foreground text-background hover:bg-foreground/90')} onClick={() => p.onViewChange('weekly')} aria-label="Visualização semanal">
               <LayoutGrid className="h-3.5 w-3.5 md:mr-1" /> <span className="hidden md:inline">Semana</span>
             </Button>
-            <Button aria-pressed={p.view === 'monthly'} variant={p.view === 'monthly' ? 'default' : 'ghost'} size="sm" className={cn('h-11 px-3 sm:h-9', p.view === 'monthly' && 'bg-[#0C1F54] text-white hover:bg-[#142D68]')} onClick={() => p.onViewChange('monthly')} aria-label="Visualização mensal">
+            <Button aria-pressed={p.view === 'monthly'} variant={p.view === 'monthly' ? 'default' : 'ghost'} size="sm" className={cn('h-11 px-3 sm:h-9', p.view === 'monthly' && 'bg-foreground text-background hover:bg-foreground/90')} onClick={() => p.onViewChange('monthly')} aria-label="Visualização mensal">
               <CalendarDays className="h-3.5 w-3.5 md:mr-1" /> <span className="hidden md:inline">Mês</span>
             </Button>
           </div>
 
-          <Button variant="outline" size="sm" onClick={p.onToggleWaiting} className="hidden h-9 lg:inline-flex">
+          <Button variant="outline" size="sm" onClick={p.onToggleWaiting} aria-label={`Alternar lista de espera${p.waitingCount ? `, ${p.waitingCount} pacientes` : ''}`} className="hidden h-9 lg:inline-flex">
             <Users2 className="h-4 w-4 md:mr-1.5" />
             <span className="hidden md:inline">Espera</span>
             {p.waitingCount > 0 && <Badge variant="secondary" className="ml-1.5 h-5 px-1.5 text-[10px]">{p.waitingCount}</Badge>}
@@ -163,7 +164,7 @@ export function AgendaHeader(p: Props) {
             </DropdownMenuContent>
           </DropdownMenu>
 
-          <Button size="sm" onClick={p.onNewAppointment} className="h-11 shrink-0 bg-[#005ECC] text-white shadow-md shadow-[#0F7BFD]/15 hover:bg-[#004FAE] sm:h-9">
+          <Button size="sm" onClick={p.onNewAppointment} aria-label="Nova consulta" className="h-11 shrink-0 bg-primary text-primary-foreground sm:h-10 sm:px-4">
             <Plus className="h-4 w-4 md:mr-1" /> <span className="hidden md:inline">Nova consulta</span>
           </Button>
         </div>
@@ -171,20 +172,32 @@ export function AgendaHeader(p: Props) {
 
       {/* Row 2: search + filters + totals */}
       <div className="flex flex-wrap items-center gap-2">
-        <div className="relative w-full min-w-0 sm:max-w-sm sm:flex-1">
+        <div className="relative w-full min-w-0 sm:min-w-[240px] sm:max-w-sm sm:flex-1">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
           <Input
-            placeholder="Buscar paciente, CPF, telefone..."
+            placeholder="Buscar paciente, CPF ou telefone"
             value={p.search}
             onChange={(e) => p.onSearchChange(e.target.value)}
             aria-label="Buscar paciente, CPF ou telefone"
-            className="h-11 border-[#D8E8F4] bg-white pl-8 text-sm focus-visible:ring-[#0F7BFD] sm:h-9"
+            className={cn('h-11 border-border bg-card pl-8 text-sm focus-visible:ring-ring sm:h-9', p.search && 'pr-10')}
           />
+          {p.search && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label="Limpar busca"
+              onClick={() => p.onSearchChange('')}
+              className="absolute right-1 top-1/2 h-8 w-8 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          )}
         </div>
 
         <Popover>
           <PopoverTrigger asChild>
-            <Button variant="outline" size="sm" className="h-11 border-[#D8E8F4] bg-white text-[#0C1F54] hover:bg-[#F3FAFF] sm:h-9">
+            <Button variant="outline" size="sm" className="h-11 border-border bg-card text-foreground hover:bg-accent sm:h-9">
               <Filter className="h-3.5 w-3.5 mr-1.5" /> Médicos
               {p.medicoFilter.length > 0 && <Badge variant="secondary" className="ml-1.5 h-4 px-1 text-[10px]">{p.medicoFilter.length}</Badge>}
             </Button>
@@ -212,7 +225,7 @@ export function AgendaHeader(p: Props) {
 
         <Popover>
           <PopoverTrigger asChild>
-            <Button variant="outline" size="sm" className="h-11 border-[#D8E8F4] bg-white text-[#0C1F54] hover:bg-[#F3FAFF] sm:h-9">
+            <Button variant="outline" size="sm" className="h-11 border-border bg-card text-foreground hover:bg-accent sm:h-9">
               <Filter className="h-3.5 w-3.5 mr-1.5" /> Status
               {p.statusFilter.length > 0 && <Badge variant="secondary" className="ml-1.5 h-4 px-1 text-[10px]">{p.statusFilter.length}</Badge>}
             </Button>
@@ -244,7 +257,7 @@ export function AgendaHeader(p: Props) {
           }}>Limpar filtros</Button>
         )}
 
-        <div className="-mx-1 flex w-[calc(100%+0.5rem)] items-center gap-1.5 overflow-x-auto px-1 pb-1 text-xs sm:ml-auto sm:w-auto sm:overflow-visible sm:pb-0">
+        <div role="group" aria-label={`Resumo dos atendimentos: ${p.totals.total} no total, ${p.totals.confirmados} confirmados, ${p.totals.aguardando} aguardando e ${p.totals.cancelados} cancelados`} className="-mx-1 flex w-[calc(100%+0.5rem)] items-center gap-1.5 overflow-x-auto px-1 pb-1 text-xs sm:ml-auto sm:w-auto sm:overflow-visible sm:pb-0">
           <Stat label="Total" value={p.totals.total} />
           <Stat label="Conf." value={p.totals.confirmados} tone="success" />
           <Stat label="Aguard." value={p.totals.aguardando} tone="warning" />
@@ -258,15 +271,15 @@ export function AgendaHeader(p: Props) {
 function Stat({ label, value, tone }: { label: string; value: number; tone?: 'success' | 'warning' | 'destructive' }) {
   return (
     <div className={cn(
-      'flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg border border-[#D8E8F4] bg-white px-2 py-1 shadow-sm sm:min-h-0',
+      'flex min-h-11 shrink-0 items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1 sm:min-h-0',
       tone === 'success' && 'border-success/30 bg-success/5',
       tone === 'warning' && 'border-warning/30 bg-warning/5',
       tone === 'destructive' && 'border-destructive/30 bg-destructive/5',
     )}>
       <span className={cn(
-        'text-sm font-semibold tabular-nums',
+        'text-sm font-extrabold tabular-nums',
         tone === 'success' && 'text-success',
-        tone === 'warning' && 'text-warning',
+        tone === 'warning' && 'text-warning-foreground',
         tone === 'destructive' && 'text-destructive',
       )}>{value}</span>
       <span className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</span>

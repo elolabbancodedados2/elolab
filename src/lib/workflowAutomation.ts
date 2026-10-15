@@ -284,7 +284,7 @@ export async function autoCreateColeta(params: {
           .select('id')
           .maybeSingle();
         if (atualizarErro) throw atualizarErro;
-        if (!coletaAtualizada) throw new Error('NÃ£o foi possÃ­vel aplicar a prioridade urgente Ã  coleta existente.');
+        if (!coletaAtualizada) throw new Error('Não foi possível aplicar a prioridade urgente à coleta existente.');
         actions.push('Coleta existente marcada como URGENTE');
         return { success: true, message: 'Coleta existente marcada como urgente', actions };
       }
@@ -691,7 +691,7 @@ export async function autoCancelarAgendamento(params: {
       .eq('id', params.agendamentoId)
       .maybeSingle();
 
-    if (!ag?.clinica_id) throw new Error('Agendamento sem clÃ­nica ou nÃ£o encontrado.');
+    if (!ag?.clinica_id) throw new Error('Agendamento sem clínica ou não encontrado.');
 
     const { data: resultado, error } = await supabase.rpc('alterar_status_agendamento_com_fila', {
       p_agendamento_id: params.agendamentoId,

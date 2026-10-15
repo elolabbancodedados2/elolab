@@ -166,6 +166,8 @@ export default function PainelTV() {
   const [isPlaying, setIsPlaying] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const loadFilaRef = useRef<() => Promise<void>>(async () => {});
+  const loadMediaRef = useRef<() => Promise<void>>(async () => {});
 
   // Nome reduzido: primeiro nome + inicial do último sobrenome para preservar
   // a privacidade do paciente no telão da sala de espera.
@@ -197,8 +199,8 @@ export default function PainelTV() {
     setSalas({});
     setFilaCarregando(true);
     setFilaErro(null);
-    void loadFila();
-    void loadMedia();
+    void loadFilaRef.current();
+    void loadMediaRef.current();
 
     // Preload voices
     if ('speechSynthesis' in window) {
@@ -207,7 +209,7 @@ export default function PainelTV() {
     
     const timeInterval = setInterval(() => setCurrentTime(new Date()), 1000);
     // Fallback polling every 10s (realtime is primary)
-    const dataInterval = setInterval(loadFila, 10000);
+    const dataInterval = setInterval(() => { void loadFilaRef.current(); }, 10000);
 
     return () => {
       clearInterval(timeInterval);
@@ -224,7 +226,7 @@ export default function PainelTV() {
         'postgres_changes',
         { event: '*', schema: 'public', table: 'fila_atendimento', filter: `clinica_id=eq.${profile.clinica_id}` },
         () => {
-          void loadFila();
+      void loadFilaRef.current();
         }
       )
       .subscribe();
@@ -375,6 +377,7 @@ export default function PainelTV() {
       if (requestSequence === filaLoadSequence.current) setFilaCarregando(false);
     }
   };
+  loadFilaRef.current = loadFila;
 
   const loadMedia = async () => {
     const clinicaId = profile?.clinica_id;
@@ -400,6 +403,7 @@ export default function PainelTV() {
       if (import.meta.env.DEV) console.error('Erro ao carregar mídias:', error);
     }
   };
+  loadMediaRef.current = loadMedia;
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -593,6 +597,7 @@ export default function PainelTV() {
                 !somAtivo && 'opacity-50'
               )}
               title={somAtivo ? 'Som ativado' : 'Som desativado'}
+              aria-label={somAtivo ? 'Desativar som' : 'Ativar som'}
             >
               {somAtivo ? <Volume2 className="h-5 w-5" /> : <VolumeX className="h-5 w-5" />}
             </Button>

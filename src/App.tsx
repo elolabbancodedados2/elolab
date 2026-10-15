@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { friendlyErrorMessage } from "@/components/ErrorState";
 import { BrowserRouter, Routes, Route, Navigate, useSearchParams } from "react-router-dom";
 import { SupabaseAuthProvider } from "@/contexts/SupabaseAuthContext";
+import { useWhatsAppBookingNotifications } from "@/hooks/useWhatsAppBookingNotifications";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { SupabaseProtectedRoute } from "@/components/SupabaseProtectedRoute";
 import { MainLayout } from "@/components/layout/MainLayout";
@@ -122,7 +123,7 @@ const FaturamentoConvenios = lazy(() => import("@/pages/FaturamentoConvenios"));
 const RepassesMedicos = lazy(() => import("@/pages/RepassesMedicos"));
 const Interoperabilidade = lazy(() => import("@/pages/Interoperabilidade"));
 import { CookieConsent } from "@/components/CookieConsent";
-import { MaintenanceAnnouncement } from "@/components/MaintenanceAnnouncement";
+import { UpdateSupportBanner } from "@/components/UpdateSupportBanner";
 import { BrandLoadingScreen } from "@/components/BrandLoadingScreen";
 
 const queryClient = new QueryClient({
@@ -148,6 +149,7 @@ const queryClient = new QueryClient({
  * Renders nothing — children are passed through.
  */
 function AppInitializer({ children }: { children: React.ReactNode }) {
+  useWhatsAppBookingNotifications();
   return <>{children}</>;
 }
 
@@ -196,10 +198,10 @@ function App() {
             <Sonner />
             <BrowserRouter>
               <SupabaseAuthProvider>
+                {mode === 'app' && <UpdateSupportBanner />}
                 <OperationalGuard><AppInitializer>
                 <NotificationBanner />
                 <PlatformAnnouncements />
-                <MaintenanceAnnouncement />
                 <Suspense fallback={<RouteFallback />}>
                   <Routes>
                     {mode === 'landing' ? (
@@ -315,7 +317,7 @@ function App() {
                           <Route path="/templates-email" element={<Navigate to="/todos-templates?tab=email" replace />} />
                           <Route path="/agente-ia" element={<SupabaseProtectedRoute allowedRoles={['admin']}><AgenteIA /></SupabaseProtectedRoute>} />
                           <Route path="/analytics" element={<SupabaseProtectedRoute allowedRoles={['admin']}><Analytics /></SupabaseProtectedRoute>} />
-                          <Route path="/planos" element={<SupabaseProtectedRoute allowedRoles={['admin']}><Planos /></SupabaseProtectedRoute>} />
+                          <Route path="/planos" element={<SupabaseProtectedRoute allowedRoles={['admin']} permitirCompradorPendente><Planos /></SupabaseProtectedRoute>} />
                           <Route path="/documentacao" element={<SupabaseProtectedRoute somentePlataforma><Documentacao /></SupabaseProtectedRoute>} />
                           <Route path="/painel-admin" element={<SupabaseProtectedRoute somentePlataforma><PainelAdmin /></SupabaseProtectedRoute>} />
                           <Route path="/admin/clinicas" element={<SupabaseProtectedRoute somentePlataforma><PlatformClinicas /></SupabaseProtectedRoute>} />

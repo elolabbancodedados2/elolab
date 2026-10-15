@@ -122,6 +122,12 @@ function setup() {
 }
 
 describe('Fila de atendimento', () => {
+  it('uses a high-contrast foreground for the waiting status', () => {
+    setup();
+
+    expect(screen.getAllByText('Aguardando').some(element => element.classList.contains('text-warning-foreground'))).toBe(true);
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.role = 'enfermagem';
@@ -153,6 +159,15 @@ describe('Fila de atendimento', () => {
       };
       return { update: vi.fn(() => updateQuery) };
     });
+  });
+
+  it('mantém título, data e ações no cabeçalho compartilhado', () => {
+    setup();
+
+    expect(screen.getByRole('heading', { name: 'Fila de Atendimento' })).toBeInTheDocument();
+    expect(screen.getByText(/Atualiza automaticamente/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Atualizar fila' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Adicionar à fila' })).toBeInTheDocument();
   });
 
   it('separa agendamentos antigos e encerrados, e não expõe valor financeiro à enfermagem', () => {

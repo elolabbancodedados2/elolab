@@ -1,5 +1,6 @@
+import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Plus, Search, Check, DollarSign, AlertCircle, Receipt, Calendar, Download, Clock,
@@ -7,9 +8,10 @@ import {
   ArrowUpRight, Banknote, CreditCard, QrCode, Landmark, Building2, Stethoscope,
   FlaskConical, Repeat, Scissors, Pill, Baby, Heart, Bone, Brain,
 } from 'lucide-react';
-import { format, differenceInCalendarDays, startOfMonth, endOfMonth, subMonths } from 'date-fns';
+import { differenceInCalendarDays, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Button } from '@/components/ui/button';
+import { PageHeader } from '@/components/PageHeader';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
@@ -44,8 +46,8 @@ import { buscarDadosBasicosPacientes } from '@/lib/patientBasicData';
 type StatusPagamento = Database['public']['Enums']['status_pagamento'];
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; border: string; icon: any }> = {
-  pendente: { label: 'Pendente', color: 'text-warning', bg: 'bg-warning/10', border: 'border-warning/20', icon: Clock },
-  parcial: { label: 'Parcial', color: 'text-warning', bg: 'bg-warning/10', border: 'border-warning/20', icon: Clock },
+  pendente: { label: 'Pendente', color: 'text-warning-foreground', bg: 'bg-warning/10', border: 'border-warning/20', icon: Clock },
+  parcial: { label: 'Parcial', color: 'text-warning-foreground', bg: 'bg-warning/10', border: 'border-warning/20', icon: Clock },
   pago: { label: 'Recebido', color: 'text-success', bg: 'bg-success/10', border: 'border-success/20', icon: Check },
   atrasado: { label: 'Atrasado', color: 'text-destructive', bg: 'bg-destructive/10', border: 'border-destructive/20', icon: AlertCircle },
   cancelado: { label: 'Cancelado', color: 'text-muted-foreground', bg: 'bg-muted', border: 'border-border', icon: AlertCircle },
@@ -56,9 +58,9 @@ const CATEGORIAS_RECEITA = [
   { value: 'consulta', label: 'Consulta Médica', icon: Stethoscope, color: 'text-primary' },
   { value: 'retorno', label: 'Retorno', icon: Repeat, color: 'text-info' },
   { value: 'procedimento', label: 'Procedimento', icon: Scissors, color: 'text-primary' },
-  { value: 'exame', label: 'Exame / Diagnóstico', icon: FlaskConical, color: 'text-warning' },
+  { value: 'exame', label: 'Exame / Diagnóstico', icon: FlaskConical, color: 'text-warning-foreground' },
   { value: 'cirurgia', label: 'Cirurgia / Intervenção', icon: Heart, color: 'text-destructive' },
-  { value: 'internacao', label: 'Internação', icon: Building2, color: 'text-warning' },
+  { value: 'internacao', label: 'Internação', icon: Building2, color: 'text-warning-foreground' },
   { value: 'taxa_administrativa', label: 'Taxa Administrativa', icon: FileText, color: 'text-muted-foreground' },
   { value: 'taxa_material', label: 'Taxa de Material', icon: Pill, color: 'text-info' },
   { value: 'convenio_repasse', label: 'Repasse de Convênio', icon: Building2, color: 'text-primary' },
@@ -131,6 +133,9 @@ const novoFormDataReceita = (): FormData => {
 };
 
 const fmt = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
+const formatarEixoMonetario = (v: number) => Math.abs(v) >= 1_000
+  ? `R$ ${(v / 1_000).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} mil`
+  : fmt(v);
 function parseMoneyInput(value: string): number | null {
   const compact = value.trim().replace(/\s/g, '');
   if (!compact) return null;
@@ -236,7 +241,7 @@ export default function ContasReceber() {
     }
     return agrupados;
   }, [pagamentos]);
-  const valorRecebidoConta = (conta: any) => {
+  const valorRecebidoConta = useCallback((conta: any) => {
     const pagamentosAtivos = pagamentosAtivosPorLancamento.get(conta.id) ?? [];
     return valorRecebidoDaConta(
       conta,
@@ -244,7 +249,7 @@ export default function ContasReceber() {
       lancamentosComPagamento.has(conta.id),
       pagamentosAtivos.reduce((total, pagamento) => total + Number(pagamento.valor || 0), 0),
     );
-  };
+  }, [pagamentosAtivosPorLancamento, pagamentosAtingiramLimite, lancamentosComPagamento]);
   const saldoDevedorConta = (conta: any) => Math.max(
     0,
     Number(conta.valor || 0) - Number(conta.desconto || 0) + Number(conta.acrescimo || 0) - valorRecebidoConta(conta),
@@ -423,7 +428,7 @@ export default function ContasReceber() {
     if (!selectedConta) return 0;
     if (descontoBaixa === null || acrescimoBaixa === null) return Number.NaN;
     return selectedConta.valor - descontoBaixa + acrescimoBaixa - valorRecebidoConta(selectedConta);
-  }, [selectedConta, descontoBaixa, acrescimoBaixa, lancamentosComPagamento, pagamentosAtivosPorLancamento, pagamentosAtingiramLimite]);
+  }, [selectedConta, descontoBaixa, acrescimoBaixa, valorRecebidoConta]);
   const valorDoPagamento = baixaData.valorReceber === null ? valorFinal : parseMoneyInput(baixaData.valorReceber);
   const saldoAposRecebimento = valorDoPagamento === null ? Number.NaN : valorFinal - valorDoPagamento;
   const pagamentoBaixaInvalido = !Number.isFinite(valorFinal) || valorFinal <= 0
@@ -685,17 +690,12 @@ export default function ContasReceber() {
 
   return (
     <div className="space-y-6 pb-8">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 rounded-2xl border border-[#d7e9f7] bg-gradient-to-r from-[#f1fbfd] via-white to-[#eff4ff] p-4 shadow-sm sm:p-5">
-        <div>
-          <h1 className="text-2xl font-bold font-display tracking-tight flex items-center gap-2">
-            <span className="rounded-xl bg-[#e5f7f2] p-2 text-[#147765] ring-1 ring-[#c5eadd]"><TrendingUp className="h-5 w-5" /></span> Contas a Receber
-          </h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            Receitas detalhadas — período por data de lançamento · {stats.countTotal} lançamento(s)
-          </p>
-        </div>
-        <div className="flex gap-2">
+      <PageHeader
+        title="Contas a Receber"
+        description={`Receitas detalhadas — período por data de lançamento · ${stats.countTotal} lançamento(s)`}
+        icon={<TrendingUp />}
+        actions={
+          <>
           <Button variant="outline" size="sm" className="gap-1.5" onClick={exportarExcel}
             disabled={!exportacaoCompletaPermitida} aria-describedby={!exportacaoCompletaPermitida ? 'contas-receber-limite-aviso' : undefined}>
             <Download className="h-4 w-4" /> Exportar
@@ -703,8 +703,9 @@ export default function ContasReceber() {
           <Button onClick={handleNew} className="gap-1.5">
             <Plus className="h-4 w-4" /> Nova Receita
           </Button>
-        </div>
-      </div>
+          </>
+        }
+      />
 
       {(contasAtingiramLimite || pagamentosAtingiramLimite) && (
         <div id="contas-receber-limite-aviso" role="status" className="rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm text-warning-foreground">
@@ -717,13 +718,13 @@ export default function ContasReceber() {
       {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
-          { label: 'Total Geral', value: stats.total, icon: DollarSign, color: 'text-[#1766a8]', bg: 'bg-[#eaf4ff]', border: 'border-[#d1e5f8]' },
-          { label: 'Em aberto', value: stats.pendente, icon: Clock, color: 'text-[#916813]', bg: 'bg-[#fff8e8]', border: 'border-[#f3e6bf]', count: stats.countPendente },
-          { label: 'Vencido', value: stats.atrasado, icon: AlertCircle, color: 'text-[#b65a4d]', bg: 'bg-[#fff0ed]', border: 'border-[#f2d6d0]', count: stats.countAtrasado },
-          { label: 'Recebido nas contas filtradas', value: stats.pago, icon: Check, color: 'text-[#147765]', bg: 'bg-[#e5f7f2]', border: 'border-[#c5eadd]', count: stats.countPago },
+          { label: 'Total Geral', value: stats.total, icon: DollarSign, color: 'text-primary', bg: 'bg-primary/10', border: 'border-primary/15' },
+          { label: 'Em aberto', value: stats.pendente, icon: Clock, color: 'text-warning-foreground', bg: 'bg-warning/10', border: 'border-warning/20', count: stats.countPendente },
+          { label: 'Vencido', value: stats.atrasado, icon: AlertCircle, color: 'text-destructive', bg: 'bg-destructive/10', border: 'border-destructive/20', count: stats.countAtrasado },
+          { label: 'Recebido nas contas filtradas', value: stats.pago, icon: Check, color: 'text-success', bg: 'bg-success/10', border: 'border-success/20', count: stats.countPago },
         ].map((s, i) => (
           <motion.div key={s.label} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}>
-            <Card className={cn('h-full border bg-gradient-to-br from-white to-[#f8fbfd] shadow-sm transition-shadow hover:shadow-md', s.border)}>
+            <Card className={cn('h-full border bg-gradient-to-br from-card to-muted/40 shadow-sm transition-shadow hover:shadow-md', s.border)}>
               <CardContent className="py-4 px-5">
                 <div className="flex items-start justify-between">
                   <div>
@@ -743,7 +744,23 @@ export default function ContasReceber() {
         ))}
       </div>
 
-      {/* Charts row */}
+      {/* Gráficos compactos juntos quando ambos estão vazios */}
+      {porCategoria.length === 0 && porFormaPgto.length === 0 ? (
+        <Card>
+          <CardContent role="status" aria-label="Gráficos sem dados nas contas filtradas" className="grid gap-4 py-5 sm:grid-cols-2 sm:divide-x sm:divide-border">
+            <section className="space-y-1 sm:pr-4">
+              <h2 className="text-sm font-bold">Receita por Categoria</h2>
+              <p className="text-sm text-foreground">Nenhuma receita ativa nas contas filtradas.</p>
+              <p className="text-xs text-muted-foreground">Cadastre uma receita ou ajuste os filtros acima.</p>
+            </section>
+            <section className="space-y-1 sm:pl-4">
+              <h2 className="text-sm font-bold">Recebido por Forma de Pagamento</h2>
+              <p className="text-sm text-foreground">Nenhum recebimento nas contas filtradas.</p>
+              <p className="text-xs text-muted-foreground">Registre a baixa de uma conta ou ajuste os filtros acima.</p>
+            </section>
+          </CardContent>
+        </Card>
+      ) : (
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Por Categoria */}
         <Card>
@@ -752,13 +769,16 @@ export default function ContasReceber() {
           </CardHeader>
           <CardContent>
             {porCategoria.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-8">Sem dados</p>
+              <div role="status" className="flex min-h-24 flex-col items-center justify-center gap-1 px-4 py-4 text-center">
+                <p className="text-sm font-medium text-foreground">Nenhuma receita ativa nas contas filtradas</p>
+                <p className="text-xs text-muted-foreground">Cadastre uma receita ou ajuste os filtros acima para preencher o gráfico.</p>
+              </div>
             ) : (
               <div className="h-48">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={porCategoria.slice(0, 8)} layout="vertical">
                     <CartesianGrid strokeDasharray="3 3" className="stroke-muted/30" />
-                    <XAxis type="number" tickFormatter={(v) => `R$${(v/1000).toFixed(0)}k`} className="text-[10px]" axisLine={false} tickLine={false} />
+                    <XAxis type="number" tickFormatter={formatarEixoMonetario} className="text-[10px]" axisLine={false} tickLine={false} />
                     <YAxis dataKey="name" type="category" width={100} className="text-[10px]" axisLine={false} tickLine={false} />
                     <Tooltip formatter={(v: number) => fmt(v)} contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '0.75rem', fontSize: '0.7rem' }} />
                     <Bar dataKey="value" fill="hsl(var(--primary))" radius={[0, 6, 6, 0]} />
@@ -777,7 +797,10 @@ export default function ContasReceber() {
           </CardHeader>
           <CardContent>
             {porFormaPgto.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-8">Sem recebimentos</p>
+              <div role="status" className="flex min-h-24 flex-col items-center justify-center gap-1 px-4 py-4 text-center">
+                <p className="text-sm font-medium text-foreground">Nenhum recebimento nas contas filtradas</p>
+                <p className="text-xs text-muted-foreground">Registre a baixa de uma conta ou ajuste os filtros acima.</p>
+              </div>
             ) : (
               <div className="flex items-center gap-4">
                 <div className="h-48 w-48 shrink-0">
@@ -806,6 +829,7 @@ export default function ContasReceber() {
           </CardContent>
         </Card>
       </div>
+      )}
 
       {/* Filters */}
       <div className="flex gap-2 flex-wrap items-center">
@@ -902,7 +926,7 @@ export default function ContasReceber() {
                               {catInfo?.label || conta.categoria}
                             </Badge>
                           </div>
-                          <p className="text-xs text-muted-foreground truncate">{conta.descricao}</p>
+                          <p className="text-xs text-muted-foreground truncate" title={conta.descricao}>{conta.descricao}</p>
                           <div className="flex items-center gap-3 mt-0.5 flex-wrap">
                             {conta.data_vencimento && (
                               <span className={cn('text-[10px] flex items-center gap-0.5',

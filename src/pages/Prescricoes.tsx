@@ -1,3 +1,4 @@
+import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { nomeMedico } from '@/lib/formatters';
 import { Link } from 'react-router-dom';
 import { PacienteCombobox } from '@/components/patients/PacienteCombobox';
@@ -5,7 +6,7 @@ import { textoDoModelo } from '@/lib/templatesPrescricao';
 import { normalizarTexto, pacienteCorresponde } from '@/lib/buscaPaciente';
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { format } from 'date-fns';
+
 import { ptBR } from 'date-fns/locale';
 // Tipo apenas: o runtime entra por import() dentro de buildReceitaPdf.
 import type jsPDF from 'jspdf';
@@ -35,6 +36,7 @@ import { LoadingButton } from '@/components/ui/loading-button';
 import { ErrorState } from '@/components/ErrorState';
 import { mensagemDeErro } from '@/lib/erros';
 import { isValidDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
+import { PageHeader } from '@/components/PageHeader';
 
 type MemedPayload = Record<string, any>;
 
@@ -787,26 +789,23 @@ export default function Prescricoes() {
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 rounded-2xl border border-[#d8e8fb] bg-[#f4f8ff] p-4 sm:p-5">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-[#102a56] flex items-center gap-2">
-            <span className="rounded-xl bg-white p-2 text-[#1766b3] ring-1 ring-[#d5e6fa]"><Pill className="h-5 w-5" /></span>
-            Prescrições
-          </h1>
-          <p className="text-muted-foreground">Prescrição em PDF; assinatura digital feita fora do EloLab</p>
-        </div>
-        <Button
-          onClick={handleOpen}
-          className="gap-2"
-          disabled={
-            medicosDisponiveis.length === 0 || clinicConfigQuery.isLoading || clinicConfigQuery.isError
-            || !clinicConfig?.nome_fantasia?.trim()
-          }
-        >
-          <Plus className="h-4 w-4" />Nova Prescrição
-        </Button>
-      </div>
+      <PageHeader
+        title="Prescrições"
+        description="Prescrição em PDF; assinatura digital feita fora do EloLab"
+        icon={<Pill />}
+        actions={(
+          <Button
+            onClick={handleOpen}
+            className="gap-2 disabled:bg-none disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100"
+            disabled={
+              medicosDisponiveis.length === 0 || clinicConfigQuery.isLoading || clinicConfigQuery.isError
+              || !clinicConfig?.nome_fantasia?.trim()
+            }
+          >
+            <Plus className="h-4 w-4" />Nova Prescrição
+          </Button>
+        )}
+      />
 
       {clinicConfigQuery.isLoading && (
         <p className="text-sm text-muted-foreground" role="status">Carregando os dados da clínica necessários para a receita…</p>

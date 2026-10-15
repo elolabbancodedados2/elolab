@@ -1,18 +1,19 @@
-import React, { useMemo, useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Calendar, Users, FileText, Shield, BarChart3, Stethoscope,
   MessageSquare, ArrowRight, Check,
   Zap, Lock, FlaskConical, Receipt, Menu, X, Phone, Mail,
   Clock, Activity, Pill, ClipboardList, Building2, MonitorPlay,
   BellRing, FileBarChart, Warehouse, CreditCard, UserCheck,
-  Microscope, HeartPulse, QrCode, Globe, SmartphoneNfc,
+  Microscope, HeartPulse, Tag, Globe, SmartphoneNfc,
   Crown, ChevronDown, Headphones
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { usePlanos } from '@/hooks/useSubscriptionPlan';
 import { GlowingEffect } from '@/components/ui/glowing-effect';
-import elolabLogo from '@/assets/elolab-logo-v2.png';
+import elolabLogo from '@/assets/elolab-logo-identidade.png';
 import clinicHero from '@/assets/hero-institutional.webp';
 import landingEfficiency from '@/assets/landing-efficiency.webp';
 import landingNoshow from '@/assets/landing-noshow.webp';
@@ -51,11 +52,11 @@ import modFinanc6 from '@/assets/mod-financ6.webp';
 
 /* ─── Colors ─── */
 const C = {
-  coral: 'hsl(12,76%,61%)',
-  grad: 'linear-gradient(135deg, hsl(12,76%,61%), hsl(30,80%,55%))',
-  dark: 'hsl(20,25%,18%)',
-  text: 'hsl(20,15%,30%)',
-  textL: 'hsl(20,10%,50%)',
+  primary: 'hsl(248,71%,58%)',
+  grad: 'linear-gradient(135deg, hsl(256,86%,68%), hsl(248,71%,58%))',
+  dark: 'hsl(252,42%,12%)',
+  text: 'hsl(252,18%,24%)',
+  textL: 'hsl(250,10%,43%)',
 };
 
 /* ─── Grouped modules ─── */
@@ -87,7 +88,7 @@ const moduleGroups = [
       { icon: Microscope, title: 'Exames & Laudos', desc: 'Registre exames e acompanhe a elaboração e liberação de laudos.', img: modLab2 },
       { icon: Activity, title: 'Sinais Vitais', desc: 'Consulte os sinais vitais do paciente em gráficos por período.', img: modLab3 },
       { icon: Warehouse, title: 'Estoque', desc: 'Acompanhe lotes, saldos e alertas de estoque mínimo.', img: modLab4 },
-      { icon: QrCode, title: 'Identificação de amostras', desc: 'Organize a identificação e o acompanhamento das amostras ao longo do fluxo do laboratório.', img: modLab5 },
+      { icon: Tag, title: 'Identificação de amostras', desc: 'Identifique cada amostra por um código único e acompanhe suas movimentações.', img: modLab5 },
       { icon: Building2, title: 'Salas e Leitos', desc: 'Consulte a ocupação e a disponibilidade de salas da clínica.', img: modLab6 },
     ],
   },
@@ -98,11 +99,11 @@ const moduleGroups = [
     stripText: 'Comunicação e Atendimento',
     modules: [
       { icon: MessageSquare, title: 'WhatsApp IA', desc: 'Agente de IA para apoiar o atendimento pelo WhatsApp, sujeito à configuração da integração.', img: modComunica1 },
-      { icon: Users, title: 'Gestão de Pacientes', desc: 'Histórico completo à mão, lista de espera ativa e convênios sem dor de cabeça.', img: modComunica2 },
+      { icon: Users, title: 'Gestão de Pacientes', desc: 'Consulte o histórico do paciente, a lista de espera e os convênios cadastrados.', img: modComunica2 },
       { icon: Globe, title: 'Portal do Paciente', desc: 'Disponibilize informações e documentos pelo portal do paciente.', img: modComunica3 },
       { icon: MonitorPlay, title: 'Painel TV', desc: 'Chamada em tela na recepção: mais organização e uma imagem muito mais profissional.', img: modComunica4 },
       { icon: BellRing, title: 'Automações', desc: 'Configure rotinas e alertas para apoiar as tarefas da equipe.', img: modComunica5 },
-      { icon: SmartphoneNfc, title: 'PWA Mobile', desc: 'Sua clínica no bolso: funciona em qualquer celular, sem baixar nada na loja.', img: modComunica6 },
+      { icon: SmartphoneNfc, title: 'PWA Mobile', desc: 'Acesse a plataforma pelo navegador do celular, sem baixar um aplicativo da loja.', img: modComunica6 },
     ],
   },
   {
@@ -142,7 +143,7 @@ const featureSections = [
   },
   {
     title: 'Prontuário organizado,', highlight: 'no padrão da sua equipe',
-    desc: 'Monte seus modelos de anamnese e registre a consulta em minutos, com histórico, anexos, receitas, atestados e CID-10 sempre à mão.',
+    desc: 'Use modelos prontos de anamnese e registre a consulta com histórico, anexos, receitas, atestados e CID-10. Crie seus próprios modelos de receita e atestado.',
     desc2: 'Registre autoria e mantenha o histórico das alterações. A assinatura eletrônica do prontuário não equivale a certificado ICP-Brasil nem à integração Memed.',
     cta: 'Conhecer o prontuário', img: landingEhr, alt: 'Prontuário eletrônico', rev: true,
   },
@@ -187,6 +188,16 @@ type PublicPlan = {
   features: string[];
 };
 
+function rotuloFrequencia(frequencia: string) {
+  switch (frequencia) {
+    case 'mensal': return 'mês';
+    case 'trimestral': return '3 meses';
+    case 'semestral': return '6 meses';
+    case 'anual': return '12 meses';
+    default: return 'período';
+  }
+}
+
 const faqItems = [
   {
     q: 'Consigo usar o EloLab pelo celular?',
@@ -194,7 +205,7 @@ const faqItems = [
   },
   {
     q: 'Como funciona o teste grátis?',
-    a: 'Escolha um plano, crie sua conta e cadastre um cartão no checkout seguro do Mercado Pago. O teste dura 3 dias. Antes de confirmar, mostramos o valor e a data da primeira cobrança recorrente; cancele antes do fim do teste para não pagar a primeira mensalidade.',
+    a: 'Escolha um plano e confira as condições exibidas no checkout. Quando houver teste gratuito, o checkout informa a duração, o valor e a data da primeira cobrança recorrente antes da confirmação. Cancele antes dessa data se não quiser seguir com a assinatura.',
   },
   {
     q: 'Os dados dos meus pacientes ficam seguros?',
@@ -202,11 +213,11 @@ const faqItems = [
   },
   {
     q: 'Consigo trazer os dados do meu sistema atual?',
-    a: 'A migração depende do formato, volume e qualidade dos dados. Fale com a equipe antes de contratar para confirmar escopo, prazo e eventual custo.',
+    a: 'Você pode importar pacientes e agendamentos por planilha em Configurações. Para outros dados, fale com a equipe antes de contratar para confirmar formato, escopo, prazo e custo.',
   },
   {
     q: 'O EloLab atende laboratórios também?',
-    a: 'Sim. Há um módulo completo de laboratório: organização das coletas, laudos digitais padronizados, mapa de coleta, rastreabilidade de amostras por código de barras e faturamento integrado.',
+    a: 'Sim, nos planos que incluem exames. O fluxo reúne coletas, identificação das amostras por código único e histórico de movimentações, além da conferência e liberação de resultados em laudos PDF. A liberação pode gerar o lançamento financeiro do exame; os lotes TISS são transmitidos à operadora por um canal externo.',
   },
   {
     q: 'Existe limite de usuários por clínica?',
@@ -222,7 +233,7 @@ const faqItems = [
 function FaqItem({ q, a }: { q: string; a: string }) {
   const [open, setOpen] = useState(false);
   return (
-    <div className="border-b border-[hsl(20,20%,90%)] last:border-0">
+    <div className="border-b border-border last:border-0">
       <button
         onClick={() => setOpen(!open)}
         className="w-full flex items-center justify-between py-5 text-left group"
@@ -230,7 +241,7 @@ function FaqItem({ q, a }: { q: string; a: string }) {
         <span className="text-base font-bold pr-4" style={{ color: C.dark }}>{q}</span>
         <ChevronDown
           className={`w-5 h-5 shrink-0 transition-transform duration-300 ${open ? 'rotate-180' : ''}`}
-          style={{ color: C.coral }}
+          style={{ color: C.primary }}
         />
       </button>
       <div
@@ -246,10 +257,12 @@ function FaqItem({ q, a }: { q: string; a: string }) {
 
 export default function LandingPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { data: catalogPlans, isLoading: plansLoading, isError: plansError } = usePlanos();
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [checkoutMode, setCheckoutMode] = useState<'trial' | 'buy'>('trial');
   const [selectedPlan, setSelectedPlan] = useState<PublicPlan | null>(null);
+  const checkoutTriggerRef = useRef<HTMLElement | null>(null);
 
   const plans = useMemo<PublicPlan[]>(() => {
     if (!catalogPlans) return [];
@@ -269,13 +282,15 @@ export default function LandingPage() {
         price: Number(source.valor),
         popular: source.destaque,
         frequency: source.frequencia,
-        trialDays: source.trial_dias || 3,
+        trialDays: source.trial_dias ?? 0,
         features,
       }];
     });
   }, [catalogPlans]);
+  const planoComTeste = plans.find(plan => plan.trialDays > 0);
 
   const openCheckout = (plan: PublicPlan, mode: 'trial' | 'buy') => {
+    checkoutTriggerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setSelectedPlan(plan);
     setCheckoutMode(mode);
     setCheckoutOpen(true);
@@ -303,6 +318,15 @@ export default function LandingPage() {
     return () => window.removeEventListener('scroll', h);
   }, []);
 
+  useEffect(() => {
+    const id = location.hash.slice(1);
+    if (!id) return;
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById(decodeURIComponent(id))?.scrollIntoView({ behavior: 'smooth' });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [location.hash]);
+
   const scrollTo = (id: string) => {
     setMobileMenu(false);
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
@@ -329,7 +353,7 @@ export default function LandingPage() {
     <>
       {/* Fixed gradient bg */}
       <div className="fixed inset-0 -z-10" style={{
-        background: 'linear-gradient(160deg, hsl(35,70%,95%) 0%, hsl(20,80%,93%) 25%, hsl(12,60%,90%) 50%, hsl(30,50%,92%) 75%, hsl(160,30%,93%) 100%)',
+        background: 'linear-gradient(160deg, hsl(248,80%,96%) 0%, hsl(252,75%,93%) 25%, hsl(260,60%,91%) 50%, hsl(248,50%,94%) 75%, hsl(220,45%,95%) 100%)',
       }} />
 
       <div className="min-h-screen overflow-x-hidden font-sans">
@@ -345,12 +369,12 @@ export default function LandingPage() {
                 <button
                   key={n.id}
                   onClick={() => scrollTo(n.id)}
-                  className="min-h-11 min-w-11 text-[13px] font-bold tracking-wide hover:text-[hsl(12,76%,61%)] transition-colors relative pb-1 group"
+                  className="min-h-11 min-w-11 text-[13px] font-bold tracking-wide hover:text-primary transition-colors relative pb-1 group"
                   style={{ color: C.dark }}
                 >
                   {n.l}
                   <span className="absolute bottom-0 left-0 w-0 h-0.5 rounded-full transition-all duration-300 group-hover:w-full"
-                    style={{ background: C.coral }} />
+                    style={{ background: C.primary }} />
                 </button>
               ))}
             </div>
@@ -406,9 +430,9 @@ export default function LandingPage() {
 
         {/* ══ HERO ══ */}
         <section className="relative pt-[72px] overflow-hidden" id="inicio">
-          {/* Blue curved background */}
+          {/* Violet curved background */}
           <div className="absolute inset-0 z-0" style={{
-            background: 'linear-gradient(135deg, hsl(210,70%,35%) 0%, hsl(215,75%,30%) 50%, hsl(220,65%,25%) 100%)',
+            background: 'linear-gradient(135deg, hsl(255,68%,38%) 0%, hsl(252,64%,30%) 52%, hsl(250,52%,22%) 100%)',
             clipPath: 'ellipse(85% 100% at 30% 0%)',
           }} />
           {/* Subtle pattern overlay */}
@@ -429,30 +453,30 @@ export default function LandingPage() {
                   Organize a rotina da clínica<br />
                   <span className="font-extrabold">em um só lugar</span>
                 </h1>
-                <p className="mt-5 text-base md:text-lg text-white/70 max-w-lg leading-relaxed">
-                  Agenda, prontuário, financeiro, laboratório e recursos de IA no WhatsApp, conforme as integrações habilitadas para a clínica.
+                <p className="mt-5 text-base md:text-lg text-white/85 max-w-lg leading-relaxed">
+                  Agenda, prontuário e financeiro; laboratório e IA no WhatsApp estão sujeitos ao plano e às integrações habilitadas para a clínica.
                 </p>
                 <div className="mt-8 flex flex-col sm:flex-row gap-3">
                   <Button
                     onClick={() => scrollTo('planos')}
                     className="rounded-lg px-8 py-3.5 text-sm font-bold border-2 border-white bg-white hover:bg-white/90 transition-all hover:scale-105 hover:shadow-xl"
-                    style={{ color: 'hsl(215,75%,30%)' }}
+                    style={{ color: C.primary }}
                   >
-                  {plans.length ? `Testar grátis por ${plans[0].trialDays} dias` : 'Consultar planos'} <ArrowRight className="w-4 h-4 ml-2" />
+                  {planoComTeste ? `Testar grátis por ${planoComTeste.trialDays} dias` : plans.length ? 'Consultar planos e preços' : 'Consultar planos'} <ArrowRight className="w-4 h-4 ml-2" />
                   </Button>
                   <Button
-                    onClick={() => scrollTo('modulos')}
+                    onClick={() => navigate('/demonstracao')}
                     variant="ghost"
-                    className="rounded-lg px-8 py-3.5 text-sm font-bold text-white border-2 border-white/30 hover:bg-white/10 transition-all"
+                    className="min-h-[44px] rounded-lg px-8 py-3.5 text-sm font-bold text-white border-2 border-white/30 hover:bg-white/10 transition-all"
                   >
-                    Ver o que está incluso
+                    Ver demonstração com dados fictícios
                   </Button>
                 </div>
-                <div className="mt-8 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs font-medium text-white/60">
-                  <span className="flex items-center gap-1.5"><Lock className="w-3.5 h-3.5" /> LGPD</span>
-                  <span className="flex items-center gap-1.5"><Clock className="w-3.5 h-3.5" /> {plans.length ? `${plans[0].trialDays} dias grátis` : 'Teste gratuito'}</span>
+                <div className="mt-8 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs font-medium text-white/85">
+                  <a href="/politica-privacidade" className="inline-flex min-h-10 items-center gap-1.5 underline underline-offset-4 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"><Lock className="w-3.5 h-3.5" /> Política de privacidade</a>
+                  <span className="flex items-center gap-1.5"><Clock className="w-3.5 h-3.5" /> {planoComTeste ? `${planoComTeste.trialDays} dias grátis` : 'Planos com condições claras'}</span>
                   <span className="flex items-center gap-1.5"><Shield className="w-3.5 h-3.5" /> Acesso por perfil</span>
-                  <span className="flex items-center gap-1.5"><CreditCard className="w-3.5 h-3.5" /> Renovação automática</span>
+                  <span className="flex items-center gap-1.5"><CreditCard className="w-3.5 h-3.5" /> Cartão recorrente · Pix por período</span>
                 </div>
               </div>
 
@@ -462,13 +486,13 @@ export default function LandingPage() {
                 <div className="relative overflow-hidden rounded-3xl border border-white/20 bg-white/10 p-2 shadow-2xl shadow-black/20 backdrop-blur-sm">
                   <img
                     src={clinicHero}
-                    alt="Recep&#231;&#227;o de uma cl&#237;nica"
+                    alt="Recepção de uma clínica"
                     className="aspect-[4/3] w-full rounded-[1.35rem] object-cover object-center sm:aspect-[16/10] lg:aspect-[4/3]"
                     loading="eager"
                   />
                 </div>
                 <div className="absolute -bottom-4 left-5 right-5 rounded-2xl border border-white/70 bg-white/95 px-4 py-3 shadow-xl shadow-black/10 backdrop-blur sm:left-8 sm:right-auto sm:min-w-64">
-                  <p className="text-xs font-semibold uppercase tracking-[0.14em]" style={{ color: C.coral }}>EloLab para cl&#237;nicas</p>
+                  <p className="text-xs font-semibold uppercase tracking-[0.14em]" style={{ color: C.primary }}>EloLab para cl&#237;nicas</p>
                   <p className="mt-1 text-sm font-medium" style={{ color: C.dark }}>Agenda, equipe e opera&#231;&#227;o conectadas</p>
                 </div>
               </div>
@@ -486,8 +510,8 @@ export default function LandingPage() {
                 { icon: Receipt, title: 'Gestão financeira', text: 'Caixa, contas e relatórios da clínica.' },
                 { icon: Users, title: 'Equipe e operação', text: 'Papéis, tarefas e processos do dia a dia.' },
               ].map(({ icon: Icon, title, text }) => (
-                <div key={title} className="rounded-2xl bg-white/75 border border-[hsl(20,30%,90%)] p-5">
-                  <Icon className="w-6 h-6 mb-3" style={{ color: C.coral }} />
+                <div key={title} className="rounded-2xl bg-white/75 border border-border p-5">
+                  <Icon className="w-6 h-6 mb-3" style={{ color: C.primary }} />
                   <h3 className="font-bold" style={{ color: C.dark }}>{title}</h3>
                   <p className="text-sm mt-1" style={{ color: C.textL }}>{text}</p>
                 </div>
@@ -507,7 +531,7 @@ export default function LandingPage() {
                       <img src={f.img} alt={f.alt} className="w-full max-w-[440px] rounded-3xl shadow-lg transition-transform duration-500 group-hover:scale-[1.02]" loading="lazy" />
                       {/* Decorative glow behind image */}
                       <div className="absolute -inset-4 rounded-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-500 -z-10"
-                        style={{ background: 'radial-gradient(circle, hsl(12,76%,61%,0.08), transparent 70%)' }} />
+                        style={{ background: 'radial-gradient(circle, hsl(248,71%,58%,0.08), transparent 70%)' }} />
                     </div>
                   </div>
                   <div className={f.rev ? 'lg:order-1' : 'lg:order-2'}>
@@ -556,7 +580,7 @@ export default function LandingPage() {
             <React.Fragment key={gi}>
               <div className="relative h-[180px] md:h-[220px] overflow-hidden">
                 <img src={group.strip} alt={group.stripText} className="absolute inset-0 w-full h-full object-cover" loading="lazy" />
-                <div className="absolute inset-0" style={{ background: 'linear-gradient(90deg, hsl(20,25%,18%,0.75), hsl(12,76%,61%,0.45))' }} />
+                <div className="absolute inset-0" style={{ background: 'linear-gradient(90deg, hsl(252,42%,12%,0.75), hsl(248,71%,58%,0.45))' }} />
                 <div className="relative z-10 flex flex-col items-center justify-center h-full px-4 text-center">
                   <h3 className="text-2xl md:text-3xl font-extrabold text-white tracking-tight drop-shadow-lg">
                     {group.stripText}
@@ -568,7 +592,7 @@ export default function LandingPage() {
               <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-14 md:py-20">
                 <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
                   {group.modules.map((m, mi) => (
-                    <div key={mi} className="relative group rounded-2xl bg-white/70 border border-[hsl(20,30%,90%)] hover:shadow-xl transition-all duration-300 overflow-hidden hover:-translate-y-1">
+                    <div key={mi} className="relative group rounded-2xl bg-white/70 border border-border hover:shadow-xl transition-all duration-300 overflow-hidden hover:-translate-y-1">
                       <GlowingEffect spread={40} glow disabled={false} proximity={64} inactiveZone={0.01} borderWidth={2} />
                       <div className="h-36 overflow-hidden">
                         <img src={m.img} alt={m.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" loading="lazy" />
@@ -576,8 +600,8 @@ export default function LandingPage() {
                       <div className="p-5">
                         <div className="flex items-center gap-2.5 mb-2">
                           <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
-                            style={{ background: 'hsl(12,76%,61%,0.1)' }}>
-                            <m.icon className="w-4 h-4" style={{ color: C.coral }} />
+                            style={{ background: 'hsl(248,71%,58%,0.1)' }}>
+                            <m.icon className="w-4 h-4" style={{ color: C.primary }} />
                           </div>
                           <h3 className="text-sm font-bold" style={{ color: C.dark }}>{m.title}</h3>
                         </div>
@@ -600,27 +624,36 @@ export default function LandingPage() {
                 <span className="bg-clip-text text-transparent" style={{ backgroundImage: C.grad }}>a sua operação</span>
               </h2>
               <p className="mt-3 text-lg" style={{ color: C.textL }}>
-                {plans.length > 0 ? 'Teste grátis por 3 dias com cartão. Cancele antes da primeira cobrança automática.' : 'Consulte os planos e as condições do teste gratuito.'}
+                {planoComTeste ? `Teste grátis por ${planoComTeste.trialDays} dias nos planos elegíveis. O checkout mostra valor e data da primeira cobrança.` : 'Consulte os planos e as condições vigentes antes de iniciar.'}
               </p>
             </div>
             {plansLoading ? (
               <p className="text-center text-sm" style={{ color: C.textL }}>Carregando valores atuais…</p>
-            ) : plansError || plans.length === 0 ? (
-              <div className="max-w-xl mx-auto text-center rounded-2xl bg-white/80 border border-[hsl(20,30%,90%)] p-6">
+            ) : plansError ? (
+              <div className="max-w-xl mx-auto text-center rounded-2xl bg-white/80 border border-border p-6">
                 <p style={{ color: C.text }}>Não foi possível carregar os planos agora. Fale com a equipe para receber os valores vigentes.</p>
-                <a className="inline-flex min-h-11 items-center mt-3 font-semibold" style={{ color: C.coral }} href="https://wa.me/5511937687369" target="_blank" rel="noopener noreferrer">Consultar planos pelo WhatsApp</a>
+                <a className="inline-flex min-h-11 items-center mt-3 font-semibold" style={{ color: C.primary }} href="https://wa.me/5511937687369" target="_blank" rel="noopener noreferrer">Consultar planos pelo WhatsApp</a>
+              </div>
+            ) : plans.length === 0 ? (
+              <div className="max-w-xl mx-auto text-center rounded-2xl bg-white/80 border border-border p-6">
+                <p style={{ color: C.text }}>Não há planos disponíveis para contratação no momento. Consulte novamente em instantes.</p>
+                <a className="inline-flex min-h-11 items-center mt-3 font-semibold" style={{ color: C.primary }} href="https://wa.me/5511937687369" target="_blank" rel="noopener noreferrer">Falar com a equipe</a>
               </div>
             ) : <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
-              {plans.map((plan) => (
-                <div
+              {plans.map((plan) => {
+                const isUltra = plan.slug === 'elolab-ultra';
+                const atendenteIA = featureLabels.agente_ia;
+                const ultraFeatures = plan.features.filter((feature) => feature === atendenteIA);
+                const featuresToDisplay = isUltra && ultraFeatures.length > 0 ? ultraFeatures : plan.features;
+                return <div
                   key={plan.slug}
                   className={`relative rounded-3xl p-8 border-2 transition-all duration-300 hover:-translate-y-1 ${
                     plan.popular
-                      ? 'border-[hsl(12,76%,61%)] shadow-xl scale-[1.02]'
-                      : 'border-[hsl(20,30%,90%)] bg-white/70 hover:shadow-lg'
+                      ? 'border-primary shadow-xl scale-[1.02]'
+                      : 'border-border bg-white/70 hover:shadow-lg'
                   }`}
                   style={plan.popular ? {
-                    background: 'linear-gradient(160deg, hsl(40,60%,97%), hsl(38,80%,95%), hsl(30,70%,96%))',
+                    background: 'linear-gradient(160deg, hsl(248,90%,97%), hsl(256,82%,95%), hsl(250,70%,96%))',
                     animation: 'pulseGlow 3s ease-in-out infinite',
                   } : undefined}
                 >
@@ -632,76 +665,83 @@ export default function LandingPage() {
                     </div>
                   )}
                   <h3 className="text-xl font-extrabold" style={{ color: C.dark }}>{plan.name}</h3>
+                  {isUltra && ultraFeatures.length > 0 && (
+                    <p className="mt-2 max-w-sm text-sm font-semibold leading-relaxed" style={{ color: C.primary }}>
+                      Inclui os recursos do EloLab Pro e o Agente de IA no WhatsApp, conforme a integração da clínica.
+                    </p>
+                  )}
                   <div className="mt-4 flex items-baseline gap-1">
-                    <span className="text-4xl font-extrabold" style={{ color: plan.popular ? C.coral : C.dark }}>
+                    <span className="text-4xl font-extrabold" style={{ color: plan.popular ? C.primary : C.dark }}>
                       {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(plan.price)}
                     </span>
                     <span className="text-sm font-medium" style={{ color: C.textL }}>
-                      /{plan.frequency === 'mensal' ? 'mês' : plan.frequency}
+                      /{rotuloFrequencia(plan.frequency)}
                     </span>
                   </div>
                   <ul className="mt-6 space-y-3">
-                    {plan.features.map((f, j) => (
+                    {featuresToDisplay.map((f, j) => (
                       <li key={j} className="flex items-center gap-2.5 text-sm" style={{ color: C.text }}>
                         <div className="w-5 h-5 rounded-full flex items-center justify-center shrink-0"
-                          style={{ background: plan.popular ? C.grad : 'hsl(12,76%,61%,0.12)' }}>
-                          <Check className="w-3 h-3" style={{ color: plan.popular ? '#fff' : C.coral }} />
+                          style={{ background: plan.popular ? C.grad : 'hsl(248,71%,58%,0.12)' }}>
+                          <Check className="w-3 h-3" style={{ color: plan.popular ? '#fff' : C.primary }} />
                         </div>
                         {f}
                       </li>
                     ))}
                   </ul>
                   <div className="mt-8 space-y-3">
-                    <Button
+                    {plan.trialDays > 0 && <Button
                       onClick={() => openCheckout(plan, 'trial')}
                       className="w-full rounded-full py-3 font-bold text-white border-0 transition-all hover:scale-[1.02] hover:shadow-lg"
-                      style={{ background: C.grad, boxShadow: plan.popular ? '0 8px 24px -4px hsl(12,76%,61%,0.4)' : undefined }}
+                      style={{ background: C.grad, boxShadow: plan.popular ? '0 8px 24px -4px hsl(248,71%,58%,0.4)' : undefined }}
                     >
                       <Clock className="w-4 h-4 mr-2" /> Testar {plan.trialDays} dias grátis
-                    </Button>
+                    </Button>}
                     <Button
                       variant="outline"
                       onClick={() => openCheckout(plan, 'buy')}
                       className="w-full rounded-full py-3 font-bold border-2 transition-all hover:scale-[1.02]"
-                      style={{ borderColor: C.coral, color: C.coral }}
+                      style={{ borderColor: C.primary, color: C.primary }}
                     >
                       <CreditCard className="w-4 h-4 mr-2" /> Assinar agora
                     </Button>
                   </div>
-                </div>
-              ))}
+                </div>;
+              })}
             </div>}
+            <p className="mt-8 text-center text-sm" style={{ color: C.textL }}>
+              Quer conhecer antes de escolher?{' '}
+              <a href="/demonstracao" className="inline-flex min-h-10 items-center font-semibold underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2" style={{ color: C.primary }}>
+                Ver demonstração da clínica
+              </a>
+            </p>
           </div>
         </section>
 
         {/* ══ CHECKOUT MODAL ══ */}
-        {checkoutOpen && selectedPlan && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" onClick={() => setCheckoutOpen(false)}>
-            <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
-            <div
-              className="relative w-full max-w-md bg-white rounded-3xl p-8 shadow-2xl animate-fade-in"
-              onClick={(e) => e.stopPropagation()}
+        <Dialog open={checkoutOpen} onOpenChange={setCheckoutOpen}>
+          {selectedPlan && (
+            <DialogContent
+              className="w-[calc(100%-2rem)] max-w-md border-0 bg-white p-8 text-left shadow-2xl sm:rounded-3xl"
+              aria-labelledby="landing-checkout-title"
+              onCloseAutoFocus={(event) => {
+                event.preventDefault();
+                checkoutTriggerRef.current?.focus();
+              }}
             >
-              <button
-                onClick={() => setCheckoutOpen(false)}
-                className="absolute top-4 right-4 p-1.5 rounded-full hover:bg-gray-100 transition-colors"
-                aria-label="Fechar"
-              >
-                <X className="w-5 h-5" style={{ color: C.textL }} />
-              </button>
 
               <div className="text-center mb-6">
                 <div className="w-12 h-12 rounded-2xl mx-auto flex items-center justify-center mb-3"
-                  style={{ background: 'hsl(12,76%,61%,0.12)' }}>
+                  style={{ background: 'hsl(248,71%,58%,0.12)' }}>
                   {checkoutMode === 'trial' ? (
-                    <Clock className="w-6 h-6" style={{ color: C.coral }} />
+                    <Clock className="w-6 h-6" style={{ color: C.primary }} />
                   ) : (
-                    <CreditCard className="w-6 h-6" style={{ color: C.coral }} />
+                    <CreditCard className="w-6 h-6" style={{ color: C.primary }} />
                   )}
                 </div>
-                <h3 className="text-xl font-extrabold" style={{ color: C.dark }}>
+                <DialogTitle id="landing-checkout-title" className="text-xl font-extrabold" style={{ color: C.dark }}>
                   {checkoutMode === 'trial' ? `Comece seus ${selectedPlan.trialDays} dias grátis` : 'Finalize sua assinatura'}
-                </h3>
+                </DialogTitle>
                 <p className="text-sm mt-1" style={{ color: C.textL }}>
                   {selectedPlan.name} — {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(selectedPlan.price)}/{selectedPlan.frequency === 'mensal' ? 'mês' : selectedPlan.frequency}
                   {checkoutMode === 'trial' && ` (${selectedPlan.trialDays} dias grátis)`}
@@ -709,7 +749,20 @@ export default function LandingPage() {
               </div>
 
               <div className="rounded-2xl border p-4 text-sm leading-relaxed" style={{ color: C.text }}>
-                Primeiro você cria sua conta e confirma o e-mail. Para o teste, cadastre o cartão no checkout do EloLab; para assinar, escolha a forma de pagamento disponível.
+                {checkoutMode === 'trial'
+                  ? (
+                    <>
+                      <ol className="space-y-2" aria-label="Etapas para iniciar o teste">
+                        <li><strong>1.</strong> Crie sua conta.</li>
+                        <li><strong>2.</strong> Confirme seu e-mail.</li>
+                        <li><strong>3.</strong> Cadastre um cartão no EloLab para iniciar o teste.</li>
+                      </ol>
+                      <p className="mt-3 border-t border-gray-200 pt-3">
+                        Hoje você não paga pelo EloLab. O Mercado Pago pode fazer uma validação temporária do cartão, conforme as regras do emissor. Ao fim dos {selectedPlan.trialDays} dias, começa a cobrança recorrente de {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(selectedPlan.price)}/{selectedPlan.frequency === 'mensal' ? 'mês' : selectedPlan.frequency}. Você pode cancelar em Planos antes da cobrança; o acesso ao plano termina ao cancelar.
+                      </p>
+                    </>
+                  )
+                  : 'Crie sua conta para chegar ao checkout. Lá, você poderá escolher: no cartão, começa uma assinatura com renovação automática; no Pix, você compra o período exibido para este plano, sem renovação automática.'}
               </div>
 
               <Button
@@ -718,7 +771,7 @@ export default function LandingPage() {
                 style={{ background: C.grad }}
               >
                 {checkoutMode === 'trial' ? (
-                  <>Liberar meu acesso grátis <ArrowRight className="w-4 h-4 ml-2" /></>
+                  <>Criar conta e seguir para o cartão <ArrowRight className="w-4 h-4 ml-2" /></>
                 ) : (
                   <>Criar conta e continuar <ArrowRight className="w-4 h-4 ml-2" /></>
                 )}
@@ -726,12 +779,12 @@ export default function LandingPage() {
 
               <p className="text-center text-xs mt-4" style={{ color: C.textL }}>
                 {checkoutMode === 'trial'
-                  ? 'Sem código de convite. O cartão fica salvo para renovar a assinatura quando o período grátis terminar.'
+                  ? 'O cartão fica salvo para a assinatura recorrente após o teste, somente com seu consentimento no checkout.'
                   : 'O pagamento será feito na sua conta após a criação e confirmação do acesso.'}
               </p>
-            </div>
-          </div>
-        )}
+            </DialogContent>
+          )}
+        </Dialog>
 
         {/* ══ VISÃO DO PRODUTO ══ */}
         <section id="produto-na-pratica" className="py-20 md:py-28">
@@ -750,8 +803,8 @@ export default function LandingPage() {
                 { icon: FileText, title: 'Registre o cuidado', text: 'Mantenha prontuários e documentos clínicos ligados à rotina do paciente.' },
                 { icon: Receipt, title: 'Acompanhe a operação', text: 'Consulte contas, caixa e relatórios da clínica.' },
               ].map(({ icon: Icon, title, text }) => (
-                <article key={title} className="rounded-2xl bg-white/80 border border-[hsl(20,30%,90%)] p-6">
-                  <Icon className="w-7 h-7 mb-4" style={{ color: C.coral }} />
+                <article key={title} className="rounded-2xl bg-white/80 border border-border p-6">
+                  <Icon className="w-7 h-7 mb-4" style={{ color: C.primary }} />
                   <h3 className="font-bold text-lg" style={{ color: C.dark }}>{title}</h3>
                   <p className="mt-2 text-sm leading-relaxed" style={{ color: C.textL }}>{text}</p>
                 </article>
@@ -776,7 +829,7 @@ export default function LandingPage() {
                 Respostas diretas para decidir com tranquilidade
               </p>
             </div>
-            <div className="bg-white/80 backdrop-blur-sm rounded-3xl border border-[hsl(20,30%,90%)] p-6 md:p-8 shadow-sm">
+            <div className="bg-white/80 backdrop-blur-sm rounded-3xl border border-border p-6 md:p-8 shadow-sm">
               {faqItems.map((item, i) => (
                 <FaqItem key={i} q={item.q} a={item.a} />
               ))}
@@ -785,7 +838,7 @@ export default function LandingPage() {
               <p className="text-sm" style={{ color: C.textL }}>
                 Ficou com alguma dúvida?{' '}
                 <a href="https://wa.me/5511937687369" target="_blank" rel="noopener noreferrer"
-                  className="inline-flex min-h-11 items-center font-bold hover:underline" style={{ color: C.coral }}>
+                  className="inline-flex min-h-11 items-center font-bold hover:underline" style={{ color: C.primary }}>
                   Fale agora com um especialista no WhatsApp
                 </a>
               </p>
@@ -797,7 +850,7 @@ export default function LandingPage() {
         <section className="py-20 md:py-28">
           <div className="max-w-4xl mx-auto px-4">
             <div className="relative rounded-3xl overflow-hidden p-8 sm:p-12 md:p-16 text-center"
-              style={{ background: 'linear-gradient(135deg, hsl(210,70%,35%), hsl(215,75%,30%), hsl(220,65%,25%))' }}>
+              style={{ background: 'linear-gradient(135deg, hsl(248,56%,38%), hsl(252,48%,27%), hsl(252,42%,12%))' }}>
               {/* Pattern overlay */}
               <div className="absolute inset-0 opacity-[0.04]" style={{
                 backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)',
@@ -813,7 +866,7 @@ export default function LandingPage() {
                 <div className="mt-10 flex flex-col sm:flex-row gap-4 justify-center">
                   <Button size="lg" onClick={() => scrollTo('planos')}
                     className="rounded-full px-10 text-base font-bold border-2 border-white bg-white hover:bg-white/90 transition-all hover:scale-105 hover:shadow-xl"
-                    style={{ color: 'hsl(215,75%,30%)' }}>
+                    style={{ color: C.dark }}>
                     Ver planos e iniciar teste <ArrowRight className="w-4 h-4 ml-2" />
                   </Button>
                   <Button asChild size="lg" variant="ghost"
@@ -839,7 +892,7 @@ export default function LandingPage() {
             <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-8">
               <div>
                 <img src={elolabLogo} alt="EloLab" className="h-12 w-auto brightness-0 invert mb-4" />
-                <p className="text-sm text-white/50 leading-relaxed">A plataforma completa que organiza, automatiza e faz crescer clínicas médicas e laboratórios.</p>
+                <p className="text-sm text-white/50 leading-relaxed">Gestão para clínicas médicas e laboratórios, com recursos para agenda, prontuário, atendimento e operação.</p>
                 <div className="mt-4 flex gap-3">
                   <a href="https://wa.me/5511937687369" target="_blank" rel="noopener noreferrer"
                     aria-label="Falar com o EloLab pelo WhatsApp"

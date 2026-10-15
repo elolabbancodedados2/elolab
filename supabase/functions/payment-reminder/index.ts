@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { cronSecretOk, cronForbidden } from '../_shared/cronAuth.ts';
 import { corsPadrao } from '../_shared/cors.ts';
 import { saoPauloDate, saoPauloDayWindow, shiftCivilDate } from '../_shared/paymentReminderSchedule.ts';
+import { getOverdueRecurringInvoiceIds, prepaidReminderMilestone } from '../_shared/platformPlanDelinquency.ts';
 
 let corsHeaders: Record<string, string> = {};
 
@@ -53,7 +54,7 @@ serve(async (req) => {
     // 2. Find expired subscriptions (send overdue notices)
     const { data: expired } = await supabase
       .from("assinaturas_plano")
-      .select("user_id, plano_slug, trial_fim, data_fim, updated_at")
+      .select("id, user_id, plano_slug, trial_fim, data_fim, updated_at, cobranca_modalidade")
       .eq("status", "expirada");
 
     const notifications: any[] = [];
@@ -159,20 +160,94 @@ serve(async (req) => {
           .eq("id", sub.user_id)
           .single();
 
-        if (profile?.email) {
+        const reminderDetails = {
+          tipo_lembrete: sub.cobranca_modalidade === 'pre_pago' ? 'prepaid_period_ends_soon' : 'plan_period_ends_soon',
+          assinatura_id: sub.id,
+          termina_em: sub.data_fim,
+        };
+        const { data: alreadyQueued, error: dedupeError } = await supabase
+          .from('notification_queue')
+          .select('id')
+          .eq('destinatario_id', sub.user_id)
+          .contains('dados_extras', reminderDetails)
+          .limit(1)
+          .maybeSingle();
+        if (dedupeError) throw dedupeError;
+
+        if (profile?.email && !alreadyQueued) {
+          const accessNotice = sub.cobranca_modalidade === 'pre_pago'
+            ? 'Após 7 dias do vencimento, novos registros serão bloqueados; consulta e exportação continuam disponíveis.'
+            : 'Regularize o pagamento para manter o acesso ao plano.';
           notifications.push({
             tipo: "email",
             assunto: "⚠️ Sua assinatura EloLab expira amanhã!",
-            conteudo: `Olá ${profile.nome || ""},\n\nSua assinatura do plano ${sub.plano_slug} expira amanhã. Renove agora para não perder o acesso ao sistema.\n\nApós 2 dias sem pagamento, o acesso será bloqueado automaticamente.\n\nEquipe EloLab`,
+            conteudo: `Olá ${profile.nome || ""},\n\nO período do plano ${sub.plano_slug} termina amanhã. ${accessNotice}\n\nRegularize em Planos para evitar interrupção.\n\nEquipe EloLab`,
             destinatario_email: profile.email,
             destinatario_nome: profile.nome,
             destinatario_id: sub.user_id,
             status: "pendente",
-            dados_extras: JSON.stringify({ tipo_lembrete: "expira_amanha", plano: sub.plano_slug }),
+            dados_extras: reminderDetails,
           });
           remindersCount++;
         }
       }
+    }
+
+    // Notify once for each recurring invoice still unpaid after 72 hours.
+    const { data: recurringPlans, error: recurringPlansError } = await supabase
+      .from('assinaturas_plano')
+      .select('id, user_id, plano_slug, mp_assinatura_id')
+      .eq('cobranca_modalidade', 'recorrente')
+      .in('status', ['ativa', 'trial'])
+      .not('mp_assinatura_id', 'is', null);
+    if (recurringPlansError) throw recurringPlansError;
+
+    for (const sub of recurringPlans || []) {
+      const { data: invoices, error: invoicesError } = await supabase
+        .from('platform_subscription_invoices')
+        .select('id, mp_preapproval_id, payment_status, debit_date, date_created')
+        .eq('assinatura_mp_id', sub.mp_assinatura_id)
+        .order('date_created', { ascending: false })
+        .limit(100);
+      if (invoicesError) throw invoicesError;
+
+      const overdueInvoiceId = getOverdueRecurringInvoiceIds(invoices || [])[0];
+      if (!overdueInvoiceId) continue;
+
+      const reminderDetails = {
+        tipo_lembrete: 'recurring_invoice_unpaid_72h',
+        assinatura_id: sub.id,
+        fatura_id: overdueInvoiceId,
+      };
+      const { data: alreadyQueued, error: dedupeError } = await supabase
+        .from('notification_queue')
+        .select('id')
+        .eq('destinatario_id', sub.user_id)
+        .contains('dados_extras', reminderDetails)
+        .limit(1)
+        .maybeSingle();
+      if (dedupeError) throw dedupeError;
+      if (alreadyQueued) continue;
+
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('email, nome')
+        .eq('id', sub.user_id)
+        .maybeSingle();
+      if (profileError) throw profileError;
+      if (!profile?.email) continue;
+
+      notifications.push({
+        tipo: 'email',
+        assunto: 'A cobrança do seu plano EloLab está pendente',
+        conteudo: `Olá ${profile.nome || ''},\n\nNão identificamos o pagamento da fatura recorrente do plano ${sub.plano_slug} após 3 dias do vencimento. O acesso para novos registros está suspenso até a confirmação do pagamento. Seus dados continuam disponíveis para consulta e exportação.\n\nAtualize ou regularize a cobrança em Planos. Se você já pagou, aguarde a confirmação do Mercado Pago.\n\nEquipe EloLab`,
+        destinatario_email: profile.email,
+        destinatario_nome: profile.nome,
+        destinatario_id: sub.user_id,
+        status: 'pendente',
+        dados_extras: reminderDetails,
+      });
+      remindersCount++;
     }
 
     // Process expired - send overdue notice
@@ -182,40 +257,46 @@ serve(async (req) => {
         if (!expDate) continue;
 
         const daysSince = Math.floor((now.getTime() - new Date(expDate).getTime()) / (1000 * 60 * 60 * 24));
+        const reminderType = prepaidReminderMilestone(daysSince);
+        if (!reminderType) continue;
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("email, nome")
+          .eq("id", sub.user_id)
+          .single();
 
-        // Send at day 0 (just expired), day 1, and day 2 (last chance before block)
-        if (daysSince >= 0 && daysSince <= 2) {
-          const { data: profile } = await supabase
-            .from("profiles")
-            .select("email, nome")
-            .eq("id", sub.user_id)
-            .single();
+        const reminderDetails = { tipo_lembrete: reminderType, assinatura_id: sub.id, plano: sub.plano_slug };
+        const { data: alreadyQueued, error: dedupeError } = await supabase
+          .from('notification_queue')
+          .select('id')
+          .eq('destinatario_id', sub.user_id)
+          .contains('dados_extras', reminderDetails)
+          .limit(1)
+          .maybeSingle();
+        if (dedupeError) throw dedupeError;
 
-          if (profile?.email) {
-            const urgency = daysSince === 2
-              ? "🚨 ÚLTIMO AVISO: Seu acesso será bloqueado HOJE!"
-              : daysSince === 1
-              ? "⚠️ Sua assinatura expirou - acesso será bloqueado amanhã"
+        if (profile?.email && !alreadyQueued) {
+          const urgency = daysSince === 6
+            ? "🚨 Último aviso: falta 1 dia para o bloqueio de escrita"
+            : daysSince === 3
+              ? "⚠️ Sua assinatura expirou há 3 dias"
               : "⏰ Sua assinatura EloLab expirou";
 
-            const bodyText = daysSince === 2
-              ? `Olá ${profile.nome || ""},\n\nEste é o último aviso. Sua assinatura expirou há 2 dias e o acesso ao sistema será BLOQUEADO automaticamente.\n\nRenove imediatamente para evitar a interrupção do serviço.\n\nSeus dados estão seguros e serão mantidos.\n\nEquipe EloLab`
-              : daysSince === 1
-              ? `Olá ${profile.nome || ""},\n\nSua assinatura expirou ontem. Você tem mais 1 dia para regularizar antes do bloqueio automático.\n\nRenove agora para continuar usando o EloLab sem interrupção.\n\nEquipe EloLab`
-              : `Olá ${profile.nome || ""},\n\nSua assinatura do plano ${sub.plano_slug} expirou. Renove para continuar acessando o sistema.\n\nApós 2 dias, o acesso será bloqueado automaticamente.\n\nEquipe EloLab`;
+          const bodyText = daysSince === 6
+            ? `Olá ${profile.nome || ""},\n\nEste é o último aviso antes do bloqueio de escrita. O período do plano ${sub.plano_slug} terminou há 6 dias. Após 7 dias, novos registros serão bloqueados; consulta e exportação continuam disponíveis.\n\nRegularize em Planos para manter o acesso normal.\n\nEquipe EloLab`
+            : `Olá ${profile.nome || ""},\n\nO período do plano ${sub.plano_slug} terminou há ${daysSince} dia(s). Regularize em Planos. Após 7 dias do vencimento, novos registros serão bloqueados; consulta e exportação continuam disponíveis.\n\nEquipe EloLab`;
 
-            notifications.push({
-              tipo: "email",
-              assunto: urgency,
-              conteudo: bodyText,
-              destinatario_email: profile.email,
-              destinatario_nome: profile.nome,
-              destinatario_id: sub.user_id,
-              status: "pendente",
-              dados_extras: JSON.stringify({ tipo_lembrete: `expirado_dia_${daysSince}`, plano: sub.plano_slug }),
-            });
-            remindersCount++;
-          }
+          notifications.push({
+            tipo: "email",
+            assunto: urgency,
+            conteudo: bodyText,
+            destinatario_email: profile.email,
+            destinatario_nome: profile.nome,
+            destinatario_id: sub.user_id,
+            status: "pendente",
+            dados_extras: reminderDetails,
+          });
+          remindersCount++;
         }
       }
     }

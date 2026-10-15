@@ -14,12 +14,13 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { useMedicos } from '@/hooks/useSupabaseData';
 import { ErrorState } from '@/components/ErrorState';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
+import { formatDateInTimeZone } from '@/lib/datePreference';
 
 interface Campo {
   id: string; rotulo: string; tipo: 'texto' | 'segredo' | 'selecao'; publico?: boolean; obrigatorio?: boolean;
   opcoes?: Array<{ valor: string; rotulo: string }>; ajuda?: string;
 }
-interface Integracao { id: string; nome: string; descricao: string; escopo: 'clinica' | 'profissional'; campos: Campo[]; documentacao?: string }
+interface Integracao { id: string; nome: string; descricao: string; escopo: 'clinica' | 'profissional'; campos: Campo[]; documentacao?: string; somenteStatus?: boolean }
 interface Conexao {
   provedor: string; referencia_id: string | null; status: 'conectado' | 'erro' | 'desconectado';
   config: Record<string, string>; segredo_dica: string | null; ultimo_erro: string | null; conectado_em: string; updated_at: string;
@@ -47,7 +48,7 @@ const formatarDataConexao = (valor: string | null | undefined) => {
   const data = new Date(valor);
   return Number.isNaN(data.getTime())
     ? 'data indisponível'
-    : data.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+    : formatDateInTimeZone(data);
 };
 
 /**
@@ -149,6 +150,20 @@ export function IntegracoesClinica() {
   const linha = (integracao: Integracao, referencia_id: string | null, titulo?: string) => {
     const c = conexao(integracao.id, referencia_id);
     const ativa = c && c.status !== 'desconectado';
+    if (integracao.somenteStatus) {
+      return (
+        <div key={`${integracao.id}:${referencia_id ?? 'clinica'}`} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3">
+          <div className="min-w-0">
+            <p className="truncate font-medium">{titulo ?? integracao.nome}</p>
+            <p className="text-xs text-muted-foreground">
+              {ativa ? <>Prescritor registrado · desde {formatarDataConexao(c.conectado_em)}</> : 'Ainda sem prescrição feita por este médico'}
+            </p>
+            {c?.status === 'erro' && c.ultimo_erro && <p className="mt-1 text-xs text-destructive">{c.ultimo_erro}</p>}
+          </div>
+          {c && <Badge variant={STATUS[c.status].variante}>{STATUS[c.status].rotulo === 'Credencial salva' ? 'Registrado' : STATUS[c.status].rotulo}</Badge>}
+        </div>
+      );
+    }
     return (
       <div key={`${integracao.id}:${referencia_id ?? 'clinica'}`} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3">
         <div className="min-w-0">

@@ -1,7 +1,8 @@
+import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { nomeMedico } from '@/lib/formatters';
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { format, isBefore, differenceInDays, addDays, isWithinInterval, startOfDay } from 'date-fns';
+import { isBefore, differenceInDays, addDays, isWithinInterval, startOfDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -10,6 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ErrorState } from '@/components/ErrorState';
+import { PageHeader } from '@/components/PageHeader';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
@@ -469,16 +471,12 @@ export default function RetornosControl() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-[#0C1F54] flex items-center gap-2">
-            <CalendarClock className="h-8 w-8 text-[#005ECC]" />
-            Controle de Retornos
-          </h1>
-          <p className="text-muted-foreground">Acompanhe retornos pendentes e atrasados</p>
-        </div>
-        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+      <PageHeader
+        title="Controle de Retornos"
+        description="Acompanhe retornos pendentes e atrasados"
+        icon={<CalendarClock />}
+        actions={(
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
@@ -503,8 +501,9 @@ export default function RetornosControl() {
               <SelectItem value="cancelado">Cancelados</SelectItem>
             </SelectContent>
           </Select>
-        </div>
-      </div>
+          </div>
+        )}
+      />
 
       {pacienteFiltroId && (
         <div className="flex flex-col gap-2 rounded-lg border bg-muted/30 p-3 sm:flex-row sm:items-center sm:justify-between">
@@ -624,7 +623,7 @@ export default function RetornosControl() {
                         className={cn(
                           "border-b transition-colors hover:bg-muted/50",
                           r.statusCalculado === 'atrasado' && 'bg-destructive/5',
-                          r.diasAtraso > 30 && r.statusCalculado === 'atrasado' && 'bg-destructive/10 border-l-4 border-l-destructive'
+                          r.diasAtraso > 30 && r.statusCalculado === 'atrasado' && 'bg-destructive/10'
                         )}
                       >
                         <TableCell className="font-medium">{getPacienteNome(r.paciente_id)}</TableCell>
@@ -640,8 +639,10 @@ export default function RetornosControl() {
                             )}
                           </div>
                         </TableCell>
-                        <TableCell className="hidden md:table-cell text-sm text-muted-foreground max-w-[200px] truncate">
-                          {r.motivo || '—'}
+                        <TableCell className="hidden md:table-cell max-w-[240px] align-top text-sm text-muted-foreground">
+                          <span className="line-clamp-2 break-words" title={r.motivo || undefined}>
+                            {r.motivo || '—'}
+                          </span>
                         </TableCell>
                         <TableCell>{getStatusBadge(r.statusCalculado)}</TableCell>
                         <TableCell className="text-right">

@@ -28,6 +28,7 @@ import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { ageFromDateOnly } from '@/lib/dateOnly';
 import { pacienteCorresponde } from '@/lib/buscaPaciente';
 import { dadosTransicaoColeta } from '@/lib/mapaColetaWorkflow';
+import { LaboratorioSubnav } from '@/components/laboratorio/LaboratorioSubnav';
 
 const TUBOS = [
   { color: 'bg-purple-500', label: 'EDTA (Roxo)', nome: 'Roxo', volume: '4mL' },
@@ -543,10 +544,10 @@ export default function MapaColeta() {
   return (
     <div className="space-y-6 pb-8">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 rounded-2xl border border-[#d8e8fb] bg-gradient-to-r from-[#f4f8ff] via-white to-[#effaff] p-4 sm:p-5">
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 rounded-2xl border border-[#e3dffb] bg-gradient-to-r from-[#f6f4ff] via-white to-[#f3f1ff] p-4 sm:p-5">
         <div>
           <h1 className="text-2xl font-bold font-display tracking-tight flex items-center gap-2">
-            <span className="rounded-xl bg-[#e5f1ff] p-2 text-[#1766b3] ring-1 ring-[#d5e6fa]"><FlaskConical className="h-5 w-5" /></span> Mapa de Coleta
+            <span className="rounded-xl bg-[#ece8ff] p-2 text-[#5240d6] ring-1 ring-[#e0dbfa]"><FlaskConical className="h-5 w-5" /></span> Mapa de Coleta
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
             Central de comando — {pendentes.length} aguardando · {recoletas.length} recoleta · {coletados.length} coletados
@@ -568,6 +569,8 @@ export default function MapaColeta() {
           </Button>
         </div>
       </div>
+
+      <LaboratorioSubnav />
 
       {/* SLA Alert */}
       {slaBreaches.length > 0 && (

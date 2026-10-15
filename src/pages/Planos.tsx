@@ -1,3 +1,4 @@
+import { formatWithDatePreference as format } from '@/lib/datePreference';
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -10,14 +11,26 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { Check, Crown, Sparkles, Clock, Gift, ArrowRight, Shield, Headphones, XCircle } from 'lucide-react';
+import { Check, Crown, Sparkles, Clock, Gift, ArrowRight, Shield, CreditCard, XCircle } from 'lucide-react';
 import { useUserPlan, usePlanos } from '@/hooks/useSubscriptionPlan';
 import { useBillingStatus } from '@/hooks/usePlanCheckout';
+
+function rotuloFrequencia(frequencia: string) {
+  switch (frequencia) {
+    case 'mensal': return 'mês';
+    case 'trimestral': return '3 meses';
+    case 'semestral': return '6 meses';
+    case 'anual': return '12 meses';
+    default: return 'período';
+  }
+}
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { toast } from 'sonner';
-import { format } from 'date-fns';
+import { descricaoComercialPlano } from '@/lib/planFeatures';
+
 import { ptBR } from 'date-fns/locale';
 import { ErrorState } from '@/components/ErrorState';
+import { PageSkeleton } from '@/components/ui/loading-skeleton';
 
 const planConfig: Record<string, {
   icon: React.ReactNode;
@@ -83,7 +96,15 @@ export default function Planos() {
   const bloquearAcoesCobranca = loadingBilling || erroAoConsultarCobranca || !billing;
   const navigate = useNavigate();
   const irParaCheckout = (slug: string, params = '') => navigate(`/planos/checkout/${slug}${params}`);
+  const pedidoAberto = billing?.pedido_aberto && ['criando', 'aguardando_pagamento', 'em_processamento'].includes(billing.pedido_aberto.status)
+    ? billing.pedido_aberto
+    : null;
   const prePago = billing?.assinatura?.modalidade === 'pre_pago' ? billing.assinatura : null;
+  const planoDoTeste = planos?.find((plano) => plano.slug === planSlug);
+  const temTesteElegivel = billing?.trial_elegivel === true && !!planos?.some(
+    (plano) => Number(plano.trial_dias) > 0,
+  );
+  const elegibilidadeTesteConhecida = !loadingBilling && !erroAoConsultarCobranca && !!billing;
   const prePagoFim = prePago?.data_fim ? new Date(prePago.data_fim) : null;
   const diasParaVencer = prePagoFim ? Math.ceil((prePagoFim.getTime() - Date.now()) / 86400000) : null;
   const queryClient = useQueryClient();
@@ -106,10 +127,11 @@ export default function Planos() {
       return data;
     },
     onSuccess: () => {
-      toast.success('Assinatura cancelada. O acesso continua até o fim do período pago.');
+      toast.success('Plano cancelado. O acesso foi encerrado e nenhuma cobrança futura será feita.');
       setShowCancelDialog(false);
       setCancelReason('');
       queryClient.invalidateQueries({ queryKey: ['user_plan'] });
+      queryClient.invalidateQueries({ queryKey: ['billing_status'] });
     },
     onError: (err: any) => toast.error(err.message || 'Erro ao cancelar assinatura'),
   });
@@ -129,14 +151,7 @@ export default function Planos() {
   }
 
   if (loadingPlanos || loadingAssinatura) {
-    return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="flex flex-col items-center gap-3">
-          <div className="h-8 w-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-          <p className="text-muted-foreground text-sm">Carregando planos...</p>
-        </div>
-      </div>
-    );
+    return <div role="status" aria-label="Carregando planos"><PageSkeleton /></div>;
   }
 
   if (erroAoConsultarAssinatura) {
@@ -161,10 +176,12 @@ export default function Planos() {
             Compare os recursos para escolher o plano certo para sua clínica.
           </p>
         </div>
-        {!hasActivePlan && planos.some((plano) => Number(plano.trial_dias) > 0) && (
+        {!hasActivePlan && elegibilidadeTesteConhecida && planos.some((plano) => Number(plano.trial_dias) > 0) && (
           <div className="inline-flex items-center gap-2 rounded-xl border border-info/20 bg-info/5 px-4 py-2.5 text-sm font-medium text-info">
             <Gift className="h-4 w-4" />
-            Período de teste disponível nos planos elegíveis
+            {temTesteElegivel
+              ? 'Há um teste grátis disponível para esta conta'
+              : 'O teste grátis não está disponível nesta conta'}
           </div>
         )}
       </div>
@@ -182,6 +199,14 @@ export default function Planos() {
           </Button>
         </div>
       )}
+      {pedidoAberto && (
+        <div role="status" className="flex flex-col gap-3 rounded-xl border border-info/20 bg-info/5 p-4 text-sm sm:flex-row sm:items-center sm:justify-between">
+          <span>Há um pagamento pendente para {planos?.find((plano) => plano.slug === pedidoAberto.plano_slug)?.nome ?? 'um plano'}. Conclua ou cancele esse pedido antes de escolher outro plano.</span>
+          <Button type="button" size="sm" className="shrink-0" onClick={() => irParaCheckout(pedidoAberto.plano_slug)}>
+            Continuar pagamento
+          </Button>
+        </div>
+      )}
 
       {/* Trial Banner */}
       {isTrial && trialEnd && (
@@ -194,23 +219,22 @@ export default function Planos() {
               <p className="font-semibold text-foreground">Período de teste ativo</p>
               <p className="text-sm text-muted-foreground">
                 {trialDaysLeft > 0
-                  ? `Restam ${trialDaysLeft} dia${trialDaysLeft !== 1 ? 's' : ''} — expira em ${format(trialEnd, "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}`
+                  ? `Próxima cobrança${planoDoTeste ? ` de ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(planoDoTeste.valor)}/${rotuloFrequencia(planoDoTeste.frequencia)}` : ''} em ${format(trialEnd, "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}. Cancele antes disso; o acesso termina ao cancelar.`
                   : 'Seu período de teste expirou'}
               </p>
             </div>
           </div>
           <Button
-            disabled={bloquearAcoesCobranca}
-            onClick={() => { if (planSlug) irParaCheckout(planSlug); }}
+            onClick={() => navigate('/configuracoes?tab=plano')}
             className="gap-2 shrink-0"
           >
-            Assinar Agora
+            Gerenciar teste
             <ArrowRight className="h-4 w-4" />
           </Button>
         </div>
       )}
 
-      {/* Período pré-pago (Pix/boleto) */}
+      {/* Período pré-pago (Pix) */}
       {prePago && prePagoFim && (
         <div className={`rounded-xl border p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 ${diasParaVencer !== null && diasParaVencer <= 7 ? 'border-warning/40 bg-warning/5' : 'border-primary/20 bg-gradient-to-r from-primary/5 to-transparent'}`}>
           <div className="flex items-center gap-3">
@@ -245,7 +269,8 @@ export default function Planos() {
           const config = planConfig[plano.slug] || planConfig['elolab-max'];
           const features = plano.features as string[];
           const trialDias = Number(plano.trial_dias) || 0;
-          const podeOferecerTrial = trialDias > 0;
+          const podeOferecerTrial = trialDias > 0 && billing?.trial_elegivel === true;
+          const pedidoDeOutroPlanoAberto = !!pedidoAberto && pedidoAberto.plano_slug !== plano.slug;
 
           return (
             <div
@@ -274,7 +299,7 @@ export default function Planos() {
                   {config.icon}
                 </div>
                 <h2 className="text-2xl font-bold text-foreground">{plano.nome}</h2>
-                <p className="text-sm text-muted-foreground mt-1">{plano.descricao}</p>
+                <p className="text-sm text-muted-foreground mt-1">{descricaoComercialPlano(plano.slug, plano.descricao)}</p>
               </div>
 
               {/* Price */}
@@ -284,13 +309,13 @@ export default function Planos() {
                     {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(plano.valor)}
                   </span>
                   <span className="text-muted-foreground font-medium">
-                    /{plano.frequencia === 'mensal' ? 'mês' : plano.frequencia}
+                    /{rotuloFrequencia(plano.frequencia)}
                   </span>
                 </div>
                 {!hasActivePlan && podeOferecerTrial && (
                   <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1.5">
                     <Gift className="h-3.5 w-3.5 text-info" />
-                    {trialDias} dias grátis no cartão; depois, {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(plano.valor)} por período
+                    {trialDias} dias grátis no cartão; depois, {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(plano.valor)} por {rotuloFrequencia(plano.frequencia)}
                   </p>
                 )}
               </div>
@@ -336,7 +361,7 @@ export default function Planos() {
                     {prePago && (
                       <p className="text-center text-xs text-muted-foreground">Sem renovação automática — nada a cancelar.</p>
                     )}
-                    {!isTrial && !prePago && billing?.assinatura?.plano_slug === plano.slug && billing.assinatura.modalidade === 'recorrente' && !loadingBilling && !erroAoConsultarCobranca && (
+                    {(isTrial || !prePago) && billing?.assinatura?.plano_slug === plano.slug && billing.assinatura.modalidade === 'recorrente' && !loadingBilling && !erroAoConsultarCobranca && (
                       <Button
                         variant="ghost"
                         size="sm"
@@ -345,7 +370,7 @@ export default function Planos() {
                         disabled={cancelMutation.isPending}
                       >
                         <XCircle className="h-3.5 w-3.5 mr-1.5" />
-                        {cancelMutation.isPending ? 'Cancelando...' : 'Cancelar assinatura'}
+                        {cancelMutation.isPending ? 'Cancelando...' : isTrial ? 'Cancelar teste grátis' : 'Cancelar assinatura'}
                       </Button>
                     )}
                   </>
@@ -353,7 +378,7 @@ export default function Planos() {
                   <>
                     {!hasActivePlan && podeOferecerTrial && (
                       <Button
-                        disabled={bloquearAcoesCobranca}
+                        disabled={bloquearAcoesCobranca || pedidoDeOutroPlanoAberto}
                         className={`w-full h-12 text-base font-semibold ${isHighlighted ? config.btnClass : ''}`}
                         variant={isHighlighted ? 'default' : 'outline'}
                         onClick={() => irParaCheckout(plano.slug, '?trial=1')}
@@ -363,7 +388,7 @@ export default function Planos() {
                       </Button>
                     )}
                     <Button
-                      disabled={bloquearAcoesCobranca}
+                      disabled={bloquearAcoesCobranca || pedidoDeOutroPlanoAberto}
                       className="w-full h-12 text-base"
                       variant={hasActivePlan && isHighlighted ? 'default' : 'ghost'}
                       onClick={() => irParaCheckout(plano.slug)}
@@ -381,17 +406,17 @@ export default function Planos() {
 
       {/* Trust bar */}
       <div className="flex flex-wrap items-center justify-center gap-6 pt-4 text-sm text-muted-foreground">
-        <div className="flex items-center gap-2">
-          <Shield className="h-4 w-4 text-success" />
-          <span>Dados criptografados</span>
-        </div>
+        <a href="/politica-privacidade" className="flex items-center gap-2 underline underline-offset-4 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <Shield className="h-4 w-4 text-primary" />
+          <span>Política de privacidade</span>
+        </a>
         <div className="flex items-center gap-2">
           <Clock className="h-4 w-4 text-primary" />
-          <span>Cancele quando quiser</span>
+          <span>Cancelamento online pelo app</span>
         </div>
         <div className="flex items-center gap-2">
-          <Headphones className="h-4 w-4 text-primary" />
-          <span>Suporte prioritário</span>
+          <CreditCard className="h-4 w-4 text-primary" />
+          <span>Pagamento processado pelo Mercado Pago</span>
         </div>
       </div>
 
@@ -401,16 +426,15 @@ export default function Planos() {
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2">
               <XCircle className="h-5 w-5 text-destructive" />
-              Cancelar assinatura?
+              {isTrial ? 'Cancelar teste grátis?' : 'Cancelar assinatura?'}
             </AlertDialogTitle>
             <AlertDialogDescription asChild>
               <div className="space-y-2">
                 <p>
-                  Sua assinatura será cancelada no Mercado Pago. Você continua com acesso até
-                  o fim do período já pago — depois disso, o app fica restrito.
+                  O Mercado Pago cancelará a cobrança recorrente agora. Ao confirmar, o acesso ao plano será encerrado e nenhuma cobrança futura será feita.
                 </p>
                 <p>
-                  Para voltar a usar, basta assinar novamente nesta página.
+                  {isTrial ? 'Você poderá contratar um plano novamente em Planos.' : 'Para voltar a usar, basta assinar novamente nesta página.'}
                 </p>
               </div>
             </AlertDialogDescription>

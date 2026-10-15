@@ -37,6 +37,7 @@ Deno.serve(async (req) => {
       chave: `guias:${clientIp(req)}`,
       limite: 30,
       janelaSegundos: 60,
+      failClosed: true,
     });
     if (limitado) return json({ error: "Muitas tentativas — aguarde alguns segundos e tente de novo." }, 429);
 

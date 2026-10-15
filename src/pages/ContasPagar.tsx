@@ -1,11 +1,13 @@
+import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
 import { useState, useMemo, useRef } from 'react';
 import {
   Plus, Search, Check, DollarSign, AlertCircle, Calendar, FileText, CreditCard,
   Repeat, Building2, Loader2,
 } from 'lucide-react';
-import { format } from 'date-fns';
+
 import { Button } from '@/components/ui/button';
+import { PageHeader } from '@/components/PageHeader';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -30,8 +32,8 @@ import { ErrorState } from '@/components/ErrorState';
 type StatusPagamento = Database['public']['Enums']['status_pagamento'];
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; border: string }> = {
-  pendente: { label: 'Pendente', color: 'text-warning', bg: 'bg-warning/10', border: 'border-warning/20' },
-  parcial: { label: 'Parcial', color: 'text-warning', bg: 'bg-warning/10', border: 'border-warning/20' },
+  pendente: { label: 'Pendente', color: 'text-warning-foreground', bg: 'bg-warning/10', border: 'border-warning/20' },
+  parcial: { label: 'Parcial', color: 'text-warning-foreground', bg: 'bg-warning/10', border: 'border-warning/20' },
   pago: { label: 'Pago', color: 'text-success', bg: 'bg-success/10', border: 'border-success/20' },
   atrasado: { label: 'Atrasado', color: 'text-destructive', bg: 'bg-destructive/10', border: 'border-destructive/20' },
   cancelado: { label: 'Cancelado', color: 'text-muted-foreground', bg: 'bg-muted', border: 'border-border' },
@@ -332,13 +334,12 @@ export default function ContasPagar() {
 
   return (
     <div className="space-y-6 pb-8">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 rounded-2xl border border-[#d7e9f7] bg-gradient-to-r from-[#f1fbfd] via-white to-[#eff4ff] p-4 shadow-sm sm:p-5">
-        <div>
-          <h1 className="flex items-center gap-2 text-2xl font-bold font-display tracking-tight text-foreground"><span className="rounded-xl bg-[#fff0ed] p-2 text-[#b65a4d] ring-1 ring-[#f2d6d0]"><CreditCard className="h-5 w-5" /></span>Contas a Pagar</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Despesas, fornecedores e controle de vencimentos</p>
-        </div>
-        <Button onClick={handleNew} className="gap-2"><Plus className="h-4 w-4" />Nova Conta</Button>
-      </div>
+      <PageHeader
+        title="Contas a Pagar"
+        description="Despesas, fornecedores e controle de vencimentos"
+        icon={<CreditCard />}
+        actions={<Button onClick={handleNew} className="gap-2"><Plus className="h-4 w-4" />Nova Conta</Button>}
+      />
 
       {contasAtingiramLimite && (
         <div role="status" className="rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm text-warning-foreground">
@@ -363,12 +364,12 @@ export default function ContasPagar() {
       {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
-          { label: 'Total', value: stats.total, icon: DollarSign, color: 'text-[#1766a8]', bg: 'bg-[#eaf4ff]', border: 'border-[#d1e5f8]' },
-          { label: 'Pendente', value: stats.pendente, icon: Calendar, color: 'text-[#916813]', bg: 'bg-[#fff8e8]', border: 'border-[#f3e6bf]' },
-          { label: 'Atrasado', value: stats.atrasado, icon: AlertCircle, color: 'text-[#b65a4d]', bg: 'bg-[#fff0ed]', border: 'border-[#f2d6d0]' },
-          { label: 'Pago', value: stats.pago, icon: Check, color: 'text-[#147765]', bg: 'bg-[#e5f7f2]', border: 'border-[#c5eadd]' },
+          { label: 'Total', value: stats.total, icon: DollarSign, color: 'text-primary', bg: 'bg-primary/10', border: 'border-primary/20' },
+          { label: 'Pendente', value: stats.pendente, icon: Calendar, color: 'text-warning-foreground', bg: 'bg-warning/10', border: 'border-warning/20' },
+          { label: 'Atrasado', value: stats.atrasado, icon: AlertCircle, color: 'text-destructive', bg: 'bg-destructive/10', border: 'border-destructive/20' },
+          { label: 'Pago', value: stats.pago, icon: Check, color: 'text-success', bg: 'bg-success/10', border: 'border-success/20' },
         ].map((s) => (
-          <Card key={s.label} className={cn('h-full border bg-gradient-to-br from-white to-[#f8fbfd] shadow-sm transition-shadow hover:shadow-md', s.border)}>
+          <Card key={s.label} className={cn('h-full border bg-gradient-to-br from-card to-muted/30 shadow-sm transition-shadow hover:shadow-md', s.border)}>
             <CardContent className="py-4 px-5">
               <div className="flex items-start justify-between">
                 <div>
@@ -453,7 +454,7 @@ export default function ContasPagar() {
                     <TableRow key={conta.id}>
                       <TableCell>
                         <div>
-                          <p className="font-medium">{conta.descricao}</p>
+                          <p className="font-medium line-clamp-2" title={conta.descricao}>{conta.descricao}</p>
                           {conta.numero_documento && (
                             <p className="text-xs text-muted-foreground font-mono flex items-center gap-1">
                               <FileText className="h-3 w-3" /> NF: {conta.numero_documento}
@@ -467,7 +468,7 @@ export default function ContasPagar() {
                         </div>
                       </TableCell>
                       <TableCell className="hidden lg:table-cell">
-                        <span className="text-sm">{conta.fornecedor || '—'}</span>
+                        <span className="text-sm line-clamp-2" title={conta.fornecedor || undefined}>{conta.fornecedor || '—'}</span>
                       </TableCell>
                       <TableCell className="hidden md:table-cell">
                         {CATEGORIAS_LABELS[conta.categoria] || conta.categoria}
