@@ -1,0 +1,21 @@
+-- Reconciliação retroativa: esta versão já está registrada em produção
+-- (supabase_migrations.schema_migrations, nome "platform_enrolled_mfa") mas
+-- nunca teve um arquivo no git, e o texto original não foi preservado (a
+-- coluna `statements` ficou vazia).
+--
+-- Investiguei a fundo antes de criar este arquivo (só leitura, em produção):
+--   - nenhuma coluna com "mfa" no nome além de profiles.mfa_enabled, que já
+--     vem de 20260414130000_add_mfa_fields.sql;
+--   - nenhuma função, policy de RLS ou comentário de tabela com "mfa" no
+--     nome ou na definição;
+--   - nenhuma linha com profiles.mfa_enabled = true;
+--   - auth.mfa_factors (MFA nativo do GoTrue) está vazia.
+--
+-- Não encontrei nenhum efeito de esquema ou de dado, no estado atual de
+-- produção, que corresponda a essa migration. É possível que tenha sido um
+-- ajuste de dado pontual (ex.: habilitar/desabilitar MFA de uma conta
+-- específica) cujo efeito foi revertido ou sobrescrito depois por outra
+-- operação. Este arquivo existe só para o número de versão constar no git —
+-- não reproduz nenhuma mudança, porque não há uma para reproduzir com
+-- confiança.
+SELECT 1;
