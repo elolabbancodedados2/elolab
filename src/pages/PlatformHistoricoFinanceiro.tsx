@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { supabase } from '@/integrations/supabase/client';
+import { usePlatformRealtime } from '@/hooks/usePlatformRealtime';
 
 type SubscriptionEvent = {
   id: number;
@@ -42,6 +43,7 @@ function dateTime(value: string) {
 }
 
 export default function PlatformHistoricoFinanceiro() {
+  usePlatformRealtime();
   const [days, setDays] = useState('90');
   const [eventSearch, setEventSearch] = useState('');
   const [eventType, setEventType] = useState('all');
@@ -52,6 +54,7 @@ export default function PlatformHistoricoFinanceiro() {
       if (error) throw error;
       return data as FinancialHistory;
     },
+    refetchInterval: 30_000,
   });
   const metrics = history.data?.metrics;
   const events = history.data?.events || [];

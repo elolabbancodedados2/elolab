@@ -119,13 +119,13 @@ export function AgendaHeader(p: Props) {
 
         <div className="flex w-full items-center gap-2 overflow-x-auto pb-1 sm:w-auto sm:overflow-visible sm:pb-0">
           <div role="group" aria-label="Visualização da agenda" className="flex items-center gap-0.5 rounded-full border border-border bg-muted/70 p-1">
-            <Button variant={p.view === 'daily' ? 'default' : 'ghost'} size="sm" className={cn('h-11 px-3 sm:h-9', p.view === 'daily' && 'bg-foreground text-background hover:bg-foreground/90')} onClick={() => p.onViewChange('daily')} aria-label="Visualização diária">
+            <Button aria-pressed={p.view === 'daily'} variant={p.view === 'daily' ? 'default' : 'ghost'} size="sm" className={cn('h-11 px-3 sm:h-9', p.view === 'daily' && 'bg-foreground text-background hover:bg-foreground/90')} onClick={() => p.onViewChange('daily')} aria-label="Visualização diária">
               <List className="h-3.5 w-3.5 md:mr-1" /> <span className="hidden md:inline">Dia</span>
             </Button>
-            <Button variant={p.view === 'weekly' ? 'default' : 'ghost'} size="sm" className={cn('h-11 px-3 sm:h-9', p.view === 'weekly' && 'bg-foreground text-background hover:bg-foreground/90')} onClick={() => p.onViewChange('weekly')} aria-label="Visualização semanal">
+            <Button aria-pressed={p.view === 'weekly'} variant={p.view === 'weekly' ? 'default' : 'ghost'} size="sm" className={cn('h-11 px-3 sm:h-9', p.view === 'weekly' && 'bg-foreground text-background hover:bg-foreground/90')} onClick={() => p.onViewChange('weekly')} aria-label="Visualização semanal">
               <LayoutGrid className="h-3.5 w-3.5 md:mr-1" /> <span className="hidden md:inline">Semana</span>
             </Button>
-            <Button variant={p.view === 'monthly' ? 'default' : 'ghost'} size="sm" className={cn('h-11 px-3 sm:h-9', p.view === 'monthly' && 'bg-foreground text-background hover:bg-foreground/90')} onClick={() => p.onViewChange('monthly')} aria-label="Visualização mensal">
+            <Button aria-pressed={p.view === 'monthly'} variant={p.view === 'monthly' ? 'default' : 'ghost'} size="sm" className={cn('h-11 px-3 sm:h-9', p.view === 'monthly' && 'bg-foreground text-background hover:bg-foreground/90')} onClick={() => p.onViewChange('monthly')} aria-label="Visualização mensal">
               <CalendarDays className="h-3.5 w-3.5 md:mr-1" /> <span className="hidden md:inline">Mês</span>
             </Button>
           </div>
