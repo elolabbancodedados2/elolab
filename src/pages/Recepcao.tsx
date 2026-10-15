@@ -964,7 +964,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
   /**
    * Encaixe: cria o agendamento de hoje, agora, e faz o check-in na sequência
    * (fila + cobrança) pelo mesmo caminho do agendado — sem navegar até a
-   * Agenda. O caixa sÃ³ Ã© exigido quando a equipe for receber o pagamento.
+   * Agenda. O caixa só é exigido quando a equipe for receber o pagamento.
    */
   async function handleEncaixe() {
     if (!encaixePacienteId || !encaixeMedicoId || !encaixeTipo) {

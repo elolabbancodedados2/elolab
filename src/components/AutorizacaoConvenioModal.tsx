@@ -169,7 +169,7 @@ export function AutorizacaoConvenioModal({
             </div>
           ) : loadError ? (
             <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm" role="alert">
-              <p className="mb-3 text-destructive">NÃ£o foi possÃ­vel carregar autorizaÃ§Ãµes e convÃªnios.</p>
+              <p className="mb-3 text-destructive">Não foi possível carregar autorizações e convênios.</p>
               <Button type="button" size="sm" variant="outline" onClick={() => void loadData()}>
                 Tentar novamente
               </Button>

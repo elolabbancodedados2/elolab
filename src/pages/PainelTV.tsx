@@ -597,6 +597,7 @@ export default function PainelTV() {
                 !somAtivo && 'opacity-50'
               )}
               title={somAtivo ? 'Som ativado' : 'Som desativado'}
+              aria-label={somAtivo ? 'Desativar som' : 'Ativar som'}
             >
               {somAtivo ? <Volume2 className="h-5 w-5" /> : <VolumeX className="h-5 w-5" />}
             </Button>

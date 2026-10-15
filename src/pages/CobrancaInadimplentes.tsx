@@ -19,10 +19,12 @@ import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
 import { buscarDadosBasicosPacientes } from '@/lib/patientBasicData';
 import { ActionableEmptyState } from '@/components/ActionableEmptyState';
 import { PageHeader } from '@/components/PageHeader';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 
 export default function CobrancaInadimplentes() {
   const navigate = useNavigate();
   const [sending, setSending] = useState(false);
+  const [confirmarEnvio, setConfirmarEnvio] = useState(false);
   const [sendProgress, setSendProgress] = useState({ batch: 0, total: 0 });
   const { profile } = useSupabaseAuth();
   const clinicaId = profile?.clinica_id;
@@ -51,9 +53,12 @@ export default function CobrancaInadimplentes() {
   const comContato = data.filter((l: any) => l.pacientes?.telefone || l.pacientes?.email);
   const atingiuLimite = data.length >= LIMITE_BUSCA_EM_BLOCOS;
 
-  const enviarTodos = async () => {
+  const pedirEnvioTodos = () => {
     if (!comContato.length) { toast.error('Nenhum lançamento vencido tem telefone ou e-mail cadastrado.'); return; }
-    if (!confirm(`Processar cobranças dos ${comContato.length} lançamentos vencidos com telefone ou e-mail? A régua pode pular itens fora da data prevista ou já enviados.`)) return;
+    setConfirmarEnvio(true);
+  };
+
+  const enviarTodos = async () => {
     setSending(true);
     let processados = 0;
     let enviadosWhatsApp = 0;
@@ -132,7 +137,7 @@ export default function CobrancaInadimplentes() {
             <Button variant="outline" onClick={() => void refetch()} disabled={cobrancasQuery.isFetching}>
                 <RefreshCw className="h-4 w-4 mr-2" /> Atualizar
               </Button>
-              <Button onClick={enviarTodos} disabled={sending || cobrancasQuery.isError || !comContato.length}>
+              <Button onClick={pedirEnvioTodos} disabled={sending || cobrancasQuery.isError || !comContato.length}>
                 {sending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Send className="h-4 w-4 mr-2" />}
                 {sending ? `Processando ${sendProgress.batch}/${sendProgress.total}…` : 'Processar régua de cobrança'}
               </Button>
@@ -214,6 +219,15 @@ export default function CobrancaInadimplentes() {
           )}
         </CardContent>
       </Card>
+      <ConfirmDialog
+        open={confirmarEnvio}
+        onOpenChange={setConfirmarEnvio}
+        title="Processar cobranças vencidas"
+        description={`Processar cobranças dos ${comContato.length} lançamentos vencidos com telefone ou e-mail? A régua pode pular itens fora da data prevista ou já enviados.`}
+        confirmLabel="Processar"
+        variant="warning"
+        onConfirm={() => void enviarTodos()}
+      />
     </div>
   );
 }

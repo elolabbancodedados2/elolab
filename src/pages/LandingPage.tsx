@@ -486,7 +486,7 @@ export default function LandingPage() {
                 <div className="relative overflow-hidden rounded-3xl border border-white/20 bg-white/10 p-2 shadow-2xl shadow-black/20 backdrop-blur-sm">
                   <img
                     src={clinicHero}
-                    alt="Recep&#231;&#227;o de uma cl&#237;nica"
+                    alt="Recepção de uma clínica"
                     className="aspect-[4/3] w-full rounded-[1.35rem] object-cover object-center sm:aspect-[16/10] lg:aspect-[4/3]"
                     loading="eager"
                   />

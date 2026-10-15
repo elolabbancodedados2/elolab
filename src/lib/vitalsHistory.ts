@@ -111,8 +111,8 @@ export function consolidarHistoricoVitais(
   const agrupados = new Map<string, VitalSignData>();
   const atendimentoMaisRecente = new Map<string, string>();
 
-  // Dados legados podem conter mais de uma evoluÃ§Ã£o por atendimento. Mantemos
-  // todas no histÃ³rico e escolhemos a mais recente para combinar com a triagem.
+  // Dados legados podem conter mais de uma evolução por atendimento. Mantemos
+  // todas no histórico e escolhemos a mais recente para combinar com a triagem.
   for (const prontuario of prontuarios) {
     if (!prontuario.agendamento_id) continue;
     const atualId = atendimentoMaisRecente.get(prontuario.agendamento_id);

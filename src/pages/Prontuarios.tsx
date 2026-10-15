@@ -1169,8 +1169,8 @@ export default function Prontuarios() {
     if (pacienteSelecionadoQuery.isLoading || loadingProntuarios) return;
     if (historicoAuditadoPacienteId !== selectedPacienteId) return;
     if (pacienteSelecionadoQuery.isError || !selectedPaciente) {
-      toast.error('NÃ£o foi possÃ­vel retomar este rascunho.', {
-        description: 'O paciente nÃ£o estÃ¡ acessÃ­vel nesta clÃ­nica.',
+      toast.error('Não foi possível retomar este rascunho.', {
+        description: 'O paciente não está acessível nesta clínica.',
       });
       setRascunhoParaAbrir(null);
       return;
@@ -1181,7 +1181,7 @@ export default function Prontuarios() {
     }
     const draft = pacienteProntuarios.find((item) => item.id === rascunhoParaAbrir.id);
     if (!draft) {
-      toast.error('Este rascunho nÃ£o estÃ¡ mais disponÃ­vel para sua conta. Atualize a lista.');
+      toast.error('Este rascunho não está mais disponível para sua conta. Atualize a lista.');
       setRascunhoParaAbrir(null);
       return;
     }
@@ -1518,14 +1518,14 @@ export default function Prontuarios() {
 
   const auditarExportacaoPdf = async (formato: 'PDF' | 'WhatsApp') => {
     if (!currentProntuario.id) {
-      toast.info('Salve o prontuÃ¡rio antes de exportar para registrar a auditoria.');
+      toast.info('Salve o prontuário antes de exportar para registrar a auditoria.');
       return false;
     }
     try {
       await registrarExportacaoProntuarios([currentProntuario.id], formato);
       return true;
     } catch (error) {
-      toast.error('ExportaÃ§Ã£o cancelada: nÃ£o foi possÃ­vel registrar a auditoria.', { description: mensagemDeErro(error) });
+      toast.error('Exportação cancelada: não foi possível registrar a auditoria.', { description: mensagemDeErro(error) });
       return false;
     }
   };
@@ -2637,7 +2637,7 @@ export default function Prontuarios() {
                     alreadySigned={isSigned}
                     signedAt={currentProntuario.assinado_em}
                     disabledReason={isEditing || hasUnsavedChanges || salvandoProntuario
-                      ? 'Salve as alteraÃ§Ãµes e reabra o prontuÃ¡rio para assinar a versÃ£o atual.'
+                      ? 'Salve as alterações e reabra o prontuário para assinar a versão atual.'
                       : undefined}
                     onSigned={() => {
                       setCurrentProntuario(prev => ({ ...prev, assinado: true, assinado_em: new Date().toISOString() }));
