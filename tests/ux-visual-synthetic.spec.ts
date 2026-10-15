@@ -267,7 +267,7 @@ test('prescriptions desktop explains and mutes creation until an active doctor e
     const style = getComputedStyle(element);
     return { background: style.backgroundColor, backgroundImage: style.backgroundImage, color: style.color, opacity: style.opacity };
   });
-  expect(disabledStyle.background).toBe('rgb(236, 234, 246)');
+  expect(disabledStyle.background).toBe('rgb(240, 240, 244)');
   expect(disabledStyle.backgroundImage).toBe('none');
   expect(disabledStyle.opacity).toBe('1');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
@@ -310,7 +310,7 @@ test('insurance billing desktop explains prerequisites for empty clinic setup', 
     const style = getComputedStyle(element);
     return { background: style.backgroundColor, backgroundImage: style.backgroundImage, opacity: style.opacity };
   })));
-  expect(disabledStyles.map(style => style.background)).toEqual(['rgb(236, 234, 246)', 'rgb(236, 234, 246)']);
+  expect(disabledStyles.map(style => style.background)).toEqual(['rgb(240, 240, 244)', 'rgb(240, 240, 244)']);
   expect(disabledStyles.map(style => style.backgroundImage)).toEqual(['none', 'none']);
   expect(disabledStyles.map(style => style.opacity)).toEqual(['1', '1']);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
