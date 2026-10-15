@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { supabase } from '@/integrations/supabase/client';
+import { usePlatformRealtime } from '@/hooks/usePlatformRealtime';
 
 type Subscription = {
   clinica_id: string;
@@ -60,6 +61,7 @@ const dataHora = (value: string) => {
 };
 
 export default function PlatformCobrancas() {
+  usePlatformRealtime();
   const [busca, setBusca] = useState('');
   const [status, setStatus] = useState('all');
   const overview = useQuery({
@@ -69,7 +71,7 @@ export default function PlatformCobrancas() {
       if (error) throw error;
       return data as Overview;
     },
-    refetchInterval: 60_000,
+    refetchInterval: 30_000,
   });
   const invoices = useQuery({
     queryKey: ['platform-subscription-invoices'],
@@ -78,7 +80,7 @@ export default function PlatformCobrancas() {
       if (error) throw error;
       return (data || []) as PlatformInvoice[];
     },
-    refetchInterval: 60_000,
+    refetchInterval: 30_000,
   });
 
   const lista = useMemo(() => {

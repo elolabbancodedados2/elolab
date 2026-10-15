@@ -544,7 +544,7 @@ export default function Tarefas() {
       </section>
 
       {/* Stats */}
-      <motion.div variants={stagger} initial="hidden" animate="visible" className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+      <motion.div role="group" aria-label="Filtrar tarefas por status" variants={stagger} initial="hidden" animate="visible" className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         {[
           { label: 'Total', value: stats.total, icon: ListTodo, stripe: 'bg-primary/70', iconBg: 'bg-primary/10', iconColor: 'text-primary', filter: 'all' },
           { label: 'Pendentes', value: stats.pendentes, icon: Circle, stripe: 'bg-warning/70', iconBg: 'bg-warning/10', iconColor: 'text-warning-foreground', filter: 'pendente' },
@@ -554,6 +554,8 @@ export default function Tarefas() {
         ].map((s, i) => (
           <motion.div key={s.label} variants={fadeUp} custom={i}>
             <button
+              type="button"
+              aria-pressed={filterStatus === s.filter}
               onClick={() => setFilterStatus(s.filter)}
               className={cn(
                 'relative min-h-[76px] w-full overflow-hidden rounded-2xl border border-border bg-card px-3 py-3 shadow-sm flex items-center gap-2 transition-all hover:border-primary/30 hover:shadow-md hover:-translate-y-0.5 text-left sm:gap-3 sm:px-4',

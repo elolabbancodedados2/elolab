@@ -61,6 +61,17 @@ describe('Tarefas', () => {
     expect(screen.getByRole('button', { name: 'Iniciar tarefa Confirmar agenda da manhã' })).toBeInTheDocument();
   });
 
+  it('expõe o filtro ativo dos indicadores para tecnologias assistivas', () => {
+    render(<MemoryRouter><Tarefas /></MemoryRouter>);
+    const total = screen.getByRole('button', { name: /Total/ });
+    const vencidas = screen.getByRole('button', { name: /Vencidas/ });
+
+    expect(total).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(vencidas);
+    expect(vencidas).toHaveAttribute('aria-pressed', 'true');
+    expect(total).toHaveAttribute('aria-pressed', 'false');
+  });
+
   it('usa o token destrutivo no indicador de tarefas vencidas', () => {
     render(<MemoryRouter><Tarefas /></MemoryRouter>);
     const vencidas = screen.getByRole('button', { name: /Vencidas/ });

@@ -23,6 +23,7 @@ import { toast } from 'sonner';
 import { AcoesDaClinica } from '@/components/plataforma/AcoesDaClinica';
 import { LogDeAcessos } from '@/components/plataforma/LogDeAcessos';
 import { useNavigate } from 'react-router-dom';
+import { usePlatformRealtime } from '@/hooks/usePlatformRealtime';
 
 interface ClinicaOverview {
   clinica_id: string;
@@ -86,6 +87,7 @@ export default function PlatformClinicas() {
   const reconcileLock = useRef(false);
   const resendLock = useRef(false);
   const navigate = useNavigate();
+  usePlatformRealtime(isPlatformAdmin);
 
   /**
    * Entrar numa clínica é ver o prontuário de paciente de um cliente. O motivo
@@ -129,6 +131,7 @@ export default function PlatformClinicas() {
       return (data ?? []) as ClinicaOverview[];
     },
     enabled: isPlatformAdmin,
+    refetchInterval: 30_000,
   });
 
   const { data: orfaosData, refetch: refetchOrfaos, isError: orfaosError } = useQuery({
@@ -147,6 +150,7 @@ export default function PlatformClinicas() {
       return { items: data ?? [], total: count ?? inicio + (data ?? []).length };
     },
     enabled: isPlatformAdmin,
+    refetchInterval: 30_000,
   });
   const orfaos = orfaosData?.items ?? [];
   const totalOrfaos = orfaosData?.total ?? 0;
