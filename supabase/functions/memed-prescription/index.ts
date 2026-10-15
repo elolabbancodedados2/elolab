@@ -1,5 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsPadrao } from '../_shared/cors.ts';
+import { mfaRequiredResponse } from '../_shared/authMfa.ts';
 import { autorizarAcaoMemed } from '../_shared/memedAuthorization.ts';
 import { extrairIdentificadoresCallbackMemed, verificarPrescricaoMemedOficial } from '../_shared/memedPrescriptionVerification.ts';
 
@@ -124,6 +125,8 @@ Deno.serve(async (req) => {
     });
     const { data: { user } } = await userClient.auth.getUser();
     if (!user) return json({ error: 'Não autenticado.' }, 401);
+    const mfaDenied = mfaRequiredResponse(req, user, corsHeaders);
+    if (mfaDenied) return mfaDenied;
 
     const service = createClient(supabaseUrl, serviceKey);
     const { data: profile } = await service.from('profiles').select('clinica_id').eq('id', user.id).maybeSingle();
@@ -255,11 +258,11 @@ Deno.serve(async (req) => {
 
       if (!externalPrescriptionId) return json({ error: 'A Memed não enviou o identificador da prescrição.' }, 422);
 
-      if (!callbackIds?.id || !externalPrescriptionId) return json({ error: 'Identificadores da prescriÃ§Ã£o ausentes.' }, 422);
+      if (!callbackIds?.id || !externalPrescriptionId) return json({ error: 'Identificadores da prescrição ausentes.' }, 422);
       const token = await tokenPrescritorMemed(medicoId);
       const verification = await memedPrescriptionRequest(callbackIds.id, token);
       if (!verification.response.ok) {
-        return json({ error: 'A Memed nÃ£o confirmou esta prescriÃ§Ã£o para o prescritor autenticado.' }, verification.response.status === 404 ? 404 : 502);
+        return json({ error: 'A Memed não confirmou esta prescrição para o prescritor autenticado.' }, verification.response.status === 404 ? 404 : 502);
       }
       const verifiedPayload = verificarPrescricaoMemedOficial(verification.data, {
         prescriptionId: callbackIds.id,
