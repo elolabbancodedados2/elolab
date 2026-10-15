@@ -62,6 +62,9 @@ Deno.serve(async (req) => {
     if (provedor === 'mercado_pago' && action === 'connect') {
       return json({ error: 'Conecte sua conta pelo fluxo seguro de autorização do Mercado Pago.' }, 400);
     }
+    if (integracao.somenteStatus) {
+      return json({ error: 'Esta integração conecta automaticamente; não há nada para conectar ou desconectar aqui.' }, 400);
+    }
 
     const referenciaId = body.referencia_id ? String(body.referencia_id) : null;
     if (integracao.escopo === 'profissional') {

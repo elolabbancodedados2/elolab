@@ -30,6 +30,13 @@ export interface IntegracaoDisponivel {
   escopo: 'clinica' | 'profissional';
   campos: CampoIntegracao[];
   documentacao?: string;
+  /**
+   * Integrações sem campo nenhum para o admin preencher: o status é só
+   * informativo, gravado automaticamente pela função que fala com o
+   * fornecedor (ex.: Memed, ao registrar o prescritor). A tela não oferece
+   * "Conectar" nem "Desconectar" para elas.
+   */
+  somenteStatus?: boolean;
 }
 
 export const CATALOGO_INTEGRACOES: IntegracaoDisponivel[] = [
@@ -41,9 +48,14 @@ export const CATALOGO_INTEGRACOES: IntegracaoDisponivel[] = [
     campos: [],
     documentacao: 'https://www.mercadopago.com.br/developers/pt/docs/security/oauth/creation',
   },
-  // A primeira integração entra aqui assim que houver credencial de parceiro
-  // (ex.: Memed — escopo 'profissional', token do prescritor gerado pelo
-  // servidor a partir do cadastro do médico).
+  {
+    id: 'memed',
+    nome: 'Memed (prescrição digital)',
+    descricao: 'Registro automático do médico como prescritor na Memed. Conecta sozinho na primeira prescrição feita por ele; não precisa de nenhuma credencial aqui.',
+    escopo: 'profissional',
+    campos: [],
+    somenteStatus: true,
+  },
 ];
 
 export function integracaoDoCatalogo(id: string) {
