@@ -335,6 +335,26 @@ Deno.serve(async (req) => {
               }
             }
 
+            // O modelo as vezes confunde uma pergunta informativa simples
+            // (endereco, horario, preco, convenio, preparo) com uma acao de
+            // agenda (ex.: pediram o endereco e ele propos cancelar a
+            // consulta). Quando a mensagem bate com um desses assuntos de
+            // forma clara, responde direto sem passar pelo modelo.
+            const infoAssunto = /endere[cç]o|onde fica|localiza[cç][aã]o/i.test(messageContent) ? 'endereco'
+              : /hor[aá]rio|funcionamento|\babre\b|\bfecha\b/i.test(messageContent) ? 'horarios'
+              : /pre[cç]o|valor|quanto custa/i.test(messageContent) ? 'precos'
+              : /conv[eê]nio|plano de sa[uú]de/i.test(messageContent) ? 'convenios'
+              : /preparo|jejum/i.test(messageContent) ? 'preparo' : null
+            if (infoAssunto && isWhatsAppToolAllowed('consultar_informacoes_clinica', agent.habilidades)) {
+              const toolResult = await executeAgentTool(supabase, 'consultar_informacoes_clinica',
+                { assunto: infoAssunto }, conversation, session.clinica_id, agent.habilidades)
+              const reply = plainWhatsAppText(toolResult.message || 'Não encontrei essa informação. Posso chamar a equipe para conferir?')
+              await sendWhatsAppMessage(evolutionApiUrl, evolutionApiKey, instanceName, remoteJid, reply)
+              await supabase.from('whatsapp_messages').insert({ conversation_id: conversation.id, clinica_id: session.clinica_id,
+                direcao: 'saida', tipo: 'texto', conteudo: reply })
+              continue
+            }
+
             if (!nvidiaApiKey) {
               console.error('[AI] OPENAI_API_KEY não configurada para sessão:', session.id)
               continue
@@ -670,6 +690,19 @@ async function runNvidiaAgent({
     const toolStartedAt = Date.now()
     const toolName = call.function?.name
     console.log(`[Agent] tool call: ${toolName}`)
+    // Rede de seguranca contra o modelo escolher uma acao de agenda para uma
+    // mensagem que parece so uma pergunta (sem data/hora, sem SIM/NAO, sem
+    // verbo de agenda). Visto ao vivo: pergunta de endereco virou proposta
+    // de cancelamento. As ferramentas de agenda ja exigem SIM antes de
+    // gravar; isto evita ate propor a acao errada.
+    if (['cancelar_agendamento', 'reagendar_agendamento', 'confirmar_presenca', 'criar_agendamento'].includes(toolName)
+      && /^\s*(qual|quais|onde|quanto|quando|como|que horas?)\b/i.test(messageContent)
+      && !/cancel|remarc|reagend|confirma|marcar|agendar|\bsim\b|\bn[aã]o\b|\d/i.test(messageContent)) {
+      console.log(`[Agent] blocked likely-wrong tool call: ${toolName}`)
+      toolReply = 'Não entendi se isso era sobre sua consulta. Pode explicar com outras palavras o que você precisa?'
+      immediateResponse = toolReply
+      continue
+    }
     const toolResult = await executeAgentTool(
       supabase,
       toolName,
@@ -680,7 +713,11 @@ async function runNvidiaAgent({
     )
     if (toolResult.data) {
       const context = (Array.isArray(conversation.contexto) ? conversation.contexto : []).filter((item: any) => item?.kind !== 'reception_state')
-      const state = { kind: 'reception_state', intent: conversation.reception_intent, data: { ...priorState?.data, ...toolResult.data }, expires_at: new Date(Date.now() + 30 * 60 * 1000).toISOString() }
+      // A different intent than the last turn starts a fresh topic: carrying
+      // the old agendamentos/horarios forward wrongly blocks later shortcuts
+      // that check whether that data is still present.
+      const carryForward = priorState?.intent === conversation.reception_intent ? priorState?.data : undefined
+      const state = { kind: 'reception_state', intent: conversation.reception_intent, data: { ...carryForward, ...toolResult.data }, expires_at: new Date(Date.now() + 30 * 60 * 1000).toISOString() }
       const { error } = await supabase.from('whatsapp_conversations').update({ contexto: [...context, state] }).eq('id', conversation.id).eq('clinica_id', clinicaId)
       if (error) throw error
       conversation.contexto = [...context, state]

@@ -37,6 +37,23 @@ describe('WhatsApp patient-service webhook policy', () => {
     expect(source).not.toMatch(/select\('id'\)[\s\S]{0,250}telefone\.ilike/);
   });
 
+  it('answers plain informational questions directly instead of letting the model pick an agenda action', () => {
+    const shortcut = source.indexOf('const infoAssunto =');
+    const toolCall = source.indexOf("executeAgentTool(supabase, 'consultar_informacoes_clinica'", shortcut);
+
+    expect(shortcut).toBeGreaterThan(-1);
+    expect(toolCall).toBeGreaterThan(shortcut);
+  });
+
+  it('refuses to execute an agenda-changing tool for a message that reads like a plain question', () => {
+    const guard = source.indexOf("blocked likely-wrong tool call");
+    const riskyList = source.indexOf("'cancelar_agendamento', 'reagendar_agendamento', 'confirmar_presenca', 'criar_agendamento'");
+
+    expect(guard).toBeGreaterThan(-1);
+    expect(riskyList).toBeGreaterThan(-1);
+    expect(riskyList).toBeLessThan(guard);
+  });
+
   it('answers a chosen specialty directly instead of re-listing it when the model repeats itself', () => {
     const shortcut = source.indexOf("priorReceptionState?.data?.medicos");
     const matchCheck = source.indexOf('normalizeMedicalSpecialty(messageContent)', shortcut);
