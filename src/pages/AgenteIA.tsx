@@ -15,6 +15,7 @@ import { ConversationsTab } from '@/components/whatsapp/ConversationsTab';
 import { FeatureGate } from '@/components/FeatureGate';
 import { useUserPlan } from '@/hooks/useSubscriptionPlan';
 import { ErrorState } from '@/components/ErrorState';
+import { PageSkeleton } from '@/components/ui/loading-skeleton';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 
 export default function AgenteIA() {
@@ -51,7 +52,7 @@ export default function AgenteIA() {
   } = useWhatsAppMutations();
 
   if (planLoading) {
-    return <div className="p-6 text-muted-foreground">Verificando plano...</div>;
+    return <PageSkeleton />;
   }
 
   if (planError) {
@@ -63,7 +64,7 @@ export default function AgenteIA() {
   }
 
   if (queries.some(query => query.isLoading)) {
-    return <div className="p-6 text-muted-foreground" role="status">Carregando sessões, agentes e conversas...</div>;
+    return <div role="status" aria-label="Carregando sessões, agentes e conversas"><PageSkeleton /></div>;
   }
 
   const failedQuery = queries.find(query => query.isError);

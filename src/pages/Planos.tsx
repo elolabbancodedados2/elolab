@@ -30,6 +30,7 @@ import { descricaoComercialPlano } from '@/lib/planFeatures';
 
 import { ptBR } from 'date-fns/locale';
 import { ErrorState } from '@/components/ErrorState';
+import { PageSkeleton } from '@/components/ui/loading-skeleton';
 
 const planConfig: Record<string, {
   icon: React.ReactNode;
@@ -150,14 +151,7 @@ export default function Planos() {
   }
 
   if (loadingPlanos || loadingAssinatura) {
-    return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="flex flex-col items-center gap-3">
-          <div className="h-8 w-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-          <p className="text-muted-foreground text-sm">Carregando planos...</p>
-        </div>
-      </div>
-    );
+    return <div role="status" aria-label="Carregando planos"><PageSkeleton /></div>;
   }
 
   if (erroAoConsultarAssinatura) {
