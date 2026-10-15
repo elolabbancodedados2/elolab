@@ -11,6 +11,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
 import { Bot, Plus, Settings, Trash2, RefreshCw } from 'lucide-react';
+import { KnowledgeBaseEditor } from './KnowledgeBaseEditor';
 import {
   WhatsAppAgent,
   WhatsAppAgentCapability,
@@ -261,23 +262,24 @@ export function AgentsTab({
               </CardContent>
             </Card>
           ) : selectedAgent ? (
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <CardTitle>Editar: {selectedAgent.nome}</CardTitle>
-                  <div className="flex gap-2 items-center">
-                    <Switch
-                      checked={selectedAgent.ativo}
-                      onCheckedChange={(checked) => {
-                        onUpdateAgent({ id: selectedAgent.id, ativo: checked });
-                        setSelectedAgent({ ...selectedAgent, ativo: checked });
-                      }}
-                    />
-                    <Label>Ativo</Label>
+            <div>
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <CardTitle>Editar: {selectedAgent.nome}</CardTitle>
+                    <div className="flex gap-2 items-center">
+                      <Switch
+                        checked={selectedAgent.ativo}
+                        onCheckedChange={(checked) => {
+                          onUpdateAgent({ id: selectedAgent.id, ativo: checked });
+                          setSelectedAgent({ ...selectedAgent, ativo: checked });
+                        }}
+                      />
+                      <Label>Ativo</Label>
+                    </div>
                   </div>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
+                </CardHeader>
+                <CardContent className="space-y-4">
                 <div>
                   <Label htmlFor="editar-agente-nome">Nome do agente</Label>
                   <Input
@@ -373,8 +375,10 @@ export function AgentsTab({
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+              <KnowledgeBaseEditor key={selectedAgent.id} agentId={selectedAgent.id} />
+            </div>
           ) : (
             <Card>
               <CardContent className="py-12 text-center">

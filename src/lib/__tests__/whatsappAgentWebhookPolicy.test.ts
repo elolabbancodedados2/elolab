@@ -10,21 +10,26 @@ describe('WhatsApp patient-service webhook policy', () => {
     expect(source).toMatch(/if \(!isWhatsAppToolAllowed\(toolName, agentCapabilities\)\)/);
   });
 
-  it('requires an explicit patient confirmation before inserting an appointment', () => {
-    const confirmGate = source.indexOf('if (options.patientConfirmed !== true)');
-    const appointmentInsert = source.indexOf("supabase.from('agendamentos').insert({", confirmGate);
-    const explicitConfirmation = source.indexOf('{ patientConfirmed: true }');
+  it('requires an explicit patient confirmation before writing to the agenda', () => {
+    const prepareDefinition = source.indexOf('async function prepareAgendaAction(');
+    const pendingGuard = source.indexOf('if (conversation.acao_pendente)', prepareDefinition);
+    const handlePendingDefinition = source.indexOf('async function handlePendingAgendaAction(');
+    const parseConfirmation = source.indexOf('parseExplicitConfirmation(text)', handlePendingDefinition);
+    const rpcCall = source.indexOf("db.rpc('confirmar_acao_agenda_whatsapp'", handlePendingDefinition);
 
-    expect(confirmGate).toBeGreaterThan(-1);
-    expect(appointmentInsert).toBeGreaterThan(confirmGate);
-    expect(explicitConfirmation).toBeGreaterThan(-1);
-    expect(source).not.toContain('args.confirmed');
+    expect(prepareDefinition).toBeGreaterThan(-1);
+    expect(pendingGuard).toBeGreaterThan(prepareDefinition);
+    expect(handlePendingDefinition).toBeGreaterThan(-1);
+    expect(parseConfirmation).toBeGreaterThan(handlePendingDefinition);
+    expect(rpcCall).toBeGreaterThan(parseConfirmation);
+    expect(source).not.toContain("supabase.from('agendamentos').insert({");
   });
 
-  it('aligns the assistant prompt with enabled capabilities and hands unsupported changes to staff', () => {
+  it('aligns the assistant prompt with enabled capabilities and handles cancel/reschedule directly with explicit SIM', () => {
     expect(source).toContain('HABILIDADES HABILITADAS: ${capabilityInstructions');
-    expect(source).toContain('para cancelar ou remarcar, transfira para a equipe humana');
     expect(source).toContain('confirmacao explicita SIM');
+    expect(source).toContain('Todas as alteracoes exigem SIM.');
+    expect(source).not.toContain('para cancelar ou remarcar, transfira para a equipe humana');
   });
 
   it('does not guess a patient from a partial phone match', () => {

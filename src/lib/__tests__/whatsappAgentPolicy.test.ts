@@ -4,9 +4,15 @@ import {
   isWhatsAppToolAllowed,
   normalizeBrazilianPhone,
   parseExplicitConfirmation,
+  normalizeMedicalSpecialty,
 } from '../../../supabase/functions/_shared/whatsappAgentPolicy';
 
 describe('whatsapp agent policy', () => {
+  it('matches general practitioners regardless of accents and wording', () => {
+    expect(normalizeMedicalSpecialty('Clínico geral')).toBe('clinica geral');
+    expect(normalizeMedicalSpecialty('clinica geral')).toBe('clinica geral');
+    expect(normalizeMedicalSpecialty(' GINECOLOGISTA ')).toBe('ginecologia');
+  });
   it('exposes tools only when the clinic enabled the matching capability', () => {
     expect(isWhatsAppToolAllowed('criar_agendamento', ['consultar_disponibilidade'])).toBe(false);
     expect(isWhatsAppToolAllowed('consultar_disponibilidade', ['consultar_disponibilidade'])).toBe(true);

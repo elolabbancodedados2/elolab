@@ -8,11 +8,22 @@ export type WhatsAppAgentCapability =
   | 'registrar_triagem';
 
 const toolCapabilities: Record<string, WhatsAppAgentCapability> = {
+  consultar_informacoes_clinica: 'informacoes_clinica',
+  cancelar_agendamento: 'cancelar_agendamento',
+  reagendar_agendamento: 'reagendar_agendamento',
+  confirmar_presenca: 'consultar_agendamentos_paciente',
+  listar_especialidades: 'consultar_disponibilidade',
   consultar_disponibilidade: 'consultar_disponibilidade',
   criar_agendamento: 'criar_agendamento',
   consultar_agendamentos_paciente: 'consultar_agendamentos_paciente',
   registrar_triagem: 'registrar_triagem',
 };
+
+export function normalizeMedicalSpecialty(value: string): string {
+  const text = value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim().replace(/\s+/g, ' ');
+  const aliases: Record<string, string> = { 'clinico geral': 'clinica geral', 'medicina geral': 'clinica geral', ginecologista: 'ginecologia', gineocologista: 'ginecologia', ginecologistas: 'ginecologia' };
+  return aliases[text] || text;
+}
 
 export function normalizeBrazilianPhone(value: string | null | undefined): string {
   let digits = String(value || '').replace(/\D/g, '');

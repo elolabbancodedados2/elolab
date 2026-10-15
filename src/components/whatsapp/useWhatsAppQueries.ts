@@ -2,7 +2,6 @@ import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-quer
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { WhatsAppAgent, WhatsAppSession, WhatsAppConversation, WhatsAppInternalNote, WhatsAppMessage, WhatsAppStats } from './types';
-import { todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 
 export function useWhatsAppAgents(allowed = true) {
@@ -38,6 +37,9 @@ export function useWhatsAppSessions(allowed = true) {
       return data as WhatsAppSession[];
     },
     enabled: allowed && !!profile?.clinica_id,
+    refetchInterval: allowed ? 5_000 : false,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
   });
 }
 
@@ -59,7 +61,7 @@ export function useWhatsAppConversations(allowed = true) {
         table: 'whatsapp_conversations',
         filter: `clinica_id=eq.${clinicId}`,
       }, () => {
-        void queryClient.invalidateQueries({ queryKey });
+        void queryClient.invalidateQueries({ queryKey: ['whatsapp-conversations', clinicId, profileId] });
       })
       .subscribe();
 
@@ -191,37 +193,14 @@ export function useWhatsAppStats(allowed = true) {
   return useQuery({
     queryKey: ['whatsapp-stats', profile?.clinica_id, profile?.id],
     queryFn: async (): Promise<WhatsAppStats> => {
-      if (!profile?.clinica_id) return { messages: 0, conversations: 0, actions: 0 };
-      const today = todaySaoPauloDateOnly();
-      const startOfToday = new Date(`${today}T00:00:00-03:00`).toISOString();
-      
-      const { count: messagesCount, error: messagesError } = await supabase
-        .from('whatsapp_messages')
-        .select('*', { count: 'exact', head: true })
-        .eq('clinica_id', profile.clinica_id)
-        .gte('created_at', startOfToday);
-      if (messagesError) throw messagesError;
-
-      const { count: conversationsCount, error: conversationsError } = await supabase
-        .from('whatsapp_conversations')
-        .select('*', { count: 'exact', head: true })
-        .eq('clinica_id', profile.clinica_id)
-        .gte('created_at', startOfToday);
-      if (conversationsError) throw conversationsError;
-
-      const { count: actionsCount, error: actionsError } = await supabase
-        .from('whatsapp_agent_actions')
-        .select('*', { count: 'exact', head: true })
-        .eq('clinica_id', profile.clinica_id)
-        .gte('created_at', startOfToday);
-      if (actionsError) throw actionsError;
-
-      return {
-        messages: messagesCount || 0,
-        conversations: conversationsCount || 0,
-        actions: actionsCount || 0,
-      };
+      if (!profile?.clinica_id) return { messages: 0, conversations: 0, actions: 0, ai_bookings: 0, confirmed_today: 0, no_shows_today: 0, delivery_failures: 0 };
+      const { data, error } = await (supabase as any).rpc('whatsapp_dashboard_stats');
+      if (error) throw error;
+      return data as WhatsAppStats;
     },
     enabled: allowed && !!profile?.clinica_id,
+    refetchInterval: allowed && profile?.clinica_id ? 15_000 : false,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
   });
 }
