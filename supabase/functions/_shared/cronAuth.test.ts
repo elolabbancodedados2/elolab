@@ -8,7 +8,7 @@ function requestFor(role: string, sub: string) {
   });
 }
 
-function supabaseMock(options: { clinic?: string | null; role?: string | null; error?: boolean } = {}) {
+function supabaseMock(options: { clinic?: string | null; role?: string | null; active?: boolean; error?: boolean } = {}) {
   return {
     from: (table: string) => ({
       select: () => ({
@@ -16,7 +16,7 @@ function supabaseMock(options: { clinic?: string | null; role?: string | null; e
           in: () => ({
             limit: () => ({ maybeSingle: async () => ({ data: options.role ? { role: options.role } : null, error: options.error ? new Error('denied') : null }) }),
           }),
-          maybeSingle: async () => ({ data: options.clinic ? { clinica_id: options.clinic } : null, error: null }),
+          maybeSingle: async () => ({ data: options.clinic ? { clinica_id: options.clinic, ativo: options.active ?? true } : null, error: null }),
         }),
       }),
     }),
@@ -33,6 +33,7 @@ describe('autorização das execuções manuais de automação', () => {
   it('retorna a clínica somente para administrador autenticado vinculado', async () => {
     const req = requestFor('authenticated', 'user-1');
     expect(await clinicaAdminDoChamador(req, supabaseMock({ clinic: 'clinic-1', role: 'admin' }))).toBe('clinic-1');
+    expect(await clinicaAdminDoChamador(req, supabaseMock({ clinic: 'clinic-1', role: 'admin', active: false }))).toBeNull();
     expect(await clinicaAdminDoChamador(req, supabaseMock({ clinic: 'clinic-1', role: 'recepcao' }))).toBeNull();
     expect(await clinicaAdminDoChamador(req, supabaseMock({ role: 'admin' }))).toBeNull();
   });

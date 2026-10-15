@@ -1356,15 +1356,6 @@ export async function gerarLaudoPDF(dados: LaudoData): Promise<jsPDF> {
     y += linhas.length * 3.5 + 2;
   }
 
-  // ── QR CODE ──
-  try {
-    const qrUrl = `https://app.elolab.com.br/validar/${dados.codigoAmostra}`;
-    const qrDataUrl = await QRCode.toDataURL(qrUrl, { width: 60, margin: 1 });
-    doc.addImage(qrDataUrl, 'PNG', margin, y - 12, 20, 20);
-  } catch {
-    console.warn('Não foi possível gerar o QR Code do laudo PDF.');
-  }
-
   // ── RODAPÉ EM TODAS AS PÁGINAS ──
   const geradoEm = formatDateTimeSaoPaulo(new Date()).replace(' ', ' às ');
   const totalPaginas = doc.getNumberOfPages();

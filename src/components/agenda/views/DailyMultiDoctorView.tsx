@@ -25,6 +25,8 @@ const SLOT_PX = 7;
 // Visual hour rows only (labels + strong borders every hour).
 const HOUR_PX = (60 / SLOT_MINUTES) * SLOT_PX;
 const TOTAL_MINUTES = (END_HOUR - START_HOUR) * 60;
+// Fixed doctor header height (sticky strip above the grid).
+const DOCTOR_HEADER_PX = 75;
 
 function toMinutes(t: string) {
   const [h, m] = t.split(':').map(Number);
@@ -43,12 +45,10 @@ const HOURS = Array.from({ length: END_HOUR - START_HOUR }, (_, i) =>
   fromMinutes((START_HOUR + i) * 60)
 );
 
-function DoctorColumn({
-  medico, date, agendamentos, bloqueios, colorFor, onSlotClick, onCardClick, convenioById, columnIndex, inactive = false,
-}: any) {
-  const minutesToPx = (m: number) => (m / SLOT_MINUTES) * SLOT_PX;
-  const columnRef = useRef<HTMLDivElement>(null);
-  const [hoverMin, setHoverMin] = useState<number | null>(null);
+// O cabeçalho dos profissionais fica numa faixa própria, fixa no topo do
+// <main>: assim a grade não precisa de rolagem vertical própria (antes havia
+// duas barras verticais aninhadas) e o cabeçalho continua visível.
+function DoctorHeader({ medico, agendamentos, columnIndex, inactive = false }: any) {
   const sorted = [...agendamentos].sort((a: any, b: any) => a.hora_inicio.localeCompare(b.hora_inicio));
   const total = agendamentos.length;
   const confirmed = agendamentos.filter((a: any) => ['confirmado', 'em_atendimento', 'finalizado'].includes(a.status)).length;
@@ -56,40 +56,57 @@ function DoctorColumn({
   const next = sorted.find((a: any) => toMinutes(a.hora_inicio) >= nowMin);
 
   return (
+    <div
+      data-testid="agenda-doctor-header"
+      className={cn(
+        'flex-1 min-w-[240px] border-r border-border/60 last:border-r-0 px-3 py-2',
+        columnIndex % 2 === 1 && 'bg-muted/[0.15]'
+      )}
+      style={{ height: DOCTOR_HEADER_PX }}
+    >
+      <div className="flex items-center gap-2">
+        <div className="h-9 w-9 rounded-full bg-gradient-to-br from-primary/20 to-primary/5 border border-primary/20 flex items-center justify-center text-primary shrink-0">
+          <User className="h-4 w-4" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-semibold truncate">{nomeMedico(medico.nome || medico.crm)}</div>
+          <div className="text-[11px] text-muted-foreground truncate">
+            {inactive ? 'Inativo · sem novos horários' : medico.especialidade || 'Clínico Geral'}
+          </div>
+        </div>
+        {total > 0 && (
+          <div className="text-right shrink-0">
+            <div className="text-xs font-semibold tabular-nums">{total}</div>
+            <div className="text-[9px] uppercase tracking-wide text-muted-foreground">consultas</div>
+          </div>
+        )}
+      </div>
+      {next && (
+        <div className="mt-1.5 flex items-center gap-1 text-[10px] text-muted-foreground">
+          <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+          <span>Próximo <span className="font-semibold tabular-nums text-foreground">{next.hora_inicio.slice(0, 5)}</span></span>
+          {confirmed > 0 && <span className="ml-auto text-success">✓ {confirmed}</span>}
+        </div>
+      )}
+      {total === 0 && (
+        <div className="mt-1.5 text-[10px] text-muted-foreground/60 italic">Agenda livre</div>
+      )}
+    </div>
+  );
+}
+
+function DoctorColumn({
+  medico, date, agendamentos, bloqueios, colorFor, onSlotClick, onCardClick, convenioById, columnIndex, inactive = false,
+}: any) {
+  const minutesToPx = (m: number) => (m / SLOT_MINUTES) * SLOT_PX;
+  const columnRef = useRef<HTMLDivElement>(null);
+  const [hoverMin, setHoverMin] = useState<number | null>(null);
+
+  return (
     <div className={cn(
       'flex-1 min-w-[240px] border-r border-border/60 last:border-r-0',
       columnIndex % 2 === 1 && 'bg-muted/[0.15]'
     )}>
-      <div className="sticky top-0 z-20 bg-card/95 backdrop-blur border-b border-border/60 px-3 py-2">
-        <div className="flex items-center gap-2">
-          <div className="h-9 w-9 rounded-full bg-gradient-to-br from-primary/20 to-primary/5 border border-primary/20 flex items-center justify-center text-primary shrink-0">
-            <User className="h-4 w-4" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="text-sm font-semibold truncate">{nomeMedico(medico.nome || medico.crm)}</div>
-            <div className="text-[11px] text-muted-foreground truncate">
-              {inactive ? 'Inativo · sem novos horários' : medico.especialidade || 'Clínico Geral'}
-            </div>
-          </div>
-          {total > 0 && (
-            <div className="text-right shrink-0">
-              <div className="text-xs font-semibold tabular-nums">{total}</div>
-              <div className="text-[9px] uppercase tracking-wide text-muted-foreground">consultas</div>
-            </div>
-          )}
-        </div>
-        {next && (
-          <div className="mt-1.5 flex items-center gap-1 text-[10px] text-muted-foreground">
-            <span className="h-1.5 w-1.5 rounded-full bg-primary" />
-            <span>Próximo <span className="font-semibold tabular-nums text-foreground">{next.hora_inicio.slice(0, 5)}</span></span>
-            {confirmed > 0 && <span className="ml-auto text-success">✓ {confirmed}</span>}
-          </div>
-        )}
-        {total === 0 && (
-          <div className="mt-1.5 text-[10px] text-muted-foreground/60 italic">Agenda livre</div>
-        )}
-      </div>
-
       <div
         ref={columnRef}
         className="relative"
@@ -146,7 +163,8 @@ function DoctorColumn({
               next.focus();
             }}
             accessibleName={`Criar consulta ${slot} com ${nomeMedico(medico.nome || medico.crm)}`}
-            tabStop={toMinutes(slot) % 30 === 0}
+            // Uma única parada de Tab por profissional; setas percorrem os horários.
+            tabStop={slot === SLOTS[0]}
             className="absolute inset-x-0 cursor-pointer border-0 bg-transparent p-0 hover:bg-primary/5 focus-visible:z-30 focus-visible:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
             style={{ top: minutesToPx(toMinutes(slot) - START_HOUR * 60), height: SLOT_PX }}
           />
@@ -224,8 +242,10 @@ export function DailyMultiDoctorView({
     ...activeDoctors.map((medico: any) => ({ medico, inactive: false })),
     ...inactiveDoctorsWithAppointments.map((medico: any) => ({ medico, inactive: true })),
   ];
-  const dayStr = format(parseISO(date), "EEEE, d 'de' MMMM", { locale: ptBR });
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const dayStr = format(parseISO(date), "EEEE, d 'de' MMMM", { locale: ptBR })
+    .replace(/^./u, (first) => first.toLocaleUpperCase('pt-BR'));
+  const headerStripRef = useRef<HTMLDivElement>(null);
+  const nowLineRef = useRef<HTMLDivElement>(null);
   const [nowMin, setNowMin] = useState<number>(minutesNowInSaoPaulo);
   const showNow = date === todaySaoPauloDateOnly();
 
@@ -236,10 +256,14 @@ export function DailyMultiDoctorView({
     return () => clearInterval(t);
   }, []);
 
+  // A rolagem vertical pertence ao <main>; só trazemos a linha de "agora"
+  // para a tela quando ela está fora da área visível.
   useEffect(() => {
-    if (!showNow || !scrollRef.current) return;
-    const relMin = Math.max(0, nowMin - START_HOUR * 60 - 60);
-    scrollRef.current.scrollTop = (relMin / SLOT_MINUTES) * SLOT_PX;
+    const line = nowLineRef.current;
+    if (!showNow || !line) return;
+    const rect = line.getBoundingClientRect();
+    if (rect.top >= DOCTOR_HEADER_PX && rect.bottom <= window.innerHeight) return;
+    line.scrollIntoView?.({ block: 'center', inline: 'nearest' });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [date, showNow]);
 
@@ -248,28 +272,47 @@ export function DailyMultiDoctorView({
     : null;
 
   return (
-    <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
+    // overflow-clip recorta os cantos sem criar contêiner de rolagem, o que
+    // manteria o cabeçalho sticky preso ao cartão em vez do <main>.
+    <div className="rounded-xl border border-border bg-card shadow-sm overflow-clip">
       <div className="px-4 py-2 border-b border-border/60 bg-muted/30">
-        <div className="text-sm font-medium capitalize flex items-center gap-2">
+        <div className="text-sm font-medium flex items-center gap-2">
           {dayStr}
           {showNow && <span className="text-[11px] font-normal text-primary">• agora {fromMinutes(nowMin)}</span>}
         </div>
       </div>
-      <div ref={scrollRef} className="flex overflow-auto max-h-[calc(100vh-16rem)] relative">
-        {nowPx !== null && (
-          <div
-            className="pointer-events-none absolute left-14 right-0 z-40 border-t-2 border-destructive"
-            style={{ top: 52 + nowPx }}
-          >
-            <span className="absolute -top-2 -left-1 h-3 w-3 rounded-full bg-destructive shadow" />
+      {doctorsToShow.length > 0 && (
+        <div className="sticky top-0 z-[45] flex bg-card/95 backdrop-blur border-b border-border/60">
+          <div className="w-14 shrink-0 border-r border-border/60" />
+          {/* Acompanha a rolagem horizontal da grade (sincronizada em onScroll). */}
+          <div ref={headerStripRef} data-testid="agenda-doctor-header-strip" className="flex flex-1 min-w-0 overflow-hidden">
+            {doctorsToShow.map(({ medico, inactive }: any, idx: number) => (
+              <DoctorHeader
+                key={medico.id}
+                medico={medico}
+                columnIndex={idx}
+                inactive={inactive}
+                agendamentos={agendamentos.filter((a: any) => a.medico_id === medico.id)}
+              />
+            ))}
           </div>
-        )}
-        <div className="w-14 shrink-0 border-r border-border/60 pt-[52px] relative">
+        </div>
+      )}
+      {/* Só rola na horizontal: a altura acompanha o conteúdo, então não há
+          uma segunda barra vertical dentro da página. */}
+      <div
+        data-testid="agenda-day-grid"
+        className="flex overflow-x-auto overflow-y-hidden"
+        onScroll={(e) => {
+          if (headerStripRef.current) headerStripRef.current.scrollLeft = e.currentTarget.scrollLeft;
+        }}
+      >
+        <div data-testid="agenda-hour-axis" className="sticky left-0 z-[41] w-14 shrink-0 border-r border-border/60 bg-card">
           <div className="relative" style={{ height: HOUR_PX * HOURS.length }}>
             {HOURS.map((h, i) => (
               <div
                 key={h}
-                className="absolute right-1 -mt-1.5 text-[11px] font-medium text-muted-foreground"
+                className={cn('absolute right-1 text-[11px] font-medium text-muted-foreground', i > 0 && '-mt-1.5')}
                 style={{ top: i * HOUR_PX }}
               >
                 {h}
@@ -282,21 +325,33 @@ export function DailyMultiDoctorView({
             Nenhum médico ativo. Cadastre médicos em <span className="mx-1 font-medium">Equipe</span> para começar.
           </div>
         ) : (
-          doctorsToShow.map(({ medico, inactive }: any, idx: number) => (
-            <DoctorColumn
-              key={medico.id}
-              medico={medico}
-              date={date}
-              columnIndex={idx}
-              inactive={inactive}
-              agendamentos={agendamentos.filter((a: any) => a.medico_id === medico.id)}
-              bloqueios={bloqueios.filter((b: any) => b.medico_id === medico.id && date >= b.data_inicio && date <= b.data_fim)}
-              colorFor={colorFor}
-              convenioById={convenioById}
-              onSlotClick={onSlotClick}
-              onCardClick={onCardClick}
-            />
-          ))
+          <div className="relative flex flex-1">
+            {nowPx !== null && (
+              <div
+                ref={nowLineRef}
+                data-testid="agenda-now-line"
+                className="pointer-events-none absolute inset-x-0 z-40 border-t-2 border-destructive"
+                style={{ top: nowPx }}
+              >
+                <span className="absolute -top-2 left-0 h-3 w-3 rounded-full bg-destructive shadow" />
+              </div>
+            )}
+            {doctorsToShow.map(({ medico, inactive }: any, idx: number) => (
+              <DoctorColumn
+                key={medico.id}
+                medico={medico}
+                date={date}
+                columnIndex={idx}
+                inactive={inactive}
+                agendamentos={agendamentos.filter((a: any) => a.medico_id === medico.id)}
+                bloqueios={bloqueios.filter((b: any) => b.medico_id === medico.id && date >= b.data_inicio && date <= b.data_fim)}
+                colorFor={colorFor}
+                convenioById={convenioById}
+                onSlotClick={onSlotClick}
+                onCardClick={onCardClick}
+              />
+            ))}
+          </div>
         )}
       </div>
     </div>

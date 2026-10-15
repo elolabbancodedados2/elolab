@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { Star, Play, Trash2, Loader2, Pause, Mail, Clock as ClockIcon, SlidersHorizontal, AlertTriangle } from 'lucide-react';
 import { useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/integrations/supabase/client';
@@ -11,6 +11,8 @@ import { mensagemDeErro } from '@/lib/erros';
 import { ListSkeleton } from '@/components/ui/loading-skeleton';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { ErrorState } from '@/components/ErrorState';
+import { ActionableEmptyState } from '@/components/ActionableEmptyState';
+import { PageHeader } from '@/components/PageHeader';
 import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
 
 const FORMATADOR_DATA_HORA = new Intl.DateTimeFormat('pt-BR', {
@@ -89,11 +91,9 @@ export default function RelatoriosSalvos() {
 
   return (
     <div className="space-y-5 pb-8">
-      <Card className="overflow-hidden rounded-2xl border-[#d7e9f7] shadow-sm">
-        <CardHeader className="border-b border-[#e4eef6] bg-gradient-to-r from-[#f1fbfd] via-white to-[#eff4ff] p-4 sm:p-5">
-          <CardTitle className="flex items-center gap-2">
-            <span className="rounded-xl bg-[#eaf4ff] p-2 text-[#1766a8] ring-1 ring-[#d1e5f8]"><Star className="h-5 w-5" /></span> Relatórios salvos e agendados
-          </CardTitle>
+      <Card className="overflow-hidden rounded-2xl border-[#e3dff7] shadow-sm">
+        <CardHeader className="border-b border-[#e7e4f6] bg-gradient-to-r from-[#f6f4ff] via-white to-[#f2f0ff] p-4 sm:p-5">
+          <PageHeader title={'Relat\u00f3rios salvos e agendados'} icon={<Star className="h-5 w-5" />} />
           <CardDescription>
             Reaproveite filtros favoritos e receba relatórios por e-mail automaticamente.
           </CardDescription>
@@ -106,9 +106,12 @@ export default function RelatoriosSalvos() {
           ) : isLoading ? (
             <ListSkeleton items={3} />
           ) : items.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              Nenhum relatório salvo. Vá em <b>Relatórios → Customizado</b> e clique em <b>Salvar / Agendar</b>.
-            </div>
+            <ActionableEmptyState
+              title="Nenhum relatório salvo ainda"
+              description="Monte um relatório personalizado para guardar seus filtros como favorito ou programar o envio por e-mail."
+              actionLabel="Criar relatório"
+              onAction={() => navigate('/relatorios')}
+            />
           ) : (
             <div className="space-y-3">
               {items.length >= LIMITE_BUSCA_EM_BLOCOS && (
@@ -118,7 +121,7 @@ export default function RelatoriosSalvos() {
                 </div>
               )}
               {items.map((it: any) => (
-                <div key={it.id} className="flex flex-col gap-3 rounded-xl border border-[#dceaf5] bg-gradient-to-br from-white to-[#f8fbfd] p-4 transition-colors hover:border-[#bfd8ec] hover:bg-[#f8fbfd] md:flex-row md:items-center">
+                <div key={it.id} className="flex flex-col gap-3 rounded-xl border border-[#e6e2f7] bg-gradient-to-br from-white to-[#faf9fd] p-4 transition-colors hover:border-[#c6bfec] hover:bg-[#faf9fd] md:flex-row md:items-center">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <h3 className="font-semibold">{it.nome}</h3>

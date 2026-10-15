@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { formatDateInTimeZone } from '@/lib/datePreference';
 import { useQuery } from '@tanstack/react-query';
 import { AlertTriangle, CreditCard, RefreshCw, Search, Webhook } from 'lucide-react';
 
@@ -99,13 +100,13 @@ export default function PlatformCobrancas() {
 
   return (
     <div className="space-y-6 pb-8">
-      <header className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-[#DCEAF5] bg-gradient-to-r from-[#F1F7FF] via-white to-[#EBFBFD] p-5 sm:p-6">
+      <header className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-[#E6E2F7] bg-gradient-to-r from-[#F4F2FF] via-white to-[#EBFBFD] p-5 sm:p-6">
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-bold"><CreditCard className="h-6 w-6 text-primary" /> Cobranças da plataforma</h1>
           <p className="mt-1 text-sm text-muted-foreground">Assinaturas, vencimentos e processamento do Mercado Pago.</p>
           {overview.data?.generated_at && <p className="mt-1 text-xs text-muted-foreground">Dados consolidados em {dataHora(overview.data.generated_at)}</p>}
         </div>
-        <Button variant="outline" className="min-h-11 border-[#CFE0F0] bg-white text-[#0C1F54] hover:bg-[#F7FBFF]" onClick={() => void overview.refetch()} disabled={updating}>
+        <Button variant="outline" className="min-h-11 border-[#DCD7F0] bg-white text-[#17122B] hover:bg-[#F9F8FF]" onClick={() => void overview.refetch()} disabled={updating}>
           <RefreshCw className={`mr-2 h-4 w-4 ${updating ? 'animate-spin' : ''}`} /> Atualizar
         </Button>
       </header>
@@ -121,8 +122,8 @@ export default function PlatformCobrancas() {
             ['Vencidas', metrics?.vencidas || 0],
             ['Sem assinatura', metrics?.sem_assinatura || 0],
           ].map(([label, value], index) => {
-            const accents = ['border-l-[#2F80ED] bg-[#F4F8FF]', 'border-l-[#16A77A] bg-[#F2FBF7]', 'border-l-[#45BBD1] bg-[#F1FBFD]', 'border-l-[#E6A12A] bg-[#FFFAF0]', 'border-l-[#92A6BB] bg-[#F7F9FC]'];
-            return <Card key={label} className={`rounded-xl border border-[#E1ECF5] border-l-4 shadow-sm ${accents[index]}`}><CardContent className="py-4"><p className="text-xs font-medium text-[#39516B]">{label}</p><p className="mt-1 text-2xl font-bold tracking-tight text-[#0C1F54]">{value}</p></CardContent></Card>;
+            const accents = ['border-l-[#4F2FED] bg-[#F6F4FF]', 'border-l-[#16A77A] bg-[#F2FBF7]', 'border-l-[#45BBD1] bg-[#F1FBFD]', 'border-l-[#E6A12A] bg-[#FFFAF0]', 'border-l-[#9992BB] bg-[#F8F7FC]'];
+            return <Card key={label} className={`rounded-xl border border-[#E9E6F5] border-l-4 shadow-sm ${accents[index]}`}><CardContent className="py-4"><p className="text-xs font-medium text-[#41396B]">{label}</p><p className="mt-1 text-2xl font-bold tracking-tight text-[#17122B]">{value}</p></CardContent></Card>;
           })}
         </div>
       )}
@@ -131,7 +132,7 @@ export default function PlatformCobrancas() {
         <Card className="border-destructive/40"><CardContent className="flex items-center gap-3 pt-6"><AlertTriangle className="h-6 w-6 shrink-0 text-destructive" /><div><p className="font-medium">Processamento financeiro requer atenção</p><p className="text-sm text-muted-foreground">{metrics.webhooks_pendentes} pendente(s) · {metrics.webhooks_falha_24h} falha(s) nas últimas 24h</p></div></CardContent></Card>
       ) : null}
 
-      <Card className="rounded-2xl border-[#E1ECF5] shadow-sm">
+      <Card className="rounded-2xl border-[#E9E6F5] shadow-sm">
         <CardHeader><CardTitle>Carteira de clientes</CardTitle><CardDescription>{lista.length} de {overview.data?.subscriptions.length ?? 0} clínicas. Estado local da assinatura e vínculo com o Mercado Pago; expiradas não entram no total ativo nem no MRR.</CardDescription></CardHeader>
         <CardContent className="space-y-3">
           <div className="flex flex-wrap gap-2">
@@ -139,19 +140,19 @@ export default function PlatformCobrancas() {
             <Select value={status} onValueChange={setStatus}><SelectTrigger className="w-48" aria-label="Filtrar assinatura"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Todas</SelectItem><SelectItem value="ativa">Ativas válidas</SelectItem><SelectItem value="trial">Trials válidos</SelectItem><SelectItem value="cancelada">Canceladas</SelectItem><SelectItem value="vencida">Vencidas</SelectItem><SelectItem value="sem_assinatura">Sem assinatura</SelectItem></SelectContent></Select>
           </div>
           {overview.isLoading ? <div className="space-y-2">{[1, 2, 3].map((item) => <Skeleton key={item} className="h-20 w-full" />)}</div> : overview.isError ? null : lista.map((subscription) => (
-            <div key={subscription.clinica_id} className="grid gap-3 rounded-xl border border-[#E5EDF5] bg-[#FBFDFF] p-3 transition-colors hover:border-[#C8DDF2] md:grid-cols-6 md:items-center">
+            <div key={subscription.clinica_id} className="grid gap-3 rounded-xl border border-[#E8E5F5] bg-[#FCFBFF] p-3 transition-colors hover:border-[#CFC8F2] md:grid-cols-6 md:items-center">
               <div className="md:col-span-2"><p className="font-medium">{subscription.clinica_nome}</p><p className="text-xs text-muted-foreground">{subscription.dono_email || 'Sem e-mail do responsável'}</p></div>
               <span className="text-sm">{subscription.plano_nome || 'Sem plano'}<small className="block text-muted-foreground">{moeda(subscription.plano_valor || 0)}/mês</small></span>
               <Badge variant={subscription.vencida ? 'destructive' : 'outline'}>{subscription.vencida ? 'Vencida' : subscription.assinatura_status || 'Sem assinatura'}</Badge>
               <span className="text-xs">Mercado Pago: {subscription.mp_status || 'não vinculado'}</span>
-              <span className="text-xs text-muted-foreground">Próximo pagamento: {subscription.proximo_pagamento ? new Date(subscription.proximo_pagamento).toLocaleDateString('pt-BR') : '—'}</span>
+              <span className="text-xs text-muted-foreground">Próximo pagamento: {subscription.proximo_pagamento ? formatDateInTimeZone(subscription.proximo_pagamento) : '—'}</span>
             </div>
           ))}
           {!overview.isLoading && !overview.isError && !lista.length && <div className="flex flex-col items-center gap-2 py-6 text-center"><p className="text-sm text-muted-foreground">Nenhuma clínica corresponde à busca e ao status selecionado.</p>{(busca.trim() || status !== 'all') && <Button variant="ghost" size="sm" onClick={() => { setBusca(''); setStatus('all'); }}>Limpar filtros</Button>}</div>}
         </CardContent>
       </Card>
 
-      <Card className="rounded-2xl border-[#E1ECF5] shadow-sm">
+      <Card className="rounded-2xl border-[#E9E6F5] shadow-sm">
         <CardHeader>
           <CardTitle>Faturas recorrentes recentes</CardTitle>
           <CardDescription>Histórico das faturas do Mercado Pago, com status da fatura e do pagamento separados.</CardDescription>
@@ -160,7 +161,7 @@ export default function PlatformCobrancas() {
           {invoices.isLoading ? [1, 2, 3].map((item) => <Skeleton key={item} className="h-16 w-full" />) : invoices.isError ? (
             <ErrorState error={invoices.error} onRetry={() => { void invoices.refetch(); }} />
           ) : (invoices.data || []).map((invoice) => (
-            <div key={invoice.id} className="grid gap-2 rounded-xl border border-[#E5EDF5] bg-[#FBFDFF] p-3 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center">
+            <div key={invoice.id} className="grid gap-2 rounded-xl border border-[#E8E5F5] bg-[#FCFBFF] p-3 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center">
               <div className="min-w-0">
                 <p className="truncate text-sm font-medium">{invoice.clinic_name}</p>
                 <p className="truncate text-xs text-muted-foreground">{invoice.owner_email || 'Sem e-mail'} · Fatura {invoice.mp_authorized_payment_id}</p>
@@ -184,11 +185,11 @@ export default function PlatformCobrancas() {
         </CardContent>
       </Card>
 
-      <Card className="rounded-2xl border-[#E1ECF5] shadow-sm">
+      <Card className="rounded-2xl border-[#E9E6F5] shadow-sm">
         <CardHeader><CardTitle className="flex items-center gap-2"><Webhook className="h-5 w-5" /> Webhooks recentes</CardTitle><CardDescription>Metadados operacionais; os payloads financeiros não são expostos. A lista mostra até 30 dos 100 eventos carregados.</CardDescription></CardHeader>
         <CardContent className="space-y-2">
           {overview.isLoading ? <Skeleton className="h-32 w-full" /> : overview.isError ? null : (overview.data?.webhooks || []).slice(0, 30).map((webhook) => (
-            <div key={webhook.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[#E5EDF5] bg-[#FBFDFF] p-3">
+            <div key={webhook.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[#E8E5F5] bg-[#FCFBFF] p-3">
               <div><p className="text-sm font-medium">{webhook.event_type}</p><p className="text-xs text-muted-foreground">Evento {webhook.event_id || webhook.data_id || 'sem identificador'} · {dataHora(webhook.created_at)}</p>{webhook.erro_mensagem && <p className="break-words text-xs text-destructive">{webhook.erro_mensagem}</p>}</div>
               <div className="flex gap-2"><Badge variant="secondary">{webhook.tentativas || 0} tentativa(s)</Badge><Badge variant={webhook.processado ? 'outline' : 'destructive'}>{webhook.processado ? 'Processado' : 'Pendente'}</Badge></div>
             </div>

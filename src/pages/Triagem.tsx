@@ -7,6 +7,7 @@ import {
   ArrowUpRight, User, Stethoscope,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { PageHeader } from '@/components/PageHeader';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -556,23 +557,20 @@ export default function TriagemPage() {
 
   return (
     <div className="space-y-6 pb-8">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
-        <div>
-          <h1 className="page-header flex items-center gap-2">
-            <Activity className="h-7 w-7 text-primary" />
-            Triagem
-          </h1>
-          <p aria-live="polite" className="text-sm text-muted-foreground mt-1 flex flex-wrap items-center gap-2">
-            {format(parseDateOnly(today)!, "EEEE, dd 'de' MMMM", { locale: ptBR })} • Protocolo Manchester
-            {!erroTriagens && !agendamentosQuery.isError && pendingTriagemCount > 0 && (
-              <Badge variant="secondary" className="text-xs bg-warning/10 text-warning border-warning/20">
+      <PageHeader
+        title="Triagem"
+        description={`${format(parseDateOnly(today)!, "EEEE, dd 'de' MMMM", { locale: ptBR })} · Protocolo Manchester`}
+        icon={<Activity />}
+        className="sm:items-center"
+        actions={(
+          <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+          {!erroTriagens && !agendamentosQuery.isError && pendingTriagemCount > 0 && (
+            <div aria-live="polite">
+              <Badge variant="secondary" className="border-warning/20 bg-warning/10 text-xs text-warning">
                 {pendingTriagemCount} pendente{pendingTriagemCount > 1 ? 's' : ''}
               </Badge>
-            )}
-          </p>
-        </div>
-        <div className="flex gap-2">
+            </div>
+          )}
           <Button
             aria-label="Atualizar triagens"
             variant="outline"
@@ -585,11 +583,12 @@ export default function TriagemPage() {
           >
             <RefreshCw className="h-4 w-4" />
           </Button>
-          {podeRegistrarTriagem && <Button className="gap-2 bg-[#005ECC] text-white hover:bg-[#004FAE]" onClick={() => handleOpenDialog()}>
+          {podeRegistrarTriagem && <Button className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90" onClick={() => handleOpenDialog()}>
             <Plus className="h-4 w-4" /> Nova Triagem
           </Button>}
-        </div>
-      </div>
+          </div>
+        )}
+      />
 
       {/* ─── Fila da enfermagem ───
           Quem chegou e ainda não foi triado, com o botão que abre a ficha já
@@ -681,7 +680,7 @@ export default function TriagemPage() {
                   <>
                     <p className="font-semibold text-foreground">Nenhuma triagem registrada hoje</p>
                     <p className="text-sm text-muted-foreground mt-1">Registre a primeira triagem do dia</p>
-                    {podeRegistrarTriagem && <Button className="mt-4 gap-2 bg-[#005ECC] text-white hover:bg-[#004FAE]" onClick={() => handleOpenDialog()}>
+                    {podeRegistrarTriagem && <Button className="mt-4 gap-2 bg-primary text-primary-foreground hover:bg-primary/90" onClick={() => handleOpenDialog()}>
                       <Plus className="h-4 w-4" /> Registrar Triagem
                     </Button>}
                   </>
@@ -930,7 +929,7 @@ export default function TriagemPage() {
 
           <DialogFooter>
             <Button variant="outline" disabled={isSaving} onClick={() => setIsDialogOpen(false)}>Cancelar</Button>
-            <Button onClick={handleSave} disabled={!podeRegistrarTriagem || isSaving || erroTriagens || (!!formData.agendamento_id && (agendamentosQuery.isLoading || agendamentosQuery.isError))} className="gap-2 bg-[#005ECC] text-white hover:bg-[#004FAE]">
+            <Button onClick={handleSave} disabled={!podeRegistrarTriagem || isSaving || erroTriagens || (!!formData.agendamento_id && (agendamentosQuery.isLoading || agendamentosQuery.isError))} className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90">
               {isSaving && <Loader2 className="h-4 w-4 animate-spin" />}
               Registrar Triagem
             </Button>

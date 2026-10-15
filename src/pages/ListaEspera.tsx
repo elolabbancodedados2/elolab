@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Plus, Search, Clock, Phone, Calendar, CheckCircle, XCircle , AlertTriangle, Users, Bell} from 'lucide-react';
+import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -30,6 +31,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import { getPrioridadeListaEspera } from '@/lib/listaEsperaPrioridade';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { LoadingButton } from '@/components/ui/loading-button';
 import { toast } from 'sonner';
@@ -46,7 +48,7 @@ import { pacienteCorresponde } from '@/lib/buscaPaciente';
 import { ErrorState } from '@/components/ErrorState';
 
 const STATUS_COLORS: Record<string, string> = {
-  aguardando: 'bg-warning/10 text-warning',
+  aguardando: 'bg-warning/10 text-warning-foreground',
   notificado: 'bg-info/10 text-info',
   confirmado: 'bg-success/10 text-success',
   agendado: 'bg-primary/10 text-primary',
@@ -59,12 +61,6 @@ const STATUS_LABELS: Record<string, string> = {
   confirmado: 'Confirmado',
   agendado: 'Agendado',
   desistiu: 'Desistiu',
-};
-
-const PRIORIDADE_COLORS: Record<string, string> = {
-  normal: 'bg-muted text-muted-foreground',
-  preferencial: 'bg-info/10 text-info',
-  urgente: 'bg-destructive/10 text-destructive',
 };
 
 const ESPECIALIDADES = [
@@ -319,16 +315,17 @@ export default function ListaEspera() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-[#0C1F54]">Lista de Espera</h1>
-          <p className="text-[#0C1F54]/65">Gerencie pacientes aguardando agendamento</p>
-        </div>
-        <Button onClick={handleOpenNew} className="gap-2 bg-[#005ECC] text-white hover:bg-[#004FAE]">
-          <Plus className="h-4 w-4" />
-          Adicionar à Lista
-        </Button>
-      </div>
+      <PageHeader
+        title="Lista de Espera"
+        description="Gerencie pacientes aguardando agendamento"
+        icon={<Clock />}
+        actions={(
+          <Button onClick={handleOpenNew} className="gap-2">
+            <Plus className="h-4 w-4" />
+            Adicionar à Lista
+          </Button>
+        )}
+      />
 
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -458,8 +455,8 @@ export default function ListaEspera() {
                           </span>
                         </TableCell>
                         <TableCell>
-                          <Badge className={cn(PRIORIDADE_COLORS[item.prioridade || 'normal'])}>
-                            {item.prioridade || 'Normal'}
+                          <Badge variant="outline" className={getPrioridadeListaEspera(item.prioridade).className}>
+                            {getPrioridadeListaEspera(item.prioridade).label}
                           </Badge>
                         </TableCell>
                         <TableCell>
@@ -681,6 +678,7 @@ export default function ListaEspera() {
                 setDesistindo(null);
                 void handleUpdateStatus(pendente.id, pendente.status, 'desistiu');
               }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               Confirmar desistência
             </AlertDialogAction>

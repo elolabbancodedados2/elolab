@@ -1,3 +1,4 @@
+import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { formatCurrency } from '@/lib/formatters';
 import { useState, useMemo, useRef } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
@@ -21,6 +22,8 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ErrorState } from '@/components/ErrorState';
+import { ActionableEmptyState } from '@/components/ActionableEmptyState';
+import { PageHeader } from '@/components/PageHeader';
 import { Separator } from '@/components/ui/separator';
 import { LoadingButton } from '@/components/ui/loading-button';
 import { toast } from 'sonner';
@@ -28,7 +31,7 @@ import { mensagemDeErro } from '@/lib/erros';
 import { normalizarTexto, pacienteCorresponde } from '@/lib/buscaPaciente';
 import { todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { cn } from '@/lib/utils';
-import { format, addDays } from 'date-fns';
+import { addDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
 import { useMedicos } from '@/hooks/useSupabaseData';
@@ -49,16 +52,16 @@ import { gerarGuiaSolicitacaoExames, downloadPDF } from '@/lib/pdfGenerator';
 type StatusExame = Database['public']['Enums']['status_exame'];
 
 const STATUS_COLORS: Record<StatusExame, string> = {
-  solicitado: 'bg-[#eaf3ff] text-[#005ecc]',
-  agendado: 'bg-[#e8f5ff] text-[#0875cf]',
+  solicitado: 'bg-[#eeebfe] text-[#5b47e0]',
+  agendado: 'bg-[#ede9fe] text-[#2b0bcc]',
   realizado: 'bg-[#e7f8fc] text-[#087e98]',
   laudo_disponivel: 'bg-[#eaf8f3] text-[#16805f]',
   cancelado: 'bg-slate-100 text-slate-600',
 };
 
 const STATUS_MARKERS: Record<StatusExame, string> = {
-  solicitado: 'bg-[#005ecc]',
-  agendado: 'bg-[#0875cf]',
+  solicitado: 'bg-[#5b47e0]',
+  agendado: 'bg-[#2b0bcc]',
   realizado: 'bg-[#18a8c5]',
   laudo_disponivel: 'bg-[#16805f]',
   cancelado: 'bg-slate-400',
@@ -980,27 +983,20 @@ export default function Exames() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
-        <div className="flex items-start gap-3">
-          <div className="rounded-2xl bg-[#eaf4ff] p-3 text-[#005ecc] ring-1 ring-[#d8e8fb]">
-            <FileText className="h-6 w-6" />
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight text-[#102a56] md:text-3xl">Solicitação de exames</h1>
-            <p className="mt-1 text-sm text-muted-foreground">Crie guias e acompanhe cada exame até a liberação do laudo.</p>
-          </div>
-        </div>
-        <div className="flex gap-2">
+      <PageHeader
+        title="Solicitação de exames"
+        description="Crie guias e acompanhe cada exame até a liberação do laudo."
+        icon={<FileText aria-hidden="true" />}
+        actions={<div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={() => setIsManageTypesOpen(true)} className="gap-2">
             <Building2 className="h-4 w-4" />Laboratórios
           </Button>
           <Button onClick={handleOpenNew} className="gap-2"><Plus className="h-4 w-4" />Nova Guia de Exames</Button>
-        </div>
-      </div>
+        </div>}
+      />
 
       {pacienteFiltroId && (
-        <div className="flex flex-col gap-2 rounded-xl border border-[#d8e8fb] bg-[#f3f8ff] p-3 text-[#18345f] sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-2 rounded-xl border border-[#e3dffb] bg-[#f6f4ff] p-3 text-[#24185f] sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm">
             Exibindo exames de <span className="font-medium">{getPacienteNomePorId(pacienteFiltroId)}</span>.
           </p>
@@ -1019,13 +1015,13 @@ export default function Exames() {
       )}
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+      <div data-testid="exam-status-kpis" className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-5">
         {Object.entries(STATUS_LABELS).map(([key, label]) => {
           const count = examesNoEscopo.filter(e => e.status === key).length;
           return (
             <Card
               key={key}
-              className="cursor-pointer border-[#e0eaf5] shadow-sm transition-colors hover:border-[#b8d5f2] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0f7bfd] focus-visible:ring-offset-2"
+              className="cursor-pointer border-[#e3e0f5] shadow-sm transition-colors hover:border-[#c2b8f2] aria-pressed:border-[#7b6cf6] aria-pressed:bg-[#f9f8ff] aria-pressed:ring-1 aria-pressed:ring-[#7b6cf6]/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7b6cf6] focus-visible:ring-offset-2"
               role="button"
               tabIndex={0}
               aria-pressed={statusFilter === key}
@@ -1037,13 +1033,13 @@ export default function Exames() {
               }}
               onClick={() => setStatusFilter(current => current === key ? 'todos' : key)}
             >
-              <CardContent className="p-4 text-left">
+              <CardContent className="p-3 text-left sm:p-4">
                 <div className="mb-3 flex items-center justify-between gap-2">
                   <span className={cn('h-2.5 w-2.5 rounded-full', STATUS_MARKERS[key as StatusExame])} aria-hidden="true" />
                   <span className="text-xs text-muted-foreground">{statusFilter === key ? 'Selecionado' : 'Filtrar'}</span>
                 </div>
-                <p className="text-2xl font-bold tabular-nums text-[#102a56]">{count}</p>
-                <Badge className={cn('mt-1', STATUS_COLORS[key as StatusExame])}>{label}</Badge>
+                <p className="text-2xl font-bold tabular-nums text-[#1c1636]">{count}</p>
+                <Badge className={cn('mt-1 whitespace-nowrap', STATUS_COLORS[key as StatusExame])}>{label}</Badge>
               </CardContent>
             </Card>
           );
@@ -1058,7 +1054,7 @@ export default function Exames() {
       )}
 
       {/* Table */}
-      <Card className="border-[#e0eaf5] shadow-sm">
+      <Card className="border-[#e3e0f5] shadow-sm">
         <CardHeader>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <CardTitle>Exames ({filteredExames.length})</CardTitle>
@@ -1102,19 +1098,22 @@ export default function Exames() {
               <TableBody>
                 {filteredExames.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
-                      <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                      <p>
-                        {examesNoEscopo.length === 0
-                          ? pacienteFiltroId
-                            ? `Nenhum exame encontrado para ${getPacienteNomePorId(pacienteFiltroId, 'este paciente')}`
-                            : 'Ainda não há solicitações de exames'
-                          : 'Nenhum exame corresponde à busca e ao status selecionados'}
-                      </p>
-                      {examesNoEscopo.length > 0 && (searchTerm.trim() || statusFilter !== 'todos') && (
-                        <Button variant="link" onClick={limparFiltrosExames} className="mt-2 h-11">Limpar busca e filtro</Button>
-                      )}
-                    </TableCell>
+                    <TableCell colSpan={6} className="py-3">
+  <ActionableEmptyState
+    title={examesNoEscopo.length === 0
+      ? pacienteFiltroId
+        ? `Nenhum exame encontrado para ${getPacienteNomePorId(pacienteFiltroId, 'este paciente')}`
+        : 'Ainda não há solicitações de exames'
+      : 'Nenhum exame corresponde à busca e ao status selecionados'}
+    description={examesNoEscopo.length === 0
+      ? 'Registre uma nova guia para dar início ao acompanhamento dos exames.'
+      : 'Tente outro termo ou remova o filtro de status para rever as solicitações.'}
+    actionLabel={examesNoEscopo.length === 0 ? 'Nova guia de exames' : 'Limpar busca e filtro'}
+    onAction={examesNoEscopo.length === 0 ? handleOpenNew : limparFiltrosExames}
+    actionIcon={examesNoEscopo.length === 0 ? Plus : undefined}
+    className="py-8"
+  />
+</TableCell>
                   </TableRow>
                 ) : (
                   filteredExames.map(exame => {
@@ -1181,7 +1180,7 @@ export default function Exames() {
                             </Button>
                           )}
                           {exameLaboratorial && exame.status !== 'cancelado' && exame.status !== 'laudo_disponivel' && acaoSeguinte.destino !== 'laboratorio' && (
-                            <Button asChild variant="ghost" size="sm" className="h-8 px-2 text-xs text-[#315b8f]">
+                            <Button asChild variant="ghost" size="sm" className="h-8 px-2 text-xs text-[#41318f]">
                               <Link to="/laboratorio">Coleta no Laboratório</Link>
                             </Button>
                           )}

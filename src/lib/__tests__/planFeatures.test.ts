@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { canAccessPlanFeature } from '../planFeatures';
+import { canAccessPlanFeature, descricaoComercialPlano } from '../planFeatures';
 
 describe('acesso a recursos do plano', () => {
+  it('descreve corretamente o limite entre Pro e Ultra', () => {
+    expect(descricaoComercialPlano('elolab-max', 'Acesso a todos os módulos e recursos da plataforma para sua clínica.'))
+      .toMatch(/Agente de IA está disponível no EloLab Ultra/);
+    expect(descricaoComercialPlano('outro-plano', 'Descrição original')).toBe('Descrição original');
+  });
   it('bloqueia recursos quando a assinatura está expirada mesmo se o plano era Ultra', () => {
     expect(canAccessPlanFeature({ plano_slug: 'elolab-ultra', status: 'expirada' }, 'agente_ia')).toBe(false);
   });

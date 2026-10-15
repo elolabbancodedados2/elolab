@@ -2,44 +2,37 @@ import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
-import { Shield, Download, Trash2, Search, FileJson, AlertTriangle, Loader2 } from 'lucide-react';
+import { Shield, Download, Search, FileJson, AlertTriangle } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
-import { usePacientes } from '@/hooks/useSupabaseData';
+import { useBuscaPacientes } from '@/hooks/useBuscaPacientes';
 import { LoadingButton } from '@/components/ui/loading-button';
 import { ListSkeleton } from '@/components/ui/loading-skeleton';
 import { ErrorState } from '@/components/ErrorState';
-import { exportPatientData, deletePatientData } from '@/lib/lgpdCompliance';
+import { PageHeader } from '@/components/PageHeader';
+import { exportPatientData } from '@/lib/lgpdCompliance';
 import { pacienteCorresponde } from '@/lib/buscaPaciente';
 
+type PacienteLGPD = { id: string; nome: string; cpf: string | null; email: string | null };
+
 export default function LgpdPacientes() {
-  const { data: pacientes = [], refetch, isLoading, error } = usePacientes();
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedPaciente, setSelectedPaciente] = useState<any>(null);
-  const [deleteReason, setDeleteReason] = useState('');
-  const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+  const { data: resultadoBusca, refetch, isLoading, error, isDebouncing } = useBuscaPacientes(searchTerm, {
+    limite: 30,
+    select: 'id,nome,cpf,email',
+  });
+  const pacientes = resultadoBusca?.pacientes ?? [];
   const [isProcessing, setIsProcessing] = useState(false);
   const [acaoEmCurso, setAcaoEmCurso] = useState<string | null>(null);
 
-  const filtered = pacientes.filter((p: any) => {
+  const filtered = pacientes.filter((p: PacienteLGPD) => {
     // O titular que pede seus dados pela LGPD informa o CPF do próprio
     // documento, sem máscara. Não achá-lo aqui é descumprir prazo legal.
     return pacienteCorresponde(p, searchTerm);
   });
 
-  const handleExport = async (paciente: any) => {
+  const handleExport = async (paciente: PacienteLGPD) => {
     setIsProcessing(true);
     setAcaoEmCurso(paciente.id);
     try {
@@ -53,58 +46,38 @@ export default function LgpdPacientes() {
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
-      toast.success(`Dados de ${paciente.nome} exportados`);
-    } catch (err: any) {
+      toast.success(`JSON de ${paciente.nome} preparado`, { description: 'O download foi iniciado. A solicitação segue pendente até a conferência do escopo e a entrega ao titular.' });
+    } catch (err: unknown) {
       console.error(err);
-      toast.error(err?.message || 'Erro ao exportar dados');
+      toast.error(err instanceof Error ? err.message : 'Erro ao exportar dados');
     } finally {
       setIsProcessing(false);
       setAcaoEmCurso(null);
     }
   };
 
-  const handleConfirmDelete = async () => {
-    if (!selectedPaciente) return;
-    setIsProcessing(true);
-    try {
-      const { deletedRecords } = await deletePatientData(selectedPaciente.id, deleteReason);
-      toast.success(
-        `Dados de ${selectedPaciente.nome} apagados conforme LGPD — ${deletedRecords} registro(s)`
-      );
-      setIsDeleteOpen(false);
-      setSelectedPaciente(null);
-      setDeleteReason('');
-      refetch();
-    } catch (err: any) {
-      console.error(err);
-      toast.error(err?.message || 'Erro ao apagar dados');
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
   return (
     <div className="space-y-6 p-2 sm:p-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
-          <Shield className="h-7 w-7 text-primary" />
-          Direitos do Titular (LGPD)
-        </h1>
-        <p className="text-muted-foreground mt-1">
-          Atender solicitações de portabilidade e direito ao esquecimento (Lei 13.709/2018)
-        </p>
-      </div>
+      <PageHeader
+        title="Direitos do Titular (LGPD)"
+        description="Consultar dados e orientar o atendimento a solicitações do titular (Lei 13.709/2018)"
+        icon={<Shield />}
+        actions={(
+          <Button asChild variant="outline">
+            <Link to="/suporte">Solicitar análise ao suporte</Link>
+          </Button>
+        )}
+      />
 
       <Alert>
         <AlertTriangle className="h-4 w-4" />
         <AlertDescription>
-          A exportação gera um arquivo JSON completo com todos os dados do paciente. A exclusão é
-          <strong> irreversível</strong> e remove prontuários, prescrições, exames e anexos.
-          Toda ação é registrada em log de auditoria.
+          Cada exportação gera um registro de auditoria da clínica antes de preparar o arquivo JSON para download. O pedido continua pendente até a clínica conferir o escopo e confirmar a entrega ao titular. Anexos do prontuário de até 30 MB no total são incluídos no JSON em Base64; arquivos externos e outros documentos vinculados por módulos específicos ainda exigem conferência manual. Confira o escopo antes de responder ao titular. Armazene o arquivo em local seguro e compartilhe apenas com pessoas autorizadas.
+          <span className="mt-2 block font-medium">A exclusão de dados não pode ser concluída por esta tela neste momento. Solicite análise ao suporte antes de confirmar o atendimento ao titular.</span>
         </AlertDescription>
       </Alert>
 
-      <Card>
+      <Card aria-busy={isLoading || isDebouncing}>
         <CardHeader>
           <CardTitle>Buscar Paciente</CardTitle>
           <CardDescription>Por nome, CPF ou email</CardDescription>
@@ -112,7 +85,8 @@ export default function LgpdPacientes() {
         <CardContent>
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
+              <Input
+              aria-label="Buscar paciente por nome, CPF ou e-mail"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               placeholder="Digite nome, CPF ou email..."
@@ -121,21 +95,31 @@ export default function LgpdPacientes() {
           </div>
 
           <div className="mt-4 space-y-2 max-h-96 overflow-y-auto">
-            {isLoading && <ListSkeleton items={4} />}
-            {!isLoading && error && (
+            {(isLoading || isDebouncing) && <ListSkeleton items={4} />}
+            {!isLoading && !isDebouncing && error && (
               <ErrorState compact error={error} onRetry={() => refetch()} />
             )}
-            {!isLoading && !error && pacientes.length === 0 && (
-              <p className="text-sm text-muted-foreground text-center py-6">
-                Nenhum paciente cadastrado ainda. Cadastre pacientes para atender solicitações da LGPD.
-              </p>
+            {!isLoading && !isDebouncing && !error && !searchTerm && pacientes.length === 0 && (
+              <div className="space-y-3 py-6 text-center">
+                <p className="text-sm text-muted-foreground">
+                  Nenhum paciente cadastrado ainda. Cadastre uma ficha antes de atender uma solicitação do titular.
+                </p>
+                <Button asChild variant="outline" size="sm">
+                  <Link to="/pacientes">Ir para Pacientes</Link>
+                </Button>
+              </div>
             )}
-            {!isLoading && !error && searchTerm && filtered.length === 0 && pacientes.length > 0 && (
+            {!isLoading && !isDebouncing && !error && searchTerm && filtered.length === 0 && (
               <p className="text-sm text-muted-foreground text-center py-4">
                 Nenhum paciente encontrado para "{searchTerm}". Verifique a grafia ou tente pelo CPF.
               </p>
             )}
-            {!isLoading && !error && filtered.slice(0, 30).map((p: any) => (
+            {!isLoading && !isDebouncing && !error && resultadoBusca?.incompleta && (
+              <p className="text-xs text-muted-foreground" role="status">
+                Há mais de 30 resultados. Refine a busca para localizar outro titular.
+              </p>
+            )}
+            {!isLoading && !isDebouncing && !error && filtered.map((p: PacienteLGPD) => (
               <div
                 key={p.id}
                 className="flex items-center justify-between gap-4 p-3 border rounded-lg hover:bg-muted/40 transition-colors"
@@ -159,20 +143,6 @@ export default function LgpdPacientes() {
                     <FileJson className="h-4 w-4 mr-1" />
                     Exportar
                   </LoadingButton>
-                  <Button
-                    size="sm"
-                    variant="destructive"
-                    onClick={() => {
-                      setSelectedPaciente(p);
-                      setDeleteReason('');
-                      setIsDeleteOpen(true);
-                    }}
-                    disabled={isProcessing}
-                    title="Apagar dados (direito ao esquecimento)"
-                  >
-                    <Trash2 className="h-4 w-4 mr-1" />
-                    Apagar
-                  </Button>
                 </div>
               </div>
             ))}
@@ -180,56 +150,6 @@ export default function LgpdPacientes() {
         </CardContent>
       </Card>
 
-      <AlertDialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle className="flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5 text-destructive" />
-              Confirmar exclusão de dados
-            </AlertDialogTitle>
-            <AlertDialogDescription asChild>
-              <div className="space-y-3">
-                <p>
-                  Você está prestes a apagar <strong>todos os dados</strong> do paciente{' '}
-                  <strong>{selectedPaciente?.nome}</strong> em conformidade com o direito ao
-                  esquecimento da LGPD.
-                </p>
-                <p className="text-destructive font-medium">
-                  Esta ação é irreversível. Prontuários, exames, prescrições e anexos serão removidos.
-                </p>
-              </div>
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-
-          <div className="space-y-2">
-            <Label htmlFor="reason">Motivo da solicitação (registrado no log)</Label>
-            <Textarea
-              id="reason"
-              value={deleteReason}
-              onChange={(e) => setDeleteReason(e.target.value)}
-              placeholder="Ex.: Solicitação do titular conforme art. 18 da LGPD..."
-              rows={3}
-            />
-          </div>
-
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isProcessing}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleConfirmDelete}
-              disabled={isProcessing || !deleteReason.trim()}
-              className="bg-destructive hover:bg-destructive/90"
-            >
-              {isProcessing ? (
-                <span className="flex items-center gap-2">
-                  <Loader2 className="h-4 w-4 animate-spin" /> Apagando...
-                </span>
-              ) : (
-                'Confirmar exclusão'
-              )}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 }

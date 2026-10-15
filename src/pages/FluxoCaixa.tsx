@@ -222,6 +222,11 @@ export default function FluxoCaixa() {
     }));
   }, [eventosRealizados, mesAtual, anoAtual]);
 
+  const temMovimentosNoMes = useMemo(
+    () => eventosRealizados.some(evento => noMes(evento.data, mesAtual, anoAtual)),
+    [eventosRealizados, mesAtual, anoAtual],
+  );
+
   // Comparação com mês anterior
   const comparacaoMesAnterior = useMemo(() => {
     const mesAnterior = subMonths(currentDate, 1);
@@ -267,19 +272,19 @@ export default function FluxoCaixa() {
 
   return (
     <div className="space-y-6 pb-8">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 rounded-2xl border border-[#d7e9f7] bg-gradient-to-r from-[#f1fbfd] via-white to-[#eff4ff] p-4 shadow-sm sm:p-5">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 rounded-2xl border border-border bg-gradient-to-r from-accent/70 via-card to-accent/70 p-4 shadow-sm sm:p-5">
         <div>
-          <h1 className="flex items-center gap-2 text-2xl font-bold font-display tracking-tight text-foreground"><span className="rounded-xl bg-[#eaf4ff] p-2 text-[#1766a8] ring-1 ring-[#d1e5f8]"><Wallet className="h-5 w-5" /></span>Fluxo de Caixa</h1>
+          <h1 className="flex items-center gap-2 text-2xl font-bold font-display tracking-tight text-foreground"><span className="rounded-xl bg-primary/10 p-2 text-primary ring-1 ring-border"><Wallet className="h-5 w-5" /></span>Fluxo de Caixa</h1>
           <p className="mt-1 text-sm text-muted-foreground">Acompanhe as movimentações financeiras</p>
         </div>
-        <div className="flex items-center gap-2 rounded-xl border border-[#dceaf5] bg-white/90 p-1 shadow-sm">
-          <Button aria-label="Mês anterior" variant="ghost" size="icon" className="rounded-lg text-[#34749f] hover:bg-[#eaf5fb]" onClick={handlePrevMonth}>
+        <div className="flex items-center gap-2 rounded-xl border border-border bg-card/90 p-1 shadow-sm">
+          <Button aria-label="Mês anterior" variant="ghost" size="icon" className="rounded-lg text-primary hover:bg-accent" onClick={handlePrevMonth}>
             <ChevronLeft className="h-4 w-4" />
           </Button>
-          <span className="min-w-[140px] text-center text-sm font-bold capitalize text-[#173b61]">
+          <span className="min-w-[140px] text-center text-sm font-bold capitalize text-foreground">
             {format(currentDate, "MMMM 'de' yyyy", { locale: ptBR })}
           </span>
-          <Button aria-label="Próximo mês" variant="ghost" size="icon" className="rounded-lg text-[#34749f] hover:bg-[#eaf5fb]" onClick={handleNextMonth}>
+          <Button aria-label="Próximo mês" variant="ghost" size="icon" className="rounded-lg text-primary hover:bg-accent" onClick={handleNextMonth}>
             <ChevronRight className="h-4 w-4" />
           </Button>
         </div>
@@ -298,22 +303,22 @@ export default function FluxoCaixa() {
       {/* Cards de Resumo */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         {[
-          { label: 'Entradas no mês', value: totaisMes.entradas, icon: ArrowUpCircle, color: 'text-[#147765]', bg: 'bg-[#e5f7f2]', border: 'border-[#c5eadd]',
+          { label: 'Entradas no mês', value: totaisMes.entradas, icon: ArrowUpCircle, color: 'text-success', bg: 'bg-success/10', border: 'border-success/20',
             trend: comparacaoMesAnterior.variacaoReceita, trendPositive: comparacaoMesAnterior.variacaoReceita > 0,
             trendNovaBase: comparacaoMesAnterior.receitaSemBaseAnterior,
             sub: totaisMes.receitasPendentes > 0 ? `Em aberto com vencimento no mês: ${formatCurrency(totaisMes.receitasPendentes)}` : undefined },
-          { label: 'Saídas no mês', value: totaisMes.saidas, icon: ArrowDownCircle, color: 'text-[#b65a4d]', bg: 'bg-[#fff0ed]', border: 'border-[#f2d6d0]',
+          { label: 'Saídas no mês', value: totaisMes.saidas, icon: ArrowDownCircle, color: 'text-destructive', bg: 'bg-destructive/10', border: 'border-destructive/20',
             trend: comparacaoMesAnterior.variacaoDespesa, trendPositive: comparacaoMesAnterior.variacaoDespesa < 0,
             trendNovaBase: comparacaoMesAnterior.despesaSemBaseAnterior,
             sub: totaisMes.despesasPendentes > 0 ? `Em aberto com vencimento no mês: ${formatCurrency(totaisMes.despesasPendentes)}` : undefined },
           { label: 'Saldo do Mês', value: totaisMes.saldo, icon: Wallet,
-            color: totaisMes.saldo >= 0 ? 'text-[#147765]' : 'text-[#b65a4d]',
-            bg: totaisMes.saldo >= 0 ? 'bg-[#e5f7f2]' : 'bg-[#fff0ed]',
-            border: totaisMes.saldo >= 0 ? 'border-[#c5eadd]' : 'border-[#f2d6d0]', trendNovaBase: false },
-          { label: 'Margem operacional', value: -1, icon: DollarSign, color: 'text-[#1766a8]', bg: 'bg-[#eaf4ff]', border: 'border-[#d1e5f8]',
+            color: totaisMes.saldo >= 0 ? 'text-success' : 'text-destructive',
+            bg: totaisMes.saldo >= 0 ? 'bg-success/10' : 'bg-destructive/10',
+            border: totaisMes.saldo >= 0 ? 'border-success/20' : 'border-destructive/20', trendNovaBase: false },
+          { label: 'Margem operacional', value: -1, icon: DollarSign, color: 'text-primary', bg: 'bg-primary/10', border: 'border-primary/20',
             pct: totaisMes.receitas > 0 ? `${(((totaisMes.receitas - totaisMes.despesas) / totaisMes.receitas) * 100).toFixed(1)}%` : '—', trendNovaBase: false },
         ].map((s) => (
-          <Card key={s.label} className={cn('h-full border bg-gradient-to-br from-white to-[#f8fbfd] shadow-sm transition-shadow hover:shadow-md', s.border)}>
+          <Card key={s.label} className={cn('h-full border bg-gradient-to-br from-card to-muted/30 shadow-sm transition-shadow hover:shadow-md', s.border)}>
             <CardContent className="pt-5 pb-4">
               <div className="flex items-start justify-between">
                 <div>
@@ -351,9 +356,10 @@ export default function FluxoCaixa() {
             <CardDescription>Entradas e saídas registradas por dia</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="h-[300px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={dadosDiarios}>
+            {temMovimentosNoMes ? (
+              <div className="h-[300px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={dadosDiarios}>
                   <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                   <XAxis dataKey="dia" className="text-xs" />
                   <YAxis className="text-xs" tickFormatter={(v) => `R$${v}`} />
@@ -366,13 +372,19 @@ export default function FluxoCaixa() {
                     }}
                   />
                   <Legend />
-                  <Bar dataKey="receitas" name="Receitas" fill="#55bda9" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="despesas" name="Despesas" fill="#e68f82" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="suprimentos" name="Suprimentos" fill="#7bb8e8" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="sangrias" name="Sangrias" fill="#d6a849" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
+                  <Bar dataKey="receitas" name="Receitas" fill="hsl(var(--success))" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="despesas" name="Despesas" fill="hsl(var(--destructive))" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="suprimentos" name="Suprimentos" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="sangrias" name="Sangrias" fill="hsl(var(--warning))" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            ) : (
+              <div role="status" className="flex h-[300px] flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border bg-muted/20 px-6 text-center">
+                <p className="text-sm font-medium text-foreground">Nenhuma movimentação registrada neste mês</p>
+                <p className="max-w-sm text-xs leading-relaxed text-muted-foreground">A evolução diária aparecerá aqui quando houver entradas, saídas, suprimentos ou sangrias.</p>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -383,9 +395,10 @@ export default function FluxoCaixa() {
             <CardDescription>Variação acumulada no mês; não inclui saldo inicial de caixa</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="h-[300px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={dadosDiarios}>
+            {temMovimentosNoMes ? (
+              <div className="h-[300px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={dadosDiarios}>
                   <defs>
                     <linearGradient id="colorSaldo" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3} />
@@ -411,9 +424,15 @@ export default function FluxoCaixa() {
                     fillOpacity={1}
                     fill="url(#colorSaldo)"
                   />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            ) : (
+              <div role="status" className="flex h-[300px] flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border bg-muted/20 px-6 text-center">
+                <p className="text-sm font-medium text-foreground">Nenhuma movimentação registrada neste mês</p>
+                <p className="max-w-sm text-xs leading-relaxed text-muted-foreground">O saldo acumulado aparecerá aqui quando houver movimentações registradas.</p>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -445,10 +464,10 @@ export default function FluxoCaixa() {
                     }}
                   />
                   <Legend />
-                  <Bar dataKey="receitas" name="Receitas" fill="#55bda9" radius={[0, 4, 4, 0]} />
-                  <Bar dataKey="despesas" name="Despesas" fill="#e68f82" radius={[0, 4, 4, 0]} />
-                  <Bar dataKey="suprimentos" name="Suprimentos" fill="#7bb8e8" radius={[0, 4, 4, 0]} />
-                  <Bar dataKey="sangrias" name="Sangrias" fill="#d6a849" radius={[0, 4, 4, 0]} />
+                  <Bar dataKey="receitas" name="Receitas" fill="hsl(var(--success))" radius={[0, 4, 4, 0]} />
+                  <Bar dataKey="despesas" name="Despesas" fill="hsl(var(--destructive))" radius={[0, 4, 4, 0]} />
+                  <Bar dataKey="suprimentos" name="Suprimentos" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]} />
+                  <Bar dataKey="sangrias" name="Sangrias" fill="hsl(var(--warning))" radius={[0, 4, 4, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>

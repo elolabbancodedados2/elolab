@@ -1,3 +1,4 @@
+import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -13,7 +14,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { cn } from '@/lib/utils';
 import { useChatInterno, type ChatConversa, type ChatUsuario, type ChatMensagem } from '@/hooks/useChatInterno';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
-import { format, isToday, isYesterday } from 'date-fns';
+import { isToday, isYesterday } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { toast } from 'sonner';
 
@@ -528,11 +529,11 @@ export function ChatPanel() {
   return (
     <>
       {/* Floating Button */}
-      <div className="fixed bottom-6 right-6 z-50 hidden lg:block">
+      <div className="fixed bottom-6 right-6 z-50 hidden lg:block xl:bottom-auto xl:right-[26rem] xl:top-3">
         <Button
           size="icon"
           className={cn(
-            'h-14 w-14 rounded-full shadow-xl relative transition-all duration-300',
+            'h-14 w-14 rounded-full shadow-xl relative transition-all duration-300 xl:h-11 xl:w-11',
             aberto && 'rotate-0',
             totalNaoLidas > 0 && !aberto && 'ring-4 ring-primary/15',
           )}
@@ -552,9 +553,7 @@ export function ChatPanel() {
                 <X className="h-5 w-5" />
               </motion.div>
             ) : (
-              <motion.div key="msg" initial={{ rotate: 90, opacity: 0 }} animate={{ rotate: 0, opacity: 1 }} exit={{ rotate: -90, opacity: 0 }} transition={{ duration: 0.15 }}>
-                <MessageCircle className="h-5 w-5" />
-              </motion.div>
+              <MessageCircle className="h-5 w-5" />
             )}
           </AnimatePresence>
           {totalNaoLidas > 0 && !aberto && (

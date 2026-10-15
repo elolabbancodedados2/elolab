@@ -37,6 +37,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { ErrorState } from '@/components/ErrorState';
+import { PageHeader } from '@/components/PageHeader';
 
 /* ─── Types ─── */
 interface SystemHealth {
@@ -722,10 +723,11 @@ export function LGPDAvancadoTab() {
 export default function ConfiguracoesAvancadas() {
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Configurações Avançadas</h1>
-        <p className="text-muted-foreground mt-2">Gerenciamento completo dos serviços e conformidade</p>
-      </div>
+      <PageHeader
+        title="Configurações Avançadas"
+        description="Gerencie integrações, especialidades, documentos e conformidade da clínica."
+        icon={<Settings />}
+      />
 
       <Tabs defaultValue="status" className="w-full">
         <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 h-auto">

@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator } from '@/components/ui/command';
 import { useSupabaseAuth, type AppRole } from '@/contexts/SupabaseAuthContext';
 import { supabase } from '@/integrations/supabase/client';
+import { normalizarTexto } from '@/lib/buscaPaciente';
 
 type SearchType = 'paciente' | 'consulta' | 'exame' | 'pagamento' | 'tarefa' | 'documento';
 type Result = { tipo: SearchType; id: string; titulo: string; subtitulo: string | null; href: string; data_referencia: string | null };
@@ -25,9 +26,20 @@ const PAGES: Array<{ label: string; href: string; roles: AppRole[] }> = [
   { label: 'Notificações', href: '/notificacoes', roles: ['admin', 'medico', 'recepcao', 'enfermagem', 'financeiro'] },
   { label: 'Documentos clínicos', href: '/documentos-clinicos', roles: ['admin', 'medico'] },
   { label: 'Exames', href: '/exames', roles: ['admin', 'medico', 'enfermagem'] },
-  { label: 'Pagamentos', href: '/pagamentos', roles: ['admin', 'financeiro'] },
+  { label: 'Contas a receber', href: '/contas?tab=receber', roles: ['admin', 'financeiro'] },
   { label: 'Financeiro', href: '/financeiro', roles: ['admin', 'financeiro'] },
   { label: 'Configurações', href: '/configuracoes', roles: ['admin'] },
+  { label: 'Retornos', href: '/retornos', roles: ['admin', 'medico', 'recepcao'] },
+  { label: 'Fluxo de atendimento', href: '/gestao-fluxo', roles: ['admin', 'recepcao'] },
+  { label: 'Laborat\u00f3rio', href: '/laboratorio', roles: ['admin', 'medico', 'enfermagem'] },
+  { label: 'Mapa de coleta', href: '/mapa-coleta', roles: ['admin', 'enfermagem'] },
+  { label: 'Conv\u00eanios', href: '/convenios', roles: ['admin', 'recepcao', 'financeiro'] },
+  { label: 'Estoque', href: '/estoque', roles: ['admin', 'enfermagem'] },
+  { label: 'Relat\u00f3rios', href: '/relatorios', roles: ['admin', 'financeiro'] },
+  { label: 'Cobran\u00e7a de inadimplentes', href: '/cobranca-inadimplentes', roles: ['admin', 'financeiro'] },
+  { label: 'Equipe', href: '/equipe', roles: ['admin'] },
+  { label: 'Suporte', href: '/suporte', roles: ['admin', 'medico', 'recepcao', 'enfermagem', 'financeiro'] },
+  { label: 'Minhas prefer\u00eancias', href: '/preferencias', roles: ['admin', 'medico', 'recepcao', 'enfermagem', 'financeiro'] },
 ];
 
 export function GlobalSearch() {
@@ -37,6 +49,7 @@ export function GlobalSearch() {
   const navigate = useNavigate();
   const requestRef = useRef(0);
   const normalized = query.trim();
+  const normalizedSearch = normalizarTexto(normalized);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -63,8 +76,8 @@ export function GlobalSearch() {
   }, [normalized, search]);
 
   const pages = useMemo(() => PAGES.filter(page => page.roles.some(role => profile?.roles.includes(role)))
-    .filter(page => !normalized || page.label.toLocaleLowerCase('pt-BR').includes(normalized.toLocaleLowerCase('pt-BR')))
-    .slice(0, normalized ? 6 : 5), [normalized, profile?.roles]);
+    .filter(page => !normalizedSearch || normalizarTexto(page.label).includes(normalizedSearch))
+    .slice(0, normalizedSearch ? 6 : 5), [normalizedSearch, profile?.roles]);
   const grouped = useMemo(() => Object.entries(TYPE_META).map(([type, meta]) => ({ type: type as SearchType, ...meta, items: results.filter(item => item.tipo === type) })).filter(group => group.items.length), [results]);
   const select = (href: string) => { setOpen(false); setQuery(''); setResults([]); navigate(href); };
   const close = (value: boolean) => { setOpen(value); if (!value) { requestRef.current++; setQuery(''); setResults([]); setError(false); } };
@@ -81,7 +94,7 @@ export function GlobalSearch() {
         {error && <div className="flex items-center justify-between gap-3 px-4 py-3" role="alert"><span className="flex items-center gap-2 text-sm text-destructive"><AlertCircle className="h-4 w-4"/>Não foi possível buscar.</span><Button size="sm" variant="outline" onClick={() => void search(normalized)}>Tentar novamente</Button></div>}
         {!searching && !error && normalized.length >= 2 && !results.length && !pages.length && <CommandEmpty>Nenhum resultado encontrado nesta clínica.</CommandEmpty>}
         {grouped.map((group, index) => <div key={group.type}>{index > 0 && <CommandSeparator/>}<CommandGroup heading={group.label}>{group.items.map(item => { const Icon = group.icon; return <CommandItem key={`${item.tipo}-${item.id}`} value={`${item.tipo}-${item.id}-${item.titulo}`} onSelect={() => select(item.href)} className="gap-3 py-2.5"><span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10"><Icon className="h-4 w-4 text-primary"/></span><span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium">{item.titulo}</span>{item.subtitulo && <span className="block truncate text-xs text-muted-foreground">{item.subtitulo}</span>}</span><Badge variant="secondary" className="hidden shrink-0 text-[10px] sm:inline-flex">{group.label.slice(0, -1)}</Badge></CommandItem>})}</CommandGroup></div>)}
-        {pages.length > 0 && <><CommandSeparator/><CommandGroup heading="Páginas">{pages.map(page => <CommandItem key={page.href} value={`pagina-${page.label}`} onSelect={() => select(page.href)} className="gap-3"><Search className="h-4 w-4 text-muted-foreground"/><span>{page.label}</span></CommandItem>)}</CommandGroup></>}
+        {pages.length > 0 && <><CommandSeparator/><CommandGroup heading="Páginas">{pages.map(page => <CommandItem key={page.href} value={`pagina-${normalizarTexto(page.label)}`} onSelect={() => select(page.href)} className="gap-3"><Search className="h-4 w-4 text-muted-foreground"/><span>{page.label}</span></CommandItem>)}</CommandGroup></>}
       </CommandList>
       <div className="flex flex-wrap gap-x-4 gap-y-1 border-t px-3 py-2 text-[11px] text-muted-foreground"><span>↑↓ navegar</span><span>Enter abrir</span><span>Esc fechar</span><span className="ml-auto hidden sm:inline">Resultados limitados à sua clínica e função</span></div>
     </CommandDialog>

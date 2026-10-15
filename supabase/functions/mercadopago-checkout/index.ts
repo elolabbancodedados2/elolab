@@ -2,13 +2,14 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsPadrao } from '../_shared/cors.ts';
 import {
   billingStatus,
+  cancelPlanSubscription,
   cancelPlanOrder,
   createCardSubscription,
   createPlanOrder,
   getPlanOrder,
 } from './planCheckoutActions.ts';
 
-// Checkout transparente dos planos (cartão recorrente, Pix e boleto).
+// Checkout transparente dos planos (cartão recorrente e Pix).
 const planCheckoutActions = {
   billing_status: billingStatus,
   create_card_subscription: createCardSubscription,
@@ -346,78 +347,11 @@ async function cancelSubscription(
   authUserId: string,
   motivo: string | null = null,
 ) {
-  const { data: candidates, error: searchError } = await supabase
-    .from("assinaturas_mercadopago")
-    .select("id, mp_preapproval_id, detalhes")
-    .in("status", ["pendente", "ativa", "pausada"])
-    .filter("detalhes->>user_id", "eq", authUserId)
-    .order("created_at", { ascending: false })
-    .limit(1);
-  if (searchError) throw searchError;
-
-  const assinatura = candidates?.[0];
-  const mp_preapproval_id = assinatura?.mp_preapproval_id;
-
-  if (!mp_preapproval_id) {
-    return new Response(
-      JSON.stringify({ error: "mp_preapproval_id é obrigatório" }),
-      { status: 400, headers: { ...headers, "Content-Type": "application/json" } }
-    );
-  }
-
-  // O Mercado Pago só aceita `cancelled` (dois "l"); `canceled` volta HTTP 400 (validado no sandbox em 08/10/2026).
-  try {
-    await callMercadoPagoWithRetry(
-      `${MP_API_BASE}/preapproval/${mp_preapproval_id}`,
-      "PUT",
-      { status: "cancelled" },
-      mpToken
-    );
-  } catch (err) {
-    console.error("Falha ao cancelar no Mercado Pago:", err);
-    return new Response(
-      JSON.stringify({
-        error: err instanceof Error ? err.message : "Erro ao cancelar no Mercado Pago",
-      }),
-      { status: 502, headers: { ...headers, "Content-Type": "application/json" } }
-    );
-  }
-
-  const cancelDate = new Date().toISOString();
-
-  const { error: assinaturaError } = await supabase
-    .from("assinaturas_mercadopago")
-    .update({ status: "cancelada", data_fim: cancelDate.slice(0, 10) })
-    .eq("id", assinatura.id);
-  if (assinaturaError) throw assinaturaError;
-
-  // Atualiza tabela do plano do usuário (que useUserPlan consulta)
-  const { error: planError } = await supabase
-    .from("assinaturas_plano")
-    .update({
-      status: "cancelada",
-      data_cancelamento: cancelDate,
-      updated_at: cancelDate,
-    })
-    .eq("user_id", authUserId)
-    .eq("mp_assinatura_id", assinatura.id)
-    .in("status", ["ativa", "trial", "pendente"]);
-  if (planError) throw planError;
-
-  // Audit trail
-  if (authUserId) {
-    await supabase.from("audit_log").insert({
-      action: "SUBSCRIPTION_CANCELLED",
-      collection: "assinaturas_mercadopago",
-      record_id: assinatura.id,
-      user_id: authUserId,
-      details: { mp_preapproval_id, cancelled_at: cancelDate, motivo },
-    });
-  }
-
-  return new Response(JSON.stringify({ success: true, cancelled_at: cancelDate }), {
-    status: 200,
-    headers: { ...headers, "Content-Type": "application/json" },
+  return await cancelPlanSubscription({ motivo }, {
+    supabase,
+    user: { id: authUserId },
+    mpToken,
+    headers,
   });
 }
 

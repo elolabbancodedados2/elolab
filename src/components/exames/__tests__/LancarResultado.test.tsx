@@ -5,6 +5,8 @@ const mocks = vi.hoisted(() => ({
   updateResult: { data: null as { id: string } | null, error: null as Error | null },
   eq: vi.fn(),
   is: vi.fn(),
+  upload: vi.fn(async (_path: string, _file: File, _options: { contentType: string; upsert: boolean }) => ({ error: null })),
+  remove: vi.fn(async (_paths: string[]) => ({ error: null })),
   toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() },
 }));
 
@@ -12,6 +14,7 @@ vi.mock('@tanstack/react-query', () => ({ useQueryClient: () => ({ invalidateQue
 vi.mock('@/contexts/SupabaseAuthContext', () => ({ useSupabaseAuth: () => ({ profile: { clinica_id: 'clinica-1' } }) }));
 vi.mock('@/integrations/supabase/client', () => ({
   supabase: {
+    storage: { from: () => ({ upload: mocks.upload, remove: mocks.remove }) },
     from: () => {
       type QueryBuilder = {
         update: ReturnType<typeof vi.fn>;
@@ -70,5 +73,27 @@ describe('LancarResultado', () => {
 
     expect(mocks.is).toHaveBeenCalledWith('updated_at', null);
     expect(mocks.eq).not.toHaveBeenCalledWith('updated_at', expect.anything());
+  });
+
+  it('envia laudos pelo prefixo de Storage permitido para exames e paciente', async () => {
+    mocks.updateResult = { data: { id: 'exame-1' }, error: null };
+    render(<LancarResultado
+      exame={{
+        id: 'exame-1',
+        tipo_exame: 'Hemograma',
+        paciente_id: '11111111-1111-4111-8111-111111111111',
+        updated_at: 'versao-1',
+      }}
+      onFechar={vi.fn()}
+    />);
+
+    const arquivo = new File(['laudo sintético'], 'laudo.pdf', { type: 'application/pdf' });
+    fireEvent.change(document.querySelector('input[type="file"]')!, { target: { files: [arquivo] } });
+    fireEvent.click(screen.getByRole('button', { name: 'Lançar resultado' }));
+
+    await waitFor(() => expect(mocks.upload).toHaveBeenCalledOnce());
+    const caminho = mocks.upload.mock.calls[0][0] as string;
+    expect(caminho).toMatch(/^exames\/11111111-1111-4111-8111-111111111111\/exame-1-\d+\.pdf$/);
+    await waitFor(() => expect(mocks.toast.success).toHaveBeenCalledWith('Resultado lançado'));
   });
 });

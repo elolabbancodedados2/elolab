@@ -1,4 +1,5 @@
-import { nomeMedico } from '@/lib/formatters';
+import { formatWithDatePreference as format } from '@/lib/datePreference';
+import { formatDate, nomeMedico } from '@/lib/formatters';
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { Link as RouterLink, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -12,7 +13,7 @@ import {
   Thermometer, Scale, Ruler, Paperclip, Shield, Clipboard,
   Clock, TestTube, DollarSign, CalendarPlus, RefreshCw, Wallet,
 } from 'lucide-react';
-import { addDays, format, subYears } from 'date-fns';
+import { addDays, subYears } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -39,6 +40,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useQueryClient } from '@tanstack/react-query';
 import { EtiquetaPaciente } from '@/components/EtiquetaPaciente';
 import { PatientStats, PatientListTable } from '@/components/patients';
+import { PageHeader } from '@/components/PageHeader';
 import { PatientPhoto, PatientTimeline, VitalSignsChart, AllergyAlert, Cid10Search, ClinicalProtocols, AnexosProntuario, DigitalSignature } from '@/components/clinical';
 import { AutorizacaoConvenioModal } from '@/components/AutorizacaoConvenioModal';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -234,7 +236,7 @@ export default function Pacientes() {
   const [paginaPacientes, setPaginaPacientes] = useState(0);
   const limiteBusca = (paginaPacientes + 1) * 50 + 1;
   const hoje = todaySaoPauloDateOnly();
-  const dataLimite = (anos: number) => format(subYears(parseDateOnly(hoje), anos), 'yyyy-MM-dd');
+  const dataLimite = useCallback((anos: number) => format(subYears(parseDateOnly(hoje), anos), 'yyyy-MM-dd'), [hoje]);
   const filtrosBusca = useMemo(() => {
     let nascimentoApos: string | undefined;
     let nascimentoAte: string | undefined;
@@ -243,7 +245,7 @@ export default function Pacientes() {
     if (filterIdade === 'adulto') { nascimentoApos = format(addDays(subYears(parseDateOnly(hoje), 60), 1), 'yyyy-MM-dd'); nascimentoAte = dataLimite(18); }
     if (filterIdade === 'idoso') nascimentoAte = dataLimite(60);
     return { sexo: filterSexo === 'todos' ? undefined : filterSexo, convenio: filterConvenio === 'todos' ? undefined : filterConvenio, nascimentoApos, nascimentoAte };
-  }, [filterSexo, filterConvenio, filterIdade, hoje]);
+  }, [filterSexo, filterConvenio, filterIdade, hoje, dataLimite]);
   const { data: resultadoBusca, isLoading, isFetching: isBuscandoPacientes, error: pacientesError, refetch } = useBuscaPacientes(searchTerm, { limite: limiteBusca, filtros: filtrosBusca });
   const resumoPacientes = resultadoBusca?.pacientes ?? [];
   const inicioPagina = paginaPacientes * 50;
@@ -481,7 +483,7 @@ export default function Pacientes() {
     params.delete('paciente');
     params.delete('tab');
     setSearchParams(params, { replace: true });
-  }, [searchParams, setSearchParams, isLoading, pacientesError, erroDeepLink, pacienteDeepLink, deepLinkPacienteId, carregandoDeepLink, podeVerProntuario, podeVerTimelinePaciente, handleViewWithProntuario]);
+  }, [searchParams, setSearchParams, isLoading, pacientesError, erroDeepLink, pacienteDeepLink, deepLinkPacienteId, carregandoDeepLink, podeVerProntuario, podeVerTimelinePaciente, podeVerExtratoFinanceiroPaciente, handleViewWithProntuario]);
 
   const handleNewProntuario = () => {
     const paciente = pacientes.find(p => p.id === selectedPacienteId);
@@ -1115,16 +1117,15 @@ export default function Pacientes() {
       {medicosError && <ErrorState compact error={medicosError} title="Médicos indisponíveis" description="A lista de médicos não carregou. Atualize os dados antes de agendar consultas ou solicitar exames nesta ficha." onRetry={() => { void refetchMedicos(); }} />}
       {/* Header */}
       <motion.div
-        className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4"
+        className="min-w-0"
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4 }}
       >
-        <div>
-          <h1 className="text-2xl font-bold text-[#0C1F54] sm:text-3xl">Pacientes</h1>
-          <p className="text-muted-foreground">Gestão completa do cadastro de pacientes</p>
-        </div>
-        <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:gap-3">
+        <PageHeader
+          title="Pacientes"
+          description="Gestão completa do cadastro de pacientes"
+          actions={<div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:gap-3">
           <motion.div whileHover={{ scale: 1.04, y: -2 }} whileTap={{ scale: 0.96 }} transition={{ type: "spring", stiffness: 400, damping: 17 }}>
             <Button
               variant="outline"
@@ -1146,7 +1147,8 @@ export default function Pacientes() {
               Novo Paciente
             </Button>
           </motion.div>
-        </div>
+          </div>}
+        />
       </motion.div>
 
       {/* Stats */}
@@ -1270,6 +1272,7 @@ export default function Pacientes() {
             hasError={Boolean(detalhesErro || pacientesError)}
             onPaginaChange={setPaginaPacientes}
             onLimparFiltros={clearPatientFilters}
+            onCreate={podeEditarPaciente ? handleNew : undefined}
             onView={handleView}
             onEdit={handleEdit}
             onDelete={handleDeleteClick}
@@ -1746,7 +1749,7 @@ export default function Pacientes() {
                   <TabsContent value="dados" className="space-y-5 pt-1 mt-0">
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
                       <InfoField icon={FileText} label="CPF" value={selectedPaciente.cpf} />
-                      <InfoField icon={Calendar} label="Nascimento" value={selectedPaciente.data_nascimento ? new Date(selectedPaciente.data_nascimento + 'T12:00').toLocaleDateString('pt-BR') : null} />
+                      <InfoField icon={Calendar} label="Nascimento" value={selectedPaciente.data_nascimento ? formatDate(selectedPaciente.data_nascimento, 'short') : null} />
                       <InfoField icon={Phone} label="Telefone" value={selectedPaciente.telefone} />
                       <InfoField icon={Mail} label="Email" value={selectedPaciente.email} />
                       <InfoField icon={Building2} label="Convênio" value={getConvenioNome(selectedPaciente.convenio_id)} />

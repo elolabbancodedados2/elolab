@@ -230,16 +230,42 @@ export function getDashboardLinksForRoles(roles: string[]): string[] {
   return role ? roleWorkspaces[role].actions.map(action => action.href) : [];
 }
 
+const roleTips = {
+  admin: ['Revise as pendências em "Precisa de atenção".', 'Acompanhe a ocupação da agenda da semana.'],
+  recepcao: ['Confirme as consultas de amanhã pelo WhatsApp.', 'Ofereça horários livres para a lista de espera.', 'Registre a chegada para o paciente entrar na fila.'],
+  enfermagem: ['Priorize a triagem de quem chegou primeiro.', 'Confira coletas pendentes no mapa de coleta.', 'Registre sinais vitais antes da consulta.'],
+  financeiro: ['Concilie os recebimentos do dia no caixa.', 'Veja contas que vencem esta semana.', 'Acompanhe inadimplentes e envie lembretes.'],
+} as const;
+
+const workspaceTones = [
+  'bg-[image:var(--gradient-primary)] text-white shadow-glow',
+  'border border-border/60 bg-card text-foreground hover:bg-accent',
+  'border border-border/60 bg-accent/50 text-foreground hover:bg-accent',
+];
+
 function RoleWorkspace({ roles }: { roles: string[] }) {
   const role = dashboardRolePriority.find(item => roles.includes(item));
   if (!role) return null;
   const workspace = roleWorkspaces[role];
-  return <section aria-labelledby="role-workspace-title" className="rounded-2xl border border-primary/15 bg-primary/[0.03] p-4 md:p-5">
+  return <section aria-labelledby="role-workspace-title" className="rounded-[22px] border border-border/60 bg-card p-4 shadow-xs md:p-5">
     <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-      <div><h2 id="role-workspace-title" className="font-semibold">{workspace.title}</h2><p className="text-sm text-muted-foreground">{workspace.description}</p></div>
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">{workspace.actions.map(({ label, href, icon: Icon }) => <Button key={href} asChild variant="outline" className="min-h-11 justify-start bg-background"><Link to={href}><Icon className="mr-2 h-4 w-4" />{label}</Link></Button>)}</div>
+      <div><h2 id="role-workspace-title" className="text-base font-bold">{workspace.title}</h2><p className="text-sm text-muted-foreground">{workspace.description}</p></div>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">{workspace.actions.map(({ label, href, icon: Icon }, index) => <Link key={href} to={href} className={cn('flex min-h-11 items-center gap-2 rounded-full px-4 text-sm font-bold transition hover:-translate-y-0.5 hover:brightness-105', workspaceTones[index % workspaceTones.length])}><Icon className="h-4 w-4" />{label}</Link>)}</div>
     </div>
   </section>;
+}
+
+const statusFinalizado = ['finalizado', 'atendimento_finalizado', 'pago'];
+
+function minutosDesde(valor?: string | null, agora = new Date()) {
+  if (!valor) return null;
+  const data = new Date(valor);
+  if (Number.isNaN(data.getTime())) return null;
+  return Math.max(0, Math.round((agora.getTime() - data.getTime()) / 60000));
+}
+
+function iniciaisDe(nome: string) {
+  return nome.split(' ').filter(Boolean).map(parte => parte[0]).slice(0, 2).join('').toUpperCase();
 }
 
 function OperationalDashboard({ roles, nome }: { roles: string[]; nome?: string | null }) {
@@ -248,20 +274,105 @@ function OperationalDashboard({ roles, nome }: { roles: string[]; nome?: string 
     timeZone: 'America/Sao_Paulo', hour: '2-digit', hourCycle: 'h23',
   }).format(agora));
   const saudacao = hora < 12 ? 'Bom dia' : hora < 18 ? 'Boa tarde' : 'Boa noite';
-  const dataLocal = parseDateOnly(todaySaoPauloDateOnly(agora))!;
-  return <div className="space-y-6">
-    <Card className="overflow-hidden border-primary/15 bg-gradient-to-br from-primary/[0.06] via-card to-card">
-      <CardContent className="p-6 md:p-8">
-        <p className="text-sm font-medium text-primary">{saudacao}</p>
-        <h1 className="mt-1 text-2xl font-bold tracking-tight md:text-3xl">{nome?.split(' ')[0] || 'Olá'}</h1>
-        <p className="mt-2 text-sm capitalize text-muted-foreground">{format(dataLocal, "EEEE, d 'de' MMMM", { locale: ptBR })}</p>
-      </CardContent>
-    </Card>
-    <RoleWorkspace roles={roles} />
-    <Card>
-      <CardHeader><CardTitle className="text-base">Seu espaço de trabalho</CardTitle><CardDescription>Os atalhos exibidos respeitam as permissões atribuídas ao seu perfil.</CardDescription></CardHeader>
-      <CardContent className="flex items-start gap-3 text-sm text-muted-foreground"><ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-success" />Você verá apenas os módulos necessários para sua função. Se precisar de outro acesso, solicite ao administrador da clínica.</CardContent>
-    </Card>
+  const hoje = todaySaoPauloDateOnly(agora);
+  const dataLocal = parseDateOnly(hoje)!;
+  const horaAgora = new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(agora);
+  const role = dashboardRolePriority.find(item => roles.includes(item));
+  const workspace = role ? roleWorkspaces[role] : null;
+  const tips = role ? roleTips[role] : [];
+
+  const agendaQuery = useAgendamentosPeriodo(hoje, hoje);
+  const filaQuery = useFilaAtendimento();
+  const agenda = useMemo(() => (agendaQuery.data ?? [])
+    .filter(item => item.status !== 'cancelado')
+    .sort((a, b) => (a.hora_inicio || '').localeCompare(b.hora_inicio || '')), [agendaQuery.data]);
+  const fila = useMemo(() => ((filaQuery.data ?? []) as any[])
+    .filter(item => !['finalizado', 'atendido', 'cancelado'].includes(item.status || ''))
+    .sort((a, b) => (a.posicao ?? 0) - (b.posicao ?? 0)), [filaQuery.data]);
+
+  const confirmadas = agenda.filter(item => item.status === 'confirmado').length;
+  const finalizadas = agenda.filter(item => statusFinalizado.includes(item.status)).length;
+  const esperas = fila.map(item => minutosDesde(item.horario_chegada || item.created_at, agora)).filter((m): m is number => m !== null);
+  const esperaMedia = esperas.length ? Math.round(esperas.reduce((total, m) => total + m, 0) / esperas.length) : null;
+  const pendentes = agenda.filter(item => !statusFinalizado.includes(item.status));
+  const proxima = pendentes.find(item => (item.hora_inicio || '') >= horaAgora) ?? pendentes[0];
+
+  const kpis = [
+    { label: 'Consultas hoje', value: agenda.length, note: `${confirmadas} confirmadas`, tone: 'bg-card border border-border/60', href: '/agenda' },
+    { label: 'Na fila agora', value: fila.length, note: esperaMedia !== null ? `espera média de ${esperaMedia} min` : 'ninguém aguardando', tone: 'bg-highlight text-highlight-foreground', href: '/fila' },
+    { label: 'Finalizadas', value: finalizadas, note: agenda.length ? `${Math.round(finalizadas / agenda.length * 100)}% do dia` : 'sem atendimentos', tone: 'bg-foreground text-background', href: '/fila' },
+  ];
+
+  return <div className="space-y-5 pb-8">
+    <header className="flex flex-col gap-1">
+      <p className="text-xs font-semibold text-muted-foreground first-letter:uppercase">{format(dataLocal, "EEEE, d 'de' MMMM", { locale: ptBR })} <span className="mx-1 opacity-40">·</span> <LiveClock /></p>
+      <h1 className="text-[28px] font-light leading-tight tracking-[-0.03em] sm:text-[34px]">{saudacao}, <span className="font-extrabold">{nome?.split(' ')[0] || 'equipe'}</span></h1>
+    </header>
+
+    <div className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_repeat(3,minmax(0,1fr))]">
+      <section aria-labelledby="turno-title" className="relative overflow-hidden rounded-[24px] bg-[image:var(--gradient-hero)] p-6 text-white shadow-glow">
+        <div aria-hidden="true" className="pointer-events-none absolute -bottom-20 -right-16 h-56 w-56 rounded-full bg-highlight/40 blur-3xl" />
+        <div className="relative">
+          <h2 id="turno-title" className="text-xs font-bold uppercase tracking-[0.12em] text-white/80">{workspace?.title ?? 'Seu espaço de trabalho'}</h2>
+          {proxima ? <>
+            <p className="mt-3 text-[44px] font-light leading-none tracking-[-0.04em] tabular-nums">{proxima.hora_inicio?.slice(0, 5)}</p>
+            <p className="mt-2 truncate text-base font-bold">{proxima.pacientes?.nome || 'Paciente'}</p>
+            <p className="truncate text-xs text-white/75">{proxima.tipo || 'Consulta'}{proxima.medicos?.nome ? ` · ${nomeMedico(proxima.medicos.nome)}` : ''}</p>
+          </> : <p className="mt-3 max-w-xs text-sm text-white/80">{workspace?.description ?? 'Os atalhos exibidos respeitam as permissões do seu perfil. Se precisar de outro acesso, fale com o administrador.'}</p>}
+          {workspace && <div className="mt-5 flex flex-wrap gap-2">{workspace.actions.map(({ label, href, icon: Icon }, index) => <Link key={href} to={href} className={cn('inline-flex min-h-10 items-center gap-2 rounded-full px-4 text-sm font-bold transition hover:brightness-105', index === 0 ? 'bg-white text-primary' : 'border border-white/30 text-white hover:bg-white/10')}><Icon className="h-4 w-4" />{label}</Link>)}</div>}
+        </div>
+      </section>
+      {kpis.map(kpi => <Link key={kpi.label} to={kpi.href} className={cn('group relative flex min-w-0 flex-col rounded-[22px] p-5 shadow-xs transition hover:-translate-y-0.5 hover:shadow-md', kpi.tone)}>
+        <p className="text-xs font-semibold opacity-75">{kpi.label}</p>
+        <p className="mt-3 text-[38px] font-light leading-none tracking-[-0.03em] tabular-nums">{kpi.value}</p>
+        <p className="mt-auto pt-3 text-xs opacity-75">{kpi.note}</p>
+        <ArrowUpRight className="absolute right-4 top-4 h-4 w-4 opacity-0 transition group-hover:opacity-70" />
+      </Link>)}
+    </div>
+
+    <div className="grid gap-4 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+      <Card className="rounded-[22px]">
+        <CardHeader className="flex-row items-center justify-between space-y-0">
+          <div><CardTitle className="text-lg">Agenda de hoje</CardTitle><CardDescription>Horários do dia em ordem</CardDescription></div>
+          <Link to="/agenda" className="text-xs font-bold text-primary hover:underline">Abrir agenda</Link>
+        </CardHeader>
+        <CardContent className="space-y-1">
+          {agendaQuery.isError ? <p className="rounded-2xl bg-muted/50 p-4 text-sm text-muted-foreground">Seu perfil não tem acesso à agenda. Peça ao administrador se precisar.</p>
+            : agendaQuery.isLoading ? <div className="space-y-2">{[0, 1, 2].map(i => <div key={i} className="h-12 animate-pulse rounded-2xl bg-muted" />)}</div>
+            : agenda.length === 0 ? <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-border bg-muted/40 p-6 text-center"><Calendar className="h-6 w-6 text-primary" /><p className="text-sm font-bold">Nenhuma consulta para hoje</p><Link to="/agenda" className="text-sm font-bold text-primary">Agendar consulta</Link></div>
+            : agenda.slice(0, 7).map(item => <div key={item.id} className={cn('grid grid-cols-[52px_4px_minmax(0,1fr)_auto] items-center gap-3 rounded-2xl px-3 py-2.5', item.id === proxima?.id ? 'bg-accent' : 'hover:bg-muted/60')}>
+              <span className="text-sm font-extrabold tabular-nums">{item.hora_inicio?.slice(0, 5) || '--:--'}</span>
+              <span className={cn('h-8 w-1 rounded-full', item.id === proxima?.id ? 'bg-primary' : 'bg-border')} aria-hidden="true" />
+              <span className="min-w-0"><span className="block truncate text-sm font-bold">{item.pacientes?.nome || 'Paciente'}</span><span className="block truncate text-xs text-muted-foreground">{item.tipo || 'Consulta'}{item.medicos?.nome ? ` · ${nomeMedico(item.medicos.nome)}` : ''}</span></span>
+              <Badge variant="secondary" className="rounded-full bg-accent text-primary">{formatAppointmentStatus(item.status)}</Badge>
+            </div>)}
+        </CardContent>
+      </Card>
+      <div className="space-y-4">
+        <Card className="rounded-[22px]">
+          <CardHeader className="flex-row items-center justify-between space-y-0">
+            <CardTitle className="text-lg">Fila agora</CardTitle>
+            <span className="rounded-full bg-highlight px-2.5 py-0.5 text-xs font-extrabold text-highlight-foreground">{fila.length}</span>
+          </CardHeader>
+          <CardContent>
+            {fila.length === 0 ? <p className="flex items-center gap-2 rounded-2xl bg-success/10 p-4 text-sm font-semibold text-success"><CheckCircle2 className="h-4 w-4" />Ninguém aguardando no momento.</p>
+              : <ul className="divide-y divide-dashed divide-border">{fila.slice(0, 5).map(item => {
+                const minutos = minutosDesde(item.horario_chegada || item.created_at, agora);
+                const nomePaciente: string = item.agendamentos?.pacientes?.nome || 'Paciente';
+                return <li key={item.id} className="flex items-center gap-3 py-2.5">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent text-xs font-extrabold text-primary">{iniciaisDe(nomePaciente)}</span>
+                  <span className="min-w-0 flex-1"><span className="block truncate text-sm font-bold">{nomePaciente}</span><span className="block truncate text-xs text-muted-foreground">{formatAppointmentStatus(item.status || 'aguardando')}</span></span>
+                  {minutos !== null && <span className={cn('text-xs font-extrabold tabular-nums', minutos >= 30 ? 'text-destructive' : 'text-foreground')}>{minutos} min</span>}
+                </li>;
+              })}</ul>}
+          </CardContent>
+        </Card>
+        {tips.length > 0 && <Card className="rounded-[22px] border-dashed">
+          <CardHeader><CardTitle className="flex items-center gap-2 text-base"><Sparkles className="h-4 w-4 text-primary" />Dicas para o seu turno</CardTitle></CardHeader>
+          <CardContent><ul className="space-y-2">{tips.map(tip => <li key={tip} className="flex items-start gap-2 text-sm text-muted-foreground"><span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />{tip}</li>)}</ul></CardContent>
+        </Card>}
+      </div>
+    </div>
   </div>;
 }
 
@@ -567,7 +678,7 @@ function AdminDashboard() {
       : 0;
 
     return { receitasMes, aReceber, inadimplente, despesas, saldoLiquido, trendReceita, receitaDia, monthlyChartData, sparkReceitas, ticketMedio, atendimentosComRecebimento: atendimentosComRecebimento.length };
-  }, [lancamentos, pagamentosQuery.data, baseAgendamentos, resumo, hoje, mesAtual, anoAtual]);
+  }, [lancamentos, pagamentosQuery.data, resumo, hoje, mesAtual, anoAtual]);
 
   // Operacional e sparklines
   const operacionalStats = useMemo(() => {
@@ -593,7 +704,7 @@ function AdminDashboard() {
       .slice(0, 6);
 
     return { estoqueBaixo, filaAguardando, novosPacientesMes, sparkPacientes, sparkConsultas, medicosAtivos, proximosAgendamentos };
-  }, [resumo, agendamentos, baseAgendamentos, estoque, fila, medicos, hoje]);
+  }, [resumo, agendamentos, baseAgendamentos, estoque, fila, medicos, hoje, anoAtual, mesAtual]);
 
   // Combine all stats into single object for backward compatibility
   const stats = useMemo(() => ({
@@ -647,7 +758,7 @@ function AdminDashboard() {
         {/* ─── Welcome Hero ─── */}
         {!hasData && (
         <motion.div variants={fadeUp}>
-          <section className="relative isolate min-h-[250px] overflow-hidden rounded-2xl border border-[#0F7BFD]/10 bg-white text-[#0C1F54] shadow-sm sm:min-h-[250px]">
+          <section className="relative isolate min-h-[250px] overflow-hidden rounded-2xl border border-primary/10 bg-card text-card-foreground shadow-sm sm:min-h-[250px]">
             <img
               src={dashboardBanner}
               alt=""
@@ -659,20 +770,20 @@ function AdminDashboard() {
 
             <div className="relative flex min-h-[250px] items-center p-6 sm:p-8 lg:p-10">
               <div className="max-w-xl pb-1">
-                <p className="mb-2 text-xs font-semibold capitalize tracking-[0.08em] text-[#0F5CBD]">{hojeFormatado}<span className="mx-2 text-[#0C1F54]/35">·</span><LiveClock /></p>
-                <h1 className="text-2xl font-bold tracking-tight text-[#0C1F54] sm:text-3xl lg:text-[34px]">
+                <p className="mb-2 text-xs font-semibold capitalize tracking-[0.08em] text-primary">{hojeFormatado}<span className="mx-2 text-card-foreground/35">·</span><LiveClock /></p>
+                <h1 className="text-2xl font-bold tracking-tight text-card-foreground sm:text-3xl lg:text-[34px]">
                   {saudacao}, {firstName} <span aria-hidden="true">👋</span>
                   <br />
-                  <span className="text-[#0F7BFD]">Sua clínica, mais organizada.</span>
+                  <span className="text-primary">Sua clínica, mais organizada.</span>
                 </h1>
-                <p className="mt-2 max-w-md text-sm leading-6 text-[#0C1F54]/70">
+                <p className="mt-2 max-w-md text-sm leading-6 text-card-foreground/70">
                   Agenda, equipe e informações importantes em um só lugar.
                 </p>
                 <div className="mt-5 flex flex-wrap gap-2.5">
-                  <Button asChild className="h-10 bg-[#005ECC] text-white shadow-sm hover:bg-[#004FAE]">
+                  <Button asChild className="h-10 bg-primary text-primary-foreground shadow-sm hover:bg-primary/90">
                     <Link to="/agenda"><CalendarPlus className="h-4 w-4" />Novo atendimento<ArrowRight className="h-4 w-4" /></Link>
                   </Button>
-                  <Button asChild variant="outline" className="h-10 border-[#0C1F54]/15 bg-white/80 text-[#0C1F54] hover:bg-white">
+                  <Button asChild variant="outline" className="h-10 border-border bg-card/80 text-foreground hover:bg-card">
                     <Link to="/pacientes"><UserPlus className="h-4 w-4" />Cadastrar paciente</Link>
                   </Button>
                 </div>

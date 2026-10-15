@@ -5920,7 +5920,6 @@ export type Database = {
       }
       clinica_acesso_bloqueado: { Args: never; Returns: boolean }
       current_clinica_id: { Args: never; Returns: string }
-      delete_all_app_data: { Args: never; Returns: undefined }
       enfileirar_lembrete_risco: {
         Args: { p_agendamento_id: string }
         Returns: boolean

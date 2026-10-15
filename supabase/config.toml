@@ -65,10 +65,22 @@ verify_jwt = false
 [functions.public-checkout]
 verify_jwt = false
 
+# Backward-compatible route: the former trial checkout returns HTTP 410 and
+# performs no account, subscription, payment, or email operation.
+[functions.trial-with-payment]
+verify_jwt = false
+
+# Remove the default sample endpoint; requests receive a controlled 404.
+[functions.hello]
+verify_jwt = true
+
 [functions.public-guias-externas]
 verify_jwt = false
 
 [functions.patient-clinical-summary]
+verify_jwt = true
+
+[functions.patient-lgpd-memed-export]
 verify_jwt = true
 
 [functions.delinquency-whatsapp-reminder]

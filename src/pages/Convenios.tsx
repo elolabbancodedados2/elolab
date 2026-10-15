@@ -3,6 +3,7 @@ import {
   Plus, Search, Edit, Trash2, Building2, Shield, FileText, Clock,
   ExternalLink, User, Phone, Loader2, Globe, FlaskConical, DollarSign, Power,
 } from 'lucide-react';
+import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -638,31 +639,35 @@ function Convenios() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-[#0C1F54]">Convênios</h1>
-          <p className="text-[#0C1F54]/65">Operadoras de saúde, faturamento TISS e tabelas de preços</p>
-        </div>
-        {podeGerenciarConvenios && <Button onClick={handleNew} className="gap-2 bg-[#005ECC] text-white hover:bg-[#004FAE]"><Plus className="h-4 w-4" />Novo Convênio</Button>}
-      </div>
+      <PageHeader
+        title="Convênios"
+        description="Operadoras de saúde, faturamento TISS e tabelas de preços"
+        icon={<Building2 />}
+        actions={podeGerenciarConvenios && (
+          <Button onClick={handleNew} className="gap-2">
+            <Plus className="h-4 w-4" />
+            Novo Convênio
+          </Button>
+        )}
+      />
 
       {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Card className="border-[#D6E7F3] bg-white shadow-sm"><CardContent className="pt-4 flex items-center gap-3">
-          <div className="rounded-lg bg-[#EAF4FF] p-2"><Building2 className="h-5 w-5 text-[#005ECC]" /></div>
-          <div><p className="text-2xl font-bold text-[#0C1F54]">{(convenios as any[]).length}</p><p className="text-xs text-[#0C1F54]/60">Convênios</p></div>
+        <Card className="border-border bg-card shadow-sm"><CardContent className="pt-4 flex items-center gap-3">
+          <div className="rounded-lg bg-primary/10 p-2"><Building2 className="h-5 w-5 text-primary" /></div>
+          <div><p className="text-2xl font-bold text-foreground">{(convenios as any[]).length}</p><p className="text-xs text-muted-foreground">Convênios</p></div>
         </CardContent></Card>
-        <Card className="border-[#D6E7F3] bg-white shadow-sm"><CardContent className="pt-4 flex items-center gap-3">
-          <div className="rounded-lg bg-[#E0EBF2] p-2"><Shield className="h-5 w-5 text-[#0C1F54]" /></div>
-          <div><p className="text-2xl font-bold text-[#0C1F54]">{(convenios as any[]).filter(c => c.ativo).length}</p><p className="text-xs text-[#0C1F54]/60">Ativos</p></div>
+        <Card className="border-border bg-card shadow-sm"><CardContent className="pt-4 flex items-center gap-3">
+          <div className="rounded-lg bg-muted p-2"><Shield className="h-5 w-5 text-muted-foreground" /></div>
+          <div><p className="text-2xl font-bold text-foreground">{(convenios as any[]).filter(c => c.ativo).length}</p><p className="text-xs text-muted-foreground">Ativos</p></div>
         </CardContent></Card>
-        <Card className="border-[#D6E7F3] bg-white shadow-sm"><CardContent className="pt-4 flex items-center gap-3">
-          <div className="rounded-lg bg-[#DFF4FA] p-2"><FileText className="h-5 w-5 text-[#007B9E]" /></div>
-          <div><p className="text-2xl font-bold text-[#0C1F54]">{(convenios as any[]).filter(c => c.registro_ans).length}</p><p className="text-xs text-[#0C1F54]/60">Com ANS</p></div>
+        <Card className="border-border bg-card shadow-sm"><CardContent className="pt-4 flex items-center gap-3">
+          <div className="rounded-lg bg-info/10 p-2"><FileText className="h-5 w-5 text-info" /></div>
+          <div><p className="text-2xl font-bold text-foreground">{(convenios as any[]).filter(c => c.registro_ans).length}</p><p className="text-xs text-muted-foreground">Com ANS</p></div>
         </CardContent></Card>
-        <Card className="border-[#D6E7F3] bg-white shadow-sm"><CardContent className="pt-4 flex items-center gap-3">
-          <div className="rounded-lg bg-[#F0F7FC] p-2"><Clock className="h-5 w-5 text-[#0F7BFD]" /></div>
-          <div><p className="text-2xl font-bold text-[#0C1F54]">{(convenios as any[]).filter(c => !c.registro_ans && c.ativo).length}</p><p className="text-xs text-[#0C1F54]/60">Sem ANS</p></div>
+        <Card className="border-border bg-card shadow-sm"><CardContent className="pt-4 flex items-center gap-3">
+          <div className="rounded-lg bg-accent p-2"><Clock className="h-5 w-5 text-accent-foreground" /></div>
+          <div><p className="text-2xl font-bold text-foreground">{(convenios as any[]).filter(c => !c.registro_ans && c.ativo).length}</p><p className="text-xs text-muted-foreground">Sem ANS</p></div>
         </CardContent></Card>
       </div>
 
@@ -738,7 +743,7 @@ function Convenios() {
                         <Badge variant="outline" className="text-[10px] font-mono">{c.versao_tiss || '04.01.00'}</Badge>
                       </TableCell>
                       <TableCell>
-                        <Badge variant={c.ativo ? 'default' : 'secondary'}>
+                        <Badge variant={c.ativo ? 'success' : 'secondary'}>
                           {c.ativo ? 'Ativo' : 'Inativo'}
                         </Badge>
                       </TableCell>
@@ -757,7 +762,7 @@ function Convenios() {
                               : <Power className={cn('h-4 w-4', c.ativo ? 'text-muted-foreground' : 'text-success')} />}
                           </Button>}
                           {podeGerenciarTabelaExames && <Button variant="ghost" size="icon" aria-label={`Gerenciar preços de exames do convênio ${c.nome}`} title="Tabela de preços de exames" onClick={() => handleGerenciarPrecosExames(c)}>
-                            <FlaskConical className="h-4 w-4 text-[#005ECC]" />
+                            <FlaskConical className="h-4 w-4 text-primary" />
                           </Button>}
                           {urlHttpsSegura(c.portal_url) && (
                             <Button variant="ghost" size="icon" asChild title="Portal do convênio">
@@ -793,11 +798,11 @@ function Convenios() {
 
           <fieldset disabled={isSubmitting} className="contents">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 overflow-hidden flex flex-col">
-            <TabsList className={cn('w-full grid rounded-xl border border-[#D6E7F3] bg-[#EAF4FF] p-1', podeGerenciarConvenios ? 'grid-cols-2' : 'grid-cols-1')}>
-              {podeGerenciarConvenios && <TabsTrigger value="dados" className="gap-1.5 rounded-lg data-[state=active]:bg-white data-[state=active]:text-[#0C1F54] data-[state=active]:shadow-sm">
+            <TabsList className={cn('w-full grid rounded-xl border border-border bg-muted p-1', podeGerenciarConvenios ? 'grid-cols-2' : 'grid-cols-1')}>
+              {podeGerenciarConvenios && <TabsTrigger value="dados" className="gap-1.5 rounded-lg data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-sm">
                 <Building2 className="h-3.5 w-3.5" /> Dados do Convênio
               </TabsTrigger>}
-              {podeGerenciarTabelaExames && <TabsTrigger value="exames" disabled={!editingId} className="gap-1.5 rounded-lg data-[state=active]:bg-white data-[state=active]:text-[#0C1F54] data-[state=active]:shadow-sm">
+              {podeGerenciarTabelaExames && <TabsTrigger value="exames" disabled={!editingId} className="gap-1.5 rounded-lg data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-sm">
                 <FlaskConical className="h-3.5 w-3.5" /> Tabela de Exames
               </TabsTrigger>}
             </TabsList>

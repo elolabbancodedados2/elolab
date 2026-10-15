@@ -14,8 +14,9 @@
  *   });
  *   if (limitado) return json({ error: 'Muitas tentativas, tente em instantes.' }, 429);
  *
- * Se o banco estiver indisponível, a função devolve `false` (permite passar).
- * Perder rate limit por um momento de rede vale mais que quebrar produção.
+ * Endpoints que protegem tokens, dados pessoais, convites ou gravações públicas
+ * devem usar `failClosed: true`, para uma falha do banco não virar bypass.
+ * Endpoints sem efeito sensível podem manter o padrão fail-open.
  */
 import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
@@ -23,6 +24,8 @@ export interface RateLimitOpts {
   chave: string;
   limite: number;
   janelaSegundos?: number;
+  /** Rejeita a requisição se a proteção não puder ser consultada. */
+  failClosed?: boolean;
 }
 
 /**
@@ -41,8 +44,8 @@ export async function checarRateLimit(
   });
 
   if (error) {
-    // Falha do banco/timeout: não travar tráfego legítimo.
-    console.error('[rateLimit] falha ao consultar, deixando passar:', error.message);
+    console.error('[rateLimit] falha ao consultar:', error.message);
+    if (opts.failClosed) throw new Error('Rate limit indisponível; requisição interrompida por segurança.');
     return false;
   }
 

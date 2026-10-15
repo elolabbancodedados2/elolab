@@ -21,7 +21,7 @@ test.describe('Authentication flows', () => {
     await expect(page.getByRole('heading', { name: /acesse sua conta/i })).toBeVisible();
     await expect(page.getByRole('textbox', { name: /e-mail/i })).toBeVisible();
     await expect(page.getByRole('textbox', { name: /senha/i })).toBeVisible();
-    await expect(page.locator('form').getByRole('button', { name: 'Entrar' })).toBeVisible();
+    await expect(page.locator('form').getByRole('button', { name: 'Acessar conta' })).toBeVisible();
     await expect(page.getByRole('link', { name: /esqueci minha senha/i })).toBeVisible();
 
     expect(consoleErrors).toEqual([]);
@@ -42,7 +42,7 @@ test.describe('Authentication flows', () => {
     await page.goto('/auth');
     const email = page.getByRole('textbox', { name: /e-mail/i });
     const password = page.getByRole('textbox', { name: /senha/i });
-    const submit = page.locator('form').getByRole('button', { name: 'Entrar' });
+    const submit = page.locator('form').getByRole('button', { name: 'Acessar conta' });
     const resetLink = page.getByRole('link', { name: /esqueci minha senha/i });
 
     await expect(email).toBeVisible();

@@ -10,6 +10,7 @@ import { autorizarLeituraHistoricoPaciente } from '@/lib/prontuarioAudit';
 interface ClinicalSafetyPanelProps {
   pacienteId: string;
   alergias?: string[] | null;
+  compact?: boolean;
 }
 
 interface VitalWarning {
@@ -44,7 +45,7 @@ function splitMedications(value?: string | null): string[] {
   return value.split(/[;\n,]+/).map(item => item.trim()).filter(Boolean).slice(0, 8);
 }
 
-export function ClinicalSafetyPanel({ pacienteId, alergias = [] }: ClinicalSafetyPanelProps) {
+export function ClinicalSafetyPanel({ pacienteId, alergias = [], compact = false }: ClinicalSafetyPanelProps) {
   const { user, profile } = useSupabaseAuth();
   const { data, isLoading, isError } = useQuery({
     queryKey: ['clinical-safety-panel', user?.id ?? null, profile?.clinica_id ?? null, pacienteId],
@@ -83,22 +84,23 @@ export function ClinicalSafetyPanel({ pacienteId, alergias = [] }: ClinicalSafet
   if (isLoading) return <Skeleton className="h-24 w-full rounded-xl" />;
 
   const allergyList = alergias ?? [];
-  const hasRisk = allergyList.length > 0 || Boolean(data?.vitalWarnings.length);
+  const hasVitalRisk = Boolean(data?.vitalWarnings.length);
+  const hasRisk = hasVitalRisk || (!compact && allergyList.length > 0);
 
   return (
     <Card className={hasRisk ? 'border-destructive/40 bg-destructive/[0.02]' : 'border-border/50'}>
       <CardContent className="p-3.5">
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <ShieldAlert className={hasRisk ? 'h-4 w-4 text-destructive' : 'h-4 w-4 text-success'} />
-          <span className="text-xs font-bold">Segurança assistencial</span>
+          <span className="text-xs font-bold">{compact ? 'Contexto clínico' : 'Segurança assistencial'}</span>
           <Badge variant={hasRisk ? 'destructive' : 'secondary'} className="text-[9px]">
-            {hasRisk ? 'Revisar antes de prescrever' : 'Sem alerta crítico identificado'}
+            {hasRisk ? 'Revisar antes de prescrever' : compact && allergyList.length > 0 ? 'Alergia sinalizada na ficha' : 'Sem alerta crítico identificado'}
           </Badge>
           {isError && <span className="text-[10px] text-destructive">Não foi possível carregar todos os dados clínicos.</span>}
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <SafetyGroup icon={AlertTriangle} title="Alergias" critical items={allergyList} empty="Não relatadas" />
+        <div className={`grid gap-3 ${compact ? 'grid-cols-1' : 'sm:grid-cols-2 xl:grid-cols-4'}`}>
+          {!compact && <SafetyGroup icon={AlertTriangle} title="Alergias" critical items={allergyList} empty="Não relatadas" />}
           <SafetyGroup icon={HeartPulse} title="Problemas ativos" items={(data?.conditions ?? []).map(item => `${item.codigo_cid ? `${item.codigo_cid} · ` : ''}${item.descricao}`)} empty="Nenhum registrado" />
           <SafetyGroup icon={Pill} title="Medicamentos em uso" items={data?.medications ?? []} empty="Não informados" />
           <div className="space-y-2">

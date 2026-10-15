@@ -7,6 +7,8 @@ const birthdayPath = 'supabase/functions/birthday-greetings/index.ts';
 const queueWorkerPath = 'supabase/functions/process-notification-queue/index.ts';
 const queueRecoveryMigrationPath = 'supabase/migrations/20261011440000_fila_notificacoes_resultado_incerto.sql';
 const automationPagePath = 'src/pages/Automacoes.tsx';
+const journeyHandlerPath = 'supabase/functions/_shared/patientJourneyHandler.ts';
+const journeyMigrationPath = 'supabase/migrations/20261014231000_patient_journey_automation.sql';
 
 describe('reserva idempotente de mensagens automáticas', () => {
   it('reserva atomicamente uma chave por clínica e notificação', () => {
@@ -19,25 +21,21 @@ describe('reserva idempotente de mensagens automáticas', () => {
     expect(migration).toMatch(/FUNCTION public\.release_automation_delivery/i);
   });
 
-  it('reserva consulta e confirmação antes de enviar ou enfileirar', () => {
+  it('delegates appointment reminders to the single atomic journey producer', () => {
+    // send-appointment-reminder no longer claims deliveries inline; it is a
+    // thin wrapper over handlePatientJourney, which enqueues through
+    // enfileirar_jornada_paciente (one producer, one dedupe key per channel)
+    // instead of each entry point reserving its own claim.
     const reminder = readFileSync(reminderPath, 'utf8');
-    expect(reminder).toMatch(/claim_automation_delivery/);
-    expect(reminder.indexOf('claimAutomationDelivery', reminder.indexOf('if (automationKey === \'confirmacao_agendamento\')')))
-      .toBeGreaterThan(-1);
-    expect(reminder.indexOf('claimAutomationDelivery', reminder.indexOf('if (automationKey === \'confirmacao_agendamento\')')))
-      .toBeLessThan(reminder.indexOf('await sendSharedBrevoEmail({'));
-    expect(reminder).toMatch(/await sendWhatsAppMessage\(/);
-    expect(reminder.indexOf('claimAutomationDelivery', reminder.indexOf('if (automationKey === \'confirmacao_agendamento\')')))
-      .toBeLessThan(reminder.indexOf('await sendWhatsAppMessage('));
-    expect(reminder).toContain('tipo_notificacao: \'confirmacao_agendamento\'');
-    const window24hStart = reminder.indexOf('// === LEMBRETE 24H ===');
-    const window2hStart = reminder.indexOf('// === LEMBRETE 2H ===');
-    const processEnd = reminder.indexOf('const duration = Date.now() - startTime', window2hStart);
-    for (const section of [reminder.slice(window24hStart, window2hStart), reminder.slice(window2hStart, processEnd)]) {
-      expect(section.indexOf('claimAutomationDelivery')).toBeGreaterThan(-1);
-      expect(section.indexOf('claimAutomationDelivery')).toBeLessThan(section.indexOf('await sendSharedBrevoEmail({'));
-      expect(section.indexOf('claimAutomationDelivery')).toBeLessThan(section.indexOf('await sendWhatsAppMessage('));
-    }
+    expect(reminder).toContain("handlePatientJourney(req, 'reminders'");
+    const handler = readFileSync(journeyHandlerPath, 'utf8');
+    expect(handler).toContain("supabase.rpc('enfileirar_jornada_paciente'");
+    const migration = readFileSync(journeyMigrationPath, 'utf8');
+    expect(migration).toMatch(/UNIQUE INDEX[\s\S]*notification_queue_journey_once/i);
+    expect(migration).toMatch(/ON CONFLICT\(clinica_id,tipo,dedupe_key\) DO NOTHING/i);
+    // Avoids replaying messages the retired claim-based mechanism already
+    // delivered or left uncertain during the cutover.
+    expect(migration).toContain('automation_delivery_claims');
   });
 
   it('reserva o aniversário por paciente, clínica e data local antes do envio', () => {
@@ -63,9 +61,8 @@ describe('reserva idempotente de mensagens automáticas', () => {
     expect(page).toMatch(/action === 'retry' && !\['erro', 'cancelado'\]\.includes\(item\.status\)/);
   });
 
-  it('keeps stale claims visible and isolates each reminder delivery channel', () => {
+  it('keeps stale claims visible for the automations still using them', () => {
     const migration = readFileSync(migrationPath, 'utf8');
-    const reminder = readFileSync(reminderPath, 'utf8');
     const page = readFileSync(automationPagePath, 'utf8');
     expect(migration).toMatch(/UPDATE public\.automation_delivery_claims[\s\S]*estado = 'uncertain'[\s\S]*criado_em < now\(\) - interval '10 minutes'/i);
     expect(migration).toMatch(/automation_delivery_claims_admin_read[\s\S]*is_same_clinica\(clinica_id\)/i);
@@ -73,16 +70,16 @@ describe('reserva idempotente de mensagens automáticas', () => {
     expect(page).toMatch(/limit: deliveryClaimsPageSize, page: deliveryClaimsPage/);
     expect(page).not.toMatch(/deliveryClaimsPageSize \+ 1/);
     expect(page).toContain('Mais reservas');
-    expect(reminder).toMatch(/appointment:\$\{ag\.id\}:24h:email/);
-    expect(reminder).toMatch(/appointment:\$\{ag\.id\}:24h:whatsapp/);
-    expect(reminder).toMatch(/appointment:\$\{ag\.id\}:2h:email/);
-    expect(reminder).toMatch(/appointment:\$\{ag\.id\}:2h:whatsapp/);
+  });
+
+  it('isolates each appointment reminder channel with its own dedupe key', () => {
+    const migration = readFileSync(journeyMigrationPath, 'utf8');
+    expect(migration).toMatch(/lembrete_consulta_24h'\s*THEN\s*'24h'/);
+    expect(migration).toMatch(/tipo_lembrete',CASE p_chave WHEN 'lembrete_consulta_24h'/);
   });
 
   it('holds direct delivery claims after an ambiguous 5xx response', () => {
-    const reminder = readFileSync(reminderPath, 'utf8');
     const birthday = readFileSync(birthdayPath, 'utf8');
-    expect(reminder).toMatch(/emailRes\.status\s*>=\s*500[\s\S]*finishAutomationDelivery\([^\n]*'uncertain'/);
     expect(birthday).toMatch(/emailRes\.status\s*>=\s*500[\s\S]*finishAutomationDelivery\([^\n]*'uncertain'/);
   });
 });

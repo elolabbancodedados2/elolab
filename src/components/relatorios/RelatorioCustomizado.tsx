@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { format } from 'date-fns';
+import { formatWithDatePreference as format } from '@/lib/datePreference';
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Filter, Download, Printer, Loader2, FileSpreadsheet, RefreshCw, Star, Calendar as CalendarIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -283,9 +284,9 @@ export default function RelatorioCustomizado() {
   const location = useLocation();
   const navigate = useNavigate();
   const podeVerRelatorioPacientes = podeAcessarRelatorioCompletoDePacientes(profile?.roles);
-  const allowedDatasets: DatasetKey[] = podeVerRelatorioPacientes
+  const allowedDatasets: DatasetKey[] = useMemo(() => podeVerRelatorioPacientes
     ? Object.keys(DATASETS) as DatasetKey[]
-    : ['lancamentos', 'estoque'];
+    : ['lancamentos', 'estoque'], [podeVerRelatorioPacientes]);
   const [dataset, setDataset] = useState<DatasetKey>('lancamentos');
   const cfg = DATASETS[dataset];
 
@@ -305,6 +306,7 @@ export default function RelatorioCustomizado() {
   const [visibleCols, setVisibleCols] = useState<Set<string>>(new Set(cfg.columns.map(c => c.key)));
 
   const [rows, setRows] = useState<any[]>([]);
+  const [reportState, setReportState] = useState<'idle' | 'success' | 'error'>('idle');
   const [haMaisResultados, setHaMaisResultados] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saveOpen, setSaveOpen] = useState(false);
@@ -328,23 +330,24 @@ export default function RelatorioCustomizado() {
 
   useEffect(() => {
     if (!allowedDatasets.includes(dataset)) setDataset(allowedDatasets[0] ?? 'lancamentos');
-  }, [dataset, profile?.roles?.join(',')]);
+  }, [dataset, allowedDatasets]);
 
   useEffect(() => {
     if (ignorarResetDatasetRef.current) {
       ignorarResetDatasetRef.current = false;
       return;
     }
-    setVisibleCols(new Set(cfg.columns.map(c => c.key)));
+    setVisibleCols(new Set(DATASETS[dataset].columns.map(c => c.key)));
     setStatusFilter('todos');
     setMedicoFilter('todos');
     setConvenioFilter('todos');
     setTipoLancamento('todos');
     setGroupBy('nenhum');
     setRows([]);
+    setReportState('idle');
   }, [dataset]);
 
-  const runQuery = async () => {
+  const runQuery = useCallback(async () => {
     if (dataInicio && dataFim && dataInicio > dataFim) {
       toast.error('Período inválido', { description: 'A data inicial deve ser anterior ou igual à data final.' });
       return;
@@ -352,6 +355,7 @@ export default function RelatorioCustomizado() {
     setLoading(true);
     setRows([]);
     setHaMaisResultados(false);
+    setReportState('idle');
     try {
       if (dataset === 'prontuarios') await autorizarLeituraHistoricoClinica();
       const montarConsulta = () => {
@@ -387,14 +391,16 @@ export default function RelatorioCustomizado() {
       const resultado = data.slice(0, limiteNumerico);
       setRows(resultado);
       setHaMaisResultados(truncado);
+      setReportState('success');
       toast.success(`${resultado.length} registros encontrados${truncado ? ' (há mais resultados; ajuste os filtros para exportar tudo)' : ''}`);
     } catch (e: any) {
       console.error(e);
+      setReportState('error');
       toast.error(e.message || 'Erro ao gerar relatório');
     } finally {
       setLoading(false);
     }
-  };
+  }, [dataInicio, dataFim, dataset, cfg, statusFilter, medicoFilter, convenioFilter, tipoLancamento, valorMin, valorMax, textoBusca, limite]);
 
   useEffect(() => {
     const salvo = (location.state as any)?.relatorioSalvo;
@@ -430,13 +436,13 @@ export default function RelatorioCustomizado() {
     setRows([]);
     setExecutarAposRestauro(true);
     limparEstadoDaNavegacao();
-  }, [location.state, location.pathname, location.search, authLoading, dataset, profile?.roles?.join(','), navigate]);
+  }, [location.state, location.pathname, location.search, authLoading, dataset, allowedDatasets, navigate]);
 
   useEffect(() => {
     if (!executarAposRestauro) return;
     setExecutarAposRestauro(false);
     void runQuery();
-  }, [executarAposRestauro, dataset, dataInicio, dataFim, statusFilter, medicoFilter, convenioFilter, textoBusca, limite, valorMin, valorMax, tipoLancamento]);
+  }, [executarAposRestauro, runQuery]);
 
   const visibleColumns = useMemo(
     () => cfg.columns.filter(c => visibleCols.has(c.key)),
@@ -445,7 +451,6 @@ export default function RelatorioCustomizado() {
 
   const exportExcel = () => {
     if (!rows.length) { toast.error('Gere o relatório primeiro'); return; }
-    if (haMaisResultados) { toast.error('A exportação foi bloqueada porque há mais resultados que o limite selecionado.'); return; }
     if (haMaisResultados) { toast.error('A exportação foi bloqueada porque há mais resultados que o limite selecionado.'); return; }
     const flat = rows.map(r => {
       const o: Record<string, any> = {};
@@ -457,7 +462,6 @@ export default function RelatorioCustomizado() {
 
   const exportCSV = () => {
     if (!rows.length) { toast.error('Gere o relatório primeiro'); return; }
-    if (haMaisResultados) { toast.error('A exportação foi bloqueada porque há mais resultados que o limite selecionado.'); return; }
     if (haMaisResultados) { toast.error('A exportação foi bloqueada porque há mais resultados que o limite selecionado.'); return; }
     const head = visibleColumns.map(c => formatCsvCell(c.label)).join(';');
     const lines = rows.map(r =>
@@ -474,13 +478,12 @@ export default function RelatorioCustomizado() {
   const printReport = () => {
     if (!rows.length) { toast.error('Gere o relatório primeiro'); return; }
     if (haMaisResultados) { toast.error('A impressão foi bloqueada porque há mais resultados que o limite selecionado.'); return; }
-    if (haMaisResultados) { toast.error('A impressão foi bloqueada porque há mais resultados que o limite selecionado.'); return; }
     const w = window.open('', '_blank');
     if (!w) return;
     w.document.write(`
       <html><head><title>${escapeHtml(cfg.label)}</title>
       <style>
-        body{font-family:Arial;padding:20px;color:#000}
+        body{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;padding:20px;color:#000}
         h1{font-size:18px;margin:0 0 4px}
         .meta{color:#555;font-size:12px;margin-bottom:14px}
         table{width:100%;border-collapse:collapse;font-size:11px}
@@ -707,6 +710,15 @@ export default function RelatorioCustomizado() {
               <Star className="h-4 w-4 mr-2" /> Salvar / Agendar
             </Button>
           </div>
+          {!loading && rows.length === 0 && (
+            <p role="status" className="text-xs text-muted-foreground">
+              {reportState === 'error'
+                ? 'Não foi possível gerar o relatório. Revise os filtros ou tente novamente.'
+                : reportState === 'success'
+                  ? 'Nenhum resultado encontrado para este período e filtros. Ajuste os critérios e gere novamente.'
+                  : 'Gere o relatório para habilitar Excel, CSV e impressão.'}
+            </p>
+          )}
         </CardContent>
       </Card>
 

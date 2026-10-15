@@ -19,6 +19,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { cronSecretOk } from '../_shared/cronAuth.ts'
 import { corsPadrao } from '../_shared/cors.ts';
+import { coletarArquivosBackup, statusRestauracao } from './restoreLogic.ts'
 
 // Atribuído em cada request (reflete a origem permitida). Helpers
 // top-level (json/reply) capturam esta variável por closure.
@@ -59,39 +60,20 @@ Deno.serve(async (req) => {
     if (!pasta) {
       const { data: pastas, error } = await supabase.storage
         .from('backups-arquivos').list('', { limit: 1000, sortBy: { column: 'name', order: 'desc' } })
-      if (error) return responder({ ok: false, erro: `não consegui listar: ${error.message}` }, 500)
+      if (error) return responder({ ok: false, status: 'falha', erro: `não consegui listar: ${error.message}` }, 500)
       pasta = (pastas ?? []).find((p) => !p.metadata)?.name
       if (!pasta) return responder({ ok: false, erro: 'nenhuma pasta de arquivos encontrada' }, 404)
     }
 
-    // ─── Tudo que está guardado nessa pasta ───
-    const encontrados: Array<{ bucket: string; caminho: string }> = []
-    const filaDePastas: string[] = [pasta]
-
-    while (filaDePastas.length > 0) {
-      const atual = filaDePastas.shift()!
-      const { data: itens, error } = await supabase.storage
-        .from('backups-arquivos').list(atual, { limit: 1000 })
-      if (error) continue
-
-      for (const item of itens ?? []) {
-        const completo = `${atual}/${item.name}`
-        if (!item.metadata) { filaDePastas.push(completo); continue }
-        // O caminho é <carimbo>/<bucket>/<resto...>
-        const semCarimbo = completo.slice(pasta.length + 1)
-        const barra = semCarimbo.indexOf('/')
-        if (barra < 1) continue
-        encontrados.push({
-          bucket: semCarimbo.slice(0, barra),
-          caminho: semCarimbo.slice(barra + 1),
-        })
-      }
-    }
+    // Falhas de listagem precisam fazer parte do resultado: a árvore pode
+    // estar incompleta, portanto a restauração não pode ser marcada como sucesso.
+    const coleta = await coletarArquivosBackup(supabase.storage, pasta)
+    const encontrados = coleta.encontrados
 
     const resultado = {
       devolvidos: [] as string[],
       ja_existiam: [] as string[],
-      falharam: [] as string[],
+      falharam: [...coleta.falhasListagem],
     }
 
     for (const a of encontrados) {
@@ -132,7 +114,7 @@ Deno.serve(async (req) => {
       const { error: erroLog } = await supabase.from('automation_logs').insert({
         tipo: 'backup-restaurar-arquivos',
         nome: 'Restauração de Arquivos',
-        status: resultado.falharam.length === 0 ? 'sucesso' : 'parcial',
+        status: statusRestauracao(resultado.falharam.length),
         erro_mensagem: resultado.falharam.slice(0, 5).join('; ') || null,
         detalhes: {
           pasta,
@@ -147,6 +129,7 @@ Deno.serve(async (req) => {
 
     return responder({
       ok: resultado.falharam.length === 0,
+      status: statusRestauracao(resultado.falharam.length),
       simulacao: simular,
       pasta,
       encontrados: encontrados.length,
