@@ -269,7 +269,6 @@ function iniciaisDe(nome: string) {
 }
 
 function OperationalDashboard({ roles, nome }: { roles: string[]; nome?: string | null }) {
-  const { profile } = useSupabaseAuth();
   const agora = useClinicClock();
   const hora = Number(new Intl.DateTimeFormat('en-US', {
     timeZone: 'America/Sao_Paulo', hour: '2-digit', hourCycle: 'h23',
@@ -746,6 +745,7 @@ function AdminDashboard() {
   return (
     <div className="space-y-6 pb-10">
       <OnboardingWizard />
+      <RoleWorkspace roles={user?.roles || []} />
       {fontesNoLimite.length > 0 && (
         <div role="alert" className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm text-warning-foreground">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
