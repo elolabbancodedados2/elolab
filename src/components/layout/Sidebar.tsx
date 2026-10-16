@@ -297,8 +297,8 @@ export function Sidebar({ forceExpanded = false, onNavigate }: SidebarProps) {
       )}
 
       {/* ─── Navigation ─── */}
-      <ScrollArea className="min-h-0 flex-1">
-        <nav className="flex flex-col gap-1 px-3 py-2">
+      <ScrollArea className="min-h-0 flex-1 [&>[data-radix-scroll-area-viewport]>div]:!block">
+        <nav className="flex min-w-0 flex-col gap-1 px-3 py-2">
           {searchedGroups.map((group) => (
             <SidebarMenuGroup
               key={group.label}
