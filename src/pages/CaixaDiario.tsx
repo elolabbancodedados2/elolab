@@ -18,7 +18,7 @@ import {
   TrendingUp, TrendingDown, Banknote, CreditCard, QrCode, Wallet, ArrowDownToLine,
   ArrowUpFromLine, FileText, History, DollarSign, Receipt, ChevronRight, CalendarDays,
   BarChart3, Eye, Stethoscope, ShoppingBag, ShoppingCart, CheckCircle2, FlaskConical,
-  ArrowUpRight, ArrowDownRight, ClipboardList, Tag, User, X,
+  ArrowUpRight, ArrowDownRight, ClipboardList, Tag, User, X, FileSpreadsheet, Scale,
 } from 'lucide-react';
 
 const LazyContasReceber = lazy(() => import('./ContasReceber'));
@@ -207,6 +207,44 @@ const FORMA_LABELS: Record<string, string> = {
   transferencia: 'Transferência',
 };
 
+const CATEGORIAS_DESPESA = ['Material de escritório', 'Limpeza', 'Alimentação', 'Transporte', 'Manutenção', 'Fornecedor', 'Troco', 'Outros'];
+
+const escapeHtml = (valor: unknown) => String(valor ?? '')
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+function abrirJanelaDeImpressao(titulo: string, corpoHtml: string) {
+  const janela = window.open('', '_blank', 'noopener,noreferrer,width=900,height=1000');
+  if (!janela) {
+    toast.error('O navegador bloqueou a janela de impressão.', { description: 'Permita pop-ups para este site e tente novamente.' });
+    return;
+  }
+  janela.document.write(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>${escapeHtml(titulo)}</title>
+<style>
+  body{font-family:Inter,Arial,sans-serif;color:#111;margin:32px;font-size:13px}
+  h1{font-size:20px;margin:0 0 4px}h2{font-size:14px;margin:24px 0 8px;border-bottom:2px solid #111;padding-bottom:4px}
+  .muted{color:#666}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}
+  .box{border:1px solid #ddd;border-radius:8px;padding:8px 10px}.box b{display:block;font-size:16px;margin-top:2px}
+  table{width:100%;border-collapse:collapse;margin-top:8px}th,td{text-align:left;padding:6px 8px;border-bottom:1px solid #eee}
+  th{font-size:11px;text-transform:uppercase;color:#666}td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+  .neg{color:#b91c1c}.pos{color:#047857}.dif{font-size:18px;font-weight:700}
+  .assin{margin-top:48px;display:flex;gap:48px}.assin div{flex:1;border-top:1px solid #111;padding-top:6px;text-align:center;font-size:12px}
+  @media print{body{margin:16px}}
+</style></head><body>${corpoHtml}<script>window.onload=function(){window.print();}</script></body></html>`);
+  janela.document.close();
+}
+
+function baixarArquivo(nome: string, conteudo: string, tipo: string) {
+  const blob = new Blob([conteudo], { type: tipo });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = nome;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
 const cardVariant = {
   hidden: { opacity: 0, y: 20 },
   visible: (i: number) => ({
@@ -282,6 +320,10 @@ export default function CaixaDiario() {
 
   const [sangriaForm, setSangriaForm] = useState({ valor: '', motivo: '' });
   const [suprimentoForm, setSuprimentoForm] = useState({ valor: '', descricao: '' });
+  const [showDespesa, setShowDespesa] = useState(false);
+  const [despesaForm, setDespesaForm] = useState({ valor: '', descricao: '', categoria: 'Outros', forma_pagamento: 'dinheiro' as FormaPagamento });
+  const despesaIdempotenciaRef = useRef<{ clinicaId: string; id: string } | null>(null);
+  const [tipoFiltro, setTipoFiltro] = useState<'todos' | LancamentoTipo>('todos');
 
   // ─── Queries ────────────────────────────────────
   const { data: caixaHoje, isLoading: loadingCaixa, isError: erroCaixa, refetch: recarregarCaixa } = useQuery({
@@ -635,12 +677,20 @@ export default function CaixaDiario() {
   };
 
   const lancamentosFiltrados = useMemo(() => {
-    if (!searchTerm.trim()) return lancamentos;
+    const porTipo = tipoFiltro === 'todos' ? lancamentos : lancamentos.filter(l => l.tipo === tipoFiltro);
+    if (!searchTerm.trim()) return porTipo;
     const q = searchTerm.toLowerCase();
-    return lancamentos.filter(l =>
+    return porTipo.filter(l =>
       l.descricao.toLowerCase().includes(q) || l.tipo.includes(q)
     );
-  }, [lancamentos, searchTerm]);
+  }, [lancamentos, searchTerm, tipoFiltro]);
+
+  const contagemPorTipo = useMemo(() => ({
+    receita: lancamentos.filter(l => l.tipo === 'receita').length,
+    despesa: lancamentos.filter(l => l.tipo === 'despesa').length,
+    sangria: lancamentos.filter(l => l.tipo === 'sangria').length,
+    suprimento: lancamentos.filter(l => l.tipo === 'suprimento').length,
+  }), [lancamentos]);
 
   const valorAberturaInformado = parseMoneyInput(valorAbertura);
   const aberturaInvalida = valorAberturaInformado === null
@@ -905,6 +955,49 @@ export default function CaixaDiario() {
     },
   });
 
+  const valorDespesaInformado = parseMoneyInput(despesaForm.valor);
+  const despesaInvalida = valorDespesaInformado === null
+    || !Number.isFinite(valorDespesaInformado)
+    || valorDespesaInformado <= 0
+    || !temPrecisaoDeCentavos(valorDespesaInformado);
+
+  const adicionarDespesaMutation = useMutation({
+    mutationFn: async () => {
+      if (!profile?.clinica_id || !caixaHoje?.id) throw new Error('Caixa não está aberto');
+      const valor = parseMoneyInput(despesaForm.valor);
+      if (valor === null || valor <= 0 || !temPrecisaoDeCentavos(valor)) {
+        throw new Error('Informe um valor válido, maior que zero e com até duas casas decimais.');
+      }
+      if (!despesaForm.descricao.trim()) throw new Error('Descreva a despesa');
+      if (despesaIdempotenciaRef.current?.clinicaId !== profile.clinica_id) {
+        despesaIdempotenciaRef.current = { clinicaId: profile.clinica_id, id: novaChaveMovimentoCaixa() };
+      }
+      const id = despesaIdempotenciaRef.current.id;
+      await inserirMovimentoCaixaUmaVez({
+        id,
+        tipo: 'despesa', valor,
+        descricao: despesaForm.descricao.trim(), forma_pagamento: despesaForm.forma_pagamento,
+        categoria: despesaForm.categoria, status: 'pago', data_vencimento: today, data: today, data_pagamento: new Date().toISOString(), clinica_id: profile.clinica_id,
+      });
+    },
+    onSuccess: () => {
+      despesaIdempotenciaRef.current = null;
+      toast.success('Despesa registrada!');
+      setShowDespesa(false);
+      setDespesaForm({ valor: '', descricao: '', categoria: 'Outros', forma_pagamento: 'dinheiro' });
+      queryClient.invalidateQueries({ queryKey: ['lancamentos-caixa'] });
+      queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
+      queryClient.invalidateQueries({ queryKey: ['caixa-diario'] });
+    },
+    onError: (e: any) => {
+      queryClient.invalidateQueries({ queryKey: ['lancamentos-caixa'] });
+      queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
+      toast.error(e?.message || 'Não foi possível registrar a despesa.', {
+        description: 'Se a conexão caiu, tente novamente sem alterar os dados; o caixa verificará a tentativa antes de gravar outro movimento.',
+      });
+    },
+  });
+
   const deletarLancamentoMutation = useMutation({
     mutationFn: async (id: string) => {
       if (!profile?.clinica_id) throw new Error('Clínica não identificada. Atualize a sessão e tente novamente.');
@@ -968,6 +1061,63 @@ export default function CaixaDiario() {
     valorOriginal: l.valor,
     valorFinal: l.valor,
   });
+
+  const imprimirRelatorioFechamento = (caixa: CaixaDiarioType, movimentos: Lancamento[]) => {
+    const t = calcularTotaisCaixa(caixa.valor_abertura, movimentos);
+    const esperado = calcularSaldoGaveta(caixa.valor_abertura, movimentos);
+    const porForma: Record<string, number> = {};
+    movimentos.filter(l => l.tipo === 'receita').forEach(l => {
+      const chave = FORMA_LABELS[l.forma_pagamento] || l.forma_pagamento || 'Outros';
+      porForma[chave] = (porForma[chave] || 0) + (l.valor || 0);
+    });
+    const contado = caixa.valor_fechamento;
+    const diferenca = contado === null ? null : diferencaEmReais(contado, esperado);
+    const dataLonga = new Date(`${caixa.data}T12:00:00`).toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
+    const linhas = movimentos.map(l => {
+      const sinal = (l.tipo === 'receita' || l.tipo === 'suprimento') ? '+' : '−';
+      return `<tr><td>${escapeHtml(fmtTime(l.created_at))}</td><td>${escapeHtml(getTipoConfig(l.tipo).label)}</td><td>${escapeHtml(l.descricao)}</td><td>${escapeHtml(FORMA_LABELS[l.forma_pagamento] || l.forma_pagamento)}</td><td class="num ${sinal === '−' ? 'neg' : 'pos'}">${sinal}${escapeHtml(fmt(Math.abs(l.valor)))}</td></tr>`;
+    }).join('');
+    const corpo = `
+      <h1>Relatório de fechamento de caixa</h1>
+      <div class="muted">${escapeHtml(dataLonga)} · ${caixa.aberto ? 'Caixa ainda aberto (parcial)' : 'Caixa fechado'}${profile?.nome ? ` · emitido por ${escapeHtml(profile.nome)}` : ''} · ${escapeHtml(new Date().toLocaleString('pt-BR'))}</div>
+      <div class="grid">
+        <div class="box">Abertura<b>${escapeHtml(fmt(caixa.valor_abertura))}</b><span class="muted">${escapeHtml(caixa.operador_abertura || '—')}</span></div>
+        <div class="box">Receitas<b class="pos">${escapeHtml(fmt(t.receita))}</b></div>
+        <div class="box">Despesas<b class="neg">${escapeHtml(fmt(t.despesa))}</b></div>
+        <div class="box">Sangrias<b class="neg">${escapeHtml(fmt(t.sangria))}</b></div>
+        <div class="box">Suprimentos<b class="pos">${escapeHtml(fmt(t.suprimento))}</b></div>
+        <div class="box">Resultado financeiro<b>${escapeHtml(fmt(t.final))}</b></div>
+      </div>
+      <h2>Conferência da gaveta</h2>
+      <div class="grid">
+        <div class="box">Dinheiro esperado<b>${escapeHtml(fmt(esperado))}</b></div>
+        <div class="box">Dinheiro contado<b>${contado === null ? '—' : escapeHtml(fmt(contado))}</b><span class="muted">${escapeHtml(caixa.operador_fechamento || '')}</span></div>
+        <div class="box">Diferença<b class="dif ${diferenca === null ? '' : diferenca < 0 ? 'neg' : diferenca > 0 ? 'pos' : ''}">${diferenca === null ? '—' : escapeHtml(fmt(diferenca))}</b></div>
+      </div>
+      ${caixa.observacoes ? `<p><strong>Observações:</strong> ${escapeHtml(caixa.observacoes)}</p>` : ''}
+      <h2>Receitas por forma de pagamento</h2>
+      <table><thead><tr><th>Forma</th><th class="num">Valor</th></tr></thead><tbody>
+        ${Object.entries(porForma).sort((a, b) => b[1] - a[1]).map(([forma, valor]) => `<tr><td>${escapeHtml(forma)}</td><td class="num">${escapeHtml(fmt(valor))}</td></tr>`).join('') || '<tr><td colspan="2" class="muted">Sem receitas</td></tr>'}
+      </tbody></table>
+      <h2>Movimentações (${movimentos.length})</h2>
+      <table><thead><tr><th>Hora</th><th>Tipo</th><th>Descrição</th><th>Forma</th><th class="num">Valor</th></tr></thead><tbody>${linhas || '<tr><td colspan="5" class="muted">Nenhuma movimentação</td></tr>'}</tbody></table>
+      <div class="assin"><div>Operador do caixa</div><div>Responsável / conferência</div></div>
+    `;
+    abrirJanelaDeImpressao(`Fechamento de caixa ${caixa.data}`, corpo);
+  };
+
+  const exportarCsv = (movimentos: Lancamento[], data: string) => {
+    const cabecalho = ['Data', 'Hora', 'Tipo', 'Descrição', 'Forma de pagamento', 'Categoria', 'Valor'];
+    const linhas = movimentos.map(l => [
+      l.data, fmtTime(l.created_at), getTipoConfig(l.tipo).label, l.descricao,
+      FORMA_LABELS[l.forma_pagamento] || l.forma_pagamento, l.categoria || '',
+      ((l.tipo === 'receita' || l.tipo === 'suprimento') ? l.valor : -l.valor).toFixed(2).replace('.', ','),
+    ]);
+    const csv = [cabecalho, ...linhas]
+      .map(cols => cols.map(c => `"${String(c ?? '').replace(/"/g, '""')}"`).join(';'))
+      .join('\r\n');
+    baixarArquivo(`caixa-${data}.csv`, '﻿' + csv, 'text/csv;charset=utf-8');
+  };
 
   if (!profile?.clinica_id) {
     return <SectionFallback rows={5} />;
@@ -1036,12 +1186,12 @@ export default function CaixaDiario() {
         actions={(
           <div className="flex items-center gap-2">
             <Badge className={cn(
-              'gap-1.5 px-3 py-1 text-xs font-medium',
+              'gap-1.5 rounded-full px-3 py-1 text-xs font-semibold',
               isOpen
-                ? 'bg-success/10 text-success border-success/20'
-                : 'bg-muted text-muted-foreground border-border'
+                ? 'border-transparent bg-gradient-primary text-white hover:bg-gradient-primary'
+                : 'border-transparent bg-[#111111] text-white hover:bg-[#111111]'
             )}>
-              <span className={cn('h-2 w-2 rounded-full', isOpen ? 'bg-success animate-pulse' : 'bg-muted-foreground')} />
+              <span className={cn('h-2 w-2 rounded-full', isOpen ? 'animate-pulse bg-white' : 'bg-white/50')} />
               {isOpen ? 'Caixa Aberto' : 'Caixa Fechado'}
             </Badge>
             {isOpen && caixaHoje?.operador_abertura && (
@@ -1066,7 +1216,7 @@ export default function CaixaDiario() {
                 { v: 'relatorios', l: 'Relatórios', i: ClipboardList },
               ] : []),
             ].map(tab => (
-              <TabsTrigger key={tab.v} value={tab.v} className="min-h-10 gap-1.5 whitespace-nowrap rounded-lg px-3 text-xs">
+              <TabsTrigger key={tab.v} value={tab.v} className="min-h-10 gap-1.5 whitespace-nowrap rounded-full px-3 text-xs">
                 <tab.i className="h-3.5 w-3.5" /> {tab.l}
               </TabsTrigger>
             ))}
@@ -1098,31 +1248,43 @@ export default function CaixaDiario() {
             </div>
           )}
           {/* Action Buttons */}
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {!caixaHoje ? (
-              <Button onClick={() => setShowAbertura(true)} className="gap-2 bg-success hover:bg-success/90 text-success-foreground">
+              <Button onClick={() => setShowAbertura(true)} className="h-11 gap-2 rounded-full bg-gradient-primary px-5 text-white shadow-[0_6px_18px_rgba(16,128,202,0.35)] hover:brightness-110">
                 <Unlock className="h-4 w-4" /> Abrir Caixa
               </Button>
             ) : isOpen ? (
               <>
-                <Button onClick={() => setShowLancamento(true)} className="gap-2">
+                <Button onClick={() => setShowLancamento(true)} className="h-11 gap-2 rounded-full bg-[#111111] px-5 text-white shadow-md hover:bg-[#2b2b33]">
                   <ShoppingCart className="h-4 w-4" /> Nova Venda
                 </Button>
-                <Button onClick={() => setShowSangria(true)} variant="outline" className="gap-2 border-warning/30 text-warning hover:bg-warning/10">
+                <Button onClick={() => setShowDespesa(true)} variant="outline" className="h-11 gap-2 rounded-full border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive">
+                  <TrendingDown className="h-4 w-4" /> Despesa
+                </Button>
+                <Button onClick={() => setShowSangria(true)} variant="outline" className="h-11 gap-2 rounded-full border-warning/30 text-warning-foreground hover:bg-warning/10">
                   <ArrowDownToLine className="h-4 w-4" /> Sangria
                 </Button>
-                <Button onClick={() => setShowSuprimento(true)} variant="outline" className="gap-2 border-info/30 text-info hover:bg-info/10">
+                <Button onClick={() => setShowSuprimento(true)} variant="outline" className="h-11 gap-2 rounded-full border-[#1080CA]/30 text-[#1080CA] hover:bg-[#1080CA]/10 hover:text-[#1080CA]">
                   <ArrowUpFromLine className="h-4 w-4" /> Suprimento
                 </Button>
-                <Button onClick={() => { setCaixaParaFechar(caixaHoje); setValorFechamento(''); setObsFechamento(''); setShowFechamento(true); }} disabled={loadingLanc || lancamentosExcederamLimite} variant="destructive" className="gap-2 ml-auto">
+                <Button onClick={() => imprimirRelatorioFechamento(caixaHoje, lancamentos)} variant="ghost" className="h-11 gap-2 rounded-full text-muted-foreground" title="Relatório parcial do caixa">
+                  <Printer className="h-4 w-4" /> Relatório parcial
+                </Button>
+                <Button onClick={() => { setCaixaParaFechar(caixaHoje); setValorFechamento(''); setObsFechamento(''); setShowFechamento(true); }} disabled={loadingLanc || lancamentosExcederamLimite} variant="destructive" className="ml-auto h-11 gap-2 rounded-full px-5">
                   <Lock className="h-4 w-4" /> Fechar Caixa
                 </Button>
               </>
             ) : (
               <>
                 <p className="text-sm text-muted-foreground" role="status">Caixa encerrado. Consulta somente leitura.</p>
+                <Button variant="outline" className="h-10 gap-2 rounded-full" onClick={() => imprimirRelatorioFechamento(caixaHoje, lancamentos)}>
+                  <Printer className="h-4 w-4" /> Relatório de fechamento
+                </Button>
+                <Button variant="ghost" className="h-10 gap-2 rounded-full text-muted-foreground" onClick={() => exportarCsv(lancamentos, caixaHoje.data)}>
+                  <FileSpreadsheet className="h-4 w-4" /> CSV
+                </Button>
                 {podeReabrir ? (
-                  <Button variant="outline" className="gap-2" onClick={() => setShowReabertura(true)}>
+                  <Button variant="outline" className="ml-auto h-10 gap-2 rounded-full" onClick={() => setShowReabertura(true)}>
                     <Unlock className="h-4 w-4" /> Reabrir caixa
                   </Button>
                 ) : (
@@ -1132,36 +1294,47 @@ export default function CaixaDiario() {
             )}
           </div>
 
-          {/* KPI Cards */}
-          {isOpen && (
-            <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
-              {[
-                { label: 'Abertura', value: caixaHoje?.valor_abertura || 0, icon: Unlock, color: 'text-muted-foreground', bgIcon: 'bg-muted' },
-                { label: 'Receitas', value: totais.receita, icon: TrendingUp, color: 'text-success', bgIcon: 'bg-success/10' },
-                { label: 'Despesas', value: totais.despesa, icon: TrendingDown, color: 'text-destructive', bgIcon: 'bg-destructive/10' },
-                { label: 'Sangrias', value: totais.sangria, icon: ArrowDownToLine, color: 'text-warning', bgIcon: 'bg-warning/10' },
-                { label: 'Resultado financeiro', value: totais.final, icon: DollarSign, color: totais.final >= 0 ? 'text-success' : 'text-destructive', bgIcon: 'bg-primary/10' },
-                { label: 'Dinheiro esperado', value: saldoEsperadoGaveta, icon: Banknote, color: saldoEsperadoGaveta >= 0 ? 'text-success' : 'text-destructive', bgIcon: 'bg-success/10' },
-              ].map((kpi, i) => (
-                <motion.div key={kpi.label} custom={i} variants={cardVariant} initial="hidden" animate="visible">
-                  <Card className={cn(i === 4 && 'border-primary/30 shadow-sm')}>
-                    <CardContent className="pt-4 pb-3 px-4">
-                      <div className="flex items-center gap-2 mb-2">
-                        <div className={cn('p-1.5 rounded-lg', kpi.bgIcon)}>
-                          <kpi.icon className={cn('h-4 w-4', kpi.color)} />
+          {/* KPI Cards — visíveis com o caixa aberto ou fechado */}
+          {caixaHoje && (() => {
+            const diferencaFechamento = !isOpen && caixaHoje.valor_fechamento !== null
+              ? diferencaEmReais(caixaHoje.valor_fechamento, saldoEsperadoGaveta)
+              : null;
+            const kpis = [
+              { label: 'Abertura', value: caixaHoje.valor_abertura || 0, icon: Unlock, color: 'text-foreground', bgIcon: 'bg-muted', tom: 'claro' },
+              { label: 'Receitas', value: totais.receita, icon: TrendingUp, color: 'text-success', bgIcon: 'bg-success/10', tom: 'claro' },
+              { label: 'Despesas', value: totais.despesa, icon: TrendingDown, color: 'text-destructive', bgIcon: 'bg-destructive/10', tom: 'claro' },
+              { label: 'Sangrias', value: totais.sangria, icon: ArrowDownToLine, color: 'text-warning-foreground', bgIcon: 'bg-warning/10', tom: 'claro' },
+              { label: 'Suprimentos', value: totais.suprimento, icon: ArrowUpFromLine, color: 'text-[#1080CA]', bgIcon: 'bg-[#1080CA]/10', tom: 'claro' },
+              { label: 'Resultado financeiro', value: totais.final, icon: DollarSign, color: totais.final >= 0 ? 'text-success' : 'text-destructive', bgIcon: 'bg-muted', tom: 'claro' },
+              { label: isOpen ? 'Dinheiro esperado' : 'Esperado × contado', value: isOpen ? saldoEsperadoGaveta : (caixaHoje.valor_fechamento ?? 0), icon: isOpen ? Banknote : Scale, color: 'text-[#2ED5E7]', bgIcon: 'bg-white/10', tom: 'escuro',
+                detalhe: isOpen ? 'na gaveta agora' : diferencaFechamento === null ? `esperado ${fmt(saldoEsperadoGaveta)}` : mesmoValor(diferencaFechamento, 0) ? 'bateu com o esperado' : `${diferencaFechamento > 0 ? 'sobra' : 'falta'} de ${fmt(Math.abs(diferencaFechamento))}` },
+            ];
+            return (
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
+                {kpis.map((kpi, i) => (
+                  <motion.div key={kpi.label} custom={i} variants={cardVariant} initial="hidden" animate="visible">
+                    <Card className={cn('h-full rounded-2xl border-border/60 shadow-xs', kpi.tom === 'escuro' && 'border-transparent bg-[#111111] text-white')}>
+                      <CardContent className="px-4 pb-3 pt-4">
+                        <div className="mb-2 flex items-center gap-2">
+                          <div className={cn('rounded-lg p-1.5', kpi.bgIcon)}>
+                            <kpi.icon className={cn('h-4 w-4', kpi.color)} />
+                          </div>
+                          <span className={cn('text-xs font-medium', kpi.tom === 'escuro' ? 'text-white/70' : 'text-muted-foreground')}>{kpi.label}</span>
                         </div>
-                        <span className="text-xs font-medium text-muted-foreground">{kpi.label}</span>
-                      </div>
-                      <p className={cn('text-xl font-bold tabular-nums', kpi.color)}>{fmt(kpi.value)}</p>
-                    </CardContent>
-                  </Card>
-                </motion.div>
-              ))}
-            </div>
-          )}
+                        <p className={cn('text-xl font-bold tabular-nums', kpi.color)}>{fmt(kpi.value)}</p>
+                        {'detalhe' in kpi && kpi.detalhe && (
+                          <p className={cn('mt-0.5 text-[11px]', diferencaFechamento !== null && !mesmoValor(diferencaFechamento, 0) ? 'font-semibold text-red-300' : 'text-white/60')}>{kpi.detalhe}</p>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </motion.div>
+                ))}
+              </div>
+            );
+          })()}
 
           {/* Payment Breakdown */}
-          {isOpen && totais.receita > 0 && (
+          {caixaHoje && totais.receita > 0 && (
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
               <Card>
                 <CardHeader className="pb-3">
@@ -1175,9 +1348,9 @@ export default function CaixaDiario() {
                       const Icon = FORMA_ICONS[forma] || Banknote;
                       const pct = totais.receita > 0 ? ((valor / totais.receita) * 100).toFixed(0) : '0';
                       return (
-                        <div key={forma} className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
-                          <div className="p-2 rounded-lg bg-background">
-                            <Icon className="h-4 w-4 text-primary" />
+                        <div key={forma} className="flex items-center gap-3 rounded-xl bg-muted/50 p-3">
+                          <div className="rounded-lg bg-gradient-primary p-2 text-white">
+                            <Icon className="h-4 w-4" />
                           </div>
                           <div className="flex-1 min-w-0">
                             <p className="text-xs text-muted-foreground capitalize">{FORMA_LABELS[forma] || forma}</p>
@@ -1194,17 +1367,44 @@ export default function CaixaDiario() {
           )}
 
           {/* Lançamentos Table */}
-          {isOpen && (
-            <Card>
+          {caixaHoje && (
+            <Card className="rounded-2xl border-border/60 shadow-xs">
               <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                   <CardTitle className="text-sm font-semibold">
-                    Movimentações ({lancamentos.length})
+                    Movimentações ({lancamentosFiltrados.length}{lancamentosFiltrados.length !== lancamentos.length ? ` de ${lancamentos.length}` : ''})
                   </CardTitle>
-                  <div className="relative">
-                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                    <Input className="pl-8 w-52 h-9 text-sm" placeholder="Buscar..." aria-label="Buscar movimentações do caixa" value={searchTerm}
-                      onChange={e => setSearchTerm(e.target.value)} />
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div role="group" aria-label="Filtrar movimentações por tipo" className="flex flex-wrap items-center gap-1">
+                      {([
+                        ['todos', 'Todos', lancamentos.length],
+                        ['receita', 'Receitas', contagemPorTipo.receita],
+                        ['despesa', 'Despesas', contagemPorTipo.despesa],
+                        ['sangria', 'Sangrias', contagemPorTipo.sangria],
+                        ['suprimento', 'Suprimentos', contagemPorTipo.suprimento],
+                      ] as Array<['todos' | LancamentoTipo, string, number]>).map(([valor, rotulo, total]) => (
+                        <button
+                          key={valor}
+                          type="button"
+                          aria-pressed={tipoFiltro === valor}
+                          onClick={() => setTipoFiltro(valor)}
+                          className={cn(
+                            'inline-flex h-8 items-center gap-1 rounded-full border px-2.5 text-[11px] font-semibold transition',
+                            tipoFiltro === valor ? 'border-transparent bg-[#111111] text-white' : 'border-border/60 bg-card text-muted-foreground hover:border-[#1080CA]/40 hover:text-foreground',
+                          )}
+                        >
+                          {rotulo} <span className={cn('tabular-nums', tipoFiltro === valor ? 'text-white/70' : 'text-muted-foreground/70')}>{total}</span>
+                        </button>
+                      ))}
+                    </div>
+                    <div className="relative">
+                      <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                      <Input className="h-9 w-48 rounded-full pl-8 text-sm" placeholder="Buscar..." aria-label="Buscar movimentações do caixa" value={searchTerm}
+                        onChange={e => setSearchTerm(e.target.value)} />
+                    </div>
+                    <Button variant="ghost" size="sm" className="h-9 gap-1.5 rounded-full text-xs" onClick={() => exportarCsv(lancamentosFiltrados, caixaHoje.data)} disabled={lancamentosFiltrados.length === 0} title="Exportar as movimentações filtradas em CSV">
+                      <FileSpreadsheet className="h-3.5 w-3.5" /> CSV
+                    </Button>
                   </div>
                 </div>
               </CardHeader>
@@ -1328,7 +1528,7 @@ export default function CaixaDiario() {
                 </div>
                 <h3 className="text-lg font-semibold text-foreground mb-1">Caixa não aberto hoje</h3>
                 <p className="text-sm text-muted-foreground mb-4">Abra o caixa para iniciar as movimentações do dia</p>
-                <Button onClick={() => setShowAbertura(true)} className="gap-2 bg-success hover:bg-success/90 text-success-foreground">
+                <Button onClick={() => setShowAbertura(true)} className="h-11 gap-2 rounded-full bg-gradient-primary px-5 text-white shadow-[0_6px_18px_rgba(16,128,202,0.35)] hover:brightness-110">
                   <Unlock className="h-4 w-4" /> Abrir Caixa Agora
                 </Button>
               </CardContent>
@@ -1337,18 +1537,28 @@ export default function CaixaDiario() {
 
           {/* Closed caixa summary */}
           {caixaHoje && !isOpen && (
-            <Card>
+            <Card className="rounded-2xl border-border/60 shadow-xs">
               <CardHeader>
-                <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                  <Lock className="h-4 w-4 text-muted-foreground" /> Resumo do Caixa Fechado
+                <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+                  <Lock className="h-4 w-4 text-muted-foreground" /> Resumo do fechamento
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                  <div><p className="text-muted-foreground text-xs">Abertura</p><p className="font-bold">{fmt(caixaHoje.valor_abertura)}</p></div>
-                  <div><p className="text-muted-foreground text-xs">Fechamento</p><p className="font-bold">{fmt(caixaHoje.valor_fechamento || 0)}</p></div>
-                  <div><p className="text-muted-foreground text-xs">Operador</p><p className="font-medium">{caixaHoje.operador_fechamento || '—'}</p></div>
-                  {caixaHoje.observacoes && <div><p className="text-muted-foreground text-xs">Obs</p><p className="font-medium">{caixaHoje.observacoes}</p></div>}
+                <div className="grid grid-cols-2 gap-4 text-sm md:grid-cols-5">
+                  <div><p className="text-xs text-muted-foreground">Abertura</p><p className="font-bold tabular-nums">{fmt(caixaHoje.valor_abertura)}</p><p className="text-[11px] text-muted-foreground">{caixaHoje.operador_abertura || '—'}</p></div>
+                  <div><p className="text-xs text-muted-foreground">Dinheiro esperado</p><p className="font-bold tabular-nums">{fmt(saldoEsperadoGaveta)}</p></div>
+                  <div><p className="text-xs text-muted-foreground">Dinheiro contado</p><p className="font-bold tabular-nums">{fmt(caixaHoje.valor_fechamento || 0)}</p><p className="text-[11px] text-muted-foreground">{caixaHoje.operador_fechamento || '—'}</p></div>
+                  {(() => {
+                    const dif = caixaHoje.valor_fechamento === null ? null : diferencaEmReais(caixaHoje.valor_fechamento, saldoEsperadoGaveta);
+                    return (
+                      <div>
+                        <p className="text-xs text-muted-foreground">Diferença</p>
+                        <p className={cn('font-bold tabular-nums', dif === null ? '' : mesmoValor(dif, 0) ? 'text-success' : 'text-destructive')}>{dif === null ? '—' : fmt(dif)}</p>
+                        <p className="text-[11px] text-muted-foreground">{dif === null ? '' : mesmoValor(dif, 0) ? 'Caixa bateu' : dif > 0 ? 'Sobra na gaveta' : 'Falta na gaveta'}</p>
+                      </div>
+                    );
+                  })()}
+                  <div><p className="text-xs text-muted-foreground">Observações</p><p className="text-xs font-medium">{caixaHoje.observacoes || '—'}</p></div>
                 </div>
               </CardContent>
             </Card>
@@ -1440,8 +1650,8 @@ export default function CaixaDiario() {
                       }}
                     >
                       <div className="flex items-center gap-3">
-                        <div className={cn('p-2 rounded-lg', cx.aberto ? 'bg-success/10' : 'bg-muted')}>
-                          {cx.aberto ? <Unlock className="h-4 w-4 text-success" /> : <Lock className="h-4 w-4 text-muted-foreground" />}
+                        <div className={cn('rounded-lg p-2', cx.aberto ? 'bg-gradient-primary text-white' : 'bg-[#111111] text-white')}>
+                          {cx.aberto ? <Unlock className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
                         </div>
                         <div>
                           <p className="font-medium text-sm">{fmtDate(cx.data)}</p>
@@ -1537,7 +1747,7 @@ export default function CaixaDiario() {
           <DialogFooter>
             <Button variant="outline" disabled={abrirCaixaMutation.isPending} onClick={() => setShowAbertura(false)}>Cancelar</Button>
             <Button onClick={() => valorAberturaInformado !== null && abrirCaixaMutation.mutate(valorAberturaInformado)}
-              disabled={abrirCaixaMutation.isPending || aberturaInvalida} className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white">
+              disabled={abrirCaixaMutation.isPending || aberturaInvalida} className="gap-2 rounded-full bg-gradient-primary text-white hover:brightness-110">
               {abrirCaixaMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
               Abrir Caixa
             </Button>
@@ -1932,7 +2142,7 @@ export default function CaixaDiario() {
                     { v: 'transferencia', l: 'Transf.', i: ArrowUpFromLine },
                   ] as const).map(fp => (
                     <Button key={fp.v} variant={lancFormaPagamento === fp.v ? 'default' : 'outline'}
-                      size="sm" className="text-[10px] gap-1 h-8 px-2"
+                      size="sm" className={cn('h-8 gap-1 rounded-full px-2 text-[10px]', lancFormaPagamento === fp.v && 'border-transparent bg-gradient-primary text-white hover:brightness-110')}
                       aria-pressed={lancFormaPagamento === fp.v}
                       onClick={() => setLancFormaPagamento(fp.v as FormaPagamento)}>
                       <fp.i className="h-3 w-3" /> {fp.l}
@@ -1942,14 +2152,14 @@ export default function CaixaDiario() {
               </div>
 
               {/* Total */}
-              <div className="p-3 rounded-xl bg-primary/10 border border-primary/20 mb-3">
-                <p className="text-xs text-muted-foreground">Total a cobrar</p>
-                <p className="text-2xl font-bold text-primary tabular-nums">{fmt(carrinhoTotal)}</p>
+              <div className="mb-3 rounded-xl bg-[#111111] p-3 text-white">
+                <p className="text-xs text-white/60">Total a cobrar</p>
+                <p className="text-2xl font-bold tabular-nums text-[#2ED5E7]">{fmt(carrinhoTotal)}</p>
               </div>
 
               <Button onClick={() => adicionarLancamentoMutation.mutate()}
                 disabled={carrinho.length === 0 || descontoInvalido || adicionarLancamentoMutation.isPending}
-                className="w-full gap-2" size="lg">
+                className="w-full gap-2 rounded-full bg-gradient-primary text-white shadow-[0_6px_18px_rgba(16,128,202,0.35)] hover:brightness-110" size="lg">
                 {adicionarLancamentoMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
                 Finalizar Venda
               </Button>
@@ -2028,6 +2238,67 @@ export default function CaixaDiario() {
               className="gap-2 bg-blue-600 hover:bg-blue-700 text-white">
               {adicionarSuprimentoMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
               Adicionar Suprimento
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Despesa */}
+      <Dialog open={showDespesa} onOpenChange={open => {
+        if (open || !adicionarDespesaMutation.isPending) setShowDespesa(open);
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <TrendingDown className="h-5 w-5 text-destructive" /> Registrar despesa
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="caixa-despesa-valor" className="text-xs">Valor (R$) *</Label>
+              <Input id="caixa-despesa-valor" type="text" inputMode="decimal" placeholder="0,00" value={despesaForm.valor} autoFocus
+                onChange={e => setDespesaForm(p => ({ ...p, valor: e.target.value }))} />
+              {despesaForm.valor.trim() !== '' && despesaInvalida && (
+                <p className="text-xs text-destructive" role="alert">Informe um valor maior que zero, com até duas casas decimais.</p>
+              )}
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="caixa-despesa-descricao" className="text-xs">Descrição *</Label>
+              <Input id="caixa-despesa-descricao" placeholder="Ex.: Água mineral, material de limpeza, motoboy..." value={despesaForm.descricao}
+                onChange={e => setDespesaForm(p => ({ ...p, descricao: e.target.value }))} />
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="caixa-despesa-categoria" className="text-xs">Categoria</Label>
+                <Select value={despesaForm.categoria} onValueChange={v => setDespesaForm(p => ({ ...p, categoria: v }))}>
+                  <SelectTrigger id="caixa-despesa-categoria"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {CATEGORIAS_DESPESA.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="caixa-despesa-forma" className="text-xs">Pago com</Label>
+                <Select value={despesaForm.forma_pagamento} onValueChange={v => setDespesaForm(p => ({ ...p, forma_pagamento: v as FormaPagamento }))}>
+                  <SelectTrigger id="caixa-despesa-forma"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="dinheiro">Dinheiro da gaveta</SelectItem>
+                    <SelectItem value="pix">PIX</SelectItem>
+                    <SelectItem value="credito">Cartão de crédito</SelectItem>
+                    <SelectItem value="debito">Cartão de débito</SelectItem>
+                    <SelectItem value="transferencia">Transferência</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">Despesas pagas em dinheiro saem do valor esperado na gaveta; nas outras formas entram só no resultado financeiro.</p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" className="rounded-full" disabled={adicionarDespesaMutation.isPending} onClick={() => setShowDespesa(false)}>Cancelar</Button>
+            <Button onClick={() => adicionarDespesaMutation.mutate()} disabled={adicionarDespesaMutation.isPending || despesaInvalida || !despesaForm.descricao.trim()}
+              className="gap-2 rounded-full bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              {adicionarDespesaMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+              Registrar despesa
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2163,6 +2434,15 @@ export default function CaixaDiario() {
                     <p className="text-xs">{showDetalhesCaixa.observacoes}</p>
                   </div>
                 )}
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <Button variant="outline" size="sm" className="h-9 gap-2 rounded-full" disabled={loadingLancamentosDetalhe || erroLancamentosDetalhe} onClick={() => imprimirRelatorioFechamento(showDetalhesCaixa, lancamentosDetalhe)}>
+                  <Printer className="h-4 w-4" /> Relatório de fechamento
+                </Button>
+                <Button variant="ghost" size="sm" className="h-9 gap-2 rounded-full text-muted-foreground" disabled={lancamentosDetalhe.length === 0} onClick={() => exportarCsv(lancamentosDetalhe, showDetalhesCaixa.data)}>
+                  <FileSpreadsheet className="h-4 w-4" /> CSV
+                </Button>
               </div>
 
               <Separator />
