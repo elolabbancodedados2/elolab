@@ -1,4 +1,5 @@
 import { accessTokenMercadoPagoClinica } from './mercadoPagoClinicToken.ts';
+import { registrarResultado } from './integracoes.ts';
 
 const API_BASE = 'https://api.mercadopago.com';
 const KNOWN_STATUSES = new Set([
@@ -48,12 +49,21 @@ export async function syncMercadoPagoPointOrder(
 
   const accessToken = await accessTokenMercadoPagoClinica(service, local.clinica_id);
   if (!accessToken) throw new Error('A conta Mercado Pago da clínica foi desconectada.');
-  const response = await fetch(`${API_BASE}/v1/orders/${encodeURIComponent(orderId)}`, {
-    headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' },
-    signal: AbortSignal.timeout(12_000),
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE}/v1/orders/${encodeURIComponent(orderId)}`, {
+      headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' },
+      signal: AbortSignal.timeout(12_000),
+    });
+  } catch {
+    await registrarResultado(service, local.clinica_id, 'mercado_pago', 'Falha ao comunicar com o Mercado Pago.');
+    throw new Error('Falha ao comunicar com o Mercado Pago. Confira a conexão ou contate o suporte.');
+  }
   const gatewayOrder = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(`Não foi possível confirmar a order Point (HTTP ${response.status}).`);
+  if (!response.ok) {
+    await registrarResultado(service, local.clinica_id, 'mercado_pago', 'Falha ao comunicar com o Mercado Pago.');
+    throw new Error('Falha ao comunicar com o Mercado Pago. Confira a conexão ou contate o suporte.');
+  }
   if (
     String(gatewayOrder.id ?? '') !== orderId ||
     gatewayOrder.type !== 'point' ||
@@ -105,5 +115,6 @@ export async function syncMercadoPagoPointOrder(
     if (error) throw error;
     reconciliation = data as Record<string, unknown>;
   }
+  await registrarResultado(service, local.clinica_id, 'mercado_pago', null);
   return { found: true, status, reconciliation };
 }

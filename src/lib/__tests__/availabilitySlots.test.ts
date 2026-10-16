@@ -12,6 +12,8 @@ function makeDb(
   schedules: Schedule[],
   appointments: Array<Record<string, string>> = [],
   scheduleError: Error | null = null,
+  holds: Array<Record<string, string>> = [],
+  holdError: Error | null = null,
 ) {
   return {
     from: vi.fn((table: string) => {
@@ -20,6 +22,7 @@ function makeDb(
         eq: vi.fn(() => query),
         lte: vi.fn(() => query),
         gte: vi.fn(),
+        gt: vi.fn(() => query),
         not: vi.fn(),
         order: vi.fn(),
       };
@@ -35,6 +38,8 @@ function makeDb(
         query.gte.mockResolvedValue({ data: [], error: null });
       } else if (table === 'agendamentos') {
         query.not.mockResolvedValue({ data: appointments, error: null });
+      } else if (table === 'public_booking_holds') {
+        query.gt.mockResolvedValue({ data: holdError ? null : holds, error: holdError });
       }
       return query;
     }),
@@ -77,6 +82,21 @@ describe('disponibilidade com mais de uma faixa no mesmo dia', () => {
       .resolves.toContain('09:00');
     await expect(validarHorario(db, 'clinica-1', 'medico-1', '2030-06-03', '09:00'))
       .resolves.toEqual({ error: null, duration: 15 });
+  });
+
+  it('remove da lista uma faixa que outra pessoa reservou temporariamente', async () => {
+    const db = makeDb(mondayShifts, [], null, [{ hora_inicio: '09:45', hora_fim: '10:15' }]);
+
+    await expect(horariosLivres(db, 'clinica-1', 'medico-1', '2030-06-03'))
+      .resolves.toEqual(['09:00', '10:30', '13:00', '13:30']);
+  });
+
+  it('falha fechada quando não consegue ler reservas temporárias', async () => {
+    const dbError = new Error('hold query unavailable');
+    const db = makeDb(mondayShifts, [], null, [], dbError);
+
+    await expect(horariosLivres(db, 'clinica-1', 'medico-1', '2030-06-03'))
+      .rejects.toBe(dbError);
   });
 
   it('propaga falha de leitura em vez de apresentar erro de banco como agenda vazia', async () => {

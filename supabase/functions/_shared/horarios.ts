@@ -71,16 +71,25 @@ async function jornadasDoDia(db: any, medicoId: string, date: string): Promise<J
   });
 }
 
-async function ocupacoesDoDia(db: any, clinicId: string, medicoId: string, date: string, ignoreAppointmentId?: string) {
-  const [{ data: blocks, error: blocksError }, { data: appointments, error: appointmentsError }] = await Promise.all([
+async function ocupacoesDoDia(db: any, clinicId: string, medicoId: string, date: string, ignoreAppointmentId?: string, includeTemporaryHolds = false) {
+  const occupancyQueries = [
     db.from('bloqueios_agenda').select('hora_inicio, hora_fim, dia_inteiro')
       .eq('medico_id', medicoId).lte('data_inicio', date).gte('data_fim', date),
     db.from('agendamentos').select('id, hora_inicio, hora_fim')
       .eq('medico_id', medicoId).eq('clinica_id', clinicId).eq('data', date)
       .not('status', 'in', '("cancelado","faltou")'),
-  ]);
+  ];
+  if (includeTemporaryHolds) {
+    occupancyQueries.push(db.from('public_booking_holds').select('hora_inicio, hora_fim')
+      .eq('medico_id', medicoId).eq('clinica_id', clinicId).eq('data', date)
+      .gt('expires_at', new Date().toISOString()));
+  }
+  const occupancyResults = await Promise.all(occupancyQueries);
+  const [{ data: blocks, error: blocksError }, { data: appointments, error: appointmentsError }] = occupancyResults;
+  const holdsResult = includeTemporaryHolds ? occupancyResults[2] : null;
   if (blocksError) throw blocksError;
   if (appointmentsError) throw appointmentsError;
+  if (holdsResult?.error) throw holdsResult.error;
 
   const bloqueioDiaInteiro = (blocks || []).some((b: any) => b.dia_inteiro);
   const intervalos: Array<{ ini: number; fim: number; tipo: 'bloqueio' | 'consulta' }> = [];
@@ -94,6 +103,11 @@ async function ocupacoesDoDia(db: any, clinicId: string, medicoId: string, date:
     const ini = timeToMinutes(a.hora_inicio);
     if (ini === null) continue;
     intervalos.push({ ini, fim: timeToMinutes(a.hora_fim) ?? ini + 30, tipo: 'consulta' });
+  }
+  for (const hold of holdsResult?.data || []) {
+    const ini = timeToMinutes(hold.hora_inicio);
+    const fim = timeToMinutes(hold.hora_fim);
+    if (ini !== null && fim !== null && fim > ini) intervalos.push({ ini, fim, tipo: 'consulta' });
   }
   return { bloqueioDiaInteiro, intervalos };
 }
@@ -156,7 +170,7 @@ export async function horariosLivres(db: any, clinicId: string, medicoId: string
 
   const jornadas = await jornadasDoDia(db, medicoId, date);
   if (jornadas.length === 0) return [];
-  const { bloqueioDiaInteiro, intervalos } = await ocupacoesDoDia(db, clinicId, medicoId, date, ignoreAppointmentId);
+  const { bloqueioDiaInteiro, intervalos } = await ocupacoesDoDia(db, clinicId, medicoId, date, ignoreAppointmentId, true);
   if (bloqueioDiaInteiro) return [];
 
   const candidatos = new Set<number>();

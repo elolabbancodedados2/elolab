@@ -60,7 +60,7 @@ export default function OnboardingClinica() {
     queryKey: ['clinic-onboarding', user?.id ?? null, profile?.clinica_id ?? null],
     enabled: !!user && !!profile?.clinica_id,
     queryFn: async () => {
-      const { data, error } = await (supabase as any).rpc('clinic_onboarding_overview');
+      const { data, error } = await supabase.rpc('clinic_onboarding_overview');
       if (error) throw error;
       return data as Overview;
     },

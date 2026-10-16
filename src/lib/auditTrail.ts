@@ -4,7 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 export interface AuditEntry {
   id: string;
   timestamp: string;
-  action: 'create' | 'update' | 'delete';
+  action: 'create' | 'update' | 'delete' | 'access' | 'sign' | 'edit_request';
   collection: string;
   recordId: string;
   recordName?: string;
@@ -248,10 +248,14 @@ export const COLLECTION_LABELS: Record<string, string> = {
   fila: 'Fila',
   prescription_templates: 'Templates Prescrição',
   certificate_templates: 'Templates Atestado',
+  documentos_clinicos: 'Documentos clínicos',
 };
 
 export const ACTION_LABELS: Record<string, string> = {
   create: 'Criação',
   update: 'Atualização',
   delete: 'Exclusão',
+  access: 'Acesso',
+  sign: 'Assinatura',
+  edit_request: 'Pedido de edição',
 };

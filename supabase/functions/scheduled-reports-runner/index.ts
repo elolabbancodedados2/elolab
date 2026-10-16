@@ -104,6 +104,25 @@ function htmlEscape(v: unknown): string {
   return String(v ?? "").replace(/[&<>"']/g, (char) => entities[char]);
 }
 
+async function verificarCanalEmailAtivo(): Promise<boolean> {
+  const apiKey = Deno.env.get("BREVO_API_KEY");
+  if (!apiKey) return false;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 6_000);
+  try {
+    const response = await fetch("https://api.brevo.com/v3/account", {
+      method: "GET",
+      headers: { accept: "application/json", "api-key": apiKey },
+      signal: controller.signal,
+    });
+    return response.ok;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 Deno.serve(async (req) => {
   corsHeaders = { ...corsPadrao(req),};
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -149,6 +168,37 @@ Deno.serve(async (req) => {
     let body: any = {};
     // Corpo vazio é esperado quando o disparo vem do agendador.
     try { body = await req.json(); } catch { /* sem corpo */ }
+    const datasetSolicitado = typeof body?.dataset === "string" ? body.dataset : "";
+    const datasetPreflight = DATASET_TABLES[datasetSolicitado];
+    if (body?.action === "preflight") {
+      if (isCron || !callerId || !clinicaAlvo) {
+        return new Response(JSON.stringify({ error: "Preflight disponível somente para usuários autenticados da clínica." }), {
+          status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      if (!datasetPreflight || !datasetPreflight.allowedRoles.some((role) => callerRoles?.has(role))) {
+        return new Response(JSON.stringify({ error: "Seu perfil não pode agendar esta fonte de dados." }), {
+          status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const { data: perfis, error: perfisError } = await supabase.from("profiles")
+        .select("id,nome,email")
+        .eq("clinica_id", clinicaAlvo)
+        .eq("ativo", true)
+        .order("nome");
+      if (perfisError) throw perfisError;
+      const destinatariosAutorizados: Array<{ id: string; nome: string; email: string }> = [];
+      for (const perfil of perfis ?? []) {
+        const papeis = await rolesDoUsuario(String(perfil.id));
+        if (datasetPreflight.allowedRoles.some((role) => papeis.has(role)) && perfil.email) {
+          destinatariosAutorizados.push({ id: String(perfil.id), nome: String(perfil.nome), email: String(perfil.email) });
+        }
+      }
+      const emailAtivo = await verificarCanalEmailAtivo();
+      return new Response(JSON.stringify({ emailConfigured: emailAtivo, timezone: "America/Sao_Paulo", recipients: destinatariosAutorizados }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
     const forceId = body?.id || null;
     if (!isCron && !forceId) {
       return new Response(JSON.stringify({ error: "Informe o relatório que deseja executar." }), {
@@ -282,18 +332,38 @@ Deno.serve(async (req) => {
       // Enviar e-mail
       let delivery = "not_configured";
       if (emailConfigured && r.destinatarios?.length) {
-        const fileName = `${r.nome.replace(/\s+/g, "_")}_${new Date().toISOString().slice(0, 10)}.csv`;
-        const html = `<h2>${htmlEscape(r.nome)}</h2><p>${htmlEscape(r.descricao)}</p><p>Registros: <b>${linhasRelatorio.length}</b></p><p>Relatório anexo (CSV).</p>`;
-        const emailResponse = await sendBrevoEmail({
-          senderName: 'EloLab',
-          to: r.destinatarios,
-          subject: `📊 ${r.nome}`,
-          preheader: `Relatório salvo do EloLab: ${r.nome}.`,
-          html,
-          attachments: [{ filename: fileName, content: btoa(unescape(encodeURIComponent(csv))) }],
-        });
-        if (!emailResponse.ok) throw new Error("O serviço de e-mail recusou o envio do relatório.");
-        delivery = "sent";
+        const emailsSalvos = [...new Set((r.destinatarios as unknown[])
+          .filter((email): email is string => typeof email === "string")
+          .map((email) => email.trim().toLocaleLowerCase("pt-BR")))];
+        const { data: perfisAtivos, error: perfisAtivosError } = await supabase.from("profiles")
+          .select("id,email")
+          .eq("clinica_id", r.clinica_id)
+          .eq("ativo", true);
+        if (perfisAtivosError) throw perfisAtivosError;
+        const perfisAutorizados: string[] = [];
+        for (const perfil of perfisAtivos ?? []) {
+          const papeis = await rolesDoUsuario(String(perfil.id));
+          if (ds.allowedRoles.some((role) => papeis.has(role)) && perfil.email) {
+            perfisAutorizados.push(String(perfil.email).trim().toLocaleLowerCase("pt-BR"));
+          }
+        }
+        const destinatariosAutorizados = emailsSalvos.filter((email) => perfisAutorizados.includes(email));
+        if (!emailsSalvos.length || destinatariosAutorizados.length !== emailsSalvos.length) {
+          delivery = "recipients_invalid";
+        } else {
+          const fileName = `${r.nome.replace(/\s+/g, "_")}_${new Date().toISOString().slice(0, 10)}.csv`;
+          const html = `<h2>${htmlEscape(r.nome)}</h2><p>${htmlEscape(r.descricao)}</p><p>Registros: <b>${linhasRelatorio.length}</b></p><p>Relatório anexo (CSV).</p>`;
+          const emailResponse = await sendBrevoEmail({
+            senderName: 'EloLab',
+            to: destinatariosAutorizados,
+            subject: `📊 ${r.nome}`,
+            preheader: `Relatório salvo do EloLab: ${r.nome}.`,
+            html,
+            attachments: [{ filename: fileName, content: btoa(unescape(encodeURIComponent(csv))) }],
+          });
+          if (!emailResponse.ok) throw new Error("O serviço de e-mail recusou o envio do relatório.");
+          delivery = "sent";
+        }
       }
 
       const proxima = r.frequencia

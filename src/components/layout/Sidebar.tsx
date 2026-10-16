@@ -1,4 +1,4 @@
-import { useId, useState, useEffect } from 'react';
+import { useId, useState, useEffect, useRef } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
@@ -17,10 +17,27 @@ import { SidebarNavItem } from './SidebarNavItem';
 import { getFilteredMenuGroups, getNavigationMode, MenuGroup } from '@/config/sidebarMenu';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useUserPlan } from '@/hooks/useSubscriptionPlan';
+import { normalizarTexto } from '@/lib/buscaPaciente';
 
 const STORAGE_KEY = 'elolab_sidebar_collapsed';
 const GROUPS_KEY = 'elolab_sidebar_groups_v3';
 const DEFAULT_OPEN_GROUPS = ['Início', 'Atendimento', 'Pacientes', 'Painel da plataforma', 'Clientes', 'Receita'];
+
+function readSidebarPreference(key: string): string | null {
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeSidebarPreference(key: string, value: string) {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // Navigation remains usable when storage is disabled by the browser.
+  }
+}
 
 interface SidebarProps {
   forceExpanded?: boolean;
@@ -32,18 +49,20 @@ export function Sidebar({ forceExpanded = false, onNavigate }: SidebarProps) {
   const { hasFeature, isLoading: isPlanLoading, isError: isPlanError } = useUserPlan();
   const location = useLocation();
   const [search, setSearch] = useState('');
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const focusSearchAfterExpandRef = useRef(false);
   const navigationMode = isPlatformAdmin && !profile?.clinica_id
     ? 'platform'
     : getNavigationMode(location.pathname, isPlatformAdmin);
 
   const [collapsed, setCollapsed] = useState(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
+    const saved = readSidebarPreference(STORAGE_KEY);
     return saved === 'true';
   });
 
   const [openGroups, setOpenGroups] = useState<string[]>(() => {
     try {
-      const saved = localStorage.getItem(GROUPS_KEY);
+      const saved = readSidebarPreference(GROUPS_KEY);
       if (!saved) return DEFAULT_OPEN_GROUPS;
       const parsed = JSON.parse(saved);
       return Array.isArray(parsed) && parsed.every(item => typeof item === 'string')
@@ -54,6 +73,30 @@ export function Sidebar({ forceExpanded = false, onNavigate }: SidebarProps) {
     }
   });
   const isCollapsed = collapsed && !forceExpanded;
+
+  useEffect(() => {
+    if (!isCollapsed && focusSearchAfterExpandRef.current) {
+      searchInputRef.current?.focus();
+      focusSearchAfterExpandRef.current = false;
+    }
+  }, [isCollapsed]);
+
+  useEffect(() => {
+    const handleShortcut = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        if (isCollapsed) {
+          focusSearchAfterExpandRef.current = true;
+          setCollapsed(false);
+        } else {
+          searchInputRef.current?.focus();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleShortcut);
+    return () => window.removeEventListener('keydown', handleShortcut);
+  }, [isCollapsed]);
 
   const roleFilteredMenuGroups = getFilteredMenuGroups(
     profile?.roles || [],
@@ -75,23 +118,27 @@ export function Sidebar({ forceExpanded = false, onNavigate }: SidebarProps) {
     }))
     .filter(group => group.items.length > 0);
 
-  const searchedGroups = search.trim()
+  const normalizedSearch = normalizarTexto(search);
+  const searchedGroups = normalizedSearch
     ? filteredMenuGroups
-        .map(g => ({
-          ...g,
-          items: g.items.filter(i =>
-            i.label.toLowerCase().includes(search.toLowerCase())
-          ),
-        }))
-        .filter(g => g.items.length > 0)
+        .map(group => {
+          const groupMatches = normalizarTexto(group.label).includes(normalizedSearch);
+          return {
+            ...group,
+            items: groupMatches
+              ? group.items
+              : group.items.filter(item => normalizarTexto(item.label).includes(normalizedSearch)),
+          };
+        })
+        .filter(group => group.items.length > 0)
     : filteredMenuGroups;
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, String(collapsed));
+    writeSidebarPreference(STORAGE_KEY, String(collapsed));
   }, [collapsed]);
 
   useEffect(() => {
-    localStorage.setItem(GROUPS_KEY, JSON.stringify(openGroups));
+    writeSidebarPreference(GROUPS_KEY, JSON.stringify(openGroups));
   }, [openGroups]);
 
   useEffect(() => {
@@ -207,12 +254,20 @@ export function Sidebar({ forceExpanded = false, onNavigate }: SidebarProps) {
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-sidebar-accent-foreground/45" />
             <Input
+              ref={searchInputRef}
               aria-label="Buscar no menu"
+              aria-keyshortcuts="Control+K Meta+K"
               name="menu-search"
               autoComplete="off"
               placeholder="Buscar no menu"
               value={search}
               onChange={e => setSearch(e.target.value)}
+              onKeyDown={event => {
+                if (event.key === 'Escape' && search) {
+                  event.preventDefault();
+                  setSearch('');
+                }
+              }}
               className="h-10 rounded-full border-black/[0.08] bg-white/70 pl-10 text-sm text-sidebar-accent-foreground placeholder:text-sidebar-accent-foreground/45 focus-visible:bg-white focus-visible:ring-sidebar-accent-foreground/20"
             />
           </div>
@@ -249,10 +304,30 @@ export function Sidebar({ forceExpanded = false, onNavigate }: SidebarProps) {
               collapsed={isCollapsed}
               isOpen={openGroups.includes(group.label) || !!search.trim()}
               onToggle={() => toggleGroup(group.label)}
+              onExpand={() => {
+                setCollapsed(false);
+                setOpenGroups(previous => previous.includes(group.label) ? previous : [...previous, group.label]);
+              }}
               currentPath={location.pathname}
               onNavigate={onNavigate}
             />
           ))}
+          {normalizedSearch && searchedGroups.length === 0 && (
+            <div className="mx-1 my-4 rounded-2xl border border-black/[0.07] bg-white/65 px-4 py-4 text-center">
+              <p role="status" className="text-sm font-medium text-[#171717]">Nenhuma tela encontrada</p>
+              <p className="mt-1 text-xs leading-relaxed text-[#171717]/60">Tente outro nome de módulo ou limpe a busca.</p>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                aria-label="Limpar busca do menu"
+                onClick={() => setSearch('')}
+                className="mt-2 h-8 rounded-full px-3 text-xs text-[#171717]/75 hover:bg-black/[0.05] hover:text-[#171717]"
+              >
+                Limpar busca
+              </Button>
+            </div>
+          )}
         </nav>
       </ScrollArea>
 
@@ -276,11 +351,12 @@ interface SidebarMenuGroupProps {
   collapsed: boolean;
   isOpen: boolean;
   onToggle: () => void;
+  onExpand: () => void;
   currentPath: string;
   onNavigate?: () => void;
 }
 
-function SidebarMenuGroup({ group, collapsed, isOpen, onToggle, currentPath, onNavigate }: SidebarMenuGroupProps) {
+function SidebarMenuGroup({ group, collapsed, isOpen, onToggle, onExpand, currentPath, onNavigate }: SidebarMenuGroupProps) {
   const groupPanelId = useId();
   const GroupIcon = group.icon;
   const hasActiveChild = group.items.some(item => item.href.split('?')[0] === currentPath);
@@ -290,16 +366,15 @@ function SidebarMenuGroup({ group, collapsed, isOpen, onToggle, currentPath, onN
       <Tooltip>
         <TooltipTrigger asChild>
           <motion.button
-            onClick={() => !collapsed && onToggle()}
-            aria-label={group.label}
+            onClick={() => collapsed ? onExpand() : onToggle()}
+            aria-label={collapsed ? `Expandir menu: ${group.label}` : group.label}
             aria-expanded={!collapsed && isOpen}
             aria-controls={!collapsed && isOpen ? groupPanelId : undefined}
-            disabled={collapsed}
             whileHover={{ x: collapsed ? 0 : 2 }}
             whileTap={{ scale: 0.97 }}
             transition={{ type: 'spring', stiffness: 400, damping: 20 }}
             className={cn(
-              'w-full flex items-center gap-3 rounded-full px-3 py-2.5 text-sm font-medium transition-all duration-200',
+              'w-full flex items-center gap-3 rounded-full px-3 py-2.5 text-sm font-medium transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#171717]/50 focus-visible:ring-offset-1',
               collapsed && 'justify-center',
               hasActiveChild
                 ? 'bg-sidebar-primary text-white shadow-sm hover:text-white'
@@ -342,7 +417,7 @@ function SidebarMenuGroup({ group, collapsed, isOpen, onToggle, currentPath, onN
         </TooltipTrigger>
         {collapsed && (
           <TooltipContent side="right" className="font-medium text-xs">
-            {group.label}
+            Expandir menu · {group.label}
           </TooltipContent>
         )}
       </Tooltip>

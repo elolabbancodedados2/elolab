@@ -3,6 +3,7 @@ import { User, Session } from '@supabase/supabase-js';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { limparAuditoriaPendente } from '@/lib/auditTrail';
+import { registerAccountSessionActivity } from '@/lib/accountSessionDevice';
 
 export type AppRole = 'admin' | 'medico' | 'recepcao' | 'enfermagem' | 'financeiro';
 
@@ -250,14 +251,33 @@ export function SupabaseAuthProvider({ children }: { children: ReactNode }) {
   // Keep the persisted last-seen timestamp current while an authenticated tab
   // is visible. The platform user list uses it as a recent-activity signal.
   useEffect(() => {
-    if (!user?.id) return;
+    if (!user?.id || !session?.access_token) return;
 
     const registrarAtividade = () => {
       if (document.visibilityState !== 'visible') return;
-      void supabase
-        .from('profiles')
-        .update({ ultimo_acesso: new Date().toISOString() } as any)
-        .eq('id', user.id);
+      void registerAccountSessionActivity(
+        {
+          userId: user.id,
+          hasSession: true,
+          isVisible: document.visibilityState === 'visible',
+          userAgent: navigator.userAgent,
+        },
+        {
+          updateLastAccess: async (userId) => {
+            const { error } = await supabase
+              .from('profiles')
+              .update({ ultimo_acesso: new Date().toISOString() } as any)
+              .eq('id', userId);
+            if (error) throw error;
+          },
+          touchSession: async (userAgent) => {
+            const { error } = await supabase.rpc('touch_my_account_session', { p_user_agent: userAgent });
+            if (error) throw error;
+          },
+        },
+      ).then((recorded) => {
+        if (!recorded) console.warn('[AccountSessions] Não foi possível atualizar a atividade da sessão.');
+      });
     };
 
     registrarAtividade();
@@ -267,7 +287,7 @@ export function SupabaseAuthProvider({ children }: { children: ReactNode }) {
       window.clearInterval(interval);
       document.removeEventListener('visibilitychange', registrarAtividade);
     };
-  }, [user?.id]);
+  }, [user?.id, session?.access_token]);
 
   useEffect(() => {
     let isActive = true;

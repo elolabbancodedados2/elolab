@@ -58,6 +58,8 @@ export default function AgendamentoOnline() {
   const [carregandoSlots, setCarregandoSlots] = useState(false);
   const [erroSlots, setErroSlots] = useState('');
   const [hora, setHora] = useState('');
+  const [holdToken, setHoldToken] = useState('');
+  const [reservandoHora, setReservandoHora] = useState(false);
   const [form, setForm] = useState({ nome: '', cpf: '', telefone: '', email: '', data_nascimento: '', website: '' });
   const [aceite, setAceite] = useState(false);
   const [enviando, setEnviando] = useState(false);
@@ -66,13 +68,58 @@ export default function AgendamentoOnline() {
   const [recarregar, setRecarregar] = useState(0);
   const [recarregarInfo, setRecarregarInfo] = useState(0);
   const bookingRequestRef = useRef(0);
+  const holdRequestRef = useRef(0);
+  const holdRef = useRef<{ token: string; clinicaId: string } | null>(null);
   const sucessoRef = useRef<HTMLDivElement>(null);
   const erroRef = useRef<HTMLParagraphElement>(null);
+
+  const liberarReserva = (reserva = holdRef.current) => {
+    holdRequestRef.current += 1;
+    setReservandoHora(false);
+    if (!reserva) return;
+    if (holdRef.current?.token === reserva.token) holdRef.current = null;
+    setHoldToken('');
+    void chamar({ action: 'release', clinica_id: reserva.clinicaId, hold_token: reserva.token }).catch(() => undefined);
+  };
+
+  const selecionarHorario = async (candidato: string) => {
+    if (!medico || !data || reservandoHora) return;
+    if (holdRef.current && hora === candidato) return;
+    const requestId = ++holdRequestRef.current;
+    const reservaAnterior = holdRef.current;
+    holdRef.current = null;
+    setHoldToken('');
+    setHora('');
+    setReservandoHora(true);
+    setErro('');
+    if (reservaAnterior) {
+      void chamar({ action: 'release', clinica_id: reservaAnterior.clinicaId, hold_token: reservaAnterior.token }).catch(() => undefined);
+    }
+    const token = crypto.randomUUID();
+    try {
+      await chamar({ action: 'hold', clinica_id: clinicaId, medico_id: medico.id, data, hora: candidato, hold_token: token });
+      if (requestId !== holdRequestRef.current) {
+        void chamar({ action: 'release', clinica_id: clinicaId, hold_token: token }).catch(() => undefined);
+        return;
+      }
+      holdRef.current = { token, clinicaId };
+      setHoldToken(token);
+      setHora(candidato);
+    } catch (error) {
+      if (requestId !== holdRequestRef.current) return;
+      void chamar({ action: 'release', clinica_id: clinicaId, hold_token: token }).catch(() => undefined);
+      setErro(error instanceof Error ? error.message : 'Não foi possível reservar este horário.');
+      setRecarregar((n) => n + 1);
+    } finally {
+      if (requestId === holdRequestRef.current) setReservandoHora(false);
+    }
+  };
 
   useEffect(() => {
     // O roteador pode reutilizar esta página quando o link muda de clínica.
     // Dados pessoais e consentimento pertencem ao contexto da clínica anterior.
     bookingRequestRef.current += 1;
+    liberarReserva();
     setInicioDias(0);
     setForm({ nome: '', cpf: '', telefone: '', email: '', data_nascimento: '', website: '' });
     setAceite(false);
@@ -97,6 +144,7 @@ export default function AgendamentoOnline() {
   }, [clinicaId, recarregarInfo]);
 
   const mudarPaginaDias = (novoInicio: number) => {
+    liberarReserva();
     setInicioDias(novoInicio);
     setData('');
     setSlots(null);
@@ -134,7 +182,7 @@ export default function AgendamentoOnline() {
   const enviar = async (e: React.FormEvent) => {
     e.preventDefault();
     if (enviando) return;
-    if (!medico || !data || !hora) return;
+    if (!medico || !data || !hora || !holdToken) return;
     const nomeCompleto = form.nome.trim().replace(/\s+/g, ' ');
     if (nomeCompleto.split(' ').length < 2) {
       setErro('Informe nome e sobrenome.');
@@ -157,17 +205,21 @@ export default function AgendamentoOnline() {
     try {
       const r = await chamar<{ message: string }>({
         action: 'book', clinica_id: clinicIdAtStart, medico_id: medico.id, data, hora,
-        ...form, aceite_lgpd: aceite,
+        hold_token: holdToken, ...form, aceite_lgpd: aceite,
       });
       if (requestId !== bookingRequestRef.current) return;
+      holdRef.current = null;
+      setHoldToken('');
       setConcluido(r.message);
     } catch (err) {
       if (requestId !== bookingRequestRef.current) return;
       const erro = err instanceof Error ? err : new Error('Não foi possível concluir agora. Tente novamente.');
       setErro(erro.message);
-      if (erro instanceof ErroAgendamentoPublico && ['slot_unavailable', 'booking_unavailable'].includes(erro.code || '')) {
+      if (erro instanceof ErroAgendamentoPublico && ['slot_unavailable', 'booking_unavailable', 'hold_expired'].includes(erro.code || '')) {
+        holdRef.current = null;
+        setHoldToken('');
         setHora('');
-        if (erro.code === 'slot_unavailable') setRecarregar((n) => n + 1);
+        setRecarregar((n) => n + 1);
       }
     } finally {
       if (requestId === bookingRequestRef.current) setEnviando(false);
@@ -234,7 +286,7 @@ export default function AgendamentoOnline() {
         <CardContent className="grid gap-2 sm:grid-cols-2">
           {info.medicos.length === 0 && <p className="text-sm text-muted-foreground">Nenhum profissional com agenda online no momento.</p>}
           {info.medicos.map((m) => (
-            <button key={m.id} type="button" aria-pressed={medico?.id === m.id} onClick={() => { setMedico(m); setData(''); setSlots(null); setHora(''); setErro(''); }}
+            <button key={m.id} type="button" aria-pressed={medico?.id === m.id} onClick={() => { liberarReserva(); setMedico(m); setData(''); setSlots(null); setHora(''); setErro(''); }}
               className={cn('flex items-center gap-3 rounded-lg border p-3 text-left transition-colors hover:bg-accent/50',
                 medico?.id === m.id && 'border-primary bg-primary/5 ring-1 ring-primary')}>
               <Stethoscope className="h-5 w-5 shrink-0 text-primary" />
@@ -297,7 +349,7 @@ export default function AgendamentoOnline() {
                 return (
                   <button key={d} type="button" data-testid="online-booking-day"
                     aria-label={format(dt, "EEEE, d 'de' MMMM", { locale: ptBR })}
-                    aria-pressed={data === d} onClick={() => { setData(d); setSlots(null); setHora(''); setErroSlots(''); setErro(''); }}
+                    aria-pressed={data === d} onClick={() => { liberarReserva(); setData(d); setSlots(null); setHora(''); setErroSlots(''); setErro(''); }}
                     className={cn('flex min-w-0 flex-col items-center rounded-lg border px-0.5 py-2 text-[10px] transition-colors hover:bg-accent/50 sm:text-xs',
                       data === d && 'border-primary bg-primary text-primary-foreground hover:bg-primary')}>
                     <span className="uppercase">{diaCurto}</span>
@@ -319,12 +371,14 @@ export default function AgendamentoOnline() {
             ) : (
               <div className="grid grid-cols-4 gap-2 sm:grid-cols-6">
                 {slots?.map((h) => (
-                  <Button key={h} type="button" aria-pressed={hora === h} variant={hora === h ? 'default' : 'outline'} size="sm" onClick={() => { setHora(h); setErro(''); }}>
+                  <Button key={h} type="button" aria-pressed={hora === h} variant={hora === h ? 'default' : 'outline'} size="sm" disabled={reservandoHora} onClick={() => { void selecionarHorario(h); }}>
                     <Clock className="mr-1 h-3.5 w-3.5" />{h}
                   </Button>
                 ))}
               </div>
             ))}
+            {reservandoHora && <p role="status" aria-live="polite" className="text-sm text-muted-foreground">Reservando este horário por até cinco minutos…</p>}
+            {!!holdToken && <p role="status" className="text-sm text-muted-foreground">Horário reservado por até cinco minutos enquanto você preenche seus dados.</p>}
           </CardContent>
         </Card>
       )}
@@ -357,7 +411,7 @@ export default function AgendamentoOnline() {
                   <Link to="/politica-privacidade" target="_blank" className="text-primary underline">política de privacidade</Link>.</span>
               </label>
               {erro && <p className="text-sm text-destructive sm:col-span-2" role="alert">{erro}</p>}
-              <Button type="submit" className="sm:col-span-2" disabled={enviando || !aceite}>
+              <Button type="submit" className="sm:col-span-2" disabled={enviando || !aceite || !holdToken}>
                 {enviando ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CalendarCheck className="mr-2 h-4 w-4" />}
                 Solicitar agendamento
               </Button>

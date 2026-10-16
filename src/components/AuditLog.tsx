@@ -25,14 +25,39 @@ import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { exportAuditEntriesAsCsv, exportAuditEntriesAsJson } from '@/lib/auditExport';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
+import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
+import { formatAuditAppointmentChange } from '@/lib/auditAppointmentChanges';
 
-const ACTION_COLORS = {
+const ACTION_COLORS: Record<string, string> = {
   create: 'bg-green-100 text-green-800',
   update: 'bg-blue-100 text-blue-800',
   delete: 'bg-red-100 text-red-800',
 };
 
 export function AuditLog() {
+  const { profile } = useSupabaseAuth() as any;
+  const clinicId = profile?.clinica_id as string | undefined;
+  const appointmentReferences = useQuery({
+    queryKey: ['audit-appointment-references', clinicId],
+    enabled: Boolean(clinicId),
+    staleTime: 5 * 60 * 1000,
+    queryFn: async () => {
+      if (!clinicId) return { medicos: [], salas: [] };
+      const [medicos, salas] = await Promise.all([
+        supabase.from('medicos').select('id, nome').eq('clinica_id', clinicId),
+        supabase.from('salas').select('id, nome').eq('clinica_id', clinicId),
+      ]);
+      if (medicos.error) throw medicos.error;
+      if (salas.error) throw salas.error;
+      return { medicos: medicos.data ?? [], salas: salas.data ?? [] };
+    },
+  });
+  const auditReferences = {
+    medicos: new Map((appointmentReferences.data?.medicos ?? []).map((item) => [item.id, item.nome])),
+    salas: new Map((appointmentReferences.data?.salas ?? []).map((item) => [item.id, item.nome])),
+  };
   const [entries, setEntries] = useState<AuditEntry[]>([]);
   const [filterCollection, setFilterCollection] = useState<string>('all');
   const [filterAction, setFilterAction] = useState<string>('all');
@@ -195,14 +220,19 @@ export function AuditLog() {
                   )}
                   {entry.changes && entry.changes.length > 0 && (
                     <div className="text-xs space-y-0.5 mt-1">
-                      {entry.changes.slice(0, 5).map((c, i) => (
+                      {entry.changes.slice(0, 5).map((c, i) => {
+                        const change = entry.collection === 'agendamentos'
+                          ? formatAuditAppointmentChange(c, auditReferences)
+                          : { label: c.field, oldValue: String(c.oldValue ?? '—'), newValue: String(c.newValue ?? '—') };
+                        return (
                         <div key={i} className="text-muted-foreground">
-                          <span className="font-medium">{c.field}:</span>{' '}
-                          <span className="line-through opacity-60">{String(c.oldValue ?? '—')}</span>
+                          <span className="font-medium">{change.label}:</span>{' '}
+                          <span className="line-through opacity-60">{change.oldValue}</span>
                           {' → '}
-                          <span>{String(c.newValue ?? '—')}</span>
+                          <span>{change.newValue}</span>
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </motion.div>

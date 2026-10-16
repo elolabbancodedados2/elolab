@@ -62,6 +62,8 @@ export default function RelatoriosSalvos() {
         toast.error('Relatório já está em processamento', { description: 'Aguarde a conclusão da execução atual antes de tentar novamente.' });
       } else if (resultado.skipped) {
         toast.error('Relatório não executado', { description: 'A fonte de dados salva não é válida para este relatório.' });
+      } else if (resultado.delivery === 'recipients_invalid') {
+        toast.error('Relatório não enviado', { description: 'Um ou mais destinatários foram desativados ou perderam acesso à fonte. Edite a lista antes da próxima execução.' });
       } else if (resultado.delivery === 'not_configured' || !resultado.sent_to) {
         toast.error('Relatório não enviado', { description: 'Confira os destinatários e a configuração de envio de e-mail da clínica.' });
       } else {
@@ -152,7 +154,11 @@ export default function RelatoriosSalvos() {
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => navigate('/relatorios', { state: { relatorioSalvo: { id: it.id, dataset: it.dataset, config: it.config } } })}
+                      onClick={() => navigate('/relatorios', { state: { relatorioSalvo: {
+                        id: it.id, user_id: it.user_id, updated_at: it.updated_at, dataset: it.dataset, config: it.config,
+                        nome: it.nome, descricao: it.descricao, frequencia: it.frequencia, dia_semana: it.dia_semana,
+                        dia_mes: it.dia_mes, hora: it.hora, destinatarios: it.destinatarios, formato: it.formato, ativo: it.ativo,
+                      } } })}
                       aria-label={`Abrir filtros do relatório ${it.nome}`}
                     >
                       <SlidersHorizontal className="h-4 w-4" />

@@ -10,6 +10,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { AlertTriangle, Trash2, Save } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import type { ReactNode } from 'react';
 
 interface ConfirmDialogProps {
   open: boolean;
@@ -22,6 +23,7 @@ interface ConfirmDialogProps {
   variant?: 'default' | 'destructive' | 'warning';
   isLoading?: boolean;
   closeOnConfirm?: boolean;
+  children?: ReactNode;
 }
 
 export function ConfirmDialog({
@@ -35,6 +37,7 @@ export function ConfirmDialog({
   variant = 'default',
   isLoading = false,
   closeOnConfirm = true,
+  children,
 }: ConfirmDialogProps) {
   const Icon = variant === 'destructive' ? Trash2 : variant === 'warning' ? AlertTriangle : Save;
   
@@ -65,6 +68,7 @@ export function ConfirmDialog({
           <AlertDialogDescription className="ml-13">
             {description}
           </AlertDialogDescription>
+          {children}
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel disabled={isLoading}>{cancelLabel}</AlertDialogCancel>

@@ -31,12 +31,10 @@ import { EmptyState } from '@/components/EmptyState';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
 import { dateOnlyInTimeZone, inicioDoDiaEmFusoIso, parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
+import { calculateAttendanceRate } from '@/lib/analyticsKpis';
+import { AccessibleChartTable } from '@/components/analytics/AccessibleChartTable';
 
 const COLORS = ['hsl(var(--primary))', 'hsl(var(--success))', 'hsl(var(--warning))', 'hsl(var(--info))', 'hsl(var(--destructive))'];
-const STATUS_COMPARECEU = new Set([
-  'aguardando', 'aguardando_pagamento', 'aguardando_triagem', 'em_triagem',
-  'em_atendimento', 'finalizado', 'atendimento_finalizado', 'aguardando_pagamento_adicional',
-]);
 const STATUS_FINALIZADO = new Set(['finalizado', 'atendimento_finalizado']);
 
 function diaFinanceiro(value?: string | null): string | null {
@@ -125,7 +123,25 @@ interface KPICardProps {
   change?: number | null;
   icon: React.ReactNode;
   description?: string;
+  definition: string;
+  source: string;
+  period: string;
   tone: 'primary' | 'success' | 'accent' | 'warning';
+}
+
+function KPIDefinition({ title, definition, source, period }: Pick<KPICardProps, 'title' | 'definition' | 'source' | 'period'>) {
+  return (
+    <details className="mt-2 text-xs" data-testid="analytics-kpi-definition">
+      <summary className="w-fit cursor-pointer rounded-sm font-medium text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        Critério e fonte
+      </summary>
+      <div className="mt-2 space-y-1 rounded-md border bg-card p-2 text-muted-foreground">
+        <p><strong className="text-foreground">{title}:</strong> {definition}</p>
+        <p><strong className="text-foreground">Fonte:</strong> {source}</p>
+        <p><strong className="text-foreground">Período:</strong> {period}</p>
+      </div>
+    </details>
+  );
 }
 
 const KPI_TONES = {
@@ -142,7 +158,7 @@ const KPI_ICON_TONES = {
   warning: 'bg-warning/10 text-warning-foreground ring-warning/20',
 } as const;
 
-function KPICard({ title, value, change, icon, description, tone }: KPICardProps) {
+function KPICard({ title, value, change, icon, description, definition, source, period, tone }: KPICardProps) {
   return (
     <div data-testid="analytics-kpi" className="h-full">
       <Card className={cn('h-full border bg-gradient-to-br shadow-sm transition-shadow hover:shadow-md', KPI_TONES[tone])}>
@@ -160,6 +176,7 @@ function KPICard({ title, value, change, icon, description, tone }: KPICardProps
                 </div>
               )}
               {description && <p className="text-xs text-muted-foreground mt-1">{description}</p>}
+              <KPIDefinition title={title} definition={definition} source={source} period={period} />
             </div>
             <div className={cn('rounded-2xl p-3 ring-1', KPI_ICON_TONES[tone])}>{icon}</div>
           </div>
@@ -180,6 +197,9 @@ export default function Analytics() {
   const range = useMemo(() => getDateRange(periodPreset, customFrom, customTo), [periodPreset, customFrom, customTo]);
   const timestampRange = useMemo(() => limitesTimestampSaoPaulo(range.from, range.to), [range]);
   const rangeDays = differenceInDays(range.to, range.from) + 1;
+  const kpiPeriod = `${format(range.from, 'dd/MM/yyyy')} a ${format(range.to, 'dd/MM/yyyy')} (horário de São Paulo)`;
+  const selectedPeriodFilter = ['Janela selecionada'];
+  const appointmentChartFilters = [showComparison ? 'Comparação com o intervalo anterior ligada' : 'Comparação com o intervalo anterior desligada'];
   const prevRange = useMemo(() => ({
     from: subDays(range.from, rangeDays),
     to: subDays(range.to, rangeDays),
@@ -321,18 +341,17 @@ export default function Analytics() {
 
   // ─── KPI calculations ──────────────────────────────────
   const totalAg = agendamentos.length;
-  const compareceram = agendamentos.filter(a => STATUS_COMPARECEU.has(a.status)).length;
-  const faltaram = agendamentos.filter(a => a.status === 'faltou').length;
+  const attendance = calculateAttendanceRate(agendamentos);
+  const compareceram = attendance.attended;
+  const faltaram = attendance.missed;
   const cancelados = agendamentos.filter(a => a.status === 'cancelado').length;
-  const baseComparecimento = compareceram + faltaram;
-  const taxaComparecimento = baseComparecimento > 0 ? Math.round((compareceram / baseComparecimento) * 100) : 0;
+  const baseComparecimento = attendance.denominator;
+  const taxaComparecimento = attendance.rate ?? 0;
   const taxaCancelamento = totalAg > 0 ? Math.round((cancelados / totalAg) * 100) : 0;
 
   const prevTotalAg = prevAgendamentos.length;
-  const prevCompareceram = prevAgendamentos.filter((a: any) => STATUS_COMPARECEU.has(a.status)).length;
-  const prevFaltaram = prevAgendamentos.filter((a: any) => a.status === 'faltou').length;
-  const prevBaseComparecimento = prevCompareceram + prevFaltaram;
-  const prevTaxaComp = prevBaseComparecimento > 0 ? Math.round((prevCompareceram / prevBaseComparecimento) * 100) : 0;
+  const previousAttendance = calculateAttendanceRate(prevAgendamentos);
+  const prevTaxaComp = previousAttendance.rate ?? 0;
 
   const eventosFinanceiros = useMemo(() => eventosFinanceirosDoPeriodo(lancamentos, pagamentos, range.from, range.to), [lancamentos, pagamentos, range]);
   const eventosFinanceirosAnteriores = useMemo(() => eventosFinanceirosDoPeriodo(prevLancamentos, pagamentos, prevRange.from, prevRange.to), [prevLancamentos, pagamentos, prevRange]);
@@ -630,9 +649,12 @@ export default function Analytics() {
           change={showComparison ? (baseComparecimento > 0 ? calcChange(taxaComparecimento, prevTaxaComp) : null) : undefined}
           icon={<Users className="h-6 w-6 text-primary" />}
           tone="primary"
+          definition="Consultas finalizadas divididas pelo total de consultas finalizadas e faltas. Consultas futuras, em andamento e canceladas ficam fora do denominador."
+          source="Agendamentos, pelos estados finalizado, atendimento_finalizado e faltou."
+          period={kpiPeriod}
           description={baseComparecimento > 0
-            ? `${compareceram} compareceram de ${baseComparecimento} consultas com desfecho (${faltaram} faltas). Pagamento prévio não conta como presença.`
-            : 'Sem consultas com desfecho no período. Pagamento prévio não conta como presença.'}
+            ? `${compareceram} finalizadas de ${baseComparecimento} consultas com desfecho (${faltaram} faltas).`
+            : 'Sem consultas finalizadas ou faltas no período.'}
         />
         <KPICard
           title="Receita do Período"
@@ -640,6 +662,9 @@ export default function Analytics() {
           change={showComparison ? calcChange(receitaTotal, prevReceita) : undefined}
           icon={<DollarSign className="h-6 w-6 text-primary" />}
           tone="success"
+          definition="Soma de receitas pagas no período menos estornos cuja data ocorreu no período; registros legados sem pagamentos individuais usam o valor realizado da conta."
+          source="Pagamentos e lançamentos legados sem pagamento individual."
+          period={kpiPeriod}
           description={`Margem: ${margemLucro === null ? '—' : `${margemLucro}%`}`}
         />
         <KPICard
@@ -648,6 +673,9 @@ export default function Analytics() {
           change={showComparison ? calcChange(ticketMedio, ticketMedioAnterior) : undefined}
           icon={<TrendingUp className="h-6 w-6 text-primary" />}
           tone="accent"
+          definition="Receita vinculada a agendamentos dividida pela quantidade de agendamentos distintos com recebimento no período."
+          source="Pagamentos/lançamentos vinculados a agendamento."
+          period={kpiPeriod}
           description={`Média por atendimento com recebimento · Lucro: ${lucroLiquido.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`}
         />
         <KPICard
@@ -656,6 +684,9 @@ export default function Analytics() {
           change={showComparison ? calcChange(totalAg, prevTotalAg) : undefined}
           icon={<CalendarIcon className="h-6 w-6 text-primary" />}
           tone="warning"
+          definition="Contagem de todos os agendamentos com data dentro do período, independentemente do status."
+          source="Agendamentos, campo data."
+          period={kpiPeriod}
           description={`${cancelados} cancelados (${taxaCancelamento}%)`}
         />
       </div>
@@ -668,21 +699,25 @@ export default function Analytics() {
           {showComparison && <p className={cn('text-[10px]', changeDespesas === null ? 'text-muted-foreground' : changeDespesas <= 0 ? 'text-success' : 'text-destructive')}>
             {changeDespesas === null ? 'Sem base anterior para comparar' : `${changeDespesas <= 0 ? '↓' : '↑'} ${Math.abs(changeDespesas)}% vs anterior`}
           </p>}
+          <KPIDefinition title="Despesas" definition="Soma das despesas pagas no período menos estornos ocorridos no período; contas legadas sem pagamentos individuais usam o valor realizado da conta." source="Pagamentos e lançamentos legados sem pagamento individual." period={kpiPeriod} />
         </CardContent></Card>
         <Card><CardContent className="pt-5">
           <p className="text-xs text-muted-foreground">Triagens</p>
           <p className="text-xl font-bold tabular-nums">{triagens.length}</p>
           <p className="text-[10px] text-muted-foreground">No período selecionado</p>
+          <KPIDefinition title="Triagens" definition="Quantidade de registros criados dentro do período selecionado." source="Triagens, campo created_at." period={kpiPeriod} />
         </CardContent></Card>
         <Card><CardContent className="pt-5">
           <p className="text-xs text-muted-foreground">Margem de Lucro</p>
           <p className={cn('text-xl font-bold tabular-nums', margemLucro === null ? 'text-muted-foreground' : margemLucro >= 0 ? 'text-success' : 'text-destructive')}>{margemLucro === null ? '—' : `${margemLucro}%`}</p>
           <p className="text-[10px] text-muted-foreground">Receita - Despesa / Receita</p>
+          <KPIDefinition title="Margem de lucro" definition="(Receita - despesas) ÷ receita × 100. Sem receita, o indicador fica indisponível." source="Os mesmos eventos de pagamentos e lançamentos usados em Receita e Despesas." period={kpiPeriod} />
         </CardContent></Card>
         <Card><CardContent className="pt-5">
-          <p className="text-xs text-muted-foreground">Média Diária Atendimentos</p>
+          <p className="text-xs text-muted-foreground">Média diária de agendamentos</p>
           <p className="text-xl font-bold tabular-nums">{(totalAg / (rangeDays || 1)).toFixed(1)}</p>
           <p className="text-[10px] text-muted-foreground">consultas/dia</p>
+          <KPIDefinition title="Média diária de atendimentos" definition="Total de agendamentos ÷ quantidade inclusiva de dias do período." source="Agendamentos, campo data." period={kpiPeriod} />
         </CardContent></Card>
       </div>
 
@@ -716,6 +751,13 @@ export default function Analytics() {
                     {showComparison && <Legend />}
                   </BarChart>
                 </ResponsiveContainer>
+                <AccessibleChartTable
+                  title="Agendamentos por dia"
+                  period={kpiPeriod}
+                  filters={appointmentChartFilters}
+                  columns={[{ key: 'dia', label: 'Dia' }, { key: 'agendamentos', label: 'Agendamentos' }, ...(showComparison ? [{ key: 'anterior', label: 'Período anterior' }] : [])]}
+                  rows={agPorDia.map(point => ({ dia: point.dia, agendamentos: point.agendamentos, ...(showComparison ? { anterior: point.anterior ?? 0 } : {}) }))}
+                />
               </CardContent>
             </Card>
 
@@ -735,6 +777,13 @@ export default function Analytics() {
                     <Tooltip />
                   </PieChart>
                 </ResponsiveContainer>
+                <AccessibleChartTable
+                  title="Status dos agendamentos"
+                  period={kpiPeriod}
+                  filters={selectedPeriodFilter}
+                  columns={[{ key: 'status', label: 'Status' }, { key: 'quantidade', label: 'Agendamentos' }]}
+                  rows={statusAgendamentos.map(item => ({ status: item.name, quantidade: item.value }))}
+                />
               </CardContent>
             </Card>
           </div>
@@ -785,6 +834,13 @@ export default function Analytics() {
                   })}
                 </div>
               )}
+              <AccessibleChartTable
+                title="Produtividade por médico"
+                period={kpiPeriod}
+                filters={selectedPeriodFilter}
+                columns={[{ key: 'medico', label: 'Médico' }, { key: 'especialidade', label: 'Especialidade' }, { key: 'agendamentos', label: 'Agendamentos' }, { key: 'finalizados', label: 'Finalizados' }, { key: 'taxa', label: 'Taxa de finalização (%)' }]}
+                rows={produtividade.map(item => ({ medico: nomeMedico(item.nome), especialidade: item.especialidade, agendamentos: item.total, finalizados: item.finalizados, taxa: item.total > 0 ? Math.round((item.finalizados / item.total) * 100) : 0 }))}
+              />
             </CardContent>
           </Card>
         </TabsContent>
@@ -827,6 +883,13 @@ export default function Analytics() {
                   <Legend />
                 </AreaChart>
               </ResponsiveContainer>
+                <AccessibleChartTable
+                  title="Fluxo de caixa"
+                  period={kpiPeriod}
+                  filters={selectedPeriodFilter}
+                  columns={[{ key: 'dia', label: 'Dia' }, { key: 'receitas', label: 'Receitas (R$)' }, { key: 'despesas', label: 'Despesas (R$)' }, { key: 'saldo', label: 'Saldo (R$)' }]}
+                  rows={fluxoCaixa}
+                />
             </CardContent>
           </Card>
         </TabsContent>
@@ -849,6 +912,13 @@ export default function Analytics() {
                     <Tooltip />
                   </PieChart>
                 </ResponsiveContainer>
+                <AccessibleChartTable
+                  title="Classificação de risco das triagens"
+                  period={kpiPeriod}
+                  filters={selectedPeriodFilter}
+                  columns={[{ key: 'classificacao', label: 'Classificação' }, { key: 'quantidade', label: 'Triagens' }]}
+                  rows={classificacaoRisco.map(item => ({ classificacao: item.name, quantidade: item.value }))}
+                />
               </CardContent>
             </Card>
 

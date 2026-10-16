@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ExternalLink, KeyRound, Loader2, PlugZap, Unplug } from 'lucide-react';
+import { ExternalLink, KeyRound, Loader2, PlugZap, Unplug, CircleCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -23,7 +23,7 @@ interface Campo {
 interface Integracao { id: string; nome: string; descricao: string; escopo: 'clinica' | 'profissional'; campos: Campo[]; documentacao?: string; somenteStatus?: boolean }
 interface Conexao {
   provedor: string; referencia_id: string | null; status: 'conectado' | 'erro' | 'desconectado';
-  config: Record<string, string>; segredo_dica: string | null; ultimo_erro: string | null; conectado_em: string; updated_at: string;
+  config: Record<string, string>; ultimo_erro: string | null; ultimo_teste_em: string | null; conectado_em: string; updated_at: string;
 }
 
 async function chamar<T>(body: Record<string, unknown>, funcao = 'clinic-integrations'): Promise<T> {
@@ -38,7 +38,7 @@ async function chamar<T>(body: Record<string, unknown>, funcao = 'clinic-integra
 }
 
 const STATUS: Record<Conexao['status'], { rotulo: string; variante: 'outline' | 'destructive' | 'secondary' }> = {
-  conectado: { rotulo: 'Credencial salva', variante: 'outline' },
+  conectado: { rotulo: 'Conectada', variante: 'outline' },
   erro: { rotulo: 'Com erro', variante: 'destructive' },
   desconectado: { rotulo: 'Desconectado', variante: 'secondary' },
 };
@@ -49,6 +49,13 @@ const formatarDataConexao = (valor: string | null | undefined) => {
   return Number.isNaN(data.getTime())
     ? 'data indisponível'
     : formatDateInTimeZone(data);
+};
+
+const formatarDataHoraConexao = (valor: string) => {
+  const data = new Date(valor);
+  return Number.isNaN(data.getTime()) ? 'data indisponível' : new Intl.DateTimeFormat('pt-BR', {
+    timeZone: 'America/Sao_Paulo', dateStyle: 'short', timeStyle: 'short',
+  }).format(data);
 };
 
 /**
@@ -65,10 +72,12 @@ export function IntegracoesClinica() {
     queryKey: ['integracoes-clinica', user?.id ?? null, profile?.clinica_id ?? null],
     queryFn: () => chamar<{ catalogo: Integracao[]; conexoes: Conexao[] }>({ action: 'list' }),
     enabled: !!user && !!profile?.clinica_id,
+    refetchInterval: 60_000,
   });
   const [aberta, setAberta] = useState<{ integracao: Integracao; referencia_id: string | null; versaoEsperada: string | null } | null>(null);
   const [valores, setValores] = useState<Record<string, string>>({});
   const [salvando, setSalvando] = useState(false);
+  const [testando, setTestando] = useState<string | null>(null);
 
   useEffect(() => {
     const retornoOAuth = searchParams.get('mercado_pago');
@@ -125,6 +134,30 @@ export function IntegracoesClinica() {
     }
   };
 
+  const testarConexao = async (integracao: Integracao) => {
+    setTestando(integracao.id);
+    try {
+      const result = await chamar<{ healthy: boolean; code?: string }>({ action: 'test', provedor: integracao.id });
+      if (result.healthy) {
+        toast.success('Conexão validada', { description: 'O Mercado Pago respondeu e a conta vinculada confere.' });
+      } else {
+        const orientacoes: Record<string, string> = {
+          not_connected: 'Conecte a conta Mercado Pago e tente novamente.',
+          credential_expired: 'A autorização expirou. Reconecte a conta Mercado Pago para renovar o acesso.',
+          credential_rejected: 'A autorização pode ter expirado ou sido revogada. Reconecte a conta Mercado Pago.',
+          identity_mismatch: 'A conta vinculada não corresponde à conexão salva. Reconecte a conta correta.',
+          provider_unavailable: 'O Mercado Pago não respondeu agora. Confira a disponibilidade e tente novamente em instantes.',
+        };
+        toast.error('Não foi possível validar a conexão', { description: orientacoes[result.code ?? ''] ?? 'Revise a conexão ou contate o suporte.' });
+      }
+      await queryClient.invalidateQueries({ queryKey: ['integracoes-clinica'] });
+    } catch (e: any) {
+      toast.error('Não foi possível testar a conexão', { description: e.message || 'Revise a conexão ou contate o suporte.' });
+    } finally {
+      setTestando(null);
+    }
+  };
+
   const desconectar = async (integracao: Integracao, referencia_id: string | null) => {
     const detalhe = integracao.id === 'mercado_pago'
       ? 'O EloLab apagará a autorização salva. Para revogar também o acesso da aplicação, faça isso nas configurações da sua conta Mercado Pago.'
@@ -158,7 +191,7 @@ export function IntegracoesClinica() {
             <p className="text-xs text-muted-foreground">
               {ativa ? <>Prescritor registrado · desde {formatarDataConexao(c.conectado_em)}</> : 'Ainda sem prescrição feita por este médico'}
             </p>
-            {c?.status === 'erro' && c.ultimo_erro && <p className="mt-1 text-xs text-destructive">{c.ultimo_erro}</p>}
+            {c?.status === 'erro' && c.ultimo_erro && <p className="mt-1 text-xs text-destructive">Falha ao comunicar com o provedor. Confira a conexão ou contate o suporte.</p>}
           </div>
           {c && <Badge variant={STATUS[c.status].variante}>{STATUS[c.status].rotulo === 'Credencial salva' ? 'Registrado' : STATUS[c.status].rotulo}</Badge>}
         </div>
@@ -169,12 +202,25 @@ export function IntegracoesClinica() {
         <div className="min-w-0">
           <p className="truncate font-medium">{titulo ?? integracao.nome}</p>
           <p className="text-xs text-muted-foreground">
-          {ativa ? <>{integracao.id === 'mercado_pago' && c.config.nickname ? `Conta ${c.config.nickname} · ` : ''}{integracao.id === 'mercado_pago' ? 'conectada' : `Credencial ${c.segredo_dica ?? 'salva'}`} · desde {formatarDataConexao(c.conectado_em)}</> : 'Opcional · não conectado'}
+          {ativa ? <>{integracao.id === 'mercado_pago' && c.config.nickname ? `Conta ${c.config.nickname} · ` : ''}{integracao.id === 'mercado_pago' ? 'conectada' : 'credencial salva'} · desde {formatarDataConexao(c.conectado_em)}</> : 'Opcional · não conectado'}
           </p>
-          {c?.status === 'erro' && c.ultimo_erro && <p className="mt-1 text-xs text-destructive">{c.ultimo_erro}</p>}
+          {ativa && (
+            <p className="mt-1 text-xs text-muted-foreground" role="status">
+              {c.ultimo_teste_em
+                ? <time dateTime={c.ultimo_teste_em}>{c.status === 'erro' ? 'Última tentativa de sincronização' : 'Última sincronização'}: {formatarDataHoraConexao(c.ultimo_teste_em)}</time>
+                : 'Nenhuma sincronização registrada'}
+            </p>
+          )}
+          {c?.status === 'erro' && <p className="mt-1 text-xs text-destructive" role="alert">Falha na última comunicação. Revise a conexão ou contate o suporte.</p>}
         </div>
         <div className="flex items-center gap-2">
           {c && <Badge variant={STATUS[c.status].variante}>{integracao.id === 'mercado_pago' && c.status === 'conectado' ? 'Conta conectada' : STATUS[c.status].rotulo}</Badge>}
+          {integracao.id === 'mercado_pago' && ativa && (
+            <Button size="sm" variant="outline" disabled={testando !== null || salvando} aria-label={`Testar conexão ${integracao.nome}`} onClick={() => void testarConexao(integracao)}>
+              {testando === integracao.id ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <CircleCheck className="mr-1.5 h-3.5 w-3.5" />}
+              Testar conexão
+            </Button>
+          )}
           <Button size="sm" variant={ativa ? 'outline' : 'default'} disabled={salvando}
             onClick={() => integracao.id === 'mercado_pago' ? void conectarMercadoPago() : abrir(integracao, referencia_id)}>
             {integracao.id === 'mercado_pago' ? <ExternalLink className="mr-1.5 h-3.5 w-3.5" /> : <KeyRound className="mr-1.5 h-3.5 w-3.5" />}

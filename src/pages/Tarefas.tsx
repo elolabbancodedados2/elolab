@@ -31,7 +31,7 @@ import { DraftRecoveryNotice } from '@/components/DraftRecoveryNotice';
 import { withSafeRetry } from '@/lib/retry';
 import { ErrorState } from '@/components/ErrorState';
 import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
-import { getInitialTaskView, taskMatchesSearch } from './taskViewMode';
+import { getInitialTaskView, taskMatchesAssignee, taskMatchesSearch } from './taskViewMode';
 
 // ─── Config ────────────────────────────────────────────────
 const statusConfig: Record<string, { label: string; icon: typeof Circle; colorClasses: string }> = {
@@ -298,6 +298,7 @@ export default function Tarefas() {
   const [search, setSearch] = useState('');
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [filterStatus, setFilterStatus] = useState('all');
+  const [onlyMine, setOnlyMine] = useState(false);
   const [showNew, setShowNew] = useState(false);
   const [viewMode, setViewMode] = useState<'list' | 'kanban'>(() => getInitialTaskView(
     typeof window !== 'undefined' && typeof window.matchMedia === 'function'
@@ -454,9 +455,10 @@ export default function Tarefas() {
       const matchSearch = taskMatchesSearch(t, search);
       const matchStatus = filterStatus === 'all' ||
         (filterStatus === 'overdue' ? tarefaVencida(t, hoje) : t.status === filterStatus);
-      return matchSearch && matchStatus;
+      const matchAssignee = taskMatchesAssignee(t, onlyMine, user?.id);
+      return matchSearch && matchStatus && matchAssignee;
     });
-  }, [enrichedTarefas, search, filterStatus, hoje]);
+  }, [enrichedTarefas, search, filterStatus, onlyMine, user?.id, hoje]);
 
   const stats = useMemo(() => ({
     total: enrichedTarefas.length,
@@ -596,15 +598,24 @@ export default function Tarefas() {
             {Object.entries(statusConfig).map(([k, v]) => <SelectItem key={k} value={k}>{v.label}</SelectItem>)}
           </SelectContent>
         </Select>
-        {(filterStatus !== 'all' || search) && (
-          <Button variant="ghost" size="sm" className="h-11 gap-1 text-xs" onClick={() => { setSearch(''); setFilterStatus('all'); }}>
+        <Button
+          type="button"
+          variant={onlyMine ? 'default' : 'outline'}
+          aria-pressed={onlyMine}
+          className="h-11 gap-2"
+          onClick={() => setOnlyMine((current) => !current)}
+        >
+          <User2 className="h-4 w-4" /> Minhas tarefas
+        </Button>
+        {(filterStatus !== 'all' || search || onlyMine) && (
+          <Button variant="ghost" size="sm" className="h-11 gap-1 text-xs" onClick={() => { setSearch(''); setFilterStatus('all'); setOnlyMine(false); }}>
             <CircleX className="h-3.5 w-3.5" /> Limpar busca e filtros
           </Button>
         )}
       </div>
 
       <p className="-mt-2 px-1 text-xs text-muted-foreground" role="status" aria-live="polite">
-        {search || filterStatus !== 'all' ? `${filtered.length} de ${enrichedTarefas.length} tarefas` : `${enrichedTarefas.length} tarefas`}
+        {search || filterStatus !== 'all' || onlyMine ? `${filtered.length} de ${enrichedTarefas.length} tarefas` : `${enrichedTarefas.length} tarefas`}
         <span className="ml-2 hidden sm:inline">Atalho: / para buscar · Esc para limpar</span>
       </p>
 
@@ -641,7 +652,7 @@ export default function Tarefas() {
                 actionLabel={enrichedTarefas.length === 0 ? 'Nova tarefa' : 'Limpar busca e filtro'}
                 onAction={enrichedTarefas.length === 0
                   ? () => setShowNew(true)
-                  : () => { setSearch(''); setFilterStatus('all'); }}
+                  : () => { setSearch(''); setFilterStatus('all'); setOnlyMine(false); }}
                 actionIcon={enrichedTarefas.length === 0 ? Plus : undefined}
                 className="py-12"
               />

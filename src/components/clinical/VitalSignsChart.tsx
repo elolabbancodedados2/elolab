@@ -19,6 +19,7 @@ import {
 } from 'recharts';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
+import { formatVitalMeasurement } from '@/lib/vitalSigns';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { ErrorState } from '@/components/ErrorState';
 
@@ -182,7 +183,7 @@ export function VitalSignsChart({ pacienteId, className }: VitalSignsChartProps)
                   lastTriagem.pressao_arterial ? parseInt(lastTriagem.pressao_arterial.split('/')[0]) : null, 
                   'sistolica'
                 ))}>
-                  {lastTriagem.pressao_arterial || '-'}
+                  {formatVitalMeasurement(lastTriagem.pressao_arterial, 'mmHg')}
                 </p>
               </div>
             </div>
@@ -191,7 +192,7 @@ export function VitalSignsChart({ pacienteId, className }: VitalSignsChartProps)
               <div>
                 <p className="text-xs text-muted-foreground">FC</p>
                 <p className={cn("font-semibold", getStatusColor(lastTriagem.frequencia_cardiaca, 'fc'))}>
-                  {lastTriagem.frequencia_cardiaca || '-'} bpm
+                  {formatVitalMeasurement(lastTriagem.frequencia_cardiaca, 'bpm')}
                 </p>
               </div>
             </div>
@@ -200,7 +201,7 @@ export function VitalSignsChart({ pacienteId, className }: VitalSignsChartProps)
               <div>
                 <p className="text-xs text-muted-foreground">Temp</p>
                 <p className={cn("font-semibold", getStatusColor(lastTriagem.temperatura, 'temperatura'))}>
-                  {lastTriagem.temperatura || '-'}°C
+                  {formatVitalMeasurement(lastTriagem.temperatura, '°C')}
                 </p>
               </div>
             </div>
@@ -209,7 +210,7 @@ export function VitalSignsChart({ pacienteId, className }: VitalSignsChartProps)
               <div>
                 <p className="text-xs text-muted-foreground">Peso</p>
                 <p className="font-semibold">
-                  {lastTriagem.peso || '-'} kg
+                  {formatVitalMeasurement(lastTriagem.peso, 'kg')}
                 </p>
               </div>
             </div>
