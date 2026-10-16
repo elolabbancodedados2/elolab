@@ -37,16 +37,10 @@ import {
 import { dateOnlyInTimeZone, inicioDoDiaEmFusoIso, parseDateOnly, toDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { valorRealizado } from '@/lib/lancamentos';
 import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
+import { linkWhatsApp } from '@/lib/whatsapp';
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
-
-function linkWhatsApp(telefone: string | null | undefined, mensagem: string) {
-  const digitos = (telefone ?? '').replace(/\D/g, '');
-  if (digitos.length < 10) return null;
-  const numero = digitos.startsWith('55') && digitos.length >= 12 ? digitos : `55${digitos}`;
-  return `https://wa.me/${numero}?text=${encodeURIComponent(mensagem)}`;
-}
 
 const formatCurrencyShort = (value: number) => {
   if (value >= 1000000) return `R$ ${(value / 1000000).toFixed(1)}M`;

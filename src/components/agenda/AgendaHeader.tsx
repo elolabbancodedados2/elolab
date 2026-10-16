@@ -40,7 +40,15 @@ interface Props {
   totals: { total: number; confirmados: number; aguardando: number; cancelados: number };
   defaultView: AgendaView | null;
   onSetDefaultView: (v: AgendaView) => void;
+  legend?: Array<{ label: string; color: string }>;
 }
+
+const TOTAL_FILTERS: Record<'total' | 'confirmados' | 'aguardando' | 'cancelados', string[]> = {
+  total: [],
+  confirmados: ['confirmado'],
+  aguardando: ['agendado', 'aguardando'],
+  cancelados: ['cancelado'],
+};
 
 const STATUSES: [string, string][] = [
   ['agendado', 'Agendado'],
@@ -79,15 +87,21 @@ export function AgendaHeader(p: Props) {
   const today = todaySaoPauloDateOnly();
   const isToday = safeDate === today;
   const activeFilters = p.medicoFilter.length + p.statusFilter.length + (p.search ? 1 : 0);
+  const sameFilter = (a: string[], b: string[]) => a.length === b.length && a.every(s => b.includes(s));
+  const toggleTotal = (key: keyof typeof TOTAL_FILTERS) => {
+    const alvo = TOTAL_FILTERS[key];
+    p.onStatusFilterChange(sameFilter(p.statusFilter, alvo) ? [] : alvo);
+  };
 
   return (
     <div className="relative flex flex-col gap-4 overflow-hidden rounded-[24px] border border-border/60 bg-card p-3 shadow-xs sm:gap-5 sm:p-5">
+      <div aria-hidden="true" className="pointer-events-none absolute -right-16 -top-24 h-64 w-64 rounded-full bg-gradient-primary opacity-[0.10] blur-3xl" />
       {/* Row 1: title + nav + view + primary actions */}
       <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
         <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
           <div className="flex min-w-0 items-center gap-2">
           <h1 className="truncate text-xl font-extrabold tracking-[-0.03em] text-foreground sm:text-[26px]">{label}</h1>
-          {isToday && p.view === 'daily' && <Badge className="border-transparent bg-highlight text-highlight-foreground hover:bg-highlight">HOJE</Badge>}
+          {isToday && p.view === 'daily' && <Badge className="border-transparent bg-gradient-primary text-white shadow-sm hover:bg-gradient-primary">HOJE</Badge>}
           </div>
           <div className="flex w-full items-center rounded-full border border-border bg-card px-1 shadow-xs sm:w-auto sm:shrink-0">
             <Button variant="ghost" size="icon" className="h-11 w-11 shrink-0 sm:h-9 sm:w-9" onClick={() => nav(-1)} aria-label="Anterior">
@@ -119,18 +133,18 @@ export function AgendaHeader(p: Props) {
 
         <div className="flex w-full items-center gap-2 overflow-x-auto pb-1 sm:w-auto sm:overflow-visible sm:pb-0">
           <div role="group" aria-label="Visualização da agenda" className="flex items-center gap-0.5 rounded-full border border-border bg-muted/70 p-1">
-            <Button aria-pressed={p.view === 'daily'} variant={p.view === 'daily' ? 'default' : 'ghost'} size="sm" className={cn('h-11 px-3 sm:h-9', p.view === 'daily' && 'bg-foreground text-background hover:bg-foreground/90')} onClick={() => p.onViewChange('daily')} aria-label="Visualização diária">
+            <Button aria-pressed={p.view === 'daily'} variant={p.view === 'daily' ? 'default' : 'ghost'} size="sm" className={cn('h-11 rounded-full px-3 sm:h-9', p.view === 'daily' && 'bg-foreground text-background shadow-sm hover:bg-foreground/90')} onClick={() => p.onViewChange('daily')} aria-label="Visualização diária">
               <List className="h-3.5 w-3.5 md:mr-1" /> <span className="hidden md:inline">Dia</span>
             </Button>
-            <Button aria-pressed={p.view === 'weekly'} variant={p.view === 'weekly' ? 'default' : 'ghost'} size="sm" className={cn('h-11 px-3 sm:h-9', p.view === 'weekly' && 'bg-foreground text-background hover:bg-foreground/90')} onClick={() => p.onViewChange('weekly')} aria-label="Visualização semanal">
+            <Button aria-pressed={p.view === 'weekly'} variant={p.view === 'weekly' ? 'default' : 'ghost'} size="sm" className={cn('h-11 rounded-full px-3 sm:h-9', p.view === 'weekly' && 'bg-foreground text-background shadow-sm hover:bg-foreground/90')} onClick={() => p.onViewChange('weekly')} aria-label="Visualização semanal">
               <LayoutGrid className="h-3.5 w-3.5 md:mr-1" /> <span className="hidden md:inline">Semana</span>
             </Button>
-            <Button aria-pressed={p.view === 'monthly'} variant={p.view === 'monthly' ? 'default' : 'ghost'} size="sm" className={cn('h-11 px-3 sm:h-9', p.view === 'monthly' && 'bg-foreground text-background hover:bg-foreground/90')} onClick={() => p.onViewChange('monthly')} aria-label="Visualização mensal">
+            <Button aria-pressed={p.view === 'monthly'} variant={p.view === 'monthly' ? 'default' : 'ghost'} size="sm" className={cn('h-11 rounded-full px-3 sm:h-9', p.view === 'monthly' && 'bg-foreground text-background shadow-sm hover:bg-foreground/90')} onClick={() => p.onViewChange('monthly')} aria-label="Visualização mensal">
               <CalendarDays className="h-3.5 w-3.5 md:mr-1" /> <span className="hidden md:inline">Mês</span>
             </Button>
           </div>
 
-          <Button variant="outline" size="sm" onClick={p.onToggleWaiting} aria-label={`Alternar lista de espera${p.waitingCount ? `, ${p.waitingCount} pacientes` : ''}`} className="hidden h-9 lg:inline-flex">
+          <Button variant="outline" size="sm" onClick={p.onToggleWaiting} aria-label={`Alternar lista de espera${p.waitingCount ? `, ${p.waitingCount} pacientes` : ''}`} className="hidden h-9 rounded-full lg:inline-flex">
             <Users2 className="h-4 w-4 md:mr-1.5" />
             <span className="hidden md:inline">Espera</span>
             {p.waitingCount > 0 && <Badge variant="secondary" className="ml-1.5 h-5 px-1.5 text-[10px]">{p.waitingCount}</Badge>}
@@ -144,7 +158,7 @@ export function AgendaHeader(p: Props) {
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="icon" className="h-11 w-11 shrink-0 sm:h-9 sm:w-9" aria-label="Mais opções da agenda"><MoreHorizontal className="h-4 w-4" /></Button>
+              <Button variant="outline" size="icon" className="h-11 w-11 shrink-0 rounded-full sm:h-9 sm:w-9" aria-label="Mais opções da agenda"><MoreHorizontal className="h-4 w-4" /></Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
               <DropdownMenuItem onSelect={p.onNewBlock}><Ban className="mr-2 h-4 w-4" /> Bloquear horário</DropdownMenuItem>
@@ -164,7 +178,7 @@ export function AgendaHeader(p: Props) {
             </DropdownMenuContent>
           </DropdownMenu>
 
-          <Button size="sm" onClick={p.onNewAppointment} aria-label="Nova consulta" className="h-11 shrink-0 bg-primary text-primary-foreground sm:h-10 sm:px-4">
+          <Button size="sm" onClick={p.onNewAppointment} aria-label="Nova consulta" className="h-11 shrink-0 rounded-full bg-primary text-primary-foreground shadow-md hover:bg-[#2b2b33] sm:h-10 sm:px-4">
             <Plus className="h-4 w-4 md:mr-1" /> <span className="hidden md:inline">Nova consulta</span>
           </Button>
         </div>
@@ -179,7 +193,7 @@ export function AgendaHeader(p: Props) {
             value={p.search}
             onChange={(e) => p.onSearchChange(e.target.value)}
             aria-label="Buscar paciente, CPF ou telefone"
-            className={cn('h-11 border-border bg-card pl-8 text-sm focus-visible:ring-ring sm:h-9', p.search && 'pr-10')}
+            className={cn('h-11 rounded-full border-border bg-card pl-8 text-sm focus-visible:ring-[#1080CA] sm:h-9', p.search && 'pr-10')}
           />
           {p.search && (
             <Button
@@ -197,7 +211,7 @@ export function AgendaHeader(p: Props) {
 
         <Popover>
           <PopoverTrigger asChild>
-            <Button variant="outline" size="sm" className="h-11 border-border bg-card text-foreground hover:bg-accent sm:h-9">
+            <Button variant="outline" size="sm" className="h-11 rounded-full border-border bg-card text-foreground hover:bg-accent sm:h-9">
               <Filter className="h-3.5 w-3.5 mr-1.5" /> Médicos
               {p.medicoFilter.length > 0 && <Badge variant="secondary" className="ml-1.5 h-4 px-1 text-[10px]">{p.medicoFilter.length}</Badge>}
             </Button>
@@ -225,7 +239,7 @@ export function AgendaHeader(p: Props) {
 
         <Popover>
           <PopoverTrigger asChild>
-            <Button variant="outline" size="sm" className="h-11 border-border bg-card text-foreground hover:bg-accent sm:h-9">
+            <Button variant="outline" size="sm" className="h-11 rounded-full border-border bg-card text-foreground hover:bg-accent sm:h-9">
               <Filter className="h-3.5 w-3.5 mr-1.5" /> Status
               {p.statusFilter.length > 0 && <Badge variant="secondary" className="ml-1.5 h-4 px-1 text-[10px]">{p.statusFilter.length}</Badge>}
             </Button>
@@ -258,31 +272,50 @@ export function AgendaHeader(p: Props) {
         )}
 
         <div role="group" aria-label={`Resumo dos atendimentos: ${p.totals.total} no total, ${p.totals.confirmados} confirmados, ${p.totals.aguardando} aguardando e ${p.totals.cancelados} cancelados`} className="-mx-1 flex w-[calc(100%+0.5rem)] items-center gap-1.5 overflow-x-auto px-1 pb-1 text-xs sm:ml-auto sm:w-auto sm:overflow-visible sm:pb-0">
-          <Stat label="Total" value={p.totals.total} />
-          <Stat label="Conf." value={p.totals.confirmados} tone="success" />
-          <Stat label="Aguard." value={p.totals.aguardando} tone="warning" />
-          <Stat label="Canc." value={p.totals.cancelados} tone="destructive" />
+          <Stat label="Total" value={p.totals.total} active={p.statusFilter.length === 0} onClick={() => toggleTotal('total')} />
+          <Stat label="Conf." value={p.totals.confirmados} tone="success" active={sameFilter(p.statusFilter, TOTAL_FILTERS.confirmados)} onClick={() => toggleTotal('confirmados')} />
+          <Stat label="Aguard." value={p.totals.aguardando} tone="warning" active={sameFilter(p.statusFilter, TOTAL_FILTERS.aguardando)} onClick={() => toggleTotal('aguardando')} />
+          <Stat label="Canc." value={p.totals.cancelados} tone="destructive" active={sameFilter(p.statusFilter, TOTAL_FILTERS.cancelados)} onClick={() => toggleTotal('cancelados')} />
         </div>
       </div>
+
+      {p.legend && p.legend.length > 0 && (
+        <ul aria-label="Legenda de cores da agenda" className="-mt-1 flex flex-wrap items-center gap-x-3 gap-y-1.5 px-0.5 text-[11px] text-muted-foreground">
+          {p.legend.map(item => (
+            <li key={`${item.label}-${item.color}`} className="inline-flex items-center gap-1.5">
+              <span aria-hidden="true" className="h-2.5 w-2.5 rounded-full ring-1 ring-black/10" style={{ backgroundColor: item.color }} />
+              {item.label}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
 
-function Stat({ label, value, tone }: { label: string; value: number; tone?: 'success' | 'warning' | 'destructive' }) {
+function Stat({ label, value, tone, active, onClick }: { label: string; value: number; tone?: 'success' | 'warning' | 'destructive'; active?: boolean; onClick: () => void }) {
   return (
-    <div className={cn(
-      'flex min-h-11 shrink-0 items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1 sm:min-h-0',
-      tone === 'success' && 'border-success/30 bg-success/5',
-      tone === 'warning' && 'border-warning/30 bg-warning/5',
-      tone === 'destructive' && 'border-destructive/30 bg-destructive/5',
-    )}>
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      title={active && tone ? 'Clique para remover o filtro' : 'Clique para filtrar por este status'}
+      className={cn(
+        'flex min-h-11 shrink-0 items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1 transition hover:-translate-y-0.5 hover:shadow-sm sm:min-h-0',
+        tone === 'success' && 'border-success/30 bg-success/5',
+        tone === 'warning' && 'border-warning/30 bg-warning/5',
+        tone === 'destructive' && 'border-destructive/30 bg-destructive/5',
+        active && tone && 'border-transparent bg-[#111111] text-white shadow-sm',
+        active && !tone && 'border-[#1080CA]/40',
+      )}
+    >
       <span className={cn(
         'text-sm font-extrabold tabular-nums',
-        tone === 'success' && 'text-success',
-        tone === 'warning' && 'text-warning-foreground',
-        tone === 'destructive' && 'text-destructive',
+        !active && tone === 'success' && 'text-success',
+        !active && tone === 'warning' && 'text-warning-foreground',
+        !active && tone === 'destructive' && 'text-destructive',
       )}>{value}</span>
-      <span className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</span>
-    </div>
+      <span className={cn('text-[10px] uppercase tracking-wide', active && tone ? 'text-white/70' : 'text-muted-foreground')}>{label}</span>
+    </button>
   );
 }

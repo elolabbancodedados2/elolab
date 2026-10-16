@@ -40,33 +40,33 @@ export function WeeklyView({ date, agendamentos, colorFor, medicoById = {}, onDa
             <div key={iso} className={cn(
               'border-r border-border/60 last:border-r-0 min-h-[520px] flex flex-col',
               weekend && !isToday && 'bg-muted/10',
-              isToday && 'bg-primary/[0.03]',
+              isToday && 'bg-[#1080CA]/[0.04]',
             )}>
               <button
                 onClick={() => onDayClick(iso)}
                 className={cn(
                   'sticky top-0 z-10 w-full px-3 py-2.5 border-b border-border/60 text-left bg-card/95 backdrop-blur hover:bg-muted/40 transition-colors',
-                  isToday && 'bg-primary/10 hover:bg-primary/15',
+                  isToday && 'border-b-2 border-b-[#1080CA]',
                 )}
               >
                 <div className="flex items-center justify-between">
-                  <div>
-                    <div className={cn(
-                      'text-[10px] uppercase tracking-wide',
-                      isToday ? 'text-primary font-semibold' : 'text-muted-foreground',
-                    )}>
-                      {format(d, 'EEE', { locale: ptBR })}
-                    </div>
-                    <div className="flex items-baseline gap-1.5">
-                      <span className={cn(
-                        'text-2xl font-bold leading-none',
-                        isToday && 'text-primary',
-                      )}>{format(d, 'd')}</span>
-                      <span className="text-[10px] text-muted-foreground">{format(d, 'MMM', { locale: ptBR })}</span>
+                  <div className="flex items-center gap-2">
+                    <span className={cn(
+                      'flex h-9 w-9 items-center justify-center rounded-full text-lg font-bold leading-none',
+                      isToday ? 'bg-gradient-primary text-white shadow-sm' : 'text-foreground',
+                    )}>{format(d, 'd')}</span>
+                    <div>
+                      <div className={cn(
+                        'text-[10px] uppercase tracking-wide',
+                        isToday ? 'font-semibold text-[#1080CA]' : 'text-muted-foreground',
+                      )}>
+                        {format(d, 'EEE', { locale: ptBR })}
+                      </div>
+                      <div className="text-[10px] text-muted-foreground">{format(d, 'MMM', { locale: ptBR })}</div>
                     </div>
                   </div>
                   {dayAppts.length > 0 && (
-                    <Badge variant={isToday ? 'default' : 'secondary'} className="h-5 px-1.5 text-[10px]">
+                    <Badge variant="secondary" className={cn('h-5 px-1.5 text-[10px]', isToday && 'bg-[#111111] text-white')}>
                       {dayAppts.length}
                     </Badge>
                   )}
@@ -88,10 +88,10 @@ export function WeeklyView({ date, agendamentos, colorFor, medicoById = {}, onDa
                     key={a.id}
                     onClick={(e) => { e.stopPropagation(); onCardClick(a); }}
                     className={cn(
-                      'w-full rounded-md bg-card border border-border/60 hover:shadow-sm hover:border-primary/40 text-left px-2 py-1.5 text-[11px] transition-all leading-tight',
+                      'w-full rounded-lg bg-card border border-border/60 hover:shadow-sm hover:border-[#1080CA]/40 text-left px-2 py-1.5 text-[11px] transition-all leading-tight',
                       a.status === 'cancelado' && 'opacity-50 line-through',
                     )}
-                    style={{ borderLeft: `1px solid ${colorFor(a)}` }}
+                    style={{ borderLeft: `3px solid ${colorFor(a)}` }}
                   >
                     <div className="font-medium tabular-nums">{a.hora_inicio.slice(0, 5)}</div>
                     <div className="truncate text-muted-foreground">

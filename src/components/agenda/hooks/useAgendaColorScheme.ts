@@ -12,20 +12,22 @@ export interface ColorScheme {
 const DEFAULT_SCHEME: ColorScheme = {
   criterion: 'status',
   map: {
-    agendado: '#6a55f2',
+    agendado: '#1080CA',
     confirmado: '#10b981',
     aguardando: '#f59e0b',
-    em_atendimento: '#6366f1',
-    finalizado: '#9a94b8',
+    em_atendimento: '#2ED5E7',
+    finalizado: '#8a8f99',
     cancelado: '#ef4444',
     faltou: '#f97316',
   },
 };
 
 export const PALETTE = [
-  '#6a55f2', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899',
-  '#06b6d4', '#f97316', '#84cc16', '#14b8a6', '#6366f1', '#9a94b8',
+  '#1080CA', '#2ED5E7', '#10b981', '#f59e0b', '#ef4444', '#111111',
+  '#06b6d4', '#f97316', '#84cc16', '#14b8a6', '#6366f1', '#8a8f99',
 ];
+
+const FALLBACK_COLOR = '#1080CA';
 
 const KEY = 'agenda_color_scheme';
 
@@ -64,10 +66,10 @@ export function useAgendaColorScheme() {
 
   const colorFor = (ag: any) => {
     switch (scheme.criterion) {
-      case 'status': return scheme.map[ag.status] || DEFAULT_SCHEME.map[ag.status] || '#6a55f2';
-      case 'tipo': return scheme.map[ag.tipo] || '#6a55f2';
-      case 'medico': return scheme.map[ag.medico_id] || '#6a55f2';
-      case 'convenio': return scheme.map[ag.convenio_id || 'particular'] || '#6a55f2';
+      case 'status': return scheme.map[ag.status] || DEFAULT_SCHEME.map[ag.status] || FALLBACK_COLOR;
+      case 'tipo': return scheme.map[ag.tipo] || FALLBACK_COLOR;
+      case 'medico': return scheme.map[ag.medico_id] || FALLBACK_COLOR;
+      case 'convenio': return scheme.map[ag.convenio_id || 'particular'] || FALLBACK_COLOR;
     }
   };
 

@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { useDraggable } from '@dnd-kit/core';
 import { useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
-import { CheckCircle2, PlayCircle, Ban, Trash2, Edit3, User, Receipt, Video } from 'lucide-react';
+import { CheckCircle2, PlayCircle, Ban, Trash2, Edit3, User, Receipt, Video, MessageCircle } from 'lucide-react';
+import { linkWhatsApp } from '@/lib/whatsapp';
 import {
   ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger,
 } from '@/components/ui/context-menu';
@@ -44,10 +45,10 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 const STATUS_DOT: Record<string, string> = {
-  agendado: 'bg-muted-foreground/50',
+  agendado: 'bg-[#1080CA]',
   confirmado: 'bg-success',
   aguardando: 'bg-warning',
-  em_atendimento: 'bg-primary animate-pulse',
+  em_atendimento: 'bg-[#2ED5E7] animate-pulse',
   finalizado: 'bg-muted-foreground/30',
   cancelado: 'bg-destructive/70',
   faltou: 'bg-warning/70',
@@ -102,6 +103,11 @@ export function AppointmentCard({ agendamento, color, minutesToPx, onClick, conv
   const compact = duration < 30;
   const horaInicio = agendamento.hora_inicio.slice(0, 5);
   const horaFim = agendamento.hora_fim?.slice(0, 5);
+  const dataBr = typeof agendamento.data === 'string' ? agendamento.data.split('-').reverse().join('/') : '';
+  const linkConfirmacao = linkWhatsApp(
+    paciente?.telefone,
+    `Olá, ${patientName.split(' ')[0]}! Podemos confirmar sua consulta em ${dataBr} às ${horaInicio}? Responda SIM para confirmar.`,
+  );
   const accessibleName = [
     `Consulta de ${patientName}`,
     horaFim ? `${horaInicio} às ${horaFim}` : `às ${horaInicio}`,
@@ -116,8 +122,8 @@ export function AppointmentCard({ agendamento, color, minutesToPx, onClick, conv
     height: minutesToPx(duration) - 4,
     left: 3,
     right: 3,
-    borderLeft: `3px solid ${color}`,
-    background: `linear-gradient(to right, ${color}12, hsl(var(--card)) 40%)`,
+    borderLeft: `4px solid ${color}`,
+    background: `linear-gradient(to right, ${color}14, hsl(var(--card)) 45%)`,
     transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
     opacity: isDragging ? 0.5 : 1,
     zIndex: isDragging ? 50 : 10,
@@ -375,9 +381,9 @@ export function AppointmentCard({ agendamento, color, minutesToPx, onClick, conv
           listeners?.onKeyDown?.(e);
         }}
       className={cn(
-        'group rounded-md bg-card shadow-sm border border-border/60 hover:shadow-md hover:border-primary/40',
+        'group rounded-lg bg-card shadow-xs border border-border/60 hover:shadow-md hover:border-[#1080CA]/40',
         'cursor-grab active:cursor-grabbing overflow-hidden transition-all',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
         compact ? 'px-1.5 py-0 text-[11px] leading-none' : 'px-1.5 py-1 text-xs',
         cancelled && 'opacity-60 line-through',
         done && 'opacity-70',
@@ -466,6 +472,15 @@ export function AppointmentCard({ agendamento, color, minutesToPx, onClick, conv
         </ContextMenuItem>}
         <ContextMenuSeparator />
         <ContextMenuItem disabled={ocupado || agendamento.status !== 'agendado'} onSelect={() => setStatus('confirmado')}><CheckCircle2 className="mr-2 h-4 w-4" /> Confirmar</ContextMenuItem>
+        {['agendado', 'confirmado'].includes(agendamento.status) && (
+          <ContextMenuItem
+            disabled={!linkConfirmacao}
+            title={linkConfirmacao ? undefined : 'Paciente sem telefone cadastrado'}
+            onSelect={() => { if (linkConfirmacao) window.open(linkConfirmacao, '_blank', 'noopener,noreferrer'); }}
+          >
+            <MessageCircle className="mr-2 h-4 w-4 text-[#1080CA]" /> Confirmar pelo WhatsApp
+          </ContextMenuItem>
+        )}
         <ContextMenuItem disabled={ocupado || !agendamento.paciente_id || !['agendado', 'confirmado', 'aguardando'].includes(agendamento.status)} onSelect={() => setStatus('aguardando')}>Enviar para a fila</ContextMenuItem>
         <ContextMenuItem disabled={ocupado || !agendamento.paciente_id || !['agendado', 'confirmado', 'aguardando'].includes(agendamento.status)} onSelect={iniciarAtendimento}><PlayCircle className="mr-2 h-4 w-4" /> Iniciar atendimento</ContextMenuItem>
         {agendamento.status === 'em_atendimento' && (

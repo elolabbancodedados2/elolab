@@ -48,12 +48,40 @@ const HOURS = Array.from({ length: END_HOUR - START_HOUR }, (_, i) =>
 // O cabeçalho dos profissionais fica numa faixa própria, fixa no topo do
 // <main>: assim a grade não precisa de rolagem vertical própria (antes havia
 // duas barras verticais aninhadas) e o cabeçalho continua visível.
-function DoctorHeader({ medico, agendamentos, columnIndex, inactive = false }: any) {
+const SLOT_LIVRE_MIN = 30;
+
+/** Primeiro horário com 30 min livres a partir de `fromMin`, respeitando consultas e bloqueios. */
+function proximaVagaLivre(agendamentos: any[], bloqueios: any[], fromMin: number): string | null {
+  const ocupados = [
+    ...agendamentos
+      .filter((a: any) => a.status !== 'cancelado' && a.status !== 'faltou')
+      .map((a: any) => {
+        const ini = toMinutes(a.hora_inicio);
+        return [ini, a.hora_fim ? toMinutes(a.hora_fim) : ini + 30] as const;
+      }),
+    ...bloqueios.map((b: any) => [
+      b.hora_inicio ? toMinutes(b.hora_inicio) : START_HOUR * 60,
+      b.hora_fim ? toMinutes(b.hora_fim) : END_HOUR * 60,
+    ] as const),
+  ];
+  const inicio = Math.max(START_HOUR * 60, Math.ceil(fromMin / SLOT_MINUTES) * SLOT_MINUTES);
+  for (let m = inicio; m + SLOT_LIVRE_MIN <= END_HOUR * 60; m += SLOT_MINUTES) {
+    const fim = m + SLOT_LIVRE_MIN;
+    if (!ocupados.some(([ini, end]) => ini < fim && end > m)) return fromMinutes(m);
+  }
+  return null;
+}
+
+function DoctorHeader({ medico, date, agendamentos, bloqueios = [], columnIndex, inactive = false, onSlotClick }: any) {
   const sorted = [...agendamentos].sort((a: any, b: any) => a.hora_inicio.localeCompare(b.hora_inicio));
   const total = agendamentos.length;
   const confirmed = agendamentos.filter((a: any) => ['confirmado', 'em_atendimento', 'finalizado'].includes(a.status)).length;
+  const hoje = todaySaoPauloDateOnly();
   const nowMin = minutesNowInSaoPaulo();
-  const next = sorted.find((a: any) => toMinutes(a.hora_inicio) >= nowMin);
+  const isToday = date === hoje;
+  const next = isToday ? sorted.find((a: any) => toMinutes(a.hora_inicio) >= nowMin) : sorted[0];
+  const vagaLivre = inactive || date < hoje ? null : proximaVagaLivre(agendamentos, bloqueios, isToday ? nowMin : START_HOUR * 60);
+  const nomeExibido = nomeMedico(medico.nome || medico.crm);
 
   return (
     <div
@@ -65,11 +93,11 @@ function DoctorHeader({ medico, agendamentos, columnIndex, inactive = false }: a
       style={{ height: DOCTOR_HEADER_PX }}
     >
       <div className="flex items-center gap-2">
-        <div className="h-9 w-9 rounded-full bg-gradient-to-br from-primary/20 to-primary/5 border border-primary/20 flex items-center justify-center text-primary shrink-0">
+        <div className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white shadow-sm', inactive ? 'bg-muted-foreground/50' : 'bg-gradient-primary')}>
           <User className="h-4 w-4" />
         </div>
         <div className="min-w-0 flex-1">
-          <div className="text-sm font-semibold truncate">{nomeMedico(medico.nome || medico.crm)}</div>
+          <div className="text-sm font-semibold truncate">{nomeExibido}</div>
           <div className="text-[11px] text-muted-foreground truncate">
             {inactive ? 'Inativo · sem novos horários' : medico.especialidade || 'Clínico Geral'}
           </div>
@@ -81,16 +109,27 @@ function DoctorHeader({ medico, agendamentos, columnIndex, inactive = false }: a
           </div>
         )}
       </div>
-      {next && (
-        <div className="mt-1.5 flex items-center gap-1 text-[10px] text-muted-foreground">
-          <span className="h-1.5 w-1.5 rounded-full bg-primary" />
-          <span>Próximo <span className="font-semibold tabular-nums text-foreground">{next.hora_inicio.slice(0, 5)}</span></span>
-          {confirmed > 0 && <span className="ml-auto text-success">✓ {confirmed}</span>}
-        </div>
-      )}
-      {total === 0 && (
-        <div className="mt-1.5 text-[10px] text-muted-foreground/60 italic">Agenda livre</div>
-      )}
+      <div className="mt-1.5 flex items-center gap-1.5 text-[10px] text-muted-foreground">
+        {next ? (
+          <>
+            <span className="h-1.5 w-1.5 rounded-full bg-[#1080CA]" />
+            <span>Próximo <span className="font-semibold tabular-nums text-foreground">{next.hora_inicio.slice(0, 5)}</span></span>
+            {confirmed > 0 && <span className="text-success">✓ {confirmed}</span>}
+          </>
+        ) : (
+          <span className="italic text-muted-foreground/60">{total === 0 ? 'Agenda livre' : 'Sem próximas consultas'}</span>
+        )}
+        {vagaLivre && onSlotClick && (
+          <button
+            type="button"
+            onClick={() => onSlotClick(medico.id, vagaLivre)}
+            aria-label={`Criar consulta na próxima vaga livre, ${vagaLivre}, com ${nomeExibido}`}
+            className="ml-auto inline-flex items-center gap-1 rounded-full bg-[#1080CA]/10 px-2 py-0.5 font-semibold text-[#1080CA] transition hover:bg-gradient-primary hover:text-white"
+          >
+            Livre <span className="tabular-nums">{vagaLivre}</span>
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -122,10 +161,10 @@ function DoctorColumn({
       >
         {hoverMin !== null && (
           <div
-            className="pointer-events-none absolute inset-x-0 border-t border-primary/60 z-30"
+            className="pointer-events-none absolute inset-x-0 border-t border-[#1080CA]/60 z-30"
             style={{ top: minutesToPx(hoverMin) }}
           >
-            <span className="absolute -top-2 left-1 rounded bg-primary px-1 py-0 text-[10px] font-medium text-primary-foreground shadow">
+            <span className="absolute -top-2 left-1 rounded bg-[#1080CA] px-1 py-0 text-[10px] font-medium text-white shadow">
               {fromMinutes(START_HOUR * 60 + hoverMin)}
             </span>
           </div>
@@ -165,7 +204,7 @@ function DoctorColumn({
             accessibleName={`Criar consulta ${slot} com ${nomeMedico(medico.nome || medico.crm)}`}
             // Uma única parada de Tab por profissional; setas percorrem os horários.
             tabStop={slot === SLOTS[0]}
-            className="absolute inset-x-0 cursor-pointer border-0 bg-transparent p-0 hover:bg-primary/5 focus-visible:z-30 focus-visible:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
+            className="absolute inset-x-0 cursor-pointer border-0 bg-transparent p-0 hover:bg-[#1080CA]/5 focus-visible:z-30 focus-visible:bg-[#1080CA]/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#1080CA]"
             style={{ top: minutesToPx(toMinutes(slot) - START_HOUR * 60), height: SLOT_PX }}
           />
         ))}
@@ -223,7 +262,7 @@ function DropSlot({ id, data, className, style, onClick, onKeyDown, accessibleNa
       aria-haspopup="dialog"
       tabIndex={tabStop ? 0 : -1}
       data-agenda-slot="true"
-      className={cn(className, isOver && 'bg-primary/10 ring-1 ring-primary/40 ring-inset')}
+      className={cn(className, isOver && 'bg-[#1080CA]/10 ring-1 ring-[#1080CA]/40 ring-inset')}
     />
   );
 }
@@ -278,7 +317,7 @@ export function DailyMultiDoctorView({
       <div className="px-4 py-2 border-b border-border/60 bg-muted/30">
         <div className="text-sm font-medium flex items-center gap-2">
           {dayStr}
-          {showNow && <span className="text-[11px] font-normal text-primary">• agora {fromMinutes(nowMin)}</span>}
+          {showNow && <span className="rounded-full bg-gradient-primary px-2 py-0.5 text-[10px] font-bold text-white">agora {fromMinutes(nowMin)}</span>}
         </div>
       </div>
       {doctorsToShow.length > 0 && (
@@ -290,9 +329,12 @@ export function DailyMultiDoctorView({
               <DoctorHeader
                 key={medico.id}
                 medico={medico}
+                date={date}
                 columnIndex={idx}
                 inactive={inactive}
                 agendamentos={agendamentos.filter((a: any) => a.medico_id === medico.id)}
+                bloqueios={bloqueios.filter((b: any) => b.medico_id === medico.id && date >= b.data_inicio && date <= b.data_fim)}
+                onSlotClick={onSlotClick}
               />
             ))}
           </div>
@@ -330,10 +372,10 @@ export function DailyMultiDoctorView({
               <div
                 ref={nowLineRef}
                 data-testid="agenda-now-line"
-                className="pointer-events-none absolute inset-x-0 z-40 border-t-2 border-destructive"
+                className="pointer-events-none absolute inset-x-0 z-40 border-t-2 border-[#1080CA]"
                 style={{ top: nowPx }}
               >
-                <span className="absolute -top-2 left-0 h-3 w-3 rounded-full bg-destructive shadow" />
+                <span className="absolute -top-2 left-0 h-3 w-3 rounded-full bg-gradient-primary shadow ring-2 ring-white" />
               </div>
             )}
             {doctorsToShow.map(({ medico, inactive }: any, idx: number) => (

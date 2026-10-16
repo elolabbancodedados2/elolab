@@ -32,6 +32,8 @@ import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { podeRemarcarAgendamento } from '@/lib/appointmentStatus';
 import { prepareWaitingListAppointment } from '@/lib/waitingListSlotCompatibility';
 import { agendaScreenReaderInstructions, criarAnunciosAgenda } from './agendaDndAccessibility';
+import { formatAppointmentStatus } from '@/components/dashboard/appointmentStatus';
+import { nomeMedico } from '@/lib/formatters';
 
 export type AgendaView = 'daily' | 'weekly' | 'monthly';
 
@@ -350,6 +352,21 @@ export function AgendaPage() {
 
   const { scheme, setScheme, colorFor } = useAgendaColorScheme();
 
+  const legend = useMemo(() => {
+    const rotulo = (chave: string): string | null => {
+      switch (scheme.criterion) {
+        case 'status': return formatAppointmentStatus(chave);
+        case 'medico': return medicoById[chave] ? nomeMedico(medicoById[chave].nome || medicoById[chave].crm) : null;
+        case 'convenio': return chave === 'particular' ? 'Particular' : (convenios as any[]).find(c => c.id === chave)?.nome ?? null;
+        case 'tipo': return (tipos as any[]).find(t => t.id === chave || t.nome === chave)?.nome ?? chave;
+      }
+    };
+    return Object.entries(scheme.map)
+      .map(([chave, color]) => ({ label: rotulo(chave), color }))
+      .filter((item): item is { label: string; color: string } => !!item.label)
+      .slice(0, 8);
+  }, [scheme, medicoById, convenios, tipos]);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     // A política de acesso continua sendo a autoridade final, mas o médico
@@ -620,6 +637,7 @@ export function AgendaPage() {
           onToggleWaiting={() => setWaitingOpen(o => !o)}
           waitingCount={waiting.length}
           totals={totals}
+          legend={legend}
         />
 
         {allAppts.length >= MAX_LINHAS_AUTO && (
@@ -692,12 +710,12 @@ export function AgendaPage() {
             )}
             <DragOverlay>
               {activeDrag?.agendamento && (
-                <div className="rounded-md bg-card border border-primary shadow-lg px-2 py-1.5 text-xs">
+                <div className="rounded-lg border border-[#1080CA] bg-card px-2 py-1.5 text-xs shadow-lg">
                   {activeDrag.agendamento.hora_inicio.slice(0, 5)} · {activeDrag.agendamento.pacientes?.nome || 'Paciente'}
                 </div>
               )}
               {activeDrag?.waiting && (
-                <div className="rounded-md bg-card border border-primary shadow-lg px-3 py-2 text-xs">
+                <div className="rounded-lg border border-[#1080CA] bg-card px-3 py-2 text-xs shadow-lg">
                   {activeDrag.waiting.pacientes?.nome || 'Paciente'}
                 </div>
               )}

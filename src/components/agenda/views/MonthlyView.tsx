@@ -53,13 +53,13 @@ export function MonthlyView({ date, agendamentos, colorFor, medicoById = {}, onD
                 'min-h-[110px] border-r border-b border-border/60 p-2 text-left hover:bg-muted/40 transition-colors group',
                 !inMonth && 'bg-muted/20 text-muted-foreground/50',
                 weekend && inMonth && !isToday && 'bg-muted/10',
-                isToday && 'bg-primary/[0.06] ring-1 ring-primary/30 ring-inset',
+                isToday && 'bg-[#1080CA]/[0.05] ring-1 ring-[#1080CA]/40 ring-inset',
               )}
             >
               <div className="flex items-center justify-between mb-1">
                 <div className={cn(
                   'text-sm font-semibold flex items-center justify-center h-6 min-w-6 px-1 rounded-full',
-                  isToday && 'bg-primary text-primary-foreground',
+                  isToday && 'bg-gradient-primary text-white shadow-sm',
                 )}>
                   {format(d, 'd')}
                 </div>
@@ -83,7 +83,7 @@ export function MonthlyView({ date, agendamentos, colorFor, medicoById = {}, onD
                   </div>
                 ))}
                 {dayAppts.length > 3 && (
-                  <div className="text-[10px] text-primary font-medium">+{dayAppts.length - 3} mais</div>
+                  <div className="text-[10px] font-semibold text-[#1080CA]">+{dayAppts.length - 3} mais</div>
                 )}
               </div>
               {confirmed > 0 && dayAppts.length <= 3 && (
