@@ -381,10 +381,10 @@ function SidebarMenuGroup({ group, collapsed, isOpen, onToggle, onExpand, curren
               'text-white hover:text-white hover:brightness-105',
             )}
             style={{
-              background: 'var(--gradient-primary)',
+              background: `linear-gradient(135deg, ${group.color} 0%, color-mix(in srgb, ${group.color} 55%, white) 100%)`,
               boxShadow: hasActiveChild
-                ? '0 4px 14px rgba(16,128,202,0.40)'
-                : '0 2px 6px rgba(16,128,202,0.18)',
+                ? `0 4px 14px ${group.color}66`
+                : `0 2px 6px ${group.color}2e`,
             }}
           >
             {collapsed ? (
