@@ -64,7 +64,7 @@ export async function autoCheckin(
       p_prioridade: 'normal',
     });
     if (error) throw error;
-    const resultado = data;
+    const resultado = data as any;
     if (!resultado) throw new Error('O check-in nao retornou um resultado.');
 
     if (resultado.repetido) {
@@ -545,7 +545,7 @@ export async function autoTriagemParaFila(params: {
       p_prioridade: prioridade,
     });
     if (error) throw error;
-    const resultado = data;
+    const resultado = data as any;
     if (!resultado) throw new Error('O check-in da triagem nao retornou um resultado.');
 
     actions.push(resultado.repetido
@@ -700,7 +700,7 @@ export async function autoCancelarAgendamento(params: {
       p_updated_at: ag.updated_at ?? null,
     });
     if (error) throw error;
-    const atualizado = resultado;
+    const atualizado = resultado as any;
     if (!atualizado?.atualizado) throw new Error('A consulta mudou ou foi finalizada. Atualize a agenda e tente novamente.');
 
     actions.push(`Agendamento marcado como ${params.motivo === 'faltou' ? 'falta' : 'cancelado'}`);

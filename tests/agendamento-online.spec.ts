@@ -3,9 +3,12 @@ import { test, expect } from '@playwright/test';
 test.describe('Agendamento online', () => {
   test('conclui o pedido de consulta depois do consentimento do paciente', async ({ page }) => {
     let pedidoEnviado: Record<string, unknown> | undefined;
+    let tokenReservado: string | undefined;
 
     await page.route('**/functions/v1/public-booking', async (route) => {
       const body = route.request().postDataJSON();
+      if (body.action === 'hold') { tokenReservado = body.hold_token; await route.fulfill({ json: { success: true, hold_token: body.hold_token, expires_at: new Date(Date.now() + 300000).toISOString() } }); return; }
+      if (body.action === 'release') { await route.fulfill({ json: { success: true } }); return; }
       if (body.action === 'info') {
         await route.fulfill({ json: {
           clinica: { nome: 'Clínica de teste' },
@@ -28,6 +31,7 @@ test.describe('Agendamento online', () => {
     await page.getByRole('button', { name: /Dra\. Ana/ }).click();
     await page.locator('button').filter({ has: page.locator('span.uppercase') }).nth(0).click();
     await page.getByRole('button', { name: /10:30/ }).click();
+    await expect(page.getByText('Horário reservado por até cinco minutos enquanto você preenche seus dados.')).toBeVisible();
 
     await page.getByLabel('Nome completo *').fill('Mariana da Silva');
     await page.getByLabel('CPF *').fill('123');
@@ -59,6 +63,32 @@ test.describe('Agendamento online', () => {
       cpf: '529.982.247-25',
       aceite_lgpd: true,
     });
+    expect(tokenReservado).toMatch(/^[0-9a-f-]{36}$/i);
+    expect(pedidoEnviado?.hold_token).toBe(tokenReservado);
+  });
+
+  test('não abre o formulário quando a reserva atômica perde a disputa', async ({ page }) => {
+    await page.route('**/functions/v1/public-booking', async (route) => {
+      const body = route.request().postDataJSON();
+      if (body.action === 'hold') {
+        await route.fulfill({ status: 409, json: { error: 'Este horário acabou de ser reservado por outra pessoa.', code: 'slot_unavailable' } });
+        return;
+      }
+      if (body.action === 'release') { await route.fulfill({ json: { success: true } }); return; }
+      if (body.action === 'info') {
+        await route.fulfill({ json: { clinica: { nome: 'Clínica de teste' }, mensagem: null, dias_antecedencia: 5, medicos: [{ id: 'medico-1', nome: 'Dra. Ana', especialidade: null }] } });
+      } else if (body.action === 'slots') {
+        await route.fulfill({ json: { slots: ['10:30'] } });
+      }
+    });
+
+    await page.goto('/agendar/00000000-0000-4000-8000-000000000001');
+    await page.getByRole('button', { name: /Dra\. Ana/ }).click();
+    await page.locator('button').filter({ has: page.locator('span.uppercase') }).nth(0).click();
+    await page.getByRole('button', { name: /10:30/ }).click();
+
+    await expect(page.getByRole('alert')).toHaveText(/reservado por outra pessoa/);
+    await expect(page.getByLabel('Nome completo *')).toHaveCount(0);
   });
 
   test('atualiza horários após conflito e limpa a mensagem ao escolher outra opção', async ({ page }) => {
@@ -68,6 +98,8 @@ test.describe('Agendamento online', () => {
 
     await page.route('**/functions/v1/public-booking', async (route) => {
       const body = route.request().postDataJSON();
+      if (body.action === 'hold') { await route.fulfill({ json: { success: true, hold_token: body.hold_token, expires_at: new Date(Date.now() + 300000).toISOString() } }); return; }
+      if (body.action === 'release') { await route.fulfill({ json: { success: true } }); return; }
       if (body.action === 'info') {
         await route.fulfill({ json: {
           clinica: { nome: 'Clínica de teste' }, mensagem: null, dias_antecedencia: 5,
@@ -115,6 +147,8 @@ test.describe('Agendamento online', () => {
     let dataConsultada = '';
     await page.route('**/functions/v1/public-booking', async (route) => {
       const body = route.request().postDataJSON();
+      if (body.action === 'hold') { await route.fulfill({ json: { success: true, hold_token: body.hold_token, expires_at: new Date(Date.now() + 300000).toISOString() } }); return; }
+      if (body.action === 'release') { await route.fulfill({ json: { success: true } }); return; }
       if (body.action === 'info') {
         await route.fulfill({ json: {
           clinica: { nome: 'Clínica de teste' }, mensagem: null, dias_antecedencia: 60,
@@ -152,6 +186,8 @@ test.describe('Agendamento online', () => {
   test('limpa o dia e horário selecionados ao mudar de página', async ({ page }) => {
     await page.route('**/functions/v1/public-booking', async (route) => {
       const body = route.request().postDataJSON();
+      if (body.action === 'hold') { await route.fulfill({ json: { success: true, hold_token: body.hold_token, expires_at: new Date(Date.now() + 300000).toISOString() } }); return; }
+      if (body.action === 'release') { await route.fulfill({ json: { success: true } }); return; }
       if (body.action === 'info') {
         await route.fulfill({ json: {
           clinica: { nome: 'Clínica de teste' }, mensagem: null, dias_antecedencia: 45,
@@ -180,6 +216,8 @@ test.describe('Agendamento online', () => {
     let dataConsultada = '';
     await page.route('**/functions/v1/public-booking', async (route) => {
       const body = route.request().postDataJSON();
+      if (body.action === 'hold') { await route.fulfill({ json: { success: true, hold_token: body.hold_token, expires_at: new Date(Date.now() + 300000).toISOString() } }); return; }
+      if (body.action === 'release') { await route.fulfill({ json: { success: true } }); return; }
       if (body.action === 'info') {
         await route.fulfill({ json: {
           clinica: { nome: 'Clínica de teste' }, mensagem: null, dias_antecedencia: 5, hoje: '2026-01-01',
@@ -212,6 +250,8 @@ test.describe('Agendamento online', () => {
 
     await page.route('**/functions/v1/public-booking', async (route) => {
       const body = route.request().postDataJSON();
+      if (body.action === 'hold') { await route.fulfill({ json: { success: true, hold_token: body.hold_token, expires_at: new Date(Date.now() + 300000).toISOString() } }); return; }
+      if (body.action === 'release') { await route.fulfill({ json: { success: true } }); return; }
       if (body.action === 'info') {
         await route.fulfill({ json: {
           clinica: { nome: 'Clínica de teste' },
@@ -259,6 +299,8 @@ test.describe('Agendamento online', () => {
 
     await page.route('**/functions/v1/public-booking', async (route) => {
       const body = route.request().postDataJSON();
+      if (body.action === 'hold') { await route.fulfill({ json: { success: true, hold_token: body.hold_token, expires_at: new Date(Date.now() + 300000).toISOString() } }); return; }
+      if (body.action === 'release') { await route.fulfill({ json: { success: true } }); return; }
       if (body.action === 'info') {
         chamadasInfo += 1;
         if (chamadasInfo <= 2) {
@@ -303,6 +345,8 @@ test.describe('Agendamento online', () => {
     await page.setViewportSize({ width: 375, height: 812 });
     await page.route('**/functions/v1/public-booking', async (route) => {
       const body = route.request().postDataJSON();
+      if (body.action === 'hold') { await route.fulfill({ json: { success: true, hold_token: body.hold_token, expires_at: new Date(Date.now() + 300000).toISOString() } }); return; }
+      if (body.action === 'release') { await route.fulfill({ json: { success: true } }); return; }
       if (body.action === 'info') {
         await route.fulfill({ json: {
           clinica: { nome: 'Clínica de teste' }, mensagem: null, dias_antecedencia: 30,

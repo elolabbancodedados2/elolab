@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { ordenarFilaPorPrioridade } from '@/lib/filaPrioridade';
+import { descricaoRegraPrioridadeFila, ordenarFilaPorPrioridade } from '@/lib/filaPrioridade';
+import { readFileSync } from 'node:fs';
 
 describe('ordenação da fila por prioridade', () => {
   it('coloca urgentes antes de preferenciais e normais', () => {
@@ -26,5 +27,14 @@ describe('ordenação da fila por prioridade', () => {
       'urgente-1', 'urgente-2', 'desconhecida', 'normal-2',
     ]);
     expect(fila[0].id).toBe('normal-2');
+  });
+
+  it('explains which factors determine the call order in the queue screen', () => {
+    expect(descricaoRegraPrioridadeFila()).toBe(
+      'Ordem de chamada: urgente, preferencial e normal; dentro da mesma prioridade, vale a posição original na fila.',
+    );
+    const source = readFileSync('src/pages/Fila.tsx', 'utf8');
+    expect(source).toMatch(/descricaoRegraPrioridadeFila\(\)/);
+    expect(source).toMatch(/prioCfg\.label/);
   });
 });

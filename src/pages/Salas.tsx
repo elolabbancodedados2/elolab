@@ -2,7 +2,7 @@ import { nomeMedico } from '@/lib/formatters';
 import { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import {
-  Plus, DoorOpen, Settings, Bed, Loader2, Users, CheckCircle2, XCircle,
+  Plus, DoorOpen, Settings, Bed, Loader2, Users, CheckCircle2, XCircle, AlertTriangle,
   Clock, MapPin, Paintbrush, Wrench, Search, Building2, Layers,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -27,7 +27,7 @@ import { Database } from '@/integrations/supabase/types';
 import { ErrorState } from '@/components/ErrorState';
 import { User } from 'lucide-react';
 import { normalizarTexto } from '@/lib/buscaPaciente';
-import { formatarDataOcupacaoAntiga } from '@/lib/roomOccupancy';
+import { formatarDataOcupacaoAntiga, summarizeRoomOccupancy } from '@/lib/roomOccupancy';
 import { todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { Link } from 'react-router-dom';
 import { PageHeader } from '@/components/PageHeader';
@@ -415,6 +415,7 @@ export default function Salas() {
                 {salasDoTipo.map((sala: any) => {
                   const medicoNome = getMedicoNome(sala.medico_responsavel);
                   const ocupacoesSala = getOcupacao(sala.id);
+                  const resumoOcupacao = summarizeRoomOccupancy(ocupacoesSala.length, sala.capacidade);
                   const statusExibido = statusEfetivoSala(sala);
                   return (
                     <Card key={sala.id} className="relative overflow-hidden">
@@ -498,7 +499,15 @@ export default function Salas() {
                         )}
 
                         <div className="text-xs text-muted-foreground space-y-0.5">
-                          <p>Cap: {sala.capacidade} {medicoNome && `· ${nomeMedico(medicoNome)}`}</p>
+                          <p aria-label={`Ocupação monitorada da sala ${sala.nome}: ${resumoOcupacao.label}`}>
+                            Ocupação monitorada: {resumoOcupacao.label}{medicoNome && ` · ${nomeMedico(medicoNome)}`}
+                          </p>
+                          {resumoOcupacao.overCapacity && (
+                            <p role="status" className="flex items-center gap-1 font-medium text-destructive">
+                              <AlertTriangle aria-hidden="true" className="h-3 w-3" />
+                              Revise os vínculos ativos na fila antes de liberar novas posições.
+                            </p>
+                          )}
                           {sala.horario_inicio && sala.horario_fim && (
                             <p className="flex items-center gap-1">
                               <Clock className="h-3 w-3" />{sala.horario_inicio?.slice(0, 5)} — {sala.horario_fim?.slice(0, 5)}
@@ -530,10 +539,10 @@ export default function Salas() {
                             </Button>
                           )}
                           {statusExibido === 'limpeza' && (
-                            <Button size="sm" variant="outline" className="min-h-11 text-xs gap-1"
-                              onClick={() => handleChangeStatus(sala, 'disponivel')} disabled={updatingSalaId !== null}>
-                              {updatingSalaId === sala.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Paintbrush className="h-3 w-3" />}
-                              {updatingSalaId === sala.id ? 'Salvando...' : 'Pronta'}
+                            <Button asChild size="sm" variant="outline" className="min-h-11 text-xs gap-1">
+                              <Link to="/higiene-salas" aria-label={`Inspecionar higienização de ${sala.nome}`}>
+                                <Paintbrush className="h-3 w-3" />Inspecionar
+                              </Link>
                             </Button>
                           )}
                           {statusExibido === 'manutencao' && (

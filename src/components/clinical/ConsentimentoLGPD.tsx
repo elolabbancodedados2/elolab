@@ -42,6 +42,8 @@ interface ConsentimentoLGPDProps {
   pacienteNome: string;
   consentimentos: Consentimento[];
   onConsentimentoRegistrado: () => void;
+  isLoading?: boolean;
+  isError?: boolean;
 }
 
 const TIPOS_CONSENTIMENTO = [
@@ -107,7 +109,9 @@ export function ConsentimentoLGPD({
   pacienteId, 
   pacienteNome, 
   consentimentos, 
-  onConsentimentoRegistrado 
+  onConsentimentoRegistrado,
+  isLoading = false,
+  isError = false,
 }: ConsentimentoLGPDProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isRevokeOpen, setIsRevokeOpen] = useState(false);
@@ -272,7 +276,7 @@ export function ConsentimentoLGPD({
               <Shield className="h-5 w-5 text-primary" />
               <CardTitle className="text-lg">Consentimentos LGPD</CardTitle>
             </div>
-            <Button onClick={() => setIsOpen(true)} size="sm">
+            <Button onClick={() => setIsOpen(true)} size="sm" disabled={isLoading || isError}>
               <FileText className="h-4 w-4 mr-2" />
               Novo Consentimento
             </Button>
@@ -282,7 +286,14 @@ export function ConsentimentoLGPD({
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {!temConsentimentoObrigatorio && (
+          {isLoading && <p role="status" className="mb-4 text-sm text-muted-foreground">Carregando histórico de consentimentos…</p>}
+          {isError && (
+            <Alert variant="destructive" className="mb-4">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertDescription>Não foi possível carregar o histórico. Atualize a ficha antes de registrar ou revogar consentimentos.</AlertDescription>
+            </Alert>
+          )}
+          {!isLoading && !isError && !temConsentimentoObrigatorio && (
             <Alert variant="destructive" className="mb-4">
               <AlertTriangle className="h-4 w-4" />
               <AlertDescription>
@@ -291,7 +302,7 @@ export function ConsentimentoLGPD({
             </Alert>
           )}
 
-          <div className="space-y-3">
+          {!isLoading && !isError && <div className="space-y-3">
             {TIPOS_CONSENTIMENTO.map((tipo) => {
               const status = getConsentimentoStatus(tipo.tipo);
               const consentimento = consentimentos.find(c => c.tipo_consentimento === tipo.tipo);
@@ -346,7 +357,7 @@ export function ConsentimentoLGPD({
                 </div>
               );
             })}
-          </div>
+          </div>}
         </CardContent>
       </Card>
 

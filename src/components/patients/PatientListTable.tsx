@@ -1,11 +1,12 @@
 import { memo } from 'react';
 import { motion } from 'framer-motion';
-import { Eye, Edit, Trash2, Link, Phone, Mail, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Eye, Edit, Trash2, Link, Unlink, Phone, Mail, AlertTriangle, ChevronLeft, ChevronRight, Power } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ActionableEmptyState } from '@/components/ActionableEmptyState';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { PatientPhoto, AllergyAlert } from '@/components/clinical';
+import { describeMissingPatientContacts } from '@/lib/patientContactCompleteness';
 
 interface PatientListTableProps {
   pacientes: any[];
@@ -25,6 +26,8 @@ interface PatientListTableProps {
   podeExcluirPaciente?: boolean;
   podeEditarPaciente?: boolean;
   onGeneratePortalLink: (id: string, nome: string) => void;
+  onRevokePortalLinks: (id: string, nome: string) => void;
+  onChangeStatus?: (paciente: any) => void;
   /**
    * Gerar link do portal grava em paciente_portal_tokens, cujo RLS exige admin
    * ou recepção. Enfermagem alcança esta tela e era recusada no clique — o
@@ -36,8 +39,8 @@ interface PatientListTableProps {
 }
 
 export const PatientListTable = memo(function PatientListTable({
-  pacientes, totalPacientes, totalPacientesCarregado, hasFiltrosAtivos = false, onLimparFiltros, onCreate, onView, onEdit, onDelete, onGeneratePortalLink,
-  podeGerarLinkPortal = true, podeExcluirPaciente = false, podeEditarPaciente = true, getConvenioNome, calcularIdade,
+  pacientes, totalPacientes, totalPacientesCarregado, hasFiltrosAtivos = false, onLimparFiltros, onCreate, onView, onEdit, onDelete, onGeneratePortalLink, onRevokePortalLinks,
+  podeGerarLinkPortal = true, podeExcluirPaciente = false, podeEditarPaciente = true, onChangeStatus, getConvenioNome, calcularIdade,
   pagina, hasMore, isLoading = false, hasError = false, onPaginaChange,
 }: PatientListTableProps) {
   const tamanhoPagina = 50;
@@ -75,6 +78,7 @@ export const PatientListTable = memo(function PatientListTable({
           renderEmptyState()
         ) : pacientesVisiveis.map((paciente) => {
           const idade = calcularIdade(paciente.data_nascimento);
+          const contatoAusente = describeMissingPatientContacts(paciente);
           return (
             <article key={paciente.id} className="p-4">
               <button type="button" className="flex min-h-11 w-full items-start gap-3 rounded-lg text-left outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => onView(paciente)}>
@@ -82,22 +86,32 @@ export const PatientListTable = memo(function PatientListTable({
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-medium">{paciente.nome}</span>
                   <span className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                    {paciente.ativo === false && <Badge variant="secondary" className="text-[10px]">Inativo</Badge>}
                     {paciente.data_nascimento && <span>{Number.isFinite(idade) && idade >= 0 ? `${idade} anos` : 'Nascimento inválido'}</span>}
                     <Badge variant="outline" className="max-w-full truncate text-[10px]">{getConvenioNome(paciente.convenio_id)}</Badge>
                   </span>
                   {paciente.telefone && <span className="mt-1.5 flex items-center gap-1.5 text-xs text-muted-foreground"><Phone className="h-3 w-3" />{paciente.telefone}</span>}
+                  {contatoAusente && <span className="mt-1.5 flex items-center gap-1.5 text-xs text-warning-foreground"><AlertTriangle aria-hidden="true" className="h-3 w-3" />{contatoAusente}</span>}
                 </span>
                 <Eye className="mt-2 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
               </button>
               {paciente.alergias?.length > 0 && <AllergyAlert alergias={paciente.alergias} compact className="mt-2" />}
               <div className="mt-3 flex gap-2" onClick={(e) => e.stopPropagation()}>
-                {podeGerarLinkPortal && (
+                {podeGerarLinkPortal && paciente.ativo !== false && (
                   <Button variant="outline" onClick={() => onGeneratePortalLink(paciente.id, paciente.nome)} className="h-11 min-w-0 flex-1 gap-1 px-2 text-xs" aria-label={`Gerar link do portal para ${paciente.nome}`}>
                     <Link className="h-4 w-4" /> Portal
                   </Button>
                 )}
+                {podeGerarLinkPortal && paciente.ativo !== false && (
+                  <Button variant="outline" onClick={() => onRevokePortalLinks(paciente.id, paciente.nome)} className="h-11 min-w-0 flex-1 gap-1 px-2 text-xs text-destructive" aria-label={`Revogar links do portal de ${paciente.nome}`}>
+                    <Unlink className="h-4 w-4" /> Revogar
+                  </Button>
+                )}
                 {podeEditarPaciente && <Button variant="outline" onClick={() => onEdit(paciente)} className="h-11 min-w-0 flex-1 gap-1 px-2 text-xs" aria-label={`Editar ${paciente.nome}`}>
                   <Edit className="h-4 w-4" /> Editar
+                </Button>}
+                {podeEditarPaciente && onChangeStatus && <Button variant="outline" onClick={() => onChangeStatus(paciente)} className="h-11 min-w-0 flex-1 gap-1 px-2 text-xs" aria-label={`${paciente.ativo === false ? 'Reativar' : 'Inativar'} ${paciente.nome}`}>
+                  <Power className="h-4 w-4" /> {paciente.ativo === false ? 'Reativar' : 'Inativar'}
                 </Button>}
                 {podeExcluirPaciente && (
                   <Button variant="outline" onClick={() => onDelete(paciente)} className="h-11 min-w-0 flex-1 gap-1 px-2 text-xs text-destructive" aria-label={`Excluir ${paciente.nome}`}>
@@ -133,6 +147,7 @@ export const PatientListTable = memo(function PatientListTable({
           ) : (
             pacientesVisiveis.map((paciente) => {
               const idade = calcularIdade(paciente.data_nascimento);
+              const contatoAusente = describeMissingPatientContacts(paciente);
               return (
                 <TableRow key={paciente.id} className="cursor-pointer hover:bg-muted/50" onClick={() => onView(paciente)}>
                   <TableCell>
@@ -147,6 +162,7 @@ export const PatientListTable = memo(function PatientListTable({
                       <div className="min-w-0">
                         <p className="font-medium truncate">{paciente.nome}</p>
                         <div className="flex items-center gap-2 mt-0.5">
+                          {paciente.ativo === false && <Badge variant="secondary" className="text-[10px] px-1.5 py-0">Inativo</Badge>}
                           {paciente.sexo && (
                             <Badge variant="outline" className="text-[10px] px-1.5 py-0">
                               {['M', 'masculino'].includes(paciente.sexo) ? 'M' : ['F', 'feminino'].includes(paciente.sexo) ? 'F' : 'O'}
@@ -173,6 +189,11 @@ export const PatientListTable = memo(function PatientListTable({
                           <Mail className="h-3 w-3" />{paciente.email}
                         </div>
                       )}
+                      {contatoAusente && (
+                        <div className="mt-1 flex items-center gap-1.5 text-xs text-warning-foreground">
+                          <AlertTriangle aria-hidden="true" className="h-3 w-3" />{contatoAusente}
+                        </div>
+                      )}
                     </div>
                   </TableCell>
                   <TableCell className="hidden lg:table-cell">
@@ -194,16 +215,28 @@ export const PatientListTable = memo(function PatientListTable({
                           <Eye className="h-4 w-4" />
                         </Button>
                       </motion.div>
-                      {podeGerarLinkPortal && (
+                      {podeGerarLinkPortal && paciente.ativo !== false && (
                         <motion.div whileHover={{ scale: 1.15 }} whileTap={{ scale: 0.9 }} transition={{ type: "spring", stiffness: 500, damping: 15 }}>
                           <Button variant="ghost" size="icon" onClick={() => onGeneratePortalLink(paciente.id, paciente.nome)} title="Link do portal" aria-label={`Gerar link do portal para ${paciente.nome}`} className="h-11 w-11 rounded-xl hover:bg-accent/60">
                             <Link className="h-4 w-4" />
                           </Button>
                         </motion.div>
                       )}
+                      {podeGerarLinkPortal && paciente.ativo !== false && (
+                        <motion.div whileHover={{ scale: 1.15 }} whileTap={{ scale: 0.9 }} transition={{ type: "spring", stiffness: 500, damping: 15 }}>
+                          <Button variant="ghost" size="icon" onClick={() => onRevokePortalLinks(paciente.id, paciente.nome)} title="Revogar links do portal" aria-label={`Revogar links do portal de ${paciente.nome}`} className="h-11 w-11 rounded-xl text-destructive hover:bg-destructive/10">
+                            <Unlink className="h-4 w-4" />
+                          </Button>
+                        </motion.div>
+                      )}
                       {podeEditarPaciente && <motion.div whileHover={{ scale: 1.15 }} whileTap={{ scale: 0.9 }} transition={{ type: "spring", stiffness: 500, damping: 15 }}>
                         <Button variant="ghost" size="icon" onClick={() => onEdit(paciente)} title="Editar" aria-label={`Editar ${paciente.nome}`} className="h-11 w-11 rounded-xl hover:bg-accent/60">
                           <Edit className="h-4 w-4" />
+                        </Button>
+                      </motion.div>}
+                      {podeEditarPaciente && onChangeStatus && <motion.div whileHover={{ scale: 1.15 }} whileTap={{ scale: 0.9 }} transition={{ type: "spring", stiffness: 500, damping: 15 }}>
+                        <Button variant="ghost" size="icon" onClick={() => onChangeStatus(paciente)} title={paciente.ativo === false ? 'Reativar paciente' : 'Inativar paciente'} aria-label={`${paciente.ativo === false ? 'Reativar' : 'Inativar'} ${paciente.nome}`} className="h-11 w-11 rounded-xl hover:bg-accent/60">
+                          <Power className="h-4 w-4" />
                         </Button>
                       </motion.div>}
                       {podeExcluirPaciente && (

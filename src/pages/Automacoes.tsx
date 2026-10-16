@@ -32,6 +32,18 @@ import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { ErrorState } from '@/components/ErrorState';
 import { cn } from '@/lib/utils';
+import { resumirErroFilaNotificacao } from '@/lib/notificationQueueErrorSummary';
+import { logAudit } from '@/lib/auditTrail';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 interface AutomationLog {
   id: string;
@@ -58,8 +70,7 @@ interface AutomationSetting {
 
 interface QueueItem {
   id: string; tipo: string; destinatario_nome: string | null;
-  destinatario_email: string | null; destinatario_telefone: string | null;
-  assunto: string | null; status: string; tentativas: number;
+  status: string; tentativas: number;
   max_tentativas: number; erro_mensagem: string | null;
   agendado_para: string; created_at: string;
 }
@@ -69,6 +80,14 @@ interface AutomationDeliveryClaim {
   estado: 'claimed' | 'completed' | 'uncertain';
   criado_em: string;
   atualizado_em: string;
+}
+
+interface AutomationChangeRequest {
+  key: string;
+  name: string;
+  clinicId: string;
+  currentState: boolean;
+  nextState: boolean;
 }
 
 interface ClientErrorEvent {
@@ -182,11 +201,14 @@ export default function Automacoes() {
   const [isRunning, setIsRunning] = useState<Record<string, boolean>>({});
   const [isToggling, setIsToggling] = useState<Record<string, boolean>>({});
   const [updatingQueue, setUpdatingQueue] = useState<Record<string, boolean>>({});
+  const [automationChange, setAutomationChange] = useState<AutomationChangeRequest | null>(null);
+  const [automationImpact, setAutomationImpact] = useState<{ pendingCount: number | null; loading: boolean; error: boolean }>({ pendingCount: null, loading: false, error: false });
   const [deliveryClaimsPage, setDeliveryClaimsPage] = useState(0);
   const deliveryClaimsPageSize = 50;
   const runningLocks = useRef(new Set<string>());
   const togglingLocks = useRef(new Set<string>());
   const queueLocks = useRef(new Set<string>());
+  const impactRequestVersion = useRef(0);
   const { profile } = useSupabaseAuth();
   useEffect(() => { setDeliveryClaimsPage(0); }, [profile?.clinica_id]);
 
@@ -199,6 +221,7 @@ export default function Automacoes() {
   });
 
   const queueQuery = useSupabaseQuery<QueueItem>('notification_queue', {
+    select: 'id, tipo, destinatario_nome, status, tentativas, max_tentativas, erro_mensagem, agendado_para, created_at',
     orderBy: { column: 'created_at', ascending: false }, limit: 100, page: 0,
   });
   const deliveryClaimsQuery = useSupabaseQuery<AutomationDeliveryClaim>('automation_delivery_claims', {
@@ -257,7 +280,7 @@ export default function Automacoes() {
     return settings.find(s => s.chave === key);
   };
 
-  const toggleAutomation = async (key: string, currentState: boolean) => {
+  const requestAutomationChange = async (key: string, currentState: boolean) => {
     if (togglingLocks.current.has(key)) return;
     const automation = AUTOMATIONS.find(a => a.key === key);
     if (automation?.configurable === false) {
@@ -272,6 +295,34 @@ export default function Automacoes() {
     }
     if (!profile?.clinica_id) { toast.error('Clínica não identificada.'); return; }
     if (settingsQuery.isError || settingsQuery.isLoading) { toast.error('Carregue as configurações antes de alterar a automação.'); return; }
+    const requestVersion = ++impactRequestVersion.current;
+    const clinicId = profile.clinica_id;
+    setAutomationChange({ key, name: automation?.name ?? key, clinicId, currentState, nextState: !currentState });
+    setAutomationImpact({ pendingCount: null, loading: true, error: false });
+    try {
+      const { count, error } = await supabase.from('notification_queue')
+        .select('id', { count: 'exact', head: true })
+        .eq('clinica_id', clinicId)
+        .in('status', ['pendente', 'enviando', 'incerto', 'erro']);
+      if (requestVersion !== impactRequestVersion.current) return;
+      if (error || count === null) throw error ?? new Error('A contagem de envios não foi confirmada.');
+      setAutomationImpact({ pendingCount: count, loading: false, error: false });
+    } catch {
+      if (requestVersion === impactRequestVersion.current) setAutomationImpact({ pendingCount: null, loading: false, error: true });
+    }
+  };
+
+  const toggleAutomation = async () => {
+    const change = automationChange;
+    if (!change || togglingLocks.current.has(change.key) || automationImpact.pendingCount === null || automationImpact.error || automationImpact.loading) return;
+    const { key, name, currentState, nextState } = change;
+    const automation = AUTOMATIONS.find(item => item.key === key);
+    if (!profile?.clinica_id) { toast.error('Clínica não identificada.'); return; }
+    if (profile.clinica_id !== change.clinicId) {
+      setAutomationChange(null);
+      toast.error('A clínica ativa mudou durante a prévia. Confira a automação novamente antes de salvar.');
+      return;
+    }
     togglingLocks.current.add(key);
     setIsToggling(prev => ({ ...prev, [key]: true }));
     try {
@@ -282,25 +333,41 @@ export default function Automacoes() {
       if (existing) {
         ({ data: updated, error } = await supabase
           .from('automation_settings')
-          .update({ ativo: !currentState })
-          .eq('id', existing.id).eq('clinica_id', profile.clinica_id).select('id').maybeSingle());
-        if (!error && !updated) throw new Error('Configuração não encontrada ou sem permissão para alterar. Atualize a página.');
+          .update({ ativo: nextState })
+          .eq('id', existing.id).eq('clinica_id', change.clinicId).eq('ativo', currentState).select('id').maybeSingle());
+        if (!error && !updated) throw new Error('A configuração mudou desde a prévia. Atualize a tela e confira o estado atual.');
       } else {
         if (!profile?.clinica_id) throw new Error('Clínica não identificada. Recarregue a página e tente novamente.');
         ({ error } = await supabase
           .from('automation_settings')
           .insert({
             chave: key,
-            ativo: !currentState,
+            ativo: nextState,
             descricao: automation?.description ?? null,
             valor: {},
-            clinica_id: profile.clinica_id,
+            clinica_id: change.clinicId,
           }));
       }
 
       if (error) throw error;
 
-      toast.success(!currentState ? 'Automação ativada' : 'Automação desativada', { description: `A automação "${AUTOMATIONS.find(a => a.key === key)?.name}" foi ${!currentState ? 'ativada' : 'desativada'}.` });
+      let auditRecorded = false;
+      try {
+        auditRecorded = await logAudit({
+          action: 'update', collection: 'automation_settings', recordId: existing?.id ?? key, recordName: name,
+          userId: profile.id, userName: profile.nome,
+          changes: [{ field: 'ativo', oldValue: currentState, newValue: nextState }],
+        });
+      } catch {
+        auditRecorded = false;
+      }
+      toast.success(nextState ? 'Automação ativada' : 'Automação desativada', {
+        description: auditRecorded
+          ? `A automação "${name}" foi ${nextState ? 'ativada' : 'desativada'} para os próximos processamentos.`
+          : `A automação "${name}" foi alterada. O registro de autoria ficou pendente para reenvio.`,
+      });
+      impactRequestVersion.current++;
+      setAutomationChange(null);
       await settingsQuery.refetch();
     } catch (error) {
       if (import.meta.env.DEV) console.error('Error toggling automation:', error);
@@ -462,7 +529,7 @@ export default function Automacoes() {
                               ? `${automation.name}, automática sem controle individual`
                             : `${automation.name} indisponível`}
                           disabled={!available || automation.configurable === false || isToggling[automation.key]}
-                          onCheckedChange={() => toggleAutomation(automation.key, isActive)}
+                          onCheckedChange={() => void requestAutomationChange(automation.key, isActive)}
                         />
                         <span className="text-sm text-muted-foreground">
                           {!available ? 'Em desenvolvimento' : automation.configurable === false ? 'Automática' : isActive ? 'Ativo' : 'Inativo'}
@@ -591,18 +658,18 @@ export default function Automacoes() {
           <Card>
             <CardHeader><CardTitle>Últimos envios</CardTitle><CardDescription>Até 100 mensagens recentes, com tentativas e detalhes de falha.</CardDescription></CardHeader>
             <CardContent><div className="overflow-x-auto rounded-md border"><Table>
-              <TableHeader><TableRow><TableHead>Agendado</TableHead><TableHead>Canal</TableHead><TableHead>Destinatário</TableHead><TableHead>Status</TableHead><TableHead>Tentativas</TableHead><TableHead>Detalhe</TableHead><TableHead className="text-right">Ações</TableHead></TableRow></TableHeader>
+              <TableHeader><TableRow><TableHead>Próxima tentativa / agendado</TableHead><TableHead>Canal</TableHead><TableHead>Destinatário</TableHead><TableHead>Status</TableHead><TableHead>Tentativas</TableHead><TableHead>Detalhe</TableHead><TableHead className="text-right">Ações</TableHead></TableRow></TableHeader>
               <TableBody>{queue.length === 0 ? <TableRow><TableCell colSpan={7} className="py-8 text-center text-muted-foreground">Nenhum envio na fila</TableCell></TableRow> : queue.map(item => (
                 <TableRow key={item.id}>
                   <TableCell className="whitespace-nowrap text-sm">{formatarDataHora(item.agendado_para)}</TableCell>
                   <TableCell><Badge variant="outline">{item.tipo}</Badge></TableCell>
-                  <TableCell><div className="max-w-48 truncate font-medium">{item.destinatario_nome || item.destinatario_email || item.destinatario_telefone || 'Não informado'}</div></TableCell>
+                  <TableCell><div className="max-w-48 truncate font-medium">{item.destinatario_nome || 'Destinatário'}</div></TableCell>
                   <TableCell><Badge className={item.status === 'incerto' ? 'border-amber-500 text-amber-700' : undefined} variant={item.status === 'erro' ? 'destructive' : item.status === 'enviado' ? 'default' : 'secondary'}>{item.status === 'incerto' ? 'incerto · verificar' : item.status}</Badge></TableCell>
                   <TableCell>{item.tentativas}/{item.max_tentativas}</TableCell>
-                  <TableCell><p className="max-w-64 truncate text-xs text-muted-foreground" title={item.erro_mensagem || item.assunto || ''}>{item.erro_mensagem || item.assunto || '—'}</p></TableCell>
+                  <TableCell><p className="max-w-64 truncate text-xs text-muted-foreground" title={item.erro_mensagem ? resumirErroFilaNotificacao(item.erro_mensagem) : ''}>{item.erro_mensagem ? resumirErroFilaNotificacao(item.erro_mensagem) : '—'}</p></TableCell>
                   <TableCell><div className="flex justify-end gap-1">
                     {(item.status === 'erro' || item.status === 'cancelado') && <Button size="sm" variant="outline" disabled={updatingQueue[item.id]} onClick={() => updateQueueItem(item.id, 'retry')}><RefreshCw className={cn('mr-1 h-3 w-3', updatingQueue[item.id] && 'animate-spin')} />Repetir</Button>}
-                    {(item.status === 'pendente' || item.status === 'erro') && <Button size="icon" variant="ghost" title="Cancelar" aria-label={`Cancelar envio para ${item.destinatario_nome || item.destinatario_email || item.destinatario_telefone || 'destinatário'}`} disabled={updatingQueue[item.id]} onClick={() => updateQueueItem(item.id, 'cancel')}><XCircle className="h-4 w-4" /></Button>}
+                    {(item.status === 'pendente' || item.status === 'erro') && <Button size="icon" variant="ghost" title="Cancelar" aria-label={`Cancelar envio para ${item.destinatario_nome || 'destinatário'}`} disabled={updatingQueue[item.id]} onClick={() => updateQueueItem(item.id, 'cancel')}><XCircle className="h-4 w-4" /></Button>}
                   </div></TableCell>
                 </TableRow>
               ))}</TableBody>
@@ -622,6 +689,54 @@ export default function Automacoes() {
           </Card>
         </TabsContent>
       </Tabs>
+      <AlertDialog
+        open={Boolean(automationChange)}
+        onOpenChange={(open) => {
+          const key = automationChange?.key;
+          if (!open && (!key || !isToggling[key])) {
+            impactRequestVersion.current++;
+            setAutomationChange(null);
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{automationChange?.nextState ? 'Confirmar ativação' : 'Confirmar desativação'}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {automationChange?.nextState
+                ? `A automação “${automationChange.name}” passará a participar dos próximos processamentos desta clínica.`
+                : `A automação “${automationChange?.name}” deixará de participar dos próximos processamentos desta clínica.`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="rounded-lg border bg-muted/40 p-3 text-sm" role="status" aria-live="polite">
+            {automationImpact.loading && 'Calculando o alcance da alteração…'}
+            {automationImpact.error && (
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span>Não foi possível confirmar quantos envios existentes serão preservados. Recalcule a prévia para continuar.</span>
+                <Button variant="outline" size="sm" onClick={() => automationChange && void requestAutomationChange(automationChange.key, automationChange.currentState)}>
+                  Recalcular prévia
+                </Button>
+              </div>
+            )}
+            {!automationImpact.loading && !automationImpact.error && automationImpact.pendingCount !== null && (
+              automationImpact.pendingCount === 0
+                ? 'Não há envios pendentes ou em conferência nesta clínica; a fila existente não será alterada.'
+                : `Há ${automationImpact.pendingCount} envios pendentes ou em conferência nesta clínica; eles não serão alterados por esta mudança.`
+            )}
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={Boolean(automationChange && isToggling[automationChange.key])}>Voltar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={!automationChange || automationImpact.loading || automationImpact.error || automationImpact.pendingCount === null || isToggling[automationChange?.key ?? '']}
+              onClick={(event) => { event.preventDefault(); void toggleAutomation(); }}
+            >
+              {automationChange && isToggling[automationChange.key]
+                ? 'Salvando…'
+                : automationChange?.nextState ? 'Ativar automação' : 'Desativar automação'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

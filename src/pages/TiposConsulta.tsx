@@ -47,6 +47,7 @@ interface TipoConsulta {
   nome: string;
   descricao: string | null;
   duracao_minutos: number;
+  instrucoes_preparo: string | null;
   cor: string;
   ativo: boolean;
   valor_particular: number;
@@ -64,6 +65,7 @@ interface PrecoConvenio {
 interface TipoForm {
   nome: string;
   descricao: string;
+  instrucoes_preparo: string;
   duracao_minutos: number | '';
   cor: string;
   ativo: boolean;
@@ -71,7 +73,7 @@ interface TipoForm {
 }
 
 const initialForm: TipoForm = {
-  nome: '', descricao: '', duracao_minutos: 30,
+  nome: '', descricao: '', instrucoes_preparo: '', duracao_minutos: 30,
   cor: '#6366f1', ativo: true, valor_particular: 0,
 };
 
@@ -138,6 +140,7 @@ export default function TiposConsulta() {
     setEditTarget(t);
     setForm({
       nome: t.nome, descricao: t.descricao || '', duracao_minutos: t.duracao_minutos,
+      instrucoes_preparo: t.instrucoes_preparo || '',
       cor: t.cor, ativo: t.ativo, valor_particular: t.valor_particular,
     });
     setFormOpen(true);
@@ -159,11 +162,13 @@ export default function TiposConsulta() {
     if (typeof duracaoMinutos !== 'number' || !Number.isInteger(duracaoMinutos) || duracaoMinutos <= 0) { toast.error('Informe uma duração inteira maior que zero.'); return; }
     if (typeof valorParticular !== 'number' || !Number.isFinite(valorParticular) || valorParticular < 0) { toast.error('Informe um valor particular válido, igual ou maior que zero.'); return; }
     if (Math.abs(valorParticular * 100 - Math.round(valorParticular * 100)) > 1e-7) { toast.error('Informe o valor particular com no máximo duas casas decimais.'); return; }
+    if (form.instrucoes_preparo.length > 2000) { toast.error('As instruções de preparo podem ter até 2.000 caracteres.'); return; }
     setSaving(true);
     try {
       const payload = {
         nome,
         descricao: form.descricao.trim() || null,
+        instrucoes_preparo: form.instrucoes_preparo.trim() || null,
         duracao_minutos: duracaoMinutos,
         cor: form.cor,
         ativo: form.ativo,
@@ -362,7 +367,7 @@ export default function TiposConsulta() {
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>{editTarget ? 'Editar Tipo' : 'Novo Tipo de Consulta'}</DialogTitle>
-            <DialogDescription>Defina nome, duração e valor particular.</DialogDescription>
+            <DialogDescription>Defina os dados do atendimento e as orientações que poderão aparecer no Portal do Paciente.</DialogDescription>
           </DialogHeader>
           <fieldset disabled={saving} className="contents">
           <div className="space-y-4">
@@ -373,6 +378,11 @@ export default function TiposConsulta() {
             <div className="space-y-1.5">
               <Label htmlFor="tipo-descricao" className="text-xs">Descrição</Label>
               <Textarea id="tipo-descricao" value={form.descricao} onChange={e => setForm({ ...form, descricao: e.target.value })} placeholder="Descrição opcional..." rows={2} />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="tipo-instrucoes-preparo" className="text-xs">Instruções de preparo para o paciente</Label>
+              <Textarea id="tipo-instrucoes-preparo" value={form.instrucoes_preparo} onChange={e => setForm({ ...form, instrucoes_preparo: e.target.value })} placeholder="Orientações gerais para este tipo de atendimento..." rows={3} maxLength={2000} />
+              <p className="text-xs text-muted-foreground">Exibidas apenas no portal do paciente com consulta futura ativa. Não são enviadas por mensagem. {form.instrucoes_preparo.length}/2.000</p>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">

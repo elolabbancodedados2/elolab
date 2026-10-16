@@ -21,7 +21,8 @@ import { toast } from 'sonner';
 import { mensagemDeErro } from '@/lib/erros';
 import { differenceInMinutes } from 'date-fns';
 import { cn } from '@/lib/utils';
-import { escapeHtml } from '@/lib/html';
+import { sampleLabelHtml } from '@/lib/sampleLabel';
+import { buildSampleReasonPayload, SAMPLE_REJECTION_REASONS } from '@/lib/sampleRejection';
 import { canalUnico } from '@/lib/realtimeCanal';
 import { ErrorState } from '@/components/ErrorState';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
@@ -58,12 +59,6 @@ const sexoPaciente = (sexo: unknown) => {
   if (['f', 'feminino', 'female'].includes(valor)) return 'F';
   if (['o', 'outro', 'other'].includes(valor)) return 'O';
   return '—';
-};
-const sexoParaEtiqueta = (sexo: unknown) => {
-  const codigo = sexoPaciente(sexo);
-  if (codigo === 'M') return 'Masc';
-  if (codigo === 'F') return 'Fem';
-  return codigo === 'O' ? 'Outro' : '?';
 };
 const dataHoraClinica = (instant = new Date()) => new Intl.DateTimeFormat('pt-BR', {
   timeZone: 'America/Sao_Paulo',
@@ -112,6 +107,7 @@ export default function MapaColeta() {
   const [detailId, setDetailId] = useState<string | null>(null);
   const [eventoTipo, setEventoTipo] = useState('transporte');
   const [eventoLocal, setEventoLocal] = useState('');
+  const [eventoMotivoCodigo, setEventoMotivoCodigo] = useState('');
   const [eventoMotivo, setEventoMotivo] = useState('');
   const [savingEvento, setSavingEvento] = useState(false);
   const [processingIds, setProcessingIds] = useState<Set<string>>(new Set());
@@ -285,6 +281,7 @@ export default function MapaColeta() {
   const handleRecoleta = (id: string) => {
     setEventoTipo('recoleta');
     setEventoLocal('');
+    setEventoMotivoCodigo('');
     setEventoMotivo('');
     setDetailId(id);
   };
@@ -303,22 +300,29 @@ export default function MapaColeta() {
       toast.error('Informe o local da amostra.');
       return;
     }
-    if (['rejeicao', 'recoleta'].includes(eventoTipo) && eventoMotivo.trim().length < 5) {
-      toast.error('Informe um motivo com pelo menos 5 caracteres.');
+    const exigeMotivoEstruturado = ['rejeicao', 'recoleta'].includes(eventoTipo);
+    const motivoEstruturado = exigeMotivoEstruturado
+      ? buildSampleReasonPayload(eventoMotivoCodigo, eventoMotivo)
+      : null;
+    if (exigeMotivoEstruturado && !motivoEstruturado) {
+      toast.error(eventoMotivoCodigo === 'outro'
+        ? 'Explique o motivo selecionado em pelo menos 5 caracteres.'
+        : 'Selecione um motivo para continuar.');
       return;
     }
     setSavingEvento(true);
     try {
+      const detalhesEvento = motivoEstruturado ?? (eventoMotivo.trim() ? { motivo: eventoMotivo.trim() } : {});
       const { data, error } = await (supabase as any).rpc('laboratorio_registrar_evento_amostra', {
         p_coleta_id: amostra.id,
         p_tipo: eventoTipo,
         p_local: eventoLocal.trim() || null,
-        p_detalhes: eventoMotivo.trim() ? { motivo: eventoMotivo.trim() } : {},
+        p_detalhes: detalhesEvento,
       });
       if (error) throw error;
       const resultId = typeof data === 'string' ? data : amostra.id;
       toast.success(eventoTipo === 'recoleta' ? 'Nova amostra criada e vinculada à anterior' : 'Movimentação registrada no histórico');
-      setEventoLocal(''); setEventoMotivo(''); setEventoTipo('transporte');
+      setEventoLocal(''); setEventoMotivoCodigo(''); setEventoMotivo(''); setEventoTipo('transporte');
       await Promise.all([fetchColetas(), eventosAmostraQuery.refetch()]);
       if (eventoTipo === 'recoleta') setDetailId(resultId);
     } catch (error) {
@@ -336,21 +340,21 @@ export default function MapaColeta() {
       toast.error('O navegador bloqueou a janela de impressão. Permita pop-ups para gerar as etiquetas.');
       return;
     }
-    const impressoEm = dataHoraClinica();
-    w.document.write(`<html><head><title>Etiquetas</title><style>
-        body{font-family:monospace;font-size:12px}
-        .label{border:1px dashed #999;padding:8px;margin:4px 0;page-break-inside:avoid}
-        .code{font-size:16px;font-weight:bold;letter-spacing:2px}
+    const labels = selectedItems.map(item => sampleLabelHtml({
+      codigoAmostra: item.codigo_amostra,
+      tubo: item.tubo ?? item.tipo_amostra ?? '',
+    })).join('');
+    w.document.write(`<html><head><meta charset="utf-8"><title>Etiquetas de amostras</title><style>
+        body{font-family:Arial,sans-serif;font-size:12px}
+        .label{box-sizing:border-box;width:58mm;min-height:30mm;border:1px dashed #999;padding:3mm;margin:2mm 0;page-break-inside:avoid;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1.5mm}
+        .sample-code{font-family:monospace;font-size:16px;font-weight:bold;letter-spacing:2px}
+        .barcode svg{display:block;width:48mm;height:12mm}
+        .tube{font-size:10px}
+        .barcode-error{font-size:9px;color:#900}
         @media print{.no-print{display:none}}</style></head><body>
-        <button class="no-print" id="imprimir-mapa">🖨️ Imprimir</button>
+        <button class="no-print" id="imprimir-mapa">Imprimir</button>
         <h3 class="no-print">${selected.size} etiqueta(s)</h3>
-        ${selectedItems.map(i => `<div class="label">
-          <div class="code">${escapeHtml(i.codigo_amostra)}</div>
-          <div><strong>${escapeHtml(nomePaciente(i.pacientes))}</strong></div>
-          <div>${calcAge(i.pacientes?.data_nascimento) ?? '?'}a — ${sexoParaEtiqueta(i.pacientes?.sexo)}</div>
-          <div>Tubo: ${escapeHtml(i.tubo ?? i.tipo_amostra)} | Exame: ${escapeHtml(i.exames?.tipo_exame ?? '—')}</div>
-          <div>${escapeHtml(impressoEm)}</div>
-        </div>`).join('')}</body></html>`);
+        ${labels}</body></html>`);
     w.document.close();
     w.document.getElementById('imprimir-mapa')?.addEventListener('click', () => w.print());
     toast.success(`${selected.size} etiqueta(s) gerada(s)`);
@@ -794,13 +798,38 @@ export default function MapaColeta() {
               <section className="space-y-3 rounded-xl border bg-muted/10 p-3">
                 <p className="text-sm font-semibold">Registrar movimentação</p>
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="space-y-1"><Label htmlFor="lab-amostra-evento">Evento</Label><Select value={eventoTipo} onValueChange={setEventoTipo}><SelectTrigger id="lab-amostra-evento"><SelectValue /></SelectTrigger><SelectContent>
+                  <div className="space-y-1"><Label htmlFor="lab-amostra-evento">Evento</Label><Select value={eventoTipo} onValueChange={value => { setEventoTipo(value); setEventoMotivoCodigo(''); setEventoMotivo(''); setEventoLocal(''); }}><SelectTrigger id="lab-amostra-evento"><SelectValue /></SelectTrigger><SelectContent>
                     <SelectItem value="recebida">Recebimento no laboratório</SelectItem><SelectItem value="transporte">Transporte</SelectItem><SelectItem value="armazenamento">Armazenamento</SelectItem><SelectItem value="observacao">Observação</SelectItem>
                     {(detailItem.status === 'coletado' || detailItem.status === 'em_analise') && <SelectItem value="rejeicao">Rejeitar amostra</SelectItem>}
                     {['coletado', 'em_analise', 'rejeitada'].includes(detailItem.status) && <SelectItem value="recoleta">Solicitar recoleta</SelectItem>}
                   </SelectContent></Select></div>
+                  {['rejeicao', 'recoleta'].includes(eventoTipo) && (
+                    <>
+                      <div className="space-y-1">
+                        <Label htmlFor="lab-amostra-motivo-categoria">Motivo</Label>
+                        <Select value={eventoMotivoCodigo} onValueChange={value => { setEventoMotivoCodigo(value); setEventoMotivo(''); }}>
+                          <SelectTrigger id="lab-amostra-motivo-categoria"><SelectValue placeholder="Selecione o motivo" /></SelectTrigger>
+                          <SelectContent>
+                            {SAMPLE_REJECTION_REASONS.map(reason => <SelectItem key={reason.code} value={reason.code}>{reason.label}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1">
+                        <Label htmlFor="lab-amostra-motivo-detalhe">
+                          {eventoMotivoCodigo === 'outro' ? 'Explique o motivo' : 'Detalhe adicional (opcional)'}
+                        </Label>
+                        <Input
+                          id="lab-amostra-motivo-detalhe"
+                          value={eventoMotivo}
+                          onChange={event => setEventoMotivo(event.target.value)}
+                          maxLength={300}
+                          placeholder={eventoMotivoCodigo === 'outro' ? 'Mínimo de 5 caracteres' : 'Até 300 caracteres'}
+                        />
+                      </div>
+                    </>
+                  )}
                   {['transporte', 'armazenamento'].includes(eventoTipo) && <div className="space-y-1"><Label htmlFor="lab-amostra-local">Local</Label><Input id="lab-amostra-local" value={eventoLocal} onChange={(event) => setEventoLocal(event.target.value)} maxLength={120} placeholder="Ex.: setor de bioquímica" /></div>}
-                  {['rejeicao', 'recoleta', 'observacao'].includes(eventoTipo) && <div className="space-y-1 sm:col-span-2"><Label htmlFor="lab-amostra-motivo">{eventoTipo === 'observacao' ? 'Observação' : 'Motivo'}</Label><Input id="lab-amostra-motivo" value={eventoMotivo} onChange={(event) => setEventoMotivo(event.target.value)} maxLength={500} placeholder="Descreva a ocorrência" /></div>}
+                  {eventoTipo === 'observacao' && <div className="space-y-1 sm:col-span-2"><Label htmlFor="lab-amostra-motivo">Observação</Label><Input id="lab-amostra-motivo" value={eventoMotivo} onChange={(event) => setEventoMotivo(event.target.value)} maxLength={500} placeholder="Descreva a ocorrência" /></div>}
                 </div>
                 <div className="flex justify-end"><Button size="sm" onClick={() => void registrarEventoAmostra()} disabled={savingEvento} className="gap-2">{savingEvento && <Loader2 className="h-4 w-4 animate-spin" />} Registrar evento</Button></div>
               </section>

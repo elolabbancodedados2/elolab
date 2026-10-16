@@ -28,7 +28,7 @@ export function PageHeader({ title, description, icon, actions, className }: Pag
           {description && <p className="mt-1 max-w-prose text-sm leading-6 text-muted-foreground">{description}</p>}
         </div>
       </div>
-      {actions && <div className="flex w-full shrink-0 flex-wrap items-center gap-2 sm:w-auto sm:justify-end">{actions}</div>}
+      {actions && <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">{actions}</div>}
     </header>
   );
 }
