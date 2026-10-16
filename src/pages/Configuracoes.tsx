@@ -749,7 +749,7 @@ export default function Configuracoes() {
         <div className="-mx-4 overflow-x-auto overscroll-x-contain px-4 pb-2 sm:-mx-1 sm:px-1 lg:overflow-visible">
           <TabsList aria-label="Seções das configurações" className="flex h-auto w-max min-w-full flex-nowrap justify-start gap-1 rounded-xl border border-border bg-muted/60 p-1.5 lg:w-full lg:flex-wrap">
             {tabItems.map(tab => (
-              <TabsTrigger key={tab.value} value={tab.value} title={tab.label} className="min-h-9 shrink-0 gap-2 rounded-lg px-3 text-xs data-[state=active]:bg-card data-[state=active]:text-primary data-[state=active]:shadow-sm">
+              <TabsTrigger key={tab.value} value={tab.value} title={tab.label} className="min-h-9 shrink-0 gap-2 rounded-lg px-3 text-xs">
                 <tab.icon aria-hidden="true" className="h-4 w-4" />
                 <span>{tab.label}</span>
               </TabsTrigger>

@@ -1957,7 +1957,7 @@ export default function Prontuarios() {
                         <TabsTrigger
                           key={t.val}
                           value={t.val}
-                          className="min-h-11 justify-center gap-1 rounded-lg border border-transparent px-2 py-2 text-xs data-[state=active]:border-primary/30 data-[state=active]:bg-primary/5 data-[state=active]:shadow-none sm:min-h-9 sm:justify-start sm:px-3"
+                          className="min-h-11 justify-center gap-1 rounded-lg border border-transparent px-2 py-2 text-xs sm:min-h-9 sm:justify-start sm:px-3"
                         >
                           <t.icon className="h-3 w-3" />{t.label}
                         </TabsTrigger>
@@ -2313,7 +2313,7 @@ export default function Prontuarios() {
             { val: 'adendos', icon: ScrollText, label: 'Adendos' },
                     ...(user?.roles?.includes('admin') ? [{ val: 'auditoria', icon: Shield, label: 'Auditoria' }] : []),
                   ].map(t => (
-                    <TabsTrigger key={t.val} value={t.val} className="min-h-11 justify-start gap-1.5 rounded-lg px-2.5 py-2 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm sm:min-h-9 sm:justify-center sm:px-3 sm:py-1.5">
+                    <TabsTrigger key={t.val} value={t.val} className="min-h-11 justify-start gap-1.5 rounded-lg px-2.5 py-2 text-xs sm:min-h-9 sm:justify-center sm:px-3 sm:py-1.5">
                       <t.icon className="h-3.5 w-3.5" />{t.label}
                     </TabsTrigger>
                   ))}

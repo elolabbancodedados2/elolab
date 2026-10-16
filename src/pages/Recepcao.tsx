@@ -1156,22 +1156,22 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
             legível em vez de virar "Atend...". */}
         <div className="overflow-x-auto -mx-1 px-1 pb-1 lg:overflow-visible">
           <TabsList className="w-max min-w-full justify-start bg-muted/50 p-1 gap-1 lg:w-full lg:flex-wrap">
-            <TabsTrigger value="todos" className="shrink-0 data-[state=active]:bg-background">
+            <TabsTrigger value="todos" className="shrink-0">
               Todos ({enriched.length})
             </TabsTrigger>
-            <TabsTrigger value="checkin" className="shrink-0 data-[state=active]:bg-background">
+            <TabsTrigger value="checkin" className="shrink-0">
               <Clock className="h-3.5 w-3.5 mr-1" /> Check-in ({stats.aguardando})
             </TabsTrigger>
-            <TabsTrigger value="balcao" className="shrink-0 data-[state=active]:bg-background">
+            <TabsTrigger value="balcao" className="shrink-0">
               <DollarSign className="h-3.5 w-3.5 mr-1" /> Balcão ({stats.balcao})
             </TabsTrigger>
-            <TabsTrigger value="atendimento" className="shrink-0 data-[state=active]:bg-background">
+            <TabsTrigger value="atendimento" className="shrink-0">
               <Stethoscope className="h-3.5 w-3.5 mr-1" /> Atendimento ({stats.atendimento})
             </TabsTrigger>
-            <TabsTrigger value="concluido" className="shrink-0 data-[state=active]:bg-background">
+            <TabsTrigger value="concluido" className="shrink-0">
               <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> Concluído ({stats.concluido})
             </TabsTrigger>
-            <TabsTrigger value="faltou" className="shrink-0 data-[state=active]:bg-background">
+            <TabsTrigger value="faltou" className="shrink-0">
               <XCircle className="h-3.5 w-3.5 mr-1" /> Não compareceu ({stats.faltou})
             </TabsTrigger>
           </TabsList>

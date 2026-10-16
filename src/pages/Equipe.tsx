@@ -28,15 +28,15 @@ export default function Equipe() {
           aria-label="Seções da equipe"
           className="h-auto w-full justify-start gap-1 overflow-x-auto rounded-xl border border-border bg-muted/70 p-1.5 text-muted-foreground"
         >
-          <TabsTrigger value="medicos" className="h-10 shrink-0 gap-2 rounded-lg px-4 data-[state=active]:bg-card data-[state=active]:text-primary data-[state=active]:shadow-sm focus-visible:ring-ring">
+          <TabsTrigger value="medicos" className="h-10 shrink-0 gap-2 rounded-lg px-4 focus-visible:ring-ring">
             <Stethoscope className="h-4 w-4" />
             Equipe Médica
           </TabsTrigger>
-          <TabsTrigger value="funcionarios" className="h-10 shrink-0 gap-2 rounded-lg px-4 data-[state=active]:bg-card data-[state=active]:text-primary data-[state=active]:shadow-sm focus-visible:ring-ring">
+          <TabsTrigger value="funcionarios" className="h-10 shrink-0 gap-2 rounded-lg px-4 focus-visible:ring-ring">
             <UserCog className="h-4 w-4" />
             Funcionários
           </TabsTrigger>
-          <TabsTrigger value="convites" className="h-10 shrink-0 gap-2 rounded-lg px-4 data-[state=active]:bg-card data-[state=active]:text-primary data-[state=active]:shadow-sm focus-visible:ring-ring">
+          <TabsTrigger value="convites" className="h-10 shrink-0 gap-2 rounded-lg px-4 focus-visible:ring-ring">
             <Mail className="h-4 w-4" />
             Convites
           </TabsTrigger>

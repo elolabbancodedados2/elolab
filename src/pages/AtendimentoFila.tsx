@@ -35,11 +35,11 @@ export default function AtendimentoFila() {
     <div className="space-y-4">
       <Tabs value={tab} onValueChange={handleTabChange} className="w-full">
         <TabsList className={`grid w-full max-w-md ${podeAcessarTriagem ? 'grid-cols-2' : 'grid-cols-1'} mx-auto rounded-xl border border-[#E2DEF3] bg-[#F0EDFF] p-1`}>
-          <TabsTrigger value="fila" className="min-h-10 gap-2 rounded-lg data-[state=active]:bg-white data-[state=active]:text-[#17122B] data-[state=active]:shadow-sm">
+          <TabsTrigger value="fila" className="min-h-10 gap-2 rounded-lg">
             <ClipboardCheck className="h-4 w-4" />
             Fila
           </TabsTrigger>
-          {podeAcessarTriagem && <TabsTrigger value="triagem" className="min-h-10 gap-2 rounded-lg data-[state=active]:bg-white data-[state=active]:text-[#17122B] data-[state=active]:shadow-sm">
+          {podeAcessarTriagem && <TabsTrigger value="triagem" className="min-h-10 gap-2 rounded-lg">
             <Activity className="h-4 w-4" />
             Triagem
           </TabsTrigger>}

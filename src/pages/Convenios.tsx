@@ -800,10 +800,10 @@ function Convenios() {
           <fieldset disabled={isSubmitting} className="contents">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 overflow-hidden flex flex-col">
             <TabsList className={cn('w-full grid rounded-xl border border-border bg-muted p-1', podeGerenciarConvenios ? 'grid-cols-2' : 'grid-cols-1')}>
-              {podeGerenciarConvenios && <TabsTrigger value="dados" className="gap-1.5 rounded-lg data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-sm">
+              {podeGerenciarConvenios && <TabsTrigger value="dados" className="gap-1.5 rounded-lg">
                 <Building2 className="h-3.5 w-3.5" /> Dados do Convênio
               </TabsTrigger>}
-              {podeGerenciarTabelaExames && <TabsTrigger value="exames" disabled={!editingId} className="gap-1.5 rounded-lg data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-sm">
+              {podeGerenciarTabelaExames && <TabsTrigger value="exames" disabled={!editingId} className="gap-1.5 rounded-lg">
                 <FlaskConical className="h-3.5 w-3.5" /> Tabela de Exames
               </TabsTrigger>}
             </TabsList>

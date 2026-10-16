@@ -91,15 +91,15 @@ export default function AgenteIA() {
 
       <Tabs defaultValue="sessions" className="space-y-4">
         <TabsList className="h-auto w-full justify-start gap-1 overflow-x-auto rounded-xl border border-border bg-muted/60 p-1.5 text-muted-foreground">
-          <TabsTrigger value="sessions" className="flex items-center gap-2 rounded-lg data-[state=active]:bg-card data-[state=active]:text-primary data-[state=active]:shadow-sm">
+          <TabsTrigger value="sessions" className="flex items-center gap-2 rounded-lg">
             <Smartphone className="h-4 w-4" />
             Sessões WhatsApp
           </TabsTrigger>
-          <TabsTrigger value="agents" className="flex items-center gap-2 rounded-lg data-[state=active]:bg-card data-[state=active]:text-primary data-[state=active]:shadow-sm">
+          <TabsTrigger value="agents" className="flex items-center gap-2 rounded-lg">
             <Bot className="h-4 w-4" />
             Configurar Agentes
           </TabsTrigger>
-          <TabsTrigger value="conversations" className="flex items-center gap-2 rounded-lg data-[state=active]:bg-card data-[state=active]:text-primary data-[state=active]:shadow-sm">
+          <TabsTrigger value="conversations" className="flex items-center gap-2 rounded-lg">
             <MessageSquare className="h-4 w-4" />
             Conversas
           </TabsTrigger>

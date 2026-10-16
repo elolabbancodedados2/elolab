@@ -1066,7 +1066,7 @@ export default function CaixaDiario() {
                 { v: 'relatorios', l: 'Relatórios', i: ClipboardList },
               ] : []),
             ].map(tab => (
-              <TabsTrigger key={tab.v} value={tab.v} className="min-h-10 gap-1.5 whitespace-nowrap rounded-lg px-3 text-xs data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-sm">
+              <TabsTrigger key={tab.v} value={tab.v} className="min-h-10 gap-1.5 whitespace-nowrap rounded-lg px-3 text-xs">
                 <tab.i className="h-3.5 w-3.5" /> {tab.l}
               </TabsTrigger>
             ))}

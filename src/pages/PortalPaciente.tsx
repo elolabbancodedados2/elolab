@@ -1181,31 +1181,31 @@ export default function PortalPaciente() {
           <motion.div variants={itemVariants}>
             <Tabs defaultValue="consultas" className="w-full">
               <TabsList aria-label="Seções do portal" className="grid h-auto w-full grid-cols-3 gap-1.5 rounded-2xl border border-[#e2dfef] bg-white p-1.5 sm:grid-cols-4 md:grid-cols-7 md:gap-1">
-                <TabsTrigger value="agendar" className="h-12 flex-col gap-1 rounded-xl text-[#6a6485] data-[state=active]:bg-[#efecfb] data-[state=active]:text-[#5240d6] md:flex-row md:gap-1.5">
+                <TabsTrigger value="agendar" className="h-12 flex-col gap-1 rounded-xl text-[#6a6485] md:flex-row md:gap-1.5">
                   <Calendar className="h-4 w-4" />
                   <span className="text-[11px] sm:text-sm">Agendar</span>
                 </TabsTrigger>
-                <TabsTrigger value="consultas" className="h-12 flex-col gap-1 rounded-xl text-[#6a6485] data-[state=active]:bg-[#efecfb] data-[state=active]:text-[#5240d6] md:flex-row md:gap-1.5">
+                <TabsTrigger value="consultas" className="h-12 flex-col gap-1 rounded-xl text-[#6a6485] md:flex-row md:gap-1.5">
                   <Calendar className="h-4 w-4" />
                   <span className="text-[11px] sm:text-sm">Consultas</span>
                 </TabsTrigger>
-                <TabsTrigger value="exames" className="h-12 flex-col gap-1 rounded-xl text-[#6a6485] data-[state=active]:bg-[#efecfb] data-[state=active]:text-[#5240d6] md:flex-row md:gap-1.5">
+                <TabsTrigger value="exames" className="h-12 flex-col gap-1 rounded-xl text-[#6a6485] md:flex-row md:gap-1.5">
                   <FlaskConical className="h-4 w-4" />
                   <span className="text-[11px] sm:text-sm">Exames</span>
                 </TabsTrigger>
-                <TabsTrigger value="prescricoes" className="h-12 flex-col gap-1 rounded-xl text-[#6a6485] data-[state=active]:bg-[#efecfb] data-[state=active]:text-[#5240d6] md:flex-row md:gap-1.5">
+                <TabsTrigger value="prescricoes" className="h-12 flex-col gap-1 rounded-xl text-[#6a6485] md:flex-row md:gap-1.5">
                   <Pill className="h-4 w-4" />
                   <span className="text-[11px] sm:text-sm">Receitas</span>
                 </TabsTrigger>
-                <TabsTrigger value="historico" className="h-12 flex-col gap-1 rounded-xl text-[#6a6485] data-[state=active]:bg-[#efecfb] data-[state=active]:text-[#5240d6] md:flex-row md:gap-1.5">
+                <TabsTrigger value="historico" className="h-12 flex-col gap-1 rounded-xl text-[#6a6485] md:flex-row md:gap-1.5">
                   <Heart className="h-4 w-4" />
                   <span className="text-[11px] sm:text-sm">Histórico</span>
                 </TabsTrigger>
-                <TabsTrigger value="financeiro" className="h-12 flex-col gap-1 rounded-xl text-[#6a6485] data-[state=active]:bg-[#efecfb] data-[state=active]:text-[#5240d6] md:flex-row md:gap-1.5">
+                <TabsTrigger value="financeiro" className="h-12 flex-col gap-1 rounded-xl text-[#6a6485] md:flex-row md:gap-1.5">
                   <CreditCard className="h-4 w-4" />
                   <span className="text-[11px] sm:text-sm">Financeiro</span>
                 </TabsTrigger>
-                <TabsTrigger value="documentos" className="h-12 flex-col gap-1 rounded-xl text-[#6a6485] data-[state=active]:bg-[#efecfb] data-[state=active]:text-[#5240d6] md:flex-row md:gap-1.5">
+                <TabsTrigger value="documentos" className="h-12 flex-col gap-1 rounded-xl text-[#6a6485] md:flex-row md:gap-1.5">
                   <FileText className="h-4 w-4" />
                   <span className="text-[11px] sm:text-sm">Documentos</span>
                 </TabsTrigger>
