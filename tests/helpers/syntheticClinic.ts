@@ -430,7 +430,17 @@ export async function installSyntheticClinic(page: Page, options: SyntheticClini
     const method = route.request().method();
     requests.push(`${method} ${pathname}?${requestUrl.searchParams.toString()}`);
 
-    if (method !== 'GET' && method !== 'HEAD' && !pathname.endsWith('/auth/v1/user')) {
+    const isAccountActivityHeartbeat = pathname === '/rest/v1/profiles' && method === 'PATCH'
+      && (() => {
+        try {
+          const body = route.request().postDataJSON();
+          return body && typeof body === 'object' && Object.keys(body).every(key => key === 'ultimo_acesso');
+        } catch {
+          return false;
+        }
+      })();
+
+    if (method !== 'GET' && method !== 'HEAD' && !pathname.endsWith('/auth/v1/user') && !isAccountActivityHeartbeat) {
       const pointAction = pathname === '/functions/v1/mercadopago-point'
         ? ` action=${String(route.request().postDataJSON()?.action ?? 'unknown')}`
         : '';
