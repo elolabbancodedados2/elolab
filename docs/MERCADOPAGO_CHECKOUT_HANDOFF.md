@@ -144,7 +144,6 @@ Esta seção substitui as pendências antigas acima quando houver divergência:
 - **Ainda depende do responsável pela conta:** concluir a validação por telefone exigida pelo painel do Mercado Pago, salvar/confirmar os tópicos e URL, e fazer checkout real de teste no navegador para observar autorização, cancelamento, Pix e webhook entregue pelo painel. O Playwright foi sintético e não substitui essa validação de conta.
 - **Revisão pendente:** revogação OAuth continua adiada porque a assinatura HMAC cobre o ID da query, não autentica por si só `action`/`user_id` do corpo.
 - **Publicação:** as migrations novas e alterações locais ainda exigem revisão antes de publicar. Não houve deploy, aplicação de migration no Supabase (local ou remoto), alteração de produção, stage ou commit.
-
 ## Rechecagem do deploy completo — 14/10/2026
 
 Esta seção atualiza os estados anteriores que diziam que as alterações ainda estavam somente no checkout.
