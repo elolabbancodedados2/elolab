@@ -36,6 +36,9 @@ interface Props {
   clinicaId?: string | null;
   /** Data do dia em ISO (yyyy-mm-dd). */
   hoje: string;
+  carregandoAtendimentos?: boolean;
+  erroAtendimentos?: boolean;
+  erroFinanceiro?: boolean;
   onFiltrar: (aba: Aba) => void;
   abaAtiva: Aba;
 }
@@ -117,7 +120,7 @@ export function resumoDoDia(atendimentos: any[], recebidos: PagamentoDoDia[]) {
   };
 }
 
-export function PainelDoDia({ atendimentos, clinicaId, hoje, onFiltrar, abaAtiva }: Props) {
+export function PainelDoDia({ atendimentos, clinicaId, hoje, carregandoAtendimentos = false, erroAtendimentos = false, erroFinanceiro = false, onFiltrar, abaAtiva }: Props) {
   // Datas locais de São Paulo, fim exclusivo. A coluna é timestamptz; usar
   // `hojeT00:00:00` sem offset fazia o Postgres interpretar meia-noite UTC.
   const amanha = new Date(`${hoje}T00:00:00Z`);
@@ -164,39 +167,59 @@ export function PainelDoDia({ atendimentos, clinicaId, hoje, onFiltrar, abaAtiva
     {
       id: 'agenda', icone: Users, titulo: 'Pacientes hoje',
       valor: String(n.total),
-      detalhe: n.total === 0 ? 'Agenda vazia' : `${n.chegaram} já chegaram`,
+      detalhe: erroAtendimentos
+        ? 'Não foi possível carregar os atendimentos'
+        : carregandoAtendimentos
+          ? 'Carregando agenda e atendimento…'
+          : n.total === 0 ? 'Agenda vazia' : `${n.chegaram} já chegaram`,
       aba: 'todos', tom: 'text-foreground',
     },
     {
       id: 'nao-chegaram', icone: Clock, titulo: 'Ainda não chegaram',
       valor: String(n.naoChegaram),
-      detalhe: n.proximo ? `Próximo às ${n.proximo}` : 'Todos chegaram',
+      detalhe: erroAtendimentos
+        ? 'Não foi possível carregar os atendimentos'
+        : carregandoAtendimentos ? 'Carregando agenda e atendimento…' : n.proximo ? `Próximo às ${n.proximo}` : 'Todos chegaram',
       aba: 'checkin', tom: 'text-info',
     },
     {
       id: 'balcao', icone: Wallet, titulo: 'Falta pagar',
       valor: String(n.noBalcao),
-      detalhe: n.aReceberBalcao > 0 ? `${formatCurrency(n.aReceberBalcao)} no balcão` : 'Nada em aberto',
+      detalhe: erroAtendimentos
+        ? 'Não foi possível carregar os atendimentos'
+        : erroFinanceiro
+          ? 'Não foi possível carregar as cobranças'
+          : carregandoAtendimentos ? 'Carregando agenda e atendimento…' : n.aReceberBalcao > 0 ? `${formatCurrency(n.aReceberBalcao)} no balcão` : 'Nada em aberto',
       aba: 'balcao', tom: 'text-warning', alerta: n.noBalcao > 0,
     },
     {
       id: 'esperando', icone: CheckCircle2, titulo: 'Pagos, esperando',
       valor: String(n.esperandoChamada),
-      detalhe: n.esperandoChamada > 0 ? 'Podem ser chamados' : 'Ninguém na espera',
+      detalhe: erroAtendimentos
+        ? 'Não foi possível carregar os atendimentos'
+        : carregandoAtendimentos ? 'Carregando agenda e atendimento…' : n.esperandoChamada > 0 ? 'Podem ser chamados' : 'Ninguém na espera',
       aba: 'atendimento', tom: 'text-success',
     },
     {
       id: 'atendendo', icone: Stethoscope, titulo: 'Em atendimento',
       valor: String(n.emAtendimento),
-      detalhe: n.emAtendimento > 0 ? 'Consulta em andamento' : 'Nenhum consultório ocupado',
+      detalhe: erroAtendimentos
+        ? 'Não foi possível carregar os atendimentos'
+        : carregandoAtendimentos ? 'Carregando agenda e atendimento…' : n.emAtendimento > 0 ? 'Consulta em andamento' : 'Nenhum consultório ocupado',
       aba: 'atendimento', tom: 'text-primary',
     },
     {
       id: 'adicional', icone: AlertTriangle, titulo: 'Devem o adicional',
       valor: String(n.devendoAdicional),
-      detalhe: n.devendoAdicional > 0
-        ? `${formatCurrency(n.valorAdicional)} a cobrar na saída`
-        : 'Nenhum procedimento em aberto',
+      detalhe: erroAtendimentos
+        ? 'Não foi possível carregar os atendimentos'
+        : erroFinanceiro
+          ? 'Não foi possível carregar as cobranças'
+          : carregandoAtendimentos
+            ? 'Carregando agenda e atendimento…'
+            : n.devendoAdicional > 0
+            ? `${formatCurrency(n.valorAdicional)} a cobrar na saída`
+            : 'Nenhum procedimento em aberto',
       aba: 'atendimento', tom: 'text-destructive', alerta: n.devendoAdicional > 0,
     },
     {
@@ -206,7 +229,13 @@ export function PainelDoDia({ atendimentos, clinicaId, hoje, onFiltrar, abaAtiva
         ? 'Não foi possível carregar os recebimentos'
         : pagamentosQuery.isLoading
           ? 'Carregando recebimentos…'
-          : n.aReceberTotal > 0
+        : erroFinanceiro
+          ? 'Não foi possível carregar o saldo a receber do dia'
+        : erroAtendimentos
+          ? 'Não foi possível calcular o saldo a receber do dia'
+          : carregandoAtendimentos
+            ? 'Carregando o saldo das contas do dia…'
+            : n.aReceberTotal > 0
             ? `Faltam ${formatCurrency(n.aReceberTotal)}`
             : 'Pagamentos menos estornos de hoje',
       tom: n.recebidoTotal < 0 ? 'text-destructive' : 'text-success',
@@ -214,7 +243,7 @@ export function PainelDoDia({ atendimentos, clinicaId, hoje, onFiltrar, abaAtiva
   ];
 
   return (
-    <div className="space-y-2">
+    <div role="group" aria-label="Resumo de atendimento e recebimentos" aria-busy={carregandoAtendimentos || pagamentosQuery.isLoading} className="space-y-2">
       {pagamentosQuery.isError && (
         <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3">
           <span className="text-xs text-destructive">Não foi possível atualizar os recebimentos do dia; o valor exibido foi ocultado.</span>
@@ -240,6 +269,7 @@ export function PainelDoDia({ atendimentos, clinicaId, hoje, onFiltrar, abaAtiva
               transition={{ delay: i * 0.03 }}
               onClick={() => c.aba && onFiltrar(c.aba)}
               disabled={!clicavel}
+              aria-pressed={clicavel ? ativo : undefined}
               className={cn(
                 'rounded-xl border bg-card px-3 py-2.5 text-left transition-colors',
                 clicavel ? 'hover:bg-accent/50 cursor-pointer' : 'cursor-default',
@@ -252,7 +282,9 @@ export function PainelDoDia({ atendimentos, clinicaId, hoje, onFiltrar, abaAtiva
                 <span className="truncate">{c.titulo}</span>
               </div>
               <p className={cn('mt-0.5 text-xl font-bold tabular-nums leading-none', c.tom)}>
-                {c.valor}
+                {c.id !== 'caixa' && (erroAtendimentos || (erroFinanceiro && ['balcao', 'adicional'].includes(c.id)))
+                  ? '—'
+                  : c.id !== 'caixa' && carregandoAtendimentos ? '…' : c.valor}
               </p>
               <p className="mt-1 text-[10px] text-muted-foreground truncate" title={c.detalhe}>
                 {c.detalhe}

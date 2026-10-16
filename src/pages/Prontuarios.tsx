@@ -1783,8 +1783,8 @@ export default function Prontuarios() {
               {/* Content tabs */}
               <Card className="border-border/50 overflow-hidden">
                 <Tabs defaultValue="evolucoes" className="w-full">
-                  <div className="border-b border-border/40 px-4 pt-3">
-                    <TabsList className="bg-transparent h-auto p-0 gap-0">
+                  <div className="overflow-x-auto border-b border-border/40 px-4 pt-3">
+                    <TabsList aria-label="Seções do prontuário" className="w-max min-w-full bg-transparent h-auto p-0 gap-0">
                       {[
                         { val: 'evolucoes', icon: FileText, label: 'Evoluções' },
                         { val: 'solicitacoes', icon: TestTube, label: 'Solicitações' },
@@ -1796,7 +1796,7 @@ export default function Prontuarios() {
                         <TabsTrigger
                           key={t.val}
                           value={t.val}
-                          className="gap-1 text-[11px] rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-3 py-2"
+                          className="min-h-11 shrink-0 gap-1 text-[11px] rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-3 py-2"
                         >
                           <t.icon className="h-3 w-3" />{t.label}
                         </TabsTrigger>

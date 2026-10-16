@@ -390,6 +390,7 @@ export default function Fila() {
     );
 
   const isLoading = loadingFila || loadingAgendamentos || carregandoRegrasClinica;
+  const erroDoResumo = filaQuery.isError || agendamentosQuery.isError || erroRegrasClinica;
 
   // Realtime subscription for instant queue updates
   useEffect(() => {
@@ -900,7 +901,7 @@ export default function Fila() {
       </section>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div role="group" aria-label="Resumo da fila" aria-busy={isLoading} className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
           { label: 'Aguardando', value: stats.aguardando, icon: Clock, color: 'text-warning', bg: 'bg-warning/10' },
           { label: 'Em Atendimento', value: stats.emAtendimento, icon: Play, color: 'text-primary', bg: 'bg-primary/10' },
@@ -913,7 +914,9 @@ export default function Fila() {
               <s.icon className={cn('h-5 w-5', s.color)} />
             </div>
             <div>
-              <p className={cn('text-2xl font-bold tabular-nums text-[#0C1F54]', s.color)}>{s.value}</p>
+              <p className={cn('text-2xl font-bold tabular-nums text-[#0C1F54]', s.color)}>
+                {erroDoResumo ? '—' : isLoading ? '…' : s.value}
+              </p>
               <p className="text-xs text-[#0C1F54]/65">{s.label}</p>
             </div>
           </motion.div>
