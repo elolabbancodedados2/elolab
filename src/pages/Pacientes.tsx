@@ -273,7 +273,7 @@ export default function Pacientes() {
   const podeGerarLinkPortal = isAdmin() || hasRole('recepcao');
   const { medicoId, isMedicoOnly } = useCurrentMedico();
   const [paginaPacientes, setPaginaPacientes] = useState(0);
-  const limiteBusca = (paginaPacientes + 1) * 50 + 1;
+  const limiteBusca = 50;
   const hoje = todaySaoPauloDateOnly();
   const dataLimite = useCallback((anos: number) => format(subYears(parseDateOnly(hoje), anos), 'yyyy-MM-dd'), [hoje]);
   const filtrosBusca = useMemo(() => {
@@ -286,10 +286,10 @@ export default function Pacientes() {
     return { sexo: filterSexo === 'todos' ? undefined : filterSexo, convenio: filterConvenio === 'todos' ? undefined : filterConvenio, nascimentoApos, nascimentoAte };
   }, [filterSexo, filterConvenio, filterIdade, hoje, dataLimite]);
   const statusBuscaPaciente = podeEditarPaciente ? filterStatusPaciente : 'ativos';
-  const { data: resultadoBusca, isLoading, isFetching: isBuscandoPacientes, error: pacientesError, refetch } = useBuscaPacientes(searchTerm, { limite: limiteBusca, filtros: filtrosBusca, status: statusBuscaPaciente });
+  const { data: resultadoBusca, isLoading, isFetching: isBuscandoPacientes, error: pacientesError, refetch } = useBuscaPacientes(searchTerm, { limite: limiteBusca, pagina: paginaPacientes, filtros: filtrosBusca, status: statusBuscaPaciente });
   const resumoPacientes = resultadoBusca?.pacientes ?? [];
   const inicioPagina = paginaPacientes * 50;
-  const resumosVisiveis = resumoPacientes.slice(inicioPagina, inicioPagina + 50);
+  const resumosVisiveis = resumoPacientes;
   const idsVisiveis = resumosVisiveis.map((p) => p.id);
   const { data: pacientes = [], error: detalhesErro, isLoading: carregandoDetalhes } = useQuery({
     queryKey: ['pacientes-lista-detalhes', authProfile?.clinica_id, idsVisiveis],
@@ -762,7 +762,7 @@ export default function Pacientes() {
     menores: resumoEstatisticas?.menores ?? '—',
     comAlergias: resumoEstatisticas?.com_alergias ?? '—',
   };
-  const temMaisPacientes = resumoPacientes.length > inicioPagina + 50;
+  const temMaisPacientes = resultadoBusca?.incompleta ?? false;
 
   const activeFilters = [Boolean(searchTerm.trim()), filterSexo !== 'todos', filterConvenio !== 'todos', filterIdade !== 'todos', podeEditarPaciente && filterStatusPaciente !== 'ativos'].filter(Boolean).length;
   const atualizarListasPacientes = () => {
@@ -1317,11 +1317,6 @@ export default function Pacientes() {
       </motion.div>
 
       {/* Stats */}
-      {resultadoBusca?.incompleta && resumoPacientes.length < limiteBusca && (
-        <div role="status" className="rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm text-warning-foreground">
-          A busca encontrou muitos cadastros semelhantes e foi limitada para manter a tela responsiva. Refine o nome, CPF ou telefone para localizar outros resultados.
-        </div>
-      )}
       {erroDeepLink && <ErrorState compact error={erroDeepLink} title="Não foi possível abrir o paciente do link" onRetry={() => { void refazerDeepLink(); }} />}
       {erroEstatisticas && <ErrorState compact error={erroEstatisticas} title="Indicadores indisponíveis" description="A lista continua disponível, mas os indicadores precisam ser atualizados." onRetry={() => { void refazerEstatisticas(); }} />}
       {detalhesErro && <ErrorState compact error={detalhesErro} title="Não foi possível carregar os dados desta página" onRetry={() => { void queryClient.invalidateQueries({ queryKey: ['pacientes-lista-detalhes'] }); }} />}
@@ -1333,7 +1328,7 @@ export default function Pacientes() {
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
             <CardTitle className="flex items-center gap-2">
               Lista de Pacientes
-              <Badge variant="secondary" className="text-xs">{temMaisPacientes ? `${inicioPagina + 50}+` : resumoPacientes.length}</Badge>
+              <Badge variant="secondary" className="text-xs">{temMaisPacientes ? `${inicioPagina + 50}+` : inicioPagina + resumoPacientes.length}</Badge>
             </CardTitle>
             <div className="flex items-center gap-2 w-full sm:w-auto">
               <div className="relative flex-1 sm:w-80">
