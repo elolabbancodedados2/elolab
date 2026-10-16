@@ -1037,7 +1037,7 @@ export default function Fila() {
         </DialogContent>
       </Dialog>
 
-      <section aria-labelledby="fila-etapas-heading" className="space-y-2">
+      <section role="group" aria-label="Resumo da fila" aria-busy={isLoading} className="space-y-2">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h2 id="fila-etapas-heading" className="text-sm font-semibold text-foreground">Jornada dos atendimentos</h2>
           <p className="w-full text-xs text-muted-foreground">{descricaoRegraPrioridadeFila()}</p>
@@ -1060,7 +1060,7 @@ export default function Fila() {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-baseline justify-between gap-2">
                       <h3 className="truncate text-xs font-semibold text-foreground">{etapa.label}</h3>
-                      <span className={cn('text-2xl font-bold tabular-nums', etapa.color)}>{etapa.value}</span>
+                      <span className={cn('text-2xl font-bold tabular-nums', etapa.color)}>{isLoading ? '…' : erroDoResumo ? '—' : etapa.value}</span>
                     </div>
                     <p className="truncate text-[11px] text-muted-foreground">{etapa.caption}</p>
                     {etapa.id === 'triagem' && primeiroPendenteTriagem && (
