@@ -254,7 +254,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
   // Data
   // Só o dia de hoje: a recepção não usa o histórico, e o realtime refaz esta
   // consulta a cada mudança na agenda — antes era a tabela inteira, com joins.
-  const agendaHojeQuery = useAgendamentosPeriodo(today, today);
+  const agendaHojeQuery = useAgendamentosPeriodo(today, today, { resumoPaciente: true });
   const { data: agendamentos = [], isLoading: loadingAg } = agendaHojeQuery;
   const {
     data: pacienteEncaixe,

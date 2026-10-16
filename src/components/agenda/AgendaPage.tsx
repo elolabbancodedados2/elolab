@@ -194,7 +194,7 @@ export function AgendaPage() {
     const ini = startOfWeek(startOfMonth(d), { weekStartsOn: 1 });
     return { inicio: format(ini, 'yyyy-MM-dd'), fim: format(addDays(ini, 41), 'yyyy-MM-dd') };
   }, [date, view]);
-  const agendaQuery = useAgendamentosPeriodo(periodo.inicio, periodo.fim, { enabled: !isMedicoOnly || !!myMedicoId });
+  const agendaQuery = useAgendamentosPeriodo(periodo.inicio, periodo.fim, { enabled: !isMedicoOnly || !!myMedicoId, resumoPaciente: true });
   const { data: allAppts = [], isLoading } = agendaQuery;
   const medicosQuery = useMedicos();
   const { data: medicos = [] } = medicosQuery;

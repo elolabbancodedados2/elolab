@@ -289,9 +289,12 @@ export function useAgendamentos(date?: string, options?: { enabled?: boolean }) 
  * Agendamentos entre duas datas (inclusive). Use no lugar de
  * `useAgendamentos()` sem data, que traz o histórico inteiro da clínica.
  */
-export function useAgendamentosPeriodo(inicio: string, fim: string, options?: { enabled?: boolean; keepPrevious?: boolean }) {
+export function useAgendamentosPeriodo(inicio: string, fim: string, options?: { enabled?: boolean; keepPrevious?: boolean; resumoPaciente?: boolean }) {
+  const camposPaciente = options?.resumoPaciente
+    ? 'id, nome, nome_social, cpf, telefone, email, data_nascimento, convenio_id, alergias, ativo'
+    : '*';
   return useSupabaseQuery<any>('agendamentos', {
-    select: '*, pacientes(*), medicos(id, nome, crm, tipo_registro, crm_uf, rqe, especialidade, intervalo_consulta, ativo, clinica_id)',
+    select: `*, pacientes(${camposPaciente}), medicos(id, nome, crm, tipo_registro, crm_uf, rqe, especialidade, intervalo_consulta, ativo, clinica_id)`,
     orderBy: { column: 'hora_inicio', ascending: true },
     filters: [
       { column: 'data', operator: 'gte', value: inicio },
