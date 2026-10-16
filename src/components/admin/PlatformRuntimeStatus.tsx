@@ -25,7 +25,7 @@ export function PlatformRuntimeStatus() {
       appUrl: window.location.origin,
       supabaseUrl: SUPABASE_URL,
       publishableKey: SUPABASE_PUBLISHABLE_KEY,
-      databaseCheck: (signal) => supabase.rpc('public_availability_check').abortSignal(signal),
+      databaseCheck: (signal) => Promise.resolve(supabase.rpc('public_availability_check').abortSignal(signal)),
     }).then((result) => {
       setStatus(result);
     }).finally(() => {

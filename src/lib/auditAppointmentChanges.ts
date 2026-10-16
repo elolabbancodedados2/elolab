@@ -2,8 +2,8 @@ import { appointmentCancellationReasonLabel } from './appointmentCancellation';
 
 export interface AuditAppointmentChange {
   field: string;
-  oldValue: unknown;
-  newValue: unknown;
+  oldValue?: unknown;
+  newValue?: unknown;
 }
 
 export interface AuditAppointmentReferences {

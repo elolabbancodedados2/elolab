@@ -616,7 +616,7 @@ export default function Configuracoes() {
       if (currentError) throw currentError;
       const rows = (versions ?? []) as ConfiguracaoClinicaVersao[];
       setHistoryRows(rows);
-      setHistoryCurrent(current?.valor ?? null);
+      setHistoryCurrent((current?.valor as Record<string, unknown> | null) ?? null);
       setSelectedHistoryVersion(rows.find((row) => JSON.stringify(row.valor) !== JSON.stringify(current?.valor))?.id ?? rows[0]?.id ?? null);
     } catch (error: unknown) {
       toast.error('Não foi possível carregar o histórico', { description: error instanceof Error ? error.message : 'Tente novamente.' });

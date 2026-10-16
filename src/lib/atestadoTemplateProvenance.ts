@@ -5,7 +5,7 @@ interface AtestadoTemplateVersion {
   modelo_atestado_atualizado_em?: string | null;
 }
 
-export function selectedAtestadoTemplateId(template: { id?: string | null } | null | undefined): string | null {
+export function selectedAtestadoTemplateId(template: ({ id?: string | null } & Record<string, unknown>) | null | undefined): string | null {
   return template?.id?.trim() || null;
 }
 

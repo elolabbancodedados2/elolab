@@ -156,9 +156,9 @@ export function AnexosProntuario({
     let ativo = true;
     setPortalStatusLoading(true);
     setPortalStatusError(false);
-    void supabase.from('documentos_portal_paciente')
+    void Promise.resolve(supabase.from('documentos_portal_paciente')
       .select('anexo_id,publicado,validade_ate,origem,publicado_em')
-      .in('anexo_id', attachmentIds.split(','))
+      .in('anexo_id', attachmentIds.split(',')))
       .then(({ data, error }: any) => {
         if (!ativo) return;
         if (error) throw error;

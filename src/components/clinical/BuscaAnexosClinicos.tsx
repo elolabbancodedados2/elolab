@@ -62,7 +62,7 @@ export function BuscaAnexosClinicos() {
       }
       const { data, error } = await request;
       if (error) throw error;
-      return (data ?? []).map((row: AttachmentRow) => ({
+      return (data ?? []).map((row: any) => ({
         ...row,
         patient_name: relationName(row.pacientes),
         author_name: relationName(row.profiles),

@@ -776,7 +776,7 @@ export default function Fila() {
       toast.warning('Este item já saiu da fila. A lista foi atualizada.');
       return;
     }
-    const { data, error } = await supabase.rpc('remover_item_fila_com_motivo', {
+    const { data: rawData, error } = await supabase.rpc('remover_item_fila_com_motivo', {
       p_fila_id: id,
       p_status_esperado: String(item.status),
       p_motivo: motivoSaida,
@@ -786,6 +786,7 @@ export default function Fila() {
       refresh();
       return;
     }
+    const data = rawData as any;
     if (data?.removido !== true) {
       refresh();
       setRemoveId(null);
