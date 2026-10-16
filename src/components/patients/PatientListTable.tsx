@@ -1,6 +1,7 @@
 import { memo } from 'react';
 import { motion } from 'framer-motion';
-import { Eye, Edit, Trash2, Link, Unlink, Phone, Mail, AlertTriangle, ChevronLeft, ChevronRight, Power } from 'lucide-react';
+import { Eye, Edit, Trash2, Link, Unlink, Phone, Mail, AlertTriangle, ChevronLeft, ChevronRight, Power, MessageCircle } from 'lucide-react';
+import { linkWhatsApp } from '@/lib/whatsapp';
 import { Button } from '@/components/ui/button';
 import { ActionableEmptyState } from '@/components/ActionableEmptyState';
 import { Badge } from '@/components/ui/badge';
@@ -96,7 +97,15 @@ export const PatientListTable = memo(function PatientListTable({
                 <Eye className="mt-2 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
               </button>
               {paciente.alergias?.length > 0 && <AllergyAlert alergias={paciente.alergias} compact className="mt-2" />}
-              <div className="mt-3 flex gap-2" onClick={(e) => e.stopPropagation()}>
+              <div className="mt-3 flex flex-wrap gap-2" onClick={(e) => e.stopPropagation()}>
+                {(() => {
+                  const whatsapp = linkWhatsApp(paciente.telefone, `Olá, ${String(paciente.nome_social || paciente.nome || '').split(' ')[0]}! Aqui é da clínica.`);
+                  return whatsapp ? (
+                    <Button asChild variant="outline" className="h-11 min-w-0 flex-1 gap-1 rounded-full border-[#1080CA]/30 px-2 text-xs text-[#1080CA]">
+                      <a href={whatsapp} target="_blank" rel="noopener noreferrer" aria-label={`Chamar ${paciente.nome} no WhatsApp`}><MessageCircle className="h-4 w-4" /> WhatsApp</a>
+                    </Button>
+                  ) : null;
+                })()}
                 {podeGerarLinkPortal && paciente.ativo !== false && (
                   <Button variant="outline" onClick={() => onGeneratePortalLink(paciente.id, paciente.nome)} className="h-11 min-w-0 flex-1 gap-1 px-2 text-xs" aria-label={`Gerar link do portal para ${paciente.nome}`}>
                     <Link className="h-4 w-4" /> Portal
@@ -149,7 +158,7 @@ export const PatientListTable = memo(function PatientListTable({
               const idade = calcularIdade(paciente.data_nascimento);
               const contatoAusente = describeMissingPatientContacts(paciente);
               return (
-                <TableRow key={paciente.id} className="cursor-pointer hover:bg-muted/50" onClick={() => onView(paciente)}>
+                <TableRow key={paciente.id} className="cursor-pointer transition-colors hover:bg-[#1080CA]/[0.05]" onClick={() => onView(paciente)}>
                   <TableCell>
                     <div className="flex items-center gap-3">
                       <PatientPhoto
@@ -211,37 +220,45 @@ export const PatientListTable = memo(function PatientListTable({
                   <TableCell className="text-right" onClick={e => e.stopPropagation()}>
                     <div className="flex justify-end gap-1.5">
                       <motion.div whileHover={{ scale: 1.15 }} whileTap={{ scale: 0.9 }} transition={{ type: "spring", stiffness: 500, damping: 15 }}>
-                        <Button variant="ghost" size="icon" onClick={() => onView(paciente)} title="Ver detalhes" aria-label={`Ver detalhes de ${paciente.nome}`} className="h-11 w-11 rounded-xl hover:bg-primary/10 hover:text-primary">
+                        <Button variant="ghost" size="icon" onClick={() => onView(paciente)} title="Ver detalhes" aria-label={`Ver detalhes de ${paciente.nome}`} className="h-11 w-11 rounded-full hover:bg-[#1080CA]/10 hover:text-[#1080CA]">
                           <Eye className="h-4 w-4" />
                         </Button>
                       </motion.div>
+                      {(() => {
+                        const whatsapp = linkWhatsApp(paciente.telefone, `Olá, ${String(paciente.nome_social || paciente.nome || '').split(' ')[0]}! Aqui é da clínica.`);
+                        return whatsapp ? (
+                          <Button asChild variant="ghost" size="icon" title="Chamar no WhatsApp" className="h-11 w-11 rounded-full text-[#1080CA] hover:bg-[#1080CA]/10 hover:text-[#1080CA]">
+                            <a href={whatsapp} target="_blank" rel="noopener noreferrer" aria-label={`Chamar ${paciente.nome} no WhatsApp`}><MessageCircle className="h-4 w-4" /></a>
+                          </Button>
+                        ) : null;
+                      })()}
                       {podeGerarLinkPortal && paciente.ativo !== false && (
                         <motion.div whileHover={{ scale: 1.15 }} whileTap={{ scale: 0.9 }} transition={{ type: "spring", stiffness: 500, damping: 15 }}>
-                          <Button variant="ghost" size="icon" onClick={() => onGeneratePortalLink(paciente.id, paciente.nome)} title="Link do portal" aria-label={`Gerar link do portal para ${paciente.nome}`} className="h-11 w-11 rounded-xl hover:bg-accent/60">
+                          <Button variant="ghost" size="icon" onClick={() => onGeneratePortalLink(paciente.id, paciente.nome)} title="Link do portal" aria-label={`Gerar link do portal para ${paciente.nome}`} className="h-11 w-11 rounded-full hover:bg-[#1080CA]/10 hover:text-[#1080CA]">
                             <Link className="h-4 w-4" />
                           </Button>
                         </motion.div>
                       )}
                       {podeGerarLinkPortal && paciente.ativo !== false && (
                         <motion.div whileHover={{ scale: 1.15 }} whileTap={{ scale: 0.9 }} transition={{ type: "spring", stiffness: 500, damping: 15 }}>
-                          <Button variant="ghost" size="icon" onClick={() => onRevokePortalLinks(paciente.id, paciente.nome)} title="Revogar links do portal" aria-label={`Revogar links do portal de ${paciente.nome}`} className="h-11 w-11 rounded-xl text-destructive hover:bg-destructive/10">
+                          <Button variant="ghost" size="icon" onClick={() => onRevokePortalLinks(paciente.id, paciente.nome)} title="Revogar links do portal" aria-label={`Revogar links do portal de ${paciente.nome}`} className="h-11 w-11 rounded-full text-destructive hover:bg-destructive/10">
                             <Unlink className="h-4 w-4" />
                           </Button>
                         </motion.div>
                       )}
                       {podeEditarPaciente && <motion.div whileHover={{ scale: 1.15 }} whileTap={{ scale: 0.9 }} transition={{ type: "spring", stiffness: 500, damping: 15 }}>
-                        <Button variant="ghost" size="icon" onClick={() => onEdit(paciente)} title="Editar" aria-label={`Editar ${paciente.nome}`} className="h-11 w-11 rounded-xl hover:bg-accent/60">
+                        <Button variant="ghost" size="icon" onClick={() => onEdit(paciente)} title="Editar" aria-label={`Editar ${paciente.nome}`} className="h-11 w-11 rounded-full hover:bg-[#1080CA]/10 hover:text-[#1080CA]">
                           <Edit className="h-4 w-4" />
                         </Button>
                       </motion.div>}
                       {podeEditarPaciente && onChangeStatus && <motion.div whileHover={{ scale: 1.15 }} whileTap={{ scale: 0.9 }} transition={{ type: "spring", stiffness: 500, damping: 15 }}>
-                        <Button variant="ghost" size="icon" onClick={() => onChangeStatus(paciente)} title={paciente.ativo === false ? 'Reativar paciente' : 'Inativar paciente'} aria-label={`${paciente.ativo === false ? 'Reativar' : 'Inativar'} ${paciente.nome}`} className="h-11 w-11 rounded-xl hover:bg-accent/60">
+                        <Button variant="ghost" size="icon" onClick={() => onChangeStatus(paciente)} title={paciente.ativo === false ? 'Reativar paciente' : 'Inativar paciente'} aria-label={`${paciente.ativo === false ? 'Reativar' : 'Inativar'} ${paciente.nome}`} className="h-11 w-11 rounded-full hover:bg-[#1080CA]/10 hover:text-[#1080CA]">
                           <Power className="h-4 w-4" />
                         </Button>
                       </motion.div>}
                       {podeExcluirPaciente && (
                         <motion.div whileHover={{ scale: 1.15, rotate: 5 }} whileTap={{ scale: 0.9 }} transition={{ type: "spring", stiffness: 500, damping: 15 }}>
-                          <Button variant="ghost" size="icon" onClick={() => onDelete(paciente)} title="Excluir ficha vazia" aria-label={`Excluir ${paciente.nome}`} className="h-11 w-11 rounded-xl hover:bg-destructive/10">
+                          <Button variant="ghost" size="icon" onClick={() => onDelete(paciente)} title="Excluir ficha vazia" aria-label={`Excluir ${paciente.nome}`} className="h-11 w-11 rounded-full hover:bg-destructive/10">
                             <Trash2 className="h-4 w-4 text-destructive" />
                           </Button>
                         </motion.div>
@@ -265,7 +282,7 @@ export const PatientListTable = memo(function PatientListTable({
               type="button"
               variant="outline"
               size="sm"
-              className="h-11 gap-1"
+              className="h-11 gap-1 rounded-full"
               disabled={paginaAtual === 0}
               onClick={() => onPaginaChange(paginaAtual - 1)}
             >
@@ -278,7 +295,7 @@ export const PatientListTable = memo(function PatientListTable({
               type="button"
               variant="outline"
               size="sm"
-              className="h-11 gap-1"
+              className="h-11 gap-1 rounded-full"
               disabled={!hasMore}
               onClick={() => onPaginaChange(paginaAtual + 1)}
             >

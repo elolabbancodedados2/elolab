@@ -12,7 +12,9 @@ import {
   ShieldCheck, BookOpen, FileCheck, Brain, Bone, Eye as EyeIcon,
   Thermometer, Scale, Ruler, Paperclip, Shield, Clipboard,
   Clock, TestTube, DollarSign, CalendarPlus, RefreshCw, Wallet,
+  FileSpreadsheet, MessageCircle,
 } from 'lucide-react';
+import { linkWhatsApp } from '@/lib/whatsapp';
 import { addDays, subYears } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Input } from '@/components/ui/input';
@@ -770,6 +772,25 @@ export default function Pacientes() {
     void queryClient.invalidateQueries({ queryKey: ['paciente-deep-link'] });
     void queryClient.invalidateQueries({ queryKey: ['pacientes-estatisticas'] });
   };
+  const exportarPacientesCsv = () => {
+    const linhas = filteredPacientes.map((p: any) => [
+      p.nome, p.nome_social || '', p.cpf || '', p.telefone || '', p.email || '',
+      p.data_nascimento ? formatDate(p.data_nascimento, 'short') : '', getConvenioNome(p.convenio_id), p.ativo === false ? 'Inativo' : 'Ativo',
+    ]);
+    const csv = [['Nome', 'Nome social', 'CPF', 'Telefone', 'E-mail', 'Nascimento', 'Convênio', 'Status'], ...linhas]
+      .map(cols => cols.map(c => `"${String(c ?? '').replace(/"/g, '""')}"`).join(';'))
+      .join('\r\n');
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `pacientes-pagina-${paginaPacientes + 1}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  };
+
   const clearPatientFilters = () => {
     setPaginaPacientes(0);
     setSearchTerm('');
@@ -1275,7 +1296,7 @@ export default function Pacientes() {
               variant="outline"
               size="lg"
               onClick={() => setIsEtiquetaOpen(true)}
-              className="h-11 w-full gap-2 rounded-xl border-2 border-border/60 px-3 text-sm font-semibold shadow-sm transition-all duration-200 hover:border-primary/40 hover:shadow-md sm:w-auto sm:px-5"
+              className="h-11 w-full gap-2 rounded-full border-border/60 px-3 text-sm font-semibold shadow-xs transition-all duration-200 hover:border-[#1080CA]/40 hover:shadow-md sm:w-auto sm:px-5"
             >
               <Tag className="h-4 w-4" />
               Etiquetas da página
@@ -1285,7 +1306,7 @@ export default function Pacientes() {
             <Button
               size="lg"
               onClick={handleNew}
-              className="h-11 w-full gap-2 rounded-xl px-3 text-sm font-semibold shadow-md transition-all duration-200 hover:shadow-lg sm:w-auto sm:px-6"
+              className="h-11 w-full gap-2 rounded-full bg-[#111111] px-3 text-sm font-semibold text-white shadow-md transition-all duration-200 hover:bg-[#2b2b33] hover:shadow-lg sm:w-auto sm:px-6"
             >
               <Plus className="h-5 w-5" />
               Novo Paciente
@@ -1322,7 +1343,7 @@ export default function Pacientes() {
                   placeholder="Buscar nome, CPF, telefone, email..."
                   value={searchTerm}
                   onChange={(e) => { setPaginaPacientes(0); setSearchTerm(e.target.value); }}
-                  className="h-11 pl-9 pr-10"
+                  className="h-11 rounded-full pl-9 pr-10 focus-visible:ring-[#1080CA]"
                 />
                 {searchTerm && (
                   <Button
@@ -1341,7 +1362,7 @@ export default function Pacientes() {
                 variant={showFilters ? 'default' : 'outline'}
                 size="icon"
                 onClick={() => setShowFilters(!showFilters)}
-                className="relative h-11 w-11 shrink-0"
+                className={cn('relative h-11 w-11 shrink-0 rounded-full', showFilters && 'bg-[#111111] text-white hover:bg-[#2b2b33]')}
                 aria-label={showFilters ? 'Ocultar filtros' : 'Mostrar filtros'}
                 aria-expanded={showFilters}
                 aria-controls="filtros-pacientes"
@@ -1352,6 +1373,18 @@ export default function Pacientes() {
                     {activeFilters}
                   </span>
                 )}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                onClick={exportarPacientesCsv}
+                disabled={filteredPacientes.length === 0}
+                className="h-11 w-11 shrink-0 rounded-full"
+                aria-label="Exportar a página atual em CSV"
+                title="Exportar a página atual em CSV"
+              >
+                <FileSpreadsheet className="h-4 w-4" />
               </Button>
             </div>
           </div>
@@ -1896,6 +1929,14 @@ export default function Pacientes() {
                 {selectedPaciente.alergias && selectedPaciente.alergias.length > 0 && (
                   <AllergyAlert alergias={selectedPaciente.alergias} compact />
                 )}
+                {(() => {
+                  const whatsapp = linkWhatsApp(selectedPaciente.telefone, `Olá, ${String((selectedPaciente as any).nome_social || selectedPaciente.nome || '').split(' ')[0]}! Aqui é da clínica.`);
+                  return whatsapp ? (
+                    <Button asChild variant="outline" size="sm" className="h-9 shrink-0 gap-1.5 rounded-full border-[#1080CA]/30 text-[#1080CA] hover:bg-[#1080CA]/10 hover:text-[#1080CA]">
+                      <a href={whatsapp} target="_blank" rel="noopener noreferrer" aria-label={`Chamar ${selectedPaciente.nome} no WhatsApp`}><MessageCircle className="h-4 w-4" /> WhatsApp</a>
+                    </Button>
+                  ) : null;
+                })()}
               </div>
 
               <Tabs value={viewTab} onValueChange={setViewTab} className="flex-1 overflow-hidden flex flex-col">

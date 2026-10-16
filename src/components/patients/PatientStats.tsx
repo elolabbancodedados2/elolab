@@ -1,7 +1,6 @@
 import { memo } from 'react';
-import { motion } from 'framer-motion';
 import { Users, Building2, Baby, Heart } from 'lucide-react';
-import { Card, CardContent } from '@/components/ui/card';
+import { cn } from '@/lib/utils';
 
 interface PatientStatsProps {
   total: number | string;
@@ -11,52 +10,31 @@ interface PatientStatsProps {
 }
 
 export const PatientStats = memo(function PatientStats({ total, comConvenio, menores, comAlergias }: PatientStatsProps) {
+  const cards = [
+    { label: 'Total', value: total, icon: Users, escuro: true, iconClass: 'bg-white/15 text-[#2ED5E7]', valueClass: 'text-[#2ED5E7]' },
+    { label: 'Com convênio', value: comConvenio, icon: Building2, escuro: false, iconClass: 'bg-[#1080CA]/10 text-[#1080CA]', valueClass: 'text-foreground' },
+    { label: 'Menores', value: menores, icon: Baby, escuro: false, iconClass: 'bg-warning/10 text-warning-foreground', valueClass: 'text-foreground' },
+    { label: 'Com alergias', value: comAlergias, icon: Heart, escuro: false, iconClass: 'bg-destructive/10 text-destructive', valueClass: 'text-foreground' },
+  ];
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-      <Card>
-        <CardContent className="pt-4 pb-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-primary/10"><Users className="h-5 w-5 text-primary" /></div>
-            <div>
-              <p className="text-xs text-muted-foreground">Total</p>
-              <p className="text-xl font-bold tabular-nums">{total}</p>
-            </div>
+    <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+      {cards.map(({ label, value, icon: Icon, escuro, iconClass, valueClass }) => (
+        <div
+          key={label}
+          className={cn(
+            'flex items-center gap-3 rounded-2xl border px-4 py-3.5 shadow-xs',
+            escuro ? 'border-transparent bg-[#111111] text-white' : 'border-border/60 bg-card',
+          )}
+        >
+          <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', iconClass)}>
+            <Icon className="h-5 w-5" aria-hidden="true" />
           </div>
-        </CardContent>
-      </Card>
-      <Card>
-        <CardContent className="pt-4 pb-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-blue-500/10"><Building2 className="h-5 w-5 text-blue-600" /></div>
-            <div>
-              <p className="text-xs text-muted-foreground">Com Convênio</p>
-              <p className="text-xl font-bold tabular-nums">{comConvenio}</p>
-            </div>
+          <div className="min-w-0">
+            <p className={cn('text-xs', escuro ? 'text-white/70' : 'text-muted-foreground')}>{label}</p>
+            <p className={cn('text-xl font-bold tabular-nums', valueClass)}>{value}</p>
           </div>
-        </CardContent>
-      </Card>
-      <Card>
-        <CardContent className="pt-4 pb-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-amber-500/10"><Baby className="h-5 w-5 text-amber-600" /></div>
-            <div>
-              <p className="text-xs text-muted-foreground">Menores</p>
-              <p className="text-xl font-bold tabular-nums">{menores}</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-      <Card>
-        <CardContent className="pt-4 pb-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-destructive/10"><Heart className="h-5 w-5 text-destructive" /></div>
-            <div>
-              <p className="text-xs text-muted-foreground">Com Alergias</p>
-              <p className="text-xl font-bold tabular-nums">{comAlergias}</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+        </div>
+      ))}
     </div>
   );
 });
