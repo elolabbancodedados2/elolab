@@ -10,7 +10,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { createAutoBilling } from '@/lib/autoBilling';
 import { autoFinalizarAtendimento, autoConfirmarPagamento } from '@/lib/workflowAutomation';
 import { checkinComCobranca } from '@/lib/checkinWithBilling';
-import { atomicConcludeQueue, atomicStartAppointment as autoIniciarAtendimento } from '@/lib/operationalTransitions';
+import { atomicConcludeQueue, atomicMarkNoShow, atomicStartAppointment as autoIniciarAtendimento } from '@/lib/operationalTransitions';
+import { linkWhatsApp } from '@/lib/whatsapp';
 import { PainelDoDia } from '@/components/recepcao/PainelDoDia';
 import { ErrorState } from '@/components/ErrorState';
 import { ActionableEmptyState } from '@/components/ActionableEmptyState';
@@ -30,7 +31,7 @@ import {
   DollarSign, ArrowRight, Loader2, CheckCircle2, AlertTriangle,
   Timer, Phone, XCircle, Receipt, Eye, CalendarPlus, FileText,
   FlaskConical, RotateCcw, ClipboardList, Lock as LockIcon, LockOpen, Activity,
-  UserPlus,
+  UserPlus, DoorOpen, MessageCircle, UserX, ArrowUpDown, Hourglass,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -171,6 +172,10 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
   }, []);
   const [search, setSearch] = useState('');
   const [activeTab, setActiveTab] = useState('todos');
+  const [medicoFiltro, setMedicoFiltro] = useState('todos');
+  const [ordenacao, setOrdenacao] = useState<'horario' | 'espera'>('horario');
+  const [marcandoFalta, setMarcandoFalta] = useState<{ agId: string; nome: string } | null>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
   const [isProcessing, setIsProcessing] = useState(false);
    const [showPagamento, setShowPagamento] = useState(false);
    const [selectedLancamento, setSelectedLancamento] = useState<any>(null);
@@ -229,6 +234,22 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
     const iv = setInterval(() => setNow(Date.now()), 30000);
     return () => clearInterval(iv);
   }, []);
+
+  // "/" foca a busca, como na Agenda e nas Tarefas.
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const typing = target?.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target?.tagName || '');
+      const modalAberto = Boolean(document.querySelector('[role="dialog"], [role="alertdialog"]'));
+      if (event.key === '/' && !typing && !modalAberto && !event.metaKey && !event.ctrlKey && !event.altKey) {
+        event.preventDefault();
+        searchRef.current?.focus();
+      }
+      if (event.key === 'Escape' && target === searchRef.current && search) setSearch('');
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [search]);
 
   // Data
   // Só o dia de hoje: a recepção não usa o histórico, e o realtime refaz esta
@@ -429,6 +450,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
      if (activeTab === 'atendimento') list = list.filter(e => e.step === 2 || e.step === 3);
      if (activeTab === 'concluido') list = list.filter(e => e.step === 4);
      if (activeTab === 'faltou') list = list.filter(e => e.ag.status === 'faltou');
+     if (medicoFiltro !== 'todos') list = list.filter(e => e.ag.medico_id === medicoFiltro);
      if (search) {
        const q = normalizarTexto(search);
        list = list.filter(e =>
@@ -438,8 +460,16 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
          e.ag?.hora_inicio?.includes(search)
        );
      }
+     if (ordenacao === 'espera') {
+       // Quem chegou há mais tempo primeiro; quem ainda não chegou vai para o fim.
+       list = [...list].sort((a, b) => {
+         const ta = a.fila?.horario_chegada ? new Date(a.fila.horario_chegada).getTime() : Number.POSITIVE_INFINITY;
+         const tb = b.fila?.horario_chegada ? new Date(b.fila.horario_chegada).getTime() : Number.POSITIVE_INFINITY;
+         return ta - tb;
+       });
+     }
      return list;
-   }, [enriched, activeTab, search]);
+   }, [enriched, activeTab, search, medicoFiltro, ordenacao]);
 
    // Stats
    const stats = useMemo(() => ({
@@ -449,6 +479,46 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
      concluido: enriched.filter(e => e.step === 4).length,
      faltou: enriched.filter(e => e.ag.status === 'faltou').length,
    }), [enriched]);
+
+   // Próximo a chamar: quem já pagou e espera há mais tempo.
+   const proximoAChamarId = useMemo(() => {
+     const esperando = enriched
+       .filter(e => e.step === 2 && e.ag.status !== 'em_atendimento' && e.fila)
+       .sort((a, b) => new Date(a.fila?.horario_chegada || 0).getTime() - new Date(b.fila?.horario_chegada || 0).getTime());
+     return esperando[0]?.ag.id ?? null;
+   }, [enriched]);
+
+   // Espera média de quem chegou e ainda não entrou (balcão + pagos esperando).
+   const esperaMediaMin = useMemo(() => {
+     const esperas = enriched
+       .filter(e => (e.step === 1 || e.step === 2) && e.ag.status !== 'em_atendimento' && e.fila?.horario_chegada)
+       .map(e => Math.max(0, Math.floor((now - new Date(e.fila.horario_chegada).getTime()) / 60000)));
+     if (esperas.length === 0) return null;
+     return Math.round(esperas.reduce((s, m) => s + m, 0) / esperas.length);
+   }, [enriched, now]);
+
+   const minutosAgora = useMemo(() => {
+     const [h, m] = horaDaClinica(new Date(now)).split(':').map(Number);
+     return h * 60 + m;
+   }, [now]);
+
+   async function handleMarcarFalta(agId: string) {
+     if (!profile?.clinica_id) return;
+     setIsProcessing(true);
+     try {
+       const resultado = await atomicMarkNoShow(agId, profile.clinica_id);
+       if (!resultado.success) throw new Error(resultado.message);
+       toast.success('Falta registrada', { description: resultado.message });
+       queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
+       queryClient.invalidateQueries({ queryKey: ['fila_atendimento'] });
+       queryClient.invalidateQueries({ queryKey: ['lancamentos_hoje'] });
+     } catch (error) {
+       toast.error('Não foi possível registrar a falta', { description: mensagemDeErro(error) });
+     } finally {
+       setIsProcessing(false);
+       setMarcandoFalta(null);
+     }
+   }
 
   // ─── Actions ──────────────────────────────────────────
   async function handleCheckin(agId: string, itemForcado?: { ag: any; pac: any; med: any }) {
@@ -1128,24 +1198,61 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
       />
 
       {/* Search + Tabs */}
-      <motion.div variants={fadeUp} initial="hidden" animate="visible" className="flex flex-col sm:flex-row gap-2">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+      <motion.div variants={fadeUp} initial="hidden" animate="visible" className="flex flex-col gap-2 lg:flex-row lg:items-center">
+        <div className="relative min-w-0 flex-1">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
-            placeholder="Buscar paciente ou médico..."
+            ref={searchRef}
+            placeholder="Buscar paciente ou médico... ( / )"
             aria-label="Buscar paciente ou médico na recepção"
+            aria-keyshortcuts="/ Escape"
             value={search}
             onChange={e => setSearch(e.target.value)}
-            className="pl-9"
+            className="h-10 rounded-full pl-9 focus-visible:ring-[#1080CA]"
           />
         </div>
-        <Button
-          ref={encaixeTriggerRef}
-          variant="outline" size="sm" className="gap-1.5 shrink-0"
-          onClick={(event) => abrirEncaixe(event.currentTarget)}
-        >
-          <UserPlus className="h-4 w-4" /> Encaixe sem agendamento
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Select value={medicoFiltro} onValueChange={setMedicoFiltro}>
+            <SelectTrigger aria-label="Filtrar por médico" className="h-10 w-full rounded-full sm:w-[190px]">
+              <Stethoscope className="mr-1.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+              <SelectValue placeholder="Todos os médicos" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todos">Todos os médicos</SelectItem>
+              {(medicos as any[]).map(m => (
+                <SelectItem key={m.id} value={m.id}>{m.nome || m.crm}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={ordenacao} onValueChange={(v) => setOrdenacao(v as 'horario' | 'espera')}>
+            <SelectTrigger aria-label="Ordenar pacientes" className="h-10 w-full rounded-full sm:w-[170px]">
+              <ArrowUpDown className="mr-1.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="horario">Por horário</SelectItem>
+              <SelectItem value="espera">Por tempo de espera</SelectItem>
+            </SelectContent>
+          </Select>
+          {esperaMediaMin !== null && (
+            <span
+              className={cn(
+                'inline-flex h-10 items-center gap-1.5 rounded-full border px-3 text-xs font-semibold',
+                esperaMediaMin >= 30 ? 'border-destructive/30 bg-destructive/5 text-destructive' : esperaMediaMin >= 15 ? 'border-warning/30 bg-warning/5 text-warning-foreground' : 'border-success/30 bg-success/5 text-success',
+              )}
+              title="Tempo médio desde a chegada de quem ainda não entrou"
+            >
+              <Hourglass className="h-3.5 w-3.5" /> Espera média {esperaMediaMin} min
+            </span>
+          )}
+          <Button
+            ref={encaixeTriggerRef}
+            size="sm" className="h-10 shrink-0 gap-1.5 rounded-full bg-[#111111] px-4 text-white shadow-md hover:bg-[#2b2b33]"
+            onClick={(event) => abrirEncaixe(event.currentTarget)}
+          >
+            <UserPlus className="h-4 w-4" /> Encaixe sem agendamento
+          </Button>
+        </div>
       </motion.div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
@@ -1222,7 +1329,14 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
           ) : (
             <motion.div variants={stagger} initial="hidden" animate="visible" className="space-y-1">
               <AnimatePresence mode="popLayout">
-                {filtered.map(({ ag, pac, med, sala, fila, lanc, step }) => (
+                {filtered.map(({ ag, pac, med, sala, fila, lanc, step }) => {
+                  const horaMin = minutosDaHora(ag.hora_inicio);
+                  const atrasado = step === 0 && horaMin !== null && horaMin < minutosAgora;
+                  const linkACaminho = atrasado
+                    ? linkWhatsApp((pac as any)?.telefone, `Olá, ${((pac as any)?.nome_social || pac?.nome || '').split(' ')[0]}! Sua consulta estava marcada para ${ag.hora_inicio?.slice(0, 5)}. Está a caminho?`)
+                    : null;
+                  const ehProximo = ag.id === proximoAChamarId;
+                  return (
                   <motion.div
                     key={ag.id}
                     variants={fadeUp}
@@ -1230,22 +1344,23 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
                     layout
                   >
                     <Card className={cn(
-                     'border transition-all duration-200 overflow-hidden',
-                       step === 1 && 'border-accent/30 shadow-md shadow-accent/5',
-                       step === 2 && 'border-primary/30 shadow-md shadow-primary/5',
-                       step === 3 && 'border-info/30 shadow-md shadow-info/5',
+                     'overflow-hidden rounded-2xl border-border/60 shadow-xs transition-all duration-200',
+                       step === 1 && 'border-warning/40',
+                       step === 2 && 'border-[#1080CA]/40',
+                       step === 3 && 'border-[#2ED5E7]/50',
                        step === 4 && 'opacity-60',
                        ag.status === 'faltou' && 'opacity-75',
+                       ehProximo && 'ring-2 ring-[#1080CA]/40 shadow-[0_6px_18px_rgba(16,128,202,0.18)]',
                      )}>
                        <CardContent className="p-0">
                          <div className="flex items-stretch">
                            {/* Step indicator */}
                            <div className={cn(
                              'w-1.5 shrink-0',
-                             step === 0 && 'bg-warning',
-                             step === 1 && 'bg-accent-foreground',
-                             step === 2 && 'bg-primary',
-                             step === 3 && 'bg-info',
+                             step === 0 && (atrasado ? 'bg-destructive' : 'bg-warning'),
+                             step === 1 && 'bg-warning',
+                             step === 2 && 'bg-gradient-primary',
+                             step === 3 && 'bg-[#2ED5E7]',
                              step === 4 && 'bg-success',
                              ag.status === 'faltou' && 'bg-muted-foreground/50',
                            )} />
@@ -1254,10 +1369,20 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
                             <div className="flex flex-col sm:flex-row sm:items-center gap-3">
                               {/* Patient info */}
                               <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 mb-1">
+                                <div className="flex flex-wrap items-center gap-2 mb-1">
                                   <h3 className="font-semibold truncate">
                                     {(pac as any)?.nome_social || pac?.nome || 'Paciente'}
                                   </h3>
+                                  {ehProximo && (
+                                    <Badge className="border-transparent bg-gradient-primary text-[10px] text-white hover:bg-gradient-primary">
+                                      <Bell className="mr-0.5 h-2.5 w-2.5" /> Próximo a chamar
+                                    </Badge>
+                                  )}
+                                  {atrasado && (
+                                    <Badge variant="outline" className="border-destructive/40 text-[10px] text-destructive">
+                                      Atrasado {minutosAgora - (horaMin ?? 0)} min
+                                    </Badge>
+                                  )}
                                   {pac?.alergias && pac.alergias.length > 0 && (
                                     <Badge variant="destructive" className="text-[10px] px-1.5 py-0">
                                       <AlertTriangle className="h-2.5 w-2.5 mr-0.5" /> Alergia
@@ -1273,7 +1398,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
                                   </span>
                                   {sala && (
                                     <span className="flex items-center gap-1">
-                                      🚪 {sala.nome}
+                                      <DoorOpen className="h-3 w-3" /> {sala.nome}
                                     </span>
                                   )}
                                   {ag.tipo && (
@@ -1290,9 +1415,9 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
                                   {STEP_LABELS.map((label, i) => (
                                     <div key={i} className="flex items-center gap-1">
                                       <div className={cn(
-                                        'h-6 px-2.5 rounded-full flex items-center text-[10px] font-medium transition-colors',
-                                        i < step && 'bg-success/10 text-success',
-                                        i === step && 'bg-primary/10 text-primary ring-1 ring-primary/20',
+                                        'h-6 px-2.5 rounded-full flex items-center text-[10px] font-semibold transition-colors',
+                                        i < step && 'bg-[#111111] text-white',
+                                        i === step && 'bg-gradient-primary text-white shadow-sm',
                                         i > step && 'bg-muted text-muted-foreground',
                                       )}>
                                         {i < step ? <Check className="h-3 w-3" /> : label}
@@ -1311,23 +1436,21 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
 
                               {/* Wait time */}
                               {fila?.horario_chegada && step < 3 && (
-                                <div className="flex items-center gap-1 text-xs">
+                                <div className={cn('flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-semibold', corEspera(fila.horario_chegada), 'border-current/30')}>
                                   <Timer className="h-3.5 w-3.5" />
-                                  <span className={corEspera(fila.horario_chegada)}>
-                                    {calcEspera(fila.horario_chegada)}
-                                  </span>
+                                  <span>{calcEspera(fila.horario_chegada)}</span>
                                 </div>
                               )}
 
                               {/* Action buttons */}
                               <div className="flex items-center gap-2 shrink-0">
                                 {step === 0 && (
-                                  <div className="flex gap-1.5">
+                                  <div className="flex flex-wrap gap-1.5">
                                     <Button
                                       size="sm"
                                       onClick={() => handleCheckin(ag.id)}
                                       disabled={isProcessing}
-                                      className="gap-1.5"
+                                      className="gap-1.5 rounded-full bg-[#111111] text-white hover:bg-[#2b2b33]"
                                     >
                                       <UserCheck className="h-3.5 w-3.5" /> Check-in
                                     </Button>
@@ -1336,10 +1459,29 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
                                       variant="outline"
                                       onClick={() => handleEncaminharTriagem(ag.id, ag.paciente_id)}
                                       disabled={isProcessing}
-                                      className="gap-1"
+                                      className="gap-1 rounded-full"
                                     >
                                       <Activity className="h-3.5 w-3.5" /> Triagem
                                     </Button>
+                                    {linkACaminho && (
+                                      <Button asChild size="sm" variant="outline" className="gap-1 rounded-full border-[#1080CA]/40 text-[#1080CA] hover:bg-[#1080CA]/10 hover:text-[#1080CA]">
+                                        <a href={linkACaminho} target="_blank" rel="noopener noreferrer" aria-label={`Perguntar no WhatsApp se ${(pac as any)?.nome_social || pac?.nome || 'o paciente'} está a caminho`}>
+                                          <MessageCircle className="h-3.5 w-3.5" /> Está a caminho?
+                                        </a>
+                                      </Button>
+                                    )}
+                                    {atrasado && (
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        onClick={() => setMarcandoFalta({ agId: ag.id, nome: (pac as any)?.nome_social || pac?.nome || 'Paciente' })}
+                                        disabled={isProcessing}
+                                        className="gap-1 rounded-full text-muted-foreground hover:text-destructive"
+                                        aria-label={`Marcar falta de ${(pac as any)?.nome_social || pac?.nome || 'paciente'}`}
+                                      >
+                                        <UserX className="h-3.5 w-3.5" /> Faltou
+                                      </Button>
+                                    )}
                                   </div>
                                 )}
 
@@ -1382,7 +1524,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
                                         size="sm"
                                         onClick={() => openPagamento(lanc, pac)}
                                         disabled={isProcessing}
-                                        className="gap-1.5 bg-success hover:bg-success/90 text-success-foreground"
+                                        className="gap-1.5 rounded-full bg-gradient-primary text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)] hover:brightness-110"
                                       >
                                         <DollarSign className="h-3.5 w-3.5" />
                                         Receber {formatCurrency(calcularSaldoPagamento(
@@ -1419,7 +1561,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
                                           size="sm"
                                           onClick={() => handleIniciarAtendimento(ag.id, fila.id)}
                                           disabled={isProcessing}
-                                          className="gap-1"
+                                          className="gap-1 rounded-full bg-[#111111] text-white hover:bg-[#2b2b33]"
                                         >
                                           <Play className="h-3.5 w-3.5" /> Atender
                                         </Button>
@@ -1435,7 +1577,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
                                           nome: (pac as any)?.nome_social || pac?.nome || 'Paciente',
                                         })}
                                         disabled={isProcessing}
-                                        className="gap-1"
+                                        className="gap-1 rounded-full bg-gradient-primary text-white hover:brightness-110"
                                       >
                                         <Check className="h-3.5 w-3.5" /> Finalizar
                                       </Button>
@@ -1531,7 +1673,8 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
                       </CardContent>
                     </Card>
                   </motion.div>
-                ))}
+                  );
+                })}
               </AnimatePresence>
             </motion.div>
           )}
@@ -1762,6 +1905,29 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
             >
               {isProcessing ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
               Confirmar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* ─── Marcar falta direto da recepção ─── */}
+      <AlertDialog open={!!marcandoFalta} onOpenChange={(open) => { if (!open && !isProcessing) setMarcandoFalta(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Registrar falta?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {marcandoFalta?.nome ?? 'O paciente'} será marcado como "não compareceu" e sairá da fila. Se houver cobrança pendente, ela será cancelada; o horário continua no histórico.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isProcessing}>Voltar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={isProcessing}
+              onClick={(event) => { event.preventDefault(); if (marcandoFalta) void handleMarcarFalta(marcandoFalta.agId); }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Confirmar falta
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
