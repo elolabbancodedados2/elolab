@@ -392,6 +392,7 @@ export default function Fila() {
     );
 
   const isLoading = loadingFila || loadingAgendamentos || carregandoRegrasClinica;
+  const erroDoResumo = filaQuery.isError || agendamentosQuery.isError || erroRegrasClinica;
 
   // Realtime subscription for instant queue updates
   useEffect(() => {

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { todaySaoPauloDateOnly } from '@/lib/dateOnly';
 
@@ -35,6 +35,8 @@ const mocks = vi.hoisted(() => ({
   role: 'enfermagem',
   fila: [] as QueueFixture[],
   agendamentos: [] as AppointmentFixture[],
+  filaQueryState: { isLoading: false, isError: false, error: null as Error | null },
+  appointmentsQueryState: { isLoading: false, isError: false, error: null as Error | null },
   queryResults: {} as Record<string, { data?: unknown; isLoading?: boolean; isError?: boolean }>,
   updateResult: { data: [] as { id: string }[], error: null as null },
   toast: { error: vi.fn(), info: vi.fn(), success: vi.fn(), warning: vi.fn() },
@@ -50,8 +52,8 @@ vi.mock('@/contexts/SupabaseAuthContext', () => ({
 }));
 
 vi.mock('@/hooks/useSupabaseData', () => ({
-  useFilaAtendimento: () => ({ data: mocks.fila, isLoading: false }),
-  useAgendamentos: () => ({ data: mocks.agendamentos, isLoading: false }),
+  useFilaAtendimento: () => ({ data: mocks.fila, ...mocks.filaQueryState }),
+  useAgendamentos: () => ({ data: mocks.agendamentos, ...mocks.appointmentsQueryState }),
   usePacientes: () => ({ data: [], isLoading: false }),
   useMedicos: () => ({ data: [], isLoading: false }),
   useSalas: () => ({ data: [], isLoading: false }),
@@ -131,6 +133,8 @@ describe('Fila de atendimento', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.role = 'enfermagem';
+    mocks.filaQueryState = { isLoading: false, isError: false, error: null };
+    mocks.appointmentsQueryState = { isLoading: false, isError: false, error: null };
     const espera = agendamento('today', 'Paciente de hoje');
     const bloqueado = agendamento('blocked', 'Paciente aguardando balcão');
     const cancelado = agendamento('cancelled', 'Paciente cancelado', hoje, 'cancelado');
@@ -180,6 +184,26 @@ describe('Fila de atendimento', () => {
     expect(screen.getByText('Pendente no balcão')).toBeInTheDocument();
     expect(screen.queryByText(/R\$\s*\d/)).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Remover da fila' })).not.toBeInTheDocument();
+  });
+
+  it('não apresenta zero como total confirmado enquanto a fila carrega', () => {
+    mocks.filaQueryState.isLoading = true;
+    setup();
+
+    const resumo = screen.getByRole('group', { name: 'Resumo da fila' });
+    expect(resumo).toHaveAttribute('aria-busy', 'true');
+    expect(within(resumo).getAllByText('…')).toHaveLength(4);
+    expect(within(resumo).queryByText('0')).not.toBeInTheDocument();
+  });
+
+  it('não apresenta contagens desatualizadas quando a fila falha ao carregar', () => {
+    mocks.filaQueryState.isError = true;
+    mocks.filaQueryState.error = new Error('Falha de rede');
+    setup();
+
+    const resumo = screen.getByRole('group', { name: 'Resumo da fila' });
+    expect(within(resumo).getAllByText('—')).toHaveLength(4);
+    expect(screen.getByText('Não foi possível carregar a fila')).toBeInTheDocument();
   });
 
   it('não chama o paciente quando a atualização condicional encontra uma fila alterada', async () => {

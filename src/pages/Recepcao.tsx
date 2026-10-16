@@ -1120,6 +1120,9 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
         atendimentos={enriched}
         clinicaId={profile?.clinica_id}
         hoje={today}
+        carregandoAtendimentos={loadingAg || filaRecepcaoQuery.isLoading}
+        erroAtendimentos={agendaHojeQuery.isError || filaRecepcaoQuery.isError}
+        erroFinanceiro={lancamentosErro}
         abaAtiva={activeTab as any}
         onFiltrar={setActiveTab}
       />
