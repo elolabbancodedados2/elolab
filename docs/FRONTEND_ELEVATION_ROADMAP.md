@@ -18,7 +18,7 @@ Evolução do app usado pelas equipes das clínicas, seguindo a ordem visível n
    - O Dashboard agora dá à recepção e enfermagem contagens de consultas, fila e atendimentos do dia; ao financeiro, contas a receber e vencidas; os três perfis também veem tarefas abertas. As consultas usam somente contagens/status, respeitam a clínica vinculada e exibem estados de carregamento e erro.
    - Tarefas comunica o filtro selecionado com `aria-pressed`, agrupa os filtros com rótulo acessível e destaca vencimentos com cor de alerta.
    - Validação: 19 testes do conjunto Dashboard/Tarefas, TypeScript, build e detector Impeccable sem achados. O navegador não foi usado para inspeção visual nesta passada.
-2. **Atendimento** — Em andamento. Na Agenda, os botões Dia/Semana/Mês agora anunciam a visualização selecionada e formam um grupo rotulado para leitor de tela. O restante das telas do grupo segue na revisão.
+2. **Atendimento** — Em andamento. Na Agenda, os botões Dia/Semana/Mês anunciam a visualização selecionada e formam um grupo rotulado para leitor de tela. Na Recepção, os resumos distinguem carregamento e falha da agenda/fila/cobranças; os cartões que filtram etapas anunciam seu estado selecionado. Na Fila, os quatro indicadores mostram carregamento/erro em vez de zeros provisórios.
 3. **Pacientes** — Cadastro e histórico, Convênios, acesso ao portal do paciente.
 4. **Clínica** — Prontuários, Prescrições e documentos, Sinais vitais, Exames, Modelos clínicos, Encaminhamentos.
 5. **Laboratório** — Painel do laboratório, Mapa de coleta, Guias externas, Laudos.

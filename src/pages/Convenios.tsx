@@ -312,11 +312,11 @@ function TabelaExamesConvenio({ convenioId }: { convenioId: string }) {
                   <TableCell className="text-right tabular-nums text-sm font-semibold">{formatCurrency(e.valor_total || e.valor_tabela + (e.valor_filme || 0))}</TableCell>
                   <TableCell className="text-right">
                     {podeGerenciarTabela ? (
-                    <div className="flex justify-end gap-1">
-                      <Button variant="ghost" size="icon" className="h-7 w-7" aria-label={`Editar exame ${e.tipo_exame}`} onClick={() => handleEditExame(e)}>
+                    <div className="flex flex-wrap justify-end gap-1">
+                      <Button variant="ghost" size="icon" className="h-11 w-11" aria-label={`Editar exame ${e.tipo_exame}`} onClick={() => handleEditExame(e)}>
                         <Edit className="h-3.5 w-3.5" />
                       </Button>
-                      {podeExcluirExame && <Button variant="ghost" size="icon" className="h-7 w-7" aria-label={`Excluir exame ${e.tipo_exame}`} onClick={() => setDeleteExameId(e.id)}>
+                      {podeExcluirExame && <Button variant="ghost" size="icon" className="h-11 w-11" aria-label={`Excluir exame ${e.tipo_exame}`} onClick={() => setDeleteExameId(e.id)}>
                         <Trash2 className="h-3.5 w-3.5 text-destructive" />
                       </Button>}
                     </div>
@@ -748,10 +748,11 @@ function Convenios() {
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right">
-                        <div className="flex justify-end gap-1">
+                        <div className="flex flex-wrap justify-end gap-1">
                           {podeGerenciarConvenios && <Button
                             variant="ghost"
                             size="icon"
+                            className="h-11 w-11"
                             aria-label={c.ativo ? `Inativar convênio ${c.nome}` : `Ativar convênio ${c.nome}`}
                             title={c.ativo ? 'Inativar convênio' : 'Ativar convênio'}
                             onClick={() => void handleToggleAtivo(c)}
@@ -765,14 +766,14 @@ function Convenios() {
                             <FlaskConical className="h-4 w-4 text-primary" />
                           </Button>}
                           {urlHttpsSegura(c.portal_url) && (
-                            <Button variant="ghost" size="icon" asChild title="Portal do convênio">
-                              <a href={urlHttpsSegura(c.portal_url)!} target="_blank" rel="noopener noreferrer">
+                            <Button variant="ghost" size="icon" className="h-11 w-11" asChild title="Portal do convênio">
+                              <a href={urlHttpsSegura(c.portal_url)!} target="_blank" rel="noopener noreferrer" aria-label={`Abrir portal do convênio ${c.nome} em nova aba`}>
                                 <ExternalLink className="h-4 w-4" />
                               </a>
                             </Button>
                           )}
-                          {podeGerenciarConvenios && <Button variant="ghost" size="icon" aria-label={`Editar convênio ${c.nome}`} onClick={() => handleEdit(c)} disabled={atualizandoStatusId !== null || isDeleting}><Edit className="h-4 w-4" /></Button>}
-                          {podeGerenciarConvenios && <Button variant="ghost" size="icon" aria-label={`Excluir convênio ${c.nome}`} onClick={() => handleDeleteClick(c.id)} disabled={atualizandoStatusId !== null || isDeleting}>
+                          {podeGerenciarConvenios && <Button variant="ghost" size="icon" className="h-11 w-11" aria-label={`Editar convênio ${c.nome}`} onClick={() => handleEdit(c)} disabled={atualizandoStatusId !== null || isDeleting}><Edit className="h-4 w-4" /></Button>}
+                          {podeGerenciarConvenios && <Button variant="ghost" size="icon" className="h-11 w-11" aria-label={`Excluir convênio ${c.nome}`} onClick={() => handleDeleteClick(c.id)} disabled={atualizandoStatusId !== null || isDeleting}>
                             <Trash2 className="h-4 w-4 text-destructive" />
                           </Button>}
                         </div>
