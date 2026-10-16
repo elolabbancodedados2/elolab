@@ -336,9 +336,9 @@ export function Sidebar({ forceExpanded = false, onNavigate }: SidebarProps) {
       {/* ─── Footer ─── */}
       {!isCollapsed && (
         <div className="shrink-0 px-3 pb-4 pt-2">
-          <div className="rounded-2xl bg-white/70 px-4 py-3">
-            <p className="text-[13px] font-bold text-sidebar-accent-foreground">EloLab</p>
-            <p className="text-xs leading-relaxed text-sidebar-accent-foreground/60">Agenda, pacientes e finanças da clínica em um só lugar.</p>
+          <div className="rounded-xl bg-white/60 px-4 py-2.5 flex items-center justify-between">
+            <p className="text-[12px] font-semibold text-sidebar-accent-foreground/70">EloLab</p>
+            <p className="text-[11px] text-sidebar-accent-foreground/45">v2.0</p>
           </div>
         </div>
       )}
@@ -364,7 +364,7 @@ function SidebarMenuGroup({ group, collapsed, isOpen, onToggle, onExpand, curren
   const hasActiveChild = group.items.some(item => item.href.split('?')[0] === currentPath);
 
   return (
-    <div className="mb-2">
+    <div className="mb-1">
       <Tooltip>
         <TooltipTrigger asChild>
           <motion.button
@@ -376,7 +376,7 @@ function SidebarMenuGroup({ group, collapsed, isOpen, onToggle, onExpand, curren
             whileTap={{ scale: 0.97 }}
             transition={{ type: 'spring', stiffness: 400, damping: 20 }}
             className={cn(
-              'w-full flex items-center gap-3 rounded-full px-3 py-2.5 text-sm font-medium transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]/50 focus-visible:ring-offset-1',
+              'w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]/50 focus-visible:ring-offset-1',
               collapsed && 'justify-center',
               hasActiveChild
                 ? 'text-white shadow-md hover:text-white'
@@ -390,8 +390,8 @@ function SidebarMenuGroup({ group, collapsed, isOpen, onToggle, onExpand, curren
                 transition={{ type: 'spring', stiffness: 400, damping: 15 }}
                 className="h-9 w-9 rounded-xl flex items-center justify-center transition-all shadow-sm"
                 style={{
-                  backgroundColor: hasActiveChild ? 'rgba(255,255,255,.14)' : 'rgba(23,23,23,.05)',
-                  color: hasActiveChild ? '#fff' : '#171717',
+                  backgroundColor: hasActiveChild ? 'rgba(255,255,255,.18)' : `${group.color}1a`,
+                  color: hasActiveChild ? '#fff' : group.color,
                 }}
               >
                 <GroupIcon className="h-4 w-4" />
@@ -401,8 +401,8 @@ function SidebarMenuGroup({ group, collapsed, isOpen, onToggle, onExpand, curren
                 <div
                   className="h-6 w-6 rounded-lg flex items-center justify-center shrink-0 transition-all"
                   style={{
-                    backgroundColor: hasActiveChild ? 'rgba(255,255,255,.14)' : 'rgba(23,23,23,.05)',
-                    color: hasActiveChild ? '#fff' : '#171717',
+                    backgroundColor: hasActiveChild ? 'rgba(255,255,255,.18)' : `${group.color}1a`,
+                    color: hasActiveChild ? '#fff' : group.color,
                   }}
                 >
                   <GroupIcon className="h-3.5 w-3.5" />
@@ -432,10 +432,10 @@ function SidebarMenuGroup({ group, collapsed, isOpen, onToggle, onExpand, curren
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+            transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
             className="overflow-hidden"
           >
-            <div className="flex flex-col gap-1 py-1.5 pl-3">
+            <div className="flex flex-col gap-0.5 py-1 pl-3 border-l-2 ml-3" style={{ borderColor: `${group.color}30` }}>
               {group.items.map((item, idx) => (
                 <motion.div
                   key={item.href}

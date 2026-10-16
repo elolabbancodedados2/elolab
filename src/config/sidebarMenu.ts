@@ -85,7 +85,7 @@ export const menuGroups: MenuGroup[] = [
   {
     label: 'Início',
     icon: Gauge,
-    color: '#A99BFF',
+    color: '#1080CA',
     items: [
       { label: 'Dashboard', icon: LayoutDashboard, href: '/dashboard' },
       { label: 'Tarefas', icon: ListChecks, href: '/tarefas', roles: ['admin', 'recepcao', 'enfermagem', 'financeiro', 'medico'] },
@@ -95,7 +95,7 @@ export const menuGroups: MenuGroup[] = [
   {
     label: 'Atendimento',
     icon: MonitorSmartphone,
-    color: '#A99BFF',
+    color: '#0891B2',
     roles: ['admin', 'recepcao', 'enfermagem', 'medico', 'financeiro'],
     items: [
       { label: 'Agenda', icon: CalendarRange, href: '/agenda', roles: ['admin', 'recepcao', 'enfermagem', 'medico'] },
@@ -111,7 +111,7 @@ export const menuGroups: MenuGroup[] = [
   {
     label: 'Pacientes',
     icon: Users,
-    color: '#A99BFF',
+    color: '#7C3AED',
     roles: ['admin', 'recepcao', 'enfermagem', 'medico', 'financeiro'],
     items: [
       { label: 'Cadastro e histórico', icon: Users, href: '/pacientes', roles: ['admin', 'recepcao', 'enfermagem'] },
@@ -122,7 +122,7 @@ export const menuGroups: MenuGroup[] = [
   {
     label: 'Clínica',
     icon: Stethoscope,
-    color: '#A99BFF',
+    color: '#059669',
     roles: ['admin', 'medico', 'enfermagem'],
     items: [
       { label: 'Prontuários', icon: ScrollText, href: '/prontuarios', roles: ['admin', 'medico'] },
@@ -137,7 +137,7 @@ export const menuGroups: MenuGroup[] = [
   {
     label: 'Laboratório',
     icon: TestTubes,
-    color: '#A99BFF',
+    color: '#D97706',
     roles: ['admin', 'medico', 'enfermagem', 'recepcao'],
     planFeature: 'exames',
     items: [
@@ -150,7 +150,7 @@ export const menuGroups: MenuGroup[] = [
   {
     label: 'Financeiro',
     icon: WalletCards,
-    color: '#A99BFF',
+    color: '#DC2626',
     roles: ['admin', 'financeiro'],
     items: [
       { label: 'Visão financeira', icon: CircleDollarSign, href: '/financeiro' },
@@ -165,7 +165,7 @@ export const menuGroups: MenuGroup[] = [
   {
     label: 'Relatórios e indicadores',
     icon: FileBarChart,
-    color: '#A99BFF',
+    color: '#4F46E5',
     roles: ['admin', 'financeiro', 'recepcao', 'enfermagem', 'medico'],
     items: [
       { label: 'Relatórios', icon: FileBarChart, href: '/relatorios', exact: true, roles: ['admin', 'financeiro'] },
@@ -177,7 +177,7 @@ export const menuGroups: MenuGroup[] = [
   {
     label: 'Equipe',
     icon: UsersRound,
-    color: '#A99BFF',
+    color: '#DB2777',
     roles: ['admin'],
     items: [
       { label: 'Médicos e funcionários', icon: UsersRound, href: '/equipe', roles: ['admin'], exact: true },
@@ -187,7 +187,7 @@ export const menuGroups: MenuGroup[] = [
   {
     label: 'Estoque e suprimentos',
     icon: PackageSearch,
-    color: '#A99BFF',
+    color: '#0D9488',
     roles: ['admin', 'enfermagem'],
     items: [
       { label: 'Estoque', icon: PackageSearch, href: '/estoque', roles: ['admin', 'enfermagem'] },
@@ -197,7 +197,7 @@ export const menuGroups: MenuGroup[] = [
   {
     label: 'Comunicação',
     icon: MessageCircle,
-    color: '#A99BFF',
+    color: '#EA580C',
     items: [
       { label: 'Chat interno', icon: MessageCircle, href: '/chat' },
       { label: 'Mensagens e lembretes a pacientes', icon: Bell, href: '/automacoes?tab=fila', roles: ['admin'], planFeature: 'automacoes' },
@@ -206,7 +206,7 @@ export const menuGroups: MenuGroup[] = [
   {
     label: 'Automação e IA',
     icon: Sparkles,
-    color: '#A99BFF',
+    color: '#9333EA',
     roles: ['admin'],
     planFeature: 'automacoes',
     items: [
@@ -217,7 +217,7 @@ export const menuGroups: MenuGroup[] = [
   {
     label: 'Configurações',
     icon: Settings2,
-    color: '#A99BFF',
+    color: '#475569',
     roles: ['admin', 'medico'],
     items: [
       { label: 'Dados da clínica', icon: Building2, href: '/configuracoes', roles: ['admin'], exact: true },
@@ -232,7 +232,7 @@ export const menuGroups: MenuGroup[] = [
   {
     label: 'Ajuda',
     icon: MessageCircle,
-    color: '#A99BFF',
+    color: '#64748B',
     items: [
       { label: 'Treinamento e documentação', icon: BookMarked, href: '/treinamento' },
       { label: 'Suporte', icon: MessageCircle, href: '/suporte', roles: ['admin', 'recepcao', 'enfermagem', 'medico', 'financeiro'] },
@@ -242,7 +242,7 @@ export const menuGroups: MenuGroup[] = [
   {
     label: 'Painel da plataforma',
     icon: Gauge,
-    color: '#A99BFF',
+    color: '#1080CA',
     roles: ['admin'],
     superAdminOnly: true,
     items: [
@@ -254,7 +254,7 @@ export const menuGroups: MenuGroup[] = [
   {
     label: 'Clientes',
     icon: Building2,
-    color: '#A99BFF',
+    color: '#0891B2',
     roles: ['admin'],
     superAdminOnly: true,
     items: [
@@ -269,7 +269,7 @@ export const menuGroups: MenuGroup[] = [
   {
     label: 'Receita',
     icon: CreditCard,
-    color: '#A99BFF',
+    color: '#DC2626',
     roles: ['admin'],
     superAdminOnly: true,
     items: [
@@ -281,7 +281,7 @@ export const menuGroups: MenuGroup[] = [
   {
     label: 'Produto e comunicação',
     icon: MessageSquarePlus,
-    color: '#A99BFF',
+    color: '#EA580C',
     roles: ['admin'],
     superAdminOnly: true,
     items: [
@@ -294,7 +294,7 @@ export const menuGroups: MenuGroup[] = [
   {
     label: 'Controles da plataforma',
     icon: Shield,
-    color: '#A99BFF',
+    color: '#475569',
     roles: ['admin'],
     superAdminOnly: true,
     items: [
