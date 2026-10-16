@@ -1372,7 +1372,7 @@ test('analytics displays populated synthetic activity without backend writes', a
 
   const main = page.locator('#main-content');
   await expect(main.getByRole('heading', { name: 'Indicadores da clínica' })).toBeVisible();
-  await expect(main.getByText('Total Agendamentos')).toBeVisible();
+  await expect(main.getByText('Total Agendamentos', { exact: true })).toBeVisible();
   await expect(main.getByText('67%', { exact: true })).toBeVisible();
   await expect(main.getByRole('heading', { name: 'Agendamentos por Dia' })).toBeVisible();
   const kpiHeights = await main.getByTestId('analytics-kpi').evaluateAll(elements => elements.map(element => element.getBoundingClientRect().height));
@@ -1380,7 +1380,7 @@ test('analytics displays populated synthetic activity without backend writes', a
   await page.screenshot({ path: testInfo.outputPath('analytics-populated-1280.png'), fullPage: false, animations: 'disabled' });
 
   await main.getByRole('tab', { name: 'Produtividade' }).click();
-  await expect(main.getByText('Dra. Marina Ribeiro', { exact: true })).toBeVisible();
+  await expect(main.getByText('Dra. Marina Ribeiro', { exact: true }).first()).toBeVisible();
   expect(synthetic.assertAllWritesAreMocked()).toBe(true);
 });
 

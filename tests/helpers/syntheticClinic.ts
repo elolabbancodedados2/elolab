@@ -373,10 +373,14 @@ export async function installSyntheticClinic(page: Page, options: SyntheticClini
       agendamentos: { ...appointment, medicos: { nome: 'Dra. Marina Ribeiro', crm: '000000' } },
     };
   }) : [];
+  // Timestamps anchored to noon SP today so the date-filter ("hoje") never
+  // excludes them when CI runs near midnight UTC (= near midnight SP).
+  const spToday = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Sao_Paulo' }).format(new Date());
+  const spNoon = (offsetMin: number) => new Date(`${spToday}T12:00:00-03:00`).getTime() + offsetMin * 60_000;
   const syntheticLabColetas = options.labPopulated ? [
-    { id: '00000000-0000-4000-9000-000000000071', codigo_amostra: 'QA-UR-001', status: 'pendente', urgente: true, tipo_amostra: 'sangue', created_at: new Date(Date.now() - 35 * 60_000).toISOString() },
-    { id: '00000000-0000-4000-9000-000000000072', codigo_amostra: 'QA-UR-002', status: 'em_analise', urgente: false, tipo_amostra: 'sangue', created_at: new Date(Date.now() - 20 * 60_000).toISOString() },
-    { id: '00000000-0000-4000-9000-000000000073', codigo_amostra: 'QA-UR-003', status: 'validado', urgente: false, tipo_amostra: 'urina', created_at: new Date(Date.now() - 5 * 60_000).toISOString() },
+    { id: '00000000-0000-4000-9000-000000000071', codigo_amostra: 'QA-UR-001', status: 'pendente', urgente: true, tipo_amostra: 'sangue', created_at: new Date(spNoon(-35)).toISOString() },
+    { id: '00000000-0000-4000-9000-000000000072', codigo_amostra: 'QA-UR-002', status: 'em_analise', urgente: false, tipo_amostra: 'sangue', created_at: new Date(spNoon(-20)).toISOString() },
+    { id: '00000000-0000-4000-9000-000000000073', codigo_amostra: 'QA-UR-003', status: 'validado', urgente: false, tipo_amostra: 'urina', created_at: new Date(spNoon(-5)).toISOString() },
   ].map((coleta, index) => ({
     ...coleta,
     clinica_id: TEST_CLINIC_ID,
