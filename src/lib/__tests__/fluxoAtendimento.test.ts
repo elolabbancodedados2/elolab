@@ -383,6 +383,69 @@ describe('faturamento automático — uma cobrança por agendamento', () => {
     expect(insercao?.payload).toMatchObject({ p_categoria: 'exame', p_valor: 89.9 });
   });
 
+  it('cobra o exame cadastrado mesmo quando o agendamento omite a preposição do nome', async () => {
+    mockAtual = criarSupabaseMock({
+      'lancamentos.select': { data: [], error: null },
+      'configuracoes_clinica.select': {
+        data: [{ valor: [
+          { nome: 'ultrassom obstetrico 1 trimestre', valor: 85 },
+          { nome: 'ultrassom transvagnal Obstetrico', valor: 149.9 },
+          { nome: 'USG OBSTETRICO DE 13 SEMANAS 3º MÊS', valor: 125 },
+        ] }], error: null,
+      },
+    });
+    const { createAutoBillingDetailed } = await import('@/lib/autoBilling');
+
+    await expect(createAutoBillingDetailed({
+      agendamentoId: 'ag-exame-13', pacienteId: 'pac-1', pacienteNome: 'Paciente',
+      tipoConsulta: 'exame', tipoExame: 'USG OBSTÉTRICO 13 SEMANAS', clinicaId: 'cli-1',
+    })).resolves.toBe('created');
+    expect(mockAtual.chamadas.find(c => c.tabela === 'rpc:criar_cobranca_checkin_atomica')?.payload)
+      .toMatchObject({ p_categoria: 'exame', p_valor: 125 });
+  });
+
+  it('recusa nomes sem preposição quando ainda correspondem a mais de um preço', async () => {
+    mockAtual = criarSupabaseMock({
+      'configuracoes_clinica.select': {
+        data: [{ valor: [
+          { nome: 'USG OBSTETRICO DE 13 SEMANAS 3º MÊS', valor: 125 },
+          { nome: 'USG OBSTETRICO DE 13 SEMANAS COM DOPPLER', valor: 180 },
+        ] }], error: null,
+      },
+    });
+    const { resolveExamPrice } = await import('@/lib/autoBilling');
+
+    await expect(resolveExamPrice({ tipoExame: 'USG OBSTÉTRICO 13 SEMANAS', clinicaId: 'cli-1' }))
+      .rejects.toThrow(/combina com vários preços/);
+  });
+
+  it('mantém a preferência pelo nome exato antes de ignorar preposições', async () => {
+    mockAtual = criarSupabaseMock({
+      'configuracoes_clinica.select': {
+        data: [{ valor: [
+          { nome: 'USG OBSTETRICO DE 13 SEMANAS', valor: 125 },
+          { nome: 'USG OBSTETRICO 13 SEMANAS', valor: 150 },
+        ] }], error: null,
+      },
+    });
+    const { resolveExamPrice } = await import('@/lib/autoBilling');
+
+    await expect(resolveExamPrice({ tipoExame: 'USG OBSTÉTRICO 13 SEMANAS', clinicaId: 'cli-1' }))
+      .resolves.toBe(150);
+  });
+
+  it('não confunde exames com números de semanas diferentes', async () => {
+    mockAtual = criarSupabaseMock({
+      'configuracoes_clinica.select': {
+        data: [{ valor: [{ nome: 'USG OBSTETRICO DE 13 SEMANAS 3º MÊS', valor: 125 }] }], error: null,
+      },
+    });
+    const { resolveExamPrice } = await import('@/lib/autoBilling');
+
+    await expect(resolveExamPrice({ tipoExame: 'USG OBSTÉTRICO 30 SEMANAS', clinicaId: 'cli-1' }))
+      .rejects.toThrow(/Não há preço cadastrado/);
+  });
+
   it('recusa exame sem preço em vez de enviar R$ 0,00 ao balcão', async () => {
     mockAtual = criarSupabaseMock({
       'lancamentos.select': { data: [], error: null },

@@ -83,9 +83,16 @@ function findPriceRow<T>(
   // Short names can be substrings of several distinct procedures. Only use a
   // fuzzy match when it identifies one row; choosing the first database row
   // could silently charge the wrong amount.
+  // Scheduling may omit prepositions from the registered name. Keep exact
+  // names/codes above authoritative, and ignore these words only as fallback.
+  const withoutPrepositions = (name: string) => name
+    .replace(/\b(?:de|da|do|das|dos)\b/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const approximateCandidates = candidates.map(withoutPrepositions);
   const approximate = rows.filter(row => {
-    const normalizedRow = normalizeServiceName(getName(row));
-    return normalizedRow && candidates.some(candidate =>
+    const normalizedRow = withoutPrepositions(normalizeServiceName(getName(row)));
+    return normalizedRow && approximateCandidates.some(candidate =>
       candidate.length >= 4 && (normalizedRow.includes(candidate) || candidate.includes(normalizedRow)),
     );
   });

@@ -5,6 +5,7 @@ import { AlertTriangle, ArrowUpRight, CalendarClock, CalendarPlus, Check, Circle
 import { toast } from 'sonner';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { supabase } from '@/integrations/supabase/client';
+import type { TablesUpdate } from '@/integrations/supabase/types';
 import { ActionableEmptyState } from '@/components/ActionableEmptyState';
 import { ErrorState } from '@/components/ErrorState';
 import { Badge } from '@/components/ui/badge';
@@ -86,7 +87,7 @@ export default function MinhaFilaTarefas() {
   const atualizar = useMutation({
     mutationFn: async ({ task, values, changes, sucesso }: {
       task: PersonalTask;
-      values: Record<string, unknown>;
+      values: TablesUpdate<'tarefas'>;
       changes: Array<{ field: string; oldValue: unknown; newValue: unknown }>;
       sucesso: string;
     }) => {
