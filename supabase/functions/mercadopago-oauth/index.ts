@@ -1,6 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsPadrao } from '../_shared/cors.ts';
 import { cifrar, decifrar } from '../_shared/integracoes.ts';
+import { callbackMercadoPagoSeguro, retornoMercadoPagoSeguro, validarRedirectMercadoPago } from '../_shared/mercadoPagoOAuthSecurity.ts';
 
 const MP_AUTH_URL = 'https://auth.mercadopago.com/authorization';
 const MP_TOKEN_URL = 'https://api.mercadopago.com/oauth/token';
@@ -28,13 +29,10 @@ function json(body: unknown, status = 200, headers: Record<string, string> = {})
 }
 
 function redirect(status: 'conectado' | 'cancelado' | 'erro') {
-  const destination = new URL(APP_RETURN_URL);
-  destination.searchParams.set('tab', 'integracoes');
-  destination.searchParams.set('mercado_pago', status);
   return new Response(null, {
     status: 302,
     headers: {
-      Location: destination.toString(),
+      Location: retornoMercadoPagoSeguro(APP_RETURN_URL, status),
       'Cache-Control': 'no-store',
       'Referrer-Policy': 'no-referrer',
     },
@@ -68,11 +66,7 @@ function clientCredentials() {
 
 function redirectUri() {
   const value = Deno.env.get('MERCADOPAGO_OAUTH_REDIRECT_URI') || DEFAULT_REDIRECT_URI;
-  const parsed = new URL(value);
-  if (parsed.protocol !== 'https:' || parsed.search || parsed.hash) {
-    throw new Error('A URL de retorno OAuth precisa ser HTTPS, fixa e sem parâmetros.');
-  }
-  return parsed.toString();
+  return validarRedirectMercadoPago(value);
 }
 
 async function consumeState(service: any, state: string) {
@@ -132,14 +126,13 @@ Deno.serve(async (req) => {
   // e ao administrador que iniciou o consentimento.
   if (req.method === 'GET') {
     const url = new URL(req.url);
-    const state = url.searchParams.get('state') || '';
-    const code = url.searchParams.get('code') || '';
-    const oauthError = url.searchParams.get('error');
-    if (!state || state.length > 200) return redirect(oauthError ? 'cancelado' : 'erro');
+    const callback = callbackMercadoPagoSeguro(url.searchParams);
+    if (!callback) return redirect('erro');
+    const { state, code, error: oauthError } = callback;
     try {
       const oauthState = await consumeState(service, state);
       if (!oauthState) return redirect('erro');
-      if (oauthError || !code || code.length > 4000) return redirect('cancelado');
+      if (oauthError || !code) return redirect('cancelado');
 
       const verifier = await decifrar(oauthState.code_verifier_cifrado);
       const { clientId, clientSecret } = clientCredentials();

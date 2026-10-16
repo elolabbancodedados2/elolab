@@ -22,6 +22,7 @@ function consultaSemColunasDeDigitos(dados: PacienteResumo[]) {
   let chamadas = 0;
   const query = {
     select: vi.fn(() => query),
+    eq: vi.fn(() => query),
     or: vi.fn((_filtros: string) => query),
     order: vi.fn(() => query),
     range: vi.fn(async () => {
@@ -37,6 +38,27 @@ describe('buscarPacientes', () => {
     vi.clearAllMocks();
     mocks.profile.clinica_id = 'clinica-1';
     redefinirDeteccaoColunasDeDigitos();
+  });
+
+  it('filters active and inactive patient searches at the database boundary', async () => {
+    const consulta = () => {
+      const query: any = {
+        select: vi.fn(() => query),
+        eq: vi.fn(() => query),
+        order: vi.fn(() => query),
+        range: vi.fn(async () => ({ data: [], error: null })),
+      };
+      return query;
+    };
+    const ativos = consulta();
+    mocks.from.mockReturnValueOnce(ativos);
+    await buscarPacientes('', 20);
+    expect(ativos.eq).toHaveBeenCalledWith('ativo', true);
+
+    const inativos = consulta();
+    mocks.from.mockReturnValueOnce(inativos);
+    await buscarPacientes('', 20, {}, false, undefined, 'inativos');
+    expect(inativos.eq).toHaveBeenCalledWith('ativo', false);
   });
 
   it('continua paginando até achar o paciente após candidatos sem correspondência exata', async () => {
@@ -59,6 +81,7 @@ describe('buscarPacientes', () => {
     }));
     const query = {
       select: vi.fn(() => query),
+      eq: vi.fn(() => query),
       or: vi.fn((_filtros: string) => query),
       order: vi.fn(() => query),
       range,
@@ -81,6 +104,7 @@ describe('buscarPacientes', () => {
     }));
     const query = {
       select: vi.fn(() => query),
+      eq: vi.fn(() => query),
       or: vi.fn((_filtros: string) => query),
       order: vi.fn(() => query),
       range: vi.fn(async () => ({ data: candidatos, error: null })),
@@ -101,6 +125,7 @@ describe('buscarPacientes', () => {
     };
     const query = {
       select: vi.fn(() => query),
+      eq: vi.fn(() => query),
       or: vi.fn((_filtros: string) => query),
       order: vi.fn(() => query),
       range: vi.fn(async () => ({ data: [paciente], error: null })),
@@ -120,6 +145,7 @@ describe('buscarPacientes', () => {
     };
     const query = {
       select: vi.fn(() => query),
+      eq: vi.fn(() => query),
       or: vi.fn((_filtros: string) => query),
       order: vi.fn(() => query),
       range: vi.fn(async () => ({ data: [paciente], error: null })),
@@ -144,6 +170,7 @@ describe('buscarPacientes', () => {
     };
     const query = {
       select: vi.fn(() => query),
+      eq: vi.fn(() => query),
       or: vi.fn((_filtros: string) => query),
       order: vi.fn(() => query),
       range: vi.fn(async () => ({ data: [paciente], error: null })),
@@ -188,6 +215,7 @@ describe('buscarPacientes', () => {
   it('propaga outros erros do banco sem cair para as máscaras', async () => {
     const query = {
       select: vi.fn(() => query),
+      eq: vi.fn(() => query),
       or: vi.fn((_filtros: string) => query),
       order: vi.fn(() => query),
       range: vi.fn(async () => ({ data: null, error: { code: '57014', message: 'canceling statement due to statement timeout' } })),
@@ -238,6 +266,7 @@ describe('buscarPacientes', () => {
   it('não faz busca extra quando o termo inicial tem espaço nas pontas', async () => {
     const query = {
       select: vi.fn(() => query),
+      eq: vi.fn(() => query),
       or: vi.fn((_filtros: string) => query),
       order: vi.fn(() => query),
       range: vi.fn(async () => ({ data: [], error: null })),
@@ -266,6 +295,7 @@ describe('buscarPacientes', () => {
     let chamadas = 0;
     const query = {
       select: vi.fn(() => query),
+      eq: vi.fn(() => query),
       or: vi.fn((_filtros: string) => query),
       order: vi.fn(() => query),
       range: vi.fn(() => {

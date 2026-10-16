@@ -38,7 +38,7 @@ export function SidebarNavItem({ item, collapsed, groupColor, onNavigate }: Side
         const itemIsActive = isItemActive(isActive);
         return cn(
           'group relative flex min-h-11 items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-all duration-150',
-          'text-[#171717]/80 hover:text-[#171717] hover:bg-black/[0.04]',
+          'text-[#171717]/80 hover:text-[#171717] hover:bg-black/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#171717]/50 focus-visible:ring-offset-1',
           itemIsActive && !item.external && 'font-semibold text-[#171717] bg-white shadow-sm hover:bg-white',
           collapsed && 'justify-center px-2',
           !collapsed && 'ml-1'

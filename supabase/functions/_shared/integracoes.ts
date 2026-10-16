@@ -104,7 +104,9 @@ export async function registrarResultado(
 ) {
   let q = service.from('integracoes_clinica').update({
     status: erro ? 'erro' : 'conectado',
-    ultimo_erro: erro ? erro.slice(0, 500) : null,
+    // Nunca persistir texto recebido do provedor: ele pode conter tokens,
+    // URLs privadas ou fragmentos de resposta com dados de terceiros.
+    ultimo_erro: erro ? 'Falha ao comunicar com o provedor. Confira a conexão ou contate o suporte.' : null,
     ultimo_teste_em: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   }).eq('clinica_id', clinicaId).eq('provedor', provedor);

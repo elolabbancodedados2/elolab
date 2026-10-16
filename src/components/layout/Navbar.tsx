@@ -16,6 +16,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
+import type { AppRole } from '@/contexts/SupabaseAuthContext';
 import { cn } from '@/lib/utils';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { KeyboardShortcutsDialog } from '@/components/KeyboardShortcutsDialog';
@@ -27,6 +28,14 @@ import { supabase } from '@/integrations/supabase/client';
 import { ContextualHelp } from '@/components/ContextualHelp';
 import { toast } from 'sonner';
 
+const roleLabels: Record<AppRole, string> = {
+  admin: 'Admin',
+  medico: 'Médico',
+  recepcao: 'Recepção',
+  enfermagem: 'Enfermagem',
+  financeiro: 'Financeiro',
+};
+
 interface NavbarProps {
   onMenuClick?: () => void;
   mobileMenuOpen: boolean;
@@ -37,6 +46,22 @@ export function Navbar({ onMenuClick, mobileMenuOpen }: NavbarProps) {
   const navigate = useNavigate();
   const { notifications: systemNotifications, unreadCount: systemUnread } = useRealtimeNotifications();
   const operationalSeenRef = useRef<{ owner: string; initialized: boolean; ids: Set<string> }>({ owner: '', initialized: false, ids: new Set() });
+
+  const { data: activeClinic } = useQuery({
+    queryKey: ['navbar-clinic-context', profile?.clinica_id],
+    queryFn: async () => {
+      if (!profile?.clinica_id) return null;
+      const { data, error } = await supabase
+        .from('clinicas')
+        .select('nome')
+        .eq('id', profile.clinica_id)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+    enabled: Boolean(profile?.clinica_id),
+    staleTime: 5 * 60_000,
+  });
 
   useKeyboardShortcuts();
 
@@ -146,6 +171,13 @@ export function Navbar({ onMenuClick, mobileMenuOpen }: NavbarProps) {
       <div className="min-w-0 flex-1 sm:max-w-md sm:flex-none">
         <GlobalSearch />
       </div>
+
+      {profile?.clinica_id && profile.role && (
+        <div role="group" aria-label="Contexto ativo" title={activeClinic?.nome || 'Clínica ativa'} className="hidden 2xl:flex min-w-0 max-w-[180px] shrink-0 flex-col px-2">
+          <span className="truncate text-xs font-semibold text-foreground">{activeClinic?.nome || 'Clínica ativa'}</span>
+          <span className="truncate text-[10px] text-muted-foreground">{roleLabels[profile.role]}</span>
+        </div>
+      )}
 
       {/* Spacer */}
       <div className="hidden flex-1 sm:block" />
@@ -346,6 +378,11 @@ export function Navbar({ onMenuClick, mobileMenuOpen }: NavbarProps) {
               <div className="flex-1 min-w-0">
                 <p className="font-semibold text-sm truncate">{profile?.nome}</p>
                 <p className="text-[11px] text-muted-foreground truncate">{profile?.email}</p>
+                {profile?.clinica_id && profile.role && (
+                  <p className="mt-1 text-[10px] leading-tight text-muted-foreground">
+                    {activeClinic?.nome || 'Clínica ativa'} · {roleLabels[profile.role]}
+                  </p>
+                )}
                 <span className="inline-flex items-center gap-1 mt-0.5 text-[10px] text-primary font-medium">
                   <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
                   Online

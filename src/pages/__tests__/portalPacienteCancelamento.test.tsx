@@ -171,7 +171,8 @@ describe('PortalPaciente — cancelamento de consulta', () => {
   it('apresenta o painel de cuidado como uma região acessível e identifica as abas', async () => {
     render(<PortalPaciente />);
 
-    expect(await screen.findByRole('region', { name: 'Resumo do seu cuidado' })).toBeVisible();
+    const resumo = await screen.findByRole('region', { name: 'Resumo do seu cuidado' });
+    await waitFor(() => expect(resumo).toBeVisible());
     expect(await screen.findByText('Quinta-feira, 15 de outubro')).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /Agendar/i })).toHaveAccessibleName(/Agendar/i);
     expect(screen.getByRole('tab', { name: /Consultas/i })).toHaveAccessibleName(/Consultas/i);
@@ -179,8 +180,9 @@ describe('PortalPaciente — cancelamento de consulta', () => {
     expect(screen.getByRole('tab', { name: /Receitas/i })).toHaveAccessibleName(/Receitas/i);
     expect(screen.getByRole('tab', { name: /Histórico/i })).toHaveAccessibleName(/Histórico/i);
     expect(screen.getByRole('tab', { name: /Financeiro/i })).toHaveAccessibleName(/Financeiro/i);
+    expect(screen.getByRole('tab', { name: /Documentos/i })).toHaveAccessibleName(/Documentos/i);
     expect(screen.getByRole('tablist', { name: 'Seções do portal' })).toHaveAccessibleName('Seções do portal');
-    expect(screen.getAllByRole('tab')).toHaveLength(6);
+    expect(screen.getAllByRole('tab')).toHaveLength(7);
   });
 
   it('permite navegar pelas abas com as setas do teclado', async () => {

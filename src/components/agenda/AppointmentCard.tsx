@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useDraggable } from '@dnd-kit/core';
 import { useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
-import { CheckCircle2, PlayCircle, Ban, Trash2, Edit3, User, Receipt } from 'lucide-react';
+import { CheckCircle2, PlayCircle, Ban, Trash2, Edit3, User, Receipt, Video } from 'lucide-react';
 import {
   ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger,
 } from '@/components/ui/context-menu';
@@ -17,6 +17,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import { FinalizarAtendimentoDialog } from '@/components/fila/FinalizarAtendimentoDialog';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { podeRemarcarAgendamento } from '@/lib/appointmentStatus';
+import { APPOINTMENT_CANCELLATION_REASONS, isAppointmentCancellationReason } from '@/lib/appointmentCancellation';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 interface Props {
   agendamento: any;
@@ -69,6 +71,7 @@ function toMinutes(t: string) {
 const TIPO_LABEL: Record<string, string> = {
   consulta: 'Consulta', retorno: 'Retorno', exame: 'Exame', procedimento: 'Procedimento',
   checkup: 'Check-up', avaliacao: 'Avaliação', cirurgia: 'Cirurgia',
+  telemedicina: 'Teleconsulta',
   triagem: 'Triagem', coleta: 'Coleta', enfermagem: 'Enfermagem', vacina: 'Vacina', curativo: 'Curativo',
 };
 
@@ -133,6 +136,7 @@ export function AppointmentCard({ agendamento, color, minutesToPx, onClick, conv
   const [finalizandoCard, setFinalizandoCard] = useState(false);
   /** Confirmação antes de cancelar/remover a consulta. */
   const [cancelandoCard, setCancelandoCard] = useState(false);
+  const [motivoCancelamento, setMotivoCancelamento] = useState('');
 
   const invalidarAgendaEFila = () => {
     void queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
@@ -316,6 +320,10 @@ export function AppointmentCard({ agendamento, color, minutesToPx, onClick, conv
   };
   const remove = async () => {
     if (ocupado) return;
+    if (!isAppointmentCancellationReason(motivoCancelamento)) {
+      toast.error('Selecione o motivo do cancelamento');
+      return;
+    }
     if (!profile?.clinica_id) {
       toast.error('Não foi possível identificar a clínica. Atualize a sessão e tente novamente.');
       return;
@@ -324,9 +332,18 @@ export function AppointmentCard({ agendamento, color, minutesToPx, onClick, conv
     // Cancela e remove a fila junto — a confirmação é o ConfirmDialog abaixo
     // (antes era window.confirm nativo, fora do padrão do app).
     try {
-      await alterarStatusComFila('cancelado');
+      const { data, error } = await (supabase as any).rpc('cancelar_agendamento_com_motivo', {
+        p_agendamento_id: agendamento.id,
+        p_clinica_id: profile.clinica_id,
+        p_updated_at: agendamento.updated_at ?? null,
+        p_motivo_cancelamento: motivoCancelamento,
+      });
+      if (error) throw error;
+      const resultado = Array.isArray(data) ? data[0] : data;
+      if (!resultado?.atualizado) throw new Error('A consulta mudou ou foi finalizada desde que a agenda foi carregada. Confira o status antes de tentar novamente.');
       invalidarAgendaEFila();
       setCancelandoCard(false);
+      setMotivoCancelamento('');
       toast.success('Consulta cancelada');
     } catch (error) {
       toast.error('Erro ao cancelar a consulta', { description: mensagemDeErro(error) });
@@ -414,6 +431,28 @@ export function AppointmentCard({ agendamento, color, minutesToPx, onClick, conv
       </ContextMenuTrigger>
       <ContextMenuContent className="w-56">
         <ContextMenuItem onSelect={onClick}><Edit3 className="mr-2 h-4 w-4" /> Abrir / editar</ContextMenuItem>
+        {agendamento.tipo === 'telemedicina' && roles.some(role => ['admin', 'medico'].includes(role)) && <ContextMenuItem
+          disabled={ocupado || !['agendado', 'confirmado', 'aguardando'].includes(agendamento.status)}
+          onSelect={async () => {
+            setOcupado(true);
+            try {
+              const { data, error } = await supabase.functions.invoke('teleconsulta', { body: { action: 'create', agendamento_id: agendamento.id } });
+              if (error) throw error;
+              const guestUrl = `${window.location.origin}/teleconsulta/${data.session_id}#${data.guest_token}`;
+              try {
+                await navigator.clipboard.writeText(guestUrl);
+                toast.success('Link seguro copiado', { description: 'Envie o link ao paciente por um canal privado.' });
+              } catch {
+                window.prompt('Copie o link seguro e envie ao paciente por um canal privado:', guestUrl);
+                toast.info('O link da sala está pronto para compartilhar.');
+              }
+              navigate(`/teleconsulta/${data.session_id}`);
+            } catch (error) {
+              toast.error('Não foi possível criar a sala', { description: mensagemDeErro(error) });
+            } finally { setOcupado(false); }
+          }}>
+          <Video className="mr-2 h-4 w-4" /> Criar sala e copiar link
+        </ContextMenuItem>}
         <ContextMenuSeparator />
         {podeAbrirFicha && <ContextMenuItem
           disabled={!agendamento.paciente_id}
@@ -445,7 +484,7 @@ export function AppointmentCard({ agendamento, color, minutesToPx, onClick, conv
       />
       <ConfirmDialog
         open={cancelandoCard}
-        onOpenChange={(o) => { if (!o) setCancelandoCard(false); }}
+        onOpenChange={(o) => { if (!o) { setCancelandoCard(false); setMotivoCancelamento(''); } }}
         title="Cancelar esta consulta?"
         description="O histórico do paciente é preservado; o horário volta a ficar disponível e o paciente sai da fila de atendimento."
         confirmLabel="Cancelar consulta"
@@ -453,7 +492,21 @@ export function AppointmentCard({ agendamento, color, minutesToPx, onClick, conv
         onConfirm={remove}
         isLoading={ocupado}
         closeOnConfirm={false}
-      />
+      >
+        <div className="ml-13 mt-3 space-y-2">
+          <label htmlFor={`motivo-cancelamento-${agendamento.id}`} className="text-sm font-medium">Motivo do cancelamento</label>
+          <Select value={motivoCancelamento} onValueChange={setMotivoCancelamento}>
+            <SelectTrigger id={`motivo-cancelamento-${agendamento.id}`} aria-label="Motivo do cancelamento" disabled={ocupado}>
+              <SelectValue placeholder="Selecione um motivo" />
+            </SelectTrigger>
+            <SelectContent>
+              {APPOINTMENT_CANCELLATION_REASONS.map((reason) => (
+                <SelectItem key={reason.value} value={reason.value}>{reason.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </ConfirmDialog>
     </ContextMenu>
   );
 }

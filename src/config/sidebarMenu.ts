@@ -4,6 +4,7 @@ import {
   CalendarRange,
   ClipboardCheck,
   Shield,
+  ShieldCheck,
   CircleDollarSign,
   HandCoins,
   PackageSearch,
@@ -21,6 +22,7 @@ import {
   BotMessageSquare,
   ActivitySquare,
   ListChecks,
+  Inbox,
   TestTubes,
   BookMarked,
   LucideIcon,
@@ -37,6 +39,7 @@ import {
   FileText,
   Bell,
   MessageSquarePlus,
+  Wrench,
 } from 'lucide-react';
 import { AppRole } from '@/contexts/SupabaseAuthContext';
 
@@ -86,6 +89,7 @@ export const menuGroups: MenuGroup[] = [
     items: [
       { label: 'Dashboard', icon: LayoutDashboard, href: '/dashboard' },
       { label: 'Tarefas', icon: ListChecks, href: '/tarefas', roles: ['admin', 'recepcao', 'enfermagem', 'financeiro', 'medico'] },
+      { label: 'Minha fila', icon: Inbox, href: '/minha-fila', roles: ['admin', 'recepcao', 'enfermagem', 'financeiro', 'medico'] },
     ],
   },
   {
@@ -98,6 +102,8 @@ export const menuGroups: MenuGroup[] = [
       { label: 'Recepção e caixa', icon: MonitorSmartphone, href: '/recepcao', roles: ['admin', 'recepcao', 'financeiro'] },
       { label: 'Fila e triagem', icon: ClipboardCheck, href: '/fila', roles: ['admin', 'recepcao', 'enfermagem', 'medico'] },
       { label: 'Salas e lista de espera', icon: DoorOpen, href: '/gestao-fluxo', roles: ['admin', 'recepcao'] },
+      { label: 'Higienização de salas', icon: ClipboardCheck, href: '/higiene-salas', roles: ['admin', 'recepcao', 'enfermagem'] },
+      { label: 'Patrimônio e manutenção', icon: Wrench, href: '/patrimonio-equipamentos', roles: ['admin', 'recepcao', 'enfermagem'] },
       { label: 'Retornos', icon: CalendarCheck, href: '/retornos', roles: ['admin', 'medico', 'recepcao'] },
       { label: 'Risco de faltas', icon: ActivitySquare, href: '/analise-preditiva', roles: ['admin', 'recepcao'] },
     ],
@@ -122,6 +128,7 @@ export const menuGroups: MenuGroup[] = [
       { label: 'Prontuários', icon: ScrollText, href: '/prontuarios', roles: ['admin', 'medico'] },
       { label: 'Prescrições e documentos', icon: BookMarked, href: '/documentos-clinicos', roles: ['admin', 'medico'] },
       { label: 'Sinais vitais', icon: ActivitySquare, href: '/vitais-graficos', roles: ['admin', 'medico', 'enfermagem'] },
+      { label: 'Segurança assistencial', icon: ShieldCheck, href: '/seguranca-assistencial', roles: ['admin', 'medico', 'enfermagem'] },
       { label: 'Exames', icon: Microscope, href: '/exames', roles: ['admin', 'medico', 'enfermagem'], planFeature: 'exames' },
       { label: 'Modelos clínicos', icon: FolderKanban, href: '/todos-templates', roles: ['admin', 'medico'] },
       { label: 'Encaminhamentos', icon: Stethoscope, href: '/documentos-clinicos?tab=encaminhamentos', roles: ['admin', 'medico'] },

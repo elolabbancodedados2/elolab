@@ -38,6 +38,8 @@ import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { pacienteCorresponde } from '@/lib/buscaPaciente';
 import { PacienteCombobox } from '@/components/patients/PacienteCombobox';
 import { usePacienteResumo } from '@/hooks/useBuscaPacientes';
+import { atestadoTemplateVersionLabel, selectedAtestadoTemplateId } from '@/lib/atestadoTemplateProvenance';
+import { registrarAcessoDocumentoClinico } from '@/lib/clinicalDocumentAudit';
 
 interface Atestado {
   id: string;
@@ -51,6 +53,9 @@ interface Atestado {
   motivo: string | null;
   cid: string | null;
   observacoes: string | null;
+  modelo_atestado_id?: string | null;
+  modelo_atestado_nome?: string | null;
+  modelo_atestado_atualizado_em?: string | null;
   created_at: string | null;
   pacientes?: { nome: string; nome_social?: string | null; cpf?: string | null; telefone?: string | null } | null;
 }
@@ -106,6 +111,7 @@ export default function Atestados() {
   const [isViewOpen, setIsViewOpen] = useState(false);
   const [isTemplateOpen, setIsTemplateOpen] = useState(false);
   const [selectedAtestado, setSelectedAtestado] = useState<Atestado | null>(null);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [formData, setFormData] = useState<FormDataType>(() => novoFormulario(today));
   const [isSaving, setIsSaving] = useState(false);
   const saveLock = useRef(false);
@@ -174,6 +180,7 @@ export default function Atestados() {
       return;
     }
     setSelectedAtestado(null);
+    setSelectedTemplateId(null);
     setFormData({ ...novoFormulario(today), medico_id: medicoId || '' });
     setIsFormOpen(true);
   };
@@ -184,6 +191,7 @@ export default function Atestados() {
       return;
     }
     setSelectedAtestado(null);
+    setSelectedTemplateId(null);
     setFormData({ ...novoFormulario(today), tipo, medico_id: medicoId || '' });
     setIsFormOpen(true);
   };
@@ -201,6 +209,7 @@ export default function Atestados() {
       // para esta emissão específica.
       incluirCid: false,
     }));
+    setSelectedTemplateId(selectedAtestadoTemplateId(template));
     if (diasValidos) updateDias(diasValidos);
     setIsTemplateOpen(false);
     toast.success(`Modelo "${template.nome}" carregado.`);
@@ -318,6 +327,7 @@ export default function Atestados() {
         cid: formData.incluirCid ? formData.cid : null,
         motivo,
         observacoes: observacoesProcessadas || null,
+        modelo_atestado_id: selectedTemplateId,
       });
 
       if (error) throw error;
@@ -345,6 +355,7 @@ export default function Atestados() {
       : '';
     const finalidadePredefinida = FINALIDADES_APTIDAO.includes(finalidadeAptidao);
     setSelectedAtestado(null);
+    setSelectedTemplateId(null);
     setFormData({
       ...novoFormulario(today),
       tipo,
@@ -377,7 +388,15 @@ export default function Atestados() {
     toast.success('Atestado duplicado — ajuste os dados e emita.');
   };
 
-  const handleView = (atestado: Atestado) => { setSelectedAtestado(atestado); setIsViewOpen(true); };
+  const handleView = async (atestado: Atestado) => {
+    try {
+      await registrarAcessoDocumentoClinico('atestado', atestado.id, 'visualizacao');
+      setSelectedAtestado(atestado);
+      setIsViewOpen(true);
+    } catch (error) {
+      toast.error('Não foi possível registrar o acesso ao atestado.', { description: mensagemDeErro(error) });
+    }
+  };
 
   const handlePrint = async (atestado: Atestado) => {
     const paciente = atestado.pacientes;
@@ -407,8 +426,10 @@ export default function Atestados() {
           diasAfastamento: atestado.dias || undefined,
           cid: atestado.cid || undefined,
           observacoes: [motivoAdicional, atestado.observacoes].filter(Boolean).join('\n'),
+          versaoModelo: atestadoTemplateVersionLabel(atestado) || undefined,
         }
       );
+      await registrarAcessoDocumentoClinico('atestado', atestado.id, 'impressao');
       openPDF(doc);
     } catch (error) {
       toast.error('Não foi possível preparar o atestado para impressão.', { description: mensagemDeErro(error) });
@@ -929,6 +950,12 @@ export default function Atestados() {
                 <div className="border-t pt-3">
                   <p className="text-xs text-muted-foreground">Observações</p>
                   <p className="text-sm whitespace-pre-wrap">{selectedAtestado.observacoes}</p>
+                </div>
+              )}
+              {atestadoTemplateVersionLabel(selectedAtestado) && (
+                <div className="border-t pt-3" data-testid="atestado-template-version">
+                  <p className="text-xs text-muted-foreground">Modelo de origem</p>
+                  <p className="text-sm">{atestadoTemplateVersionLabel(selectedAtestado)}</p>
                 </div>
               )}
               <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/50 rounded p-2">

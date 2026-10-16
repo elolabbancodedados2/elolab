@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+﻿import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const source = readFileSync('supabase/functions/whatsapp-webhook/index.ts', 'utf8');
@@ -30,6 +30,18 @@ describe('WhatsApp patient-service webhook policy', () => {
     expect(source).toContain('confirmacao explicita SIM');
     expect(source).toContain('Todas as alteracoes exigem SIM.');
     expect(source).not.toContain('para cancelar ou remarcar, transfira para a equipe humana');
+  });
+
+  it('keeps triage in conversation context instead of writing to the clinical chart', () => {
+    const start = source.indexOf("case 'registrar_triagem':");
+    const end = source.indexOf("case 'transferir_humano':", start);
+    const triageTool = source.slice(start, end);
+
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    expect(triageTool).toContain(".from('whatsapp_conversations')");
+    expect(triageTool).toContain(".update({ contexto:");
+    expect(triageTool).not.toMatch(/\.from\(['"](?:prontuarios|prontuario_adendos|prescricoes)['"]\)/);
   });
 
   it('does not guess a patient from a partial phone match', () => {

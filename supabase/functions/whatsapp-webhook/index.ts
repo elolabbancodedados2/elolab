@@ -14,6 +14,8 @@ Deno.serve(async (req) => {
     return new Response('ok', { headers: corsHeaders })
   }
 
+  let alertClient: ReturnType<typeof createClient> | null = null
+  let alertClinicId: string | null = null
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -49,6 +51,7 @@ Deno.serve(async (req) => {
     }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
+    alertClient = supabase
     const body = await req.json()
 
     const event = body.event
@@ -70,6 +73,7 @@ Deno.serve(async (req) => {
       console.log('[Webhook] Session not found for instance:', instanceName)
       return new Response(JSON.stringify({ received: true }), { headers: corsHeaders })
     }
+    alertClinicId = session.clinica_id || null
 
     if (
       session.clinica_id &&
@@ -607,9 +611,20 @@ DADOS DO PACIENTE:
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   } catch (error) {
-    console.error('[Webhook] Error:', error)
+    if (alertClient && alertClinicId) {
+      try {
+        const { error: alertError } = await alertClient.rpc('registrar_alerta_webhook_comunicacao', {
+          p_clinica_id: alertClinicId,
+          p_codigo: 'webhook_whatsapp_processing_failed',
+        })
+        if (alertError) console.error('[Webhook] Safe alert persistence failed:', alertError.code || 'database_error')
+      } catch {
+        console.error('[Webhook] Safe alert persistence failed: database_error')
+      }
+    }
+    console.error('[Webhook] Processing failed:', error instanceof Error ? error.name : 'unknown_error')
     return new Response(
-      JSON.stringify({ error: String(error) }),
+      JSON.stringify({ error: 'webhook_processing_failed' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   }

@@ -364,6 +364,7 @@ export async function gerarAtestado(
     diasAfastamento?: number;
     cid?: string;
     observacoes?: string;
+    versaoModelo?: string;
   }
 ) {
   const { JsPDF, autoTable } = await carregarPdfLib();
@@ -435,6 +436,13 @@ export async function gerarAtestado(
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
   doc.text(`CRM: ${medico.crm || 'N/A'} | ${medico.especialidade || ''}`, 105, 233, { align: 'center' });
+
+  if (atestado.versaoModelo) {
+    doc.setFontSize(8);
+    doc.setTextColor(110, 110, 110);
+    const provenanceLines = doc.splitTextToSize(atestado.versaoModelo, 170);
+    doc.text(provenanceLines, 20, 244);
+  }
 
   addFooter(doc);
 
