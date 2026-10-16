@@ -7,7 +7,7 @@ import {
   Calendar, Users, FileText, Pill, Clock, Stethoscope, ClipboardList,
   ArrowRight, ArrowUpRight, Activity, Target,
   Sun, Sunset, Moon, CheckCircle2, AlertTriangle, Eye, UserCheck,
-  TestTube, Send, BadgeCheck, Phone, Timer, Zap,
+  TestTube, Send, BadgeCheck, Phone, Timer, Zap, ListChecks,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -17,7 +17,7 @@ import { cn } from '@/lib/utils';
 import { useCurrentMedico } from '@/hooks/useCurrentMedico';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { useAgendamentosPeriodo } from '@/hooks/useSupabaseData';
+import { useAgendamentosPeriodo, useMinhasTarefasPendentes } from '@/hooks/useSupabaseData';
 import { StorageAvatarImage } from '@/components/StorageImage';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { DashboardSkeleton } from '@/components/ui/loading-skeleton';
@@ -131,6 +131,7 @@ export function DoctorDashboard({ userName }: DoctorDashboardProps) {
   // para filtrar o médico no navegador.
   const agendamentosQuery = useAgendamentosPeriodo(hoje, amanha, { enabled: !!medicoId });
   const { data: agendamentos = [] } = agendamentosQuery;
+  const { data: minhasTarefas = [] } = useMinhasTarefasPendentes();
 
   const contagensQuery = useQuery({
     queryKey: ['doctor-dashboard-contagens', user?.id ?? null, profile?.clinica_id ?? null, medicoId, inicioMes],
@@ -496,6 +497,26 @@ export function DoctorDashboard({ userName }: DoctorDashboardProps) {
                 </CardContent>
               </Card>
             </motion.div>
+
+            {minhasTarefas.length > 0 && (
+              <motion.div variants={fadeUp}>
+                <Card className="rounded-[22px]">
+                  <CardHeader className="flex-row items-center justify-between space-y-0 pb-3">
+                    <CardTitle className="text-base">Minhas tarefas</CardTitle>
+                    <Link to="/tarefas" className="text-xs font-bold text-primary hover:underline">Ver todas</Link>
+                  </CardHeader>
+                  <CardContent>
+                    <ul className="divide-y divide-dashed divide-border">{minhasTarefas.slice(0, 4).map(t => (
+                      <li key={t.id} className="flex items-center gap-3 py-2">
+                        <ListChecks className="h-4 w-4 shrink-0 text-primary" />
+                        <span className="min-w-0 flex-1 truncate text-sm font-medium">{t.titulo}</span>
+                        {t.data_vencimento && <span className={cn('shrink-0 text-xs font-bold tabular-nums', t.data_vencimento < hoje ? 'text-destructive' : 'text-muted-foreground')}>{format(parseDateOnly(t.data_vencimento)!, 'dd/MM', { locale: ptBR })}</span>}
+                      </li>
+                    ))}</ul>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            )}
 
             {currentMedico && (
               <motion.div variants={fadeUp}>
