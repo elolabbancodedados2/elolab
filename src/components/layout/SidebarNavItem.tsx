@@ -38,8 +38,8 @@ export function SidebarNavItem({ item, collapsed, groupColor, onNavigate }: Side
         const itemIsActive = isItemActive(isActive);
         return cn(
           'group relative flex min-h-11 items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-all duration-150',
-          'text-[#171717]/80 hover:text-[#171717] hover:bg-black/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#171717]/50 focus-visible:ring-offset-1',
-          itemIsActive && !item.external && 'font-semibold text-[#171717] bg-white shadow-sm hover:bg-white',
+          'text-[#171717]/80 hover:text-[#171717] hover:bg-black/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]/50 focus-visible:ring-offset-1',
+          itemIsActive && !item.external && 'font-semibold text-[#0e6aad] bg-[#1080CA]/[0.09] hover:bg-[#1080CA]/[0.12]',
           collapsed && 'justify-center px-2',
           !collapsed && 'ml-1'
         );
@@ -56,7 +56,10 @@ export function SidebarNavItem({ item, collapsed, groupColor, onNavigate }: Side
             whileHover={{ scale: 1.15, rotate: isActive ? 0 : 6 }}
             whileTap={{ scale: 0.9 }}
             transition={{ type: 'spring', stiffness: 400, damping: 15 }}
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-all duration-200"
+            className={cn(
+              'flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-all duration-200',
+              isActive && !item.external && 'bg-[#1080CA]/15',
+            )}
           >
             <Icon className="h-[17px] w-[17px] shrink-0 transition-colors duration-200" />
           </motion.div>
@@ -77,7 +80,9 @@ export function SidebarNavItem({ item, collapsed, groupColor, onNavigate }: Side
               className={cn(
                 'ml-auto flex h-5 items-center justify-center rounded-full px-2 text-[10px] font-bold tabular-nums ring-1',
                 typeof item.badge === 'number'
-                  ? 'min-w-[18px] bg-[#171717] text-white ring-transparent'
+                  ? isActive
+                    ? 'min-w-[18px] bg-[#1080CA] text-white ring-transparent'
+                    : 'min-w-[18px] bg-[#171717] text-white ring-transparent'
                   : 'bg-black/[0.04] text-[#171717]/70 ring-black/[0.08] uppercase tracking-wide'
               )}
             >

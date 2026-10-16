@@ -210,9 +210,10 @@ export function Sidebar({ forceExpanded = false, onNavigate }: SidebarProps) {
               className={cn(
                 'flex min-h-12 items-center justify-center gap-2.5 rounded-xl px-2 text-sm font-semibold transition-all',
                 navigationMode === 'app'
-                  ? 'bg-sidebar-primary text-white shadow-sm'
+                  ? 'text-white shadow-md'
                   : 'text-sidebar-accent-foreground/65 hover:bg-black/[0.04] hover:text-sidebar-accent-foreground',
               )}
+              style={navigationMode === 'app' ? { background: 'var(--gradient-primary)' } : undefined}
             >
               <LayoutDashboard className="h-4 w-4 shrink-0" />
               {!isCollapsed && <span>App</span>}
@@ -239,9 +240,10 @@ export function Sidebar({ forceExpanded = false, onNavigate }: SidebarProps) {
             className={cn(
               'flex min-h-12 items-center justify-center gap-2.5 rounded-xl px-2 text-sm font-semibold transition-all',
               navigationMode === 'platform'
-                ? 'bg-sidebar-primary text-white shadow-sm'
+                ? 'text-white shadow-md'
                 : 'text-sidebar-accent-foreground/65 hover:bg-black/[0.04] hover:text-sidebar-accent-foreground',
             )}
+            style={navigationMode === 'platform' ? { background: 'var(--gradient-primary)' } : undefined}
           >
             <ShieldCheck className="h-4 w-4 shrink-0" />
             {!isCollapsed && <span>Painel Admin</span>}
@@ -374,12 +376,13 @@ function SidebarMenuGroup({ group, collapsed, isOpen, onToggle, onExpand, curren
             whileTap={{ scale: 0.97 }}
             transition={{ type: 'spring', stiffness: 400, damping: 20 }}
             className={cn(
-              'w-full flex items-center gap-3 rounded-full px-3 py-2.5 text-sm font-medium transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#171717]/50 focus-visible:ring-offset-1',
+              'w-full flex items-center gap-3 rounded-full px-3 py-2.5 text-sm font-medium transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]/50 focus-visible:ring-offset-1',
               collapsed && 'justify-center',
               hasActiveChild
-                ? 'bg-sidebar-primary text-white shadow-sm hover:text-white'
+                ? 'text-white shadow-md hover:text-white'
                 : 'text-sidebar-accent-foreground/75 hover:bg-black/[0.04] hover:text-sidebar-accent-foreground',
             )}
+            style={hasActiveChild ? { background: 'var(--gradient-primary)' } : undefined}
           >
             {collapsed ? (
               <motion.div
