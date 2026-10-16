@@ -96,7 +96,8 @@ describe('Minha fila de trabalho', () => {
     ]));
     expect(await screen.findByRole('link', { name: 'Abrir paciente' })).toHaveAttribute('href', '/pacientes?paciente=patient-1');
     expect(screen.getByRole('heading', { name: /Atrasadas/ })).toBeInTheDocument();
-    expect(screen.getByText('Confirmar retorno')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Próxima tarefa' })).toBeInTheDocument();
+    expect(screen.getAllByText('Confirmar retorno').length).toBeGreaterThan(0);
   });
 
   it('conclui usando clínica, responsável e versão carregada da tarefa', async () => {
@@ -124,7 +125,7 @@ describe('Minha fila de trabalho', () => {
     mocks.roles = ['medico'];
     renderPage();
 
-    expect(await screen.findByText('Confirmar retorno')).toBeInTheDocument();
+    expect((await screen.findAllByText('Confirmar retorno')).length).toBeGreaterThan(0);
     expect(screen.queryByRole('link', { name: 'Abrir paciente' })).not.toBeInTheDocument();
     expect(screen.getByText('Paciente vinculado')).toBeInTheDocument();
   });

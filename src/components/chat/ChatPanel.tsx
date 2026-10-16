@@ -529,11 +529,11 @@ export function ChatPanel() {
   return (
     <>
       {/* Floating Button */}
-      <div className="fixed bottom-6 right-6 z-50 hidden lg:block xl:bottom-auto xl:right-[26rem] xl:top-3">
+      <div className="fixed bottom-6 right-6 z-50 hidden lg:block">
         <Button
           size="icon"
           className={cn(
-            'h-14 w-14 rounded-full shadow-xl relative transition-all duration-300 xl:h-11 xl:w-11',
+            'h-14 w-14 rounded-full shadow-xl relative transition-all duration-300',
             aberto && 'rotate-0',
             totalNaoLidas > 0 && !aberto && 'ring-4 ring-primary/15',
           )}
