@@ -1,0 +1,11 @@
+-- "permission denied for table medicos" ao salvar um médico pela tela Equipe.
+--
+-- A migration 20261011340000 revogou SELECT em public.medicos e concedeu só
+-- algumas colunas (privacidade dos dados pessoais da equipe). Porém a política
+-- medicos_update lê `user_id`, e o app confere `updated_at` no WHERE do UPDATE
+-- (controle de concorrência). Sem SELECT nessas colunas o Postgres recusa o
+-- UPDATE inteiro, mesmo para administradores da clínica.
+--
+-- Nenhuma dessas colunas é dado pessoal sensível; e-mail, CPF, telefone e
+-- afins continuam restritos às RPCs administrativas.
+GRANT SELECT (user_id, created_at, updated_at) ON TABLE public.medicos TO authenticated;
