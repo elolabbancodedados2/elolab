@@ -128,7 +128,6 @@ const Interoperabilidade = lazy(() => import("@/pages/Interoperabilidade"));
 const Teleconsulta = lazy(() => import("@/pages/Teleconsulta"));
 const SegurancaAssistencial = lazy(() => import("@/pages/SegurancaAssistencial"));
 import { CookieConsent } from "@/components/CookieConsent";
-import { UpdateSupportBanner } from "@/components/UpdateSupportBanner";
 import { BrandLoadingScreen } from "@/components/BrandLoadingScreen";
 
 const queryClient = new QueryClient({
@@ -203,7 +202,6 @@ function App() {
             <Sonner />
             <BrowserRouter>
               <SupabaseAuthProvider>
-                {mode === 'app' && <UpdateSupportBanner />}
                 <OperationalGuard><AppInitializer>
                 <NotificationBanner />
                 <PlatformAnnouncements />
