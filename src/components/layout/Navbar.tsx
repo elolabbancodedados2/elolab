@@ -27,6 +27,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { ContextualHelp } from '@/components/ContextualHelp';
 import { toast } from 'sonner';
+import { BarraHorario } from './BarraHorario';
 
 const roleLabels: Record<AppRole, string> = {
   admin: 'Admin',
@@ -179,8 +180,10 @@ export function Navbar({ onMenuClick, mobileMenuOpen }: NavbarProps) {
         </div>
       )}
 
-      {/* Spacer */}
-      <div className="hidden flex-1 sm:block" />
+      {/* Agenda de hoje (ocupa o espaço livre do cabeçalho) */}
+      <div className="hidden min-w-0 flex-1 px-2 md:block">
+        <BarraHorario />
+      </div>
 
       {/* Right actions */}
       <div className="flex shrink-0 items-center gap-1 sm:gap-2">

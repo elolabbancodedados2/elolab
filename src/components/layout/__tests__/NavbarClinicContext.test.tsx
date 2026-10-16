@@ -19,6 +19,7 @@ vi.mock('@tanstack/react-query', () => ({
 vi.mock('@/components/GlobalSearch', () => ({ GlobalSearch: () => <div /> }));
 vi.mock('@/components/KeyboardShortcutsDialog', () => ({ KeyboardShortcutsDialog: () => null }));
 vi.mock('@/components/ContextualHelp', () => ({ ContextualHelp: () => null }));
+vi.mock('../BarraHorario', () => ({ BarraHorario: () => null }));
 
 describe('contexto ativo no cabeçalho', () => {
   it('mostra o nome da clínica e o papel principal autenticado', () => {
