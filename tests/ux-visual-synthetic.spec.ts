@@ -563,19 +563,22 @@ test('LGPD screen minimizes patient fields, exposes support, and makes the resul
   let patientDeleteAttempts = 0;
   page.on('request', request => {
     const url = new URL(request.url());
-    if (request.method() === 'GET' && url.pathname === '/rest/v1/pacientes') {
+    if (request.method() === 'POST' && url.pathname === '/rest/v1/rpc/buscar_pacientes_paginado') {
       requestedColumns.push(url.searchParams.get('select') ?? '');
     }
     if (request.method() === 'DELETE' && url.pathname === '/rest/v1/pacientes') patientDeleteAttempts += 1;
   });
-  await page.route('**/rest/v1/pacientes*', async route => {
+  await page.route('**/rest/v1/rpc/buscar_pacientes_paginado*', async route => {
     const rows = Array.from({ length: 35 }, (_, index) => ({
       id: `00000000-0000-4000-8000-${String(index + 100).padStart(12, '0')}`,
       nome: `Paciente QA ${String(index + 1).padStart(2, '0')}`,
       cpf: `000.000.000-${String(index).padStart(2, '0')}`,
       email: `paciente${index + 1}@example.test`,
     }));
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(rows) });
+    const params = route.request().postDataJSON();
+    const matches = rows.filter(row => row.nome.toLowerCase().includes((params.p_termo ?? '').toLowerCase()));
+    const start = params.p_offset ?? 0;
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(matches.slice(start, start + params.p_limite)) });
   });
 
   for (const viewport of [{ width: 1440, height: 900 }, { width: 1280, height: 800 }]) {
@@ -605,7 +608,7 @@ test('LGPD screen minimizes patient fields, exposes support, and makes the resul
 
 test('LGPD patient list empty state links to patient registration', async ({ page }) => {
   const synthetic = await installSyntheticClinic(page, { platformAdmin: false });
-  await page.route('**/rest/v1/pacientes*', async route => {
+  await page.route('**/rest/v1/rpc/buscar_pacientes_paginado*', async route => {
     await route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
   });
   await page.setViewportSize({ width: 1280, height: 800 });
@@ -630,6 +633,8 @@ test('LGPD export is audited before download and fails closed when audit insert 
 
   page.on('request', request => {
     const url = new URL(request.url());
+    // The navbar independently loads its date-bounded agenda, outside this export.
+    if (url.pathname === '/rest/v1/agendamentos' && url.searchParams.has('data')) return;
     if (request.method() === 'GET' && url.pathname.startsWith('/rest/v1/')) {
       const table = url.pathname.split('/').pop() ?? '';
       exportTableReads.add(table);
@@ -684,6 +689,7 @@ test('LGPD export is audited before download and fails closed when audit insert 
   await page.route('**/rest/v1/*', async route => {
     const url = new URL(route.request().url());
     const table = url.pathname.split('/').pop() ?? '';
+    if (table === 'agendamentos' && url.searchParams.has('data')) return route.fallback();
     if (route.request().method() === 'GET' && syntheticExportRows[table]) {
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(syntheticExportRows[table]) });
       return;

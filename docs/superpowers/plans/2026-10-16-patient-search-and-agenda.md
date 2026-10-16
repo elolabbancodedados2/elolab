@@ -59,9 +59,9 @@
 
 ## Release verification
 
-- [ ] Independent review of the final diff, especially RLS, search semantics and pagination.
-- [ ] Run full tests, typecheck, column/error/permission/accessibility checks and production build.
-- [ ] Apply migration, verify real-data result sets against the prior client matcher without printing records, and record migration history.
+- [x] Independent review of the final diff, especially RLS, search semantics and pagination.
+- [x] Run full tests, typecheck, column/error/permission/accessibility checks and production build.
+- [x] Apply migration, verify real-data result sets against the prior client matcher without printing records, and record migration history.
 - [ ] Publish verified source/image, check health/version and API response, and report measured payload reduction without claiming unmeasured browser latency gains.
 
 ## Execution ledger
@@ -71,3 +71,13 @@
 
 - Tasks 1 and 2: complete; 64 focused tests, isolated PostgreSQL assertions, typecheck and four static integrity checks passed. Full suite running.
 - Test-fixture correction: a mixed numeric term also matches CPF by existing semantics; the private-coverage assertion now uses a text-only term. Production behavior was preserved.
+
+- Independent review: no critical or important findings. Production migration applied and registered; PostgREST schema reloaded.
+- Real-data verification: 328 searches exactly match the original JavaScript matcher; 85 active clinic patients paginate as 50 + 35 with no overlap; zero foreign-clinic patients visible. All 132 appointments across nine doctors remain visible to clinic staff.
+- Search `cris`: five actual matches returned instead of 17 loose candidates. Anonymous RPC request is rejected with HTTP 401 / SQLSTATE 42501.
+- Isolated SQL test database removed after verification. Production build and GitHub unit/integration and static checks passed; browser E2E still running.
+
+- Full suite passed locally and in GitHub: 317 files / 1,538 tests. Browser fixtures were updated to route the new patient-search RPC and apply result filtering/paging. The first local browser attempt exceeded navigation timeouts on this Windows host; the focused rerun uses a larger runner timeout without changing application behavior.
+
+- Four focused browser cases passed after updating the search fixtures: patient deletion safeguards, LGPD search limits, empty state and audited export. The export fixture now excludes the navbar date-bounded agenda so it does not inject incomplete export rows into the header.
+- First full browser CI run: 216 passed, 18 failed, 46 skipped. Three affected patient/LGPD cases are corrected above; the other 15 are being compared against the prior production commit before any release decision.
