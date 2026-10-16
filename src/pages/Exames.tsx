@@ -424,15 +424,12 @@ export default function Exames() {
     queryKey: ['exames', user?.id ?? null, profile?.clinica_id ?? null, isMedicoOnly, medicoId],
     queryFn: async () => {
       return buscarEmBlocos<any>(() => {
-        let query = supabase
+        const query = supabase
           .from('exames')
           .select('*, pacientes(nome, nome_social, cpf, telefone, email), medicos(crm, especialidade, nome)')
           .eq('clinica_id', profile?.clinica_id ?? '')
           .order('data_solicitacao', { ascending: false })
           .order('id', { ascending: true });
-        if (isMedicoOnly && medicoId) {
-          query = query.eq('medico_solicitante_id', medicoId);
-        }
         return query;
       });
     },

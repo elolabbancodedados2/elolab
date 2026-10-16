@@ -10,7 +10,7 @@ const rotas = (role: Role) =>
 describe('matriz operacional do menu por perfil', () => {
   const casos = [
     { role: 'admin' as const, permitidas: ['/equipe', '/configuracoes', '/financeiro', '/prontuarios'], negadas: ['/painel-admin', '/admin/clinicas'] },
-    { role: 'medico' as const, permitidas: ['/fila', '/prontuarios', '/documentos-clinicos', '/exames'], negadas: ['/financeiro', '/equipe', '/configuracoes'] },
+    { role: 'medico' as const, permitidas: ['/agenda', '/pacientes', '/fila', '/prontuarios', '/documentos-clinicos', '/exames'], negadas: ['/financeiro', '/equipe', '/configuracoes'] },
     { role: 'recepcao' as const, permitidas: ['/recepcao', '/pacientes', '/retornos', '/convenios'], negadas: ['/prontuarios', '/financeiro', '/equipe'] },
     { role: 'enfermagem' as const, permitidas: ['/fila', '/pacientes', '/mapa-coleta', '/estoque'], negadas: ['/prontuarios', '/financeiro', '/equipe'] },
     { role: 'financeiro' as const, permitidas: ['/recepcao', '/financeiro', '/contas', '/relatorios'], negadas: ['/pacientes', '/prontuarios', '/equipe', '/agenda'] },

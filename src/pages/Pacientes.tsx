@@ -263,7 +263,8 @@ export default function Pacientes() {
   // o prontuário e perdia tudo no botão. Melhor não oferecer do que recusar
   // depois de a pessoa digitar.
   const podeVerProntuario = isAdmin() || hasRole('medico');
-  const podeEditarPaciente = isAdmin() || hasRole('recepcao');
+  const podeGerenciarStatusPaciente = isAdmin() || hasRole('recepcao');
+  const podeEditarPaciente = podeGerenciarStatusPaciente || hasRole('medico');
   const podeVerTimelinePaciente = canViewPatientClinicalTimeline(authProfile?.roles);
   const podeVerExtratoFinanceiroPaciente = canViewPatientFinancialTab(authProfile?.roles);
   const exigeResponsavel = formData.is_menor || isMinor(formData.data_nascimento);
@@ -271,7 +272,10 @@ export default function Pacientes() {
   // Gerar link do portal grava em paciente_portal_tokens, cujo RLS exige
   // can_manage_data — admin ou recepção. Enfermagem não passa.
   const podeGerarLinkPortal = isAdmin() || hasRole('recepcao');
-  const { medicoId, isMedicoOnly } = useCurrentMedico();
+  const { medicoId, isMedicoOnly, currentMedico } = useCurrentMedico();
+  const vinculoMedicoValido = !!medicoId && currentMedico?.ativo !== false;
+  const podeEditarProntuarioAtual = activeProntuario && activeProntuario.assinado !== true
+    && (isAdmin() || (hasRole('medico') && vinculoMedicoValido && activeProntuario.medico_id === medicoId));
   const [paginaPacientes, setPaginaPacientes] = useState(0);
   const limiteBusca = 50;
   const hoje = todaySaoPauloDateOnly();
@@ -340,6 +344,7 @@ export default function Pacientes() {
     ? [...conveniosAtivos, convenioSelecionado]
     : conveniosAtivos;
   const { data: medicos = [], error: medicosError, refetch: refetchMedicos } = useSupabaseQuery<any>('medicos', { select: 'id, nome, crm, especialidade', orderBy: { column: 'nome', ascending: true } });
+  const medicosParaAtendimento = isMedicoOnly ? medicos.filter(m => m.id === medicoId) : medicos;
 
   /**
    * Guarda qual paciente está aberto AGORA.
@@ -374,7 +379,7 @@ export default function Pacientes() {
     }
     const { data, error } = await supabase
       .from('prontuarios')
-      .select('id, data, queixa_principal, hipotese_diagnostica, diagnostico_principal, conduta, sinais_vitais, plano_terapeutico, historia_doenca_atual, historia_patologica_pregressa, historia_familiar, historia_social, revisao_sistemas, alergias_relatadas, medicamentos_em_uso, exames_fisicos, exame_cabeca_pescoco, exame_torax, exame_abdomen, exame_membros, exame_neurologico, exame_pele, orientacoes_paciente, observacoes_internas, diagnosticos_secundarios, medico_id, paciente_id, medicos(nome, crm, especialidade)')
+      .select('id, data, assinado, queixa_principal, hipotese_diagnostica, diagnostico_principal, conduta, sinais_vitais, plano_terapeutico, historia_doenca_atual, historia_patologica_pregressa, historia_familiar, historia_social, revisao_sistemas, alergias_relatadas, medicamentos_em_uso, exames_fisicos, exame_cabeca_pescoco, exame_torax, exame_abdomen, exame_membros, exame_neurologico, exame_pele, orientacoes_paciente, observacoes_internas, diagnosticos_secundarios, medico_id, paciente_id, medicos(nome, crm, especialidade)')
       .eq('paciente_id', pacienteId)
       .order('data', { ascending: false })
       .order('id', { ascending: false })
@@ -526,6 +531,10 @@ export default function Pacientes() {
   }, [searchParams, setSearchParams, isLoading, pacientesError, erroDeepLink, pacienteDeepLink, deepLinkPacienteId, carregandoDeepLink, podeVerProntuario, podeVerTimelinePaciente, podeVerExtratoFinanceiroPaciente, handleViewWithProntuario]);
 
   const handleNewProntuario = () => {
+    if (isMedicoOnly && !vinculoMedicoValido) {
+      toast.error('Não foi possível confirmar seu vínculo médico ativo. Atualize a página antes de atender.');
+      return;
+    }
     const paciente = pacientes.find(p => p.id === selectedPacienteId);
     setProntuarioForm({
       paciente_id: selectedPacienteId,
@@ -578,6 +587,11 @@ export default function Pacientes() {
   };
 
   const handleSaveProntuario = async () => {
+    if ((activeProntuario && !podeEditarProntuarioAtual)
+      || (isMedicoOnly && (!vinculoMedicoValido || prontuarioForm.medico_id !== medicoId))) {
+      toast.error('Você pode editar apenas seus prontuários ainda não assinados.');
+      return;
+    }
     if (!prontuarioForm.queixa_principal) {
       toast.error('Erro', { description: 'Preencha a queixa principal.' });
       return;
@@ -1461,10 +1475,10 @@ export default function Pacientes() {
             onView={handleView}
             onEdit={handleEdit}
             onDelete={handleDeleteClick}
-            onChangeStatus={(paciente) => {
+            onChangeStatus={podeGerenciarStatusPaciente ? (paciente) => {
               setPatientStatusTarget({ id: paciente.id, nome: paciente.nome, ativo: paciente.ativo !== false });
               setPatientStatusReason('');
-            }}
+            } : undefined}
             podeEditarPaciente={podeEditarPaciente}
             onGeneratePortalLink={handleGeneratePortalLink}
             onRevokePortalLinks={(id, nome) => setPortalRevokeTarget({ id, nome })}
@@ -2070,7 +2084,7 @@ export default function Pacientes() {
                         <Calendar className="h-3.5 w-3.5" />
                         Consultas ({agendamentosList.length}{temMaisAgendamentos ? '+' : ''})
                       </span>
-                      <Button size="sm" disabled={!!medicosError} onClick={() => { setAgendamentoForm({ data: todaySaoPauloDateOnly(), hora_inicio: '08:00', medico_id: medicoId || '', tipo: 'consulta', observacoes: '' }); setShowAgendamentoForm(true); }} className="gap-1.5 rounded-xl text-xs">
+                      <Button size="sm" disabled={!!medicosError || (isMedicoOnly && !vinculoMedicoValido)} onClick={() => { setAgendamentoForm({ data: todaySaoPauloDateOnly(), hora_inicio: '08:00', medico_id: medicoId || '', tipo: 'consulta', observacoes: '' }); setShowAgendamentoForm(true); }} className="gap-1.5 rounded-xl text-xs">
                         <CalendarPlus className="h-3.5 w-3.5" />Agendar Consulta
                       </Button>
                     </div>
@@ -2089,10 +2103,10 @@ export default function Pacientes() {
                           </div>
                           <div className="space-y-1">
                             <Label className="text-xs">Médico *</Label>
-                            <Select value={agendamentoForm.medico_id || ''} onValueChange={v => setAgendamentoForm(p => ({ ...p, medico_id: v }))}>
+                            <Select value={agendamentoForm.medico_id || ''} disabled={isMedicoOnly} onValueChange={v => setAgendamentoForm(p => ({ ...p, medico_id: v }))}>
                               <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecione" /></SelectTrigger>
                               <SelectContent>
-                                {medicos.map((m: any) => <SelectItem key={m.id} value={m.id}>{m.nome || m.crm} - {m.especialidade || 'Geral'}</SelectItem>)}
+                                {medicosParaAtendimento.map((m: any) => <SelectItem key={m.id} value={m.id}>{m.nome || m.crm} - {m.especialidade || 'Geral'}</SelectItem>)}
                               </SelectContent>
                             </Select>
                           </div>
@@ -2126,6 +2140,10 @@ export default function Pacientes() {
                         <div className="flex justify-end gap-2">
                           <Button variant="outline" size="sm" onClick={() => setShowAgendamentoForm(false)} className="text-xs h-7">Cancelar</Button>
                           <LoadingButton size="sm" className="text-xs h-7" isLoading={savingAgendamento} loadingText="Salvando..." onClick={async () => {
+                            if (isMedicoOnly && (!vinculoMedicoValido || agendamentoForm.medico_id !== medicoId)) {
+                              toast.error('Você pode agendar apenas em sua própria agenda.');
+                              return;
+                            }
                             if (!agendamentoForm.data || !agendamentoForm.hora_inicio || !agendamentoForm.medico_id) {
                               toast.error('Preencha data, horário e médico');
                               return;
@@ -2266,7 +2284,7 @@ export default function Pacientes() {
                         <TestTube className="h-3.5 w-3.5" />
                         Exames ({examesList.length}{temMaisExames ? '+' : ''})
                       </span>
-                      <Button size="sm" disabled={!!medicosError} onClick={() => { setExameForm({ tipo_exame: '', medico_solicitante_id: medicoId || '', observacoes: '' }); setShowExameForm(true); }} className="gap-1.5 rounded-xl text-xs">
+                      <Button size="sm" disabled={!!medicosError || (isMedicoOnly && !vinculoMedicoValido)} onClick={() => { setExameForm({ tipo_exame: '', medico_solicitante_id: medicoId || '', observacoes: '' }); setShowExameForm(true); }} className="gap-1.5 rounded-xl text-xs">
                         <Plus className="h-3.5 w-3.5" />Solicitar Exame
                       </Button>
                     </div>
@@ -2281,10 +2299,10 @@ export default function Pacientes() {
                           </div>
                           <div className="space-y-1">
                             <Label className="text-xs">Médico Solicitante *</Label>
-                            <Select value={exameForm.medico_solicitante_id || ''} onValueChange={v => setExameForm(p => ({ ...p, medico_solicitante_id: v }))}>
+                            <Select value={exameForm.medico_solicitante_id || ''} disabled={isMedicoOnly} onValueChange={v => setExameForm(p => ({ ...p, medico_solicitante_id: v }))}>
                               <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecione" /></SelectTrigger>
                               <SelectContent>
-                                {medicos.map((m: any) => <SelectItem key={m.id} value={m.id}>{m.nome || m.crm}</SelectItem>)}
+                                {medicosParaAtendimento.map((m: any) => <SelectItem key={m.id} value={m.id}>{m.nome || m.crm}</SelectItem>)}
                               </SelectContent>
                             </Select>
                           </div>
@@ -2301,6 +2319,10 @@ export default function Pacientes() {
                           <Button variant="outline" size="sm" onClick={() => setShowExameForm(false)} className="text-xs h-7">Cancelar</Button>
                           <LoadingButton size="sm" className="text-xs h-7" isLoading={savingExame} loadingText="Salvando..." onClick={async () => {
                             if (exameSaveLockRef.current) return;
+                            if (isMedicoOnly && (!vinculoMedicoValido || exameForm.medico_solicitante_id !== medicoId)) {
+                              toast.error('Você pode solicitar exames apenas em seu próprio nome.');
+                              return;
+                            }
                             if (!exameForm.tipo_exame || !exameForm.medico_solicitante_id) {
                               toast.error('Preencha tipo de exame e médico');
                               return;
@@ -2469,7 +2491,7 @@ export default function Pacientes() {
                             ← Voltar
                           </Button>
                           <div className="flex items-center gap-2">
-                            {activeProntuario && !isEditingProntuario && (
+                            {podeEditarProntuarioAtual && !isEditingProntuario && (
                               <Button variant="outline" size="sm" onClick={() => setIsEditingProntuario(true)} className="gap-1 text-xs h-7">
                                 <PenLine className="h-3 w-3" />Editar
                               </Button>

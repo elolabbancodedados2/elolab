@@ -319,7 +319,7 @@ function TarefaCard({ tarefa, hoje, onUpdate, onDelete, onEdit, onAssumir, canOp
 export default function Tarefas() {
   const { user, profile, isAdmin, hasRole } = useSupabaseAuth();
   const podeVincularPaciente = isAdmin() || hasRole('recepcao') || hasRole('enfermagem') || hasRole('medico');
-  const podeAbrirPaciente = isAdmin() || hasRole('recepcao') || hasRole('enfermagem');
+  const podeAbrirPaciente = podeVincularPaciente;
   const [agora, setAgora] = useState(() => new Date());
   const [search, setSearch] = useState('');
   const searchInputRef = useRef<HTMLInputElement>(null);
