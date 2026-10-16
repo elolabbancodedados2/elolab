@@ -19,6 +19,11 @@ import { horariosLivres, validarHorario, agoraEmBrasilia, dataValida } from '../
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+async function hashHoldToken(token: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token));
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
 function horarioPublico(valor: unknown) {
   const config = valor && typeof valor === 'object' ? valor as Record<string, unknown> : {};
   const horaValida = (value: unknown) => typeof value === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
@@ -161,6 +166,46 @@ Deno.serve(async (req) => {
       return json({ slots: await horariosLivres(db, clinicaId, medicoId, data) });
     }
 
+    if (action === 'hold') {
+      const medicoId = String(body.medico_id || '');
+      const data = String(body.data || '');
+      const hora = String(body.hora || '');
+      const token = String(body.hold_token || '');
+      if (!UUID.test(medicoId) || !UUID.test(token) || !dataValida(data) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(hora)) {
+        return json({ error: 'Selecione um horário válido.' }, 400);
+      }
+      if (!medicoLiberado(medicoId) || data > limiteData) {
+        return json({ error: 'Este horário não está disponível.' }, 409);
+      }
+      if (await checarRateLimit(db, { chave: `public-booking-hold:${ip}`, limite: 12, janelaSegundos: 600, failClosed: true })) {
+        return json({ error: 'Muitas reservas temporárias. Aguarde alguns minutos.' }, 429);
+      }
+      const slot = await validarHorario(db, clinicaId, medicoId, data, hora);
+      if (slot.error) return json({ error: slot.error, code: 'slot_unavailable' }, 409);
+      const { data: hold, error: erroHold } = await db.rpc('reservar_horario_publico_atomico', {
+        p_clinica_id: clinicaId,
+        p_medico_id: medicoId,
+        p_data: data,
+        p_hora_inicio: hora,
+        p_duracao_minutos: slot.duration,
+        p_token_hash: await hashHoldToken(token),
+      });
+      if (erroHold) throw erroHold;
+      if (!hold?.success) {
+        return json({ error: 'Este horário acabou de ser reservado por outra pessoa. Escolha outro.', code: 'slot_unavailable' }, 409);
+      }
+      return json({ success: true, hold_token: token, expires_at: hold.expires_at });
+    }
+
+    if (action === 'release') {
+      const token = String(body.hold_token || '');
+      if (!UUID.test(token)) return json({ success: true });
+      const { error: erroRelease } = await db.from('public_booking_holds').delete()
+        .eq('clinica_id', clinicaId).eq('token_hash', await hashHoldToken(token));
+      if (erroRelease) throw erroRelease;
+      return json({ success: true });
+    }
+
     if (action === 'book') {
       // Honeypot: campo invisível no formulário; robô preenche, pessoa não.
       if (body.website) return json({ success: true });
@@ -168,6 +213,7 @@ Deno.serve(async (req) => {
       const medicoId = String(body.medico_id || '');
       const data = String(body.data || '');
       const hora = String(body.hora || '');
+      const holdToken = String(body.hold_token || '');
       const nome = String(body.nome || '').trim().replace(/\s+/g, ' ').slice(0, 120);
       const cpfDigitos = String(body.cpf || '').replace(/\D/g, '');
       const telefone = String(body.telefone || '').trim().slice(0, 30);
@@ -183,6 +229,7 @@ Deno.serve(async (req) => {
       if (!medicoLiberado(medicoId)) return json({ error: 'Profissional indisponível para agendamento online.' }, 404);
       if (!dataValida(data)) return json({ error: 'Informe uma data válida.' }, 400);
       if (data > limiteData) return json({ error: 'Data além do período liberado para agendamento online.' }, 400);
+      if (!UUID.test(holdToken)) return json({ error: 'Selecione novamente o horário para reservar a vaga.' }, 409);
 
       const slot = await validarHorario(db, clinicaId, medicoId, data, hora);
       if (slot.error) return json({ error: slot.error, code: 'slot_unavailable' }, 409);
@@ -237,6 +284,7 @@ Deno.serve(async (req) => {
         p_hora_inicio: hora,
         p_duracao_minutos: slot.duration,
         p_observacoes: `[agendamento online] Marcado pelo paciente no link público. Confirmar com o paciente.\nNome informado: ${nome}\nTelefone informado: ${telefone}${email ? `\nE-mail informado: ${email}` : ''}`,
+        p_hold_token_hash: await hashHoldToken(holdToken),
       });
       if (erroAgendamento) {
         if (erroAgendamento.code === '23P01' || String(erroAgendamento.message).includes('sobreposicao')) {

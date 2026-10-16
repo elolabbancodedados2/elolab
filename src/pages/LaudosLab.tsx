@@ -33,6 +33,7 @@ import { formatDateTimeSaoPaulo } from '@/lib/dateOnly';
 import { deveNotificarRetificacao, perfilPodeRetificarResultado, podeRetificarResultado } from '@/lib/laudoWorkflow';
 import { cursorAposAtualizacaoWorklist, type CursorLaudo } from '@/lib/laudoWorklist';
 import { LaboratorioSubnav } from '@/components/laboratorio/LaboratorioSubnav';
+import { criticalAcknowledgementIsPending } from '@/lib/criticalResultAcknowledgement';
 
 /**
  * Teto da worklist do laboratório.
@@ -86,8 +87,11 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
   const [historicoResultado, setHistoricoResultado] = useState<any[]>([]);
   const [carregandoHistorico, setCarregandoHistorico] = useState(false);
   const [salvandoRetificacao, setSalvandoRetificacao] = useState(false);
-  const isBusy = isValidating || isReleasingAll || releasingIds.size > 0 || salvandoRetificacao;
+  const [condutasCiencia, setCondutasCiencia] = useState<Record<string, string>>({});
+  const [confirmandoCienciaId, setConfirmandoCienciaId] = useState<string | null>(null);
+  const isBusy = isValidating || isReleasingAll || releasingIds.size > 0 || salvandoRetificacao || confirmandoCienciaId !== null;
   const podeRetificarLiberado = perfilPodeRetificarResultado(profile?.roles);
+  const podeConfirmarCienciaCritica = profile?.roles?.some((role: string) => role === 'admin' || role === 'medico') === true;
 
   const fetchData = useCallback(async () => {
     const requestId = ++fetchRequestRef.current;
@@ -115,11 +119,13 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
           pacientes(nome, nome_social, cpf, telefone, email, data_nascimento, sexo),
           medicos(nome, crm),
           convenios(nome),
-          resultados_laboratorio(id, parametro, resultado, unidade, critico,
+          resultados_laboratorio(id, parametro, resultado, unidade, critico, numero_versao,
             valor_referencia_min, valor_referencia_max, valor_referencia_texto,
             liberado, data_liberacao, validado_por, data_validacao, liberado_por, metodo,
             validadores:profiles!resultados_laboratorio_validado_por_fkey(nome),
-            liberadores:profiles!resultados_laboratorio_liberado_por_fkey(nome), exames(tipo_exame))
+            liberadores:profiles!resultados_laboratorio_liberado_por_fkey(nome), exames(tipo_exame),
+            confirmacoes:resultado_critico_confirmacoes(id, numero_versao, conduta, confirmado_em,
+              confirmador:profiles!resultado_critico_confirmacoes_confirmado_por_fkey(nome)))
         `)
         .eq('id', coletaId)
         .eq('clinica_id', profile.clinica_id)
@@ -253,6 +259,29 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
       toast.error('Erro ao liberar: ' + (err?.message || 'Erro desconhecido'));
     } finally {
       setReleasingIds(current => { const next = new Set(current); next.delete(resultadoId); return next; });
+    }
+  };
+
+  const handleConfirmarCienciaCritica = async (resultadoId: string) => {
+    const conduta = condutasCiencia[resultadoId]?.trim() ?? '';
+    if (isBusy || !podeConfirmarCienciaCritica || conduta.length < 10 || conduta.length > 2000) return;
+
+    setConfirmandoCienciaId(resultadoId);
+    try {
+      const { error } = await (supabase as any).rpc('confirmar_ciencia_resultado_critico', {
+        p_resultado_id: resultadoId,
+        p_conduta: conduta,
+      });
+      if (error) throw error;
+      setCondutasCiencia(current => ({ ...current, [resultadoId]: '' }));
+      await fetchData();
+      onUpdate();
+      toast.success('Ciência e conduta registradas para a versão atual do resultado.');
+    } catch (error) {
+      console.error('handleConfirmarCienciaCritica error:', error);
+      toast.error(`Não foi possível registrar a ciência: ${mensagemDeErro(error)}`);
+    } finally {
+      setConfirmandoCienciaId(null);
     }
   };
 
@@ -461,6 +490,10 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
             {/* Results */}
             <div className="space-y-2">
               {(coleta.resultados_laboratorio ?? []).map((res: any) => {
+                const confirmacaoCriticaAtual = (res.confirmacoes ?? []).find(
+                  (confirmacao: any) => confirmacao.numero_versao === res.numero_versao
+                );
+                const cienciaCriticaPendente = criticalAcknowledgementIsPending(res);
                 const numResult = parseResultadoNumerico(res.resultado);
                 const isAltered = numResult !== null && (
                   (res.valor_referencia_min != null && numResult < res.valor_referencia_min) ||
@@ -482,6 +515,9 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
                       <div className="flex items-center gap-2">
                         {isAltered && <Badge variant="destructive" className="text-[10px] gap-1"><AlertTriangle className="h-2.5 w-2.5" />Alterado</Badge>}
                         {res.critico && <Badge variant="destructive" className="text-[10px] gap-1"><AlertCircle className="h-2.5 w-2.5" />Crítico · revisão prioritária</Badge>}
+                        {res.critico && <Badge variant={cienciaCriticaPendente ? 'destructive' : 'secondary'} className="text-[10px]">
+                          {cienciaCriticaPendente ? 'Aguardando ciência e conduta' : 'Ciência registrada'}
+                        </Badge>}
                         {res.liberado ? (
                           <Badge className="bg-success/10 text-success border-success/20 gap-1">
                             <CheckCircle2 className="h-3 w-3" /> Liberado
@@ -513,6 +549,44 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
                         )}
                       </div>
                     )}
+                    {res.critico && (confirmacaoCriticaAtual ? (
+                      <div className="rounded-md border border-destructive/20 bg-destructive/5 p-3 text-xs">
+                        <p className="font-semibold">Conduta registrada por {confirmacaoCriticaAtual.confirmador?.nome || 'profissional autorizado'}</p>
+                        <p className="text-muted-foreground">{formatDateTimeSaoPaulo(confirmacaoCriticaAtual.confirmado_em)}</p>
+                        <p className="mt-1 whitespace-pre-wrap">{confirmacaoCriticaAtual.conduta}</p>
+                      </div>
+                    ) : (
+                      <div role="status" className="space-y-2 rounded-md border border-destructive/30 bg-destructive/5 p-3">
+                        <p className="text-sm font-semibold text-destructive">Resultado crítico aguardando ciência e conduta.</p>
+                        {podeConfirmarCienciaCritica ? (
+                          <>
+                            <Label htmlFor={`conduta-critica-${res.id}`} className="text-xs">Conduta documentada pelo profissional responsável</Label>
+                            <Textarea
+                              id={`conduta-critica-${res.id}`}
+                              value={condutasCiencia[res.id] ?? ''}
+                              maxLength={2000}
+                              rows={3}
+                              onChange={event => setCondutasCiencia(current => ({ ...current, [res.id]: event.target.value }))}
+                              placeholder="Registre a conduta definida para este resultado."
+                            />
+                            <div className="flex items-center justify-between gap-3">
+                              <p className="text-[11px] text-muted-foreground">Mínimo de 10 e máximo de 2.000 caracteres.</p>
+                              <Button
+                                size="sm"
+                                variant="destructive"
+                                disabled={isBusy || (condutasCiencia[res.id] ?? '').trim().length < 10}
+                                onClick={() => void handleConfirmarCienciaCritica(res.id)}
+                              >
+                                {confirmandoCienciaId === res.id ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <CheckCircle2 className="mr-1 h-3 w-3" />}
+                                Confirmar ciência
+                              </Button>
+                            </div>
+                          </>
+                        ) : (
+                          <p className="text-xs text-muted-foreground">Somente médico ou administrador da clínica pode registrar ciência e conduta.</p>
+                        )}
+                      </div>
+                    ))}
                     {!res.liberado && (
                       <Button size="sm" className="h-7 text-xs gap-1 mt-1" disabled={isBusy || conferenciaPendente()} onClick={() => handleLiberarResultado(res.id)}>
                         {releasingIds.has(res.id) ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />}
@@ -638,8 +712,9 @@ export default function LaudosLab() {
           id, codigo_amostra, status, created_at, data_coleta, urgente, tipo_amostra, tubo,
           pacientes(nome, nome_social, cpf, telefone, email),
           medicos(nome, crm),
-          resultados_laboratorio(id, liberado, parametro, resultado, unidade, critico,
-            valor_referencia_min, valor_referencia_max, exames(tipo_exame))
+          resultados_laboratorio(id, liberado, parametro, resultado, unidade, critico, numero_versao,
+            valor_referencia_min, valor_referencia_max, exames(tipo_exame),
+            confirmacoes:resultado_critico_confirmacoes(id, numero_versao))
         `)
         .eq('clinica_id', clinicId)
         .order('created_at', { ascending: false })
@@ -696,8 +771,9 @@ export default function LaudosLab() {
           id, codigo_amostra, status, created_at, data_coleta, urgente, tipo_amostra, tubo,
           pacientes(nome, nome_social, cpf, telefone, email),
           medicos(nome, crm),
-          resultados_laboratorio(id, liberado, parametro, resultado, unidade, critico,
-            valor_referencia_min, valor_referencia_max, exames(tipo_exame))
+          resultados_laboratorio(id, liberado, parametro, resultado, unidade, critico, numero_versao,
+            valor_referencia_min, valor_referencia_max, exames(tipo_exame),
+            confirmacoes:resultado_critico_confirmacoes(id, numero_versao))
         `)
         .eq('clinica_id', clinicId)
         .or(`created_at.lt.${cursor.created_at},and(created_at.eq.${cursor.created_at},id.lt.${cursor.id})`)
@@ -748,6 +824,7 @@ export default function LaudosLab() {
     const channel = supabase.channel(canalUnico('laudos-rt'))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'resultados_laboratorio', filter: `clinica_id=eq.${clinicId}` }, fetchLaudos)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'coletas_laboratorio', filter: `clinica_id=eq.${clinicId}` }, fetchLaudos)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'resultado_critico_confirmacoes', filter: `clinica_id=eq.${clinicId}` }, fetchLaudos)
       .subscribe();
     return () => {
       if (activeClinicRef.current === clinicId) activeClinicRef.current = null;
@@ -768,6 +845,7 @@ export default function LaudosLab() {
              (r.valor_referencia_max != null && num > r.valor_referencia_max);
     });
   const hasCritico = (c: any) => (c.resultados_laboratorio ?? []).some((r: any) => r.critico === true);
+  const hasCriticoPendente = (c: any) => (c.resultados_laboratorio ?? []).some(criticalAcknowledgementIsPending);
 
   const filtradas = useMemo(() => {
     return coletas.filter(c => {
@@ -943,6 +1021,7 @@ export default function LaudosLab() {
                           {total > 2 && <span className="text-[10px] text-muted-foreground">+{total - 2}</span>}
                           {alterado && <Badge variant="destructive" className="text-[10px] gap-0.5"><AlertTriangle className="h-2.5 w-2.5" />Alt.</Badge>}
                           {critico && <Badge variant="destructive" className="text-[10px] gap-0.5"><AlertCircle className="h-2.5 w-2.5" />Crítico</Badge>}
+                          {hasCriticoPendente(c) && <Badge variant="destructive" className="text-[10px]">Ciência pendente</Badge>}
                         </div>
                       </td>
                       <td className="px-4 py-2.5 text-center">

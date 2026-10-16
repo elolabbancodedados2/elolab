@@ -50,12 +50,22 @@ import { Paciente } from '@/types';
 import { cn, sanitizeText } from '@/lib/utils';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { useCurrentMedico } from '@/hooks/useCurrentMedico';
+import { loadPatientConsentRecords } from '@/lib/patientConsentRecords';
 import { gerarProntuarioPDF, downloadPDF, openPDF } from '@/lib/pdfGenerator';
 import { ageFromDateOnly, isValidDateOnly, parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { logAudit } from '@/lib/auditTrail';
 import { cpfValido } from '@/lib/importacao/campos';
 import { canViewPatientClinicalTimeline, canViewPatientFinancialTab } from '@/lib/patientBasicData';
 import { autorizarLeituraHistoricoPaciente } from '@/lib/prontuarioAudit';
+import { revokePatientPortalLinks } from '@/lib/patientPortalAccess';
+import { PATIENT_STATUS_REASON_LABELS, PATIENT_STATUS_REASONS, isValidPatientStatusReason, setPatientActiveStatus, type PatientStatusReason } from '@/lib/patientStatus';
+import {
+  contactConfirmationSourceLabel,
+  describeContactVerification,
+  recordPatientContactVerification,
+  type ContactConfirmationSource,
+  type PatientContactChannel,
+} from '@/lib/patientContactVerification';
 
 interface PacienteFormData {
   nome: string;
@@ -64,6 +74,10 @@ interface PacienteFormData {
   data_nascimento: string;
   telefone: string;
   email: string;
+  preferencia_canal_lembrete: 'ambos' | 'email' | 'whatsapp' | 'nenhum';
+  horario_contato_inicio: string;
+  horario_contato_fim: string;
+  fuso_horario_contato: string;
   sexo: string;
   estado_civil: string;
   profissao: string;
@@ -93,8 +107,19 @@ interface PacienteFormData {
   is_menor: boolean;
 }
 
+interface PossiblePatientDuplicate {
+  id: string;
+  nome: string;
+  nome_social: string | null;
+  data_nascimento: string | null;
+  telefone_final: string | null;
+  motivos: string[];
+}
+
 const initialFormData: PacienteFormData = {
   nome: '', nome_social: '', cpf: '', data_nascimento: '', telefone: '', email: '',
+  preferencia_canal_lembrete: 'ambos', horario_contato_inicio: '08:00', horario_contato_fim: '20:00',
+  fuso_horario_contato: 'America/Sao_Paulo',
   sexo: '', estado_civil: '', profissao: '', tipo_sanguineo: '',
   cep: '', logradouro: '', numero: '', complemento: '', bairro: '', cidade: '', estado: '',
   convenio_id: '', numero_carteira: '', validade_carteira: '',
@@ -153,6 +178,8 @@ const minutosDaHora = (hora: string | null | undefined): number | null => {
 export default function Pacientes() {
   const [searchTerm, setSearchTerm] = useState('');
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [possibleDuplicatesOpen, setPossibleDuplicatesOpen] = useState(false);
+  const [possibleDuplicates, setPossibleDuplicates] = useState<PossiblePatientDuplicate[]>([]);
   const [isViewOpen, setIsViewOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [selectedPacienteId, setSelectedPacienteId] = useState<string | null>(null);
@@ -170,18 +197,28 @@ export default function Pacientes() {
   /** Modal de guias/senhas de autorização do convênio do paciente. */
   const [showAutorizacao, setShowAutorizacao] = useState(false);
   const [linkPortalGerado, setLinkPortalGerado] = useState<{ nome: string; url: string } | null>(null);
+  const [portalRevokeTarget, setPortalRevokeTarget] = useState<{ id: string; nome: string } | null>(null);
+  const [isRevokingPortal, setIsRevokingPortal] = useState(false);
+  const [confirmingContact, setConfirmingContact] = useState<{ patientId: string; channel: PatientContactChannel } | null>(null);
+  const [contactConfirmSource, setContactConfirmSource] = useState<ContactConfirmationSource>('paciente');
+  const [isSavingContactConfirmation, setIsSavingContactConfirmation] = useState(false);
+  const [patientStatusTarget, setPatientStatusTarget] = useState<{ id: string; nome: string; ativo: boolean } | null>(null);
+  const [patientStatusReason, setPatientStatusReason] = useState<string>('');
+  const [isSavingPatientStatus, setIsSavingPatientStatus] = useState(false);
   const [cepLoading, setCepLoading] = useState(false);
   const [cepError, setCepError] = useState('');
   const cepLookupRef = useRef(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const pacienteSaveLockRef = useRef(false);
+  const duplicateReviewConfirmedRef = useRef(false);
   const pacienteDeleteLockRef = useRef(false);
   const exameSaveLockRef = useRef(false);
   const [showFilters, setShowFilters] = useState(false);
   const [filterSexo, setFilterSexo] = useState<string>('todos');
   const [filterConvenio, setFilterConvenio] = useState<string>('todos');
   const [filterIdade, setFilterIdade] = useState<string>('todos');
+  const [filterStatusPaciente, setFilterStatusPaciente] = useState<'ativos' | 'inativos' | 'todos'>('ativos');
   const [formSection, setFormSection] = useState<string>('pessoal');
   // Prontuário inline state
   const [prontuarioList, setProntuarioList] = useState<any[]>([]);
@@ -246,7 +283,8 @@ export default function Pacientes() {
     if (filterIdade === 'idoso') nascimentoAte = dataLimite(60);
     return { sexo: filterSexo === 'todos' ? undefined : filterSexo, convenio: filterConvenio === 'todos' ? undefined : filterConvenio, nascimentoApos, nascimentoAte };
   }, [filterSexo, filterConvenio, filterIdade, hoje, dataLimite]);
-  const { data: resultadoBusca, isLoading, isFetching: isBuscandoPacientes, error: pacientesError, refetch } = useBuscaPacientes(searchTerm, { limite: limiteBusca, filtros: filtrosBusca });
+  const statusBuscaPaciente = podeEditarPaciente ? filterStatusPaciente : 'ativos';
+  const { data: resultadoBusca, isLoading, isFetching: isBuscandoPacientes, error: pacientesError, refetch } = useBuscaPacientes(searchTerm, { limite: limiteBusca, filtros: filtrosBusca, status: statusBuscaPaciente });
   const resumoPacientes = resultadoBusca?.pacientes ?? [];
   const inicioPagina = paginaPacientes * 50;
   const resumosVisiveis = resumoPacientes.slice(inicioPagina, inicioPagina + 50);
@@ -707,6 +745,15 @@ export default function Pacientes() {
 
   const filteredPacientes = pacientes;
   const selectedPaciente = pacienteSelecionadoDetalhe ?? pacientes.find((p) => p.id === selectedPacienteId) ?? pacienteDeepLink ?? null;
+  const consentimentosPacienteQuery = useQuery({
+    queryKey: ['consentimentos-paciente', authProfile?.clinica_id, selectedPaciente?.id],
+    enabled: Boolean(authProfile?.clinica_id && selectedPaciente?.id),
+    queryFn: () => {
+      if (!authProfile?.clinica_id || !selectedPaciente?.id) throw new Error('Clínica ou paciente não identificado.');
+      return loadPatientConsentRecords(authProfile.clinica_id, selectedPaciente.id);
+    },
+    staleTime: 0,
+  });
   const stats = {
     total: resumoEstatisticas?.total ?? '—',
     comConvenio: resumoEstatisticas?.com_convenio ?? '—',
@@ -715,7 +762,7 @@ export default function Pacientes() {
   };
   const temMaisPacientes = resumoPacientes.length > inicioPagina + 50;
 
-  const activeFilters = [Boolean(searchTerm.trim()), filterSexo !== 'todos', filterConvenio !== 'todos', filterIdade !== 'todos'].filter(Boolean).length;
+  const activeFilters = [Boolean(searchTerm.trim()), filterSexo !== 'todos', filterConvenio !== 'todos', filterIdade !== 'todos', podeEditarPaciente && filterStatusPaciente !== 'ativos'].filter(Boolean).length;
   const atualizarListasPacientes = () => {
     void queryClient.invalidateQueries({ queryKey: ['busca-pacientes'] });
     void queryClient.invalidateQueries({ queryKey: ['pacientes-lista-detalhes'] });
@@ -729,6 +776,29 @@ export default function Pacientes() {
     setFilterSexo('todos');
     setFilterConvenio('todos');
     setFilterIdade('todos');
+    setFilterStatusPaciente('ativos');
+  };
+
+  const handleChangePatientStatus = async () => {
+    if (!patientStatusTarget || !isValidPatientStatusReason(patientStatusReason) || isSavingPatientStatus) return;
+    setIsSavingPatientStatus(true);
+    try {
+      const result = await setPatientActiveStatus(patientStatusTarget.id, !patientStatusTarget.ativo, patientStatusReason as PatientStatusReason);
+      setPatientStatusTarget(null);
+      setPatientStatusReason('');
+      atualizarListasPacientes();
+      if (result.alterado) {
+        toast.success(result.ativo ? 'Paciente reativado.' : 'Paciente inativado.', {
+          description: result.ativo ? 'A ficha pode voltar a receber agendamentos e acesso ao portal.' : 'A ficha e o histórico foram preservados; novos agendamentos e acesso ao portal foram bloqueados.',
+        });
+      } else {
+        toast.info('O paciente já estava nesse status.');
+      }
+    } catch (error) {
+      toast.error('Não foi possível alterar o status do paciente.', { description: mensagemDeErro(error) });
+    } finally {
+      setIsSavingPatientStatus(false);
+    }
   };
 
   const handleNew = () => {
@@ -776,6 +846,10 @@ export default function Pacientes() {
       data_nascimento: paciente.data_nascimento || '',
       telefone: paciente.telefone || '',
       email: paciente.email || '',
+      preferencia_canal_lembrete: paciente.preferencia_canal_lembrete || 'ambos',
+      horario_contato_inicio: String(paciente.horario_contato_inicio || '08:00').slice(0, 5),
+      horario_contato_fim: String(paciente.horario_contato_fim || '20:00').slice(0, 5),
+      fuso_horario_contato: paciente.fuso_horario_contato || 'America/Sao_Paulo',
       sexo: paciente.sexo || '',
       estado_civil: paciente.estado_civil || '',
       profissao: paciente.profissao || '',
@@ -944,11 +1018,37 @@ export default function Pacientes() {
         return;
       }
     }
+    if (!formData.horario_contato_inicio || !formData.horario_contato_fim || formData.horario_contato_inicio === formData.horario_contato_fim) {
+      setFormSection('pessoal');
+      toast.error('Janela de contato inválida', { description: 'Informe horários diferentes para início e fim da janela de lembretes.' });
+      return;
+    }
 
     const comorbidadesParaSalvar = [...formData.comorbidades];
     pacienteSaveLockRef.current = true;
     setIsSubmitting(true);
     try {
+      if (!selectedPacienteId && !duplicateReviewConfirmedRef.current) {
+        const { data: matches, error: duplicateCheckError } = await supabase.rpc('buscar_possiveis_duplicidades_paciente', {
+          p_nome: formData.nome.trim(),
+          p_data_nascimento: formData.data_nascimento || null,
+          p_telefone: formData.telefone,
+          p_excluir: null,
+        });
+        if (duplicateCheckError) {
+          toast.error('Não foi possível conferir cadastros parecidos', {
+            description: 'A busca não gravou nada. Tente salvar novamente para conferir antes de criar a ficha.',
+          });
+          return;
+        }
+        if (matches?.length) {
+          setPossibleDuplicates(matches);
+          setPossibleDuplicatesOpen(true);
+          return;
+        }
+      }
+      duplicateReviewConfirmedRef.current = false;
+
       const dataToSave: any = {
         nome: formData.nome.trim(),
         nome_social: formData.nome_social || null,
@@ -956,6 +1056,10 @@ export default function Pacientes() {
         data_nascimento: formData.data_nascimento || null,
         telefone: formData.telefone || null,
         email: formData.email.trim().toLocaleLowerCase('pt-BR') || null,
+        preferencia_canal_lembrete: formData.preferencia_canal_lembrete,
+        horario_contato_inicio: formData.horario_contato_inicio,
+        horario_contato_fim: formData.horario_contato_fim,
+        fuso_horario_contato: formData.fuso_horario_contato,
         sexo: formData.sexo || null,
         estado_civil: formData.estado_civil || null,
         profissao: formData.profissao.trim() || null,
@@ -1067,6 +1171,46 @@ export default function Pacientes() {
       }
     } catch (e) {
       toast.error('Erro ao gerar link do portal', { description: mensagemDeErro(e) });
+    }
+  };
+
+  const handleRevokePortalLinks = async () => {
+    if (!portalRevokeTarget || isRevokingPortal) return;
+    setIsRevokingPortal(true);
+    try {
+      const revokedCount = await revokePatientPortalLinks(portalRevokeTarget.id);
+      setPortalRevokeTarget(null);
+      toast.success(revokedCount > 0
+        ? `${revokedCount} link${revokedCount === 1 ? '' : 's'} do portal revogado${revokedCount === 1 ? '' : 's'}.`
+        : 'Nenhum link ativo do portal encontrado.');
+    } catch (error) {
+      toast.error('Não foi possível revogar os links do portal.', { description: mensagemDeErro(error) });
+    } finally {
+      setIsRevokingPortal(false);
+    }
+  };
+
+  const handleConfirmPatientContact = async () => {
+    if (!confirmingContact || isSavingContactConfirmation) return;
+    setIsSavingContactConfirmation(true);
+    try {
+      await recordPatientContactVerification(
+        confirmingContact.patientId,
+        confirmingContact.channel,
+        contactConfirmSource,
+      );
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ['paciente-lista-selecionado', authProfile?.clinica_id, confirmingContact.patientId],
+        }),
+        queryClient.invalidateQueries({ queryKey: ['pacientes-lista-detalhes', authProfile?.clinica_id] }),
+      ]);
+      setConfirmingContact(null);
+      toast.success(`${confirmingContact.channel === 'telefone' ? 'Telefone' : 'E-mail'} confirmado.`);
+    } catch (error) {
+      toast.error('Não foi possível confirmar o contato.', { description: mensagemDeErro(error) });
+    } finally {
+      setIsSavingContactConfirmation(false);
     }
   };
 
@@ -1251,6 +1395,19 @@ export default function Pacientes() {
                   </SelectContent>
                 </Select>
               </div>
+              {podeEditarPaciente && (
+                <div className="space-y-1">
+                  <Label className="text-xs">Status do cadastro</Label>
+                  <Select value={filterStatusPaciente} onValueChange={(value: 'ativos' | 'inativos' | 'todos') => { setPaginaPacientes(0); setFilterStatusPaciente(value); }}>
+                    <SelectTrigger aria-label="Filtrar pacientes por status" className="h-11 w-full text-xs sm:w-36"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ativos">Ativos</SelectItem>
+                      <SelectItem value="inativos">Inativos</SelectItem>
+                      <SelectItem value="todos">Todos</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
               {activeFilters > 0 && (
                 <div className="flex items-end">
                   <Button variant="ghost" size="sm" className="h-11 text-xs gap-1" onClick={clearPatientFilters}>
@@ -1276,8 +1433,13 @@ export default function Pacientes() {
             onView={handleView}
             onEdit={handleEdit}
             onDelete={handleDeleteClick}
+            onChangeStatus={(paciente) => {
+              setPatientStatusTarget({ id: paciente.id, nome: paciente.nome, ativo: paciente.ativo !== false });
+              setPatientStatusReason('');
+            }}
             podeEditarPaciente={podeEditarPaciente}
             onGeneratePortalLink={handleGeneratePortalLink}
+            onRevokePortalLinks={(id, nome) => setPortalRevokeTarget({ id, nome })}
             podeGerarLinkPortal={podeGerarLinkPortal}
             podeExcluirPaciente={isAdmin()}
             getConvenioNome={getConvenioNome}
@@ -1370,6 +1532,44 @@ export default function Pacientes() {
                   <div className="space-y-2">
                     <Label htmlFor="paciente-email">Email</Label>
                     <Input id="paciente-email" type="email" value={formData.email} onChange={e => setFormData({ ...formData, email: e.target.value })} placeholder="email@exemplo.com" />
+                  </div>
+                  <div className="md:col-span-2 rounded-lg border p-4 space-y-3">
+                    <div>
+                      <Label htmlFor="paciente-canal-lembrete">Lembretes de consulta</Label>
+                      <p className="text-sm text-muted-foreground">Escolha os canais permitidos e o horário local para contato.</p>
+                    </div>
+                    <Select value={formData.preferencia_canal_lembrete} onValueChange={(v: PacienteFormData['preferencia_canal_lembrete']) => setFormData({ ...formData, preferencia_canal_lembrete: v })}>
+                      <SelectTrigger id="paciente-canal-lembrete"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="ambos">E-mail e WhatsApp (quando cadastrados)</SelectItem>
+                        <SelectItem value="email">Somente e-mail</SelectItem>
+                        <SelectItem value="whatsapp">Somente WhatsApp</SelectItem>
+                        <SelectItem value="nenhum">Não enviar lembretes</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div className="space-y-2">
+                        <Label htmlFor="paciente-inicio-contato">A partir de</Label>
+                        <Input id="paciente-inicio-contato" type="time" value={formData.horario_contato_inicio} onChange={e => setFormData({ ...formData, horario_contato_inicio: e.target.value })} />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="paciente-fim-contato">Até (exclusive)</Label>
+                        <Input id="paciente-fim-contato" type="time" value={formData.horario_contato_fim} onChange={e => setFormData({ ...formData, horario_contato_fim: e.target.value })} />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="paciente-fuso-contato">Fuso horário</Label>
+                        <Select value={formData.fuso_horario_contato} onValueChange={v => setFormData({ ...formData, fuso_horario_contato: v })}>
+                          <SelectTrigger id="paciente-fuso-contato"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="America/Noronha">Fernando de Noronha (UTC−02)</SelectItem>
+                            <SelectItem value="America/Sao_Paulo">Brasília, São Paulo (UTC−03)</SelectItem>
+                            <SelectItem value="America/Manaus">Manaus (UTC−04)</SelectItem>
+                            <SelectItem value="America/Rio_Branco">Rio Branco (UTC−05)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground">O início é incluído e o fim não. A janela pode atravessar a meia-noite; se o horário for igual nos dois campos, nenhum lembrete será enviado.</p>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="paciente-estado-civil">Estado Civil</Label>
@@ -1740,8 +1940,10 @@ export default function Pacientes() {
                     <ConsentimentoLGPD
                       pacienteId={selectedPaciente.id}
                       pacienteNome={selectedPaciente.nome}
-                      consentimentos={[]}
-                      onConsentimentoRegistrado={() => { /* refetch é feito internamente pelo componente */ }}
+                      consentimentos={consentimentosPacienteQuery.data ?? []}
+                      isLoading={consentimentosPacienteQuery.isLoading}
+                      isError={consentimentosPacienteQuery.isError}
+                      onConsentimentoRegistrado={() => { void consentimentosPacienteQuery.refetch(); }}
                     />
                   </TabsContent>
 
@@ -1750,8 +1952,30 @@ export default function Pacientes() {
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
                       <InfoField icon={FileText} label="CPF" value={selectedPaciente.cpf} />
                       <InfoField icon={Calendar} label="Nascimento" value={selectedPaciente.data_nascimento ? formatDate(selectedPaciente.data_nascimento, 'short') : null} />
-                      <InfoField icon={Phone} label="Telefone" value={selectedPaciente.telefone} />
-                      <InfoField icon={Mail} label="Email" value={selectedPaciente.email} />
+                      <div className="space-y-1.5">
+                        <InfoField icon={Phone} label="Telefone" value={selectedPaciente.telefone} />
+                        <p className="text-[11px] text-muted-foreground">
+                          {describeContactVerification(selectedPaciente.telefone_confirmado_em, selectedPaciente.telefone_confirmacao_origem)}
+                        </p>
+                        {podeGerarLinkPortal && (
+                          <Button size="sm" variant="outline" className="min-h-9 text-xs" disabled={!selectedPaciente.telefone}
+                            onClick={() => { setContactConfirmSource('paciente'); setConfirmingContact({ patientId: selectedPaciente.id, channel: 'telefone' }); }}>
+                            Confirmar telefone
+                          </Button>
+                        )}
+                      </div>
+                      <div className="space-y-1.5">
+                        <InfoField icon={Mail} label="E-mail" value={selectedPaciente.email} />
+                        <p className="text-[11px] text-muted-foreground">
+                          {describeContactVerification(selectedPaciente.email_confirmado_em, selectedPaciente.email_confirmacao_origem)}
+                        </p>
+                        {podeGerarLinkPortal && (
+                          <Button size="sm" variant="outline" className="min-h-9 text-xs" disabled={!selectedPaciente.email}
+                            onClick={() => { setContactConfirmSource('paciente'); setConfirmingContact({ patientId: selectedPaciente.id, channel: 'email' }); }}>
+                            Confirmar e-mail
+                          </Button>
+                        )}
+                      </div>
                       <InfoField icon={Building2} label="Convênio" value={getConvenioNome(selectedPaciente.convenio_id)} />
                       <InfoField icon={CreditCard} label="Carteira" value={selectedPaciente.numero_carteira} />
                       <InfoField icon={Users} label="Estado civil" value={ESTADO_CIVIL_OPTIONS.find(option => option.value === selectedPaciente.estado_civil)?.label} />
@@ -2413,6 +2637,58 @@ export default function Pacientes() {
         </DialogContent>
       </Dialog>
 
+      {/* Review possible duplicates before creating a new patient record. */}
+      <AlertDialog open={possibleDuplicatesOpen} onOpenChange={setPossibleDuplicatesOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confira estes cadastros antes de continuar</AlertDialogTitle>
+            <AlertDialogDescription>
+              Encontramos fichas com o mesmo telefone ou com nome e nascimento iguais. Revise manualmente; nenhum cadastro será mesclado.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <ul className="max-h-64 space-y-2 overflow-y-auto">
+            {possibleDuplicates.map((candidate) => (
+              <li key={candidate.id} className="rounded-lg border p-3 text-sm">
+                <p className="font-medium">{candidate.nome_social || candidate.nome}</p>
+                <p className="text-xs text-muted-foreground">
+                  {candidate.data_nascimento ? `Nascimento: ${formatDate(candidate.data_nascimento, 'short')}` : 'Nascimento não informado'}
+                  {candidate.telefone_final ? ` · Telefone termina em ${candidate.telefone_final}` : ''}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {candidate.motivos.map((reason) => reason === 'telefone' ? 'Telefone coincidente' : 'Nome e nascimento coincidem').join(' · ')}
+                </p>
+                <Button
+                  type="button"
+                  variant="link"
+                  size="sm"
+                  className="h-auto px-0 pt-1"
+                  onClick={() => {
+                    setSearchTerm(candidate.nome);
+                    setPossibleDuplicatesOpen(false);
+                    setIsFormOpen(false);
+                  }}
+                >
+                  Localizar esta ficha na lista
+                </Button>
+              </li>
+            ))}
+          </ul>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Voltar ao cadastro</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                event.preventDefault();
+                duplicateReviewConfirmedRef.current = true;
+                setPossibleDuplicatesOpen(false);
+                void handleSave();
+              }}
+            >
+              Continuar com novo cadastro
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* Delete Dialog */}
       <AlertDialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>
         <AlertDialogContent>
@@ -2462,6 +2738,95 @@ export default function Pacientes() {
             <Button variant="outline" onClick={() => setLinkPortalGerado(null)}>Fechar</Button>
             <Button onClick={() => void copiarLinkPortalExibido()}>Copiar link</Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={!!portalRevokeTarget} onOpenChange={(open) => {
+        if (!open && !isRevokingPortal) setPortalRevokeTarget(null);
+      }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Revogar acesso ao portal?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Todos os links ativos de {portalRevokeTarget?.nome} serão invalidados. Novas consultas ao portal serão bloqueadas; dados que já estejam abertos na tela do paciente não podem ser apagados remotamente.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isRevokingPortal}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={isRevokingPortal}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={(event) => { event.preventDefault(); void handleRevokePortalLinks(); }}
+            >
+              {isRevokingPortal ? 'Revogando…' : 'Revogar links'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={!!patientStatusTarget} onOpenChange={(open) => {
+        if (!open && !isSavingPatientStatus) {
+          setPatientStatusTarget(null);
+          setPatientStatusReason('');
+        }
+      }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{patientStatusTarget?.ativo ? 'Inativar paciente?' : 'Reativar paciente?'}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {patientStatusTarget?.ativo
+                ? `A ficha de ${patientStatusTarget.nome} e os registros clínicos e financeiros serão preservados. A inativação bloqueia novos agendamentos e invalida os links do portal. Cancele ou conclua compromissos atuais e futuros antes de continuar.`
+                : `A ficha de ${patientStatusTarget?.nome} e todo o histórico serão preservados. A reativação permite novos agendamentos; será necessário gerar um novo link do portal.`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <Label htmlFor="motivo-status-paciente">Motivo administrativo</Label>
+          <Select value={patientStatusReason} onValueChange={setPatientStatusReason}>
+            <SelectTrigger id="motivo-status-paciente"><SelectValue placeholder="Selecione um motivo" /></SelectTrigger>
+            <SelectContent>
+              {PATIENT_STATUS_REASONS.map((reason) => (
+                <SelectItem key={reason} value={reason}>{PATIENT_STATUS_REASON_LABELS[reason]}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isSavingPatientStatus}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={isSavingPatientStatus || !isValidPatientStatusReason(patientStatusReason)}
+              className={patientStatusTarget?.ativo ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90' : undefined}
+              onClick={(event) => { event.preventDefault(); void handleChangePatientStatus(); }}
+            >
+              {isSavingPatientStatus ? 'Salvando…' : patientStatusTarget?.ativo ? 'Inativar paciente' : 'Reativar paciente'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <Dialog open={!!confirmingContact} onOpenChange={(open) => {
+        if (!open && !isSavingContactConfirmation) setConfirmingContact(null);
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirmar {confirmingContact?.channel === 'telefone' ? 'telefone' : 'e-mail'}</DialogTitle>
+            <DialogDescription>
+              Registre com quem a equipe confirmou este contato. Se o valor for alterado depois, a confirmação será removida automaticamente.
+            </DialogDescription>
+          </DialogHeader>
+          <Label htmlFor="origem-confirmacao-contato">Confirmado com</Label>
+          <Select value={contactConfirmSource} onValueChange={(value) => setContactConfirmSource(value as ContactConfirmationSource)}>
+            <SelectTrigger id="origem-confirmacao-contato"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="paciente">Paciente</SelectItem>
+              <SelectItem value="responsavel">Responsável</SelectItem>
+              <SelectItem value="equipe">Equipe consultou o cadastro</SelectItem>
+            </SelectContent>
+          </Select>
+          <DialogFooter>
+            <Button variant="outline" disabled={isSavingContactConfirmation} onClick={() => setConfirmingContact(null)}>Cancelar</Button>
+            <Button disabled={isSavingContactConfirmation} onClick={() => void handleConfirmPatientContact()}>
+              {isSavingContactConfirmation ? 'Salvando…' : 'Registrar confirmação'}
+            </Button>
+          </DialogFooter>
+          <span className="sr-only">Origem: {contactConfirmationSourceLabel(contactConfirmSource)}</span>
         </DialogContent>
       </Dialog>
 

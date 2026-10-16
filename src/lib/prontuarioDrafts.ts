@@ -6,6 +6,16 @@ export interface RascunhoProntuario {
   [key: string]: unknown;
 }
 
+export function nomeAutorRascunho(
+  medicoId: string | null | undefined,
+  medicos: Array<{ id: string; nome?: string | null }>,
+  nomePerfil?: string | null,
+): string {
+  if (!medicoId) return 'Profissional não identificado';
+  const nomeMedico = medicos.find(medico => medico.id === medicoId)?.nome?.trim();
+  return nomeMedico || nomePerfil?.trim() || 'Profissional não identificado';
+}
+
 export function filtrarRascunhosAbertos<T extends RascunhoProntuario>(
   registros: T[],
   medicoId: string | null | undefined,

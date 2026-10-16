@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { filtrarRascunhosAbertos } from '../prontuarioDrafts';
+import { filtrarRascunhosAbertos, nomeAutorRascunho } from '../prontuarioDrafts';
 
 describe('fila de rascunhos de prontuário', () => {
   it('mostra somente rascunhos do médico autenticado e ordena os mais recentes primeiro', () => {
@@ -17,5 +17,17 @@ describe('fila de rascunhos de prontuário', () => {
     expect(filtrarRascunhosAbertos([
       { id: 'draft', medico_id: 'med-1', assinado: false, updated_at: '2026-10-10T12:00:00Z' },
     ], null)).toEqual([]);
+  });
+
+  it('identifica o autor pelo médico responsável, sem expor IDs', () => {
+    expect(nomeAutorRascunho('med-2', [
+      { id: 'med-1', nome: 'Dra. Outra' },
+      { id: 'med-2', nome: 'Dr. João Silva' },
+    ])).toBe('Dr. João Silva');
+  });
+
+  it('usa o perfil da sessão como fallback e um rótulo genérico sem autor', () => {
+    expect(nomeAutorRascunho('med-3', [], 'Maria Souza')).toBe('Maria Souza');
+    expect(nomeAutorRascunho(null, [], '  ')).toBe('Profissional não identificado');
   });
 });

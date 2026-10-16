@@ -31,6 +31,7 @@ type SyntheticClinicOptions = {
   ultraPlan?: boolean;
   manageDoctors?: boolean;
   highContrast?: boolean;
+  personalTaskQueuePopulated?: boolean;
 };
 
 function base64Url(value: string) {
@@ -45,6 +46,7 @@ function syntheticSession(options: SyntheticClinicOptions = {}) {
       sub: TEST_USER_ID,
       aud: 'authenticated',
       role: 'authenticated',
+      session_id: '00000000-0000-4000-8000-000000000005',
       email: TEST_EMAIL,
       iat: now,
       exp: now + 3600,
@@ -164,6 +166,36 @@ export async function installSyntheticClinic(page: Page, options: SyntheticClini
     date.setUTCDate(date.getUTCDate() + days);
     return date.toISOString().slice(0, 10);
   };
+  const syntheticTasks = options.personalTaskQueuePopulated ? [
+    {
+      id: '00000000-0000-4000-9000-000000000301', clinica_id: TEST_CLINIC_ID,
+      titulo: 'Confirmar retorno da pessoa QA', descricao: 'Confirmar horário e canal de retorno.',
+      status: 'pendente', prioridade: 'alta', categoria: 'Agenda',
+      data_vencimento: dateOffset(-1), paciente_id: TEST_PATIENT_ID,
+      responsavel_id: TEST_USER_ID, criado_por: TEST_USER_ID, updated_at: '2026-10-13T12:00:00Z',
+    },
+    {
+      id: '00000000-0000-4000-9000-000000000302', clinica_id: TEST_CLINIC_ID,
+      titulo: 'Revisar pendência de hoje QA', descricao: null,
+      status: 'em_andamento', prioridade: 'media', categoria: 'Rotina',
+      data_vencimento: todaySaoPaulo, paciente_id: null,
+      responsavel_id: TEST_USER_ID, criado_por: TEST_USER_ID, updated_at: '2026-10-14T12:00:00Z',
+    },
+    {
+      id: '00000000-0000-4000-9000-000000000303', clinica_id: TEST_CLINIC_ID,
+      titulo: 'Tarefa QA de outra pessoa', descricao: null,
+      status: 'pendente', prioridade: 'baixa', categoria: 'Rotina',
+      data_vencimento: dateOffset(2), paciente_id: null,
+      responsavel_id: '00000000-0000-4000-8000-000000000099', criado_por: TEST_USER_ID, updated_at: '2026-10-14T12:00:00Z',
+    },
+    {
+      id: '00000000-0000-4000-9000-000000000304', clinica_id: '00000000-0000-4000-8000-000000000098',
+      titulo: 'Tarefa QA de outra clínica', descricao: null,
+      status: 'pendente', prioridade: 'baixa', categoria: 'Rotina',
+      data_vencimento: dateOffset(3), paciente_id: null,
+      responsavel_id: TEST_USER_ID, criado_por: TEST_USER_ID, updated_at: '2026-10-14T12:00:00Z',
+    },
+  ] : [];
   const syntheticAccountRows = options.accountsPopulated ? [
     {
       id: '00000000-0000-4000-9000-000000000041', clinica_id: TEST_CLINIC_ID, tipo: 'receita',
@@ -421,6 +453,33 @@ export async function installSyntheticClinic(page: Page, options: SyntheticClini
       const antigos = filters.some(([key, value]) => key === 'data' && value.startsWith('lt.'));
       await json(route, antigos ? [] : syntheticAppointments);
       return;
+    }
+
+    if (pathname === '/rest/v1/tarefas' && options.personalTaskQueuePopulated) {
+      const filterValue = (key: string) => requestUrl.searchParams.get(key)?.replace(/^eq\./, '');
+      if (method === 'GET') {
+        const rows = syntheticTasks.filter((task) =>
+          (!filterValue('clinica_id') || task.clinica_id === filterValue('clinica_id'))
+          && (!filterValue('responsavel_id') || task.responsavel_id === filterValue('responsavel_id')));
+        await json(route, rows);
+        return;
+      }
+      if (method === 'PATCH') {
+        const task = syntheticTasks.find((row) =>
+          row.id === filterValue('id')
+          && row.clinica_id === filterValue('clinica_id')
+          && row.responsavel_id === filterValue('responsavel_id')
+          && row.updated_at === filterValue('updated_at'));
+        if (!task) {
+          await json(route, [], 200);
+          return;
+        }
+        const updates = route.request().postDataJSON() as { status?: string };
+        if (updates.status) task.status = updates.status;
+        task.updated_at = new Date().toISOString();
+        await json(route, { id: task.id });
+        return;
+      }
     }
 
     if (method === 'GET' && pathname === '/rest/v1/lista_espera' && options.waitingListPopulated) {
@@ -700,14 +759,14 @@ export async function installSyntheticClinic(page: Page, options: SyntheticClini
             id: '00000000-0000-4000-9000-000000000091', clinica_id: TEST_CLINIC_ID,
             nome: 'Mariana QA', email: 'mariana.qa@example.test', telefone: '(11) 90000-0001',
             cargo: 'Recepcionista', departamento: 'Recepção', ativo: true, user_id: null,
-            pending_roles: ['recepcao'], tipo_funcionario: 'recepcionista',
+            pending_roles: ['recepcao'], edit_version: 1, tipo_funcionario: 'recepcionista',
             turno: 'manha', carga_horaria: 40,
           },
           {
             id: '00000000-0000-4000-9000-000000000092', clinica_id: TEST_CLINIC_ID,
             nome: 'Rafael QA', email: 'rafael.qa@example.test', telefone: null,
             cargo: 'Médico', departamento: 'Corpo clínico', ativo: false,
-            user_id: TEST_USER_ID, pending_roles: ['medico'], tipo_funcionario: 'medico',
+            user_id: TEST_USER_ID, pending_roles: ['medico'], edit_version: 1, tipo_funcionario: 'medico',
             registro_profissional: 'CRM 000000', tipo_registro: 'CRM', uf_registro: 'SP',
             especialidade: 'Clínica geral', turno: 'tarde', carga_horaria: 20,
           },
@@ -715,7 +774,7 @@ export async function installSyntheticClinic(page: Page, options: SyntheticClini
             id: '00000000-0000-4000-9000-000000000093', clinica_id: TEST_CLINIC_ID,
             nome: 'Bruno QA sem permissao', email: 'bruno.sem-permissao@example.test',
             telefone: null, cargo: 'Auxiliar', departamento: 'Recepcao', ativo: true,
-            user_id: null, pending_roles: [], tipo_funcionario: 'atendente',
+            user_id: null, pending_roles: [], edit_version: 1, tipo_funcionario: 'atendente',
             turno: 'integral', carga_horaria: 40,
           }] : []),
         ] : []);

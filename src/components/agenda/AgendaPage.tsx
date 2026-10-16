@@ -30,6 +30,7 @@ import { normalizeAgendaDate } from '@/lib/agendaDate';
 import { todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { podeRemarcarAgendamento } from '@/lib/appointmentStatus';
+import { prepareWaitingListAppointment } from '@/lib/waitingListSlotCompatibility';
 import { agendaScreenReaderInstructions, criarAnunciosAgenda } from './agendaDndAccessibility';
 
 export type AgendaView = 'daily' | 'weekly' | 'monthly';
@@ -407,18 +408,14 @@ export function AgendaPage() {
 
     if (active?.waiting) {
       const w = active.waiting;
+      const draft = prepareWaitingListAppointment(w, slotData, medicos as any[]);
+      if (draft.error || !draft.appointment) {
+        toast.error('Esta vaga não corresponde ao pedido da lista de espera.', { description: draft.error });
+        return;
+      }
       setDialogState({
         open: true,
-        initial: {
-          paciente_id: w.paciente_id,
-          medico_id: slotData.medico_id,
-          data: slotData.data,
-          hora_inicio: slotData.hora_inicio,
-          observacoes: w.motivo || '',
-          tipo: 'consulta',
-          status: 'agendado',
-          _waiting_id: w.id,
-        },
+        initial: draft.appointment,
       });
       return;
     }

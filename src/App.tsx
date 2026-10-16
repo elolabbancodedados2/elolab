@@ -23,6 +23,7 @@ const LandingPage = lazy(() => import("@/pages/LandingPage"));
 const BoasVindasClinica = lazy(() => import("@/pages/BoasVindasClinica"));
 const DemonstracaoClinica = lazy(() => import("@/pages/DemonstracaoClinica"));
 const Dashboard = lazy(() => import("@/pages/Dashboard"));
+const MinhaFilaTarefas = lazy(() => import("@/pages/MinhaFilaTarefas"));
 const Agenda = lazy(() => import("@/pages/Agenda"));
 const Pacientes = lazy(() => import("@/pages/Pacientes"));
 const AtendimentoFila = lazy(() => import("@/pages/AtendimentoFila"));
@@ -45,6 +46,8 @@ const Funcionarios = lazy(() => import("@/pages/Funcionarios"));
 const Exames = lazy(() => import("@/pages/Exames"));
 const Triagem = lazy(() => import("@/pages/Triagem"));
 const Salas = lazy(() => import("@/pages/Salas"));
+const HigieneSalas = lazy(() => import("@/pages/HigieneSalas"));
+const PatrimonioEquipamentos = lazy(() => import("@/pages/PatrimonioEquipamentos"));
 const ListaEspera = lazy(() => import("@/pages/ListaEspera"));
 const FluxoCaixa = lazy(() => import("@/pages/FluxoCaixa"));
 const Templates = lazy(() => import("@/pages/Templates"));
@@ -122,6 +125,8 @@ const VerificarAssinatura = lazy(() => import("@/pages/VerificarAssinatura"));
 const FaturamentoConvenios = lazy(() => import("@/pages/FaturamentoConvenios"));
 const RepassesMedicos = lazy(() => import("@/pages/RepassesMedicos"));
 const Interoperabilidade = lazy(() => import("@/pages/Interoperabilidade"));
+const Teleconsulta = lazy(() => import("@/pages/Teleconsulta"));
+const SegurancaAssistencial = lazy(() => import("@/pages/SegurancaAssistencial"));
 import { CookieConsent } from "@/components/CookieConsent";
 import { UpdateSupportBanner } from "@/components/UpdateSupportBanner";
 import { BrandLoadingScreen } from "@/components/BrandLoadingScreen";
@@ -231,6 +236,7 @@ function App() {
                         <Route path="/politica-cookies" element={<PoliticaCookies />} />
                         <Route path="/termos-uso" element={<TermosUso />} />
                         <Route path="/portal-paciente" element={<PortalPaciente />} />
+                        <Route path="/teleconsulta/:sessionId" element={<Teleconsulta />} />
                         <Route path="/agendar/:clinicaId" element={<AgendamentoOnline />} />
                         <Route path="/portal-guias/:token" element={<PortalGuias />} />
                         <Route path="/verificar-assinatura/:codigo" element={<VerificarAssinatura />} />
@@ -290,6 +296,7 @@ function App() {
                           <Route path="/templates" element={<Navigate to="/todos-templates" replace />} />
                           <Route path="/lista-espera" element={<Navigate to="/gestao-fluxo?tab=espera" replace />} />
                           <Route path="/tarefas" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'financeiro', 'medico']}><Tarefas /></SupabaseProtectedRoute>} />
+                          <Route path="/minha-fila" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'financeiro', 'medico']}><MinhaFilaTarefas /></SupabaseProtectedRoute>} />
                           <Route path="/recepcao" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'financeiro']}><RecepcaoCaixa /></SupabaseProtectedRoute>} />
                           <Route path="/caixa" element={<Navigate to="/recepcao?tab=caixa" replace />} />
                           <Route path="/caixa-diario" element={<Navigate to="/recepcao?tab=caixa" replace />} />
@@ -347,6 +354,9 @@ function App() {
                           <Route path="/seguranca" element={<SupabaseProtectedRoute><Seguranca /></SupabaseProtectedRoute>} />
                           <Route path="/lgpd-pacientes" element={<SupabaseProtectedRoute allowedRoles={['admin']}><LgpdPacientes /></SupabaseProtectedRoute>} />
                           <Route path="/vitais-graficos" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico', 'enfermagem']}><VitaisGraficos /></SupabaseProtectedRoute>} />
+                          <Route path="/seguranca-assistencial" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico', 'enfermagem']}><SegurancaAssistencial /></SupabaseProtectedRoute>} />
+                          <Route path="/higiene-salas" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem']}><HigieneSalas /></SupabaseProtectedRoute>} />
+                          <Route path="/patrimonio-equipamentos" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem']}><PatrimonioEquipamentos /></SupabaseProtectedRoute>} />
                           <Route path="/analise-preditiva" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao']}><AnalisePreditiva /></SupabaseProtectedRoute>} />
                         </Route>
 

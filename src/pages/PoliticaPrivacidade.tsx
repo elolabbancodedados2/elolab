@@ -137,17 +137,22 @@ export default function PoliticaPrivacidade() {
           </section>
 
           <section>
-            <h2 className="text-lg font-semibold text-foreground">11. Transferência Internacional</h2>
+            <h2 className="text-lg font-semibold text-foreground">11. Teleconsulta</h2>
+            <p>Quando a clínica usa a teleconsulta, áudio e vídeo são transmitidos entre os dispositivos por conexão WebRTC e não são gravados pelo EloLab. O serviço de sinalização processa temporariamente dados técnicos da conexão para estabelecer a chamada. A negociação pode revelar os endereços de rede dos participantes entre si e a serviços STUN utilizados para conectar os dispositivos. O aceite é solicitado antes de ativar câmera e microfone.</p>
+          </section>
+
+          <section>
+            <h2 className="text-lg font-semibold text-foreground">12. Transferência Internacional</h2>
             <p>O frontend e o banco de dados do serviço estão hospedados em uma VPS da Hostinger com Supabase auto-hospedado. Alguns recursos enviam dados aos fornecedores externos listados nesta política; esses fornecedores podem processá-los fora do Brasil. O local de processamento e o mecanismo aplicável à transferência devem ser confirmados nas condições e contratos vigentes de cada fornecedor antes de habilitar integrações com dados de saúde. A ANPD regulamenta transferências internacionais na Resolução CD/ANPD nº 19/2024.</p>
           </section>
 
           <section>
-            <h2 className="text-lg font-semibold text-foreground">12. Alterações nesta Política</h2>
+            <h2 className="text-lg font-semibold text-foreground">13. Alterações nesta Política</h2>
             <p>Esta política pode ser atualizada periodicamente. Notificaremos sobre alterações significativas por e-mail ou notificação no sistema.</p>
           </section>
 
           <section>
-            <h2 className="text-lg font-semibold text-foreground">13. Contato e Reclamações</h2>
+            <h2 className="text-lg font-semibold text-foreground">14. Contato e Reclamações</h2>
             <p>Se não estiver satisfeito com o tratamento de seus dados, você pode registrar reclamação junto à <strong>Autoridade Nacional de Proteção de Dados (ANPD)</strong> — <a href="https://www.gov.br/anpd" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">www.gov.br/anpd</a></p>
           </section>
           <NavegacaoLegal atual="/politica-privacidade" />

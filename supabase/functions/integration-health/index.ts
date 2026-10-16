@@ -37,13 +37,18 @@ Deno.serve(async req=>{
   ])
   const sessoesQuery=service.from('whatsapp_sessions').select('*',{count:'exact',head:true}).eq('status','connected')
   const filaQuery=service.from('notification_queue').select('*',{count:'exact',head:true}).eq('status','erro')
-  const [{count:sessoes},{count:errosFila},{data:ultimoBackup}]=await Promise.all([
+  const webhookAlertsQuery=service.from('notification_queue').select('id',{count:'exact',head:true})
+    .eq('status','erro').eq('dados_extras->>codigo_alerta','webhook_whatsapp_processing_failed')
+    .gte('created_at',new Date(Date.now()-24*60*60_000).toISOString())
+  const [{count:sessoes},{count:errosFila},{data:ultimoBackup},{count:webhookAlerts,error:webhookAlertError}]=await Promise.all([
     sessoesQuery,
     filaQuery,
     service.from('automation_logs').select('created_at,status').eq('tipo','backup').order('created_at',{ascending:false}).limit(1).maybeSingle(),
+    webhookAlertsQuery,
   ])
   checks.push({id:'whatsapp_session',nome:'Sessão WhatsApp',status:(sessoes||0)>0?'ok':'warning',detalhe:(sessoes||0)>0?`${sessoes} sessão(ões) conectada(s)`:'Nenhuma sessão conectada'})
   checks.push({id:'fila',nome:'Fila de comunicações',status:(errosFila||0)>0?'warning':'ok',detalhe:(errosFila||0)>0?`${errosFila} envio(s) com erro`:'Sem erros pendentes'})
+  checks.push({id:'webhook_comunicacao',nome:'Webhook WhatsApp',status:webhookAlertError||(webhookAlerts||0)>0?'warning':'ok',detalhe:webhookAlertError?'Não foi possível consultar as falhas recentes':(webhookAlerts||0)>0?`${webhookAlerts} falha(s) técnica(s) nas últimas 24 horas`:'Sem falhas técnicas recentes'})
   checks.push({id:'backup',nome:'Backup automático',status:ultimoBackup?.status==='sucesso'?'ok':'warning',detalhe:ultimoBackup?`Última execução: ${ultimoBackup.status} em ${ultimoBackup.created_at}`:'Sem execução encontrada'})
   return json({checked_at:new Date().toISOString(),overall:checks.some(c=>c.status==='error')?'error':checks.some(c=>c.status==='warning')?'warning':'ok',checks})
 })

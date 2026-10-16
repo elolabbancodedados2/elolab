@@ -22,7 +22,7 @@ import {
   Calendar, FlaskConical, CreditCard, User, ExternalLink, Lock,
   Star, MessageSquare, CheckCircle2, HeartHandshake, Clock,
   Activity, FileText, Phone, Shield, Sparkles, ChevronRight,
-  Heart, Pill, AlertTriangle, Download, RefreshCw,
+  Heart, Pill, AlertTriangle, Download, RefreshCw, ClipboardCheck,
   LogOut,
 } from 'lucide-react';
 import { parseISO } from 'date-fns';
@@ -363,6 +363,8 @@ export default function PortalPaciente() {
   const [profile, setProfile] = useState<any>(null);
   const [agendamentos, setAgendamentos] = useState<any[]>([]);
   const [exames, setExames] = useState<any[]>([]);
+  const [documentos, setDocumentos] = useState<any[]>([]);
+  const [documentosState, setDocumentosState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const [pagamentos, setPagamentos] = useState<any[]>([]);
   const [prescricoes, setPrescricoes] = useState<any[]>([]);
   const [retornos, setRetornos] = useState<any[]>([]);
@@ -481,6 +483,8 @@ export default function PortalPaciente() {
   const loadPortalData = async (accessToken: string, sessionId = portalSessionRef.current) => {
     setPortalDataLoading(true);
     setPortalDataError('');
+    setDocumentos([]);
+    setDocumentosState('loading');
     try {
       const results = await Promise.allSettled([
         fetchData(accessToken, 'get_agendamentos'),
@@ -490,6 +494,7 @@ export default function PortalPaciente() {
         fetchData(accessToken, 'get_medicos'),
         fetchData(accessToken, 'get_retornos'),
         fetchData(accessToken, 'get_waitlist_offers'),
+        fetchData(accessToken, 'get_documentos'),
       ]);
       if (sessionId !== portalSessionRef.current) return;
       const valueOrEmpty = (result: PromiseSettledResult<any>) =>
@@ -502,6 +507,13 @@ export default function PortalPaciente() {
       setMedicos(valueOrEmpty(results[4]));
       setRetornos(valueOrEmpty(results[5]));
       setOfertasEspera(valueOrEmpty(results[6]));
+      if (results[7].status === 'fulfilled' && Array.isArray(results[7].value)) {
+        setDocumentos(results[7].value);
+        setDocumentosState('ready');
+      } else {
+        setDocumentos([]);
+        setDocumentosState('error');
+      }
       setPortalHasMore({
         agendamentos: (valueOrEmpty(results[0]) as any[]).length === 50,
         exames: (valueOrEmpty(results[1]) as any[]).length === 30,
@@ -821,6 +833,8 @@ export default function PortalPaciente() {
     setProfile(null);
     setAgendamentos([]);
     setExames([]);
+    setDocumentos([]);
+    setDocumentosState('idle');
     setPagamentos([]);
     setPrescricoes([]);
     setRetornos([]);
@@ -1166,7 +1180,7 @@ export default function PortalPaciente() {
           {/* ─── Tabs ─── */}
           <motion.div variants={itemVariants}>
             <Tabs defaultValue="consultas" className="w-full">
-              <TabsList aria-label="Seções do portal" className="grid h-auto w-full grid-cols-3 gap-1.5 rounded-2xl border border-[#e2dfef] bg-white p-1.5 md:grid-cols-6 md:gap-1">
+              <TabsList aria-label="Seções do portal" className="grid h-auto w-full grid-cols-3 gap-1.5 rounded-2xl border border-[#e2dfef] bg-white p-1.5 sm:grid-cols-4 md:grid-cols-7 md:gap-1">
                 <TabsTrigger value="agendar" className="h-12 flex-col gap-1 rounded-xl text-[#6a6485] data-[state=active]:bg-[#efecfb] data-[state=active]:text-[#5240d6] md:flex-row md:gap-1.5">
                   <Calendar className="h-4 w-4" />
                   <span className="text-[11px] sm:text-sm">Agendar</span>
@@ -1190,6 +1204,10 @@ export default function PortalPaciente() {
                 <TabsTrigger value="financeiro" className="h-12 flex-col gap-1 rounded-xl text-[#6a6485] data-[state=active]:bg-[#efecfb] data-[state=active]:text-[#5240d6] md:flex-row md:gap-1.5">
                   <CreditCard className="h-4 w-4" />
                   <span className="text-[11px] sm:text-sm">Financeiro</span>
+                </TabsTrigger>
+                <TabsTrigger value="documentos" className="h-12 flex-col gap-1 rounded-xl text-[#6a6485] data-[state=active]:bg-[#efecfb] data-[state=active]:text-[#5240d6] md:flex-row md:gap-1.5">
+                  <FileText className="h-4 w-4" />
+                  <span className="text-[11px] sm:text-sm">Documentos</span>
                 </TabsTrigger>
               </TabsList>
 
@@ -1350,6 +1368,15 @@ export default function PortalPaciente() {
                                         {a.medicos.especialidade && ` — ${a.medicos.especialidade}`}
                                       </p>
                                     )}
+                                    {!passado && ['agendado', 'confirmado', 'aguardando'].includes(a.status) && a.instrucoes_preparo && (
+                                      <div role="note" aria-label="Instruções de preparo" className="mt-3 flex gap-2 rounded-lg border border-primary/20 bg-primary/[0.04] p-3 text-xs text-foreground">
+                                        <ClipboardCheck className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
+                                        <div className="min-w-0">
+                                          <p className="mb-1 font-semibold">Orientações para sua consulta</p>
+                                          <p className="whitespace-pre-wrap">{a.instrucoes_preparo}</p>
+                                        </div>
+                                      </div>
+                                    )}
                                   </div>
                                 </div>
                                 <StatusBadge status={a.status} />
@@ -1485,6 +1512,40 @@ export default function PortalPaciente() {
                 )}
                 {portalHasMore.exames && <div className="flex justify-center pt-2"><Button variant="outline" disabled={loadingMore !== null} onClick={() => void loadMorePortalList('get_exames', 'exames', exames, setExames, 30)}>{loadingMore === 'get_exames' ? 'Carregando...' : 'Carregar mais exames'}</Button></div>}
 </TabsContent>
+
+              <TabsContent value="documentos" className="mt-4 space-y-3">
+                {documentosState === 'loading' && (
+                  <Card><CardContent className="p-6 text-center text-sm text-muted-foreground">Carregando documentos…</CardContent></Card>
+                )}
+                {documentosState === 'error' && (
+                  <Card role="status" className="border-warning/40 bg-warning/5">
+                    <CardContent className="flex flex-col items-start gap-3 p-5 sm:flex-row sm:items-center sm:justify-between">
+                      <p className="text-sm">Seus documentos estão indisponíveis temporariamente. Tente atualizar os dados do portal.</p>
+                      <Button type="button" variant="outline" size="sm" onClick={() => void loadPortalData(token)} disabled={portalDataLoading}>Tentar novamente</Button>
+                    </CardContent>
+                  </Card>
+                )}
+                {documentosState === 'ready' && documentos.length === 0 && <EmptyState icon={FileText} text="Nenhum documento disponibilizado pela clínica" />}
+                {documentosState === 'ready' && documentos.map((documento: any) => {
+                  const urlAssinada = storageUrlSeguro(documento.url);
+                  return (
+                    <Card key={documento.id}>
+                      <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="flex min-w-0 items-start gap-3">
+                          <div className="rounded-xl bg-primary/10 p-2.5 text-primary"><FileText className="h-4 w-4" /></div>
+                          <div className="min-w-0 space-y-1">
+                            <p className="truncate font-semibold text-sm">{documento.nome}</p>
+                            <p className="text-xs text-muted-foreground">{documento.categoria || documento.tipo || 'Documento'} · {documento.origem === 'externo' ? 'Origem externa' : 'Da clínica'}</p>
+                            <p className="text-xs text-muted-foreground">{documento.validade_ate ? `Válido até ${formatarDataIso(documento.validade_ate)}` : 'Sem vencimento do documento'}</p>
+                            {documento.link_expira_em && <p className="text-xs text-muted-foreground">Link privado válido por cinco minutos · expira em {new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(documento.link_expira_em))}</p>}
+                          </div>
+                        </div>
+                        {urlAssinada && <Button type="button" variant="outline" size="sm" className="shrink-0 gap-2" aria-label={`Abrir ${documento.nome}`} onClick={() => abrirUrlSegura(urlAssinada, storageUrlSeguro)}><Download className="h-4 w-4" />Abrir documento</Button>}
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </TabsContent>
 
               {/* ─── Prescrições Tab ─── */}
               <TabsContent value="prescricoes" className="mt-4 space-y-3">

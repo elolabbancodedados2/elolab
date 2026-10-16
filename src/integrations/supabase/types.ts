@@ -84,6 +84,30 @@ export type Database = {
         }
         Relationships: []
       }
+      account_session_activity: {
+        Row: {
+          created_at: string
+          last_activity_at: string
+          session_id: string
+          user_agent: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          last_activity_at?: string
+          session_id: string
+          user_agent?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          last_activity_at?: string
+          session_id?: string
+          user_agent?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       agendamentos: {
         Row: {
           clinica_id: string | null
@@ -104,6 +128,7 @@ export type Database = {
           liberado_sem_triagem_por: string | null
           medico_id: string | null
           motivo_liberacao: string | null
+          motivo_cancelamento: string | null
           observacoes: string | null
           paciente_id: string
           sala_id: string | null
@@ -130,6 +155,7 @@ export type Database = {
           liberado_sem_triagem_por?: string | null
           medico_id?: string | null
           motivo_liberacao?: string | null
+          motivo_cancelamento?: string | null
           observacoes?: string | null
           paciente_id: string
           sala_id?: string | null
@@ -156,6 +182,7 @@ export type Database = {
           liberado_sem_triagem_por?: string | null
           medico_id?: string | null
           motivo_liberacao?: string | null
+          motivo_cancelamento?: string | null
           observacoes?: string | null
           paciente_id?: string
           sala_id?: string | null
@@ -444,6 +471,9 @@ export type Database = {
           dias: number | null
           id: string
           medico_id: string | null
+          modelo_atestado_atualizado_em: string | null
+          modelo_atestado_id: string | null
+          modelo_atestado_nome: string | null
           motivo: string | null
           observacoes: string | null
           paciente_id: string | null
@@ -460,6 +490,9 @@ export type Database = {
           dias?: number | null
           id?: string
           medico_id?: string | null
+          modelo_atestado_atualizado_em?: string | null
+          modelo_atestado_id?: string | null
+          modelo_atestado_nome?: string | null
           motivo?: string | null
           observacoes?: string | null
           paciente_id?: string | null
@@ -476,6 +509,9 @@ export type Database = {
           dias?: number | null
           id?: string
           medico_id?: string | null
+          modelo_atestado_atualizado_em?: string | null
+          modelo_atestado_id?: string | null
+          modelo_atestado_nome?: string | null
           motivo?: string | null
           observacoes?: string | null
           paciente_id?: string | null
@@ -1330,6 +1366,54 @@ export type Database = {
           },
         ]
       }
+      configuracoes_clinica_versoes: {
+        Row: {
+          alterado_por: string | null
+          chave: string
+          clinica_id: string
+          criado_em: string
+          id: string
+          operacao: string
+          restaurada_de: string | null
+          valor: Json
+        }
+        Insert: {
+          alterado_por?: string | null
+          chave: string
+          clinica_id: string
+          criado_em?: string
+          id?: string
+          operacao?: string
+          restaurada_de?: string | null
+          valor: Json
+        }
+        Update: {
+          alterado_por?: string | null
+          chave?: string
+          clinica_id?: string
+          criado_em?: string
+          id?: string
+          operacao?: string
+          restaurada_de?: string | null
+          valor?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "configuracoes_clinica_versoes_clinica_id_fkey"
+            columns: ["clinica_id"]
+            isOneToOne: false
+            referencedRelation: "clinicas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "configuracoes_clinica_versoes_restaurada_de_fkey"
+            columns: ["restaurada_de"]
+            isOneToOne: false
+            referencedRelation: "configuracoes_clinica_versoes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       consentimentos_lgpd: {
         Row: {
           aceito: boolean
@@ -2080,6 +2164,64 @@ export type Database = {
           },
         ]
       }
+      fila_atendimento_eventos: {
+        Row: {
+          agendamento_id: string | null
+          atendimento_reaberto: boolean
+          clinica_id: string
+          fila_id: string
+          id: string
+          motivo: string
+          ocorreu_em: string
+          paciente_id: string | null
+          removido_por: string
+        }
+        Insert: {
+          agendamento_id?: string | null
+          atendimento_reaberto?: boolean
+          clinica_id: string
+          fila_id: string
+          id?: string
+          motivo: string
+          ocorreu_em?: string
+          paciente_id?: string | null
+          removido_por: string
+        }
+        Update: {
+          agendamento_id?: string | null
+          atendimento_reaberto?: boolean
+          clinica_id?: string
+          fila_id?: string
+          id?: string
+          motivo?: string
+          ocorreu_em?: string
+          paciente_id?: string | null
+          removido_por?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fila_atendimento_eventos_agendamento_id_fkey"
+            columns: ["agendamento_id"]
+            isOneToOne: false
+            referencedRelation: "agendamentos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fila_atendimento_eventos_clinica_id_fkey"
+            columns: ["clinica_id"]
+            isOneToOne: false
+            referencedRelation: "clinicas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fila_atendimento_eventos_paciente_id_fkey"
+            columns: ["paciente_id"]
+            isOneToOne: false
+            referencedRelation: "pacientes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       funcionarios: {
         Row: {
           ativo: boolean | null
@@ -2092,6 +2234,7 @@ export type Database = {
           data_nascimento: string | null
           departamento: string | null
           email: string | null
+          edit_version: number
           especialidade: string | null
           id: string
           nome: string
@@ -2117,6 +2260,7 @@ export type Database = {
           data_nascimento?: string | null
           departamento?: string | null
           email?: string | null
+          edit_version?: number
           especialidade?: string | null
           id?: string
           nome: string
@@ -2142,6 +2286,7 @@ export type Database = {
           data_nascimento?: string | null
           departamento?: string | null
           email?: string | null
+          edit_version?: number
           especialidade?: string | null
           id?: string
           nome?: string
@@ -3153,6 +3298,53 @@ export type Database = {
           },
         ]
       }
+      notification_template_versions: {
+        Row: {
+          action: string
+          actor_type: string
+          author_id: string | null
+          author_name: string | null
+          clinica_id: string | null
+          created_at: string
+          id: string
+          revision: number
+          snapshot: Json
+          template_id: string
+        }
+        Insert: {
+          action: string
+          actor_type: string
+          author_id?: string | null
+          author_name?: string | null
+          clinica_id?: string | null
+          created_at?: string
+          id?: string
+          revision: number
+          snapshot: Json
+          template_id: string
+        }
+        Update: {
+          action?: string
+          actor_type?: string
+          author_id?: string | null
+          author_name?: string | null
+          clinica_id?: string | null
+          created_at?: string
+          id?: string
+          revision?: number
+          snapshot?: Json
+          template_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notification_template_versions_clinica_id_fkey"
+            columns: ["clinica_id"]
+            isOneToOne: false
+            referencedRelation: "clinicas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       paciente_comorbidades: {
         Row: {
           ativo: boolean
@@ -3273,6 +3465,10 @@ export type Database = {
           estado: string | null
           estado_civil: string | null
           foto_url: string | null
+          preferencia_canal_lembrete: string
+          horario_contato_inicio: string
+          horario_contato_fim: string
+          fuso_horario_contato: string
           gestante: boolean
           id: string
           logradouro: string | null
@@ -3307,6 +3503,10 @@ export type Database = {
           estado?: string | null
           estado_civil?: string | null
           foto_url?: string | null
+          preferencia_canal_lembrete?: string
+          horario_contato_inicio?: string
+          horario_contato_fim?: string
+          fuso_horario_contato?: string
           gestante?: boolean
           id?: string
           logradouro?: string | null
@@ -3341,6 +3541,10 @@ export type Database = {
           estado?: string | null
           estado_civil?: string | null
           foto_url?: string | null
+          preferencia_canal_lembrete?: string
+          horario_contato_inicio?: string
+          horario_contato_fim?: string
+          fuso_horario_contato?: string
           gestante?: boolean
           id?: string
           logradouro?: string | null
@@ -4004,12 +4208,16 @@ export type Database = {
       }
       prescricoes: {
         Row: {
+          alerta_confirmado_em: string | null
+          alerta_confirmado_por: string | null
+          alertas_seguranca: Json
           clinica_id: string
           created_at: string | null
           data_emissao: string | null
           dosagem: string | null
           duracao: string | null
           id: string
+          justificativa_alerta: string | null
           medicamento: string
           medico_id: string | null
           observacoes: string | null
@@ -4021,12 +4229,16 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          alerta_confirmado_em?: string | null
+          alerta_confirmado_por?: string | null
+          alertas_seguranca?: Json
           clinica_id: string
           created_at?: string | null
           data_emissao?: string | null
           dosagem?: string | null
           duracao?: string | null
           id?: string
+          justificativa_alerta?: string | null
           medicamento: string
           medico_id?: string | null
           observacoes?: string | null
@@ -4038,12 +4250,16 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          alerta_confirmado_em?: string | null
+          alerta_confirmado_por?: string | null
+          alertas_seguranca?: Json
           clinica_id?: string
           created_at?: string | null
           data_emissao?: string | null
           dosagem?: string | null
           duracao?: string | null
           id?: string
+          justificativa_alerta?: string | null
           medicamento?: string
           medico_id?: string | null
           observacoes?: string | null
@@ -5147,6 +5363,7 @@ export type Database = {
           descricao: string | null
           duracao_minutos: number | null
           id: string
+          instrucoes_preparo: string | null
           nome: string
           updated_at: string | null
           valor_particular: number | null
@@ -5159,6 +5376,7 @@ export type Database = {
           descricao?: string | null
           duracao_minutos?: number | null
           id?: string
+          instrucoes_preparo?: string | null
           nome: string
           updated_at?: string | null
           valor_particular?: number | null
@@ -5171,6 +5389,7 @@ export type Database = {
           descricao?: string | null
           duracao_minutos?: number | null
           id?: string
+          instrucoes_preparo?: string | null
           nome?: string
           updated_at?: string | null
           valor_particular?: number | null
@@ -5860,6 +6079,26 @@ export type Database = {
       }
     }
     Functions: {
+      clinic_onboarding_overview: {
+        Args: never
+        Returns: Json
+      }
+      platform_executive_report: {
+        Args: { p_days: number }
+        Returns: Json
+      }
+      public_availability_check: {
+        Args: never
+        Returns: Json
+      }
+      restaurar_configuracao_clinica_versao: {
+        Args: { p_versao_esperada: string; p_versao_id: string }
+        Returns: string
+      }
+      salvar_configuracao_clinica_segura: {
+        Args: { p_chave: string; p_valor: Json; p_versao_esperada: string | null }
+        Returns: string
+      }
       alterar_status_agendamento_com_fila: {
         Args: {
           p_agendamento_id: string
@@ -5868,6 +6107,30 @@ export type Database = {
           p_updated_at: string | null
         }
         Returns: { atualizado: boolean; fila_removida: number }
+      }
+      cancelar_agendamento_com_motivo: {
+        Args: {
+          p_agendamento_id: string
+          p_clinica_id: string
+          p_updated_at: string | null
+          p_motivo_cancelamento: string
+        }
+        Returns: { atualizado: boolean; fila_removida: number }
+      }
+      remover_item_fila_com_motivo: {
+        Args: { p_fila_id: string; p_status_esperado: string; p_motivo: string }
+        Returns: { removido: boolean; atendimento_reaberto: boolean }
+      }
+      buscar_possiveis_duplicidades_paciente: {
+        Args: { p_nome: string; p_data_nascimento: string | null; p_telefone: string; p_excluir?: string | null }
+        Returns: Array<{
+          id: string
+          nome: string
+          nome_social: string | null
+          data_nascimento: string | null
+          telefone_final: string | null
+          motivos: string[]
+        }>
       }
       accept_employee_invitation: {
         Args: { _token: string; _user_id: string }
@@ -6011,6 +6274,16 @@ export type Database = {
           id: string
         }[]
       }
+      list_my_account_sessions: {
+        Args: never
+        Returns: {
+          created_at: string
+          is_current: boolean
+          last_activity_at: string
+          session_id: string
+          user_agent: string
+        }[]
+      }
       limpar_logs_antigos: { Args: never; Returns: number }
       limpar_rate_limit_antigos: { Args: never; Returns: number }
       link_portal_paciente: { Args: { p_paciente_id: string }; Returns: string }
@@ -6152,6 +6425,17 @@ export type Database = {
         Returns: Json
       }
       reabrir_caixa_diario: { Args: { p_motivo: string }; Returns: Json }
+      touch_my_account_session: { Args: { p_user_agent: string }; Returns: undefined }
+      sync_employee_roles_if_unchanged: {
+        Args: {
+          _ativo: boolean
+          _expected_version: number
+          _funcionario_id: string
+          _roles: Database["public"]["Enums"]["app_role"][]
+          _user_id: string | null
+        }
+        Returns: undefined
+      }
       reivindicar_notificacoes: {
         Args: { p_clinica_id?: string; p_limite?: number }
         Returns: {

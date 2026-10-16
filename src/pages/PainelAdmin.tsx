@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { PlatformRuntimeStatus } from '@/components/admin/PlatformRuntimeStatus';
 
 type ExecutiveReport = {
   generated_at: string;
@@ -61,7 +62,7 @@ export default function PainelAdmin() {
   const report = useQuery({
     queryKey: ['platform-owner-dashboard', 30],
     queryFn: async () => {
-      const { data, error } = await (supabase as any).rpc('platform_executive_report', { p_days: 30 });
+      const { data, error } = await supabase.rpc('platform_executive_report', { p_days: 30 });
       if (error) throw error;
       return data as ExecutiveReport;
     },
@@ -106,6 +107,8 @@ export default function PainelAdmin() {
           </CardContent>
         </Card>
       )}
+
+      <PlatformRuntimeStatus />
 
       {report.isLoading ? (
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="Carregando indicadores">
