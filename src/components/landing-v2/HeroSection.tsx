@@ -58,19 +58,19 @@ export default function HeroSection() {
 
       <div className="relative z-20 mx-auto flex h-full w-full max-w-7xl flex-1 flex-col px-5 pb-10 pt-5 sm:px-8 sm:pt-7 lg:px-10">
         <header className="relative z-30 flex items-center justify-between gap-4">
-          <a href="#top" aria-label="EloLab home" className="shrink-0">
+          <a href="#top" aria-label="EloLab home" className="inline-flex min-h-10 shrink-0 items-center">
             <Logo />
           </a>
 
           <nav
             aria-label="Navegação principal"
-            className="hidden items-center gap-5 rounded-full border border-elolab-blue/15 bg-white/75 px-5 py-3 text-sm shadow-sm backdrop-blur-md lg:flex xl:gap-7"
+            className="hidden items-center gap-5 rounded-full border border-elolab-blue/15 bg-white/75 px-5 py-0.5 text-sm shadow-sm backdrop-blur-md lg:flex xl:gap-7"
           >
             {NAV_LINKS.map((link) => (
               <a
                 key={link.label}
                 href={link.href}
-                className="whitespace-nowrap text-elolab-ink/80 transition-colors duration-200 hover:text-elolab-blue"
+                className="inline-flex min-h-10 items-center whitespace-nowrap text-elolab-ink/80 transition-colors duration-200 hover:text-elolab-blue"
               >
                 {link.label}
               </a>
@@ -80,7 +80,7 @@ export default function HeroSection() {
           <div className="hidden shrink-0 items-center gap-5 lg:flex">
             <a
               href={loginUrl}
-              className="text-sm font-medium text-elolab-ink/75 transition-colors hover:text-elolab-blue"
+              className="inline-flex min-h-10 min-w-10 items-center justify-center text-sm font-medium text-elolab-ink/75 transition-colors hover:text-elolab-blue"
             >
               Entrar
             </a>

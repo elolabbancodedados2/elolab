@@ -17,14 +17,15 @@ test('fila pessoal respeita o escopo da clínica, responsável e permite conclui
   await page.keyboard.press('Escape');
   expect(synthetic.requests.some((entry) => entry.startsWith('GET /rest/v1/clinicas?')
     && entry.includes(`id=eq.${synthetic.clinicId}`))).toBe(true);
-  await expect(page.getByText('Confirmar retorno da pessoa QA')).toBeVisible();
-  await expect(page.getByText('Revisar pendência de hoje QA')).toBeVisible();
+  const overdueTasks = page.getByRole('region', { name: /^Atrasadas/ });
+  await expect(overdueTasks.getByText('Confirmar retorno da pessoa QA')).toBeVisible();
+  await expect(page.getByRole('region', { name: /^Para hoje/ }).getByText('Revisar pendência de hoje QA')).toBeVisible();
   await expect(page.getByText('Tarefa QA de outra pessoa')).toHaveCount(0);
   await expect(page.getByText('Tarefa QA de outra clínica')).toHaveCount(0);
-  await expect(page.getByRole('link', { name: 'Abrir paciente' })).toHaveAttribute('href', /\/pacientes\?paciente=/);
+  await expect(overdueTasks.getByRole('link', { name: 'Abrir paciente' })).toHaveAttribute('href', /\/pacientes\?paciente=/);
 
-  await page.getByRole('button', { name: 'Concluir tarefa Confirmar retorno da pessoa QA' }).click();
-  await expect(page.getByText('Concluídas e canceladas')).toBeVisible();
+  await overdueTasks.getByRole('button', { name: 'Concluir tarefa Confirmar retorno da pessoa QA' }).click();
+  await expect(page.getByRole('region', { name: /^Concluídas e canceladas/ }).getByText('Confirmar retorno da pessoa QA')).toBeVisible();
 
   const taskReads = synthetic.requests.filter((entry) => entry.startsWith('GET /rest/v1/tarefas?'));
   expect(taskReads.some((entry) => entry.includes(`clinica_id=eq.${synthetic.clinicId}`)

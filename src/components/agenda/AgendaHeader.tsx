@@ -105,8 +105,8 @@ export function AgendaHeader(p: Props) {
   return (
     <div className="flex flex-col gap-3 rounded-[24px] border border-border/60 bg-card p-3 shadow-xs sm:gap-4 sm:p-5">
       {/* Linha 1: título + navegação de data | ações principais */}
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+      <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-center lg:justify-between">
+        <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
           <div className="flex min-w-0 items-center gap-2">
             <h1 className="truncate text-xl font-extrabold tracking-[-0.03em] text-foreground sm:text-[26px]">{label}</h1>
             {isToday && <Badge className="shrink-0 border-transparent bg-gradient-primary text-white shadow-sm hover:bg-gradient-primary">HOJE</Badge>}
@@ -219,7 +219,7 @@ export function AgendaHeader(p: Props) {
         </div>
 
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-          <div className="relative w-full min-w-0 sm:min-w-[220px] sm:max-w-sm sm:flex-1">
+          <div className="relative w-full min-w-0 sm:min-w-[240px] sm:max-w-sm sm:flex-1">
             <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
             <Input
               placeholder="Buscar paciente, CPF ou telefone"

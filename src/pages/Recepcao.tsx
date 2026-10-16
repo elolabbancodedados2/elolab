@@ -254,7 +254,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
   // Data
   // Só o dia de hoje: a recepção não usa o histórico, e o realtime refaz esta
   // consulta a cada mudança na agenda — antes era a tabela inteira, com joins.
-  const agendaHojeQuery = useAgendamentosPeriodo(today, today);
+  const agendaHojeQuery = useAgendamentosPeriodo(today, today, { resumoPaciente: true });
   const { data: agendamentos = [], isLoading: loadingAg } = agendaHojeQuery;
   const {
     data: pacienteEncaixe,
@@ -1365,10 +1365,10 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
                              ag.status === 'faltou' && 'bg-muted-foreground/50',
                            )} />
 
-                          <div className="flex-1 p-4">
-                            <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                          <div className="min-w-0 flex-1 p-4">
+                            <div className="flex flex-wrap items-center gap-3">
                               {/* Patient info */}
-                              <div className="flex-1 min-w-0">
+                              <div className="min-w-0 flex-[1_1_12rem]">
                                 <div className="flex flex-wrap items-center gap-2 mb-1">
                                   <h3 className="font-semibold truncate">
                                     {(pac as any)?.nome_social || pac?.nome || 'Paciente'}

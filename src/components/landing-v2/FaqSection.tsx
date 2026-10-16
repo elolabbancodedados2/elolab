@@ -20,7 +20,7 @@ const faqItems: Array<{ q: string; a: ReactNode }> = [
     a: (
       <>
         O sistema aplica separação de dados por clínica e permissões por perfil. Consulte a{" "}
-        <Link to="/politica-privacidade" className="font-semibold text-elolab-blue underline underline-offset-4">Política de Privacidade</Link>{" "}
+        <Link to="/politica-privacidade" className="inline-flex min-h-10 items-center font-semibold text-elolab-blue underline underline-offset-4">Política de Privacidade</Link>{" "}
         para saber como os dados são tratados e confirme com a equipe os procedimentos de backup e recuperação vigentes.
       </>
     ),
@@ -58,7 +58,7 @@ function FaqItem({ q, a, index }: { q: string; a: ReactNode; index: number }) {
         <span className="font-inter text-base font-semibold text-elolab-navy">{q}</span>
         <ChevronDown className={cn("h-5 w-5 shrink-0 text-elolab-blue transition-transform duration-300", open && "rotate-180")} aria-hidden="true" />
       </button>
-      <div id={panelId} className={cn("overflow-hidden transition-all duration-300", open ? "max-h-72 pb-5 opacity-100" : "max-h-0 opacity-0")}>
+      <div id={panelId} hidden={!open} className="pb-5">
         <p className="font-inter text-sm leading-relaxed text-elolab-navy/70">{a}</p>
       </div>
     </div>
