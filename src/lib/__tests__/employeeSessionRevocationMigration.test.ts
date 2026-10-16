@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-const migrationPath = 'supabase/migrations/20261014110000_revogar_sessoes_ao_inativar_funcionario.sql';
+const migrationPath = 'supabase/migrations/20261014110500_revogar_sessoes_ao_inativar_funcionario.sql';
 const migration = existsSync(migrationPath) ? readFileSync(migrationPath, 'utf8') : '';
 const sessionRevocation = readFileSync('supabase/migrations/20260801161000_encerrar_sessoes.sql', 'utf8');
 

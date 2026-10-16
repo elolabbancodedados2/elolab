@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-const path = 'supabase/migrations/20261014220000_patrimonio_manutencao_equipamentos.sql';
+const path = 'supabase/migrations/20261014220500_patrimonio_manutencao_equipamentos.sql';
 
 describe('patrimônio e manutenção de equipamentos da clínica', () => {
   it('mantém ativos gerais separados dos analisadores cadastrados pelo laboratório', () => {

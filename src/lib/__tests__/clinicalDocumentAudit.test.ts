@@ -26,7 +26,7 @@ describe('registrarAcessoDocumentoClinico', () => {
 
 describe('migration de auditoria clínica', () => {
   it('restringe papéis, ações e clínicas e evita gravar nome/conteúdo do paciente', () => {
-    const migration = readFileSync('supabase/migrations/20261014230000_auditoria_acoes_documentos_clinicos.sql', 'utf8');
+    const migration = readFileSync('supabase/migrations/20261014230500_auditoria_acoes_documentos_clinicos.sql', 'utf8');
     expect(migration).toMatch(/can_access_clinical\(auth\.uid\(\)\)/i);
     expect(migration).toMatch(/is_admin\(auth\.uid\(\)\) OR public\.is_medico\(auth\.uid\(\)\)/i);
     expect(migration).toMatch(/public\.is_same_clinica\(p\.clinica_id\)/i);

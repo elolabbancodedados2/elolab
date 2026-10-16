@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-const path = 'supabase/migrations/20261014170000_hardening_onboarding_clinica.sql';
+const path = 'supabase/migrations/20261014172000_hardening_onboarding_clinica.sql';
 
 describe('onboarding baseado em recursos reais da clínica', () => {
   it('fixa search_path e restringe leitura à clínica da sessão por administrador', () => {

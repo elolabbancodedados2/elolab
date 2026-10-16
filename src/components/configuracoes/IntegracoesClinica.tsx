@@ -191,7 +191,7 @@ export function IntegracoesClinica() {
             <p className="text-xs text-muted-foreground">
               {ativa ? <>Prescritor registrado · desde {formatarDataConexao(c.conectado_em)}</> : 'Ainda sem prescrição feita por este médico'}
             </p>
-            {c?.status === 'erro' && c.ultimo_erro && <p className="mt-1 text-xs text-destructive">{c.ultimo_erro}</p>}
+            {c?.status === 'erro' && c.ultimo_erro && <p className="mt-1 text-xs text-destructive">Falha ao comunicar com o provedor. Confira a conexão ou contate o suporte.</p>}
           </div>
           {c && <Badge variant={STATUS[c.status].variante}>{STATUS[c.status].rotulo === 'Credencial salva' ? 'Registrado' : STATUS[c.status].rotulo}</Badge>}
         </div>

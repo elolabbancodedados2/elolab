@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-const migrationPath = 'supabase/migrations/20261014100000_sessoes_proprias_por_conta.sql';
+const migrationPath = 'supabase/migrations/20261014100500_sessoes_proprias_por_conta.sql';
 const migration = existsSync(migrationPath) ? readFileSync(migrationPath, 'utf8') : '';
 
 describe('RPCs de sessões da própria conta', () => {

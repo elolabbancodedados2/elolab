@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-const path = 'supabase/migrations/20261014210000_higiene_salas.sql';
+const path = 'supabase/migrations/20261014210500_higiene_salas.sql';
 
 describe('persistência de higiene e liberação segura de salas', () => {
   it('versiona checklists e mantém execuções/revisões imutáveis por clínica e sala', () => {

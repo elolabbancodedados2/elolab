@@ -14,7 +14,7 @@ describe('fila removal reason', () => {
 
   it('uses the atomic reason-aware endpoint and clinic-scoped history', () => {
     const page = readFileSync('src/pages/Fila.tsx', 'utf8');
-    const migration = readFileSync('supabase/migrations/20261014120000_historico_saida_fila.sql', 'utf8');
+    const migration = readFileSync('supabase/migrations/20261014120500_historico_saida_fila.sql', 'utf8');
     expect(page).toMatch(/rpc\('remover_item_fila_com_motivo'/);
     expect(page).toMatch(/p_motivo:\s*motivoSaida/);
     expect(page).toMatch(/from\('fila_atendimento_eventos'\)[\s\S]*?\.eq\('clinica_id', profile\.clinica_id\)/);

@@ -10,7 +10,7 @@ describe('patient duplicate review', () => {
   });
 
   it('checks same-clinic phone/name-and-birthdate matches and requires human confirmation', () => {
-    const migration = readFileSync('supabase/migrations/20261014130000_revisao_duplicidade_paciente.sql', 'utf8');
+    const migration = readFileSync('supabase/migrations/20261014130500_revisao_duplicidade_paciente.sql', 'utf8');
     const page = readFileSync('src/pages/Pacientes.tsx', 'utf8');
     expect(migration).toMatch(/public\.is_same_clinica\(v_clinica_id\)/);
     expect(migration).toMatch(/v_telefone_normalizado/);
