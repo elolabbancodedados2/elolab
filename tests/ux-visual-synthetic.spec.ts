@@ -47,7 +47,7 @@ test('dashboard desktop keeps one primary role shortcut and softens the secondar
   const workspace = page.locator('section[aria-labelledby="role-workspace-title"]');
   const actions = workspace.getByRole('link');
   await expect(workspace.getByRole('heading', { name: 'Visão da administração' })).toBeVisible();
-  await expect(page.getByText('Agenda, pacientes e finanças da clínica em um só lugar.')).toBeVisible();
+  await expect(page.getByText('Agenda, equipe e informações importantes em um só lugar.')).toBeVisible();
   const dashboardHeroTitle = page.getByText('Sua clínica, mais organizada.', { exact: true });
   await expect(dashboardHeroTitle).toBeVisible();
   await expect(dashboardHeroTitle).toHaveClass(/text-primary/);
@@ -154,13 +154,17 @@ test('landing desktop explicita cartão recorrente e Pix por período', async ({
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto('/');
 
-  await expect(page.getByRole('heading', { name: /Organize a rotina da clínica em um só lugar/ })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /Toda a clínica\.\s*Em um só fluxo\./ })).toBeVisible();
   await expect(page.getByText('Cartão recorrente · Pix por período')).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('landing-1280.png') });
   expect(synthetic.writes.filter(write => !write.includes('/rpc/'))).toEqual([]);
 });
 
 test('Agenda desktop shows short appointments and opens them with Enter', async ({ page }, testInfo) => {
+  const duplicateKeyWarnings: string[] = [];
+  page.on('console', message => {
+    if (/same key|unique.*key/i.test(message.text())) duplicateKeyWarnings.push(message.text());
+  });
   await page.clock.install({ time: new Date('2026-10-13T08:00:00-03:00') });
   const synthetic = await installSyntheticClinic(page, { agendaPopulated: true, waitingListPopulated: true, platformAdmin: false, today: '2026-10-13' });
   for (const viewport of [{ width: 1440, height: 900 }, { width: 1280, height: 800 }]) {
@@ -201,7 +205,9 @@ test('Agenda desktop shows short appointments and opens them with Enter', async 
     expect(initialScroll[1].scrollHeight).toBe(initialScroll[1].height);
 
     await main.evaluate(element => {
-      element.scrollTop = Math.min(400, element.scrollHeight - element.clientHeight);
+      const strip = element.querySelector('[data-testid="agenda-doctor-header-strip"]')!;
+      const target = element.scrollTop + strip.getBoundingClientRect().top - element.getBoundingClientRect().top + 40;
+      element.scrollTop = Math.min(target, element.scrollHeight - element.clientHeight);
       element.dispatchEvent(new Event('scroll', { bubbles: true }));
     });
     const [mainTop, headerTop] = await Promise.all([
@@ -218,6 +224,7 @@ test('Agenda desktop shows short appointments and opens them with Enter', async 
     await expect(page.getByRole('dialog')).not.toBeVisible();
     await page.screenshot({ path: testInfo.outputPath(`agenda-semantic-status-${viewport.width}.png`), animations: 'disabled' });
   }
+  expect(duplicateKeyWarnings).toEqual([]);
   expect(synthetic.writes.filter(write => !write.includes('/rpc/'))).toEqual([]);
 });
 
@@ -267,7 +274,7 @@ test('prescriptions desktop explains and mutes creation until an active doctor e
     const style = getComputedStyle(element);
     return { background: style.backgroundColor, backgroundImage: style.backgroundImage, color: style.color, opacity: style.opacity };
   });
-  expect(disabledStyle.background).toBe('rgb(240, 240, 244)');
+  expect(disabledStyle.background).toBe('rgb(243, 245, 247)');
   expect(disabledStyle.backgroundImage).toBe('none');
   expect(disabledStyle.opacity).toBe('1');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
@@ -310,7 +317,7 @@ test('insurance billing desktop explains prerequisites for empty clinic setup', 
     const style = getComputedStyle(element);
     return { background: style.backgroundColor, backgroundImage: style.backgroundImage, opacity: style.opacity };
   })));
-  expect(disabledStyles.map(style => style.background)).toEqual(['rgb(240, 240, 244)', 'rgb(240, 240, 244)']);
+  expect(disabledStyles.map(style => style.background)).toEqual(['rgb(243, 245, 247)', 'rgb(243, 245, 247)']);
   expect(disabledStyles.map(style => style.backgroundImage)).toEqual(['none', 'none']);
   expect(disabledStyles.map(style => style.opacity)).toEqual(['1', '1']);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
@@ -968,14 +975,14 @@ test('doctor specialty filter stays readable at desktop widths', async ({ page }
   expect(synthetic.assertAllWritesAreMocked()).toBe(true);
 });
 
-test('captures key screens through internal scrolling at desktop browser widths', async ({ page }, testInfo) => {
+for (const viewport of [{ width: 1440, height: 900 }, { width: 1280, height: 800 }]) {
+test(`captures key screens through internal scrolling at ${viewport.width}px`, async ({ page }, testInfo) => {
   test.setTimeout(180_000);
   const synthetic = await installSyntheticClinic(page, { platformAdmin: false });
 
-  for (const viewport of [{ width: 1440, height: 900 }, { width: 1280, height: 800 }]) {
     await page.setViewportSize(viewport);
     for (const [name, path] of KEY_SCREENS) {
-      await page.goto(path);
+      await page.goto(path, { waitUntil: 'domcontentloaded' });
       const main = page.locator('#main-content');
       await expect(main).toBeVisible();
       await expect(main.locator('h1').first()).toBeVisible();
@@ -1233,10 +1240,10 @@ test('captures key screens through internal scrolling at desktop browser widths'
       }
       await main.evaluate(element => { element.scrollTop = 0; });
     }
-  }
 
   expect(synthetic.assertAllWritesAreMocked()).toBe(true);
 });
+}
 
 test('retornos over 30 days keep a clear warning without a heavy side stripe', async ({ page }, testInfo) => {
   const synthetic = await installSyntheticClinic(page, { platformAdmin: false, retornosPopulated: true });

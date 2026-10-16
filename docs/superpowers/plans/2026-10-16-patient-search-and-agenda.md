@@ -81,3 +81,11 @@
 
 - Four focused browser cases passed after updating the search fixtures: patient deletion safeguards, LGPD search limits, empty state and audited export. The export fixture now excludes the navbar date-bounded agenda so it does not inject incomplete export rows into the header.
 - First full browser CI run: 216 passed, 18 failed, 46 skipped. Three affected patient/LGPD cases are corrected above; the other 15 are being compared against the prior production commit before any release decision.
+
+- User explicitly requested resolving the remaining browser validation failures and publishing. The baseline rerun reproduced 14 failures on the prior production commit; these were not waived.
+- Fixed actual zero-width Agenda titles and reception patient names by allowing controls to wrap; kept desktop patient visibility and triage access assertions. Removed duplicate legend labels with identical colors.
+- Fixed React 18 image fetch-priority attributes and public-page touch targets, small labels and collapsed FAQ focusability. Updated outdated test copy/color expectations and scoped duplicate task selectors. Route smoke tests now load each destination and wait for its visible heading; the sticky-header test scrolls past the actual strip position.
+- Current focused checks: 15 unit tests and TypeScript passed. Eleven of the first twelve browser cases passed; its arbitrary sticky scroll was corrected and the Agenda/Recepcao rerun passed. Remaining navigation/public viewport checks are running before the full CI gate.
+
+- Follow-up review found no material production regression. Its route-wait concern was addressed by loading each destination before asserting its heading. Thirty focused unit tests passed (15 agenda/search plus15 landing). Public QA passed all4 routes at4 viewport widths with original accessibility thresholds intact.
+- The31-screen capture matrix is now one test per viewport, preserving its180-second limit per case and every assertion/screenshot. The previous combined62-navigation case exceeded its cumulative limit on the local Windows host; individual page readiness is still checked. Full CI is the release gate.

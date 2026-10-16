@@ -372,6 +372,7 @@ export function AgendaPage() {
     return Object.entries(scheme.map)
       .map(([chave, color]) => ({ label: rotulo(chave), color }))
       .filter((item): item is { label: string; color: string } => !!item.label)
+      .filter((item, index, items) => items.findIndex(other => other.label === item.label && other.color === item.color) === index)
       .slice(0, 10);
   }, [scheme, medicoById, convenios, tipos, STATUS_CONHECIDOS]);
 

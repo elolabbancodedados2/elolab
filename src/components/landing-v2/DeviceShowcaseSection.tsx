@@ -146,7 +146,7 @@ export default function DeviceShowcaseSection() {
                       aria-pressed={selected}
                       onClick={() => setActiveIndex(index)}
                       className={cn(
-                        "relative inline-flex h-9 items-center gap-2 overflow-hidden rounded-full border px-3 font-inter text-xs transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-elolab-cyan",
+                        "relative inline-flex h-10 items-center gap-2 overflow-hidden rounded-full border px-3 font-inter text-xs transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-elolab-cyan",
                         selected ? "border-elolab-blue/20 bg-white text-elolab-navy shadow-sm" : "border-elolab-blue/10 bg-white/55 text-elolab-navy/55 hover:border-elolab-blue/20 hover:text-elolab-navy"
                       )}
                     >
