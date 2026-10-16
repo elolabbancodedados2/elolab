@@ -378,37 +378,26 @@ function SidebarMenuGroup({ group, collapsed, isOpen, onToggle, onExpand, curren
             className={cn(
               'w-full flex items-center gap-3 rounded-full px-3 py-2.5 text-sm font-medium transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]/50 focus-visible:ring-offset-1',
               collapsed && 'justify-center',
-              hasActiveChild
-                ? 'text-white hover:text-white'
-                : 'bg-white/80 text-sidebar-accent-foreground/75 shadow-sm ring-1 ring-black/[0.06] hover:bg-white hover:shadow-md hover:text-sidebar-accent-foreground',
+              'text-white hover:text-white hover:brightness-105',
             )}
-            style={hasActiveChild ? {
+            style={{
               background: 'var(--gradient-primary)',
-              boxShadow: '0 4px 14px rgba(16,128,202,0.35)',
-            } : undefined}
+              boxShadow: hasActiveChild
+                ? '0 4px 14px rgba(16,128,202,0.40)'
+                : '0 2px 6px rgba(16,128,202,0.18)',
+            }}
           >
             {collapsed ? (
               <motion.div
                 whileHover={{ scale: 1.12 }}
                 transition={{ type: 'spring', stiffness: 400, damping: 15 }}
-                className="h-9 w-9 rounded-full flex items-center justify-center transition-all"
-                style={{
-                  backgroundColor: hasActiveChild ? 'rgba(255,255,255,.18)' : 'rgba(255,255,255,0.85)',
-                  color: hasActiveChild ? '#fff' : group.color,
-                  boxShadow: hasActiveChild ? 'none' : '0 1px 4px rgba(0,0,0,0.10), 0 0 0 1px rgba(0,0,0,0.05)',
-                }}
+                className="h-9 w-9 rounded-full flex items-center justify-center bg-white/20 text-white transition-all"
               >
                 <GroupIcon className="h-4 w-4" />
               </motion.div>
             ) : (
               <>
-                <div
-                  className="h-6 w-6 rounded-lg flex items-center justify-center shrink-0 transition-all"
-                  style={{
-                    backgroundColor: hasActiveChild ? 'rgba(255,255,255,.18)' : `${group.color}1a`,
-                    color: hasActiveChild ? '#fff' : group.color,
-                  }}
-                >
+                <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-white/20 text-white transition-all">
                   <GroupIcon className="h-3.5 w-3.5" />
                 </div>
                 <span className="flex-1 text-left">{group.label}</span>
