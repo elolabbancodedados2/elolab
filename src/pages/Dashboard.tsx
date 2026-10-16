@@ -34,12 +34,19 @@ import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, LineChart, Line,
 } from 'recharts';
-import { dateOnlyInTimeZone, inicioDoDiaEmFusoIso, parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
+import { dateOnlyInTimeZone, inicioDoDiaEmFusoIso, parseDateOnly, toDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { valorRealizado } from '@/lib/lancamentos';
 import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
+
+function linkWhatsApp(telefone: string | null | undefined, mensagem: string) {
+  const digitos = (telefone ?? '').replace(/\D/g, '');
+  if (digitos.length < 10) return null;
+  const numero = digitos.startsWith('55') && digitos.length >= 12 ? digitos : `55${digitos}`;
+  return `https://wa.me/${numero}?text=${encodeURIComponent(mensagem)}`;
+}
 
 const formatCurrencyShort = (value: number) => {
   if (value >= 1000000) return `R$ ${(value / 1000000).toFixed(1)}M`;
@@ -530,6 +537,26 @@ function AdminDashboard() {
   const tarefasQuery = useMinhasTarefasPendentes();
   const { data: minhasTarefas = [] } = tarefasQuery;
   const tarefasAtrasadas = useMemo(() => minhasTarefas.filter(t => t.data_vencimento && t.data_vencimento < hoje).length, [minhasTarefas, hoje]);
+  const aniversariantesQuery = useQuery({
+    queryKey: ['dashboard-aniversariantes', user?.clinica_id ?? null, hoje],
+    enabled: !!user?.clinica_id,
+    staleTime: 60 * 60_000,
+    queryFn: async () => {
+      // A coluna é `date`, então filtramos pela lista de datas possíveis
+      // (mesmo dia/mês em cada ano) em vez de um LIKE sobre texto.
+      const mesDia = hoje.slice(5);
+      const datas = Array.from({ length: 111 }, (_, i) => `${anoHoje - i}-${mesDia}`);
+      const { data, error } = await supabase
+        .from('pacientes')
+        .select('id, nome, telefone')
+        .eq('clinica_id', user!.clinica_id!)
+        .in('data_nascimento', datas)
+        .order('nome')
+        .limit(20);
+      if (error) throw error;
+      return (data ?? []) as Array<{ id: string; nome: string; telefone: string | null }>;
+    },
+  });
 
   const resumoQuery = useQuery({
     queryKey: ['dashboard-admin-resumo', user?.clinica_id, seisMeses],
@@ -764,6 +791,53 @@ function AdminDashboard() {
   const hasData = totalPacientes > 0 || (resumo?.totalAgendamentos ?? 0) > 0 || (resumo?.totalLancamentos ?? 0) > 0;
   const firstName = user?.nome?.replace(/^(dr|dra|dr\(a\))\.?\s+/i, '').split(' ')[0] || 'equipe';
 
+  const amanhaDate = parseDateOnly(hoje)!;
+  amanhaDate.setDate(amanhaDate.getDate() + 1);
+  const amanha = toDateOnly(amanhaDate);
+  const confirmacoesAmanha = baseAgendamentos
+    .filter((ag) => ag.data === amanha && ag.status === 'agendado')
+    .sort((a, b) => (a.hora_inicio || '').localeCompare(b.hora_inicio || ''))
+    .map((ag) => ({
+      id: ag.id,
+      horario: ag.hora_inicio?.slice(0, 5) || '-',
+      paciente: ag.pacientes?.nome || 'Paciente',
+      whatsapp: linkWhatsApp(ag.pacientes?.telefone, `Olá, ${(ag.pacientes?.nome || '').split(' ')[0]}! Podemos confirmar sua consulta amanhã às ${ag.hora_inicio?.slice(0, 5)}?`),
+    }));
+
+  const inicioSemana = parseDateOnly(hoje)!;
+  inicioSemana.setDate(inicioSemana.getDate() - ((inicioSemana.getDay() + 6) % 7));
+  const ocupacaoSemana = Array.from({ length: 6 }, (_, i) => {
+    const dia = new Date(inicioSemana);
+    dia.setDate(inicioSemana.getDate() + i);
+    const iso = toDateOnly(dia);
+    return {
+      dia: format(dia, 'EEE', { locale: ptBR }).replace('.', ''),
+      total: baseAgendamentos.filter((ag) => ag.data === iso && ag.status !== 'cancelado').length,
+      hoje: iso === hoje,
+    };
+  });
+
+  const faltasMes = baseAgendamentos.filter((ag) => ag.status === 'faltou' && ag.data.startsWith(hoje.slice(0, 7))).length;
+  const resumoMes = {
+    ticketMedio: formatCurrency(stats.ticketMedio),
+    variacaoReceita: stats.trendReceita,
+    novosPacientes: stats.novosPacientesMes,
+    faltas: faltasMes,
+  };
+
+  const tarefasResumo = minhasTarefas.map((t) => ({
+    id: t.id,
+    titulo: t.titulo,
+    vencimento: t.data_vencimento ? format(parseDateOnly(t.data_vencimento)!, 'dd/MM', { locale: ptBR }) : null,
+    atrasada: !!t.data_vencimento && t.data_vencimento < hoje,
+  }));
+
+  const aniversariantes = (aniversariantesQuery.data ?? []).map((p) => ({
+    id: p.id,
+    nome: p.nome,
+    whatsapp: linkWhatsApp(p.telefone, `Parabéns, ${p.nome.split(' ')[0]}! A equipe da clínica deseja um feliz aniversário.`),
+  }));
+
   return (
     <div className="space-y-6 pb-10">
       <OnboardingWizard />
@@ -932,6 +1006,11 @@ function AdminDashboard() {
             desempenho={{ percentual: stats.taxaFinalizacao, descricao: `${stats.consultasFinalizadas} de ${stats.totalHoje} consultas finalizadas hoje` }}
             fluxoFinanceiro={stats.monthlyChartData.some((item) => (Number.isFinite(item.receitas) && item.receitas !== 0) || (Number.isFinite(item.despesas) && item.despesas !== 0)) ? stats.monthlyChartData : []}
             acoes={[{ label: 'Agendar consulta', href: '/agenda', icon: 'calendar' }, { label: 'Novo paciente', href: '/pacientes', icon: 'patient' }, { label: 'Abrir fila', href: '/fila', icon: 'queue' }, { label: 'Prontuários', href: '/prontuarios', icon: 'document' }]}
+            confirmacoesAmanha={confirmacoesAmanha}
+            ocupacaoSemana={ocupacaoSemana}
+            resumoMes={resumoMes}
+            tarefas={tarefasResumo}
+            aniversariantes={aniversariantes}
           />
         )}
       </motion.div>
