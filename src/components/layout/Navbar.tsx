@@ -181,7 +181,7 @@ export function Navbar({ onMenuClick, mobileMenuOpen }: NavbarProps) {
       )}
 
       {/* Agenda de hoje (ocupa o espaço livre do cabeçalho) */}
-      <div className="hidden min-w-0 flex-1 px-2 md:block">
+      <div className="hidden min-w-0 max-w-[560px] flex-1 px-2 md:block xl:mr-16">
         <BarraHorario />
       </div>
 

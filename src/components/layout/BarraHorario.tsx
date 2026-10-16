@@ -72,8 +72,10 @@ function Foto({ pessoa }: { pessoa?: Pessoa | null }) {
 function Segmento({ consulta, hoje, atual, vazio, className }: {
   consulta: Consulta | null; hoje: string; atual?: boolean; vazio: string; className?: string;
 }) {
-  const horario = consulta
-    ? `${rotuloDia(consulta.data, hoje)}${consulta.hora_inicio.slice(0, 5)}${consulta.hora_fim ? `–${consulta.hora_fim.slice(0, 5)}` : ''}`
+  const detalhe = consulta
+    ? consulta.data === hoje
+      ? `${consulta.hora_inicio.slice(0, 5)} · ${formatAppointmentStatus(consulta.status)}`
+      : `${rotuloDia(consulta.data, hoje)}${consulta.hora_inicio.slice(0, 5)}`
     : null;
   return (
     <Link
@@ -94,9 +96,7 @@ function Segmento({ consulta, hoje, atual, vazio, className }: {
           </div>
           <div className="min-w-0 flex-1 leading-tight">
             <p className="truncate text-[12px] font-semibold">{primeiroNome(consulta.pacientes?.nome) || 'Paciente'}</p>
-            <p className={cn('truncate text-[10px] capitalize', atual ? 'text-white/85' : 'text-white/50')}>
-              {horario} · {formatAppointmentStatus(consulta.status)}
-            </p>
+            <p className={cn('truncate text-[10px] capitalize', atual ? 'text-white/85' : 'text-white/50')}>{detalhe}</p>
           </div>
         </>
       ) : (
@@ -127,14 +127,12 @@ export function BarraHorario() {
       .sort((a, b) => a.data.localeCompare(b.data) || minutos(a.hora_inicio) - minutos(b.hora_inicio))
   ), [data, isMedicoOnly, medicoId]);
 
-  const { anterior, atual, proxima, totalHoje } = useMemo(() => {
+  const { atual, proxima, totalHoje } = useMemo(() => {
     const deHoje = consultas.filter(c => c.data === hoje);
     const emCurso = deHoje.find(c => minutos(c.hora_inicio) <= minutosAgora && minutosAgora < fimEmMinutos(c)) ?? null;
-    const referencia = emCurso ? minutos(emCurso.hora_inicio) : minutosAgora;
-    const passadas = deHoje.filter(c => c !== emCurso && fimEmMinutos(c) <= referencia);
     const inicioFuturo = emCurso ? fimEmMinutos(emCurso) : minutosAgora;
     const futuras = consultas.filter(c => c !== emCurso && (c.data > hoje || minutos(c.hora_inicio) >= inicioFuturo));
-    return { anterior: passadas.at(-1) ?? null, atual: emCurso, proxima: futuras[0] ?? null, totalHoje: deHoje.length };
+    return { atual: emCurso, proxima: futuras[0] ?? null, totalHoje: deHoje.length };
   }, [consultas, hoje, minutosAgora]);
 
   if (!profile?.clinica_id) return null;
@@ -149,16 +147,15 @@ export function BarraHorario() {
       aria-busy={isLoading}
       className="flex h-11 min-w-0 items-center gap-1 rounded-full bg-[#171717] p-1 pl-3 text-white shadow-md"
     >
-      <div className="hidden shrink-0 pr-2 leading-tight xl:block">
-        <p className="text-[12px] font-semibold">{isMedicoOnly ? 'Sua agenda' : 'Agenda de hoje'}</p>
+      <div className="hidden shrink-0 pr-2 leading-tight 2xl:block">
+        <p className="text-[12px] font-semibold">{isMedicoOnly ? 'Sua agenda' : 'Hoje'}</p>
         <p className="text-[10px] capitalize text-white/50">{dataFormatada} · {totalHoje} consulta{totalHoje === 1 ? '' : 's'}</p>
       </div>
       {isLoading && !data ? (
         <div className="h-9 flex-1 animate-pulse rounded-full bg-white/10" />
       ) : (
         <>
-          <Segmento consulta={anterior} hoje={hoje} vazio="Nenhuma anterior" className="hidden 2xl:flex" />
-          <Segmento consulta={atual} hoje={hoje} atual vazio={totalHoje ? 'Sem consulta em andamento' : 'Sem consultas hoje'} />
+          <Segmento consulta={atual} hoje={hoje} atual vazio={totalHoje ? 'Sem consulta agora' : 'Sem consultas hoje'} />
           <Segmento consulta={proxima} hoje={hoje} vazio="Nenhuma próxima" className="hidden lg:flex" />
         </>
       )}
