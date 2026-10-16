@@ -57,7 +57,7 @@ export default function MinhaFilaTarefas() {
   const today = todaySaoPauloDateOnly(now);
   const clinicaId = profile?.clinica_id;
   const userId = user?.id;
-  const canOpenPatient = isAdmin() || hasRole('recepcao') || hasRole('enfermagem');
+  const canOpenPatient = isAdmin() || hasRole('recepcao') || hasRole('enfermagem') || hasRole('medico');
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 60_000);

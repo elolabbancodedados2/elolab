@@ -273,7 +273,7 @@ function App() {
                           <Route path="/mapa-coleta" element={<SupabaseProtectedRoute allowedRoles={['admin', 'enfermagem']}><PlanFeatureGuard feature="exames" requiredPlan="EloLab Pro"><MapaColeta /></PlanFeatureGuard></SupabaseProtectedRoute>} />
                           <Route path="/guias-externas" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem']}><PlanFeatureGuard feature="exames" requiredPlan="EloLab Pro"><GuiasExternas /></PlanFeatureGuard></SupabaseProtectedRoute>} />
                           <Route path="/laudos-lab" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico', 'enfermagem']}><PlanFeatureGuard feature="exames" requiredPlan="EloLab Pro"><LaudosLab /></PlanFeatureGuard></SupabaseProtectedRoute>} />
-                          <Route path="/pacientes" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem']}><Pacientes /></SupabaseProtectedRoute>} />
+                          <Route path="/pacientes" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'medico']}><Pacientes /></SupabaseProtectedRoute>} />
                           {/* `medico` estava fora, então o médico recebia "sem permissão" numa
                               tela que o banco já autorizava: fila_atendimento e agendamentos
                               liberam has_any_role exceto financeiro, e triagens liberam

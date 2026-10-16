@@ -114,7 +114,7 @@ export const menuGroups: MenuGroup[] = [
     color: '#7C3AED',
     roles: ['admin', 'recepcao', 'enfermagem', 'medico', 'financeiro'],
     items: [
-      { label: 'Cadastro e histórico', icon: Users, href: '/pacientes', roles: ['admin', 'recepcao', 'enfermagem'] },
+      { label: 'Cadastro e histórico', icon: Users, href: '/pacientes', roles: ['admin', 'recepcao', 'enfermagem', 'medico'] },
       { label: 'Convênios', icon: Building2, href: '/convenios', roles: ['admin', 'recepcao', 'financeiro'] },
       { label: 'Acesso ao portal do paciente', icon: UsersRound, href: '/portal-pacientes', roles: ['admin'] },
     ],
