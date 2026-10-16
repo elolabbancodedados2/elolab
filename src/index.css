@@ -130,11 +130,11 @@
     --success: 152 69% 30%;
     --success-foreground: 0 0% 100%;
 
-    /* Background & Surfaces */
-    --background: 240 20% 95%;
+    /* Background & Surfaces — branco gelo: branco puro com leve toque frio */
+    --background: 210 25% 98%;
     --foreground: 240 10% 12%;
 
-    /* Cards */
+    /* Cards — branco puro para contrastar com o fundo gelo */
     --card: 0 0% 100%;
     --card-foreground: 240 10% 12%;
 
@@ -142,15 +142,15 @@
     --popover-foreground: 240 10% 12%;
 
     /* Secondary */
-    --secondary: 240 14% 95%;
+    --secondary: 210 18% 96%;
     --secondary-foreground: 240 10% 14%;
 
     /* Muted */
-    --muted: 240 14% 95%;
+    --muted: 210 18% 96%;
     --muted-foreground: 240 6% 40%;
 
     /* Accent */
-    --accent: 240 14% 95%;
+    --accent: 210 18% 96%;
     --accent-foreground: 240 10% 14%;
 
     /* Destructive — mantém o significado semântico, não muda */
@@ -166,8 +166,8 @@
     --info-foreground: 0 0% 100%;
 
     /* Borders */
-    --border: 240 10% 88%;
-    --input: 240 10% 84%;
+    --border: 210 15% 90%;
+    --input: 210 15% 86%;
     --ring: 240 6% 10%;
 
     --radius: 1rem;
@@ -187,10 +187,10 @@
     --gradient-highlight: linear-gradient(135deg, #CFF34D 0%, #9FE62B 100%);
     --gradient-card: linear-gradient(180deg, hsl(0 0% 100%) 0%, hsl(240 20% 99%) 100%);
     --gradient-sidebar: linear-gradient(180deg, #F3F3F6 0%, #F3F3F6 55%, #8E82DD 100%);
-    --gradient-surface: linear-gradient(135deg, #f6f6f8 0%, #ececf1 100%);
+    --gradient-surface: linear-gradient(135deg, #f5f8fb 0%, #edf1f7 100%);
 
-    /* Rail de navegação — claro, com degradê lilás na base (não mais escura) */
-    --sidebar-background: 240 20% 96%;
+    /* Rail de navegação — branco gelo */
+    --sidebar-background: 210 25% 98%;
     --sidebar-foreground: 240 6% 40%;
     --sidebar-primary: 240 6% 10%;
     --sidebar-primary-foreground: 0 0% 100%;
