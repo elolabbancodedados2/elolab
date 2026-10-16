@@ -91,7 +91,3 @@ export function initWebVitals() {
     }, 0);
   });
 }
-
-export function getWebVitals(): WebVitalMetric[] {
-  return [...metricsLog];
-}
