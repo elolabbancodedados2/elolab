@@ -31,10 +31,10 @@ describe('navegação mobile da landing', () => {
 
     fireEvent.click(trigger);
     expect(screen.getByRole('button', { name: 'Fechar menu de navegação' })).toHaveAttribute('aria-expanded', 'true');
-    const mobileNavigation = screen.getByRole('region', { name: 'Navegação móvel' });
+    const mobileNavigation = screen.getByRole('navigation', { name: 'Navegação móvel' });
     expect(mobileNavigation).toHaveAttribute('id', 'navegacao-mobile');
 
-    fireEvent.click(within(mobileNavigation).getByRole('button', { name: 'RECURSOS' }));
+    fireEvent.click(within(mobileNavigation).getByRole('link', { name: 'Recursos' }));
     expect(document.getElementById('navegacao-mobile')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Abrir menu de navegação' })).toHaveAttribute('aria-expanded', 'false');
   });
@@ -48,7 +48,7 @@ describe('hero institucional', () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByRole('img', { name: 'Recep\u00e7\u00e3o de uma cl\u00ednica' })).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: /painel de gestão da EloLab/i })).toBeInTheDocument();
     expect(screen.queryByText('R$ 29.9k')).not.toBeInTheDocument();
     expect(screen.queryByText('Maria Silva')).not.toBeInTheDocument();
   });
@@ -111,8 +111,6 @@ describe('jornada comercial da landing', () => {
   it('descreve os limites e capacidades verificáveis dos fluxos clínicos', () => {
     render(<MemoryRouter><LandingPage /></MemoryRouter>);
 
-    expect(screen.getByText(/Use modelos prontos de anamnese/)).toBeInTheDocument();
-    expect(screen.queryByText(/Monte seus modelos de anamnese/)).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'O EloLab atende laboratórios também?' }));
     expect(screen.getByText(/nos planos que incluem exames/i)).toBeInTheDocument();

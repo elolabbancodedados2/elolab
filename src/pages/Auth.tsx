@@ -24,6 +24,9 @@ import { passwordSchema } from '@/lib/passwordPolicy';
 import { AuthSwitch } from '@/components/ui/auth-switch';
 import { interpretarErroLogin, loginSchema, type LoginFormData } from '@/lib/authValidation';
 import logoHorizontal from '@/assets/elolab-logo-identidade.png';
+import AnimatedGradient from '@/components/landing-v2/animated-gradient';
+
+const AUTH_BACKGROUND_CONFIG = { preset: 'Prism' } as const;
 
 function rotuloFrequencia(frequencia: string) {
   switch (frequencia) {
@@ -415,14 +418,9 @@ export default function Auth() {
 
   // ─── Render ──────────────────────────────────────────────
   return (
-    <div className="relative min-h-svh overflow-x-hidden bg-background text-foreground">
-      <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div className="absolute inset-0 bg-[linear-gradient(160deg,hsl(var(--background))_0%,hsl(var(--muted))_100%)]" />
-        <div className="absolute -left-32 top-24 h-[420px] w-[420px] rounded-full bg-primary/20 blur-3xl" />
-        <div className="absolute -right-24 bottom-0 h-[380px] w-[380px] rounded-full bg-highlight/20 blur-3xl" />
-        <div className="absolute left-1/2 top-1/3 h-[300px] w-[300px] -translate-x-1/2 rounded-full bg-primary/10 blur-3xl" />
-        <div className="absolute inset-0 bg-white/20" />
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_50%_48%,rgba(255,255,255,0.06)_0%,rgba(241,238,254,0.12)_65%,rgba(241,238,254,0.35)_100%)]" />
+    <div className="relative isolate min-h-svh overflow-x-hidden bg-background text-foreground">
+      <div aria-hidden="true" className="pointer-events-none fixed inset-0 overflow-hidden bg-[#f2f9fd]">
+        <AnimatedGradient config={AUTH_BACKGROUND_CONFIG} style={{ zIndex: 0 }} />
       </div>
 
       <header className="relative z-20 flex h-[82px] items-center justify-between px-5 sm:px-8 xl:px-14">

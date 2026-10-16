@@ -1,6 +1,7 @@
 import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import AnimatedGradient from '@/components/landing-v2/animated-gradient';
 import { CardPayment, initMercadoPago } from '@mercadopago/sdk-react';
 import { addMonths } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -212,7 +213,7 @@ function PagamentoCartao({
               hideFormTitle: true,
               style: {
                 theme: 'default',
-                customVariables: { baseColor: '#5B47E0', borderRadiusMedium: '10px', borderRadiusLarge: '12px' },
+                customVariables: { baseColor: '#1080CA', borderRadiusMedium: '10px', borderRadiusLarge: '12px' },
               },
               texts: { formSubmit: trialDias > 0 ? 'Começar teste grátis' : `Assinar por ${brl(valor)}` },
             },
@@ -675,7 +676,12 @@ export default function PlanoCheckout() {
   const features = (plano.features || []).filter((f) => featureLabels[f]).slice(0, 6);
 
   return (
-    <div className="mx-auto max-w-6xl space-y-8 pb-16">
+    <div className="relative isolate min-h-svh overflow-x-hidden">
+      <div aria-hidden="true" className="pointer-events-none fixed inset-0 overflow-hidden bg-[#f2f9fd]">
+        <AnimatedGradient config={{ preset: 'Prism' }} style={{ zIndex: 0 }} />
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_50%_30%,rgba(255,255,255,0.75)_0%,rgba(255,255,255,0.5)_55%,rgba(255,255,255,0.25)_100%)]" />
+      </div>
+    <div className="relative z-10 mx-auto max-w-6xl space-y-8 px-4 pb-16 pt-6 sm:px-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Button asChild variant="ghost" size="sm" className="-ml-2 gap-1.5 text-muted-foreground">
           <Link to="/planos"><ArrowLeft className="h-4 w-4" /> Voltar aos planos</Link>
@@ -870,6 +876,7 @@ export default function PlanoCheckout() {
           </div>
         </aside>
       </div>
+    </div>
     </div>
   );
 }

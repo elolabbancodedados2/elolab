@@ -19,6 +19,7 @@ export default {
         sans: ['Inter', 'system-ui', 'sans-serif'],
         display: ['Inter', 'system-ui', 'sans-serif'],
         greeting: ['Baloo 2', 'Inter', 'system-ui', 'sans-serif'],
+        inter: ['Inter', 'system-ui', 'sans-serif'],
       },
       colors: {
         border: "hsl(var(--border))",
@@ -26,6 +27,11 @@ export default {
         ring: "hsl(var(--ring))",
         background: "hsl(var(--background))",
         foreground: "hsl(var(--foreground))",
+        "elolab-navy": "rgb(var(--elolab-navy-rgb) / <alpha-value>)",
+        "elolab-blue": "rgb(var(--elolab-blue-rgb) / <alpha-value>)",
+        "elolab-cyan": "rgb(var(--elolab-cyan-rgb) / <alpha-value>)",
+        "elolab-paper": "rgb(var(--elolab-paper-rgb) / <alpha-value>)",
+        "elolab-ink": "rgb(var(--elolab-ink-rgb) / <alpha-value>)",
         brand: {
           DEFAULT: "hsl(var(--brand))",
           foreground: "hsl(var(--brand-foreground))",
