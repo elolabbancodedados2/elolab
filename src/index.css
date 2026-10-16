@@ -123,8 +123,8 @@
     --primary-glow: 204 85% 43%;
 
     /* Destaque (verde-limão) para blocos "em andamento" e confirmações pontuais */
-    --highlight: 73 87% 63%;
-    --highlight-foreground: 73 100% 12%;
+    --highlight: 186 79% 54%;
+    --highlight-foreground: 240 10% 12%;
 
     /* Success — mantém o significado semântico, não muda */
     --success: 152 69% 30%;

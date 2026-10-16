@@ -108,7 +108,7 @@ export default function PlatformCobrancas() {
           <p className="mt-1 text-sm text-muted-foreground">Assinaturas, vencimentos e processamento do Mercado Pago.</p>
           {overview.data?.generated_at && <p className="mt-1 text-xs text-muted-foreground">Dados consolidados em {dataHora(overview.data.generated_at)}</p>}
         </div>
-        <Button variant="outline" className="min-h-11 border-[#DCD7F0] bg-white text-[#17122B] hover:bg-[#F9F8FF]" onClick={() => void overview.refetch()} disabled={updating}>
+        <Button variant="outline" className="min-h-11 border-[#DCD7F0] bg-white text-[#111111] hover:bg-[#F9F8FF]" onClick={() => void overview.refetch()} disabled={updating}>
           <RefreshCw className={`mr-2 h-4 w-4 ${updating ? 'animate-spin' : ''}`} /> Atualizar
         </Button>
       </header>
@@ -125,7 +125,7 @@ export default function PlatformCobrancas() {
             ['Sem assinatura', metrics?.sem_assinatura || 0],
           ].map(([label, value], index) => {
             const accents = ['border-l-[#4F2FED] bg-[#F6F4FF]', 'border-l-[#16A77A] bg-[#F2FBF7]', 'border-l-[#45BBD1] bg-[#F1FBFD]', 'border-l-[#E6A12A] bg-[#FFFAF0]', 'border-l-[#9992BB] bg-[#F8F7FC]'];
-            return <Card key={label} className={`rounded-xl border border-[#E9E6F5] border-l-4 shadow-sm ${accents[index]}`}><CardContent className="py-4"><p className="text-xs font-medium text-[#41396B]">{label}</p><p className="mt-1 text-2xl font-bold tracking-tight text-[#17122B]">{value}</p></CardContent></Card>;
+            return <Card key={label} className={`rounded-xl border border-[#E9E6F5] border-l-4 shadow-sm ${accents[index]}`}><CardContent className="py-4"><p className="text-xs font-medium text-[#41396B]">{label}</p><p className="mt-1 text-2xl font-bold tracking-tight text-[#111111]">{value}</p></CardContent></Card>;
           })}
         </div>
       )}

@@ -41,7 +41,7 @@ export default function PlatformIntegracoes(){
   return <div className="space-y-6">
     <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-[#E6E2F7] bg-gradient-to-r from-[#F4F2FF] via-white to-[#f0edff] p-5 sm:p-6">
       <div><h1 className="flex items-center gap-2 text-2xl font-bold"><PlugZap />Integrações por Clínica</h1><p className="text-muted-foreground">Inventário de status e atividade registrados, sem exposição de chaves, URLs ou payloads. Esta tela não testa as credenciais nos provedores.</p></div>
-      <Button variant="outline" className="min-h-11 border-[#DCD7F0] bg-white text-[#17122B] hover:bg-[#F9F8FF]" onClick={() => void query.refetch()} disabled={query.isFetching}><RefreshCw className={`mr-2 h-4 w-4 ${query.isFetching ? 'animate-spin' : ''}`} />Atualizar dados</Button>
+      <Button variant="outline" className="min-h-11 border-[#DCD7F0] bg-white text-[#111111] hover:bg-[#F9F8FF]" onClick={() => void query.refetch()} disabled={query.isFetching}><RefreshCw className={`mr-2 h-4 w-4 ${query.isFetching ? 'animate-spin' : ''}`} />Atualizar dados</Button>
     </div>
 
     {query.isLoading ? (

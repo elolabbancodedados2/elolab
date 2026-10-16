@@ -728,11 +728,11 @@ export default function Documentacao() {
   return (
     <div className="space-y-6 pb-8">
       <div className="rounded-2xl border border-[#E6E2F7] bg-gradient-to-r from-[#F4F2FF] via-white to-[#f0edff] p-5 sm:p-6">
-        <h1 className="flex items-center gap-3 text-2xl font-bold tracking-tight text-[#17122B] sm:text-3xl">
-          <BookOpen className="h-7 w-7 text-[#5B47E0]" />
+        <h1 className="flex items-center gap-3 text-2xl font-bold tracking-tight text-[#111111] sm:text-3xl">
+          <BookOpen className="h-7 w-7 text-[#1080CA]" />
           Documentação do Sistema
         </h1>
-        <p className="mt-1 text-sm text-[#17122B]/65">
+        <p className="mt-1 text-sm text-[#111111]/65">
           Orientações dos principais módulos e fluxos do EloLab
         </p>
       </div>

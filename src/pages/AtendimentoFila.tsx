@@ -34,7 +34,7 @@ export default function AtendimentoFila() {
   return (
     <div className="space-y-4">
       <Tabs value={tab} onValueChange={handleTabChange} className="w-full">
-        <TabsList className={`grid w-full max-w-md ${podeAcessarTriagem ? 'grid-cols-2' : 'grid-cols-1'} mx-auto rounded-xl border border-[#E2DEF3] bg-[#F0EDFF] p-1`}>
+        <TabsList className={`grid w-full max-w-md ${podeAcessarTriagem ? 'grid-cols-2' : 'grid-cols-1'} mx-auto rounded-xl border border-[#DCE6F2] bg-[#EEF4FA] p-1`}>
           <TabsTrigger value="fila" className="min-h-10 gap-2 rounded-lg">
             <ClipboardCheck className="h-4 w-4" />
             Fila

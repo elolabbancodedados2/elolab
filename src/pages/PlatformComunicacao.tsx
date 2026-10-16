@@ -165,7 +165,7 @@ export default function PlatformComunicacao() {
           <h1 className="flex items-center gap-2 text-2xl font-bold"><Megaphone className="h-6 w-6 text-primary" /> Comunicação global</h1>
           <p className="mt-1 text-sm text-muted-foreground">Envie avisos para todas as clínicas, uma clínica específica ou clientes de um plano.</p>
         </div>
-        <Button variant="outline" className="min-h-11 border-[#DCD7F0] bg-white text-[#17122B] hover:bg-[#F9F8FF]" onClick={() => { void clinics.refetch(); void plans.refetch(); void announcements.refetch(); }} disabled={updatingOptions}>
+        <Button variant="outline" className="min-h-11 border-[#DCD7F0] bg-white text-[#111111] hover:bg-[#F9F8FF]" onClick={() => { void clinics.refetch(); void plans.refetch(); void announcements.refetch(); }} disabled={updatingOptions}>
           <RefreshCw className={`mr-2 h-4 w-4 ${updatingOptions ? 'animate-spin' : ''}`} />Atualizar dados
         </Button>
       </header>

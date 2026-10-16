@@ -183,7 +183,7 @@ export default function PlatformIA() {
           <h1 className="flex items-center gap-2 text-2xl font-bold"><Bot className="h-6 w-6 text-primary" /> Governança da IA</h1>
           <p className="mt-1 text-sm text-muted-foreground">Modelos, limites, prompts versionados e consumo agregado da plataforma.</p>
         </div>
-        <Button className="min-h-11 border-[#DCD7F0] bg-white text-[#17122B] hover:bg-[#F9F8FF]" variant="outline" onClick={() => { void config.refetch(); void usage.refetch(); void versions.refetch(); }} disabled={publish.isPending || config.isFetching || usage.isFetching || versions.isFetching}>
+        <Button className="min-h-11 border-[#DCD7F0] bg-white text-[#111111] hover:bg-[#F9F8FF]" variant="outline" onClick={() => { void config.refetch(); void usage.refetch(); void versions.refetch(); }} disabled={publish.isPending || config.isFetching || usage.isFetching || versions.isFetching}>
           <RefreshCw className={`mr-2 h-4 w-4 ${config.isFetching || usage.isFetching || versions.isFetching ? 'animate-spin' : ''}`} /> Atualizar dados
         </Button>
       </header>

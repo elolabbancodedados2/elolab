@@ -155,7 +155,7 @@ export default function PlatformRelatoriosAgendados() {
           <h1 className="flex items-center gap-2 text-2xl font-bold"><FileBarChart className="h-6 w-6 text-primary" /> Relatórios agendados</h1>
           <p className="mt-1 text-sm text-muted-foreground">O resumo executivo inclui dados agregados da plataforma e não contém dados clínicos.</p>
         </div>
-        <Button className="min-h-11 border-[#DCD7F0] bg-white text-[#17122B] hover:bg-[#F9F8FF]" variant="outline" onClick={invalidateReports} disabled={schedules.isFetching || runs.isFetching}>
+        <Button className="min-h-11 border-[#DCD7F0] bg-white text-[#111111] hover:bg-[#F9F8FF]" variant="outline" onClick={invalidateReports} disabled={schedules.isFetching || runs.isFetching}>
           <RefreshCw className={`mr-2 h-4 w-4 ${schedules.isFetching || runs.isFetching ? 'animate-spin' : ''}`} /> Atualizar
         </Button>
       </header>

@@ -120,7 +120,7 @@ export default function PlatformSeguranca() {
           <p className="text-muted-foreground">Postura de acesso, MFA, sessões e operações sensíveis.</p>
           {query.data?.generated_at && <p className="mt-1 text-xs text-muted-foreground">Dados atualizados em {new Date(query.data.generated_at).toLocaleString('pt-BR')}</p>}
         </div>
-        <Button variant="outline" className="min-h-11 border-[#DCD7F0] bg-white text-[#17122B] hover:bg-[#F9F8FF]" onClick={() => { void query.refetch(); }} disabled={query.isFetching}>
+        <Button variant="outline" className="min-h-11 border-[#DCD7F0] bg-white text-[#111111] hover:bg-[#F9F8FF]" onClick={() => { void query.refetch(); }} disabled={query.isFetching}>
           <RefreshCw className={`mr-2 h-4 w-4 ${query.isFetching ? 'animate-spin' : ''}`} />Atualizar
         </Button>
       </div>

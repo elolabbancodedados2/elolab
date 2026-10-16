@@ -75,7 +75,7 @@ export default function PlatformHistoricoFinanceiro() {
         </div>
         <div className="flex gap-2">
           <Select value={days} onValueChange={setDays}><SelectTrigger className="w-32" aria-label="Período"><SelectValue /></SelectTrigger><SelectContent>{['30', '90', '180', '365'].map((value) => <SelectItem key={value} value={value}>{value} dias</SelectItem>)}</SelectContent></Select>
-          <Button variant="outline" className="min-h-11 border-[#DCD7F0] bg-white text-[#17122B] hover:bg-[#F9F8FF]" onClick={() => void history.refetch()} disabled={history.isFetching}><RefreshCw className={`mr-2 h-4 w-4 ${history.isFetching ? 'animate-spin' : ''}`} /> Atualizar</Button>
+          <Button variant="outline" className="min-h-11 border-[#DCD7F0] bg-white text-[#111111] hover:bg-[#F9F8FF]" onClick={() => void history.refetch()} disabled={history.isFetching}><RefreshCw className={`mr-2 h-4 w-4 ${history.isFetching ? 'animate-spin' : ''}`} /> Atualizar</Button>
         </div>
       </header>
 

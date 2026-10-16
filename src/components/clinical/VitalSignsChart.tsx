@@ -311,9 +311,9 @@ export function VitalSignsChart({ pacienteId, className }: VitalSignsChartProps)
                   type="monotone" 
                   dataKey="peso" 
                   name="Peso"
-                  stroke="#6a55f2"
+                  stroke="#1080CA"
                   strokeWidth={2}
-                  dot={{ fill: '#6a55f2' }}
+                  dot={{ fill: '#1080CA' }}
                   connectNulls
                 />
               </LineChart>

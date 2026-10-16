@@ -176,8 +176,8 @@ export default function AnalisePreditiva() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold text-[#17122B]">Risco de faltas</h1>
-        <p className="text-[#17122B]/65">
+        <h1 className="text-3xl font-bold text-[#111111]">Risco de faltas</h1>
+        <p className="text-[#111111]/65">
           Índice heurístico baseado no histórico para ajudar a equipe a priorizar confirmações; não é uma previsão estatística confirmada. Revise cada caso antes de entrar em contato.
         </p>
         <p className={cn('mt-2 text-xs', temPrevisaoAntiga ? 'text-warning' : 'text-muted-foreground')} role={temPrevisaoAntiga ? 'alert' : 'status'}>
@@ -234,7 +234,7 @@ export default function AnalisePreditiva() {
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <CardTitle>Agendamentos por Risco</CardTitle>
             <Select value={filtroRisco} onValueChange={setFiltroRisco}>
-              <SelectTrigger aria-label="Filtrar agendamentos por nível de risco de falta" className="w-full border-[#E2DEF3] bg-white text-[#17122B] sm:w-48">
+              <SelectTrigger aria-label="Filtrar agendamentos por nível de risco de falta" className="w-full border-[#DCE6F2] bg-white text-[#111111] sm:w-48">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -351,11 +351,11 @@ export default function AnalisePreditiva() {
       </Card>
 
       {/* Info box */}
-      <Card className="border-[#E2DEF3] bg-[#F0EDFF]">
+      <Card className="border-[#DCE6F2] bg-[#EEF4FA]">
         <CardContent className="pt-4 pb-4">
           <div className="flex gap-3">
-            <TrendingUp className="h-5 w-5 text-[#5B47E0] shrink-0 mt-0.5" />
-            <div className="text-sm text-[#17122B]">
+            <TrendingUp className="h-5 w-5 text-[#1080CA] shrink-0 mt-0.5" />
+            <div className="text-sm text-[#111111]">
               <p className="font-semibold mb-1">Como funciona o índice?</p>
               <ul className="text-xs space-y-1">
                 <li>✓ Histórico real de faltas e cancelamentos do paciente</li>
