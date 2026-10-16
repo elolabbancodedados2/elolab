@@ -72,16 +72,28 @@ function proximaVagaLivre(agendamentos: any[], bloqueios: any[], fromMin: number
   return null;
 }
 
-function DoctorHeader({ medico, date, agendamentos, bloqueios = [], columnIndex, inactive = false, onSlotClick }: any) {
-  const sorted = [...agendamentos].sort((a: any, b: any) => a.hora_inicio.localeCompare(b.hora_inicio));
+const STATUS_SEM_RESERVA = new Set(['cancelado', 'faltou']);
+
+function DoctorHeader({ medico, date, agendamentos, agendamentosDoDia, bloqueios = [], columnIndex, inactive = false, onSlotClick, expedienteMinutos }: any) {
+  // `agendamentos` é a lista exibida (pode estar filtrada por status/busca);
+  // `agendamentosDoDia` é a ocupação real da coluna, usada para "próximo",
+  // vaga livre e ocupação — senão um filtro faria horários ocupados parecerem livres.
+  const reais: any[] = (agendamentosDoDia ?? agendamentos).filter((a: any) => !STATUS_SEM_RESERVA.has(a.status));
+  const sorted = [...reais].sort((a: any, b: any) => a.hora_inicio.localeCompare(b.hora_inicio));
   const total = agendamentos.length;
   const confirmed = agendamentos.filter((a: any) => ['confirmado', 'em_atendimento', 'finalizado'].includes(a.status)).length;
   const hoje = todaySaoPauloDateOnly();
   const nowMin = minutesNowInSaoPaulo();
   const isToday = date === hoje;
   const next = isToday ? sorted.find((a: any) => toMinutes(a.hora_inicio) >= nowMin) : sorted[0];
-  const vagaLivre = inactive || date < hoje ? null : proximaVagaLivre(agendamentos, bloqueios, isToday ? nowMin : START_HOUR * 60);
+  const vagaLivre = inactive || date < hoje ? null : proximaVagaLivre(reais, bloqueios, isToday ? nowMin : START_HOUR * 60);
   const nomeExibido = nomeMedico(medico.nome || medico.crm);
+  const minutosOcupados = reais.reduce((acc: number, a: any) => {
+    const ini = toMinutes(a.hora_inicio);
+    const fim = a.hora_fim ? toMinutes(a.hora_fim) : ini + 30;
+    return acc + Math.max(0, fim - ini);
+  }, 0);
+  const ocupacao = expedienteMinutos > 0 ? Math.min(100, Math.round((minutosOcupados / expedienteMinutos) * 100)) : null;
 
   return (
     <div
@@ -109,7 +121,15 @@ function DoctorHeader({ medico, date, agendamentos, bloqueios = [], columnIndex,
           </div>
         )}
       </div>
-      <div className="mt-1.5 flex items-center gap-1.5 text-[10px] text-muted-foreground">
+      {ocupacao !== null && (
+        <div className="mt-1 flex items-center gap-1.5" title={`${minutosOcupados} de ${expedienteMinutos} minutos do expediente ocupados`}>
+          <div className="h-1 flex-1 overflow-hidden rounded-full bg-muted" role="progressbar" aria-label={`Ocupação de ${nomeExibido}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={ocupacao}>
+            <div className={cn('h-full rounded-full', ocupacao >= 90 ? 'bg-destructive' : 'bg-gradient-primary')} style={{ width: `${ocupacao}%` }} />
+          </div>
+          <span className="shrink-0 text-[9px] font-semibold tabular-nums text-muted-foreground">{ocupacao}%</span>
+        </div>
+      )}
+      <div className="mt-1 flex items-center gap-1.5 text-[10px] text-muted-foreground">
         {next ? (
           <>
             <span className="h-1.5 w-1.5 rounded-full bg-[#1080CA]" />
@@ -135,7 +155,7 @@ function DoctorHeader({ medico, date, agendamentos, bloqueios = [], columnIndex,
 }
 
 function DoctorColumn({
-  medico, date, agendamentos, bloqueios, colorFor, onSlotClick, onCardClick, convenioById, columnIndex, inactive = false,
+  medico, date, agendamentos, bloqueios, colorFor, onSlotClick, onCardClick, onNovaConsulta, convenioById, columnIndex, inactive = false,
 }: any) {
   const minutesToPx = (m: number) => (m / SLOT_MINUTES) * SLOT_PX;
   const columnRef = useRef<HTMLDivElement>(null);
@@ -241,6 +261,7 @@ function DoctorColumn({
             slotHeight={SLOT_PX}
             minutesToPx={minutesToPx}
             onClick={() => onCardClick(ag)}
+            onNovaConsulta={onNovaConsulta}
             convenioName={convenioById?.[ag.pacientes?.convenio_id]?.nome}
           />
         ))}
@@ -268,8 +289,9 @@ function DropSlot({ id, data, className, style, onClick, onKeyDown, accessibleNa
 }
 
 export function DailyMultiDoctorView({
-  date, medicos, agendamentos, bloqueios, colorFor, onSlotClick, onCardClick, convenioById,
+  date, medicos, agendamentos, agendamentosDoDia, bloqueios, colorFor, onSlotClick, onCardClick, onNovaConsulta, convenioById, expedientePorMedico = {},
 }: any) {
+  const ocupacaoBase: any[] = agendamentosDoDia ?? agendamentos;
   const activeDoctors = useMemo(() => medicos.filter((m: any) => m.ativo !== false), [medicos]);
   // Keep existing bookings visible after a clinician is deactivated, but do not
   // expose empty slots that could create new appointments for that clinician.
@@ -333,8 +355,10 @@ export function DailyMultiDoctorView({
                 columnIndex={idx}
                 inactive={inactive}
                 agendamentos={agendamentos.filter((a: any) => a.medico_id === medico.id)}
+                agendamentosDoDia={ocupacaoBase.filter((a: any) => a.medico_id === medico.id)}
                 bloqueios={bloqueios.filter((b: any) => b.medico_id === medico.id && date >= b.data_inicio && date <= b.data_fim)}
                 onSlotClick={onSlotClick}
+                expedienteMinutos={expedientePorMedico[medico.id] ?? 0}
               />
             ))}
           </div>
@@ -391,6 +415,7 @@ export function DailyMultiDoctorView({
                 convenioById={convenioById}
                 onSlotClick={onSlotClick}
                 onCardClick={onCardClick}
+                onNovaConsulta={onNovaConsulta}
               />
             ))}
           </div>

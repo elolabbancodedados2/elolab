@@ -2,8 +2,9 @@ import { useState } from 'react';
 import { useDraggable } from '@dnd-kit/core';
 import { useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
-import { CheckCircle2, PlayCircle, Ban, Trash2, Edit3, User, Receipt, Video, MessageCircle } from 'lucide-react';
+import { CheckCircle2, PlayCircle, Ban, Trash2, Edit3, User, Receipt, Video, MessageCircle, CalendarPlus, Copy } from 'lucide-react';
 import { linkWhatsApp } from '@/lib/whatsapp';
+import { parseDateOnly, toDateOnly } from '@/lib/dateOnly';
 import {
   ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger,
 } from '@/components/ui/context-menu';
@@ -28,7 +29,11 @@ interface Props {
   minutesToPx: (m: number) => number;
   onClick: () => void;
   convenioName?: string;
+  /** Abre o formulário de nova consulta já preenchido (retorno, duplicar). */
+  onNovaConsulta?: (initial: any) => void;
 }
+
+const DIAS_RETORNO_PADRAO = 30;
 
 const STATUS_LABEL: Record<string, string> = {
   agendado: 'Agendado',
@@ -76,7 +81,7 @@ const TIPO_LABEL: Record<string, string> = {
   triagem: 'Triagem', coleta: 'Coleta', enfermagem: 'Enfermagem', vacina: 'Vacina', curativo: 'Curativo',
 };
 
-export function AppointmentCard({ agendamento, color, minutesToPx, onClick, convenioName }: Props) {
+export function AppointmentCard({ agendamento, color, minutesToPx, onClick, convenioName, onNovaConsulta }: Props) {
   const queryClient = useQueryClient();
   const { profile } = useSupabaseAuth();
   const navigate = useNavigate();
@@ -108,6 +113,22 @@ export function AppointmentCard({ agendamento, color, minutesToPx, onClick, conv
     paciente?.telefone,
     `Olá, ${patientName.split(' ')[0]}! Podemos confirmar sua consulta em ${dataBr} às ${horaInicio}? Responda SIM para confirmar.`,
   );
+  const basePreenchida = () => ({
+    paciente_id: agendamento.paciente_id,
+    medico_id: agendamento.medico_id || '',
+    sala_id: agendamento.sala_id || '',
+    hora_inicio: horaInicio,
+    hora_fim: horaFim || '',
+    status: 'agendado',
+    observacoes: ['exame', 'exames'].includes(String(agendamento.tipo || '').toLocaleLowerCase('pt-BR')) ? agendamento.observacoes || '' : '',
+  });
+  const agendarRetorno = () => {
+    const d = parseDateOnly(agendamento.data)!;
+    d.setDate(d.getDate() + DIAS_RETORNO_PADRAO);
+    onNovaConsulta?.({ ...basePreenchida(), data: toDateOnly(d), tipo: 'retorno' });
+  };
+  const duplicarConsulta = () => onNovaConsulta?.({ ...basePreenchida(), data: agendamento.data, tipo: agendamento.tipo || 'consulta' });
+
   const accessibleName = [
     `Consulta de ${patientName}`,
     horaFim ? `${horaInicio} às ${horaFim}` : `às ${horaInicio}`,
@@ -368,6 +389,7 @@ export function AppointmentCard({ agendamento, color, minutesToPx, onClick, conv
         {...listeners}
         aria-roledescription="consulta"
         aria-label={accessibleName}
+        data-agendamento-id={agendamento.id}
         onClick={(e) => { e.stopPropagation(); onClick(); }}
         onKeyDown={(e) => {
           // Enter abre a consulta; Espaço continua com o sensor de arraste.
@@ -459,6 +481,13 @@ export function AppointmentCard({ agendamento, color, minutesToPx, onClick, conv
           }}>
           <Video className="mr-2 h-4 w-4" /> Criar sala e copiar link
         </ContextMenuItem>}
+        {onNovaConsulta && agendamento.paciente_id && (
+          <>
+            <ContextMenuSeparator />
+            <ContextMenuItem onSelect={agendarRetorno}><CalendarPlus className="mr-2 h-4 w-4 text-[#1080CA]" /> Agendar retorno (+{DIAS_RETORNO_PADRAO} dias)</ContextMenuItem>
+            <ContextMenuItem onSelect={duplicarConsulta}><Copy className="mr-2 h-4 w-4" /> Duplicar consulta</ContextMenuItem>
+          </>
+        )}
         <ContextMenuSeparator />
         {podeAbrirFicha && <ContextMenuItem
           disabled={!agendamento.paciente_id}

@@ -10,9 +10,12 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { PacienteCombobox } from '@/components/patients/PacienteCombobox';
 import { usePacienteResumo } from '@/hooks/useBuscaPacientes';
-import { CircleX, Loader2, MessageCircle } from 'lucide-react';
+import { CircleX, History, Loader2, MessageCircle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { useQuery } from '@tanstack/react-query';
+import { linkWhatsApp } from '@/lib/whatsapp';
+import { formatAppointmentStatus } from '@/components/dashboard/appointmentStatus';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { mensagemDeErro } from '@/lib/erros';
 import { useQueryClient } from '@tanstack/react-query';
@@ -65,6 +68,39 @@ export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos,
   }, [open, initial]);
 
   const { data: paciente } = usePacienteResumo(form.paciente_id);
+  const ultimoAtendimentoQuery = useQuery({
+    queryKey: ['agenda-ultimo-atendimento', profile?.clinica_id, form.paciente_id, initial?.id ?? null],
+    enabled: open && !!profile?.clinica_id && !!form.paciente_id,
+    staleTime: 60_000,
+    queryFn: async () => {
+      let q = supabase.from('agendamentos')
+        .select('id, data, hora_inicio, tipo, status, medicos(nome, crm)')
+        .eq('clinica_id', profile.clinica_id)
+        .eq('paciente_id', form.paciente_id)
+        .lte('data', todaySaoPauloDateOnly())
+        .not('status', 'in', '(cancelado,faltou)')
+        .order('data', { ascending: false })
+        .order('hora_inicio', { ascending: false })
+        .limit(1);
+      if (initial?.id) q = q.neq('id', initial.id);
+      const { data, error } = await q.maybeSingle();
+      if (error) throw error;
+      return data as any;
+    },
+  });
+  const ultimoAtendimento = ultimoAtendimentoQuery.data;
+  const whatsappPaciente = paciente?.telefone
+    ? linkWhatsApp(paciente.telefone, `Olá, ${(paciente.nome_social || paciente.nome || '').split(' ')[0]}! Aqui é da clínica.`)
+    : null;
+  const terminoPrevisto = (() => {
+    if (form.hora_fim || !/^\d{2}:\d{2}$/.test(form.hora_inicio || '')) return null;
+    const tipoEscolhido = (tipos as any[]).find((t: any) => String(t.nome || '').toLocaleLowerCase('pt-BR') === String(form.tipo || '').toLocaleLowerCase('pt-BR'));
+    const duracao = Number(tipoEscolhido?.duracao_minutos) > 0 ? Number(tipoEscolhido.duracao_minutos) : 30;
+    const [h, m] = form.hora_inicio.split(':').map(Number);
+    const fim = h * 60 + m + duracao;
+    if (fim >= 24 * 60) return null;
+    return { hora: `${String(Math.floor(fim / 60)).padStart(2, '0')}:${String(fim % 60).padStart(2, '0')}`, duracao };
+  })();
   // Keep the current provider selectable when editing an existing booking,
   // even if that provider has since been deactivated. Inactive providers remain
   // unavailable for new appointments.
@@ -440,10 +476,30 @@ export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos,
             <Label htmlFor="appointment-patient">Buscar paciente</Label>
             <PacienteCombobox id="appointment-patient" value={form.paciente_id} onChange={(id) => setForm((f: any) => ({ ...f, paciente_id: id }))} />
             {paciente && (
-              <div className="rounded-md border p-3 text-sm space-y-1">
-                <div className="font-medium">{paciente.nome_social || paciente.nome}</div>
+              <div className="space-y-1 rounded-xl border border-border/60 bg-muted/30 p-3 text-sm">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="font-semibold">{paciente.nome_social || paciente.nome}</div>
+                  {whatsappPaciente && (
+                    <a href={whatsappPaciente} target="_blank" rel="noopener noreferrer" aria-label="Abrir conversa no WhatsApp" className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#1080CA]/10 text-[#1080CA] transition hover:bg-gradient-primary hover:text-white">
+                      <MessageCircle className="h-4 w-4" />
+                    </a>
+                  )}
+                </div>
                 {paciente.cpf && <div className="text-xs text-muted-foreground">CPF: {paciente.cpf}</div>}
                 {paciente.telefone && <div className="text-xs text-muted-foreground">Tel: {paciente.telefone}</div>}
+                {ultimoAtendimento && (
+                  <div className="mt-1.5 flex items-center gap-1.5 border-t border-border/60 pt-2 text-xs text-muted-foreground">
+                    <History className="h-3.5 w-3.5 shrink-0 text-[#1080CA]" />
+                    <span>
+                      Último atendimento: <span className="font-medium text-foreground">{String(ultimoAtendimento.data).split('-').reverse().join('/')} às {String(ultimoAtendimento.hora_inicio).slice(0, 5)}</span>
+                      {ultimoAtendimento.medicos?.nome && ` · ${nomeMedico(ultimoAtendimento.medicos.nome)}`}
+                      {' · '}{formatAppointmentStatus(ultimoAtendimento.status)}
+                    </span>
+                  </div>
+                )}
+                {!ultimoAtendimento && !ultimoAtendimentoQuery.isLoading && (
+                  <div className="mt-1.5 border-t border-border/60 pt-2 text-xs text-muted-foreground">Primeira consulta na clínica.</div>
+                )}
               </div>
             )}
             <div className="flex justify-end">
@@ -479,6 +535,11 @@ export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos,
                 <Input id="appointment-end" type="time" value={form.hora_fim} onChange={(e) => setForm({ ...form, hora_fim: e.target.value })} />
               </div>
             </div>
+            {terminoPrevisto && (
+              <p className="-mt-1 text-xs text-muted-foreground">
+                Sem término informado: será salvo até <span className="font-semibold text-foreground">{terminoPrevisto.hora}</span> ({terminoPrevisto.duracao} min pelo tipo escolhido).
+              </p>
+            )}
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               <div>
                 <Label htmlFor="appointment-type">Tipo</Label>

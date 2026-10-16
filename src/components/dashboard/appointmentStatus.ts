@@ -9,6 +9,8 @@ export function formatAppointmentStatus(status: string) {
     atendimento_finalizado: 'Finalizado',
     finalizado: 'Finalizado',
     faltou: 'Faltou',
+    cancelado: 'Cancelado',
+    fila_atendimento: 'Na fila de atendimento',
     aguardando_pagamento: 'Aguardando pagamento',
     aguardando_pagamento_adicional: 'Aguardando pagamento adicional',
     pago: 'Pago',

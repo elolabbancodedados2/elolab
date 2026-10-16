@@ -162,9 +162,10 @@ export function AgendaPage() {
     const handler = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName;
       if (['INPUT', 'TEXTAREA', 'SELECT'].includes(tag) || (e.target as HTMLElement)?.isContentEditable) return;
+      if (['checkbox', 'switch', 'combobox', 'menuitem'].includes((e.target as HTMLElement)?.getAttribute?.('role') || '')) return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
-      // Com um modal aberto, as setas e letras pertencem a ele, não à agenda atrás.
-      if (document.querySelector('[role="dialog"], [role="alertdialog"]')) return;
+      // Com um modal ou menu aberto, as setas e letras pertencem a ele, não à agenda atrás.
+      if (document.querySelector('[role="dialog"], [role="alertdialog"], [role="menu"], [data-state="open"][role="listbox"]')) return;
       const d = parseISO(date);
       const step = view === 'monthly' ? addMonths : view === 'weekly' ? addWeeks : addDays;
       if (e.key === 'ArrowLeft') { setDate(format(step(d, -1), 'yyyy-MM-dd')); e.preventDefault(); }
@@ -352,32 +353,42 @@ export function AgendaPage() {
 
   const { scheme, setScheme, colorFor } = useAgendaColorScheme();
 
+  const STATUS_CONHECIDOS = useMemo(() => new Set([
+    'agendado', 'confirmado', 'aguardando', 'aguardando_triagem', 'em_triagem', 'fila_atendimento', 'em_atendimento',
+    'finalizado', 'atendimento_finalizado', 'aguardando_pagamento', 'aguardando_pagamento_adicional', 'pago', 'cancelado', 'faltou',
+  ]), []);
+
   const legend = useMemo(() => {
+    // O esquema salvo guarda chaves de todos os critérios juntas (os status
+    // padrão são sempre mesclados). A legenda só mostra as do critério ativo.
     const rotulo = (chave: string): string | null => {
       switch (scheme.criterion) {
-        case 'status': return formatAppointmentStatus(chave);
+        case 'status': return STATUS_CONHECIDOS.has(chave) ? formatAppointmentStatus(chave) : null;
         case 'medico': return medicoById[chave] ? nomeMedico(medicoById[chave].nome || medicoById[chave].crm) : null;
         case 'convenio': return chave === 'particular' ? 'Particular' : (convenios as any[]).find(c => c.id === chave)?.nome ?? null;
-        case 'tipo': return (tipos as any[]).find(t => t.id === chave || t.nome === chave)?.nome ?? chave;
+        case 'tipo': return (tipos as any[]).find(t => t.id === chave || t.nome === chave)?.nome ?? null;
       }
     };
     return Object.entries(scheme.map)
       .map(([chave, color]) => ({ label: rotulo(chave), color }))
       .filter((item): item is { label: string; color: string } => !!item.label)
-      .slice(0, 8);
-  }, [scheme, medicoById, convenios, tipos]);
+      .slice(0, 10);
+  }, [scheme, medicoById, convenios, tipos, STATUS_CONHECIDOS]);
 
-  const filtered = useMemo(() => {
+  // A política de acesso continua sendo a autoridade final, mas o médico
+  // não deve sequer receber uma primeira renderização com a agenda de toda a
+  // clínica enquanto o useEffect sincroniza o filtro visual.
+  const allowedMedicoId = isMedicoOnly ? myMedicoId : null;
+
+  // Base visível: escopo do profissional + filtro de médicos + busca. O filtro
+  // de status entra só em `filtered`, para que totais, "próximo" e vaga livre
+  // continuem refletindo a ocupação real do dia.
+  const baseVisivel = useMemo(() => {
     const q = search.trim().toLowerCase();
-    // A política de acesso continua sendo a autoridade final, mas o médico
-    // não deve sequer receber uma primeira renderização com a agenda de toda a
-    // clínica enquanto o useEffect sincroniza o filtro visual.
-    const allowedMedicoId = isMedicoOnly ? myMedicoId : null;
     return allAppts.filter((a: any) => {
       if (isMedicoOnly && !allowedMedicoId) return false;
       if (allowedMedicoId && a.medico_id !== allowedMedicoId) return false;
       if (medicoFilter.length && !medicoFilter.includes(a.medico_id)) return false;
-      if (statusFilter.length && !statusFilter.includes(a.status)) return false;
       if (q) {
         // O CPF é gravado com máscara: concatenar e comparar com o termo cru
         // fazia "12345678900" não achar "123.456.789-00".
@@ -385,7 +396,12 @@ export function AgendaPage() {
       }
       return true;
     });
-  }, [allAppts, medicoFilter, statusFilter, search, isMedicoOnly, myMedicoId]);
+  }, [allAppts, medicoFilter, search, isMedicoOnly, allowedMedicoId]);
+
+  const filtered = useMemo(
+    () => statusFilter.length ? baseVisivel.filter((a: any) => statusFilter.includes(a.status)) : baseVisivel,
+    [baseVisivel, statusFilter],
+  );
 
   const visibleMedicos = useMemo(
     () => isMedicoOnly && myMedicoId ? medicos.filter((m: any) => m.id === myMedicoId) : medicos,
@@ -393,13 +409,83 @@ export function AgendaPage() {
   );
 
   const dayAppts = useMemo(() => filtered.filter((a: any) => a.data === date), [filtered, date]);
+  const dayApptsBase = useMemo(() => baseVisivel.filter((a: any) => a.data === date), [baseVisivel, date]);
 
   const totals = useMemo(() => ({
-    total: dayAppts.length,
-    confirmados: dayAppts.filter((a: any) => a.status === 'confirmado').length,
-    aguardando: dayAppts.filter((a: any) => a.status === 'aguardando' || a.status === 'agendado').length,
-    cancelados: dayAppts.filter((a: any) => a.status === 'cancelado').length,
-  }), [dayAppts]);
+    total: dayApptsBase.length,
+    confirmados: dayApptsBase.filter((a: any) => a.status === 'confirmado').length,
+    aguardando: dayApptsBase.filter((a: any) => a.status === 'aguardando' || a.status === 'agendado').length,
+    cancelados: dayApptsBase.filter((a: any) => a.status === 'cancelado').length,
+  }), [dayApptsBase]);
+
+  // Dias com consulta no mês exibido (grade de 6 semanas), só para marcar o
+  // mini‑calendário — carrega apenas data e status.
+  const gradeMes = useMemo(() => {
+    const ini = startOfWeek(startOfMonth(parseISO(date)), { weekStartsOn: 1 });
+    return { inicio: format(ini, 'yyyy-MM-dd'), fim: format(addDays(ini, 41), 'yyyy-MM-dd') };
+  }, [date]);
+  const diasQuery = useSupabaseQuery<{ id: string; data: string; status: string; medico_id: string }>('agendamentos', {
+    select: 'id, data, status, medico_id',
+    filters: [
+      { column: 'data', operator: 'gte', value: gradeMes.inicio },
+      { column: 'data', operator: 'lte', value: gradeMes.fim },
+    ],
+    staleTime: 60_000,
+  });
+  const diasComConsulta = useMemo(() => {
+    const mapa: Record<string, number> = {};
+    for (const a of diasQuery.data ?? []) {
+      if (a.status === 'cancelado' || a.status === 'faltou') continue;
+      if (allowedMedicoId && a.medico_id !== allowedMedicoId) continue;
+      mapa[a.data] = (mapa[a.data] ?? 0) + 1;
+    }
+    return mapa;
+  }, [diasQuery.data, allowedMedicoId]);
+
+  // Expediente de cada profissional no dia da semana exibido, para a barra de
+  // ocupação do cabeçalho da visão diária.
+  const diaSemana = new Date(`${date}T12:00:00Z`).getUTCDay();
+  const idsMedicosVisiveis = useMemo(() => visibleMedicos.map((m: any) => m.id).sort(), [visibleMedicos]);
+  const expedienteQuery = useQuery({
+    queryKey: ['agenda-expediente', profile?.clinica_id, diaSemana, idsMedicosVisiveis],
+    enabled: !!profile?.clinica_id && idsMedicosVisiveis.length > 0 && view === 'daily',
+    staleTime: 5 * 60_000,
+    queryFn: async () => {
+      const { data, error } = await (supabase.from('medico_disponibilidade' as any)
+        .select('medico_id, hora_inicio, hora_fim')
+        .in('medico_id', idsMedicosVisiveis)
+        .eq('dia_semana', diaSemana)
+        .eq('ativo', true) as any);
+      if (error) throw error;
+      const minutos: Record<string, number> = {};
+      for (const j of (data as any[]) ?? []) {
+        const ini = toMinutes(String(j.hora_inicio).slice(0, 5));
+        const fim = toMinutes(String(j.hora_fim).slice(0, 5));
+        if (Number.isFinite(ini) && Number.isFinite(fim) && fim > ini) minutos[j.medico_id] = (minutos[j.medico_id] ?? 0) + (fim - ini);
+      }
+      return minutos;
+    },
+  });
+  const expedientePorMedico = expedienteQuery.data ?? {};
+
+  const proximaDoDia = useMemo(() => {
+    if (date !== todaySaoPauloDateOnly()) return null;
+    const agora = new Date();
+    const partes = new Intl.DateTimeFormat('en-GB', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(agora);
+    const nowMin = Number(partes.find(p => p.type === 'hour')?.value ?? 0) * 60 + Number(partes.find(p => p.type === 'minute')?.value ?? 0);
+    return [...dayApptsBase]
+      .filter((a: any) => !['cancelado', 'faltou'].includes(a.status))
+      .sort((a: any, b: any) => a.hora_inicio.localeCompare(b.hora_inicio))
+      .find((a: any) => toMinutes(a.hora_inicio.slice(0, 5)) >= nowMin) ?? null;
+  }, [dayApptsBase, date]);
+
+  const irParaProxima = () => {
+    if (!proximaDoDia) { toast.info('Não há mais consultas hoje.'); return; }
+    const el = document.querySelector<HTMLElement>(`[data-agendamento-id="${proximaDoDia.id}"]`);
+    if (!el) { toast.info('A próxima consulta está fora desta visão.', { description: 'Limpe os filtros para vê-la.' }); return; }
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    el.focus({ preventScroll: true });
+  };
 
   const sensors = useSensors(
     // Enter fica livre para abrir a consulta; Espaço pega e solta o card.
@@ -537,7 +623,7 @@ export function AgendaPage() {
     }
   };
 
-  const doMove = async (ag: any, slot: { medico_id: string; data: string; hora_inicio: string }) => {
+  const doMove = async (ag: any, slot: { medico_id: string; data: string; hora_inicio: string }, opcoes: { desfazendo?: boolean } = {}) => {
     if (!podeRemarcarAgendamento(ag.status)) {
       toast.error('Esta consulta nao pode ser remarcada depois que o atendimento comecou ou terminou.');
       return;
@@ -570,7 +656,7 @@ export function AgendaPage() {
       updateQuery = ag.updated_at
         ? updateQuery.eq('updated_at', ag.updated_at)
         : updateQuery.is('updated_at', null);
-      const { data, error } = await (updateQuery.select('id').maybeSingle() as any);
+      const { data, error } = await (updateQuery.select('id, updated_at').maybeSingle() as any);
       if (error) {
         const conflitoDeRecurso = String(error.message || '').includes('AGENDA_RECURSO_CONFLITO');
         const overlap = error.code === '23P01' || String(error.message || '').includes('agendamentos_sem_sobreposicao');
@@ -589,8 +675,18 @@ export function AgendaPage() {
         toast.error('A consulta não foi remarcada.', { description: 'Ela pode ter sido alterada ou removida por outro usuário. Atualize a agenda.' });
         void queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
       } else {
-        toast.success('Consulta remarcada');
         void queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
+        if (opcoes.desfazendo) {
+          toast.success('Remarcação desfeita');
+        } else {
+          const movida = { ...ag, medico_id: slot.medico_id, data: slot.data, hora_inicio: hh(newStart), hora_fim: hh(newEnd), updated_at: data.updated_at };
+          const origem = { medico_id: ag.medico_id, data: ag.data, hora_inicio: String(ag.hora_inicio).slice(0, 5) };
+          toast.success('Consulta remarcada', {
+            description: `${slot.data.split('-').reverse().join('/')} às ${slot.hora_inicio}`,
+            action: { label: 'Desfazer', onClick: () => { void doMove(movida, origem, { desfazendo: true }); } },
+            duration: 8000,
+          });
+        }
       }
     } catch (error) {
       toast.error('Não foi possível remarcar a consulta.', { description: error instanceof Error ? error.message : 'Verifique sua conexão e tente novamente.' });
@@ -638,6 +734,8 @@ export function AgendaPage() {
           waitingCount={waiting.length}
           totals={totals}
           legend={legend}
+          diasComConsulta={diasComConsulta}
+          onIrParaProxima={view === 'daily' && date === todaySaoPauloDateOnly() ? irParaProxima : undefined}
         />
 
         {allAppts.length >= MAX_LINHAS_AUTO && (
@@ -675,11 +773,14 @@ export function AgendaPage() {
                     date={date}
                     medicos={medicoFilter.length ? visibleMedicos.filter((m: any) => medicoFilter.includes(m.id)) : visibleMedicos}
                     agendamentos={dayAppts}
+                    agendamentosDoDia={dayApptsBase}
                     bloqueios={bloqueios}
                     colorFor={colorFor}
                     convenioById={Object.fromEntries((convenios as any[]).map(c => [c.id, c]))}
+                    expedientePorMedico={expedientePorMedico}
                     onSlotClick={handleSlotClick}
                     onCardClick={(a: any) => setDialogState({ open: true, initial: a })}
+                    onNovaConsulta={(initial: any) => setDialogState({ open: true, initial })}
                   />
                 </div>
                 <MobileDailyAppointments

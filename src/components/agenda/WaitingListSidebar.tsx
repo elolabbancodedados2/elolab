@@ -2,8 +2,9 @@ import { useDraggable } from '@dnd-kit/core';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ChevronLeft, Users } from 'lucide-react';
+import { ChevronLeft, MessageCircle, Users } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { linkWhatsApp } from '@/lib/whatsapp';
 import { getPrioridadeListaEspera } from '@/lib/listaEsperaPrioridade';
 import { ErrorState } from '@/components/ErrorState';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -36,18 +37,37 @@ function WaitingCard({ item }: { item: Item }) {
   });
   const paciente = item.pacientes;
   const prioridade = item.prioridade ? getPrioridadeListaEspera(item.prioridade) : null;
+  const nome = paciente?.nome_social || paciente?.nome || 'Paciente';
+  const whatsapp = linkWhatsApp(paciente?.telefone, `Olá, ${nome.split(' ')[0]}! Surgiu um horário na clínica. Podemos agendar sua consulta?`);
   return (
     <div
       ref={setNodeRef}
       {...attributes}
       {...listeners}
       className={cn(
-        'rounded-lg border border-border bg-card p-3 cursor-grab active:cursor-grabbing hover:shadow-sm transition-shadow',
+        'rounded-xl border border-border/60 bg-card p-3 cursor-grab active:cursor-grabbing shadow-xs hover:border-[#1080CA]/40 hover:shadow-sm transition-all',
         isDragging && 'opacity-40'
       )}
     >
-      <div className="text-sm font-medium truncate">{paciente?.nome_social || paciente?.nome || 'Paciente'}</div>
-      {paciente?.telefone && <div className="text-[11px] text-muted-foreground">{paciente.telefone}</div>}
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="text-sm font-medium truncate">{nome}</div>
+          {paciente?.telefone && <div className="text-[11px] text-muted-foreground">{paciente.telefone}</div>}
+        </div>
+        {whatsapp && (
+          <a
+            href={whatsapp}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={`Chamar ${nome} no WhatsApp`}
+            onPointerDown={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#1080CA]/10 text-[#1080CA] transition hover:bg-gradient-primary hover:text-white"
+          >
+            <MessageCircle className="h-4 w-4" />
+          </a>
+        )}
+      </div>
       <div className="flex flex-wrap gap-1 mt-2">
         {prioridade && (
           <Badge variant="outline" className={cn('text-[10px]', prioridade.className)}>

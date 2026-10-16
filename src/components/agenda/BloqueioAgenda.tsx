@@ -255,7 +255,7 @@ export function BloqueioAgenda({ medicoIdFilter }: BloqueioAgendaProps) {
                   <SelectTrigger><SelectValue placeholder="Selecione o médico" /></SelectTrigger>
                   <SelectContent>
                     {medicos.filter(m => m.ativo).map((m) => (
-                      <SelectItem key={m.id} value={m.id}>{nomeMedico(m.crm)} - {m.especialidade || 'Geral'}</SelectItem>
+                      <SelectItem key={m.id} value={m.id}>{nomeMedico(m.nome || m.crm)} - {m.especialidade || 'Geral'}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
