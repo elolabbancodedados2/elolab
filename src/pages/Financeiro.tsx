@@ -54,9 +54,8 @@ const CATEGORIAS_DESPESA: Record<string, string> = {
 };
 
 const PIE_COLORS = [
-  'hsl(var(--primary))', 'hsl(var(--success))', 'hsl(var(--warning))',
-  'hsl(var(--destructive))', 'hsl(var(--info))', 'hsl(var(--accent-foreground))',
-  'hsl(var(--muted-foreground))', 'hsl(var(--primary))',
+  '#1080CA', '#2ED5E7', 'hsl(var(--success))', 'hsl(var(--warning))',
+  'hsl(var(--destructive))', '#111111', 'hsl(var(--muted-foreground))', '#6366f1',
 ];
 
 const statusLiquidadoParcialOuTotal = (status: string | null) => status === 'pago' || status === 'parcial';
@@ -289,17 +288,20 @@ export default function Financeiro() {
         title="Painel Financeiro"
         description="Análise completa de receitas, despesas e resultados"
         icon={<DollarSign />}
-        className="rounded-2xl border border-border bg-gradient-to-r from-accent/70 via-card to-accent/70 p-4 shadow-sm sm:p-5"
+        className="rounded-[22px] border border-border/60 bg-card p-4 shadow-xs sm:p-5"
         actions={(
-          <div className="flex items-center gap-2 rounded-xl border border-border bg-card/90 p-1 shadow-sm">
-            <Button aria-label="Mês anterior" variant="ghost" size="icon" className="h-8 w-8 rounded-lg text-primary hover:bg-accent" onClick={() => setCurrentDate(subMonths(currentDate, 1))}>
+          <div className="flex items-center gap-1 rounded-full border border-border/60 bg-card p-1 shadow-xs">
+            <Button aria-label="Mês anterior" variant="ghost" size="icon" className="h-8 w-8 rounded-full text-[#1080CA] hover:bg-[#1080CA]/10" onClick={() => setCurrentDate(subMonths(currentDate, 1))}>
               <ChevronLeft className="h-4 w-4" />
             </Button>
             <span className="min-w-[120px] text-center text-sm font-bold capitalize text-foreground">
               {format(currentDate, 'MMMM yyyy', { locale: ptBR })}
             </span>
-            <Button aria-label="Próximo mês" variant="ghost" size="icon" className="h-8 w-8 rounded-lg text-primary hover:bg-accent" onClick={() => setCurrentDate(addMonths(currentDate, 1))}>
+            <Button aria-label="Próximo mês" variant="ghost" size="icon" className="h-8 w-8 rounded-full text-[#1080CA] hover:bg-[#1080CA]/10" onClick={() => setCurrentDate(addMonths(currentDate, 1))}>
               <ChevronRight className="h-4 w-4" />
+            </Button>
+            <Button variant="ghost" size="sm" className="h-8 rounded-full px-3 text-xs font-semibold" onClick={() => setCurrentDate(new Date())}>
+              Hoje
             </Button>
           </div>
         )}
@@ -317,7 +319,7 @@ export default function Financeiro() {
           },
           {
             label: 'A Receber', value: kpis.aReceber, icon: Clock,
-            color: 'text-primary', bg: 'bg-primary/10', border: 'border-primary/20',
+            color: 'text-[#1080CA]', bg: 'bg-[#1080CA]/10', border: 'border-[#1080CA]/20',
             varNovaBase: false,
             sub: kpis.countPendentesReceber > 0 ? `${kpis.countPendentesReceber} em aberto` : undefined,
             varGoodWhenUp: false,
@@ -331,19 +333,20 @@ export default function Financeiro() {
           },
           {
             label: 'Resultado Líquido', value: kpis.saldo, icon: DollarSign,
-            color: kpis.saldo >= 0 ? 'text-success' : 'text-destructive',
-            bg: kpis.saldo >= 0 ? 'bg-success/10' : 'bg-destructive/10',
-            border: kpis.saldo >= 0 ? 'border-success/20' : 'border-destructive/20',
+            color: kpis.saldo >= 0 ? 'text-[#2ED5E7]' : 'text-red-300',
+            bg: 'bg-white/10',
+            border: 'border-transparent',
+            escuro: true,
             varNovaBase: false,
             varGoodWhenUp: true,
           },
         ].map((s) => (
           <div key={s.label}>
-            <Card className={cn('h-full border bg-gradient-to-br from-card to-muted/30 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md', s.border)}>
+            <Card className={cn('h-full rounded-2xl border border-border/60 shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md', s.border, 'escuro' in s && s.escuro && 'bg-[#111111] text-white')}>
               <CardContent className="py-4 px-5">
                 <div className="flex items-start justify-between">
                   <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{s.label}</p>
+                    <p className={cn('text-[10px] font-semibold uppercase tracking-wider', 'escuro' in s && s.escuro ? 'text-white/70' : 'text-muted-foreground')}>{s.label}</p>
                     <p className={cn('text-2xl font-black mt-1 tabular-nums', s.color)}>{fmtShort(s.value)}</p>
                     {s.varNovaBase ? (
                       <p className="text-[10px] mt-0.5 text-muted-foreground">Sem base no mês anterior</p>
@@ -388,10 +391,10 @@ export default function Financeiro() {
         {[
           { label: 'Atrasos acumulados', value: fmt(kpis.vencido), icon: AlertTriangle, color: 'text-destructive', sub: `${kpis.countContasVencidas} ${kpis.countContasVencidas === 1 ? 'conta vencida' : 'contas vencidas'} até hoje` },
           { label: 'A Pagar', value: fmt(kpis.aPagar), icon: CreditCard, color: 'text-warning', sub: kpis.countPendentesPagar > 0 ? `${kpis.countPendentesPagar} em aberto` : undefined },
-          { label: 'Taxa Recebimento', value: `${kpis.taxaRecebimento.toFixed(0)}%`, icon: Target, color: 'text-primary', sub: 'Contas com vencimento no mês' },
+          { label: 'Taxa Recebimento', value: `${kpis.taxaRecebimento.toFixed(0)}%`, icon: Target, color: 'text-[#1080CA]', sub: 'Contas com vencimento no mês' },
           { label: 'Margem de lucro', value: dre.margemLucro === null ? '—' : formatarPercentualFinanceiro(dre.margemLucro), icon: Percent, color: dre.margemLucro === null ? 'text-muted-foreground' : dre.margemLucro >= 0 ? 'text-success' : 'text-destructive', sub: dre.margemLucro === null ? 'Sem receita para calcular no período' : undefined },
         ].map((s, i) => (
-          <Card key={s.label} className="border">
+          <Card key={s.label} className="rounded-2xl border-border/60 shadow-xs">
             <CardContent className="py-3 px-4 flex items-center gap-3">
               <s.icon className={cn('h-4 w-4 shrink-0', s.color)} />
               <div>
@@ -433,7 +436,7 @@ export default function Financeiro() {
                     <Legend iconType="circle" wrapperStyle={{ fontSize: '0.7rem' }} />
                     <Bar dataKey="receitas" fill="hsl(var(--success))" radius={[4, 4, 0, 0]} name="Receitas" />
                     <Bar dataKey="despesas" fill="hsl(var(--destructive))" radius={[4, 4, 0, 0]} name="Despesas" />
-                    <Bar dataKey="lucro" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} name="Lucro" />
+                    <Bar dataKey="lucro" fill="#1080CA" radius={[4, 4, 0, 0]} name="Lucro" />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -446,7 +449,7 @@ export default function Financeiro() {
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-base flex items-center gap-2">
-                <FileText className="h-5 w-5 text-primary" />
+                <FileText className="h-5 w-5 text-[#1080CA]" />
                 DRE — Demonstrativo de Resultado
               </CardTitle>
               <CardDescription>
@@ -507,7 +510,7 @@ export default function Financeiro() {
                 'rounded-lg border p-4 flex items-center justify-between',
                 dre.totalReceitas === 0 && dre.totalDespesas === 0
                   ? 'bg-muted/30 border-border'
-                  : dre.lucroOperacional >= 0 ? 'bg-primary/5 border-primary/20' : 'bg-destructive/5 border-destructive/20'
+                  : dre.lucroOperacional >= 0 ? 'bg-[#1080CA]/5 border-[#1080CA]/20' : 'bg-destructive/5 border-destructive/20'
               )}>
                 <div>
                   <p className="text-xs font-bold uppercase tracking-wider">Resultado Operacional</p>
@@ -601,16 +604,16 @@ export default function Financeiro() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {[
             { label: 'Caixa Diário', desc: 'Abrir/fechar caixa, receber pagamentos', icon: HandCoins, href: '/caixa', color: 'text-success', bg: 'bg-success/10' },
-            { label: 'Contas a Receber', desc: 'Cobranças, recebimentos por categoria', icon: TrendingUp, href: '/contas-receber', color: 'text-primary', bg: 'bg-primary/10' },
+            { label: 'Contas a Receber', desc: 'Cobranças, recebimentos por categoria', icon: TrendingUp, href: '/contas-receber', color: 'text-[#1080CA]', bg: 'bg-[#1080CA]/10' },
             { label: 'Contas a Pagar', desc: 'Fornecedores, salários e despesas', icon: CreditCard, href: '/contas-pagar', color: 'text-destructive', bg: 'bg-destructive/10' },
             { label: 'Fluxo de Caixa', desc: 'Visão mensal de entradas e saídas', icon: Wallet, href: '/fluxo-caixa', color: 'text-info', bg: 'bg-info/10' },
             { label: 'Tabela de Preços', desc: 'Preços de exames por convênio', icon: Receipt, href: '/precos-exames', color: 'text-warning-foreground', bg: 'bg-warning/10' },
-            { label: 'Tipos de Consulta', desc: 'Valores, durações e categorias', icon: Stethoscope, href: '/tipos-consulta', color: 'text-accent-foreground', bg: 'bg-accent' },
+            { label: 'Tipos de Consulta', desc: 'Valores, durações e categorias', icon: Stethoscope, href: '/tipos-consulta', color: 'text-[#1080CA]', bg: 'bg-[#1080CA]/10' },
             { label: 'Relatórios', desc: 'Exportações e análises detalhadas', icon: BarChart3, href: '/relatorios', color: 'text-info', bg: 'bg-info/10' },
             { label: 'Pagamentos', desc: 'Histórico de pagamentos e recibos', icon: FileText, href: '/pagamentos', color: 'text-muted-foreground', bg: 'bg-muted' },
           ].map((item) => (
             <Card key={item.href} role="link" tabIndex={0} aria-label={`Abrir ${item.label}`}
-              className="group cursor-pointer hover:shadow-md hover:-translate-y-1 transition-all border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="group cursor-pointer rounded-2xl border border-border/60 shadow-xs transition-all hover:-translate-y-1 hover:border-[#1080CA]/40 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]"
               onClick={() => navigate(item.href)}
               onKeyDown={event => {
                 if (event.key === 'Enter' || event.key === ' ') {
