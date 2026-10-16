@@ -17,6 +17,9 @@ import { ImpersonationBanner } from '@/components/ImpersonationBanner';
 import { usePersonalPreferences } from '@/hooks/usePersonalPreferences';
 import { useOperationalEvents } from '@/hooks/useOperationalEvents';
 import { Version20Announcement } from '@/components/Version20Announcement';
+import { BarraHorario } from './BarraHorario';
+
+const ROTAS_COM_BARRA_HORARIO = new Set(['/dashboard', '/agenda', '/recepcao']);
 
 export function MainLayout() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -63,6 +66,7 @@ export function MainLayout() {
         >
           <div className="mx-auto w-full max-w-[1600px] px-3 pb-[calc(2rem+env(safe-area-inset-bottom))] pt-4 sm:px-5 md:px-6 md:pt-5 xl:px-8 xl:pt-6">
             <Breadcrumbs />
+            {ROTAS_COM_BARRA_HORARIO.has(location.pathname) && <BarraHorario />}
             <div className="animate-fade-in">
               {/* Barreira POR TELA. Havia só um ErrorBoundary no topo do App,
                   envolvendo tudo: um registro com campo inesperado em Analytics
