@@ -1,8 +1,9 @@
 import { useState, useMemo, useRef } from 'react';
 import {
-  Plus, Search, Edit, Trash2, Building2, Shield, FileText, Clock,
-  ExternalLink, User, Phone, Loader2, Globe, FlaskConical, DollarSign, Power,
+  Plus, Search, Edit, Trash2, Building2, Shield, ExternalLink, User, Phone, Loader2,
+  FlaskConical, DollarSign, Power, RefreshCw, X, Link2, Receipt, Tags, CheckCircle2, XCircle, Layers,
 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -31,6 +32,15 @@ import { normalizarTexto } from '@/lib/buscaPaciente';
 import { getConveniosPermissions } from '@/lib/conveniosPermissions';
 
 const VERSOES_TISS = ['04.01.00', '04.00.02', '03.05.00', '03.04.01'];
+
+type FiltroConvenio = 'todos' | 'ativos' | 'inativos' | 'com_tabela';
+
+const FILTRO_LABELS: Record<FiltroConvenio, string> = {
+  todos: 'todos os convênios',
+  ativos: 'convênios ativos',
+  inativos: 'convênios inativos',
+  com_tabela: 'convênios com tabela de exames',
+};
 
 function normalizarCnpj(value: string | null | undefined): string {
   return String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -446,19 +456,61 @@ function Convenios() {
   const [atualizandoStatusId, setAtualizandoStatusId] = useState<string | null>(null);
   const [newPlano, setNewPlano] = useState('');
   const [activeTab, setActiveTab] = useState('dados');
+  const [filtroStatus, setFiltroStatus] = useState<FiltroConvenio>('todos');
 
   const queryClient = useQueryClient();
   const { data: convenios = [], isLoading, error: erroConvenios, refetch: refetchConvenios } = useConvenios();
 
+  // Resumo leve: quais convênios já têm tabela de exames (mesmo prefixo da query da tabela para invalidar junto).
+  const tabelasQuery = useQuery({
+    queryKey: ['precos-exames-convenio', 'resumo', profile?.clinica_id ?? null],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('precos_exames_convenio')
+        .select('convenio_id')
+        .eq('clinica_id', profile?.clinica_id ?? '');
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!profile?.clinica_id,
+  });
+  const conveniosComTabela = useMemo(
+    () => new Set((tabelasQuery.data ?? []).map((row: any) => row.convenio_id as string)),
+    [tabelasQuery.data],
+  );
+
   const filteredConvenios = useMemo(() =>
     (convenios as any[]).filter(c => {
+      if (filtroStatus === 'ativos' && !c.ativo) return false;
+      if (filtroStatus === 'inativos' && c.ativo) return false;
+      if (filtroStatus === 'com_tabela' && !conveniosComTabela.has(c.id)) return false;
       const termo = searchTerm.trim();
       const termoCnpj = normalizarCnpj(termo);
       return normalizarTexto(c.nome).includes(normalizarTexto(termo)) ||
         normalizarTexto(c.codigo).includes(normalizarTexto(termo)) ||
         normalizarTexto(c.registro_ans).includes(normalizarTexto(termo)) ||
         (termoCnpj.length >= 3 && normalizarCnpj(c.cnpj).includes(termoCnpj));
-    }), [convenios, searchTerm]);
+    }), [convenios, searchTerm, filtroStatus, conveniosComTabela]);
+
+  const totalConvenios = (convenios as any[]).length;
+  const totalAtivos = (convenios as any[]).filter(c => c.ativo).length;
+  const totalInativos = totalConvenios - totalAtivos;
+  const totalComTabela = (convenios as any[]).filter(c => conveniosComTabela.has(c.id)).length;
+  const temFiltro = searchTerm.trim() !== '' || filtroStatus !== 'todos';
+  const limparFiltros = () => { setSearchTerm(''); setFiltroStatus('todos'); };
+  const refresh = () => { void refetchConvenios(); void tabelasQuery.refetch(); };
+
+  const copiarLinkPortal = async (c: any) => {
+    const url = urlHttpsSegura(c.portal_url);
+    if (!url) return;
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('Cópia indisponível neste navegador.');
+      await navigator.clipboard.writeText(url);
+      toast.success('Link do portal copiado!', { description: c.nome });
+    } catch (error: any) {
+      toast.error('Não foi possível copiar o link do portal.', { description: error?.message || 'Tente novamente.' });
+    }
+  };
 
   const handleNew = () => {
     setEditingId(null);
@@ -641,49 +693,125 @@ function Convenios() {
     <div className="space-y-6">
       <PageHeader
         title="Convênios"
-        description="Operadoras de saúde, faturamento TISS e tabelas de preços"
+        description={totalConvenios > 0
+          ? `${totalConvenios} convênio${totalConvenios === 1 ? '' : 's'} · ${totalAtivos} ativo${totalAtivos === 1 ? '' : 's'} · ${totalInativos} inativo${totalInativos === 1 ? '' : 's'} · ${totalComTabela} com tabela de exames`
+          : 'Operadoras de saúde, faturamento TISS e tabelas de preços'}
         icon={<Building2 />}
-        actions={podeGerenciarConvenios && (
-          <Button onClick={handleNew} className="gap-2">
-            <Plus className="h-4 w-4" />
-            Novo Convênio
-          </Button>
-        )}
+        actions={
+          <>
+            <Button asChild variant="outline" className="shrink-0 gap-2 rounded-full">
+              <Link to="/faturamento-convenios"><Receipt aria-hidden="true" className="h-4 w-4" /> TISS e glosas</Link>
+            </Button>
+            <Button asChild variant="outline" className="shrink-0 gap-2 rounded-full">
+              <Link to="/precos-servicos"><Tags aria-hidden="true" className="h-4 w-4" /> Preços e serviços</Link>
+            </Button>
+            <Button variant="outline" size="icon" className="shrink-0 rounded-full" onClick={refresh} aria-label="Atualizar convênios" title="Atualizar convênios">
+              <RefreshCw className="h-4 w-4" />
+            </Button>
+            {podeGerenciarConvenios && (
+              <Button onClick={handleNew} className="shrink-0 gap-2 rounded-full bg-[#111111] text-white shadow-md hover:bg-[#2b2b33]">
+                <Plus className="h-4 w-4" />
+                Novo Convênio
+              </Button>
+            )}
+          </>
+        }
       />
 
-      {/* KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Card className="border-border bg-card shadow-sm"><CardContent className="pt-4 flex items-center gap-3">
-          <div className="rounded-lg bg-primary/10 p-2"><Building2 className="h-5 w-5 text-primary" /></div>
-          <div><p className="text-2xl font-bold text-foreground">{(convenios as any[]).length}</p><p className="text-xs text-muted-foreground">Convênios</p></div>
-        </CardContent></Card>
-        <Card className="border-border bg-card shadow-sm"><CardContent className="pt-4 flex items-center gap-3">
-          <div className="rounded-lg bg-muted p-2"><Shield className="h-5 w-5 text-muted-foreground" /></div>
-          <div><p className="text-2xl font-bold text-foreground">{(convenios as any[]).filter(c => c.ativo).length}</p><p className="text-xs text-muted-foreground">Ativos</p></div>
-        </CardContent></Card>
-        <Card className="border-border bg-card shadow-sm"><CardContent className="pt-4 flex items-center gap-3">
-          <div className="rounded-lg bg-info/10 p-2"><FileText className="h-5 w-5 text-info" /></div>
-          <div><p className="text-2xl font-bold text-foreground">{(convenios as any[]).filter(c => c.registro_ans).length}</p><p className="text-xs text-muted-foreground">Com ANS</p></div>
-        </CardContent></Card>
-        <Card className="border-border bg-card shadow-sm"><CardContent className="pt-4 flex items-center gap-3">
-          <div className="rounded-lg bg-accent p-2"><Clock className="h-5 w-5 text-accent-foreground" /></div>
-          <div><p className="text-2xl font-bold text-foreground">{(convenios as any[]).filter(c => !c.registro_ans && c.ativo).length}</p><p className="text-xs text-muted-foreground">Sem ANS</p></div>
-        </CardContent></Card>
-      </div>
+      {/* Indicadores clicáveis */}
+      <section role="group" aria-label="Resumo dos convênios" className="space-y-2">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="text-sm font-semibold text-foreground">Visão geral</h2>
+          <p className="text-xs text-muted-foreground">
+            {filtroStatus === 'todos' ? 'Clique em um indicador para filtrar a lista.' : `Mostrando apenas ${FILTRO_LABELS[filtroStatus]}.`}
+          </p>
+        </div>
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+          {([
+            { key: 'ativos' as FiltroConvenio, icon: CheckCircle2, label: 'Ativos', value: totalAtivos, caption: 'aceitos no atendimento', color: 'text-[#2ED5E7]', surface: 'bg-white/15', escuro: true },
+            { key: 'inativos' as FiltroConvenio, icon: XCircle, label: 'Inativos', value: totalInativos, caption: 'histórico preservado', color: 'text-muted-foreground', surface: 'bg-muted', escuro: false },
+            { key: 'com_tabela' as FiltroConvenio, icon: FlaskConical, label: 'Com tabela de exames', value: totalComTabela, caption: 'preços de exames definidos', color: 'text-[#1080CA]', surface: 'bg-[#1080CA]/10', escuro: false },
+            { key: 'todos' as FiltroConvenio, icon: Layers, label: 'Todos', value: totalConvenios, caption: 'convênios cadastrados', color: 'text-foreground', surface: 'bg-[#EEF4FA]', escuro: false },
+          ]).map(s => {
+            const Icon = s.icon;
+            const ativo = filtroStatus === s.key;
+            return (
+              <button
+                key={s.key}
+                type="button"
+                aria-pressed={ativo}
+                onClick={() => setFiltroStatus(ativo && s.key !== 'todos' ? 'todos' : s.key)}
+                className={cn(
+                  'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+                  s.escuro && 'border-transparent bg-[#111111] text-white',
+                  ativo && !s.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
+                  ativo && s.escuro && 'ring-2 ring-[#2ED5E7]/60',
+                )}
+              >
+                <div className="flex min-h-[96px] items-center gap-3 p-3">
+                  <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', s.surface)}>
+                    <Icon aria-hidden="true" className={cn('h-5 w-5', s.color)} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <h3 className={cn('truncate text-xs font-semibold', s.escuro ? 'text-white/80' : 'text-foreground')}>{s.label}</h3>
+                      <span className={cn('text-2xl font-bold tabular-nums', s.color)}>{s.value}</span>
+                    </div>
+                    <p className={cn('truncate text-[11px]', s.escuro ? 'text-white/60' : 'text-muted-foreground')}>{s.caption}</p>
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </section>
 
-      <Card>
-        <CardHeader>
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-            <CardTitle>Lista de Convênios ({filteredConvenios.length})</CardTitle>
-            <div className="relative w-full sm:w-72">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input aria-label="Buscar convênio por nome, código, ANS ou CNPJ" placeholder="Buscar nome, código, ANS ou CNPJ..." value={searchTerm}
-                onChange={e => setSearchTerm(e.target.value)} className="pl-9" />
+      <Card className="rounded-2xl border-border/60 shadow-xs">
+        <CardHeader className="pb-3">
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <CardTitle className="text-base">Lista de Convênios <span className="text-muted-foreground">({filteredConvenios.length})</span></CardTitle>
+              <div className="relative w-full sm:w-72">
+                <Search aria-hidden="true" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input aria-label="Buscar convênio por nome, código, ANS ou CNPJ" placeholder="Buscar nome, código, ANS ou CNPJ..." value={searchTerm}
+                  onChange={e => setSearchTerm(e.target.value)} className="h-10 rounded-full pl-9 focus-visible:ring-[#1080CA]" />
+              </div>
+            </div>
+            <div role="group" aria-label="Filtrar convênios por status" className="flex flex-wrap items-center gap-1.5">
+              {([
+                { key: 'todos', label: 'Todos' },
+                { key: 'ativos', label: 'Ativos' },
+                { key: 'inativos', label: 'Inativos' },
+              ] as const).map(opt => {
+                const ativo = filtroStatus === opt.key;
+                return (
+                  <button
+                    key={opt.key}
+                    type="button"
+                    aria-pressed={ativo}
+                    onClick={() => setFiltroStatus(opt.key)}
+                    className={cn(
+                      'h-8 rounded-full border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+                      ativo ? 'border-transparent bg-gradient-primary text-white shadow-sm' : 'border-border bg-card text-muted-foreground hover:border-[#9CC7EC] hover:text-foreground',
+                    )}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+              {temFiltro && (
+                <Button variant="ghost" size="sm" className="h-8 gap-1 rounded-full text-xs text-muted-foreground" onClick={limparFiltros}>
+                  <X aria-hidden="true" className="h-3 w-3" /> Limpar filtros
+                </Button>
+              )}
+              <p className="ml-auto text-xs text-muted-foreground" aria-live="polite">
+                {filteredConvenios.length} de {totalConvenios} convênio{totalConvenios === 1 ? '' : 's'}
+              </p>
             </div>
           </div>
         </CardHeader>
         <CardContent>
-          <div className="rounded-md border">
+          <div className="overflow-hidden rounded-xl border border-border/60">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -699,87 +827,119 @@ function Convenios() {
               <TableBody>
                 {filteredConvenios.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                      <Building2 className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                      <p>{convenios.length === 0 ? 'Nenhum convênio cadastrado ainda' : 'Nenhum convênio corresponde à busca'}</p>
-                      {convenios.length > 0 && <Button variant="link" onClick={() => setSearchTerm('')}>Limpar busca</Button>}
+                    <TableCell colSpan={7} className="py-12 text-center text-muted-foreground">
+                      <span aria-hidden="true" className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+                        <Building2 className="h-7 w-7" />
+                      </span>
+                      <p className="font-medium text-foreground">{totalConvenios === 0 ? 'Nenhum convênio cadastrado ainda' : 'Nenhum convênio corresponde à busca'}</p>
+                      <p className="mt-1 text-sm">
+                        {totalConvenios === 0
+                          ? 'Cadastre as operadoras aceitas para liberar autorizações, tabelas de exames e faturamento TISS.'
+                          : 'Ajuste a busca ou o filtro de status para ver todos os convênios.'}
+                      </p>
+                      {totalConvenios > 0 ? (
+                        <Button size="sm" variant="outline" className="mt-4 rounded-full" onClick={limparFiltros}>
+                          Limpar filtros
+                        </Button>
+                      ) : podeGerenciarConvenios ? (
+                        <Button size="sm" className="mt-4 gap-1.5 rounded-full bg-[#111111] text-white hover:bg-[#2b2b33]" onClick={handleNew}>
+                          <Plus aria-hidden="true" className="h-3.5 w-3.5" /> Cadastrar convênio
+                        </Button>
+                      ) : null}
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredConvenios.map((c: any) => (
-                    <TableRow key={c.id}>
-                      <TableCell>
-                        <div>
-                          <p className="font-medium">{c.nome}</p>
-                          <p className="text-xs text-muted-foreground font-mono">{c.codigo}</p>
-                          {c.tipo_planos && c.tipo_planos.length > 0 && (
-                            <div className="flex gap-1 mt-0.5 flex-wrap">
-                              {c.tipo_planos.slice(0, 2).map((p: string) => (
-                                <Badge key={p} variant="secondary" className="text-[9px]">{p}</Badge>
-                              ))}
-                              {c.tipo_planos.length > 2 && <span className="text-[9px] text-muted-foreground">+{c.tipo_planos.length - 2}</span>}
-                            </div>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell className="hidden md:table-cell">
-                        <div className="text-xs space-y-0.5">
-                          {c.registro_ans ? (
-                            <p className="flex items-center gap-1"><Shield className="h-3 w-3 text-primary" />{c.registro_ans}</p>
-                          ) : (
-                            <p className="text-muted-foreground">Sem registro</p>
-                          )}
-                          {c.codigo_operadora && <p className="text-muted-foreground">Op: {c.codigo_operadora}</p>}
-                        </div>
-                      </TableCell>
-                      <TableCell className="hidden sm:table-cell tabular-nums">{formatCurrency(c.valor_consulta || 0)}</TableCell>
-                      <TableCell className="hidden lg:table-cell">
-                        <div className="text-xs">
-                          <p className="tabular-nums">{formatCurrency(c.valor_retorno || 0)}</p>
-                          <p className="text-muted-foreground">{c.prazo_retorno || 30}d</p>
-                        </div>
-                      </TableCell>
-                      <TableCell className="hidden lg:table-cell">
-                        <Badge variant="outline" className="text-[10px] font-mono">{c.versao_tiss || '04.01.00'}</Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={c.ativo ? 'success' : 'secondary'}>
-                          {c.ativo ? 'Ativo' : 'Inativo'}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex flex-wrap justify-end gap-1">
-                          {podeGerenciarConvenios && <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-11 w-11"
-                            aria-label={c.ativo ? `Inativar convênio ${c.nome}` : `Ativar convênio ${c.nome}`}
-                            title={c.ativo ? 'Inativar convênio' : 'Ativar convênio'}
-                            onClick={() => void handleToggleAtivo(c)}
-                            disabled={atualizandoStatusId !== null}
-                          >
-                            {atualizandoStatusId === c.id
-                              ? <Loader2 className="h-4 w-4 animate-spin" />
-                              : <Power className={cn('h-4 w-4', c.ativo ? 'text-muted-foreground' : 'text-success')} />}
-                          </Button>}
-                          {podeGerenciarTabelaExames && <Button variant="ghost" size="icon" aria-label={`Gerenciar preços de exames do convênio ${c.nome}`} title="Tabela de preços de exames" onClick={() => handleGerenciarPrecosExames(c)}>
-                            <FlaskConical className="h-4 w-4 text-primary" />
-                          </Button>}
-                          {urlHttpsSegura(c.portal_url) && (
-                            <Button variant="ghost" size="icon" className="h-11 w-11" asChild title="Portal do convênio">
-                              <a href={urlHttpsSegura(c.portal_url)!} target="_blank" rel="noopener noreferrer" aria-label={`Abrir portal do convênio ${c.nome} em nova aba`}>
-                                <ExternalLink className="h-4 w-4" />
-                              </a>
-                            </Button>
-                          )}
-                          {podeGerenciarConvenios && <Button variant="ghost" size="icon" className="h-11 w-11" aria-label={`Editar convênio ${c.nome}`} onClick={() => handleEdit(c)} disabled={atualizandoStatusId !== null || isDeleting}><Edit className="h-4 w-4" /></Button>}
-                          {podeGerenciarConvenios && <Button variant="ghost" size="icon" className="h-11 w-11" aria-label={`Excluir convênio ${c.nome}`} onClick={() => handleDeleteClick(c.id)} disabled={atualizandoStatusId !== null || isDeleting}>
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))
+                  filteredConvenios.map((c: any) => {
+                    const portalUrl = urlHttpsSegura(c.portal_url);
+                    const temTabela = conveniosComTabela.has(c.id);
+                    return (
+                      <TableRow key={c.id} className={cn(!c.ativo && 'bg-muted/30 text-muted-foreground')}>
+                        <TableCell>
+                          <div className="min-w-0">
+                            <p className={cn('font-medium', c.ativo ? 'text-foreground' : 'text-muted-foreground')}>{c.nome}</p>
+                            <p className="flex flex-wrap items-center gap-1.5 font-mono text-xs text-muted-foreground">
+                              <span>{c.codigo}</span>
+                              {temTabela && (
+                                <Badge variant="outline" className="rounded-full border-[#BFD8EE] bg-white font-sans text-[9px] text-[#1080CA]">
+                                  <FlaskConical aria-hidden="true" className="mr-0.5 h-2.5 w-2.5" /> Tabela de exames
+                                </Badge>
+                              )}
+                            </p>
+                            {c.tipo_planos && c.tipo_planos.length > 0 && (
+                              <div className="mt-0.5 flex flex-wrap gap-1">
+                                {c.tipo_planos.slice(0, 2).map((p: string) => (
+                                  <Badge key={p} variant="secondary" className="rounded-full text-[9px]">{p}</Badge>
+                                ))}
+                                {c.tipo_planos.length > 2 && <span className="text-[9px] text-muted-foreground">+{c.tipo_planos.length - 2}</span>}
+                              </div>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="hidden md:table-cell">
+                          <div className="space-y-0.5 text-xs">
+                            {c.registro_ans ? (
+                              <p className="flex items-center gap-1"><Shield aria-hidden="true" className="h-3 w-3 text-[#1080CA]" />{c.registro_ans}</p>
+                            ) : (
+                              <p className="text-muted-foreground">Sem registro</p>
+                            )}
+                            {c.codigo_operadora && <p className="text-muted-foreground">Op: {c.codigo_operadora}</p>}
+                          </div>
+                        </TableCell>
+                        <TableCell className="hidden tabular-nums sm:table-cell">{formatCurrency(c.valor_consulta || 0)}</TableCell>
+                        <TableCell className="hidden lg:table-cell">
+                          <div className="text-xs">
+                            <p className="tabular-nums">{formatCurrency(c.valor_retorno || 0)}</p>
+                            <p className="text-muted-foreground">{c.prazo_retorno || 30}d</p>
+                          </div>
+                        </TableCell>
+                        <TableCell className="hidden lg:table-cell">
+                          <Badge variant="outline" className="rounded-full font-mono text-[10px]">{c.versao_tiss || '04.01.00'}</Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={c.ativo ? 'success' : 'secondary'} className="rounded-full">
+                            {c.ativo ? 'Ativo' : 'Inativo'}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex flex-wrap items-center justify-end gap-1">
+                            {podeGerenciarConvenios && <Button
+                              variant="outline"
+                              size="sm"
+                              className={cn('h-9 gap-1 rounded-full text-xs', !c.ativo && 'border-success/40 text-success hover:bg-success/10 hover:text-success')}
+                              aria-label={c.ativo ? `Inativar convênio ${c.nome}` : `Ativar convênio ${c.nome}`}
+                              title={c.ativo ? 'Inativar convênio' : 'Ativar convênio'}
+                              onClick={() => void handleToggleAtivo(c)}
+                              disabled={atualizandoStatusId !== null}
+                            >
+                              {atualizandoStatusId === c.id
+                                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                : <Power aria-hidden="true" className="h-3.5 w-3.5" />}
+                              {atualizandoStatusId === c.id ? 'Salvando...' : c.ativo ? 'Inativar' : 'Ativar'}
+                            </Button>}
+                            {podeGerenciarTabelaExames && <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full text-[#1080CA] hover:bg-[#1080CA]/10 hover:text-[#1080CA]" aria-label={`Gerenciar preços de exames do convênio ${c.nome}`} title="Tabela de preços de exames" onClick={() => handleGerenciarPrecosExames(c)}>
+                              <FlaskConical className="h-4 w-4" />
+                            </Button>}
+                            {portalUrl && (
+                              <>
+                                <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full" asChild title="Portal do convênio">
+                                  <a href={portalUrl} target="_blank" rel="noopener noreferrer" aria-label={`Abrir portal do convênio ${c.nome} em nova aba`}>
+                                    <ExternalLink className="h-4 w-4" />
+                                  </a>
+                                </Button>
+                                <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full" title="Copiar link do portal" aria-label={`Copiar link do portal do convênio ${c.nome}`} onClick={() => void copiarLinkPortal(c)}>
+                                  <Link2 className="h-4 w-4" />
+                                </Button>
+                              </>
+                            )}
+                            {podeGerenciarConvenios && <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full" aria-label={`Editar convênio ${c.nome}`} title="Editar convênio" onClick={() => handleEdit(c)} disabled={atualizandoStatusId !== null || isDeleting}><Edit className="h-4 w-4" /></Button>}
+                            {podeGerenciarConvenios && <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full text-destructive hover:bg-destructive/10 hover:text-destructive" aria-label={`Excluir convênio ${c.nome}`} title="Excluir convênio" onClick={() => handleDeleteClick(c.id)} disabled={atualizandoStatusId !== null || isDeleting}>
+                              <Trash2 className="h-4 w-4" />
+                            </Button>}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
                 )}
               </TableBody>
             </Table>
@@ -799,11 +959,11 @@ function Convenios() {
 
           <fieldset disabled={isSubmitting} className="contents">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 overflow-hidden flex flex-col">
-            <TabsList className={cn('w-full grid rounded-xl border border-border bg-muted p-1', podeGerenciarConvenios ? 'grid-cols-2' : 'grid-cols-1')}>
-              {podeGerenciarConvenios && <TabsTrigger value="dados" className="gap-1.5 rounded-lg">
+            <TabsList className={cn('grid h-auto w-full rounded-2xl border border-border bg-muted/60 p-1.5 shadow-sm', podeGerenciarConvenios ? 'grid-cols-2' : 'grid-cols-1')}>
+              {podeGerenciarConvenios && <TabsTrigger value="dados" className="min-h-11 gap-2 rounded-xl">
                 <Building2 className="h-3.5 w-3.5" /> Dados do Convênio
               </TabsTrigger>}
-              {podeGerenciarTabelaExames && <TabsTrigger value="exames" disabled={!editingId} className="gap-1.5 rounded-lg">
+              {podeGerenciarTabelaExames && <TabsTrigger value="exames" disabled={!editingId} className="min-h-11 gap-2 rounded-xl">
                 <FlaskConical className="h-3.5 w-3.5" /> Tabela de Exames
               </TabsTrigger>}
             </TabsList>
