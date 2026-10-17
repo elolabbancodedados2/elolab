@@ -420,15 +420,16 @@ function PrecosInternos() {
       <div className="flex gap-3 flex-wrap items-center">
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Buscar exame..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-10" />
+          <Input placeholder="Buscar exame..." value={search} onChange={(e) => setSearch(e.target.value)} className="h-10 rounded-full pl-9 focus-visible:ring-[#1080CA]" />
         </div>
-        <Button onClick={() => { setEditIdx(null); setForm({ nome: '', codigo_tuss: '', descricao: '', valor: '', custo: '' }); setShowForm(true); }} className="gap-1.5">
+        <Button onClick={() => { setEditIdx(null); setForm({ nome: '', codigo_tuss: '', descricao: '', valor: '', custo: '' }); setShowForm(true); }} className="gap-1.5 rounded-full bg-gradient-primary text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)] hover:brightness-110">
           <Plus className="h-4 w-4" /> Novo Exame
         </Button>
       </div>
 
       <Card>
         <CardContent className="p-0">
+          <div className="overflow-hidden rounded-xl border border-border/60">
           <Table>
             <TableHeader>
               <TableRow>
@@ -447,7 +448,14 @@ function PrecosInternos() {
               ) : isLoading ? (
                 <TableRow><TableCell colSpan={7} className="p-0"><TableSkeleton rows={5} cols={5} /></TableCell></TableRow>
               ) : filtered.length === 0 ? (
-                <TableRow><TableCell colSpan={7} className="py-8 text-center text-muted-foreground">{precos.length === 0 ? 'Nenhum exame cadastrado. Clique em “Novo Exame” para começar.' : <>Nenhum exame encontrado para esta busca. <Button variant="link" className="h-auto p-0" onClick={() => setSearch('')}>Limpar busca</Button></>}</TableCell></TableRow>
+                <TableRow><TableCell colSpan={7} className="py-10 text-center">
+                  <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-primary text-white shadow-md">
+                      <DollarSign className="h-5 w-5" />
+                    </div>
+                    <span>{precos.length === 0 ? 'Nenhum exame cadastrado. Clique em “Novo Exame” para começar.' : <>Nenhum exame encontrado para esta busca. <Button variant="link" className="h-auto p-0" onClick={() => setSearch('')}>Limpar busca</Button></>}</span>
+                  </div>
+                </TableCell></TableRow>
               ) : (
                 filtered.map((p: any) => {
                   const originalIdx = precos.indexOf(p);
@@ -463,15 +471,15 @@ function PrecosInternos() {
                       <TableCell className="text-right">{p.custo > 0 ? fmt(p.custo) : '—'}</TableCell>
                       <TableCell className="text-right">
                         {margem === null ? <span className="text-muted-foreground">—</span> : (
-                          <Badge variant={margem >= 50 ? 'success' : margem >= 20 ? 'secondary' : 'destructive'} className="text-xs">
+                          <Badge variant={margem >= 50 ? 'success' : margem >= 20 ? 'secondary' : 'destructive'} className="rounded-full text-xs">
                             {margem.toFixed(0)}%
                           </Badge>
                         )}
                       </TableCell>
                       <TableCell>
                         <div className="flex gap-1">
-                          <Button aria-label={`Editar preço de ${p.nome}`} size="icon" variant="ghost" onClick={() => openEdit(originalIdx)}><Edit className="h-3 w-3" /></Button>
-                          <Button aria-label={`Excluir preço de ${p.nome}`} size="icon" variant="ghost" className="text-destructive" disabled={isSaving} onClick={() => setPrecoParaExcluir({ idx: originalIdx, nome: p.nome })}><Trash2 className="h-3 w-3" /></Button>
+                          <Button aria-label={`Editar preço de ${p.nome}`} size="icon" variant="ghost" className="rounded-full" onClick={() => openEdit(originalIdx)}><Edit className="h-3 w-3" /></Button>
+                          <Button aria-label={`Excluir preço de ${p.nome}`} size="icon" variant="ghost" className="rounded-full text-destructive" disabled={isSaving} onClick={() => setPrecoParaExcluir({ idx: originalIdx, nome: p.nome })}><Trash2 className="h-3 w-3" /></Button>
                         </div>
                       </TableCell>
                     </TableRow>
@@ -480,6 +488,7 @@ function PrecosInternos() {
               )}
             </TableBody>
           </Table>
+          </div>
         </CardContent>
       </Card>
 
@@ -494,8 +503,8 @@ function PrecosInternos() {
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <div className="p-2 rounded-lg bg-primary/10">
-                <DollarSign className="h-5 w-5 text-primary" />
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-primary text-white">
+                <DollarSign className="h-5 w-5" />
               </div>
               {editIdx !== null ? 'Editar Exame' : 'Novo Exame Particular'}
             </DialogTitle>
@@ -557,15 +566,15 @@ function PrecosInternos() {
             {form.valor && form.custo && Number(form.custo) > 0 && (
               <div className="p-3 rounded-lg bg-muted/50 border flex items-center justify-between">
                 <span className="text-xs text-muted-foreground">Margem de lucro</span>
-                <Badge variant={((Number(form.valor) - Number(form.custo)) / Number(form.valor) * 100) >= 50 ? 'default' : 'secondary'}>
+                <Badge variant={((Number(form.valor) - Number(form.custo)) / Number(form.valor) * 100) >= 50 ? 'default' : 'secondary'} className="rounded-full">
                   {(((Number(form.valor) - Number(form.custo)) / Number(form.valor)) * 100).toFixed(1)}%
                 </Badge>
               </div>
             )}
           </div>
           <DialogFooter className="gap-2 sm:gap-0">
-            <Button variant="outline" onClick={() => setShowForm(false)}>Cancelar</Button>
-            <Button onClick={handleSave} disabled={!form.nome || !form.valor || isSaving} className="gap-2">
+            <Button variant="outline" className="rounded-full" onClick={() => setShowForm(false)}>Cancelar</Button>
+            <Button onClick={handleSave} disabled={!form.nome || !form.valor || isSaving} className="gap-2 rounded-full bg-gradient-primary text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)] hover:brightness-110">
               {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
               {editIdx !== null ? 'Salvar Alterações' : 'Cadastrar Exame'}
             </Button>
@@ -712,16 +721,16 @@ function PrecosConvenio() {
       <div className="flex gap-3 flex-wrap items-center">
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input aria-label="Buscar exame ou código TUSS" placeholder="Buscar exame ou TUSS..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-10" />
+          <Input aria-label="Buscar exame ou código TUSS" placeholder="Buscar exame ou TUSS..." value={search} onChange={(e) => setSearch(e.target.value)} className="h-10 rounded-full pl-9 focus-visible:ring-[#1080CA]" />
         </div>
         <Select value={filterConvenio} onValueChange={setFilterConvenio}>
-          <SelectTrigger aria-label="Filtrar por convênio" className="w-[200px]"><SelectValue /></SelectTrigger>
+          <SelectTrigger aria-label="Filtrar por convênio" className="h-10 w-[200px] rounded-full"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Todos os convênios</SelectItem>
             {convenios?.map((c: any) => <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>)}
           </SelectContent>
         </Select>
-        <Button onClick={() => { setEditing(null); setForm({ convenio_id: '', tipo_exame: '', codigo_tuss: '', descricao: '', valor_tabela: '', valor_filme: '', valor_custo: '', valor_repasse: '' }); setShowNew(true); }} className="gap-1.5">
+        <Button onClick={() => { setEditing(null); setForm({ convenio_id: '', tipo_exame: '', codigo_tuss: '', descricao: '', valor_tabela: '', valor_filme: '', valor_custo: '', valor_repasse: '' }); setShowNew(true); }} className="gap-1.5 rounded-full bg-gradient-primary text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)] hover:brightness-110">
           <Plus className="h-4 w-4" /> Novo Preço
         </Button>
       </div>
@@ -729,6 +738,7 @@ function PrecosConvenio() {
       {precosAtingiramLimite && <div role="alert" className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm text-warning-foreground"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /><p>A lista de preços por convênio atingiu o limite de {LIMITE_BUSCA_EM_BLOCOS.toLocaleString('pt-BR')} itens.</p></div>}
       <Card>
         <CardContent className="p-0">
+          <div className="overflow-hidden rounded-xl border border-border/60">
           <Table>
             <TableHeader>
               <TableRow>
@@ -751,11 +761,18 @@ function PrecosConvenio() {
               ) : isLoading || conveniosQuery.isLoading ? (
                 <TableRow><TableCell colSpan={9} className="p-0"><TableSkeleton rows={5} cols={6} /></TableCell></TableRow>
               ) : filtered?.length === 0 ? (
-                <TableRow><TableCell colSpan={9} className="py-8 text-center text-muted-foreground">{precos.length === 0 ? 'Nenhum preço cadastrado. Clique em “Novo Preço” para começar.' : <>Nenhum preço encontrado com estes filtros. <Button variant="link" className="h-auto p-0" onClick={() => { setSearch(''); setFilterConvenio('all'); }}>Limpar busca e convênio</Button></>}</TableCell></TableRow>
+                <TableRow><TableCell colSpan={9} className="py-10 text-center">
+                  <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-primary text-white shadow-md">
+                      <Building2 className="h-5 w-5" />
+                    </div>
+                    <span>{precos.length === 0 ? 'Nenhum preço cadastrado. Clique em “Novo Preço” para começar.' : <>Nenhum preço encontrado com estes filtros. <Button variant="link" className="h-auto p-0" onClick={() => { setSearch(''); setFilterConvenio('all'); }}>Limpar busca e convênio</Button></>}</span>
+                  </div>
+                </TableCell></TableRow>
               ) : (
                 filtered?.map((p: any) => (
                   <TableRow key={p.id}>
-                    <TableCell><Badge variant="outline" className="gap-1"><Building2 className="h-3 w-3" />{p.convenios?.nome}</Badge></TableCell>
+                    <TableCell><Badge variant="outline" className="gap-1 rounded-full"><Building2 className="h-3 w-3" />{p.convenios?.nome}</Badge></TableCell>
                     <TableCell className="font-medium">{p.tipo_exame}</TableCell>
                     <TableCell className="font-mono text-xs">{p.codigo_tuss || '—'}</TableCell>
                     <TableCell className="text-right">{fmt(p.valor_tabela)}</TableCell>
@@ -765,8 +782,8 @@ function PrecosConvenio() {
                     <TableCell className="text-right font-semibold">{fmt(p.valor_total || p.valor_tabela)}</TableCell>
                     <TableCell>
                       <div className="flex gap-1">
-                        <Button aria-label={`Editar preço de ${p.tipo_exame}`} size="icon" variant="ghost" onClick={() => openEdit(p)}><Edit className="h-3 w-3" /></Button>
-                        <Button size="icon" variant="ghost" className="text-destructive" aria-label={`Remover preço de ${p.tipo_exame}`} onClick={() => setPrecoParaExcluir(p)}><Trash2 className="h-3 w-3" /></Button>
+                        <Button aria-label={`Editar preço de ${p.tipo_exame}`} size="icon" variant="ghost" className="rounded-full" onClick={() => openEdit(p)}><Edit className="h-3 w-3" /></Button>
+                        <Button size="icon" variant="ghost" className="rounded-full text-destructive" aria-label={`Remover preço de ${p.tipo_exame}`} onClick={() => setPrecoParaExcluir(p)}><Trash2 className="h-3 w-3" /></Button>
                       </div>
                     </TableCell>
                   </TableRow>
@@ -774,6 +791,7 @@ function PrecosConvenio() {
               )}
             </TableBody>
           </Table>
+          </div>
         </CardContent>
       </Card>
 
@@ -802,8 +820,8 @@ function PrecosConvenio() {
               <div><Label htmlFor="preco-convenio-repasse">Repasse (R$)</Label><Input id="preco-convenio-repasse" type="number" min="0" step="0.01" value={form.valor_repasse} onChange={(e) => setForm(p => ({ ...p, valor_repasse: e.target.value }))} /></div>
             </div>
             <DialogFooter>
-              <Button variant="outline" type="button" onClick={() => setShowNew(false)}>Cancelar</Button>
-              <Button type="submit" disabled={!form.convenio_id || !form.tipo_exame || !form.valor_tabela || saveMutation.isPending}>
+              <Button variant="outline" type="button" className="rounded-full" onClick={() => setShowNew(false)}>Cancelar</Button>
+              <Button type="submit" disabled={!form.convenio_id || !form.tipo_exame || !form.valor_tabela || saveMutation.isPending} className="rounded-full bg-gradient-primary text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)] hover:brightness-110">
                 {saveMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
                 {editing ? 'Salvar' : 'Cadastrar'}
               </Button>
@@ -827,21 +845,61 @@ function PrecosConvenio() {
 }
 
 // ─── Main Page ───
+function usePrecosExamesCounts() {
+  const { user, profile } = useSupabaseAuth();
+  const internosQuery = useQuery({
+    queryKey: ['precos-exames-internos', user?.id, profile?.clinica_id],
+    queryFn: async () => {
+      if (!user?.id) return { items: [], updatedAt: null };
+      let query = supabase
+        .from('configuracoes_clinica')
+        .select('valor, updated_at')
+        .eq('chave', 'precos_exames_internos');
+      query = profile?.clinica_id
+        ? query.eq('clinica_id', profile.clinica_id)
+        : query.eq('user_id', user.id).is('clinica_id', null);
+      query = query.order('updated_at', { ascending: false }).limit(1);
+      const { data, error } = await query;
+      if (error) throw error;
+      return { items: (data?.[0]?.valor as any[]) || [], updatedAt: data?.[0]?.updated_at ?? null };
+    },
+    enabled: !!user?.id,
+  });
+  const convenioQuery = useQuery({
+    queryKey: ['precos-exames', profile?.clinica_id],
+    queryFn: async () => {
+      return buscarEmBlocos<any>(() => supabase
+        .from('precos_exames_convenio')
+        .select('*, convenios(nome, codigo)')
+        .eq('clinica_id', profile?.clinica_id)
+        .order('tipo_exame').order('id'));
+    },
+    enabled: !!profile?.clinica_id,
+  });
+  return {
+    particular: internosQuery.data?.items?.length ?? 0,
+    convenio: convenioQuery.data?.length ?? 0,
+  };
+}
+
 export default function PrecosExames() {
+  const counts = usePrecosExamesCounts();
+  const description = `${counts.particular} exame(s) particular(es) · ${counts.convenio} preço(s) de convênio`;
+
   return (
     <div className="space-y-6 pb-8">
       <PageHeader
         title="Tabela de Preços de Exames"
-        description="Gerencie preços de exames internos (particular) e por convênio"
+        description={description}
         icon={<DollarSign />}
       />
 
       <Tabs defaultValue="particular" className="space-y-4">
-        <TabsList className="rounded-xl border border-border bg-muted/70 p-1 text-muted-foreground">
-          <TabsTrigger value="particular" className="gap-1.5">
+        <TabsList className="rounded-xl border border-border/60 bg-[#F3F8FC] p-1 text-muted-foreground">
+          <TabsTrigger value="particular" className="gap-1.5 rounded-lg data-[state=active]:bg-gradient-primary data-[state=active]:text-white">
             <Stethoscope className="h-3.5 w-3.5" /> Particular / Interno
           </TabsTrigger>
-          <TabsTrigger value="convenio" className="gap-1.5">
+          <TabsTrigger value="convenio" className="gap-1.5 rounded-lg data-[state=active]:bg-gradient-primary data-[state=active]:text-white">
             <Building2 className="h-3.5 w-3.5" /> Por Convênio
           </TabsTrigger>
         </TabsList>
