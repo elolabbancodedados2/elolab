@@ -1758,7 +1758,7 @@ export default function Prontuarios() {
                   placeholder="Nome, CPF ou telefone"
                   value={searchTerm}
                   onChange={e => setSearchTerm(e.target.value)}
-                  className="pl-8 h-10 text-sm"
+                  className="h-10 rounded-full pl-8 text-sm focus-visible:ring-[#1080CA]"
                 />
               </div>
             </CardHeader>
@@ -1802,10 +1802,10 @@ export default function Prontuarios() {
                   </section>
                 )}
                 {medicoId && (
-                  <section aria-labelledby="open-medical-drafts" className="border-b border-[#DCE6F2] bg-[#F7F5FE] p-2.5">
+                  <section aria-labelledby="open-medical-drafts" className="border-b border-[#DCE6F2] bg-[#F3F8FC] p-2.5">
                     <div className="mb-2 flex items-center justify-between gap-2">
                       <h2 id="open-medical-drafts" className="text-xs font-bold text-[#111111]">Rascunhos em aberto</h2>
-                      <Badge variant="outline" className="h-5 border-[#D5CFF1] bg-white text-xs text-[#1080CA]">
+                      <Badge variant="outline" className="h-5 border-[#BFD8EE] bg-white text-xs text-[#1080CA]">
                         {rascunhosAbertos.length}
                       </Badge>
                     </div>
@@ -1824,7 +1824,7 @@ export default function Prontuarios() {
                               key={draft.id}
                               type="button"
                               variant="ghost"
-                              className="h-auto min-h-11 w-full justify-start whitespace-normal rounded-lg border border-[#DCE6F2] bg-white px-2.5 py-2 text-left hover:border-[#9CC7EC] hover:bg-[#F2F0FE]"
+                              className="h-auto min-h-11 w-full justify-start whitespace-normal rounded-lg border border-[#DCE6F2] bg-white px-2.5 py-2 text-left hover:border-[#9CC7EC] hover:bg-[#EEF4FA]"
                               onClick={() => {
                                 setRascunhoParaAbrir(draft);
                                 requestPatientContextChange(draft.paciente_id, 'picker');
