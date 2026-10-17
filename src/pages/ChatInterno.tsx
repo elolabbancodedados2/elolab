@@ -1,9 +1,8 @@
 import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { useState, useRef, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import {
   MessageSquare, Search, Send, AlertTriangle, Loader2,
-  CheckCheck, Check, Smile, ArrowLeft, Circle, X,
+  CheckCheck, Check, Smile, ArrowLeft, Circle, X, RefreshCw,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -131,7 +130,7 @@ function ChatSidebar({
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            className={cn('pl-10 h-10 text-sm rounded-xl focus-visible:ring-primary', search && 'pr-10')}
+            className={cn('pl-10 h-10 text-sm rounded-full focus-visible:ring-[#1080CA]', search && 'pr-10')}
             aria-label="Buscar conversas e equipe"
             placeholder={tab === 'conversas' ? 'Buscar por nome ou e-mail...' : 'Buscar na equipe...'}
             value={search}
@@ -164,7 +163,7 @@ function ChatSidebar({
           className={cn(
             'flex-1 text-xs font-semibold py-2.5 transition-colors border-b-2',
             tab === 'conversas'
-              ? 'border-primary text-primary'
+              ? 'border-[#1080CA] text-[#1080CA]'
               : 'border-transparent text-muted-foreground hover:text-foreground'
           )}
         >
@@ -180,12 +179,12 @@ function ChatSidebar({
           className={cn(
             'flex-1 text-xs font-semibold py-2.5 transition-colors border-b-2 flex items-center justify-center gap-1.5',
             tab === 'equipe'
-              ? 'border-primary text-primary'
+              ? 'border-[#1080CA] text-[#1080CA]'
               : 'border-transparent text-muted-foreground hover:text-foreground'
           )}
         >
           Equipe
-          <Badge variant="secondary" className="text-[9px] h-4 px-1.5">
+          <Badge variant="secondary" className="rounded-full text-[9px] h-4 px-1.5">
             {onlineMembers.length} online
           </Badge>
         </button>
@@ -203,7 +202,9 @@ function ChatSidebar({
             <>
               {filteredConversas.length === 0 ? (
                 <div className="text-center py-10">
-                  <MessageSquare className="h-10 w-10 mx-auto mb-3 opacity-20" />
+                  <div className="h-12 w-12 rounded-2xl bg-gradient-primary flex items-center justify-center mx-auto mb-3 text-white shadow-sm">
+                    <MessageSquare className="h-6 w-6" />
+                  </div>
                   <p className="text-sm text-muted-foreground">{searchTerm ? 'Nenhuma conversa encontrada' : 'Nenhuma conversa'}</p>
                   {!searchTerm && <p className="text-xs text-muted-foreground/60 mt-1">Clique em "Equipe" para iniciar</p>}
                 </div>
@@ -216,26 +217,26 @@ function ChatSidebar({
                       key={c.id}
                       onClick={() => c.outro_usuario && onSelectUsuario(c.outro_usuario)}
                       className={cn(
-                        'w-full flex items-center gap-3 rounded-xl px-3 py-2.5 transition-all text-left',
+                        'w-full flex items-center gap-3 rounded-2xl px-3 py-2.5 transition-all text-left',
                         selectedConversaId === c.id
-                          ? 'bg-primary/10 border border-primary/20'
+                          ? 'bg-[#1080CA]/10 border border-[#1080CA]/30'
                           : c.urgente_nao_lida
                           ? 'bg-destructive/5 hover:bg-destructive/10'
                           : c.nao_lidas > 0
-                          ? 'bg-primary/5 hover:bg-primary/10'
+                          ? 'bg-[#1080CA]/5 hover:bg-[#1080CA]/10'
                           : 'hover:bg-muted/60',
                       )}
                     >
                       <div className="relative shrink-0">
                         <Avatar className="h-10 w-10">
                           {c.outro_usuario?.avatar_url && <AvatarImage src={c.outro_usuario.avatar_url} />}
-                          <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">
+                          <AvatarFallback className="bg-[#1080CA]/10 text-[#1080CA] text-xs font-semibold">
                             {getInitials(c.outro_usuario?.nome ?? '?')}
                           </AvatarFallback>
                         </Avatar>
                         <span className={cn(
                           'absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-background',
-                          online ? 'bg-green-500' : 'bg-muted-foreground/30'
+                          online ? 'bg-success' : 'bg-muted-foreground/30'
                         )} />
                       </div>
                       <div className="flex-1 min-w-0">
@@ -256,8 +257,8 @@ function ChatSidebar({
                           </p>
                           {c.nao_lidas > 0 && (
                             <Badge className={cn(
-                              'h-5 min-w-[20px] flex items-center justify-center px-1.5 text-[10px] font-bold shrink-0',
-                              c.urgente_nao_lida ? 'bg-destructive text-destructive-foreground' : 'bg-primary text-primary-foreground',
+                              'rounded-full h-5 min-w-[20px] flex items-center justify-center px-1.5 text-[10px] font-bold shrink-0',
+                              c.urgente_nao_lida ? 'bg-destructive text-destructive-foreground' : 'bg-[#1080CA] text-white',
                             )}>
                               {c.nao_lidas}
                             </Badge>
@@ -275,7 +276,9 @@ function ChatSidebar({
             <>
               {(filteredTeam || [...onlineMembers, ...offlineMembers]).length === 0 ? (
                 <div className="text-center py-10">
-                  <MessageSquare className="h-10 w-10 mx-auto mb-3 opacity-20" />
+                  <div className="h-12 w-12 rounded-2xl bg-gradient-primary flex items-center justify-center mx-auto mb-3 text-white shadow-sm">
+                    <MessageSquare className="h-6 w-6" />
+                  </div>
                   <p className="text-sm text-muted-foreground">{searchTerm ? 'Nenhum membro encontrado' : 'Nenhuma pessoa na equipe'}</p>
                 </div>
               ) : filteredTeam ? (
@@ -286,8 +289,8 @@ function ChatSidebar({
                 <>
                   {onlineMembers.length > 0 && (
                     <>
-                      <p className="text-[10px] font-semibold uppercase tracking-wider text-green-600 px-3 py-2 flex items-center gap-1.5">
-                        <Circle className="h-2 w-2 fill-green-500 text-green-500" />
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-success px-3 py-2 flex items-center gap-1.5">
+                        <Circle className="h-2 w-2 fill-success text-success" />
                         Online ({onlineMembers.length})
                       </p>
                       {onlineMembers.map(m => (
@@ -320,25 +323,25 @@ function TeamMemberButton({ member, onSelect }: { member: TeamMember; onSelect: 
   return (
     <button
       onClick={onSelect}
-      className="w-full flex items-center gap-3 rounded-xl px-3 py-2.5 hover:bg-muted/60 transition-colors text-left"
+      className="w-full flex items-center gap-3 rounded-2xl px-3 py-2.5 hover:bg-muted/60 transition-colors text-left"
     >
       <div className="relative shrink-0">
         <Avatar className="h-9 w-9">
           {member.avatar && <AvatarImage src={member.avatar} />}
-          <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">
+          <AvatarFallback className="bg-[#1080CA]/10 text-[#1080CA] text-xs font-semibold">
             {getInitials(member.nome)}
           </AvatarFallback>
         </Avatar>
         <span className={cn(
           'absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-background',
-          online ? 'bg-green-500' : 'bg-muted-foreground/30'
+          online ? 'bg-success' : 'bg-muted-foreground/30'
         )} />
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium truncate">{member.nome}</p>
         <p className="text-[11px] text-muted-foreground truncate">
           {online ? (
-            <span className="text-green-600 font-medium">Online agora</span>
+            <span className="text-success font-medium">Online agora</span>
           ) : member.ultimo_acesso ? (
             `Visto ${formatConvDate(member.ultimo_acesso)}`
           ) : (
@@ -346,7 +349,7 @@ function TeamMemberButton({ member, onSelect }: { member: TeamMember; onSelect: 
           )}
         </p>
       </div>
-      <span className="h-7 px-2 shrink-0 inline-flex items-center text-xs text-muted-foreground">
+      <span className="h-7 px-2.5 shrink-0 inline-flex items-center rounded-full text-xs text-[#1080CA] bg-[#1080CA]/10">
         Conversar
       </span>
     </button>
@@ -424,21 +427,21 @@ function ConversaView({
         <div className="relative shrink-0">
           <Avatar className="h-10 w-10">
             {conversa.outro_usuario?.avatar_url && <AvatarImage src={conversa.outro_usuario.avatar_url} />}
-            <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">
+            <AvatarFallback className="bg-[#1080CA]/10 text-[#1080CA] text-xs font-semibold">
               {getInitials(outroNome)}
             </AvatarFallback>
           </Avatar>
           <span className={cn(
             'absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-background',
-            online ? 'bg-green-500' : 'bg-muted-foreground/30'
+            online ? 'bg-success' : 'bg-muted-foreground/30'
           )} />
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold truncate">{outroNome}</p>
           <p className="text-[11px] text-muted-foreground">
             {online ? (
-              <span className="text-green-600 font-medium flex items-center gap-1">
-                <Circle className="h-1.5 w-1.5 fill-green-500 text-green-500" /> Online
+              <span className="text-success font-medium flex items-center gap-1">
+                <Circle className="h-1.5 w-1.5 fill-success text-success" /> Online
               </span>
             ) : teamMember?.ultimo_acesso ? (
               `Visto ${formatConvDate(teamMember.ultimo_acesso)}`
@@ -453,13 +456,13 @@ function ConversaView({
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3" ref={scrollRef}>
         {loading ? (
           <div className="flex flex-col items-center justify-center py-8 gap-2">
-            <Loader2 className="h-6 w-6 animate-spin text-primary" />
+            <Loader2 className="h-6 w-6 animate-spin text-[#1080CA]" />
             <p className="text-xs text-muted-foreground">Carregando mensagens...</p>
           </div>
         ) : mensagens.length === 0 ? (
           <div className="text-center py-16">
-            <div className="h-16 w-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-4">
-              <MessageSquare className="h-8 w-8 text-primary" />
+            <div className="h-16 w-16 rounded-2xl bg-gradient-primary flex items-center justify-center mx-auto mb-4 text-white shadow-md">
+              <MessageSquare className="h-8 w-8" />
             </div>
             <p className="text-sm font-medium">Nenhuma mensagem ainda</p>
             <p className="text-xs text-muted-foreground mt-1">
@@ -478,24 +481,21 @@ function ConversaView({
                     || new Date(group.msgs[idx + 1]?.created_at).getTime() - new Date(m.created_at).getTime() > 300000;
 
                   return (
-                    <motion.div
+                    <div
                       key={m.id}
-                      initial={{ opacity: 0, y: 6 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ duration: 0.15 }}
                       className={cn('flex', isOwn ? 'justify-end' : 'justify-start')}
                     >
                       <div className={cn(
                         'max-w-[75%] rounded-2xl px-3.5 py-2 text-sm shadow-sm',
                         isOwn
-                          ? 'bg-primary text-primary-foreground rounded-br-md'
+                          ? 'bg-gradient-primary text-white rounded-br-md'
                           : 'bg-muted text-foreground rounded-bl-md',
                         m.urgente && !isOwn && 'border border-destructive/30 bg-destructive/5',
                       )}>
                         {m.urgente && (
                           <div className={cn(
                             'flex items-center gap-1 mb-1 text-[10px] font-bold',
-                            isOwn ? 'text-primary-foreground/80' : 'text-destructive',
+                            isOwn ? 'text-white/80' : 'text-destructive',
                           )}>
                             <AlertTriangle className="h-2.5 w-2.5" /> URGENTE
                           </div>
@@ -504,18 +504,18 @@ function ConversaView({
                         {showTime && (
                           <div className={cn(
                             'flex items-center gap-1 mt-1 justify-end',
-                            isOwn ? 'text-primary-foreground/50' : 'text-muted-foreground',
+                            isOwn ? 'text-white/60' : 'text-muted-foreground',
                           )}>
                             <span className="text-[10px]">{format(new Date(m.created_at), 'HH:mm')}</span>
                             {isOwn && (
                               m.lida_em
-                                ? <CheckCheck className="h-3 w-3 text-blue-300" />
+                                ? <CheckCheck className="h-3 w-3 text-[#2ED5E7]" />
                                 : <Check className="h-3 w-3" />
                             )}
                           </div>
                         )}
                       </div>
-                    </motion.div>
+                    </div>
                   );
                 })}
               </div>
@@ -526,29 +526,19 @@ function ConversaView({
 
       {/* Input */}
       <div className="p-3 border-t border-border/25 bg-background/75 backdrop-blur-xl space-y-1.5">
-        <AnimatePresence>
-          {showEmojis && (
-            <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: 'auto', opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              transition={{ duration: 0.15 }}
-              className="overflow-hidden"
-            >
-              <div className="flex gap-1 pb-1.5">
-                {QUICK_EMOJIS.map(emoji => (
-                  <button
-                    key={emoji}
-                    onClick={() => setTexto(t => t + emoji)}
-                    className="h-8 w-8 rounded-lg hover:bg-muted flex items-center justify-center text-base transition-colors"
-                  >
-                    {emoji}
-                  </button>
-                ))}
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+        {showEmojis && (
+          <div className="flex gap-1 pb-1.5">
+            {QUICK_EMOJIS.map(emoji => (
+              <button
+                key={emoji}
+                onClick={() => setTexto(t => t + emoji)}
+                className="h-8 w-8 rounded-full hover:bg-muted flex items-center justify-center text-base transition-colors"
+              >
+                {emoji}
+              </button>
+            ))}
+          </div>
+        )}
 
         <div className="flex items-center gap-1.5">
           <Tooltip>
@@ -574,7 +564,7 @@ function ConversaView({
             onClick={() => setShowEmojis(s => !s)}
             className={cn(
               'flex items-center justify-center h-9 w-9 rounded-full transition-colors shrink-0',
-              showEmojis ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground hover:bg-muted',
+              showEmojis ? 'bg-[#1080CA]/10 text-[#1080CA]' : 'text-muted-foreground hover:text-foreground hover:bg-muted',
             )}
           >
             <Smile className="h-4 w-4" />
@@ -582,7 +572,7 @@ function ConversaView({
 
           <Input
             ref={inputRef}
-            className="flex-1 h-11 min-w-0 text-sm rounded-xl"
+            className="flex-1 h-11 min-w-0 text-sm rounded-full focus-visible:ring-[#1080CA]"
             aria-label="Mensagem"
             placeholder="Digite uma mensagem..."
             value={texto}
@@ -599,7 +589,7 @@ function ConversaView({
             size="icon"
             className={cn(
               'h-10 w-10 shrink-0 rounded-full transition-all',
-              texto.trim() ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground',
+              texto.trim() ? 'bg-[#111111] text-white hover:bg-[#2b2b33]' : 'bg-muted text-muted-foreground',
             )}
             aria-label={enviando ? 'Enviando mensagem' : 'Enviar mensagem'}
             onClick={handleEnviar}
@@ -679,27 +669,43 @@ export default function ChatInterno() {
     ? teamMembers.find(m => m.id === conversaAtiva.outro_usuario?.id) || null
     : null;
 
+  const isRefreshing = teamQuery.isFetching || funcionariosQuery.isFetching;
+
   if (!user) return null;
 
   return (
-    <div className="flex h-[calc(100vh-3.5rem)] min-h-0 flex-col overflow-hidden rounded-2xl border border-[#e6e2f7] bg-white shadow-sm shadow-[#241D3F]/[0.03] supports-[height:100dvh]:h-[calc(100dvh-3.5rem)]">
+    <div className="flex h-[calc(100vh-3.5rem)] min-h-0 flex-col overflow-hidden rounded-2xl border border-border/60 bg-card shadow-xs supports-[height:100dvh]:h-[calc(100dvh-3.5rem)]">
       {/* Header */}
-      <div className="border-b border-[#e6e2f7] bg-gradient-to-r from-[#f6f4ff] via-white to-[#f0edff] px-5 py-4 sm:px-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <span className="rounded-xl bg-[#f0edff] p-2 text-[#5240d6] ring-1 ring-[#ddd7f7]"><MessageSquare className="h-5 w-5" /></span>
-            <div>
-              <h1 className="text-2xl font-bold text-foreground">Chat Interno</h1>
-              <p className="text-sm text-muted-foreground">
+      <div className="bg-[#111111] px-5 py-4 sm:px-6">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/15 text-[#2ED5E7]">
+              <MessageSquare className="h-5 w-5" />
+            </span>
+            <div className="min-w-0">
+              <h1 className="text-2xl font-bold text-white">Chat interno</h1>
+              <p className="text-sm text-white/60 truncate">
                 Comunicação da equipe • {teamMembers.filter(m => isOnline(m.ultimo_acesso)).length} online
               </p>
             </div>
           </div>
-          {totalNaoLidas > 0 && (
-            <Badge className="bg-primary text-primary-foreground">
-              {totalNaoLidas} não lidas
-            </Badge>
-          )}
+          <div className="flex items-center gap-2 shrink-0">
+            {totalNaoLidas > 0 && (
+              <Badge className="rounded-full bg-[#2ED5E7] text-[#111111]">
+                {totalNaoLidas} não lidas
+              </Badge>
+            )}
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Atualizar chat"
+              className="rounded-full text-white/80 hover:bg-white/15 hover:text-white"
+              onClick={() => { void recarregar(); void teamQuery.refetch(); void funcionariosQuery.refetch(); }}
+              disabled={isRefreshing}
+            >
+              <RefreshCw className={cn('h-4 w-4', isRefreshing && 'animate-spin')} />
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -718,7 +724,7 @@ export default function ChatInterno() {
       <div className="flex min-h-0 flex-1 overflow-hidden">
         {/* Sidebar */}
         <div className={cn(
-          'min-h-0 w-full md:w-80 border-r border-[#e5e2f4] bg-[#f9f8ff] flex-shrink-0',
+          'min-h-0 w-full md:w-80 border-r border-border/60 bg-[#F3F8FC] flex-shrink-0',
           conversaAtiva ? 'hidden md:flex md:flex-col' : 'flex flex-col',
         )}>
           <ChatSidebar
@@ -747,8 +753,8 @@ export default function ChatInterno() {
             />
           ) : (
             <div className="flex-1 flex items-center justify-center">
-              <div className="max-w-sm rounded-3xl border border-[#e6e2f7] bg-gradient-to-br from-[#f8f7ff] to-white p-8 text-center shadow-sm shadow-[#241D3F]/[0.03]">
-                <div className="h-16 w-16 rounded-2xl bg-[#f0edff] flex items-center justify-center mx-auto mb-4 text-[#5240d6] ring-1 ring-[#ddd7f7]">
+              <div className="max-w-sm rounded-3xl border border-border/60 bg-card p-8 text-center shadow-xs">
+                <div className="h-16 w-16 rounded-2xl bg-gradient-primary flex items-center justify-center mx-auto mb-4 text-white shadow-md">
                   <MessageSquare className="h-8 w-8" />
                 </div>
                 <p className="text-lg font-semibold text-foreground">Selecione uma conversa</p>
