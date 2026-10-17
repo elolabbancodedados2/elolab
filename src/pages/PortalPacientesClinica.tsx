@@ -1,29 +1,20 @@
 import { useState } from 'react';
 import { Check, Copy, ExternalLink, Link2, MessageCircle, ShieldCheck, UsersRound } from 'lucide-react';
 import { toast } from 'sonner';
+import { PageHeader } from '@/components/PageHeader';
 import { PacienteCombobox } from '@/components/patients/PacienteCombobox';
 import type { PacienteResumo } from '@/hooks/useBuscaPacientes';
 import { supabase } from '@/integrations/supabase/client';
-import { abrirUrlSegura } from '@/lib/safeUrl';
+import { linkWhatsApp } from '@/lib/whatsapp';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 
-function linkWhatsAppSeguro(value: unknown): string | null {
-  if (typeof value !== 'string') return null;
-  try {
-    const url = new URL(value);
-    return url.protocol === 'https:' && url.hostname === 'wa.me' ? url.href : null;
-  } catch {
-    return null;
-  }
-}
-
-function telefoneWhatsApp(telefone: string) {
-  const digitos = telefone.replace(/\D/g, '');
-  if (digitos.length < 10 || digitos.length > 13) return null;
-  return digitos.startsWith('55') ? digitos : `55${digitos}`;
-}
+const ETAPAS = [
+  { titulo: 'Selecione o paciente', texto: 'Busque por nome, CPF ou telefone.' },
+  { titulo: 'Gere o link individual', texto: 'Vale por até um ano e substitui o anterior.' },
+  { titulo: 'Compartilhe com segurança', texto: 'Copie o link ou envie pelo WhatsApp.' },
+];
 
 export default function PortalPacientesClinica() {
   const [paciente, setPaciente] = useState<PacienteResumo | null>(null);
@@ -63,46 +54,40 @@ export default function PortalPacientesClinica() {
     }
   };
 
-  const abrirWhatsApp = () => {
-    if (!paciente?.telefone || !link) return;
-    const telefone = telefoneWhatsApp(paciente.telefone);
-    if (!telefone) {
-      toast.error('O telefone deste paciente parece inválido.', { description: 'Corrija o telefone no cadastro e tente novamente.' });
-      return;
-    }
-    const nome = paciente.nome_social || paciente.nome;
-    const url = `https://wa.me/${telefone}?text=${encodeURIComponent(`Olá, ${nome}! A clínica está compartilhando seu link de acesso ao Portal do Paciente: ${link}`)}`;
-    if (!abrirUrlSegura(url, linkWhatsAppSeguro)) toast.error('Não foi possível abrir o WhatsApp.');
-  };
-
   const selecionarPaciente = (id: string, selecionado: PacienteResumo) => {
     setPaciente(selecionado);
     setLink('');
   };
 
+  const nomePaciente = paciente ? paciente.nome_social || paciente.nome : '';
+  const whatsapp = link && paciente?.telefone
+    ? linkWhatsApp(paciente.telefone, `Olá, ${nomePaciente}! A clínica está compartilhando seu link de acesso ao Portal do Paciente: ${link}`)
+    : null;
+
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      <section className="relative overflow-hidden rounded-3xl border border-[#dad6ef] bg-gradient-to-br from-[#ece9f8] via-[#f5f4fb] to-white p-6 shadow-sm sm:p-8">
-        <div className="absolute -right-10 -top-16 h-56 w-56 rounded-full bg-[#5b47e0]/[0.06] blur-2xl" aria-hidden="true" />
-        <div className="relative flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
-          <div className="max-w-2xl">
-            <span className="inline-flex items-center gap-2 rounded-full border border-[#5b47e0]/15 bg-white/80 px-3 py-1 text-xs font-semibold text-[#5b47e0]">
-              <ShieldCheck className="h-3.5 w-3.5" /> Acesso seguro e individual
-            </span>
-            <h1 className="mt-4 text-2xl font-bold tracking-tight text-[#17122b] sm:text-3xl">Acesso ao Portal do Paciente</h1>
-            <p className="mt-2 max-w-xl text-sm leading-relaxed text-[#6a6485] sm:text-base">Compartilhe com cada paciente um acesso privado às informações liberadas pela clínica.</p>
-          </div>
-          <div className="hidden h-20 w-20 shrink-0 items-center justify-center rounded-3xl border border-white/80 bg-white/75 text-[#5b47e0] shadow-sm sm:flex">
-            <UsersRound className="h-9 w-9" aria-hidden="true" />
-          </div>
-        </div>
-      </section>
+      <PageHeader
+        title="Acesso ao portal do paciente"
+        description="Gere um link individual e privado para cada paciente consultar as informações liberadas pela clínica."
+        icon={<UsersRound />}
+        actions={(
+          <Button asChild variant="outline" className="rounded-full gap-2">
+            <a href="/pacientes"><UsersRound aria-hidden="true" className="h-4 w-4" /> Pacientes</a>
+          </Button>
+        )}
+      />
 
-      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1.35fr)_minmax(250px,0.65fr)]">
-      <Card className="overflow-hidden rounded-3xl border-[#e6e3f2] shadow-sm">
+      <Card className="overflow-hidden rounded-2xl border-border/60 shadow-xs">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2"><Link2 className="h-5 w-5 text-primary" />Enviar acesso</CardTitle>
-          <CardDescription>O link é individual e permite consultar somente as informações disponíveis para aquele paciente.</CardDescription>
+          <div className="flex items-start gap-3">
+            <span aria-hidden="true" className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+              <Link2 className="h-5 w-5" />
+            </span>
+            <div className="min-w-0">
+              <CardTitle className="text-lg">Enviar acesso</CardTitle>
+              <CardDescription className="mt-1">O link é individual e permite consultar somente as informações disponíveis para aquele paciente.</CardDescription>
+            </div>
+          </div>
         </CardHeader>
         <CardContent className="space-y-5">
           <div className="space-y-2">
@@ -116,66 +101,78 @@ export default function PortalPacientesClinica() {
             />
           </div>
 
-          {paciente && (
-            <div className="rounded-xl border bg-muted/30 p-4">
-              <p className="font-semibold">{paciente.nome_social || paciente.nome}</p>
-              <p className="mt-1 text-sm text-muted-foreground">{paciente.telefone || 'Sem telefone cadastrado'}</p>
+          {paciente ? (
+            <div className="flex flex-col gap-3 rounded-xl border border-[#DCE6F2] bg-[#F3F8FC] p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <p className="truncate font-semibold text-foreground">{nomePaciente}</p>
+                <p className="mt-0.5 text-sm text-muted-foreground">{paciente.telefone || 'Sem telefone cadastrado'}</p>
+              </div>
+              <Button type="button" onClick={() => void gerarLink()} disabled={gerando} className="shrink-0 gap-2 rounded-full bg-[#111111] text-white shadow-md hover:bg-[#2b2b33]">
+                <Link2 aria-hidden="true" className="h-4 w-4" />{gerando ? 'Gerando link…' : 'Gerar link de acesso'}
+              </Button>
             </div>
+          ) : (
+            <Button type="button" disabled className="gap-2 rounded-full bg-[#111111] text-white shadow-md hover:bg-[#2b2b33]">
+              <Link2 aria-hidden="true" className="h-4 w-4" />Gerar link de acesso
+            </Button>
           )}
-
-          <Button type="button" onClick={() => void gerarLink()} disabled={!paciente || gerando} className="w-full sm:w-auto">
-            <Link2 className="mr-2 h-4 w-4" />{gerando ? 'Gerando link…' : 'Gerar link de acesso'}
-          </Button>
 
           {link && (
-            <div className="space-y-3 rounded-xl border border-primary/20 bg-primary/[0.035] p-4">
-              <label className="text-sm font-medium" htmlFor="portal-generated-link">Link individual do portal</label>
-              <Input id="portal-generated-link" value={link} readOnly onFocus={(event) => event.currentTarget.select()} />
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <Button type="button" onClick={abrirWhatsApp} disabled={!paciente?.telefone} className="flex-1">
-                  <MessageCircle className="mr-2 h-4 w-4" />Abrir WhatsApp para enviar
-                </Button>
-                <Button type="button" variant="outline" onClick={() => void copiarLink()} className="flex-1">
-                  <Copy className="mr-2 h-4 w-4" />Copiar link
-                </Button>
-                <Button type="button" variant="ghost" onClick={() => window.open(link, '_blank', 'noopener,noreferrer')} aria-label="Conferir link do portal">
-                  <ExternalLink className="h-4 w-4" />
+            <div className="space-y-3 rounded-xl border border-[#BFD8EE] bg-[#F3F8FC] p-4">
+              <div className="flex items-center justify-between gap-2">
+                <label className="text-[11px] font-semibold uppercase tracking-wide text-[#1080CA]" htmlFor="portal-generated-link">Link individual do portal</label>
+                <Button asChild variant="ghost" size="icon" className="h-8 w-8 rounded-full text-[#1080CA] hover:bg-[#1080CA]/10 hover:text-[#1080CA]">
+                  <a href={link} target="_blank" rel="noopener noreferrer" aria-label="Conferir link do portal" title="Conferir link do portal">
+                    <ExternalLink className="h-4 w-4" />
+                  </a>
                 </Button>
               </div>
-              {!paciente?.telefone && <p className="text-xs text-muted-foreground">Cadastre um telefone para preparar o envio pelo WhatsApp; você também pode copiar o link.</p>}
-              <p className="text-xs text-[#6a6485]">Por segurança, este link substitui os anteriores e vale por até um ano.</p>
+              <Input id="portal-generated-link" value={link} readOnly onFocus={(event) => event.currentTarget.select()} className="h-10 rounded-full bg-white font-mono text-xs focus-visible:ring-[#1080CA]" />
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <Button type="button" variant="outline" onClick={() => void copiarLink()} className="gap-2 rounded-full">
+                  <Copy aria-hidden="true" className="h-4 w-4" />Copiar
+                </Button>
+                {whatsapp && (
+                  <Button asChild className="gap-2 rounded-full bg-gradient-primary text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)] hover:brightness-110">
+                    <a href={whatsapp} target="_blank" rel="noopener noreferrer">
+                      <MessageCircle aria-hidden="true" className="h-4 w-4" />Enviar por WhatsApp
+                    </a>
+                  </Button>
+                )}
+              </div>
+              {!whatsapp && <p className="text-xs text-muted-foreground">Cadastre um telefone válido para enviar pelo WhatsApp; por enquanto, copie o link.</p>}
+              <p className="text-xs text-muted-foreground">Por segurança, este link substitui os anteriores e vale por até um ano.</p>
             </div>
           )}
 
-          <div className="flex gap-3 rounded-xl border border-[#dad6ef] bg-[#f5f4fb] p-4 text-sm text-[#6a6485]">
-            <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+          <div className="flex gap-3 rounded-xl border border-[#DCE6F2] bg-[#EEF4FA] p-4 text-sm text-muted-foreground">
+            <ShieldCheck aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0 text-[#1080CA]" />
             <p>Compartilhe este link somente com o paciente ou responsável autorizado. O endereço contém uma credencial individual de acesso.</p>
           </div>
         </CardContent>
       </Card>
 
-      <Card className="rounded-3xl border-[#e6e3f2] shadow-sm">
-        <CardHeader>
-          <CardTitle className="text-[#17122b]">Como funciona</CardTitle>
-          <CardDescription>Três passos para compartilhar o acesso.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-5">
-          {[
-            'Busque e selecione o paciente.',
-            'Gere um link individual e válido por até um ano.',
-            'Copie o link ou abra o WhatsApp para compartilhar.',
-          ].map((etapa, index) => (
-            <div key={etapa} className="flex items-start gap-3">
-              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#ece9f8] text-xs font-bold text-[#5b47e0]">{index + 1}</span>
-              <p className="pt-1 text-sm leading-relaxed text-[#6a6485]">{etapa}</p>
-            </div>
+      <section aria-labelledby="portal-como-funciona" className="space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 id="portal-como-funciona" className="text-base font-semibold text-foreground">Como funciona</h2>
+          <span className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+            <Check aria-hidden="true" className="h-4 w-4 text-success" /> O link novo desativa o anterior.
+          </span>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-3">
+          {ETAPAS.map((etapa, index) => (
+            <Card key={etapa.titulo} className="rounded-2xl border-border/60 shadow-xs">
+              <CardContent className="flex items-start gap-3 p-4">
+                <span aria-hidden="true" className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#111111] text-xs font-bold text-white">{index + 1}</span>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-foreground">{etapa.titulo}</p>
+                  <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">{etapa.texto}</p>
+                </div>
+              </CardContent>
+            </Card>
           ))}
-          <div className="flex items-center gap-2 border-t border-[#e6e3f2] pt-4 text-xs font-medium text-[#6a6485]">
-            <Check className="h-4 w-4 text-[#00875a]" /> O link novo desativa o anterior.
-          </div>
-        </CardContent>
-      </Card>
-      </div>
+        </div>
+      </section>
     </div>
   );
 }
