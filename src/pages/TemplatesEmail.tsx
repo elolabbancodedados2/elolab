@@ -1,14 +1,17 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useMemo, type ReactNode } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { podeGerenciarTemplatesEmail } from '@/lib/templatesEmailAccess';
 import { analyzeTemplatePreview } from '@/lib/templatePreview';
+import { cn } from '@/lib/utils';
+import { normalizarTexto } from '@/lib/buscaPaciente';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
+import { PageHeader } from '@/components/PageHeader';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import {
   AlertDialog,
@@ -25,7 +28,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
-import { Plus, Edit2, Trash2, Copy, Mail, History } from 'lucide-react';
+import { Plus, Edit2, Trash2, Copy, Mail, History, Search, X, RefreshCw, CheckCircle2, CircleSlash, AlertTriangle, Layers } from 'lucide-react';
 import DOMPurify from 'dompurify';
 
 const CATEGORIAS = [
@@ -46,6 +49,8 @@ const VARIAVEIS_GRUPOS = {
   'Financeiro': ['descricao', 'valor', 'forma_pagamento'],
   'Estoque': ['item_nome', 'quantidade_atual', 'quantidade_minima', 'localizacao'],
 };
+
+type StatusFilter = 'todos' | 'ativos' | 'inativos' | 'pendencias';
 
 const sanitizeTemplateHtml = (html: string) => DOMPurify.sanitize(html, {
   USE_PROFILES: { html: true },
@@ -69,6 +74,9 @@ export default function TemplatesEmail() {
   const [activationCandidate, setActivationCandidate] = useState<any | null>(null);
   const [historyTemplate, setHistoryTemplate] = useState<{ id: string; name: string } | null>(null);
   const [previewTab, setPreviewTab] = useState('editar');
+  const [search, setSearch] = useState('');
+  const [categoriaFilter, setCategoriaFilter] = useState('todas');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('todos');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const templatesQuery = useQuery({
@@ -85,7 +93,7 @@ export default function TemplatesEmail() {
     },
     enabled: !!profile?.clinica_id,
   });
-  const templates = templatesQuery.data || [];
+  const templates = useMemo(() => templatesQuery.data || [], [templatesQuery.data]);
 
   const historyQuery = useQuery({
     queryKey: ['notification-template-versions', profile?.clinica_id, historyTemplate?.id],
@@ -206,6 +214,36 @@ export default function TemplatesEmail() {
     onError: (error: any) => toast.error(error.message),
   });
 
+  const duplicateMutation = useMutation({
+    mutationFn: async (template: any) => {
+      if (!profile?.clinica_id) throw new Error('Clínica não identificada');
+      const conteudoSeguro = sanitizeTemplateHtml(template.conteudo || '');
+      const preview = analyzeTemplatePreview({
+        name: template.nome, category: template.categoria, subject: template.assunto || '', content: conteudoSeguro,
+      });
+      const { error } = await supabase
+        .from('notification_templates')
+        .insert([
+          {
+            nome: `${template.nome} (cópia)`,
+            categoria: template.categoria,
+            assunto: template.assunto || '',
+            conteudo: conteudoSeguro,
+            ativo: false,
+            clinica_id: profile.clinica_id,
+            tipo: 'email',
+            variaveis: preview.usedVariables,
+          },
+        ]);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success('Template duplicado!');
+      queryClient.invalidateQueries({ queryKey: ['templates'] });
+    },
+    onError: (error: any) => toast.error(error.message),
+  });
+
   const openNew = () => {
     setForm({ nome: '', categoria: '', assunto: '', conteudo: '', ativo: true });
     setEditId(null);
@@ -258,85 +296,251 @@ export default function TemplatesEmail() {
     content: sanitizeTemplateHtml(activationCandidate.conteudo || ''),
   }) : null;
 
+  const templatesComputed = useMemo(() => templates.map((template: any) => {
+    const preview = analyzeTemplatePreview({
+      name: template.nome,
+      category: template.categoria,
+      subject: template.assunto || '',
+      content: template.conteudo || '',
+    });
+    return { template, preview };
+  }), [templates]);
+
+  const stats = useMemo(() => ({
+    total: templatesComputed.length,
+    ativos: templatesComputed.filter(({ template }) => template.ativo).length,
+    inativos: templatesComputed.filter(({ template }) => !template.ativo).length,
+    pendencias: templatesComputed.filter(({ template, preview }) => template.ativo && preview.missingVariables.length > 0).length,
+  }), [templatesComputed]);
+
+  const filtered = useMemo(() => {
+    const term = normalizarTexto(search);
+    return templatesComputed.filter(({ template, preview }) => {
+      if (categoriaFilter !== 'todas' && template.categoria !== categoriaFilter) return false;
+      if (statusFilter === 'ativos' && !template.ativo) return false;
+      if (statusFilter === 'inativos' && template.ativo) return false;
+      if (statusFilter === 'pendencias' && !(template.ativo && preview.missingVariables.length > 0)) return false;
+      if (!term) return true;
+      const categoriaLabel = CATEGORIAS.find(c => c.value === template.categoria)?.label || template.categoria || '';
+      return [template.nome, template.assunto, categoriaLabel].some(value => normalizarTexto(value).includes(term));
+    });
+  }, [templatesComputed, search, categoriaFilter, statusFilter]);
+
+  const grupos = useMemo(() => {
+    const map = new Map<string, typeof filtered>();
+    for (const entry of filtered) {
+      const key = entry.template.categoria || 'geral';
+      const bucket = map.get(key);
+      if (bucket) bucket.push(entry);
+      else map.set(key, [entry]);
+    }
+    const order = CATEGORIAS.map(c => c.value);
+    return [...map.entries()]
+      .sort(([a], [b]) => {
+        const ia = order.indexOf(a);
+        const ib = order.indexOf(b);
+        return (ia === -1 ? order.length : ia) - (ib === -1 ? order.length : ib);
+      })
+      .map(([key, items]) => ({ key, label: CATEGORIAS.find(c => c.value === key)?.label || key, items }));
+  }, [filtered]);
+
+  const temFiltro = search.trim() !== '' || categoriaFilter !== 'todas' || statusFilter !== 'todos';
+  const limparFiltros = () => { setSearch(''); setCategoriaFilter('todas'); setStatusFilter('todos'); };
+
   if (templatesQuery.isError) {
     return <ErrorState title="Não foi possível carregar os modelos de e-mail" error={templatesQuery.error} onRetry={() => void templatesQuery.refetch()} />;
   }
 
+  const indicadores: { key: StatusFilter; icon: typeof Mail; label: string; caption: string; count: number; color: string; surface: string; escuro?: boolean }[] = [
+    { key: 'todos', icon: Mail, label: 'Modelos', caption: 'cadastrados na clínica', count: stats.total, color: 'text-[#2ED5E7]', surface: 'bg-white/15', escuro: true },
+    { key: 'ativos', icon: CheckCircle2, label: 'Ativos', caption: 'enviando mensagens', count: stats.ativos, color: 'text-success', surface: 'bg-success/10' },
+    { key: 'inativos', icon: CircleSlash, label: 'Inativos', caption: 'pausados', count: stats.inativos, color: 'text-[#1080CA]', surface: 'bg-[#1080CA]/10' },
+    { key: 'pendencias', icon: AlertTriangle, label: 'Com pendência', caption: 'variáveis sem valor', count: stats.pendencias, color: 'text-warning', surface: 'bg-warning/10' },
+  ];
+
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-3 rounded-2xl border border-[#e3dffb] bg-gradient-to-r from-[#f6f4ff] via-white to-[#f3f1ff] p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
-        <div>
-          <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight text-[#1c1636]">
-            <span className="rounded-xl bg-[#ece8ff] p-2 text-[#5240d6] ring-1 ring-[#e0dbfa]"><Mail className="h-5 w-5" /></span>
-            Templates de e-mail
-          </h1>
-          <p className="mt-1 text-sm text-muted-foreground">Mensagens reutilizáveis da clínica com variáveis e pré-visualização.</p>
-          {!podeGerenciar && <p className="mt-1 text-xs text-muted-foreground" role="note">Visualização disponível; somente administradores podem alterar os modelos.</p>}
-        </div>
-        {podeGerenciar && <Button onClick={openNew} className="w-full gap-2 sm:w-auto">
-          <Plus className="h-4 w-4" /> Novo Template
-        </Button>}
-      </div>
+      <PageHeader
+        title="Templates de e-mail"
+        description={stats.total > 0
+          ? `${stats.total} modelo${stats.total === 1 ? '' : 's'} · ${stats.ativos} ativo${stats.ativos === 1 ? '' : 's'}${stats.pendencias > 0 ? ` · ${stats.pendencias} com pendência` : ''}`
+          : 'Mensagens reutilizáveis da clínica com variáveis e pré-visualização.'}
+        icon={<Mail />}
+        actions={
+          <>
+            <Button variant="outline" size="icon" className="shrink-0 rounded-full" onClick={() => void templatesQuery.refetch()} aria-label="Atualizar modelos de e-mail" title="Atualizar modelos de e-mail">
+              <RefreshCw className="h-4 w-4" />
+            </Button>
+            {podeGerenciar && (
+              <Button onClick={openNew} className="shrink-0 gap-2 rounded-full bg-[#111111] text-white shadow-md hover:bg-[#2b2b33]">
+                <Plus className="h-4 w-4" /> Novo Template
+              </Button>
+            )}
+          </>
+        }
+      />
+      {!podeGerenciar && <p className="text-xs text-muted-foreground" role="note">Visualização disponível; somente administradores podem alterar os modelos.</p>}
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {templatesQuery.isLoading ? (
-          [0, 1, 2].map(index => <Skeleton key={index} className="h-40 rounded-xl" />)
-        ) : templates.length === 0 ? (
-          <Card className="md:col-span-2 lg:col-span-3">
-            <CardContent className="py-12 text-center text-muted-foreground">
-              <p className="font-medium">Nenhum modelo de e-mail cadastrado</p>
-              <p className="mt-1 text-sm">Crie um modelo para reutilizar mensagens da clínica.</p>
-            </CardContent>
-          </Card>
-        ) : templates.map((template: any) => {
-          const categoryObj = CATEGORIAS.find((c) => c.value === template.categoria);
-          const templatePreview = analyzeTemplatePreview({
-            name: template.nome,
-            category: template.categoria,
-            subject: template.assunto || '',
-            content: template.conteudo || '',
-          });
-          return (
-            <Card key={template.id} className={!template.ativo ? 'opacity-60' : ''}>
-              <CardHeader className="pb-3">
-                <div className="flex items-start justify-between">
-                  <CardTitle className="text-base">{template.nome}</CardTitle>
-                  {podeGerenciar && <Button
-                    size="sm"
-                    variant="ghost"
-                    aria-label={template.ativo ? `Desativar modelo ${template.nome}` : `Ativar modelo ${template.nome}`}
-                    onClick={() => template.ativo
-                      ? toggleMutation.mutate({ id: template.id, ativo: true })
-                      : setActivationCandidate(template)}
-                    disabled={toggleMutation.isPending}
-                    className={template.ativo ? 'text-success' : 'text-muted-foreground'}
-                  >
-                    {template.ativo ? '●' : '○'}
-                  </Button>}
+      {/* Indicadores */}
+      {stats.total > 0 && (
+        <section role="group" aria-label="Situação dos modelos de e-mail" className="grid grid-cols-2 gap-2 md:grid-cols-4">
+          {indicadores.map(ind => {
+            const Icon = ind.icon;
+            const ativo = statusFilter === ind.key;
+            return (
+              <button
+                key={ind.key}
+                type="button"
+                aria-pressed={ativo}
+                onClick={() => setStatusFilter(ativo && ind.key !== 'todos' ? 'todos' : ind.key)}
+                className={cn(
+                  'group rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+                  ind.escuro && 'border-transparent bg-[#111111] text-white',
+                  ativo && !ind.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
+                  ativo && ind.escuro && 'ring-2 ring-[#2ED5E7]/60',
+                )}
+              >
+                <div className="flex min-h-[88px] items-center gap-3 p-3">
+                  <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', ind.surface)}>
+                    <Icon aria-hidden="true" className={cn('h-5 w-5', ind.color)} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <h3 className={cn('truncate text-xs font-semibold', ind.escuro ? 'text-white/80' : 'text-foreground')}>{ind.label}</h3>
+                      <span className={cn('text-2xl font-bold tabular-nums', ind.color)}>{ind.count}</span>
+                    </div>
+                    <p className={cn('truncate text-[11px]', ind.escuro ? 'text-white/60' : 'text-muted-foreground')}>{ind.caption}</p>
+                  </div>
                 </div>
-                <Badge className="w-fit mt-2">{categoryObj?.label || template.categoria}</Badge>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-muted-foreground line-clamp-2 mb-4">{template.assunto}</p>
-                {template.ativo && templatePreview.missingVariables.length > 0 && <p className="mb-3 text-xs text-destructive" role="alert">
-                  Modelo ativo com variáveis sem suporte para esta categoria: {templatePreview.missingVariables.map(variable => `{{${variable}}}`).join(', ')}.
-                </p>}
-                {podeGerenciar && <div className="flex gap-2">
-                  <Button size="sm" variant="outline" aria-label={`Editar modelo ${template.nome}`} onClick={() => openEdit(template)}>
-                    <Edit2 className="h-3 w-3" />
-                  </Button>
-                  <Button size="sm" variant="outline" aria-label={`Histórico do modelo ${template.nome}`} onClick={() => setHistoryTemplate({ id: template.id, name: template.nome })}>
-                    <History className="h-3 w-3" />
-                  </Button>
-                  <Button size="sm" variant="outline" aria-label={`Excluir modelo ${template.nome}`} onClick={() => setDeleteId(template.id)}>
-                    <Trash2 className="h-3 w-3 text-destructive" />
-                  </Button>
-                </div>}
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
+              </button>
+            );
+          })}
+        </section>
+      )}
+
+      {/* Filtros */}
+      {stats.total > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative w-full sm:w-72">
+            <Search aria-hidden="true" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={event => setSearch(event.target.value)}
+              placeholder="Buscar nome, assunto ou categoria..."
+              aria-label="Buscar modelos de e-mail"
+              className="h-10 rounded-full pl-9 focus-visible:ring-[#1080CA]"
+            />
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <CategoriaPill ativo={categoriaFilter === 'todas'} onClick={() => setCategoriaFilter('todas')}>Todas</CategoriaPill>
+            {CATEGORIAS.map(categoria => (
+              <CategoriaPill key={categoria.value} ativo={categoriaFilter === categoria.value} onClick={() => setCategoriaFilter(categoria.value)}>{categoria.label}</CategoriaPill>
+            ))}
+          </div>
+          {temFiltro && (
+            <Button variant="ghost" size="sm" className="h-10 gap-1.5 rounded-full text-muted-foreground" onClick={limparFiltros}>
+              <X aria-hidden="true" className="h-3.5 w-3.5" /> Limpar filtros
+            </Button>
+          )}
+          <p className="ml-auto text-xs text-muted-foreground" aria-live="polite">
+            {filtered.length} de {stats.total}
+          </p>
+        </div>
+      )}
+
+      {/* Lista */}
+      {templatesQuery.isLoading ? (
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {[0, 1, 2].map(index => <Skeleton key={index} className="h-40 rounded-2xl" />)}
+        </div>
+      ) : templates.length === 0 ? (
+        <Card className="rounded-2xl border-border/60 shadow-xs">
+          <CardContent className="py-16 text-center text-muted-foreground">
+            <span aria-hidden="true" className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+              <Mail className="h-7 w-7" />
+            </span>
+            <p className="font-medium text-foreground">Nenhum modelo de e-mail cadastrado</p>
+            <p className="mt-1 text-sm">Crie um modelo para reutilizar mensagens da clínica.</p>
+            {podeGerenciar && <Button className="mt-4 rounded-full bg-[#111111] text-white hover:bg-[#2b2b33]" size="sm" onClick={openNew}>Novo Template</Button>}
+          </CardContent>
+        </Card>
+      ) : filtered.length === 0 ? (
+        <Card className="rounded-2xl border-border/60 shadow-xs">
+          <CardContent className="py-16 text-center text-muted-foreground">
+            <span aria-hidden="true" className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+              <Search className="h-7 w-7" />
+            </span>
+            <p className="font-medium text-foreground">Nenhum modelo corresponde aos filtros</p>
+            <p className="mt-1 text-sm">Limpe a busca, a categoria ou a situação para ver todos os modelos.</p>
+            <Button className="mt-4 rounded-full" size="sm" variant="outline" onClick={limparFiltros}>Limpar filtros</Button>
+          </CardContent>
+        </Card>
+      ) : (
+        grupos.map(grupo => (
+          <section key={grupo.key} aria-labelledby={`email-grupo-${grupo.key}`} className="space-y-3">
+            <div className="flex items-center gap-2.5">
+              <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-white shadow-sm">
+                <Layers className="h-4 w-4" />
+              </span>
+              <h2 id={`email-grupo-${grupo.key}`} className="text-base font-semibold text-foreground">{grupo.label}</h2>
+              <Badge variant="outline" className="h-5 rounded-full border-[#BFD8EE] bg-white text-xs tabular-nums text-[#1080CA]">{grupo.items.length}</Badge>
+            </div>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {grupo.items.map(({ template, preview }) => (
+                <Card key={template.id} className={cn('flex flex-col rounded-2xl border-border/60 shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md', !template.ativo && 'opacity-70')}>
+                  <CardHeader className="pb-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <CardTitle className="min-w-0 truncate text-base">{template.nome}</CardTitle>
+                      {podeGerenciar && <Button
+                        size="icon"
+                        variant="ghost"
+                        aria-label={template.ativo ? `Desativar modelo ${template.nome}` : `Ativar modelo ${template.nome}`}
+                        onClick={() => template.ativo
+                          ? toggleMutation.mutate({ id: template.id, ativo: true })
+                          : setActivationCandidate(template)}
+                        disabled={toggleMutation.isPending}
+                        className={cn('h-8 w-8 shrink-0 rounded-full', template.ativo ? 'text-success' : 'text-muted-foreground')}
+                      >
+                        {template.ativo ? '●' : '○'}
+                      </Button>}
+                    </div>
+                    <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                      <Badge variant="outline" className="rounded-full border-[#BFD8EE] text-[11px] text-[#1080CA]">{CATEGORIAS.find(c => c.value === template.categoria)?.label || template.categoria}</Badge>
+                      <Badge variant="outline" className={cn('rounded-full text-[10px]', template.ativo ? 'border-success/30 bg-success/10 text-success' : 'border-border/60 text-muted-foreground')}>{template.ativo ? 'Ativo' : 'Inativo'}</Badge>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="flex flex-1 flex-col gap-3">
+                    <p className="line-clamp-2 text-sm text-muted-foreground">{template.assunto}</p>
+                    {template.ativo && preview.missingVariables.length > 0 && <p className="text-xs text-destructive" role="alert">
+                      Modelo ativo com variáveis sem suporte para esta categoria: {preview.missingVariables.map(variable => `{{${variable}}}`).join(', ')}.
+                    </p>}
+                    {template.conteudo && (
+                      <details className="rounded-xl border border-border/60 bg-[#F3F8FC] p-2.5 text-xs">
+                        <summary className="cursor-pointer font-medium text-[#1080CA]">Ver conteúdo</summary>
+                        <div className="prose prose-sm mt-2 max-w-none text-muted-foreground" dangerouslySetInnerHTML={{ __html: sanitizeTemplateHtml(preview.renderedContent) }} />
+                      </details>
+                    )}
+                    {podeGerenciar && <div className="mt-auto flex items-center gap-1.5 pt-1">
+                      <Button size="sm" variant="outline" className="h-9 gap-1.5 rounded-full px-3 text-xs" aria-label={`Duplicar modelo ${template.nome}`} disabled={duplicateMutation.isPending} onClick={() => duplicateMutation.mutate(template)}>
+                        <Copy className="h-3.5 w-3.5" /> Duplicar
+                      </Button>
+                      <Button size="sm" className="h-9 gap-1.5 rounded-full bg-[#111111] px-3 text-xs text-white hover:bg-[#2b2b33]" aria-label={`Editar modelo ${template.nome}`} onClick={() => openEdit(template)}>
+                        <Edit2 className="h-3.5 w-3.5" /> Editar
+                      </Button>
+                      <Button size="icon" variant="outline" className="h-9 w-9 rounded-full" aria-label={`Histórico do modelo ${template.nome}`} title="Histórico" onClick={() => setHistoryTemplate({ id: template.id, name: template.nome })}>
+                        <History className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button size="icon" variant="ghost" className="ml-auto h-9 w-9 rounded-full text-destructive" aria-label={`Excluir modelo ${template.nome}`} title="Excluir" onClick={() => setDeleteId(template.id)}>
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>}
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </section>
+        ))
+      )}
 
       <Dialog open={showDialog} onOpenChange={(open) => { if (!saveMutation.isPending) setShowDialog(open); }}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
@@ -596,5 +800,23 @@ export default function TemplatesEmail() {
         </AlertDialogContent>
       </AlertDialog>
     </div>
+  );
+}
+
+function CategoriaPill({ ativo, onClick, children }: { ativo: boolean; onClick: () => void; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      aria-pressed={ativo}
+      onClick={onClick}
+      className={cn(
+        'h-8 rounded-full border px-3 text-xs transition-colors',
+        ativo
+          ? 'border-transparent bg-gradient-primary text-white shadow-sm'
+          : 'border-border/60 bg-card text-muted-foreground hover:border-[#9CC7EC]',
+      )}
+    >
+      {children}
+    </button>
   );
 }

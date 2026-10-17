@@ -1,10 +1,9 @@
 import { medicamentosParaLinhas, textoParaMedicamentos } from '@/lib/templatesPrescricao';
-import { useState, useMemo, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, FileText, Pill, Edit, Trash2, Copy, Loader2, Search } from 'lucide-react';
+import { useState, useMemo, useRef, type ReactNode } from 'react';
+import { Link } from 'react-router-dom';
+import { Plus, FileText, Pill, Edit, Trash2, Copy, Loader2, Search, X, RefreshCw, FolderKanban, Stethoscope, ClipboardList } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Card, CardContent } from '@/components/ui/card';
 import {
   Dialog,
   DialogContent,
@@ -34,12 +33,14 @@ import {
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
 import { mensagemDeErro } from '@/lib/erros';
 import { useSupabaseQuery } from '@/hooks/useSupabaseData';
 import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient } from '@tanstack/react-query';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ErrorState } from '@/components/ErrorState';
+import { PageHeader } from '@/components/PageHeader';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { normalizarTexto } from '@/lib/buscaPaciente';
 
@@ -55,6 +56,8 @@ const CERTIFICATE_TYPES: Record<string, string> = {
   aptidao: 'Aptidão',
   acompanhante: 'Acompanhante',
 };
+
+type ClinicalTab = 'prescriptions' | 'certificates';
 
 interface PrescriptionTemplate {
   id: string;
@@ -82,6 +85,7 @@ interface CertificateTemplate {
 }
 
 export default function Templates() {
+  const [clinicalTab, setClinicalTab] = useState<ClinicalTab>('prescriptions');
   const [isPrescriptionFormOpen, setIsPrescriptionFormOpen] = useState(false);
   const [isCertificateFormOpen, setIsCertificateFormOpen] = useState(false);
   const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; type: 'prescription' | 'certificate'; id: string }>({ open: false, type: 'prescription', id: '' });
@@ -98,6 +102,8 @@ export default function Templates() {
   const [medicamentosTexto, setMedicamentosTexto] = useState('');
   const [prescriptionSearch, setPrescriptionSearch] = useState('');
   const [certificateSearch, setCertificateSearch] = useState('');
+  const [prescriptionTipo, setPrescriptionTipo] = useState('todos');
+  const [certificateTipo, setCertificateTipo] = useState('todos');
 
   const prescriptionQuery = useSupabaseQuery<PrescriptionTemplate>('templates_prescricao', {
     orderBy: { column: 'nome', ascending: true },
@@ -115,24 +121,29 @@ export default function Templates() {
 
   const filteredPrescriptionTemplates = useMemo(() => {
     const term = normalizarTexto(prescriptionSearch);
-    if (!term) return prescriptionTemplates;
     return prescriptionTemplates.filter(template => {
+      if (prescriptionTipo !== 'todos' && (template.tipo || 'simples') !== prescriptionTipo) return false;
+      if (!term) return true;
       const medicamentos = medicamentosParaLinhas(template.medicamentos).join(' ');
       const tipo = PRESCRIPTION_TYPES[template.tipo || 'simples'] || template.tipo || '';
       return [template.nome, tipo, medicamentos, template.observacoes_gerais]
         .some(value => normalizarTexto(value).includes(term));
     });
-  }, [prescriptionTemplates, prescriptionSearch]);
+  }, [prescriptionTemplates, prescriptionSearch, prescriptionTipo]);
 
   const filteredCertificateTemplates = useMemo(() => {
     const term = normalizarTexto(certificateSearch);
-    if (!term) return certificateTemplates;
     return certificateTemplates.filter(template => {
+      if (certificateTipo !== 'todos' && (template.tipo || 'comparecimento') !== certificateTipo) return false;
+      if (!term) return true;
       const tipo = CERTIFICATE_TYPES[template.tipo || 'comparecimento'] || template.tipo || '';
       return [template.nome, tipo, template.conteudo, template.cid]
         .some(value => normalizarTexto(value).includes(term));
     });
-  }, [certificateTemplates, certificateSearch]);
+  }, [certificateTemplates, certificateSearch, certificateTipo]);
+
+  const prescriptionGroups = useMemo(() => groupByTipo(filteredPrescriptionTemplates, PRESCRIPTION_TYPES, 'simples'), [filteredPrescriptionTemplates]);
+  const certificateGroups = useMemo(() => groupByTipo(filteredCertificateTemplates, CERTIFICATE_TYPES, 'comparecimento'), [filteredCertificateTemplates]);
 
   const handleSavePrescription = async () => {
     if (saveLock.current) return;
@@ -323,6 +334,22 @@ export default function Templates() {
     }
   };
 
+  const openNewForActiveTab = () => {
+    if (clinicalTab === 'prescriptions') {
+      setPrescriptionForm({});
+      setMedicamentosTexto('');
+      setIsPrescriptionFormOpen(true);
+    } else {
+      setCertificateForm({});
+      setIsCertificateFormOpen(true);
+    }
+  };
+
+  const refresh = () => {
+    void prescriptionQuery.refetch();
+    void certificateQuery.refetch();
+  };
+
   if (isLoading) {
     return (
       <div className="space-y-6">
@@ -340,161 +367,254 @@ export default function Templates() {
     }} />;
   }
 
+  const activeSearch = clinicalTab === 'prescriptions' ? prescriptionSearch : certificateSearch;
+  const setActiveSearch = clinicalTab === 'prescriptions' ? setPrescriptionSearch : setCertificateSearch;
+  const activeTipo = clinicalTab === 'prescriptions' ? prescriptionTipo : certificateTipo;
+  const setActiveTipo = clinicalTab === 'prescriptions' ? setPrescriptionTipo : setCertificateTipo;
+  const activeTypeMap = clinicalTab === 'prescriptions' ? PRESCRIPTION_TYPES : CERTIFICATE_TYPES;
+  const activeTotal = clinicalTab === 'prescriptions' ? prescriptionTemplates.length : certificateTemplates.length;
+  const activeFilteredCount = clinicalTab === 'prescriptions' ? filteredPrescriptionTemplates.length : filteredCertificateTemplates.length;
+  const activeGroups = clinicalTab === 'prescriptions' ? prescriptionGroups : certificateGroups;
+  const temFiltro = activeSearch.trim() !== '' || activeTipo !== 'todos';
+  const limparFiltros = () => { setActiveSearch(''); setActiveTipo('todos'); };
+
+  const totalModelos = prescriptionTemplates.length + certificateTemplates.length;
+  const indicadores: { key: ClinicalTab; icon: typeof Pill; label: string; caption: string; count: number }[] = [
+    { key: 'prescriptions', icon: Pill, label: 'Prescrições', caption: 'modelos de receita', count: prescriptionTemplates.length },
+    { key: 'certificates', icon: FileText, label: 'Atestados', caption: 'modelos de atestado', count: certificateTemplates.length },
+  ];
+
   return (
     <div className="space-y-6">
-      <div className="rounded-2xl border border-[#e3dffb] bg-gradient-to-r from-[#f6f4ff] via-white to-[#f3f1ff] p-4 sm:p-5">
-        <h1 className="text-2xl font-bold tracking-tight text-[#1c1636]">Modelos clínicos</h1>
-        <p className="text-muted-foreground">Modelos reutilizáveis para prescrições e atestados</p>
+      <PageHeader
+        title="Modelos clínicos"
+        description={totalModelos > 0
+          ? `${prescriptionTemplates.length} modelo${prescriptionTemplates.length === 1 ? '' : 's'} de prescrição · ${certificateTemplates.length} de atestado`
+          : 'Modelos reutilizáveis para prescrições e atestados'}
+        icon={<FolderKanban />}
+        actions={
+          <>
+            <Button asChild variant="outline" className="shrink-0 gap-2 rounded-full">
+              <Link to="/prescricoes"><Stethoscope aria-hidden="true" className="h-4 w-4" /> Prescrições</Link>
+            </Button>
+            <Button asChild variant="outline" className="shrink-0 gap-2 rounded-full">
+              <Link to="/atestados"><ClipboardList aria-hidden="true" className="h-4 w-4" /> Atestados</Link>
+            </Button>
+            <Button variant="outline" size="icon" className="shrink-0 rounded-full" onClick={refresh} aria-label="Atualizar modelos" title="Atualizar modelos">
+              <RefreshCw className="h-4 w-4" />
+            </Button>
+            <Button onClick={openNewForActiveTab} className="shrink-0 gap-2 rounded-full bg-[#111111] text-white shadow-md hover:bg-[#2b2b33]">
+              <Plus className="h-4 w-4" /> Novo modelo
+            </Button>
+          </>
+        }
+      />
+
+      {/* Indicadores / seletor de categoria */}
+      <section role="group" aria-label="Categorias de modelos clínicos" className="space-y-2">
+        <div className="grid grid-cols-2 gap-2">
+          {indicadores.map(ind => {
+            const Icon = ind.icon;
+            const ativo = clinicalTab === ind.key;
+            return (
+              <button
+                key={ind.key}
+                type="button"
+                aria-pressed={ativo}
+                onClick={() => setClinicalTab(ind.key)}
+                className={cn(
+                  'group rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+                  ativo && 'border-transparent bg-[#111111] text-white',
+                )}
+              >
+                <div className="flex min-h-[88px] items-center gap-3 p-3">
+                  <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', ativo ? 'bg-white/15' : 'bg-[#1080CA]/10')}>
+                    <Icon aria-hidden="true" className={cn('h-5 w-5', ativo ? 'text-[#2ED5E7]' : 'text-[#1080CA]')} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <h3 className={cn('truncate text-xs font-semibold', ativo ? 'text-white/80' : 'text-foreground')}>{ind.label}</h3>
+                      <span className={cn('text-2xl font-bold tabular-nums', ativo ? 'text-[#2ED5E7]' : 'text-[#1080CA]')}>{ind.count}</span>
+                    </div>
+                    <p className={cn('truncate text-[11px]', ativo ? 'text-white/60' : 'text-muted-foreground')}>{ind.caption}</p>
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* Filtros */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative w-full sm:w-72">
+          <Search aria-hidden="true" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={activeSearch}
+            onChange={event => setActiveSearch(event.target.value)}
+            placeholder={clinicalTab === 'prescriptions' ? 'Buscar nome, tipo ou medicamento...' : 'Buscar nome, tipo, CID ou conteúdo...'}
+            aria-label={clinicalTab === 'prescriptions' ? 'Buscar templates de prescrição' : 'Buscar templates de atestado'}
+            className="h-10 rounded-full pl-9 focus-visible:ring-[#1080CA]"
+          />
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <TipoPill ativo={activeTipo === 'todos'} onClick={() => setActiveTipo('todos')}>Todos</TipoPill>
+          {Object.entries(activeTypeMap).map(([key, label]) => (
+            <TipoPill key={key} ativo={activeTipo === key} onClick={() => setActiveTipo(key)}>{label}</TipoPill>
+          ))}
+        </div>
+        {temFiltro && (
+          <Button variant="ghost" size="sm" className="h-10 gap-1.5 rounded-full text-muted-foreground" onClick={limparFiltros}>
+            <X aria-hidden="true" className="h-3.5 w-3.5" /> Limpar filtros
+          </Button>
+        )}
+        <p className="ml-auto text-xs text-muted-foreground" aria-live="polite">
+          {activeFilteredCount} de {activeTotal}
+        </p>
       </div>
 
-      <Tabs defaultValue="prescriptions" className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="prescriptions" className="gap-2">
-            <Pill className="h-4 w-4" />
-            Prescrições
-          </TabsTrigger>
-          <TabsTrigger value="certificates" className="gap-2">
-            <FileText className="h-4 w-4" />
-            Atestados
-          </TabsTrigger>
-        </TabsList>
+      {/* Lista agrupada por tipo */}
+      {activeFilteredCount === 0 ? (
+        <Card className="rounded-2xl border-border/60 shadow-xs">
+          <CardContent className="py-16 text-center text-muted-foreground">
+            <span aria-hidden="true" className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+              {clinicalTab === 'prescriptions' ? <Pill className="h-7 w-7" /> : <FileText className="h-7 w-7" />}
+            </span>
+            <p className="font-medium text-foreground">
+              {activeTotal === 0
+                ? (clinicalTab === 'prescriptions' ? 'Nenhum template de prescrição criado' : 'Nenhum template de atestado criado')
+                : 'Nenhum template corresponde à busca'}
+            </p>
+            <p className="mt-1 text-sm">
+              {activeTotal === 0
+                ? (clinicalTab === 'prescriptions' ? 'Crie templates para agilizar suas prescrições' : 'Crie templates para agilizar seus atestados')
+                : (clinicalTab === 'prescriptions' ? 'Tente outro nome, tipo ou medicamento.' : 'Tente outro nome, tipo, CID ou conteúdo.')}
+            </p>
+            {activeTotal === 0 ? (
+              <Button className="mt-4 rounded-full bg-[#111111] text-white hover:bg-[#2b2b33]" size="sm" onClick={openNewForActiveTab}>Novo modelo</Button>
+            ) : (
+              <Button className="mt-4 rounded-full" size="sm" variant="outline" onClick={limparFiltros}>Limpar filtros</Button>
+            )}
+          </CardContent>
+        </Card>
+      ) : (
+        activeGroups.map(group => {
+          const Icon = clinicalTab === 'prescriptions' ? Pill : FileText;
+          return (
+            <section key={group.key} aria-labelledby={`modelos-grupo-${group.key}`} className="space-y-3">
+              <div className="flex items-center gap-2.5">
+                <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-white shadow-sm">
+                  <Icon className="h-4 w-4" />
+                </span>
+                <h2 id={`modelos-grupo-${group.key}`} className="text-base font-semibold text-foreground">{group.label}</h2>
+                <Badge variant="outline" className="h-5 rounded-full border-[#BFD8EE] bg-white text-xs tabular-nums text-[#1080CA]">{group.items.length}</Badge>
+              </div>
+              <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+                {clinicalTab === 'prescriptions'
+                  ? (group.items as PrescriptionTemplate[]).map(template => {
+                    const linhas = medicamentosParaLinhas(template.medicamentos);
+                    const podeEditar = template.clinica_id === profile?.clinica_id;
+                    return (
+                      <Card key={template.id} className="flex flex-col rounded-2xl border-border/60 shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
+                        <CardContent className="flex flex-1 flex-col gap-3 p-4">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <h3 className="truncate font-semibold text-foreground">{template.nome}</h3>
+                              <Badge variant="outline" className="mt-1 rounded-full border-[#BFD8EE] text-[11px] text-[#1080CA]">
+                                {PRESCRIPTION_TYPES[template.tipo || 'simples'] || template.tipo}
+                              </Badge>
+                            </div>
+                            <Badge variant="secondary" className="shrink-0 rounded-full text-[10px] tabular-nums">
+                              {linhas.length} medicamento{linhas.length === 1 ? '' : 's'}
+                            </Badge>
+                          </div>
 
-        <TabsContent value="prescriptions" className="space-y-4">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="relative w-full sm:max-w-sm">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={prescriptionSearch}
-                onChange={event => setPrescriptionSearch(event.target.value)}
-                placeholder="Buscar nome, tipo ou medicamento..."
-                aria-label="Buscar templates de prescrição"
-                className="pl-9"
-              />
-            </div>
-            <Button onClick={() => { setPrescriptionForm({}); setMedicamentosTexto(''); setIsPrescriptionFormOpen(true); }}>
-              <Plus className="mr-2 h-4 w-4" />
-              Novo Template
-            </Button>
-          </div>
+                          {linhas.length > 0 && (
+                            <details className="rounded-xl border border-border/60 bg-[#F3F8FC] p-2.5 text-xs">
+                              <summary className="cursor-pointer font-medium text-[#1080CA]">Ver medicamentos</summary>
+                              <ol className="mt-2 list-decimal space-y-1 pl-4 text-muted-foreground">
+                                {linhas.map((linha, index) => <li key={index}>{linha}</li>)}
+                              </ol>
+                              {template.observacoes_gerais && (
+                                <p className="mt-2 border-t border-border/60 pt-2 text-muted-foreground">Observações: {template.observacoes_gerais}</p>
+                              )}
+                            </details>
+                          )}
 
-          {filteredPrescriptionTemplates.length === 0 ? (
-            <Card>
-              <CardContent className="py-12 text-center text-muted-foreground">
-                <Pill className="mx-auto h-12 w-12 mb-4 opacity-50" />
-                <p>{prescriptionTemplates.length === 0 ? 'Nenhum template de prescrição criado' : 'Nenhum template corresponde à busca'}</p>
-                <p className="text-sm">{prescriptionTemplates.length === 0 ? 'Crie templates para agilizar suas prescrições' : 'Tente outro nome, tipo ou medicamento.'}</p>
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {filteredPrescriptionTemplates.map((template) => (
-                <Card key={template.id} className="border-[#e1dcf8] shadow-sm transition-shadow hover:shadow-md">
-                  <CardHeader>
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <CardTitle className="text-lg">{template.nome}</CardTitle>
-                        <div className="text-sm text-muted-foreground">
-                          <Badge variant="outline" className="mt-1">
-                            {PRESCRIPTION_TYPES[template.tipo || 'simples']}
-                          </Badge>
-                        </div>
-                      </div>
-                      <div className="flex gap-1">
-                        <Button aria-label={`Duplicar modelo ${template.nome}`} size="icon" variant="ghost" disabled={duplicatingTemplateKey !== null} onClick={() => duplicateTemplate(template, 'prescription')}>
-                          {duplicatingTemplateKey === `prescription:${template.id}`
-                            ? <Loader2 className="h-4 w-4 animate-spin" />
-                            : <Copy className="h-4 w-4" />}
-                        </Button>
-                        {template.clinica_id === profile?.clinica_id && <>
-                          <Button aria-label={`Editar modelo ${template.nome}`} size="icon" variant="ghost" onClick={() => { setPrescriptionForm(template); setMedicamentosTexto(medicamentosParaLinhas(template.medicamentos).join('\n')); setIsPrescriptionFormOpen(true); }}>
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button aria-label={`Excluir modelo ${template.nome}`} size="icon" variant="ghost" onClick={() => setDeleteDialog({ open: true, type: 'prescription', id: template.id })}>
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </>}
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-sm text-muted-foreground">
-                      {medicamentosParaLinhas(template.medicamentos).length} medicamento(s)
-                    </p>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
-        </TabsContent>
+                          <div className="mt-auto flex items-center gap-1.5 pt-1">
+                            <Button aria-label={`Duplicar modelo ${template.nome}`} size="sm" variant="outline" className="h-9 gap-1.5 rounded-full px-3 text-xs" disabled={duplicatingTemplateKey !== null} onClick={() => duplicateTemplate(template, 'prescription')}>
+                              {duplicatingTemplateKey === `prescription:${template.id}`
+                                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                : <Copy className="h-3.5 w-3.5" />}
+                              Duplicar
+                            </Button>
+                            {podeEditar && <>
+                              <Button aria-label={`Editar modelo ${template.nome}`} size="sm" className="h-9 gap-1.5 rounded-full bg-[#111111] px-3 text-xs text-white hover:bg-[#2b2b33]" onClick={() => { setPrescriptionForm(template); setMedicamentosTexto(medicamentosParaLinhas(template.medicamentos).join('\n')); setIsPrescriptionFormOpen(true); }}>
+                                <Edit className="h-3.5 w-3.5" /> Editar
+                              </Button>
+                              <Button aria-label={`Excluir modelo ${template.nome}`} size="icon" variant="ghost" className="ml-auto h-9 w-9 rounded-full text-destructive" title="Excluir" onClick={() => setDeleteDialog({ open: true, type: 'prescription', id: template.id })}>
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </>}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })
+                  : (group.items as CertificateTemplate[]).map(template => {
+                    const podeEditar = template.clinica_id === profile?.clinica_id;
+                    return (
+                      <Card key={template.id} className="flex flex-col rounded-2xl border-border/60 shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
+                        <CardContent className="flex flex-1 flex-col gap-3 p-4">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <h3 className="truncate font-semibold text-foreground">{template.nome}</h3>
+                              <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                                <Badge variant="outline" className="rounded-full border-[#BFD8EE] text-[11px] text-[#1080CA]">
+                                  {CERTIFICATE_TYPES[template.tipo || 'comparecimento'] || template.tipo}
+                                </Badge>
+                                {template.tipo === 'afastamento' && template.dias_afastamento != null && (
+                                  <Badge variant="secondary" className="rounded-full text-[10px] tabular-nums">{template.dias_afastamento} dia{template.dias_afastamento === 1 ? '' : 's'}</Badge>
+                                )}
+                                {template.tipo === 'afastamento' && template.cid && (
+                                  <Badge variant="secondary" className="rounded-full text-[10px]">CID {template.cid}</Badge>
+                                )}
+                              </div>
+                            </div>
+                          </div>
 
-        <TabsContent value="certificates" className="space-y-4">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="relative w-full sm:max-w-sm">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={certificateSearch}
-                onChange={event => setCertificateSearch(event.target.value)}
-                placeholder="Buscar nome, tipo, CID ou conteúdo..."
-                aria-label="Buscar templates de atestado"
-                className="pl-9"
-              />
-            </div>
-            <Button onClick={() => { setCertificateForm({}); setIsCertificateFormOpen(true); }}>
-              <Plus className="mr-2 h-4 w-4" />
-              Novo Template
-            </Button>
-          </div>
+                          {template.conteudo && (
+                            <details className="rounded-xl border border-border/60 bg-[#F3F8FC] p-2.5 text-xs">
+                              <summary className="cursor-pointer font-medium text-[#1080CA]">Ver conteúdo</summary>
+                              <p className="mt-2 whitespace-pre-wrap break-words text-muted-foreground">{template.conteudo}</p>
+                            </details>
+                          )}
 
-          {filteredCertificateTemplates.length === 0 ? (
-            <Card>
-              <CardContent className="py-12 text-center text-muted-foreground">
-                <FileText className="mx-auto h-12 w-12 mb-4 opacity-50" />
-                <p>{certificateTemplates.length === 0 ? 'Nenhum template de atestado criado' : 'Nenhum template corresponde à busca'}</p>
-                <p className="text-sm">{certificateTemplates.length === 0 ? 'Crie templates para agilizar seus atestados' : 'Tente outro nome, tipo, CID ou conteúdo.'}</p>
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {filteredCertificateTemplates.map((template) => (
-                <Card key={template.id} className="border-[#e1dcf8] shadow-sm transition-shadow hover:shadow-md">
-                  <CardHeader>
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <CardTitle className="text-lg">{template.nome}</CardTitle>
-                        <div className="text-sm text-muted-foreground">
-                          <Badge variant="outline" className="mt-1">
-                            {CERTIFICATE_TYPES[template.tipo || 'comparecimento']}
-                          </Badge>
-                        </div>
-                      </div>
-                      <div className="flex gap-1">
-                        <Button aria-label={`Duplicar modelo ${template.nome}`} size="icon" variant="ghost" disabled={duplicatingTemplateKey !== null} onClick={() => duplicateTemplate(template, 'certificate')}>
-                          {duplicatingTemplateKey === `certificate:${template.id}`
-                            ? <Loader2 className="h-4 w-4 animate-spin" />
-                            : <Copy className="h-4 w-4" />}
-                        </Button>
-                        {template.clinica_id === profile?.clinica_id && <>
-                          <Button aria-label={`Editar modelo ${template.nome}`} size="icon" variant="ghost" onClick={() => { setCertificateForm(template); setIsCertificateFormOpen(true); }}>
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button aria-label={`Excluir modelo ${template.nome}`} size="icon" variant="ghost" onClick={() => setDeleteDialog({ open: true, type: 'certificate', id: template.id })}>
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </>}
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-sm text-muted-foreground line-clamp-2">
-                      {template.conteudo}
-                    </p>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
-        </TabsContent>
-      </Tabs>
+                          <div className="mt-auto flex items-center gap-1.5 pt-1">
+                            <Button aria-label={`Duplicar modelo ${template.nome}`} size="sm" variant="outline" className="h-9 gap-1.5 rounded-full px-3 text-xs" disabled={duplicatingTemplateKey !== null} onClick={() => duplicateTemplate(template, 'certificate')}>
+                              {duplicatingTemplateKey === `certificate:${template.id}`
+                                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                : <Copy className="h-3.5 w-3.5" />}
+                              Duplicar
+                            </Button>
+                            {podeEditar && <>
+                              <Button aria-label={`Editar modelo ${template.nome}`} size="sm" className="h-9 gap-1.5 rounded-full bg-[#111111] px-3 text-xs text-white hover:bg-[#2b2b33]" onClick={() => { setCertificateForm(template); setIsCertificateFormOpen(true); }}>
+                                <Edit className="h-3.5 w-3.5" /> Editar
+                              </Button>
+                              <Button aria-label={`Excluir modelo ${template.nome}`} size="icon" variant="ghost" className="ml-auto h-9 w-9 rounded-full text-destructive" title="Excluir" onClick={() => setDeleteDialog({ open: true, type: 'certificate', id: template.id })}>
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </>}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+              </div>
+            </section>
+          );
+        })
+      )}
 
       {/* Prescription Form Dialog */}
       <Dialog open={isPrescriptionFormOpen} onOpenChange={(open) => { if (!isSaving) setIsPrescriptionFormOpen(open); }}>
@@ -672,4 +792,40 @@ export default function Templates() {
       </AlertDialog>
     </div>
   );
+}
+
+function TipoPill({ ativo, onClick, children }: { ativo: boolean; onClick: () => void; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      aria-pressed={ativo}
+      onClick={onClick}
+      className={cn(
+        'h-8 rounded-full border px-3 text-xs transition-colors',
+        ativo
+          ? 'border-transparent bg-gradient-primary text-white shadow-sm'
+          : 'border-border/60 bg-card text-muted-foreground hover:border-[#9CC7EC]',
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+function groupByTipo<T extends { tipo: string | null }>(items: T[], labels: Record<string, string>, fallback: string) {
+  const groups = new Map<string, T[]>();
+  for (const item of items) {
+    const key = item.tipo || fallback;
+    const bucket = groups.get(key);
+    if (bucket) bucket.push(item);
+    else groups.set(key, [item]);
+  }
+  const order = Object.keys(labels);
+  return [...groups.entries()]
+    .sort(([a], [b]) => {
+      const ia = order.indexOf(a);
+      const ib = order.indexOf(b);
+      return (ia === -1 ? order.length : ia) - (ib === -1 ? order.length : ib);
+    })
+    .map(([key, groupItems]) => ({ key, label: labels[key] || key, items: groupItems }));
 }
