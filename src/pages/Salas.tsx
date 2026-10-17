@@ -1,13 +1,11 @@
 import { nomeMedico } from '@/lib/formatters';
 import { useState, useMemo } from 'react';
-import { motion } from 'framer-motion';
 import {
   Plus, DoorOpen, Settings, Bed, Loader2, Users, CheckCircle2, XCircle, AlertTriangle,
-  Clock, MapPin, Paintbrush, Wrench, Search, Building2, Layers,
+  Clock, MapPin, Paintbrush, Wrench, Search, Building2, Layers, RefreshCw, ListChecks, X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
@@ -136,6 +134,7 @@ export default function Salas() {
   const [updatingSalaId, setUpdatingSalaId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [filterTipo, setFilterTipo] = useState('todos');
+  const [filterEstado, setFilterEstado] = useState<EstadoSala | 'todos'>('todos');
 
   const queryClient = useQueryClient();
   const salasQuery = useSalas();
@@ -304,13 +303,6 @@ export default function Salas() {
     }
   };
 
-  const salasPorTipo: Record<string, any[]> = {};
-  for (const sala of filtered) {
-    const tipo = (sala as any).tipo || 'consultorio';
-    if (!salasPorTipo[tipo]) salasPorTipo[tipo] = [];
-    salasPorTipo[tipo].push(sala);
-  }
-
   const getOcupacao = (salaId: string) =>
     (ocupacoes as any[]).filter((item: any) => item.sala_id === salaId);
 
@@ -321,12 +313,31 @@ export default function Salas() {
     return sala.status;
   };
 
+  const filtradasPorEstado = filterEstado === 'todos' ? filtered : filtered.filter(s => statusEfetivoSala(s) === filterEstado);
+  const temFiltro = search.trim() !== '' || filterTipo !== 'todos' || filterEstado !== 'todos';
+  const limparFiltros = () => { setSearch(''); setFilterTipo('todos'); setFilterEstado('todos'); };
+
+  const salasPorTipo: Record<string, any[]> = {};
+  for (const sala of filtradasPorEstado) {
+    const tipo = (sala as any).tipo || 'consultorio';
+    if (!salasPorTipo[tipo]) salasPorTipo[tipo] = [];
+    salasPorTipo[tipo].push(sala);
+  }
+
   const stats = {
     disponivel: (salas as any[]).filter(s => statusEfetivoSala(s) === 'disponivel').length,
     ocupado: (salas as any[]).filter(s => statusEfetivoSala(s) === 'ocupado').length,
     reservada: (salas as any[]).filter(s => statusEfetivoSala(s) === 'reservada').length,
     manutencao: (salas as any[]).filter(s => statusEfetivoSala(s) === 'manutencao').length,
     limpeza: (salas as any[]).filter(s => statusEfetivoSala(s) === 'limpeza').length,
+  };
+  const totalSalas = (salas as any[]).length;
+  const emUso = stats.ocupado + stats.reservada;
+  const taxaOcupacao = totalSalas > 0 ? Math.round((emUso / totalSalas) * 100) : 0;
+  const foraDeOperacao = stats.manutencao + stats.limpeza;
+  const refresh = () => {
+    void salasQuery.refetch();
+    void ocupacoesQuery.refetch();
   };
 
   if (isLoading || ocupacoesQuery.isLoading || medicosQuery.isLoading) {
@@ -352,230 +363,328 @@ export default function Salas() {
     <div className="space-y-6">
       <PageHeader
         title="Salas e Leitos"
-        description="Gerencie a disponibilidade de espaços físicos"
+        description={totalSalas > 0
+          ? `${totalSalas} espaço${totalSalas === 1 ? '' : 's'} · ${taxaOcupacao}% em uso agora · atualiza a cada 10 s`
+          : 'Gerencie a disponibilidade de espaços físicos'}
         icon={<DoorOpen />}
         actions={
-          <Button onClick={() => handleOpen()} className="gap-2">
-            <Plus className="h-4 w-4" /> Nova Sala / Leito
-          </Button>
+          <>
+            <Button asChild variant="outline" className="shrink-0 gap-2 rounded-full">
+              <Link to="/higiene-salas"><Paintbrush aria-hidden="true" className="h-4 w-4" /> Higienização</Link>
+            </Button>
+            <Button asChild variant="outline" className="shrink-0 gap-2 rounded-full">
+              <Link to="/fila"><ListChecks aria-hidden="true" className="h-4 w-4" /> Ver fila</Link>
+            </Button>
+            <Button variant="outline" size="icon" className="shrink-0 rounded-full" onClick={refresh} aria-label="Atualizar salas" title="Atualizar salas">
+              <RefreshCw className="h-4 w-4" />
+            </Button>
+            <Button onClick={() => handleOpen()} className="shrink-0 gap-2 rounded-full bg-[#111111] text-white shadow-md hover:bg-[#2b2b33]">
+              <Plus className="h-4 w-4" /> Nova Sala / Leito
+            </Button>
+          </>
         }
       />
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3">
-        {([
-          { key: 'disponivel' as EstadoSala, icon: CheckCircle2, label: 'Disponíveis' },
-          { key: 'reservada' as EstadoSala, icon: Clock, label: 'Reservadas' },
-          { key: 'ocupado' as EstadoSala, icon: Users, label: 'Em atendimento' },
-          { key: 'manutencao' as EstadoSala, icon: Wrench, label: 'Manutenção' },
-          { key: 'limpeza' as EstadoSala, icon: Paintbrush, label: 'Limpeza' },
-        ]).map(s => (
-          <Card key={s.key} className="kpi-card">
-            <CardContent className="pt-4 flex items-center gap-3">
-              <div className={cn('p-2 rounded-lg', `${ESTADO_SALA_COLORS[s.key]}/20`)}>
-                <div className={cn('h-3 w-3 rounded-full', ESTADO_SALA_COLORS[s.key])} />
-              </div>
-              <div>
-                <p className="text-2xl font-bold tabular-nums">{stats[s.key]}</p>
-                <p className="text-xs text-muted-foreground">{s.label}</p>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      {/* Situação agora */}
+      <section role="group" aria-label="Situação das salas" className="space-y-2">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="text-sm font-semibold text-foreground">Situação agora</h2>
+          <p className="text-xs text-muted-foreground">
+            {filterEstado === 'todos' ? 'Clique em um indicador para filtrar as salas.' : `Mostrando apenas ${ESTADO_SALA_LABELS[filterEstado].toLowerCase()}.`}
+          </p>
+        </div>
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-5">
+          {([
+            { key: 'ocupado' as EstadoSala, icon: Users, label: 'Em atendimento', caption: 'com paciente agora', color: 'text-[#2ED5E7]', surface: 'bg-white/15', escuro: true },
+            { key: 'reservada' as EstadoSala, icon: Clock, label: 'Reservadas', caption: 'paciente chamado ou na fila', color: 'text-[#1080CA]', surface: 'bg-[#1080CA]/10', escuro: false },
+            { key: 'disponivel' as EstadoSala, icon: CheckCircle2, label: 'Disponíveis', caption: 'prontas para uso', color: 'text-success', surface: 'bg-success/10', escuro: false },
+            { key: 'limpeza' as EstadoSala, icon: Paintbrush, label: 'Limpeza', caption: 'aguardando higienização', color: 'text-info', surface: 'bg-info/10', escuro: false },
+            { key: 'manutencao' as EstadoSala, icon: Wrench, label: 'Manutenção', caption: 'fora de operação', color: 'text-warning', surface: 'bg-warning/10', escuro: false },
+          ]).map(s => {
+            const Icon = s.icon;
+            const ativo = filterEstado === s.key;
+            return (
+              <button
+                key={s.key}
+                type="button"
+                aria-pressed={ativo}
+                onClick={() => setFilterEstado(ativo ? 'todos' : s.key)}
+                className={cn(
+                  'group rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+                  s.escuro && 'border-transparent bg-[#111111] text-white',
+                  ativo && !s.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
+                  ativo && s.escuro && 'ring-2 ring-[#2ED5E7]/60',
+                )}
+              >
+                <div className="flex min-h-[96px] items-center gap-3 p-3">
+                  <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', s.surface)}>
+                    <Icon aria-hidden="true" className={cn('h-5 w-5', s.color)} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <h3 className={cn('truncate text-xs font-semibold', s.escuro ? 'text-white/80' : 'text-foreground')}>{s.label}</h3>
+                      <span className={cn('text-2xl font-bold tabular-nums', s.color)}>{stats[s.key]}</span>
+                    </div>
+                    <p className={cn('truncate text-[11px]', s.escuro ? 'text-white/60' : 'text-muted-foreground')}>{s.caption}</p>
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+        {foraDeOperacao > 0 && (
+          <p className="text-xs text-muted-foreground">
+            {foraDeOperacao} espaço{foraDeOperacao === 1 ? '' : 's'} fora de operação no momento.
+            {stats.limpeza > 0 && <> <Link to="/higiene-salas" className="font-medium text-[#1080CA] underline-offset-2 hover:underline">Acompanhar higienização</Link>.</>}
+          </p>
+        )}
+      </section>
 
       {/* Filters */}
-      <div className="flex flex-wrap gap-3">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input aria-label="Buscar salas, leitos ou equipamentos" className="pl-9 w-64" placeholder="Sala, cama, setor, equipamento..." value={search}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative w-full sm:w-72">
+          <Search aria-hidden="true" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input aria-label="Buscar salas, leitos ou equipamentos" className="h-10 rounded-full pl-9 focus-visible:ring-[#1080CA]" placeholder="Sala, cama, setor, equipamento..." value={search}
             onChange={e => setSearch(e.target.value)} />
         </div>
         <Select value={filterTipo} onValueChange={setFilterTipo}>
-          <SelectTrigger className="w-48"><SelectValue placeholder="Tipo" /></SelectTrigger>
+          <SelectTrigger aria-label="Filtrar por tipo de espaço" className="h-10 w-full rounded-full sm:w-52"><SelectValue placeholder="Tipo" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="todos">Todos os tipos</SelectItem>
             {Object.entries(TIPO_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
           </SelectContent>
         </Select>
+        {temFiltro && (
+          <Button variant="ghost" size="sm" className="h-10 gap-1.5 rounded-full text-muted-foreground" onClick={limparFiltros}>
+            <X aria-hidden="true" className="h-3.5 w-3.5" /> Limpar filtros
+          </Button>
+        )}
+        <p className="ml-auto text-xs text-muted-foreground" aria-live="polite">
+          {filtradasPorEstado.length} de {totalSalas} espaço{totalSalas === 1 ? '' : 's'}
+        </p>
       </div>
 
       {/* Grid by type */}
       {Object.entries(salasPorTipo).map(([tipo, salasDoTipo]) => {
         const Icon = TIPO_ICONS[tipo] || DoorOpen;
         return (
-          <Card key={tipo}>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
-                <Icon className="h-4 w-4" /> {TIPO_LABELS[tipo] || tipo} ({salasDoTipo.length})
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {salasDoTipo.map((sala: any) => {
-                  const medicoNome = getMedicoNome(sala.medico_responsavel);
-                  const ocupacoesSala = getOcupacao(sala.id);
-                  const resumoOcupacao = summarizeRoomOccupancy(ocupacoesSala.length, sala.capacidade);
-                  const statusExibido = statusEfetivoSala(sala);
-                  return (
-                    <Card key={sala.id} className="relative overflow-hidden">
-                      <div className="absolute top-0 left-0 right-0 h-1.5"
-                        style={{ backgroundColor: sala.cor || '#1080CA' }} />
-                      <CardContent className="p-4 space-y-3">
-                        <div className="flex items-start justify-between">
-                          <div>
-                            <h4 className="font-semibold flex items-center gap-1.5">
-                              {sala.nome}
-                              {sala.numero_cama && (
-                                <Badge variant="outline" className="text-[10px]">Cama {sala.numero_cama}</Badge>
-                              )}
-                            </h4>
-                            <div className="flex items-center gap-2 mt-1 flex-wrap">
-                              {sala.setor && (
-                                <span className="text-[11px] text-muted-foreground flex items-center gap-0.5">
-                                  <Building2 className="h-3 w-3" />{sala.setor}
-                                </span>
-                              )}
-                              {sala.andar && (
-                                <span className="text-[11px] text-muted-foreground flex items-center gap-0.5">
-                                  <Layers className="h-3 w-3" />{sala.andar}
-                                </span>
-                              )}
-                              {sala.genero && (
-                                <Badge variant="secondary" className="text-[10px]">{sala.genero}</Badge>
-                              )}
-                            </div>
+          <section key={tipo} aria-labelledby={`salas-tipo-${tipo}`} className="space-y-3">
+            <div className="flex items-center gap-2.5">
+              <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-white shadow-sm">
+                <Icon className="h-4 w-4" />
+              </span>
+              <h2 id={`salas-tipo-${tipo}`} className="text-base font-semibold text-foreground">{TIPO_LABELS[tipo] || tipo}</h2>
+              <Badge variant="outline" className="h-5 rounded-full border-[#BFD8EE] bg-white text-xs tabular-nums text-[#1080CA]">{salasDoTipo.length}</Badge>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {salasDoTipo.map((sala: any) => {
+                const medicoNome = getMedicoNome(sala.medico_responsavel);
+                const ocupacoesSala = getOcupacao(sala.id);
+                const resumoOcupacao = summarizeRoomOccupancy(ocupacoesSala.length, sala.capacidade);
+                const statusExibido = statusEfetivoSala(sala);
+                const capacidade = Math.max(1, Number(sala.capacidade) || 1);
+                const percentualOcupado = Math.min(100, Math.round((ocupacoesSala.length / capacidade) * 100));
+                return (
+                  <Card
+                    key={sala.id}
+                    className={cn(
+                      'relative overflow-hidden rounded-2xl border-border/60 shadow-xs transition-all duration-200',
+                      statusExibido === 'ocupado' && 'border-destructive/30 shadow-[0_8px_24px_rgba(239,68,68,0.10)]',
+                      statusExibido === 'reservada' && 'border-[#1080CA]/40 ring-1 ring-[#1080CA]/20',
+                    )}
+                  >
+                    <div className="absolute left-0 right-0 top-0 h-1.5" style={{ backgroundColor: sala.cor || '#1080CA' }} />
+                    <CardContent className="space-y-3 p-4 pt-5">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <h3 className="flex flex-wrap items-center gap-1.5 font-semibold text-foreground">
+                            <span className="truncate">{sala.nome}</span>
+                            {sala.numero_cama && (
+                              <Badge variant="outline" className="rounded-full text-[10px]">Cama {sala.numero_cama}</Badge>
+                            )}
+                          </h3>
+                          <div className="mt-1 flex flex-wrap items-center gap-2">
+                            {sala.setor && (
+                              <span className="flex items-center gap-0.5 text-[11px] text-muted-foreground">
+                                <Building2 aria-hidden="true" className="h-3 w-3" />{sala.setor}
+                              </span>
+                            )}
+                            {sala.andar && (
+                              <span className="flex items-center gap-0.5 text-[11px] text-muted-foreground">
+                                <Layers aria-hidden="true" className="h-3 w-3" />{sala.andar}
+                              </span>
+                            )}
+                            {sala.genero && (
+                              <Badge variant="secondary" className="rounded-full text-[10px]">{sala.genero}</Badge>
+                            )}
                           </div>
-                          <Badge variant="outline" className="gap-1 text-[10px]">
-                            <div className={cn('h-2 w-2 rounded-full', ESTADO_SALA_COLORS[statusExibido])} />
-                            {ESTADO_SALA_LABELS[statusExibido] || statusExibido}
-                          </Badge>
                         </div>
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            'shrink-0 gap-1 rounded-full text-[10px]',
+                            statusExibido === 'ocupado' && 'border-destructive/30 bg-destructive/10 text-destructive',
+                            statusExibido === 'reservada' && 'border-[#1080CA]/30 bg-[#1080CA]/10 text-[#1080CA]',
+                            statusExibido === 'disponivel' && 'border-success/30 bg-success/10 text-success',
+                            statusExibido === 'limpeza' && 'border-info/30 bg-info/10 text-info',
+                            statusExibido === 'manutencao' && 'border-warning/40 bg-warning/10 text-warning-foreground',
+                          )}
+                        >
+                          <span aria-hidden="true" className={cn('h-2 w-2 rounded-full', ESTADO_SALA_COLORS[statusExibido])} />
+                          {ESTADO_SALA_LABELS[statusExibido] || statusExibido}
+                        </Badge>
+                      </div>
 
-                        {/* Occupation info */}
-                        {ocupacoesSala.length > 0 && (
-                          <div className={cn(
-                            'rounded-lg border p-2.5 space-y-1.5',
-                            statusExibido === 'ocupado'
-                              ? 'bg-destructive/10 border-destructive/20'
-                              : 'bg-info/10 border-info/20',
-                          )}>
-                            {ocupacoesSala.map((oc: any) => {
-                              const ag = oc.agendamentos;
-                              const dataOcupacaoAntiga = formatarDataOcupacaoAntiga(ag?.data, hoje);
-                              const pacNome = ag?.pacientes?.nome_social || ag?.pacientes?.nome;
-                              const medNome = ag?.medicos?.nome;
-                              const medEsp = ag?.medicos?.especialidade;
-                              return (
-                                <div key={oc.id} className="flex flex-col gap-0.5">
-                                  {pacNome && (
-                                    <span className="text-xs font-medium text-foreground flex items-center gap-1">
-                                      <User className={cn('h-3 w-3', statusExibido === 'ocupado' ? 'text-destructive' : 'text-info')} />
-                                      Paciente: {pacNome}
-                                    </span>
+                      {/* Occupation info */}
+                      {ocupacoesSala.length > 0 && (
+                        <div className={cn(
+                          'space-y-1.5 rounded-xl border p-2.5',
+                          statusExibido === 'ocupado'
+                            ? 'border-destructive/20 bg-destructive/5'
+                            : 'border-[#1080CA]/20 bg-[#F3F8FC]',
+                        )}>
+                          {ocupacoesSala.map((oc: any) => {
+                            const ag = oc.agendamentos;
+                            const dataOcupacaoAntiga = formatarDataOcupacaoAntiga(ag?.data, hoje);
+                            const pacNome = ag?.pacientes?.nome_social || ag?.pacientes?.nome;
+                            const medNome = ag?.medicos?.nome;
+                            const medEsp = ag?.medicos?.especialidade;
+                            return (
+                              <div key={oc.id} className="flex flex-col gap-0.5">
+                                {pacNome && (
+                                  <span className="flex items-center gap-1 text-xs font-medium text-foreground">
+                                    <User aria-hidden="true" className={cn('h-3 w-3', statusExibido === 'ocupado' ? 'text-destructive' : 'text-[#1080CA]')} />
+                                    {pacNome}
+                                  </span>
+                                )}
+                                {medNome && (
+                                  <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                                    <Users aria-hidden="true" className="h-3 w-3 text-[#1080CA]" />
+                                    {nomeMedico(medNome)}{medEsp ? ` — ${medEsp}` : ''}
+                                  </span>
+                                )}
+                                <Badge
+                                  className={cn(
+                                    'w-fit rounded-full border-transparent text-[9px]',
+                                    oc.status === 'em_atendimento' ? 'bg-gradient-primary text-white hover:bg-gradient-primary' : 'bg-[#111111] text-white hover:bg-[#111111]',
                                   )}
-                                  {medNome && (
-                                    <span className="text-xs text-muted-foreground flex items-center gap-1">
-                                      <Users className="h-3 w-3 text-primary" />
-                                      {nomeMedico(medNome)}{medEsp ? ` — ${medEsp}` : ''}
-                                    </span>
-                                  )}
-                                  <Badge variant="secondary" className="text-[9px] w-fit">
-                                    {oc.status === 'em_atendimento' ? 'Em atendimento' : oc.status === 'chamado' ? 'Paciente chamado' : 'Aguardando na fila'}
-                                  </Badge>
-                                  {dataOcupacaoAntiga && <div className="flex flex-wrap items-center gap-2 text-[10px] text-warning-foreground">
-                                    <span>Registro de {dataOcupacaoAntiga}; confira a fila antes de liberar a sala.</span>
-                                    <Link className="min-h-11 inline-flex items-center text-primary underline" to="/fila">Abrir fila</Link>
-                                  </div>}
-                                </div>
-                              );
-                            })}
-                            <p className="border-t border-border pt-1.5 text-[10px] text-muted-foreground">
-                              {statusExibido === 'ocupado'
-                                ? 'A sala permanece ocupada até o atendimento ser finalizado ou transferido na Fila.'
-                                : 'Esta sala está reservada para o paciente chamado ou aguardando na Fila.'}
-                            </p>
+                                >
+                                  {oc.status === 'em_atendimento' ? 'Em atendimento' : oc.status === 'chamado' ? 'Paciente chamado' : 'Aguardando na fila'}
+                                </Badge>
+                                {dataOcupacaoAntiga && <div className="flex flex-wrap items-center gap-2 text-[10px] text-warning-foreground">
+                                  <span>Registro de {dataOcupacaoAntiga}; confira a fila antes de liberar a sala.</span>
+                                  <Link className="inline-flex min-h-11 items-center font-medium text-[#1080CA] underline" to="/fila">Abrir fila</Link>
+                                </div>}
+                              </div>
+                            );
+                          })}
+                          <p className="border-t border-border/60 pt-1.5 text-[10px] text-muted-foreground">
+                            {statusExibido === 'ocupado'
+                              ? 'A sala permanece ocupada até o atendimento ser finalizado ou transferido na Fila.'
+                              : 'Esta sala está reservada para o paciente chamado ou aguardando na Fila.'}
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Capacity */}
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                          <span aria-label={`Ocupação monitorada da sala ${sala.nome}: ${resumoOcupacao.label}`}>
+                            Ocupação {resumoOcupacao.label}
+                          </span>
+                          {medicoNome && <span className="truncate pl-2 text-right">{nomeMedico(medicoNome)}</span>}
+                        </div>
+                        <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted" aria-hidden="true">
+                          <div
+                            className={cn('h-full rounded-full transition-all', resumoOcupacao.overCapacity ? 'bg-destructive' : statusExibido === 'ocupado' ? 'bg-gradient-primary' : 'bg-[#1080CA]')}
+                            style={{ width: `${percentualOcupado}%` }}
+                          />
+                        </div>
+                        {resumoOcupacao.overCapacity && (
+                          <p role="status" className="flex items-center gap-1 text-[11px] font-medium text-destructive">
+                            <AlertTriangle aria-hidden="true" className="h-3 w-3" />
+                            Revise os vínculos ativos na fila antes de liberar novas posições.
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="space-y-1 text-xs text-muted-foreground">
+                        {sala.horario_inicio && sala.horario_fim && (
+                          <p className="flex items-center gap-1">
+                            <Clock aria-hidden="true" className="h-3 w-3" />{sala.horario_inicio?.slice(0, 5)} — {sala.horario_fim?.slice(0, 5)}
+                          </p>
+                        )}
+                        {sala.equipamentos && sala.equipamentos.length > 0 && (
+                          <div className="flex flex-wrap gap-1">
+                            {sala.equipamentos.slice(0, 3).map((eq: string) => (
+                              <Badge key={eq} variant="secondary" className="rounded-full text-[9px]">{eq}</Badge>
+                            ))}
+                            {sala.equipamentos.length > 3 && (
+                              <span className="text-[9px]" title={sala.equipamentos.slice(3).join(', ')}>+{sala.equipamentos.length - 3}</span>
+                            )}
                           </div>
                         )}
+                      </div>
 
-                        <div className="text-xs text-muted-foreground space-y-0.5">
-                          <p aria-label={`Ocupação monitorada da sala ${sala.nome}: ${resumoOcupacao.label}`}>
-                            Ocupação monitorada: {resumoOcupacao.label}{medicoNome && ` · ${nomeMedico(medicoNome)}`}
-                          </p>
-                          {resumoOcupacao.overCapacity && (
-                            <p role="status" className="flex items-center gap-1 font-medium text-destructive">
-                              <AlertTriangle aria-hidden="true" className="h-3 w-3" />
-                              Revise os vínculos ativos na fila antes de liberar novas posições.
-                            </p>
-                          )}
-                          {sala.horario_inicio && sala.horario_fim && (
-                            <p className="flex items-center gap-1">
-                              <Clock className="h-3 w-3" />{sala.horario_inicio?.slice(0, 5)} — {sala.horario_fim?.slice(0, 5)}
-                            </p>
-                          )}
-                          {sala.equipamentos && sala.equipamentos.length > 0 && (
-                            <div className="flex flex-wrap gap-1 mt-1">
-                              {sala.equipamentos.slice(0, 3).map((eq: string) => (
-                                <Badge key={eq} variant="secondary" className="text-[9px]">{eq}</Badge>
-                              ))}
-                              {sala.equipamentos.length > 3 && (
-                                <span className="text-[9px]">+{sala.equipamentos.length - 3}</span>
-                              )}
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="flex gap-1.5 pt-1">
-                          {statusExibido === 'disponivel' && (
-                            <Button size="sm" variant="outline" className="min-h-11 text-xs"
-                              onClick={() => handleChangeStatus(sala, 'ocupado')} disabled={updatingSalaId !== null}>
-                              {updatingSalaId === sala.id ? 'Salvando...' : 'Ocupar'}
-                            </Button>
-                          )}
-                          {statusExibido === 'ocupado' && ocupacoesSala.length === 0 && (
-                            <Button size="sm" variant="outline" className="min-h-11 text-xs"
-                              onClick={() => handleChangeStatus(sala, 'limpeza')} disabled={updatingSalaId !== null}>
-                              {updatingSalaId === sala.id ? 'Salvando...' : 'Liberar'}
-                            </Button>
-                          )}
-                          {statusExibido === 'limpeza' && (
-                            <Button asChild size="sm" variant="outline" className="min-h-11 text-xs gap-1">
-                              <Link to="/higiene-salas" aria-label={`Inspecionar higienização de ${sala.nome}`}>
-                                <Paintbrush className="h-3 w-3" />Inspecionar
-                              </Link>
-                            </Button>
-                          )}
-                          {statusExibido === 'manutencao' && (
-                            <Button size="sm" variant="outline" className="min-h-11 text-xs"
-                              onClick={() => handleChangeStatus(sala, 'disponivel')} disabled={updatingSalaId !== null}>
-                              {updatingSalaId === sala.id ? 'Salvando...' : 'Liberar'}
-                            </Button>
-                          )}
-                          <Button size="icon" variant="ghost" className="h-11 w-11 ml-auto" aria-label={`Editar sala ${sala.nome}`}
-                            onClick={() => handleOpen(sala)} disabled={updatingSalaId !== null}>
-                            <Settings className="h-3.5 w-3.5" />
+                      <div className="flex items-center gap-1.5 pt-1">
+                        {statusExibido === 'disponivel' && (
+                          <Button size="sm" className="h-9 rounded-full bg-[#111111] px-4 text-xs text-white hover:bg-[#2b2b33]"
+                            onClick={() => handleChangeStatus(sala, 'ocupado')} disabled={updatingSalaId !== null}>
+                            {updatingSalaId === sala.id ? 'Salvando...' : 'Ocupar'}
                           </Button>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  );
-                })}
-              </div>
-            </CardContent>
-          </Card>
+                        )}
+                        {statusExibido === 'ocupado' && ocupacoesSala.length === 0 && (
+                          <Button size="sm" variant="outline" className="h-9 rounded-full px-4 text-xs"
+                            onClick={() => handleChangeStatus(sala, 'limpeza')} disabled={updatingSalaId !== null}>
+                            {updatingSalaId === sala.id ? 'Salvando...' : 'Liberar'}
+                          </Button>
+                        )}
+                        {(statusExibido === 'ocupado' || statusExibido === 'reservada') && ocupacoesSala.length > 0 && (
+                          <Button asChild size="sm" variant="outline" className="h-9 gap-1 rounded-full border-[#1080CA]/30 px-4 text-xs text-[#1080CA] hover:bg-[#1080CA]/10 hover:text-[#1080CA]">
+                            <Link to="/fila" aria-label={`Ver ${sala.nome} na fila de atendimento`}>
+                              <ListChecks aria-hidden="true" className="h-3 w-3" /> Ver na fila
+                            </Link>
+                          </Button>
+                        )}
+                        {statusExibido === 'limpeza' && (
+                          <Button asChild size="sm" variant="outline" className="h-9 gap-1 rounded-full px-4 text-xs">
+                            <Link to="/higiene-salas" aria-label={`Inspecionar higienização de ${sala.nome}`}>
+                              <Paintbrush aria-hidden="true" className="h-3 w-3" />Inspecionar
+                            </Link>
+                          </Button>
+                        )}
+                        {statusExibido === 'manutencao' && (
+                          <Button size="sm" variant="outline" className="h-9 rounded-full px-4 text-xs"
+                            onClick={() => handleChangeStatus(sala, 'disponivel')} disabled={updatingSalaId !== null}>
+                            {updatingSalaId === sala.id ? 'Salvando...' : 'Liberar'}
+                          </Button>
+                        )}
+                        <Button size="icon" variant="ghost" className="ml-auto h-9 w-9 rounded-full" aria-label={`Editar sala ${sala.nome}`} title="Editar"
+                          onClick={() => handleOpen(sala)} disabled={updatingSalaId !== null}>
+                          <Settings className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          </section>
         );
       })}
 
-      {filtered.length === 0 && (
-        <Card>
+      {filtradasPorEstado.length === 0 && (
+        <Card className="rounded-2xl border-border/60 shadow-xs">
           <CardContent className="py-16 text-center text-muted-foreground">
-            <DoorOpen className="h-12 w-12 mx-auto mb-4 opacity-30" />
-            <p className="font-medium">{salas.length === 0 ? 'Nenhuma sala cadastrada' : 'Nenhuma sala corresponde à busca e ao tipo selecionado'}</p>
-            <p className="text-sm mt-1">{salas.length === 0 ? 'Cadastre uma sala ou leito para começar.' : 'Limpe a busca e o tipo para ver todas as salas.'}</p>
-            {salas.length === 0 ? (
-              <Button className="mt-3" size="sm" onClick={() => handleOpen()}>Nova Sala / Leito</Button>
+            <span aria-hidden="true" className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+              <DoorOpen className="h-7 w-7" />
+            </span>
+            <p className="font-medium text-foreground">{totalSalas === 0 ? 'Nenhuma sala cadastrada' : 'Nenhuma sala corresponde aos filtros'}</p>
+            <p className="mt-1 text-sm">{totalSalas === 0 ? 'Cadastre uma sala ou leito para começar.' : 'Limpe a busca, o tipo ou a situação para ver todas as salas.'}</p>
+            {totalSalas === 0 ? (
+              <Button className="mt-4 rounded-full bg-[#111111] text-white hover:bg-[#2b2b33]" size="sm" onClick={() => handleOpen()}>Nova Sala / Leito</Button>
             ) : (
-              <Button className="mt-3" size="sm" variant="outline" onClick={() => { setSearch(''); setFilterTipo('todos'); }}>
+              <Button className="mt-4 rounded-full" size="sm" variant="outline" onClick={limparFiltros}>
                 Limpar filtros
               </Button>
             )}
