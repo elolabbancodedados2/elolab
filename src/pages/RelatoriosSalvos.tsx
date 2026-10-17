@@ -1,8 +1,8 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Star, Play, Trash2, Loader2, Pause, Mail, Clock as ClockIcon, SlidersHorizontal, AlertTriangle } from 'lucide-react';
+import { Star, Play, Trash2, Loader2, Pause, Mail, Clock as ClockIcon, SlidersHorizontal, AlertTriangle, RefreshCw } from 'lucide-react';
 import { useState } from 'react';
-import { Card, CardContent, CardHeader, CardDescription } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/integrations/supabase/client';
@@ -15,6 +15,7 @@ import { ActionableEmptyState } from '@/components/ActionableEmptyState';
 import { PageHeader } from '@/components/PageHeader';
 import { DeleteConfirmDialog } from '@/components/ConfirmDialog';
 import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
+import { cn } from '@/lib/utils';
 
 const FORMATADOR_DATA_HORA = new Intl.DateTimeFormat('pt-BR', {
   timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', year: 'numeric',
@@ -93,14 +94,25 @@ export default function RelatoriosSalvos() {
   };
 
   return (
-    <div className="space-y-5 pb-8">
-      <Card className="overflow-hidden rounded-2xl border-[#e3dff7] shadow-sm">
-        <CardHeader className="border-b border-[#e7e4f6] bg-gradient-to-r from-[#f6f4ff] via-white to-[#f2f0ff] p-4 sm:p-5">
-          <PageHeader title={'Relat\u00f3rios salvos e agendados'} icon={<Star className="h-5 w-5" />} />
-          <CardDescription>
-            Reaproveite filtros favoritos e receba relatórios por e-mail automaticamente.
-          </CardDescription>
-        </CardHeader>
+    <div className="space-y-6 pb-8">
+      <PageHeader
+        title={'Relat\u00f3rios salvos e agendados'}
+        description="Reaproveite filtros favoritos e receba relatórios por e-mail automaticamente."
+        icon={<Star />}
+        actions={
+          <Button
+            aria-label="Atualizar relatórios salvos"
+            variant="outline"
+            size="icon"
+            className="rounded-full"
+            onClick={() => void itemsQuery.refetch()}
+            disabled={itemsQuery.isFetching}
+          >
+            <RefreshCw className={cn('h-4 w-4', itemsQuery.isFetching && 'animate-spin')} />
+          </Button>
+        }
+      />
+      <Card className="rounded-2xl border-border/60 shadow-xs">
         <CardContent className="p-4 sm:p-5">
           {itemsQuery.isError ? (
             <ErrorState compact title="Não foi possível carregar os relatórios salvos" error={itemsQuery.error} onRetry={() => void itemsQuery.refetch()} />
@@ -110,6 +122,7 @@ export default function RelatoriosSalvos() {
             <ListSkeleton items={3} />
           ) : items.length === 0 ? (
             <ActionableEmptyState
+              icon={Star}
               title="Nenhum relatório salvo ainda"
               description="Monte um relatório personalizado para guardar seus filtros como favorito ou programar o envio por e-mail."
               actionLabel="Criar relatório"
@@ -124,14 +137,14 @@ export default function RelatoriosSalvos() {
                 </div>
               )}
               {items.map((it: any) => (
-                <div key={it.id} className="flex flex-col gap-3 rounded-xl border border-[#e6e2f7] bg-gradient-to-br from-white to-[#faf9fd] p-4 transition-colors hover:border-[#c6bfec] hover:bg-[#faf9fd] md:flex-row md:items-center">
+                <div key={it.id} className="flex flex-col gap-3 rounded-2xl border border-border/60 bg-card p-4 shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md md:flex-row md:items-center">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <h3 className="font-semibold">{it.nome}</h3>
                       <Badge variant="outline">{it.dataset}</Badge>
                       <Badge variant="secondary">{it.frequencia && it.destinatarios?.length ? 'CSV por e-mail' : 'Favorito'}</Badge>
                       {it.frequencia && !it.ativo && <Badge variant="secondary">Pausado</Badge>}
-                      {it.frequencia && <Badge className="bg-primary/10 text-primary">{it.frequencia}</Badge>}
+                      {it.frequencia && <Badge className="bg-[#1080CA]/10 text-[#1080CA]">{it.frequencia}</Badge>}
                     </div>
                     {it.descricao && <p className="text-sm text-muted-foreground mt-1">{it.descricao}</p>}
                     <div className="text-xs text-muted-foreground mt-2 flex flex-wrap gap-3">
@@ -150,10 +163,11 @@ export default function RelatoriosSalvos() {
                       )}
                     </div>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
                     <Button
                       size="sm"
                       variant="outline"
+                      className="h-9 rounded-full"
                       onClick={() => navigate('/relatorios', { state: { relatorioSalvo: {
                         id: it.id, user_id: it.user_id, updated_at: it.updated_at, dataset: it.dataset, config: it.config,
                         nome: it.nome, descricao: it.descricao, frequencia: it.frequencia, dia_semana: it.dia_semana,
@@ -164,14 +178,14 @@ export default function RelatoriosSalvos() {
                       <SlidersHorizontal className="h-4 w-4" />
                       <span className="ml-1">Abrir filtros</span>
                     </Button>
-                    <Button size="sm" variant="outline" onClick={() => runNow(it.id)} disabled={busyId !== null || !it.destinatarios?.length} title={!it.destinatarios?.length ? 'Adicione destinatários e salve o relatório para enviar' : 'Executar e enviar o CSV agora sem alterar a pausa do agendamento'}>
+                    <Button size="sm" variant="outline" className="h-9 rounded-full" onClick={() => runNow(it.id)} disabled={busyId !== null || !it.destinatarios?.length} title={!it.destinatarios?.length ? 'Adicione destinatários e salve o relatório para enviar' : 'Executar e enviar o CSV agora sem alterar a pausa do agendamento'}>
                       {busyId === it.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
                       <span className="ml-1">Executar envio</span>
                     </Button>
-                    {it.frequencia && <Button size="sm" variant="outline" aria-label={`${it.ativo ? 'Pausar' : 'Ativar'} agendamento de ${it.nome}`} title={it.ativo ? 'Pausar agendamento automático' : 'Ativar agendamento automático'} onClick={() => toggleAtivo(it)} disabled={busyId !== null}>
+                    {it.frequencia && <Button size="sm" variant="outline" className="h-9 w-9 rounded-full p-0" aria-label={`${it.ativo ? 'Pausar' : 'Ativar'} agendamento de ${it.nome}`} title={it.ativo ? 'Pausar agendamento automático' : 'Ativar agendamento automático'} onClick={() => toggleAtivo(it)} disabled={busyId !== null}>
                       {it.ativo ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
                     </Button>}
-                    <Button size="sm" variant="outline" aria-label="Excluir relatório salvo" onClick={() => setToDelete({ id: it.id, nome: it.nome })} disabled={busyId !== null}>
+                    <Button size="sm" variant="outline" className="h-9 w-9 rounded-full p-0" aria-label="Excluir relatório salvo" onClick={() => setToDelete({ id: it.id, nome: it.nome })} disabled={busyId !== null}>
                       <Trash2 className="h-4 w-4 text-destructive" />
                     </Button>
                   </div>
