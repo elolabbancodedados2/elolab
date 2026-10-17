@@ -1,9 +1,9 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { motion } from 'framer-motion';
 import {
   FileText, Eye, CheckCircle2, AlertCircle, Loader2, RefreshCw,
   Search, AlertTriangle, Clock, Download, Printer, Shield, XCircle,
-  User, Filter, ChevronDown, ChevronUp, Activity, History, PencilLine,
+  User, Activity, History, PencilLine, MessageCircle, X,
+  FlaskConical, TestTube, FileSearch,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,8 +14,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { Separator } from '@/components/ui/separator';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { supabase } from '@/integrations/supabase/client';
 import { notificarResultadoLiberado } from '@/lib/notificarResultado';
 import { toast } from 'sonner';
@@ -34,6 +32,9 @@ import { deveNotificarRetificacao, perfilPodeRetificarResultado, podeRetificarRe
 import { cursorAposAtualizacaoWorklist, type CursorLaudo } from '@/lib/laudoWorklist';
 import { LaboratorioSubnav } from '@/components/laboratorio/LaboratorioSubnav';
 import { criticalAcknowledgementIsPending } from '@/lib/criticalResultAcknowledgement';
+import { linkWhatsApp } from '@/lib/whatsapp';
+import { Link } from 'react-router-dom';
+import { PageHeader } from '@/components/PageHeader';
 
 /**
  * Teto da worklist do laboratório.
@@ -45,7 +46,7 @@ import { criticalAcknowledgementIsPending } from '@/lib/criticalResultAcknowledg
 const TETO_WORKLIST = 500;
 
 
-const normalize = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+const normalize = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 const parseResultadoNumerico = (value: unknown): number | null => {
   if (typeof value === 'number') return Number.isFinite(value) ? value : null;
   if (typeof value !== 'string') return null;
@@ -65,9 +66,6 @@ const parseResultadoNumerico = (value: unknown): number | null => {
   const parsed = Number(normalizado);
   return Number.isFinite(parsed) ? parsed : null;
 };
-
-const stagger = { hidden: {}, visible: { transition: { staggerChildren: 0.05 } } };
-const fadeUp = { hidden: { opacity: 0, y: 8 }, visible: { opacity: 1, y: 0, transition: { duration: 0.25 } } };
 
 // ─── Laudo Detail Modal ────────────────────────────────────
 function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
@@ -513,17 +511,17 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
                         </p>
                       </div>
                       <div className="flex items-center gap-2">
-                        {isAltered && <Badge variant="destructive" className="text-[10px] gap-1"><AlertTriangle className="h-2.5 w-2.5" />Alterado</Badge>}
-                        {res.critico && <Badge variant="destructive" className="text-[10px] gap-1"><AlertCircle className="h-2.5 w-2.5" />Crítico · revisão prioritária</Badge>}
-                        {res.critico && <Badge variant={cienciaCriticaPendente ? 'destructive' : 'secondary'} className="text-[10px]">
+                        {isAltered && <Badge variant="destructive" className="text-[10px] gap-1 rounded-full"><AlertTriangle className="h-2.5 w-2.5" />Alterado</Badge>}
+                        {res.critico && <Badge variant="destructive" className="text-[10px] gap-1 rounded-full"><AlertCircle className="h-2.5 w-2.5" />Crítico · revisão prioritária</Badge>}
+                        {res.critico && <Badge variant={cienciaCriticaPendente ? 'destructive' : 'secondary'} className="text-[10px] rounded-full">
                           {cienciaCriticaPendente ? 'Aguardando ciência e conduta' : 'Ciência registrada'}
                         </Badge>}
                         {res.liberado ? (
-                          <Badge className="bg-success/10 text-success border-success/20 gap-1">
+                          <Badge className="bg-success/10 text-success border-success/20 gap-1 rounded-full">
                             <CheckCircle2 className="h-3 w-3" /> Liberado
                           </Badge>
                         ) : (
-                          <Badge variant="secondary" className="gap-1"><Clock className="h-3 w-3" /> Pendente</Badge>
+                          <Badge variant="secondary" className="gap-1 rounded-full"><Clock className="h-3 w-3" /> Pendente</Badge>
                         )}
                       </div>
                     </div>
@@ -638,7 +636,7 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
               </Button>
             )}
             {coleta.status !== 'em_analise' && coleta.status !== 'validado' && coleta.status !== 'liberado' && (
-              <p className="mr-auto text-xs text-muted-foreground">Avance a coleta para “Em análise” antes de validar.</p>
+              <p className="mr-auto text-xs text-muted-foreground">Avance a coleta para "Em análise" antes de validar.</p>
             )}
             {pendentes > 0 && (
               <Button variant="default" className="gap-1" onClick={handleLiberarTodos} disabled={isBusy || conferenciaPendente()}>
@@ -699,12 +697,6 @@ export default function LaudosLab() {
     // observações ainda não impressas no laudo.
     setLoadingOlderLaudos(false);
     setOlderLaudosError(null);
-    // A ordenação era ASCENDENTE e sem `.limit()`. O PostgREST corta em 1.000
-    // linhas por padrão, então numa base com histórico o laboratório recebia as
-    // amostras mais ANTIGAS e as de hoje nunca apareciam na tela de laudos.
-    //
-    // Buscamos as mais recentes e reordenamos em memória para manter o FIFO
-    // dentro da janela de trabalho — que é o que a bancada precisa.
     try {
       const { data, error } = await supabase
         .from('coletas_laboratorio')
@@ -735,16 +727,12 @@ export default function LaudosLab() {
 
       const comResultados = janela
         .filter((c: any) => (c.resultados_laboratorio ?? []).length > 0)
-        // FIFO: mais antiga primeiro, dentro da janela carregada.
         .sort((a: any, b: any) =>
           new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
 
       setColetas(atuais => {
         const porId = new Map<string, any>();
         for (const coleta of atuais) porId.set(coleta.id, coleta);
-        // Atualizar a worklist não deve apagar os laudos antigos que a pessoa
-        // já carregou. Os registros da janela mais recente substituem os do
-        // cache; os mais antigos permanecem disponíveis sem duplicatas.
         for (const coleta of comResultados) porId.set(coleta.id, coleta);
         return [...porId.values()].sort((a, b) =>
           new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
@@ -872,10 +860,13 @@ export default function LaudosLab() {
       return true;
     });
   }, [coletas, search, statusFilter]);
+
   const limparFiltros = () => {
     setSearch('');
     setStatusFilter('todos');
   };
+
+  const temFiltro = search.trim() !== '' || statusFilter !== 'todos';
 
   const totalLiberados = coletas.filter(c => getExamesLiberados(c).length > 0 && getExamesPendentes(c).length === 0).length;
   const totalParciais = coletas.filter(c => getExamesLiberados(c).length > 0 && getExamesPendentes(c).length > 0).length;
@@ -883,8 +874,19 @@ export default function LaudosLab() {
   const totalAlterados = coletas.filter(c => hasAlterado(c)).length;
   const totalCriticos = coletas.filter(c => hasCritico(c)).length;
 
+  // Hero: oldest coleta with pending results
+  const proximoALaudar = coletas.find(c => getExamesPendentes(c).length > 0);
+
   if (loading) {
-    return <div className="space-y-6"><Skeleton className="h-10 w-64" /><div className="grid grid-cols-2 md:grid-cols-5 gap-3">{Array.from({ length: 5 }, (_, i) => <Skeleton key={i} className="h-24" />)}</div><Skeleton className="h-96" /></div>;
+    return (
+      <div className="space-y-6">
+        <Skeleton className="h-10 w-64" />
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          {Array.from({ length: 5 }, (_, i) => <Skeleton key={i} className="h-24" />)}
+        </div>
+        <Skeleton className="h-96" />
+      </div>
+    );
   }
   if (loadError) {
     return <ErrorState title="Não foi possível carregar os laudos" error={loadError} onRetry={() => { setLoading(true); void fetchLaudos(); }} />;
@@ -892,173 +894,391 @@ export default function LaudosLab() {
 
   return (
     <div className="space-y-6 pb-8">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 rounded-2xl border border-[#e3dffb] bg-gradient-to-r from-[#f6f4ff] via-white to-[#f3f1ff] p-4 sm:p-5">
-        <div>
-          <h1 className="text-2xl font-bold font-display tracking-tight flex items-center gap-2">
-            <span className="rounded-xl bg-[#ece8ff] p-2 text-[#5240d6] ring-1 ring-[#e0dbfa]"><FileText className="h-5 w-5" /></span>
-            Laudos Laboratoriais
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Validação e liberação de resultados · {coletas.length} laudo(s)
-          </p>
-        </div>
-        <Button variant="outline" className="gap-2" disabled={loading} onClick={fetchLaudos}>
-          <RefreshCw className="h-4 w-4" /> Atualizar
-        </Button>
-      </div>
+      {/* ─── PageHeader ─── */}
+      <PageHeader
+        title="Laudos Laboratoriais"
+        description={
+          coletas.length > 0
+            ? `${coletas.length} laudo${coletas.length === 1 ? '' : 's'} · ${totalPendentes} pendente${totalPendentes === 1 ? '' : 's'}${totalCriticos > 0 ? ` · ${totalCriticos} crítico${totalCriticos === 1 ? '' : 's'}` : ''}`
+            : 'Validação e liberação de resultados'
+        }
+        icon={<FileText />}
+        actions={
+          <>
+            <Button asChild variant="outline" className="shrink-0 gap-2 rounded-full">
+              <Link to="/laboratorio"><FlaskConical aria-hidden="true" className="h-4 w-4" /> Laboratório</Link>
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              className="shrink-0 rounded-full"
+              onClick={() => void fetchLaudos()}
+              aria-label="Atualizar laudos"
+              title="Atualizar laudos"
+            >
+              <RefreshCw className="h-4 w-4" />
+            </Button>
+            <Button asChild className="shrink-0 gap-2 rounded-full bg-[#111111] text-white shadow-md hover:bg-[#2b2b33]">
+              <Link to="/exames"><TestTube aria-hidden="true" className="h-4 w-4" /> Exames</Link>
+            </Button>
+          </>
+        }
+      />
 
       <LaboratorioSubnav />
 
-      {/* KPIs */}
-      <div className="grid gap-3 grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
-        {[
-          { label: 'Total', value: coletas.length, icon: FileText, color: 'text-[#5240d6]', card: 'border-[#e3dffb] bg-gradient-to-br from-white to-[#f4f2ff]', filter: 'todos' },
-          { label: 'Pendentes', value: totalPendentes, icon: Clock, color: 'text-[#8a5b00]', card: 'border-[#f1dfb8] bg-[#fffaf0]', filter: 'pendente' },
-          { label: 'Parciais', value: totalParciais, icon: AlertCircle, color: 'text-[#9a5710]', card: 'border-[#f2d9bb] bg-[#fff8ef]', filter: 'parcial' },
-          { label: 'Liberados', value: totalLiberados, icon: CheckCircle2, color: 'text-[#16734d]', card: 'border-[#ccebdd] bg-[#f3fbf6]', filter: 'liberado' },
-          { label: 'Alterados', value: totalAlterados, icon: AlertTriangle, color: 'text-[#6941a5]', card: 'border-[#e2d7f4] bg-[#faf7ff]', filter: 'alterado' },
-          { label: 'Cr\u00edticos', value: totalCriticos, icon: AlertCircle, color: 'text-[#b42332]', card: 'border-[#f2d0d4] bg-[#fff6f6]', filter: 'critico' },
-        ].map(s => (
-          <Card key={s.label} className={cn(s.card,
-            'cursor-pointer hover:shadow-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
-            statusFilter === s.filter && 'ring-2 ring-primary'
-          )}
-            role="button"
-            tabIndex={0}
-            aria-pressed={statusFilter === s.filter}
-            onClick={() => setStatusFilter(statusFilter === s.filter ? 'todos' : s.filter)}
-            onKeyDown={event => {
-              if (event.key === 'Enter' || event.key === ' ') {
-                event.preventDefault();
-                setStatusFilter(statusFilter === s.filter ? 'todos' : s.filter);
-              }
-            }}>
-            <CardContent className="pt-4 pb-3 flex items-center gap-3">
-              <s.icon className={cn('h-5 w-5 shrink-0', s.color)} />
-              <div>
-                <p className="text-xl font-bold">{s.value}</p>
-                <p className="text-xs text-muted-foreground">{s.label}</p>
+      {/* ─── Indicator Strip ─── */}
+      <section role="group" aria-label="Indicadores de laudos" className="space-y-2">
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-5">
+          {([
+            {
+              key: 'pendente',
+              label: 'Pendentes',
+              value: totalPendentes,
+              icon: Clock,
+              escuro: true,
+              color: 'text-[#2ED5E7]',
+              surface: 'bg-white/15',
+              caption: 'aguardando laudo',
+            },
+            {
+              key: 'critico',
+              label: 'Críticos',
+              value: totalCriticos,
+              icon: AlertCircle,
+              escuro: false,
+              color: 'text-destructive',
+              surface: 'bg-destructive/10',
+              caption: 'atenção imediata',
+            },
+            {
+              key: 'parcial',
+              label: 'Parciais',
+              value: totalParciais,
+              icon: AlertTriangle,
+              escuro: false,
+              color: 'text-warning-foreground',
+              surface: 'bg-warning/10',
+              caption: 'liberação parcial',
+            },
+            {
+              key: 'liberado',
+              label: 'Liberados',
+              value: totalLiberados,
+              icon: CheckCircle2,
+              escuro: false,
+              color: 'text-success',
+              surface: 'bg-success/10',
+              caption: 'concluídos',
+            },
+            {
+              key: 'todos',
+              label: 'Total',
+              value: coletas.length,
+              icon: FileText,
+              escuro: false,
+              color: 'text-[#1080CA]',
+              surface: 'bg-[#1080CA]/10',
+              caption: 'na worklist',
+            },
+          ] as const).map(s => {
+            const Icon = s.icon;
+            const ativo = statusFilter === s.key;
+            return (
+              <button
+                key={s.key}
+                type="button"
+                aria-pressed={ativo}
+                onClick={() => setStatusFilter(ativo && s.key !== 'todos' ? 'todos' : s.key)}
+                className={cn(
+                  'group rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+                  s.escuro && 'border-transparent bg-[#111111] text-white',
+                  ativo && !s.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
+                  ativo && s.escuro && 'ring-2 ring-[#2ED5E7]/60',
+                )}
+              >
+                <div className="flex min-h-[96px] items-center gap-3 p-3">
+                  <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', s.surface)}>
+                    <Icon aria-hidden="true" className={cn('h-5 w-5', s.color)} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <h3 className={cn('truncate text-xs font-semibold', s.escuro ? 'text-white/80' : 'text-foreground')}>{s.label}</h3>
+                      <span className={cn('text-2xl font-bold tabular-nums', s.color)}>{s.value}</span>
+                    </div>
+                    <p className={cn('truncate text-[11px]', s.escuro ? 'text-white/60' : 'text-muted-foreground')}>{s.caption}</p>
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* ─── Próximo a Laudar ─── */}
+      {proximoALaudar && (
+        <div
+          className="rounded-2xl border border-[#1080CA]/30 bg-card p-4 shadow-[0_8px_24px_rgba(16,128,202,0.12)]"
+          aria-label="Próxima coleta a laudar"
+        >
+          <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+            <div className="flex items-center gap-3 flex-1 min-w-0">
+              <span aria-hidden="true" className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-primary text-white shadow-sm">
+                <FileSearch className="h-6 w-6" />
+              </span>
+              <div className="min-w-0">
+                <p className="text-[11px] uppercase tracking-wide text-[#1080CA] font-semibold">Próximo a laudar</p>
+                <p className="text-lg font-bold truncate">
+                  {proximoALaudar.pacientes?.nome_social?.trim() || proximoALaudar.pacientes?.nome || '—'}
+                </p>
+                <p className="text-xs text-muted-foreground font-mono">
+                  {proximoALaudar.codigo_amostra}
+                  {proximoALaudar.urgente && (
+                    <Badge variant="destructive" className="ml-2 text-[10px] rounded-full">Urgente</Badge>
+                  )}
+                </p>
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  {getExamesPendentes(proximoALaudar).length} resultado{getExamesPendentes(proximoALaudar).length === 1 ? '' : 's'} pendente{getExamesPendentes(proximoALaudar).length === 1 ? '' : 's'} ·{' '}
+                  {proximoALaudar.created_at
+                    ? formatDistanceToNow(new Date(proximoALaudar.created_at), { locale: ptBR, addSuffix: true })
+                    : '—'}
+                </p>
               </div>
-            </CardContent>
-          </Card>
-        ))}
+            </div>
+            <div className="flex items-center gap-2 shrink-0 flex-wrap">
+              {proximoALaudar.pacientes?.telefone && (() => {
+                const waLink = linkWhatsApp(proximoALaudar.pacientes.telefone, `Olá, ${proximoALaudar.pacientes.nome_social?.trim() || proximoALaudar.pacientes.nome || 'paciente'}! Seu resultado de laboratório está em processamento. Em breve entraremos em contato.`);
+                return waLink ? (
+                  <Button
+                    asChild
+                    variant="outline"
+                    size="sm"
+                    className="h-9 gap-1.5 rounded-full border-[#25D366]/40 text-[#25D366] hover:bg-[#25D366]/10 hover:text-[#25D366]"
+                  >
+                    <a href={waLink} target="_blank" rel="noopener noreferrer" aria-label="Contatar paciente via WhatsApp">
+                      <MessageCircle className="h-3.5 w-3.5" /> WhatsApp
+                    </a>
+                  </Button>
+                ) : null;
+              })()}
+              <Button
+                size="sm"
+                className="h-9 gap-1.5 rounded-full bg-[#111111] text-white hover:bg-[#2b2b33]"
+                onClick={() => setViewingId(proximoALaudar.id)}
+              >
+                <Eye className="h-3.5 w-3.5" /> Abrir Laudo
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Filters ─── */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative w-full sm:w-72">
+          <Search aria-hidden="true" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            aria-label="Buscar laudos por paciente, CPF, telefone, código ou exame"
+            className="h-10 rounded-full pl-9 focus-visible:ring-[#1080CA]"
+            placeholder="Nome, CPF, código ou exame..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+        </div>
+
+        {/* Pill filters */}
+        <div className="flex flex-wrap gap-1.5" role="group" aria-label="Filtros rápidos">
+          {([
+            { key: 'todos', label: 'Todos' },
+            { key: 'pendente', label: 'Pendentes' },
+            { key: 'parcial', label: 'Parciais' },
+            { key: 'liberado', label: 'Liberados' },
+            { key: 'alterado', label: 'Alterados' },
+            { key: 'critico', label: 'Críticos' },
+          ] as const).map(f => (
+            <button
+              key={f.key}
+              type="button"
+              aria-pressed={statusFilter === f.key}
+              onClick={() => setStatusFilter(f.key)}
+              className={cn(
+                'h-8 rounded-full border px-3 text-xs transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+                statusFilter === f.key
+                  ? 'border-transparent bg-gradient-primary text-white shadow-sm'
+                  : 'border-border bg-background text-muted-foreground hover:border-[#9CC7EC] hover:text-foreground',
+              )}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+
+        {temFiltro && (
+          <Button variant="ghost" size="sm" className="h-8 gap-1.5 rounded-full text-muted-foreground" onClick={limparFiltros}>
+            <X aria-hidden="true" className="h-3.5 w-3.5" /> Limpar filtros
+          </Button>
+        )}
+        <p className="ml-auto text-xs text-muted-foreground" aria-live="polite">
+          {filtradas.length} de {coletas.length} laudo{coletas.length === 1 ? '' : 's'}
+        </p>
       </div>
 
-      {/* Search */}
-      <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input aria-label="Buscar laudos por paciente, CPF, telefone, código ou exame" className="pl-9" placeholder="Nome, CPF, telefone, código ou exame..."
-          value={search} onChange={e => setSearch(e.target.value)} />
-      </div>
-
-      {/* Table */}
-      <Card>
+      {/* ─── Table ─── */}
+      <Card className="rounded-2xl border-border/60 shadow-xs">
         <CardContent className="p-0">
-          {loading ? (
-            <div className="flex justify-center py-16"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
-          ) : filtradas.length === 0 ? (
+          {filtradas.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-center">
-              <FileText className="h-12 w-12 text-muted-foreground/30 mb-4" />
-              <p className="text-muted-foreground font-medium">
+              <span aria-hidden="true" className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+                <FileText className="h-7 w-7" />
+              </span>
+              <p className="font-medium text-foreground">
                 {coletas.length > 0
                   ? 'Nenhum laudo corresponde à busca e ao status selecionados'
                   : hasOlderLaudos
                     ? 'Nenhum laudo encontrado entre os registros carregados'
                     : 'Ainda não há laudos registrados'}
               </p>
-              {coletas.length > 0 && (search.trim() || statusFilter !== 'todos') && (
-                <Button variant="link" onClick={limparFiltros} className="mt-2 h-11">Limpar busca e status</Button>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {coletas.length > 0 && temFiltro
+                  ? 'Limpe os filtros para ver todos os laudos.'
+                  : coletas.length === 0 && hasOlderLaudos
+                    ? 'Carregue laudos anteriores para ampliar a busca.'
+                    : 'Processe amostras no Laboratório para que os laudos apareçam aqui.'}
+              </p>
+              {coletas.length > 0 && temFiltro && (
+                <Button variant="outline" size="sm" className="mt-4 rounded-full" onClick={limparFiltros}>
+                  Limpar filtros
+                </Button>
               )}
-              {coletas.length === 0 && hasOlderLaudos && <p className="mt-1 text-sm text-muted-foreground">Carregue laudos anteriores para ampliar a busca.</p>}
+              {coletas.length === 0 && !hasOlderLaudos && (
+                <Button asChild size="sm" className="mt-4 gap-2 rounded-full bg-[#111111] text-white hover:bg-[#2b2b33]">
+                  <Link to="/laboratorio"><FlaskConical className="h-4 w-4" /> Ir para Laboratório</Link>
+                </Button>
+              )}
             </div>
           ) : (
-            <motion.table variants={stagger} initial="hidden" animate="visible" className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border bg-muted/30">
-                  <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">#</th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">Código</th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">Paciente</th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground hidden md:table-cell">Exames</th>
-                  <th className="text-center px-4 py-3 text-xs font-medium text-muted-foreground">Progresso</th>
-                  <th className="text-center px-4 py-3 text-xs font-medium text-muted-foreground">Status</th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground hidden lg:table-cell">Entrada</th>
-                  <th className="text-right px-4 py-3 text-xs font-medium text-muted-foreground">Ação</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtradas.map((c, idx) => {
-                  const liberados = getExamesLiberados(c);
-                  const pendentes = getExamesPendentes(c);
-                  const total = c.resultados_laboratorio?.length || 0;
-                  const todoLiberado = liberados.length > 0 && pendentes.length === 0;
-                  const parcial = liberados.length > 0 && pendentes.length > 0;
-                  const alterado = hasAlterado(c);
-                  const critico = hasCritico(c);
-                  return (
-                    <motion.tr key={c.id} variants={fadeUp}
-                      className={cn(
-                        'border-b border-border/50 last:border-0 transition-colors hover:bg-muted/20',
-                        todoLiberado && 'opacity-60 hover:opacity-100',
-                        c.urgente && 'bg-destructive/5',
-                      )}>
-                      <td className="px-4 py-2.5 text-xs font-bold text-muted-foreground">{idx + 1}</td>
-                      <td className="px-4 py-2.5 font-mono text-xs text-primary font-semibold">{c.codigo_amostra ?? '—'}</td>
-                      <td className="px-4 py-2.5">
-                        <div className="flex items-center gap-1.5">
-                          {c.urgente && <AlertTriangle className="h-3 w-3 text-destructive shrink-0" />}
-                          <div>
-                            <p className="font-medium">{c.pacientes?.nome_social?.trim() || c.pacientes?.nome || '—'}</p>
-                            <p className="text-[11px] text-muted-foreground">{c.pacientes?.cpf ?? ''}</p>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-4 py-2.5 hidden md:table-cell">
-                        <div className="flex flex-wrap gap-1">
-                          {liberados.slice(0, 2).map((r: any) => (
-                            <Badge key={r.id} variant="secondary" className="text-[10px]">{r.parametro ?? '—'}</Badge>
-                          ))}
-                          {total > 2 && <span className="text-[10px] text-muted-foreground">+{total - 2}</span>}
-                          {alterado && <Badge variant="destructive" className="text-[10px] gap-0.5"><AlertTriangle className="h-2.5 w-2.5" />Alt.</Badge>}
-                          {critico && <Badge variant="destructive" className="text-[10px] gap-0.5"><AlertCircle className="h-2.5 w-2.5" />Crítico</Badge>}
-                          {hasCriticoPendente(c) && <Badge variant="destructive" className="text-[10px]">Ciência pendente</Badge>}
-                        </div>
-                      </td>
-                      <td className="px-4 py-2.5 text-center">
-                        <div className="flex items-center gap-1.5 justify-center">
-                          <div className="w-16 h-1.5 bg-muted rounded-full overflow-hidden">
-                            <div className="h-full bg-primary rounded-full transition-all"
-                              style={{ width: `${total > 0 ? (liberados.length / total) * 100 : 0}%` }} />
-                          </div>
-                          <span className="text-[10px] text-muted-foreground tabular-nums">{liberados.length}/{total}</span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-2.5 text-center">
-                        {todoLiberado ? (
-                          <Badge className="bg-green-500/10 text-green-600 border-green-500/20 text-[10px]">Liberado</Badge>
-                        ) : parcial ? (
-                          <Badge className="bg-orange-500/10 text-orange-600 border-orange-500/20 text-[10px]">Parcial</Badge>
-                        ) : (
-                          <Badge variant="secondary" className="text-[10px]">Pendente</Badge>
+            <div className="overflow-hidden rounded-xl border border-border/60">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border bg-muted/30">
+                    <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">#</th>
+                    <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">Código</th>
+                    <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">Paciente</th>
+                    <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground hidden md:table-cell">Exames</th>
+                    <th className="text-center px-4 py-3 text-xs font-medium text-muted-foreground">Progresso</th>
+                    <th className="text-center px-4 py-3 text-xs font-medium text-muted-foreground">Status</th>
+                    <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground hidden lg:table-cell">Entrada</th>
+                    <th className="text-right px-4 py-3 text-xs font-medium text-muted-foreground">Ações</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtradas.map((c, idx) => {
+                    const liberados = getExamesLiberados(c);
+                    const pendentes = getExamesPendentes(c);
+                    const total = c.resultados_laboratorio?.length || 0;
+                    const todoLiberado = liberados.length > 0 && pendentes.length === 0;
+                    const parcial = liberados.length > 0 && pendentes.length > 0;
+                    const alterado = hasAlterado(c);
+                    const critico = hasCritico(c);
+                    const waLink = linkWhatsApp(
+                      c.pacientes?.telefone,
+                      `Olá, ${c.pacientes?.nome_social?.trim() || c.pacientes?.nome || 'paciente'}! Seu laudo laboratorial (${c.codigo_amostra}) está disponível. Entre em contato para mais informações.`,
+                    );
+                    return (
+                      <tr
+                        key={c.id}
+                        className={cn(
+                          'border-b border-border/50 last:border-0 transition-colors hover:bg-muted/20',
+                          todoLiberado && 'opacity-60 hover:opacity-100',
+                          c.urgente && 'bg-destructive/5',
                         )}
-                      </td>
-                      <td className="px-4 py-2.5 text-xs text-muted-foreground hidden lg:table-cell">
-                        {c.created_at ? formatDistanceToNow(new Date(c.created_at), { locale: ptBR, addSuffix: true }) : '—'}
-                      </td>
-                      <td className="px-4 py-2.5 text-right">
-                        <Button variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={() => setViewingId(c.id)}>
-                          <Eye className="h-3 w-3" /> Ver Laudo
-                        </Button>
-                      </td>
-                    </motion.tr>
-                  );
-                })}
-              </tbody>
-            </motion.table>
+                      >
+                        <td className="px-4 py-2.5">
+                          <span className={cn(
+                            'inline-flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold',
+                            idx === 0 ? 'bg-[#111111] text-white' : 'bg-muted text-muted-foreground',
+                          )}>
+                            {idx + 1}
+                          </span>
+                        </td>
+                        <td className="px-4 py-2.5 font-mono text-xs text-[#1080CA] font-semibold">{c.codigo_amostra ?? '—'}</td>
+                        <td className="px-4 py-2.5">
+                          <div className="flex items-center gap-1.5">
+                            {c.urgente && <AlertTriangle className="h-3 w-3 text-destructive shrink-0" />}
+                            <div>
+                              <p className="font-medium">{c.pacientes?.nome_social?.trim() || c.pacientes?.nome || '—'}</p>
+                              <p className="text-[11px] text-muted-foreground">{c.pacientes?.cpf ?? ''}</p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-4 py-2.5 hidden md:table-cell">
+                          <div className="flex flex-wrap gap-1">
+                            {(c.resultados_laboratorio ?? []).slice(0, 2).map((r: any) => (
+                              <Badge key={r.id} variant="secondary" className="text-[10px] rounded-full">{r.parametro ?? '—'}</Badge>
+                            ))}
+                            {total > 2 && <span className="text-[10px] text-muted-foreground">+{total - 2}</span>}
+                            {alterado && <Badge variant="destructive" className="text-[10px] gap-0.5 rounded-full"><AlertTriangle className="h-2.5 w-2.5" />Alt.</Badge>}
+                            {critico && <Badge variant="destructive" className="text-[10px] gap-0.5 rounded-full"><AlertCircle className="h-2.5 w-2.5" />Crítico</Badge>}
+                            {hasCriticoPendente(c) && <Badge variant="destructive" className="text-[10px] rounded-full">Ciência pendente</Badge>}
+                          </div>
+                        </td>
+                        <td className="px-4 py-2.5 text-center">
+                          <div className="flex items-center gap-1.5 justify-center">
+                            <div className="w-16 h-1.5 bg-muted rounded-full overflow-hidden">
+                              <div className="h-full bg-[#1080CA] rounded-full transition-all"
+                                style={{ width: `${total > 0 ? (liberados.length / total) * 100 : 0}%` }} />
+                            </div>
+                            <span className="text-[10px] text-muted-foreground tabular-nums">{liberados.length}/{total}</span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-2.5 text-center">
+                          {todoLiberado ? (
+                            <Badge className="bg-success/10 text-success border-success/20 text-[10px] rounded-full">Liberado</Badge>
+                          ) : parcial ? (
+                            <Badge className="bg-warning/10 text-warning-foreground border-warning/20 text-[10px] rounded-full">Parcial</Badge>
+                          ) : (
+                            <Badge variant="secondary" className="text-[10px] rounded-full">Pendente</Badge>
+                          )}
+                        </td>
+                        <td className="px-4 py-2.5 text-xs text-muted-foreground hidden lg:table-cell">
+                          {c.created_at ? formatDistanceToNow(new Date(c.created_at), { locale: ptBR, addSuffix: true }) : '—'}
+                        </td>
+                        <td className="px-4 py-2.5 text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            {waLink && (
+                              <Button
+                                asChild
+                                variant="ghost"
+                                size="sm"
+                                className="h-9 w-9 rounded-full p-0 text-[#25D366] hover:bg-[#25D366]/10"
+                                aria-label={`Contatar ${c.pacientes?.nome || 'paciente'} via WhatsApp`}
+                              >
+                                <a href={waLink} target="_blank" rel="noopener noreferrer">
+                                  <MessageCircle className="h-3.5 w-3.5" />
+                                </a>
+                              </Button>
+                            )}
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-9 rounded-full text-xs gap-1"
+                              onClick={() => setViewingId(c.id)}
+                            >
+                              <Eye className="h-3 w-3" /> Ver Laudo
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           )}
         </CardContent>
       </Card>
 
+      {/* ─── Load more ─── */}
       {olderLaudosError && (
         <ErrorState
           compact
@@ -1073,9 +1293,9 @@ export default function LaudosLab() {
           <p className="text-xs text-muted-foreground">{coletas.length} laudo(s) carregado(s)</p>
           <Button
             variant="outline"
+            className="gap-2 rounded-full"
             onClick={() => void carregarLaudosAntigos()}
             disabled={loadingOlderLaudos}
-            className="gap-2"
           >
             {loadingOlderLaudos && <Loader2 className="h-4 w-4 animate-spin" />}
             {loadingOlderLaudos ? 'Carregando...' : 'Carregar laudos anteriores'}
@@ -1083,7 +1303,21 @@ export default function LaudosLab() {
         </div>
       )}
 
-      <LaudoDetalheModal coletaId={viewingId} onClose={() => setViewingId(null)} onUpdate={fetchLaudos} />
+      {/* ─── Cross-links ─── */}
+      <div className="flex flex-wrap gap-2 pt-2 border-t border-border/60">
+        <p className="w-full text-xs text-muted-foreground mb-1">Fluxo do laboratório:</p>
+        <Button asChild variant="outline" size="sm" className="h-8 gap-1.5 rounded-full text-xs">
+          <Link to="/laboratorio"><FlaskConical className="h-3.5 w-3.5" /> Worklist</Link>
+        </Button>
+        <Button asChild variant="outline" size="sm" className="h-8 gap-1.5 rounded-full text-xs">
+          <Link to="/exames"><TestTube className="h-3.5 w-3.5" /> Exames</Link>
+        </Button>
+        <Button asChild variant="outline" size="sm" className="h-8 gap-1.5 rounded-full text-xs">
+          <Link to="/guias-externas"><FileSearch className="h-3.5 w-3.5" /> Guias Externas</Link>
+        </Button>
+      </div>
+
+      <LaudoDetalheModal coletaId={viewingId} onClose={() => setViewingId(null)} onUpdate={() => void fetchLaudos()} />
     </div>
   );
 }
