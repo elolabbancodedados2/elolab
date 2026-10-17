@@ -23,22 +23,22 @@ export default function DocumentosClinicos() {
   }, { replace: true });
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <Tabs value={tab} onValueChange={setTab} className="w-full">
-        <TabsList className="grid w-full max-w-2xl grid-cols-2 sm:grid-cols-4 mx-auto">
-          <TabsTrigger value="prescricoes" className="gap-2">
+        <TabsList className="mx-auto grid h-auto w-full max-w-2xl grid-cols-2 rounded-2xl border border-border bg-muted/60 p-1.5 shadow-sm sm:grid-cols-4">
+          <TabsTrigger value="prescricoes" className="min-h-11 gap-2 rounded-xl">
             <BookMarked className="h-4 w-4" />
             Prescrições
           </TabsTrigger>
-          <TabsTrigger value="atestados" className="gap-2">
+          <TabsTrigger value="atestados" className="min-h-11 gap-2 rounded-xl">
             <FileBarChart className="h-4 w-4" />
             Atestados
           </TabsTrigger>
-          <TabsTrigger value="encaminhamentos" className="gap-2">
+          <TabsTrigger value="encaminhamentos" className="min-h-11 gap-2 rounded-xl">
             <Stethoscope className="h-4 w-4" />
             Encaminhamentos
           </TabsTrigger>
-          <TabsTrigger value="anexos" className="gap-2">
+          <TabsTrigger value="anexos" className="min-h-11 gap-2 rounded-xl">
             <FolderSearch className="h-4 w-4" />
             Anexos
           </TabsTrigger>

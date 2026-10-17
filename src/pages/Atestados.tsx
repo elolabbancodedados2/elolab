@@ -1,13 +1,13 @@
 import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { nomeMedico } from '@/lib/formatters';
 import { useState, useMemo, useEffect, useRef } from 'react';
-import { Link } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   Plus, Search, Eye, Printer, FileText, Loader2, Star,
   Clock, Calendar, AlertTriangle, ShieldCheck, Clipboard,
-  BadgeCheck, BookOpen, X, FileSignature,
+  BookOpen, X, FileSignature, RefreshCw, MessageCircle, CalendarCheck,
 } from 'lucide-react';
+import { linkWhatsApp } from '@/lib/whatsapp';
 import { addDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Button } from '@/components/ui/button';
@@ -92,6 +92,8 @@ const TIPOS_ATESTADO = [
   { value: 'acompanhante', label: 'Declaração de Acompanhante', icon: FileText },
 ];
 
+const getTipoLabelStatic = (tipo: string | null) => TIPOS_ATESTADO.find(t => t.value === tipo)?.label || tipo;
+
 const FINALIDADES_APTIDAO = [
   'Apto para prática de atividades físicas moderadas',
   'Apto para prática de atividades físicas intensas',
@@ -100,6 +102,21 @@ const FINALIDADES_APTIDAO = [
   'Apto para viagem',
 ];
 
+type FiltroPeriodoAtestado = 'todos' | 'hoje' | '7d' | '30d' | 'cid';
+
+const diasDesde = (dataEmissao: string | null | undefined, hoje: string): number | null => {
+  if (!dataEmissao) return null;
+  const inicio = new Date(`${dataEmissao}T12:00:00`).getTime();
+  const fim = new Date(`${hoje}T12:00:00`).getTime();
+  if (Number.isNaN(inicio) || Number.isNaN(fim)) return null;
+  return Math.round((fim - inicio) / 86_400_000);
+};
+
+/** Afastamento cujo período inclui a data de hoje. */
+const afastamentoVigente = (atestado: Atestado, hoje: string) =>
+  atestado.tipo === 'afastamento' && !!atestado.data_inicio && !!atestado.data_fim
+  && atestado.data_inicio <= hoje && atestado.data_fim >= hoje;
+
 export default function Atestados() {
   const [today, setToday] = useState(() => todaySaoPauloDateOnly());
   useEffect(() => {
@@ -107,6 +124,16 @@ export default function Atestados() {
     return () => window.clearInterval(timer);
   }, []);
   const [searchTerm, setSearchTerm] = useState('');
+  const [tipoFiltro, setTipoFiltro] = useState<string>('todos');
+  const [periodoFiltro, setPeriodoFiltro] = useState<FiltroPeriodoAtestado>('todos');
+  // Deep-link: /documentos-clinicos?tab=atestados&paciente=<id> abre a lista já filtrada pelo paciente.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const pacienteFiltroId = searchParams.get('paciente');
+  const limparPacienteFiltro = () => setSearchParams(previous => {
+    const next = new URLSearchParams(previous);
+    next.delete('paciente');
+    return next;
+  }, { replace: true });
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isViewOpen, setIsViewOpen] = useState(false);
   const [isTemplateOpen, setIsTemplateOpen] = useState(false);
@@ -153,11 +180,47 @@ export default function Atestados() {
 
   const isLoading = atestadosQuery.isLoading || medicosQuery.isLoading;
 
+  const stats = useMemo(() => ({
+    total: atestados.length,
+    hoje: atestados.filter(a => a.data_emissao === today).length,
+    vigentes: atestados.filter(a => afastamentoVigente(a, today)).length,
+    comCid: atestados.filter(a => !!a.cid).length,
+    pacientes: new Set(atestados.map(a => a.paciente_id)).size,
+    porTipo: Object.fromEntries(TIPOS_ATESTADO.map(t => [t.value, atestados.filter(a => a.tipo === t.value).length])) as Record<string, number>,
+  }), [atestados, today]);
+
   const filteredAtestados = useMemo(() => {
     return atestados.filter(a => {
+      if (pacienteFiltroId && a.paciente_id !== pacienteFiltroId) return false;
+      if (tipoFiltro !== 'todos' && a.tipo !== tipoFiltro) return false;
+      if (periodoFiltro === 'hoje' && a.data_emissao !== today) return false;
+      if (periodoFiltro === 'cid' && !a.cid) return false;
+      if (periodoFiltro === '7d' || periodoFiltro === '30d') {
+        const dias = diasDesde(a.data_emissao, today);
+        if (dias === null || dias < 0 || dias > (periodoFiltro === '7d' ? 7 : 30)) return false;
+      }
       return pacienteCorresponde(a.pacientes || {}, searchTerm);
     });
-  }, [atestados, searchTerm]);
+  }, [atestados, searchTerm, tipoFiltro, periodoFiltro, pacienteFiltroId, today]);
+
+  const temFiltro = !!searchTerm || tipoFiltro !== 'todos' || periodoFiltro !== 'todos' || !!pacienteFiltroId;
+  const limparFiltros = () => {
+    setSearchTerm('');
+    setTipoFiltro('todos');
+    setPeriodoFiltro('todos');
+    if (pacienteFiltroId) limparPacienteFiltro();
+  };
+  const pacienteFiltroNome = pacienteFiltroId
+    ? (atestados.find(a => a.paciente_id === pacienteFiltroId)?.pacientes?.nome_social
+      || atestados.find(a => a.paciente_id === pacienteFiltroId)?.pacientes?.nome
+      || 'selecionado')
+    : null;
+  const mensagemWhatsApp = (atestado: Atestado) => {
+    const nome = String(atestado.pacientes?.nome_social || atestado.pacientes?.nome || '').split(' ')[0];
+    const data = atestado.data_emissao ? format(parseDateOnly(atestado.data_emissao)!, 'dd/MM/yyyy') : '';
+    const tipo = (getTipoLabelStatic(atestado.tipo) || 'documento').toLowerCase();
+    return `Olá${nome ? `, ${nome}` : ''}! Seu ${tipo}${data ? ` emitido em ${data}` : ''} está disponível para retirada na clínica.`;
+  };
 
   // Auto-calculate end date
   const updateDias = (dias: number) => {
@@ -446,11 +509,11 @@ export default function Atestados() {
   const getTipoLabel = (tipo: string | null) => TIPOS_ATESTADO.find(t => t.value === tipo)?.label || tipo;
   const getTipoBadge = (tipo: string | null) => {
     switch (tipo) {
-      case 'comparecimento': return 'bg-primary/10 text-primary';
-      case 'afastamento': return 'bg-warning/10 text-warning';
-      case 'aptidao': return 'bg-success/10 text-success';
-      case 'acompanhante': return 'bg-accent text-accent-foreground';
-      default: return '';
+      case 'comparecimento': return 'border-[#BFD8EE] bg-[#EEF4FA] text-[#1080CA]';
+      case 'afastamento': return 'border-warning/30 bg-warning/10 text-warning';
+      case 'aptidao': return 'border-success/30 bg-success/10 text-success';
+      case 'acompanhante': return 'border-border bg-muted text-foreground';
+      default: return 'border-border bg-muted text-foreground';
     }
   };
 
@@ -471,77 +534,159 @@ export default function Atestados() {
 
   return (
     <div className="space-y-6">
-        <PageHeader
-          title="Atestados e Documentos"
-          description="Emita declarações e atestados com dados conferidos do paciente."
-          icon={<FileText />}
-          actions={(
-            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
-          <Badge variant="outline" className="gap-1.5 text-xs">
-            <FileSignature className="h-3.5 w-3.5 text-muted-foreground" />
-            Assinatura manual
-          </Badge>
-          <Button onClick={handleNew} className="gap-2" disabled={!medicosDisponiveis.length}>
-            <Plus className="h-4 w-4" />Novo Atestado
-          </Button>
-            </div>
-          )}
-        />
+      <PageHeader
+        title="Atestados e Documentos"
+        description={stats.total > 0
+          ? `${stats.total} documento${stats.total === 1 ? '' : 's'} · ${stats.hoje} hoje${stats.vigentes > 0 ? ` · ${stats.vigentes} afastamento${stats.vigentes === 1 ? '' : 's'} em vigor` : ''} · ${stats.pacientes} paciente${stats.pacientes === 1 ? '' : 's'}`
+          : 'Emita declarações e atestados com dados conferidos do paciente.'}
+        icon={<FileText />}
+        actions={(
+          <>
+            <Badge variant="outline" className="h-9 shrink-0 gap-1.5 rounded-full px-3 text-xs">
+              <FileSignature className="h-3.5 w-3.5 text-muted-foreground" />
+              Assinatura manual
+            </Badge>
+            <Button asChild variant="outline" className="shrink-0 gap-2 rounded-full">
+              <Link to="/todos-templates"><BookOpen className="h-4 w-4" />Modelos</Link>
+            </Button>
+            <Button variant="outline" size="icon" className="shrink-0 rounded-full" onClick={() => void atestadosQuery.refetch()} aria-label="Atualizar atestados" title="Atualizar">
+              <RefreshCw className="h-4 w-4" />
+            </Button>
+            <Button
+              onClick={handleNew}
+              className="shrink-0 gap-2 rounded-full bg-[#111111] text-white shadow-md hover:bg-[#2b2b33] disabled:bg-none disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100 disabled:shadow-none"
+              disabled={!medicosDisponiveis.length}
+            >
+              <Plus className="h-4 w-4" />Novo Atestado
+            </Button>
+          </>
+        )}
+      />
 
       {!medicosDisponiveis.length && (
-        <div role="alert" className="rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm text-warning-foreground">
+        <div role="alert" className="rounded-xl border border-warning/30 bg-warning/5 p-3 text-sm text-warning-foreground">
           Não há médicos ativos para emitir atestados. <Link to="/equipe" className="font-medium underline">Gerenciar equipe</Link>.
         </div>
       )}
 
-      {/* Quick Actions */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {TIPOS_ATESTADO.map(tipo => {
-          const Icon = tipo.icon;
-          const count = atestados.filter(a => a.tipo === tipo.value).length;
+      {/* Indicadores por tipo (filtram a lista) */}
+      <section role="group" aria-label="Resumo por tipo de documento" className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-5">
+        {([
+          { key: 'hoje', icon: CalendarCheck, label: 'Hoje', value: stats.hoje, caption: 'emitidos hoje', color: 'text-[#2ED5E7]', surface: 'bg-white/15', escuro: true },
+          ...TIPOS_ATESTADO.map(tipo => ({
+            key: tipo.value,
+            icon: tipo.icon,
+            label: tipo.label.replace(/^(Atestado|Declaração) (de |Médico )?/, '').replace(/^\((.*)\)$/, '$1'),
+            value: stats.porTipo[tipo.value] ?? 0,
+            caption: tipo.value === 'afastamento' && stats.vigentes > 0 ? `${stats.vigentes} em vigor` : 'emitidos',
+            color: tipo.value === 'afastamento' ? 'text-warning' : tipo.value === 'aptidao' ? 'text-success' : tipo.value === 'comparecimento' ? 'text-[#1080CA]' : 'text-foreground',
+            surface: tipo.value === 'afastamento' ? 'bg-warning/10' : tipo.value === 'aptidao' ? 'bg-success/10' : tipo.value === 'comparecimento' ? 'bg-[#1080CA]/10' : 'bg-muted',
+            escuro: false,
+          })),
+        ]).map(s => {
+          const Icon = s.icon;
+          const ativo = s.key === 'hoje' ? periodoFiltro === 'hoje' : tipoFiltro === s.key;
+          const alternar = () => {
+            if (s.key === 'hoje') setPeriodoFiltro(ativo ? 'todos' : 'hoje');
+            else setTipoFiltro(ativo ? 'todos' : s.key);
+          };
           return (
-            <Card
-              key={tipo.value}
+            <button
+              key={s.key}
+              type="button"
+              aria-pressed={ativo}
+              onClick={alternar}
               className={cn(
-                'card-interactive transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                medicosDisponiveis.length ? 'cursor-pointer hover:border-primary' : 'cursor-not-allowed opacity-60',
+                'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+                s.escuro && 'border-transparent bg-[#111111] text-white',
+                ativo && !s.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
+                ativo && s.escuro && 'ring-2 ring-[#2ED5E7]/60',
               )}
-              role="button"
-              tabIndex={medicosDisponiveis.length ? 0 : -1}
-              aria-disabled={!medicosDisponiveis.length}
-              aria-label={`Emitir ${tipo.label}`}
-              onClick={() => medicosDisponiveis.length && handleNewWithType(tipo.value)}
-              onKeyDown={(event) => {
-                if (!medicosDisponiveis.length) return;
-                if (event.key === 'Enter' || event.key === ' ') {
-                  event.preventDefault();
-                  handleNewWithType(tipo.value);
-                }
-              }}
             >
-              <CardContent className="p-4 flex flex-col items-center text-center gap-2">
-                <Icon className="h-8 w-8 text-primary" />
-                <p className="text-sm font-medium">{tipo.label}</p>
-                <span className="text-xs text-muted-foreground tabular-nums">{count} emitido(s)</span>
-              </CardContent>
-            </Card>
+              <div className="flex min-h-[96px] items-center gap-3 p-3">
+                <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', s.surface)}>
+                  <Icon aria-hidden="true" className={cn('h-5 w-5', s.color)} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <h3 className={cn('truncate text-xs font-semibold', s.escuro ? 'text-white/80' : 'text-foreground')}>{s.label}</h3>
+                    <span className={cn('text-2xl font-bold tabular-nums', s.color)}>{s.value}</span>
+                  </div>
+                  <p className={cn('truncate text-[11px]', s.escuro ? 'text-white/60' : 'text-muted-foreground')}>{s.caption}</p>
+                </div>
+              </div>
+            </button>
           );
         })}
-      </div>
+      </section>
 
-      {/* Table */}
-      <Card>
-        <CardHeader>
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-            <CardTitle>Documentos Emitidos ({filteredAtestados.length})</CardTitle>
-            <div className="relative w-full sm:w-72">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input aria-label="Buscar atestados por nome, CPF ou telefone" placeholder="Buscar por nome, CPF ou telefone..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="pl-9" />
+      {/* Documentos emitidos */}
+      <Card className="rounded-2xl border-border/60 shadow-xs">
+        <CardHeader className="pb-3">
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <CardTitle className="text-base">Documentos Emitidos <span className="text-muted-foreground">({filteredAtestados.length})</span></CardTitle>
+              <div className="relative w-full sm:w-80">
+                <Search aria-hidden="true" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  aria-label="Buscar atestados por nome, CPF ou telefone"
+                  placeholder="Buscar por nome, CPF ou telefone..."
+                  value={searchTerm}
+                  onChange={e => setSearchTerm(e.target.value)}
+                  className="h-10 rounded-full pl-9 focus-visible:ring-[#1080CA]"
+                />
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div role="group" aria-label="Filtrar documentos" className="flex flex-wrap items-center gap-1.5">
+                {([
+                  { key: 'todos', label: 'Todo o período' },
+                  { key: 'hoje', label: 'Hoje' },
+                  { key: '7d', label: 'Últimos 7 dias' },
+                  { key: '30d', label: 'Últimos 30 dias' },
+                  { key: 'cid', label: 'Com CID' },
+                ] as const).map(opt => {
+                  const ativo = periodoFiltro === opt.key;
+                  return (
+                    <button
+                      key={opt.key}
+                      type="button"
+                      aria-pressed={ativo}
+                      onClick={() => setPeriodoFiltro(opt.key)}
+                      className={cn(
+                        'h-8 rounded-full border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+                        ativo ? 'border-transparent bg-gradient-primary text-white shadow-sm' : 'border-border bg-card text-muted-foreground hover:border-[#9CC7EC] hover:text-foreground',
+                      )}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
+                {pacienteFiltroId && (
+                  <Badge variant="outline" className="h-8 gap-1 rounded-full border-[#BFD8EE] pl-3 pr-1 text-xs font-medium text-[#1080CA]">
+                    Paciente: {pacienteFiltroNome}
+                    <button
+                      type="button"
+                      onClick={limparPacienteFiltro}
+                      aria-label="Remover filtro de paciente"
+                      className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-[#1080CA]/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]"
+                    >
+                      <X aria-hidden="true" className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                )}
+                {temFiltro && (
+                  <Button variant="ghost" size="sm" className="h-8 gap-1 rounded-full text-xs text-muted-foreground" onClick={limparFiltros}>
+                    <X aria-hidden="true" className="h-3 w-3" /> Limpar filtros
+                  </Button>
+                )}
+              </div>
+              <p className="text-xs tabular-nums text-muted-foreground" aria-live="polite">{filteredAtestados.length} de {atestados.length}</p>
             </div>
           </div>
         </CardHeader>
         <CardContent>
-          <div className="rounded-md border">
+          <div className="overflow-hidden rounded-xl border border-border/60">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -556,37 +701,80 @@ export default function Atestados() {
               <TableBody>
                 {filteredAtestados.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-12">
-                      <div className="flex flex-col items-center">
-                        <div className="h-16 w-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
-                          <FileText className="h-8 w-8 text-primary" />
+                    <TableCell colSpan={6} className="py-12 text-center text-muted-foreground">
+                      <span aria-hidden="true" className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+                        <FileText className="h-7 w-7" />
+                      </span>
+                      <p className="font-semibold text-foreground">{atestados.length === 0 ? 'Nenhum atestado encontrado' : 'Nenhum resultado para esses filtros'}</p>
+                      <p className="mt-1 text-sm">{atestados.length === 0 ? 'Emita o primeiro atestado para o paciente' : 'Ajuste a busca, o tipo ou o período.'}</p>
+                      {atestados.length === 0 ? (
+                        <Button
+                          className="mt-4 gap-2 rounded-full bg-[#111111] text-white hover:bg-[#2b2b33] disabled:bg-none disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100"
+                          onClick={handleNew}
+                          disabled={!medicosDisponiveis.length}
+                        >
+                          <Plus className="h-4 w-4" />Novo Atestado
+                        </Button>
+                      ) : (
+                        <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+                          <Button size="sm" variant="outline" className="rounded-full" onClick={limparFiltros}>Limpar filtros</Button>
+                          {tipoFiltro !== 'todos' && medicosDisponiveis.length > 0 && (
+                            <Button size="sm" className="gap-2 rounded-full bg-[#111111] text-white hover:bg-[#2b2b33]" onClick={() => handleNewWithType(tipoFiltro)}>
+                              <Plus className="h-4 w-4" />Emitir {getTipoLabel(tipoFiltro)}
+                            </Button>
+                          )}
                         </div>
-                        <p className="font-semibold text-foreground">{atestados.length === 0 ? 'Nenhum atestado encontrado' : 'Nenhum resultado para essa busca'}</p>
-                        <p className="text-sm text-muted-foreground mt-1">{atestados.length === 0 ? 'Emita o primeiro atestado para o paciente' : 'Tente outro nome ou limpe a busca.'}</p>
-                        {atestados.length === 0 ? <Button className="mt-4 gap-2" onClick={handleNew} disabled={!medicosDisponiveis.length}><Plus className="h-4 w-4" />Novo Atestado</Button> : <Button variant="link" size="sm" onClick={() => setSearchTerm('')}>Limpar busca</Button>}
-                      </div>
+                      )}
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredAtestados.map(atestado => (
-                    <TableRow key={atestado.id}>
-                      <TableCell>{atestado.data_emissao ? format(parseDateOnly(atestado.data_emissao)!, 'dd/MM/yyyy') : '—'}</TableCell>
-                      <TableCell><Badge className={cn(getTipoBadge(atestado.tipo))}>{getTipoLabel(atestado.tipo)}</Badge></TableCell>
-                      <TableCell className="font-medium">{getPacienteNome(atestado.pacientes)}</TableCell>
-                      <TableCell className="hidden md:table-cell">{getMedicoNome(atestado.medico_id)}</TableCell>
-                      <TableCell className="hidden sm:table-cell text-sm text-muted-foreground">
-                        {atestado.dias && <span>{atestado.dias} dia(s)</span>}
-                        {atestado.cid && <Badge variant="outline" className="ml-1 text-[10px]">CID: {atestado.cid}</Badge>}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-1">
-                          <Button variant="ghost" size="icon" onClick={() => handleView(atestado)} aria-label="Ver atestado"><Eye className="h-4 w-4" /></Button>
-                          <Button variant="ghost" size="icon" onClick={() => handlePrint(atestado)} aria-label="Imprimir atestado"><Printer className="h-4 w-4" /></Button>
-                          <Button variant="ghost" size="icon" onClick={() => handleDuplicate(atestado)} aria-label="Duplicar atestado" title="Duplicar atestado"><Clipboard className="h-4 w-4" /></Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))
+                  filteredAtestados.map(atestado => {
+                    const nomePaciente = getPacienteNome(atestado.pacientes);
+                    const whatsapp = linkWhatsApp(atestado.pacientes?.telefone, mensagemWhatsApp(atestado));
+                    const vigente = afastamentoVigente(atestado, today);
+                    return (
+                      <TableRow key={atestado.id} className="transition-colors hover:bg-[#F3F8FC]/70">
+                        <TableCell className="tabular-nums">{atestado.data_emissao ? format(parseDateOnly(atestado.data_emissao)!, 'dd/MM/yyyy') : '—'}</TableCell>
+                        <TableCell><Badge variant="outline" className={cn('rounded-full', getTipoBadge(atestado.tipo))}>{getTipoLabel(atestado.tipo)}</Badge></TableCell>
+                        <TableCell className="font-medium">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span>{nomePaciente}</span>
+                            {atestado.data_emissao === today && <Badge className="rounded-full border-transparent bg-gradient-primary text-[9px] text-white hover:bg-gradient-primary">Hoje</Badge>}
+                            {vigente && <Badge variant="outline" className="rounded-full border-warning/40 text-[10px] text-warning">Em vigor</Badge>}
+                          </div>
+                        </TableCell>
+                        <TableCell className="hidden md:table-cell">{getMedicoNome(atestado.medico_id)}</TableCell>
+                        <TableCell className="hidden text-sm text-muted-foreground sm:table-cell">
+                          {atestado.dias && <span className="tabular-nums">{atestado.dias} dia(s)</span>}
+                          {atestado.dias && atestado.data_inicio && atestado.data_fim && (
+                            <span className="ml-1 text-xs">({format(parseDateOnly(atestado.data_inicio)!, 'dd/MM')} a {format(parseDateOnly(atestado.data_fim)!, 'dd/MM')})</span>
+                          )}
+                          {atestado.cid && <Badge variant="outline" className="ml-1 rounded-full text-[10px]">CID: {atestado.cid}</Badge>}
+                          {!atestado.dias && !atestado.cid && <span>—</span>}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex flex-wrap items-center justify-end gap-1">
+                            {whatsapp && (
+                              <Button asChild variant="ghost" size="icon" className="h-9 w-9 rounded-full text-[#1080CA] hover:bg-[#1080CA]/10 hover:text-[#1080CA]">
+                                <a href={whatsapp} target="_blank" rel="noopener noreferrer" aria-label={`Avisar ${nomePaciente} pelo WhatsApp`} title="Avisar pelo WhatsApp">
+                                  <MessageCircle className="h-4 w-4" />
+                                </a>
+                              </Button>
+                            )}
+                            <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full text-muted-foreground" onClick={() => handleDuplicate(atestado)} aria-label="Duplicar atestado" title="Duplicar atestado">
+                              <Clipboard className="h-4 w-4" />
+                            </Button>
+                            <Button variant="outline" className="h-9 gap-1.5 rounded-full text-xs" onClick={() => handleView(atestado)} aria-label="Ver atestado">
+                              <Eye className="h-4 w-4" />Ver
+                            </Button>
+                            <Button className="h-9 gap-1.5 rounded-full bg-[#111111] text-xs text-white hover:bg-[#2b2b33]" onClick={() => handlePrint(atestado)} aria-label="Imprimir atestado">
+                              <Printer className="h-4 w-4" />Imprimir
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
                 )}
               </TableBody>
             </Table>
@@ -902,7 +1090,7 @@ export default function Atestados() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-xs text-muted-foreground">Tipo</p>
-                  <Badge className={cn(getTipoBadge(selectedAtestado.tipo))}>{getTipoLabel(selectedAtestado.tipo)}</Badge>
+                  <Badge variant="outline" className={cn('rounded-full', getTipoBadge(selectedAtestado.tipo))}>{getTipoLabel(selectedAtestado.tipo)}</Badge>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Data de Emissão</p>
