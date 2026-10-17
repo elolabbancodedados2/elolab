@@ -1,9 +1,10 @@
 import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
 import { useState, useMemo, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Plus, Search, Check, DollarSign, AlertCircle, Calendar, FileText, CreditCard,
-  Repeat, Building2, Loader2,
+  Repeat, Building2, Loader2, X, ArrowUpRight, Clock, TrendingDown,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -25,6 +26,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { Database } from '@/integrations/supabase/types';
+import { differenceInCalendarDays } from 'date-fns';
 import { isValidDateOnly, parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { valorRealizado } from '@/lib/lancamentos';
 import { ErrorState } from '@/components/ErrorState';
@@ -105,6 +107,10 @@ const saldoEmAberto = (conta: { valor: number | string; valor_pago?: number | st
   Math.max(0, Number(conta.valor || 0) - Number(conta.desconto || 0)
     + Number(conta.acrescimo || 0) - Number(conta.valor_pago || 0));
 
+const PILL_BASE_P = 'h-8 rounded-full border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]';
+const PILL_ATIVA_P = 'border-transparent bg-gradient-primary text-white shadow-sm';
+const PILL_INATIVA_P = 'border-border bg-card text-muted-foreground hover:border-[#9CC7EC] hover:text-foreground';
+
 export default function ContasPagar() {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('todos');
@@ -118,6 +124,7 @@ export default function ContasPagar() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const submissionLock = useRef(false);
 
+  const navigate = useNavigate();
   const { user, profile } = useSupabaseAuth();
   const queryClient = useQueryClient();
 
@@ -164,6 +171,22 @@ export default function ContasPagar() {
     pago: contas.filter(c => ['pago', 'parcial'].includes(c.status) || Number(c.valor_pago || 0) > 0)
       .reduce((acc, c) => acc + valorRealizado(c), 0),
   }), [contas]);
+
+  const destaquePagar = useMemo(() => {
+    const vencidas = contas.filter(c => c.vencida).sort((a, b) => {
+      const da = parseDateOnly(a.data_vencimento)?.getTime() ?? 0;
+      const db = parseDateOnly(b.data_vencimento)?.getTime() ?? 0;
+      return da - db;
+    });
+    if (vencidas.length > 0) return vencidas[0];
+    return contas
+      .filter(c => ['pendente', 'parcial'].includes(c.statusOriginal || c.status || ''))
+      .sort((a, b) => {
+        const da = parseDateOnly(a.data_vencimento)?.getTime() ?? 0;
+        const db = parseDateOnly(b.data_vencimento)?.getTime() ?? 0;
+        return da - db;
+      })[0] ?? null;
+  }, [contas]);
 
   const formatCurrency = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 
@@ -336,9 +359,23 @@ export default function ContasPagar() {
     <div className="space-y-6 pb-8">
       <PageHeader
         title="Contas a Pagar"
-        description="Despesas, fornecedores e controle de vencimentos"
-        icon={<CreditCard />}
-        actions={<Button onClick={handleNew} className="gap-2"><Plus className="h-4 w-4" />Nova Conta</Button>}
+        description={stats.total === 0
+          ? 'Despesas, fornecedores e controle de vencimentos'
+          : `${formatCurrency(stats.total)} total · ${contas.filter(c => c.vencida).length} vencida${contas.filter(c => c.vencida).length === 1 ? '' : 's'} · ${formatCurrency(stats.pendente)} em aberto`}
+        icon={<TrendingDown />}
+        actions={
+          <>
+          <Button variant="outline" size="sm" className="gap-1.5 rounded-full shrink-0" onClick={() => navigate('/contas?tab=receber')}>
+            <ArrowUpRight className="h-4 w-4" /> Contas a Receber
+          </Button>
+          <Button variant="outline" size="sm" className="gap-1.5 rounded-full shrink-0" onClick={() => navigate('/recepcao?tab=caixa')}>
+            <ArrowUpRight className="h-4 w-4" /> Caixa do Dia
+          </Button>
+          <Button onClick={handleNew} className="gap-2 rounded-full bg-[#111111] text-white shadow-md hover:bg-[#2b2b33] shrink-0">
+            <Plus className="h-4 w-4" /> Nova Conta
+          </Button>
+          </>
+        }
       />
 
       {contasAtingiramLimite && (
@@ -347,67 +384,145 @@ export default function ContasPagar() {
         </div>
       )}
 
-      {/* Overdue alert */}
-      {contas.filter(c => c.vencida).length > 0 && (
-        <div className="flex items-center gap-2 p-3 rounded-xl bg-destructive/5 border border-destructive/20">
-          <AlertCircle className="h-4 w-4 text-destructive flex-shrink-0" />
-          <span className="text-sm text-destructive font-medium">
-            {contas.filter(c => c.vencida).length} conta(s) vencida(s) — Total: {formatCurrency(stats.atrasado)}
-          </span>
-          <Button variant="outline" size="sm" className="ml-auto h-7 text-xs border-destructive/30 text-destructive hover:bg-destructive/10"
-            onClick={() => setFilterStatus('atrasado')}>
-            Ver vencidas
-          </Button>
-        </div>
-      )}
-
-      {/* KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      {/* Indicadores clicáveis */}
+      <section role="group" aria-label="Resumo das contas a pagar" className="grid grid-cols-2 gap-2 md:grid-cols-4">
         {[
-          { label: 'Total', value: stats.total, icon: DollarSign, color: 'text-primary', bg: 'bg-primary/10', border: 'border-primary/20' },
-          { label: 'Pendente', value: stats.pendente, icon: Calendar, color: 'text-warning-foreground', bg: 'bg-warning/10', border: 'border-warning/20' },
-          { label: 'Atrasado', value: stats.atrasado, icon: AlertCircle, color: 'text-destructive', bg: 'bg-destructive/10', border: 'border-destructive/20' },
-          { label: 'Pago', value: stats.pago, icon: Check, color: 'text-success', bg: 'bg-success/10', border: 'border-success/20' },
-        ].map((s) => (
-          <Card key={s.label} className={cn('h-full border bg-gradient-to-br from-card to-muted/30 shadow-sm transition-shadow hover:shadow-md', s.border)}>
-            <CardContent className="py-4 px-5">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">{s.label}</p>
-                  <p className={cn('text-xl font-black mt-0.5 tabular-nums', s.color)}>{formatCurrency(s.value)}</p>
+          { key: 'todos', label: 'Total Geral', value: stats.total, icon: DollarSign, color: 'text-[#1080CA]', surface: 'bg-[#1080CA]/10', escuro: false, caption: `${contas.length} lançamento(s)` },
+          { key: 'pendente', label: 'Pendente', value: stats.pendente, icon: Clock, color: 'text-warning', surface: 'bg-warning/10', escuro: false, caption: `${contas.filter(c => ['pendente', 'parcial'].includes(c.statusOriginal || '') && !c.vencida).length} conta(s)` },
+          { key: 'atrasado', label: 'Vencidas / Em atraso', value: stats.atrasado, icon: AlertCircle, color: 'text-[#2ED5E7]', surface: 'bg-white/15', escuro: true, caption: `${contas.filter(c => c.vencida).length} em atraso` },
+          { key: 'pago', label: 'Pago', value: stats.pago, icon: Check, color: 'text-success', surface: 'bg-success/10', escuro: false, caption: `${contas.filter(c => ['pago'].includes(c.statusOriginal || '')).length} conta(s)` },
+        ].map(kpi => {
+          const Icon = kpi.icon;
+          const ativo = filterStatus === kpi.key;
+          return (
+            <button
+              key={kpi.key}
+              type="button"
+              aria-pressed={ativo}
+              onClick={() => setFilterStatus(ativo && kpi.key !== 'todos' ? 'todos' : kpi.key)}
+              className={cn(
+                'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+                kpi.escuro && 'border-transparent bg-[#111111] text-white',
+                ativo && !kpi.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
+                ativo && kpi.escuro && 'ring-2 ring-[#2ED5E7]/60',
+              )}
+            >
+              <div className="flex min-h-[96px] items-center gap-3 p-3">
+                <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', kpi.surface)}>
+                  <Icon aria-hidden="true" className={cn('h-5 w-5', kpi.color)} />
                 </div>
-                <div className={cn('h-10 w-10 rounded-xl flex items-center justify-center ring-1 ring-inset ring-black/[0.03]', s.bg)}>
-                  <s.icon className={cn('h-5 w-5', s.color)} />
+                <div className="min-w-0 flex-1">
+                  <h3 className={cn('truncate text-xs font-semibold', kpi.escuro ? 'text-white/80' : 'text-foreground')}>{kpi.label}</h3>
+                  <p className={cn('text-xl font-bold tabular-nums', kpi.color)}>{formatCurrency(kpi.value)}</p>
+                  <p className={cn('truncate text-[11px]', kpi.escuro ? 'text-white/60' : 'text-muted-foreground')}>
+                    {kpi.caption}
+                  </p>
                 </div>
+              </div>
+            </button>
+          );
+        })}
+      </section>
+
+      {/* Hero: conta mais urgente */}
+      {destaquePagar && (() => {
+        const d = destaquePagar;
+        const statusCfg = STATUS_CONFIG[d.status || 'pendente'];
+        const dataVenc = d.data_vencimento ? parseDateOnly(d.data_vencimento) : null;
+        const diasVencidos = dataVenc ? differenceInCalendarDays(parseDateOnly(todaySaoPauloDateOnly())!, dataVenc) : null;
+        return (
+          <Card className="overflow-hidden rounded-2xl border-[#1080CA]/30 shadow-[0_8px_24px_rgba(16,128,202,0.12)]">
+            <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center">
+              <div className="flex min-w-0 flex-1 items-center gap-3">
+                <span aria-hidden="true" className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+                  {d.vencida ? <AlertCircle className="h-5 w-5" /> : <Calendar className="h-5 w-5" />}
+                </span>
+                <div className="min-w-0">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-[#1080CA]">{d.vencida ? 'Despesa vencida há mais tempo' : 'Próxima despesa a vencer'}</p>
+                  <h2 className="truncate text-lg font-bold text-foreground">{d.descricao}</h2>
+                  <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                    {d.fornecedor && <span>{d.fornecedor}</span>}
+                    <span className="inline-flex items-center gap-1"><Calendar aria-hidden="true" className="h-3 w-3" /> {dataVenc ? `Venc. ${format(dataVenc, 'dd/MM/yyyy')}` : '—'}</span>
+                    {diasVencidos !== null && diasVencidos > 0 && (
+                      <span className="inline-flex items-center gap-1 font-semibold text-destructive">
+                        <Clock aria-hidden="true" className="h-3 w-3" /> {diasVencidos} dia(s) de atraso
+                      </span>
+                    )}
+                    <Badge className={cn('rounded-full text-[10px]', statusCfg?.bg, statusCfg?.color, 'border-0')}>
+                      {d.vencida && d.statusOriginal === 'parcial' ? 'Atrasado · parcial' : STATUS_LABELS[d.status || 'pendente']}
+                    </Badge>
+                  </div>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                <span className="text-lg font-bold tabular-nums text-foreground">{formatCurrency(d.valor)}</span>
+                {['pendente', 'atrasado', 'parcial'].includes(d.status) && (
+                  <Button
+                    size="sm"
+                    onClick={() => handlePagamento(d.id)}
+                    className="h-9 gap-1 rounded-full bg-[#111111] text-xs text-white shadow-md hover:bg-[#2b2b33]"
+                  >
+                    <Check aria-hidden="true" className="h-3.5 w-3.5" /> {Number(d.valor_pago || 0) > 0 ? 'Pagar saldo' : 'Pagar'}
+                  </Button>
+                )}
               </div>
             </CardContent>
           </Card>
-        ))}
-      </div>
+        );
+      })()}
 
-      {/* Table */}
-      <Card>
-        <CardHeader>
-          <div className="flex flex-col sm:flex-row gap-4 justify-between">
-            <CardTitle>Contas ({filteredContas.length})</CardTitle>
-            <div className="flex flex-col sm:flex-row gap-2">
-              <Select value={filterStatus} onValueChange={setFilterStatus}>
-                <SelectTrigger className="w-40"><SelectValue placeholder="Status" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todos">Todos</SelectItem>
-                  {Object.entries(STATUS_LABELS).map(([k, l]) => <SelectItem key={k} value={k}>{l}</SelectItem>)}
-                </SelectContent>
-              </Select>
+      {/* Tabela de contas */}
+      <Card className="rounded-2xl border-border/60 shadow-xs">
+        <CardHeader className="pb-3">
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-white">
+                  <DollarSign className="h-4 w-4" />
+                </span>
+                Despesas
+                <Badge variant="outline" className="rounded-full border-[#BFD8EE] text-[#1080CA]">{filteredContas.length} de {contas.length}</Badge>
+              </CardTitle>
               <div className="relative w-full sm:w-72">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input placeholder="Buscar descrição, fornecedor, NF..." value={searchTerm}
-                  onChange={e => setSearchTerm(e.target.value)} className="pl-9" />
+                <Search aria-hidden="true" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  aria-label="Buscar contas a pagar"
+                  placeholder="Descrição, fornecedor, NF..."
+                  value={searchTerm}
+                  onChange={e => setSearchTerm(e.target.value)}
+                  className="h-10 rounded-full pl-9 focus-visible:ring-[#1080CA]"
+                />
               </div>
+            </div>
+            <div role="group" aria-label="Filtrar por status" className="flex flex-wrap items-center gap-1.5">
+              {[
+                { key: 'todos', label: 'Todos' },
+                { key: 'pendente', label: 'Pendentes' },
+                { key: 'parcial', label: 'Parciais' },
+                { key: 'atrasado', label: 'Vencidos' },
+                { key: 'pago', label: 'Pagos' },
+                { key: 'cancelado', label: 'Cancelados' },
+              ].map(opt => {
+                const ativo = filterStatus === opt.key;
+                return (
+                  <button key={opt.key} type="button" aria-pressed={ativo}
+                    onClick={() => setFilterStatus(opt.key)}
+                    className={cn(PILL_BASE_P, ativo ? PILL_ATIVA_P : PILL_INATIVA_P)}>
+                    {opt.label}
+                  </button>
+                );
+              })}
+              {(searchTerm.trim() || filterStatus !== 'todos') && (
+                <Button variant="ghost" size="sm" className="h-8 gap-1 rounded-full text-xs text-muted-foreground" onClick={() => { setSearchTerm(''); setFilterStatus('todos'); }}>
+                  <X aria-hidden="true" className="h-3 w-3" /> Limpar
+                </Button>
+              )}
+              <span className="ml-auto text-xs text-muted-foreground">{filteredContas.length} de {contas.length}</span>
             </div>
           </div>
         </CardHeader>
         <CardContent>
-          <div className="rounded-md border">
+          <div className="overflow-hidden rounded-xl border border-border/60">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -423,26 +538,23 @@ export default function ContasPagar() {
               <TableBody>
                 {filteredContas.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center py-12">
+                    <TableCell colSpan={7} className="py-12 text-center">
                       <div className="flex flex-col items-center">
-                        <div className="h-14 w-14 rounded-2xl bg-primary/10 flex items-center justify-center mb-3">
-                          <DollarSign className="h-7 w-7 text-primary" />
-                        </div>
+                        <span aria-hidden="true" className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+                          <DollarSign className="h-7 w-7" />
+                        </span>
                         <p className="font-semibold text-foreground">
                           {contas.length === 0 ? 'Nenhuma conta cadastrada' : 'Nenhuma conta encontrada com estes filtros'}
                         </p>
-                        <p className="text-sm text-muted-foreground mt-1">
+                        <p className="mt-1 text-sm text-muted-foreground">
                           {contas.length === 0 ? 'Cadastre uma despesa para acompanhar seus vencimentos.' : 'Limpe a busca e o status para ver outras contas.'}
                         </p>
                         {contas.length === 0 ? (
-                          <Button className="mt-3 gap-2" size="sm" onClick={handleNew}>
+                          <Button className="mt-3 gap-2 rounded-full bg-[#111111] text-white hover:bg-[#2b2b33]" size="sm" onClick={handleNew}>
                             <Plus className="h-4 w-4" /> Nova Conta
                           </Button>
                         ) : (
-                          <Button className="mt-3" size="sm" variant="outline" onClick={() => {
-                            setSearchTerm('');
-                            setFilterStatus('todos');
-                          }}>
+                          <Button className="mt-3 rounded-full" size="sm" variant="outline" onClick={() => { setSearchTerm(''); setFilterStatus('todos'); }}>
                             Limpar filtros
                           </Button>
                         )}
@@ -451,7 +563,7 @@ export default function ContasPagar() {
                   </TableRow>
                 ) : (
                   filteredContas.map((conta: any) => (
-                    <TableRow key={conta.id}>
+                    <TableRow key={conta.id} className={cn(conta.vencida && 'bg-destructive/5')}>
                       <TableCell>
                         <div>
                           <p className="font-medium line-clamp-2" title={conta.descricao}>{conta.descricao}</p>
@@ -461,7 +573,7 @@ export default function ContasPagar() {
                             </p>
                           )}
                           {conta.recorrente && (
-                            <Badge variant="outline" className="text-[9px] gap-0.5 mt-0.5">
+                            <Badge variant="outline" className="rounded-full text-[9px] gap-0.5 mt-0.5">
                               <Repeat className="h-2.5 w-2.5" /> Recorrente · {FREQUENCIAS_RECURRENCIA[conta.frequencia_recorrencia] || 'frequência não definida'}
                             </Badge>
                           )}
@@ -476,12 +588,12 @@ export default function ContasPagar() {
                       <TableCell className="hidden sm:table-cell tabular-nums">
                         {conta.data_vencimento && format(parseDateOnly(conta.data_vencimento)!, 'dd/MM/yyyy')}
                       </TableCell>
-                        <TableCell className="font-medium tabular-nums">
-                          {formatCurrency(conta.valor)}
-                          {Number(conta.valor_pago || 0) > 0 && <p className="text-xs font-normal text-muted-foreground">Em aberto: {formatCurrency(saldoEmAberto(conta))}</p>}
-                        </TableCell>
+                      <TableCell className="font-medium tabular-nums">
+                        {formatCurrency(conta.valor)}
+                        {Number(conta.valor_pago || 0) > 0 && <p className="text-xs font-normal text-muted-foreground">Em aberto: {formatCurrency(saldoEmAberto(conta))}</p>}
+                      </TableCell>
                       <TableCell>
-                      <Badge className={cn(STATUS_CONFIG[conta.status || 'pendente']?.bg, STATUS_CONFIG[conta.status || 'pendente']?.color, 'border-0')}>
+                        <Badge className={cn('rounded-full', STATUS_CONFIG[conta.status || 'pendente']?.bg, STATUS_CONFIG[conta.status || 'pendente']?.color, 'border-0')}>
                           {conta.vencida && conta.statusOriginal === 'parcial'
                             ? 'Atrasado · parcial'
                             : STATUS_LABELS[conta.status || 'pendente']}
@@ -489,8 +601,9 @@ export default function ContasPagar() {
                       </TableCell>
                       <TableCell className="text-right">
                         {['pendente', 'atrasado', 'parcial'].includes(conta.status) && (
-                          <Button variant="ghost" size="sm" onClick={() => handlePagamento(conta.id)}>
-                            <Check className="h-4 w-4 mr-1" /> {Number(conta.valor_pago || 0) > 0 ? 'Pagar saldo' : 'Pagar'}
+                          <Button size="sm" onClick={() => handlePagamento(conta.id)}
+                            className="h-9 gap-1 rounded-full bg-[#111111] text-xs text-white shadow-md hover:bg-[#2b2b33]">
+                            <Check className="h-3.5 w-3.5" /> {Number(conta.valor_pago || 0) > 0 ? 'Pagar saldo' : 'Pagar'}
                           </Button>
                         )}
                       </TableCell>
