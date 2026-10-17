@@ -3,8 +3,9 @@ import { formatCurrency } from '@/lib/formatters';
 import { useState, useMemo, useRef } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
-  Plus, Search, Eye, FileText, FileDown, Loader2, PlusCircle, X,
-  AlertTriangle, Upload, ShieldCheck, Clock, Calendar, Tag, Building2, DollarSign, Trash2,
+  Plus, Search, Eye, FileText, FileDown, Loader2, X,
+  AlertTriangle, Upload, Clock, Calendar, Building2, DollarSign, Trash2,
+  RefreshCw, FlaskConical, ClipboardList, ExternalLink, Hourglass, CalendarCheck, CheckCircle2, Paperclip, CalendarPlus,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -22,7 +23,6 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ErrorState } from '@/components/ErrorState';
-import { ActionableEmptyState } from '@/components/ActionableEmptyState';
 import { PageHeader } from '@/components/PageHeader';
 import { Separator } from '@/components/ui/separator';
 import { LoadingButton } from '@/components/ui/loading-button';
@@ -52,20 +52,51 @@ import { gerarGuiaSolicitacaoExames, downloadPDF } from '@/lib/pdfGenerator';
 type StatusExame = Database['public']['Enums']['status_exame'];
 
 const STATUS_COLORS: Record<StatusExame, string> = {
-  solicitado: 'bg-[#eeebfe] text-[#5b47e0]',
-  agendado: 'bg-[#ede9fe] text-[#2b0bcc]',
-  realizado: 'bg-[#e7f8fc] text-[#087e98]',
-  laudo_disponivel: 'bg-[#eaf8f3] text-[#16805f]',
-  cancelado: 'bg-slate-100 text-slate-600',
+  solicitado: 'border-warning/40 bg-warning/10 text-warning-foreground',
+  agendado: 'border-[#1080CA]/30 bg-[#1080CA]/10 text-[#1080CA]',
+  realizado: 'border-info/30 bg-info/10 text-info',
+  laudo_disponivel: 'border-transparent bg-[#111111] text-white hover:bg-[#111111]',
+  cancelado: 'border-border bg-muted text-muted-foreground',
 };
 
-const STATUS_MARKERS: Record<StatusExame, string> = {
-  solicitado: 'bg-[#5b47e0]',
-  agendado: 'bg-[#2b0bcc]',
-  realizado: 'bg-[#18a8c5]',
-  laudo_disponivel: 'bg-[#16805f]',
-  cancelado: 'bg-slate-400',
+const TIPO_CATEGORIZADO_LABELS: Record<string, string> = {
+  laboratorial: 'Laboratorial',
+  imagem: 'Imagem',
+  ultrassom: 'Ultrassom',
+  cardiologia: 'Cardiologia',
+  endoscopia: 'Endoscopia',
+  outro: 'Outro',
 };
+
+type IndicadorExame = 'todos' | 'aguardando' | 'hoje' | 'agendado' | 'laudo_disponivel' | 'criticos';
+
+const BUCKET_ANEXOS = 'medical-attachments';
+
+/**
+ * Os anexos da guia ficam gravados nas observações como
+ * `Anexos: exames/<paciente>/<arquivo>, ...`. Registros antigos podem guardar a
+ * URL pública completa (que nunca abriu, pois o bucket é privado); para esses,
+ * recuperamos o path a partir da URL.
+ */
+function caminhoStorage(valor: string): string {
+  const texto = valor.trim();
+  if (!texto.startsWith('http')) return texto;
+  const aposBucket = texto.split(`/${BUCKET_ANEXOS}/`)[1];
+  if (aposBucket) return decodeURIComponent(aposBucket.split('?')[0]);
+  return texto.split('/').slice(-3).join('/');
+}
+
+function extrairAnexosGuia(observacoes?: string | null): string[] {
+  if (!observacoes) return [];
+  const linha = observacoes.split('\n').find(l => /^\s*Anexos:/i.test(l));
+  if (!linha) return [];
+  return linha
+    .replace(/^\s*Anexos:\s*/i, '')
+    .split(',')
+    .map(item => item.trim())
+    .filter(item => item && !/^\d+\s+arquivo/i.test(item))
+    .map(caminhoStorage);
+}
 
 const STATUS_LABELS: Record<StatusExame, string> = {
   solicitado: 'Solicitado',
@@ -320,6 +351,8 @@ export default function Exames() {
   const pacienteFiltroId = searchParams.get('paciente');
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('todos');
+  const [tipoFilter, setTipoFilter] = useState<string>('todos');
+  const [indicador, setIndicador] = useState<IndicadorExame>('todos');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isViewOpen, setIsViewOpen] = useState(false);
   const [isManageTypesOpen, setIsManageTypesOpen] = useState(false);
@@ -437,12 +470,52 @@ export default function Exames() {
   });
   const exames = examesQuery.data ?? [];
 
+  // Resultados críticos do laboratório vinculados aos exames da clínica. A
+  // consulta é auxiliar: se falhar, a tela segue sem o indicador de críticos.
+  const criticosQuery = useQuery({
+    queryKey: ['exames_resultados_criticos', profile?.clinica_id ?? null],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from('resultados_laboratorio')
+        .select('exame_id')
+        .eq('clinica_id', profile?.clinica_id ?? '')
+        .eq('critico', true)
+        .not('exame_id', 'is', null);
+      if (error) throw error;
+      return new Set<string>(((data ?? []) as Array<{ exame_id: string | null }>).map(r => r.exame_id).filter((id): id is string => !!id));
+    },
+    enabled: !!user && !!profile?.clinica_id,
+  });
+  const examesCriticos = useMemo(() => criticosQuery.data ?? new Set<string>(), [criticosQuery.data]);
+
   const examesNoEscopo = useMemo(
     () => pacienteFiltroId ? exames.filter(e => e.paciente_id === pacienteFiltroId) : exames,
     [exames, pacienteFiltroId],
   );
 
   const isLoading = examesQuery.isLoading || loadingMedicos || customTypesQuery.isLoading;
+
+  const hoje = todaySaoPauloDateOnly();
+  const statusAguardando: StatusExame[] = ['solicitado', 'agendado', 'realizado'];
+  const correspondeIndicador = (exame: any, chave: IndicadorExame): boolean => {
+    switch (chave) {
+      case 'aguardando': return statusAguardando.includes(exame.status || 'solicitado');
+      case 'hoje': return exame.data_solicitacao === hoje;
+      case 'agendado': return exame.status === 'agendado';
+      case 'laudo_disponivel': return exame.status === 'laudo_disponivel';
+      case 'criticos': return examesCriticos.has(exame.id);
+      default: return true;
+    }
+  };
+
+  const tiposDisponiveis = useMemo(() => {
+    const presentes = new Set<string>();
+    for (const exame of examesNoEscopo) {
+      const tipo = String(exame.tipo_categorizado || '').toLocaleLowerCase('pt-BR');
+      if (tipo) presentes.add(tipo);
+    }
+    return [...presentes].sort((a, b) => (TIPO_CATEGORIZADO_LABELS[a] || a).localeCompare(TIPO_CATEGORIZADO_LABELS[b] || b, 'pt-BR'));
+  }, [examesNoEscopo]);
 
   const filteredExames = useMemo(() => {
     return examesNoEscopo.filter(e => {
@@ -451,15 +524,50 @@ export default function Exames() {
         (paciente && pacienteCorresponde(paciente, searchTerm)) ||
         normalizarTexto(e.tipo_exame).includes(normalizarTexto(searchTerm));
       const matchesStatus = statusFilter === 'todos' || e.status === statusFilter;
-      return matchesSearch && matchesStatus;
+      const matchesTipo = tipoFilter === 'todos' || String(e.tipo_categorizado || '').toLocaleLowerCase('pt-BR') === tipoFilter;
+      return matchesSearch && matchesStatus && matchesTipo && correspondeIndicador(e, indicador);
     });
-  }, [examesNoEscopo, searchTerm, statusFilter]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [examesNoEscopo, searchTerm, statusFilter, tipoFilter, indicador, examesCriticos, hoje]);
+  const temFiltroExames = searchTerm.trim() !== '' || statusFilter !== 'todos' || tipoFilter !== 'todos' || indicador !== 'todos';
   const limparFiltrosExames = () => {
     setSearchTerm('');
     setStatusFilter('todos');
+    setTipoFilter('todos');
+    setIndicador('todos');
+  };
+
+  const contagens = useMemo(() => ({
+    aguardando: examesNoEscopo.filter(e => correspondeIndicador(e, 'aguardando')).length,
+    hoje: examesNoEscopo.filter(e => correspondeIndicador(e, 'hoje')).length,
+    agendado: examesNoEscopo.filter(e => correspondeIndicador(e, 'agendado')).length,
+    laudo_disponivel: examesNoEscopo.filter(e => correspondeIndicador(e, 'laudo_disponivel')).length,
+    criticos: examesNoEscopo.filter(e => correspondeIndicador(e, 'criticos')).length,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [examesNoEscopo, examesCriticos, hoje]);
+
+  const INDICADOR_LABELS: Record<IndicadorExame, string> = {
+    todos: 'todos',
+    aguardando: 'aguardando resultado',
+    hoje: 'solicitados hoje',
+    agendado: 'agendados / em coleta',
+    laudo_disponivel: 'resultados prontos',
+    criticos: 'críticos',
+  };
+
+  const refreshExames = () => {
+    void examesQuery.refetch();
+    void criticosQuery.refetch();
   };
 
   const selectedExame = useMemo(() => exames.find(e => e.id === selectedId), [exames, selectedId]);
+  const anexosSelecionado = useMemo(() => extrairAnexosGuia(selectedExame?.observacoes), [selectedExame?.observacoes]);
+  // A linha "Anexos: ..." vira a lista de anexos acima; o restante das observações continua visível.
+  const observacoesSelecionado = useMemo(() => {
+    const texto = selectedExame?.observacoes;
+    if (!texto) return '';
+    return texto.split('\n').filter(l => !/^\s*Anexos:/i.test(l)).join('\n').trim();
+  }, [selectedExame?.observacoes]);
 
   const addExame = (exame: ExameCatalogo) => {
     setExamesSelecionados(prev => [...prev, { nome: exame.nome, tuss: exame.tuss, categoria: exame.categoria }]);
@@ -515,28 +623,73 @@ export default function Exames() {
     setIsViewOpen(true);
   };
 
+  /** Baixa um arquivo do bucket privado via download autorizado (sem tornar o storage público). */
+  const baixarArquivoStorage = async (path: string, nomeFallback: string) => {
+    const { data, error } = await supabase.storage
+      .from(BUCKET_ANEXOS)
+      .download(path);
+    if (error) throw error;
+    if (!data) throw new Error('O arquivo não foi encontrado.');
+
+    const url = URL.createObjectURL(data);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = path.split('/').pop() || nomeFallback;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
   const handleDownloadLaudo = async (exame: any) => {
     if (!exame.arquivo_resultado || baixandoLaudoId) return;
     setBaixandoLaudoId(exame.id);
     try {
-      const { data, error } = await supabase.storage
-        .from('medical-attachments')
-        .download(exame.arquivo_resultado);
-      if (error) throw error;
-      if (!data) throw new Error('O arquivo do laudo não foi encontrado.');
-
-      const url = URL.createObjectURL(data);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = exame.arquivo_resultado.split('/').pop() || `laudo-${exame.id}`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      await baixarArquivoStorage(exame.arquivo_resultado, `laudo-${exame.id}`);
     } catch (error) {
       toast.error('Não foi possível baixar o laudo', { description: mensagemDeErro(error) });
     } finally {
       setBaixandoLaudoId(null);
+    }
+  };
+
+  // Anexos enviados com a guia (auditoria item 06): abrir em nova aba com link
+  // assinado temporário ou baixar com download autorizado.
+  const [anexoEmAcao, setAnexoEmAcao] = useState<string | null>(null);
+
+  const handleAbrirAnexo = async (path: string) => {
+    if (anexoEmAcao) return;
+    // Abra a aba durante o gesto do clique: abrir depois do await costuma ser
+    // bloqueado pelo navegador como pop-up não solicitado.
+    const aba = window.open('about:blank', '_blank');
+    if (aba) aba.opener = null;
+    if (!aba) {
+      toast.error('Abertura bloqueada', { description: 'Permita a abertura de uma nova aba para ver este anexo.' });
+      return;
+    }
+    setAnexoEmAcao(path);
+    try {
+      const { data, error } = await supabase.storage.from(BUCKET_ANEXOS).createSignedUrl(path, 3600);
+      if (error) throw error;
+      if (!data?.signedUrl) throw new Error('O link do anexo não foi gerado.');
+      aba.location.replace(data.signedUrl);
+    } catch (error) {
+      aba.close();
+      toast.error('Não foi possível abrir o anexo', { description: mensagemDeErro(error) });
+    } finally {
+      setAnexoEmAcao(null);
+    }
+  };
+
+  const handleBaixarAnexo = async (path: string) => {
+    if (anexoEmAcao) return;
+    setAnexoEmAcao(path);
+    try {
+      await baixarArquivoStorage(path, 'anexo-guia');
+    } catch (error) {
+      toast.error('Não foi possível baixar o anexo', { description: mensagemDeErro(error) });
+    } finally {
+      setAnexoEmAcao(null);
     }
   };
 
@@ -982,24 +1135,43 @@ export default function Exames() {
     <div className="space-y-6">
       <PageHeader
         title="Solicitação de exames"
-        description="Crie guias e acompanhe cada exame até a liberação do laudo."
+        description={examesNoEscopo.length > 0
+          ? `${contagens.hoje} solicitado${contagens.hoje === 1 ? '' : 's'} hoje · ${contagens.aguardando} aguardando resultado · ${contagens.laudo_disponivel} resultado${contagens.laudo_disponivel === 1 ? '' : 's'} pronto${contagens.laudo_disponivel === 1 ? '' : 's'}${contagens.criticos > 0 ? ` · ${contagens.criticos} crítico${contagens.criticos === 1 ? '' : 's'}` : ''}`
+          : 'Crie guias e acompanhe cada exame até a liberação do laudo.'}
         icon={<FileText aria-hidden="true" />}
-        actions={<div className="flex flex-wrap gap-2">
-          <Button variant="outline" onClick={() => setIsManageTypesOpen(true)} className="gap-2">
-            <Building2 className="h-4 w-4" />Laboratórios
-          </Button>
-          <Button onClick={handleOpenNew} className="gap-2"><Plus className="h-4 w-4" />Nova Guia de Exames</Button>
-        </div>}
+        actions={
+          <>
+            <Button asChild variant="outline" className="shrink-0 gap-2 rounded-full">
+              <Link to="/laboratorio"><FlaskConical aria-hidden="true" className="h-4 w-4" /> Laboratório</Link>
+            </Button>
+            <Button asChild variant="outline" className="shrink-0 gap-2 rounded-full">
+              <Link to="/laudos-lab"><ClipboardList aria-hidden="true" className="h-4 w-4" /> Laudos</Link>
+            </Button>
+            <Button asChild variant="outline" className="shrink-0 gap-2 rounded-full">
+              <Link to="/guias-externas"><ExternalLink aria-hidden="true" className="h-4 w-4" /> Guias externas</Link>
+            </Button>
+            <Button variant="outline" onClick={() => setIsManageTypesOpen(true)} className="shrink-0 gap-2 rounded-full">
+              <Building2 aria-hidden="true" className="h-4 w-4" />Laboratórios
+            </Button>
+            <Button variant="outline" size="icon" className="shrink-0 rounded-full" onClick={refreshExames} aria-label="Atualizar exames" title="Atualizar exames">
+              <RefreshCw className={cn('h-4 w-4', examesQuery.isFetching && 'animate-spin')} />
+            </Button>
+            <Button onClick={handleOpenNew} className="shrink-0 gap-2 rounded-full bg-[#111111] text-white shadow-md hover:bg-[#2b2b33]">
+              <Plus className="h-4 w-4" />Nova Guia de Exames
+            </Button>
+          </>
+        }
       />
 
       {pacienteFiltroId && (
-        <div className="flex flex-col gap-2 rounded-xl border border-[#e3dffb] bg-[#f6f4ff] p-3 text-[#24185f] sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-2 rounded-2xl border border-[#BFD8EE] bg-[#F3F8FC] p-3 text-foreground sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm">
-            Exibindo exames de <span className="font-medium">{getPacienteNomePorId(pacienteFiltroId)}</span>.
+            Exibindo exames de <span className="font-medium text-[#1080CA]">{getPacienteNomePorId(pacienteFiltroId)}</span>.
           </p>
           <Button
             variant="outline"
             size="sm"
+            className="rounded-full"
             onClick={() => {
               const params = new URLSearchParams(searchParams);
               params.delete('paciente');
@@ -1011,76 +1183,128 @@ export default function Exames() {
         </div>
       )}
 
-      {/* KPI Cards */}
-      <div data-testid="exam-status-kpis" className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-5">
-        {Object.entries(STATUS_LABELS).map(([key, label]) => {
-          const count = examesNoEscopo.filter(e => e.status === key).length;
-          return (
-            <Card
-              key={key}
-              className="cursor-pointer border-[#e3e0f5] shadow-sm transition-colors hover:border-[#c2b8f2] aria-pressed:border-[#7b6cf6] aria-pressed:bg-[#f9f8ff] aria-pressed:ring-1 aria-pressed:ring-[#7b6cf6]/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7b6cf6] focus-visible:ring-offset-2"
-              role="button"
-              tabIndex={0}
-              aria-pressed={statusFilter === key}
-              onKeyDown={event => {
-                if (event.key === 'Enter' || event.key === ' ') {
-                  event.preventDefault();
-                  setStatusFilter(current => current === key ? 'todos' : key);
-                }
-              }}
-              onClick={() => setStatusFilter(current => current === key ? 'todos' : key)}
-            >
-              <CardContent className="p-3 text-left sm:p-4">
-                <div className="mb-3 flex items-center justify-between gap-2">
-                  <span className={cn('h-2.5 w-2.5 rounded-full', STATUS_MARKERS[key as StatusExame])} aria-hidden="true" />
-                  <span className="text-xs text-muted-foreground">{statusFilter === key ? 'Selecionado' : 'Filtrar'}</span>
+      {/* Indicadores clicáveis */}
+      <section role="group" aria-label="Situação dos exames" className="space-y-2">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="text-sm font-semibold text-foreground">Situação agora</h2>
+          <p className="text-xs text-muted-foreground">
+            {indicador === 'todos' ? 'Clique em um indicador para filtrar a lista.' : `Mostrando apenas ${INDICADOR_LABELS[indicador]}.`}
+          </p>
+        </div>
+        <div data-testid="exam-status-kpis" className="grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-5">
+          {([
+            { key: 'aguardando' as IndicadorExame, icon: Hourglass, label: 'Aguardando resultado', caption: 'solicitados, agendados ou realizados', color: 'text-[#2ED5E7]', surface: 'bg-white/15', escuro: true },
+            { key: 'hoje' as IndicadorExame, icon: CalendarPlus, label: 'Solicitados hoje', caption: 'guias emitidas hoje', color: 'text-[#1080CA]', surface: 'bg-[#1080CA]/10', escuro: false },
+            { key: 'agendado' as IndicadorExame, icon: CalendarCheck, label: 'Agendados / coleta', caption: 'aguardando realização', color: 'text-info', surface: 'bg-info/10', escuro: false },
+            { key: 'laudo_disponivel' as IndicadorExame, icon: CheckCircle2, label: 'Resultados prontos', caption: 'laudo disponível', color: 'text-success', surface: 'bg-success/10', escuro: false },
+            { key: 'criticos' as IndicadorExame, icon: AlertTriangle, label: 'Críticos', caption: criticosQuery.isError ? 'não foi possível conferir' : 'resultado crítico no laboratório', color: 'text-destructive', surface: 'bg-destructive/10', escuro: false },
+          ]).map(s => {
+            const Icon = s.icon;
+            const ativo = indicador === s.key;
+            return (
+              <button
+                key={s.key}
+                type="button"
+                aria-pressed={ativo}
+                onClick={() => setIndicador(ativo ? 'todos' : s.key)}
+                className={cn(
+                  'group rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+                  s.escuro && 'border-transparent bg-[#111111] text-white',
+                  ativo && !s.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
+                  ativo && s.escuro && 'ring-2 ring-[#2ED5E7]/60',
+                )}
+              >
+                <div className="flex min-h-[96px] items-center gap-3 p-3">
+                  <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', s.surface)}>
+                    <Icon aria-hidden="true" className={cn('h-5 w-5', s.color)} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <h3 className={cn('truncate text-xs font-semibold', s.escuro ? 'text-white/80' : 'text-foreground')}>{s.label}</h3>
+                      <span className={cn('text-2xl font-bold tabular-nums', s.color)}>{contagens[s.key as Exclude<IndicadorExame, 'todos'>]}</span>
+                    </div>
+                    <p className={cn('truncate text-[11px]', s.escuro ? 'text-white/60' : 'text-muted-foreground')}>{s.caption}</p>
+                  </div>
                 </div>
-                <p className="text-2xl font-bold tabular-nums text-[#1c1636]">{count}</p>
-                <Badge className={cn('mt-1 whitespace-nowrap', STATUS_COLORS[key as StatusExame])}>{label}</Badge>
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
+              </button>
+            );
+          })}
+        </div>
+      </section>
 
       {exames.length >= LIMITE_BUSCA_EM_BLOCOS && (
-        <div role="alert" className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm text-warning-foreground">
+        <div role="alert" className="flex items-start gap-2 rounded-2xl border border-warning/30 bg-warning/5 p-3 text-sm text-warning-foreground">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
           <p>A lista atingiu o limite de {LIMITE_BUSCA_EM_BLOCOS.toLocaleString('pt-BR')} exames. Solicitações mais antigas podem não aparecer nesta tela.</p>
         </div>
       )}
 
+      {/* Filtros */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative w-full sm:w-72">
+          <Search aria-hidden="true" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input aria-label="Buscar por paciente ou exame" placeholder="Buscar paciente ou exame..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className={cn('h-10 rounded-full pl-9 focus-visible:ring-[#1080CA]', searchTerm && 'pr-10')} />
+          {searchTerm && (
+            <Button type="button" variant="ghost" size="icon" aria-label="Limpar busca" className="absolute right-1 top-1/2 h-8 w-8 -translate-y-1/2 rounded-full" onClick={() => setSearchTerm('')}>
+              <X className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger className="h-10 w-full rounded-full sm:w-44" aria-label="Filtrar exames por status"><SelectValue placeholder="Filtrar" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="todos">Todos os status</SelectItem>
+            {Object.entries(STATUS_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        {tiposDisponiveis.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Filtrar exames por tipo">
+            {(['todos', ...tiposDisponiveis]).map(tipo => {
+              const ativo = tipoFilter === tipo;
+              return (
+                <button
+                  key={tipo}
+                  type="button"
+                  aria-pressed={ativo}
+                  onClick={() => setTipoFilter(ativo ? 'todos' : tipo)}
+                  className={cn(
+                    'h-8 rounded-full border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+                    ativo ? 'border-transparent bg-gradient-primary text-white shadow-sm' : 'border-[#DCE6F2] bg-card text-muted-foreground hover:border-[#9CC7EC] hover:text-foreground',
+                  )}
+                >
+                  {tipo === 'todos' ? 'Todos os tipos' : (TIPO_CATEGORIZADO_LABELS[tipo] || tipo)}
+                </button>
+              );
+            })}
+          </div>
+        )}
+        {temFiltroExames && (
+          <Button type="button" variant="ghost" size="sm" className="h-8 gap-1 rounded-full text-xs text-muted-foreground" onClick={limparFiltrosExames}>
+            <X aria-hidden="true" className="h-3 w-3" /> Limpar filtros
+          </Button>
+        )}
+        <p className="ml-auto text-xs text-muted-foreground" aria-live="polite">
+          {filteredExames.length} de {examesNoEscopo.length} exame{examesNoEscopo.length === 1 ? '' : 's'}
+        </p>
+      </div>
+
       {/* Table */}
-      <Card className="border-[#e3e0f5] shadow-sm">
-        <CardHeader>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <CardTitle>Exames ({filteredExames.length})</CardTitle>
-            <div className="flex flex-col sm:flex-row gap-2">
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-40" aria-label="Filtrar exames por status"><SelectValue placeholder="Filtrar" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todos">Todos</SelectItem>
-                  {Object.entries(STATUS_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
-                </SelectContent>
-              </Select>
-              <div className="relative w-full sm:w-72">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input aria-label="Buscar por paciente ou exame" placeholder="Buscar paciente ou exame..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className={cn('pl-10', searchTerm && 'pr-10')} />
-                {searchTerm && (
-                  <Button type="button" variant="ghost" size="icon" aria-label="Limpar busca" className="absolute right-1 top-1/2 h-8 w-8 -translate-y-1/2" onClick={() => setSearchTerm('')}>
-                    <X className="h-4 w-4" />
-                  </Button>
-                )}
-              </div>
-              {(searchTerm.trim() || statusFilter !== 'todos') && (
-                <Button type="button" variant="ghost" className="min-h-10" onClick={limparFiltrosExames}>Limpar filtros</Button>
-              )}
-            </div>
+      <Card className="rounded-2xl border-border/60 shadow-xs">
+        <CardHeader className="pb-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-white">
+              <FileText className="h-4 w-4" />
+            </span>
+            <CardTitle className="text-base font-semibold">Exames</CardTitle>
+            <Badge variant="outline" className="rounded-full border-[#BFD8EE] text-[#1080CA]">{filteredExames.length}</Badge>
+            {indicador === 'criticos' && contagens.criticos > 0 && (
+              <Badge variant="outline" className="rounded-full border-destructive/40 bg-destructive/10 text-destructive">atenção imediata</Badge>
+            )}
           </div>
         </CardHeader>
         <CardContent>
-          <div className="overflow-hidden rounded-md border">
-            <div role="region" aria-label="Tabela de solicitações de exames" tabIndex={0} className="overflow-x-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <div className="overflow-hidden rounded-xl border border-border/60">
+            <div role="region" aria-label="Tabela de solicitações de exames" tabIndex={0} className="overflow-x-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]">
               <Table className="min-w-[680px] sm:min-w-0">
               <TableHeader>
                 <TableRow>
@@ -1096,21 +1320,31 @@ export default function Exames() {
                 {filteredExames.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={6} className="py-3">
-  <ActionableEmptyState
-    title={examesNoEscopo.length === 0
-      ? pacienteFiltroId
-        ? `Nenhum exame encontrado para ${getPacienteNomePorId(pacienteFiltroId, 'este paciente')}`
-        : 'Ainda não há solicitações de exames'
-      : 'Nenhum exame corresponde à busca e ao status selecionados'}
-    description={examesNoEscopo.length === 0
-      ? 'Registre uma nova guia para dar início ao acompanhamento dos exames.'
-      : 'Tente outro termo ou remova o filtro de status para rever as solicitações.'}
-    actionLabel={examesNoEscopo.length === 0 ? 'Nova guia de exames' : 'Limpar busca e filtro'}
-    onAction={examesNoEscopo.length === 0 ? handleOpenNew : limparFiltrosExames}
-    actionIcon={examesNoEscopo.length === 0 ? Plus : undefined}
-    className="py-8"
-  />
-</TableCell>
+                      <div role="status" aria-live="polite" className="flex flex-col items-center gap-2 py-12 text-center">
+                        <span aria-hidden="true" className="mb-2 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+                          <FileText className="h-7 w-7" />
+                        </span>
+                        <h3 className="font-semibold text-foreground">
+                          {examesNoEscopo.length === 0
+                            ? pacienteFiltroId
+                              ? `Nenhum exame encontrado para ${getPacienteNomePorId(pacienteFiltroId, 'este paciente')}`
+                              : 'Ainda não há solicitações de exames'
+                            : 'Nenhum exame corresponde à busca e ao status selecionados'}
+                        </h3>
+                        <p className="max-w-lg text-sm text-muted-foreground">
+                          {examesNoEscopo.length === 0
+                            ? 'Registre uma nova guia para dar início ao acompanhamento dos exames.'
+                            : 'Tente outro termo ou remova o filtro de status para rever as solicitações.'}
+                        </p>
+                        {examesNoEscopo.length === 0 ? (
+                          <Button className="mt-3 rounded-full bg-[#111111] text-white shadow-md hover:bg-[#2b2b33]" onClick={handleOpenNew}>
+                            <Plus aria-hidden="true" className="mr-2 h-4 w-4" />Nova guia de exames
+                          </Button>
+                        ) : (
+                          <Button variant="outline" className="mt-3 rounded-full" onClick={limparFiltrosExames}>Limpar busca e filtro</Button>
+                        )}
+                      </div>
+                    </TableCell>
                   </TableRow>
                 ) : (
                   filteredExames.map(exame => {
@@ -1119,11 +1353,27 @@ export default function Exames() {
                     const nextStatus = acaoSeguinte.destino === 'status' ? acaoSeguinte.status : null;
                     const nextLabel = getNextStatusLabel(exame.status || 'solicitado');
                     const exameLaboratorial = (exame.tipo_categorizado || '').toLocaleLowerCase('pt-BR') === 'laboratorial';
+                    const anexosGuia = extrairAnexosGuia(exame.observacoes);
+                    const critico = examesCriticos.has(exame.id);
+                    const temResultado = !!(exame.resultado?.trim() || exame.arquivo_resultado);
+                    const precisaLancarResultado = nextStatus === 'laudo_disponivel' && !temResultado;
                     return (
-                    <TableRow key={exame.id}>
-                      <TableCell className="font-medium">{getPacienteNome(exame)}</TableCell>
+                    <TableRow key={exame.id} className={cn(critico && 'bg-destructive/5')}>
+                      <TableCell className="font-medium">
+                        <div className="flex items-center gap-2">
+                          <span>{getPacienteNome(exame)}</span>
+                          {critico && <Badge variant="outline" className="rounded-full border-destructive/40 bg-destructive/10 text-[10px] text-destructive">Crítico</Badge>}
+                        </div>
+                      </TableCell>
                       <TableCell>
-                        <span className="text-sm">{exame.tipo_exame}</span>
+                        <div className="flex flex-col gap-0.5">
+                          <span className="text-sm">{exame.tipo_exame}</span>
+                          {anexosGuia.length > 0 && (
+                            <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+                              <Paperclip aria-hidden="true" className="h-3 w-3" />{anexosGuia.length} anexo{anexosGuia.length === 1 ? '' : 's'} na guia
+                            </span>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell className="hidden md:table-cell text-sm text-muted-foreground">{getMedicoInfo(exame)}</TableCell>
                       <TableCell className="hidden sm:table-cell text-sm">
@@ -1135,9 +1385,9 @@ export default function Exames() {
                           {PIPELINE_STEPS.map((label, i) => (
                             <div key={i} className="flex items-center gap-0.5">
                               <div className={cn(
-                                'h-5 px-1.5 rounded text-[9px] font-medium flex items-center',
+                                'h-5 px-1.5 rounded-full text-[9px] font-medium flex items-center',
                                 i < step && 'bg-success/10 text-success',
-                                i === step && step >= 0 && 'bg-primary/10 text-primary ring-1 ring-primary/20',
+                                i === step && step >= 0 && 'bg-[#1080CA]/10 text-[#1080CA] ring-1 ring-[#1080CA]/20',
                                 i > step && 'bg-muted text-muted-foreground/40',
                                 step === -1 && 'bg-muted text-muted-foreground line-through',
                               )}>
@@ -1151,14 +1401,42 @@ export default function Exames() {
                         </div>
                       </TableCell>
                       <TableCell className="text-right">
-                        <div className="flex justify-end gap-1">
-                           <Button variant="ghost" size="icon" aria-label={`Ver exame ${exame.tipo_exame || exame.id}`} onClick={() => handleView(exame.id)}><Eye className="h-4 w-4" /></Button>
+                        <div className="flex flex-wrap justify-end gap-1">
+                          <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full" aria-label={`Ver exame ${exame.tipo_exame || exame.id}`} title="Ver detalhes" onClick={() => handleView(exame.id)}><Eye className="h-4 w-4" /></Button>
+                          {anexosGuia.length > 0 && (
+                            <Button
+                              variant="outline" size="sm" className="h-9 gap-1 rounded-full text-xs"
+                              aria-label={anexosGuia.length === 1 ? `Abrir anexo da guia de ${exame.tipo_exame || exame.id}` : `Ver anexos da guia de ${exame.tipo_exame || exame.id}`}
+                              disabled={anexoEmAcao !== null}
+                              onClick={() => anexosGuia.length === 1 ? void handleAbrirAnexo(anexosGuia[0]) : handleView(exame.id)}
+                            >
+                              {anexoEmAcao === anexosGuia[0] && anexosGuia.length === 1 ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Paperclip aria-hidden="true" className="h-3.5 w-3.5" />}
+                              {anexosGuia.length === 1 ? 'Abrir anexo' : `Anexos (${anexosGuia.length})`}
+                            </Button>
+                          )}
+                          {exame.arquivo_resultado && (
+                            <Button
+                              variant="outline" size="sm" className="h-9 gap-1 rounded-full text-xs"
+                              aria-label={`Baixar laudo de ${exame.tipo_exame || exame.id}`}
+                              disabled={baixandoLaudoId !== null}
+                              onClick={() => void handleDownloadLaudo(exame)}
+                            >
+                              {baixandoLaudoId === exame.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileDown aria-hidden="true" className="h-3.5 w-3.5" />}
+                              Baixar laudo
+                            </Button>
+                          )}
                           {nextStatus && (
                             <Button
-                              variant="outline" size="sm" className="text-xs gap-1" disabled={exameEmAtualizacao !== null}
+                              size="sm"
+                              className={cn(
+                                'h-9 gap-1 rounded-full text-xs',
+                                nextStatus === 'laudo_disponivel' && !precisaLancarResultado
+                                  ? 'bg-gradient-primary text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)] hover:brightness-110'
+                                  : 'bg-[#111111] text-white hover:bg-[#2b2b33]',
+                              )}
+                              disabled={exameEmAtualizacao !== null}
                               onClick={() => {
-                                const temResultado = !!(exame.resultado?.trim() || exame.arquivo_resultado);
-                                if (nextStatus === 'laudo_disponivel' && !temResultado) {
+                                if (precisaLancarResultado) {
                                   setLancandoResultado(exame);
                                   return;
                                 }
@@ -1166,28 +1444,26 @@ export default function Exames() {
                               }}
                             >
                               {exameEmAtualizacao === exame.id && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                              {nextStatus === 'laudo_disponivel' && !(exame.resultado?.trim() || exame.arquivo_resultado)
-                                ? 'Lançar resultado'
-                                : nextLabel}
+                              {precisaLancarResultado ? 'Lançar resultado' : nextLabel}
                             </Button>
                           )}
                           {acaoSeguinte.destino === 'laboratorio' && (
-                            <Button asChild variant="outline" size="sm" className="text-xs gap-1">
-                              <Link to="/laboratorio">Abrir Laboratório</Link>
+                            <Button asChild size="sm" className="h-9 gap-1 rounded-full bg-[#111111] text-xs text-white hover:bg-[#2b2b33]">
+                              <Link to="/laboratorio"><FlaskConical aria-hidden="true" className="h-3.5 w-3.5" />Abrir Laboratório</Link>
                             </Button>
                           )}
                           {exameLaboratorial && exame.status !== 'cancelado' && exame.status !== 'laudo_disponivel' && acaoSeguinte.destino !== 'laboratorio' && (
-                            <Button asChild variant="ghost" size="sm" className="h-8 px-2 text-xs text-[#41318f]">
-                              <Link to="/laboratorio">Coleta no Laboratório</Link>
+                            <Button asChild variant="outline" size="sm" className="h-9 gap-1 rounded-full text-xs">
+                              <Link to="/laboratorio"><FlaskConical aria-hidden="true" className="h-3.5 w-3.5" />Coleta no Laboratório</Link>
                             </Button>
                           )}
                           {!exameLaboratorial && exame.status !== 'cancelado' && exame.status !== 'laudo_disponivel' && (
-                             <Button variant="ghost" size="icon" aria-label={`Cancelar exame ${exame.tipo_exame || exame.id}`} title="Cancelar solicitação" className="text-destructive/60 hover:text-destructive" onClick={() => setExameParaCancelar({ id: exame.id, nome: exame.tipo_exame || 'este exame' })} disabled={exameEmAtualizacao !== null}>
-                              <X className="h-3.5 w-3.5" />
+                            <Button variant="ghost" size="sm" aria-label={`Cancelar exame ${exame.tipo_exame || exame.id}`} title="Cancelar solicitação" className="h-9 gap-1 rounded-full text-xs text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={() => setExameParaCancelar({ id: exame.id, nome: exame.tipo_exame || 'este exame' })} disabled={exameEmAtualizacao !== null}>
+                              <X className="h-3.5 w-3.5" />Cancelar
                             </Button>
                           )}
                           {podeExcluirExame(profile?.roles || []) && (
-                            <Button variant="ghost" size="icon" aria-label={`Excluir exame ${exame.tipo_exame || exame.id}`} className="text-destructive/60 hover:text-destructive" title="Excluir permanentemente" onClick={() => handleDeleteExame(exame.id)} disabled={exameEmAtualizacao !== null}>
+                            <Button variant="ghost" size="icon" aria-label={`Excluir exame ${exame.tipo_exame || exame.id}`} className="h-9 w-9 rounded-full text-destructive/60 hover:bg-destructive/10 hover:text-destructive" title="Excluir permanentemente" onClick={() => handleDeleteExame(exame.id)} disabled={exameEmAtualizacao !== null}>
                               <Trash2 className="h-3.5 w-3.5" />
                             </Button>
                           )}
@@ -1629,7 +1905,7 @@ export default function Exames() {
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Status</p>
-                  <Badge className={cn(STATUS_COLORS[selectedExame.status || 'solicitado'])}>{STATUS_LABELS[selectedExame.status || 'solicitado']}</Badge>
+                  <Badge variant="outline" className={cn('rounded-full', STATUS_COLORS[selectedExame.status || 'solicitado'])}>{STATUS_LABELS[selectedExame.status || 'solicitado']}</Badge>
                 </div>
               </div>
               <div>
@@ -1660,8 +1936,37 @@ export default function Exames() {
                   <p className="whitespace-pre-wrap">{selectedExame.resultado}</p>
                 </div>
               )}
+              {anexosSelecionado.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-sm text-muted-foreground">Anexos da guia ({anexosSelecionado.length})</p>
+                  <ul className="space-y-2">
+                    {anexosSelecionado.map(path => {
+                      const nome = path.split('/').pop() || path;
+                      const ocupado = anexoEmAcao === path;
+                      return (
+                        <li key={path} className="flex items-center justify-between gap-3 rounded-xl border border-[#DCE6F2] bg-[#F3F8FC] p-3">
+                          <div className="flex min-w-0 items-center gap-2">
+                            <Paperclip aria-hidden="true" className="h-4 w-4 shrink-0 text-[#1080CA]" />
+                            <p className="truncate text-sm font-medium" title={nome}>{nome}</p>
+                          </div>
+                          <div className="flex shrink-0 gap-1">
+                            <Button variant="outline" size="sm" className="h-9 gap-1 rounded-full text-xs" aria-label={`Abrir anexo ${nome}`} disabled={anexoEmAcao !== null} onClick={() => void handleAbrirAnexo(path)}>
+                              {ocupado ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Eye aria-hidden="true" className="h-3.5 w-3.5" />}
+                              Abrir
+                            </Button>
+                            <Button variant="outline" size="sm" className="h-9 gap-1 rounded-full text-xs" aria-label={`Baixar anexo ${nome}`} disabled={anexoEmAcao !== null} onClick={() => void handleBaixarAnexo(path)}>
+                              <FileDown aria-hidden="true" className="h-3.5 w-3.5" />
+                              Baixar
+                            </Button>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              )}
               {selectedExame.arquivo_resultado && (
-                <div className="flex items-center justify-between gap-3 rounded-md border p-3">
+                <div className="flex items-center justify-between gap-3 rounded-xl border border-[#DCE6F2] bg-[#F3F8FC] p-3">
                   <div className="min-w-0">
                     <p className="text-sm font-medium">Laudo anexado</p>
                     <p className="truncate text-xs text-muted-foreground">
@@ -1671,7 +1976,7 @@ export default function Exames() {
                   <Button
                     variant="outline"
                     size="sm"
-                    className="shrink-0 gap-2"
+                    className="h-9 shrink-0 gap-2 rounded-full text-xs"
                     onClick={() => void handleDownloadLaudo(selectedExame)}
                     disabled={baixandoLaudoId !== null}
                   >
@@ -1682,10 +1987,10 @@ export default function Exames() {
                   </Button>
                 </div>
               )}
-              {selectedExame.observacoes && (
+              {observacoesSelecionado && (
                 <div>
                   <p className="text-sm text-muted-foreground">Observações</p>
-                  <p className="text-sm whitespace-pre-wrap">{selectedExame.observacoes}</p>
+                  <p className="text-sm whitespace-pre-wrap">{observacoesSelecionado}</p>
                 </div>
               )}
             </div>
