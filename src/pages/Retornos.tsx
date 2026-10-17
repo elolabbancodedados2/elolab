@@ -1,15 +1,15 @@
 import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { nomeMedico } from '@/lib/formatters';
 import { useState, useMemo, useCallback, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { isBefore, differenceInDays, addDays, isWithinInterval, startOfDay } from 'date-fns';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { isBefore, differenceInDays, addDays, isWithinInterval, startOfDay, isSameDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Switch } from '@/components/ui/switch';
 import { ErrorState } from '@/components/ErrorState';
 import { PageHeader } from '@/components/PageHeader';
 import {
@@ -30,16 +30,18 @@ import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { MAX_LINHAS_AUTO, useSupabaseQuery } from '@/hooks/useSupabaseData';
+import { useCurrentMedico } from '@/hooks/useCurrentMedico';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { mensagemDeErro } from '@/lib/erros';
 import { normalizarTexto, pacienteCorresponde } from '@/lib/buscaPaciente';
 import { parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
+import { linkWhatsApp } from '@/lib/whatsapp';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  CalendarClock, AlertTriangle, CheckCircle2, Phone, Clock, Filter, Search,
+  CalendarClock, AlertTriangle, CheckCircle2, Clock, Filter, Search,
   CalendarPlus, CalendarDays, TrendingUp, Loader2, CalendarIcon, RefreshCw, Ban,
-  RotateCcw,
+  RotateCcw, MessageCircle, Stethoscope, X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
@@ -62,18 +64,32 @@ interface Retorno {
   clinica_id: string;
 }
 
-function telefoneBrasileiroParaWhatsApp(telefone: string | null | undefined): string | null {
-  const digitos = String(telefone || '').replace(/\D/g, '');
-  const jaTemCodigoDoPais = digitos.startsWith('55') && [12, 13].includes(digitos.length);
-  const numero = jaTemCodigoDoPais ? digitos : `55${digitos}`;
-  return /^55\d{10,11}$/.test(numero) ? numero : null;
+type Periodo = 'todos' | 'hoje' | '7dias' | '30dias';
+
+const PERIODOS: { key: Periodo; label: string }[] = [
+  { key: 'todos', label: 'Todos' },
+  { key: 'hoje', label: 'Hoje' },
+  { key: '7dias', label: '7 dias' },
+  { key: '30dias', label: '30 dias' },
+];
+
+const PILL_BASE = 'h-8 rounded-full border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]';
+const PILL_ATIVA = 'border-transparent bg-gradient-primary text-white shadow-sm';
+const PILL_INATIVA = 'border-border bg-card text-muted-foreground hover:border-[#9CC7EC] hover:text-foreground';
+
+function mensagemWhatsApp(primeiroNome: string, medico: string, data: string) {
+  return `Olá, ${primeiroNome}! Seu retorno com ${medico} está previsto para ${data}. Podemos confirmar o horário?`;
 }
 
 export default function RetornosControl() {
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const pacienteFiltroId = searchParams.get('paciente');
   const [searchTerm, setSearchTerm] = useState('');
   const [filtroStatus, setFiltroStatus] = useState<string>('todos');
+  const [periodo, setPeriodo] = useState<Periodo>('todos');
+  const [medicoFiltro, setMedicoFiltro] = useState('todos');
+  const [apenasMeusEscolhido, setApenasMeusEscolhido] = useState<boolean | null>(null);
   const [agendarDialogOpen, setAgendarDialogOpen] = useState(false);
   const [retornoParaAgendar, setRetornoParaAgendar] = useState<Retorno | null>(null);
   const [dataAgendamento, setDataAgendamento] = useState<Date>();
@@ -88,6 +104,10 @@ export default function RetornosControl() {
   const [agora, setAgora] = useState(() => new Date());
   const queryClient = useQueryClient();
   const { profile } = useSupabaseAuth();
+  // Vínculo do usuário com um cadastro médico: habilita o atalho "Meus retornos"
+  // e, para médicos sem papel operacional, deixa o escopo individual ligado por padrão.
+  const { medicoId: meuMedicoId, isMedicoOnly } = useCurrentMedico();
+  const apenasMeus = Boolean(meuMedicoId) && (apenasMeusEscolhido ?? isMedicoOnly);
   const filtrosClinica = [{ column: 'clinica_id', operator: 'eq', value: profile?.clinica_id ?? '' }];
 
   const { data: retornos = [], isLoading: loadingRetornos, error: erroRetornos, refetch: refetchRetornos } = useSupabaseQuery<Retorno>('retornos', {
@@ -180,9 +200,15 @@ export default function RetornosControl() {
     return { ...r, statusCalculado, diasAtraso, dataRetorno };
   }), [retornos, hoje]);
 
+  // Escopo = paciente da URL + responsabilidade (meus retornos / médico escolhido).
+  // Os indicadores acompanham o escopo; busca, status e período filtram só a lista.
+  const medicoEscopoId = apenasMeus ? meuMedicoId : (medicoFiltro !== 'todos' ? medicoFiltro : null);
   const retornosNoEscopo = useMemo(
-    () => pacienteFiltroId ? retornosComStatus.filter(r => r.paciente_id === pacienteFiltroId) : retornosComStatus,
-    [retornosComStatus, pacienteFiltroId],
+    () => retornosComStatus.filter(r =>
+      (!pacienteFiltroId || r.paciente_id === pacienteFiltroId) &&
+      (!medicoEscopoId || r.medico_id === medicoEscopoId),
+    ),
+    [retornosComStatus, pacienteFiltroId, medicoEscopoId],
   );
 
   const filtrados = useMemo(() => {
@@ -194,6 +220,9 @@ export default function RetornosControl() {
       } else if (filtroStatus !== 'todos' && r.statusCalculado !== filtroStatus) {
         return false;
       }
+      if (periodo === 'hoje' && !isSameDay(startOfDay(r.dataRetorno), hoje)) return false;
+      if (periodo === '7dias' && !isWithinInterval(startOfDay(r.dataRetorno), { start: hoje, end: addDays(hoje, 7) })) return false;
+      if (periodo === '30dias' && !isWithinInterval(startOfDay(r.dataRetorno), { start: hoje, end: addDays(hoje, 30) })) return false;
       if (searchTerm.trim()) {
         const paciente = getPaciente(r.paciente_id);
         const medico = normalizarTexto(getMedicoNome(r.medico_id));
@@ -204,15 +233,19 @@ export default function RetornosControl() {
       }
       return true;
     });
-  }, [retornosNoEscopo, filtroStatus, searchTerm, getPaciente, getMedicoNome, hoje]);
+  }, [retornosNoEscopo, filtroStatus, periodo, searchTerm, getPaciente, getMedicoNome, hoje]);
+  const temFiltro = Boolean(searchTerm.trim()) || filtroStatus !== 'todos' || periodo !== 'todos' || (!apenasMeus && medicoFiltro !== 'todos');
   const limparFiltros = () => {
     setSearchTerm('');
     setFiltroStatus('todos');
+    setPeriodo('todos');
+    setMedicoFiltro('todos');
   };
 
   const pendentes = retornosNoEscopo.filter(r => r.statusCalculado === 'pendente').length;
   const atrasados = retornosNoEscopo.filter(r => r.statusCalculado === 'atrasado').length;
   const realizados = retornosNoEscopo.filter(r => r.statusCalculado === 'realizado').length;
+  const acimaDeTrinta = retornosNoEscopo.filter(r => r.statusCalculado === 'atrasado' && r.diasAtraso > 30).length;
   const proximos7 = retornosNoEscopo.filter(r => {
     const em7dias = addDays(startOfDay(hoje), 7);
     return isWithinInterval(r.dataRetorno, { start: startOfDay(hoje), end: em7dias }) &&
@@ -223,6 +256,12 @@ export default function RetornosControl() {
   const taxaComparecimento = retornosComPrazoVencido.length > 0
     ? Math.round((retornosComPrazoVencido.filter(r => r.statusCalculado === 'realizado').length / retornosComPrazoVencido.length) * 100)
     : 0;
+
+  // Destaque: o atrasado mais antigo; se não houver, o próximo retorno em aberto.
+  // A lista já vem ordenada por data, então o primeiro encontrado é o mais urgente.
+  const destaque = retornosNoEscopo.find(r => r.statusCalculado === 'atrasado')
+    ?? retornosNoEscopo.find(r => r.statusCalculado === 'pendente' || r.statusCalculado === 'agendado')
+    ?? null;
 
   const marcarRealizado = async (retorno: Retorno) => {
     if (isRealizando) return;
@@ -424,95 +463,114 @@ export default function RetornosControl() {
     }
   };
 
+  const atualizarTudo = () => {
+    void refetchRetornos();
+    void refetchPacientes();
+    void refetchMedicos();
+    void refetchAgendamentosRetornoParaConcluir();
+  };
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'atrasado':
-        return <Badge variant="destructive" className="gap-1"><AlertTriangle className="h-3 w-3" /> Atrasado</Badge>;
+        return <Badge variant="destructive" className="gap-1 rounded-full"><AlertTriangle className="h-3 w-3" /> Atrasado</Badge>;
       case 'pendente':
-        return <Badge variant="secondary" className="gap-1"><Clock className="h-3 w-3" /> Pendente</Badge>;
+        return <Badge variant="outline" className="gap-1 rounded-full border-warning/40 bg-warning/10 text-warning-foreground"><Clock className="h-3 w-3" /> Pendente</Badge>;
       case 'agendado':
-        return <Badge className="gap-1 bg-primary/10 text-primary border-primary/20"><CalendarPlus className="h-3 w-3" /> Agendado</Badge>;
+        return <Badge variant="outline" className="gap-1 rounded-full border-[#BFD8EE] bg-[#1080CA]/10 text-[#1080CA]"><CalendarPlus className="h-3 w-3" /> Agendado</Badge>;
       case 'realizado':
-        return <Badge className="gap-1 bg-success text-success-foreground"><CheckCircle2 className="h-3 w-3" /> Realizado</Badge>;
+        return <Badge className="gap-1 rounded-full bg-success text-success-foreground hover:bg-success"><CheckCircle2 className="h-3 w-3" /> Realizado</Badge>;
       case 'cancelado':
-        return <Badge variant="outline">Cancelado</Badge>;
+        return <Badge variant="outline" className="rounded-full text-muted-foreground">Cancelado</Badge>;
       default:
-        return <Badge variant="secondary">{status}</Badge>;
+        return <Badge variant="secondary" className="rounded-full">{status}</Badge>;
     }
   };
+
+  const linkWhatsAppRetorno = (r: { paciente_id: string; medico_id: string; dataRetorno: Date }) => linkWhatsApp(
+    getPacienteTelefone(r.paciente_id),
+    mensagemWhatsApp(getPacienteNome(r.paciente_id).split(' ')[0], getMedicoNome(r.medico_id), format(r.dataRetorno, 'dd/MM/yyyy', { locale: ptBR })),
+  );
 
   if (isLoading) {
     return (
       <div className="space-y-6">
         <Skeleton className="h-10 w-64" />
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"><Skeleton className="h-28" /><Skeleton className="h-28" /><Skeleton className="h-28" /><Skeleton className="h-28" /></div>
-        <Skeleton className="h-96" />
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-4"><Skeleton className="h-24 rounded-2xl" /><Skeleton className="h-24 rounded-2xl" /><Skeleton className="h-24 rounded-2xl" /><Skeleton className="h-24 rounded-2xl" /></div>
+        <Skeleton className="h-96 rounded-2xl" />
       </div>
     );
   }
 
   const erroDeCarga = erroRetornos || erroPacientes || erroMedicos || erroAgendamentosRetornoParaConcluir;
-  if (erroDeCarga) return <ErrorState error={erroDeCarga} title="Não foi possível carregar o controle de retornos" onRetry={() => {
-    void refetchRetornos();
-    void refetchPacientes();
-    void refetchMedicos();
-    void refetchAgendamentosRetornoParaConcluir();
-  }} />;
+  if (erroDeCarga) return <ErrorState error={erroDeCarga} title="Não foi possível carregar o controle de retornos" onRetry={atualizarTudo} />;
 
-  // Classes completas: Tailwind compila classes estáticas — o template
-  // `text-${kpi.color}` gerava classe inexistente e "Atrasados" nunca ficava
-  // vermelho.
+  // Classes completas: Tailwind compila classes estáticas — templates como
+  // `text-${cor}` geravam classe inexistente e "Atrasados" nunca ficava colorido.
   const kpis = [
-    { key: 'atrasado', label: 'Atrasados', value: atrasados, icon: AlertTriangle, text: 'text-destructive', bg: 'bg-destructive/10', ring: 'ring-destructive' },
-    { key: 'pendente', label: 'Pendentes', value: pendentes, icon: CalendarClock, text: 'text-warning', bg: 'bg-warning/10', ring: 'ring-warning' },
-    { key: 'proximos7', label: 'Próximos 7 dias', value: proximos7, icon: CalendarDays, text: 'text-primary', bg: 'bg-primary/10', ring: 'ring-primary' },
-    { key: 'realizado', label: 'Realizados', value: realizados, icon: CheckCircle2, text: 'text-success', bg: 'bg-success/10', ring: 'ring-success', extra: `${taxaComparecimento}% comparecimento` },
+    { key: 'atrasado', label: 'Atrasados', value: atrasados, icon: AlertTriangle, color: 'text-[#2ED5E7]', surface: 'bg-white/15', escuro: true, caption: acimaDeTrinta > 0 ? `${acimaDeTrinta} acima de 30 dias` : 'fora da data prevista' },
+    { key: 'pendente', label: 'Pendentes', value: pendentes, icon: CalendarClock, color: 'text-warning', surface: 'bg-warning/10', escuro: false, caption: 'ainda sem horário marcado' },
+    { key: 'proximos7', label: 'Próximos 7 dias', value: proximos7, icon: CalendarDays, color: 'text-[#1080CA]', surface: 'bg-[#1080CA]/10', escuro: false, caption: 'a partir de hoje' },
+    { key: 'realizado', label: 'Realizados', value: realizados, icon: CheckCircle2, color: 'text-success', surface: 'bg-success/10', escuro: false, caption: `${taxaComparecimento}% de comparecimento` },
   ];
+
+  const descricaoHeader = retornosNoEscopo.length === 0
+    ? 'Acompanhe retornos pendentes e atrasados'
+    : `${atrasados} atrasado${atrasados === 1 ? '' : 's'} · ${proximos7} nos próximos 7 dias${apenasMeus ? ' · só os meus' : ''}`;
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Controle de Retornos"
-        description="Acompanhe retornos pendentes e atrasados"
+        description={descricaoHeader}
         icon={<CalendarClock />}
         actions={(
-          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              aria-label="Buscar retornos por paciente ou médico"
-              placeholder="Nome, CPF, telefone ou médico..."
-              value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value)}
-              className="h-11 w-full pl-9 sm:w-64"
-            />
-          </div>
-          <Select value={filtroStatus} onValueChange={setFiltroStatus}>
-            <SelectTrigger aria-label="Filtrar retornos por status" className="h-11 w-full sm:w-44">
-              <Filter className="h-4 w-4 mr-2" />
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="todos">Todos</SelectItem>
-              <SelectItem value="atrasado">Atrasados</SelectItem>
-              <SelectItem value="pendente">Pendentes</SelectItem>
-              <SelectItem value="proximos7">Próximos 7 dias</SelectItem>
-              <SelectItem value="realizado">Realizados</SelectItem>
-              <SelectItem value="cancelado">Cancelados</SelectItem>
-            </SelectContent>
-          </Select>
-          </div>
+          <>
+            {meuMedicoId && (
+              <label className="flex min-h-10 items-center gap-2 rounded-full border border-border/60 bg-card px-3 text-sm text-muted-foreground">
+                <Switch
+                  checked={apenasMeus}
+                  onCheckedChange={(v) => setApenasMeusEscolhido(v)}
+                  aria-label="Mostrar só meus retornos"
+                />
+                Meus retornos
+              </label>
+            )}
+            {!isMedicoOnly && medicos.length > 1 && (
+              <Select value={medicoFiltro} onValueChange={setMedicoFiltro} disabled={apenasMeus}>
+                <SelectTrigger aria-label="Filtrar retornos por médico" className="h-10 w-[190px] shrink-0 rounded-full">
+                  <Stethoscope aria-hidden="true" className="mr-1.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                  <SelectValue placeholder="Todos os médicos" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">Todos os médicos</SelectItem>
+                  {medicos.map(m => <SelectItem key={m.id} value={m.id}>{nomeMedico(m.nome || m.crm)}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            )}
+            <Button variant="outline" size="icon" className="shrink-0 rounded-full" onClick={atualizarTudo} aria-label="Atualizar retornos" title="Atualizar retornos">
+              <RefreshCw className="h-4 w-4" />
+            </Button>
+            <Button
+              className="shrink-0 gap-2 rounded-full bg-[#111111] text-white shadow-md hover:bg-[#2b2b33]"
+              onClick={() => navigate('/agenda')}
+              title="Abre a agenda para conferir os horários dos retornos"
+            >
+              <CalendarDays aria-hidden="true" className="h-4 w-4" /> Abrir agenda
+            </Button>
+          </>
         )}
       />
 
       {pacienteFiltroId && (
-        <div className="flex flex-col gap-2 rounded-lg border bg-muted/30 p-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-2 rounded-2xl border border-[#DCE6F2] bg-[#F3F8FC] p-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm">
             Exibindo retornos de <span className="font-medium">{getPacienteNome(pacienteFiltroId)}</span>.
           </p>
           <Button
             variant="outline"
             size="sm"
+            className="rounded-full"
             onClick={() => {
               const params = new URLSearchParams(searchParams);
               params.delete('paciente');
@@ -525,68 +583,191 @@ export default function RetornosControl() {
       )}
 
       {retornos.length >= MAX_LINHAS_AUTO && (
-        <div className="rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning-foreground" role="status">
+        <div className="rounded-2xl border border-warning/40 bg-warning/10 p-3 text-sm text-warning-foreground" role="status">
           A lista atingiu o limite de {MAX_LINHAS_AUTO.toLocaleString('pt-BR')} retornos carregados. A lista e os indicadores podem estar incompletos.
         </div>
       )}
 
-      {/* KPI Cards */}
-      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
-        {kpis.map((kpi, i) => (
-          <motion.div key={kpi.key} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}>
-            <Card
-              className={cn("cursor-pointer transition-all hover:shadow-md", filtroStatus === kpi.key && `ring-2 ${kpi.ring}`)}
-              role="button"
-              tabIndex={0}
-              aria-pressed={filtroStatus === kpi.key}
-              onClick={() => setFiltroStatus(filtroStatus === kpi.key ? 'todos' : kpi.key)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' || event.key === ' ') {
-                  event.preventDefault();
-                  setFiltroStatus(filtroStatus === kpi.key ? 'todos' : kpi.key);
-                }
-              }}
+      {/* Indicadores */}
+      <section role="group" aria-label="Resumo dos retornos" className="grid grid-cols-2 gap-2 md:grid-cols-4">
+        {kpis.map(kpi => {
+          const Icon = kpi.icon;
+          const ativo = filtroStatus === kpi.key;
+          return (
+            <button
+              key={kpi.key}
+              type="button"
+              aria-pressed={ativo}
+              onClick={() => setFiltroStatus(ativo ? 'todos' : kpi.key)}
+              className={cn(
+                'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+                kpi.escuro && 'border-transparent bg-[#111111] text-white',
+                ativo && !kpi.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
+                ativo && kpi.escuro && 'ring-2 ring-[#2ED5E7]/60',
+              )}
             >
-              <CardContent className="pt-5 pb-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs font-medium text-muted-foreground uppercase">{kpi.label}</p>
-                    <p className={cn("text-3xl font-bold tabular-nums", kpi.text)}>{kpi.value}</p>
-                    {kpi.extra && <p className="text-[11px] text-muted-foreground mt-0.5 flex items-center gap-1"><TrendingUp className="h-3 w-3" />{kpi.extra}</p>}
-                  </div>
-                  <div className={cn("h-11 w-11 rounded-xl flex items-center justify-center", kpi.bg)}>
-                    <kpi.icon className={cn("h-5 w-5", kpi.text)} />
-                  </div>
+              <div className="flex min-h-[96px] items-center gap-3 p-3">
+                <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', kpi.surface)}>
+                  <Icon aria-hidden="true" className={cn('h-5 w-5', kpi.color)} />
                 </div>
-              </CardContent>
-            </Card>
-          </motion.div>
-        ))}
-      </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <h3 className={cn('truncate text-xs font-semibold', kpi.escuro ? 'text-white/80' : 'text-foreground')}>{kpi.label}</h3>
+                    <span className={cn('text-2xl font-bold tabular-nums', kpi.color)}>{kpi.value}</span>
+                  </div>
+                  <p className={cn('flex items-center gap-1 truncate text-[11px]', kpi.escuro ? 'text-white/60' : 'text-muted-foreground')}>
+                    {kpi.key === 'realizado' && <TrendingUp aria-hidden="true" className="h-3 w-3 shrink-0" />}
+                    {kpi.caption}
+                  </p>
+                </div>
+              </div>
+            </button>
+          );
+        })}
+      </section>
 
-      {/* Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Retornos {filtroStatus !== 'todos' ? `(${filtroStatus})` : ''}</CardTitle>
-          <CardDescription>{filtrados.length} retorno(s) encontrado(s)</CardDescription>
+      {/* Destaque: retorno mais urgente */}
+      {destaque && (() => {
+        const whatsapp = linkWhatsAppRetorno(destaque);
+        const atrasado = destaque.statusCalculado === 'atrasado';
+        return (
+          <Card className="overflow-hidden rounded-2xl border-[#1080CA]/30 shadow-[0_8px_24px_rgba(16,128,202,0.12)]">
+            <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center">
+              <div className="flex min-w-0 flex-1 items-center gap-3">
+                <span aria-hidden="true" className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+                  {atrasado ? <AlertTriangle className="h-5 w-5" /> : <CalendarClock className="h-5 w-5" />}
+                </span>
+                <div className="min-w-0">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-[#1080CA]">{atrasado ? 'Atrasado há mais tempo' : 'Próximo retorno'}</p>
+                  <h2 className="truncate text-lg font-bold text-foreground">{getPacienteNome(destaque.paciente_id)}</h2>
+                  <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                    <span className="inline-flex items-center gap-1"><Stethoscope aria-hidden="true" className="h-3 w-3" /> {getMedicoNome(destaque.medico_id)}</span>
+                    <span className="inline-flex items-center gap-1"><CalendarDays aria-hidden="true" className="h-3 w-3" /> {format(destaque.dataRetorno, 'dd/MM/yyyy', { locale: ptBR })}</span>
+                    {atrasado && (
+                      <span className={cn('inline-flex items-center gap-1 font-semibold text-destructive')}>
+                        <Clock aria-hidden="true" className="h-3 w-3" /> {destaque.diasAtraso} dia{destaque.diasAtraso === 1 ? '' : 's'} de atraso
+                      </span>
+                    )}
+                    {getStatusBadge(destaque.statusCalculado)}
+                  </div>
+                  {destaque.motivo && <p className="mt-1 truncate text-xs text-muted-foreground" title={destaque.motivo}>Motivo: {destaque.motivo}</p>}
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                {whatsapp ? (
+                  <Button asChild variant="outline" className="h-10 gap-1.5 rounded-full border-[#1080CA]/30 text-[#1080CA] hover:bg-[#1080CA]/10 hover:text-[#1080CA]">
+                    <a href={whatsapp} target="_blank" rel="noopener noreferrer"><MessageCircle aria-hidden="true" className="h-4 w-4" /> WhatsApp</a>
+                  </Button>
+                ) : (
+                  <span className="text-xs text-muted-foreground">Sem telefone válido</span>
+                )}
+                {destaque.agendamento_retorno_id ? (
+                  <Button variant="outline" className="h-10 gap-1.5 rounded-full" onClick={() => void handleRemarcarRetorno(destaque)} disabled={isAgendando}>
+                    {isAgendando ? <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" /> : <RefreshCw aria-hidden="true" className="h-4 w-4" />} Remarcar
+                  </Button>
+                ) : (
+                  <Button className="h-10 gap-1.5 rounded-full bg-[#111111] text-white hover:bg-[#2b2b33]" onClick={() => handleAgendarRetorno(destaque)}>
+                    <CalendarPlus aria-hidden="true" className="h-4 w-4" /> Agendar retorno
+                  </Button>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        );
+      })()}
+
+      {/* Lista */}
+      <Card className="rounded-2xl border-border/60 shadow-xs">
+        <CardHeader className="pb-3">
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-white">
+                  <CalendarClock className="h-4 w-4" />
+                </span>
+                Retornos
+                <Badge variant="outline" className="rounded-full border-[#BFD8EE] text-[#1080CA]">{filtrados.length} de {retornosNoEscopo.length}</Badge>
+              </CardTitle>
+              <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+                <div className="relative w-full sm:w-72">
+                  <Search aria-hidden="true" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    aria-label="Buscar retornos por paciente ou médico"
+                    placeholder="Nome, CPF, telefone ou médico..."
+                    value={searchTerm}
+                    onChange={e => setSearchTerm(e.target.value)}
+                    className="h-10 rounded-full pl-9 focus-visible:ring-[#1080CA]"
+                  />
+                </div>
+                <Select value={filtroStatus} onValueChange={setFiltroStatus}>
+                  <SelectTrigger aria-label="Filtrar retornos por status" className="h-10 w-full rounded-full sm:w-44">
+                    <Filter aria-hidden="true" className="mr-2 h-4 w-4 text-muted-foreground" />
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="todos">Todos</SelectItem>
+                    <SelectItem value="atrasado">Atrasados</SelectItem>
+                    <SelectItem value="pendente">Pendentes</SelectItem>
+                    <SelectItem value="agendado">Agendados</SelectItem>
+                    <SelectItem value="proximos7">Próximos 7 dias</SelectItem>
+                    <SelectItem value="realizado">Realizados</SelectItem>
+                    <SelectItem value="cancelado">Cancelados</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div role="group" aria-label="Filtrar por período" className="flex flex-wrap items-center gap-1.5">
+              {PERIODOS.map(opt => {
+                const ativo = periodo === opt.key;
+                return (
+                  <button
+                    key={opt.key}
+                    type="button"
+                    aria-pressed={ativo}
+                    onClick={() => setPeriodo(opt.key)}
+                    className={cn(PILL_BASE, ativo ? PILL_ATIVA : PILL_INATIVA)}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+              {temFiltro && (
+                <Button variant="ghost" size="sm" className="h-8 gap-1 rounded-full text-xs text-muted-foreground" onClick={limparFiltros}>
+                  <X aria-hidden="true" className="h-3 w-3" /> Limpar filtros
+                </Button>
+              )}
+              <span className="ml-auto text-xs text-muted-foreground">{filtrados.length} de {retornosNoEscopo.length}</span>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           {filtrados.length === 0 ? (
-            <div className="text-center py-10 text-muted-foreground">
-              <CalendarClock className="h-10 w-10 mx-auto mb-3 opacity-20" />
-              <p>
+            <div className="py-12 text-center text-muted-foreground">
+              <span aria-hidden="true" className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+                <CalendarClock className="h-7 w-7" />
+              </span>
+              <p className="font-medium text-foreground">
                 {retornosNoEscopo.length === 0
                   ? pacienteFiltroId
                     ? `Nenhum retorno encontrado para ${getPacienteNome(pacienteFiltroId)}`
-                    : 'Ainda não há retornos cadastrados'
+                    : apenasMeus
+                      ? 'Você ainda não tem retornos previstos'
+                      : 'Ainda não há retornos cadastrados'
                   : 'Nenhum retorno corresponde à busca e ao filtro selecionados'}
               </p>
-              {retornosNoEscopo.length > 0 && (searchTerm.trim() || filtroStatus !== 'todos') && (
-                <Button variant="link" onClick={limparFiltros} className="mt-2 h-11">Limpar busca e filtro</Button>
-              )}
+              <p className="mt-1 text-sm">
+                {retornosNoEscopo.length === 0
+                  ? 'Os retornos são criados ao encerrar o atendimento no prontuário.'
+                  : 'Ajuste a busca, o status ou o período.'}
+              </p>
+              {retornosNoEscopo.length > 0 && temFiltro ? (
+                <Button variant="outline" size="sm" className="mt-4 rounded-full" onClick={limparFiltros}>Limpar busca e filtro</Button>
+              ) : apenasMeus && retornos.length > 0 ? (
+                <Button variant="outline" size="sm" className="mt-4 rounded-full" onClick={() => setApenasMeusEscolhido(false)}>Ver retornos da clínica</Button>
+              ) : null}
             </div>
           ) : (
-            <div className="rounded-md border">
+            <div className="overflow-hidden rounded-xl border border-border/60">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -599,43 +780,44 @@ export default function RetornosControl() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  <AnimatePresence>
-                    {filtrados.map((r) => {
-                      const whatsapp = telefoneBrasileiroParaWhatsApp(getPacienteTelefone(r.paciente_id));
-                      const dataRetornoFutura = isBefore(hoje, startOfDay(r.dataRetorno));
-                      const agendamentoDeHoje = r.agendamento_retorno_id
-                        ? agendamentoRetornoPorId.get(r.agendamento_retorno_id)
-                        : undefined;
-                      const horarioAindaNaoChegou = Boolean(
-                        r.data_retorno_prevista === todaySaoPauloDateOnly(agora) && r.agendamento_retorno_id &&
-                        (!agendamentoDeHoje || !horarioAgendadoJaChegou(agendamentoDeHoje.data, agendamentoDeHoje.hora_inicio, agora)),
-                      );
-                      const agendamentoSemComparecimento = ['cancelado', 'faltou'].includes(agendamentoDeHoje?.status || '');
-                      const atendimentoAindaAberto = Boolean(
-                        r.agendamento_retorno_id && !podeMarcarRetornoRealizado(agendamentoDeHoje?.status),
-                      );
-                      return (
-                      <motion.tr
+                  {filtrados.map((r) => {
+                    const whatsapp = linkWhatsAppRetorno(r);
+                    const dataRetornoFutura = isBefore(hoje, startOfDay(r.dataRetorno));
+                    const agendamentoDeHoje = r.agendamento_retorno_id
+                      ? agendamentoRetornoPorId.get(r.agendamento_retorno_id)
+                      : undefined;
+                    const horarioAindaNaoChegou = Boolean(
+                      r.data_retorno_prevista === todaySaoPauloDateOnly(agora) && r.agendamento_retorno_id &&
+                      (!agendamentoDeHoje || !horarioAgendadoJaChegou(agendamentoDeHoje.data, agendamentoDeHoje.hora_inicio, agora)),
+                    );
+                    const agendamentoSemComparecimento = ['cancelado', 'faltou'].includes(agendamentoDeHoje?.status || '');
+                    const atendimentoAindaAberto = Boolean(
+                      r.agendamento_retorno_id && !podeMarcarRetornoRealizado(agendamentoDeHoje?.status),
+                    );
+                    const emAberto = !['realizado', 'cancelado'].includes(r.statusCalculado);
+                    const muitoAtrasado = r.statusCalculado === 'atrasado' && r.diasAtraso > 30;
+                    return (
+                      <TableRow
                         key={r.id}
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
                         className={cn(
-                          "border-b transition-colors hover:bg-muted/50",
                           r.statusCalculado === 'atrasado' && 'bg-destructive/5',
-                          r.diasAtraso > 30 && r.statusCalculado === 'atrasado' && 'bg-destructive/10'
+                          muitoAtrasado && 'bg-destructive/10',
+                          r.statusCalculado === 'cancelado' && 'text-muted-foreground',
                         )}
                       >
-                        <TableCell className="font-medium">{getPacienteNome(r.paciente_id)}</TableCell>
+                        <TableCell className="font-medium text-foreground">{getPacienteNome(r.paciente_id)}</TableCell>
                         <TableCell className="text-sm">{getMedicoNome(r.medico_id)}</TableCell>
                         <TableCell>
                           <div>
-                            <span className="text-sm">{format(r.dataRetorno, 'dd/MM/yyyy', { locale: ptBR })}</span>
+                            <span className="text-sm tabular-nums">{format(r.dataRetorno, 'dd/MM/yyyy', { locale: ptBR })}</span>
                             {r.statusCalculado === 'atrasado' && (
-                              <p className="text-xs text-destructive font-medium">
+                              <div className="mt-0.5 flex flex-wrap items-center gap-1 text-xs font-medium text-destructive">
+                                <AlertTriangle aria-hidden="true" className="h-3 w-3 shrink-0" />
                                 {r.diasAtraso} dia(s) de atraso
-                                {r.diasAtraso > 30 && ' ⚠️'}
-                              </p>
+                                {muitoAtrasado && (
+                                  <Badge variant="destructive" className="rounded-full px-1.5 py-0 text-[10px] font-semibold">+30 dias</Badge>
+                                )}
+                              </div>
                             )}
                           </div>
                         </TableCell>
@@ -646,64 +828,67 @@ export default function RetornosControl() {
                         </TableCell>
                         <TableCell>{getStatusBadge(r.statusCalculado)}</TableCell>
                         <TableCell className="text-right">
-                          <div className="flex flex-wrap gap-1 justify-end">
+                          <div className="flex flex-wrap items-center justify-end gap-1">
                             {(r.statusCalculado === 'pendente' || r.statusCalculado === 'atrasado') && !r.agendamento_retorno_id && (
-                              <Button size="sm" variant="outline" onClick={() => handleAgendarRetorno(r)} className="gap-1 text-primary border-primary/30 hover:bg-primary/5">
-                                <CalendarPlus className="h-3 w-3" /> Agendar
+                              <Button
+                                size="sm"
+                                onClick={() => handleAgendarRetorno(r)}
+                                className="h-9 gap-1 rounded-full bg-gradient-primary text-xs text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)] hover:brightness-110"
+                              >
+                                <CalendarPlus aria-hidden="true" className="h-3.5 w-3.5" /> Agendar
                               </Button>
                             )}
-                            {r.agendamento_retorno_id && !['realizado', 'cancelado'].includes(r.statusCalculado) && (
-                              <Button size="sm" variant="outline" onClick={() => handleRemarcarRetorno(r)} disabled={isAgendando} className="gap-1">
-                                {isAgendando ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />} Remarcar
+                            {r.agendamento_retorno_id && emAberto && (
+                              <Button size="sm" variant="outline" onClick={() => void handleRemarcarRetorno(r)} disabled={isAgendando} className="h-9 gap-1 rounded-full text-xs">
+                                {isAgendando ? <Loader2 aria-hidden="true" className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw aria-hidden="true" className="h-3.5 w-3.5" />} Remarcar
                               </Button>
                             )}
-                            {!['realizado', 'cancelado'].includes(r.statusCalculado) && !dataRetornoFutura && !horarioAindaNaoChegou && !agendamentoSemComparecimento && !atendimentoAindaAberto && (
-                              <Button size="sm" variant="outline" onClick={() => setRealizando(r)} className="gap-1">
-                                <CheckCircle2 className="h-3 w-3" /> Realizado
+                            {emAberto && !dataRetornoFutura && !horarioAindaNaoChegou && !agendamentoSemComparecimento && !atendimentoAindaAberto && (
+                              <Button size="sm" onClick={() => setRealizando(r)} className="h-9 gap-1 rounded-full bg-[#111111] text-xs text-white hover:bg-[#2b2b33]">
+                                <CheckCircle2 aria-hidden="true" className="h-3.5 w-3.5" /> Realizado
                               </Button>
                             )}
-                            {!['realizado', 'cancelado'].includes(r.statusCalculado) && atendimentoAindaAberto && !agendamentoSemComparecimento && (
+                            {emAberto && atendimentoAindaAberto && !agendamentoSemComparecimento && (
                               <span className="inline-flex items-center gap-1 px-2 text-xs text-muted-foreground" role="status">
-                                <Clock className="h-3 w-3" /> Conclua o atendimento antes de marcar como realizado
+                                <Clock aria-hidden="true" className="h-3 w-3" /> Conclua o atendimento antes de marcar como realizado
                               </span>
                             )}
-                            {!['realizado', 'cancelado'].includes(r.statusCalculado) && (dataRetornoFutura || horarioAindaNaoChegou) && (
+                            {emAberto && (dataRetornoFutura || horarioAindaNaoChegou) && (
                               <span className="inline-flex items-center gap-1 px-2 text-xs text-muted-foreground" role="status">
-                                <Clock className="h-3 w-3" /> {horarioAindaNaoChegou ? 'Disponível após o horário agendado' : 'Disponível na data prevista'}
+                                <Clock aria-hidden="true" className="h-3 w-3" /> {horarioAindaNaoChegou ? 'Disponível após o horário agendado' : 'Disponível na data prevista'}
                               </span>
                             )}
-                            {!['realizado', 'cancelado'].includes(r.statusCalculado) && agendamentoSemComparecimento && (
+                            {emAberto && agendamentoSemComparecimento && (
                               <span className="inline-flex items-center gap-1 px-2 text-xs text-muted-foreground" role="status">
-                                <Ban className="h-3 w-3" /> Agendamento cancelado ou falta
+                                <Ban aria-hidden="true" className="h-3 w-3" /> Agendamento cancelado ou falta
                               </span>
                             )}
                             {r.statusCalculado === 'realizado' && (
                               <Button
-                                size="sm" variant="ghost" className="gap-1 text-muted-foreground"
+                                size="sm" variant="outline" className="h-9 gap-1 rounded-full text-xs text-muted-foreground"
                                 aria-label="Reabrir retorno marcado como realizado"
-                                onClick={() => desfazerRealizado(r)}
+                                onClick={() => void desfazerRealizado(r)}
                               >
-                                <RotateCcw className="h-3 w-3" /> Reabrir
+                                <RotateCcw aria-hidden="true" className="h-3.5 w-3.5" /> Reabrir
                               </Button>
                             )}
-                            {!['realizado', 'cancelado'].includes(r.statusCalculado) && (
-                              <Button size="sm" variant="ghost" onClick={() => setCancelando(r)} className="gap-1 text-destructive hover:text-destructive" aria-label="Cancelar retorno">
-                                <Ban className="h-3 w-3" /> Cancelar
+                            {emAberto && (
+                              <Button size="sm" variant="ghost" onClick={() => setCancelando(r)} className="h-9 gap-1 rounded-full text-xs text-destructive hover:text-destructive" aria-label="Cancelar retorno">
+                                <Ban aria-hidden="true" className="h-3.5 w-3.5" /> Cancelar
                               </Button>
                             )}
                             {whatsapp && (
-                              <Button size="sm" variant="ghost" asChild aria-label="Contatar via WhatsApp">
-                                <a href={`https://wa.me/${whatsapp}`} target="_blank" rel="noopener noreferrer">
-                                  <Phone className="h-3 w-3" />
+                              <Button size="icon" variant="ghost" asChild className="h-9 w-9 shrink-0 rounded-full text-[#1080CA] hover:bg-[#1080CA]/10 hover:text-[#1080CA]">
+                                <a href={whatsapp} target="_blank" rel="noopener noreferrer" aria-label="Contatar via WhatsApp" title="Contatar via WhatsApp">
+                                  <MessageCircle className="h-4 w-4" />
                                 </a>
                               </Button>
                             )}
                           </div>
                         </TableCell>
-                      </motion.tr>
-                      );
-                    })}
-                  </AnimatePresence>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </div>
@@ -720,7 +905,7 @@ export default function RetornosControl() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <CalendarPlus className="h-5 w-5 text-primary" />
+              <CalendarPlus className="h-5 w-5 text-[#1080CA]" />
               {retornoParaAgendar?.agendamento_retorno_id ? 'Remarcar Retorno' : 'Agendar Retorno'}
             </DialogTitle>
           </DialogHeader>
