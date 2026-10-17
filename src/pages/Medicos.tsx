@@ -2,15 +2,15 @@ import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { nomeMedico, validateCPF } from '@/lib/formatters';
 import React, { useState, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
 import {
   Plus, Search, Pencil, Stethoscope, Phone, Mail, BadgeCheck, Award,
   FileText, Clock, User, Upload, Image, Calendar, ClipboardList, Pill,
   ChevronRight, X, Activity, Users, Eye, Filter, Heart, ShieldCheck,
-  ExternalLink, Copy, Send, UserX,
+  ExternalLink, Copy, Send, UserX, RefreshCw,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/PageHeader';
+import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
@@ -145,31 +145,28 @@ function EspecialidadeCombobox({ value, onChange, especialidadesExtras }: { valu
             <X className="h-4 w-4" />
           </button>
         )}
-        <AnimatePresence>
-          {open && filtered.length > 0 && (
-            <motion.div
-              initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }}
-              className="absolute z-50 mt-1 w-full max-h-48 overflow-y-auto rounded-lg border bg-popover shadow-lg"
-            >
-              {filtered.map(esp => (
-                <button key={esp} type="button"
-                  className={`w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors ${esp === value ? 'bg-primary/10 text-primary font-medium' : 'text-popover-foreground'}`}
-                  onMouseDown={e => { e.preventDefault(); handleSelect(esp); }}
-                >
-                  {esp}
-                </button>
-              ))}
-              {search && !filtered.some(e => e.toLowerCase() === search.toLowerCase()) && (
-                <button type="button"
-                  className="w-full text-left px-3 py-2 text-sm text-primary hover:bg-accent transition-colors border-t"
-                  onMouseDown={e => { e.preventDefault(); handleSelect(search); }}
-                >
-                  + Criar "{search}"
-                </button>
-              )}
-            </motion.div>
-          )}
-        </AnimatePresence>
+        {open && filtered.length > 0 && (
+          <div
+            className="absolute z-50 mt-1 w-full max-h-48 overflow-y-auto rounded-lg border bg-popover shadow-lg animate-in fade-in-0 zoom-in-95"
+          >
+            {filtered.map(esp => (
+              <button key={esp} type="button"
+                className={`w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors ${esp === value ? 'bg-primary/10 text-primary font-medium' : 'text-popover-foreground'}`}
+                onMouseDown={e => { e.preventDefault(); handleSelect(esp); }}
+              >
+                {esp}
+              </button>
+            ))}
+            {search && !filtered.some(e => e.toLowerCase() === search.toLowerCase()) && (
+              <button type="button"
+                className="w-full text-left px-3 py-2 text-sm text-primary hover:bg-accent transition-colors border-t"
+                onMouseDown={e => { e.preventDefault(); handleSelect(search); }}
+              >
+                + Criar "{search}"
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -388,7 +385,7 @@ function MedicoProfilePanel({ medico, onClose, onEdit }: { medico: any; onClose:
                 <div className="mb-3">
                   <p className="text-xs font-semibold text-primary mb-2">📅 Hoje — {format(parseDateOnly(today)!, "dd 'de' MMMM", { locale: ptBR })}</p>
                   {agendamentosHoje.map((ag: any) => (
-                    <motion.div key={ag.id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }}
+                    <div key={ag.id}
                       className="flex items-center gap-3 p-2.5 rounded-lg border bg-card mb-1.5 hover:shadow-sm transition-shadow">
                       <div className="text-center min-w-[48px]"><p className="text-sm font-bold text-foreground">{ag.hora_inicio?.slice(0, 5)}</p></div>
                       <div className="flex-1 min-w-0">
@@ -396,7 +393,7 @@ function MedicoProfilePanel({ medico, onClose, onEdit }: { medico: any; onClose:
                         <p className="text-[11px] text-muted-foreground">{ag.tipo || 'Consulta'}</p>
                       </div>
                       <Badge className={`text-[10px] ${statusColor(ag.status)}`}>{ag.status}</Badge>
-                    </motion.div>
+                    </div>
                   ))}
                 </div>
               )}
@@ -732,52 +729,84 @@ export default function Medicos() {
     return <ErrorState title="Não foi possível carregar o corpo clínico" error={medicosQuery.error} onRetry={() => void medicosQuery.refetch()} />;
   }
 
+  const temFiltro = searchTerm.trim() !== '' || filterEspecialidade !== 'todas' || filterStatus !== 'todos';
+  const limparFiltros = () => { setSearchTerm(''); setFilterEspecialidade('todas'); setFilterStatus('todos'); };
+  const descricaoHeader = medicos.length === 0
+    ? 'Gerencie médicos, credenciais e produtividade'
+    : `${medicos.length} médico(s) · ${totalAtivos} ativo(s) · ${especialidades.length} especialidade(s)`;
+
+  const indicadores = [
+    { key: 'ativo' as const, label: 'Ativos', value: totalAtivos, icon: ShieldCheck, color: 'text-[#2ED5E7]', surface: 'bg-white/15', escuro: true, caption: 'disponíveis para atendimento' },
+    { key: 'inativo' as const, label: 'Inativos', value: totalInativos, icon: UserX, color: 'text-muted-foreground', surface: 'bg-muted', escuro: false, caption: 'fora de operação' },
+    { key: 'especialidades' as const, label: 'Especialidades', value: especialidades.length, icon: Heart, color: 'text-[#1080CA]', surface: 'bg-[#1080CA]/10', escuro: false, caption: 'distintas na clínica' },
+    { key: 'todos' as const, label: 'Total', value: medicos.length, icon: Users, color: 'text-[#1080CA]', surface: 'bg-[#1080CA]/10', escuro: false, caption: 'corpo clínico completo' },
+  ];
+
   return (
     <TooltipProvider>
       <div className="space-y-6">
         <PageHeader
           title="Corpo Clínico"
-          description="Gerencie médicos, credenciais e produtividade"
+          description={descricaoHeader}
           icon={<Stethoscope />}
           actions={(
-            <Button onClick={() => handleOpenDialog()} className="gap-2" size="lg">
-              <Plus className="h-4 w-4" /> Novo Médico
-            </Button>
+            <>
+              <Button variant="outline" size="icon" className="shrink-0 rounded-full" onClick={() => void medicosQuery.refetch()} aria-label="Atualizar médicos" title="Atualizar médicos">
+                <RefreshCw className="h-4 w-4" />
+              </Button>
+              <Button onClick={() => handleOpenDialog()} className="shrink-0 gap-2 rounded-full bg-[#111111] text-white shadow-md hover:bg-[#2b2b33]">
+                <Plus className="h-4 w-4" /> Novo Médico
+              </Button>
+            </>
           )}
         />
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {[
-            { label: 'Total', value: medicos.length, icon: Users, color: 'text-primary', bg: 'bg-primary/10', border: 'border-primary/20' },
-            { label: 'Ativos', value: totalAtivos, icon: ShieldCheck, color: 'text-success', bg: 'bg-success/10', border: 'border-success/20' },
-            { label: 'Inativos', value: totalInativos, icon: X, color: 'text-muted-foreground', bg: 'bg-muted', border: 'border-border' },
-            { label: 'Especialidades', value: especialidades.length, icon: Heart, color: 'text-accent-foreground', bg: 'bg-accent', border: 'border-accent' },
-          ].map(s => (
-            <Card key={s.label} className={`${s.border} bg-card shadow-xs`}>
-              <CardContent className="p-4 flex items-center gap-3">
-                <div className={`h-10 w-10 rounded-xl ${s.bg} flex items-center justify-center`}>
-                  <s.icon className={`h-5 w-5 ${s.color}`} />
+        {/* Indicadores */}
+        <section role="group" aria-label="Resumo do corpo clínico" className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          {indicadores.map(ind => {
+            const Icon = ind.icon;
+            const ativo = ind.key !== 'especialidades' && filterStatus === ind.key;
+            return (
+              <button
+                key={ind.key}
+                type="button"
+                aria-pressed={ativo}
+                disabled={ind.key === 'especialidades'}
+                onClick={() => { if (ind.key === 'especialidades') return; setFilterStatus(ind.key === 'todos' ? 'todos' : (ativo ? 'todos' : ind.key)); }}
+                className={cn(
+                  'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+                  ind.key !== 'especialidades' && 'hover:-translate-y-0.5 hover:shadow-md',
+                  ind.key === 'especialidades' && 'cursor-default',
+                  ind.escuro && 'border-transparent bg-[#111111] text-white',
+                  ativo && !ind.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
+                  ativo && ind.escuro && 'ring-2 ring-[#2ED5E7]/60',
+                )}
+              >
+                <div className="flex items-start justify-between gap-2 p-4">
+                  <div>
+                    <p className={cn('text-xs font-medium', ind.escuro ? 'text-white/80' : 'text-muted-foreground')}>{ind.label}</p>
+                    <p className={cn('mt-1 text-2xl font-bold tabular-nums', ind.color)}>{ind.value}</p>
+                    <p className={cn('mt-0.5 text-[11px]', ind.escuro ? 'text-white/60' : 'text-muted-foreground')}>{ind.caption}</p>
+                  </div>
+                  <span aria-hidden="true" className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', ind.surface)}>
+                    <Icon className={cn('h-4 w-4', ind.color)} />
+                  </span>
                 </div>
-                <div>
-                  <p className="text-2xl font-bold text-foreground">{s.value}</p>
-                  <p className="text-xs text-muted-foreground">{s.label}</p>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+              </button>
+            );
+          })}
+        </section>
 
         {/* Search & Filters */}
-        <div className="flex flex-col sm:flex-row gap-3">
-          <div className="relative flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative w-full sm:w-80">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input aria-label="Buscar médicos por nome, CRM, especialidade ou e-mail" placeholder="Buscar por nome, CRM, especialidade ou e-mail..." value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10" />
+              className="h-10 rounded-full pl-10 focus-visible:ring-[#1080CA]" />
           </div>
           <Select value={filterEspecialidade} onValueChange={setFilterEspecialidade}>
-            <SelectTrigger aria-label="Filtrar médicos por especialidade" title={filterEspecialidade === 'todas' ? 'Todas especialidades' : filterEspecialidade} className="w-full min-w-0 sm:w-56">
+            <SelectTrigger aria-label="Filtrar médicos por especialidade" title={filterEspecialidade === 'todas' ? 'Todas especialidades' : filterEspecialidade} className="h-10 w-full min-w-0 rounded-full sm:w-56">
               <Filter className="h-4 w-4 shrink-0 mr-2 text-muted-foreground" />
               <SelectValue data-testid="filter-especialidade-value" className="min-w-0 truncate" placeholder="Especialidade" />
             </SelectTrigger>
@@ -786,129 +815,112 @@ export default function Medicos() {
               {especialidades.map(e => <SelectItem key={e} value={e}>{e}</SelectItem>)}
             </SelectContent>
           </Select>
-          <Select value={filterStatus} onValueChange={(v) => setFilterStatus(v as any)}>
-            <SelectTrigger className="w-full sm:w-36">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="todos">Todos</SelectItem>
-              <SelectItem value="ativo">Ativos</SelectItem>
-              <SelectItem value="inativo">Inativos</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        {/* Results count */}
-        {searchTerm || filterEspecialidade !== 'todas' || filterStatus !== 'todos' ? (
-          <p className="text-sm text-muted-foreground">
-            {filteredMedicos.length} médico(s) encontrado(s)
-            {(searchTerm || filterEspecialidade !== 'todas' || filterStatus !== 'todos') && (
-              <Button variant="link" size="sm" className="ml-2 text-xs h-auto p-0" onClick={() => { setSearchTerm(''); setFilterEspecialidade('todas'); setFilterStatus('todos'); }}>
-                Limpar filtros
-              </Button>
-            )}
+          {temFiltro && (
+            <Button variant="ghost" size="sm" className="h-10 gap-1.5 rounded-full text-muted-foreground" onClick={limparFiltros}>
+              <X className="h-3.5 w-3.5" /> Limpar filtros
+            </Button>
+          )}
+          <p className="ml-auto text-xs text-muted-foreground" aria-live="polite">
+            {filteredMedicos.length} de {medicos.length} médico{medicos.length === 1 ? '' : 's'}
           </p>
-        ) : null}
+        </div>
 
         {/* Doctor Cards Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          <AnimatePresence mode="popLayout">
-            {filteredMedicos.map((medico: any, i: number) => (
-              <motion.div key={medico.id}
-                initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95 }} transition={{ delay: i * 0.03 }}
-                layout>
-                <Card className={`group hover:shadow-lg transition-all duration-300 cursor-pointer hover:border-primary/30 ${!medico.ativo ? 'bg-muted/40' : ''}`}
-                  onClick={() => setViewingMedico(medico)}>
-                  <CardContent className="p-5">
-                    <div className="flex items-start gap-4">
-                      <Avatar className={`h-16 w-16 ring-2 ring-primary/10 group-hover:ring-primary/30 transition-all shadow-md ${!medico.ativo ? 'opacity-70' : ''}`}>
-                        {medico.foto_url && <StorageAvatarImage bucket="patient-photos" path={medico.foto_url} alt={medico.nome} />}
-                        <AvatarFallback className="bg-gradient-to-br from-primary/20 to-primary/5 text-primary font-bold text-lg">
-                          {iniciaisMedico(medico.nome, medico.crm)}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0">
-                            <h3 title={nomeMedico(medico.nome || medico.crm)} className="font-semibold text-foreground truncate text-base">{nomeMedico(medico.nome || medico.crm)}</h3>
-                            <p className="text-sm text-muted-foreground">{medico.especialidade || 'Clínico Geral'}</p>
-                          </div>
-                          <Badge className={`text-[10px] shrink-0 ${medico.ativo ? 'bg-success/10 text-success border-success/20' : 'bg-muted text-muted-foreground'}`}>
-                            {medico.ativo ? 'Ativo' : 'Inativo'}
-                          </Badge>
-                        </div>
-                        <div className="flex flex-wrap gap-1.5 mt-2.5">
-                          <Badge variant="outline" className="text-[10px] gap-1 font-mono">
-                             <BadgeCheck className="h-2.5 w-2.5" /> {medico.tipo_registro || 'CRM'} {medico.crm}/{medico.crm_uf}
-                          </Badge>
-                          {medico.rqe && <Badge variant="outline" className="text-[10px] font-mono">RQE {medico.rqe}</Badge>}
-                        </div>
+          {filteredMedicos.map((medico: any) => (
+            <Card key={medico.id} className={cn('group rounded-2xl border-border/60 shadow-xs transition-all duration-200 cursor-pointer hover:-translate-y-0.5 hover:shadow-md hover:border-[#1080CA]/40', !medico.ativo && 'bg-muted/40')}
+              onClick={() => setViewingMedico(medico)}>
+              <CardContent className="p-5">
+                <div className="flex items-start gap-4">
+                  <Avatar className={`h-16 w-16 ring-2 ring-[#1080CA]/10 group-hover:ring-[#1080CA]/30 transition-all shadow-md ${!medico.ativo ? 'opacity-70' : ''}`}>
+                    {medico.foto_url && <StorageAvatarImage bucket="patient-photos" path={medico.foto_url} alt={medico.nome} />}
+                    <AvatarFallback className="bg-gradient-to-br from-[#1080CA]/20 to-[#1080CA]/5 text-[#1080CA] font-bold text-lg">
+                      {iniciaisMedico(medico.nome, medico.crm)}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <h3 title={nomeMedico(medico.nome || medico.crm)} className="font-semibold text-foreground truncate text-base">{nomeMedico(medico.nome || medico.crm)}</h3>
+                        <p className="text-sm text-muted-foreground">{medico.especialidade || 'Clínico Geral'}</p>
                       </div>
+                      <Badge variant="outline" className={cn('rounded-full text-[10px] shrink-0', medico.ativo ? 'border-success/30 bg-success/10 text-success-foreground' : 'border-border bg-muted text-muted-foreground')}>
+                        {medico.ativo ? 'Ativo' : 'Inativo'}
+                      </Badge>
                     </div>
+                    <div className="flex flex-wrap gap-1.5 mt-2.5">
+                      <Badge variant="outline" className="rounded-full text-[10px] gap-1 font-mono">
+                         <BadgeCheck className="h-2.5 w-2.5" /> {medico.tipo_registro || 'CRM'} {medico.crm}/{medico.crm_uf}
+                      </Badge>
+                      {medico.rqe && <Badge variant="outline" className="rounded-full text-[10px] font-mono">RQE {medico.rqe}</Badge>}
+                    </div>
+                  </div>
+                </div>
 
-                    {/* Info row */}
-                    <div className="flex items-center gap-4 mt-4 pt-3 border-t border-border/40 text-[11px] text-muted-foreground">
-                      <span className="flex shrink-0 items-center gap-1"><Clock className="h-3 w-3" /> {medico.intervalo_consulta ?? 30}min</span>
-                      {medico.telefone && <span title={medico.telefone} className="flex shrink-0 items-center gap-1 whitespace-nowrap"><Phone className="h-3 w-3" /> {medico.telefone}</span>}
-                      {medico.email && (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <span tabIndex={0} title={medico.email} className="flex min-w-0 max-w-[120px] items-center gap-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><Mail className="h-3 w-3 shrink-0" /><span className="truncate">{medico.email}</span></span>
-                          </TooltipTrigger>
-                          <TooltipContent>{medico.email}</TooltipContent>
-                        </Tooltip>
-                      )}
-                    </div>
+                {/* Info row */}
+                <div className="flex items-center gap-4 mt-4 pt-3 border-t border-border/40 text-[11px] text-muted-foreground">
+                  <span className="flex shrink-0 items-center gap-1"><Clock className="h-3 w-3" /> {medico.intervalo_consulta ?? 30}min</span>
+                  {medico.telefone && <span title={medico.telefone} className="flex shrink-0 items-center gap-1 whitespace-nowrap"><Phone className="h-3 w-3" /> {medico.telefone}</span>}
+                  {medico.email && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span tabIndex={0} title={medico.email} className="flex min-w-0 max-w-[120px] items-center gap-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><Mail className="h-3 w-3 shrink-0" /><span className="truncate">{medico.email}</span></span>
+                      </TooltipTrigger>
+                      <TooltipContent>{medico.email}</TooltipContent>
+                    </Tooltip>
+                  )}
+                </div>
 
-                    {/* Actions */}
-                    <div className="flex items-center justify-between mt-3">
-                      <Button variant="ghost" size="sm" className="text-xs gap-1.5 text-primary hover:text-primary"
-                        onClick={(e) => { e.stopPropagation(); setViewingMedico(medico); }}>
-                        <Eye className="h-3.5 w-3.5" /> Ver Perfil
-                      </Button>
-                      <div className="flex gap-1">
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button aria-label={`Editar médico ${medico.nome}`} size="icon" variant="ghost" className="h-8 w-8"
-                              onClick={(e) => { e.stopPropagation(); handleOpenDialog(medico); }}>
-                              <Pencil className="h-3.5 w-3.5" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>Editar</TooltipContent>
-                        </Tooltip>
-                        {medico.ativo && <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button aria-label={`Inativar médico ${medico.nome}`} size="icon" variant="ghost" className="h-8 w-8 hover:bg-destructive/10"
-                              onClick={(e) => { e.stopPropagation(); handleDeleteClick(medico.id); }}>
-                              <UserX className="h-3.5 w-3.5 text-destructive" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>Inativar</TooltipContent>
-                        </Tooltip>}
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </motion.div>
-            ))}
-          </AnimatePresence>
+                {/* Actions */}
+                <div className="flex items-center justify-between mt-3">
+                  <Button variant="ghost" size="sm" className="h-9 gap-1.5 rounded-full text-xs text-[#1080CA] hover:text-[#1080CA] hover:bg-[#1080CA]/10"
+                    onClick={(e) => { e.stopPropagation(); setViewingMedico(medico); }}>
+                    <Eye className="h-3.5 w-3.5" /> Ver Perfil
+                  </Button>
+                  <div className="flex gap-1">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button aria-label={`Editar médico ${medico.nome}`} size="icon" variant="ghost" className="h-9 w-9 rounded-full"
+                          onClick={(e) => { e.stopPropagation(); handleOpenDialog(medico); }}>
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Editar</TooltipContent>
+                    </Tooltip>
+                    {medico.ativo && <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button aria-label={`Inativar médico ${medico.nome}`} size="icon" variant="ghost" className="h-9 w-9 rounded-full hover:bg-destructive/10"
+                          onClick={(e) => { e.stopPropagation(); handleDeleteClick(medico.id); }}>
+                          <UserX className="h-3.5 w-3.5 text-destructive" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Inativar</TooltipContent>
+                    </Tooltip>}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
         </div>
 
         {filteredMedicos.length === 0 && (
-          <Card className="border-dashed">
+          <Card className="rounded-2xl border-dashed border-border/60 shadow-xs">
             <CardContent className="text-center py-16">
-              <div className="h-16 w-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-4">
-                <Stethoscope className="h-8 w-8 text-primary" />
-              </div>
+              <span aria-hidden="true" className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+                <Stethoscope className="h-8 w-8" />
+              </span>
               <h3 className="text-lg font-semibold text-foreground">Nenhum médico encontrado</h3>
               <p className="text-muted-foreground text-sm mt-1 max-w-sm mx-auto">
-                {searchTerm || filterEspecialidade !== 'todas' || filterStatus !== 'todos'
+                {temFiltro
                   ? 'Tente ajustar ou limpar os filtros para ver outros profissionais.'
                   : 'Cadastre o primeiro médico para começar.'}
               </p>
-              {!searchTerm && filterEspecialidade === 'todas' && filterStatus === 'todos' && (
-                <Button onClick={() => handleOpenDialog()} className="mt-4 gap-2">
+              {temFiltro ? (
+                <Button variant="outline" className="mt-4 rounded-full" size="sm" onClick={limparFiltros}>
+                  Limpar filtros
+                </Button>
+              ) : (
+                <Button onClick={() => handleOpenDialog()} className="mt-4 gap-2 rounded-full bg-[#111111] text-white hover:bg-[#2b2b33]" size="sm">
                   <Plus className="h-4 w-4" /> Cadastrar Médico
                 </Button>
               )}

@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRef, useState } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { Copy, Mail, RefreshCw, CheckCircle2, Clock, XCircle, Loader2, Ban, AlertTriangle } from 'lucide-react';
+import { Copy, Mail, RefreshCw, CheckCircle2, Clock, XCircle, Loader2, Ban, AlertTriangle, Plus, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
@@ -18,7 +18,9 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
 import { PageHeader } from '@/components/PageHeader';
+import { ConvidarFuncionarioDialog } from '@/components/ConvidarFuncionarioDialog';
 import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
+import { cn } from '@/lib/utils';
 
 type InviteStatus = 'aceito' | 'expirado' | 'pendente';
 
@@ -59,18 +61,18 @@ function buildInviteUrl(token: string) {
 function StatusBadge({ status }: { status: InviteStatus }) {
   if (status === 'aceito')
     return (
-      <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100 gap-1">
+      <Badge className="gap-1 rounded-full border-success/30 bg-success/10 text-success-foreground hover:bg-success/10">
         <CheckCircle2 className="h-3 w-3" /> Aceito
       </Badge>
     );
   if (status === 'expirado')
     return (
-      <Badge variant="destructive" className="gap-1">
+      <Badge variant="destructive" className="gap-1 rounded-full">
         <XCircle className="h-3 w-3" /> Expirado
       </Badge>
     );
   return (
-    <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100 gap-1">
+    <Badge className="gap-1 rounded-full border-warning/30 bg-warning/10 text-warning-foreground hover:bg-warning/10">
       <Clock className="h-3 w-3" /> Pendente
     </Badge>
   );
@@ -278,19 +280,36 @@ export function ConvitesList() {
     cancelMutation.mutate(cancelando, { onSettled: () => { cancelLockRef.current = false; } });
   };
 
-  const FILTROS: Array<{ chave: InviteStatus | 'todos'; texto: string; total: number }> = [
-    { chave: 'todos', texto: 'Todos', total: invites.length },
-    { chave: 'pendente', texto: 'Pendentes', total: pendentes },
-    { chave: 'aceito', texto: 'Aceitos', total: aceitos },
-    { chave: 'expirado', texto: 'Expirados', total: expirados },
+  const INDICADORES: Array<{ chave: InviteStatus | 'todos'; label: string; value: number; icon: typeof Mail; color: string; surface: string; escuro: boolean; caption: string }> = [
+    { chave: 'pendente', label: 'Pendentes', value: pendentes, icon: Clock, color: 'text-[#2ED5E7]', surface: 'bg-white/15', escuro: true, caption: 'aguardando aceite' },
+    { chave: 'aceito', label: 'Aceitos', value: aceitos, icon: CheckCircle2, color: 'text-success', surface: 'bg-success/10', escuro: false, caption: 'acesso liberado' },
+    { chave: 'expirado', label: 'Expirados', value: expirados, icon: XCircle, color: 'text-destructive', surface: 'bg-destructive/10', escuro: false, caption: 'link vencido' },
+    { chave: 'todos', label: 'Total', value: invites.length, icon: Mail, color: 'text-[#1080CA]', surface: 'bg-[#1080CA]/10', escuro: false, caption: 'todos os convites' },
   ];
+  const descricaoHeader = invites.length === 0
+    ? 'Acompanhe o acesso da equipe e mantenha os convites sob controle.'
+    : `${invites.length} convite(s) · ${pendentes} pendente(s) · ${aceitos} aceito(s)`;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <PageHeader
         title="Convites"
-        description="Acompanhe o acesso da equipe e mantenha os convites sob controle."
+        description={descricaoHeader}
         icon={<Mail />}
+        actions={(
+          <>
+            <Button variant="outline" size="icon" className="shrink-0 rounded-full" onClick={() => void invitesQuery.refetch()} aria-label="Atualizar convites" title="Atualizar convites">
+              <RefreshCw className="h-4 w-4" />
+            </Button>
+            <ConvidarFuncionarioDialog
+              trigger={
+                <Button className="shrink-0 gap-2 rounded-full bg-[#111111] text-white shadow-md hover:bg-[#2b2b33]">
+                  <Plus className="h-4 w-4" /> Novo convite
+                </Button>
+              }
+            />
+          </>
+        )}
       />
       <Alert>
         <Mail className="h-4 w-4" />
@@ -315,26 +334,37 @@ export function ConvitesList() {
         </AlertDescription>
       </Alert>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Pendentes</CardDescription>
-            <p className="text-2xl font-semibold text-warning-foreground">{pendentes}</p>
-          </CardHeader>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Aceitos</CardDescription>
-            <p className="text-2xl font-semibold text-success">{aceitos}</p>
-          </CardHeader>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Expirados</CardDescription>
-            <p className="text-2xl font-semibold text-destructive">{expirados}</p>
-          </CardHeader>
-        </Card>
-      </div>
+      <section role="group" aria-label="Resumo dos convites" className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        {INDICADORES.map((ind) => {
+          const Icon = ind.icon;
+          const ativo = filtro === ind.chave;
+          return (
+            <button
+              key={ind.chave}
+              type="button"
+              aria-pressed={ativo}
+              onClick={() => setFiltro(ind.chave === 'todos' ? 'todos' : (ativo ? 'todos' : ind.chave))}
+              className={cn(
+                'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+                ind.escuro && 'border-transparent bg-[#111111] text-white',
+                ativo && !ind.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
+                ativo && ind.escuro && 'ring-2 ring-[#2ED5E7]/60',
+              )}
+            >
+              <div className="flex items-start justify-between gap-2 p-4">
+                <div>
+                  <p className={cn('text-xs font-medium', ind.escuro ? 'text-white/80' : 'text-muted-foreground')}>{ind.label}</p>
+                  <p className={cn('mt-1 text-2xl font-bold tabular-nums', ind.color)}>{ind.value}</p>
+                  <p className={cn('mt-0.5 text-[11px]', ind.escuro ? 'text-white/60' : 'text-muted-foreground')}>{ind.caption}</p>
+                </div>
+                <span aria-hidden="true" className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', ind.surface)}>
+                  <Icon className={cn('h-4 w-4', ind.color)} />
+                </span>
+              </div>
+            </button>
+          );
+        })}
+      </section>
 
       {semPapel.length > 0 && (
         <Alert variant="destructive">
@@ -353,27 +383,20 @@ export function ConvitesList() {
         </Alert>
       )}
 
-      <Card>
-        <CardHeader className="gap-3">
-          <div>
-            <CardTitle>Convites enviados</CardTitle>
-            <CardDescription>Acompanhe o status de cada convite, reenvie ou cancele.</CardDescription>
-          </div>
-          {invites.length > 0 && (
-            <div className="flex flex-wrap gap-2">
-              {FILTROS.map((f) => (
-                <Button
-                  key={f.chave}
-                  size="sm"
-                  variant={filtro === f.chave ? 'default' : 'outline'}
-                  onClick={() => setFiltro(f.chave)}
-                  className="h-8"
-                >
-                  {f.texto}
-                  <Badge variant="secondary" className="ml-2 px-1.5">{f.total}</Badge>
-                </Button>
-              ))}
-            </div>
+      <Card className="overflow-hidden rounded-2xl border-border/60 shadow-xs">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base font-semibold">
+            <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-white">
+              <Mail className="h-4 w-4" />
+            </span>
+            Convites enviados
+            <Badge variant="outline" className="rounded-full border-[#BFD8EE] text-[#1080CA]">{visiveis.length} de {invites.length}</Badge>
+          </CardTitle>
+          <CardDescription>Acompanhe o status de cada convite, reenvie ou cancele.</CardDescription>
+          {filtro !== 'todos' && (
+            <Button variant="ghost" size="sm" className="h-8 w-fit gap-1.5 rounded-full text-muted-foreground" onClick={() => setFiltro('todos')}>
+              <X className="h-3.5 w-3.5" /> Limpar filtro
+            </Button>
           )}
         </CardHeader>
         <CardContent>
@@ -401,7 +424,7 @@ export function ConvitesList() {
               description="Convide funcionários pela aba Funcionários para começar."
             />
           ) : (
-            <div role="region" aria-label="Tabela de convites enviados" tabIndex={0} className="max-w-full overflow-x-auto rounded-md border border-border/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+            <div role="region" aria-label="Tabela de convites enviados" tabIndex={0} className="max-w-full overflow-x-auto rounded-xl border border-border/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
               <Table aria-label="Convites enviados">
                 <TableHeader>
                   <TableRow>
@@ -423,12 +446,12 @@ export function ConvitesList() {
                       <TableCell>
                         <div className="flex flex-wrap gap-1">
                           {inv.roles.length === 0 ? (
-                            <Badge variant="destructive" className="text-xs gap-1">
+                            <Badge variant="destructive" className="rounded-full text-xs gap-1">
                               <AlertTriangle className="h-3 w-3" /> Sem função
                             </Badge>
                           ) : (
                             inv.roles.map((r) => (
-                              <Badge key={r} variant="outline" className="text-xs">
+                              <Badge key={r} variant="outline" className="rounded-full text-xs">
                                 {ROLE_LABELS[r] || r}
                               </Badge>
                             ))
@@ -452,6 +475,7 @@ export function ConvitesList() {
                             <Button
                               size="sm"
                               variant="outline"
+                              className="h-9 rounded-full"
                               onClick={() => copyLink(inv)}
                               title="Copiar link do convite"
                               aria-label={'Copiar link do convite para ' + inv.email}
@@ -462,7 +486,7 @@ export function ConvitesList() {
                           {inv.status !== 'aceito' && (
                             <Button
                               size="sm"
-                              variant="outline"
+                              className="h-9 gap-1 rounded-full bg-gradient-primary text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)] hover:brightness-110"
                               onClick={() => reenviarConvite(inv)}
                               disabled={acaoConviteOcupada}
                               aria-label={'Reenviar convite para ' + inv.email}
@@ -478,12 +502,12 @@ export function ConvitesList() {
                           {inv.status !== 'aceito' && (
                             <Button
                               size="sm"
-                              variant="outline"
+                              variant="ghost"
+                              className="h-9 rounded-full text-destructive hover:bg-destructive/10 hover:text-destructive"
                               onClick={() => setCancelando(inv)}
                               disabled={acaoConviteOcupada}
                               title="Cancelar convite"
                               aria-label={'Cancelar convite para ' + inv.email}
-                              className="text-destructive hover:text-destructive"
                             >
                               <Ban className="h-3.5 w-3.5" />
                             </Button>
@@ -497,7 +521,7 @@ export function ConvitesList() {
 
               {visiveis.length === 0 && (
                 <p className="text-sm text-muted-foreground text-center py-8">
-                  Nenhum convite {FILTROS.find((f) => f.chave === filtro)?.texto.toLowerCase()}.
+                  Nenhum convite {INDICADORES.find((i) => i.chave === filtro)?.label.toLowerCase()}.
                 </p>
               )}
             </div>
@@ -540,7 +564,7 @@ export function ConvitesList() {
             autoFocus
           />
           <DialogFooter>
-            <Button onClick={() => setLinkManual('')}>Fechar</Button>
+            <Button className="rounded-full" onClick={() => setLinkManual('')}>Fechar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
