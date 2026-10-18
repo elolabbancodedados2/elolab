@@ -573,7 +573,7 @@ export default function Encaminhamentos() {
                         <TableCell className="text-right">
                           <div className="flex flex-wrap items-center justify-end gap-1">
                             {whatsapp && (
-                              <Button asChild variant="ghost" size="icon" className="h-9 w-9 rounded-full text-[#1080CA] hover:bg-[#1080CA]/10 hover:text-[#1080CA]">
+                              <Button aria-label={`Avisar ${nomePaciente} pelo WhatsApp`} asChild variant="ghost" size="icon" className="h-9 w-9 rounded-full text-[#1080CA] hover:bg-[#1080CA]/10 hover:text-[#1080CA]">
                                 <a href={whatsapp} target="_blank" rel="noopener noreferrer" aria-label={`Avisar ${nomePaciente} pelo WhatsApp`} title="Avisar pelo WhatsApp">
                                   <MessageCircle className="h-4 w-4" />
                                 </a>

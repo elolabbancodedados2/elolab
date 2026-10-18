@@ -627,7 +627,7 @@ export default function ListaEspera() {
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-1">
                             {whatsapp && !encerrado && (
-                              <Button asChild variant="ghost" size="icon" className="h-9 w-9 rounded-full text-[#1080CA] hover:bg-[#1080CA]/10 hover:text-[#1080CA]">
+                              <Button aria-label={`Chamar ${nome} no WhatsApp`} asChild variant="ghost" size="icon" className="h-9 w-9 rounded-full text-[#1080CA] hover:bg-[#1080CA]/10 hover:text-[#1080CA]">
                                 <a href={whatsapp} target="_blank" rel="noopener noreferrer" aria-label={`Chamar ${nome} no WhatsApp`} title="Chamar no WhatsApp">
                                   <MessageCircle className="h-4 w-4" />
                                 </a>

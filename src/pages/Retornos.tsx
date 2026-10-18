@@ -878,7 +878,7 @@ export default function RetornosControl() {
                               </Button>
                             )}
                             {whatsapp && (
-                              <Button size="icon" variant="ghost" asChild className="h-9 w-9 shrink-0 rounded-full text-[#1080CA] hover:bg-[#1080CA]/10 hover:text-[#1080CA]">
+                              <Button aria-label="Contatar via WhatsApp" size="icon" variant="ghost" asChild className="h-9 w-9 shrink-0 rounded-full text-[#1080CA] hover:bg-[#1080CA]/10 hover:text-[#1080CA]">
                                 <a href={whatsapp} target="_blank" rel="noopener noreferrer" aria-label="Contatar via WhatsApp" title="Contatar via WhatsApp">
                                   <MessageCircle className="h-4 w-4" />
                                 </a>

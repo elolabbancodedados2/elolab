@@ -497,21 +497,21 @@ export default function AnalisePreditiva() {
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-1">
                             {whatsapp && (
-                              <Button asChild variant="ghost" size="icon" className="h-9 w-9 rounded-full text-[#1080CA] hover:bg-[#1080CA]/10 hover:text-[#1080CA]">
+                              <Button aria-label={`Chamar ${pred.paciente_nome} no WhatsApp`} asChild variant="ghost" size="icon" className="h-9 w-9 rounded-full text-[#1080CA] hover:bg-[#1080CA]/10 hover:text-[#1080CA]">
                                 <a href={whatsapp} target="_blank" rel="noopener noreferrer" aria-label={`Chamar ${pred.paciente_nome} no WhatsApp`} title="Chamar no WhatsApp">
                                   <MessageCircle className="h-4 w-4" />
                                 </a>
                               </Button>
                             )}
                             {pred.telefone && (
-                              <Button asChild variant="outline" size="icon" className="h-9 w-9 rounded-full">
+                              <Button aria-label={`Ligar para ${pred.paciente_nome}`} asChild variant="outline" size="icon" className="h-9 w-9 rounded-full">
                                 <a href={`tel:${pred.telefone.replace(/[^0-9+]/g, '')}`} aria-label={`Ligar para ${pred.paciente_nome}`} title="Ligar">
                                   <Phone className="h-4 w-4" />
                                 </a>
                               </Button>
                             )}
                             {pred.email && (
-                              <Button asChild variant="outline" size="icon" className="hidden h-9 w-9 rounded-full sm:inline-flex">
+                              <Button aria-label={`Enviar e-mail para ${pred.paciente_nome}`} asChild variant="outline" size="icon" className="hidden h-9 w-9 rounded-full sm:inline-flex">
                                 <a href={`mailto:${pred.email}`} aria-label={`Enviar e-mail para ${pred.paciente_nome}`} title="Enviar e-mail">
                                   <Mail className="h-4 w-4" />
                                 </a>

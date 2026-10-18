@@ -121,7 +121,7 @@ export default function PortalPacientesClinica() {
             <div className="space-y-3 rounded-xl border border-[#BFD8EE] bg-[#F3F8FC] p-4">
               <div className="flex items-center justify-between gap-2">
                 <label className="text-[11px] font-semibold uppercase tracking-wide text-[#1080CA]" htmlFor="portal-generated-link">Link individual do portal</label>
-                <Button asChild variant="ghost" size="icon" className="h-8 w-8 rounded-full text-[#1080CA] hover:bg-[#1080CA]/10 hover:text-[#1080CA]">
+                <Button aria-label="Conferir link do portal" asChild variant="ghost" size="icon" className="h-8 w-8 rounded-full text-[#1080CA] hover:bg-[#1080CA]/10 hover:text-[#1080CA]">
                   <a href={link} target="_blank" rel="noopener noreferrer" aria-label="Conferir link do portal" title="Conferir link do portal">
                     <ExternalLink className="h-4 w-4" />
                   </a>

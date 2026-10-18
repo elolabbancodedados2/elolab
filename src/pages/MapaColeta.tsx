@@ -799,7 +799,7 @@ export default function MapaColeta() {
               </div>
               <div className="flex flex-wrap items-center gap-2 sm:justify-end">
                 {whatsapp && (
-                  <Button asChild variant="outline" size="icon" className="h-10 w-10 rounded-full border-[#1080CA]/30 text-[#1080CA] hover:bg-[#1080CA]/10 hover:text-[#1080CA]">
+                  <Button aria-label={`Chamar ${nomePaciente(proximaColeta.pacientes)} no WhatsApp`} asChild variant="outline" size="icon" className="h-10 w-10 rounded-full border-[#1080CA]/30 text-[#1080CA] hover:bg-[#1080CA]/10 hover:text-[#1080CA]">
                     <a href={whatsapp} target="_blank" rel="noopener noreferrer" aria-label={`Chamar ${nomePaciente(proximaColeta.pacientes)} no WhatsApp`} title="Chamar no WhatsApp">
                       <MessageCircle className="h-4 w-4" />
                     </a>
