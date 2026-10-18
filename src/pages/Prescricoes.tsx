@@ -1,6 +1,6 @@
 import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { nomeMedico } from '@/lib/formatters';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { PacienteCombobox } from '@/components/patients/PacienteCombobox';
 import { textoDoModelo } from '@/lib/templatesPrescricao';
 import { normalizarTexto, pacienteCorresponde } from '@/lib/buscaPaciente';
@@ -13,7 +13,9 @@ import type jsPDF from 'jspdf';
 import { useQuery } from '@tanstack/react-query';
 import {
   Pill, Plus, Search, FileDown, ExternalLink, Clipboard, AlertTriangle, Loader2,
+  RefreshCw, X, MessageCircle, CalendarCheck, FileText, CloudOff, BookOpen, FileSignature,
 } from 'lucide-react';
+import { linkWhatsApp } from '@/lib/whatsapp';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -279,6 +281,24 @@ async function buildReceitaPdf(data: {
   return doc;
 }
 
+type FiltroOrigem = 'todos' | 'hoje' | 'pdf' | 'memed' | 'sem_pdf';
+type FiltroPeriodo = 'todos' | '7d' | '30d';
+
+const receitaMemedExcluida = (prescricao: Record<string, any>) =>
+  String(prescricao.observacoes || '').startsWith('Prescrição excluída na Memed. Memed:');
+const receitaMemed = (prescricao: Record<string, any>) =>
+  String(prescricao.observacoes || '').startsWith('Memed:') || receitaMemedExcluida(prescricao);
+/** Receita gravada sem arquivo (ex.: emitida pelo prontuário) e que não é da Memed. */
+const receitaSemArquivo = (prescricao: Record<string, any>) => !prescricao.arquivo_pdf && !receitaMemed(prescricao);
+
+const diasDesde = (dataEmissao: string | null | undefined, hoje: string): number | null => {
+  if (!dataEmissao) return null;
+  const inicio = new Date(`${dataEmissao}T12:00:00`).getTime();
+  const fim = new Date(`${hoje}T12:00:00`).getTime();
+  if (Number.isNaN(inicio) || Number.isNaN(fim)) return null;
+  return Math.round((fim - inicio) / 86_400_000);
+};
+
 /* ─── Component ─── */
 export default function Prescricoes() {
   const { profile } = useSupabaseAuth();
@@ -350,7 +370,18 @@ export default function Prescricoes() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isResultOpen, setIsResultOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [filtroOrigem, setFiltroOrigem] = useState<FiltroOrigem>('todos');
+  const [filtroPeriodo, setFiltroPeriodo] = useState<FiltroPeriodo>('todos');
+  // Deep-link: /documentos-clinicos?paciente=<id> abre o histórico já filtrado pelo paciente.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const pacienteFiltroId = searchParams.get('paciente');
+  const limparPacienteFiltro = () => setSearchParams(previous => {
+    const next = new URLSearchParams(previous);
+    next.delete('paciente');
+    return next;
+  }, { replace: true });
   const [gerando, setGerando] = useState(false);
+  const [gerandoHistoricoId, setGerandoHistoricoId] = useState<string | null>(null);
   const savePrescriptionLock = useRef(false);
   const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
   const [pdfFileName, setPdfFileName] = useState('');
@@ -398,14 +429,40 @@ export default function Prescricoes() {
     setForm(f => ({ ...f, medicamentos_texto: f.medicamentos_texto.trim() ? `${f.medicamentos_texto.trim()}\n${texto}` : texto }));
   };
 
+  const stats = useMemo(() => ({
+    total: prescricoes.length,
+    hoje: prescricoes.filter(p => p.data_emissao === today).length,
+    pdf: prescricoes.filter(p => !!p.arquivo_pdf).length,
+    memed: prescricoes.filter(p => receitaMemed(p)).length,
+    semPdf: prescricoes.filter(p => receitaSemArquivo(p)).length,
+    pacientes: new Set(prescricoes.map(p => p.paciente_id)).size,
+  }), [prescricoes, today]);
+
   const filteredPrescricoes = useMemo(() => {
-    if (!searchTerm) return prescricoes;
     const termo = normalizarTexto(searchTerm);
-    return prescricoes.filter(p =>
-      pacienteCorresponde(p.pacientes || {}, searchTerm) ||
-      normalizarTexto(`${p.medicamento || ''} ${p.posologia || ''}`).includes(termo)
-    );
-  }, [prescricoes, searchTerm]);
+    return prescricoes.filter(p => {
+      if (pacienteFiltroId && p.paciente_id !== pacienteFiltroId) return false;
+      if (filtroOrigem === 'hoje' && p.data_emissao !== today) return false;
+      if (filtroOrigem === 'pdf' && !p.arquivo_pdf) return false;
+      if (filtroOrigem === 'memed' && !receitaMemed(p)) return false;
+      if (filtroOrigem === 'sem_pdf' && !receitaSemArquivo(p)) return false;
+      if (filtroPeriodo !== 'todos') {
+        const dias = diasDesde(p.data_emissao, today);
+        if (dias === null || dias < 0 || dias > (filtroPeriodo === '7d' ? 7 : 30)) return false;
+      }
+      if (!termo) return true;
+      return pacienteCorresponde(p.pacientes || {}, searchTerm)
+        || normalizarTexto(`${p.medicamento || ''} ${p.posologia || ''}`).includes(termo);
+    });
+  }, [prescricoes, searchTerm, filtroOrigem, filtroPeriodo, pacienteFiltroId, today]);
+
+  const temFiltro = !!searchTerm || filtroOrigem !== 'todos' || filtroPeriodo !== 'todos' || !!pacienteFiltroId;
+  const limparFiltros = () => {
+    setSearchTerm('');
+    setFiltroOrigem('todos');
+    setFiltroPeriodo('todos');
+    if (pacienteFiltroId) limparPacienteFiltro();
+  };
 
   const handleOpen = () => {
     setForm({ paciente_id: '', medico_id: medicoId || '', data_emissao: today, medicamentos_texto: '' });
@@ -700,6 +757,70 @@ export default function Prescricoes() {
     }
   };
 
+  // Auditoria 07: receitas gravadas pelo prontuário chegam sem arquivo_pdf.
+  // Reaproveita o gerador de receita com os dados já salvos (medicamentos,
+  // paciente, médico e cabeçalho da clínica), sem redigitar nem alterar o registro.
+  const handleGerarPdfDoHistorico = async (prescricao: Record<string, any>) => {
+    if (gerandoHistoricoId || downloadingPrescriptionId) return;
+    const texto = String(prescricao.posologia || prescricao.medicamento || '').trim();
+    const medico = medicos.find(m => m.id === prescricao.medico_id);
+    const paciente = prescricao.pacientes;
+    if (!texto || !medico || !paciente?.nome) {
+      toast.error('Não há dados suficientes para montar esta receita.', {
+        description: 'Confira se o registro tem medicamentos, paciente e médico prescritor.',
+      });
+      return;
+    }
+    if (clinicConfigQuery.isLoading) {
+      toast.info('Aguarde o carregamento dos dados da clínica antes de gerar a receita.');
+      return;
+    }
+    if (clinicConfigQuery.isError || !clinicConfig?.nome_fantasia?.trim()) {
+      toast.error('Configure o nome da clínica antes de gerar a receita.');
+      return;
+    }
+    setGerandoHistoricoId(prescricao.id);
+    try {
+      const dataEmissao = prescricao.data_emissao && isValidDateOnly(prescricao.data_emissao)
+        ? prescricao.data_emissao
+        : today;
+      const doc = await buildReceitaPdf({
+        pacienteNome: paciente.nome,
+        cpf: paciente.cpf || '',
+        dataEmissao: format(new Date(`${dataEmissao}T12:00:00`), 'dd/MM/yyyy'),
+        medicoNome: medico.nome || medico.crm,
+        crm: medico.crm,
+        especialidade: medico.especialidade || '',
+        medicamentosTexto: texto,
+        clinicaNome: clinicConfig.nome_fantasia,
+        clinicaEndereco: [clinicConfig.endereco, [clinicConfig.cidade, clinicConfig.uf].filter(Boolean).join('/')].filter(Boolean).join(' — '),
+        clinicaTelefone: clinicConfig.telefone || '',
+        clinicaCnpj: clinicConfig.cnpj || '',
+        clinicaCnes: clinicConfig.cnes || '',
+        logoUrl: clinicConfig.logoUrl || '',
+        rodapeReceita: clinicConfig.rodapeReceita || '',
+        mostrarLogo: clinicConfig.mostrarLogo,
+        mostrarCRM: clinicConfig.mostrarCRM,
+        mostrarCNES: clinicConfig.mostrarCNES,
+      });
+      await registrarAcessoDocumentoClinico('prescricao', prescricao.id, 'exportacao');
+      const blob = doc.output('blob');
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      const nomePaciente = String(paciente.nome_social || paciente.nome || 'paciente')
+        .normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-zA-Z0-9_-]+/g, '_').slice(0, 40);
+      anchor.href = url;
+      anchor.download = `receita_${nomePaciente}_${dataEmissao}.pdf`;
+      anchor.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      toast.success('Receita montada a partir do histórico.', { description: 'O PDF sai sem assinatura; assine no gov.br ou de próprio punho.' });
+    } catch (error) {
+      toast.error('Não foi possível montar esta receita.', { description: mensagemDeErro(error) });
+    } finally {
+      setGerandoHistoricoId(null);
+    }
+  };
+
   const handleOpenAssinador = () => {
     window.open('https://assinaturadigital.iti.gov.br/', '_blank');
   };
@@ -787,10 +908,13 @@ export default function Prescricoes() {
     const paciente = (prescricoes as any[]).find(p => p.paciente_id === id)?.pacientes;
     return paciente?.nome_social || paciente?.nome || '—';
   };
-  const receitaMemedExcluida = (prescricao: Record<string, any>) =>
-    String(prescricao.observacoes || '').startsWith('Prescrição excluída na Memed. Memed:');
-  const receitaMemed = (prescricao: Record<string, any>) =>
-    String(prescricao.observacoes || '').startsWith('Memed:') || receitaMemedExcluida(prescricao);
+  const pacienteFiltroNome = pacienteFiltroId ? getPacienteNome(pacienteFiltroId) : null;
+  const mensagemWhatsApp = (prescricao: Record<string, any>) => {
+    const nome = String(prescricao.pacientes?.nome_social || prescricao.pacientes?.nome || '').split(' ')[0];
+    const data = prescricao.data_emissao ? format(new Date(`${prescricao.data_emissao}T12:00:00`), 'dd/MM/yyyy') : '';
+    const clinica = clinicConfig?.nome_fantasia?.trim() || 'a clínica';
+    return `Olá${nome ? `, ${nome}` : ''}! Sua receita${data ? ` emitida em ${data}` : ''} está disponível. Em caso de dúvida sobre a medicação, fale com ${clinica}.`;
+  };
   const getMedicoNome = (id: string) => { const m = medicos.find(x => x.id === id); return m ? `${nomeMedico(m.nome || m.crm)}` : '—'; };
 
   if (loadingMed || loadingPresc) {
@@ -818,19 +942,32 @@ export default function Prescricoes() {
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
       <PageHeader
         title="Prescrições"
-        description="Prescrição em PDF; assinatura digital feita fora do EloLab"
+        description={stats.total > 0
+          ? `${stats.total} receita${stats.total === 1 ? '' : 's'} · ${stats.hoje} hoje${stats.semPdf > 0 ? ` · ${stats.semPdf} sem PDF` : ''}${stats.memed > 0 ? ` · ${stats.memed} pela Memed` : ''} · ${stats.pacientes} paciente${stats.pacientes === 1 ? '' : 's'}`
+          : 'Prescrição em PDF; assinatura digital feita fora do EloLab'}
         icon={<Pill />}
         actions={(
-          <Button
-            onClick={handleOpen}
-            className="gap-2 disabled:bg-none disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100"
-            disabled={
-              medicosDisponiveis.length === 0 || clinicConfigQuery.isLoading || clinicConfigQuery.isError
-              || !clinicConfig?.nome_fantasia?.trim()
-            }
-          >
-            <Plus className="h-4 w-4" />Nova Prescrição
-          </Button>
+          <>
+            <Button asChild variant="outline" className="shrink-0 gap-2 rounded-full">
+              <Link to="/todos-templates"><BookOpen className="h-4 w-4" />Modelos</Link>
+            </Button>
+            <Button variant="outline" className="shrink-0 gap-2 rounded-full" onClick={handleOpenAssinador} title="Abrir o assinador digital do ITI (gov.br) em nova aba">
+              <FileSignature className="h-4 w-4" />Assinador gov.br
+            </Button>
+            <Button variant="outline" size="icon" className="shrink-0 rounded-full" onClick={() => void refetch()} aria-label="Atualizar prescrições" title="Atualizar">
+              <RefreshCw className="h-4 w-4" />
+            </Button>
+            <Button
+              onClick={handleOpen}
+              className="shrink-0 gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110 disabled:bg-none disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100 disabled:shadow-none"
+              disabled={
+                medicosDisponiveis.length === 0 || clinicConfigQuery.isLoading || clinicConfigQuery.isError
+                || !clinicConfig?.nome_fantasia?.trim()
+              }
+            >
+              <Plus className="h-4 w-4" />Nova Prescrição
+            </Button>
+          </>
         )}
       />
 
@@ -838,7 +975,7 @@ export default function Prescricoes() {
         <p className="text-sm text-muted-foreground" role="status">Carregando os dados da clínica necessários para a receita…</p>
       )}
       {!profile?.clinica_id && (
-        <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+        <div role="alert" className="rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
           Não foi possível identificar a clínica deste usuário. Atualize a sessão antes de emitir receitas.
         </div>
       )}
@@ -851,55 +988,130 @@ export default function Prescricoes() {
         />
       )}
       {profile?.clinica_id && !clinicConfigQuery.isLoading && !clinicConfigQuery.isError && !clinicConfig?.nome_fantasia?.trim() && (
-        <div role="alert" className="rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm text-warning-foreground">
+        <div role="alert" className="rounded-xl border border-warning/30 bg-warning/5 p-3 text-sm text-warning-foreground">
           Configure o nome da clínica antes de emitir receitas. <Link to="/configuracoes" className="font-medium underline">Abrir configurações</Link>.
         </div>
       )}
 
       {medicosDisponiveis.length === 0 && (
-        <div role="alert" className="rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm text-warning-foreground">
+        <div role="alert" className="rounded-xl border border-warning/30 bg-warning/5 p-3 text-sm text-warning-foreground">
           Não há médicos ativos para emitir novas receitas. <Link to="/equipe" className="font-medium underline">Gerenciar equipe</Link>.
         </div>
       )}
 
       {prescricoes.length >= MAX_LINHAS_AUTO && (
-        <div role="alert" className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm text-warning-foreground">
+        <div role="alert" className="flex items-start gap-2 rounded-xl border border-warning/30 bg-warning/5 p-3 text-sm text-warning-foreground">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
           <p>O histórico atingiu o limite de {MAX_LINHAS_AUTO.toLocaleString('pt-BR')} receitas. Os totais e os resultados da busca podem estar incompletos.</p>
         </div>
       )}
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-        {[
-          { label: 'Total', value: prescricoes.length, color: 'text-primary', bg: 'bg-primary/10', border: 'border-primary/20' },
-          { label: 'Hoje', value: prescricoes.filter(p => p.data_emissao === today).length, color: 'text-success', bg: 'bg-success/10', border: 'border-success/20' },
-          { label: 'Pacientes', value: new Set(prescricoes.map(p => p.paciente_id)).size, color: 'text-info', bg: 'bg-info/10', border: 'border-info/20' },
-        ].map((s, i) => (
-          <motion.div key={s.label} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}>
-            <Card className={cn('border', s.border)}>
-              <CardContent className="py-4 px-5">
-                <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">{s.label}</p>
-                <p className={cn('text-2xl font-black mt-0.5 tabular-nums', s.color)}>{s.value}</p>
-              </CardContent>
-            </Card>
-          </motion.div>
-        ))}
-      </div>
+      {/* Indicadores */}
+      <section role="group" aria-label="Resumo das prescrições" className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-5">
+        {([
+          { key: 'hoje', icon: CalendarCheck, label: 'Hoje', value: stats.hoje, caption: 'emitidas hoje', color: 'text-white', surface: 'bg-white/15', escuro: true },
+          { key: 'pdf', icon: FileText, label: 'Com PDF', value: stats.pdf, caption: 'prontas para baixar', color: 'text-[#1080CA]', surface: 'bg-[#1080CA]/10', escuro: false },
+          { key: 'sem_pdf', icon: CloudOff, label: 'Sem PDF', value: stats.semPdf, caption: 'gerar a partir do histórico', color: 'text-warning', surface: 'bg-warning/10', escuro: false },
+          { key: 'memed', icon: ExternalLink, label: 'Memed', value: stats.memed, caption: 'PDF fora do EloLab', color: 'text-info', surface: 'bg-info/10', escuro: false },
+          { key: 'todos', icon: Pill, label: 'Total', value: stats.total, caption: `${stats.pacientes} paciente${stats.pacientes === 1 ? '' : 's'}`, color: 'text-foreground', surface: 'bg-muted', escuro: false },
+        ] as const).map(s => {
+          const Icon = s.icon;
+          const ativo = filtroOrigem === s.key;
+          return (
+            <button
+              key={s.key}
+              type="button"
+              aria-pressed={ativo}
+              onClick={() => setFiltroOrigem(ativo && s.key !== 'todos' ? 'todos' : s.key)}
+              className={cn(
+                'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+                s.escuro && 'border-transparent bg-gradient-primary text-white',
+                ativo && !s.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
+                ativo && s.escuro && 'ring-2 ring-[#1080CA]/60',
+              )}
+            >
+              <div className="flex min-h-[96px] items-center gap-3 p-3">
+                <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', s.surface)}>
+                  <Icon aria-hidden="true" className={cn('h-5 w-5', s.color)} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <h3 className={cn('truncate text-xs font-semibold', s.escuro ? 'text-white/80' : 'text-foreground')}>{s.label}</h3>
+                    <span className={cn('text-2xl font-bold tabular-nums', s.color)}>{s.value}</span>
+                  </div>
+                  <p className={cn('truncate text-[11px]', s.escuro ? 'text-white/60' : 'text-muted-foreground')}>{s.caption}</p>
+                </div>
+              </div>
+            </button>
+          );
+        })}
+      </section>
 
-      {/* Table */}
-      <Card>
-        <CardHeader>
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-            <CardTitle>Histórico</CardTitle>
-            <div className="relative w-full sm:w-72">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input aria-label="Buscar prescrições por paciente, CPF ou medicamento" placeholder="Buscar paciente, CPF ou medicamento..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="pl-9" />
+      {/* Histórico */}
+      <Card className="rounded-2xl border-border/60 shadow-xs">
+        <CardHeader className="pb-3">
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <CardTitle className="text-base">Histórico <span className="text-muted-foreground">({filteredPrescricoes.length})</span></CardTitle>
+              <div className="relative w-full sm:w-80">
+                <Search aria-hidden="true" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  aria-label="Buscar prescrições por paciente, CPF ou medicamento"
+                  placeholder="Buscar paciente, CPF ou medicamento..."
+                  value={searchTerm}
+                  onChange={e => setSearchTerm(e.target.value)}
+                  className="h-10 rounded-full pl-9 focus-visible:ring-[#1080CA]"
+                />
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div role="group" aria-label="Filtrar por período" className="flex flex-wrap items-center gap-1.5">
+                {([
+                  { key: 'todos', label: 'Todo o período' },
+                  { key: '7d', label: 'Últimos 7 dias' },
+                  { key: '30d', label: 'Últimos 30 dias' },
+                ] as const).map(opt => {
+                  const ativo = filtroPeriodo === opt.key;
+                  return (
+                    <button
+                      key={opt.key}
+                      type="button"
+                      aria-pressed={ativo}
+                      onClick={() => setFiltroPeriodo(opt.key)}
+                      className={cn(
+                        'h-8 rounded-full border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+                        ativo ? 'border-transparent bg-gradient-primary text-white shadow-sm' : 'border-border bg-card text-muted-foreground hover:border-[#9CC7EC] hover:text-foreground',
+                      )}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
+                {pacienteFiltroId && (
+                  <Badge variant="outline" className="h-8 gap-1 rounded-full border-[#BFD8EE] pl-3 pr-1 text-xs font-medium text-[#1080CA]">
+                    Paciente: {pacienteFiltroNome}
+                    <button
+                      type="button"
+                      onClick={limparPacienteFiltro}
+                      aria-label="Remover filtro de paciente"
+                      className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-[#1080CA]/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]"
+                    >
+                      <X aria-hidden="true" className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                )}
+                {temFiltro && (
+                  <Button variant="ghost" size="sm" className="h-8 gap-1 rounded-full text-xs text-muted-foreground" onClick={limparFiltros}>
+                    <X aria-hidden="true" className="h-3 w-3" /> Limpar filtros
+                  </Button>
+                )}
+              </div>
+              <p className="text-xs tabular-nums text-muted-foreground" aria-live="polite">{filteredPrescricoes.length} de {prescricoes.length}</p>
             </div>
           </div>
         </CardHeader>
         <CardContent>
-          <div className="rounded-md border">
+          <div className="overflow-hidden rounded-xl border border-border/60">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -907,60 +1119,98 @@ export default function Prescricoes() {
                   <TableHead>Paciente</TableHead>
                   <TableHead className="hidden md:table-cell">Médico</TableHead>
                   <TableHead className="hidden sm:table-cell">Medicamento</TableHead>
-                  <TableHead className="w-12 text-right">PDF</TableHead>
+                  <TableHead className="text-right">Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredPrescricoes.length === 0 ? (
-                  <TableRow><TableCell colSpan={5} className="text-center py-12">
-                    <div className="flex flex-col items-center">
-                      <div className="h-14 w-14 rounded-2xl bg-primary/10 flex items-center justify-center mb-3">
-                        <Pill className="h-7 w-7 text-primary" />
-                      </div>
-                      <p className="font-semibold text-foreground">{prescricoes.length === 0 ? 'Nenhuma prescrição' : 'Nenhum resultado encontrado'}</p>
-                      <p className="text-sm text-muted-foreground mt-1">{prescricoes.length === 0 ? 'Crie sua primeira prescrição médica' : 'Tente outro paciente, CPF, telefone ou medicamento.'}</p>
-                      {prescricoes.length > 0 && <Button variant="link" size="sm" onClick={() => setSearchTerm('')}>Limpar busca</Button>}
-                    </div>
-                  </TableCell></TableRow>
-                ) : filteredPrescricoes.map(p => (
-                  <TableRow key={p.id}>
-                    <TableCell>{p.data_emissao ? format(new Date(p.data_emissao + 'T12:00:00'), 'dd/MM/yyyy') : '—'}</TableCell>
-                    <TableCell className="font-medium">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span>{getPacienteNome(p.paciente_id)}</span>
-                        {receitaMemed(p) && <Badge variant="outline" className="text-[10px]">Memed</Badge>}
-                        {receitaMemedExcluida(p) && <Badge variant="destructive" className="text-[10px]">Excluída</Badge>}
-                      </div>
-                    </TableCell>
-                    <TableCell className="hidden md:table-cell">{getMedicoNome(p.medico_id)}</TableCell>
-                    <TableCell className="hidden sm:table-cell max-w-[200px] truncate">{p.medicamento || p.posologia || '—'}</TableCell>
-                    <TableCell className="text-right">
+                  <TableRow><TableCell colSpan={5} className="py-12 text-center text-muted-foreground">
+                    <span aria-hidden="true" className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+                      <Pill className="h-7 w-7" />
+                    </span>
+                    <p className="font-semibold text-foreground">{prescricoes.length === 0 ? 'Nenhuma prescrição' : 'Nenhum resultado encontrado'}</p>
+                    <p className="mt-1 text-sm">{prescricoes.length === 0 ? 'Crie sua primeira prescrição médica' : 'Tente outro paciente, CPF, telefone, medicamento ou período.'}</p>
+                    {prescricoes.length > 0 ? (
+                      <Button size="sm" variant="outline" className="mt-4 rounded-full" onClick={limparFiltros}>Limpar filtros</Button>
+                    ) : (
                       <Button
-                        type="button"
-                        size="icon"
-                        variant="ghost"
-                        aria-label={p.arquivo_pdf
-                          ? `Baixar receita de ${getPacienteNome(p.paciente_id)}`
-                          : receitaMemedExcluida(p)
-                            ? `Receita de ${getPacienteNome(p.paciente_id)} excluída na Memed`
-                            : receitaMemed(p)
-                              ? `Receita de ${getPacienteNome(p.paciente_id)} gerenciada pela Memed; PDF não armazenado no EloLab`
-                              : `PDF da receita de ${getPacienteNome(p.paciente_id)} não armazenado`}
-                        title={p.arquivo_pdf
-                          ? 'Baixar PDF'
-                          : receitaMemedExcluida(p)
-                            ? 'Esta receita foi excluída na Memed'
-                            : receitaMemed(p)
-                              ? 'O PDF desta receita é gerenciado pela Memed'
-                              : 'PDF não armazenado para receitas antigas'}
-                        disabled={!p.arquivo_pdf || downloadingPrescriptionId !== null}
-                        onClick={() => void handleDownloadFromHistory(p)}
+                        size="sm"
+                        className="mt-4 gap-2 rounded-full bg-gradient-primary text-white hover:brightness-110 disabled:bg-none disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100"
+                        onClick={handleOpen}
+                        disabled={medicosDisponiveis.length === 0 || clinicConfigQuery.isLoading || clinicConfigQuery.isError || !clinicConfig?.nome_fantasia?.trim()}
                       >
-                        {downloadingPrescriptionId === p.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
+                        <Plus className="h-4 w-4" />Nova receita
                       </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                    )}
+                  </TableCell></TableRow>
+                ) : filteredPrescricoes.map(p => {
+                  const nomePaciente = getPacienteNome(p.paciente_id);
+                  const whatsapp = linkWhatsApp(p.pacientes?.telefone, mensagemWhatsApp(p));
+                  const semArquivo = receitaSemArquivo(p);
+                  const ocupado = downloadingPrescriptionId !== null || gerandoHistoricoId !== null;
+                  return (
+                    <TableRow key={p.id} className="transition-colors hover:bg-[#F3F8FC]/70">
+                      <TableCell className="tabular-nums">{p.data_emissao ? format(new Date(p.data_emissao + 'T12:00:00'), 'dd/MM/yyyy') : '—'}</TableCell>
+                      <TableCell className="font-medium">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span>{nomePaciente}</span>
+                          {p.data_emissao === today && <Badge className="rounded-full border-transparent bg-gradient-primary text-[9px] text-white hover:bg-gradient-primary">Hoje</Badge>}
+                          {receitaMemed(p) && <Badge variant="outline" className="rounded-full text-[10px]">Memed</Badge>}
+                          {receitaMemedExcluida(p) && <Badge variant="destructive" className="rounded-full text-[10px]">Excluída</Badge>}
+                          {semArquivo && <Badge variant="outline" className="rounded-full border-warning/40 text-[10px] text-warning">Sem PDF</Badge>}
+                        </div>
+                      </TableCell>
+                      <TableCell className="hidden md:table-cell">{getMedicoNome(p.medico_id)}</TableCell>
+                      <TableCell className="hidden max-w-[220px] truncate sm:table-cell" title={p.medicamento || p.posologia || undefined}>{p.medicamento || p.posologia || '—'}</TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex flex-wrap items-center justify-end gap-1">
+                          {whatsapp && (
+                            <Button aria-label={`Avisar ${nomePaciente} pelo WhatsApp`} asChild variant="ghost" size="icon" className="h-9 w-9 rounded-full text-[#1080CA] hover:bg-[#1080CA]/10 hover:text-[#1080CA]">
+                              <a href={whatsapp} target="_blank" rel="noopener noreferrer" aria-label={`Avisar ${nomePaciente} pelo WhatsApp`} title="Avisar pelo WhatsApp">
+                                <MessageCircle className="h-4 w-4" />
+                              </a>
+                            </Button>
+                          )}
+                          <Button aria-label={`Abrir prontuário de ${nomePaciente}`} asChild variant="ghost" size="icon" className="h-9 w-9 rounded-full text-muted-foreground">
+                            <Link to={`/prontuarios?paciente=${encodeURIComponent(p.paciente_id)}`} aria-label={`Abrir prontuário de ${nomePaciente}`} title="Abrir prontuário">
+                              <Clipboard className="h-4 w-4" />
+                            </Link>
+                          </Button>
+                          {p.arquivo_pdf ? (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className="h-9 gap-1.5 rounded-full text-xs"
+                              aria-label={`Baixar receita de ${nomePaciente}`}
+                              title="Baixar PDF"
+                              disabled={ocupado}
+                              onClick={() => void handleDownloadFromHistory(p)}
+                            >
+                              {downloadingPrescriptionId === p.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
+                              Baixar PDF
+                            </Button>
+                          ) : receitaMemedExcluida(p) ? (
+                            <span className="text-xs text-muted-foreground" aria-label={`Receita de ${nomePaciente} excluída na Memed`}>Excluída na Memed</span>
+                          ) : receitaMemed(p) ? (
+                            <span className="text-xs text-muted-foreground" aria-label={`Receita de ${nomePaciente} gerenciada pela Memed; PDF não armazenado no EloLab`}>PDF na Memed</span>
+                          ) : (
+                            <Button
+                              type="button"
+                              className="h-9 gap-1.5 rounded-full bg-gradient-primary text-xs text-white hover:brightness-110"
+                              aria-label={`Gerar PDF da receita de ${nomePaciente}`}
+                              title="Montar o PDF com os medicamentos já gravados"
+                              disabled={ocupado || clinicConfigQuery.isLoading || clinicConfigQuery.isError}
+                              onClick={() => void handleGerarPdfDoHistorico(p)}
+                            >
+                              {gerandoHistoricoId === p.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
+                              Gerar PDF
+                            </Button>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </div>

@@ -1,8 +1,8 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { motion } from 'framer-motion';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { PageHeader } from '@/components/PageHeader';
 import { MAX_LINHAS_AUTO, useLancamentos } from '@/hooks/useSupabaseData';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -19,6 +19,7 @@ import {
   Wallet,
   ChevronLeft,
   ChevronRight,
+  RefreshCw,
 } from 'lucide-react';
 import {
   AreaChart,
@@ -68,6 +69,8 @@ const rotulosCategoria: Record<string, string> = {
 };
 const rotuloCategoria = (categoria: string) => rotulosCategoria[categoria]
   || categoria.replace(/_/g, ' ').replace(/\b\w/g, letra => letra.toLocaleUpperCase('pt-BR'));
+
+const GRID_COLOR = '#DCE6F2';
 
 export default function FluxoCaixa() {
   const [currentDate, setCurrentDate] = useState(() =>
@@ -272,23 +275,35 @@ export default function FluxoCaixa() {
 
   return (
     <div className="space-y-6 pb-8">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 rounded-2xl border border-border bg-gradient-to-r from-accent/70 via-card to-accent/70 p-4 shadow-sm sm:p-5">
-        <div>
-          <h1 className="flex items-center gap-2 text-2xl font-bold font-display tracking-tight text-foreground"><span className="rounded-xl bg-primary/10 p-2 text-primary ring-1 ring-border"><Wallet className="h-5 w-5" /></span>Fluxo de Caixa</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Acompanhe as movimentações financeiras</p>
-        </div>
-        <div className="flex items-center gap-2 rounded-xl border border-border bg-card/90 p-1 shadow-sm">
-          <Button aria-label="Mês anterior" variant="ghost" size="icon" className="rounded-lg text-primary hover:bg-accent" onClick={handlePrevMonth}>
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <span className="min-w-[140px] text-center text-sm font-bold capitalize text-foreground">
-            {format(currentDate, "MMMM 'de' yyyy", { locale: ptBR })}
-          </span>
-          <Button aria-label="Próximo mês" variant="ghost" size="icon" className="rounded-lg text-primary hover:bg-accent" onClick={handleNextMonth}>
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        title="Fluxo de Caixa"
+        icon={<Wallet />}
+        description={`${format(currentDate, "MMMM 'de' yyyy", { locale: ptBR })} · Saldo ${formatCurrency(totaisMes.saldo)} · Entradas ${formatCurrency(totaisMes.entradas)} · Saídas ${formatCurrency(totaisMes.saidas)}`}
+        actions={(
+          <>
+            <Button
+              aria-label="Atualizar fluxo de caixa"
+              variant="outline"
+              size="icon"
+              className="shrink-0 rounded-full"
+              onClick={() => { void lancamentosQuery.refetch(); void pagamentosQuery.refetch(); }}
+            >
+              <RefreshCw className="h-4 w-4" />
+            </Button>
+            <div className="flex items-center gap-1 rounded-full border border-border/60 bg-card p-1 shadow-xs">
+              <Button aria-label="Mês anterior" variant="ghost" size="icon" className="rounded-full text-[#1080CA] hover:bg-[#F3F8FC]" onClick={handlePrevMonth}>
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <span className="min-w-[140px] text-center text-sm font-semibold capitalize text-foreground">
+                {format(currentDate, "MMMM 'de' yyyy", { locale: ptBR })}
+              </span>
+              <Button aria-label="Próximo mês" variant="ghost" size="icon" className="rounded-full text-[#1080CA] hover:bg-[#F3F8FC]" onClick={handleNextMonth}>
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </>
+        )}
+      />
 
       {consultaAtingiuLimite && (
         <div role="alert" className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm text-warning-foreground">
@@ -300,67 +315,75 @@ export default function FluxoCaixa() {
         </div>
       )}
 
-      {/* Cards de Resumo */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      {/* Faixa de indicadores */}
+      <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
         {[
-          { label: 'Entradas no mês', value: totaisMes.entradas, icon: ArrowUpCircle, color: 'text-success', bg: 'bg-success/10', border: 'border-success/20',
+          { label: 'Entradas no mês', value: totaisMes.entradas, icon: ArrowUpCircle, color: 'text-success', surface: 'bg-success/10', escuro: false,
             trend: comparacaoMesAnterior.variacaoReceita, trendPositive: comparacaoMesAnterior.variacaoReceita > 0,
             trendNovaBase: comparacaoMesAnterior.receitaSemBaseAnterior,
             sub: totaisMes.receitasPendentes > 0 ? `Em aberto com vencimento no mês: ${formatCurrency(totaisMes.receitasPendentes)}` : undefined },
-          { label: 'Saídas no mês', value: totaisMes.saidas, icon: ArrowDownCircle, color: 'text-destructive', bg: 'bg-destructive/10', border: 'border-destructive/20',
+          { label: 'Saídas no mês', value: totaisMes.saidas, icon: ArrowDownCircle, color: 'text-destructive', surface: 'bg-destructive/10', escuro: false,
             trend: comparacaoMesAnterior.variacaoDespesa, trendPositive: comparacaoMesAnterior.variacaoDespesa < 0,
             trendNovaBase: comparacaoMesAnterior.despesaSemBaseAnterior,
             sub: totaisMes.despesasPendentes > 0 ? `Em aberto com vencimento no mês: ${formatCurrency(totaisMes.despesasPendentes)}` : undefined },
-          { label: 'Saldo do Mês', value: totaisMes.saldo, icon: Wallet,
-            color: totaisMes.saldo >= 0 ? 'text-success' : 'text-destructive',
-            bg: totaisMes.saldo >= 0 ? 'bg-success/10' : 'bg-destructive/10',
-            border: totaisMes.saldo >= 0 ? 'border-success/20' : 'border-destructive/20', trendNovaBase: false },
-          { label: 'Margem operacional', value: -1, icon: DollarSign, color: 'text-primary', bg: 'bg-primary/10', border: 'border-primary/20',
+          { label: totaisMes.saldo < 0 ? 'Saldo negativo no mês' : 'Saldo do mês', value: totaisMes.saldo, icon: Wallet, escuro: true, trendNovaBase: false },
+          { label: 'Margem operacional', value: -1, icon: DollarSign, color: 'text-[#1080CA]', surface: 'bg-[#1080CA]/10', escuro: false,
             pct: totaisMes.receitas > 0 ? `${(((totaisMes.receitas - totaisMes.despesas) / totaisMes.receitas) * 100).toFixed(1)}%` : '—', trendNovaBase: false },
         ].map((s) => (
-          <Card key={s.label} className={cn('h-full border bg-gradient-to-br from-card to-muted/30 shadow-sm transition-shadow hover:shadow-md', s.border)}>
-            <CardContent className="pt-5 pb-4">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-xs font-medium text-muted-foreground">{s.label}</p>
-                  {s.pct !== undefined ? (
-                    <p className={cn('text-2xl font-bold', s.color)}>{s.pct}</p>
-                  ) : (
-                    <p className={cn('text-2xl font-bold tabular-nums', s.color)}>{formatCurrency(s.value)}</p>
-                  )}
-                  {s.trendNovaBase ? (
-                    <p className="mt-1 text-xs text-muted-foreground">Sem base no mês anterior</p>
-                  ) : s.trend !== undefined && s.trend !== 0 && (
-                    <div className={cn('flex items-center gap-1 mt-1 text-xs font-medium', s.trendPositive ? 'text-success' : 'text-destructive')}>
-                      {s.trend > 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
-                      {Math.abs(s.trend).toFixed(1)}%
-                    </div>
-                  )}
-                  {s.sub && <p className="text-xs text-muted-foreground mt-1">{s.sub}</p>}
-                </div>
-                <div className={cn('rounded-xl p-3 ring-1 ring-inset ring-black/[0.03]', s.bg)}>
-                  <s.icon className={cn('h-5 w-5', s.color)} />
-                </div>
+          <div
+            key={s.label}
+            className={cn(
+              'rounded-2xl border p-4 shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md',
+              s.escuro ? 'border-transparent bg-gradient-primary text-white' : 'border-border/60 bg-card',
+            )}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className={cn('text-[11px] font-medium', s.escuro ? 'text-white/70' : 'text-muted-foreground')}>{s.label}</p>
+                {s.pct !== undefined ? (
+                  <p className={cn('text-2xl font-bold', s.escuro ? 'text-white' : s.color)}>{s.pct}</p>
+                ) : (
+                  <p className={cn('text-2xl font-bold tabular-nums', s.escuro ? 'text-white' : s.color)}>{formatCurrency(s.value)}</p>
+                )}
+                {s.trendNovaBase ? (
+                  <p className={cn('mt-1 text-xs', s.escuro ? 'text-white/60' : 'text-muted-foreground')}>Sem base no mês anterior</p>
+                ) : s.trend !== undefined && s.trend !== 0 && (
+                  <div className={cn('flex items-center gap-1 mt-1 text-xs font-medium', s.trendPositive ? 'text-success' : 'text-destructive')}>
+                    {s.trend > 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+                    {Math.abs(s.trend).toFixed(1)}%
+                  </div>
+                )}
+                {s.sub && <p className={cn('mt-1 text-xs', s.escuro ? 'text-white/60' : 'text-muted-foreground')}>{s.sub}</p>}
               </div>
-            </CardContent>
-          </Card>
+              <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', s.escuro ? 'bg-white/15' : s.surface)}>
+                <s.icon className={cn('h-5 w-5', s.escuro ? 'text-white' : s.color)} />
+              </div>
+            </div>
+          </div>
         ))}
       </div>
 
       {/* Gráficos */}
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Evolução Diária */}
-        <Card>
+        <Card className="rounded-2xl border-border/60 shadow-xs">
           <CardHeader>
-            <CardTitle>Evolução Diária</CardTitle>
-            <CardDescription>Entradas e saídas registradas por dia</CardDescription>
+            <div className="flex items-center gap-2.5">
+              <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-white shadow-sm">
+                <TrendingUp className="h-4 w-4" />
+              </span>
+              <div>
+                <CardTitle className="text-base font-semibold">Evolução Diária</CardTitle>
+                <CardDescription>Entradas e saídas registradas por dia</CardDescription>
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
             {temMovimentosNoMes ? (
               <div className="h-[300px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={dadosDiarios}>
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                  <CartesianGrid strokeDasharray="3 3" stroke={GRID_COLOR} />
                   <XAxis dataKey="dia" className="text-xs" />
                   <YAxis className="text-xs" tickFormatter={(v) => `R$${v}`} />
                   <Tooltip
@@ -374,13 +397,16 @@ export default function FluxoCaixa() {
                   <Legend />
                   <Bar dataKey="receitas" name="Receitas" fill="hsl(var(--success))" radius={[4, 4, 0, 0]} />
                   <Bar dataKey="despesas" name="Despesas" fill="hsl(var(--destructive))" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="suprimentos" name="Suprimentos" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="suprimentos" name="Suprimentos" fill="#1080CA" radius={[4, 4, 0, 0]} />
                   <Bar dataKey="sangrias" name="Sangrias" fill="hsl(var(--warning))" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
             ) : (
-              <div role="status" className="flex h-[300px] flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border bg-muted/20 px-6 text-center">
+              <div role="status" className="flex h-[300px] flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-[#DCE6F2] bg-[#F3F8FC] px-6 text-center">
+                <span aria-hidden="true" className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+                  <TrendingUp className="h-6 w-6" />
+                </span>
                 <p className="text-sm font-medium text-foreground">Nenhuma movimentação registrada neste mês</p>
                 <p className="max-w-sm text-xs leading-relaxed text-muted-foreground">A evolução diária aparecerá aqui quando houver entradas, saídas, suprimentos ou sangrias.</p>
               </div>
@@ -389,10 +415,17 @@ export default function FluxoCaixa() {
         </Card>
 
         {/* Saldo Acumulado */}
-        <Card>
+        <Card className="rounded-2xl border-border/60 shadow-xs">
           <CardHeader>
-            <CardTitle>Saldo Acumulado</CardTitle>
-            <CardDescription>Variação acumulada no mês; não inclui saldo inicial de caixa</CardDescription>
+            <div className="flex items-center gap-2.5">
+              <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-white shadow-sm">
+                <Wallet className="h-4 w-4" />
+              </span>
+              <div>
+                <CardTitle className="text-base font-semibold">Saldo Acumulado</CardTitle>
+                <CardDescription>Variação acumulada no mês; não inclui saldo inicial de caixa</CardDescription>
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
             {temMovimentosNoMes ? (
@@ -401,11 +434,11 @@ export default function FluxoCaixa() {
                   <AreaChart data={dadosDiarios}>
                   <defs>
                     <linearGradient id="colorSaldo" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
+                      <stop offset="5%" stopColor="#1080CA" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#1080CA" stopOpacity={0} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                  <CartesianGrid strokeDasharray="3 3" stroke={GRID_COLOR} />
                   <XAxis dataKey="dia" className="text-xs" />
                   <YAxis className="text-xs" tickFormatter={(v) => `R$${v}`} />
                   <Tooltip
@@ -420,7 +453,7 @@ export default function FluxoCaixa() {
                     type="monotone"
                     dataKey="saldoAcumulado"
                     name="Saldo"
-                    stroke="hsl(var(--primary))"
+                    stroke="#1080CA"
                     fillOpacity={1}
                     fill="url(#colorSaldo)"
                   />
@@ -428,7 +461,10 @@ export default function FluxoCaixa() {
                 </ResponsiveContainer>
               </div>
             ) : (
-              <div role="status" className="flex h-[300px] flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border bg-muted/20 px-6 text-center">
+              <div role="status" className="flex h-[300px] flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-[#DCE6F2] bg-[#F3F8FC] px-6 text-center">
+                <span aria-hidden="true" className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+                  <Wallet className="h-6 w-6" />
+                </span>
                 <p className="text-sm font-medium text-foreground">Nenhuma movimentação registrada neste mês</p>
                 <p className="max-w-sm text-xs leading-relaxed text-muted-foreground">O saldo acumulado aparecerá aqui quando houver movimentações registradas.</p>
               </div>
@@ -438,21 +474,31 @@ export default function FluxoCaixa() {
       </div>
 
       {/* Por Categoria */}
-      <Card>
+      <Card className="rounded-2xl border-border/60 shadow-xs">
         <CardHeader>
-          <CardTitle>Por Categoria</CardTitle>
-          <CardDescription>Valores efetivamente recebidos e pagos no mês, por categoria</CardDescription>
+          <div className="flex items-center gap-2.5">
+            <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-white shadow-sm">
+              <DollarSign className="h-4 w-4" />
+            </span>
+            <div>
+              <CardTitle className="text-base font-semibold">Por Categoria</CardTitle>
+              <CardDescription>Valores efetivamente recebidos e pagos no mês, por categoria</CardDescription>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           {dadosPorCategoria.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              Nenhuma movimentação neste mês
+            <div role="status" className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-[#DCE6F2] bg-[#F3F8FC] px-6 py-10 text-center">
+              <span aria-hidden="true" className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+                <DollarSign className="h-6 w-6" />
+              </span>
+              <p className="text-sm font-medium text-foreground">Nenhuma movimentação neste mês</p>
             </div>
           ) : (
             <div className="h-[300px]">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={dadosPorCategoria} layout="vertical">
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                  <CartesianGrid strokeDasharray="3 3" stroke={GRID_COLOR} />
                   <XAxis type="number" className="text-xs" tickFormatter={(v) => `R$${v}`} />
                   <YAxis dataKey="categoria" type="category" className="text-xs" width={100} />
                   <Tooltip
@@ -466,7 +512,7 @@ export default function FluxoCaixa() {
                   <Legend />
                   <Bar dataKey="receitas" name="Receitas" fill="hsl(var(--success))" radius={[0, 4, 4, 0]} />
                   <Bar dataKey="despesas" name="Despesas" fill="hsl(var(--destructive))" radius={[0, 4, 4, 0]} />
-                  <Bar dataKey="suprimentos" name="Suprimentos" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]} />
+                  <Bar dataKey="suprimentos" name="Suprimentos" fill="#1080CA" radius={[0, 4, 4, 0]} />
                   <Bar dataKey="sangrias" name="Sangrias" fill="hsl(var(--warning))" radius={[0, 4, 4, 0]} />
                 </BarChart>
               </ResponsiveContainer>

@@ -1,5 +1,4 @@
 import { formatWithDatePreference as format } from '@/lib/datePreference';
-import { motion, AnimatePresence } from 'framer-motion';
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { addDays, startOfMonth, endOfMonth, subMonths, eachDayOfInterval } from 'date-fns';
@@ -12,7 +11,8 @@ import {
   TrendingUp,
   TrendingDown,
   FileSpreadsheet,
-Download, Printer, BarChart2, Activity, AlertTriangle} from 'lucide-react';
+  BarChart2, AlertTriangle, RefreshCw, Package,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import {
@@ -45,6 +45,8 @@ import { toast } from 'sonner';
 import RelatorioCustomizado from '@/components/relatorios/RelatorioCustomizado';
 import { valorRealizado } from '@/lib/lancamentos';
 import { ErrorState } from '@/components/ErrorState';
+import { ActionableEmptyState } from '@/components/ActionableEmptyState';
+import { PageHeader } from '@/components/PageHeader';
 import { podeAcessarRelatorioCompletoDePacientes, podeExportarFontesCompletas } from '@/lib/reportAccess';
 import { dateOnlyInTimeZone, inicioDoDiaEmFusoIso, parseDateOnly } from '@/lib/dateOnly';
 import {
@@ -63,7 +65,8 @@ import {
   Legend,
 } from 'recharts';
 
-const CHART_COLORS = ['hsl(var(--primary))', 'hsl(var(--success))', 'hsl(var(--warning))', 'hsl(var(--destructive))', 'hsl(var(--info))'];
+const CHART_COLORS = ['#1080CA', '#2ED5E7', '#111111', 'hsl(var(--warning))', 'hsl(var(--destructive))', 'hsl(var(--success))'];
+const GRID_COLOR = '#DCE6F2';
 const STATUS_FINALIZADO = new Set(['finalizado', 'atendimento_finalizado']);
 const dateOnlyFromValue = (value: string) => value.includes('T') || value.includes(' ')
   ? dateOnlyInTimeZone(new Date(value), 'America/Sao_Paulo')
@@ -87,8 +90,19 @@ interface EventoFinanceiro {
   estornado: boolean;
 }
 
+const PERIODO_PILLS: { value: string; label: string }[] = [
+  { value: 'mes_atual', label: 'Mês Atual' },
+  { value: 'mes_anterior', label: 'Mês Anterior' },
+  { value: 'ultimos_3_meses', label: 'Últimos 3 Meses' },
+  { value: 'ultimos_6_meses', label: 'Últimos 6 Meses' },
+  { value: 'ultimos_12_meses', label: 'Últimos 12 Meses' },
+  { value: 'este_ano', label: 'Este Ano' },
+  { value: 'personalizado', label: 'Personalizado' },
+];
+
 export default function Relatorios() {
   const [periodo, setPeriodo] = useState('mes_atual');
+  const [activeTab, setActiveTab] = useState('customizado');
   const [exportando, setExportando] = useState<string | null>(null);
   const [customInicio, setCustomInicio] = useState(() => {
     const hoje = parseDateOnly(dateOnlyInTimeZone(new Date(), 'America/Sao_Paulo'))!;
@@ -624,175 +638,171 @@ export default function Relatorios() {
     return <ErrorState title="Não foi possível montar os relatórios" description="Uma ou mais fontes de dados falharam. Os números e exportações foram pausados para evitar relatórios incompletos." error={failedQuery.error} onRetry={() => { for (const query of queries) void query.refetch(); }} />;
   }
 
+  const refreshTudo = () => { for (const query of queries) void query.refetch(); };
+
   return (
-    <div className="space-y-6">
-      <section className="flex flex-col gap-5 rounded-[1.5rem] border border-border bg-card p-5 shadow-sm sm:p-6 xl:flex-row xl:items-center xl:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">Relatórios da clínica</h1>
-          <p className="mt-1 max-w-3xl text-sm text-muted-foreground">Consulte dados por área, exporte arquivos ou salve relatórios personalizados. Para acompanhar tendências em painel, use Indicadores da clínica.</p>
-          <p className="mt-2 text-xs text-muted-foreground">
-            {podeVerAgenda
-              ? 'O período se aplica à agenda e ao financeiro. Pacientes e estoque mostram o cadastro e o saldo atuais.'
-              : 'O período se aplica ao financeiro.'}
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2 rounded-2xl border border-border bg-background p-2 shadow-sm">
-          <Select value={periodo} onValueChange={setPeriodo}>
-            <SelectTrigger aria-label="Selecionar período dos relatórios" className="w-44 border-border bg-background text-foreground focus-visible:ring-ring">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="mes_atual">Mês Atual</SelectItem>
-              <SelectItem value="mes_anterior">Mês Anterior</SelectItem>
-              <SelectItem value="ultimos_3_meses">Últimos 3 Meses</SelectItem>
-              <SelectItem value="ultimos_6_meses">Últimos 6 Meses</SelectItem>
-              <SelectItem value="ultimos_12_meses">Últimos 12 Meses</SelectItem>
-              <SelectItem value="este_ano">Este Ano</SelectItem>
-              <SelectItem value="personalizado">Personalizado...</SelectItem>
-            </SelectContent>
-          </Select>
-          {periodo === 'personalizado' && (
-            <div className="flex items-center gap-1.5">
-              <Input type="date" aria-label="Data inicial" className="w-40" value={customInicio} max={customFim || undefined} onChange={e => setCustomInicio(e.target.value)} />
-              <span className="text-sm text-muted-foreground">até</span>
-              <Input type="date" aria-label="Data final" className="w-40" value={customFim} min={customInicio || undefined} onChange={e => setCustomFim(e.target.value)} />
-            </div>
-          )}
-          <Button variant="outline" onClick={handleExportExcel} disabled={isFetching || !!exportando || !podeExportarFontesCompletas(['lançamentos', 'pagamentos', 'histórico de pagamentos'], fontesNoLimite)} className="gap-2" aria-label="Exportar financeiro para Excel">
-            <FileSpreadsheet className="h-4 w-4" />
-            Excel
-          </Button>
-          <Button variant="outline" onClick={handleExportPDF} disabled={isFetching || !!exportando || !podeExportarFontesCompletas(['lançamentos', 'pagamentos', 'histórico de pagamentos'], fontesNoLimite)} className="gap-2" aria-label="Exportar financeiro para PDF">
-            <FileText className="h-4 w-4" />
-            PDF
-          </Button>
-          {podeVerRelatorioPacientes && <Button variant="outline" onClick={handleExportPacientesExcel} disabled={isFetching || !!exportando || !podeExportarFontesCompletas(['pacientes'], fontesNoLimite)} className="gap-2" aria-label="Exportar pacientes para Excel">
-            <Users className="h-4 w-4" />
-            Pacientes
-          </Button>}
-          {podeVerAgenda && (
-            <Button variant="outline" onClick={handleExportAgendamentosExcel} disabled={isFetching || !!exportando || !podeExportarFontesCompletas(['agendamentos', 'médicos'], fontesNoLimite)} className="gap-2" aria-label="Exportar agendamentos para Excel">
-              <Calendar className="h-4 w-4" />
-              Agenda
+    <div className="space-y-6 pb-8">
+      <PageHeader
+        title="Relatórios da clínica"
+        icon={<FileText />}
+        description={`${obterRotuloPeriodo()} · ${podeVerAgenda
+          ? 'o período se aplica à agenda e ao financeiro; pacientes e estoque mostram o cadastro e o saldo atuais'
+          : 'o período se aplica ao financeiro'}`}
+        actions={
+          <>
+            <Button aria-label="Atualizar dados dos relatórios" variant="outline" size="icon" className="rounded-full" onClick={refreshTudo} disabled={isFetching}>
+              <RefreshCw className={cn('h-4 w-4', isFetching && 'animate-spin')} />
             </Button>
-          )}
-          <Button variant="outline" onClick={handleExportEstoqueExcel} disabled={isFetching || !!exportando || !podeExportarFontesCompletas(['estoque'], fontesNoLimite)} className="gap-2" aria-label="Exportar estoque para Excel">
-            <FileSpreadsheet className="h-4 w-4" />
-            Estoque
-          </Button>
-        </div>
-      </section>
+            <Button variant="outline" onClick={handleExportPDF} disabled={isFetching || !!exportando || !podeExportarFontesCompletas(['lançamentos', 'pagamentos', 'histórico de pagamentos'], fontesNoLimite)} className="gap-2 rounded-full" aria-label="Exportar financeiro para PDF">
+              <FileText className="h-4 w-4" />
+              PDF
+            </Button>
+            {podeVerRelatorioPacientes && <Button variant="outline" onClick={handleExportPacientesExcel} disabled={isFetching || !!exportando || !podeExportarFontesCompletas(['pacientes'], fontesNoLimite)} className="gap-2 rounded-full" aria-label="Exportar pacientes para Excel">
+              <Users className="h-4 w-4" />
+              Pacientes
+            </Button>}
+            {podeVerAgenda && (
+              <Button variant="outline" onClick={handleExportAgendamentosExcel} disabled={isFetching || !!exportando || !podeExportarFontesCompletas(['agendamentos', 'médicos'], fontesNoLimite)} className="gap-2 rounded-full" aria-label="Exportar agendamentos para Excel">
+                <Calendar className="h-4 w-4" />
+                Agenda
+              </Button>
+            )}
+            <Button variant="outline" onClick={handleExportEstoqueExcel} disabled={isFetching || !!exportando || !podeExportarFontesCompletas(['estoque'], fontesNoLimite)} className="gap-2 rounded-full" aria-label="Exportar estoque para Excel">
+              <FileSpreadsheet className="h-4 w-4" />
+              Estoque
+            </Button>
+            <Button onClick={handleExportExcel} disabled={isFetching || !!exportando || !podeExportarFontesCompletas(['lançamentos', 'pagamentos', 'histórico de pagamentos'], fontesNoLimite)} className="gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110" aria-label="Exportar financeiro para Excel">
+              <FileSpreadsheet className="h-4 w-4" />
+              Exportar Excel
+            </Button>
+          </>
+        }
+      />
+
+      {/* Pílulas de período */}
+      <div className="flex flex-wrap items-center gap-2">
+        {PERIODO_PILLS.map(pill => (
+          <button
+            key={pill.value}
+            type="button"
+            aria-pressed={periodo === pill.value}
+            onClick={() => setPeriodo(pill.value)}
+            className={cn(
+              'h-8 rounded-full border px-3 text-xs font-medium transition-colors',
+              periodo === pill.value
+                ? 'border-transparent bg-gradient-primary text-white shadow-sm'
+                : 'border-border/60 bg-card text-muted-foreground hover:border-[#9CC7EC] hover:text-foreground',
+            )}
+          >
+            {pill.label}
+          </button>
+        ))}
+        {periodo === 'personalizado' && (
+          <div className="flex items-center gap-1.5">
+            <Input type="date" aria-label="Data inicial" className="h-8 w-36 rounded-full" value={customInicio} max={customFim || undefined} onChange={e => setCustomInicio(e.target.value)} />
+            <span className="text-xs text-muted-foreground">até</span>
+            <Input type="date" aria-label="Data final" className="h-8 w-36 rounded-full" value={customFim} min={customInicio || undefined} onChange={e => setCustomFim(e.target.value)} />
+          </div>
+        )}
+      </div>
 
       {isFetching && <p role="status" className="text-sm text-muted-foreground">Atualizando dados do relatório…</p>}
       {exportando && <p role="status" aria-live="polite" className="text-sm text-muted-foreground">Gerando {exportando}…</p>}
 
       {fontesNoLimite.length > 0 && <div role="alert" className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm text-warning-foreground"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /><p>O limite de {LIMITE_BUSCA_EM_BLOCOS.toLocaleString('pt-BR')} registros foi atingido em: {fontesNoLimite.join(', ')}. Indicadores e exportações dessas fontes podem estar incompletos.</p></div>}
 
-      {/* Cards de Resumo */}
-      <div className={cn('grid gap-4 md:grid-cols-2', podeVerAgenda ? 'lg:grid-cols-4' : 'lg:grid-cols-3')}>
-        {podeVerAgenda && <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-4">
-              <div className="p-3 rounded-full bg-info/10">
-                <Calendar className="h-6 w-6 text-info" />
+      {/* Faixa de indicadores clicáveis */}
+      <div className={cn('grid gap-3 md:grid-cols-2', podeVerAgenda ? 'lg:grid-cols-4' : 'lg:grid-cols-3')}>
+        {podeVerAgenda && (
+          <button type="button" aria-pressed={activeTab === 'atendimentos'} onClick={() => setActiveTab('atendimentos')}
+            className="rounded-2xl border border-border/60 bg-card p-4 text-left shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-info/10">
+                <Calendar className="h-5 w-5 text-info" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Atendimentos</p>
-                <p className="text-2xl font-bold">{estatisticas.totalAtendimentos}</p>
-                <p className="text-xs text-muted-foreground">
-                  {estatisticas.atendimentosFinalizados} finalizados
-                </p>
+                <p className="text-[11px] text-muted-foreground">Atendimentos</p>
+                <p className="text-2xl font-bold tabular-nums">{estatisticas.totalAtendimentos}</p>
+                <p className="text-[11px] text-muted-foreground">{estatisticas.atendimentosFinalizados} finalizados</p>
               </div>
             </div>
-          </CardContent>
-        </Card>}
+          </button>
+        )}
 
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-4">
-              <div className="p-3 rounded-full bg-success/10">
-                <TrendingUp className="h-6 w-6 text-success" />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Receitas</p>
-                <p className="text-2xl font-bold text-success">
-                  {formatCurrency(estatisticas.receitas)}
-                </p>
-              </div>
+        <button type="button" aria-pressed={activeTab === 'financeiro'} onClick={() => setActiveTab('financeiro')}
+          className="rounded-2xl border border-border/60 bg-card p-4 text-left shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-success/10">
+              <TrendingUp className="h-5 w-5 text-success" />
             </div>
-          </CardContent>
-        </Card>
+            <div>
+              <p className="text-[11px] text-muted-foreground">Receitas</p>
+              <p className="text-2xl font-bold tabular-nums text-success">{formatCurrency(estatisticas.receitas)}</p>
+            </div>
+          </div>
+        </button>
 
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-4">
-              <div className="p-3 rounded-full bg-destructive/10">
-                <TrendingDown className="h-6 w-6 text-destructive" />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Despesas</p>
-                <p className="text-2xl font-bold text-destructive">
-                  {formatCurrency(estatisticas.despesas)}
-                </p>
-              </div>
+        <button type="button" aria-pressed={activeTab === 'financeiro'} onClick={() => setActiveTab('financeiro')}
+          className="rounded-2xl border border-border/60 bg-card p-4 text-left shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-destructive/10">
+              <TrendingDown className="h-5 w-5 text-destructive" />
             </div>
-          </CardContent>
-        </Card>
+            <div>
+              <p className="text-[11px] text-muted-foreground">Despesas</p>
+              <p className="text-2xl font-bold tabular-nums text-destructive">{formatCurrency(estatisticas.despesas)}</p>
+            </div>
+          </div>
+        </button>
 
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-4">
-              <div className="p-3 rounded-full bg-primary/10">
-                <DollarSign className="h-6 w-6 text-primary" />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Lucro</p>
-                <p className={cn(
-                  'text-2xl font-bold',
-                  estatisticas.lucro >= 0 ? 'text-success' : 'text-destructive'
-                )}>
-                  {formatCurrency(estatisticas.lucro)}
-                </p>
-              </div>
+        <button type="button" aria-pressed={activeTab === 'dre'} onClick={() => setActiveTab('dre')}
+          className="rounded-2xl border border-transparent bg-gradient-primary p-4 text-left text-white shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/15">
+              <DollarSign className="h-5 w-5 text-white" />
             </div>
-          </CardContent>
-        </Card>
+            <div>
+              <p className="text-[11px] text-white/70">Lucro</p>
+              <p className="text-2xl font-bold tabular-nums text-white">{formatCurrency(estatisticas.lucro)}</p>
+            </div>
+          </div>
+        </button>
       </div>
 
-      {/* KPIs Extras */}
-      <div className={cn('grid gap-4', podeVerAgenda ? 'md:grid-cols-4' : 'md:grid-cols-1')}>
-        {podeVerAgenda && <Card>
+      {/* KPIs extras */}
+      <div className={cn('grid gap-3', podeVerAgenda ? 'md:grid-cols-4' : 'md:grid-cols-1')}>
+        {podeVerAgenda && <Card className="shadow-xs">
           <CardContent className="pt-6">
             <p className="text-sm text-muted-foreground">Taxa Comparecimento</p>
-            <p className="text-2xl font-bold text-primary">{estatisticas.taxaComparecimento === null ? '—' : `${estatisticas.taxaComparecimento}%`}</p>
+            <p className="text-2xl font-bold tabular-nums text-[#1080CA]">{estatisticas.taxaComparecimento === null ? '—' : `${estatisticas.taxaComparecimento}%`}</p>
             <p className="mt-1 text-xs text-muted-foreground">Base: {estatisticas.atendimentosComDesfecho} desfechos; exclui cancelados e futuros.</p>
           </CardContent>
         </Card>}
-        {podeVerAgenda && <Card>
+        {podeVerAgenda && <Card className="shadow-xs">
           <CardContent className="pt-6">
             <p className="text-sm text-muted-foreground">Ticket Médio</p>
-            <p className="text-2xl font-bold">
+            <p className="text-2xl font-bold tabular-nums">
               {estatisticas.ticketMedio === null ? '—' : formatCurrency(estatisticas.ticketMedio)}
             </p>
             <p className="text-xs text-muted-foreground">Por atendimento com recebimento no período</p>
           </CardContent>
         </Card>}
-        {podeVerAgenda && <Card>
+        {podeVerAgenda && <Card className="shadow-xs">
           <CardContent className="pt-6">
             <p className="text-sm text-muted-foreground">Cancelamentos</p>
-            <p className="text-2xl font-bold text-destructive">{estatisticas.cancelamentos}</p>
+            <p className="text-2xl font-bold tabular-nums text-destructive">{estatisticas.cancelamentos}</p>
           </CardContent>
         </Card>}
-        <Card>
+        <Card className="shadow-xs">
           <CardContent className="pt-6">
             <p className="text-sm text-muted-foreground">Valores Pendentes</p>
-            <p className="text-2xl font-bold text-destructive">{formatCurrency(estatisticas.pendentes)}</p>
+            <p className="text-2xl font-bold tabular-nums text-destructive">{formatCurrency(estatisticas.pendentes)}</p>
             <p className="mt-1 text-xs text-muted-foreground">Saldo de contas com vencimento no período</p>
           </CardContent>
         </Card>
       </div>
 
-      <Tabs defaultValue="customizado" className="space-y-6">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
         <TabsList className="flex-wrap">
           <TabsTrigger value="customizado">⚡ Customizado</TabsTrigger>
           <TabsTrigger value="financeiro">Financeiro</TabsTrigger>
@@ -811,7 +821,7 @@ export default function Relatorios() {
         <TabsContent value="financeiro" className="space-y-6">
           <div className="grid gap-6 lg:grid-cols-2">
             {/* Gráfico de Receitas x Despesas */}
-            <Card>
+            <Card className="shadow-xs">
               <CardHeader>
                 <CardTitle>Receitas x Despesas</CardTitle>
                 <CardDescription>Comparativo diário</CardDescription>
@@ -830,7 +840,7 @@ export default function Relatorios() {
                           <stop offset="95%" stopColor="hsl(var(--destructive))" stopOpacity={0} />
                         </linearGradient>
                       </defs>
-                      <CartesianGrid strokeDasharray="3 3" />
+                      <CartesianGrid strokeDasharray="3 3" stroke={GRID_COLOR} />
                       <XAxis dataKey="data" fontSize={12} />
                       <YAxis fontSize={12} tickFormatter={(v) => `R$${v}`} />
                       <Tooltip formatter={(value: number) => formatCurrency(value)} />
@@ -856,7 +866,7 @@ export default function Relatorios() {
             </Card>
 
             {/* Gráfico de Formas de Pagamento */}
-            <Card>
+            <Card className="shadow-xs">
               <CardHeader>
                 <CardTitle>Formas de Pagamento</CardTitle>
                 <CardDescription>Recebimentos líquidos por forma de pagamento, incluindo estornos na data em que ocorreram.</CardDescription>
@@ -891,10 +901,10 @@ export default function Relatorios() {
 
         {/* DRE - Demonstrativo de Resultado */}
         <TabsContent value="dre" className="space-y-6">
-          <Card>
+          <Card className="shadow-xs">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <BarChart2 className="h-5 w-5 text-primary" />
+                <BarChart2 className="h-5 w-5 text-[#1080CA]" />
                 DRE Simplificado
               </CardTitle>
               <CardDescription>Demonstrativo de Resultado do Exercício por Categoria</CardDescription>
@@ -1008,7 +1018,7 @@ export default function Relatorios() {
                             despesa: -(despesasPorCategoria[cat] || 0),
                           }));
                         })()}>
-                          <CartesianGrid strokeDasharray="3 3" />
+                          <CartesianGrid strokeDasharray="3 3" stroke={GRID_COLOR} />
                           <XAxis dataKey="categoria" fontSize={11} />
                           <YAxis fontSize={11} tickFormatter={(v) => `R$${Math.abs(v)}`} />
                           <Tooltip formatter={(value: number) => formatCurrency(Math.abs(value))} />
@@ -1027,14 +1037,14 @@ export default function Relatorios() {
 
         {podeVerAgenda && <TabsContent value="atendimentos" className="space-y-6">
           <div className="flex justify-end">
-            <Button variant="outline" onClick={handleExportAtendimentosPDF} disabled={isFetching || !!exportando || !podeExportarFontesCompletas(['agendamentos', 'médicos'], fontesNoLimite)} className="gap-2">
+            <Button variant="outline" onClick={handleExportAtendimentosPDF} disabled={isFetching || !!exportando || !podeExportarFontesCompletas(['agendamentos', 'médicos'], fontesNoLimite)} className="gap-2 rounded-full">
               <FileText className="h-4 w-4" />
               Exportar PDF
             </Button>
           </div>
           <div className="grid gap-6 lg:grid-cols-2">
             {/* Gráfico de Atendimentos */}
-            <Card>
+            <Card className="shadow-xs">
               <CardHeader>
                 <CardTitle>Volume de Atendimentos</CardTitle>
                 <CardDescription>Por dia</CardDescription>
@@ -1043,11 +1053,11 @@ export default function Relatorios() {
                 <div className="h-[300px]">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={dadosDiarios}>
-                      <CartesianGrid strokeDasharray="3 3" />
+                      <CartesianGrid strokeDasharray="3 3" stroke={GRID_COLOR} />
                       <XAxis dataKey="data" fontSize={12} />
                       <YAxis fontSize={12} />
                       <Tooltip />
-                      <Bar dataKey="atendimentos" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} name="Atendimentos" />
+                      <Bar dataKey="atendimentos" fill="#1080CA" radius={[4, 4, 0, 0]} name="Atendimentos" />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -1055,7 +1065,7 @@ export default function Relatorios() {
             </Card>
 
             {/* Por Tipo */}
-            <Card>
+            <Card className="shadow-xs">
               <CardHeader>
                 <CardTitle>Por Tipo de Atendimento</CardTitle>
                 <CardDescription>Distribuição por categoria</CardDescription>
@@ -1086,32 +1096,32 @@ export default function Relatorios() {
         </TabsContent>}
 
         {podeVerAgenda && <TabsContent value="medicos" className="space-y-6">
-          <Card>
+          <Card className="shadow-xs">
             <CardHeader>
               <CardTitle>Desempenho por Médico</CardTitle>
               <CardDescription>Atendimentos realizados no período</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="rounded-md border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Médico</TableHead>
-                      <TableHead>Especialidade</TableHead>
-                      <TableHead className="text-right">Agendados</TableHead>
-                      <TableHead className="text-right">Finalizados</TableHead>
-                      <TableHead className="text-right">Taxa</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {dadosPorMedico.length === 0 ? (
+              {dadosPorMedico.length === 0 ? (
+                <ActionableEmptyState
+                  icon={BarChart2}
+                  title="Nenhum atendimento no período"
+                  description="Ajuste o período selecionado para ver o desempenho dos médicos."
+                />
+              ) : (
+                <div className="overflow-hidden rounded-xl border border-border/60">
+                  <Table>
+                    <TableHeader>
                       <TableRow>
-                        <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
-                          Nenhum atendimento no período
-                        </TableCell>
+                        <TableHead>Médico</TableHead>
+                        <TableHead>Especialidade</TableHead>
+                        <TableHead className="text-right">Agendados</TableHead>
+                        <TableHead className="text-right">Finalizados</TableHead>
+                        <TableHead className="text-right">Taxa</TableHead>
                       </TableRow>
-                    ) : (
-                      dadosPorMedico.map((medico, index) => (
+                    </TableHeader>
+                    <TableBody>
+                      {dadosPorMedico.map((medico, index) => (
                         <TableRow key={index}>
                           <TableCell className="font-medium">{medico.nome}</TableCell>
                           <TableCell>{medico.especialidade}</TableCell>
@@ -1119,6 +1129,7 @@ export default function Relatorios() {
                           <TableCell className="text-right">{medico.finalizados}</TableCell>
                           <TableCell className="text-right">
                             <Badge className={cn(
+                              'rounded-full',
                               medico.taxa >= 80 && 'bg-success/10 text-success',
                               medico.taxa >= 50 && medico.taxa < 80 && 'bg-warning/10 text-warning-foreground',
                               medico.taxa < 50 && 'bg-destructive/10 text-destructive'
@@ -1127,30 +1138,30 @@ export default function Relatorios() {
                             </Badge>
                           </TableCell>
                         </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>}
 
         {podeVerRelatorioPacientes && <TabsContent value="pacientes" className="space-y-6">
           <div className="grid gap-4 md:grid-cols-3">
-            <Card>
+            <Card className="shadow-xs">
               <CardContent className="pt-6">
                 <p className="text-sm text-muted-foreground">Total de Pacientes</p>
                 <p className="text-2xl font-bold">{pacientes.length}</p>
               </CardContent>
             </Card>
-            <Card>
+            <Card className="shadow-xs">
               <CardContent className="pt-6">
                 <p className="text-sm text-muted-foreground">Com Convênio</p>
                 <p className="text-2xl font-bold">{pacientes.filter(p => p.convenio_id).length}</p>
               </CardContent>
             </Card>
-            <Card>
+            <Card className="shadow-xs">
               <CardContent className="pt-6">
                 <p className="text-sm text-muted-foreground">Com Alergias</p>
                 <p className="text-2xl font-bold text-destructive">
@@ -1159,7 +1170,7 @@ export default function Relatorios() {
               </CardContent>
             </Card>
           </div>
-          <Card>
+          <Card className="shadow-xs">
             <CardHeader>
               <CardTitle>Distribuição por Sexo</CardTitle>
             </CardHeader>
@@ -1199,13 +1210,13 @@ export default function Relatorios() {
 
         <TabsContent value="estoque" className="space-y-6">
           <div className="grid gap-4 md:grid-cols-3">
-            <Card>
+            <Card className="shadow-xs">
               <CardContent className="pt-6">
                 <p className="text-sm text-muted-foreground">Itens em Estoque</p>
                 <p className="text-2xl font-bold">{estoque.length}</p>
               </CardContent>
             </Card>
-            <Card>
+            <Card className="shadow-xs">
               <CardContent className="pt-6">
                 <p className="text-sm text-muted-foreground">Estoque Crítico</p>
                 <p className="text-2xl font-bold text-destructive">
@@ -1213,7 +1224,7 @@ export default function Relatorios() {
                 </p>
               </CardContent>
             </Card>
-            <Card>
+            <Card className="shadow-xs">
               <CardContent className="pt-6">
                 <p className="text-sm text-muted-foreground">Valor Total</p>
                 <p className="text-2xl font-bold">
@@ -1222,51 +1233,52 @@ export default function Relatorios() {
               </CardContent>
             </Card>
           </div>
-          <Card>
+          <Card className="shadow-xs">
             <CardHeader>
               <CardTitle>Itens com Estoque Crítico</CardTitle>
               <CardDescription>Abaixo da quantidade mínima</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="rounded-md border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Item</TableHead>
-                      <TableHead>Categoria</TableHead>
-                      <TableHead className="text-right">Qtd. Atual</TableHead>
-                      <TableHead className="text-right">Qtd. Mínima</TableHead>
-                      <TableHead className="text-right">Valor Unit.</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {estoque
-                      .filter(e => e.quantidade <= (e.quantidade_minima || 0))
-                      .sort((a, b) => a.quantidade - b.quantidade)
-                      .map((item) => (
-                        <TableRow key={item.id}>
-                          <TableCell className="font-medium">{item.nome}</TableCell>
-                          <TableCell>{item.categoria}</TableCell>
-                          <TableCell className="text-right">
-                            <Badge variant="destructive">{item.quantidade}</Badge>
-                          </TableCell>
-                          <TableCell className="text-right">{item.quantidade_minima || 0}</TableCell>
-                          <TableCell className="text-right">{formatCurrency(item.valor_unitario || 0)}</TableCell>
-                        </TableRow>
-                      ))}
-                    {estoque.filter(e => e.quantidade <= (e.quantidade_minima || 0)).length === 0 && (
+              {estoque.filter(e => e.quantidade <= (e.quantidade_minima || 0)).length === 0 ? (
+                <ActionableEmptyState
+                  icon={Package}
+                  title="Nenhum item com estoque crítico"
+                  description="Todos os itens estão acima da quantidade mínima configurada."
+                />
+              ) : (
+                <div className="overflow-hidden rounded-xl border border-border/60">
+                  <Table>
+                    <TableHeader>
                       <TableRow>
-                        <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
-                          Nenhum item com estoque crítico
-                        </TableCell>
+                        <TableHead>Item</TableHead>
+                        <TableHead>Categoria</TableHead>
+                        <TableHead className="text-right">Qtd. Atual</TableHead>
+                        <TableHead className="text-right">Qtd. Mínima</TableHead>
+                        <TableHead className="text-right">Valor Unit.</TableHead>
                       </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
+                    </TableHeader>
+                    <TableBody>
+                      {estoque
+                        .filter(e => e.quantidade <= (e.quantidade_minima || 0))
+                        .sort((a, b) => a.quantidade - b.quantidade)
+                        .map((item) => (
+                          <TableRow key={item.id}>
+                            <TableCell className="font-medium">{item.nome}</TableCell>
+                            <TableCell>{item.categoria}</TableCell>
+                            <TableCell className="text-right">
+                              <Badge variant="destructive" className="rounded-full">{item.quantidade}</Badge>
+                            </TableCell>
+                            <TableCell className="text-right">{item.quantidade_minima || 0}</TableCell>
+                            <TableCell className="text-right">{formatCurrency(item.valor_unitario || 0)}</TableCell>
+                          </TableRow>
+                        ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
             </CardContent>
           </Card>
-          <Card>
+          <Card className="shadow-xs">
             <CardHeader>
               <CardTitle>Distribuição por Categoria</CardTitle>
             </CardHeader>
@@ -1280,11 +1292,11 @@ export default function Relatorios() {
                     });
                     return Object.entries(cats).map(([name, value]) => ({ name, quantidade: value }));
                   })()}>
-                    <CartesianGrid strokeDasharray="3 3" />
+                    <CartesianGrid strokeDasharray="3 3" stroke={GRID_COLOR} />
                     <XAxis dataKey="name" fontSize={12} />
                     <YAxis fontSize={12} />
                     <Tooltip />
-                    <Bar dataKey="quantidade" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} name="Itens" />
+                    <Bar dataKey="quantidade" fill="#1080CA" radius={[4, 4, 0, 0]} name="Itens" />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -1293,7 +1305,7 @@ export default function Relatorios() {
         </TabsContent>
 
         {podeVerAgenda && <TabsContent value="status" className="space-y-6">
-          <Card>
+          <Card className="shadow-xs">
             <CardHeader>
               <CardTitle>Distribuição por Status</CardTitle>
               <CardDescription>Status dos agendamentos no período</CardDescription>
@@ -1312,11 +1324,11 @@ export default function Relatorios() {
                       quantidade: value,
                     }));
                   })()}>
-                    <CartesianGrid strokeDasharray="3 3" />
+                    <CartesianGrid strokeDasharray="3 3" stroke={GRID_COLOR} />
                     <XAxis dataKey="name" fontSize={12} />
                     <YAxis fontSize={12} />
                     <Tooltip />
-                    <Bar dataKey="quantidade" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} name="Quantidade" />
+                    <Bar dataKey="quantidade" fill="#1080CA" radius={[4, 4, 0, 0]} name="Quantidade" />
                   </BarChart>
                 </ResponsiveContainer>
               </div>

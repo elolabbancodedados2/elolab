@@ -37,6 +37,9 @@ vi.mock('@tanstack/react-query', () => ({
 vi.mock('@/contexts/SupabaseAuthContext', () => ({
   useSupabaseAuth: () => ({ profile: { clinica_id: 'clinic-1' }, isPlatformAdmin: false }),
 }));
+vi.mock('@/hooks/usePlanLimits', () => ({
+  usePlanLimits: () => ({ data: undefined }),
+}));
 vi.mock('@/integrations/supabase/client', () => ({
   supabase: { functions: { invoke: mocks.invoke }, from: mocks.from },
 }));

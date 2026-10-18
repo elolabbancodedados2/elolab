@@ -1,5 +1,4 @@
 import { useState, useMemo, lazy, Suspense, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
@@ -18,7 +17,7 @@ import {
   TrendingUp, TrendingDown, Banknote, CreditCard, QrCode, Wallet, ArrowDownToLine,
   ArrowUpFromLine, FileText, History, DollarSign, Receipt, ChevronRight, CalendarDays,
   BarChart3, Eye, Stethoscope, ShoppingBag, ShoppingCart, CheckCircle2, FlaskConical,
-  ArrowUpRight, ArrowDownRight, ClipboardList, Tag, User, X, FileSpreadsheet, Scale,
+  ArrowUpRight, ArrowDownRight, ClipboardList, Tag, User, X, FileSpreadsheet, Scale, RefreshCw,
 } from 'lucide-react';
 
 const LazyContasReceber = lazy(() => import('./ContasReceber'));
@@ -245,13 +244,6 @@ function baixarArquivo(nome: string, conteudo: string, tipo: string) {
   URL.revokeObjectURL(url);
 }
 
-const cardVariant = {
-  hidden: { opacity: 0, y: 20 },
-  visible: (i: number) => ({
-    opacity: 1, y: 0,
-    transition: { delay: i * 0.08, duration: 0.4, ease: 'easeOut' as const },
-  }),
-};
 
 interface ProdutoCarrinho {
   id: string;
@@ -1175,29 +1167,57 @@ export default function CaixaDiario() {
     <div className="space-y-6 p-4 md:p-6">
       {/* ─── Header ─── */}
       <PageHeader
-        title="Caixa Diário"
-        description={(
-          <span className="inline-flex items-center gap-1.5">
-            <CalendarDays aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
-            {new Date(`${today}T12:00:00`).toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}
-          </span>
-        )}
+        title="Caixa e fluxo de caixa"
+        description={caixaHoje
+          ? `Saldo ${fmt(totais.final)} · Entradas ${fmt(totais.receita)} · Saídas ${fmt(totais.despesa + totais.sangria)}`
+          : new Date(`${today}T12:00:00`).toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}
         icon={<DollarSign />}
         actions={(
-          <div className="flex items-center gap-2">
-            <Badge className={cn(
-              'gap-1.5 rounded-full px-3 py-1 text-xs font-semibold',
-              isOpen
-                ? 'border-transparent bg-gradient-primary text-white hover:bg-gradient-primary'
-                : 'border-transparent bg-[#111111] text-white hover:bg-[#111111]'
-            )}>
-              <span className={cn('h-2 w-2 rounded-full', isOpen ? 'animate-pulse bg-white' : 'bg-white/50')} />
-              {isOpen ? 'Caixa Aberto' : 'Caixa Fechado'}
-            </Badge>
-            {isOpen && caixaHoje?.operador_abertura && (
-              <span className="text-xs text-muted-foreground">por {caixaHoje.operador_abertura}</span>
+          <>
+            {podeAcessarModulosFinanceiros && (
+              <button
+                type="button"
+                onClick={() => setActiveTab('receber')}
+                className="inline-flex h-9 shrink-0 items-center gap-2 rounded-full border border-border px-3 text-xs font-medium text-muted-foreground transition hover:border-[#9CC7EC] hover:text-foreground"
+              >
+                <ArrowUpRight aria-hidden="true" className="h-3.5 w-3.5" /> A Receber
+              </button>
             )}
-          </div>
+            {podeAcessarModulosFinanceiros && (
+              <button
+                type="button"
+                onClick={() => setActiveTab('pagar')}
+                className="inline-flex h-9 shrink-0 items-center gap-2 rounded-full border border-border px-3 text-xs font-medium text-muted-foreground transition hover:border-[#9CC7EC] hover:text-foreground"
+              >
+                <ArrowDownRight aria-hidden="true" className="h-3.5 w-3.5" /> A Pagar
+              </button>
+            )}
+            <Button
+              variant="outline"
+              size="icon"
+              className="shrink-0 rounded-full"
+              onClick={() => { void recarregarCaixa(); void recarregarLancamentos(); }}
+              aria-label="Atualizar caixa"
+              title="Atualizar caixa"
+            >
+              <RefreshCw className="h-4 w-4" />
+            </Button>
+            {!caixaHoje ? (
+              <Button
+                onClick={() => setShowAbertura(true)}
+                className="shrink-0 gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110"
+              >
+                <Unlock className="h-4 w-4" /> Abrir Caixa
+              </Button>
+            ) : isOpen ? (
+              <Button
+                onClick={() => setShowLancamento(true)}
+                className="shrink-0 gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110"
+              >
+                <ShoppingCart className="h-4 w-4" /> Nova Venda
+              </Button>
+            ) : null}
+          </>
         )}
       />
 
@@ -1255,7 +1275,7 @@ export default function CaixaDiario() {
               </Button>
             ) : isOpen ? (
               <>
-                <Button onClick={() => setShowLancamento(true)} className="h-11 gap-2 rounded-full bg-[#111111] px-5 text-white shadow-md hover:bg-[#2b2b33]">
+                <Button onClick={() => setShowLancamento(true)} className="h-11 gap-2 rounded-full bg-gradient-primary px-5 text-white shadow-md hover:brightness-110">
                   <ShoppingCart className="h-4 w-4" /> Nova Venda
                 </Button>
                 <Button onClick={() => setShowDespesa(true)} variant="outline" className="h-11 gap-2 rounded-full border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive">
@@ -1294,76 +1314,113 @@ export default function CaixaDiario() {
             )}
           </div>
 
-          {/* KPI Cards — visíveis com o caixa aberto ou fechado */}
+          {/* Indicator strip — clicável, filtra os lançamentos */}
           {caixaHoje && (() => {
             const diferencaFechamento = !isOpen && caixaHoje.valor_fechamento !== null
               ? diferencaEmReais(caixaHoje.valor_fechamento, saldoEsperadoGaveta)
               : null;
-            const kpis = [
-              { label: 'Abertura', value: caixaHoje.valor_abertura || 0, icon: Unlock, color: 'text-foreground', bgIcon: 'bg-muted', tom: 'claro' },
-              { label: 'Receitas', value: totais.receita, icon: TrendingUp, color: 'text-success', bgIcon: 'bg-success/10', tom: 'claro' },
-              { label: 'Despesas', value: totais.despesa, icon: TrendingDown, color: 'text-destructive', bgIcon: 'bg-destructive/10', tom: 'claro' },
-              { label: 'Sangrias', value: totais.sangria, icon: ArrowDownToLine, color: 'text-warning-foreground', bgIcon: 'bg-warning/10', tom: 'claro' },
-              { label: 'Suprimentos', value: totais.suprimento, icon: ArrowUpFromLine, color: 'text-[#1080CA]', bgIcon: 'bg-[#1080CA]/10', tom: 'claro' },
-              { label: 'Resultado financeiro', value: totais.final, icon: DollarSign, color: totais.final >= 0 ? 'text-success' : 'text-destructive', bgIcon: 'bg-muted', tom: 'claro' },
-              { label: isOpen ? 'Dinheiro esperado' : 'Esperado × contado', value: isOpen ? saldoEsperadoGaveta : (caixaHoje.valor_fechamento ?? 0), icon: isOpen ? Banknote : Scale, color: 'text-[#2ED5E7]', bgIcon: 'bg-white/10', tom: 'escuro',
-                detalhe: isOpen ? 'na gaveta agora' : diferencaFechamento === null ? `esperado ${fmt(saldoEsperadoGaveta)}` : mesmoValor(diferencaFechamento, 0) ? 'bateu com o esperado' : `${diferencaFechamento > 0 ? 'sobra' : 'falta'} de ${fmt(Math.abs(diferencaFechamento))}` },
+            type IndicadorKey = 'todos' | LancamentoTipo;
+            const indicadores: {
+              key: IndicadorKey;
+              label: string;
+              caption: string;
+              value: number;
+              icon: typeof DollarSign;
+              color: string;
+              surface: string;
+              escuro: boolean;
+            }[] = [
+              { key: 'receita', label: 'Receitas', caption: `${contagemPorTipo.receita} lançamento${contagemPorTipo.receita === 1 ? '' : 's'}`, value: totais.receita, icon: TrendingUp, color: 'text-success', surface: 'bg-success/10', escuro: false },
+              { key: 'despesa', label: 'Despesas', caption: `${contagemPorTipo.despesa} saída${contagemPorTipo.despesa === 1 ? '' : 's'}`, value: totais.despesa, icon: TrendingDown, color: 'text-destructive', surface: 'bg-destructive/10', escuro: false },
+              { key: 'sangria', label: 'Sangrias', caption: `${contagemPorTipo.sangria} retirada${contagemPorTipo.sangria === 1 ? '' : 's'}`, value: totais.sangria, icon: ArrowDownToLine, color: 'text-warning-foreground', surface: 'bg-warning/10', escuro: false },
+              { key: 'suprimento', label: 'Suprimentos', caption: `${contagemPorTipo.suprimento} reposição${contagemPorTipo.suprimento === 1 ? '' : 's'}`, value: totais.suprimento, icon: ArrowUpFromLine, color: 'text-[#1080CA]', surface: 'bg-[#1080CA]/10', escuro: false },
+              {
+                key: 'todos',
+                label: totais.final < 0 ? 'Saldo negativo' : 'Saldo do dia',
+                caption: isOpen ? 'resultado financeiro' : diferencaFechamento === null ? 'caixa encerrado' : mesmoValor(diferencaFechamento, 0) ? 'bateu com o esperado' : `${diferencaFechamento > 0 ? 'sobra' : 'falta'} ${fmt(Math.abs(diferencaFechamento))}`,
+                value: totais.final,
+                icon: DollarSign,
+                color: 'text-white',
+                surface: 'bg-white/15',
+                escuro: true,
+              },
             ];
             return (
-              <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
-                {kpis.map((kpi, i) => (
-                  <motion.div key={kpi.label} custom={i} variants={cardVariant} initial="hidden" animate="visible">
-                    <Card className={cn('h-full rounded-2xl border-border/60 shadow-xs', kpi.tom === 'escuro' && 'border-transparent bg-[#111111] text-white')}>
-                      <CardContent className="px-4 pb-3 pt-4">
-                        <div className="mb-2 flex items-center gap-2">
-                          <div className={cn('rounded-lg p-1.5', kpi.bgIcon)}>
-                            <kpi.icon className={cn('h-4 w-4', kpi.color)} />
-                          </div>
-                          <span className={cn('text-xs font-medium', kpi.tom === 'escuro' ? 'text-white/70' : 'text-muted-foreground')}>{kpi.label}</span>
+              <section role="group" aria-label="Resumo do caixa" className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-5">
+                {indicadores.map(card => {
+                  const ativo = tipoFiltro === card.key;
+                  const Icon = card.icon;
+                  return (
+                    <button
+                      key={card.key}
+                      type="button"
+                      aria-pressed={ativo}
+                      onClick={() => {
+                        if (card.key === 'todos') {
+                          setTipoFiltro('todos');
+                        } else {
+                          setTipoFiltro(tipoFiltro === card.key ? 'todos' : card.key);
+                        }
+                      }}
+                      className={cn(
+                        'group rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+                        card.escuro && 'border-transparent bg-gradient-primary text-white',
+                        ativo && !card.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
+                        ativo && card.escuro && 'ring-2 ring-[#1080CA]/60',
+                      )}
+                    >
+                      <div className="flex min-h-[96px] items-center gap-3 p-3">
+                        <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', card.surface)}>
+                          <Icon aria-hidden="true" className={cn('h-5 w-5', card.color)} />
                         </div>
-                        <p className={cn('text-xl font-bold tabular-nums', kpi.color)}>{fmt(kpi.value)}</p>
-                        {'detalhe' in kpi && kpi.detalhe && (
-                          <p className={cn('mt-0.5 text-[11px]', diferencaFechamento !== null && !mesmoValor(diferencaFechamento, 0) ? 'font-semibold text-red-300' : 'text-white/60')}>{kpi.detalhe}</p>
-                        )}
-                      </CardContent>
-                    </Card>
-                  </motion.div>
-                ))}
-              </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-baseline justify-between gap-2">
+                            <h3 className={cn('truncate text-xs font-semibold', card.escuro ? 'text-white/80' : 'text-foreground')}>{card.label}</h3>
+                            <span className={cn('text-2xl font-bold tabular-nums', card.color)}>{fmt(card.value)}</span>
+                          </div>
+                          <p className={cn('truncate text-[11px]', card.escuro ? 'text-white/60' : 'text-muted-foreground')}>{card.caption}</p>
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </section>
             );
           })()}
 
           {/* Payment Breakdown */}
           {caixaHoje && totais.receita > 0 && (
-            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                    <BarChart3 className="h-4 w-4 text-primary" /> Receitas por Forma de Pagamento
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    {Object.entries(breakdownFormas).map(([forma, valor]) => {
-                      const Icon = FORMA_ICONS[forma] || Banknote;
-                      const pct = totais.receita > 0 ? ((valor / totais.receita) * 100).toFixed(0) : '0';
-                      return (
-                        <div key={forma} className="flex items-center gap-3 rounded-xl bg-muted/50 p-3">
-                          <div className="rounded-lg bg-gradient-primary p-2 text-white">
-                            <Icon className="h-4 w-4" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs text-muted-foreground capitalize">{FORMA_LABELS[forma] || forma}</p>
-                            <p className="text-sm font-bold tabular-nums">{fmt(valor)}</p>
-                          </div>
-                          <Badge variant="secondary" className="text-[10px]">{pct}%</Badge>
+            <Card className="rounded-2xl border-[#1080CA]/20 shadow-[0_8px_24px_rgba(16,128,202,0.08)]">
+              <CardHeader className="pb-3">
+                <div className="flex items-center gap-2.5">
+                  <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-white shadow-sm">
+                    <BarChart3 className="h-4 w-4" />
+                  </span>
+                  <CardTitle className="text-base font-semibold">Receitas por forma de pagamento</CardTitle>
+                  <Badge variant="outline" className="h-5 rounded-full border-[#BFD8EE] bg-white text-xs tabular-nums text-[#1080CA]">{Object.keys(breakdownFormas).length}</Badge>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  {Object.entries(breakdownFormas).map(([forma, valor]) => {
+                    const Icon = FORMA_ICONS[forma] || Banknote;
+                    const pct = totais.receita > 0 ? ((valor / totais.receita) * 100).toFixed(0) : '0';
+                    return (
+                      <div key={forma} className="flex items-center gap-3 rounded-xl bg-[#F3F8FC] border border-[#DCE6F2] p-3">
+                        <div className="rounded-lg bg-gradient-primary p-2 text-white shrink-0">
+                          <Icon className="h-4 w-4" />
                         </div>
-                      );
-                    })}
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs text-muted-foreground capitalize">{FORMA_LABELS[forma] || forma}</p>
+                          <p className="text-sm font-bold tabular-nums">{fmt(valor)}</p>
+                        </div>
+                        <Badge variant="outline" className="rounded-full text-[10px] border-[#BFD8EE] text-[#1080CA]">{pct}%</Badge>
+                      </div>
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
           )}
 
           {/* Lançamentos Table */}
@@ -1389,8 +1446,8 @@ export default function CaixaDiario() {
                           aria-pressed={tipoFiltro === valor}
                           onClick={() => setTipoFiltro(valor)}
                           className={cn(
-                            'inline-flex h-8 items-center gap-1 rounded-full border px-2.5 text-[11px] font-semibold transition',
-                            tipoFiltro === valor ? 'border-transparent bg-[#111111] text-white' : 'border-border/60 bg-card text-muted-foreground hover:border-[#1080CA]/40 hover:text-foreground',
+                            'inline-flex h-8 items-center gap-1 rounded-full border px-3 text-xs font-semibold transition',
+                            tipoFiltro === valor ? 'border-transparent bg-gradient-primary text-white shadow-sm' : 'border-border/60 bg-card text-muted-foreground hover:border-[#1080CA]/40 hover:text-foreground',
                           )}
                         >
                           {rotulo} <span className={cn('tabular-nums', tipoFiltro === valor ? 'text-white/70' : 'text-muted-foreground/70')}>{total}</span>
@@ -1398,8 +1455,8 @@ export default function CaixaDiario() {
                       ))}
                     </div>
                     <div className="relative">
-                      <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                      <Input className="h-9 w-48 rounded-full pl-8 text-sm" placeholder="Buscar..." aria-label="Buscar movimentações do caixa" value={searchTerm}
+                      <Search aria-hidden="true" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <Input className="h-10 w-full rounded-full pl-9 text-sm focus-visible:ring-[#1080CA] sm:w-56" placeholder="Buscar movimentações..." aria-label="Buscar movimentações do caixa" value={searchTerm}
                         onChange={e => setSearchTerm(e.target.value)} />
                     </div>
                     <Button variant="ghost" size="sm" className="h-9 gap-1.5 rounded-full text-xs" onClick={() => exportarCsv(lancamentosFiltrados, caixaHoje.data)} disabled={lancamentosFiltrados.length === 0} title="Exportar as movimentações filtradas em CSV">
@@ -1419,10 +1476,21 @@ export default function CaixaDiario() {
                     {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-12" />)}
                   </div>
                 ) : lancamentosFiltrados.length === 0 ? (
-                  <div className="text-center py-10 text-muted-foreground">
-                    <Receipt className="h-10 w-10 mx-auto mb-3 opacity-30" />
-                    <p className="font-medium">Nenhuma movimentação</p>
-                    <p className="text-xs mt-1">Registre receitas, despesas ou sangrias</p>
+                  <div className="flex flex-col items-center py-12 text-center">
+                    <span aria-hidden="true" className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+                      <Receipt className="h-7 w-7" />
+                    </span>
+                    <p className="font-medium text-foreground">Nenhuma movimentação{tipoFiltro !== 'todos' ? ' neste filtro' : ''}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {tipoFiltro !== 'todos'
+                        ? 'Tente outro filtro ou registre uma nova movimentação'
+                        : 'Registre receitas, despesas ou sangrias'}
+                    </p>
+                    {tipoFiltro !== 'todos' && (
+                      <button type="button" onClick={() => setTipoFiltro('todos')} className="mt-3 inline-flex h-8 items-center gap-1.5 rounded-full border border-border/60 px-3 text-xs font-medium text-muted-foreground transition hover:border-[#1080CA]/40 hover:text-foreground">
+                        <X className="h-3.5 w-3.5" /> Limpar filtro
+                      </button>
+                    )}
                   </div>
                 ) : (
                   <div className="rounded-lg border overflow-hidden">
@@ -1438,29 +1506,24 @@ export default function CaixaDiario() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        <AnimatePresence>
                           {lancamentosFiltrados.map((l) => {
                             const cfg = getTipoConfig(l.tipo);
                             const Icon = cfg.icon;
                             const FormaIcon = FORMA_ICONS[l.forma_pagamento] || Banknote;
                             const valorAssinado = (l.tipo === 'receita' || l.tipo === 'suprimento') ? l.valor : -l.valor;
                             return (
-                              <motion.tr key={l.id}
-                                initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }}
-                                exit={{ opacity: 0, x: 10 }}
-                                className="border-b last:border-0 hover:bg-muted/30 transition-colors"
-                              >
+                              <TableRow key={l.id} className="hover:bg-muted/30 transition-colors">
                                 <TableCell>
-                                  <div className={cn('inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium', cfg.bg, cfg.color)}>
+                                  <div className={cn('inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium', cfg.bg, cfg.color)}>
                                     <Icon className="h-3 w-3" /> {cfg.label}
                                   </div>
                                 </TableCell>
                                 <TableCell className="font-medium text-sm">{l.descricao}</TableCell>
                                 <TableCell>
-                                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                                    <FormaIcon className="h-3.5 w-3.5" />
+                                  <Badge variant="outline" className="inline-flex items-center gap-1.5 rounded-full text-xs text-muted-foreground">
+                                    <FormaIcon className="h-3 w-3" />
                                     {FORMA_LABELS[l.forma_pagamento] || l.forma_pagamento}
-                                  </div>
+                                  </Badge>
                                 </TableCell>
                                 <TableCell className="text-xs text-muted-foreground">
                                   <div className="flex items-center gap-1">
@@ -1476,11 +1539,11 @@ export default function CaixaDiario() {
                                   <div className="flex gap-0.5">
                                     {l.tipo === 'receita' && (
                                       <>
-                                        <Button variant="ghost" size="icon" className="h-7 w-7"
+                                        <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full"
                                           title="Imprimir" onClick={() => printReceiptPdf(buildReceiptData(l))}>
                                           <Printer className="h-3.5 w-3.5" />
                                         </Button>
-                                        <Button variant="ghost" size="icon" className="h-7 w-7"
+                                        <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full"
                                           title="Download" onClick={() => downloadReceiptPdf(buildReceiptData(l))}>
                                           <Download className="h-3.5 w-3.5" />
                                         </Button>
@@ -1488,11 +1551,11 @@ export default function CaixaDiario() {
                                     )}
                                     {l.tipo !== 'receita' && !l.origem_pagamento && (
                                       <>
-                                        <Button variant="ghost" size="icon" aria-label="Excluir lançamento" className="h-7 w-7 text-destructive hover:text-destructive"
+                                        <Button variant="ghost" size="icon" aria-label="Excluir lançamento" className="h-9 w-9 rounded-full text-destructive hover:text-destructive"
                                           onClick={() => setConfirmDelete(l.id)}>
                                           <Trash2 className="h-3.5 w-3.5" />
                                         </Button>
-                                        <Button variant="ghost" size="icon" aria-label="Editar lançamento" className="h-7 w-7"
+                                        <Button variant="ghost" size="icon" aria-label="Editar lançamento" className="h-9 w-9 rounded-full"
                                           onClick={() => {
                                             setEditLanc(l);
                                             setEditForm({
@@ -1507,10 +1570,9 @@ export default function CaixaDiario() {
                                     )}
                                   </div>
                                 </TableCell>
-                              </motion.tr>
+                              </TableRow>
                             );
                           })}
-                        </AnimatePresence>
                       </TableBody>
                     </Table>
                   </div>
@@ -1519,16 +1581,16 @@ export default function CaixaDiario() {
             </Card>
           )}
 
-          {/* Empty state when caixa is closed */}
+          {/* Empty state when caixa is not open today */}
           {!isOpen && !caixaHoje && (
-            <Card className="border-dashed">
-              <CardContent className="py-16 text-center">
-                <div className="p-4 rounded-full bg-muted w-fit mx-auto mb-4">
-                  <Lock className="h-8 w-8 text-muted-foreground" />
-                </div>
+            <Card className="rounded-2xl border-border/60 shadow-xs">
+              <CardContent className="flex flex-col items-center py-16 text-center">
+                <span aria-hidden="true" className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+                  <DollarSign className="h-7 w-7" />
+                </span>
                 <h3 className="text-lg font-semibold text-foreground mb-1">Caixa não aberto hoje</h3>
                 <p className="text-sm text-muted-foreground mb-4">Abra o caixa para iniciar as movimentações do dia</p>
-                <Button onClick={() => setShowAbertura(true)} className="h-11 gap-2 rounded-full bg-gradient-primary px-5 text-white shadow-[0_6px_18px_rgba(16,128,202,0.35)] hover:brightness-110">
+                <Button onClick={() => setShowAbertura(true)} className="h-11 gap-2 rounded-full bg-gradient-primary px-5 text-white shadow-md hover:brightness-110">
                   <Unlock className="h-4 w-4" /> Abrir Caixa Agora
                 </Button>
               </CardContent>
@@ -1636,8 +1698,7 @@ export default function CaixaDiario() {
               ) : (
                 <div className="space-y-2">
                   {historicosCaixa.map((cx) => (
-                    <motion.div key={cx.id}
-                      initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+                    <div key={cx.id}
                       role="button" tabIndex={0}
                       className="flex items-center justify-between p-3 rounded-lg border hover:bg-muted/50 transition-colors cursor-pointer group"
                       onClick={() => { setCaixaParaFechar(cx); setShowDetalhesCaixa(cx); }}
@@ -1650,7 +1711,7 @@ export default function CaixaDiario() {
                       }}
                     >
                       <div className="flex items-center gap-3">
-                        <div className={cn('rounded-lg p-2', cx.aberto ? 'bg-gradient-primary text-white' : 'bg-[#111111] text-white')}>
+                        <div className={cn('rounded-lg p-2', cx.aberto ? 'bg-gradient-primary text-white' : 'bg-gradient-primary text-white')}>
                           {cx.aberto ? <Unlock className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
                         </div>
                         <div>
@@ -1675,7 +1736,7 @@ export default function CaixaDiario() {
                         </div>
                         <ChevronRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
                       </div>
-                    </motion.div>
+                    </div>
                   ))}
                 </div>
               )}
@@ -1848,8 +1909,8 @@ export default function CaixaDiario() {
                       <p className="text-xs">Cadastre em Configurações → Tipos de Consulta</p>
                     </div>
                   ) : consultasFiltradas.map((tc: any) => (
-                    <motion.button key={tc.id}
-                      whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.98 }}
+                    <button key={tc.id}
+                      type="button"
                       onClick={() => addToCart({ id: tc.id, nome: tc.nome, valor: tc.valor_particular || 0, origem: 'consulta' })}
                       className="w-full flex items-center justify-between p-3 rounded-lg border hover:border-primary/40 hover:bg-primary/5 transition-all text-left"
                     >
@@ -1860,7 +1921,7 @@ export default function CaixaDiario() {
                         <span className="font-medium text-sm">{tc.nome}</span>
                       </div>
                       <span className="font-bold text-sm text-primary tabular-nums">{fmt(tc.valor_particular || 0)}</span>
-                    </motion.button>
+                    </button>
                   ))}
                 </TabsContent>
 
@@ -1882,8 +1943,8 @@ export default function CaixaDiario() {
                       <p className="text-xs">Cadastre preços em Preços de Exames</p>
                     </div>
                   ) : examesFiltrados.map((ex: any) => (
-                    <motion.button key={ex.id}
-                      whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.98 }}
+                    <button key={ex.id}
+                      type="button"
                       onClick={() => addToCart({ id: ex.id, nome: ex.nome, valor: ex.valor || 0, origem: 'exame' })}
                       className="w-full flex items-center justify-between p-3 rounded-lg border hover:border-primary/40 hover:bg-primary/5 transition-all text-left"
                     >
@@ -1894,7 +1955,7 @@ export default function CaixaDiario() {
                         <span className="font-medium text-sm">{ex.nome}</span>
                       </div>
                       <span className="font-bold text-sm text-primary tabular-nums">{fmt(ex.valor || 0)}</span>
-                    </motion.button>
+                    </button>
                   ))}
                 </TabsContent>
 
@@ -1922,8 +1983,8 @@ export default function CaixaDiario() {
                       )}
                     </div>
                   ) : produtosFiltrados.map((p: any) => (
-                    <motion.button key={p.id}
-                      whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.98 }}
+                    <button key={p.id}
+                      type="button"
                       disabled={Number(p.quantidade) <= 0}
                       onClick={() => addToCart({ id: p.id, nome: p.nome, valor: p.valor_venda || 0, origem: 'produto', quantidadeDisponivel: Number(p.quantidade) || 0 })}
                       className="w-full flex items-center justify-between p-3 rounded-lg border hover:border-primary/40 hover:bg-primary/5 transition-all text-left disabled:cursor-not-allowed disabled:opacity-50"
@@ -1938,7 +1999,7 @@ export default function CaixaDiario() {
                         </div>
                       </div>
                       <span className="font-bold text-sm text-primary tabular-nums">{fmt(p.valor_venda || 0)}</span>
-                    </motion.button>
+                    </button>
                   ))}
                 </TabsContent>
 
@@ -1985,10 +2046,8 @@ export default function CaixaDiario() {
                 </div>
               ) : (
                 <div className="flex-1 overflow-y-auto space-y-1.5 max-h-[30vh]">
-                  <AnimatePresence>
                     {carrinho.map(item => (
-                      <motion.div key={item.id}
-                        initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }}
+                      <div key={item.id}
                         className="flex items-center justify-between p-2 rounded-lg bg-muted/50 text-sm"
                       >
                         <div className="flex-1 min-w-0">
@@ -2012,9 +2071,8 @@ export default function CaixaDiario() {
                             <Trash2 className="h-3 w-3" />
                           </Button>
                         </div>
-                      </motion.div>
+                      </div>
                     ))}
-                  </AnimatePresence>
                 </div>
               )}
 
@@ -2152,9 +2210,9 @@ export default function CaixaDiario() {
               </div>
 
               {/* Total */}
-              <div className="mb-3 rounded-xl bg-[#111111] p-3 text-white">
+              <div className="mb-3 rounded-xl bg-gradient-primary p-3 text-white">
                 <p className="text-xs text-white/60">Total a cobrar</p>
-                <p className="text-2xl font-bold tabular-nums text-[#2ED5E7]">{fmt(carrinhoTotal)}</p>
+                <p className="text-2xl font-bold tabular-nums text-white">{fmt(carrinhoTotal)}</p>
               </div>
 
               <Button onClick={() => adicionarLancamentoMutation.mutate()}

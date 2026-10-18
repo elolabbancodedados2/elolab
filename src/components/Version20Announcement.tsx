@@ -49,7 +49,7 @@ export function Version20Announcement() {
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && dismiss()}>
       <DialogContent className="overflow-hidden border-0 p-0 sm:max-w-lg">
-        <div className="relative overflow-hidden bg-gradient-to-br from-[#111111] via-[#240F8C] to-[#1080CA] px-6 pb-7 pt-8 text-white sm:px-8">
+        <div className="relative overflow-hidden bg-gradient-to-br from-[#0a5d94] via-[#1080CA] to-[#5FA8DD] px-6 pb-7 pt-8 text-white sm:px-8">
           <div className="pointer-events-none absolute -right-12 -top-16 h-48 w-48 rounded-full border border-white/10" />
           <div className="pointer-events-none absolute -right-5 -top-9 h-32 w-32 rounded-full border border-white/10" />
           <div className="relative flex h-11 w-11 items-center justify-center rounded-2xl bg-white/15 ring-1 ring-white/20">

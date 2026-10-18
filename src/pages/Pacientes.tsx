@@ -1320,7 +1320,7 @@ export default function Pacientes() {
             <Button
               size="lg"
               onClick={handleNew}
-              className="h-11 w-full gap-2 rounded-full bg-[#111111] px-3 text-sm font-semibold text-white shadow-md transition-all duration-200 hover:bg-[#2b2b33] hover:shadow-lg sm:w-auto sm:px-6"
+              className="h-11 w-full gap-2 rounded-full bg-gradient-primary px-3 text-sm font-semibold text-white shadow-md transition-all duration-200 hover:brightness-110 hover:shadow-lg sm:w-auto sm:px-6"
             >
               <Plus className="h-5 w-5" />
               Novo Paciente
@@ -1371,7 +1371,7 @@ export default function Pacientes() {
                 variant={showFilters ? 'default' : 'outline'}
                 size="icon"
                 onClick={() => setShowFilters(!showFilters)}
-                className={cn('relative h-11 w-11 shrink-0 rounded-full', showFilters && 'bg-[#111111] text-white hover:bg-[#2b2b33]')}
+                className={cn('relative h-11 w-11 shrink-0 rounded-full', showFilters && 'bg-gradient-primary text-white hover:brightness-110')}
                 aria-label={showFilters ? 'Ocultar filtros' : 'Mostrar filtros'}
                 aria-expanded={showFilters}
                 aria-controls="filtros-pacientes"

@@ -70,6 +70,7 @@ END;
 $$;
 
 DROP TRIGGER IF EXISTS trg_validar_auditoria_alerta_prescricao ON public.prescricoes;
+DROP TRIGGER IF EXISTS trg_validar_auditoria_alerta_prescricao ON public.prescricoes;
 CREATE TRIGGER trg_validar_auditoria_alerta_prescricao
   BEFORE INSERT OR UPDATE ON public.prescricoes
   FOR EACH ROW EXECUTE FUNCTION public.validar_auditoria_alerta_prescricao();

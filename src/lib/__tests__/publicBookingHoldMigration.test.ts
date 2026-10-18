@@ -6,7 +6,7 @@ const edgeFunction = readFileSync('supabase/functions/public-booking/index.ts', 
 
 describe('reservas temporárias do agendamento público', () => {
   it('guarda somente o hash do token, com validade e isolamento por clínica', () => {
-    expect(migration).toMatch(/CREATE TABLE public\.public_booking_holds/i);
+    expect(migration).toMatch(/CREATE TABLE (?:IF NOT EXISTS )?public\.public_booking_holds/i);
     expect(migration).toMatch(/clinica_id uuid NOT NULL REFERENCES public\.clinicas/i);
     expect(migration).toMatch(/token_hash text NOT NULL UNIQUE CHECK \(token_hash ~ '\^\[0-9a-f\]\{64\}\$'\)/i);
     expect(migration).toMatch(/expires_at timestamptz NOT NULL/i);

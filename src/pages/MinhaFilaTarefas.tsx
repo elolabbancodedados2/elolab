@@ -8,6 +8,7 @@ import { supabase } from '@/integrations/supabase/client';
 import type { TablesUpdate } from '@/integrations/supabase/types';
 import { ActionableEmptyState } from '@/components/ActionableEmptyState';
 import { ErrorState } from '@/components/ErrorState';
+import { PageHeader } from '@/components/PageHeader';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -150,21 +151,16 @@ export default function MinhaFilaTarefas() {
 
   return (
     <div className="space-y-5 pb-8">
-      <section className="relative isolate overflow-hidden rounded-[22px] border border-border/60 bg-card p-5 shadow-xs sm:p-7">
-        <div aria-hidden="true" className="pointer-events-none absolute -right-10 -top-20 h-56 w-56 rounded-full bg-gradient-primary opacity-[0.12] blur-2xl" />
-        <div className="relative flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.16em] text-[#1080CA]">Sua rotina</p>
-            <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
-              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-primary text-white"><ListTodo aria-hidden="true" className="h-5 w-5" /></span> Minha fila de trabalho
-            </h1>
-            <p className="mt-1.5 text-sm text-muted-foreground">Tarefas atribuídas a você, organizadas por prazo.</p>
-          </div>
-          <Button asChild className="h-11 gap-2 rounded-full bg-[#111111] px-5 text-white shadow-md hover:bg-[#2b2b33]">
+      <PageHeader
+        title="Minha fila de trabalho"
+        description="Tarefas atribuídas a você, organizadas por prazo."
+        icon={<ListTodo />}
+        actions={(
+          <Button asChild className="h-11 gap-2 rounded-full bg-gradient-primary px-5 text-white shadow-md hover:brightness-110">
             <Link to="/tarefas">Abrir quadro da equipe <ArrowUpRight aria-hidden="true" className="h-4 w-4" /></Link>
           </Button>
-        </div>
-      </section>
+        )}
+      />
 
       {tarefasQuery.isError ? (
         <ErrorState title="Não foi possível carregar sua fila" error={tarefasQuery.error} onRetry={() => void tarefasQuery.refetch()} />
@@ -187,7 +183,7 @@ export default function MinhaFilaTarefas() {
       ) : (
         <>
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(280px,1fr)]">
-            <section aria-labelledby="fila-proxima-title" className="relative overflow-hidden rounded-[24px] bg-[#111111] p-6 text-white shadow-lg">
+            <section aria-labelledby="fila-proxima-title" className="relative overflow-hidden rounded-[24px] bg-gradient-primary p-6 text-white shadow-lg">
               <div aria-hidden="true" className="pointer-events-none absolute -bottom-24 -right-20 h-72 w-72 rounded-full bg-gradient-primary opacity-40 blur-3xl" />
               <div className="relative">
                 <div className="flex items-center justify-between gap-3">
@@ -203,7 +199,7 @@ export default function MinhaFilaTarefas() {
                     <p className="mt-4 text-2xl font-bold leading-tight sm:text-[28px]">{proxima.titulo}</p>
                     {proxima.descricao && <p className="mt-2 max-w-xl text-sm text-white/65">{proxima.descricao}</p>}
                     <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-white/60">
-                      {proxima.data_vencimento && <span className="inline-flex items-center gap-1"><CalendarClock aria-hidden="true" className="h-3.5 w-3.5 text-[#2ED5E7]" /> Prazo {format(parseDateOnly(proxima.data_vencimento), 'dd/MM/yyyy')}</span>}
+                      {proxima.data_vencimento && <span className="inline-flex items-center gap-1"><CalendarClock aria-hidden="true" className="h-3.5 w-3.5 text-white" /> Prazo {format(parseDateOnly(proxima.data_vencimento), 'dd/MM/yyyy')}</span>}
                       {proxima.categoria && <span>{proxima.categoria}</span>}
                       <span>{statusLabel[proxima.status] ?? proxima.status}</span>
                     </div>
@@ -223,7 +219,7 @@ export default function MinhaFilaTarefas() {
                   </>
                 ) : (
                   <div className="mt-5">
-                    <Sparkles aria-hidden="true" className="h-8 w-8 text-[#2ED5E7]" />
+                    <Sparkles aria-hidden="true" className="h-8 w-8 text-white" />
                     <p className="mt-3 text-xl font-bold">Nada pendente na sua fila</p>
                     <p className="mt-1 text-sm text-white/65">Tudo o que estava atribuído a você já foi resolvido.</p>
                   </div>
@@ -261,7 +257,7 @@ export default function MinhaFilaTarefas() {
                   onClick={() => irParaSecao(key)}
                   className={cn(
                     'flex min-h-[92px] items-center gap-3 rounded-2xl border p-4 text-left transition hover:-translate-y-0.5 hover:shadow-md',
-                    destaque ? 'border-transparent bg-[#111111] text-white shadow-md' : 'border-border/60 bg-card shadow-xs hover:border-[#1080CA]/40',
+                    destaque ? 'border-transparent bg-gradient-primary text-white shadow-md' : 'border-border/60 bg-card shadow-xs hover:border-[#1080CA]/40',
                   )}
                 >
                   <span className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', chip, destaque && 'bg-white/15 text-white')}>

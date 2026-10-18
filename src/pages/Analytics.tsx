@@ -3,7 +3,6 @@ import { nomeMedico } from '@/lib/formatters';
 import { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { motion } from 'framer-motion';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -17,8 +16,8 @@ import {
   PieChart, Pie, Cell, AreaChart, Area, Legend,
 } from 'recharts';
 import {
-  TrendingUp, Users, Calendar as CalendarIcon, DollarSign, Activity, Stethoscope,
-  ArrowUp, ArrowDown, Filter, Download,
+  TrendingUp, Users, Calendar as CalendarIcon, DollarSign, Activity,
+  ArrowUp, ArrowDown, Filter, RefreshCw,
   Star, FileBarChart,
 } from 'lucide-react';
 import { addDays, subDays, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, differenceInDays } from 'date-fns';
@@ -28,13 +27,15 @@ import { valorRealizado } from '@/lib/lancamentos';
 import { DashboardSkeleton } from '@/components/ui/loading-skeleton';
 import { ErrorState } from '@/components/ErrorState';
 import { EmptyState } from '@/components/EmptyState';
+import { PageHeader } from '@/components/PageHeader';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
 import { dateOnlyInTimeZone, inicioDoDiaEmFusoIso, parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { calculateAttendanceRate } from '@/lib/analyticsKpis';
 import { AccessibleChartTable } from '@/components/analytics/AccessibleChartTable';
 
-const COLORS = ['hsl(var(--primary))', 'hsl(var(--success))', 'hsl(var(--warning))', 'hsl(var(--info))', 'hsl(var(--destructive))'];
+const COLORS = ['#1080CA', '#2ED5E7', '#111111', 'hsl(var(--warning))', 'hsl(var(--destructive))', 'hsl(var(--success))'];
+const GRID_COLOR = '#DCE6F2';
 const STATUS_FINALIZADO = new Set(['finalizado', 'atendimento_finalizado']);
 
 function diaFinanceiro(value?: string | null): string | null {
@@ -126,16 +127,18 @@ interface KPICardProps {
   definition: string;
   source: string;
   period: string;
-  tone: 'primary' | 'success' | 'accent' | 'warning';
+  tone: 'primary' | 'success' | 'accent' | 'warning' | 'dark';
+  onClick?: () => void;
+  pressed?: boolean;
 }
 
 function KPIDefinition({ title, definition, source, period }: Pick<KPICardProps, 'title' | 'definition' | 'source' | 'period'>) {
   return (
-    <details className="mt-2 text-xs" data-testid="analytics-kpi-definition">
-      <summary className="w-fit cursor-pointer rounded-sm font-medium text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+    <details className="mt-2 text-xs" data-testid="analytics-kpi-definition" onClick={(event) => event.stopPropagation()}>
+      <summary className="w-fit cursor-pointer rounded-sm font-medium text-[#1080CA] underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
         Critério e fonte
       </summary>
-      <div className="mt-2 space-y-1 rounded-md border bg-card p-2 text-muted-foreground">
+      <div className="mt-2 space-y-1 rounded-md border border-border/60 bg-card p-2 text-muted-foreground">
         <p><strong className="text-foreground">{title}:</strong> {definition}</p>
         <p><strong className="text-foreground">Fonte:</strong> {source}</p>
         <p><strong className="text-foreground">Período:</strong> {period}</p>
@@ -145,37 +148,58 @@ function KPIDefinition({ title, definition, source, period }: Pick<KPICardProps,
 }
 
 const KPI_TONES = {
-  primary: 'border-primary/20 from-primary/5 to-card',
+  primary: 'border-[#1080CA]/20 from-[#1080CA]/5 to-card',
   success: 'border-success/20 from-success/5 to-card',
-  accent: 'border-border from-accent to-card',
+  accent: 'border-border/60 from-accent to-card',
   warning: 'border-warning/20 from-warning/5 to-card',
+  dark: 'border-transparent bg-gradient-primary text-white',
 } as const;
 
 const KPI_ICON_TONES = {
-  primary: 'bg-primary/10 text-primary ring-primary/20',
+  primary: 'bg-[#1080CA]/10 text-[#1080CA] ring-[#1080CA]/20',
   success: 'bg-success/10 text-success ring-success/20',
   accent: 'bg-accent text-accent-foreground ring-border',
   warning: 'bg-warning/10 text-warning-foreground ring-warning/20',
+  dark: 'bg-white/20 text-white ring-white/20',
 } as const;
 
-function KPICard({ title, value, change, icon, description, definition, source, period, tone }: KPICardProps) {
+function KPICard({ title, value, change, icon, description, definition, source, period, tone, onClick, pressed }: KPICardProps) {
+  const dark = tone === 'dark';
   return (
     <div data-testid="analytics-kpi" className="h-full">
-      <Card className={cn('h-full border bg-gradient-to-br shadow-sm transition-shadow hover:shadow-md', KPI_TONES[tone])}>
+      <Card
+        className={cn(
+          'h-full border bg-gradient-to-br shadow-xs transition-all',
+          KPI_TONES[tone],
+          onClick && 'cursor-pointer hover:-translate-y-0.5 hover:shadow-md',
+        )}
+        {...(onClick ? {
+          role: 'button' as const,
+          tabIndex: 0,
+          'aria-pressed': pressed,
+          onClick,
+          onKeyDown: (event: React.KeyboardEvent) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault();
+              onClick();
+            }
+          },
+        } : {})}
+      >
         <CardContent className="pt-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-muted-foreground">{title}</p>
-              <p className="text-3xl font-bold mt-1 tabular-nums">{value}</p>
+              <p className={cn('text-sm', dark ? 'text-white/70' : 'text-muted-foreground')}>{title}</p>
+              <p className={cn('text-3xl font-bold mt-1 tabular-nums', dark && 'text-white')}>{value}</p>
               {change !== undefined && (
-                <div className={cn('flex items-center gap-1 text-sm mt-1', change === null ? 'text-muted-foreground' : change >= 0 ? 'text-success' : 'text-destructive')}>
+                <div className={cn('flex items-center gap-1 text-sm mt-1', change === null ? (dark ? 'text-white/60' : 'text-muted-foreground') : change >= 0 ? 'text-success' : 'text-destructive')}>
                   {change === null ? 'Sem base anterior para comparar' : <>
                     {change > 0 ? <ArrowUp className="h-3 w-3" /> : change < 0 ? <ArrowDown className="h-3 w-3" /> : <Activity className="h-3 w-3" />}
                     {Math.abs(change)}% vs período anterior
                   </>}
                 </div>
               )}
-              {description && <p className="text-xs text-muted-foreground mt-1">{description}</p>}
+              {description && <p className={cn('text-xs mt-1', dark ? 'text-white/70' : 'text-muted-foreground')}>{description}</p>}
               <KPIDefinition title={title} definition={definition} source={source} period={period} />
             </div>
             <div className={cn('rounded-2xl p-3 ring-1', KPI_ICON_TONES[tone])}>{icon}</div>
@@ -193,6 +217,7 @@ export default function Analytics() {
   const [customFrom, setCustomFrom] = useState<Date | undefined>();
   const [customTo, setCustomTo] = useState<Date | undefined>();
   const [showComparison, setShowComparison] = useState(false);
+  const [activeTab, setActiveTab] = useState('atendimento');
 
   const range = useMemo(() => getDateRange(periodPreset, customFrom, customTo), [periodPreset, customFrom, customTo]);
   const timestampRange = useMemo(() => limitesTimestampSaoPaulo(range.from, range.to), [range]);
@@ -467,6 +492,18 @@ export default function Analytics() {
     ] : []),
   ].filter(fonte => fonte.total >= LIMITE_BUSCA_EM_BLOCOS).map(fonte => fonte.nome);
 
+  const refetchTudo = () => {
+    refetchAg();
+    lancamentosEmissaoQuery.refetch();
+    lancamentosPagamentoQuery.refetch();
+    pagamentosQuery.refetch();
+    triagensQuery.refetch();
+    feedbacksQuery.refetch();
+    prevLancamentosEmissaoQuery.refetch();
+    prevLancamentosPagamentoQuery.refetch();
+    if (showComparison) prevAgendamentosQuery.refetch();
+  };
+
   if (authLoading || isLoadingDados) {
     return (
       <div className="pb-8">
@@ -489,17 +526,7 @@ export default function Analytics() {
         <ErrorState
           title="Não foi possível carregar os indicadores"
           error={erroDados}
-          onRetry={() => {
-            refetchAg();
-            lancamentosEmissaoQuery.refetch();
-            lancamentosPagamentoQuery.refetch();
-            pagamentosQuery.refetch();
-            triagensQuery.refetch();
-            feedbacksQuery.refetch();
-            prevLancamentosEmissaoQuery.refetch();
-            prevLancamentosPagamentoQuery.refetch();
-            if (showComparison) prevAgendamentosQuery.refetch();
-          }}
+          onRetry={refetchTudo}
         />
       </div>
     );
@@ -509,31 +536,34 @@ export default function Analytics() {
 
   if (semDados) {
     return (
-      <div className="pb-8">
-        <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-border bg-gradient-to-r from-accent/70 via-card to-accent/70 p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="text-2xl font-bold font-display tracking-tight">Indicadores da clínica</h1>
-            <p className="mt-1 text-sm text-muted-foreground">Escolha outro período para consultar os indicadores.</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground">Período</span>
-            <Select value={periodPreset} onValueChange={setPeriodPreset}>
-              <SelectTrigger className="w-[180px] h-9" aria-label="Selecionar período dos indicadores">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {PERIOD_PRESETS.map(p => (
-                  <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
+      <div className="space-y-4 pb-8">
+        <PageHeader
+          title="Indicadores da clínica"
+          icon={<Activity />}
+          description="Escolha outro período para consultar os indicadores."
+          actions={
+            <>
+              <Button aria-label="Atualizar indicadores" variant="outline" size="icon" className="rounded-full" onClick={refetchTudo}>
+                <RefreshCw className="h-4 w-4" />
+              </Button>
+              <Select value={periodPreset} onValueChange={setPeriodPreset}>
+                <SelectTrigger className="w-[180px] h-9 rounded-full" aria-label="Selecionar período dos indicadores">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {PERIOD_PRESETS.map(p => (
+                    <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </>
+          }
+        />
         {periodPreset === 'custom' && (
-          <div className="mb-4 flex items-center gap-2">
+          <div className="flex items-center gap-2">
             <Popover>
               <PopoverTrigger asChild>
-                <Button variant="outline" size="sm" className="h-9 text-xs gap-1">
+                <Button variant="outline" size="sm" className="h-9 rounded-full text-xs gap-1">
                   <CalendarIcon className="h-3.5 w-3.5" />
                   {customFrom ? format(customFrom, 'dd/MM/yy') : 'De'}
                 </Button>
@@ -545,7 +575,7 @@ export default function Analytics() {
             <span className="text-muted-foreground text-xs">→</span>
             <Popover>
               <PopoverTrigger asChild>
-                <Button variant="outline" size="sm" className="h-9 text-xs gap-1">
+                <Button variant="outline" size="sm" className="h-9 rounded-full text-xs gap-1">
                   <CalendarIcon className="h-3.5 w-3.5" />
                   {customTo ? format(customTo, 'dd/MM/yy') : 'Até'}
                 </Button>
@@ -567,66 +597,67 @@ export default function Analytics() {
 
   return (
     <div className="space-y-6 pb-8">
-      {/* Header + Period Selector */}
-      <div className="flex flex-col gap-4 rounded-2xl border border-border bg-gradient-to-r from-accent/70 via-card to-accent/70 p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:p-5">
-        <div>
-          <h1 className="text-2xl font-bold font-display tracking-tight flex items-center gap-2">
-            <span className="rounded-xl bg-primary/10 p-2 text-primary ring-1 ring-primary/20"><Activity className="h-5 w-5" /></span> Indicadores da clínica
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">Acompanhe tendências e compare períodos. Para relatórios detalhados e exportações, acesse Relatórios.</p>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <Button variant="outline" size="sm" asChild className="h-9 gap-1.5">
-            <Link to="/relatorios"><FileBarChart className="h-3.5 w-3.5" />Relatórios detalhados</Link>
-          </Button>
-          <Select value={periodPreset} onValueChange={setPeriodPreset}>
-            <SelectTrigger className="w-[180px] h-9" aria-label="Selecionar período de comparação dos indicadores">
-              <Filter className="h-3.5 w-3.5 mr-1.5 text-muted-foreground" />
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {PERIOD_PRESETS.map(p => <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>)}
-            </SelectContent>
-          </Select>
+      <PageHeader
+        title="Indicadores da clínica"
+        icon={<Activity />}
+        description={`${format(range.from, 'dd/MM/yyyy')} a ${format(range.to, 'dd/MM/yyyy')}${showComparison ? ` · comparando com ${format(prevRange.from, 'dd/MM')} a ${format(prevRange.to, 'dd/MM')}` : ''} · para relatórios detalhados e exportações, acesse Relatórios.`}
+        actions={
+          <>
+            <Button aria-label="Atualizar indicadores" variant="outline" size="icon" className="rounded-full" onClick={refetchTudo}>
+              <RefreshCw className="h-4 w-4" />
+            </Button>
+            <Button variant="outline" size="sm" asChild className="rounded-full gap-1.5">
+              <Link to="/relatorios"><FileBarChart className="h-3.5 w-3.5" />Relatórios detalhados</Link>
+            </Button>
+            <Select value={periodPreset} onValueChange={setPeriodPreset}>
+              <SelectTrigger className="w-[180px] h-9 rounded-full" aria-label="Selecionar período de comparação dos indicadores">
+                <Filter className="h-3.5 w-3.5 mr-1.5 text-muted-foreground" />
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {PERIOD_PRESETS.map(p => <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
 
-          {periodPreset === 'custom' && (
-            <div className="flex items-center gap-1">
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" size="sm" className="h-9 text-xs gap-1">
-                    <CalendarIcon className="h-3.5 w-3.5" />
-                    {customFrom ? format(customFrom, 'dd/MM/yy') : 'De'}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar mode="single" selected={customFrom} onSelect={setCustomFrom} className="p-3 pointer-events-auto" />
-                </PopoverContent>
-              </Popover>
-              <span className="text-muted-foreground text-xs">→</span>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" size="sm" className="h-9 text-xs gap-1">
-                    <CalendarIcon className="h-3.5 w-3.5" />
-                    {customTo ? format(customTo, 'dd/MM/yy') : 'Até'}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar mode="single" selected={customTo} onSelect={setCustomTo} className="p-3 pointer-events-auto" />
-                </PopoverContent>
-              </Popover>
-            </div>
-          )}
+            <Button
+              variant={showComparison ? 'default' : 'outline'}
+              size="sm" className={cn('h-9 rounded-full text-xs gap-1', showComparison && 'bg-gradient-primary text-white hover:brightness-110')}
+              onClick={() => setShowComparison(!showComparison)}
+            >
+              <TrendingUp className="h-3.5 w-3.5" />
+              Comparar
+            </Button>
+          </>
+        }
+      />
 
-          <Button
-            variant={showComparison ? 'default' : 'outline'}
-            size="sm" className="h-9 text-xs gap-1"
-            onClick={() => setShowComparison(!showComparison)}
-          >
-            <TrendingUp className="h-3.5 w-3.5" />
-            Comparar
-          </Button>
+      {periodPreset === 'custom' && (
+        <div className="flex items-center gap-2">
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="sm" className="h-9 rounded-full text-xs gap-1">
+                <CalendarIcon className="h-3.5 w-3.5" />
+                {customFrom ? format(customFrom, 'dd/MM/yy') : 'De'}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="start">
+              <Calendar mode="single" selected={customFrom} onSelect={setCustomFrom} className="p-3 pointer-events-auto" />
+            </PopoverContent>
+          </Popover>
+          <span className="text-muted-foreground text-xs">→</span>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="sm" className="h-9 rounded-full text-xs gap-1">
+                <CalendarIcon className="h-3.5 w-3.5" />
+                {customTo ? format(customTo, 'dd/MM/yy') : 'Até'}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="start">
+              <Calendar mode="single" selected={customTo} onSelect={setCustomTo} className="p-3 pointer-events-auto" />
+            </PopoverContent>
+          </Popover>
         </div>
-      </div>
+      )}
 
       {/* Period indicator */}
       <div className="flex items-center gap-2">
@@ -647,8 +678,10 @@ export default function Analytics() {
           title="Taxa de Comparecimento"
           value={baseComparecimento > 0 ? `${taxaComparecimento}%` : '—'}
           change={showComparison ? (baseComparecimento > 0 ? calcChange(taxaComparecimento, prevTaxaComp) : null) : undefined}
-          icon={<Users className="h-6 w-6 text-primary" />}
+          icon={<Users className="h-6 w-6 text-[#1080CA]" />}
           tone="primary"
+          onClick={() => setActiveTab('atendimento')}
+          pressed={activeTab === 'atendimento'}
           definition="Consultas finalizadas divididas pelo total de consultas finalizadas e faltas. Consultas futuras, em andamento e canceladas ficam fora do denominador."
           source="Agendamentos, pelos estados finalizado, atendimento_finalizado e faltou."
           period={kpiPeriod}
@@ -660,8 +693,10 @@ export default function Analytics() {
           title="Receita do Período"
           value={receitaTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
           change={showComparison ? calcChange(receitaTotal, prevReceita) : undefined}
-          icon={<DollarSign className="h-6 w-6 text-primary" />}
-          tone="success"
+          icon={<DollarSign className="h-6 w-6" />}
+          tone="dark"
+          onClick={() => setActiveTab('financeiro')}
+          pressed={activeTab === 'financeiro'}
           definition="Soma de receitas pagas no período menos estornos cuja data ocorreu no período; registros legados sem pagamentos individuais usam o valor realizado da conta."
           source="Pagamentos e lançamentos legados sem pagamento individual."
           period={kpiPeriod}
@@ -671,8 +706,10 @@ export default function Analytics() {
           title="Ticket Médio"
           value={atendimentosComRecebimento.size > 0 ? ticketMedio.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '—'}
           change={showComparison ? calcChange(ticketMedio, ticketMedioAnterior) : undefined}
-          icon={<TrendingUp className="h-6 w-6 text-primary" />}
+          icon={<TrendingUp className="h-6 w-6 text-accent-foreground" />}
           tone="accent"
+          onClick={() => setActiveTab('financeiro')}
+          pressed={activeTab === 'financeiro'}
           definition="Receita vinculada a agendamentos dividida pela quantidade de agendamentos distintos com recebimento no período."
           source="Pagamentos/lançamentos vinculados a agendamento."
           period={kpiPeriod}
@@ -682,8 +719,10 @@ export default function Analytics() {
           title="Total Agendamentos"
           value={totalAg}
           change={showComparison ? calcChange(totalAg, prevTotalAg) : undefined}
-          icon={<CalendarIcon className="h-6 w-6 text-primary" />}
+          icon={<CalendarIcon className="h-6 w-6 text-warning-foreground" />}
           tone="warning"
+          onClick={() => setActiveTab('atendimento')}
+          pressed={activeTab === 'atendimento'}
           definition="Contagem de todos os agendamentos com data dentro do período, independentemente do status."
           source="Agendamentos, campo data."
           period={kpiPeriod}
@@ -693,7 +732,7 @@ export default function Analytics() {
 
       {/* Secondary KPIs */}
       <div className="grid gap-4 md:grid-cols-4">
-        <Card><CardContent className="pt-5">
+        <Card className="shadow-xs"><CardContent className="pt-5">
           <p className="text-xs text-muted-foreground">Despesas</p>
           <p className="text-xl font-bold tabular-nums text-destructive">{despesaTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</p>
           {showComparison && <p className={cn('text-[10px]', changeDespesas === null ? 'text-muted-foreground' : changeDespesas <= 0 ? 'text-success' : 'text-destructive')}>
@@ -701,19 +740,19 @@ export default function Analytics() {
           </p>}
           <KPIDefinition title="Despesas" definition="Soma das despesas pagas no período menos estornos ocorridos no período; contas legadas sem pagamentos individuais usam o valor realizado da conta." source="Pagamentos e lançamentos legados sem pagamento individual." period={kpiPeriod} />
         </CardContent></Card>
-        <Card><CardContent className="pt-5">
+        <Card className="shadow-xs"><CardContent className="pt-5">
           <p className="text-xs text-muted-foreground">Triagens</p>
           <p className="text-xl font-bold tabular-nums">{triagens.length}</p>
           <p className="text-[10px] text-muted-foreground">No período selecionado</p>
           <KPIDefinition title="Triagens" definition="Quantidade de registros criados dentro do período selecionado." source="Triagens, campo created_at." period={kpiPeriod} />
         </CardContent></Card>
-        <Card><CardContent className="pt-5">
+        <Card className="shadow-xs"><CardContent className="pt-5">
           <p className="text-xs text-muted-foreground">Margem de Lucro</p>
           <p className={cn('text-xl font-bold tabular-nums', margemLucro === null ? 'text-muted-foreground' : margemLucro >= 0 ? 'text-success' : 'text-destructive')}>{margemLucro === null ? '—' : `${margemLucro}%`}</p>
           <p className="text-[10px] text-muted-foreground">Receita - Despesa / Receita</p>
           <KPIDefinition title="Margem de lucro" definition="(Receita - despesas) ÷ receita × 100. Sem receita, o indicador fica indisponível." source="Os mesmos eventos de pagamentos e lançamentos usados em Receita e Despesas." period={kpiPeriod} />
         </CardContent></Card>
-        <Card><CardContent className="pt-5">
+        <Card className="shadow-xs"><CardContent className="pt-5">
           <p className="text-xs text-muted-foreground">Média diária de agendamentos</p>
           <p className="text-xl font-bold tabular-nums">{(totalAg / (rangeDays || 1)).toFixed(1)}</p>
           <p className="text-[10px] text-muted-foreground">consultas/dia</p>
@@ -721,7 +760,7 @@ export default function Analytics() {
         </CardContent></Card>
       </div>
 
-      <Tabs defaultValue="atendimento" className="space-y-4">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
         <TabsList>
           <TabsTrigger value="atendimento">Atendimento</TabsTrigger>
           <TabsTrigger value="produtividade">Produtividade</TabsTrigger>
@@ -732,7 +771,7 @@ export default function Analytics() {
 
         <TabsContent value="atendimento" className="space-y-4">
           <div className="grid gap-4 md:grid-cols-2">
-            <Card>
+            <Card className="shadow-xs">
               <CardHeader>
                 <CardTitle>Agendamentos por Dia</CardTitle>
                 <CardDescription>{showComparison ? 'Atual vs Período Anterior' : `Últimos ${Math.min(14, rangeDays)} dias`}</CardDescription>
@@ -740,11 +779,11 @@ export default function Analytics() {
               <CardContent>
                 <ResponsiveContainer width="100%" height={300}>
                   <BarChart data={agPorDia}>
-                    <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                    <CartesianGrid strokeDasharray="3 3" stroke={GRID_COLOR} />
                     <XAxis dataKey="dia" className="text-xs" />
                     <YAxis className="text-xs" />
                     <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--background))', border: '1px solid hsl(var(--border))' }} />
-                    <Bar dataKey="agendamentos" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} name="Atual" />
+                    <Bar dataKey="agendamentos" fill="#1080CA" radius={[4, 4, 0, 0]} name="Atual" />
                     {showComparison && (
                       <Bar dataKey="anterior" fill="hsl(var(--muted-foreground))" radius={[4, 4, 0, 0]} opacity={0.4} name="Anterior" />
                     )}
@@ -761,7 +800,7 @@ export default function Analytics() {
               </CardContent>
             </Card>
 
-            <Card>
+            <Card className="shadow-xs">
               <CardHeader>
                 <CardTitle>Status dos Agendamentos</CardTitle>
                 <CardDescription>Distribuição por status</CardDescription>
@@ -791,7 +830,7 @@ export default function Analytics() {
 
         {/* ─── Produtividade Tab ─── */}
         <TabsContent value="produtividade" className="space-y-4">
-          <Card>
+          <Card className="shadow-xs">
             <CardHeader>
               <CardTitle>Produtividade por Médico</CardTitle>
               <CardDescription>Atendimentos no período selecionado</CardDescription>
@@ -804,10 +843,14 @@ export default function Analytics() {
                   {produtividade.map((med, i) => {
                     const taxa = med.total > 0 ? Math.round((med.finalizados / med.total) * 100) : 0;
                     return (
-                      <motion.div key={i} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.05 }}
-                        className="flex items-center gap-4 p-3 rounded-xl border bg-card hover:shadow-sm transition-shadow"
+                      <div key={i}
+                        className="flex items-center gap-4 p-3 rounded-xl border border-border/60 bg-card hover:shadow-sm transition-shadow animate-in fade-in slide-in-from-left-2"
+                        style={{ animationDelay: `${i * 50}ms` }}
                       >
-                        <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-sm font-bold text-primary shrink-0">
+                        <div className={cn(
+                          'h-10 w-10 rounded-full flex items-center justify-center text-sm font-bold shrink-0',
+                          i === 0 ? 'bg-gradient-primary text-white' : 'bg-muted text-foreground',
+                        )}>
                           {i + 1}º
                         </div>
                         <div className="flex-1 min-w-0">
@@ -820,16 +863,14 @@ export default function Analytics() {
                         </div>
                         <div className="w-20 shrink-0">
                           <div className="h-2 bg-muted rounded-full overflow-hidden">
-                            <motion.div
-                              initial={{ width: 0 }}
-                              animate={{ width: `${taxa}%` }}
-                              transition={{ duration: 0.8, delay: i * 0.05 }}
-                              className="h-full bg-primary rounded-full"
+                            <div
+                              style={{ width: `${taxa}%` }}
+                              className="h-full bg-gradient-primary rounded-full transition-all duration-700"
                             />
                           </div>
                           <p className="text-[10px] text-center text-muted-foreground mt-0.5">{taxa}% finaliz.</p>
                         </div>
-                      </motion.div>
+                      </div>
                     );
                   })}
                 </div>
@@ -852,7 +893,7 @@ export default function Analytics() {
               { label: 'Despesa Total', value: despesaTotal, color: 'text-destructive' },
               { label: 'Saldo', value: receitaTotal - despesaTotal, color: receitaTotal - despesaTotal >= 0 ? 'text-success' : 'text-destructive' },
             ].map(item => (
-              <Card key={item.label}>
+              <Card key={item.label} className="shadow-xs">
                 <CardContent className="pt-6">
                   <div className="text-center">
                     <p className="text-sm text-muted-foreground">{item.label}</p>
@@ -865,7 +906,7 @@ export default function Analytics() {
             ))}
           </div>
 
-          <Card>
+          <Card className="shadow-xs">
             <CardHeader>
               <CardTitle>Fluxo de Caixa</CardTitle>
               <CardDescription>Receitas vs Despesas</CardDescription>
@@ -873,7 +914,7 @@ export default function Analytics() {
             <CardContent>
               <ResponsiveContainer width="100%" height={300}>
                 <AreaChart data={fluxoCaixa}>
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                  <CartesianGrid strokeDasharray="3 3" stroke={GRID_COLOR} />
                   <XAxis dataKey="dia" className="text-xs" />
                   <YAxis className="text-xs" />
                   <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--background))', border: '1px solid hsl(var(--border))' }}
@@ -896,7 +937,7 @@ export default function Analytics() {
 
         <TabsContent value="triagem" className="space-y-4">
           <div className="grid gap-4 md:grid-cols-2">
-            <Card>
+            <Card className="shadow-xs">
               <CardHeader>
                 <CardTitle>Classificação de Risco</CardTitle>
                 <CardDescription>Protocolo Manchester</CardDescription>
@@ -922,7 +963,7 @@ export default function Analytics() {
               </CardContent>
             </Card>
 
-            <Card>
+            <Card className="shadow-xs">
               <CardHeader>
                 <CardTitle>Resumo de Triagens</CardTitle>
                 <CardDescription>Estatísticas do período</CardDescription>
@@ -945,15 +986,15 @@ export default function Analytics() {
         </TabsContent>
         <TabsContent value="satisfacao" className="space-y-4">
           <div className="grid gap-4 md:grid-cols-3">
-            <Card><CardContent className="pt-6"><p className="text-sm text-muted-foreground">Média</p><p className={cn('text-3xl font-bold', feedbacks.length === 0 && 'text-muted-foreground')}>{feedbacks.length > 0 ? `${mediaSatisfacao.toFixed(1)}/5` : '—'}</p>{feedbacks.length === 0 && <p className="mt-1 text-xs text-muted-foreground">Sem respostas no período</p>}</CardContent></Card>
-            <Card><CardContent className="pt-6"><p className="text-sm text-muted-foreground">Respostas</p><p className="text-3xl font-bold">{feedbacks.length}</p></CardContent></Card>
-            <Card><CardContent className="pt-6"><p className="text-sm text-muted-foreground">Alertas (1–2)</p><p className="text-3xl font-bold text-destructive">{feedbacks.filter((f: any) => f.nota <= 2).length}</p></CardContent></Card>
+            <Card className="shadow-xs"><CardContent className="pt-6"><p className="text-sm text-muted-foreground">Média</p><p className={cn('text-3xl font-bold', feedbacks.length === 0 && 'text-muted-foreground')}>{feedbacks.length > 0 ? `${mediaSatisfacao.toFixed(1)}/5` : '—'}</p>{feedbacks.length === 0 && <p className="mt-1 text-xs text-muted-foreground">Sem respostas no período</p>}</CardContent></Card>
+            <Card className="shadow-xs"><CardContent className="pt-6"><p className="text-sm text-muted-foreground">Respostas</p><p className="text-3xl font-bold">{feedbacks.length}</p></CardContent></Card>
+            <Card className="shadow-xs"><CardContent className="pt-6"><p className="text-sm text-muted-foreground">Alertas (1–2)</p><p className="text-3xl font-bold text-destructive">{feedbacks.filter((f: any) => f.nota <= 2).length}</p></CardContent></Card>
           </div>
-          <Card><CardHeader><CardTitle>Avaliações recentes</CardTitle><CardDescription>Notas e comentários do período</CardDescription></CardHeader>
+          <Card className="shadow-xs"><CardHeader><CardTitle>Avaliações recentes</CardTitle><CardDescription>Notas e comentários do período</CardDescription></CardHeader>
             <CardContent className="space-y-3">
               {feedbacks.length === 0 ? <p className="text-sm text-muted-foreground">Nenhuma avaliação no período.</p> : feedbacks.slice(0, 20).map((f: any) => (
-                <div key={f.id} className={cn('rounded-lg border p-3', f.nota <= 2 && 'border-destructive/50 bg-destructive/5')}>
-                  <div className="flex items-center justify-between"><span className="font-medium">{f.pacientes?.nome || 'Paciente'}</span><Badge variant={f.nota <= 2 ? 'destructive' : 'secondary'}><Star className="mr-1 h-3 w-3" />{f.nota}/5</Badge></div>
+                <div key={f.id} className={cn('rounded-lg border border-border/60 p-3', f.nota <= 2 && 'border-destructive/50 bg-destructive/5')}>
+                  <div className="flex items-center justify-between"><span className="font-medium">{f.pacientes?.nome || 'Paciente'}</span><Badge variant={f.nota <= 2 ? 'destructive' : 'secondary'} className="rounded-full"><Star className="mr-1 h-3 w-3" />{f.nota}/5</Badge></div>
                   {f.comentario && <p className="mt-2 text-sm text-muted-foreground">{f.comentario}</p>}
                 </div>
               ))}

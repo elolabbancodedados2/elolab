@@ -15,14 +15,14 @@ export default function TemplatesUnificado() {
   const setTab = (value: string) => setSearchParams(value === 'prontuario' ? {} : { tab: value }, { replace: true });
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <Tabs value={tab} onValueChange={setTab} className="w-full">
-        <TabsList className="grid w-full max-w-md grid-cols-2 mx-auto">
-          <TabsTrigger value="prontuario" className="gap-2">
+        <TabsList className="mx-auto grid h-auto w-full max-w-md grid-cols-2 rounded-2xl border border-border bg-muted/60 p-1.5 shadow-sm">
+          <TabsTrigger value="prontuario" className="min-h-11 gap-2 rounded-xl">
             <FolderKanban className="h-4 w-4" />
             Clínicos
           </TabsTrigger>
-          <TabsTrigger value="email" className="gap-2">
+          <TabsTrigger value="email" className="min-h-11 gap-2 rounded-xl">
             <Mail className="h-4 w-4" />
             E-mail
           </TabsTrigger>

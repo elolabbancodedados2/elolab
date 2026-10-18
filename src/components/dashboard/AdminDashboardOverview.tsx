@@ -70,7 +70,7 @@ const actionIcons = {
 
 const actionTones = [
   'bg-gradient-primary text-white shadow-[0_6px_18px_rgba(16,128,202,0.35)]',
-  'bg-[#111111] text-white',
+  'bg-gradient-primary text-white',
   'border border-border/60 bg-card text-foreground hover:border-[#1080CA]/40',
   'border border-border/60 bg-card text-foreground hover:border-[#1080CA]/40',
 ];
@@ -106,7 +106,7 @@ export function AdminDashboardOverview({
     { label: 'Consultas hoje', value: metricas.consultas, note: 'agendadas para o dia', icon: CalendarDays, tone: 'bg-gradient-primary text-white shadow-[0_8px_24px_rgba(16,128,202,0.35)]', iconTone: 'bg-white/20 text-white', href: '/agenda' },
     { label: 'Na fila', value: metricas.fila, note: 'aguardando atendimento', icon: Users, tone: 'bg-card border border-border/60', iconTone: 'bg-[#1080CA]/10 text-[#1080CA]', href: '/fila' },
     { label: 'Concluídas', value: metricas.finalizadas, note: 'atendimentos de hoje', icon: Check, tone: 'bg-card border border-border/60', iconTone: 'bg-success/10 text-success', href: '/fila' },
-    { label: 'Receita do dia', value: metricas.receita, note: 'valores recebidos hoje', icon: Activity, tone: 'bg-[#111111] text-white', iconTone: 'bg-white/10 text-[#2ED5E7]', href: '/fluxo-caixa' },
+    { label: 'Receita do dia', value: metricas.receita, note: 'valores recebidos hoje', icon: Activity, tone: 'bg-gradient-primary text-white', iconTone: 'bg-white/20 text-white', href: '/fluxo-caixa' },
   ];
 
   return (
@@ -123,7 +123,7 @@ export function AdminDashboardOverview({
         </div>
         <Link
           to="/agenda"
-          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full bg-[#111111] px-5 text-sm font-bold text-white shadow-md transition hover:bg-[#2b2b33] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA] focus-visible:ring-offset-2"
+          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full bg-gradient-primary px-5 text-sm font-bold text-white shadow-md transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA] focus-visible:ring-offset-2"
         >
           <Plus className="h-4 w-4" /> Novo atendimento
         </Link>
@@ -132,7 +132,7 @@ export function AdminDashboardOverview({
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1fr)] lg:grid-rows-[auto_auto]">
         <section
           aria-labelledby="dashboard-timeline-title"
-          className="relative overflow-hidden rounded-[24px] bg-[#111111] p-6 text-white shadow-lg lg:row-span-2"
+          className="relative overflow-hidden rounded-[24px] bg-gradient-primary p-6 text-white shadow-lg lg:row-span-2"
         >
           <div aria-hidden="true" className="pointer-events-none absolute -bottom-24 -right-20 h-72 w-72 rounded-full bg-gradient-primary opacity-40 blur-3xl" />
           <div aria-hidden="true" className="pointer-events-none absolute -left-10 -top-16 h-40 w-40 rounded-full bg-white/5" />
@@ -158,7 +158,7 @@ export function AdminDashboardOverview({
                   <ul className="mt-5 flex flex-wrap gap-2" aria-label="Próximos horários">
                     {seguintes.map((item) => (
                       <li key={item.id} className="rounded-full border border-white/15 bg-white/[0.07] px-3 py-1.5 text-[11px] font-semibold">
-                        <span className="tabular-nums text-[#2ED5E7]">{item.horario}</span> · {primeiroNome(item.paciente)}
+                        <span className="tabular-nums text-white">{item.horario}</span> · {primeiroNome(item.paciente)}
                       </li>
                     ))}
                   </ul>
@@ -166,7 +166,7 @@ export function AdminDashboardOverview({
               </>
             ) : (
               <div className="mt-6">
-                <Sparkles className="h-8 w-8 text-[#2ED5E7]" />
+                <Sparkles className="h-8 w-8 text-white" />
                 <p className="mt-3 text-xl font-bold">Agenda livre hoje</p>
                 <p className="mt-1 max-w-xs text-sm text-white/65">Aproveite para confirmar as consultas de amanhã ou encaixar a lista de espera.</p>
               </div>
@@ -246,7 +246,7 @@ export function AdminDashboardOverview({
                     <p className="truncate text-xs text-muted-foreground sm:hidden">{item.tipo}</p>
                   </div>
                   <span className="hidden truncate text-xs text-muted-foreground sm:block">{item.tipo}</span>
-                  <span className="max-w-28 truncate rounded-full bg-[#111111] px-2.5 py-1 text-[11px] font-bold text-white">{item.status}</span>
+                  <span className="max-w-28 truncate rounded-full bg-gradient-primary px-2.5 py-1 text-[11px] font-bold text-white">{item.status}</span>
                 </div>
               ))}
             </div>
@@ -268,7 +268,7 @@ export function AdminDashboardOverview({
               <h2 id="dashboard-alerts-title" className="text-lg font-bold text-foreground">Precisa de atenção</h2>
               <p className="mt-0.5 text-xs text-muted-foreground">Pendências da clínica</p>
             </div>
-            <span className={cn('rounded-full px-2.5 py-1 text-xs font-extrabold', alertas.length > 0 ? 'bg-[#111111] text-white' : 'bg-success/10 text-success')}>{alertas.length}</span>
+            <span className={cn('rounded-full px-2.5 py-1 text-xs font-extrabold', alertas.length > 0 ? 'bg-gradient-primary text-white' : 'bg-success/10 text-success')}>{alertas.length}</span>
           </div>
           {alertas.length > 0 ? (
             <div className="space-y-2">
@@ -276,7 +276,7 @@ export function AdminDashboardOverview({
                 <Link key={alerta.id} to={alerta.href} className="group flex min-h-[64px] items-center gap-3 rounded-2xl border border-border/60 px-3 py-2.5 transition hover:border-[#1080CA]/40 hover:bg-[#1080CA]/[0.04]">
                   <span className={cn(
                     'flex h-10 w-10 shrink-0 items-center justify-center rounded-xl',
-                    alerta.tom === 'attention' ? 'bg-[#111111] text-white' : 'bg-[#1080CA]/10 text-[#1080CA]',
+                    alerta.tom === 'attention' ? 'bg-gradient-primary text-white' : 'bg-[#1080CA]/10 text-[#1080CA]',
                   )}>
                     {alerta.id === 'fila' ? <Users className="h-4 w-4" /> : alerta.id === 'estoque' ? <FlaskConical className="h-4 w-4" /> : alerta.id === 'tarefas' ? <ListChecks className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
                   </span>
@@ -352,7 +352,7 @@ export function AdminDashboardOverview({
                   <span className={cn('text-[11px] font-bold tabular-nums', dia.hoje ? 'text-[#1080CA]' : 'text-muted-foreground')}>{dia.total}</span>
                   <div className="flex h-24 w-full items-end rounded-xl bg-muted/70">
                     <div
-                      className={cn('w-full rounded-xl', dia.hoje ? 'bg-gradient-primary' : 'bg-[#111111]/80')}
+                      className={cn('w-full rounded-xl', dia.hoje ? 'bg-gradient-primary' : 'bg-gradient-primary/80')}
                       style={{ height: `${Math.max(dia.total > 0 ? 8 : 0, Math.round((dia.total / picoSemana) * 100))}%` }}
                       aria-hidden="true"
                     />
@@ -448,7 +448,7 @@ export function AdminDashboardOverview({
                   <YAxis hide />
                   <Tooltip formatter={(value: number, name: string) => [new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value), name === 'receitas' ? 'Receitas' : 'Despesas']} />
                   <Bar dataKey="receitas" name="receitas" fill="#1080CA" radius={[8, 8, 0, 0]} />
-                  <Bar dataKey="despesas" name="despesas" fill="#2b2b33" radius={[8, 8, 0, 0]} />
+                  <Bar dataKey="despesas" name="despesas" fill="#5FA8DD" radius={[8, 8, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -460,7 +460,7 @@ export function AdminDashboardOverview({
           )}
           <div className="mt-2 flex flex-wrap gap-4 text-[11px] text-muted-foreground">
             <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-[#1080CA]" />Receitas</span>
-            <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-[#2b2b33]" />Despesas</span>
+            <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-[#5FA8DD]" />Despesas</span>
           </div>
         </section>
 

@@ -8,7 +8,7 @@ const migration = readFileSync(
 
 describe('controlled patient portal documents migration', () => {
   it('stores publication separately from clinical attachments with origin and optional validity', () => {
-    expect(migration).toMatch(/CREATE TABLE public\.documentos_portal_paciente/i);
+    expect(migration).toMatch(/CREATE TABLE (?:IF NOT EXISTS )?public\.documentos_portal_paciente/i);
     expect(migration).toMatch(/anexo_id uuid NOT NULL UNIQUE REFERENCES public\.anexos_prontuario/i);
     expect(migration).toMatch(/paciente_id uuid NOT NULL REFERENCES public\.pacientes/i);
     expect(migration).toMatch(/clinica_id uuid NOT NULL REFERENCES public\.clinicas/i);

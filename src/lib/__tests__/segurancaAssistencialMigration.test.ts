@@ -6,7 +6,7 @@ const path = 'supabase/migrations/20261014200000_qualidade_seguranca_assistencia
 describe('persistência confidencial de segurança assistencial', () => {
   it('mantém relato sem vínculo direto com prontuário/paciente e protege identidade por padrão', () => {
     const sql = readFileSync(path, 'utf8');
-    expect(sql).toMatch(/CREATE TABLE public\.clinical_safety_reports/i);
+    expect(sql).toMatch(/CREATE TABLE (?:IF NOT EXISTS )?public\.clinical_safety_reports/i);
     expect(sql).toMatch(/reporter_confidential boolean NOT NULL DEFAULT true/i);
     expect(sql).toMatch(/reporter_user_id uuid/i);
     expect(sql).not.toMatch(/patient_id|paciente_id|prontuario_id/i);
@@ -26,7 +26,7 @@ describe('persistência confidencial de segurança assistencial', () => {
     expect(sql).toMatch(/CREATE OR REPLACE FUNCTION public\.create_clinical_safety_report[\s\S]*?SET search_path = ''/i);
     expect(sql).toMatch(/CREATE OR REPLACE FUNCTION public\.apply_clinical_safety_review[\s\S]*?FOR UPDATE/i);
     expect(sql).toMatch(/REVOKE ALL ON FUNCTION public\.apply_clinical_safety_review[\s\S]*?FROM PUBLIC, anon, authenticated/i);
-    expect(sql).toMatch(/CREATE TABLE public\.clinical_safety_correction_requests[\s\S]*previous_summary text NOT NULL[\s\S]*proposed_summary text NOT NULL/i);
+    expect(sql).toMatch(/CREATE TABLE (?:IF NOT EXISTS )?public\.clinical_safety_correction_requests[\s\S]*previous_summary text NOT NULL[\s\S]*proposed_summary text NOT NULL/i);
     expect(sql).toMatch(/CREATE OR REPLACE FUNCTION public\.create_clinical_safety_correction_request[\s\S]*?SET search_path = ''/i);
     expect(sql).toMatch(/CREATE OR REPLACE FUNCTION public\.resolve_clinical_safety_correction[\s\S]*?FOR UPDATE/i);
   });

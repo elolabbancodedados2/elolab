@@ -167,7 +167,7 @@ export function AgendaHeader(p: Props) {
           <Button variant="outline" size="sm" onClick={p.onToggleWaiting} aria-label={`Alternar lista de espera${p.waitingCount ? `, ${p.waitingCount} pacientes` : ''}`} className={cn('hidden h-10 lg:inline-flex', pill)}>
             <Users2 className="h-4 w-4 md:mr-1.5" />
             <span className="hidden md:inline">Espera</span>
-            {p.waitingCount > 0 && <Badge className="ml-1.5 h-5 border-transparent bg-[#111111] px-1.5 text-[10px] text-white hover:bg-[#111111]">{p.waitingCount}</Badge>}
+            {p.waitingCount > 0 && <Badge className="ml-1.5 h-5 border-transparent bg-gradient-primary px-1.5 text-[10px] text-white hover:bg-gradient-primary">{p.waitingCount}</Badge>}
           </Button>
           <Button asChild variant="outline" size="icon" className={cn('h-11 w-11 shrink-0 lg:hidden', pill)}>
             <Link to="/lista-espera" aria-label={`Abrir lista de espera${p.waitingCount ? `, ${p.waitingCount} pacientes` : ''}`} title="Abrir lista de espera">
@@ -198,7 +198,7 @@ export function AgendaHeader(p: Props) {
             </DropdownMenuContent>
           </DropdownMenu>
 
-          <Button size="sm" onClick={p.onNewAppointment} aria-label="Nova consulta" className="h-11 flex-1 shrink-0 rounded-full bg-primary text-primary-foreground shadow-md hover:bg-[#2b2b33] sm:h-10 sm:flex-none sm:px-4">
+          <Button size="sm" onClick={p.onNewAppointment} aria-label="Nova consulta" className="h-11 flex-1 shrink-0 rounded-full bg-primary text-primary-foreground shadow-md hover:brightness-110 sm:h-10 sm:flex-none sm:px-4">
             <Plus className="h-4 w-4 md:mr-1" /> <span className="hidden md:inline">Nova consulta</span>
           </Button>
         </div>
@@ -339,7 +339,7 @@ function Stat({ label, value, tone, active, onClick }: { label: string; value: n
         tone === 'success' && 'border-success/30 bg-success/5',
         tone === 'warning' && 'border-warning/30 bg-warning/5',
         tone === 'destructive' && 'border-destructive/30 bg-destructive/5',
-        active && tone && 'border-transparent bg-[#111111] text-white shadow-sm',
+        active && tone && 'border-transparent bg-gradient-primary text-white shadow-sm',
         active && !tone && 'border-[#1080CA]/40',
       )}
     >

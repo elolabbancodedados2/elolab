@@ -6,7 +6,7 @@ const migration = existsSync(migrationPath) ? readFileSync(migrationPath, 'utf8'
 
 describe('RPCs de sessões da própria conta', () => {
   it('mantém os metadados privados e não expõe leitura direta da tabela', () => {
-    expect(migration).toMatch(/CREATE TABLE public\.account_session_activity/i);
+    expect(migration).toMatch(/CREATE TABLE (?:IF NOT EXISTS )?public\.account_session_activity/i);
     expect(migration).toMatch(/ALTER TABLE public\.account_session_activity ENABLE ROW LEVEL SECURITY/i);
     expect(migration).toMatch(/REVOKE ALL ON TABLE public\.account_session_activity FROM anon, authenticated/i);
     expect(migration).not.toMatch(/CREATE POLICY[\s\S]*?ON public\.account_session_activity/i);

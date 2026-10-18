@@ -1,13 +1,13 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { motion } from 'framer-motion';
 import {
   Save, Building, Clock, Bell, Download, History,
   Shield,
   Key, RefreshCw, CloudOff, Cloud,
   DollarSign, Printer, MapPin, Phone, Users, Plus, Trash2, Edit,
-  CreditCard, Receipt, Loader2, Hash, Clipboard, Image, Workflow,
-  PlugZap,
+  CreditCard, Receipt, Loader2, Hash, Image, Workflow,
+  PlugZap, Settings2,
 } from 'lucide-react';
+import { PageHeader } from '@/components/PageHeader';
 import { FluxoDoAtendimento } from '@/components/configuracoes/FluxoDoAtendimento';
 import { formatDate } from '@/lib/formatters';
 import { Button } from '@/components/ui/button';
@@ -141,7 +141,7 @@ function SettingRow({ icon: Icon, title, description, children }: {
   return (
     <div className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
       <div className="flex items-start gap-3 flex-1 min-w-0">
-        <div className="p-2 rounded-lg bg-muted shrink-0">
+        <div className="shrink-0 rounded-xl bg-muted p-2">
           <Icon className="h-4 w-4 text-muted-foreground" />
         </div>
         <div className="min-w-0">
@@ -278,14 +278,14 @@ function SalasManager() {
   };
 
   return (
-    <Card>
+    <Card className="rounded-2xl border-border/60 shadow-xs">
       <CardHeader>
         <div className="flex items-center justify-between">
           <div>
-            <CardTitle className="flex items-center gap-2"><MapPin className="h-5 w-5 text-primary" />Salas e Consultórios</CardTitle>
+            <CardTitle className="flex items-center gap-2"><span className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-white"><MapPin className="h-4 w-4" /></span>Salas e Consultórios</CardTitle>
             <CardDescription>Gerencie os espaços físicos da clínica</CardDescription>
           </div>
-          <Button size="sm" disabled={!profile?.clinica_id || isLoading || salasQuery.isError} onClick={() => { setEditId(null); setForm({ nome: '', tipo: 'consultorio', ativo: true, equipamentos: '' }); setShowForm(true); }} className="gap-1.5">
+          <Button size="sm" disabled={!profile?.clinica_id || isLoading || salasQuery.isError} onClick={() => { setEditId(null); setForm({ nome: '', tipo: 'consultorio', ativo: true, equipamentos: '' }); setShowForm(true); }} className="gap-1.5 rounded-full bg-gradient-primary text-white hover:brightness-110">
             <Plus className="h-4 w-4" /> Nova Sala
           </Button>
         </div>
@@ -297,7 +297,7 @@ function SalasManager() {
             <p className="font-medium">Nenhuma sala cadastrada</p>
           </div>
         ) : (
-          <div className="rounded-md border">
+          <div className="overflow-hidden rounded-xl border border-border/60">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -312,13 +312,13 @@ function SalasManager() {
                 {(salas as any[]).map((s) => (
                   <TableRow key={s.id}>
                     <TableCell className="font-medium">{s.nome}</TableCell>
-                    <TableCell><Badge variant="outline" className="capitalize">{s.tipo || 'Consultório'}</Badge></TableCell>
+                    <TableCell><Badge variant="outline" className="rounded-full capitalize">{s.tipo || 'Consultório'}</Badge></TableCell>
                     <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">{s.equipamentos || '—'}</TableCell>
-                    <TableCell><Badge variant={s.ativo !== false ? 'default' : 'secondary'}>{s.ativo !== false ? 'Ativa' : 'Inativa'}</Badge></TableCell>
+                    <TableCell><Badge variant={s.ativo !== false ? 'default' : 'secondary'} className="rounded-full">{s.ativo !== false ? 'Ativa' : 'Inativa'}</Badge></TableCell>
                     <TableCell>
                       <div className="flex gap-1">
-                         <Button size="icon" variant="ghost" className="h-7 w-7" aria-label={`Editar sala ${s.nome}`} onClick={() => openEdit(s)}><Edit className="h-3 w-3" /></Button>
-                        <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" aria-label={`Excluir sala ${s.nome}`} onClick={() => setSalaParaExcluir(s)}><Trash2 className="h-3 w-3" /></Button>
+                         <Button size="icon" variant="ghost" className="h-9 w-9 rounded-full" aria-label={`Editar sala ${s.nome}`} onClick={() => openEdit(s)}><Edit className="h-3.5 w-3.5" /></Button>
+                        <Button size="icon" variant="ghost" className="h-9 w-9 rounded-full text-destructive" aria-label={`Excluir sala ${s.nome}`} onClick={() => setSalaParaExcluir(s)}><Trash2 className="h-3.5 w-3.5" /></Button>
                       </div>
                     </TableCell>
                   </TableRow>
@@ -357,8 +357,8 @@ function SalasManager() {
             <div className="flex items-center gap-2"><Switch id="sala-ativa" aria-label="Sala ativa" checked={form.ativo} onCheckedChange={v => setForm({ ...form, ativo: v })} /><Label htmlFor="sala-ativa">Ativa</Label></div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowForm(false)} disabled={saving}>Cancelar</Button>
-            <Button onClick={handleSave} disabled={saving}>{saving && <Loader2 className="h-4 w-4 animate-spin mr-1" />}{editId ? 'Salvar' : 'Criar'}</Button>
+            <Button variant="outline" className="rounded-full" onClick={() => setShowForm(false)} disabled={saving}>Cancelar</Button>
+            <Button className="rounded-full bg-gradient-primary text-white hover:brightness-110" onClick={handleSave} disabled={saving}>{saving && <Loader2 className="h-4 w-4 animate-spin mr-1" />}{editId ? 'Salvar' : 'Criar'}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -670,12 +670,12 @@ export default function Configuracoes() {
           return;
         }
         void saveConfig(configKey, configValue, label);
-      }} disabled={saving[configKey]} aria-busy={saving[configKey]} className="gap-2">
+      }} disabled={saving[configKey]} aria-busy={saving[configKey]} className="gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110">
         {saving[configKey] ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
         {saving[configKey] ? 'Salvando…' : 'Salvar na nuvem'}
       </Button>
       {profile?.clinica_id && chaveDaClinica(configKey) && (
-        <Button type="button" variant="outline" onClick={() => void openConfigHistory(configKey)} className="gap-2">
+        <Button type="button" variant="outline" onClick={() => void openConfigHistory(configKey)} className="gap-2 rounded-full">
           <History className="h-4 w-4" /> Histórico e versões
         </Button>
       )}
@@ -725,16 +725,17 @@ export default function Configuracoes() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col justify-between gap-4 rounded-2xl border border-border bg-gradient-to-r from-background via-card to-accent p-5 sm:flex-row sm:items-center sm:p-6">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">Configurações</h1>
-          <p className="mt-1 max-w-prose text-sm text-muted-foreground">Gerencie os dados e as preferências da sua clínica.</p>
-        </div>
-        <Badge variant="outline" role="status" className={cn('w-fit gap-1.5 rounded-full bg-card/80', isCloudSynced ? 'border-success/30 bg-success/10 text-success' : 'border-border text-muted-foreground')}>
-          {isCloudSynced ? <Cloud className="h-3 w-3" /> : <CloudOff className="h-3 w-3" />}
-          {isCloudSynced ? 'Sincronizado' : 'Local'}
-        </Badge>
-      </div>
+      <PageHeader
+        title="Configurações"
+        description="Gerencie os dados e as preferências da sua clínica."
+        icon={<Settings2 />}
+        actions={
+          <Badge variant="outline" role="status" className={cn('w-fit gap-1.5 rounded-full', isCloudSynced ? 'border-success/30 bg-success/10 text-success' : 'border-border text-muted-foreground')}>
+            {isCloudSynced ? <Cloud className="h-3 w-3" /> : <CloudOff className="h-3 w-3" />}
+            {isCloudSynced ? 'Sincronizado' : 'Local'}
+          </Badge>
+        }
+      />
 
       <Tabs
         value={initialSettingsTab}
@@ -747,9 +748,9 @@ export default function Configuracoes() {
         className="space-y-5 sm:space-y-6"
       >
         <div className="-mx-4 overflow-x-auto overscroll-x-contain px-4 pb-2 sm:-mx-1 sm:px-1 lg:overflow-visible">
-          <TabsList aria-label="Seções das configurações" className="flex h-auto w-max min-w-full flex-nowrap justify-start gap-1 rounded-xl border border-border bg-muted/60 p-1.5 lg:w-full lg:flex-wrap">
+          <TabsList aria-label="Seções das configurações" className="flex h-auto w-max min-w-full flex-nowrap justify-start gap-1 rounded-2xl bg-muted/60 p-1.5 lg:w-full lg:flex-wrap">
             {tabItems.map(tab => (
-              <TabsTrigger key={tab.value} value={tab.value} title={tab.label} className="min-h-9 shrink-0 gap-2 rounded-lg px-3 text-xs">
+              <TabsTrigger key={tab.value} value={tab.value} title={tab.label} className="min-h-11 shrink-0 gap-2 rounded-xl px-3 text-xs data-[state=active]:bg-gradient-primary data-[state=active]:text-white data-[state=active]:shadow-sm">
                 <tab.icon aria-hidden="true" className="h-4 w-4" />
                 <span>{tab.label}</span>
               </TabsTrigger>
@@ -759,10 +760,10 @@ export default function Configuracoes() {
 
         {/* ─── Clínica ─── */}
         <TabsContent value="clinica">
-          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
-            <Card>
+          <div>
+            <Card className="rounded-2xl border-border/60 shadow-xs">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2"><Building className="h-5 w-5 text-primary" />Dados da Clínica</CardTitle>
+                <CardTitle className="flex items-center gap-2"><span className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-white"><Building className="h-4 w-4" /></span>Dados da Clínica</CardTitle>
                 <CardDescription>Informações cadastrais completas</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
@@ -810,7 +811,7 @@ export default function Configuracoes() {
                 </div>
 
                 <Separator />
-                <h3 className="font-semibold text-sm flex items-center gap-2"><Users className="h-4 w-4 text-primary" /> Responsável Técnico</h3>
+                <h3 className="font-semibold text-sm flex items-center gap-2"><Users className="h-4 w-4 text-[#1080CA]" /> Responsável Técnico</h3>
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="config-clinica-responsavel">Nome do Responsável</Label>
@@ -826,7 +827,7 @@ export default function Configuracoes() {
                 {/* Fica na aba da clínica, e não em Financeiro, porque decide
                     quem entra no consultório — não é ajuste de cobrança. */}
                 <h3 className="font-semibold text-sm flex items-center gap-2">
-                  <Workflow className="h-4 w-4 text-primary" /> Fluxo do Atendimento
+                  <Workflow className="h-4 w-4 text-[#1080CA]" /> Fluxo do Atendimento
                 </h3>
                 <FluxoDoAtendimento />
 
@@ -834,17 +835,17 @@ export default function Configuracoes() {
                 <SaveBtn configKey="config_clinica" label="Dados da clínica" configValue={configClinica} />
               </CardContent>
             </Card>
-          </motion.div>
+          </div>
         </TabsContent>
 
         {/* ─── Meu Plano ─── */}
         <TabsContent value="plano">
-          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+          <div className="space-y-6">
             {/* Plano Atual */}
-            <Card>
+            <Card className={cn('rounded-2xl shadow-xs', hasActivePlan && !isPlanExempt ? 'border-transparent bg-gradient-primary text-white' : 'border-border/60')}>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2"><CreditCard className="h-5 w-5 text-primary" />Seu Plano Atual</CardTitle>
-                <CardDescription>Visualize e gerencie sua subscrição</CardDescription>
+                <CardTitle className={cn('flex items-center gap-2', hasActivePlan && !isPlanExempt ? 'text-white' : '')}><span className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-white"><CreditCard className="h-4 w-4" /></span>Seu Plano Atual</CardTitle>
+                <CardDescription className={hasActivePlan && !isPlanExempt ? 'text-white/70' : ''}>Visualize e gerencie sua subscrição</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
                 {loadingPlanoAtual ? (
@@ -852,8 +853,8 @@ export default function Configuracoes() {
                 ) : erroPlanoAtual ? (
                   <ErrorState compact title="Não foi possível confirmar seu plano" error={erroConsultaPlano} onRetry={() => void recarregarPlanoAtual()} />
                 ) : isPlanExempt ? (
-                  <div className="rounded-xl border border-primary/20 bg-primary/5 p-6 text-center">
-                    <Shield className="mx-auto mb-3 h-8 w-8 text-primary" />
+                  <div className="rounded-xl border border-border/60 bg-muted/40 p-6 text-center">
+                    <Shield className="mx-auto mb-3 h-8 w-8 text-[#1080CA]" />
                     <p className="font-semibold">Acesso da plataforma</p>
                     <p className="mt-2 text-sm text-muted-foreground">
                       Esta conta administra o EloLab e está isenta dos planos de cliente. Nenhuma assinatura ou cobrança é necessária.
@@ -862,7 +863,7 @@ export default function Configuracoes() {
                 ) : !hasActivePlan ? (
                   <div className="text-center py-8 space-y-4">
                     <p className="text-muted-foreground">Você não possui um plano ativo</p>
-                    <Button className="gap-2" onClick={() => navigate('/planos')}>
+                    <Button className="gap-2 rounded-full bg-gradient-primary text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)] hover:brightness-110" onClick={() => navigate('/planos')}>
                       <CreditCard className="h-4 w-4" />
                       Escolher Plano
                     </Button>
@@ -871,21 +872,21 @@ export default function Configuracoes() {
                   <>
                     <div className="grid gap-4 md:grid-cols-2">
                       <div className="space-y-2">
-                        <Label className="text-xs text-muted-foreground">Plano Ativo</Label>
-                        <div className="text-2xl font-bold text-primary capitalize">{planName || 'Carregando...'}</div>
-                        <p className="text-xs text-muted-foreground">{isTrial ? 'Período de teste' : 'Plano profissional'}</p>
+                        <Label className="text-xs text-white/70">Plano Ativo</Label>
+                        <div className="text-2xl font-bold capitalize text-white">{planName || 'Carregando...'}</div>
+                        <p className="text-xs text-white/70">{isTrial ? 'Período de teste' : 'Plano profissional'}</p>
                       </div>
                       <div className="space-y-2">
-                        <Label className="text-xs text-muted-foreground">Status</Label>
+                        <Label className="text-xs text-white/70">Status</Label>
                         {isTrial ? (
                           <>
-                            <Badge className="w-fit bg-blue-500/10 text-blue-700 border-blue-200">⏰ Em Teste</Badge>
-                            <p className="text-xs text-muted-foreground">Restam {trialDaysLeft} dia{trialDaysLeft !== 1 ? 's' : ''}</p>
+                            <Badge className="w-fit rounded-full border-transparent bg-white/15 text-white">⏰ Em Teste</Badge>
+                            <p className="text-xs text-white/70">Restam {trialDaysLeft} dia{trialDaysLeft !== 1 ? 's' : ''}</p>
                           </>
                         ) : (
                           <>
-                            <Badge className="w-fit bg-green-500/10 text-green-700 border-green-200">✓ Ativo</Badge>
-                            <p className="text-xs text-muted-foreground">{resumoPeriodo}</p>
+                            <Badge className="w-fit rounded-full border-transparent bg-success/20 text-success">✓ Ativo</Badge>
+                            <p className="text-xs text-white/70">{resumoPeriodo}</p>
                           </>
                         )}
                       </div>
@@ -893,13 +894,13 @@ export default function Configuracoes() {
 
                     {isTrial && assinaturaAtual?.cobranca_modalidade === 'recorrente' && (
                       <>
-                        <Separator />
-                        <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-warning/30 bg-warning/5 p-4">
+                        <Separator className="bg-white/10" />
+                        <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-white/15 bg-white/5 p-4">
                           <div className="space-y-1">
-                            <p className="font-medium text-foreground">Teste sem cobrança até o fim do período</p>
-                            <p className="text-sm text-muted-foreground">Cancele aqui antes da primeira cobrança. O cancelamento encerra o acesso ao plano imediatamente.</p>
+                            <p className="font-medium text-white">Teste sem cobrança até o fim do período</p>
+                            <p className="text-sm text-white/70">Cancele aqui antes da primeira cobrança. O cancelamento encerra o acesso ao plano imediatamente.</p>
                           </div>
-                          <Button variant="destructive" className="gap-2" onClick={() => setShowCancelPlan(true)}>
+                          <Button variant="destructive" className="gap-2 rounded-full" onClick={() => setShowCancelPlan(true)}>
                             ✕ Cancelar teste grátis
                           </Button>
                         </div>
@@ -908,22 +909,22 @@ export default function Configuracoes() {
 
                     {!isTrial && (
                       <>
-                        <Separator />
+                        <Separator className="bg-white/10" />
 
                         <div className="space-y-4">
-                          <h4 className="font-semibold text-sm">
+                          <h4 className="font-semibold text-sm text-white">
                             {assinaturaAtual?.cobranca_modalidade === 'recorrente' ? 'Próxima renovação' : 'Período vigente'}
                           </h4>
                           <div className="grid gap-4 md:grid-cols-3">
-                            <div className="p-3 bg-muted rounded-lg">
-                              <p className="text-xs text-muted-foreground">
+                            <div className="rounded-lg bg-white/5 p-3">
+                              <p className="text-xs text-white/70">
                                 {assinaturaAtual?.cobranca_modalidade === 'recorrente' ? 'Vigência e renovação' : 'Vigência do plano'}
                               </p>
-                              <p className="text-sm font-semibold mt-1">{resumoPeriodo}</p>
+                              <p className="mt-1 text-sm font-semibold text-white">{resumoPeriodo}</p>
                             </div>
-                            <div className="p-3 bg-muted rounded-lg">
-                              <p className="text-xs text-muted-foreground">Valor do plano</p>
-                              <p className="text-lg font-semibold mt-1">
+                            <div className="rounded-lg bg-white/5 p-3">
+                              <p className="text-xs text-white/70">Valor do plano</p>
+                              <p className="mt-1 text-lg font-semibold text-white">
                                 {erroAoCarregarPlanos
                                   ? 'Preço indisponível'
                                   : carregandoPlanos
@@ -932,11 +933,11 @@ export default function Configuracoes() {
                                       ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(planos.find(p => p.slug === planSlug)!.valor)
                                       : 'Plano não encontrado'}
                               </p>
-                              {erroAoCarregarPlanos && <p className="text-xs text-destructive" title={erroListaPlanos instanceof Error ? erroListaPlanos.message : undefined}>Atualize os planos para consultar o valor.</p>}
+                              {erroAoCarregarPlanos && <p className="text-xs text-warning" title={erroListaPlanos instanceof Error ? erroListaPlanos.message : undefined}>Atualize os planos para consultar o valor.</p>}
                             </div>
-                            <div className="p-3 bg-muted rounded-lg">
-                              <p className="text-xs text-muted-foreground">Modalidade de cobrança</p>
-                              <p className="text-xs text-foreground mt-1 flex items-center gap-1">
+                            <div className="rounded-lg bg-white/5 p-3">
+                              <p className="text-xs text-white/70">Modalidade de cobrança</p>
+                              <p className="mt-1 flex items-center gap-1 text-xs text-white">
                                 {assinaturaAtual?.cobranca_modalidade === 'pre_pago' ? 'Período pré-pago' : assinaturaAtual?.cobranca_modalidade === 'recorrente' ? 'Cartão recorrente' : 'Não informada'}
                               </p>
                             </div>
@@ -945,19 +946,19 @@ export default function Configuracoes() {
                       </>
                     )}
 
-                    <Separator />
+                    <Separator className="bg-white/10" />
 
                     <div className="flex flex-wrap gap-2">
-                      <Button variant="outline" className="gap-2" onClick={() => navigate('/planos')}>
+                      <Button variant="outline" className="gap-2 rounded-full border-white/20 bg-white/5 text-white hover:bg-white/15 hover:text-white" onClick={() => navigate('/planos')}>
                         <CreditCard className="h-4 w-4" />
                         {textoAcaoPlano(planSlug)}
                       </Button>
-                      <Button variant="outline" className="gap-2" onClick={() => setShowFaturas(true)}>
+                      <Button variant="outline" className="gap-2 rounded-full border-white/20 bg-white/5 text-white hover:bg-white/15 hover:text-white" onClick={() => setShowFaturas(true)}>
                         <Receipt className="h-4 w-4" />
                         Ver Faturas
                       </Button>
                       {!isTrial && assinaturaAtual?.cobranca_modalidade !== 'pre_pago' && (
-                        <Button variant="destructive" className="gap-2" onClick={() => setShowCancelPlan(true)}>
+                        <Button variant="destructive" className="gap-2 rounded-full" onClick={() => setShowCancelPlan(true)}>
                           ✕ Cancelar Plano
                         </Button>
                       )}
@@ -972,12 +973,12 @@ export default function Configuracoes() {
               <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle className="flex items-center gap-2">
-                    <Receipt className="h-5 w-5 text-primary" /> Histórico de Faturas
+                    <Receipt className="h-5 w-5 text-[#1080CA]" /> Histórico de Faturas
                   </DialogTitle>
                   <DialogDescription>Pagamentos da sua assinatura EloLab</DialogDescription>
                 </DialogHeader>
                 {loadingFaturas ? (
-                  <div className="py-8 text-center"><Loader2 className="h-6 w-6 animate-spin mx-auto text-primary" /></div>
+                  <div className="py-8 text-center"><Loader2 className="h-6 w-6 animate-spin mx-auto text-[#1080CA]" /></div>
                 ) : erroFaturas ? (
                   <ErrorState compact title="Não foi possível carregar as faturas" error={erroFaturas} onRetry={() => void recarregarFaturas()} />
                 ) : !faturas || faturas.length === 0 ? (
@@ -1002,13 +1003,13 @@ export default function Configuracoes() {
                             {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(f.valor_pago || f.valor || 0)}
                           </TableCell>
                           <TableCell>
-                            <Badge variant={f.status === 'approved' || f.status === 'aprovado' ? 'default' : f.status === 'pending' || f.status === 'pendente' ? 'secondary' : 'outline'}>
+                            <Badge variant={f.status === 'approved' || f.status === 'aprovado' ? 'default' : f.status === 'pending' || f.status === 'pendente' ? 'secondary' : 'outline'} className="rounded-full">
                               {FATURA_STATUS_LABEL[String(f.status || '').toLowerCase()] || f.status || '—'}
                             </Badge>
                           </TableCell>
                           <TableCell>
                             {f.checkout_url && (
-                              <Button size="sm" variant="ghost" onClick={() => abrirUrlSegura(f.checkout_url, checkoutUrlSeguro)}>Abrir</Button>
+                              <Button size="sm" variant="ghost" className="rounded-full" onClick={() => abrirUrlSegura(f.checkout_url, checkoutUrlSeguro)}>Abrir</Button>
                             )}
                           </TableCell>
                         </TableRow>
@@ -1031,24 +1032,24 @@ export default function Configuracoes() {
                   </DialogDescription>
                 </DialogHeader>
                 <DialogFooter>
-                  <Button variant="outline" onClick={() => setShowCancelPlan(false)} disabled={cancelPlanMutation.isPending}>Manter assinatura</Button>
-                  <Button variant="destructive" disabled={cancelPlanMutation.isPending} onClick={confirmarCancelamentoPlano}>
+                  <Button variant="outline" className="rounded-full" onClick={() => setShowCancelPlan(false)} disabled={cancelPlanMutation.isPending}>Manter assinatura</Button>
+                  <Button variant="destructive" className="rounded-full" disabled={cancelPlanMutation.isPending} onClick={confirmarCancelamentoPlano}>
                     {cancelPlanMutation.isPending && <Loader2 className="h-4 w-4 animate-spin mr-1" />}
                     {isTrial ? 'Cancelar teste grátis' : 'Confirmar cancelamento'}
                   </Button>
                 </DialogFooter>
               </DialogContent>
             </Dialog>
-          </motion.div>
+          </div>
         </TabsContent>
 
         {/* ─── Horários ─── */}
         <TabsContent value="horarios" className="space-y-6">
           <AgendamentoOnlineConfig />
-          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
-            <Card>
+          <div>
+            <Card className="rounded-2xl border-border/60 shadow-xs">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2"><Clock className="h-5 w-5 text-primary" />Horários de Funcionamento</CardTitle>
+                <CardTitle className="flex items-center gap-2"><span className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-white"><Clock className="h-4 w-4" /></span>Horários de Funcionamento</CardTitle>
                 <CardDescription>
                   Horário geral da clínica, exibido no link público. Os horários disponíveis para marcar dependem da agenda de cada profissional.{' '}
                   <Button variant="link" asChild className="h-auto p-0 align-baseline"><Link to="/equipe">Configurar disponibilidade da equipe</Link></Button>
@@ -1106,14 +1107,14 @@ export default function Configuracoes() {
                 <h3 className="font-semibold text-sm">Dias de Funcionamento</h3>
                 <div className="flex flex-wrap gap-2">
                   {diasSemana.map(dia => (
-                    <Button key={dia.value} type="button" aria-pressed={configClinica.diasFuncionamento.includes(dia.value)} variant={configClinica.diasFuncionamento.includes(dia.value) ? 'default' : 'outline'} size="sm" onClick={() => toggleDia(dia.value)} className="min-w-[48px]">
+                    <button key={dia.value} type="button" aria-pressed={configClinica.diasFuncionamento.includes(dia.value)} onClick={() => toggleDia(dia.value)} className={cn('h-8 min-w-[48px] rounded-full border px-3 text-xs transition-colors', configClinica.diasFuncionamento.includes(dia.value) ? 'border-transparent bg-gradient-primary text-white shadow-sm' : 'border-border/60 bg-card hover:border-[#9CC7EC]')}>
                       {dia.label}
-                    </Button>
+                    </button>
                   ))}
                 </div>
 
                 {configClinica.diasFuncionamento.includes('sab') && (
-                  <div className="p-4 rounded-lg border bg-muted/30">
+                  <div className="rounded-xl border border-border/60 bg-muted/30 p-4">
                     <h4 className="text-sm font-medium mb-3">Horário de Sábado</h4>
                     <div className="grid grid-cols-2 gap-4 max-w-sm">
                       <div className="space-y-1"><Label htmlFor="sabado-abertura" className="text-xs">Abertura</Label><Input id="sabado-abertura" type="time" value={configClinica.sabadoAbertura} onChange={e => setConfigClinica({ ...configClinica, sabadoAbertura: e.target.value })} /></div>
@@ -1126,14 +1127,14 @@ export default function Configuracoes() {
                 <SaveBtn configKey="config_clinica" label="Horários" configValue={configClinica} validate={() => validarHorarioClinica(configClinica)} />
               </CardContent>
             </Card>
-          </motion.div>
+          </div>
         </TabsContent>
 
         {/* ─── Salas ─── */}
         <TabsContent value="salas">
-          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
+          <div>
             <SalasManager />
-          </motion.div>
+          </div>
         </TabsContent>
 
 
@@ -1141,77 +1142,78 @@ export default function Configuracoes() {
 
         {/* ─── Financeiro ─── */}
         <TabsContent value="financeiro">
-          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
-            <Card>
+          <div>
+            <Card className="rounded-2xl border-border/60 shadow-xs">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2"><DollarSign className="h-5 w-5 text-primary" />Operação financeira</CardTitle>
+                <CardTitle className="flex items-center gap-2"><span className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-white"><DollarSign className="h-4 w-4" /></span>Operação financeira</CardTitle>
                 <CardDescription>Configure preços e acompanhe cobranças nos módulos que usam esses dados.</CardDescription>
               </CardHeader>
               <CardContent className="grid gap-4 md:grid-cols-2">
-                <div className="rounded-lg border p-4 space-y-3">
+                <div className="space-y-3 rounded-xl border border-border/60 p-4">
                   <div>
                     <h3 className="font-medium">Preços e serviços</h3>
                     <p className="mt-1 text-sm text-muted-foreground">Cadastre serviços, valores particulares e preços de exames por convênio.</p>
                   </div>
-                  <Button asChild><Link to="/precos-servicos">Abrir preços e serviços</Link></Button>
+                  <Button asChild className="rounded-full"><Link to="/precos-servicos">Abrir preços e serviços</Link></Button>
                 </div>
-                <div className="rounded-lg border p-4 space-y-3">
+                <div className="space-y-3 rounded-xl border border-border/60 p-4">
                   <div>
                     <h3 className="font-medium">Contas e recebimentos</h3>
                     <p className="mt-1 text-sm text-muted-foreground">Registre cobranças, pagamentos, vencimentos e formas recebidas em cada lançamento.</p>
                   </div>
-                  <Button asChild><Link to="/contas?tab=receber">Abrir contas a receber</Link></Button>
+                  <Button asChild className="rounded-full"><Link to="/contas?tab=receber">Abrir contas a receber</Link></Button>
                 </div>
-                <div className="rounded-lg border p-4 space-y-3">
+                <div className="space-y-3 rounded-xl border border-border/60 p-4">
                   <div>
                     <h3 className="font-medium">Caixa da recepção</h3>
                     <p className="mt-1 text-sm text-muted-foreground">Conclua atendimentos e registre o pagamento no fluxo do caixa.</p>
                   </div>
-                  <Button asChild><Link to="/recepcao">Abrir recepção</Link></Button>
+                  <Button asChild className="rounded-full"><Link to="/recepcao">Abrir recepção</Link></Button>
                 </div>
-                <div className="rounded-lg border p-4 space-y-3">
+                <div className="space-y-3 rounded-xl border border-border/60 p-4">
                   <div>
                     <h3 className="font-medium">Faturamento de convênios</h3>
                     <p className="mt-1 text-sm text-muted-foreground">Organize lotes TISS, faturamento e acompanhamento de glosas.</p>
                   </div>
-                  <Button asChild><Link to="/faturamento-convenios">Abrir faturamento</Link></Button>
+                  <Button asChild className="rounded-full"><Link to="/faturamento-convenios">Abrir faturamento</Link></Button>
                 </div>
               </CardContent>
             </Card>
-          </motion.div>
+          </div>
         </TabsContent>
 
-        {/* ─── Notificações ─── */}
+        {/* ─── Integrações ─── */}
         <TabsContent value="integracoes">
           <IntegracoesClinica />
         </TabsContent>
 
+        {/* ─── Notificações ─── */}
         <TabsContent value="notificacoes">
-          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
-            <Card>
+          <div>
+            <Card className="rounded-2xl border-border/60 shadow-xs">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2"><Bell className="h-5 w-5 text-primary" />Notificações</CardTitle>
+                <CardTitle className="flex items-center gap-2"><span className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-white"><Bell className="h-4 w-4" /></span>Notificações</CardTitle>
                 <CardDescription>Gerencie lembretes e mensagens automáticas da clínica</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="rounded-lg border bg-muted/30 p-4 space-y-2">
+                <div className="space-y-2 rounded-xl border border-border/60 bg-muted/30 p-4">
                   <p className="font-medium text-sm">As regras de envio ficam em Automações</p>
                   <p className="text-sm text-muted-foreground">
                     Os controles antigos desta aba só eram armazenados e não alteravam o envio. Configure e acompanhe os lembretes e mensagens que estão realmente ativos no módulo Automações.
                   </p>
                 </div>
-                <Button asChild><Link to="/automacoes">Abrir Automações</Link></Button>
+                <Button asChild className="rounded-full bg-gradient-primary text-white hover:brightness-110"><Link to="/automacoes">Abrir Automações</Link></Button>
               </CardContent>
             </Card>
-          </motion.div>
+          </div>
         </TabsContent>
 
         {/* ─── Impressão ─── */}
         <TabsContent value="impressao">
-          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
-            <Card>
+          <div>
+            <Card className="rounded-2xl border-border/60 shadow-xs">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2"><Printer className="h-5 w-5 text-primary" />Impressão e Receituário</CardTitle>
+                <CardTitle className="flex items-center gap-2"><span className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-white"><Printer className="h-4 w-4" /></span>Impressão e Receituário</CardTitle>
                 <CardDescription>Personalize os elementos exibidos no receituário médico em PDF.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
@@ -1239,24 +1241,22 @@ export default function Configuracoes() {
                 <SaveBtn configKey="config_impressao" label="Configurações de impressão" configValue={configImpressao} />
               </CardContent>
             </Card>
-          </motion.div>
+          </div>
         </TabsContent>
-
-
 
         {/* ─── Segurança ─── */}
         <TabsContent value="seguranca">
-          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
-            <Card>
+          <div>
+            <Card className="rounded-2xl border-border/60 shadow-xs">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2"><Shield className="h-5 w-5 text-primary" />Segurança e Privacidade</CardTitle>
+                <CardTitle className="flex items-center gap-2"><span className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-white"><Shield className="h-4 w-4" /></span>Segurança e Privacidade</CardTitle>
                 <CardDescription>Configurações de segurança do sistema</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="divide-y">
                   <SettingRow icon={Key} title="Encerrar sessão após" description="Tempo sem atividade antes de sair da conta.">
                     <Select value={configSeguranca.sessionTimeoutMin.toString()} onValueChange={v => setConfigSeguranca({ ...configSeguranca, sessionTimeoutMin: parseInt(v) })}>
-                      <SelectTrigger aria-label="Tempo sem atividade para encerrar a sessão" className="w-[160px]"><SelectValue /></SelectTrigger>
+                      <SelectTrigger aria-label="Tempo sem atividade para encerrar a sessão" className="w-[160px] rounded-full"><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="15">15 minutos</SelectItem>
                         <SelectItem value="30">30 minutos</SelectItem>
@@ -1267,9 +1267,9 @@ export default function Configuracoes() {
                   </SettingRow>
                 </div>
                 <AccountSessionsPanel />
-                <div className="mt-6 p-4 rounded-xl border bg-primary/5 space-y-3">
+                <div className="mt-6 space-y-3 rounded-xl border border-[#BFD8EE] bg-[#F3F8FC] p-4">
                   <div className="flex gap-3">
-                    <Shield className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+                    <Shield className="h-5 w-5 shrink-0 mt-0.5 text-[#1080CA]" />
                     <div>
                       <p className="font-medium text-sm">Proteções aplicadas pelo sistema</p>
                       <p className="text-xs text-muted-foreground mt-1">
@@ -1277,31 +1277,31 @@ export default function Configuracoes() {
                       </p>
                     </div>
                   </div>
-                  <Button variant="outline" size="sm" asChild><Link to="/seguranca">Configurar segurança da conta</Link></Button>
+                  <Button variant="outline" size="sm" className="rounded-full" asChild><Link to="/seguranca">Configurar segurança da conta</Link></Button>
                 </div>
                 <Separator className="my-6" />
                 <SaveBtn configKey="config_seguranca" label="Configurações de segurança" configValue={configSeguranca} />
               </CardContent>
             </Card>
-          </motion.div>
+          </div>
         </TabsContent>
 
         {/* ─── Backup ─── */}
         <TabsContent value="backup">
-          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+          <div className="space-y-6">
             <BackupRestore />
             {/* Fica junto do backup porque é a mesma pergunta do usuário —
                 "como tiro e como ponho dados aqui" — e é onde ele procura no
                 dia em que troca de sistema. */}
             <ImportadorDePlanilha />
-          </motion.div>
+          </div>
         </TabsContent>
 
         {/* ─── Auditoria ─── */}
         <TabsContent value="historico">
-          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
+          <div>
             <AuditLog />
-          </motion.div>
+          </div>
         </TabsContent>
       </Tabs>
       <Dialog open={historyOpen} onOpenChange={setHistoryOpen}>
@@ -1330,8 +1330,8 @@ export default function Configuracoes() {
                       aria-pressed={row.id === selectedHistoryVersion}
                       onClick={() => setSelectedHistoryVersion(row.id)}
                       className={cn(
-                        'w-full rounded-lg border p-3 text-left text-sm transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                        row.id === selectedHistoryVersion && 'border-primary bg-primary/5',
+                        'w-full rounded-xl border border-border/60 p-3 text-left text-sm transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                        row.id === selectedHistoryVersion && 'border-[#1080CA]/40 bg-[#1080CA]/5',
                       )}
                     >
                       <span className="block font-medium">
@@ -1371,9 +1371,10 @@ export default function Configuracoes() {
             </div>
           )}
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setHistoryOpen(false)}>Fechar</Button>
+            <Button type="button" variant="outline" className="rounded-full" onClick={() => setHistoryOpen(false)}>Fechar</Button>
             <Button
               type="button"
+              className="rounded-full bg-gradient-primary text-white hover:brightness-110"
               onClick={() => void restoreConfigHistory()}
               disabled={historyLoading || historyRestoring || !historyKey || !selectedVersion || historyDiff.length === 0 || !configVersions[historyKey]}
             >

@@ -66,7 +66,7 @@ export function WeeklyView({ date, agendamentos, colorFor, medicoById = {}, onDa
                     </div>
                   </div>
                   {dayAppts.length > 0 && (
-                    <Badge variant="secondary" className={cn('h-5 px-1.5 text-[10px]', isToday && 'bg-[#111111] text-white')}>
+                    <Badge variant="secondary" className={cn('h-5 px-1.5 text-[10px]', isToday && 'bg-gradient-primary text-white')}>
                       {dayAppts.length}
                     </Badge>
                   )}

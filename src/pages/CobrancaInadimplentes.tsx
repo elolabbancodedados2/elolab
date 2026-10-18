@@ -2,11 +2,15 @@ import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 
-import { useState } from 'react';
-import { AlertTriangle, Send, Loader2, MessageCircle, RefreshCw, Mail } from 'lucide-react';
-import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import { useMemo, useState } from 'react';
+import {
+  AlertTriangle, Send, Loader2, MessageCircle, RefreshCw, Mail, Search,
+  DollarSign, ArrowUpRight, X, Clock,
+} from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { supabase } from '@/integrations/supabase/client';
@@ -20,12 +24,26 @@ import { buscarDadosBasicosPacientes } from '@/lib/patientBasicData';
 import { ActionableEmptyState } from '@/components/ActionableEmptyState';
 import { PageHeader } from '@/components/PageHeader';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { linkWhatsApp } from '@/lib/whatsapp';
+import { cn } from '@/lib/utils';
+
+type FiltroIndicador = 'todos' | 'atraso30' | 'comContato';
+
+function primeiroNome(nome?: string | null) {
+  return (nome || 'paciente').trim().split(' ')[0] || 'paciente';
+}
+
+function mensagemCobranca(nome: string, valor: string, dias: number) {
+  return `Olá, ${nome}! Identificamos uma pendência de ${valor} vencida há ${dias} dia(s). Podemos ajudar a regularizar o pagamento?`;
+}
 
 export default function CobrancaInadimplentes() {
   const navigate = useNavigate();
   const [sending, setSending] = useState(false);
   const [confirmarEnvio, setConfirmarEnvio] = useState(false);
   const [sendProgress, setSendProgress] = useState({ batch: 0, total: 0 });
+  const [filtroIndicador, setFiltroIndicador] = useState<FiltroIndicador>('todos');
+  const [searchTerm, setSearchTerm] = useState('');
   const { profile } = useSupabaseAuth();
   const clinicaId = profile?.clinica_id;
 
@@ -125,42 +143,200 @@ export default function CobrancaInadimplentes() {
   );
   const totalDevido = data.reduce((a: number, l: any) => a + saldo(l), 0);
 
+  // Dias de atraso calculados uma única vez por lançamento, reaproveitados nos
+  // indicadores, no destaque e na tabela.
+  const dataComDias = useMemo(() => data.map((l: any) => {
+    const vencimentoUtc = l.data_vencimento ? Date.parse(`${l.data_vencimento}T00:00:00Z`) : NaN;
+    const hojeUtc = Date.parse(`${todaySaoPauloDateOnly()}T00:00:00Z`);
+    const dias = Number.isFinite(vencimentoUtc) ? Math.max(0, Math.floor((hojeUtc - vencimentoUtc) / 86400000)) : 0;
+    return { ...l, dias };
+  }), [data]);
+
+  const acimaDeTrinta = dataComDias.filter((l: any) => l.dias > 30).length;
+
+  const filtrados = useMemo(() => dataComDias.filter((l: any) => {
+    if (filtroIndicador === 'atraso30' && l.dias <= 30) return false;
+    if (filtroIndicador === 'comContato' && !(l.pacientes?.telefone || l.pacientes?.email)) return false;
+    if (searchTerm.trim()) {
+      const nome = (l.pacientes?.nome || '').toLowerCase();
+      if (!nome.includes(searchTerm.trim().toLowerCase())) return false;
+    }
+    return true;
+  }), [dataComDias, filtroIndicador, searchTerm]);
+
+  const temFiltro = filtroIndicador !== 'todos' || Boolean(searchTerm.trim());
+  const limparFiltros = () => { setFiltroIndicador('todos'); setSearchTerm(''); };
+
+  // Destaque: o paciente com mais dias de atraso; em caso de empate, o maior saldo.
+  const destaque = useMemo(() => dataComDias.reduce((maisUrgente: any, atual: any) => {
+    if (!maisUrgente) return atual;
+    if (atual.dias > maisUrgente.dias) return atual;
+    if (atual.dias === maisUrgente.dias && saldo(atual) > saldo(maisUrgente)) return atual;
+    return maisUrgente;
+  }, null as any), [dataComDias]);
+
+  const kpis = [
+    {
+      key: 'todos' as FiltroIndicador, label: 'Pendências vencidas', value: data.length, icon: AlertTriangle,
+      color: 'text-[#1080CA]', surface: 'bg-[#1080CA]/10', escuro: false, caption: 'lançamentos em aberto', money: false,
+    },
+    {
+      key: 'atraso30' as FiltroIndicador, label: 'Saldo em aberto', value: totalDevido, icon: DollarSign,
+      color: 'text-white', surface: 'bg-white/15', escuro: true,
+      caption: acimaDeTrinta > 0 ? `${acimaDeTrinta} com +30 dias de atraso` : 'nenhum acima de 30 dias', money: true,
+    },
+    {
+      key: 'comContato' as FiltroIndicador, label: 'Com contato para cobrança', value: comContato.length, icon: MessageCircle,
+      color: 'text-[#1080CA]', surface: 'bg-[#1080CA]/10', escuro: false,
+      caption: `${data.length - comContato.length} sem telefone ou e-mail`, money: false,
+    },
+  ];
+
   return (
     <div className="space-y-5 pb-8">
-      <Card className="overflow-hidden rounded-2xl border-[#e3dff7] shadow-sm">
-        <CardHeader className="border-b border-[#e7e4f6] bg-gradient-to-r from-[#f6f4ff] via-white to-[#f2f0ff] p-4 sm:p-5">
-          <PageHeader
-            title={'Cobran\u00e7a de inadimplentes'}
-            description={'Pacientes com lan\u00e7amentos vencidos e em aberto. A r\u00e9gua envia por WhatsApp ou, quando necess\u00e1rio, enfileira e-mail.'}
-            icon={<AlertTriangle />}
-            actions={<div className="flex flex-wrap gap-2">
-            <Button variant="outline" onClick={() => void refetch()} disabled={cobrancasQuery.isFetching}>
-                <RefreshCw className="h-4 w-4 mr-2" /> Atualizar
-              </Button>
-              <Button onClick={pedirEnvioTodos} disabled={sending || cobrancasQuery.isError || !comContato.length}>
-                {sending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Send className="h-4 w-4 mr-2" />}
-                {sending ? `Processando ${sendProgress.batch}/${sendProgress.total}…` : 'Processar régua de cobrança'}
-              </Button>
-            </div>}
-          />
-        </CardHeader>
-        <CardContent className="space-y-4 p-4 sm:p-5">
-          {atingiuLimite && <div role="alert" className="mb-4 flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm text-warning-foreground"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /><p>A busca atingiu o limite de {LIMITE_BUSCA_EM_BLOCOS.toLocaleString('pt-BR')} lançamentos. Os totais e a lista podem estar incompletos.</p></div>}
-          {data.length > comContato.length && <p role="status" className="mb-4 text-sm text-muted-foreground">{data.length - comContato.length} cobrança(s) estão fora da régua por falta de telefone e e-mail. Atualize o contato no cadastro do paciente para permitir o envio.</p>}
-          <div className="grid gap-3 sm:grid-cols-3">
-            <div className="rounded-xl border border-[#e6e2f7] bg-[#f8f7ff] p-3.5">
-              <p className="text-xs font-medium text-muted-foreground">Pendências vencidas</p>
-              <p className="mt-1 text-xl font-semibold text-[#36248f]">{data.length}</p>
-            </div>
-            <div className="rounded-xl border border-[#f3dddd] bg-[#fff7f6] p-3.5">
-              <p className="text-xs font-medium text-muted-foreground">Saldo em aberto</p>
-              <p className="mt-1 text-xl font-semibold text-[#a44f4b]">{totalDevido.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</p>
-            </div>
-            <div className="rounded-xl border border-[#d9eee6] bg-[#f3fbf7] p-3.5">
-              <p className="text-xs font-medium text-muted-foreground">Com contato para cobrança</p>
-              <p className="mt-1 text-xl font-semibold text-[#327b63]">{comContato.length}</p>
+      <PageHeader
+        title={'Cobrança de inadimplentes'}
+        description={`${data.length} pendência(s) vencida(s) · ${comContato.length} com contato para cobrança`}
+        icon={<AlertTriangle />}
+        actions={(
+          <>
+            <Button variant="outline" size="icon" className="rounded-full shrink-0" onClick={() => void refetch()} disabled={cobrancasQuery.isFetching} aria-label="Atualizar" title="Atualizar">
+              <RefreshCw className="h-4 w-4" />
+            </Button>
+            <Button variant="outline" className="gap-1.5 rounded-full shrink-0" onClick={() => navigate('/contas?tab=receber')}>
+              <ArrowUpRight className="h-4 w-4" /> Ver contas a receber
+            </Button>
+            <Button
+              onClick={pedirEnvioTodos}
+              disabled={sending || cobrancasQuery.isError || !comContato.length}
+              className="gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110 shrink-0"
+            >
+              {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              {sending ? `Processando ${sendProgress.batch}/${sendProgress.total}…` : 'Processar régua de cobrança'}
+            </Button>
+          </>
+        )}
+      />
+
+      {atingiuLimite && (
+        <div role="alert" className="flex items-start gap-2 rounded-2xl border border-warning/30 bg-warning/5 p-3 text-sm text-warning-foreground">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <p>A busca atingiu o limite de {LIMITE_BUSCA_EM_BLOCOS.toLocaleString('pt-BR')} lançamentos. Os totais e a lista podem estar incompletos.</p>
+        </div>
+      )}
+      {data.length > comContato.length && (
+        <p role="status" className="text-sm text-muted-foreground">
+          {data.length - comContato.length} cobrança(s) estão fora da régua por falta de telefone e e-mail. Atualize o contato no cadastro do paciente para permitir o envio.
+        </p>
+      )}
+
+      {/* Indicadores clicáveis */}
+      <section role="group" aria-label="Resumo das cobranças" className="grid grid-cols-2 gap-2 md:grid-cols-3">
+        {kpis.map(kpi => {
+          const Icon = kpi.icon;
+          const ativo = filtroIndicador === kpi.key;
+          return (
+            <button
+              key={kpi.key}
+              type="button"
+              aria-pressed={ativo}
+              onClick={() => setFiltroIndicador(ativo && kpi.key !== 'todos' ? 'todos' : kpi.key)}
+              className={cn(
+                'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+                kpi.escuro && 'border-transparent bg-gradient-primary text-white',
+                ativo && !kpi.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
+                ativo && kpi.escuro && 'ring-2 ring-[#1080CA]/60',
+              )}
+            >
+              <div className="flex min-h-[96px] items-center gap-3 p-3">
+                <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', kpi.surface)}>
+                  <Icon aria-hidden="true" className={cn('h-5 w-5', kpi.color)} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h3 className={cn('truncate text-xs font-semibold', kpi.escuro ? 'text-white/80' : 'text-foreground')}>{kpi.label}</h3>
+                  <p className={cn('text-xl font-bold tabular-nums', kpi.color)}>
+                    {kpi.money ? kpi.value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : kpi.value}
+                  </p>
+                  <p className={cn('truncate text-[11px]', kpi.escuro ? 'text-white/60' : 'text-muted-foreground')}>{kpi.caption}</p>
+                </div>
+              </div>
+            </button>
+          );
+        })}
+      </section>
+
+      {/* Destaque: paciente mais urgente */}
+      {destaque && (() => {
+        const nome = destaque.pacientes?.nome || '—';
+        const valorFormatado = saldo(destaque).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        const whatsapp = linkWhatsApp(destaque.pacientes?.telefone, mensagemCobranca(primeiroNome(nome), valorFormatado, destaque.dias));
+        const vencimento = parseDateOnly(destaque.data_vencimento);
+        return (
+          <Card className="overflow-hidden rounded-2xl border-[#1080CA]/30 shadow-[0_8px_24px_rgba(16,128,202,0.12)]">
+            <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center">
+              <div className="flex min-w-0 flex-1 items-center gap-3">
+                <span aria-hidden="true" className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+                  <AlertTriangle className="h-5 w-5" />
+                </span>
+                <div className="min-w-0">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-[#1080CA]">Pendência mais urgente</p>
+                  <h2 className="truncate text-lg font-bold text-foreground">{nome}</h2>
+                  <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                    {vencimento && <span className="inline-flex items-center gap-1">Venc. {format(vencimento, 'dd/MM/yyyy')}</span>}
+                    <span className="inline-flex items-center gap-1 font-semibold text-destructive">
+                      <Clock aria-hidden="true" className="h-3 w-3" /> {destaque.dias} dia(s) de atraso
+                    </span>
+                    <span className="font-semibold text-foreground">{valorFormatado}</span>
+                  </div>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                {whatsapp ? (
+                  <Button asChild variant="outline" className="h-10 gap-1.5 rounded-full border-[#1080CA]/30 text-[#1080CA] hover:bg-[#1080CA]/10 hover:text-[#1080CA]">
+                    <a href={whatsapp} target="_blank" rel="noopener noreferrer"><MessageCircle aria-hidden="true" className="h-4 w-4" /> WhatsApp</a>
+                  </Button>
+                ) : (
+                  <span className="text-xs text-muted-foreground">Sem telefone válido</span>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        );
+      })()}
+
+      {/* Lista de pendências */}
+      <Card className="rounded-2xl border-border/60 shadow-xs">
+        <CardHeader className="pb-3">
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-white">
+                  <AlertTriangle className="h-4 w-4" />
+                </span>
+                Pendências
+                <Badge variant="outline" className="rounded-full border-[#BFD8EE] text-[#1080CA]">{filtrados.length} de {data.length}</Badge>
+              </CardTitle>
+              <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+                <div className="relative w-full sm:w-64">
+                  <Search aria-hidden="true" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    aria-label="Buscar pendências por paciente"
+                    placeholder="Nome do paciente..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="h-10 rounded-full pl-9 focus-visible:ring-[#1080CA]"
+                  />
+                </div>
+                {temFiltro && (
+                  <Button variant="ghost" size="sm" className="h-8 gap-1 rounded-full text-xs text-muted-foreground" onClick={limparFiltros}>
+                    <X aria-hidden="true" className="h-3 w-3" /> Limpar filtros
+                  </Button>
+                )}
+              </div>
             </div>
           </div>
+        </CardHeader>
+        <CardContent>
           {cobrancasQuery.isError ? (
             <ErrorState title="Não foi possível carregar as pendências" error={cobrancasQuery.error} onRetry={() => void refetch()} />
           ) : !clinicaId ? (
@@ -173,52 +349,78 @@ export default function CobrancaInadimplentes() {
               description="Não há contas vencidas vinculadas a pacientes. Consulte todas as contas a receber para acompanhar os próximos vencimentos."
               actionLabel="Abrir contas a receber"
               onAction={() => navigate('/contas?tab=receber')}
-              className="text-emerald-700"
+            />
+          ) : filtrados.length === 0 ? (
+            <ActionableEmptyState
+              title="Nenhuma pendência corresponde aos filtros"
+              description="Ajuste a busca ou limpe os filtros para ver todas as pendências vencidas."
+              actionLabel="Limpar filtros"
+              onAction={limparFiltros}
             />
           ) : (
-            <ScrollArea className="h-[520px]">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Paciente</TableHead>
-                    <TableHead>Descrição</TableHead>
-                    <TableHead>Valor</TableHead>
-                    <TableHead>Vencimento</TableHead>
-                    <TableHead>Dias atraso</TableHead>
-                    <TableHead>Contato</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {data.map((l: any) => {
-                    const vencimento = parseDateOnly(l.data_vencimento);
-                    const vencimentoUtc = l.data_vencimento ? Date.parse(`${l.data_vencimento}T00:00:00Z`) : NaN;
-                    const hojeUtc = Date.parse(`${todaySaoPauloDateOnly()}T00:00:00Z`);
-                    const dias = Number.isFinite(vencimentoUtc) ? Math.max(0, Math.floor((hojeUtc - vencimentoUtc) / 86400000)) : 0;
-                    return (
-                      <TableRow key={l.id}>
-                        <TableCell className="font-medium">{l.pacientes?.nome || '—'}</TableCell>
-                        <TableCell className="text-sm">{l.descricao || '—'}</TableCell>
-                        <TableCell>{saldo(l).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}{l.status === 'parcial' && <span className="ml-1 text-xs text-muted-foreground">(saldo)</span>}</TableCell>
-                        <TableCell>{vencimento ? format(vencimento, 'dd/MM/yyyy') : 'Data inválida'}</TableCell>
-                        <TableCell>
-                          <Badge variant={dias > 30 ? 'destructive' : 'secondary'}>{dias} dias</Badge>
-                        </TableCell>
-                        <TableCell>
-                          <div className="space-y-1 text-xs">
-                            {l.pacientes?.telefone && <p className="flex items-center gap-1"><MessageCircle className="h-3 w-3 text-emerald-600" />{l.pacientes.telefone}</p>}
-                            {l.pacientes?.email && <p className="flex items-center gap-1"><Mail className="h-3 w-3 text-muted-foreground" />{l.pacientes.email}</p>}
-                            {!l.pacientes?.telefone && !l.pacientes?.email && <span className="text-muted-foreground">sem contato</span>}
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </ScrollArea>
+            <div className="overflow-hidden rounded-xl border border-border/60">
+              <ScrollArea className="h-[520px]">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Paciente</TableHead>
+                      <TableHead>Descrição</TableHead>
+                      <TableHead>Valor</TableHead>
+                      <TableHead>Vencimento</TableHead>
+                      <TableHead>Dias atraso</TableHead>
+                      <TableHead>Contato</TableHead>
+                      <TableHead className="text-right">Ações</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filtrados.map((l: any) => {
+                      const vencimento = parseDateOnly(l.data_vencimento);
+                      const dias = l.dias;
+                      const valorFormatado = saldo(l).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+                      const whatsapp = linkWhatsApp(l.pacientes?.telefone, mensagemCobranca(primeiroNome(l.pacientes?.nome), valorFormatado, dias));
+                      return (
+                        <TableRow key={l.id}>
+                          <TableCell className="font-medium">{l.pacientes?.nome || '—'}</TableCell>
+                          <TableCell className="text-sm">{l.descricao || '—'}</TableCell>
+                          <TableCell>{valorFormatado}{l.status === 'parcial' && <span className="ml-1 text-xs text-muted-foreground">(saldo)</span>}</TableCell>
+                          <TableCell>{vencimento ? format(vencimento, 'dd/MM/yyyy') : 'Data inválida'}</TableCell>
+                          <TableCell>
+                            <Badge
+                              variant={dias > 30 ? 'destructive' : 'outline'}
+                              className={cn('rounded-full', dias <= 30 && 'border-warning/40 bg-warning/10 text-warning-foreground')}
+                            >
+                              {dias} dias
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <div className="space-y-1 text-xs">
+                              {l.pacientes?.telefone && <p className="flex items-center gap-1"><MessageCircle className="h-3 w-3 text-[#1080CA]" />{l.pacientes.telefone}</p>}
+                              {l.pacientes?.email && <p className="flex items-center gap-1"><Mail className="h-3 w-3 text-muted-foreground" />{l.pacientes.email}</p>}
+                              {!l.pacientes?.telefone && !l.pacientes?.email && <span className="text-muted-foreground">sem contato</span>}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {whatsapp ? (
+                              <Button aria-label="Contatar via WhatsApp" size="icon" variant="ghost" asChild className="h-9 w-9 rounded-full text-[#1080CA] hover:bg-[#1080CA]/10 hover:text-[#1080CA]">
+                                <a href={whatsapp} target="_blank" rel="noopener noreferrer" aria-label="Contatar via WhatsApp" title="Contatar via WhatsApp">
+                                  <MessageCircle className="h-4 w-4" />
+                                </a>
+                              </Button>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">Sem telefone válido</span>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </ScrollArea>
+            </div>
           )}
         </CardContent>
       </Card>
+
       <ConfirmDialog
         open={confirmarEnvio}
         onOpenChange={setConfirmarEnvio}

@@ -1247,7 +1247,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
           )}
           <Button
             ref={encaixeTriggerRef}
-            size="sm" className="h-10 shrink-0 gap-1.5 rounded-full bg-[#111111] px-4 text-white shadow-md hover:bg-[#2b2b33]"
+            size="sm" className="h-10 shrink-0 gap-1.5 rounded-full bg-gradient-primary px-4 text-white shadow-md hover:brightness-110"
             onClick={(event) => abrirEncaixe(event.currentTarget)}
           >
             <UserPlus className="h-4 w-4" /> Encaixe sem agendamento
@@ -1347,7 +1347,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
                      'overflow-hidden rounded-2xl border-border/60 shadow-xs transition-all duration-200',
                        step === 1 && 'border-warning/40',
                        step === 2 && 'border-[#1080CA]/40',
-                       step === 3 && 'border-[#2ED5E7]/50',
+                       step === 3 && 'border-[#1080CA]/50',
                        step === 4 && 'opacity-60',
                        ag.status === 'faltou' && 'opacity-75',
                        ehProximo && 'ring-2 ring-[#1080CA]/40 shadow-[0_6px_18px_rgba(16,128,202,0.18)]',
@@ -1360,7 +1360,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
                              step === 0 && (atrasado ? 'bg-destructive' : 'bg-warning'),
                              step === 1 && 'bg-warning',
                              step === 2 && 'bg-gradient-primary',
-                             step === 3 && 'bg-[#2ED5E7]',
+                             step === 3 && 'bg-[#1080CA]',
                              step === 4 && 'bg-success',
                              ag.status === 'faltou' && 'bg-muted-foreground/50',
                            )} />
@@ -1416,7 +1416,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
                                     <div key={i} className="flex items-center gap-1">
                                       <div className={cn(
                                         'h-6 px-2.5 rounded-full flex items-center text-[10px] font-semibold transition-colors',
-                                        i < step && 'bg-[#111111] text-white',
+                                        i < step && 'bg-gradient-primary text-white',
                                         i === step && 'bg-gradient-primary text-white shadow-sm',
                                         i > step && 'bg-muted text-muted-foreground',
                                       )}>
@@ -1450,7 +1450,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
                                       size="sm"
                                       onClick={() => handleCheckin(ag.id)}
                                       disabled={isProcessing}
-                                      className="gap-1.5 rounded-full bg-[#111111] text-white hover:bg-[#2b2b33]"
+                                      className="gap-1.5 rounded-full bg-gradient-primary text-white hover:brightness-110"
                                     >
                                       <UserCheck className="h-3.5 w-3.5" /> Check-in
                                     </Button>
@@ -1561,7 +1561,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
                                           size="sm"
                                           onClick={() => handleIniciarAtendimento(ag.id, fila.id)}
                                           disabled={isProcessing}
-                                          className="gap-1 rounded-full bg-[#111111] text-white hover:bg-[#2b2b33]"
+                                          className="gap-1 rounded-full bg-gradient-primary text-white hover:brightness-110"
                                         >
                                           <Play className="h-3.5 w-3.5" /> Atender
                                         </Button>

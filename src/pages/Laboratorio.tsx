@@ -1,6 +1,5 @@
 import { nomeMedico } from '@/lib/formatters';
 import { PacienteCombobox } from '@/components/patients/PacienteCombobox';
-import { motion, AnimatePresence } from 'framer-motion';
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useInfiniteQuery, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -77,8 +76,9 @@ import {
   Clock, CheckCircle2, XCircle, Eye, Printer, Tag,
   User, Droplets, MapPin, Package, FileText, Link2, Filter,
   TrendingUp, Activity, Calendar, ArrowRight, Trash2, RotateCcw,
-  Download, Zap, Timer, Shield, Loader2,
+  Download, Zap, Timer, Shield, Loader2, RefreshCw, Phone,
 } from 'lucide-react';
+import { linkWhatsApp } from '@/lib/whatsapp';
 
 const statusColors: Record<string, string> = {
   pendente: 'border border-[#f1dfb8] bg-[#fff8e8] text-[#8a5b00]',
@@ -275,7 +275,7 @@ export default function Laboratorio() {
     queryFn: async ({ pageParam }) => {
       let query = (supabase as any)
         .from('coletas_laboratorio')
-        .select('*, pacientes(nome, cpf, data_nascimento, sexo), medicos(nome, crm, especialidade), laboratorio_setores(nome)')
+        .select('*, pacientes(nome, cpf, data_nascimento, sexo, telefone), medicos(nome, crm, especialidade), laboratorio_setores(nome)')
         .eq('clinica_id', profile!.clinica_id!);
       if (setorFilter !== 'todos') query = query.eq('setor_id', setorFilter);
       if (pageParam) {
@@ -579,23 +579,147 @@ export default function Laboratorio() {
     <div className="space-y-6">
       <PageHeader
         title="Laboratório"
-        description="Central de gestão laboratorial — worklist, coletas e resultados"
+        description={stats.total > 0
+          ? `${stats.total} amostra${stats.total === 1 ? '' : 's'} hoje · ${stats.pendentes} pendente${stats.pendentes === 1 ? '' : 's'} · ${stats.urgentes} urgente${stats.urgentes === 1 ? '' : 's'}`
+          : 'Central de gestão laboratorial — worklist, coletas e resultados'}
         icon={<FlaskConical />}
         actions={
           <>
             {podeGerenciarLaboratorio && (
-              <Button variant="outline" onClick={() => setShowLimparFila(true)}>
+              <Button variant="outline" className="rounded-full gap-2" onClick={() => setShowLimparFila(true)}>
                 Limpar fila antiga
               </Button>
             )}
-            <Button onClick={() => { resetColetaForm(); setShowNewColeta(true); }}>
-              <Plus aria-hidden="true" className="mr-2 h-4 w-4" /> Nova coleta
+            <Button
+              variant="outline"
+              size="icon"
+              className="shrink-0 rounded-full"
+              onClick={() => void coletasQuery.refetch()}
+              aria-label="Atualizar worklist"
+              title="Atualizar worklist"
+            >
+              <RefreshCw className="h-4 w-4" />
+            </Button>
+            <Button
+              onClick={() => { resetColetaForm(); setShowNewColeta(true); }}
+              className="rounded-full gap-2 bg-gradient-primary text-white shadow-md hover:brightness-110"
+            >
+              <Plus aria-hidden="true" className="h-4 w-4" /> Nova coleta
             </Button>
           </>
         }
       />
 
       <LaboratorioSubnav />
+
+      {/* ─── Indicator strip ─── */}
+      <section aria-label="Indicadores do laboratório hoje">
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-5">
+          {[
+            { label: 'Urgentes', value: stats.urgentes, icon: Zap, filter: 'urgente', escuro: true },
+            { label: 'Pendentes', value: stats.pendentes, icon: Clock, filter: 'pendente', escuro: false, color: 'text-warning', bg: 'bg-warning/10' },
+            { label: 'Em análise', value: stats.emAnalise, icon: Activity, filter: 'em_analise', escuro: false, color: 'text-[#1080CA]', bg: 'bg-[#1080CA]/10' },
+            { label: 'Validados', value: stats.validados, icon: CheckCircle2, filter: 'validado', escuro: false, color: 'text-success', bg: 'bg-success/10' },
+            { label: 'Liberados', value: stats.liberados, icon: Download, filter: 'liberado', escuro: false, color: 'text-success', bg: 'bg-success/10' },
+          ].map((s) => {
+            const isActive = s.filter === 'urgente'
+              ? urgentOnly
+              : statusFilter === s.filter && dateFilter === 'hoje' && !urgentOnly;
+            return (
+              <button
+                key={s.label}
+                type="button"
+                aria-pressed={isActive}
+                onClick={() => filtrarPipeline(s.filter)}
+                className={cn(
+                  'rounded-2xl border border-border/60 bg-card p-3 shadow-xs text-left transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA] focus-visible:ring-offset-2',
+                  s.escuro && 'border-transparent bg-gradient-primary text-white',
+                  !s.escuro && isActive && 'ring-2 ring-[#1080CA]',
+                  s.escuro && isActive && 'ring-2 ring-[#1080CA]',
+                )}
+              >
+                <div className="flex items-center gap-3">
+                  <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', s.escuro ? 'bg-white/15' : s.bg)}>
+                    <s.icon className={cn('h-5 w-5', s.escuro ? 'text-white' : s.color)} />
+                  </div>
+                  <div>
+                    <p className={cn('text-2xl font-bold tabular-nums', s.escuro ? 'text-white' : s.color)}>{s.value}</p>
+                    <p className={cn('text-[11px]', s.escuro ? 'text-white/70' : 'text-muted-foreground')}>{s.label}</p>
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* ─── Hero: próxima coleta urgente/pendente ─── */}
+      {(() => {
+        if (!coletas) return null;
+        const proximo = coletas.find((c: any) => c.status === 'pendente' && c.urgente)
+          || coletas.find((c: any) => c.status === 'pendente');
+        if (!proximo) return null;
+        const whatsLink = linkWhatsApp(
+          (proximo as any).pacientes?.telefone,
+          `Olá ${(proximo as any).pacientes?.nome ?? ''}, sua coleta está pendente no laboratório.`,
+        );
+        return (
+          <div className="rounded-2xl border border-[#1080CA]/30 bg-card p-4 shadow-[0_8px_24px_rgba(16,128,202,0.12)]">
+            <div className="flex items-start justify-between gap-4 flex-wrap">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-primary text-white">
+                  <FlaskConical className="h-5 w-5" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[11px] uppercase tracking-wide text-[#1080CA] font-medium">
+                    {(proximo as any).urgente ? 'Urgente — Próxima a coletar' : 'Próxima coleta pendente'}
+                  </p>
+                  <p className="text-lg font-bold truncate">{(proximo as any).pacientes?.nome}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {(proximo as any).tipo_amostra}
+                    {(proximo as any).tubo && ` · ${(proximo as any).tubo}`}
+                    {(proximo as any).medicos?.nome && ` · ${nomeMedico((proximo as any).medicos.nome)}`}
+                  </p>
+                </div>
+              </div>
+              <div className="flex gap-2 shrink-0 flex-wrap">
+                {whatsLink && (
+                  <Button asChild size="sm" variant="outline" className="h-9 rounded-full text-xs gap-1">
+                    <a href={whatsLink} target="_blank" rel="noopener noreferrer">
+                      <Phone className="h-3.5 w-3.5" /> WhatsApp
+                    </a>
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-9 rounded-full text-xs gap-1"
+                  disabled={updateStatus.isPending}
+                  onClick={() => updateStatus.mutate({ id: (proximo as any).id, status: 'coletado', expectedStatus: (proximo as any).status })}
+                >
+                  <ArrowRight className="h-3.5 w-3.5" /> Registrar coleta
+                </Button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ─── Cross-links ─── */}
+      <div className="flex flex-wrap gap-2">
+        <Button asChild variant="outline" className="h-9 rounded-full text-xs gap-2">
+          <Link to="/exames"><TestTube className="h-3.5 w-3.5" /> Exames</Link>
+        </Button>
+        <Button asChild variant="outline" className="h-9 rounded-full text-xs gap-2">
+          <Link to="/mapa-coleta"><MapPin className="h-3.5 w-3.5" /> Mapa de Coleta</Link>
+        </Button>
+        <Button asChild variant="outline" className="h-9 rounded-full text-xs gap-2">
+          <Link to="/laudos-lab"><FileText className="h-3.5 w-3.5" /> Laudos Lab</Link>
+        </Button>
+        <Button asChild variant="outline" className="h-9 rounded-full text-xs gap-2">
+          <Link to="/guias-externas"><Download className="h-3.5 w-3.5" /> Guias Externas</Link>
+        </Button>
+      </div>
 
       <Dialog open={showLimparFila && podeGerenciarLaboratorio} onOpenChange={(o) => { setShowLimparFila(o); if (!o) setLimparMotivo(''); }}>
         <DialogContent>
@@ -634,8 +758,7 @@ export default function Laboratorio() {
 
       {/* SLA Breach Alert */}
       {slaBreaches.length > 0 && (
-        <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
-          className="bg-destructive/10 border border-destructive/30 rounded-lg p-3 flex items-center gap-3">
+        <div className="bg-destructive/10 border border-destructive/30 rounded-2xl p-3 flex items-center gap-3">
           <AlertTriangle className="h-5 w-5 text-destructive shrink-0" />
           <div className="flex-1">
             <p className="text-sm font-semibold text-destructive">
@@ -646,7 +769,7 @@ export default function Laboratorio() {
               {slaBreaches.length > 3 && ` +${slaBreaches.length - 3}`}
             </p>
           </div>
-        </motion.div>
+        </div>
       )}
 
       {coletasQuery.hasNextPage && (
@@ -683,40 +806,82 @@ export default function Laboratorio() {
         {/* ─── Worklist Tab ─── */}
         <TabsContent value="worklist" className="space-y-4">
           {/* Filters */}
-          <div data-testid="lab-worklist-filters" className="grid grid-cols-2 items-center gap-3 sm:grid-cols-3 xl:flex xl:flex-wrap">
-            <div className="relative col-span-2 min-w-0 sm:col-span-2 xl:col-span-1 xl:min-w-[200px] xl:max-w-md xl:flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input aria-label="Buscar coletas por paciente, código ou CPF" placeholder="Buscar paciente, código ou CPF..." value={search}
-                onChange={(e) => setSearch(e.target.value)} className="pl-10" />
+          <div data-testid="lab-worklist-filters" className="space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative min-w-[200px] flex-1 max-w-md">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  aria-label="Buscar coletas por paciente, código ou CPF"
+                  placeholder="Buscar paciente, código ou CPF..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="h-10 rounded-full pl-10 focus-visible:ring-[#1080CA]"
+                />
+              </div>
+              <Select value={setorFilter} onValueChange={setSetorFilter}>
+                <SelectTrigger className="h-10 rounded-full w-44"><SelectValue placeholder="Todos os setores" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">Todos os setores</SelectItem>
+                  {(setoresQuery.data ?? []).map((setor) => <SelectItem key={setor.id} value={setor.id}>{setor.nome}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <Select value={dateFilter} onValueChange={setDateFilter}>
+                <SelectTrigger className="h-10 rounded-full w-32"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="hoje">Hoje</SelectItem>
+                  <SelectItem value="ontem">Ontem</SelectItem>
+                  <SelectItem value="7dias">7 dias</SelectItem>
+                  <SelectItem value="todos">Todos</SelectItem>
+                </SelectContent>
+              </Select>
+              <span data-testid="lab-result-count" className="ml-auto text-xs text-muted-foreground tabular-nums">
+                {filtered.length} de {coletas?.length ?? 0}
+              </span>
             </div>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-full xl:w-36"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todos">Todos Status</SelectItem>
-                {Object.entries(statusLabels).map(([k, v]) => (
-                  <SelectItem key={k} value={k}>{v}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={setorFilter} onValueChange={setSetorFilter}>
-              <SelectTrigger className="w-full xl:w-44"><SelectValue placeholder="Todos os setores" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todos">Todos os setores</SelectItem>
-                {(setoresQuery.data ?? []).map((setor) => <SelectItem key={setor.id} value={setor.id}>{setor.nome}</SelectItem>)}
-              </SelectContent>
-            </Select>
-            <Select value={dateFilter} onValueChange={setDateFilter}>
-              <SelectTrigger className="w-full xl:w-32"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="hoje">Hoje</SelectItem>
-                <SelectItem value="ontem">Ontem</SelectItem>
-                <SelectItem value="7dias">7 dias</SelectItem>
-                <SelectItem value="todos">Todos</SelectItem>
-              </SelectContent>
-            </Select>
-            <Badge data-testid="lab-result-count" variant="outline" className="col-span-2 justify-self-start text-xs sm:col-span-1 xl:ml-auto">
-              {filtered.length} resultado(s)
-            </Badge>
+            {/* Pill status filters */}
+            <div className="flex flex-wrap gap-1.5">
+              {[
+                { value: 'todos', label: 'Todos' },
+                ...Object.entries(statusLabels).map(([k, v]) => ({ value: k, label: v })),
+              ].map(({ value, label }) => (
+                <button
+                  key={value}
+                  type="button"
+                  aria-pressed={statusFilter === value && !urgentOnly}
+                  onClick={() => { setUrgentOnly(false); setStatusFilter(value); }}
+                  className={cn(
+                    'h-8 rounded-full border px-3 text-xs transition-colors',
+                    statusFilter === value && !urgentOnly
+                      ? 'border-transparent bg-gradient-primary text-white shadow-sm'
+                      : 'border-border bg-background text-muted-foreground hover:border-[#9CC7EC] hover:text-foreground',
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+              <button
+                type="button"
+                aria-pressed={urgentOnly}
+                onClick={() => filtrarPipeline('urgente')}
+                className={cn(
+                  'h-8 rounded-full border px-3 text-xs gap-1 inline-flex items-center transition-colors',
+                  urgentOnly
+                    ? 'border-transparent bg-destructive text-white shadow-sm'
+                    : 'border-destructive/40 text-destructive hover:border-destructive',
+                )}
+              >
+                <Zap className="h-3 w-3" /> Urgentes
+              </button>
+              {(search.trim() || statusFilter !== 'todos' || setorFilter !== 'todos' || dateFilter !== 'hoje' || urgentOnly) && (
+                <button
+                  type="button"
+                  onClick={() => { setSearch(''); setStatusFilter('todos'); setSetorFilter('todos'); setDateFilter('hoje'); setUrgentOnly(false); }}
+                  className="h-8 rounded-full border border-border px-3 text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
+                >
+                  <XCircle className="h-3 w-3" /> Limpar filtros
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Coletas list */}
@@ -735,36 +900,56 @@ export default function Laboratorio() {
                 ))}
               </div>
             ) : filtered.length === 0 ? (
-              <Card><CardContent className="py-3">
-                <ActionableEmptyState
-                  title={search.trim() || statusFilter !== 'todos' || setorFilter !== 'todos' || urgentOnly
-                    ? 'Nenhuma coleta corresponde aos filtros'
-                    : coletasQuery.hasNextPage ? 'Nenhuma coleta nesta página' : 'Nenhuma coleta neste período'}
-                  description={coletasQuery.hasNextPage
-                    ? 'Carregue mais registros para ampliar a busca ou ajuste os filtros aplicados.'
-                    : 'Amplie o período para consultar outras coletas ou registre uma nova coleta.'}
-                  actionLabel={coletasQuery.hasNextPage ? 'Carregar mais registros' : dateFilter !== 'todos' ? 'Ver todos os períodos' : 'Nova coleta'}
-                  onAction={coletasQuery.hasNextPage
-                    ? () => void coletasQuery.fetchNextPage()
-                    : dateFilter !== 'todos'
-                      ? () => setDateFilter('todos')
-                      : () => { resetColetaForm(); setShowNewColeta(true); }}
-                  secondaryLabel={search.trim() || statusFilter !== 'todos' || setorFilter !== 'todos' || dateFilter !== 'hoje' || urgentOnly
-                    ? 'Limpar filtros'
-                    : undefined}
-                  onSecondaryAction={() => {
-                    setSearch(''); setStatusFilter('todos'); setSetorFilter('todos'); setDateFilter('hoje'); setUrgentOnly(false);
-                  }}
-                  actionIcon={coletasQuery.hasNextPage || dateFilter !== 'todos' ? undefined : Plus}
-                  className="py-9"
-                />
-              </CardContent></Card>
+              <Card className="rounded-2xl border-border/60">
+                <CardContent className="py-10 flex flex-col items-center gap-4 text-center">
+                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+                    <FlaskConical className="h-7 w-7" />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-foreground">
+                      {search.trim() || statusFilter !== 'todos' || setorFilter !== 'todos' || urgentOnly
+                        ? 'Nenhuma coleta corresponde aos filtros'
+                        : coletasQuery.hasNextPage ? 'Nenhuma coleta nesta página' : 'Nenhuma coleta neste período'}
+                    </p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      {coletasQuery.hasNextPage
+                        ? 'Carregue mais registros para ampliar a busca ou ajuste os filtros aplicados.'
+                        : 'Amplie o período para consultar outras coletas ou registre uma nova coleta.'}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2 justify-center">
+                    <Button
+                      className="rounded-full gap-2 bg-gradient-primary text-white shadow-md hover:brightness-110"
+                      onClick={coletasQuery.hasNextPage
+                        ? () => void coletasQuery.fetchNextPage()
+                        : dateFilter !== 'todos'
+                          ? () => setDateFilter('todos')
+                          : () => { resetColetaForm(); setShowNewColeta(true); }}
+                    >
+                      {coletasQuery.hasNextPage ? 'Carregar mais registros' : dateFilter !== 'todos' ? 'Ver todos os períodos' : <><Plus className="h-4 w-4" />Nova coleta</>}
+                    </Button>
+                    {(search.trim() || statusFilter !== 'todos' || setorFilter !== 'todos' || dateFilter !== 'hoje' || urgentOnly) && (
+                      <Button
+                        variant="outline"
+                        className="rounded-full gap-2"
+                        onClick={() => { setSearch(''); setStatusFilter('todos'); setSetorFilter('todos'); setDateFilter('hoje'); setUrgentOnly(false); }}
+                      >
+                        Limpar filtros
+                      </Button>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
             ) : (
               filtered.map((coleta: any) => {
                 const nextStatus = getNextStatus(coleta.status);
+                const whatsLink = linkWhatsApp(
+                  coleta.pacientes?.telefone,
+                  `Olá ${coleta.pacientes?.nome ?? ''}, sua amostra laboratorial (${coleta.codigo_amostra ?? ''}) está em andamento.`,
+                );
                 return (
                   <Card key={coleta.id} className={cn(
-                    'transition-all hover:shadow-sm',
+                    'rounded-2xl border-border/60 shadow-xs transition-all hover:shadow-md',
                     coleta.urgente && 'border-destructive/50 bg-destructive/5',
                   )}>
                     <CardContent className="py-3 px-4">
@@ -772,15 +957,15 @@ export default function Laboratorio() {
                         <div className="flex-1 space-y-1">
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="font-semibold">{coleta.pacientes?.nome}</span>
-                            <Badge variant="outline" className="font-mono text-[10px] gap-1">
+                            <Badge variant="outline" className="rounded-full font-mono text-[10px] gap-1">
                               <Tag className="h-3 w-3" />{coleta.codigo_amostra}
                             </Badge>
-                            <Badge className={statusColors[coleta.status]}>{statusLabels[coleta.status]}</Badge>
-                            {coleta.laboratorio_setores?.nome && <Badge variant="secondary">{coleta.laboratorio_setores.nome}</Badge>}
-                            {coleta.urgente && <Badge variant="destructive" className="gap-1"><Zap className="h-3 w-3" />Urgente</Badge>}
-                            {coleta.jejum_necessario && <Badge variant="outline" className="text-[10px]">Jejum {coleta.jejum_horas}h</Badge>}
-                            {(coleta as any).procedimento_codigo && <Badge variant="outline" className="font-mono text-[10px]">{(coleta as any).procedimento_codigo}</Badge>}
-                            {(coleta as any).numero_guia && <Badge variant="secondary" className="text-[10px]">Guia: {(coleta as any).numero_guia}</Badge>}
+                            <Badge className={cn(statusColors[coleta.status], 'rounded-full')}>{statusLabels[coleta.status]}</Badge>
+                            {coleta.laboratorio_setores?.nome && <Badge variant="secondary" className="rounded-full">{coleta.laboratorio_setores.nome}</Badge>}
+                            {coleta.urgente && <Badge variant="destructive" className="rounded-full gap-1"><Zap className="h-3 w-3" />Urgente</Badge>}
+                            {coleta.jejum_necessario && <Badge variant="outline" className="rounded-full text-[10px]">Jejum {coleta.jejum_horas}h</Badge>}
+                            {(coleta as any).procedimento_codigo && <Badge variant="outline" className="rounded-full font-mono text-[10px]">{(coleta as any).procedimento_codigo}</Badge>}
+                            {(coleta as any).numero_guia && <Badge variant="secondary" className="rounded-full text-[10px]">Guia: {(coleta as any).numero_guia}</Badge>}
                           </div>
                           <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
                             <span>{coleta.tipo_amostra}</span>
@@ -799,30 +984,37 @@ export default function Laboratorio() {
                           {coleta.condicao_amostra?.length > 0 && (
                             <div className="flex gap-1 flex-wrap">
                               {coleta.condicao_amostra.map((c: string) => (
-                                <Badge key={c} variant="destructive" className="text-[10px]">{c}</Badge>
+                                <Badge key={c} variant="destructive" className="rounded-full text-[10px]">{c}</Badge>
                               ))}
                             </div>
                           )}
                         </div>
                         <div className="flex gap-1.5 flex-wrap">
                           {nextStatus && coleta.status !== 'cancelado' && (
-                            <Button size="sm" variant="outline" className="h-7 text-xs gap-1"
+                            <Button size="sm" variant="outline" className="h-9 rounded-full text-xs gap-1"
                               disabled={updateStatus.isPending}
                               onClick={() => updateStatus.mutate({ id: coleta.id, status: nextStatus, expectedStatus: coleta.status })}>
                               <ArrowRight className="h-3 w-3" /> {statusLabels[nextStatus]}
                             </Button>
                           )}
                           {coleta.status === 'validado' && (
-                            <Button asChild size="sm" variant="outline" className="h-7 text-xs gap-1">
+                            <Button asChild size="sm" variant="outline" className="h-9 rounded-full text-xs gap-1">
                               <Link to="/laudos-lab"><FileText className="h-3 w-3" />Liberar laudo</Link>
                             </Button>
                           )}
-                          <Button size="sm" variant="ghost" className="h-7 text-xs gap-1"
+                          {whatsLink && (
+                            <Button asChild size="sm" variant="outline" className="h-9 rounded-full text-xs gap-1">
+                              <a href={whatsLink} target="_blank" rel="noopener noreferrer">
+                                <Phone className="h-3 w-3" />
+                              </a>
+                            </Button>
+                          )}
+                          <Button size="sm" variant="ghost" className="h-9 rounded-full text-xs gap-1"
                             onClick={() => setShowResultados(coleta.id)}>
                             <Eye className="h-3 w-3" /> Resultados
                           </Button>
                           {(coleta.status === 'pendente' || coleta.status === 'recoleta') && (
-                            <Button size="sm" variant="ghost" className="h-7 text-xs text-destructive"
+                            <Button size="sm" variant="ghost" className="h-9 rounded-full text-xs text-destructive"
                               disabled={updateStatus.isPending}
                               onClick={() => updateStatus.mutate({ id: coleta.id, status: 'cancelado', expectedStatus: coleta.status })}>
                               <XCircle className="h-3 w-3" />
@@ -872,51 +1064,53 @@ export default function Laboratorio() {
             {stats.total > 0 && <Progress value={completionRate} className="h-2" />}
             <div data-testid="lab-pipeline-kpis" className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
               {[
-                { label: 'Pendente', value: stats.pendentes, icon: Clock, color: 'text-warning', bg: 'bg-warning/10', border: 'border-warning/30', filter: 'pendente' },
-                { label: 'Coletado', value: stats.coletados, icon: TestTube, color: 'text-info', bg: 'bg-info/10', border: 'border-info/30', filter: 'coletado' },
-                { label: 'Em Análise', value: stats.emAnalise, icon: Activity, color: 'text-primary', bg: 'bg-primary/10', border: 'border-primary/30', filter: 'em_analise' },
-                { label: 'Validado', value: stats.validados, icon: Shield, color: 'text-success', bg: 'bg-success/10', border: 'border-success/30', filter: 'validado' },
-                { label: 'Liberado', value: stats.liberados, icon: CheckCircle2, color: 'text-success', bg: 'bg-success/10', border: 'border-success/30', filter: 'liberado' },
-                { label: 'Urgentes', value: stats.urgentes, icon: Zap, color: 'text-destructive', bg: 'bg-destructive/10', border: 'border-destructive/30', filter: 'urgente' },
-              ].map((s, idx) => (
-                <motion.div key={s.label} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: idx * 0.04 }}>
-                  <Card className={cn('relative cursor-pointer border transition-all hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
-                    s.border,
-                    (statusFilter === s.filter || (s.filter === 'urgente' && urgentOnly)) && 'ring-2 ring-primary'
-                  )}
-                    role="button"
-                    tabIndex={0}
+                { label: 'Pendente', value: stats.pendentes, icon: Clock, color: 'text-warning', bg: 'bg-warning/10', filter: 'pendente' },
+                { label: 'Coletado', value: stats.coletados, icon: TestTube, color: 'text-info', bg: 'bg-info/10', filter: 'coletado' },
+                { label: 'Em Análise', value: stats.emAnalise, icon: Activity, color: 'text-[#1080CA]', bg: 'bg-[#1080CA]/10', filter: 'em_analise' },
+                { label: 'Validado', value: stats.validados, icon: Shield, color: 'text-success', bg: 'bg-success/10', filter: 'validado' },
+                { label: 'Liberado', value: stats.liberados, icon: CheckCircle2, color: 'text-success', bg: 'bg-success/10', filter: 'liberado' },
+                { label: 'Urgentes', value: stats.urgentes, icon: Zap, color: 'text-destructive', bg: 'bg-destructive/10', filter: 'urgente' },
+              ].map((s) => (
+                <div key={s.label}>
+                  <button
+                    type="button"
+                    className={cn(
+                      'w-full rounded-2xl border border-border/60 bg-card shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA] focus-visible:ring-offset-2',
+                      (statusFilter === s.filter || (s.filter === 'urgente' && urgentOnly)) && 'ring-2 ring-[#1080CA]',
+                    )}
                     aria-pressed={s.filter === 'urgente' ? urgentOnly : statusFilter === s.filter && dateFilter === 'hoje' && !urgentOnly}
                     onClick={() => filtrarPipeline(s.filter)}
-                    onKeyDown={event => {
-                      if (event.key === 'Enter' || event.key === ' ') {
-                        event.preventDefault();
-                        filtrarPipeline(s.filter);
-                      }
-                    }}>
-                    <CardContent className="flex items-center gap-2 pt-3 pb-2">
-                      <div className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-lg', s.bg)}>
+                  >
+                    <div className="flex items-center gap-2 px-3 pt-3 pb-2">
+                      <div className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-xl', s.bg)}>
                         <s.icon className={cn('h-4 w-4', s.color)} />
                       </div>
-                      <div>
+                      <div className="text-left">
                         <p className={cn('text-xl font-bold tabular-nums', s.color)}>{s.value}</p>
                         <p className="text-[10px] font-medium text-muted-foreground">{s.label}</p>
                       </div>
-                    </CardContent>
-                  </Card>
-                </motion.div>
+                    </div>
+                  </button>
+                </div>
               ))}
             </div>
           </section>
           {stats.total === 0 ? (
-            <ActionableEmptyState
-              title="Nenhuma amostra no fluxo hoje"
-              description="Registre uma coleta para iniciar o acompanhamento das etapas laboratoriais."
-              actionLabel="Registrar coleta"
-              onAction={() => { resetColetaForm(); setShowNewColeta(true); }}
-              actionIcon={Plus}
-              className="rounded-xl border bg-card py-12"
-            />
+            <div className="rounded-2xl border border-border/60 bg-card py-12 flex flex-col items-center gap-4 text-center">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+                <Activity className="h-7 w-7" />
+              </div>
+              <div>
+                <p className="font-semibold text-foreground">Nenhuma amostra no fluxo hoje</p>
+                <p className="text-sm text-muted-foreground mt-1">Registre uma coleta para iniciar o acompanhamento das etapas laboratoriais.</p>
+              </div>
+              <Button
+                className="rounded-full gap-2 bg-gradient-primary text-white shadow-md hover:brightness-110"
+                onClick={() => { resetColetaForm(); setShowNewColeta(true); }}
+              >
+                <Plus className="h-4 w-4" /> Registrar coleta
+              </Button>
+            </div>
           ) : (
             <>
               <p className="text-sm text-muted-foreground">Visão Kanban do fluxo laboratorial de hoje</p>

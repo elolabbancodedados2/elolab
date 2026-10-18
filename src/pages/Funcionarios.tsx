@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Search, Pencil, Trash2, Users, Mail, Phone, Loader2, Send, CheckCircle, Stethoscope, Briefcase, Settings2, Save, RotateCcw } from 'lucide-react';
+import { Plus, Search, Pencil, Trash2, Users, Mail, Phone, Loader2, Send, CheckCircle, Stethoscope, Briefcase, Settings2, Save, RotateCcw, RefreshCw, X, ShieldCheck, UserX } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -29,6 +28,7 @@ import { validateCPF } from '@/lib/formatters';
 import { ActionableEmptyState } from '@/components/ActionableEmptyState';
 import { RoleAccessPreview } from '@/components/RoleAccessPreview';
 import { shouldWarnAboutLastAdmin } from '@/lib/lastAdminWarning';
+import { cn } from '@/lib/utils';
 
 interface FuncionarioWithRoles {
   id: string;
@@ -114,6 +114,7 @@ const initialFormData: FormDataType = {
 export default function Funcionarios() {
   const { user, profile } = useSupabaseAuth();
   const [searchTerm, setSearchTerm] = useState('');
+  const [filterStatus, setFilterStatus] = useState<'todos' | 'ativo' | 'inativo' | 'sem_permissao'>('todos');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [funcionarioToDelete, setFuncionarioToDelete] = useState<string | null>(null);
@@ -470,10 +471,19 @@ export default function Funcionarios() {
 
   const salvandoFuncionario = createMutation.isPending || updateMutation.isPending;
   const normalizedSearch = normalizarTexto(searchTerm.trim());
-  const filteredFuncionarios = funcionarios.filter(f =>
-    !normalizedSearch ||
-    normalizarTexto(`${f.nome} ${f.email || ''}`).includes(normalizedSearch)
-  );
+  const totalAtivos = funcionarios.filter(f => f.ativo).length;
+  const totalInativos = funcionarios.filter(f => !f.ativo).length;
+  const totalSemPermissao = funcionarios.filter(f => f.ativo && f.roles.length === 0).length;
+  const temFiltro = searchTerm.trim() !== '' || filterStatus !== 'todos';
+  const limparFiltros = () => { setSearchTerm(''); setFilterStatus('todos'); };
+  const filteredFuncionarios = funcionarios.filter(f => {
+    const matchSearch = !normalizedSearch || normalizarTexto(`${f.nome} ${f.email || ''}`).includes(normalizedSearch);
+    const matchStatus = filterStatus === 'todos'
+      || (filterStatus === 'ativo' && f.ativo)
+      || (filterStatus === 'inativo' && !f.ativo)
+      || (filterStatus === 'sem_permissao' && f.ativo && f.roles.length === 0);
+    return matchSearch && matchStatus;
+  });
 
   const handleOpenDialog = (func?: FuncionarioWithRoles) => {
     if (func) {
@@ -565,45 +575,102 @@ export default function Funcionarios() {
     return <ErrorState title="Não foi possível carregar as configurações de função" description="A tela foi pausada para evitar salvar rótulos com base em uma configuração incompleta." error={roleConfigQuery.error} onRetry={() => void roleConfigQuery.refetch()} />;
   }
 
+  const descricaoHeader = funcionarios.length === 0
+    ? 'Gerencie a equipe e suas permissões de acesso'
+    : `${funcionarios.length} funcionário(s) · ${totalAtivos} ativo(s)${totalSemPermissao > 0 ? ` · ${totalSemPermissao} sem permissão` : ''}`;
+
+  const indicadores = [
+    { key: 'sem_permissao' as const, label: 'Sem permissão', value: totalSemPermissao, icon: ShieldCheck, color: 'text-white', surface: 'bg-white/15', escuro: true, caption: 'ativos sem acesso definido' },
+    { key: 'ativo' as const, label: 'Ativos', value: totalAtivos, icon: CheckCircle, color: 'text-success', surface: 'bg-success/10', escuro: false, caption: 'com acesso liberado' },
+    { key: 'inativo' as const, label: 'Inativos', value: totalInativos, icon: UserX, color: 'text-muted-foreground', surface: 'bg-muted', escuro: false, caption: 'sem acesso ao sistema' },
+    { key: 'todos' as const, label: 'Total', value: funcionarios.length, icon: Users, color: 'text-[#1080CA]', surface: 'bg-[#1080CA]/10', escuro: false, caption: 'toda a equipe' },
+  ];
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Funcionários"
-        description="Gerencie a equipe e suas permissões de acesso"
+        description={descricaoHeader}
         icon={<Users />}
         actions={
           <>
+            <Button variant="outline" size="icon" className="shrink-0 rounded-full" onClick={() => void funcionariosQuery.refetch()} aria-label="Atualizar funcionários" title="Atualizar funcionários">
+              <RefreshCw className="h-4 w-4" />
+            </Button>
             <ConvidarFuncionarioDialog
               trigger={
-                <Button variant="outline" className="gap-2 border-border bg-card text-foreground hover:bg-accent">
+                <Button variant="outline" className="shrink-0 gap-2 rounded-full">
                   <Mail className="h-4 w-4" />Convidar por e-mail
                 </Button>
               }
             />
-            <Button variant="outline" onClick={handleOpenCustomize} className="gap-2 border-border bg-card text-foreground hover:bg-accent">
+            <Button variant="outline" onClick={handleOpenCustomize} className="shrink-0 gap-2 rounded-full">
               <Settings2 className="h-4 w-4" />Personalizar perfis
             </Button>
-            <Button onClick={() => handleOpenDialog()} className="gap-2">
+            <Button onClick={() => handleOpenDialog()} className="shrink-0 gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110">
               <Plus className="h-4 w-4" />Novo Funcionário
             </Button>
           </>
         }
       />
 
-      <Card>
+      <section role="group" aria-label="Resumo da equipe" className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        {indicadores.map(ind => {
+          const Icon = ind.icon;
+          const ativo = filterStatus === ind.key;
+          return (
+            <button
+              key={ind.key}
+              type="button"
+              aria-pressed={ativo}
+              onClick={() => setFilterStatus(ind.key === 'todos' ? 'todos' : (ativo ? 'todos' : ind.key))}
+              className={cn(
+                'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+                ind.escuro && 'border-transparent bg-gradient-primary text-white',
+                ativo && !ind.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
+                ativo && ind.escuro && 'ring-2 ring-[#1080CA]/60',
+              )}
+            >
+              <div className="flex items-start justify-between gap-2 p-4">
+                <div>
+                  <p className={cn('text-xs font-medium', ind.escuro ? 'text-white/80' : 'text-muted-foreground')}>{ind.label}</p>
+                  <p className={cn('mt-1 text-2xl font-bold tabular-nums', ind.color)}>{ind.value}</p>
+                  <p className={cn('mt-0.5 text-[11px]', ind.escuro ? 'text-white/60' : 'text-muted-foreground')}>{ind.caption}</p>
+                </div>
+                <span aria-hidden="true" className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', ind.surface)}>
+                  <Icon className={cn('h-4 w-4', ind.color)} />
+                </span>
+              </div>
+            </button>
+          );
+        })}
+      </section>
+
+      <Card className="overflow-hidden rounded-2xl border-border/60 shadow-xs">
         <CardHeader>
           <div className="flex flex-col sm:flex-row gap-4 justify-between">
-            <CardTitle className="flex items-center gap-2">
-              <Users className="h-5 w-5" />Equipe ({filteredFuncionarios.length})
+            <CardTitle className="flex items-center gap-2 text-base font-semibold">
+              <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-white">
+                <Users className="h-4 w-4" />
+              </span>
+              Equipe
+              <Badge variant="outline" className="rounded-full border-[#BFD8EE] text-[#1080CA]">{filteredFuncionarios.length} de {funcionarios.length}</Badge>
             </CardTitle>
-            <div className="relative w-full sm:w-80">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input aria-label="Buscar funcionários por nome ou e-mail" placeholder="Buscar por nome ou e-mail..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-10" />
+            <div className="flex items-center gap-2">
+              <div className="relative w-full sm:w-80">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input aria-label="Buscar funcionários por nome ou e-mail" placeholder="Buscar por nome ou e-mail..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="h-10 rounded-full pl-10 focus-visible:ring-[#1080CA]" />
+              </div>
+              {temFiltro && (
+                <Button variant="ghost" size="sm" className="h-10 shrink-0 gap-1.5 rounded-full text-muted-foreground" onClick={limparFiltros}>
+                  <X className="h-3.5 w-3.5" /> Limpar
+                </Button>
+              )}
             </div>
           </div>
         </CardHeader>
         <CardContent>
-          <div className="rounded-md border">
+          <div className="overflow-hidden rounded-xl border border-border/60">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -619,13 +686,13 @@ export default function Funcionarios() {
               {filteredFuncionarios.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={6} className="p-0">
-                      {normalizedSearch ? (
+                      {temFiltro ? (
                         <ActionableEmptyState
                           icon={Search}
-                          title="Nenhum funcionário encontrado"
-                          description={`Não encontramos funcionários para “${searchTerm.trim()}”.`}
-                          actionLabel="Limpar busca"
-                          onAction={() => setSearchTerm('')}
+                          title="Nenhum funcionário corresponde aos filtros"
+                          description={normalizedSearch ? `Não encontramos funcionários para “${searchTerm.trim()}”.` : 'Limpe os filtros para ver toda a equipe.'}
+                          actionLabel="Limpar filtros"
+                          onAction={limparFiltros}
                           className="px-4 py-8"
                         />
                       ) : (
@@ -663,7 +730,7 @@ export default function Funcionarios() {
                         </TableCell>
                         <TableCell>
                           <div className="space-y-1">
-                            <Badge variant="outline" className="text-xs">{tipoConfig?.label || 'Atendente'}</Badge>
+                            <Badge variant="outline" className="rounded-full text-xs">{tipoConfig?.label || 'Atendente'}</Badge>
                             {raw.registro_profissional && (
                               <p className="text-xs text-muted-foreground font-mono">
                                 {raw.tipo_registro}: {raw.registro_profissional}{raw.uf_registro ? `/${raw.uf_registro}` : ''}
@@ -675,8 +742,10 @@ export default function Funcionarios() {
                         <TableCell>
                           <div className="flex flex-wrap gap-1">
                             {func.roles.length > 0 ? func.roles.map(role => (
-                              <Badge key={role} className={getRoleColor(role)}>{getRoleLabel(role)}</Badge>
-                            )) : <span className="text-sm text-muted-foreground">Sem permissões</span>}
+                              <Badge key={role} className={cn('rounded-full', getRoleColor(role))}>{getRoleLabel(role)}</Badge>
+                            )) : (
+                              <Badge variant="outline" className="gap-1 rounded-full border-warning/40 bg-warning/10 text-warning-foreground">Sem permissões</Badge>
+                            )}
                           </div>
                         </TableCell>
                         <TableCell className="hidden md:table-cell">
@@ -684,7 +753,7 @@ export default function Funcionarios() {
                           {raw.carga_horaria && <span className="text-xs text-muted-foreground block">{raw.carga_horaria}h/sem</span>}
                         </TableCell>
                         <TableCell>
-                          <Badge className={func.ativo ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}>
+                          <Badge className={cn('rounded-full', func.ativo ? 'border-success/30 bg-success/10 text-success-foreground' : 'border-border bg-muted text-muted-foreground')} variant="outline">
                             {func.ativo ? 'Ativo' : 'Inativo'}
                           </Badge>
                         </TableCell>
@@ -694,8 +763,8 @@ export default function Funcionarios() {
                               <Tooltip>
                                 <TooltipTrigger asChild>
                                   <span className="inline-flex" tabIndex={func.roles.length === 0 ? 0 : undefined}>
-                                    <Button aria-label={func.roles.length > 0 ? 'Enviar convite por e-mail' : 'Defina uma função antes de enviar convite'} size="icon" variant="ghost" onClick={() => handleSendInvitation(func)} disabled={inviteMutation.isPending || func.roles.length === 0}>
-                                      {inviteMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4 text-primary" />}
+                                    <Button aria-label={func.roles.length > 0 ? 'Enviar convite por e-mail' : 'Defina uma função antes de enviar convite'} size="icon" variant="ghost" className="h-9 w-9 rounded-full" onClick={() => handleSendInvitation(func)} disabled={inviteMutation.isPending || func.roles.length === 0}>
+                                      {inviteMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4 text-[#1080CA]" />}
                                     </Button>
                                   </span>
                                 </TooltipTrigger>
@@ -707,15 +776,15 @@ export default function Funcionarios() {
                             {func.user_id && (
                               <Tooltip>
                                 <TooltipTrigger asChild>
-                                  <span role="status" aria-label="Conta vinculada" tabIndex={0} className="flex h-8 w-8 items-center justify-center rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+                                  <span role="status" aria-label="Conta vinculada" tabIndex={0} className="flex h-9 w-9 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
                                     <CheckCircle className="h-4 w-4 text-success" />
                                   </span>
                                 </TooltipTrigger>
                                 <TooltipContent>Conta vinculada</TooltipContent>
                               </Tooltip>
                             )}
-                            <Button aria-label={`Editar funcionário ${func.nome}`} size="icon" variant="ghost" onClick={() => handleOpenDialog(func)}><Pencil className="h-4 w-4" /></Button>
-                            <Button aria-label={`Excluir funcionário ${func.nome}`} size="icon" variant="ghost" onClick={() => handleDeleteClick(func.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                            <Button aria-label={`Editar funcionário ${func.nome}`} size="icon" variant="ghost" className="h-9 w-9 rounded-full" onClick={() => handleOpenDialog(func)}><Pencil className="h-4 w-4" /></Button>
+                            <Button aria-label={`Excluir funcionário ${func.nome}`} size="icon" variant="ghost" className="h-9 w-9 rounded-full hover:bg-destructive/10" onClick={() => handleDeleteClick(func.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
                           </div>
                         </TableCell>
                       </TableRow>
@@ -916,8 +985,8 @@ export default function Funcionarios() {
           </fieldset>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsDialogOpen(false)} disabled={salvandoFuncionario}>Cancelar</Button>
-            <Button onClick={handleSave} disabled={salvandoFuncionario}>
+            <Button variant="outline" className="rounded-full" onClick={() => setIsDialogOpen(false)} disabled={salvandoFuncionario}>Cancelar</Button>
+            <Button className="rounded-full bg-gradient-primary text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)] hover:brightness-110" onClick={handleSave} disabled={salvandoFuncionario}>
               {salvandoFuncionario && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               {editingFunc ? 'Salvar' : 'Cadastrar'}
             </Button>
@@ -932,8 +1001,8 @@ export default function Funcionarios() {
             <AlertDialogDescription>Esta ação não pode ser desfeita.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={handleConfirmDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+            <AlertDialogCancel className="rounded-full">Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmDelete} className="rounded-full bg-destructive text-destructive-foreground hover:bg-destructive/90">
               {deleteMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Excluir'}
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -957,10 +1026,8 @@ export default function Funcionarios() {
               const custom = editingCustomRoles[def.role];
               if (!custom) return null;
               return (
-                <motion.div
+                <div
                   key={def.role}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
                   className="border rounded-lg p-4 space-y-4"
                 >
                   <div className="flex items-center gap-3">
@@ -996,17 +1063,17 @@ export default function Funcionarios() {
                   </div>
 
                   <p className="text-xs text-muted-foreground">As permissões de acesso são aplicadas pela função selecionada no cadastro do funcionário. Esta personalização não concede nem remove acesso a módulos.</p>
-                </motion.div>
+                </div>
               );
             })}
           </div>
 
           <DialogFooter className="gap-2">
-            <Button variant="ghost" onClick={handleResetCustomization} className="gap-2 mr-auto">
+            <Button variant="ghost" onClick={handleResetCustomization} className="gap-2 mr-auto rounded-full">
               <RotateCcw className="h-4 w-4" />Restaurar nomes padrão
             </Button>
-            <Button variant="outline" onClick={() => setIsCustomizeOpen(false)}>Cancelar</Button>
-            <Button onClick={handleSaveCustomization} disabled={saveCustomizationMutation.isPending} className="gap-2">
+            <Button variant="outline" className="rounded-full" onClick={() => setIsCustomizeOpen(false)}>Cancelar</Button>
+            <Button onClick={handleSaveCustomization} disabled={saveCustomizationMutation.isPending} className="gap-2 rounded-full bg-gradient-primary text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)] hover:brightness-110">
               {saveCustomizationMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
               Salvar nomes e descrições
             </Button>

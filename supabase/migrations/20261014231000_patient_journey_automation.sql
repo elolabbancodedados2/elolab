@@ -208,9 +208,13 @@ BEGIN
  END IF;
  RETURN NEW;
 END; $$;
+DROP TRIGGER IF EXISTS jornada_agendamento_data ON public.agendamentos;
 CREATE TRIGGER jornada_agendamento_data BEFORE INSERT OR UPDATE OF status,data,hora_inicio,paciente_id,medico_id ON public.agendamentos FOR EACH ROW EXECUTE FUNCTION public.jornada_agendamento_antes();
+DROP TRIGGER IF EXISTS jornada_agendamento_evento ON public.agendamentos;
 CREATE TRIGGER jornada_agendamento_evento AFTER INSERT OR UPDATE OF data,hora_inicio,status,paciente_id,medico_id ON public.agendamentos FOR EACH ROW EXECUTE FUNCTION public.jornada_paciente_evento();
+DROP TRIGGER IF EXISTS jornada_retorno_evento ON public.retornos;
 CREATE TRIGGER jornada_retorno_evento AFTER INSERT OR UPDATE OF data_retorno_prevista,status,paciente_id ON public.retornos FOR EACH ROW EXECUTE FUNCTION public.jornada_paciente_evento();
+DROP TRIGGER IF EXISTS jornada_resultado_evento ON public.resultados_laboratorio;
 CREATE TRIGGER jornada_resultado_evento AFTER INSERT OR UPDATE OF liberado,data_liberacao ON public.resultados_laboratorio FOR EACH ROW EXECUTE FUNCTION public.jornada_paciente_evento();
 
 -- Preserve the existing daily return cron, with the same atomic producer and opt-in rules.

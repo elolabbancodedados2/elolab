@@ -52,6 +52,7 @@ END;
 $$;
 
 DROP TRIGGER IF EXISTS proteger_versao_modelo_atestado ON public.atestados;
+DROP TRIGGER IF EXISTS proteger_versao_modelo_atestado ON public.atestados;
 CREATE TRIGGER proteger_versao_modelo_atestado
   BEFORE INSERT OR UPDATE ON public.atestados
   FOR EACH ROW EXECUTE FUNCTION public.registrar_versao_modelo_atestado();

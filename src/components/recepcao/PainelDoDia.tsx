@@ -291,9 +291,9 @@ export function PainelDoDia({ atendimentos, clinicaId, hoje, carregandoAtendimen
                 'flex h-full min-h-[5.75rem] flex-col rounded-2xl border px-3 py-2.5 text-left shadow-xs transition-all xl:min-h-20 xl:py-2',
                 clicavel ? 'cursor-pointer hover:-translate-y-0.5 hover:shadow-md' : 'cursor-default',
                 ativo
-                  ? 'border-transparent bg-[#111111] text-white shadow-md'
+                  ? 'border-transparent bg-gradient-primary text-white shadow-md'
                   : c.id === 'caixa'
-                    ? 'border-transparent bg-[#111111] text-white'
+                    ? 'border-transparent bg-gradient-primary text-white'
                     : 'border-border/60 bg-card hover:border-[#1080CA]/40',
                 c.alerta && !ativo && c.id !== 'caixa' && 'border-l-4 border-l-current',
               )}
@@ -304,7 +304,7 @@ export function PainelDoDia({ atendimentos, clinicaId, hoje, carregandoAtendimen
                 <Icone className="mt-px h-3 w-3 shrink-0" aria-hidden="true" />
                 <span>{c.titulo}</span>
               </div>
-              <p className={cn('mt-1 text-xl font-bold tabular-nums leading-none', c.tom, ativo && 'text-white', c.id === 'caixa' && (n.recebidoTotal < 0 ? 'text-red-300' : 'text-[#2ED5E7]'))}>
+              <p className={cn('mt-1 text-xl font-bold tabular-nums leading-none', c.tom, ativo && 'text-white', c.id === 'caixa' && (n.recebidoTotal < 0 ? 'text-red-300' : 'text-white'))}>
                 {c.id !== 'caixa' && (erroAtendimentos || (erroFinanceiro && ['balcao', 'adicional'].includes(c.id)))
                   ? '—'
                   : c.id !== 'caixa' && carregandoAtendimentos ? '…' : c.valor}
