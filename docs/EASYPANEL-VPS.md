@@ -107,6 +107,31 @@ Depois, confirme no painel que o gatilho de deploy só aceita commits já
 integrados em `main`. Se essa proteção não estiver disponível, mantenha Auto
 Deploy desligado e publique manualmente somente após o CI verde.
 
+## Backup off-site
+
+O banco é dumpado semanalmente pela função `auto-backup` direto no bucket `backups`
+do próprio Storage self-hosted (arquivo em `/var/lib/storage` no container,
+montado em `/etc/easypanel/projects/elolab/supabase/code/supabase/code/volumes/storage`
+no host). Isso sozinho não protege contra perda do disco/VPS inteira — backup e
+produção ficam na mesma máquina.
+
+Para cobrir esse caso, `rclone` está instalado na VPS e `/etc/elolab-backup/sync-offsite.sh`
+replica todo o volume de storage (documentos de pacientes + dumps de backup) para
+um remoto `elolab-b2` via cron diário às 04:30 (depois do backup das 3h e da
+verificação das 3:30h). Ativar exige só preencher as credenciais:
+
+1. Criar conta gratuita em [backblaze.com/b2](https://www.backblaze.com/b2) e um
+   bucket privado (ex.: `elolab-backup`).
+2. Em "Application Keys", criar uma chave restrita a esse bucket.
+3. Na VPS, copiar `/root/.config/rclone/rclone.conf.example` para
+   `/root/.config/rclone/rclone.conf` e preencher `account`/`key` com o
+   `keyID`/`applicationKey` gerados.
+4. Testar manualmente: `/etc/elolab-backup/sync-offsite.sh` e conferir
+   `/var/log/elolab-backup-offsite.log`.
+
+Sem o `rclone.conf` preenchido, o script só grava um erro no log e não falha
+silenciosamente — mas também não protege nada até ser configurado.
+
 ## Publicar mudanças na produção
 
 1. Abrir PR e aguardar o workflow `Validate image for Easypanel` ficar verde.
