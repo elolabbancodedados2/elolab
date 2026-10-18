@@ -37,3 +37,7 @@ Ao refazer a tela, acrescentar o que falta para o fluxo ficar completo, sem muda
 - `npx eslint <arquivo>` sem erros novos (avisos de `any` preexistentes são aceitos).
 - Manter textos, `aria-label` e `role` que `tests/ux-visual-synthetic.spec.ts` e os testes em `src/**/__tests__` consultam para a rota.
 - Arquivos podem estar em CRLF no disco; normalizar antes de substituir texto por script.
+
+## `framer-motion` nas telas de referência
+
+`Fila.tsx`, `Pacientes.tsx` e `Recepcao.tsx` (citadas acima como referência de indicadores/cabeçalho) ainda usam `framer-motion` para microanimação de cartões (hover, stagger, layout). Isso é aceito nessas três telas — não removê-lo delas sem necessidade, pelo risco de regressão em UX já validada. Para toda tela nova ou refeita depois dessas, a convenção passou a ser não introduzir `framer-motion`; usar `transition`/`animate-in` do Tailwind quando precisar de alguma animação simples.
