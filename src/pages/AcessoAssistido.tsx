@@ -15,6 +15,7 @@ import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { mensagemDeErro } from '@/lib/erros';
 import { getSupportAccessStatus } from '@/lib/supportAccess';
+import { PageHeader } from '@/components/PageHeader';
 
 type SupportRequest = {
   id: string;
@@ -224,18 +225,19 @@ export default function AcessoAssistido() {
 
   return (
     <div className="space-y-6 pb-8">
-      <header className="rounded-2xl border border-border bg-gradient-to-r from-background via-card to-accent p-5 sm:p-6">
-        <div className="flex items-start gap-3">
-          <span className="rounded-xl bg-primary/10 p-2.5 text-primary ring-1 ring-border"><ShieldCheck className="h-5 w-5" /></span>
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">Acesso assistido</h1>
-            <p className="mt-1 text-sm text-[#6a6485]">Acesso temporário, aprovado pela clínica e limitado a dados operacionais. Ações registradas em auditoria.</p>
-          </div>
-        </div>
-      </header>
+      <PageHeader
+        title="Acesso assistido pelo suporte"
+        description="Acesso temporário, aprovado pela clínica e limitado a dados operacionais. Ações registradas em auditoria."
+        icon={<ShieldCheck />}
+        actions={
+          <Button variant="outline" size="icon" className="h-10 w-10 shrink-0 rounded-full" aria-label="Atualizar pedidos" onClick={() => void requests.refetch()} disabled={requests.isFetching}>
+            <RefreshCw className={`h-4 w-4 ${requests.isFetching ? 'animate-spin' : ''}`} />
+          </Button>
+        }
+      />
 
       {plataforma && (
-        <Card>
+        <Card className="rounded-2xl border-border/60 shadow-xs">
           <CardHeader>
             <CardTitle>Solicitar acesso à clínica</CardTitle>
             <CardDescription>A clínica precisa aprovar o pedido. Este escopo libera apenas indicadores operacionais e expira após 2 horas; não inclui logs nem dados clínicos de pacientes.</CardDescription>
@@ -259,7 +261,7 @@ export default function AcessoAssistido() {
               <p className="text-xs text-muted-foreground">Mínimo de 10 caracteres. Não inclua dados de pacientes.</p>
             </div>
             <Button
-              className="min-h-11 gap-2"
+              className="min-h-11 gap-2 rounded-full bg-[#111111] text-white hover:bg-[#2b2b33]"
               disabled={!clinicaId || reason.trim().length < 10 || reason.trim().length > 500 || requestAccess.isPending || clinics.isLoading}
               onClick={enviarPedido}
             >
@@ -270,37 +272,32 @@ export default function AcessoAssistido() {
         </Card>
       )}
 
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between gap-3">
-          <div>
-            <CardTitle>{plataforma ? 'Pedidos enviados' : 'Pedidos de suporte à clínica'}</CardTitle>
-            <CardDescription>{visibleRequests.length} de {requests.data?.length ?? 0} pedidos carregados. {plataforma ? 'Acompanhe as autorizações concedidas pela equipe da clínica.' : 'Revise o motivo e os escopos antes de autorizar a equipe da plataforma.'}</CardDescription>
-          </div>
-          <Button variant="outline" size="icon" className="h-11 w-11 shrink-0" aria-label="Atualizar pedidos" onClick={() => void requests.refetch()} disabled={requests.isFetching}>
-            <RefreshCw className={`h-4 w-4 ${requests.isFetching ? 'animate-spin' : ''}`} />
-          </Button>
+      <Card className="rounded-2xl border-border/60 shadow-xs">
+        <CardHeader>
+          <CardTitle>{plataforma ? 'Pedidos enviados' : 'Pedidos de suporte à clínica'}</CardTitle>
+          <CardDescription>{visibleRequests.length} de {requests.data?.length ?? 0} pedidos carregados. {plataforma ? 'Acompanhe as autorizações concedidas pela equipe da clínica.' : 'Revise o motivo e os escopos antes de autorizar a equipe da plataforma.'}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           {requests.isLoading ? (
-            <div className="space-y-3">{[1, 2].map((item) => <Skeleton key={item} className="h-24 w-full" />)}</div>
+            <div className="space-y-3">{[1, 2].map((item) => <Skeleton key={item} className="h-24 w-full rounded-2xl" />)}</div>
           ) : requests.isError ? (
-            <div role="alert" className="rounded-lg border border-destructive/30 p-4 text-sm">
+            <div role="alert" className="rounded-2xl border border-destructive/30 p-4 text-sm">
               <p className="font-medium">Não foi possível carregar os pedidos.</p>
               <p className="mt-1 text-muted-foreground">{mensagemDeErro(requests.error)}</p>
-              <Button className="mt-3" variant="outline" onClick={() => void requests.refetch()}>Tentar novamente</Button>
+              <Button className="mt-3 rounded-full" variant="outline" onClick={() => void requests.refetch()}>Tentar novamente</Button>
             </div>
           ) : requests.data?.length ? (
             <>
             <div className="grid gap-2 sm:grid-cols-[minmax(14rem,1fr)_12rem]">
-              <div className="relative"><Search aria-hidden="true" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input className="pl-9" value={requestSearch} onChange={(event) => setRequestSearch(event.target.value)} placeholder="Buscar motivo, clínica ou código" aria-label="Buscar pedidos de acesso assistido" /></div>
-              <Select value={requestStatusFilter} onValueChange={(value) => setRequestStatusFilter(value as SupportRequest['status'] | 'all')}><SelectTrigger aria-label="Filtrar pedidos por status"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Todos os status</SelectItem>{Object.entries(statusLabels).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select>
+              <div className="relative"><Search aria-hidden="true" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input className="h-10 rounded-full pl-9" value={requestSearch} onChange={(event) => setRequestSearch(event.target.value)} placeholder="Buscar motivo, clínica ou código" aria-label="Buscar pedidos de acesso assistido" /></div>
+              <Select value={requestStatusFilter} onValueChange={(value) => setRequestStatusFilter(value as SupportRequest['status'] | 'all')}><SelectTrigger className="h-10 rounded-full" aria-label="Filtrar pedidos por status"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Todos os status</SelectItem>{Object.entries(statusLabels).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select>
             </div>
             {visibleRequests.length ? visibleRequests.map((request) => {
               const status = statusAtual(request);
               const canDecide = !plataforma && status === 'requested';
               const canRevoke = status === 'approved';
               return (
-                <article key={request.id} className="flex flex-col gap-3 rounded-xl border p-4 sm:flex-row sm:items-start sm:justify-between">
+                <article key={request.id} className="flex flex-col gap-3 rounded-2xl border border-border/60 p-4 sm:flex-row sm:items-start sm:justify-between">
                   <div className="min-w-0 space-y-2">
                     <div className="flex flex-wrap items-center gap-2">
                       <Badge variant={status === 'approved' ? 'default' : status === 'denied' || status === 'revoked' ? 'destructive' : 'secondary'}>{statusLabels[status]}</Badge>
@@ -313,28 +310,28 @@ export default function AcessoAssistido() {
                   </div>
                   <div className="flex flex-wrap gap-2 sm:justify-end">
                     {canDecide && <>
-                      <Button className="min-h-11 gap-2" variant="outline" onClick={() => setConfirmation({ request, action: 'denied' })} disabled={actionBusy}>
+                      <Button className="h-9 gap-2 rounded-full" variant="outline" onClick={() => setConfirmation({ request, action: 'denied' })} disabled={actionBusy}>
                         <X className="h-4 w-4" /> Negar
                       </Button>
-                      <Button className="min-h-11 gap-2" onClick={() => setConfirmation({ request, action: 'approved' })} disabled={actionBusy}>
+                      <Button className="h-9 gap-2 rounded-full bg-[#111111] text-white hover:bg-[#2b2b33]" onClick={() => setConfirmation({ request, action: 'approved' })} disabled={actionBusy}>
                         <Check className="h-4 w-4" /> Autorizar por 2h
                       </Button>
                     </>}
-                    {plataforma && status === 'approved' && <Button className="min-h-11 gap-2" variant="outline" onClick={() => loadContext.mutate(request.id)} disabled={loadContext.isPending}>
+                    {plataforma && status === 'approved' && <Button className="h-9 gap-2 rounded-full" variant="outline" onClick={() => loadContext.mutate(request.id)} disabled={loadContext.isPending}>
                       {loadContext.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
                       Ver diagnóstico
                     </Button>}
-                    {canRevoke && <Button className="min-h-11 gap-2" variant="ghost" onClick={() => setConfirmation({ request, action: 'revoked' })} disabled={actionBusy}>
+                    {canRevoke && <Button className="h-9 gap-2 rounded-full" variant="ghost" onClick={() => setConfirmation({ request, action: 'revoked' })} disabled={actionBusy}>
                       <X className="h-4 w-4" /> Revogar
                     </Button>}
                   </div>
                 </article>
               );
-            }) : <div className="flex flex-col items-center gap-2 py-6 text-center"><p className="text-sm text-muted-foreground">Nenhum pedido corresponde à busca ou ao status.</p><Button variant="ghost" size="sm" onClick={() => { setRequestSearch(''); setRequestStatusFilter('all'); }}>Limpar filtros</Button></div>}
+            }) : <div className="flex flex-col items-center gap-2 py-6 text-center"><p className="text-sm text-muted-foreground">Nenhum pedido corresponde à busca ou ao status.</p><Button variant="ghost" size="sm" className="rounded-full" onClick={() => { setRequestSearch(''); setRequestStatusFilter('all'); }}>Limpar filtros</Button></div>}
             {requests.data.length === 100 && <p role="status" className="text-xs text-muted-foreground">Mostrando os 100 pedidos mais recentes. Pedidos mais antigos podem não aparecer aqui.</p>}
             </>
           ) : (
-            <div className="rounded-lg border border-dashed p-8 text-center">
+            <div className="rounded-2xl border border-dashed p-8 text-center">
               <ShieldCheck className="mx-auto h-8 w-8 text-muted-foreground" />
               <p className="mt-2 font-medium">Nenhum pedido de acesso</p>
               <p className="mt-1 text-sm text-muted-foreground">Quando houver um pedido, ele aparecerá aqui para revisão.</p>
@@ -344,17 +341,17 @@ export default function AcessoAssistido() {
       </Card>
 
       {context && (
-        <Card>
+        <Card className="rounded-2xl border-border/60 shadow-xs">
           <CardHeader>
             <CardTitle>Diagnóstico operacional autorizado</CardTitle>
             <CardDescription>Indicadores sem prontuários ou identificação de pacientes. Autorização expira em {dataHora(context.expires_at)}.</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3 sm:grid-cols-3">
-            <div className="rounded-lg border p-4"><p className="text-sm text-muted-foreground">Usuários ativos</p><p className="mt-1 text-2xl font-semibold">{context.active_users ?? '—'}</p></div>
-            <div className="rounded-lg border p-4"><p className="text-sm text-muted-foreground">Falhas de automação · 24h</p><p className="mt-1 text-2xl font-semibold">{context.failed_automations_24h ?? '—'}</p></div>
-            <div className="rounded-lg border p-4"><p className="text-sm text-muted-foreground">Chamados em aberto</p><p className="mt-1 text-2xl font-semibold">{context.open_support_tickets ?? '—'}</p></div>
+            <div className="rounded-xl border border-border/60 p-4"><p className="text-sm text-muted-foreground">Usuários ativos</p><p className="mt-1 text-2xl font-semibold">{context.active_users ?? '—'}</p></div>
+            <div className="rounded-xl border border-border/60 p-4"><p className="text-sm text-muted-foreground">Falhas de automação · 24h</p><p className="mt-1 text-2xl font-semibold">{context.failed_automations_24h ?? '—'}</p></div>
+            <div className="rounded-xl border border-border/60 p-4"><p className="text-sm text-muted-foreground">Chamados em aberto</p><p className="mt-1 text-2xl font-semibold">{context.open_support_tickets ?? '—'}</p></div>
             <p className="sm:col-span-3 text-xs text-muted-foreground">Escopos autorizados: {context.scopes.map((scope) => scopeLabels[scope] || scope).join(' · ')}</p>
-            <Button className="min-h-11 sm:col-span-3 sm:justify-self-end" variant="outline" onClick={() => setContext(null)}>Fechar diagnóstico</Button>
+            <Button className="min-h-11 rounded-full sm:col-span-3 sm:justify-self-end" variant="outline" onClick={() => setContext(null)}>Fechar diagnóstico</Button>
           </CardContent>
         </Card>
       )}

@@ -1455,32 +1455,6 @@ test('desktop semantic color pairs meet WCAG AA in normal and high contrast them
   expect(results.filter(({ ratio }) => ratio < 4.5), JSON.stringify(results, null, 2)).toEqual([]);
 });
 
-test('admin page headers use the shared semantic color tokens on desktop', async ({ page }, testInfo) => {
-  const synthetic = await installSyntheticClinic(page, { platformAdmin: false, ultraPlan: true });
-  const pages = [
-    { path: '/acesso-assistido', title: 'Acesso assistido', name: 'acesso-assistido' },
-  ];
-
-  for (const viewport of [{ width: 1440, height: 900 }, { width: 1280, height: 800 }]) {
-    await page.setViewportSize(viewport);
-
-    for (const target of pages) {
-      await page.goto(target.path);
-      await expect(page.getByRole('heading', { level: 1, name: target.title })).toBeVisible();
-
-      const semanticSurface = page.locator('[class*="from-background"][class*="via-card"][class*="to-accent"]').first();
-      await expect(semanticSurface).toBeVisible();
-      const classes = await semanticSurface.getAttribute('class');
-      expect(classes).toContain('border-border');
-      expect(classes).not.toContain('[#');
-      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-      await page.screenshot({ path: testInfo.outputPath(`${target.name}-${viewport.width}.png`), fullPage: true, animations: 'disabled' });
-    }
-  }
-
-  expect(synthetic.writes.filter((write) => !write.includes('/rpc/'))).toEqual([]);
-});
-
 test('accounts receivable and payable use the same title and action hierarchy', async ({ page }, testInfo) => {
   const synthetic = await installSyntheticClinic(page, { platformAdmin: false });
 

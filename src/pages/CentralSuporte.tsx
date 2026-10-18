@@ -343,9 +343,9 @@ export default function CentralSuporte() {
         actions={!isPlatformAdmin && (
           <Dialog open={novaAberta} onOpenChange={setNovaAberta}>
             <DialogTrigger asChild>
-              <Button disabled={!profile?.clinica_id} className="gap-2"><Plus aria-hidden="true" className="h-4 w-4" />Abrir chamado</Button>
+              <Button disabled={!profile?.clinica_id} className="gap-2 rounded-full bg-[#111111] text-white shadow-md hover:bg-[#2b2b33]"><Plus aria-hidden="true" className="h-4 w-4" />Abrir chamado</Button>
             </DialogTrigger>
-            <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto">
+            <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto rounded-2xl">
               <DialogHeader>
                 <DialogTitle>Abrir chamado</DialogTitle>
                 <DialogText>Conte o que aconteceu e como podemos reproduzir o problema.</DialogText>
@@ -391,15 +391,15 @@ export default function CentralSuporte() {
       />
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <Card>
+        <Card className="rounded-2xl border-border/60 shadow-xs">
           <CardHeader>
             <CardTitle className="text-base">Fila de chamados</CardTitle>
             <CardDescription>{tickets.isError ? 'A fila está indisponível. Tente atualizar para carregar os chamados.' : `Exibindo ${inicioResultados}–${fimResultados} de ${totalChamados} chamado${totalChamados === 1 ? '' : 's'}${filtrosAtivos ? ' com os filtros atuais' : ''}. Atrasados e prioritários aparecem primeiro em cada página.`}</CardDescription>
             <div className="flex flex-wrap gap-2 pt-2">
-              <div className="relative min-w-52 flex-1"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input disabled={tickets.isError} value={busca} onChange={event => setBusca(event.target.value)} className="pl-9" placeholder="Buscar em todos os chamados" aria-label="Buscar no título ou na descrição de todos os chamados" /></div>
-              <Select disabled={tickets.isError} value={filtroStatus} onValueChange={setFiltroStatus}><SelectTrigger className="w-44" aria-label="Filtrar chamados por status"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Todos os status</SelectItem>{STATUS.map(status => <SelectItem key={status} value={status}>{statusLabel[status]}</SelectItem>)}</SelectContent></Select>
-              <Select disabled={tickets.isError} value={filtroPrioridade} onValueChange={setFiltroPrioridade}><SelectTrigger className="w-40" aria-label="Filtrar chamados por prioridade"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Todas prioridades</SelectItem>{PRIORIDADES.map(priority => <SelectItem key={priority} value={priority}>{prioridadeLabel[priority]}</SelectItem>)}</SelectContent></Select>
-              <Button variant="outline" size="icon" aria-label="Atualizar chamados" onClick={() => void tickets.refetch()} disabled={tickets.isFetching}><RefreshCw className={`h-4 w-4 ${tickets.isFetching ? 'animate-spin' : ''}`} /></Button>
+              <div className="relative min-w-52 flex-1"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input disabled={tickets.isError} value={busca} onChange={event => setBusca(event.target.value)} className="h-10 rounded-full pl-9" placeholder="Buscar em todos os chamados" aria-label="Buscar no título ou na descrição de todos os chamados" /></div>
+              <Select disabled={tickets.isError} value={filtroStatus} onValueChange={setFiltroStatus}><SelectTrigger className="h-10 w-44 rounded-full" aria-label="Filtrar chamados por status"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Todos os status</SelectItem>{STATUS.map(status => <SelectItem key={status} value={status}>{statusLabel[status]}</SelectItem>)}</SelectContent></Select>
+              <Select disabled={tickets.isError} value={filtroPrioridade} onValueChange={setFiltroPrioridade}><SelectTrigger className="h-10 w-40 rounded-full" aria-label="Filtrar chamados por prioridade"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Todas prioridades</SelectItem>{PRIORIDADES.map(priority => <SelectItem key={priority} value={priority}>{prioridadeLabel[priority]}</SelectItem>)}</SelectContent></Select>
+              <Button variant="outline" size="icon" className="h-10 w-10 rounded-full" aria-label="Atualizar chamados" onClick={() => void tickets.refetch()} disabled={tickets.isFetching}><RefreshCw className={`h-4 w-4 ${tickets.isFetching ? 'animate-spin' : ''}`} /></Button>
             </div>
           </CardHeader>
           <CardContent className="space-y-2">
@@ -408,19 +408,19 @@ export default function CentralSuporte() {
             ) : tickets.isError ? (
               <ErrorState compact title="Não foi possível carregar os chamados" error={tickets.error} onRetry={() => void tickets.refetch()} />
             ) : chamados.length === 0 && !filtrosAtivos ? (
-              <div className="rounded-lg border border-dashed p-6 text-center">
+              <div className="rounded-2xl border border-dashed p-6 text-center">
                 <MessageSquare aria-hidden="true" className="mx-auto mb-2 h-6 w-6 text-muted-foreground" />
                 <p className="font-medium">Nenhum chamado por aqui</p>
                 <p className="mt-1 text-sm text-muted-foreground">Os chamados da clínica aparecerão nesta lista.</p>
               </div>
             ) : chamadosVisiveis.length === 0 ? (
-              <div className="rounded-lg border border-dashed p-6 text-center"><p className="font-medium">Nenhum chamado corresponde aos filtros</p><p className="mt-1 text-sm text-muted-foreground">A busca e os filtros são aplicados a toda a fila.</p><Button className="mt-2" size="sm" variant="ghost" onClick={() => { setBusca(''); setBuscaAplicada(''); setFiltroStatus('all'); setFiltroPrioridade('all'); }}>Limpar filtros</Button></div>
+              <div className="rounded-2xl border border-dashed p-6 text-center"><p className="font-medium">Nenhum chamado corresponde aos filtros</p><p className="mt-1 text-sm text-muted-foreground">A busca e os filtros são aplicados a toda a fila.</p><Button className="mt-2 rounded-full" size="sm" variant="ghost" onClick={() => { setBusca(''); setBuscaAplicada(''); setFiltroStatus('all'); setFiltroPrioridade('all'); }}>Limpar filtros</Button></div>
             ) : chamadosVisiveis.map((ticket) => {
               const prazo = new Date(ticket.sla_limite).getTime();
               const slaVencido = !ticket.primeira_resposta_em && Number.isFinite(prazo) && prazo < Date.now() && !['resolvido', 'fechado'].includes(ticket.status);
               const ticketSelecionado = selecionado?.id === ticket.id;
-              return <div key={ticket.id} className={`rounded-lg border p-3 transition-colors ${ticketSelecionado ? 'border-primary bg-primary/5 shadow-sm' : 'border-border bg-card'}`}>
-                <button type="button" onClick={() => { setSelecionado(ticket); setNotaInterna(false); }} aria-pressed={ticketSelecionado} className="w-full rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              return <div key={ticket.id} className={`rounded-2xl border p-3 transition-colors ${ticketSelecionado ? 'border-primary bg-primary/5 shadow-sm' : 'border-border/60 bg-card'}`}>
+                <button type="button" onClick={() => { setSelecionado(ticket); setNotaInterna(false); }} aria-pressed={ticketSelecionado} className="w-full rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                   <span className="flex items-start justify-between gap-2">
                     <span className="font-semibold">{ticket.titulo}</span>
                     <Badge variant={ticket.prioridade === 'critica' ? 'destructive' : ticket.prioridade === 'alta' ? 'warning' : 'outline'}>{prioridadeLabel[ticket.prioridade] || ticket.prioridade}</Badge>
@@ -441,7 +441,7 @@ export default function CentralSuporte() {
                     <SelectTrigger ref={(element) => {
                       if (element) statusTriggerRefs.current.set(ticket.id, element);
                       else statusTriggerRefs.current.delete(ticket.id);
-                    }} className="mt-2 h-9" aria-label={`Status do chamado ${ticket.titulo}`}>
+                    }} className="mt-2 h-9 rounded-full" aria-label={`Status do chamado ${ticket.titulo}`}>
                       {statusAtualizando === ticket.id ? <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" /> : <SelectValue />}
                     </SelectTrigger>
                     <SelectContent>{STATUS.map((status) => <SelectItem key={status} value={status}>{statusLabel[status]}</SelectItem>)}</SelectContent>
@@ -451,11 +451,11 @@ export default function CentralSuporte() {
             })}
             {!tickets.isLoading && !tickets.isError && totalChamados > 100 && (
               <div className="flex items-center justify-between gap-3 border-t pt-3">
-                <Button variant="outline" size="sm" onClick={() => setPagina((atual) => Math.max(0, atual - 1))} disabled={pagina === 0 || tickets.isFetching}>
+                <Button variant="outline" size="sm" className="h-9 rounded-full" onClick={() => setPagina((atual) => Math.max(0, atual - 1))} disabled={pagina === 0 || tickets.isFetching}>
                   <ArrowLeft className="mr-1.5 h-4 w-4" />Anterior
                 </Button>
                 <span className="text-xs text-muted-foreground">Página {pagina + 1} de {totalPaginas}</span>
-                <Button variant="outline" size="sm" onClick={() => setPagina((atual) => Math.min(totalPaginas - 1, atual + 1))} disabled={pagina + 1 >= totalPaginas || tickets.isFetching}>
+                <Button variant="outline" size="sm" className="h-9 rounded-full" onClick={() => setPagina((atual) => Math.min(totalPaginas - 1, atual + 1))} disabled={pagina + 1 >= totalPaginas || tickets.isFetching}>
                   Próxima<ArrowRight className="ml-1.5 h-4 w-4" />
                 </Button>
               </div>
@@ -463,7 +463,7 @@ export default function CentralSuporte() {
           </CardContent>
         </Card>
 
-        <Card className="lg:sticky lg:top-4 lg:flex lg:h-[calc(100dvh-18rem)] lg:max-h-[calc(100dvh-18rem)] lg:flex-col lg:self-start lg:overflow-hidden">
+        <Card className="rounded-2xl border-border/60 shadow-xs lg:sticky lg:top-4 lg:flex lg:h-[calc(100dvh-18rem)] lg:max-h-[calc(100dvh-18rem)] lg:flex-col lg:self-start lg:overflow-hidden">
           <CardHeader className="shrink-0">
             <CardTitle className="text-base">{selecionado?.titulo || 'Detalhes do chamado'}</CardTitle>
             {!selecionado && <CardDescription>Selecione um chamado para ver as mensagens.</CardDescription>}
@@ -479,13 +479,13 @@ export default function CentralSuporte() {
                   {isPlatformAdmin && <span>{selecionado.clinica_nome} · {selecionado.solicitante_nome}{selecionado.solicitante_email ? ` (${selecionado.solicitante_email})` : ''}</span>}
                   <span>{selecionado.primeira_resposta_em ? `Primeira resposta: ${formatarData(selecionado.primeira_resposta_em)}` : `Prazo da primeira resposta: ${formatarData(selecionado.sla_limite)}`}</span>
                 </div>
-                <div ref={messagesViewportRef} aria-live="polite" className="max-h-72 space-y-2 overflow-auto rounded-md border p-3 lg:max-h-40 lg:min-h-24 lg:flex-1">
+                <div ref={messagesViewportRef} aria-live="polite" className="max-h-72 space-y-2 overflow-auto rounded-xl border p-3 lg:max-h-40 lg:min-h-24 lg:flex-1">
                   {mensagens.isLoading ? (
                     <p role="status" className="text-sm text-muted-foreground">Carregando mensagens…</p>
                   ) : mensagens.isError ? (
                     <ErrorState compact title="Não foi possível carregar as mensagens" error={mensagens.error} onRetry={() => void mensagens.refetch()} />
                   ) : mensagens.data?.length ? mensagens.data.map((item) => (
-                    <div key={item.id} className={`rounded-lg p-2 text-sm ${item.interno ? 'border border-amber-400/50 bg-amber-50 dark:bg-amber-950/20' : 'bg-muted'}`}>
+                    <div key={item.id} className={`rounded-xl p-2 text-sm ${item.interno ? 'border border-warning/40 bg-warning/10' : 'bg-muted'}`}>
                       <div className="mb-1 flex flex-wrap items-center justify-between gap-2 text-xs">
                         <span className="font-medium">{item.autor_nome}</span>
                         {item.interno && <Badge variant="outline">Nota interna · só plataforma</Badge>}
@@ -504,7 +504,7 @@ export default function CentralSuporte() {
                   <Checkbox checked={notaInterna} onCheckedChange={(value) => setNotaInterna(value === true)} />
                   Nota interna, visível somente à plataforma
                 </label>}
-                <Button onClick={responder} disabled={respondendo || !mensagem.trim() || mensagem.trim().length > 4000}>
+                <Button className="rounded-full" onClick={responder} disabled={respondendo || !mensagem.trim() || mensagem.trim().length > 4000}>
                   {respondendo ? <Loader2 aria-hidden="true" className="mr-2 h-4 w-4 animate-spin" /> : <Send aria-hidden="true" className="mr-2 h-4 w-4" />}
                   {respondendo ? 'Enviando…' : notaInterna && isPlatformAdmin ? 'Adicionar nota interna' : 'Enviar resposta'}
                 </Button>
