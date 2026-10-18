@@ -43,7 +43,7 @@ Deno.serve(async (req) => {
 
     if (action === 'list') {
       const [roomsRes, activeRes, checklistRes, executionsRes, reviewsRes] = await Promise.all([
-        db.from('salas').select('id,nome,status,localizacao,clinica_id').eq('clinica_id', clinicId).order('nome').limit(200),
+        db.from('salas').select('id,nome,status,localizacao:setor,clinica_id').eq('clinica_id', clinicId).order('nome').limit(200),
         db.from('room_hygiene_active_checklists').select('checklist_version_id').eq('clinic_id', clinicId).maybeSingle(),
         db.from('room_hygiene_checklist_versions').select('id,version,title,items,created_at').eq('clinic_id', clinicId).order('version', { ascending: false }).limit(20),
         db.from('room_hygiene_executions').select('id,room_id,checklist_version_id,started_by,started_at,submitted_by,submitted_at,completed_items,notes').eq('clinic_id', clinicId).order('started_at', { ascending: false }).limit(100),
