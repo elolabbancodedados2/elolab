@@ -1,6 +1,6 @@
 BEGIN;
 
-CREATE TABLE public.configuracoes_clinica_versoes (
+CREATE TABLE IF NOT EXISTS public.configuracoes_clinica_versoes (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   clinica_id uuid NOT NULL REFERENCES public.clinicas(id) ON DELETE CASCADE,
   chave text NOT NULL CHECK (chave IN ('config_clinica', 'config_impressao', 'config_seguranca')),
@@ -11,13 +11,14 @@ CREATE TABLE public.configuracoes_clinica_versoes (
   restaurada_de uuid REFERENCES public.configuracoes_clinica_versoes(id) ON DELETE SET NULL
 );
 
-CREATE INDEX configuracoes_clinica_versoes_historico_idx
+CREATE INDEX IF NOT EXISTS configuracoes_clinica_versoes_historico_idx
   ON public.configuracoes_clinica_versoes (clinica_id, chave, criado_em DESC);
-CREATE INDEX configuracoes_clinica_versoes_restaurada_de_idx
+CREATE INDEX IF NOT EXISTS configuracoes_clinica_versoes_restaurada_de_idx
   ON public.configuracoes_clinica_versoes (restaurada_de)
   WHERE restaurada_de IS NOT NULL;
 
 ALTER TABLE public.configuracoes_clinica_versoes ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS configuracoes_clinica_versoes_admin_select ON public.configuracoes_clinica_versoes;
 CREATE POLICY configuracoes_clinica_versoes_admin_select
   ON public.configuracoes_clinica_versoes
   FOR SELECT TO authenticated
@@ -32,7 +33,8 @@ SELECT c.clinica_id, c.chave, c.valor, c.updated_at, 'inicial'
   FROM public.configuracoes_clinica c
  WHERE c.clinica_id IS NOT NULL
    AND c.chave IN ('config_clinica', 'config_impressao', 'config_seguranca')
-   AND jsonb_typeof(c.valor) = 'object';
+   AND jsonb_typeof(c.valor) = 'object'
+ON CONFLICT DO NOTHING;
 
 CREATE OR REPLACE FUNCTION public.registrar_versao_configuracao_clinica()
 RETURNS trigger
@@ -68,6 +70,7 @@ END;
 $$;
 
 REVOKE ALL ON FUNCTION public.registrar_versao_configuracao_clinica() FROM PUBLIC, anon, authenticated;
+DROP TRIGGER IF EXISTS trg_registrar_versao_configuracao_clinica ON public.configuracoes_clinica;
 DROP TRIGGER IF EXISTS trg_registrar_versao_configuracao_clinica ON public.configuracoes_clinica;
 CREATE TRIGGER trg_registrar_versao_configuracao_clinica
   AFTER INSERT OR UPDATE OF valor ON public.configuracoes_clinica

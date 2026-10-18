@@ -1,0 +1,270 @@
+AUDITORIA DOS MÓDULOS DO MÉDICO — ELOLAB
+Data: 16/10/2026
+
+Objetivo
+Avaliar o trabalho do médico na própria clínica: acesso, continuidade do
+atendimento, documentos, acompanhamento e experiência de uso.
+
+Escopo e evidência
+- Revisão de código de agenda, fila, pacientes, prontuário, prescrições,
+  atestados, encaminhamentos, exames, laboratório/laudos, retornos, tarefas,
+  notificações, modelos, sinais vitais, indicadores, segurança assistencial,
+  interoperabilidade, treinamento e suporte.
+- Navegação com perfil médico sintético, sem privilégios de administrador,
+  em dez telas principais. Prontuário inspecionado em 768, 1280 e 1440 px.
+- Reprodução em navegador da perda do atestado, rolagem da agenda e
+  dificuldades de leitura no prontuário.
+- Reprodução sintética dos itens 01 e 02 em Chromium: um teste passou em
+  16,9 segundos. Chamadas de backend foram interceptadas localmente; não
+  houve dispensação real nem execução da RPC de estoque no PostgreSQL.
+- Consulta somente de leitura em produção confirmou que a central de
+  notificações não agrega resultados críticos e que a baixa clínica de
+  estoque permite o médico responsável.
+- Não foram executadas prescrições, dispensações, assinaturas ou alterações
+  de dados clínicos reais para esta auditoria. Integrações externas não
+  foram exercitadas. Os achados de código não equivalem a todos os fluxos
+  reproduzidos em produção. Não é uma validação de regras médicas.
+
+Separação da liberação de acesso
+A correção de permissões está no PR 31, independente deste levantamento:
+https://github.com/elolabbancodedados2/elolab/pull/31
+Publicada em 16/10/2026 às 19:51 (São Paulo), versão 5bce4380.
+Validação final: 1.539 testes unitários/de integração e 239 testes de navegador
+aprovados; 46 cenários dependentes de configuração não executados. Serviço
+1/1, atualização concluída, saúde e versão pública verificadas.
+Ela habilita cadastro/edição de pacientes da clínica e seus atalhos nas
+tarefas, amplia a leitura de exames da própria clínica e mantém autoria,
+proteção de prontuários assinados e isolamento entre clínicas.
+Os dezesseis achados abaixo NÃO fazem parte dessa correção.
+
+Prioridades
+P1: corrigir primeiro, por efeito sobre o atendimento, dados ou pendências.
+P2: corrigir na sequência, para completar fluxos e reduzir retrabalho.
+P3: evolução funcional e conveniência.
+Total: cinco P1, oito P2 e três P3.
+
+Mapa de cobertura
+- Dashboard e indicadores: contagens, escopo do médico, agenda e tarefas;
+  oportunidade de agregação no servidor descrita ao final.
+- Agenda e fila/triagem: acesso e continuidade; problema de rolagem no item 12.
+- Pacientes: cadastro, edição e abertura de histórico cobertos pelo PR 31.
+- Prontuário: rascunhos, autoria, assinatura, histórico, prescrição e layout.
+- Prescrições: emissão, PDF, alergias, alertas e assinatura externa.
+- Atestados: formulários, modelos, impressão, histórico e perda de rascunho.
+- Encaminhamentos: status, contrarreferência e acesso pelo histórico.
+- Exames: guias, anexos, resultados e filtros da própria clínica.
+- Laboratório/laudos: revisão, retificação, liberação e ciência de críticos.
+- Retornos: filtros e acesso a partir do contexto do paciente.
+- Tarefas/fila pessoal/alertas: links, atualização e classificação das pendências.
+- Modelos clínicos e sinais vitais: recursos existentes a reutilizar.
+- Segurança assistencial, interoperabilidade, treinamento e suporte:
+  revisão de código dos fluxos e escopo; sem teste ponta a ponta de serviços externos.
+
+01 — P1 — Salvar prescrição pode baixar estoque sem dispensação
+Tipo: defeito de comportamento.
+Evidência: src/pages/Prontuarios.tsx, performSave, linhas 1354–1418.
+O salvamento manual procura itens de estoque pelo medicamento e chama
+registrar_baixa_estoque. Há também uma ação explícita "Dispensar na clínica".
+Impacto: uma receita destinada à farmácia externa pode consumir o estoque
+da clínica quando há correspondência de item e quantidade válida.
+Reprodução: clicar somente em Salvar Prontuário enviou a RPC de baixa com
+quantidade 21, sem clicar em Dispensar. O saldo 100 para 79 é uma simulação
+do teste, não um saldo observado no banco de produção.
+Correção: manter a baixa somente na dispensação explícita, reutilizando o
+RPC transacional e idempotente existente.
+Aceite: salvar, salvar automaticamente e imprimir receita não movimentam
+estoque; dispensar explicitamente movimenta uma vez, com auditoria.
+
+02 — P1 — Alergia da consulta não chega à checagem da prescrição
+Tipo: integração incompleta entre campos clínicos.
+Evidência: src/pages/Prontuarios.tsx:2365 e :2510.
+O médico edita alergias_relatadas no prontuário, enquanto o componente de
+checagem recebe somente selectedPaciente.alergias. O salvamento pelo
+prontuário também não reutiliza o registro de ciência/justificativa de
+alertas disponível no módulo de Prescrições.
+Reprodução: uma alergia cadastrada gerou alerta no controle positivo; a
+alergia recém-informada na consulta não gerou alerta para o medicamento
+correspondente. O campo foi salvo, mas não foi considerado pelo verificador.
+Correção: considerar as alergias do cadastro e do atendimento na checagem e oferecer
+atualização explícita do cadastro; reutilizar o fluxo de ciência auditada.
+Aceite: uma alergia acrescentada na consulta é considerada imediatamente,
+sem apagar o histórico nem alterar silenciosamente o cadastro do paciente.
+
+03 — P1 — Resultado crítico não aparece na central do médico
+Tipo: funcionalidade de acompanhamento ausente.
+Evidência: src/pages/LaudosLab.tsx contém ciência/conduta; a função
+central_notificacoes_usuario, definida em
+supabase/migrations/20261009110000_notificacoes_usam_data_civil_sao_paulo.sql,
+não consulta resultados críticos nem suas confirmações. Ausência confirmada
+na definição instalada em produção.
+Correção: agregar resultados críticos liberados, na versão vigente e sem
+ciência, à central existente, respeitando clínica e responsabilidade.
+Aceite: alerta abre o laudo correto; ciência remove a pendência correspondente;
+retificação de resultado volta a exigir ciência da nova versão quando cabível.
+
+04 — P1 — Sino pode indicar "Sem alertas" com tarefas pendentes
+Tipo: defeito de integração.
+Evidência: src/components/layout/Navbar.tsx:85, :131 e :283;
+src/hooks/useRealtimeNotifications.ts.
+As notificações operacionais são buscadas para avisos transitórios, mas a
+lista e contadores do sino vêm da fila de envios notification_queue, cuja
+leitura é restrita. Assim, as pendências do médico não compõem essa lista.
+Correção: alimentar a aba Alertas e seu contador com a central operacional.
+Aceite: a mesma tarefa pendente aparece na central e no sino, com abertura
+do item e estado de leitura coerentes.
+
+05 — P1 — Atalho Escape pode perder o atestado em elaboração
+Tipo: perda de trabalho reproduzida em navegador.
+Evidência: src/pages/Atestados.tsx:184 e :598.
+Digitar um atestado, fechar com Escape e abrir "Novo atestado" resulta em
+formulário vazio, sem confirmação de descarte.
+Correção: proteção de formulário alterado e rascunho recuperável, com
+armazenamento apropriado a dados clínicos. Avaliar o mesmo padrão em receitas.
+Aceite: Escape, clique fora e mudança de tela não descartam texto sem aviso;
+retomar um rascunho preserva paciente, conteúdo e autor.
+
+06 — P2 — Anexos enviados com a guia não têm ação de abrir
+Tipo: fluxo incompleto.
+Evidência: src/pages/Exames.tsx:674, :724 e :1688.
+O upload grava caminhos privados nas observações. O detalhe exibe esses
+caminhos como texto; a ação de download existente atende arquivo_resultado.
+Correção: apresentar os anexos da solicitação com download autorizado,
+mantendo compatibilidade com caminhos já salvos nas observações.
+Aceite: abrir cada anexo da guia funciona sem tornar o armazenamento público.
+
+07 — P2 — Receita do prontuário aparece sem PDF para baixar
+Tipo: lacuna entre emissão e histórico.
+Evidência: src/pages/Prontuarios.tsx:1335;
+src/pages/Prescricoes.tsx:297 e :956.
+O fluxo do prontuário grava os medicamentos, mas não arquivo_pdf. O histórico
+desabilita o download e pode chamar uma receita recente de "receita antiga".
+Correção: reutilizar a geração de receita existente a partir dos dados salvos,
+distinguindo rascunho, receita emitida e assinatura.
+Aceite: emitir a receita do atendimento permite recuperá-la no histórico,
+sem redigitar medicamentos nem substituir o documento por um PDF do prontuário.
+
+08 — P2 — Histórico relacionado não abre documentos e limita a dez itens
+Tipo: dificuldade de continuidade do atendimento.
+Evidência: src/pages/Prontuarios.tsx:610–674.
+Exames, atestados e encaminhamentos aparecem em cartões sem ação de abrir,
+com limite de dez por tipo e sem "Ver todos". A passagem do paciente por
+parâmetro de URL não é implementada uniformemente nos módulos de documentos.
+Correção: links para os detalhes existentes, "Ver todos deste paciente" e
+preservação do paciente ao trocar entre prontuário e documentos.
+Aceite: acessar o 11º registro e retornar à consulta mantém o contexto.
+
+09 — P2 — Nova tarefa pode não aparecer na fila que já está aberta
+Tipo: atualização incompleta.
+Evidência: src/pages/MinhaFilaTarefas.tsx:67;
+src/pages/Tarefas.tsx:384; src/hooks/useRealtimeSubscription.ts:7.
+As consultas de tarefas não têm atualização periódica própria, e a tabela
+tarefas está fora da assinatura global. O dashboard usa outro cache.
+Correção: atualização por evento e alternativa periódica, invalidando as
+consultas de tarefas, fila pessoal e contadores do dashboard.
+Aceite: uma tarefa atribuída por outro usuário aparece sem recarregar a página.
+
+10 — P2 — Central mantém estados encerrados como pendências
+Tipo: classificação incorreta.
+Evidência: migration 20261009110000, filtros de agendamentos e exames.
+Os filtros não consideram todos os estados atuais: finalizado,
+atendimento_finalizado, faltou e laudo_disponivel, conforme o tipo de item.
+Correção: alinhar os estados com o fluxo vigente. Separar exame aguardando
+execução de resultado disponível aguardando revisão.
+Aceite: concluir atendimento remove a pendência; resultado disponível recebe
+a classificação adequada, sem parecer exame ainda não realizado.
+
+11 — P2 — Identificação do paciente fica comprimida em notebook
+Tipo: legibilidade, reproduzida em navegador.
+Evidência: src/pages/Prontuarios.tsx:275, :285 e :1924.
+Em 1280 px, a composição de três colunas deixa o nome com cerca de 60 px de
+largura; o nome sintético quebrou em seis linhas e outros dados se fragmentaram.
+Correção: largura mínima útil para identificação ou empilhamento antecipado.
+Aceite: identificação legível em 1280 e 1440 px, mantendo boa adaptação em 768 px.
+
+12 — P2 — Rolagem automática da agenda esconde os controles
+Tipo: navegação, reproduzida em navegador.
+Evidência: src/components/agenda/views/DailyMultiDoctorView.tsx:319–327.
+scrollIntoView desloca o conteúdo principal inteiro até o horário atual,
+deixando data, filtros e "Nova consulta" fora da área visível.
+Correção: preservar acesso à barra de ações ou limitar a rolagem à grade.
+Aceite: abrir a agenda à tarde permite alcançar o horário atual e os controles
+sem obrigar o usuário a voltar ao topo da página.
+
+13 — P3 — Notificação não leva ao item e à data correspondentes
+Tipo: melhoria de navegação.
+Evidência: migration 20261009110000, href genéricos;
+src/pages/CentralNotificacoes.tsx:60.
+Correção: links com identificador do item e data, consumidos pela tela destino.
+Aceite: clicar numa consulta de amanhã abre o agendamento de amanhã, mesmo
+quando a agenda estava anteriormente em outra data.
+
+14 — P3 — Retornos precisa de filtro rápido "Meus retornos"
+Tipo: funcionalidade de organização.
+Evidência: src/pages/Retornos.tsx:91–115 e :187–207.
+Há consulta da clínica e filtros por texto/status, mas não um seletor dedicado
+de responsabilidade. Isso não é falha de permissão.
+Correção: filtro inicial do médico conectado com opção de consultar a clínica;
+contadores devem acompanhar o filtro.
+Aceite: alternar entre próprios retornos e os da clínica mantém busca e status.
+
+15 — P3 — Versão assinada externamente não retorna à receita original
+Tipo: funcionalidade adicional.
+Evidência: src/pages/Prescricoes.tsx:1128–1132.
+Existe upload genérico de anexos e publicação no portal. Falta o vínculo direto
+entre receita emitida e PDF devolvido após assinatura externa.
+Correção: anexar versão assinada à receita, preservando original e autoria;
+reutilizar permissões e publicação de anexos existentes.
+Aceite: o histórico distingue original e versão assinada e permite recuperá-las.
+
+16 — P2 — Ciência de alertas difere entre os dois fluxos de prescrição
+Tipo: consistência de auditoria.
+Evidência: src/pages/Prescricoes.tsx:500, :606 e :646 versus
+src/pages/Prontuarios.tsx:1335 e o RPC da migration
+20261011160000_prontuario_integridade_assinado.sql.
+A emissão independente registra ciência/justificativa de alertas; a gravação
+de medicamentos dentro do prontuário não recebe os mesmos campos.
+Correção: consolidar o comportamento com o item 02, reutilizando o fluxo e
+preservando autoria, horário e versão dos dados analisados.
+Aceite: a evidência de revisão exigida pelo produto não depende de qual tela
+foi usada para emitir a receita.
+
+Recursos existentes que devem ser aproveitados
+- Agenda e fila com vínculo do médico, controle de conflito e início de atendimento.
+- Rascunho automático, proteção de navegação do prontuário, histórico auditado,
+  assinatura, imutabilidade e adendos.
+- Modelos de receitas/atestados, PDF no fluxo independente, integração Memed.
+- Encaminhamentos com status e contrarreferência.
+- Guias de múltiplos exames, urgência, coleta e laudos com revisão/retificação.
+- Ciência e conduta em resultados críticos; anexos com acesso controlado.
+- Gráficos de sinais vitais combinando triagem e prontuário.
+- Indicadores por papel, relatos de segurança assistencial, exportação clínica
+  protegida, treinamento e suporte.
+
+Sequência recomendada
+1. Integridade e preservação do trabalho: itens 01, 02, 05 e 16.
+2. Pendências confiáveis: itens 03, 04, 09 e 10.
+3. Continuidade e documentos: itens 06, 07, 08 e 13.
+4. Organização e legibilidade: itens 11, 12, 14 e 15.
+
+Desempenho — oportunidade adicional para medir
+src/components/dashboard/DoctorDashboard.tsx:50 conta pacientes distintos
+baixando paciente_id de agendamentos em blocos sequenciais de mil, com teto
+de cinquenta mil registros. A tela já se comunica por API do Supabase;
+acrescentar outra camada HTTP, por si só, não resolve esse custo.
+Uma agregação no servidor, respeitando clínica e médico, pode retornar apenas
+o total e evitar o tráfego de todos esses identificadores. Também elimina a
+contagem incompleta acima do teto. Antes de priorizar essa mudança, medir
+latência, volume e plano de execução com dados representativos. Esta auditoria
+não realizou benchmark nem atribui ganho de velocidade estimado.
+
+Observação sobre os arquivos locais
+Prontuarios.tsx já continha alterações visuais do usuário. Esta auditoria
+não alterou esse arquivo. A correção de acesso médico não inclui tais mudanças.
+
+Evidências locais da reprodução sintética
+C:/Users/lopes/AppData/Local/Temp/elolab-clinical-audit-4177/
+- reproduction-source.spec.ts: código preservado do teste temporário.
+- .last-run.json: resultado do runner, passed, sem testes falhos.
+- execution-result.txt: resumo e limites; não é log integral.
+- Captura allergy-entered-but-no-alert.png na subpasta do resultado.
+O teste temporário foi removido de tests/ ao concluir a auditoria.

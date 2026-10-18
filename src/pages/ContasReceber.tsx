@@ -1,12 +1,12 @@
 import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
 import { useState, useMemo, useRef, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
 import {
   Plus, Search, Check, DollarSign, AlertCircle, Receipt, Calendar, Download, Clock,
   TrendingUp, User, Loader2, Eye, FileText, Printer, MoreHorizontal, Filter,
   ArrowUpRight, Banknote, CreditCard, QrCode, Landmark, Building2, Stethoscope,
-  FlaskConical, Repeat, Scissors, Pill, Baby, Heart, Bone, Brain,
+  FlaskConical, Repeat, Scissors, Pill, Baby, Heart, Bone, Brain, X, RefreshCw,
 } from 'lucide-react';
 import { differenceInCalendarDays, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -21,7 +21,6 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Separator } from '@/components/ui/separator';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -149,6 +148,18 @@ function parseMoneyInput(value: string): number | null {
 const formatMoneyInput = (value: number) => Number.isFinite(value) ? value.toFixed(2).replace('.', ',') : '';
 const formaPagamentoRPC: Record<string, string> = { cartao_credito: 'credito', cartao_debito: 'debito' };
 
+const PILL_BASE = 'h-8 rounded-full border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]';
+const PILL_ATIVA = 'border-transparent bg-gradient-primary text-white shadow-sm';
+const PILL_INATIVA = 'border-border bg-card text-muted-foreground hover:border-[#9CC7EC] hover:text-foreground';
+
+const PERIODOS_RECEITA: { key: string; label: string }[] = [
+  { key: 'mes_atual', label: 'Mês atual' },
+  { key: 'mes_anterior', label: 'Mês anterior' },
+  { key: 'ultimos_3', label: 'Ult. 3 meses' },
+  { key: 'ultimos_6', label: 'Ult. 6 meses' },
+  { key: 'todos', label: 'Todo período' },
+];
+
 const PIE_COLORS = [
   'hsl(var(--primary))', 'hsl(var(--success))', 'hsl(var(--warning))',
   'hsl(var(--destructive))', 'hsl(var(--info))', 'hsl(var(--accent-foreground))',
@@ -188,6 +199,7 @@ export default function ContasReceber() {
   const cancelamentoSubmissionLock = useRef(false);
   const [chavesBaixa, setChavesBaixa] = useState<Record<string, string>>({});
 
+  const navigate = useNavigate();
   const { user, profile } = useSupabaseAuth();
   const queryClient = useQueryClient();
 
@@ -306,6 +318,24 @@ export default function ContasReceber() {
       countTotal: filtered.length,
     };
   }, [filteredContas, lancamentosComPagamento, pagamentosAtivosPorLancamento, pagamentosAtingiramLimite]);
+
+  const destaqueReceita = useMemo(() => {
+    const atrasadas = filteredContas
+      .filter(c => c.vencido)
+      .sort((a, b) => {
+        const da = parseDateOnly(a.data_vencimento || a.data)?.getTime() ?? 0;
+        const db = parseDateOnly(b.data_vencimento || b.data)?.getTime() ?? 0;
+        return da - db;
+      });
+    if (atrasadas.length > 0) return atrasadas[0];
+    return filteredContas
+      .filter(c => ['pendente', 'parcial'].includes(c.status || ''))
+      .sort((a, b) => {
+        const da = parseDateOnly(a.data_vencimento || a.data)?.getTime() ?? 0;
+        const db = parseDateOnly(b.data_vencimento || b.data)?.getTime() ?? 0;
+        return da - db;
+      })[0] ?? null;
+  }, [filteredContas]);
 
   // Por categoria (for chart)
   const porCategoria = useMemo(() => {
@@ -692,15 +722,24 @@ export default function ContasReceber() {
     <div className="space-y-6 pb-8">
       <PageHeader
         title="Contas a Receber"
-        description={`Receitas detalhadas — período por data de lançamento · ${stats.countTotal} lançamento(s)`}
+        description={stats.countTotal === 0
+          ? 'Acompanhe receitas e recebimentos da clínica'
+          : `${fmt(stats.total)} total · ${stats.countAtrasado} vencida${stats.countAtrasado === 1 ? '' : 's'} · ${stats.countPendente} em aberto`}
         icon={<TrendingUp />}
         actions={
           <>
-          <Button variant="outline" size="sm" className="gap-1.5" onClick={exportarExcel}
-            disabled={!exportacaoCompletaPermitida} aria-describedby={!exportacaoCompletaPermitida ? 'contas-receber-limite-aviso' : undefined}>
-            <Download className="h-4 w-4" /> Exportar
+          <Button variant="outline" size="sm" className="gap-1.5 rounded-full shrink-0" onClick={() => navigate('/contas?tab=pagar')}>
+            <ArrowUpRight className="h-4 w-4" /> Contas a Pagar
           </Button>
-          <Button onClick={handleNew} className="gap-1.5">
+          <Button variant="outline" size="sm" className="gap-1.5 rounded-full shrink-0" onClick={() => navigate('/recepcao?tab=caixa')}>
+            <ArrowUpRight className="h-4 w-4" /> Caixa do Dia
+          </Button>
+          <Button variant="outline" size="icon" className="rounded-full shrink-0" onClick={exportarExcel}
+            disabled={!exportacaoCompletaPermitida} aria-describedby={!exportacaoCompletaPermitida ? 'contas-receber-limite-aviso' : undefined}
+            title="Exportar para Excel">
+            <Download className="h-4 w-4" />
+          </Button>
+          <Button onClick={handleNew} className="gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110 shrink-0">
             <Plus className="h-4 w-4" /> Nova Receita
           </Button>
           </>
@@ -715,34 +754,45 @@ export default function ContasReceber() {
         </div>
       )}
 
-      {/* KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      {/* Indicadores clicáveis */}
+      <section role="group" aria-label="Resumo das contas a receber" className="grid grid-cols-2 gap-2 md:grid-cols-4">
         {[
-          { label: 'Total Geral', value: stats.total, icon: DollarSign, color: 'text-primary', bg: 'bg-primary/10', border: 'border-primary/15' },
-          { label: 'Em aberto', value: stats.pendente, icon: Clock, color: 'text-warning-foreground', bg: 'bg-warning/10', border: 'border-warning/20', count: stats.countPendente },
-          { label: 'Vencido', value: stats.atrasado, icon: AlertCircle, color: 'text-destructive', bg: 'bg-destructive/10', border: 'border-destructive/20', count: stats.countAtrasado },
-          { label: 'Recebido nas contas filtradas', value: stats.pago, icon: Check, color: 'text-success', bg: 'bg-success/10', border: 'border-success/20', count: stats.countPago },
-        ].map((s, i) => (
-          <motion.div key={s.label} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}>
-            <Card className={cn('h-full border bg-gradient-to-br from-card to-muted/40 shadow-sm transition-shadow hover:shadow-md', s.border)}>
-              <CardContent className="py-4 px-5">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">{s.label}</p>
-                    <p className={cn('text-xl font-black mt-0.5 tabular-nums', s.color)}>{fmt(s.value)}</p>
-                    {s.count !== undefined && s.count > 0 && (
-                      <p className="text-[10px] text-muted-foreground">{s.count} conta(s)</p>
-                    )}
-                  </div>
-                  <div className={cn('h-10 w-10 rounded-xl flex items-center justify-center ring-1 ring-inset ring-black/[0.03]', s.bg)}>
-                    <s.icon className={cn('h-5 w-5', s.color)} />
-                  </div>
+          { key: 'todos', label: 'Total Geral', value: stats.total, icon: DollarSign, color: 'text-[#1080CA]', surface: 'bg-[#1080CA]/10', escuro: false, caption: `${stats.countTotal} lançamento(s)` },
+          { key: 'pendente', label: 'Em aberto', value: stats.pendente, icon: Clock, color: 'text-warning', surface: 'bg-warning/10', escuro: false, caption: `${stats.countPendente} conta(s)` },
+          { key: 'atrasado', label: 'Vencidas / Em atraso', value: stats.atrasado, icon: AlertCircle, color: 'text-white', surface: 'bg-white/15', escuro: true, caption: `${stats.countAtrasado} em atraso` },
+          { key: 'pago', label: 'Recebido', value: stats.pago, icon: Check, color: 'text-success', surface: 'bg-success/10', escuro: false, caption: `${stats.countPago} conta(s)` },
+        ].map(kpi => {
+          const Icon = kpi.icon;
+          const ativo = filterStatus === kpi.key;
+          return (
+            <button
+              key={kpi.key}
+              type="button"
+              aria-pressed={ativo}
+              onClick={() => setFilterStatus(ativo && kpi.key !== 'todos' ? 'todos' : kpi.key)}
+              className={cn(
+                'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+                kpi.escuro && 'border-transparent bg-gradient-primary text-white',
+                ativo && !kpi.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
+                ativo && kpi.escuro && 'ring-2 ring-[#1080CA]/60',
+              )}
+            >
+              <div className="flex min-h-[96px] items-center gap-3 p-3">
+                <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', kpi.surface)}>
+                  <Icon aria-hidden="true" className={cn('h-5 w-5', kpi.color)} />
                 </div>
-              </CardContent>
-            </Card>
-          </motion.div>
-        ))}
-      </div>
+                <div className="min-w-0 flex-1">
+                  <h3 className={cn('truncate text-xs font-semibold', kpi.escuro ? 'text-white/80' : 'text-foreground')}>{kpi.label}</h3>
+                  <p className={cn('text-xl font-bold tabular-nums', kpi.color)}>{fmt(kpi.value)}</p>
+                  <p className={cn('truncate text-[11px]', kpi.escuro ? 'text-white/60' : 'text-muted-foreground')}>
+                    {kpi.caption}
+                  </p>
+                </div>
+              </div>
+            </button>
+          );
+        })}
+      </section>
 
       {/* Gráficos compactos juntos quando ambos estão vazios */}
       {porCategoria.length === 0 && porFormaPgto.length === 0 ? (
@@ -831,170 +881,253 @@ export default function ContasReceber() {
       </div>
       )}
 
-      {/* Filters */}
-      <div className="flex gap-2 flex-wrap items-center">
-        <Tabs value={filterStatus} onValueChange={setFilterStatus} className="w-auto">
-          <TabsList className="h-9">
-            <TabsTrigger value="todos" className="text-xs px-3">Todos</TabsTrigger>
-            <TabsTrigger value="pendente" className="text-xs px-3 gap-1"><Clock className="h-3 w-3" /> Pendentes</TabsTrigger>
-            <TabsTrigger value="parcial" className="text-xs px-3 gap-1"><Clock className="h-3 w-3" /> Parciais</TabsTrigger>
-            <TabsTrigger value="atrasado" className="text-xs px-3 gap-1"><AlertCircle className="h-3 w-3" /> Vencidos</TabsTrigger>
-            <TabsTrigger value="pago" className="text-xs px-3 gap-1"><Check className="h-3 w-3" /> Recebidos</TabsTrigger>
-          </TabsList>
-        </Tabs>
+      {/* Hero: conta mais urgente */}
+      {destaqueReceita && (() => {
+        const d = destaqueReceita;
+        const status = d.vencido
+          ? { ...STATUS_CONFIG.atrasado, label: d.status === 'parcial' ? 'Atrasado · parcial' : STATUS_CONFIG.atrasado.label }
+          : STATUS_CONFIG[d.status || 'pendente'];
+        const dataVenc = d.data_vencimento ? parseDateOnly(d.data_vencimento) : null;
+        const diasVenc = dataVenc ? differenceInCalendarDays(dataVenc, hojeClinica) : null;
+        return (
+          <Card className="overflow-hidden rounded-2xl border-[#1080CA]/30 shadow-[0_8px_24px_rgba(16,128,202,0.12)]">
+            <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center">
+              <div className="flex min-w-0 flex-1 items-center gap-3">
+                <span aria-hidden="true" className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+                  {d.vencido ? <AlertCircle className="h-5 w-5" /> : <Receipt className="h-5 w-5" />}
+                </span>
+                <div className="min-w-0">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-[#1080CA]">{d.vencido ? 'Receita vencida há mais tempo' : 'Próxima receita a vencer'}</p>
+                  <h2 className="truncate text-lg font-bold text-foreground">{getPacienteNome(d)}</h2>
+                  <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                    <span className="inline-flex items-center gap-1"><Calendar aria-hidden="true" className="h-3 w-3" /> {dataVenc ? `Venc. ${format(dataVenc, 'dd/MM/yyyy')}` : '—'}</span>
+                    {diasVenc !== null && diasVenc < 0 && (
+                      <span className="inline-flex items-center gap-1 font-semibold text-destructive">
+                        <Clock aria-hidden="true" className="h-3 w-3" /> {Math.abs(diasVenc)} dia(s) de atraso
+                      </span>
+                    )}
+                    <Badge className={cn('rounded-full text-[10px]', status?.bg, status?.color, 'border-0')}>{status?.label}</Badge>
+                  </div>
+                  <p className="mt-0.5 truncate text-xs text-muted-foreground" title={d.descricao}>{d.descricao}</p>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                <span className="text-lg font-bold tabular-nums text-foreground">{fmt(d.valor)}</span>
+                {['pendente', 'atrasado', 'parcial'].includes(d.status) && (
+                  <Button
+                    size="sm"
+                    onClick={() => handleDarBaixa(d)}
+                    className="h-9 gap-1 rounded-full bg-gradient-primary text-xs text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)] hover:brightness-110"
+                  >
+                    <Receipt aria-hidden="true" className="h-3.5 w-3.5" /> {d.status === 'parcial' ? 'Receber saldo' : 'Receber'}
+                  </Button>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        );
+      })()}
 
-        <Select value={filterCategoria} onValueChange={setFilterCategoria}>
-          <SelectTrigger className="w-[160px] h-9 text-xs">
-            <Filter className="h-3 w-3 mr-1" />
-            <SelectValue placeholder="Categoria" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="todas">Todas categorias</SelectItem>
-            {CATEGORIAS_RECEITA.map(c => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}
-          </SelectContent>
-        </Select>
-
-        <Select value={filterPeriodo} onValueChange={setFilterPeriodo}>
-          <SelectTrigger aria-label="Filtrar contas pelo mês de vencimento" className="w-[150px] h-9 text-xs">
-            <Calendar className="h-3 w-3 mr-1" />
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="mes_atual">Mês Atual</SelectItem>
-            <SelectItem value="mes_anterior">Mês Anterior</SelectItem>
-            <SelectItem value="ultimos_3">Últimos 3 meses</SelectItem>
-            <SelectItem value="ultimos_6">Últimos 6 meses</SelectItem>
-            <SelectItem value="todos">Todo período</SelectItem>
-          </SelectContent>
-        </Select>
-
-        <div className="relative flex-1 max-w-xs">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Paciente, CPF, telefone, descrição ou documento..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-9 h-9" />
-        </div>
-      </div>
-
-      {/* List */}
-      <div className="space-y-2">
-        <AnimatePresence mode="popLayout">
+      {/* Lista de receitas */}
+      <Card className="rounded-2xl border-border/60 shadow-xs">
+        <CardHeader className="pb-3">
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-white">
+                  <Receipt className="h-4 w-4" />
+                </span>
+                Receitas
+                <Badge variant="outline" className="rounded-full border-[#BFD8EE] text-[#1080CA]">{filteredContas.length} de {contas.length}</Badge>
+              </CardTitle>
+              <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+                <div className="relative w-full sm:w-72">
+                  <Search aria-hidden="true" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    aria-label="Buscar contas a receber"
+                    placeholder="Paciente, CPF, descrição ou documento..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="h-10 rounded-full pl-9 focus-visible:ring-[#1080CA]"
+                  />
+                </div>
+                <Select value={filterCategoria} onValueChange={setFilterCategoria}>
+                  <SelectTrigger aria-label="Filtrar por categoria" className="h-10 w-auto rounded-full text-xs">
+                    <Filter aria-hidden="true" className="mr-1 h-3 w-3 shrink-0" />
+                    <SelectValue placeholder="Categoria" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="todas">Todas categorias</SelectItem>
+                    {CATEGORIAS_RECEITA.map(c => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <div role="group" aria-label="Filtrar por status" className="flex flex-wrap gap-1.5">
+                {[
+                  { key: 'todos', label: 'Todos' },
+                  { key: 'pendente', label: 'Pendentes' },
+                  { key: 'parcial', label: 'Parciais' },
+                  { key: 'atrasado', label: 'Vencidos' },
+                  { key: 'pago', label: 'Recebidos' },
+                  { key: 'cancelado', label: 'Cancelados' },
+                ].map(opt => {
+                  const ativo = filterStatus === opt.key;
+                  return (
+                    <button key={opt.key} type="button" aria-pressed={ativo}
+                      onClick={() => setFilterStatus(opt.key)}
+                      className={cn(PILL_BASE, ativo ? PILL_ATIVA : PILL_INATIVA)}>
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
+              <div role="group" aria-label="Filtrar por período" className="flex flex-wrap gap-1.5">
+                {PERIODOS_RECEITA.map(opt => {
+                  const ativo = filterPeriodo === opt.key;
+                  return (
+                    <button key={opt.key} type="button" aria-pressed={ativo}
+                      onClick={() => setFilterPeriodo(opt.key)}
+                      className={cn(PILL_BASE, ativo ? PILL_ATIVA : PILL_INATIVA)}>
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
+              {(searchTerm.trim() || filterStatus !== 'todos' || filterCategoria !== 'todas' || filterPeriodo !== 'mes_atual') && (
+                <Button variant="ghost" size="sm" className="h-8 gap-1 rounded-full text-xs text-muted-foreground" onClick={() => {
+                  setSearchTerm('');
+                  setFilterStatus('todos');
+                  setFilterCategoria('todas');
+                  setFilterPeriodo('mes_atual');
+                }}>
+                  <X aria-hidden="true" className="h-3 w-3" /> Limpar filtros
+                </Button>
+              )}
+              <span className="ml-auto text-xs text-muted-foreground">{filteredContas.length} de {contas.length}</span>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
           {filteredContas.length === 0 ? (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-              <Card className="border-dashed">
-                <CardContent className="flex flex-col items-center justify-center py-16 text-center">
-                  <Receipt className="h-12 w-12 text-muted-foreground/30 mb-3" />
-                  <p className="font-bold">{contas.length === 0 ? 'Nenhuma receita cadastrada' : 'Nenhuma conta encontrada com estes filtros'}</p>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    {contas.length === 0 ? 'Cadastre uma receita para acompanhar recebimentos.' : 'Limpe a busca e os filtros para ver outras contas.'}
-                  </p>
-                  {contas.length === 0 ? (
-                    <Button size="sm" onClick={handleNew} className="mt-4">Cadastrar receita</Button>
-                  ) : (
-                    <Button size="sm" variant="outline" onClick={() => {
-                      setSearchTerm('');
-                      setFilterStatus('todos');
-                      setFilterCategoria('todas');
-                      setFilterPeriodo('todos');
-                    }} className="mt-4">Limpar filtros</Button>
-                  )}
-                </CardContent>
-              </Card>
-            </motion.div>
+            <div className="py-12 text-center text-muted-foreground">
+              <span aria-hidden="true" className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+                <Receipt className="h-7 w-7" />
+              </span>
+              <p className="font-medium text-foreground">{contas.length === 0 ? 'Nenhuma receita cadastrada' : 'Nenhuma conta encontrada com estes filtros'}</p>
+              <p className="mt-1 text-sm">
+                {contas.length === 0 ? 'Cadastre uma receita para acompanhar recebimentos.' : 'Ajuste a busca, o status ou o período.'}
+              </p>
+              {contas.length === 0 ? (
+                <Button size="sm" onClick={handleNew} className="mt-4 rounded-full bg-gradient-primary text-white hover:brightness-110"><Plus className="mr-1 h-4 w-4" /> Cadastrar receita</Button>
+              ) : (
+                <Button size="sm" variant="outline" onClick={() => {
+                  setSearchTerm('');
+                  setFilterStatus('todos');
+                  setFilterCategoria('todas');
+                  setFilterPeriodo('mes_atual');
+                }} className="mt-4 rounded-full">Limpar filtros</Button>
+              )}
+            </div>
           ) : (
-            filteredContas.map((conta, i) => {
-              const status = conta.vencido
-                ? { ...STATUS_CONFIG.atrasado, label: conta.status === 'parcial' ? 'Atrasado · parcial' : STATUS_CONFIG.atrasado.label }
-                : STATUS_CONFIG[conta.status || 'pendente'];
-              const catInfo = CATEGORIAS_MAP[conta.categoria] || CATEGORIAS_MAP.outros;
-              const CatIcon = catInfo?.icon || DollarSign;
-              const dataVencimento = conta.data_vencimento ? parseDateOnly(conta.data_vencimento) : null;
-              const diasVenc = dataVencimento ? differenceInCalendarDays(dataVencimento, hojeClinica) : null;
-              return (
-                <motion.div key={conta.id} layout initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95 }} transition={{ delay: Math.min(i * 0.02, 0.3) }}>
-                  <Card className={cn('hover:shadow-md hover:-translate-y-0.5 transition-all group border', status?.border)}>
-                    <CardContent className="py-3 px-4">
-                      <div className="flex items-center gap-3">
-                        {/* Category icon */}
-                        <div className={cn('h-10 w-10 rounded-xl flex items-center justify-center shrink-0', status?.bg)}>
-                          <CatIcon className={cn('h-5 w-5', catInfo?.color || status?.color)} />
-                        </div>
-
-                        {/* Info */}
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <p className="font-bold text-sm truncate">{getPacienteNome(conta)}</p>
-                            <Badge variant="outline" className={cn('text-[9px] h-4 px-1.5 shrink-0', catInfo?.color)}>
-                              {catInfo?.label || conta.categoria}
-                            </Badge>
+            <div className="space-y-2">
+              {filteredContas.map((conta) => {
+                const status = conta.vencido
+                  ? { ...STATUS_CONFIG.atrasado, label: conta.status === 'parcial' ? 'Atrasado · parcial' : STATUS_CONFIG.atrasado.label }
+                  : STATUS_CONFIG[conta.status || 'pendente'];
+                const catInfo = CATEGORIAS_MAP[conta.categoria] || CATEGORIAS_MAP.outros;
+                const CatIcon = catInfo?.icon || DollarSign;
+                const dataVencimento = conta.data_vencimento ? parseDateOnly(conta.data_vencimento) : null;
+                const diasVenc = dataVencimento ? differenceInCalendarDays(dataVencimento, hojeClinica) : null;
+                return (
+                  <div key={conta.id}>
+                    <Card className={cn('group rounded-2xl border shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md', status?.border || 'border-border/60')}>
+                      <CardContent className="py-3 px-4">
+                        <div className="flex items-center gap-3">
+                          {/* Category icon */}
+                          <div className={cn('h-10 w-10 rounded-xl flex items-center justify-center shrink-0', status?.bg)}>
+                            <CatIcon className={cn('h-5 w-5', catInfo?.color || status?.color)} />
                           </div>
-                          <p className="text-xs text-muted-foreground truncate" title={conta.descricao}>{conta.descricao}</p>
-                          <div className="flex items-center gap-3 mt-0.5 flex-wrap">
-                            {conta.data_vencimento && (
-                              <span className={cn('text-[10px] flex items-center gap-0.5',
-                                diasVenc !== null && diasVenc < 0 ? 'text-destructive font-semibold' : 'text-muted-foreground/60'
-                              )}>
-                                <Calendar className="h-2.5 w-2.5" />
-                                {format(new Date(conta.data_vencimento + 'T12:00:00'), 'dd/MM/yy')}
-                                {diasVenc !== null && diasVenc < 0 && ` (${Math.abs(diasVenc)}d)`}
-                                {diasVenc !== null && diasVenc === 0 && ' (hoje)'}
-                              </span>
-                            )}
-                            {conta.competencia && (
-                              <span className="text-[10px] text-muted-foreground/50">Comp: {conta.competencia}</span>
-                            )}
-                            {conta.centro_custo && conta.centro_custo !== 'geral' && (
-                              <span className="text-[10px] text-muted-foreground/50">{CENTROS_CUSTO_RECEITA.find(c => c.value === conta.centro_custo)?.label || conta.centro_custo}</span>
-                            )}
+
+                          {/* Info */}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <p className="font-bold text-sm truncate">{getPacienteNome(conta)}</p>
+                              <Badge variant="outline" className={cn('rounded-full text-[9px] h-4 px-1.5 shrink-0', catInfo?.color)}>
+                                {catInfo?.label || conta.categoria}
+                              </Badge>
+                            </div>
+                            <p className="text-xs text-muted-foreground truncate" title={conta.descricao}>{conta.descricao}</p>
+                            <div className="flex items-center gap-3 mt-0.5 flex-wrap">
+                              {conta.data_vencimento && (
+                                <span className={cn('text-[10px] flex items-center gap-0.5',
+                                  diasVenc !== null && diasVenc < 0 ? 'text-destructive font-semibold' : 'text-muted-foreground/60'
+                                )}>
+                                  <Calendar className="h-2.5 w-2.5" />
+                                  {format(new Date(conta.data_vencimento + 'T12:00:00'), 'dd/MM/yy')}
+                                  {diasVenc !== null && diasVenc < 0 && ` (${Math.abs(diasVenc)}d)`}
+                                  {diasVenc !== null && diasVenc === 0 && ' (hoje)'}
+                                </span>
+                              )}
+                              {conta.competencia && (
+                                <span className="text-[10px] text-muted-foreground/50">Comp: {conta.competencia}</span>
+                              )}
+                              {conta.centro_custo && conta.centro_custo !== 'geral' && (
+                                <span className="text-[10px] text-muted-foreground/50">{CENTROS_CUSTO_RECEITA.find(c => c.value === conta.centro_custo)?.label || conta.centro_custo}</span>
+                              )}
+                            </div>
                           </div>
-                        </div>
 
-                        {/* Value + Status */}
-                        <div className="text-right shrink-0">
-                          <p className={cn('text-lg font-black tabular-nums', status?.color)}>{fmt(conta.valor)}</p>
-                          {conta.status === 'parcial' && <p className="text-[10px] text-muted-foreground">Saldo: {fmt(saldoDevedorConta(conta))}</p>}
-                          <Badge className={cn('text-[10px]', status?.bg, status?.color, 'border-0')}>{status?.label}</Badge>
-                        </div>
+                          {/* Value + Status */}
+                          <div className="text-right shrink-0">
+                            <p className={cn('text-lg font-black tabular-nums', status?.color)}>{fmt(conta.valor)}</p>
+                            {conta.status === 'parcial' && <p className="text-[10px] text-muted-foreground">Saldo: {fmt(saldoDevedorConta(conta))}</p>}
+                            <Badge className={cn('rounded-full text-[10px]', status?.bg, status?.color, 'border-0')}>{status?.label}</Badge>
+                          </div>
 
-                        {/* Actions */}
-                        <div className="flex items-center gap-1 shrink-0">
-                          {['pendente', 'atrasado', 'parcial'].includes(conta.status) && (
-                            <Button size="sm" onClick={() => handleDarBaixa(conta)}
-                              className="gap-1 bg-success hover:bg-success/90 text-success-foreground font-bold text-xs px-3 shadow-lg shadow-success/20">
-                              <Receipt className="h-3.5 w-3.5" /> {conta.status === 'parcial' ? 'Receber saldo' : 'Receber'}
-                            </Button>
-                          )}
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon" aria-label="Mais ações da conta" className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <MoreHorizontal className="h-4 w-4" />
+                          {/* Actions */}
+                          <div className="flex items-center gap-1 shrink-0">
+                            {['pendente', 'atrasado', 'parcial'].includes(conta.status) && (
+                              <Button size="sm" onClick={() => handleDarBaixa(conta)}
+                                className="h-9 gap-1 rounded-full bg-gradient-primary text-xs text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)] hover:brightness-110">
+                                <Receipt className="h-3.5 w-3.5" /> {conta.status === 'parcial' ? 'Receber saldo' : 'Receber'}
                               </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={() => handleViewDetail(conta)} className="gap-2">
-                                <Eye className="h-4 w-4" /> Ver Detalhes
-                              </DropdownMenuItem>
-                              {['pago', 'parcial'].includes(conta.status) && (
-                                <DropdownMenuItem disabled={carregandoPagamentosEstorno} onClick={() => handleEstornar(conta)} className="gap-2 text-destructive">
-                                  {carregandoPagamentosEstorno ? <Loader2 className="h-4 w-4 animate-spin" /> : <Repeat className="h-4 w-4" />}
-                                  {carregandoPagamentosEstorno ? 'Carregando pagamentos…' : 'Estornar pagamento'}
+                            )}
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon" aria-label="Mais ações da conta" className="h-9 w-9 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <MoreHorizontal className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => handleViewDetail(conta)} className="gap-2">
+                                  <Eye className="h-4 w-4" /> Ver Detalhes
                                 </DropdownMenuItem>
-                              )}
-                              {(conta.status === 'pendente' || conta.status === 'atrasado') && (
-                                <DropdownMenuItem onClick={() => handleCancelar(conta)} className="gap-2 text-destructive">
-                                  <AlertCircle className="h-4 w-4" /> Cancelar
-                                </DropdownMenuItem>
-                              )}
-                            </DropdownMenuContent>
-                          </DropdownMenu>
+                                {['pago', 'parcial'].includes(conta.status) && (
+                                  <DropdownMenuItem disabled={carregandoPagamentosEstorno} onClick={() => handleEstornar(conta)} className="gap-2 text-destructive">
+                                    {carregandoPagamentosEstorno ? <Loader2 className="h-4 w-4 animate-spin" /> : <Repeat className="h-4 w-4" />}
+                                    {carregandoPagamentosEstorno ? 'Carregando pagamentos…' : 'Estornar pagamento'}
+                                  </DropdownMenuItem>
+                                )}
+                                {(conta.status === 'pendente' || conta.status === 'atrasado') && (
+                                  <DropdownMenuItem onClick={() => handleCancelar(conta)} className="gap-2 text-destructive">
+                                    <AlertCircle className="h-4 w-4" /> Cancelar
+                                  </DropdownMenuItem>
+                                )}
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
                         </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </motion.div>
-              );
-            })
+                      </CardContent>
+                    </Card>
+                  </div>
+                );
+              })}
+            </div>
           )}
-        </AnimatePresence>
-      </div>
+        </CardContent>
+      </Card>
 
       {/* Nova Receita Dialog */}
       <Dialog open={isFormOpen} onOpenChange={open => {

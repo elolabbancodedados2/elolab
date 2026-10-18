@@ -105,8 +105,8 @@ export function AgendaHeader(p: Props) {
   return (
     <div className="flex flex-col gap-3 rounded-[24px] border border-border/60 bg-card p-3 shadow-xs sm:gap-4 sm:p-5">
       {/* Linha 1: título + navegação de data | ações principais */}
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+      <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-center lg:justify-between">
+        <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
           <div className="flex min-w-0 items-center gap-2">
             <h1 className="truncate text-xl font-extrabold tracking-[-0.03em] text-foreground sm:text-[26px]">{label}</h1>
             {isToday && <Badge className="shrink-0 border-transparent bg-gradient-primary text-white shadow-sm hover:bg-gradient-primary">HOJE</Badge>}
@@ -167,7 +167,7 @@ export function AgendaHeader(p: Props) {
           <Button variant="outline" size="sm" onClick={p.onToggleWaiting} aria-label={`Alternar lista de espera${p.waitingCount ? `, ${p.waitingCount} pacientes` : ''}`} className={cn('hidden h-10 lg:inline-flex', pill)}>
             <Users2 className="h-4 w-4 md:mr-1.5" />
             <span className="hidden md:inline">Espera</span>
-            {p.waitingCount > 0 && <Badge className="ml-1.5 h-5 border-transparent bg-[#111111] px-1.5 text-[10px] text-white hover:bg-[#111111]">{p.waitingCount}</Badge>}
+            {p.waitingCount > 0 && <Badge className="ml-1.5 h-5 border-transparent bg-gradient-primary px-1.5 text-[10px] text-white hover:bg-gradient-primary">{p.waitingCount}</Badge>}
           </Button>
           <Button asChild variant="outline" size="icon" className={cn('h-11 w-11 shrink-0 lg:hidden', pill)}>
             <Link to="/lista-espera" aria-label={`Abrir lista de espera${p.waitingCount ? `, ${p.waitingCount} pacientes` : ''}`} title="Abrir lista de espera">
@@ -198,7 +198,7 @@ export function AgendaHeader(p: Props) {
             </DropdownMenuContent>
           </DropdownMenu>
 
-          <Button size="sm" onClick={p.onNewAppointment} aria-label="Nova consulta" className="h-11 flex-1 shrink-0 rounded-full bg-primary text-primary-foreground shadow-md hover:bg-[#2b2b33] sm:h-10 sm:flex-none sm:px-4">
+          <Button size="sm" onClick={p.onNewAppointment} aria-label="Nova consulta" className="h-11 flex-1 shrink-0 rounded-full bg-primary text-primary-foreground shadow-md hover:brightness-110 sm:h-10 sm:flex-none sm:px-4">
             <Plus className="h-4 w-4 md:mr-1" /> <span className="hidden md:inline">Nova consulta</span>
           </Button>
         </div>
@@ -219,7 +219,7 @@ export function AgendaHeader(p: Props) {
         </div>
 
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-          <div className="relative w-full min-w-0 sm:min-w-[220px] sm:max-w-sm sm:flex-1">
+          <div className="relative w-full min-w-0 sm:min-w-[240px] sm:max-w-sm sm:flex-1">
             <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
             <Input
               placeholder="Buscar paciente, CPF ou telefone"
@@ -339,7 +339,7 @@ function Stat({ label, value, tone, active, onClick }: { label: string; value: n
         tone === 'success' && 'border-success/30 bg-success/5',
         tone === 'warning' && 'border-warning/30 bg-warning/5',
         tone === 'destructive' && 'border-destructive/30 bg-destructive/5',
-        active && tone && 'border-transparent bg-[#111111] text-white shadow-sm',
+        active && tone && 'border-transparent bg-gradient-primary text-white shadow-sm',
         active && !tone && 'border-[#1080CA]/40',
       )}
     >

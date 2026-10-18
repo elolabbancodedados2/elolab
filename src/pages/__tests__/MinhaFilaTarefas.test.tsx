@@ -122,12 +122,18 @@ describe('Minha fila de trabalho', () => {
   });
 
   it('não abre o cadastro do paciente para perfis sem acesso à lista de pacientes', async () => {
-    mocks.roles = ['medico'];
+    mocks.roles = ['financeiro'];
     renderPage();
 
     expect((await screen.findAllByText('Confirmar retorno')).length).toBeGreaterThan(0);
     expect(screen.queryByRole('link', { name: 'Abrir paciente' })).not.toBeInTheDocument();
     expect(screen.getByText('Paciente vinculado')).toBeInTheDocument();
+  });
+
+  it('abre a ficha do paciente vinculado à tarefa do médico', async () => {
+    mocks.roles = ['medico'];
+    renderPage();
+    expect(await screen.findByRole('link', { name: 'Abrir paciente' })).toHaveAttribute('href', '/pacientes?paciente=patient-1');
   });
 
   it('diferencia fila sem atribuições da fila com tudo concluído', async () => {

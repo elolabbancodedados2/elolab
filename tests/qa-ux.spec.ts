@@ -9,7 +9,7 @@ const viewports = [
 ];
 
 const publicPages = [
-  { name: 'landing', path: '/', heading: /organize a rotina da clínica/i },
+  { name: 'landing', path: '/', heading: /toda a clínica\.\s*em um só fluxo\./i },
   { name: 'login', path: '/auth', heading: /acesse sua conta/i },
   { name: 'password-reset', path: '/redefinir-senha', heading: /redefinir senha/i },
   // Sem sessão, esta rota protege os planos e apresenta o login.
@@ -69,10 +69,11 @@ async function inspect(page: Page, pageName: string, viewportName: string): Prom
     const smallText = [...document.querySelectorAll('body *')]
       .filter(visible)
       .filter((element) => element.children.length === 0 && (element.textContent?.trim().length ?? 0) > 0)
-      .filter((element) => Number.parseFloat(getComputedStyle(element).fontSize) < 12).length;
-    if (smallText) {
+      .filter((element) => Number.parseFloat(getComputedStyle(element).fontSize) < 12);
+    if (smallText.length) {
       findings.push({ severity: 'low', page: pageName, viewport: viewportName,
-        issue: 'Textos menores que 12px podem ficar difíceis de ler.', count: smallText });
+        issue: 'Textos menores que 12px podem ficar difíceis de ler.', count: smallText.length,
+        targets: smallText.map((element) => `${element.textContent?.trim()}: ${getComputedStyle(element).fontSize}`) });
     }
 
     const smallTargets = [...document.querySelectorAll('a,button,[role="button"],input[type="checkbox"],input[type="radio"]')]

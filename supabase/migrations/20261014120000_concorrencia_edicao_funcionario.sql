@@ -17,6 +17,7 @@ END;
 $$;
 
 DROP TRIGGER IF EXISTS increment_funcionario_edit_version ON public.funcionarios;
+DROP TRIGGER IF EXISTS increment_funcionario_edit_version ON public.funcionarios;
 CREATE TRIGGER increment_funcionario_edit_version
 BEFORE UPDATE ON public.funcionarios
 FOR EACH ROW

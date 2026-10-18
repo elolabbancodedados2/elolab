@@ -6,9 +6,9 @@ const path = 'supabase/migrations/20261014210500_higiene_salas.sql';
 describe('persistência de higiene e liberação segura de salas', () => {
   it('versiona checklists e mantém execuções/revisões imutáveis por clínica e sala', () => {
     const sql = readFileSync(path, 'utf8');
-    expect(sql).toMatch(/CREATE TABLE public\.room_hygiene_checklist_versions/i);
-    expect(sql).toMatch(/CREATE TABLE public\.room_hygiene_executions/i);
-    expect(sql).toMatch(/CREATE TABLE public\.room_hygiene_audit/i);
+    expect(sql).toMatch(/CREATE TABLE (?:IF NOT EXISTS )?public\.room_hygiene_checklist_versions/i);
+    expect(sql).toMatch(/CREATE TABLE (?:IF NOT EXISTS )?public\.room_hygiene_executions/i);
+    expect(sql).toMatch(/CREATE TABLE (?:IF NOT EXISTS )?public\.room_hygiene_audit/i);
     expect(sql).toMatch(/UNIQUE\s*\(clinic_id, version\)/i);
     expect(sql).toMatch(/room_id uuid NOT NULL REFERENCES public\.salas/i);
     expect(sql).toMatch(/checklist_version_id uuid NOT NULL REFERENCES public\.room_hygiene_checklist_versions/i);

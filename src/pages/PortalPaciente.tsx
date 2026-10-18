@@ -1,7 +1,6 @@
 import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { nomeMedico } from '@/lib/formatters';
 import { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import { useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -69,14 +68,12 @@ function calcularIdade(dn: string | null) {
 // ─── Animated counter ──────────────────────────────────────
 function AnimatedNumber({ value }: { value: number }) {
   return (
-    <motion.span
+    <span
       key={value}
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="tabular-nums font-bold text-2xl"
+      className="tabular-nums font-bold text-2xl animate-in fade-in slide-in-from-bottom-1 duration-300"
     >
       {value}
-    </motion.span>
+    </span>
   );
 }
 
@@ -92,30 +89,15 @@ function LoginScreen({ token, setToken, onLogin, loading, error }: {
       <div className="absolute top-0 right-0 w-96 h-96 rounded-full bg-primary/5 blur-3xl -translate-y-1/2 translate-x-1/2" />
       <div className="absolute bottom-0 left-0 w-72 h-72 rounded-full bg-primary/8 blur-3xl translate-y-1/2 -translate-x-1/2" />
 
-      <motion.div
-        initial={{ opacity: 0, y: 30, scale: 0.95 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        transition={{ duration: 0.6, ease: 'easeOut' }}
-        className="relative z-10 w-full max-w-md"
-      >
+      <div className="relative z-10 w-full max-w-md animate-in fade-in slide-in-from-bottom-4 duration-500">
         <Card className="backdrop-blur-xl border-border/50 shadow-xl">
           <CardHeader className="text-center pb-2">
-            {/* Animated logo ring */}
-            <motion.div
-              initial={{ scale: 0 }}
-              animate={{ scale: 1 }}
-              transition={{ delay: 0.2, type: 'spring', stiffness: 200 }}
-              className="mx-auto mb-4 relative"
-            >
+            <div className="mx-auto mb-4 relative animate-in zoom-in duration-500 delay-150">
               <div className="p-5 rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 border border-primary/20">
                 <HeartHandshake className="h-10 w-10 text-primary" />
               </div>
-              <motion.div
-                animate={{ rotate: 360 }}
-                transition={{ duration: 20, repeat: Infinity, ease: 'linear' }}
-                className="absolute inset-0 rounded-2xl border-2 border-dashed border-primary/20"
-              />
-            </motion.div>
+              <div className="absolute inset-0 rounded-2xl border-2 border-dashed border-primary/20 animate-[spin_20s_linear_infinite]" />
+            </div>
 
             <CardTitle className="text-2xl font-display">Portal do Paciente</CardTitle>
             <p className="text-sm text-muted-foreground mt-1">
@@ -143,22 +125,14 @@ function LoginScreen({ token, setToken, onLogin, loading, error }: {
               </p>
             </div>
 
-            <AnimatePresence>
-              {error && (
-                <motion.p
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  exit={{ opacity: 0, height: 0 }}
-                  className="text-sm text-destructive bg-destructive/10 px-3 py-2 rounded-lg"
-                >
-                  {error}
-                </motion.p>
-              )}
-            </AnimatePresence>
+            {error && (
+              <p className="text-sm text-destructive bg-destructive/10 px-3 py-2 rounded-lg animate-in fade-in slide-in-from-top-1 duration-200">
+                {error}
+              </p>
+            )}
 
             <Button
-              className="w-full h-12 text-base gap-2"
-              variant="premium"
+              className="w-full h-12 text-base gap-2 rounded-full bg-gradient-primary text-white hover:brightness-110"
               onClick={onLogin}
               disabled={loading || !token.trim()}
             >
@@ -176,7 +150,7 @@ function LoginScreen({ token, setToken, onLogin, loading, error }: {
             </div>
           </CardContent>
         </Card>
-      </motion.div>
+      </div>
     </div>
   );
 }
@@ -201,30 +175,26 @@ function NextAppointmentHero({ agendamentos }: { agendamentos: any[] }) {
   const isHoje = proxima.data === hojeNaClinica;
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: 0.3 }}
-    >
-      <Card className="overflow-hidden rounded-[1.4rem] border-[#dbd6f2] bg-white shadow-[0_14px_38px_-28px_rgba(23,18,43,0.35)]">
+    <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
+      <Card className="overflow-hidden rounded-2xl border-[#1080CA]/30 bg-white shadow-[0_8px_24px_rgba(16,128,202,0.12)]">
         <CardContent className="relative p-5 sm:p-7">
-          <div className="absolute inset-y-0 left-0 w-1.5 bg-[#39c7d9]" aria-hidden="true" />
+          <div className="absolute inset-y-0 left-0 w-1.5 bg-gradient-primary" aria-hidden="true" />
           <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between sm:pl-1">
             <div className="flex min-w-0 items-start gap-4">
-              <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-[#efecfb] text-[#5240d6] sm:h-14 sm:w-14">
+              <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-[#EEF4FA] text-[#1080CA] sm:h-14 sm:w-14">
                 <Calendar className="h-6 w-6" aria-hidden="true" />
               </div>
               <div className="min-w-0 space-y-1.5">
                 <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="text-sm font-semibold text-[#5240d6]">Sua próxima consulta</h3>
-                  {isHoje && <Badge className="border-[#bcecf0] bg-[#e7f9fa] text-[#075f70]">Hoje</Badge>}
+                  <h3 className="text-sm font-semibold text-[#1080CA]">Sua próxima consulta</h3>
+                  {isHoje && <Badge className="border-[#BFD8EE] bg-[#EEF4FA] text-[#1080CA]">Hoje</Badge>}
                 </div>
-                <p className="text-xl font-bold leading-tight text-[#17122b] sm:text-2xl">
+                <p className="text-xl font-bold leading-tight text-foreground sm:text-2xl">
                   {dataConsultaLabel}
                 </p>
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-[#6a6485]">
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
                   <span className="inline-flex items-center gap-1.5">
-                    <Clock className="h-4 w-4 text-[#5240d6]" aria-hidden="true" />
+                    <Clock className="h-4 w-4 text-[#1080CA]" aria-hidden="true" />
                     {proxima.hora_inicio?.slice(0, 5)}
                   </span>
                   <span>{proxima.tipo || 'Consulta'}</span>
@@ -234,15 +204,15 @@ function NextAppointmentHero({ agendamentos }: { agendamentos: any[] }) {
             </div>
 
             {!isHoje && diasRestantes > 0 && (
-              <div className="flex shrink-0 items-center gap-3 rounded-2xl bg-[#efedfb] px-4 py-3 sm:min-w-32 sm:flex-col sm:gap-0 sm:px-5 sm:py-4 sm:text-center">
-                <p className="text-2xl font-bold tabular-nums text-[#5240d6]">{diasRestantes}</p>
-                <p className="text-sm text-[#6a6485]">dia{diasRestantes > 1 ? 's' : ''}</p>
+              <div className="flex shrink-0 items-center gap-3 rounded-2xl bg-[#EEF4FA] px-4 py-3 sm:min-w-32 sm:flex-col sm:gap-0 sm:px-5 sm:py-4 sm:text-center">
+                <p className="text-2xl font-bold tabular-nums text-[#1080CA]">{diasRestantes}</p>
+                <p className="text-sm text-muted-foreground">dia{diasRestantes > 1 ? 's' : ''}</p>
               </div>
             )}
           </div>
         </CardContent>
       </Card>
-    </motion.div>
+    </div>
   );
 }
 
@@ -273,16 +243,13 @@ function NPSSurvey({ token }: { token: string }) {
 
   if (sent) {
     return (
-      <motion.div
-        initial={{ opacity: 0, scale: 0.9 }}
-        animate={{ opacity: 1, scale: 1 }}
-      >
+      <div className="animate-in fade-in zoom-in-95 duration-300">
         <Card className="text-center p-8 border-primary/20 bg-primary/5">
           <CheckCircle2 className="h-12 w-12 text-primary mx-auto mb-3" />
           <h3 className="text-lg font-bold">Obrigado pelo feedback!</h3>
           <p className="text-sm text-muted-foreground mt-1">Sua opinião nos ajuda a melhorar.</p>
         </Card>
-      </motion.div>
+      </div>
     );
   }
 
@@ -297,23 +264,22 @@ function NPSSurvey({ token }: { token: string }) {
       <CardContent className="space-y-4">
         <div className="flex justify-center gap-1">
           {[1, 2, 3, 4, 5].map(n => (
-            <motion.button
+            <button
               key={n}
-              whileHover={{ scale: 1.15 }}
-              whileTap={{ scale: 0.9 }}
+              type="button"
               onClick={() => setNota(n)}
               aria-label={`Avaliação ${n} de 5`}
               aria-pressed={nota === n}
-              className={`w-9 h-9 rounded-lg text-sm font-semibold transition-[background-color,color,box-shadow,transform] ${
+              className={`w-9 h-9 rounded-full text-sm font-semibold transition-[background-color,color,box-shadow,transform] hover:scale-110 active:scale-95 ${
                 nota === n
-                  ? 'bg-primary text-primary-foreground shadow-md'
+                  ? 'bg-gradient-primary text-white shadow-md'
                   : nota !== null && n <= nota
-                    ? 'bg-primary/20 text-primary'
+                    ? 'bg-[#EEF4FA] text-[#1080CA]'
                     : 'bg-muted text-muted-foreground hover:bg-muted/80'
               }`}
             >
               {n}
-            </motion.button>
+            </button>
           ))}
         </div>
         <div className="flex justify-between text-[10px] text-muted-foreground px-1">
@@ -321,29 +287,23 @@ function NPSSurvey({ token }: { token: string }) {
           <span>Muito provável</span>
         </div>
 
-        <AnimatePresence>
-          {nota !== null && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              className="space-y-3"
-            >
-              <Textarea
-                aria-label="Comentário opcional sobre a experiência"
-                placeholder="Conte-nos mais sobre sua experiência (opcional)…"
-                value={comentario}
-                onChange={e => setComentario(e.target.value)}
-                rows={2}
-                className="text-sm"
-              />
-              {submitError && <p className="text-xs text-destructive" role="alert">{submitError}</p>}
-              <Button onClick={handleSubmit} disabled={sending} className="w-full gap-2" size="sm">
-                <Star className="h-3.5 w-3.5" />
-                {sending ? 'Enviando…' : 'Enviar Avaliação'}
-              </Button>
-            </motion.div>
-          )}
-        </AnimatePresence>
+        {nota !== null && (
+          <div className="space-y-3 animate-in fade-in slide-in-from-top-1 duration-200">
+            <Textarea
+              aria-label="Comentário opcional sobre a experiência"
+              placeholder="Conte-nos mais sobre sua experiência (opcional)…"
+              value={comentario}
+              onChange={e => setComentario(e.target.value)}
+              rows={2}
+              className="text-sm"
+            />
+            {submitError && <p className="text-xs text-destructive" role="alert">{submitError}</p>}
+            <Button onClick={handleSubmit} disabled={sending} className="w-full gap-2 rounded-full" size="sm">
+              <Star className="h-3.5 w-3.5" />
+              {sending ? 'Enviando…' : 'Enviar Avaliação'}
+            </Button>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
@@ -982,17 +942,8 @@ export default function PortalPaciente() {
     ? rescheduleLimite.limite
     : undefined;
 
-  const containerVariants = {
-    hidden: { opacity: 0 },
-    show: { opacity: 1, transition: { staggerChildren: 0.08 } },
-  };
-  const itemVariants = {
-    hidden: { opacity: 0, y: 15 },
-    show: { opacity: 1, y: 0 },
-  };
-
   return (
-    <div className="min-h-screen bg-[#f2f1f7] text-[#17122b]">
+    <div className="min-h-screen bg-[#F3F8FC] text-foreground">
       <AlertDialog
         open={agendamentoParaCancelar !== null}
         onOpenChange={(open) => {
@@ -1063,10 +1014,10 @@ export default function PortalPaciente() {
         </DialogContent>
       </Dialog>
       {/* ─── Header ─── */}
-      <header className="sticky top-0 z-50 border-b border-[#e2dfef] bg-white/95 px-4 py-3 backdrop-blur-xl">
+      <header className="sticky top-0 z-50 border-b border-[#DCE6F2] bg-white/95 px-4 py-3 backdrop-blur-xl">
         <div className="mx-auto flex max-w-7xl items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="rounded-xl bg-[#efecfb] p-2.5 text-[#5240d6]">
+            <div className="rounded-xl bg-[#EEF4FA] p-2.5 text-[#1080CA]">
               <HeartHandshake className="h-5 w-5" />
             </div>
             <div>
@@ -1095,27 +1046,22 @@ export default function PortalPaciente() {
 
       {/* ─── Main Content ─── */}
       <main aria-label="Portal do paciente" className="mx-auto max-w-7xl px-4 py-6 sm:px-7 sm:py-8 lg:px-10">
-        <motion.div
-          variants={containerVariants}
-          initial="hidden"
-          animate="show"
-          className="space-y-7 sm:space-y-8"
-        >
+        <div className="space-y-7 sm:space-y-8 animate-in fade-in duration-500">
           {/* ─── Welcome Hero ─── */}
-          <motion.div variants={itemVariants} className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div className="space-y-1.5">
-              <h2 className="font-display text-2xl font-bold tracking-tight text-[#17122b] sm:text-3xl">
+              <h2 className="font-display text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
                 Olá, {profile?.nome?.split(' ')[0]} 👋
               </h2>
-              <p className="max-w-xl text-sm text-[#6a6485] sm:text-base">
+              <p className="max-w-xl text-sm text-muted-foreground sm:text-base">
                 Acompanhe suas consultas, exames e pagamentos.
               </p>
             </div>
-            <div className="inline-flex w-fit items-center gap-2 rounded-full border border-[#dbd6f2] bg-white px-3 py-2 text-xs font-medium text-[#494075]">
-              <Shield className="h-4 w-4 text-[#008b9d]" aria-hidden="true" />
+            <div className="inline-flex w-fit items-center gap-2 rounded-full border border-[#DCE6F2] bg-white px-3 py-2 text-xs font-medium text-foreground">
+              <Shield className="h-4 w-4 text-[#1080CA]" aria-hidden="true" />
               Seus dados em ambiente seguro
             </div>
-          </motion.div>
+          </div>
 
           {portalDataError && (
             <div role="alert" className="flex flex-col gap-3 rounded-md border border-warning/50 bg-warning/10 px-3 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
@@ -1138,74 +1084,70 @@ export default function PortalPaciente() {
           {actionError && <p role="alert" className="rounded-md border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive">{actionError}</p>}
 
           <section aria-label="Resumo do seu cuidado" className="space-y-4">
-            <motion.div variants={itemVariants}>
-              <NextAppointmentHero agendamentos={agendamentos} />
-            </motion.div>
+            <NextAppointmentHero agendamentos={agendamentos} />
 
             {/* ─── Resumo do paciente ─── */}
-            <motion.div variants={itemVariants} className="grid grid-cols-2 gap-3 md:grid-cols-4">
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
               {[
-              { icon: Calendar, label: 'Consultas', value: totalConsultas, accent: 'text-[#5240d6] bg-[#efecfb]' },
-              { icon: Clock, label: 'Agendadas', value: consultasFuturas, accent: 'text-[#087b8a] bg-[#e7f8fa]' },
+              { icon: Calendar, label: 'Consultas', value: totalConsultas, accent: 'text-[#1080CA] bg-[#EEF4FA]' },
+              { icon: Clock, label: 'Agendadas', value: consultasFuturas, accent: 'text-[#1080CA] bg-[#DCE6F2]' },
               { icon: FlaskConical, label: 'Exames pendentes', value: examesPendentes, accent: 'text-[#8b6710] bg-[#fff6db]' },
               { icon: FileText, label: 'Laudos prontos', value: laudosDisponiveis, accent: 'text-[#14744d] bg-[#e8f7ef]' },
               ].map(stat => (
-                <Card key={stat.label} className="rounded-2xl border-[#e2dfef] bg-white shadow-none transition-colors hover:border-[#c6bfe8]">
+                <Card key={stat.label} className="rounded-2xl border-[#DCE6F2] bg-white shadow-none transition-colors hover:border-[#9CC7EC]">
                   <CardContent className="flex min-h-[92px] items-center gap-3 p-4 sm:gap-4 sm:p-5">
                     <div className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${stat.accent}`}>
                       <stat.icon className="h-[18px] w-[18px]" aria-hidden="true" />
                     </div>
                     <div>
                       <AnimatedNumber value={stat.value} />
-                      <p className="text-xs text-[#6a6485]">{stat.label}</p>
+                      <p className="text-xs text-muted-foreground">{stat.label}</p>
                     </div>
                   </CardContent>
                 </Card>
               ))}
-            </motion.div>
+            </div>
           </section>
 
           {/* ─── Allergy alert ─── */}
           {profile?.alergias && profile.alergias.length > 0 && (
-            <motion.div variants={itemVariants}>
-              <div className="flex items-center gap-2 p-3 rounded-xl bg-destructive/10 border border-destructive/20">
-                <AlertTriangle className="h-4 w-4 text-destructive flex-shrink-0" />
-                <span className="text-sm font-medium text-destructive">
-                  Alergias: {profile.alergias.join(', ')}
-                </span>
-              </div>
-            </motion.div>
+            <div className="flex items-center gap-2 p-3 rounded-xl bg-destructive/10 border border-destructive/20">
+              <AlertTriangle className="h-4 w-4 text-destructive flex-shrink-0" />
+              <span className="text-sm font-medium text-destructive">
+                Alergias: {profile.alergias.join(', ')}
+              </span>
+            </div>
           )}
 
           {/* ─── Tabs ─── */}
-          <motion.div variants={itemVariants}>
+          <div>
             <Tabs defaultValue="consultas" className="w-full">
-              <TabsList aria-label="Seções do portal" className="grid h-auto w-full grid-cols-3 gap-1.5 rounded-2xl border border-[#e2dfef] bg-white p-1.5 sm:grid-cols-4 md:grid-cols-7 md:gap-1">
-                <TabsTrigger value="agendar" className="h-12 flex-col gap-1 rounded-xl text-[#6a6485] md:flex-row md:gap-1.5">
+              <TabsList aria-label="Seções do portal" className="grid h-auto w-full grid-cols-3 gap-1.5 rounded-2xl border border-[#DCE6F2] bg-white p-1.5 sm:grid-cols-4 md:grid-cols-7 md:gap-1">
+                <TabsTrigger value="agendar" className="h-12 flex-col gap-1 rounded-xl text-muted-foreground md:flex-row md:gap-1.5">
                   <Calendar className="h-4 w-4" />
                   <span className="text-[11px] sm:text-sm">Agendar</span>
                 </TabsTrigger>
-                <TabsTrigger value="consultas" className="h-12 flex-col gap-1 rounded-xl text-[#6a6485] md:flex-row md:gap-1.5">
+                <TabsTrigger value="consultas" className="h-12 flex-col gap-1 rounded-xl text-muted-foreground md:flex-row md:gap-1.5">
                   <Calendar className="h-4 w-4" />
                   <span className="text-[11px] sm:text-sm">Consultas</span>
                 </TabsTrigger>
-                <TabsTrigger value="exames" className="h-12 flex-col gap-1 rounded-xl text-[#6a6485] md:flex-row md:gap-1.5">
+                <TabsTrigger value="exames" className="h-12 flex-col gap-1 rounded-xl text-muted-foreground md:flex-row md:gap-1.5">
                   <FlaskConical className="h-4 w-4" />
                   <span className="text-[11px] sm:text-sm">Exames</span>
                 </TabsTrigger>
-                <TabsTrigger value="prescricoes" className="h-12 flex-col gap-1 rounded-xl text-[#6a6485] md:flex-row md:gap-1.5">
+                <TabsTrigger value="prescricoes" className="h-12 flex-col gap-1 rounded-xl text-muted-foreground md:flex-row md:gap-1.5">
                   <Pill className="h-4 w-4" />
                   <span className="text-[11px] sm:text-sm">Receitas</span>
                 </TabsTrigger>
-                <TabsTrigger value="historico" className="h-12 flex-col gap-1 rounded-xl text-[#6a6485] md:flex-row md:gap-1.5">
+                <TabsTrigger value="historico" className="h-12 flex-col gap-1 rounded-xl text-muted-foreground md:flex-row md:gap-1.5">
                   <Heart className="h-4 w-4" />
                   <span className="text-[11px] sm:text-sm">Histórico</span>
                 </TabsTrigger>
-                <TabsTrigger value="financeiro" className="h-12 flex-col gap-1 rounded-xl text-[#6a6485] md:flex-row md:gap-1.5">
+                <TabsTrigger value="financeiro" className="h-12 flex-col gap-1 rounded-xl text-muted-foreground md:flex-row md:gap-1.5">
                   <CreditCard className="h-4 w-4" />
                   <span className="text-[11px] sm:text-sm">Financeiro</span>
                 </TabsTrigger>
-                <TabsTrigger value="documentos" className="h-12 flex-col gap-1 rounded-xl text-[#6a6485] md:flex-row md:gap-1.5">
+                <TabsTrigger value="documentos" className="h-12 flex-col gap-1 rounded-xl text-muted-foreground md:flex-row md:gap-1.5">
                   <FileText className="h-4 w-4" />
                   <span className="text-[11px] sm:text-sm">Documentos</span>
                 </TabsTrigger>
@@ -1334,16 +1276,14 @@ export default function PortalPaciente() {
                     const dataAg = parseISO(a.data);
                     const passado = appointmentStartHasPassed(a.data, a.hora_inicio);
                     return (
-                    <motion.div
+                    <div
                       key={a.id}
                       ref={(element) => {
                         if (element) rescheduleCardsRef.current.set(a.id, element);
                         else rescheduleCardsRef.current.delete(a.id);
                       }}
                       tabIndex={-1}
-                        initial={{ opacity: 0, x: -10 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: i * 0.05 }}
+                      className="animate-in fade-in slide-in-from-left-1 duration-300"
                       >
                         <Card className={`transition-[background-color,border-color,box-shadow,transform] hover:shadow-md ${passado ? 'opacity-60' : ''}`}>
                           <CardContent className="p-4">
@@ -1440,7 +1380,7 @@ export default function PortalPaciente() {
                             </div>
                           </CardContent>
                         </Card>
-                      </motion.div>
+                      </div>
                     );
                   })
                 )}
@@ -1455,12 +1395,7 @@ export default function PortalPaciente() {
                   exames.map((e: any, i: number) => {
                     const isLaudo = e.status === 'laudo_disponivel';
                     return (
-                      <motion.div
-                        key={e.id}
-                        initial={{ opacity: 0, x: -10 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: i * 0.05 }}
-                      >
+                      <div key={e.id} className="animate-in fade-in slide-in-from-left-1 duration-300">
                         <Card className={`transition-[background-color,border-color,box-shadow,transform] hover:shadow-md ${isLaudo ? 'border-green-300' : ''}`}>
                           <CardContent className="p-4">
                             <div className="flex items-center justify-between">
@@ -1506,7 +1441,7 @@ export default function PortalPaciente() {
                             </div>
                           </CardContent>
                         </Card>
-                      </motion.div>
+                      </div>
                     );
                   })
                 )}
@@ -1553,12 +1488,7 @@ export default function PortalPaciente() {
                   <EmptyState icon={Pill} text="Nenhuma prescrição encontrada" />
                 ) : (
                   prescricoes.map((p: any, i: number) => (
-                    <motion.div
-                      key={p.id}
-                      initial={{ opacity: 0, x: -10 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: i * 0.05 }}
-                    >
+                    <div key={p.id} className="animate-in fade-in slide-in-from-left-1 duration-300">
                       <Card className="transition-[background-color,border-color,box-shadow,transform] hover:shadow-md">
                         <CardContent className="p-4">
                           <div className="flex items-start gap-3">
@@ -1587,7 +1517,7 @@ export default function PortalPaciente() {
                           </div>
                         </CardContent>
                       </Card>
-                    </motion.div>
+                    </div>
                   ))
                 )}
                 {portalHasMore.prescricoes && <div className="flex justify-center pt-2"><Button variant="outline" disabled={loadingMore !== null} onClick={() => void loadMorePortalList('get_prescricoes', 'prescricoes', prescricoes, setPrescricoes, 50)}>{loadingMore === 'get_prescricoes' ? 'Carregando...' : 'Carregar mais prescricoes'}</Button></div>}
@@ -1753,12 +1683,7 @@ export default function PortalPaciente() {
                   <EmptyState icon={CreditCard} text="Nenhum pagamento encontrado" />
                 ) : (
                   pagamentos.map((p: any, i: number) => (
-                    <motion.div
-                      key={p.id}
-                      initial={{ opacity: 0, x: -10 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: i * 0.05 }}
-                    >
+                    <div key={p.id} className="animate-in fade-in slide-in-from-left-1 duration-300">
                       <Card className="transition-[background-color,border-color,box-shadow,transform] hover:shadow-md">
                         <CardContent className="p-4">
                           <div className="flex items-center justify-between">
@@ -1794,13 +1719,13 @@ export default function PortalPaciente() {
                           </div>
                         </CardContent>
                       </Card>
-                    </motion.div>
+                    </div>
                   ))
                 )}
                 {portalHasMore.pagamentos && <div className="flex justify-center pt-2"><Button variant="outline" disabled={loadingMore !== null} onClick={() => void loadMorePortalList('get_pagamentos', 'pagamentos', pagamentos, setPagamentos, 20)}>{loadingMore === 'get_pagamentos' ? 'Carregando...' : 'Carregar mais pagamentos'}</Button></div>}
 </TabsContent>
             </Tabs>
-          </motion.div>
+          </div>
 
           <Dialog
             open={Boolean(rescheduleModal)}
@@ -1888,7 +1813,7 @@ export default function PortalPaciente() {
 
           {/* ─── NPS Survey ─── */}
           {ofertasEspera.length > 0 && (
-            <motion.div variants={itemVariants}>
+            <div>
               <Card className="border-primary/40 bg-primary/5">
                 <CardHeader><CardTitle className="text-base">Vaga disponível para você</CardTitle><CardDescription>A reserva expira automaticamente; confirme para garantir o horário.</CardDescription></CardHeader>
                 <CardContent className="space-y-3">
@@ -1905,11 +1830,11 @@ export default function PortalPaciente() {
                   ))}
                 </CardContent>
               </Card>
-            </motion.div>
+            </div>
           )}
 
           {retornos.length > 0 && (
-            <motion.div variants={itemVariants}>
+            <div>
               <Card>
                 <CardHeader><CardTitle className="text-base">Seus retornos</CardTitle></CardHeader>
                 <CardContent className="space-y-3">
@@ -1936,26 +1861,22 @@ export default function PortalPaciente() {
                   ))}
                 </CardContent>
               </Card>
-            </motion.div>
+            </div>
           )}
 
-          <motion.div variants={itemVariants}>
-            <NPSSurvey token={token} />
-          </motion.div>
+          <NPSSurvey token={token} />
 
           {/* ─── Footer ─── */}
-          <motion.div variants={itemVariants}>
-            <div className="text-center py-6 space-y-2">
-              <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
-                <Shield className="h-3.5 w-3.5" />
-                <span>Seus dados são protegidos pela LGPD</span>
-              </div>
-              <p className="text-[11px] text-muted-foreground">
-                EloLab Clínica Médica • Portal seguro do paciente
-              </p>
+          <div className="text-center py-6 space-y-2">
+            <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
+              <Shield className="h-3.5 w-3.5" />
+              <span>Seus dados são protegidos pela LGPD</span>
             </div>
-          </motion.div>
-        </motion.div>
+            <p className="text-[11px] text-muted-foreground">
+              EloLab Clínica Médica • Portal seguro do paciente
+            </p>
+          </div>
+        </div>
       </main>
     </div>
   );

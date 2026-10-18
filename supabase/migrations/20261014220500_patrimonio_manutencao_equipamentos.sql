@@ -1,6 +1,6 @@
 BEGIN;
 
-CREATE TABLE public.clinic_equipment_assets (
+CREATE TABLE IF NOT EXISTS public.clinic_equipment_assets (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   clinic_id uuid NOT NULL REFERENCES public.clinicas(id) ON DELETE CASCADE,
   room_id uuid REFERENCES public.salas(id) ON DELETE RESTRICT,
@@ -24,7 +24,7 @@ CREATE TABLE public.clinic_equipment_assets (
   UNIQUE (clinic_id, asset_tag)
 );
 
-CREATE TABLE public.clinic_equipment_work_orders (
+CREATE TABLE IF NOT EXISTS public.clinic_equipment_work_orders (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   clinic_id uuid NOT NULL REFERENCES public.clinicas(id) ON DELETE CASCADE,
   asset_id uuid NOT NULL REFERENCES public.clinic_equipment_assets(id) ON DELETE RESTRICT,
@@ -43,10 +43,10 @@ CREATE TABLE public.clinic_equipment_work_orders (
   updated_at timestamptz NOT NULL DEFAULT now(),
   CHECK ((status = 'completed' AND completed_at IS NOT NULL) OR (status <> 'completed' AND completed_at IS NULL))
 );
-CREATE INDEX clinic_equipment_orders_due ON public.clinic_equipment_work_orders (clinic_id, status, due_on);
-CREATE INDEX clinic_equipment_assets_calibration ON public.clinic_equipment_assets (clinic_id, calibration_due);
+CREATE INDEX IF NOT EXISTS clinic_equipment_orders_due ON public.clinic_equipment_work_orders (clinic_id, status, due_on);
+CREATE INDEX IF NOT EXISTS clinic_equipment_assets_calibration ON public.clinic_equipment_assets (clinic_id, calibration_due);
 
-CREATE TABLE public.clinic_equipment_documents (
+CREATE TABLE IF NOT EXISTS public.clinic_equipment_documents (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   clinic_id uuid NOT NULL REFERENCES public.clinicas(id) ON DELETE CASCADE,
   asset_id uuid NOT NULL REFERENCES public.clinic_equipment_assets(id) ON DELETE RESTRICT,
@@ -58,7 +58,7 @@ CREATE TABLE public.clinic_equipment_documents (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE TABLE public.clinic_equipment_audit (
+CREATE TABLE IF NOT EXISTS public.clinic_equipment_audit (
   id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   clinic_id uuid NOT NULL REFERENCES public.clinicas(id) ON DELETE CASCADE,
   asset_id uuid REFERENCES public.clinic_equipment_assets(id) ON DELETE SET NULL,
@@ -109,6 +109,7 @@ BEGIN
   RETURN NEW;
 END;
 $$;
+DROP TRIGGER IF EXISTS clinic_equipment_asset_validate ON public.clinic_equipment_assets;
 CREATE TRIGGER clinic_equipment_asset_validate BEFORE INSERT OR UPDATE ON public.clinic_equipment_assets
   FOR EACH ROW EXECUTE FUNCTION public.validate_clinic_equipment_asset();
 
@@ -134,6 +135,7 @@ BEGIN
   RETURN NEW;
 END;
 $$;
+DROP TRIGGER IF EXISTS clinic_equipment_order_validate ON public.clinic_equipment_work_orders;
 CREATE TRIGGER clinic_equipment_order_validate BEFORE INSERT OR UPDATE ON public.clinic_equipment_work_orders
   FOR EACH ROW EXECUTE FUNCTION public.validate_clinic_equipment_work_order();
 
@@ -150,6 +152,7 @@ BEGIN
   RETURN NEW;
 END;
 $$;
+DROP TRIGGER IF EXISTS clinic_equipment_document_validate ON public.clinic_equipment_documents;
 CREATE TRIGGER clinic_equipment_document_validate BEFORE INSERT OR UPDATE ON public.clinic_equipment_documents
   FOR EACH ROW EXECUTE FUNCTION public.validate_clinic_equipment_document();
 
@@ -176,10 +179,13 @@ BEGIN
   RETURN NEW;
 END;
 $$;
+DROP TRIGGER IF EXISTS clinic_equipment_asset_audit ON public.clinic_equipment_assets;
 CREATE TRIGGER clinic_equipment_asset_audit AFTER INSERT OR UPDATE ON public.clinic_equipment_assets
   FOR EACH ROW EXECUTE FUNCTION public.audit_clinic_equipment_change();
+DROP TRIGGER IF EXISTS clinic_equipment_order_audit ON public.clinic_equipment_work_orders;
 CREATE TRIGGER clinic_equipment_order_audit AFTER INSERT OR UPDATE ON public.clinic_equipment_work_orders
   FOR EACH ROW EXECUTE FUNCTION public.audit_clinic_equipment_change();
+DROP TRIGGER IF EXISTS clinic_equipment_document_audit ON public.clinic_equipment_documents;
 CREATE TRIGGER clinic_equipment_document_audit AFTER INSERT ON public.clinic_equipment_documents
   FOR EACH ROW EXECUTE FUNCTION public.audit_clinic_equipment_change();
 
@@ -193,6 +199,7 @@ BEGIN
   RETURN NEW;
 END;
 $$;
+DROP TRIGGER IF EXISTS clinic_equipment_block_room ON public.clinic_equipment_assets;
 CREATE TRIGGER clinic_equipment_block_room AFTER INSERT OR UPDATE
   ON public.clinic_equipment_assets FOR EACH ROW EXECUTE FUNCTION public.sync_clinic_equipment_room_block();
 
@@ -206,6 +213,7 @@ BEGIN
   RETURN NEW;
 END;
 $$;
+DROP TRIGGER IF EXISTS clinic_equipment_room_availability ON public.salas;
 CREATE TRIGGER clinic_equipment_room_availability BEFORE INSERT OR UPDATE ON public.salas
   FOR EACH ROW EXECUTE FUNCTION public.protect_room_equipment_availability();
 
@@ -230,8 +238,10 @@ BEGIN
   RAISE EXCEPTION 'Registro histórico de equipamento é imutável' USING ERRCODE = '42501';
 END;
 $$;
+DROP TRIGGER IF EXISTS clinic_equipment_asset_no_delete ON public.clinic_equipment_assets;
 CREATE TRIGGER clinic_equipment_asset_no_delete BEFORE DELETE ON public.clinic_equipment_assets
   FOR EACH ROW EXECUTE FUNCTION public.reject_clinic_equipment_immutable_change();
+DROP TRIGGER IF EXISTS clinic_equipment_order_no_delete ON public.clinic_equipment_work_orders;
 CREATE TRIGGER clinic_equipment_order_no_delete BEFORE DELETE ON public.clinic_equipment_work_orders
   FOR EACH ROW EXECUTE FUNCTION public.reject_clinic_equipment_immutable_change();
 
@@ -242,20 +252,26 @@ ON CONFLICT (id) DO UPDATE SET public = false, file_size_limit = 10485760,
   allowed_mime_types = ARRAY['application/pdf', 'image/jpeg', 'image/png'];
 
 DROP POLICY IF EXISTS clinic_equipment_docs_upload ON storage.objects;
+DROP POLICY IF EXISTS clinic_equipment_docs_upload ON storage.objects;
 CREATE POLICY clinic_equipment_docs_upload ON storage.objects FOR INSERT TO authenticated
   WITH CHECK (bucket_id = 'clinic-equipment-documents' AND (storage.foldername(name))[1] = public.get_my_clinica_id()::text
     AND (public.is_admin(auth.uid()) OR public.is_enfermagem(auth.uid()))
     AND EXISTS (SELECT 1 FROM public.clinic_equipment_assets a WHERE a.id = ((storage.foldername(name))[2])::uuid AND a.clinic_id = public.get_my_clinica_id()));
 DROP POLICY IF EXISTS clinic_equipment_docs_read ON storage.objects;
+DROP POLICY IF EXISTS clinic_equipment_docs_read ON storage.objects;
 CREATE POLICY clinic_equipment_docs_read ON storage.objects FOR SELECT TO authenticated
   USING (bucket_id = 'clinic-equipment-documents' AND (storage.foldername(name))[1] = public.get_my_clinica_id()::text
     AND (public.is_admin(auth.uid()) OR public.is_enfermagem(auth.uid())));
+DROP TRIGGER IF EXISTS clinic_equipment_audit_no_update ON public.clinic_equipment_audit;
 CREATE TRIGGER clinic_equipment_audit_no_update BEFORE UPDATE ON public.clinic_equipment_audit
   FOR EACH ROW EXECUTE FUNCTION public.reject_clinic_equipment_immutable_change();
+DROP TRIGGER IF EXISTS clinic_equipment_audit_no_delete ON public.clinic_equipment_audit;
 CREATE TRIGGER clinic_equipment_audit_no_delete BEFORE DELETE ON public.clinic_equipment_audit
   FOR EACH ROW EXECUTE FUNCTION public.reject_clinic_equipment_immutable_change();
+DROP TRIGGER IF EXISTS clinic_equipment_document_no_update ON public.clinic_equipment_documents;
 CREATE TRIGGER clinic_equipment_document_no_update BEFORE UPDATE ON public.clinic_equipment_documents
   FOR EACH ROW EXECUTE FUNCTION public.reject_clinic_equipment_immutable_change();
+DROP TRIGGER IF EXISTS clinic_equipment_document_no_delete ON public.clinic_equipment_documents;
 CREATE TRIGGER clinic_equipment_document_no_delete BEFORE DELETE ON public.clinic_equipment_documents
   FOR EACH ROW EXECUTE FUNCTION public.reject_clinic_equipment_immutable_change();
 

@@ -26,14 +26,10 @@ test.describe('Telas autenticadas com backend sintÃ©tico', () => {
     const failures: string[] = [];
 
     for (const route of CLINIC_SCREEN_ROUTES) {
-      await page.evaluate((path) => {
-        window.history.pushState({}, '', path);
-        window.dispatchEvent(new PopStateEvent('popstate'));
-      }, route);
-      await page.waitForTimeout(350);
-
+      await page.goto(route, { waitUntil: 'domcontentloaded' });
       const pageContent = page.locator('#main-content');
       const heading = pageContent.locator('h1').first();
+      await heading.waitFor({ state: 'visible', timeout: 8_000 }).catch(() => {});
       const hasHeading = await heading.isVisible().catch(() => false);
       const headingText = hasHeading ? (await heading.innerText()).trim() : "";
       const visibleContent = await pageContent.innerText().catch(() => '');

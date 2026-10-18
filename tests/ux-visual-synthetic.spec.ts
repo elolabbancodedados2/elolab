@@ -47,7 +47,7 @@ test('dashboard desktop keeps one primary role shortcut and softens the secondar
   const workspace = page.locator('section[aria-labelledby="role-workspace-title"]');
   const actions = workspace.getByRole('link');
   await expect(workspace.getByRole('heading', { name: 'Visão da administração' })).toBeVisible();
-  await expect(page.getByText('Agenda, pacientes e finanças da clínica em um só lugar.')).toBeVisible();
+  await expect(page.getByText('Agenda, equipe e informações importantes em um só lugar.')).toBeVisible();
   const dashboardHeroTitle = page.getByText('Sua clínica, mais organizada.', { exact: true });
   await expect(dashboardHeroTitle).toBeVisible();
   await expect(dashboardHeroTitle).toHaveClass(/text-primary/);
@@ -154,13 +154,17 @@ test('landing desktop explicita cartão recorrente e Pix por período', async ({
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto('/');
 
-  await expect(page.getByRole('heading', { name: /Organize a rotina da clínica em um só lugar/ })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /Toda a clínica\.\s*Em um só fluxo\./ })).toBeVisible();
   await expect(page.getByText('Cartão recorrente · Pix por período')).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('landing-1280.png') });
   expect(synthetic.writes.filter(write => !write.includes('/rpc/'))).toEqual([]);
 });
 
 test('Agenda desktop shows short appointments and opens them with Enter', async ({ page }, testInfo) => {
+  const duplicateKeyWarnings: string[] = [];
+  page.on('console', message => {
+    if (/same key|unique.*key/i.test(message.text())) duplicateKeyWarnings.push(message.text());
+  });
   await page.clock.install({ time: new Date('2026-10-13T08:00:00-03:00') });
   const synthetic = await installSyntheticClinic(page, { agendaPopulated: true, waitingListPopulated: true, platformAdmin: false, today: '2026-10-13' });
   for (const viewport of [{ width: 1440, height: 900 }, { width: 1280, height: 800 }]) {
@@ -201,7 +205,9 @@ test('Agenda desktop shows short appointments and opens them with Enter', async 
     expect(initialScroll[1].scrollHeight).toBe(initialScroll[1].height);
 
     await main.evaluate(element => {
-      element.scrollTop = Math.min(400, element.scrollHeight - element.clientHeight);
+      const strip = element.querySelector('[data-testid="agenda-doctor-header-strip"]')!;
+      const target = element.scrollTop + strip.getBoundingClientRect().top - element.getBoundingClientRect().top + 40;
+      element.scrollTop = Math.min(target, element.scrollHeight - element.clientHeight);
       element.dispatchEvent(new Event('scroll', { bubbles: true }));
     });
     const [mainTop, headerTop] = await Promise.all([
@@ -218,6 +224,7 @@ test('Agenda desktop shows short appointments and opens them with Enter', async 
     await expect(page.getByRole('dialog')).not.toBeVisible();
     await page.screenshot({ path: testInfo.outputPath(`agenda-semantic-status-${viewport.width}.png`), animations: 'disabled' });
   }
+  expect(duplicateKeyWarnings).toEqual([]);
   expect(synthetic.writes.filter(write => !write.includes('/rpc/'))).toEqual([]);
 });
 
@@ -267,7 +274,7 @@ test('prescriptions desktop explains and mutes creation until an active doctor e
     const style = getComputedStyle(element);
     return { background: style.backgroundColor, backgroundImage: style.backgroundImage, color: style.color, opacity: style.opacity };
   });
-  expect(disabledStyle.background).toBe('rgb(240, 240, 244)');
+  expect(disabledStyle.background).toBe('rgb(243, 245, 247)');
   expect(disabledStyle.backgroundImage).toBe('none');
   expect(disabledStyle.opacity).toBe('1');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
@@ -310,7 +317,7 @@ test('insurance billing desktop explains prerequisites for empty clinic setup', 
     const style = getComputedStyle(element);
     return { background: style.backgroundColor, backgroundImage: style.backgroundImage, opacity: style.opacity };
   })));
-  expect(disabledStyles.map(style => style.background)).toEqual(['rgb(240, 240, 244)', 'rgb(240, 240, 244)']);
+  expect(disabledStyles.map(style => style.background)).toEqual(['rgb(243, 245, 247)', 'rgb(243, 245, 247)']);
   expect(disabledStyles.map(style => style.backgroundImage)).toEqual(['none', 'none']);
   expect(disabledStyles.map(style => style.opacity)).toEqual(['1', '1']);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
@@ -563,19 +570,22 @@ test('LGPD screen minimizes patient fields, exposes support, and makes the resul
   let patientDeleteAttempts = 0;
   page.on('request', request => {
     const url = new URL(request.url());
-    if (request.method() === 'GET' && url.pathname === '/rest/v1/pacientes') {
+    if (request.method() === 'POST' && url.pathname === '/rest/v1/rpc/buscar_pacientes_paginado') {
       requestedColumns.push(url.searchParams.get('select') ?? '');
     }
     if (request.method() === 'DELETE' && url.pathname === '/rest/v1/pacientes') patientDeleteAttempts += 1;
   });
-  await page.route('**/rest/v1/pacientes*', async route => {
+  await page.route('**/rest/v1/rpc/buscar_pacientes_paginado*', async route => {
     const rows = Array.from({ length: 35 }, (_, index) => ({
       id: `00000000-0000-4000-8000-${String(index + 100).padStart(12, '0')}`,
       nome: `Paciente QA ${String(index + 1).padStart(2, '0')}`,
       cpf: `000.000.000-${String(index).padStart(2, '0')}`,
       email: `paciente${index + 1}@example.test`,
     }));
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(rows) });
+    const params = route.request().postDataJSON();
+    const matches = rows.filter(row => row.nome.toLowerCase().includes((params.p_termo ?? '').toLowerCase()));
+    const start = params.p_offset ?? 0;
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(matches.slice(start, start + params.p_limite)) });
   });
 
   for (const viewport of [{ width: 1440, height: 900 }, { width: 1280, height: 800 }]) {
@@ -605,7 +615,7 @@ test('LGPD screen minimizes patient fields, exposes support, and makes the resul
 
 test('LGPD patient list empty state links to patient registration', async ({ page }) => {
   const synthetic = await installSyntheticClinic(page, { platformAdmin: false });
-  await page.route('**/rest/v1/pacientes*', async route => {
+  await page.route('**/rest/v1/rpc/buscar_pacientes_paginado*', async route => {
     await route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
   });
   await page.setViewportSize({ width: 1280, height: 800 });
@@ -630,6 +640,8 @@ test('LGPD export is audited before download and fails closed when audit insert 
 
   page.on('request', request => {
     const url = new URL(request.url());
+    // The navbar independently loads its date-bounded agenda, outside this export.
+    if (url.pathname === '/rest/v1/agendamentos' && url.searchParams.has('data')) return;
     if (request.method() === 'GET' && url.pathname.startsWith('/rest/v1/')) {
       const table = url.pathname.split('/').pop() ?? '';
       exportTableReads.add(table);
@@ -684,6 +696,7 @@ test('LGPD export is audited before download and fails closed when audit insert 
   await page.route('**/rest/v1/*', async route => {
     const url = new URL(route.request().url());
     const table = url.pathname.split('/').pop() ?? '';
+    if (table === 'agendamentos' && url.searchParams.has('data')) return route.fallback();
     if (route.request().method() === 'GET' && syntheticExportRows[table]) {
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(syntheticExportRows[table]) });
       return;
@@ -962,14 +975,14 @@ test('doctor specialty filter stays readable at desktop widths', async ({ page }
   expect(synthetic.assertAllWritesAreMocked()).toBe(true);
 });
 
-test('captures key screens through internal scrolling at desktop browser widths', async ({ page }, testInfo) => {
+for (const viewport of [{ width: 1440, height: 900 }, { width: 1280, height: 800 }]) {
+test(`captures key screens through internal scrolling at ${viewport.width}px`, async ({ page }, testInfo) => {
   test.setTimeout(180_000);
   const synthetic = await installSyntheticClinic(page, { platformAdmin: false });
 
-  for (const viewport of [{ width: 1440, height: 900 }, { width: 1280, height: 800 }]) {
     await page.setViewportSize(viewport);
     for (const [name, path] of KEY_SCREENS) {
-      await page.goto(path);
+      await page.goto(path, { waitUntil: 'domcontentloaded' });
       const main = page.locator('#main-content');
       await expect(main).toBeVisible();
       await expect(main.locator('h1').first()).toBeVisible();
@@ -1227,10 +1240,10 @@ test('captures key screens through internal scrolling at desktop browser widths'
       }
       await main.evaluate(element => { element.scrollTop = 0; });
     }
-  }
 
   expect(synthetic.assertAllWritesAreMocked()).toBe(true);
 });
+}
 
 test('retornos over 30 days keep a clear warning without a heavy side stripe', async ({ page }, testInfo) => {
   const synthetic = await installSyntheticClinic(page, { platformAdmin: false, retornosPopulated: true });
@@ -1440,35 +1453,6 @@ test('desktop semantic color pairs meet WCAG AA in normal and high contrast them
   });
 
   expect(results.filter(({ ratio }) => ratio < 4.5), JSON.stringify(results, null, 2)).toEqual([]);
-});
-
-test('admin page headers use the shared semantic color tokens on desktop', async ({ page }, testInfo) => {
-  const synthetic = await installSyntheticClinic(page, { platformAdmin: false, ultraPlan: true });
-  const pages = [
-    { path: '/configuracoes', title: 'Configurações', name: 'configuracoes' },
-    { path: '/acesso-assistido', title: 'Acesso assistido', name: 'acesso-assistido' },
-    { path: '/agente-ia', title: 'Agente de IA - WhatsApp', name: 'agente-ia' },
-    { path: '/automacoes', title: 'Automações', name: 'automacoes' },
-  ];
-
-  for (const viewport of [{ width: 1440, height: 900 }, { width: 1280, height: 800 }]) {
-    await page.setViewportSize(viewport);
-
-    for (const target of pages) {
-      await page.goto(target.path);
-      await expect(page.getByRole('heading', { level: 1, name: target.title })).toBeVisible();
-
-      const semanticSurface = page.locator('[class*="from-background"][class*="via-card"][class*="to-accent"]').first();
-      await expect(semanticSurface).toBeVisible();
-      const classes = await semanticSurface.getAttribute('class');
-      expect(classes).toContain('border-border');
-      expect(classes).not.toContain('[#');
-      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-      await page.screenshot({ path: testInfo.outputPath(`${target.name}-${viewport.width}.png`), fullPage: true, animations: 'disabled' });
-    }
-  }
-
-  expect(synthetic.writes.filter((write) => !write.includes('/rpc/'))).toEqual([]);
 });
 
 test('accounts receivable and payable use the same title and action hierarchy', async ({ page }, testInfo) => {

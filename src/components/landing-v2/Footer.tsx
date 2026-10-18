@@ -14,7 +14,7 @@ export default function Footer() {
       <div className="mx-auto max-w-7xl">
         <div className="grid gap-x-10 gap-y-9 py-14 sm:grid-cols-2 lg:grid-cols-[1.5fr_1fr_1fr_1.2fr] lg:py-16">
           <div>
-            <a href="#top" aria-label="EloLab — voltar ao início" className="inline-flex rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-elolab-cyan">
+            <a href="#top" aria-label="EloLab — voltar ao início" className="inline-flex min-h-10 items-center rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-elolab-cyan">
               <Logo className="[&>span]:text-white" />
             </a>
             <p className="mt-5 max-w-[270px] text-sm leading-relaxed text-white/60">

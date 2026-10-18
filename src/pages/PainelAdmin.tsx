@@ -8,11 +8,13 @@ import {
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { ErrorState } from '@/components/ErrorState';
+import { PageHeader } from '@/components/PageHeader';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { PlatformRuntimeStatus } from '@/components/admin/PlatformRuntimeStatus';
+import { cn } from '@/lib/utils';
 
 type ExecutiveReport = {
   generated_at: string;
@@ -73,31 +75,40 @@ export default function PainelAdmin() {
 
   const data = report.data;
   const metrics = [
-    { title: 'Receita mensal recorrente', value: data ? dinheiro(data.portfolio.mrr) : '—', detail: 'estimativa das assinaturas ativas', icon: Wallet, href: '/admin/cobrancas' },
+    { title: 'Receita mensal recorrente', value: data ? dinheiro(data.portfolio.mrr) : '—', detail: 'estimativa das assinaturas ativas', icon: Wallet, href: '/admin/cobrancas', dark: true },
     { title: 'Clientes ativos', value: data?.portfolio.ativas ?? '—', detail: `${data?.portfolio.trials ?? '—'} em período de avaliação`, icon: Building2, href: '/admin/crm' },
     { title: 'Novos clientes', value: data?.growth.novas_clinicas ?? '—', detail: 'nos últimos 30 dias', icon: ArrowUpRight, href: '/admin/onboarding' },
     { title: 'Clientes que precisam de atenção', value: data?.portfolio.em_risco ?? '—', detail: 'sem atividade recente no app', icon: ArrowDownRight, href: '/admin/crm', alert: Boolean(data?.portfolio.em_risco) },
   ];
+  const descricao = data
+    ? `${data.portfolio.ativas} clientes ativos · ${data.portfolio.em_risco} precisam de atenção · ${data.support.abertos} solicitações de suporte em aberto`
+    : 'Aqui está o que precisa da sua atenção na plataforma.';
 
   return (
     <main className="mx-auto w-full max-w-7xl space-y-8 pb-10">
-      <header className="flex flex-col gap-4 rounded-2xl border border-[#e6e2f7] bg-gradient-to-r from-[#f6f4ff] via-white to-[#f0edff] p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
-        <div>
-          <div className="mb-2 flex items-center gap-2 text-sm font-medium text-primary">
-            <Shield className="h-4 w-4" /> Gestão EloLab
-          </div>
-          <h1 className="text-3xl font-bold tracking-tight">{saudacao}{profile?.nome ? `, ${profile.nome.split(' ')[0]}` : ''}</h1>
-          <p className="mt-1 text-muted-foreground">Aqui está o que precisa da sua atenção na plataforma.</p>
-        </div>
-        <Button variant="outline" onClick={() => void report.refetch()} disabled={report.isFetching}>
-          <RefreshCw className={`mr-2 h-4 w-4 ${report.isFetching ? 'animate-spin' : ''}`} /> Atualizar dados
-        </Button>
-      </header>
+      <PageHeader
+        title="Visão geral"
+        icon={<Shield />}
+        description={`${saudacao}${profile?.nome ? `, ${profile.nome.split(' ')[0]}` : ''} — ${descricao}`}
+        actions={
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="rounded-full"
+            onClick={() => void report.refetch()}
+            disabled={report.isFetching}
+            aria-label="Atualizar dados"
+          >
+            <RefreshCw className={cn('h-4 w-4', report.isFetching && 'animate-spin')} />
+          </Button>
+        }
+      />
 
       {report.isError && <ErrorState error={report.error} onRetry={() => void report.refetch()} />}
 
       {!profile?.clinica_id && (
-        <Card className="border-warning/50 bg-warning/5">
+        <Card className="rounded-2xl border-warning/50 bg-warning/5 shadow-xs">
           <CardContent className="flex items-start gap-3 p-4">
             <Building2 className="mt-0.5 h-5 w-5 shrink-0 text-warning" />
             <div>
@@ -112,20 +123,32 @@ export default function PainelAdmin() {
 
       {report.isLoading ? (
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="Carregando indicadores">
-          {[1, 2, 3, 4].map((item) => <Skeleton key={item} className="h-32 rounded-xl" />)}
+          {[1, 2, 3, 4].map((item) => <Skeleton key={item} className="h-32 rounded-2xl" />)}
         </section>
       ) : data && (
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="Indicadores da plataforma">
-          {metrics.map(({ title, value, detail, icon: Icon, href, alert }) => (
-            <Link key={title} to={href} className="group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-xl">
-              <Card className={`h-full transition-colors group-hover:border-primary/40 ${alert ? 'border-warning/40' : ''}`}>
+          {metrics.map(({ title, value, detail, icon: Icon, href, alert, dark }) => (
+            <Link key={title} to={href} className="group rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              <Card
+                className={cn(
+                  'h-full rounded-2xl border-border/60 shadow-xs transition-all group-hover:-translate-y-0.5 group-hover:shadow-md',
+                  dark && 'border-transparent bg-gradient-primary text-white',
+                  alert && !dark && 'border-warning/40',
+                )}
+              >
                 <CardContent className="flex items-start justify-between gap-3 p-5">
                   <div>
-                    <p className="text-sm text-muted-foreground">{title}</p>
-                    <p className={`mt-2 text-3xl font-semibold tracking-tight ${alert ? 'text-warning' : ''}`}>{value}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">{detail}</p>
+                    <p className={cn('text-sm', dark ? 'text-white/70' : 'text-muted-foreground')}>{title}</p>
+                    <p className={cn(
+                      'mt-2 text-3xl font-bold tracking-tight tabular-nums',
+                      dark && 'text-white',
+                      alert && !dark && 'text-warning',
+                    )}>{value}</p>
+                    <p className={cn('mt-1 text-xs', dark ? 'text-white/60' : 'text-muted-foreground')}>{detail}</p>
                   </div>
-                  <span className="rounded-lg bg-primary/10 p-2.5 text-primary"><Icon className="h-5 w-5" /></span>
+                  <span className={cn('rounded-xl p-2.5', dark ? 'bg-white/20 text-white' : 'bg-[#1080CA]/10 text-[#1080CA]')}>
+                    <Icon className="h-5 w-5" />
+                  </span>
                 </CardContent>
               </Card>
             </Link>
@@ -134,27 +157,20 @@ export default function PainelAdmin() {
       )}
 
       <section aria-labelledby="acoes-title">
-        <div className="mb-4 flex items-end justify-between gap-3">
-          <div>
-            <h2 id="acoes-title" className="text-xl font-semibold">O que você quer resolver?</h2>
-            <p className="mt-1 text-sm text-muted-foreground">Acesse as áreas principais da operação do EloLab.</p>
-          </div>
+        <div className="mb-4">
+          <h2 id="acoes-title" className="text-xl font-semibold">O que você quer resolver?</h2>
+          <p className="mt-1 text-sm text-muted-foreground">Acesse as áreas principais da operação do EloLab.</p>
         </div>
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {atalhos.map(({ title, description, href, icon: Icon }) => (
-            <Link key={title} to={href} className="group rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-              <Card className="h-full transition-all group-hover:-translate-y-0.5 group-hover:border-primary/40 group-hover:shadow-sm">
-                <CardContent className="flex items-start gap-4 p-5">
-                  <span className="rounded-lg bg-muted p-2.5 text-foreground"><Icon className="h-5 w-5" /></span>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center justify-between gap-2">
-                      <h3 className="font-semibold">{title}</h3>
-                      <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-1" />
-                    </div>
-                    <p className="mt-1 text-sm text-muted-foreground">{description}</p>
-                  </div>
-                </CardContent>
-              </Card>
+        <div className="flex flex-wrap gap-2">
+          {atalhos.map(({ title, href, icon: Icon }) => (
+            <Link
+              key={title}
+              to={href}
+              className="group inline-flex items-center gap-2 rounded-full border border-border/60 bg-card px-4 py-2 text-sm font-medium shadow-xs transition-colors hover:border-[#1080CA]/40 hover:text-[#1080CA] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <Icon className="h-4 w-4" />
+              {title}
+              <ArrowRight className="h-3.5 w-3.5 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
             </Link>
           ))}
         </div>
@@ -162,18 +178,18 @@ export default function PainelAdmin() {
 
       {data && (
         <div className="grid gap-6 xl:grid-cols-[1.5fr_1fr]">
-          <Card>
+          <Card className="rounded-2xl border-border/60 shadow-xs">
             <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0">
               <div><CardTitle>Clientes em destaque</CardTitle><CardDescription>Atividade recente e situação da carteira.</CardDescription></div>
-              <Button asChild variant="outline" size="sm"><Link to="/admin/crm">Ver clientes</Link></Button>
+              <Button asChild variant="outline" size="sm" className="rounded-full"><Link to="/admin/crm">Ver clientes</Link></Button>
             </CardHeader>
             <CardContent className="space-y-2">
               {data.top_clients.slice(0, 5).map((client) => {
                 const semUso = client.dias_sem_uso === null || client.dias_sem_uso >= 14;
                 return (
-                  <Link key={client.clinica_id} to={`/admin/crm?busca=${encodeURIComponent(client.clinica_nome)}`} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3 transition-colors hover:bg-muted/40">
+                  <Link key={client.clinica_id} to={`/admin/crm?busca=${encodeURIComponent(client.clinica_nome)}`} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/60 p-3 transition-colors hover:border-[#1080CA]/30 hover:bg-muted/40">
                     <div className="min-w-0"><p className="truncate font-medium">{client.clinica_nome}</p><p className="text-xs text-muted-foreground">{client.plano_nome || 'Sem plano'} · {client.total_pacientes} pacientes</p></div>
-                    <div className="flex items-center gap-3"><span className="text-sm text-muted-foreground">{client.dias_sem_uso === null ? 'Sem atividade' : semUso ? `${client.dias_sem_uso} dias sem uso` : `Ativa há ${client.dias_sem_uso} dias`}</span><Badge variant={semUso ? 'secondary' : 'outline'}>{semUso ? 'Acompanhar' : 'Ativa'}</Badge></div>
+                    <div className="flex items-center gap-3"><span className="text-sm text-muted-foreground">{client.dias_sem_uso === null ? 'Sem atividade' : semUso ? `${client.dias_sem_uso} dias sem uso` : `Ativa há ${client.dias_sem_uso} dias`}</span><Badge variant={semUso ? 'secondary' : 'outline'} className="rounded-full">{semUso ? 'Acompanhar' : 'Ativa'}</Badge></div>
                   </Link>
                 );
               })}
@@ -181,12 +197,12 @@ export default function PainelAdmin() {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="rounded-2xl border-border/60 shadow-xs">
             <CardHeader><CardTitle>Atendimento ao cliente</CardTitle><CardDescription>Solicitações que precisam de acompanhamento.</CardDescription></CardHeader>
             <CardContent className="space-y-3">
-              <div className="flex items-center justify-between rounded-lg bg-muted/40 p-4"><div><p className="text-sm text-muted-foreground">Solicitações em aberto</p><p className="mt-1 text-2xl font-semibold">{data.support.abertos}</p></div><Headset className="h-5 w-5 text-primary" /></div>
-              <div className="flex items-center justify-between rounded-lg bg-muted/40 p-4"><div><p className="text-sm text-muted-foreground">Fora do prazo de resposta</p><p className="mt-1 text-2xl font-semibold">{data.support.sla_vencido}</p></div><Badge variant={data.support.sla_vencido ? 'destructive' : 'outline'}>{data.support.sla_vencido ? 'Prioridade' : 'Em dia'}</Badge></div>
-              <Button asChild className="w-full"><Link to="/admin/suporte">Abrir central de suporte<ArrowRight className="ml-2 h-4 w-4" /></Link></Button>
+              <div className="flex items-center justify-between rounded-xl bg-muted/40 p-4"><div><p className="text-sm text-muted-foreground">Solicitações em aberto</p><p className="mt-1 text-2xl font-semibold tabular-nums">{data.support.abertos}</p></div><Headset className="h-5 w-5 text-[#1080CA]" /></div>
+              <div className="flex items-center justify-between rounded-xl bg-muted/40 p-4"><div><p className="text-sm text-muted-foreground">Fora do prazo de resposta</p><p className="mt-1 text-2xl font-semibold tabular-nums">{data.support.sla_vencido}</p></div><Badge variant={data.support.sla_vencido ? 'destructive' : 'outline'} className="rounded-full">{data.support.sla_vencido ? 'Prioridade' : 'Em dia'}</Badge></div>
+              <Button asChild className="w-full rounded-full bg-gradient-primary text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)] hover:brightness-110"><Link to="/admin/suporte">Abrir central de suporte<ArrowRight className="ml-2 h-4 w-4" /></Link></Button>
             </CardContent>
           </Card>
         </div>

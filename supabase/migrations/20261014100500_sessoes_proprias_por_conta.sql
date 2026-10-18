@@ -1,6 +1,6 @@
 -- Metadados mínimos para a área de segurança da própria conta.
 -- Tokens e endereços IP não são armazenados nesta tabela.
-CREATE TABLE public.account_session_activity (
+CREATE TABLE IF NOT EXISTS public.account_session_activity (
   user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   session_id uuid NOT NULL REFERENCES auth.sessions(id) ON DELETE CASCADE,
   user_agent text NOT NULL DEFAULT '',

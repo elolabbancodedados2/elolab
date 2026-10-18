@@ -1,4 +1,4 @@
-CREATE TABLE public.resultado_critico_confirmacoes (
+CREATE TABLE IF NOT EXISTS public.resultado_critico_confirmacoes (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   clinica_id uuid NOT NULL REFERENCES public.clinicas(id) ON DELETE CASCADE,
   resultado_id uuid NOT NULL REFERENCES public.resultados_laboratorio(id) ON DELETE RESTRICT,
@@ -9,13 +9,14 @@ CREATE TABLE public.resultado_critico_confirmacoes (
   CONSTRAINT resultado_critico_confirmacoes_resultado_versao_key UNIQUE (resultado_id, numero_versao)
 );
 
-CREATE INDEX resultado_critico_confirmacoes_clinica_resultado_idx
+CREATE INDEX IF NOT EXISTS resultado_critico_confirmacoes_clinica_resultado_idx
   ON public.resultado_critico_confirmacoes (clinica_id, resultado_id, numero_versao DESC);
 
 ALTER TABLE public.resultado_critico_confirmacoes ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public.resultado_critico_confirmacoes FROM PUBLIC, anon, authenticated;
 GRANT SELECT ON TABLE public.resultado_critico_confirmacoes TO authenticated;
 
+DROP POLICY IF EXISTS resultado_critico_confirmacoes_select ON public.resultado_critico_confirmacoes;
 CREATE POLICY resultado_critico_confirmacoes_select
   ON public.resultado_critico_confirmacoes FOR SELECT TO authenticated
   USING (

@@ -1,6 +1,6 @@
 BEGIN;
 
-CREATE TABLE public.public_booking_holds (
+CREATE TABLE IF NOT EXISTS public.public_booking_holds (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   clinica_id uuid NOT NULL REFERENCES public.clinicas(id) ON DELETE CASCADE,
   medico_id uuid NOT NULL REFERENCES public.medicos(id) ON DELETE CASCADE,
@@ -13,9 +13,9 @@ CREATE TABLE public.public_booking_holds (
   CHECK (hora_fim > hora_inicio)
 );
 
-CREATE INDEX public_booking_holds_slot_expiry_idx
+CREATE INDEX IF NOT EXISTS public_booking_holds_slot_expiry_idx
   ON public.public_booking_holds (clinica_id, medico_id, data, expires_at);
-CREATE INDEX public_booking_holds_expiry_idx
+CREATE INDEX IF NOT EXISTS public_booking_holds_expiry_idx
   ON public.public_booking_holds (expires_at);
 
 ALTER TABLE public.public_booking_holds ENABLE ROW LEVEL SECURITY;

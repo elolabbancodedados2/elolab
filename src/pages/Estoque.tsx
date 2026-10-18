@@ -1,13 +1,12 @@
 import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { motion } from 'framer-motion';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import {
   Plus, Search, Edit, Package, AlertTriangle, ArrowDown, ArrowUp, Loader2,
   Barcode, Calendar, Pill, Building2, ShieldAlert, TrendingDown,
-  History, BarChart3, Trash2, Bell,
+  History, BarChart3, Trash2, RefreshCw, X, DollarSign,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -20,7 +19,6 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/textarea';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import { MAX_LINHAS_AUTO, useEstoque } from '@/hooks/useSupabaseData';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
@@ -30,6 +28,7 @@ import { CardGridSkeleton, TableSkeleton } from '@/components/ui/loading-skeleto
 import { EmptyEstoque } from '@/components/EmptyState';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { ErrorState } from '@/components/ErrorState';
+import { PageHeader } from '@/components/PageHeader';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
 } from 'recharts';
@@ -86,6 +85,8 @@ function formatMoneyInput(value: unknown): string {
   return Number.isFinite(valor) ? valor.toFixed(2).replace('.', ',') : '';
 }
 
+const plural = (n: number, singular: string, pluralForm: string) => `${n} ${n === 1 ? singular : pluralForm}`;
+
 const normalizarBuscaEstoque = (valor: unknown) => String(valor ?? '')
   .normalize('NFD')
   .replace(/[\u0300-\u036f]/g, '')
@@ -109,7 +110,7 @@ export default function Estoque() {
   const requestedAlert = searchParams.get('alerta');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterCategoria, setFilterCategoria] = useState('todos');
-  const [filterAlerta, setFilterAlerta] = useState(requestedAlert === 'critico' ? 'critico' : 'todos');
+  const [filterAlerta, setFilterAlerta] = useState<'todos' | 'critico' | 'validade' | 'ponto_pedido'>(requestedAlert === 'critico' ? 'critico' : 'todos');
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isMovimentacaoOpen, setIsMovimentacaoOpen] = useState(false);
   const [isTimelineOpen, setIsTimelineOpen] = useState(false);
@@ -210,6 +211,7 @@ export default function Estoque() {
         const info = getValidadeInfo(p.validade);
         return Number(p.quantidade) > 0 && info !== null && info.dias >= 0 && info.dias <= 60;
       }).length,
+      pontoPedido: items.filter(p => p.ponto_pedido && p.quantidade <= p.ponto_pedido).length,
     };
   }, [estoque, getValidadeInfo]);
 
@@ -456,6 +458,17 @@ export default function Estoque() {
     });
   }, [estoque, daysUntilValidity]);
 
+  // Item mais crítico: menor saldo relativo ao mínimo; se não houver, o que vence mais perto.
+  const heroItem = useMemo(() => {
+    const items = estoque as any[];
+    const criticos = items
+      .filter(p => p.quantidade <= (p.quantidade_minima || 0))
+      .sort((a, b) => (a.quantidade - (a.quantidade_minima || 0)) - (b.quantidade - (b.quantidade_minima || 0)));
+    if (criticos[0]) return { item: criticos[0], tipo: 'estoque' as const };
+    if (expiryAlerts[0]) return { item: expiryAlerts[0], tipo: 'validade' as const };
+    return null;
+  }, [estoque, expiryAlerts]);
+
   const isMedicamento = formData.categoria === 'medicamentos';
   const timelineItem = (estoque as any[]).find(p => p.id === timelineItemId);
   const produtoSelecionado = (estoque as any[]).find(p => p.id === selectedId);
@@ -479,16 +492,21 @@ export default function Estoque() {
   const vendaInvalida = !!formData.valor_venda?.trim()
     && (valorVendaDigitado === null || valorVendaDigitado < 0 || valorVendaDigitado > 99_999_999.99);
 
+  const descricao = stats.total > 0
+    ? [
+      plural(stats.total, 'item', 'itens'),
+      stats.critico > 0 ? `${stats.critico} em estoque baixo` : null,
+      stats.vencendo > 0 ? `${stats.vencendo} vencendo em 60 dias` : null,
+    ].filter(Boolean).join(' · ')
+    : 'Controle de materiais e medicamentos: saldo, validade e movimentações.';
+
   if (isLoading) {
     return (
-      <div className="space-y-6">
-        <div className="flex justify-between items-center">
-          <div><h1 className="text-3xl font-bold text-foreground">Estoque</h1>
-          <p className="text-muted-foreground">Controle de materiais e medicamentos</p></div>
-        </div>
+      <main className="space-y-6">
+        <PageHeader title="Estoque" description="Controle de materiais e medicamentos" icon={<Package />} />
         <CardGridSkeleton count={4} /><Card><CardHeader><CardTitle>Produtos</CardTitle></CardHeader>
         <CardContent><TableSkeleton rows={6} cols={6} /></CardContent></Card>
-      </div>
+      </main>
     );
   }
   if (!profile?.clinica_id) {
@@ -498,27 +516,36 @@ export default function Estoque() {
     return <ErrorState title="Não foi possível carregar o estoque" error={estoqueQuery.error} onRetry={() => void estoqueQuery.refetch()} />;
   }
 
+  const indicadores: { key: typeof filterAlerta; icon: typeof Package; label: string; value: string; caption: string; color: string; surface: string; escuro: boolean }[] = [
+    { key: 'todos', icon: Package, label: 'Total de itens', value: String(stats.total), caption: 'cadastrados no estoque', color: 'text-[#1080CA]', surface: 'bg-[#1080CA]/10', escuro: false },
+    { key: 'critico', icon: AlertTriangle, label: 'Estoque baixo', value: String(stats.critico), caption: 'no mínimo ou abaixo', color: 'text-white', surface: 'bg-white/15', escuro: true },
+    { key: 'validade', icon: Calendar, label: 'Vencendo', value: String(stats.vencendo), caption: 'até 60 dias', color: 'text-warning', surface: 'bg-warning/10', escuro: false },
+    { key: 'ponto_pedido', icon: TrendingDown, label: 'Ponto de pedido', value: String(stats.pontoPedido), caption: 'hora de comprar', color: 'text-[#1080CA]', surface: 'bg-[#1080CA]/10', escuro: false },
+  ];
+
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground">Estoque</h1>
-          <p className="text-muted-foreground">Controle de materiais e medicamentos</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="flex rounded-xl border border-sky-100 bg-sky-50/70 p-1">
-            <Button variant="ghost" size="sm" className={cn('h-9 gap-1.5 rounded-lg border-0 text-xs', activeTab === 'produtos' ? 'bg-white text-sky-800 shadow-sm hover:bg-white' : 'text-slate-600 hover:bg-white/70')}
-              onClick={() => setActiveTab('produtos')}>
+    <main className="space-y-6">
+      <PageHeader
+        title="Estoque"
+        description={descricao}
+        icon={<Package />}
+        actions={<>
+          <div className="flex rounded-full border border-border/60 bg-card p-1">
+            <button type="button" aria-pressed={activeTab === 'produtos'} onClick={() => setActiveTab('produtos')}
+              className={cn('flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-medium transition-colors', activeTab === 'produtos' ? 'bg-gradient-primary text-white shadow-sm' : 'text-muted-foreground hover:text-foreground')}>
               <Package className="h-3.5 w-3.5" /> Produtos
-            </Button>
-            <Button variant="ghost" size="sm" className={cn('h-9 gap-1.5 rounded-lg border-0 text-xs', activeTab === 'curva_abc' ? 'bg-white text-sky-800 shadow-sm hover:bg-white' : 'text-slate-600 hover:bg-white/70')}
-              onClick={() => setActiveTab('curva_abc')}>
+            </button>
+            <button type="button" aria-pressed={activeTab === 'curva_abc'} onClick={() => setActiveTab('curva_abc')}
+              className={cn('flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-medium transition-colors', activeTab === 'curva_abc' ? 'bg-gradient-primary text-white shadow-sm' : 'text-muted-foreground hover:text-foreground')}>
               <BarChart3 className="h-3.5 w-3.5" /> Curva ABC
-            </Button>
+            </button>
           </div>
-          <Button onClick={handleNew} className="gap-2"><Plus className="h-4 w-4" />Novo Produto</Button>
-        </div>
-      </div>
+          <Button variant="outline" size="icon" className="shrink-0 rounded-full" onClick={() => void estoqueQuery.refetch()} disabled={estoqueQuery.isFetching} aria-label="Atualizar estoque" title="Atualizar estoque">
+            <RefreshCw className={cn('h-4 w-4', estoqueQuery.isFetching && 'animate-spin')} />
+          </Button>
+          <Button onClick={handleNew} className="shrink-0 gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110"><Plus className="h-4 w-4" />Novo item</Button>
+        </>}
+      />
 
       {estoque.length >= MAX_LINHAS_AUTO && (
         <div role="alert" className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm text-warning-foreground">
@@ -529,70 +556,76 @@ export default function Estoque() {
         </div>
       )}
 
-      {/* Expiry Alert Banner */}
-      {expiryAlerts.length > 0 && (
-        <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}>
-          <Card className="border-destructive/30 bg-destructive/5">
-            <CardContent className="pt-4 pb-3">
-              <div className="flex items-center gap-3">
-                <Bell className="h-5 w-5 text-destructive flex-shrink-0" />
-                <div className="flex-1">
-                  <p className="text-sm font-semibold text-destructive">
-                    {expiryAlerts.length} {expiryAlerts.length === 1 ? 'produto' : 'produtos'} com validade próxima ou vencido
-                  </p>
-                  <div className="flex flex-wrap gap-2 mt-1.5">
-                    {expiryAlerts.slice(0, 5).map(p => {
-                      const dias = daysUntilValidity(p.validade) ?? 0;
-                      return (
-                        <Badge key={p.id} variant={dias < 0 ? 'destructive' : 'secondary'} className="text-[10px]">
-                          {p.nome} — {dias < 0 ? `Vencido há ${Math.abs(dias)}d` : `${dias}d restantes`}
-                        </Badge>
-                      );
-                    })}
-                    {expiryAlerts.length > 5 && (
-                      <Badge variant="outline" className="text-[10px]">+{expiryAlerts.length - 5} mais</Badge>
-                    )}
+      <section role="group" aria-label="Situação do estoque" className="space-y-2">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="text-sm font-semibold text-foreground">Situação agora</h2>
+          <p className="text-xs text-muted-foreground">{filterAlerta === 'todos' ? 'Clique em um indicador para filtrar os produtos.' : 'Clique novamente para limpar o filtro.'}</p>
+        </div>
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+          {indicadores.map((item) => {
+            const Icon = item.icon;
+            const ativo = filterAlerta === item.key;
+            return <button key={item.key} type="button" aria-pressed={ativo} onClick={() => { setActiveTab('produtos'); setFilterAlerta(ativo ? 'todos' : item.key); }}
+              className={cn('rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+                item.escuro && 'border-transparent bg-gradient-primary text-white', ativo && !item.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30', ativo && item.escuro && 'ring-2 ring-[#1080CA]/60')}>
+              <div className="flex min-h-[96px] items-center gap-3 p-3">
+                <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', item.surface)}><Icon aria-hidden="true" className={cn('h-5 w-5', item.color)} /></div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <h3 className={cn('truncate text-xs font-semibold', item.escuro ? 'text-white/80' : 'text-foreground')}>{item.label}</h3>
+                    <span className={cn('text-2xl font-bold tabular-nums', item.color)}>{item.value}</span>
                   </div>
+                  <p className={cn('truncate text-[11px]', item.escuro ? 'text-white/60' : 'text-muted-foreground')}>{item.caption}</p>
                 </div>
-                <Button variant="outline" size="sm" className="text-xs" onClick={() => setFilterAlerta('validade')}>
-                  Ver todos
-                </Button>
               </div>
-            </CardContent>
-          </Card>
-        </motion.div>
-      )}
+            </button>;
+          })}
+          <div className="rounded-2xl border border-border/60 bg-card shadow-xs">
+            <div className="flex min-h-[96px] items-center gap-3 p-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-success/10"><DollarSign aria-hidden="true" className="h-5 w-5 text-success" /></div>
+              <div className="min-w-0 flex-1">
+                <h3 className="truncate text-xs font-semibold text-foreground">Valor em estoque</h3>
+                <p className="truncate text-lg font-bold tabular-nums text-success">{formatCurrency(stats.valorTotal)}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
 
-      <div className="grid gap-3 grid-cols-2 xl:grid-cols-4">
-        <Card className="border-sky-100 bg-sky-50/70"><CardContent className="pt-5 pb-5">
-          <div className="flex items-center gap-4">
-            <div className="p-3 rounded-xl bg-white text-sky-700 shadow-sm"><Package className="h-5 w-5" /></div>
-            <div><p className="text-xs font-medium text-sky-800/75">Total de itens</p>
-            <p className="text-2xl font-semibold tabular-nums text-slate-900">{stats.total}</p></div>
-          </div>
-        </CardContent></Card>
-        <Card className="border-rose-100 bg-rose-50/70"><CardContent className="pt-5 pb-5">
-          <div className="flex items-center gap-4">
-            <div className="p-3 rounded-xl bg-white text-rose-600 shadow-sm"><AlertTriangle className="h-5 w-5" /></div>
-            <div><p className="text-xs font-medium text-rose-800/75">Estoque crítico</p>
-            <p className="text-2xl font-semibold tabular-nums text-rose-700">{stats.critico}</p></div>
-          </div>
-        </CardContent></Card>
-        <Card className="border-amber-100 bg-amber-50/80"><CardContent className="pt-5 pb-5">
-          <div className="flex items-center gap-4">
-            <div className="p-3 rounded-xl bg-white text-amber-700 shadow-sm"><Calendar className="h-5 w-5" /></div>
-            <div><p className="text-xs font-medium text-amber-900/75">Vencendo em até 60 dias</p>
-            <p className="text-2xl font-semibold tabular-nums text-amber-800">{stats.vencendo}</p></div>
-          </div>
-        </CardContent></Card>
-        <Card className="border-indigo-100 bg-indigo-50/70"><CardContent className="pt-5 pb-5">
-          <div className="flex items-center gap-4">
-            <div className="p-3 rounded-xl bg-white text-indigo-700 shadow-sm"><Package className="h-5 w-5" /></div>
-            <div><p className="text-xs font-medium text-indigo-800/75">Valor em estoque</p>
-            <p className="text-xl font-semibold tabular-nums text-slate-900">{formatCurrency(stats.valorTotal)}</p></div>
-          </div>
-        </CardContent></Card>
-      </div>
+      {activeTab === 'produtos' && heroItem && (() => {
+        const { item, tipo } = heroItem;
+        const status = getStatus(item);
+        const dias = daysUntilValidity(item.validade);
+        return <Card className="overflow-hidden rounded-2xl border-[#1080CA]/30 shadow-[0_8px_24px_rgba(16,128,202,0.12)]">
+          <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center">
+            <div className="flex min-w-0 flex-1 items-center gap-3">
+              <span aria-hidden="true" className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+                {tipo === 'estoque' ? <AlertTriangle className="h-5 w-5" /> : <Calendar className="h-5 w-5" />}
+              </span>
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-[#1080CA]">{tipo === 'estoque' ? 'Item mais crítico' : 'Validade mais próxima'}</p>
+                <h2 className="truncate text-lg font-bold text-foreground">{item.nome}</h2>
+                <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                  <span>{formatCategoria(item.categoria)}{item.localizacao ? ` · ${item.localizacao}` : ''}</span>
+                  <span className="font-medium tabular-nums">{item.quantidade} {item.unidade}{item.quantidade_minima ? ` · mínimo ${item.quantidade_minima}` : ''}</span>
+                  {item.validade && <span className={cn('inline-flex items-center gap-1 font-medium', dias !== null && dias < 0 ? 'text-destructive' : dias !== null && dias <= 30 ? 'text-warning-foreground' : '')}>
+                    Validade {format(parseDateOnly(item.validade)!, 'dd/MM/yyyy')}{dias !== null && (dias < 0 ? ` · vencido há ${plural(Math.abs(dias), 'dia', 'dias')}` : ` · em ${plural(dias, 'dia', 'dias')}`)}
+                  </span>}
+                  <Badge variant={status.variant} className="rounded-full text-[10px]">{status.label}</Badge>
+                </div>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+              <Button className="h-10 gap-1.5 rounded-full bg-gradient-primary text-white hover:brightness-110" onClick={() => handleMovimentacao(item, 'entrada')}>
+                <ArrowDown aria-hidden="true" className="h-4 w-4" /> Registrar entrada
+              </Button>
+              <Button variant="outline" className="h-10 gap-1.5 rounded-full" onClick={() => handleEdit(item)}>
+                <Edit aria-hidden="true" className="h-4 w-4" /> Editar
+              </Button>
+            </div>
+          </CardContent>
+        </Card>;
+      })()}
 
       {/* ─── ABC Curve Tab ─── */}
       {activeTab === 'curva_abc' && (
@@ -604,27 +637,25 @@ export default function Estoque() {
               { classe: 'B', label: 'Classe B — Médio valor', color: 'text-warning', bg: 'bg-warning/10', ...abcSummary.b },
               { classe: 'C', label: 'Classe C — Baixo valor', color: 'text-success', bg: 'bg-success/10', ...abcSummary.c },
             ].map(cls => (
-              <motion.div key={cls.classe} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
-                <Card>
-                  <CardContent className="pt-5">
-                    <div className="flex items-center gap-3">
-                      <div className={cn('h-12 w-12 rounded-xl flex items-center justify-center text-lg font-black', cls.bg, cls.color)}>
-                        {cls.classe}
-                      </div>
-                      <div>
-                        <p className="text-xs text-muted-foreground">{cls.label}</p>
-                        <p className={cn('text-xl font-bold tabular-nums', cls.color)}>{cls.count} itens</p>
-                        <p className="text-xs text-muted-foreground">{cls.pct}% do valor • {formatCurrency(cls.valor)}</p>
-                      </div>
+              <Card key={cls.classe} className="rounded-2xl border-border/60 shadow-xs">
+                <CardContent className="pt-5">
+                  <div className="flex items-center gap-3">
+                    <div className={cn('h-12 w-12 rounded-xl flex items-center justify-center text-lg font-black', cls.bg, cls.color)}>
+                      {cls.classe}
                     </div>
-                  </CardContent>
-                </Card>
-              </motion.div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">{cls.label}</p>
+                      <p className={cn('text-xl font-bold tabular-nums', cls.color)}>{cls.count} itens</p>
+                      <p className="text-xs text-muted-foreground">{cls.pct}% do valor • {formatCurrency(cls.valor)}</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
             ))}
           </div>
 
           {/* ABC Chart */}
-          <Card>
+          <Card className="rounded-2xl border-border/60 shadow-xs">
             <CardHeader>
               <CardTitle>Top 20 — Curva ABC de Estoque</CardTitle>
               <CardDescription>Itens ordenados por valor total (qtd × custo unitário)</CardDescription>
@@ -655,10 +686,10 @@ export default function Estoque() {
           </Card>
 
           {/* ABC Table */}
-          <Card>
+          <Card className="rounded-2xl border-border/60 shadow-xs">
             <CardHeader><CardTitle>Classificação Completa</CardTitle></CardHeader>
             <CardContent>
-              <div className="rounded-md border">
+              <div className="overflow-hidden rounded-xl border border-border/60">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -679,7 +710,7 @@ export default function Estoque() {
                         <TableCell className="text-right font-medium tabular-nums text-sm">{formatCurrency(item.valor)}</TableCell>
                         <TableCell className="text-right tabular-nums text-sm">{item.percentAcc}%</TableCell>
                         <TableCell>
-                          <Badge className={cn('font-bold',
+                          <Badge className={cn('rounded-full font-bold',
                             item.classe === 'A' ? 'bg-destructive/10 text-destructive border-destructive/20' :
                             item.classe === 'B' ? 'bg-warning/10 text-warning border-warning/20' :
                             'bg-success/10 text-success border-success/20',
@@ -701,147 +732,143 @@ export default function Estoque() {
           {(estoque as any[]).length === 0 ? (
             <EmptyEstoque onAdd={handleNew} />
           ) : (
-            <Card>
-              <CardHeader>
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                  <CardTitle>Produtos</CardTitle>
-                  <div className="flex flex-wrap gap-2 w-full sm:w-auto">
-                    <div className="relative flex-1 sm:w-64">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                      <Input placeholder="Produto, EAN, lote, fornecedor..." value={searchTerm}
-                        onChange={e => setSearchTerm(e.target.value)} className="pl-9" />
+            <section className="space-y-3" aria-labelledby="estoque-list-heading">
+              <h2 id="estoque-list-heading" className="text-xl font-semibold">Produtos</h2>
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="relative w-full sm:w-72">
+                  <Search aria-hidden="true" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input aria-label="Buscar produtos" className="h-10 rounded-full pl-9 focus-visible:ring-[#1080CA]" placeholder="Produto, EAN, lote, fornecedor..." value={searchTerm}
+                    onChange={e => setSearchTerm(e.target.value)} />
+                </div>
+                <Select value={filterCategoria} onValueChange={setFilterCategoria}>
+                  <SelectTrigger aria-label="Filtrar por categoria" className="h-10 w-full rounded-full sm:w-48"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="todos">Todas as categorias</SelectItem>
+                    {CATEGORIAS.map(c => <SelectItem key={c} value={c}>{formatCategoria(c)}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                <div role="group" aria-label="Filtrar por alerta" className="flex flex-wrap items-center gap-1.5">
+                  {([['todos', 'Todos'], ['critico', 'Estoque crítico'], ['validade', 'Validade'], ['ponto_pedido', 'Ponto de pedido']] as [typeof filterAlerta, string][]).map(([key, label]) => {
+                    const ativo = filterAlerta === key;
+                    return <button key={key} type="button" aria-pressed={ativo} onClick={() => setFilterAlerta(key)}
+                      className={cn('h-8 rounded-full border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]', ativo ? 'border-transparent bg-gradient-primary text-white shadow-sm' : 'border-border bg-card text-muted-foreground hover:border-[#9CC7EC] hover:text-foreground')}>{label}</button>;
+                  })}
+                </div>
+                {(searchTerm.trim() !== '' || filterCategoria !== 'todos' || filterAlerta !== 'todos') && (
+                  <Button variant="ghost" size="sm" className="h-10 gap-1.5 rounded-full text-muted-foreground" onClick={() => { setSearchTerm(''); setFilterCategoria('todos'); setFilterAlerta('todos'); }}>
+                    <X aria-hidden="true" className="h-3.5 w-3.5" /> Limpar filtros
+                  </Button>
+                )}
+                <p className="ml-auto text-xs text-muted-foreground" aria-live="polite">{filteredProdutos.length} de {plural(stats.total, 'item', 'itens')}</p>
+              </div>
+
+              {filteredProdutos.length === 0 ? (
+                <Card className="rounded-2xl border-border/60 shadow-xs"><CardContent className="py-16 text-center text-muted-foreground">
+                  <span aria-hidden="true" className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md"><Package className="h-7 w-7" /></span>
+                  <p className="font-medium text-foreground">Nenhum produto corresponde aos filtros</p>
+                  <p className="mt-1 text-sm">Limpe a busca, a categoria ou o indicador para ver todos os itens.</p>
+                  <Button className="mt-4 rounded-full" size="sm" variant="outline" onClick={() => { setSearchTerm(''); setFilterCategoria('todos'); setFilterAlerta('todos'); }}>Limpar filtros</Button>
+                </CardContent></Card>
+              ) : (
+                <Card className="rounded-2xl border-border/60 shadow-xs">
+                  <CardContent className="p-4">
+                    <div className="overflow-hidden rounded-xl border border-border/60">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Produto</TableHead>
+                            <TableHead className="hidden lg:table-cell">EAN / Fabricante</TableHead>
+                            <TableHead className="hidden md:table-cell">Categoria</TableHead>
+                            <TableHead>Estoque</TableHead>
+                            <TableHead className="hidden sm:table-cell">Validade</TableHead>
+                            <TableHead>Status</TableHead>
+                            <TableHead className="text-right">Ações</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {filteredProdutos.map((produto: any) => {
+                            const status = getStatus(produto);
+                            const validadeInfo = getValidadeInfo(produto.validade);
+                            return (
+                              <TableRow key={produto.id}>
+                                <TableCell>
+                                  <div>
+                                    <p className="font-medium">{produto.nome}</p>
+                                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                      {produto.principio_ativo && (
+                                        <span className="flex items-center gap-0.5"><Pill className="h-3 w-3" />{produto.principio_ativo}</span>
+                                      )}
+                                      {produto.dosagem && <span>{produto.dosagem}</span>}
+                                      {produto.localizacao && <span>· {produto.localizacao}</span>}
+                                    </div>
+                                  </div>
+                                </TableCell>
+                                <TableCell className="hidden lg:table-cell">
+                                  <div className="text-xs space-y-0.5">
+                                    {produto.codigo_ean && (
+                                      <p className="flex items-center gap-1 font-mono"><Barcode className="h-3 w-3" />{produto.codigo_ean}</p>
+                                    )}
+                                    {produto.fabricante && (
+                                      <p className="flex items-center gap-1 text-muted-foreground"><Building2 className="h-3 w-3" />{produto.fabricante}</p>
+                                    )}
+                                  </div>
+                                </TableCell>
+                                <TableCell className="hidden md:table-cell text-sm">
+                                  {formatCategoria(produto.categoria)}
+                                </TableCell>
+                                <TableCell>
+                                  <span className="font-medium tabular-nums">{produto.quantidade}</span>
+                                  <span className="text-muted-foreground text-xs"> {produto.unidade}</span>
+                                  {produto.ponto_pedido && produto.quantidade <= produto.ponto_pedido && (
+                                    <p className="text-[10px] text-destructive flex items-center gap-0.5 mt-0.5">
+                                      <TrendingDown className="h-3 w-3" />Ponto de pedido
+                                    </p>
+                                  )}
+                                </TableCell>
+                                <TableCell className="hidden sm:table-cell">
+                                  {produto.validade ? (
+                                    <div className="text-xs">
+                                      <p>{format(parseDateOnly(produto.validade)!, 'dd/MM/yyyy')}</p>
+                                      {validadeInfo && (
+                                        <Badge variant={validadeInfo.color} className="rounded-full text-[9px] mt-0.5">
+                                          {validadeInfo.label}
+                                        </Badge>
+                                      )}
+                                    </div>
+                                  ) : <span className="text-muted-foreground text-xs">—</span>}
+                                </TableCell>
+                                <TableCell>
+                                  <Badge variant={status.variant} className="rounded-full">{status.label}</Badge>
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  <div className="flex justify-end gap-1">
+                                    <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full" aria-label={`Ver histórico de ${produto.nome}`} onClick={() => handleOpenTimeline(produto)} title="Histórico">
+                                      <History className="h-4 w-4 text-muted-foreground" />
+                                    </Button>
+                                    <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full" aria-label={`Registrar entrada de ${produto.nome}`} onClick={() => handleMovimentacao(produto, 'entrada')} title="Entrada">
+                                      <ArrowDown className="h-4 w-4 text-success" />
+                                    </Button>
+                                    <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full" aria-label={`Registrar saída de ${produto.nome}`} onClick={() => handleMovimentacao(produto, 'saida')} title="Saída">
+                                      <ArrowUp className="h-4 w-4 text-muted-foreground" />
+                                    </Button>
+                                     <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full" aria-label={`Editar item ${produto.nome}`} onClick={() => handleEdit(produto)}>
+                                      <Edit className="h-4 w-4" />
+                                    </Button>
+                                     <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full" aria-label={`Excluir item ${produto.nome}`} onClick={() => { setDeleteId(produto.id); setIsDeleteOpen(true); }}>
+                                      <Trash2 className="h-4 w-4 text-destructive" />
+                                    </Button>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
                     </div>
-                    <Select value={filterCategoria} onValueChange={setFilterCategoria}>
-                      <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="todos">Todas</SelectItem>
-                        {CATEGORIAS.map(c => <SelectItem key={c} value={c}>{formatCategoria(c)}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                    <Select value={filterAlerta} onValueChange={setFilterAlerta}>
-                      <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="todos">Todos</SelectItem>
-                        <SelectItem value="critico">Estoque Crítico</SelectItem>
-                        <SelectItem value="validade">Validade próxima ou vencida</SelectItem>
-                        <SelectItem value="ponto_pedido">Ponto de Pedido</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="rounded-md border">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Produto</TableHead>
-                        <TableHead className="hidden lg:table-cell">EAN / Fabricante</TableHead>
-                        <TableHead className="hidden md:table-cell">Categoria</TableHead>
-                        <TableHead>Estoque</TableHead>
-                        <TableHead className="hidden sm:table-cell">Validade</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead className="text-right">Ações</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredProdutos.length === 0 ? (
-                        <TableRow>
-                          <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                            <Package className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                            <div className="flex flex-col items-center gap-2">
-                              <p>Nenhum produto encontrado com estes filtros</p>
-                              <Button size="sm" variant="outline" onClick={() => {
-                                setSearchTerm('');
-                                setFilterCategoria('todos');
-                                setFilterAlerta('todos');
-                              }}>Limpar filtros</Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ) : (
-                        filteredProdutos.map((produto: any) => {
-                          const status = getStatus(produto);
-                          const validadeInfo = getValidadeInfo(produto.validade);
-                          return (
-                            <TableRow key={produto.id}>
-                              <TableCell>
-                                <div>
-                                  <p className="font-medium">{produto.nome}</p>
-                                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                    {produto.principio_ativo && (
-                                      <span className="flex items-center gap-0.5"><Pill className="h-3 w-3" />{produto.principio_ativo}</span>
-                                    )}
-                                    {produto.dosagem && <span>{produto.dosagem}</span>}
-                                    {produto.localizacao && <span>· {produto.localizacao}</span>}
-                                  </div>
-                                </div>
-                              </TableCell>
-                              <TableCell className="hidden lg:table-cell">
-                                <div className="text-xs space-y-0.5">
-                                  {produto.codigo_ean && (
-                                    <p className="flex items-center gap-1 font-mono"><Barcode className="h-3 w-3" />{produto.codigo_ean}</p>
-                                  )}
-                                  {produto.fabricante && (
-                                    <p className="flex items-center gap-1 text-muted-foreground"><Building2 className="h-3 w-3" />{produto.fabricante}</p>
-                                  )}
-                                </div>
-                              </TableCell>
-                              <TableCell className="hidden md:table-cell text-sm">
-                                {formatCategoria(produto.categoria)}
-                              </TableCell>
-                              <TableCell>
-                                <span className="font-medium tabular-nums">{produto.quantidade}</span>
-                                <span className="text-muted-foreground text-xs"> {produto.unidade}</span>
-                                {produto.ponto_pedido && produto.quantidade <= produto.ponto_pedido && (
-                                  <p className="text-[10px] text-destructive flex items-center gap-0.5 mt-0.5">
-                                    <TrendingDown className="h-3 w-3" />Ponto de pedido
-                                  </p>
-                                )}
-                              </TableCell>
-                              <TableCell className="hidden sm:table-cell">
-                                {produto.validade ? (
-                                  <div className="text-xs">
-                                    <p>{format(parseDateOnly(produto.validade)!, 'dd/MM/yyyy')}</p>
-                                    {validadeInfo && (
-                                      <Badge variant={validadeInfo.color} className="text-[9px] mt-0.5">
-                                        {validadeInfo.label}
-                                      </Badge>
-                                    )}
-                                  </div>
-                                ) : <span className="text-muted-foreground text-xs">—</span>}
-                              </TableCell>
-                              <TableCell>
-                                <Badge variant={status.variant}>{status.label}</Badge>
-                              </TableCell>
-                              <TableCell className="text-right">
-                                <div className="flex justify-end gap-1">
-                                  <Button variant="ghost" size="icon" aria-label={`Ver histórico de ${produto.nome}`} onClick={() => handleOpenTimeline(produto)} title="Histórico">
-                                    <History className="h-4 w-4 text-muted-foreground" />
-                                  </Button>
-                                  <Button variant="ghost" size="icon" aria-label={`Registrar entrada de ${produto.nome}`} onClick={() => handleMovimentacao(produto, 'entrada')} title="Entrada">
-                                    <ArrowDown className="h-4 w-4 text-success" />
-                                  </Button>
-                                  <Button variant="ghost" size="icon" aria-label={`Registrar saída de ${produto.nome}`} onClick={() => handleMovimentacao(produto, 'saida')} title="Saída">
-                                    <ArrowUp className="h-4 w-4 text-muted-foreground" />
-                                  </Button>
-                                   <Button variant="ghost" size="icon" aria-label={`Editar item ${produto.nome}`} onClick={() => handleEdit(produto)}>
-                                    <Edit className="h-4 w-4" />
-                                  </Button>
-                                   <Button variant="ghost" size="icon" aria-label={`Excluir item ${produto.nome}`} onClick={() => { setDeleteId(produto.id); setIsDeleteOpen(true); }}>
-                                    <Trash2 className="h-4 w-4 text-destructive" />
-                                  </Button>
-                                </div>
-                              </TableCell>
-                            </TableRow>
-                          );
-                        })
-                      )}
-                    </TableBody>
-                  </Table>
-                </div>
-              </CardContent>
-            </Card>
+                  </CardContent>
+                </Card>
+              )}
+            </section>
           )}
         </>
       )}
@@ -873,21 +900,18 @@ export default function Estoque() {
                 <p className="text-xs text-muted-foreground">Exibindo até as 50 movimentações mais recentes.</p>
                 <div className="relative pl-6 space-y-3">
                   <div className="absolute left-[11px] top-2 bottom-2 w-px bg-border" />
-                  {movimentacoes.map((mov: any, idx: number) => (
-                    <motion.div
+                  {movimentacoes.map((mov: any) => (
+                    <div
                       key={mov.id}
-                      initial={{ opacity: 0, x: -10 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: idx * 0.03 }}
                       className="relative flex items-start gap-3"
                     >
                       <div className={cn(
                         'absolute -left-6 top-1 h-4 w-4 rounded-full border-2 border-background z-10',
                         mov.tipo === 'entrada' ? 'bg-success' : 'bg-muted-foreground',
                       )} />
-                      <div className="flex-1 bg-card border rounded-lg p-3">
+                      <div className="flex-1 rounded-xl border border-border/60 bg-card p-3">
                         <div className="flex items-center justify-between">
-                          <Badge variant={mov.tipo === 'entrada' ? 'success' : 'secondary'} className="text-[10px]">
+                          <Badge variant={mov.tipo === 'entrada' ? 'success' : 'secondary'} className="rounded-full text-[10px]">
                             {mov.tipo === 'entrada' ? '↓ Entrada' : '↑ Saída'}
                           </Badge>
                           <span className="text-[10px] text-muted-foreground">
@@ -899,7 +923,7 @@ export default function Estoque() {
                         </p>
                         {mov.motivo && <p className="text-xs text-muted-foreground mt-0.5">{mov.motivo}</p>}
                       </div>
-                    </motion.div>
+                    </div>
                   ))}
                 </div>
               </div>
@@ -1006,8 +1030,8 @@ export default function Estoque() {
               <Textarea value={formData.descricao || ''} onChange={e => setFormData({ ...formData, descricao: e.target.value })} rows={2} placeholder="Informações adicionais..." /></div>
           </div>
           <DialogFooter className="flex-shrink-0 pt-4 border-t">
-            <Button variant="outline" onClick={() => setIsFormOpen(false)} disabled={isSaving}>Cancelar</Button>
-            <Button onClick={handleSave} disabled={isSaving}>
+            <Button variant="outline" className="rounded-full" onClick={() => setIsFormOpen(false)} disabled={isSaving}>Cancelar</Button>
+            <Button className="rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110" onClick={handleSave} disabled={isSaving}>
               {isSaving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Salvando...</> : 'Salvar'}
             </Button>
           </DialogFooter>
@@ -1056,8 +1080,8 @@ export default function Estoque() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsMovimentacaoOpen(false)} disabled={isSaving}>Cancelar</Button>
-            <Button onClick={handleSaveMovimentacao} disabled={isSaving || !quantidadeMovimentacaoValida || saidaExcedeSaldo || entradaExcedeMaximo || !movimentacao.motivo.trim()}>
+            <Button variant="outline" className="rounded-full" onClick={() => setIsMovimentacaoOpen(false)} disabled={isSaving}>Cancelar</Button>
+            <Button className="rounded-full bg-gradient-primary text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)] hover:brightness-110" onClick={handleSaveMovimentacao} disabled={isSaving || !quantidadeMovimentacaoValida || saidaExcedeSaldo || entradaExcedeMaximo || !movimentacao.motivo.trim()}>
               {isSaving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Salvando...</> : 'Confirmar'}
             </Button>
           </DialogFooter>
@@ -1075,6 +1099,6 @@ export default function Estoque() {
         isLoading={isSaving}
         closeOnConfirm={false}
       />
-    </div>
+    </main>
   );
 }

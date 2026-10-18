@@ -12,8 +12,8 @@ const ROLE_MATRIX = [
   },
   {
     role: 'medico',
-    allowed: ['/agenda', '/fila', '/prontuarios', '/documentos-clinicos', '/exames', '/laboratorio', '/vitais-graficos', '/tarefas'],
-    denied: ['/pacientes', '/recepcao', '/estoque', '/financeiro', '/configuracoes'],
+    allowed: ['/agenda', '/pacientes', '/fila', '/prontuarios', '/documentos-clinicos', '/exames', '/laboratorio', '/vitais-graficos', '/tarefas'],
+    denied: ['/recepcao', '/estoque', '/financeiro', '/configuracoes'],
   },
   {
     role: 'enfermagem',

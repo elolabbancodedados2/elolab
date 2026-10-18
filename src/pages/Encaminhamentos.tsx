@@ -3,8 +3,8 @@ import { nomeMedico } from '@/lib/formatters';
 import { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import {
-  Search, ArrowRightLeft, Filter, FileText, Clock, CheckCircle2,
-  AlertTriangle, Plus, Eye, Loader2, Stethoscope, User, Send, Edit,
+  Search, ArrowRightLeft, FileText, Clock, CheckCircle2,
+  Eye, Loader2, Stethoscope, User, Send, Edit, RefreshCw, MessageCircle, X,
 } from 'lucide-react';
 
 import { ptBR } from 'date-fns/locale';
@@ -16,9 +16,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '@/components/ui/select';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog';
@@ -34,6 +31,7 @@ import { useCurrentMedico } from '@/hooks/useCurrentMedico';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
+import { linkWhatsApp } from '@/lib/whatsapp';
 import { EncaminhamentoMedico } from '@/components/clinical/EncaminhamentoMedico';
 import { parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { ErrorState } from '@/components/ErrorState';
@@ -68,23 +66,25 @@ interface EncaminhamentoData {
 }
 
 const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
-  pendente: { label: 'Pendente', className: 'border-[#f1dfb8] bg-[#fff8e8] text-[#8a5b00]' },
-  em_andamento: { label: 'Em Andamento', className: 'border-[#d4ccfa] bg-[#f1eefe] text-[#2e179f]' },
-  concluido: { label: 'Concluído', className: 'border-[#ccebdd] bg-[#effaf4] text-[#16734d]' },
-  cancelado: { label: 'Cancelado', className: 'border-slate-200 bg-slate-50 text-slate-600' },
+  pendente: { label: 'Pendente', className: 'border-warning/30 bg-warning/10 text-warning' },
+  em_andamento: { label: 'Em Andamento', className: 'border-info/30 bg-info/10 text-info' },
+  concluido: { label: 'Concluído', className: 'border-success/30 bg-success/10 text-success' },
+  cancelado: { label: 'Cancelado', className: 'border-border bg-muted text-muted-foreground' },
 };
 
 const URGENCIA_CONFIG: Record<string, { label: string; className: string }> = {
-  eletivo: { label: 'Eletivo', className: 'bg-slate-50 text-slate-600' },
-  normal: { label: 'Normal', className: 'bg-[#effaf4] text-[#16734d]' },
-  urgente: { label: 'Urgente', className: 'bg-[#fff8e8] text-[#8a5b00]' },
-  emergencia: { label: 'Emergência', className: 'bg-[#fff0f0] text-[#a83232]' },
+  eletivo: { label: 'Eletivo', className: 'border-border bg-muted text-muted-foreground' },
+  normal: { label: 'Normal', className: 'border-success/30 bg-success/10 text-success' },
+  urgente: { label: 'Urgente', className: 'border-warning/30 bg-warning/10 text-warning' },
+  emergencia: { label: 'Emergência', className: 'border-destructive/30 bg-destructive/10 text-destructive' },
 };
+
+type FiltroStatus = 'todos' | 'pendente' | 'em_andamento' | 'concluido' | 'cancelado';
 
 export default function Encaminhamentos() {
   const [searchTerm, setSearchTerm] = useState('');
   const [patientSearchTerm, setPatientSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('todos');
+  const [statusFilter, setStatusFilter] = useState<FiltroStatus>('todos');
   const [selectedPacienteId, setSelectedPacienteId] = useState<string | null>(null);
   const [isViewOpen, setIsViewOpen] = useState(false);
   const [selectedEnc, setSelectedEnc] = useState<EncaminhamentoData | null>(null);
@@ -165,7 +165,20 @@ export default function Encaminhamentos() {
     pendentes: encaminhamentos.filter(e => e.status === 'pendente').length,
     emAndamento: encaminhamentos.filter(e => e.status === 'em_andamento').length,
     concluidos: encaminhamentos.filter(e => e.status === 'concluido').length,
+    comContraRef: encaminhamentos.filter(e => !!e.contra_referencia).length,
   }), [encaminhamentos]);
+
+  const temFiltro = !!searchTerm || statusFilter !== 'todos';
+  const limparFiltros = () => {
+    setSearchTerm('');
+    setStatusFilter('todos');
+  };
+
+  const mensagemWhatsApp = (enc: EncaminhamentoData) => {
+    const nome = String(enc.paciente?.nome_social || enc.paciente?.nome || '').split(' ')[0];
+    const esp = enc.especialidade_destino || '';
+    return `Olá${nome ? `, ${nome}` : ''}! Sobre seu encaminhamento${esp ? ` para ${esp}` : ''}: entre em contato com a clínica para agendar o atendimento com o especialista.`;
+  };
 
   // Pacientes with encaminhamentos for sidebar
   const pacientesComEnc = useMemo(() => {
@@ -264,59 +277,78 @@ export default function Encaminhamentos() {
   }
 
   return (
-    <div className="space-y-6">
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
       <PageHeader
         title="Encaminhamentos"
-        description="Referências e contra-referências médicas"
+        description={stats.total > 0
+          ? `${stats.total} encaminhamento${stats.total === 1 ? '' : 's'} · ${stats.pendentes} pendente${stats.pendentes === 1 ? '' : 's'}${stats.emAndamento > 0 ? ` · ${stats.emAndamento} em andamento` : ''} · ${stats.concluidos} concluído${stats.concluidos === 1 ? '' : 's'}`
+          : 'Referências e contra-referências médicas'}
         icon={<ArrowRightLeft />}
+        actions={(
+          <Button variant="outline" size="icon" className="shrink-0 rounded-full" onClick={() => void encaminhamentosQuery.refetch()} aria-label="Atualizar encaminhamentos" title="Atualizar">
+            <RefreshCw className="h-4 w-4" />
+          </Button>
+        )}
       />
 
-      {/* KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card className="kpi-card cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" role="button" tabIndex={0} aria-pressed={statusFilter === 'todos'} onClick={() => setStatusFilter('todos')} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setStatusFilter('todos'); } }}>
-          <CardContent className="p-4">
-            <div className="text-2xl font-bold tabular-nums">{stats.total}</div>
-            <p className="text-xs text-muted-foreground">Total</p>
-          </CardContent>
-        </Card>
-        <Card className={cn("kpi-card cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", statusFilter === 'pendente' && "ring-2 ring-warning")} role="button" tabIndex={0} aria-pressed={statusFilter === 'pendente'} onClick={() => setStatusFilter('pendente')} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setStatusFilter('pendente'); } }}>
-          <CardContent className="p-4">
-            <div className="text-2xl font-bold tabular-nums text-warning">{stats.pendentes}</div>
-            <p className="text-xs text-muted-foreground">Pendentes</p>
-          </CardContent>
-        </Card>
-        <Card className={cn("kpi-card cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", statusFilter === 'em_andamento' && "ring-2 ring-info")} role="button" tabIndex={0} aria-pressed={statusFilter === 'em_andamento'} onClick={() => setStatusFilter('em_andamento')} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setStatusFilter('em_andamento'); } }}>
-          <CardContent className="p-4">
-            <div className="text-2xl font-bold tabular-nums text-info">{stats.emAndamento}</div>
-            <p className="text-xs text-muted-foreground">Em Andamento</p>
-          </CardContent>
-        </Card>
-        <Card className={cn("kpi-card cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", statusFilter === 'concluido' && "ring-2 ring-success")} role="button" tabIndex={0} aria-pressed={statusFilter === 'concluido'} onClick={() => setStatusFilter('concluido')} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setStatusFilter('concluido'); } }}>
-          <CardContent className="p-4">
-            <div className="text-2xl font-bold tabular-nums text-success">{stats.concluidos}</div>
-            <p className="text-xs text-muted-foreground">Concluídos</p>
-          </CardContent>
-        </Card>
-      </div>
+      {/* Indicadores (filtram a lista por status) */}
+      <section role="group" aria-label="Resumo dos encaminhamentos" className="grid grid-cols-2 gap-2 md:grid-cols-4">
+        {([
+          { key: 'pendente', icon: Clock, label: 'Pendentes', value: stats.pendentes, caption: 'aguardando início', color: 'text-white', surface: 'bg-white/15', escuro: true },
+          { key: 'em_andamento', icon: Stethoscope, label: 'Em andamento', value: stats.emAndamento, caption: 'em atendimento', color: 'text-info', surface: 'bg-info/10', escuro: false },
+          { key: 'concluido', icon: CheckCircle2, label: 'Concluídos', value: stats.concluidos, caption: `${stats.comContraRef} com contra-ref.`, color: 'text-success', surface: 'bg-success/10', escuro: false },
+          { key: 'todos', icon: ArrowRightLeft, label: 'Total', value: stats.total, caption: 'todos os status', color: 'text-foreground', surface: 'bg-muted', escuro: false },
+        ] as const).map(s => {
+          const Icon = s.icon;
+          const ativo = statusFilter === s.key;
+          return (
+            <button
+              key={s.key}
+              type="button"
+              aria-pressed={ativo}
+              onClick={() => setStatusFilter(ativo && s.key !== 'todos' ? 'todos' : s.key)}
+              className={cn(
+                'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+                s.escuro && 'border-transparent bg-gradient-primary text-white',
+                ativo && !s.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
+                ativo && s.escuro && 'ring-2 ring-[#1080CA]/60',
+              )}
+            >
+              <div className="flex min-h-[96px] items-center gap-3 p-3">
+                <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', s.surface)}>
+                  <Icon aria-hidden="true" className={cn('h-5 w-5', s.color)} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <h3 className={cn('truncate text-xs font-semibold', s.escuro ? 'text-white/80' : 'text-foreground')}>{s.label}</h3>
+                    <span className={cn('text-2xl font-bold tabular-nums', s.color)}>{s.value}</span>
+                  </div>
+                  <p className={cn('truncate text-[11px]', s.escuro ? 'text-white/60' : 'text-muted-foreground')}>{s.caption}</p>
+                </div>
+              </div>
+            </button>
+          );
+        })}
+      </section>
 
       {/* Main Content */}
       <div className={cn('grid gap-6', medicoId ? 'lg:grid-cols-3' : 'grid-cols-1')}>
         {/* Patient List */}
         {medicoId && (
-        <Card className="lg:col-span-1">
+        <Card className="rounded-2xl border-border/60 shadow-xs lg:col-span-1">
           <CardHeader className="pb-3">
-            <CardTitle className="text-lg flex items-center gap-2">
-              <User className="h-4 w-4 text-primary" />
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <User className="h-4 w-4 text-[#1080CA]" />
               Pacientes
             </CardTitle>
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Search aria-hidden="true" className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 aria-label="Buscar paciente por nome, CPF ou telefone"
                 placeholder="Buscar por nome, CPF ou telefone..."
                 value={patientSearchTerm}
                 onChange={(e) => setPatientSearchTerm(e.target.value)}
-                className="pl-9"
+                className="h-10 rounded-full pl-9 focus-visible:ring-[#1080CA]"
               />
             </div>
           </CardHeader>
@@ -339,8 +371,8 @@ export default function Encaminhamentos() {
                   <div
                     key={paciente.id}
                     className={cn(
-                      'p-3 border-b cursor-pointer hover:bg-muted/50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
-                      selectedPacienteId === paciente.id && 'bg-primary/10 border-l-2 border-l-primary',
+                      'p-3 border-b cursor-pointer hover:bg-[#F3F8FC]/70 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#1080CA]',
+                      selectedPacienteId === paciente.id && 'bg-[#1080CA]/10 border-l-2 border-l-[#1080CA]',
                     )}
                     role="button"
                     tabIndex={0}
@@ -356,7 +388,7 @@ export default function Encaminhamentos() {
                     <div className="flex items-center justify-between">
                       <p className="font-medium text-sm truncate">{(paciente as any).nome_social || paciente.nome}</p>
                       {qtd > 0 && (
-                        <Badge variant="secondary" className="text-[10px] tabular-nums">{qtd}</Badge>
+                        <Badge variant="secondary" className="rounded-full text-[10px] tabular-nums">{qtd}</Badge>
                       )}
                     </div>
                   </div>
@@ -384,7 +416,7 @@ export default function Encaminhamentos() {
               onRetry={() => void pacienteSelecionadoQuery.refetch()}
             />
           ) : selectedPacienteId && pacienteSelecionadoQuery.isFetching && !selectedPaciente ? (
-            <Card><CardContent className="py-16 text-center text-sm text-muted-foreground">Carregando a ficha do paciente…</CardContent></Card>
+            <Card className="rounded-2xl border-border/60 shadow-xs"><CardContent className="py-16 text-center text-sm text-muted-foreground">Carregando a ficha do paciente…</CardContent></Card>
           ) : selectedPaciente && medicoId ? (
             <EncaminhamentoMedico
               pacienteId={selectedPaciente.id}
@@ -394,17 +426,17 @@ export default function Encaminhamentos() {
               onEncaminhamentoCriado={() => queryClient.invalidateQueries({ queryKey: ['encaminhamentos'] })}
             />
           ) : (
-            <Card>
+            <Card className="rounded-2xl border-border/60 shadow-xs">
               <CardContent className={cn('text-center', medicoId ? 'py-16' : 'py-8')}>
                 <div className="text-center text-muted-foreground">
-                  <ArrowRightLeft className="mx-auto mb-3 h-10 w-10 opacity-30" />
+                  <ArrowRightLeft aria-hidden="true" className="mx-auto mb-3 h-10 w-10 text-[#1080CA] opacity-40" />
                   <p className="font-medium">
                     {!medicoId
                       ? 'Seu usuário não está vinculado a um cadastro médico ativo. Um médico identificado precisa constar como origem do encaminhamento.'
                       : 'Selecione um paciente para gerenciar encaminhamentos'}
                   </p>
                   {!medicoId && profile?.roles?.includes('admin') && (
-                    <Button asChild variant="outline" size="sm" className="mt-4">
+                    <Button asChild variant="outline" size="sm" className="mt-4 rounded-full">
                       <Link to="/equipe">Gerenciar corpo clínico</Link>
                     </Button>
                   )}
@@ -419,42 +451,59 @@ export default function Encaminhamentos() {
       </div>
 
       {/* All Referrals Table */}
-      <Card>
-        <CardHeader>
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-            <CardTitle className="flex items-center gap-2">
-              <FileText className="h-5 w-5 text-primary" />
-              Todos os Encaminhamentos ({filteredEncaminhamentos.length})
-            </CardTitle>
-            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+      <Card className="rounded-2xl border-border/60 shadow-xs">
+        <CardHeader className="pb-3">
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <CardTitle className="text-base">Todos os Encaminhamentos <span className="text-muted-foreground">({filteredEncaminhamentos.length})</span></CardTitle>
+              <div className="relative w-full sm:w-80">
+                <Search aria-hidden="true" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   aria-label="Buscar encaminhamentos por paciente, CPF, especialidade ou motivo"
                   placeholder="Paciente, CPF, especialidade ou motivo..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="h-11 w-full pl-9 sm:w-56"
+                  className="h-10 rounded-full pl-9 focus-visible:ring-[#1080CA]"
                 />
               </div>
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger aria-label="Filtrar encaminhamentos por status" className="h-11 w-full sm:w-[190px]">
-                  <Filter className="h-4 w-4 mr-2" />
-                  <SelectValue placeholder="Status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todos">Todos</SelectItem>
-                  <SelectItem value="pendente">Pendente</SelectItem>
-                  <SelectItem value="em_andamento">Em Andamento</SelectItem>
-                  <SelectItem value="concluido">Concluído</SelectItem>
-                  <SelectItem value="cancelado">Cancelado</SelectItem>
-                </SelectContent>
-              </Select>
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div role="group" aria-label="Filtrar por status" className="flex flex-wrap items-center gap-1.5">
+                {([
+                  { key: 'todos', label: 'Todos' },
+                  { key: 'pendente', label: 'Pendente' },
+                  { key: 'em_andamento', label: 'Em andamento' },
+                  { key: 'concluido', label: 'Concluído' },
+                  { key: 'cancelado', label: 'Cancelado' },
+                ] as const).map(opt => {
+                  const ativo = statusFilter === opt.key;
+                  return (
+                    <button
+                      key={opt.key}
+                      type="button"
+                      aria-pressed={ativo}
+                      onClick={() => setStatusFilter(opt.key)}
+                      className={cn(
+                        'h-8 rounded-full border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+                        ativo ? 'border-transparent bg-gradient-primary text-white shadow-sm' : 'border-border bg-card text-muted-foreground hover:border-[#9CC7EC] hover:text-foreground',
+                      )}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
+                {temFiltro && (
+                  <Button variant="ghost" size="sm" className="h-8 gap-1 rounded-full text-xs text-muted-foreground" onClick={limparFiltros}>
+                    <X aria-hidden="true" className="h-3 w-3" /> Limpar filtros
+                  </Button>
+                )}
+              </div>
+              <p className="text-xs tabular-nums text-muted-foreground" aria-live="polite">{filteredEncaminhamentos.length} de {encaminhamentos.length}</p>
             </div>
           </div>
         </CardHeader>
         <CardContent>
-          <div className="rounded-md border">
+          <div className="overflow-hidden rounded-xl border border-border/60">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -471,11 +520,14 @@ export default function Encaminhamentos() {
               <TableBody>
                 {filteredEncaminhamentos.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
-                      <ArrowRightLeft className="h-12 w-12 mx-auto mb-4 opacity-20" />
-                      <p>{encaminhamentos.length === 0 ? 'Nenhum encaminhamento registrado' : 'Nenhum encaminhamento corresponde à busca e ao status selecionado'}</p>
-                      {encaminhamentos.length > 0 && (
-                        <Button size="sm" variant="outline" className="mt-2" onClick={() => { setSearchTerm(''); setStatusFilter('todos'); }}>
+                    <TableCell colSpan={8} className="py-12 text-center text-muted-foreground">
+                      <span aria-hidden="true" className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+                        <ArrowRightLeft className="h-7 w-7" />
+                      </span>
+                      <p className="font-semibold text-foreground">{encaminhamentos.length === 0 ? 'Nenhum encaminhamento registrado' : 'Nenhum resultado para esses filtros'}</p>
+                      <p className="mt-1 text-sm">{encaminhamentos.length === 0 ? 'Selecione um paciente para criar o primeiro encaminhamento' : 'Nenhum encaminhamento corresponde à busca e ao status selecionado'}</p>
+                      {temFiltro && (
+                        <Button size="sm" variant="outline" className="mt-4 rounded-full" onClick={limparFiltros}>
                           Limpar filtros
                         </Button>
                       )}
@@ -485,14 +537,17 @@ export default function Encaminhamentos() {
                   filteredEncaminhamentos.map((enc) => {
                     const statusCfg = STATUS_CONFIG[enc.status || 'pendente'] || STATUS_CONFIG.pendente;
                     const urgCfg = URGENCIA_CONFIG[enc.urgencia || 'normal'] || URGENCIA_CONFIG.normal;
+                    const nomePaciente = enc.paciente?.nome_social || enc.paciente?.nome || getPacienteNome(enc.paciente_id);
+                    const whatsapp = linkWhatsApp(enc.paciente?.telefone, mensagemWhatsApp(enc));
+                    const podeAtualizar = podeAtualizarEncaminhamento(enc);
                     return (
-                      <TableRow key={enc.id}>
-                        <TableCell className="text-sm">
+                      <TableRow key={enc.id} className="transition-colors hover:bg-[#F3F8FC]/70">
+                        <TableCell className="tabular-nums text-sm">
                           {enc.data_encaminhamento
                             ? format(parseDateOnly(enc.data_encaminhamento)!, 'dd/MM/yyyy')
                             : '—'}
                         </TableCell>
-                        <TableCell className="font-medium">{enc.paciente?.nome_social || enc.paciente?.nome || getPacienteNome(enc.paciente_id)}</TableCell>
+                        <TableCell className="font-medium">{nomePaciente}</TableCell>
                         <TableCell>
                           <div className="flex items-center gap-1.5">
                             <Stethoscope className="h-3.5 w-3.5 text-muted-foreground" />
@@ -503,31 +558,38 @@ export default function Encaminhamentos() {
                           {enc.medico_origem?.nome ? `${nomeMedico(enc.medico_origem.nome)}` : getMedicoNome(enc.medico_origem_id)}
                         </TableCell>
                         <TableCell className="hidden md:table-cell">
-                          <Badge className={cn(urgCfg.className)}>{urgCfg.label}</Badge>
+                          <Badge variant="outline" className={cn('rounded-full', urgCfg.className)}>{urgCfg.label}</Badge>
                         </TableCell>
                         <TableCell>
-                          <Badge className={cn(statusCfg.className)}>{statusCfg.label}</Badge>
+                          <Badge variant="outline" className={cn('rounded-full', statusCfg.className)}>{statusCfg.label}</Badge>
                         </TableCell>
                         <TableCell className="hidden lg:table-cell">
                           {enc.contra_referencia ? (
-                            <Badge className="bg-success/10 text-success">Sim</Badge>
+                            <Badge variant="outline" className="rounded-full border-success/30 bg-success/10 text-success">Sim</Badge>
                           ) : (
-                            <Badge variant="outline" className="text-muted-foreground">Não</Badge>
+                            <Badge variant="outline" className="rounded-full text-muted-foreground">Não</Badge>
                           )}
                         </TableCell>
                         <TableCell className="text-right">
-                          <div className="flex justify-end gap-1">
-                            <Button variant="ghost" size="icon" onClick={() => handleView(enc)} aria-label="Ver" disabled={isUpdating}>
-                              <Eye className="h-4 w-4" />
+                          <div className="flex flex-wrap items-center justify-end gap-1">
+                            {whatsapp && (
+                              <Button aria-label={`Avisar ${nomePaciente} pelo WhatsApp`} asChild variant="ghost" size="icon" className="h-9 w-9 rounded-full text-[#1080CA] hover:bg-[#1080CA]/10 hover:text-[#1080CA]">
+                                <a href={whatsapp} target="_blank" rel="noopener noreferrer" aria-label={`Avisar ${nomePaciente} pelo WhatsApp`} title="Avisar pelo WhatsApp">
+                                  <MessageCircle className="h-4 w-4" />
+                                </a>
+                              </Button>
+                            )}
+                            <Button variant="outline" className="h-9 gap-1.5 rounded-full text-xs" onClick={() => handleView(enc)} aria-label={`Ver encaminhamento de ${nomePaciente}`} disabled={isUpdating}>
+                              <Eye className="h-4 w-4" />Ver
                             </Button>
-                            {enc.status === 'pendente' && podeAtualizarEncaminhamento(enc) && (
-                              <Button variant="outline" size="sm" className="text-xs" onClick={() => handleUpdateEncStatus(enc.id, 'em_andamento')} disabled={isUpdating}>
+                            {enc.status === 'pendente' && podeAtualizar && (
+                              <Button className="h-9 gap-1.5 rounded-full bg-gradient-primary text-xs text-white hover:brightness-110" onClick={() => handleUpdateEncStatus(enc.id, 'em_andamento')} disabled={isUpdating} aria-label={`Iniciar encaminhamento de ${nomePaciente}`}>
                                 Iniciar
                               </Button>
                             )}
-                            {enc.status === 'em_andamento' && podeAtualizarEncaminhamento(enc) && (
-                              <Button variant="outline" size="sm" className="text-xs" onClick={() => { handleView(enc); }} disabled={isUpdating}>
-                                <Edit className="h-3 w-3 mr-1" />Contra-ref.
+                            {enc.status === 'em_andamento' && podeAtualizar && (
+                              <Button className="h-9 gap-1.5 rounded-full bg-gradient-primary text-xs text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)] hover:brightness-110" onClick={() => { handleView(enc); }} disabled={isUpdating} aria-label={`Registrar contra-referência de ${nomePaciente}`}>
+                                <Edit className="h-3.5 w-3.5" />Contra-ref.
                               </Button>
                             )}
                           </div>
@@ -568,13 +630,13 @@ export default function Encaminhamentos() {
                 </div>
                 <div>
                   <p className="text-muted-foreground text-xs">Urgência</p>
-                  <Badge className={cn(URGENCIA_CONFIG[selectedEnc.urgencia || 'normal']?.className)}>
+                  <Badge variant="outline" className={cn('rounded-full', URGENCIA_CONFIG[selectedEnc.urgencia || 'normal']?.className)}>
                     {URGENCIA_CONFIG[selectedEnc.urgencia || 'normal']?.label}
                   </Badge>
                 </div>
                 <div>
                   <p className="text-muted-foreground text-xs">Status</p>
-                  <Badge className={cn(STATUS_CONFIG[selectedEnc.status || 'pendente']?.className)}>
+                  <Badge variant="outline" className={cn('rounded-full', STATUS_CONFIG[selectedEnc.status || 'pendente']?.className)}>
                     {STATUS_CONFIG[selectedEnc.status || 'pendente']?.label}
                   </Badge>
                 </div>
@@ -664,7 +726,7 @@ export default function Encaminhamentos() {
                     size="sm"
                     onClick={handleSaveContraRef}
                     disabled={!contraRefText.trim() || isUpdating}
-                    className="gap-1.5"
+                    className="gap-1.5 rounded-full bg-gradient-primary text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)] hover:brightness-110"
                   >
                     {isUpdating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
                     Salvar e Concluir
@@ -678,17 +740,17 @@ export default function Encaminhamentos() {
           {selectedEnc && selectedEnc.status !== 'concluido' && selectedEnc.status !== 'cancelado' && podeAtualizarEncaminhamento(selectedEnc) && (
             <DialogFooter className="gap-2">
               {selectedEnc.status === 'pendente' && (
-                <Button variant="outline" size="sm" onClick={() => handleUpdateEncStatus(selectedEnc.id, 'em_andamento')} disabled={isUpdating}>
+                <Button variant="outline" size="sm" className="rounded-full" onClick={() => handleUpdateEncStatus(selectedEnc.id, 'em_andamento')} disabled={isUpdating}>
                   Marcar Em Andamento
                 </Button>
               )}
-              <Button variant="ghost" size="sm" className="text-destructive" onClick={() => handleUpdateEncStatus(selectedEnc.id, 'cancelado')} disabled={isUpdating}>
+              <Button variant="ghost" size="sm" className="rounded-full text-destructive" onClick={() => handleUpdateEncStatus(selectedEnc.id, 'cancelado')} disabled={isUpdating}>
                 Cancelar Encaminhamento
               </Button>
             </DialogFooter>
           )}
         </DialogContent>
       </Dialog>
-    </div>
+    </motion.div>
   );
 }

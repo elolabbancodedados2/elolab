@@ -6,10 +6,10 @@ const path = 'supabase/migrations/20261014220500_patrimonio_manutencao_equipamen
 describe('patrimônio e manutenção de equipamentos da clínica', () => {
   it('mantém ativos gerais separados dos analisadores cadastrados pelo laboratório', () => {
     const sql = readFileSync(path, 'utf8');
-    expect(sql).toMatch(/CREATE TABLE public\.clinic_equipment_assets/i);
-    expect(sql).toMatch(/CREATE TABLE public\.clinic_equipment_work_orders/i);
-    expect(sql).toMatch(/CREATE TABLE public\.clinic_equipment_documents/i);
-    expect(sql).toMatch(/CREATE TABLE public\.clinic_equipment_audit/i);
+    expect(sql).toMatch(/CREATE TABLE (?:IF NOT EXISTS )?public\.clinic_equipment_assets/i);
+    expect(sql).toMatch(/CREATE TABLE (?:IF NOT EXISTS )?public\.clinic_equipment_work_orders/i);
+    expect(sql).toMatch(/CREATE TABLE (?:IF NOT EXISTS )?public\.clinic_equipment_documents/i);
+    expect(sql).toMatch(/CREATE TABLE (?:IF NOT EXISTS )?public\.clinic_equipment_audit/i);
     expect(sql).toMatch(/CREATE POLICY clinic_equipment_docs_upload/i);
     expect(sql).toMatch(/CREATE TRIGGER clinic_equipment_block_room/i);
     expect(sql).toMatch(/protect_room_hygiene_room_release[\s\S]*?clinic_equipment_assets/i);

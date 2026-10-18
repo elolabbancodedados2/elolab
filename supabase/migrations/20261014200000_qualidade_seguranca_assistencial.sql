@@ -1,4 +1,4 @@
-CREATE TABLE public.clinical_safety_reports (
+CREATE TABLE IF NOT EXISTS public.clinical_safety_reports (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   clinic_id uuid NOT NULL REFERENCES public.clinicas(id) ON DELETE CASCADE,
   reporter_user_id uuid REFERENCES auth.users(id) ON DELETE SET NULL,
@@ -17,17 +17,17 @@ CREATE TABLE public.clinical_safety_reports (
   closed_at timestamptz,
   CHECK (status <> 'action_required' OR (assigned_to IS NOT NULL AND due_at IS NOT NULL))
 );
-CREATE INDEX clinical_safety_reports_clinic_status_created_idx
+CREATE INDEX IF NOT EXISTS clinical_safety_reports_clinic_status_created_idx
   ON public.clinical_safety_reports (clinic_id, status, created_at DESC);
-CREATE INDEX clinical_safety_reports_reporter_created_idx
+CREATE INDEX IF NOT EXISTS clinical_safety_reports_reporter_created_idx
   ON public.clinical_safety_reports (reporter_user_id, created_at DESC);
-CREATE INDEX clinical_safety_reports_assigned_due_idx
+CREATE INDEX IF NOT EXISTS clinical_safety_reports_assigned_due_idx
   ON public.clinical_safety_reports (assigned_to, due_at) WHERE assigned_to IS NOT NULL;
 ALTER TABLE public.clinical_safety_reports ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public.clinical_safety_reports FROM PUBLIC, anon, authenticated;
 GRANT ALL ON TABLE public.clinical_safety_reports TO service_role;
 
-CREATE TABLE public.clinical_safety_updates (
+CREATE TABLE IF NOT EXISTS public.clinical_safety_updates (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   report_id uuid NOT NULL REFERENCES public.clinical_safety_reports(id) ON DELETE CASCADE,
   clinic_id uuid NOT NULL REFERENCES public.clinicas(id) ON DELETE CASCADE,
@@ -38,12 +38,12 @@ CREATE TABLE public.clinical_safety_updates (
   corrective_action text NOT NULL DEFAULT '' CHECK (length(corrective_action) <= 3000),
   created_at timestamptz NOT NULL DEFAULT now()
 );
-CREATE INDEX clinical_safety_updates_report_created_idx ON public.clinical_safety_updates (report_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS clinical_safety_updates_report_created_idx ON public.clinical_safety_updates (report_id, created_at DESC);
 ALTER TABLE public.clinical_safety_updates ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public.clinical_safety_updates FROM PUBLIC, anon, authenticated;
 GRANT ALL ON TABLE public.clinical_safety_updates TO service_role;
 
-CREATE TABLE public.clinical_safety_access_audit (
+CREATE TABLE IF NOT EXISTS public.clinical_safety_access_audit (
   id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   clinic_id uuid NOT NULL REFERENCES public.clinicas(id) ON DELETE CASCADE,
   report_id uuid NOT NULL REFERENCES public.clinical_safety_reports(id) ON DELETE CASCADE,
@@ -51,7 +51,7 @@ CREATE TABLE public.clinical_safety_access_audit (
   action text NOT NULL CHECK (action IN ('list', 'view', 'create', 'update', 'correction_request', 'correction_review')),
   created_at timestamptz NOT NULL DEFAULT now()
 );
-CREATE INDEX clinical_safety_access_audit_report_created_idx ON public.clinical_safety_access_audit (report_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS clinical_safety_access_audit_report_created_idx ON public.clinical_safety_access_audit (report_id, created_at DESC);
 ALTER TABLE public.clinical_safety_access_audit ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public.clinical_safety_access_audit FROM PUBLIC, anon, authenticated;
 GRANT ALL ON TABLE public.clinical_safety_access_audit TO service_role;
@@ -171,7 +171,7 @@ $$;
 REVOKE ALL ON FUNCTION public.apply_clinical_safety_review(uuid, uuid, uuid, timestamptz, text, uuid, timestamptz, text, text) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.apply_clinical_safety_review(uuid, uuid, uuid, timestamptz, text, uuid, timestamptz, text, text) TO service_role;
 
-CREATE TABLE public.clinical_safety_correction_requests (
+CREATE TABLE IF NOT EXISTS public.clinical_safety_correction_requests (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   report_id uuid NOT NULL REFERENCES public.clinical_safety_reports(id) ON DELETE CASCADE,
   clinic_id uuid NOT NULL REFERENCES public.clinicas(id) ON DELETE CASCADE,
@@ -189,9 +189,9 @@ CREATE TABLE public.clinical_safety_correction_requests (
   reviewed_at timestamptz,
   CHECK ((status = 'pending' AND reviewed_by IS NULL AND reviewed_at IS NULL) OR (status <> 'pending' AND reviewed_at IS NOT NULL))
 );
-CREATE UNIQUE INDEX clinical_safety_one_pending_correction_idx
+CREATE UNIQUE INDEX IF NOT EXISTS clinical_safety_one_pending_correction_idx
   ON public.clinical_safety_correction_requests (report_id, requester_user_id) WHERE status = 'pending';
-CREATE INDEX clinical_safety_corrections_clinic_created_idx
+CREATE INDEX IF NOT EXISTS clinical_safety_corrections_clinic_created_idx
   ON public.clinical_safety_correction_requests (clinic_id, status, created_at DESC);
 ALTER TABLE public.clinical_safety_correction_requests ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public.clinical_safety_correction_requests FROM PUBLIC, anon, authenticated;
@@ -287,7 +287,8 @@ BEGIN
     report_id, clinic_id, actor_user_id, from_status, to_status, review_note, corrective_action
   ) SELECT v_request.report_id, p_clinic_id, p_actor_user_id, r.status, r.status, trim(p_review_note),
     CASE WHEN p_status = 'approved' THEN 'Retificação aprovada e aplicada com versão anterior preservada.' ELSE 'Pedido de retificação analisado e recusado.' END
-    FROM public.clinical_safety_reports r WHERE r.id = v_request.report_id AND r.clinic_id = p_clinic_id;
+    FROM public.clinical_safety_reports r WHERE r.id = v_request.report_id AND r.clinic_id = p_clinic_id
+ON CONFLICT DO NOTHING;
   INSERT INTO public.clinical_safety_access_audit (clinic_id, report_id, actor_user_id, action)
   VALUES (p_clinic_id, v_request.report_id, p_actor_user_id, 'correction_review');
 

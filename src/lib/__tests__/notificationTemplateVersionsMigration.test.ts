@@ -6,7 +6,7 @@ const migration = existsSync(migrationPath) ? readFileSync(migrationPath, 'utf8'
 
 describe('histórico de versões de modelos de comunicação', () => {
   it('guarda snapshots versionados sem dependência destrutiva do modelo', () => {
-    expect(migration).toMatch(/CREATE TABLE public\.notification_template_versions/i);
+    expect(migration).toMatch(/CREATE TABLE (?:IF NOT EXISTS )?public\.notification_template_versions/i);
     expect(migration).toMatch(/template_id uuid NOT NULL/i);
     expect(migration).toMatch(/revision integer NOT NULL/i);
     expect(migration).toMatch(/snapshot jsonb NOT NULL/i);

@@ -1,5 +1,5 @@
 -- Snapshots imutáveis dos modelos de comunicação, com autoria definida no banco.
-CREATE TABLE public.notification_template_versions (
+CREATE TABLE IF NOT EXISTS public.notification_template_versions (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   template_id uuid NOT NULL,
   clinica_id uuid REFERENCES public.clinicas(id) ON DELETE CASCADE,
@@ -13,11 +13,12 @@ CREATE TABLE public.notification_template_versions (
   UNIQUE (template_id, revision)
 );
 
-CREATE INDEX notification_template_versions_clinic_template_idx
+CREATE INDEX IF NOT EXISTS notification_template_versions_clinic_template_idx
   ON public.notification_template_versions (clinica_id, template_id, revision DESC);
 
 ALTER TABLE public.notification_template_versions ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS notification_template_versions_admin_read ON public.notification_template_versions;
 CREATE POLICY notification_template_versions_admin_read
   ON public.notification_template_versions
   FOR SELECT TO authenticated
@@ -42,7 +43,8 @@ SELECT
   'baseline',
   to_jsonb(template),
   'legacy'
-FROM public.notification_templates AS template;
+FROM public.notification_templates AS template
+ON CONFLICT (template_id, revision) DO NOTHING;
 
 CREATE OR REPLACE FUNCTION public.capture_notification_template_version()
 RETURNS trigger
@@ -110,6 +112,7 @@ $$;
 
 REVOKE ALL ON FUNCTION public.capture_notification_template_version() FROM PUBLIC, anon, authenticated;
 
+DROP TRIGGER IF EXISTS notification_template_version_capture ON public.notification_templates;
 CREATE TRIGGER notification_template_version_capture
   AFTER INSERT OR UPDATE OR DELETE ON public.notification_templates
   FOR EACH ROW EXECUTE FUNCTION public.capture_notification_template_version();

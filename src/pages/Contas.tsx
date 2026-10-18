@@ -16,14 +16,14 @@ export default function Contas() {
   return (
     <div className="space-y-4">
       <Tabs value={tab} onValueChange={value => setSearchParams(value === 'pagar' ? { tab: 'pagar' } : {}, { replace: true })} className="w-full">
-        <TabsList className="mx-auto grid w-full max-w-md grid-cols-2 rounded-xl border border-border bg-muted/60 p-1">
-          <TabsTrigger value="receber" className="gap-2">
+        <TabsList className="mx-auto grid w-full max-w-sm grid-cols-2 rounded-full border border-border/60 bg-muted/40 p-1 shadow-xs">
+          <TabsTrigger value="receber" className="gap-2 rounded-full data-[state=active]:bg-gradient-primary data-[state=active]:text-white data-[state=active]:shadow-sm">
             <BadgeDollarSign className="h-4 w-4" />
-            Contas a Receber
+            A Receber
           </TabsTrigger>
-          <TabsTrigger value="pagar" className="gap-2">
+          <TabsTrigger value="pagar" className="gap-2 rounded-full data-[state=active]:bg-gradient-primary data-[state=active]:text-white data-[state=active]:shadow-sm">
             <CreditCard className="h-4 w-4" />
-            Contas a Pagar
+            A Pagar
           </TabsTrigger>
         </TabsList>
 

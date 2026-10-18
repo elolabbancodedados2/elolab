@@ -37,6 +37,7 @@ END;
 $$;
 
 DROP TRIGGER IF EXISTS consentimentos_lgpd_clinica_da_ficha ON public.consentimentos_lgpd;
+DROP TRIGGER IF EXISTS consentimentos_lgpd_clinica_da_ficha ON public.consentimentos_lgpd;
 CREATE TRIGGER consentimentos_lgpd_clinica_da_ficha
   BEFORE INSERT OR UPDATE OF paciente_id, clinica_id ON public.consentimentos_lgpd
   FOR EACH ROW EXECUTE FUNCTION public.atribuir_clinica_ao_consentimento();

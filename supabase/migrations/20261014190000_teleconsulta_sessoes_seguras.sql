@@ -6,7 +6,7 @@ ALTER TABLE public.agendamentos ADD CONSTRAINT agendamentos_tipo_check CHECK (ti
   'coleta'::text, 'enfermagem'::text, 'vacina'::text, 'curativo'::text
 ]));
 
-CREATE TABLE public.teleconsulta_sessions (
+CREATE TABLE IF NOT EXISTS public.teleconsulta_sessions (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   clinica_id uuid NOT NULL REFERENCES public.clinicas(id) ON DELETE CASCADE,
   agendamento_id uuid NOT NULL REFERENCES public.agendamentos(id) ON DELETE CASCADE,
@@ -22,12 +22,12 @@ CREATE TABLE public.teleconsulta_sessions (
   closed_at timestamptz,
   UNIQUE (agendamento_id)
 );
-CREATE INDEX teleconsulta_sessions_expiry_idx ON public.teleconsulta_sessions (expires_at) WHERE status IN ('waiting', 'active');
+CREATE INDEX IF NOT EXISTS teleconsulta_sessions_expiry_idx ON public.teleconsulta_sessions (expires_at) WHERE status IN ('waiting', 'active');
 ALTER TABLE public.teleconsulta_sessions ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public.teleconsulta_sessions FROM PUBLIC, anon, authenticated;
 GRANT ALL ON TABLE public.teleconsulta_sessions TO service_role;
 
-CREATE TABLE public.teleconsulta_signals (
+CREATE TABLE IF NOT EXISTS public.teleconsulta_signals (
   id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   session_id uuid NOT NULL REFERENCES public.teleconsulta_sessions(id) ON DELETE CASCADE,
   sender text NOT NULL CHECK (sender IN ('provider', 'guest')),
@@ -35,7 +35,7 @@ CREATE TABLE public.teleconsulta_signals (
   payload jsonb NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now()
 );
-CREATE INDEX teleconsulta_signals_poll_idx ON public.teleconsulta_signals (session_id, id);
+CREATE INDEX IF NOT EXISTS teleconsulta_signals_poll_idx ON public.teleconsulta_signals (session_id, id);
 ALTER TABLE public.teleconsulta_signals ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public.teleconsulta_signals FROM PUBLIC, anon, authenticated;
 GRANT ALL ON TABLE public.teleconsulta_signals TO service_role;

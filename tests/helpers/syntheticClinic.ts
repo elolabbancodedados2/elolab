@@ -1,4 +1,5 @@
 import type { Page, Route } from '@playwright/test';
+import { pacienteCorresponde } from '../../src/lib/buscaPaciente';
 
 const TEST_USER_ID = '00000000-0000-4000-8000-000000000001';
 const TEST_CLINIC_ID = '00000000-0000-4000-8000-000000000002';
@@ -663,11 +664,13 @@ export async function installSyntheticClinic(page: Page, options: SyntheticClini
       return;
     }
 
-    if (pathname === '/rest/v1/pacientes' && method === 'GET') {
+    const isPatientSearch = pathname === '/rest/v1/rpc/buscar_pacientes_paginado' && method === 'POST';
+    if ((pathname === '/rest/v1/pacientes' && method === 'GET') || isPatientSearch) {
       const patient = {
         id: TEST_PATIENT_ID,
         clinica_id: TEST_CLINIC_ID,
         nome: 'Pessoa Exemplo QA',
+        ativo: true,
         nome_social: null,
         cpf: '000.000.000-00',
         data_nascimento: '1990-05-14',
@@ -700,7 +703,13 @@ export async function installSyntheticClinic(page: Page, options: SyntheticClini
       const matchesPatient = !requestedId
         || requestedId === `eq.${TEST_PATIENT_ID}`
         || requestedId === `in.(${TEST_PATIENT_ID})`;
-      const rows = matchesPatient ? [patient] : [];
+      let rows = matchesPatient ? [patient] : [];
+      if (isPatientSearch) {
+        const params = route.request().postDataJSON();
+        rows = rows.filter(row => params.p_status !== 'inativos'
+          && pacienteCorresponde(row, params.p_termo ?? ''));
+        rows = rows.slice(params.p_offset ?? 0, (params.p_offset ?? 0) + (params.p_limite ?? 21));
+      }
       await json(route, rows);
       return;
     }

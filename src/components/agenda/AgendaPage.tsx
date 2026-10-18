@@ -194,7 +194,7 @@ export function AgendaPage() {
     const ini = startOfWeek(startOfMonth(d), { weekStartsOn: 1 });
     return { inicio: format(ini, 'yyyy-MM-dd'), fim: format(addDays(ini, 41), 'yyyy-MM-dd') };
   }, [date, view]);
-  const agendaQuery = useAgendamentosPeriodo(periodo.inicio, periodo.fim, { enabled: !isMedicoOnly || !!myMedicoId });
+  const agendaQuery = useAgendamentosPeriodo(periodo.inicio, periodo.fim, { enabled: !isMedicoOnly || !!myMedicoId, resumoPaciente: true });
   const { data: allAppts = [], isLoading } = agendaQuery;
   const medicosQuery = useMedicos();
   const { data: medicos = [] } = medicosQuery;
@@ -372,6 +372,7 @@ export function AgendaPage() {
     return Object.entries(scheme.map)
       .map(([chave, color]) => ({ label: rotulo(chave), color }))
       .filter((item): item is { label: string; color: string } => !!item.label)
+      .filter((item, index, items) => items.findIndex(other => other.label === item.label && other.color === item.color) === index)
       .slice(0, 10);
   }, [scheme, medicoById, convenios, tipos, STATUS_CONHECIDOS]);
 

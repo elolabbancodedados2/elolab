@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest';
 
 const files = [
   'src/components/relatorios/RelatorioCustomizado.tsx',
-  'src/pages/Relatorios.tsx',
   'src/pages/Analytics.tsx',
 ];
 

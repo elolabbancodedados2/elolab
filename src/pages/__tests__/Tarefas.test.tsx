@@ -145,18 +145,18 @@ describe('Tarefas', () => {
     expect(screen.getByText('Confirmar agenda da manhã')).toBeInTheDocument();
   });
 
-  it('shows the linked patient without a link for doctors in list and Kanban views', () => {
+  it('opens the linked patient for doctors in list and Kanban views', () => {
     mocks.roles = ['medico'];
     const { unmount } = render(<MemoryRouter><Tarefas /></MemoryRouter>);
 
     expect(screen.getByText('Paciente Exemplo')).toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: /Paciente Exemplo/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Paciente Exemplo/ })).toHaveAttribute('href', '/pacientes?paciente=patient-1');
 
     unmount();
     window.matchMedia = mockMatchMedia(false);
     render(<MemoryRouter><Tarefas /></MemoryRouter>);
     expect(screen.getByText('Paciente Exemplo')).toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: /Paciente Exemplo/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Paciente Exemplo/ })).toHaveAttribute('href', '/pacientes?paciente=patient-1');
   });
 
   it('reopens a completed task by keyboard', () => {

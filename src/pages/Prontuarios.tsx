@@ -2,9 +2,8 @@ import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { formatDate, nomeMedico } from '@/lib/formatters';
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Search, FileText, Plus, Save, CalendarCheck, FileDown, History, Loader2,
+  Search, FileText, Plus, Save, CalendarCheck, FileDown, History, Loader2, RefreshCw,
   Heart, Thermometer, Activity, Scale, Ruler, Droplets,
   Stethoscope, Brain, Bone, Eye as EyeIcon, Pill, Paperclip,
   ClipboardList, AlertTriangle, User, Clock, ChevronDown, ChevronRight,
@@ -43,7 +42,6 @@ import { ProntuarioAdendos } from '@/components/clinical/ProntuarioAdendos';
 import { useMedicos, useAgendamentos, useAgendamentosPeriodo, useSupabaseQuery } from '@/hooks/useSupabaseData';
 import { useCurrentMedico } from '@/hooks/useCurrentMedico';
 import { supabase } from '@/integrations/supabase/client';
-import { agruparBaixasEstoque } from '@/lib/stockPrescriptionDeductions';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ErrorState } from '@/components/ErrorState';
 import { exportToFHIR, exportToXML } from '@/lib/clinicalExport';
@@ -51,7 +49,7 @@ import { ageFromDateOnly, parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dat
 import { useBuscaPacientes } from '@/hooks/useBuscaPacientes';
 import { PatientSearchResult } from '@/components/clinical/PatientSearchResult';
 import { mensagemDeErro } from '@/lib/erros';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { autorizarLeituraHistoricoPaciente, registrarAcessoProntuario, registrarExportacaoProntuarios } from '@/lib/prontuarioAudit';
 import { obterIdentificacaoAssinante } from '@/lib/prontuarioSigner';
 import { lerConfigsClinica } from '@/lib/configClinica';
@@ -237,27 +235,17 @@ function Section({ icon: Icon, title, children, collapsible = false }: {
         onClick={() => collapsible && setOpen(!open)}
         className="flex items-center gap-2 px-4 py-2.5 w-full hover:bg-muted/30 transition-colors"
       >
-        <Icon className="h-3.5 w-3.5 text-primary flex-shrink-0" />
+        <span className="h-8 w-8 rounded-xl bg-gradient-primary flex items-center justify-center text-white flex-shrink-0">
+          <Icon className="h-3.5 w-3.5" />
+        </span>
         <span className="text-xs font-bold text-foreground uppercase tracking-wider">{title}</span>
         {collapsible && (
-          <motion.div animate={{ rotate: open ? 180 : 0 }} className="ml-auto">
-            <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
-          </motion.div>
+          <ChevronDown className={`ml-auto h-3.5 w-3.5 text-muted-foreground transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
         )}
       </button>
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.15 }}
-            className="overflow-hidden"
-          >
-            <div className="px-4 pb-3 space-y-2">{children}</div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {open && (
+        <div className="px-4 pb-3 space-y-2">{children}</div>
+      )}
     </div>
   );
 }
@@ -607,9 +595,9 @@ function RelatedRecords({ pacienteId }: { pacienteId: string }) {
     setErro(null);
     let active = true;
     Promise.all([
-      supabase.from('exames').select('id, tipo_exame, status, data_solicitacao').eq('paciente_id', pacienteId).order('data_solicitacao', { ascending: false }).limit(10),
-      supabase.from('atestados').select('id, tipo, data_emissao, dias').eq('paciente_id', pacienteId).order('data_emissao', { ascending: false }).limit(10),
-      supabase.from('encaminhamentos').select('id, especialidade_destino, status, urgencia').eq('paciente_id', pacienteId).order('data_encaminhamento', { ascending: false }).limit(10),
+      supabase.from('exames').select('id, tipo_exame, status, data_solicitacao').eq('paciente_id', pacienteId).order('data_solicitacao', { ascending: false }).limit(15),
+      supabase.from('atestados').select('id, tipo, data_emissao, dias').eq('paciente_id', pacienteId).order('data_emissao', { ascending: false }).limit(15),
+      supabase.from('encaminhamentos').select('id, especialidade_destino, status, urgencia').eq('paciente_id', pacienteId).order('data_encaminhamento', { ascending: false }).limit(15),
     ]).then(([ex, at, en]) => {
       if (!active) return;
       if (ex.error || at.error || en.error) {
@@ -638,35 +626,58 @@ function RelatedRecords({ pacienteId }: { pacienteId: string }) {
     return 'bg-muted text-muted-foreground';
   };
 
-  const RecordItem = ({ icon: Icon, label, sub, badge, badgeClass }: any) => (
+  // Item 08 (P2): RecordItem com link de abertura
+  const RecordItem = ({ icon: Icon, label, sub, badge, badgeClass, href }: any) => (
     <div className="flex items-center justify-between border border-border/40 rounded-lg px-3 py-2 text-xs">
       <div className="flex items-center gap-2 min-w-0">
         <Icon className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
         <span className="font-medium truncate">{label}</span>
         {sub && <span className="text-xs text-muted-foreground">{sub}</span>}
       </div>
-      {badge && <Badge className={`text-xs px-1.5 py-0 ${badgeClass}`}>{badge}</Badge>}
+      <div className="flex items-center gap-1.5 flex-shrink-0">
+        {badge && <Badge className={`text-xs px-1.5 py-0 rounded-full ${badgeClass}`}>{badge}</Badge>}
+        {href && (
+          <Link to={href} className="h-7 px-2 rounded-full text-xs text-[#1080CA] border border-[#DCE6F2] hover:bg-[#EEF4FA] flex items-center gap-1 transition-colors">
+            <ExternalLink className="h-3 w-3" />Abrir
+          </Link>
+        )}
+      </div>
     </div>
   );
 
   return (
     <div className="space-y-5">
       <div className="space-y-1.5">
-        <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5"><TestTube className="h-3.5 w-3.5" /> Exames ({exames.length})</h4>
+        <div className="flex items-center justify-between">
+          <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5"><TestTube className="h-3.5 w-3.5" /> Exames ({exames.length})</h4>
+          <Link to={`/exames?paciente=${pacienteId}`} className="text-xs text-[#1080CA] hover:underline flex items-center gap-0.5">
+            Ver todos <ArrowRight className="h-3 w-3" />
+          </Link>
+        </div>
         {exames.length === 0 ? <p className="text-xs text-muted-foreground py-2">Nenhum exame</p> : exames.map(e => (
-          <RecordItem key={e.id} icon={TestTube} label={e.tipo_exame} sub={e.data_solicitacao ? format(parseDateOnly(e.data_solicitacao)!, 'dd/MM/yy') : ''} badge={e.status?.replace(/_/g, ' ')} badgeClass={sc(e.status)} />
+          <RecordItem key={e.id} icon={TestTube} label={e.tipo_exame} sub={e.data_solicitacao ? format(parseDateOnly(e.data_solicitacao)!, 'dd/MM/yy') : ''} badge={e.status?.replace(/_/g, ' ')} badgeClass={sc(e.status)} href={`/exames?paciente=${pacienteId}`} />
         ))}
       </div>
       <div className="space-y-1.5">
-        <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5"><FileCheck className="h-3.5 w-3.5" /> Atestados ({atestados.length})</h4>
+        <div className="flex items-center justify-between">
+          <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5"><FileCheck className="h-3.5 w-3.5" /> Atestados ({atestados.length})</h4>
+          <Link to={`/atestados?paciente=${pacienteId}`} className="text-xs text-[#1080CA] hover:underline flex items-center gap-0.5">
+            Ver todos <ArrowRight className="h-3 w-3" />
+          </Link>
+        </div>
         {atestados.length === 0 ? <p className="text-xs text-muted-foreground py-2">Nenhum atestado</p> : atestados.map(a => (
-          <RecordItem key={a.id} icon={FileCheck} label={a.tipo || 'Atestado'} sub={a.dias ? `(${a.dias}d)` : ''} badge={a.data_emissao ? format(parseDateOnly(a.data_emissao)!, 'dd/MM/yy') : ''} badgeClass="bg-muted text-muted-foreground" />
+          <RecordItem key={a.id} icon={FileCheck} label={a.tipo || 'Atestado'} sub={a.dias ? `(${a.dias}d)` : ''} badge={a.data_emissao ? format(parseDateOnly(a.data_emissao)!, 'dd/MM/yy') : ''} badgeClass="bg-muted text-muted-foreground" href={`/atestados?paciente=${pacienteId}`} />
         ))}
       </div>
       <div className="space-y-1.5">
-        <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5"><ArrowRight className="h-3.5 w-3.5" /> Encaminhamentos ({encaminhamentos.length})</h4>
+        <div className="flex items-center justify-between">
+          <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5"><ArrowRight className="h-3.5 w-3.5" /> Encaminhamentos ({encaminhamentos.length})</h4>
+          <Link to={`/encaminhamentos?paciente=${pacienteId}`} className="text-xs text-[#1080CA] hover:underline flex items-center gap-0.5">
+            Ver todos <ArrowRight className="h-3 w-3" />
+          </Link>
+        </div>
         {encaminhamentos.length === 0 ? <p className="text-xs text-muted-foreground py-2">Nenhum encaminhamento</p> : encaminhamentos.map(e => (
-          <RecordItem key={e.id} icon={ArrowRight} label={e.especialidade_destino} badge={e.status} badgeClass={sc(e.status)} />
+          <RecordItem key={e.id} icon={ArrowRight} label={e.especialidade_destino} badge={e.status} badgeClass={sc(e.status)} href={`/encaminhamentos?paciente=${pacienteId}`} />
         ))}
       </div>
     </div>
@@ -1350,78 +1361,9 @@ export default function Prontuarios() {
         );
         if (prescErr) throw prescErr;
 
-        // ─── Baixa de estoque ───
-        // NÃO roda no autosave. O autosave dispara a cada 60s e usava este
-        // mesmo caminho, debitando o estoque de novo a cada minuto enquanto o
-        // prontuário ficasse aberto. A idempotência real vem do índice único
-        // (prontuario_id, item_id) criado na migration 20260728020000. A baixa
-        // agora passa pelo RPC transacional, que serializa o item e grava o
-        // movimento junto com o novo saldo.
-        if (!silent) {
-          const baixasSolicitadas: Array<{ itemId: string; itemName: string; quantity: number }> = [];
-          for (const presc of validas) {
-            // Casamento por nome aproximado pode acertar o medicamento errado.
-            // Se houver mais de um candidato, não adivinhamos: registramos e
-            // deixamos a baixa para o operador fazer manualmente.
-            const { data: candidatos } = await supabase.from('estoque')
-              .select('id, quantidade, nome')
-              .eq('clinica_id', user.clinica_id)
-              .ilike('nome', `%${presc.medicamento}%`)
-              .gt('quantidade', 0)
-              .limit(2);
-
-            if (!candidatos || candidatos.length === 0) continue;
-            if (candidatos.length > 1) {
-              console.warn(
-                `Baixa de estoque ignorada: "${presc.medicamento}" casa com mais de um item.`
-              );
-              continue;
-            }
-
-            const estoqueItem = candidatos[0];
-            const qtdTexto = presc.quantidade.trim();
-            if (!qtdTexto || !/^\d+$/.test(qtdTexto) || Number(qtdTexto) <= 0) {
-              toast.warning(`Estoque não foi baixado: ${estoqueItem.nome}`, {
-                description: 'Informe uma quantidade inteira maior que zero na prescrição para registrar a baixa.',
-              });
-              continue;
-            }
-            const qtd = Number(qtdTexto);
-            baixasSolicitadas.push({
-              itemId: estoqueItem.id,
-              itemName: estoqueItem.nome,
-              quantity: qtd,
-            });
-          }
-
-          for (const baixaSolicitada of agruparBaixasEstoque(baixasSolicitadas)) {
-            const { data: baixa, error: movErr } = await (supabase as any).rpc(
-              'registrar_baixa_estoque',
-              {
-                p_item_id: baixaSolicitada.itemId,
-                p_quantidade: baixaSolicitada.quantity,
-                p_prontuario_id: prontuarioId,
-                p_usuario_id: user?.id || null,
-                p_motivo: `Prescrição — ${selectedPaciente?.nome || 'paciente'}`,
-              },
-            );
-
-            if (movErr) {
-              // Baixa duplicada é tratada dentro do RPC como no-op. Qualquer
-              // outro erro precisa aparecer, porque a transação inteira foi
-              // desfeita e o saldo continua inalterado.
-              toast.warning(`Estoque não foi baixado: ${baixaSolicitada.itemName}`, {
-                description: movErr.message,
-              });
-              continue;
-            }
-
-            // A função SQL já grava a movimentação e o saldo na mesma
-            // transação. O retorno é usado apenas para manter o fluxo
-            // explícito quando a chamada foi idempotente.
-            if (baixa?.[0]?.ja_baixado) continue;
-          }
-        }
+        // Item 01 (P1): baixa de estoque movida para dispensarNaClinica exclusivamente.
+        // Salvar, salvar automaticamente e imprimir receita não movimentam estoque;
+        // somente o botão "Dispensar na clínica" move o saldo (com auditoria).
       }
 
       // Leituras e edições são registradas pela RPC de acesso; criação e
@@ -1687,13 +1629,35 @@ export default function Prontuarios() {
       {erroMedicos && <ErrorState compact error={erroMedicos} title="Lista de médicos indisponível" description="Não é possível iniciar um atendimento ou assinar um prontuário sem carregar os dados do médico." onRetry={() => { void refetchMedicos(); }} />}
       {erroConvenios && <ErrorState compact error={erroConvenios} title="Convênios indisponíveis" description="A ficha pode ser consultada, mas o convênio do paciente não será identificado até atualizar os dados." onRetry={() => { void refetchConvenios(); }} />}
       <PageHeader
-        title="Prontuário Eletrônico"
-        description="Registro médico, evolução e prescrições do paciente"
+        title="Prontuários"
+        description={
+          selectedPacienteId && !pacienteSelecionadoQuery.isLoading && selectedPaciente
+            ? `${selectedPaciente.nome_social || selectedPaciente.nome} · ${pacienteProntuarios.length} evolução${pacienteProntuarios.length !== 1 ? 'ões' : ''}`
+            : `${rascunhosAbertos.length} rascunho${rascunhosAbertos.length !== 1 ? 's' : ''} em aberto · ${agendaHoje.length} paciente${agendaHoje.length !== 1 ? 's' : ''} hoje`
+        }
         icon={<ClipboardList />}
         actions={(
-          <Badge className="shrink-0 gap-1 rounded-full border-primary/20 bg-primary/10 px-2.5 py-1 text-xs text-primary">
-            <ShieldCheck className="h-3 w-3" />Acesso clínico
-          </Badge>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-9 w-9 rounded-full"
+              onClick={() => { void refetchProntuarios(); void agendaHojeQuery.refetch(); void rascunhosQuery.refetch(); }}
+              aria-label="Atualizar prontuários"
+            >
+              <RefreshCw className="h-4 w-4" />
+            </Button>
+            {selectedPaciente && (
+              <Button
+                onClick={() => handleNovoProntuario()}
+                disabled={!!erroMedicos || !!erroProntuarios}
+                className="rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110 gap-2"
+                size="sm"
+              >
+                <Plus className="h-4 w-4" />Novo Atendimento
+              </Button>
+            )}
+          </div>
         )}
       />
 
@@ -1718,6 +1682,54 @@ export default function Prontuarios() {
           </Button>
         </div>
       )}
+
+      {/* Indicator strip */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="rounded-2xl border-transparent bg-gradient-primary p-4 shadow-xs">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-xl bg-white/15 flex items-center justify-center flex-shrink-0">
+              <FileEdit className="h-5 w-5 text-white" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold tabular-nums text-white">{rascunhosAbertos.length}</p>
+              <p className="text-[11px] text-white/70">Rascunhos abertos</p>
+            </div>
+          </div>
+        </div>
+        <div className="rounded-2xl border border-border/60 bg-card p-4 shadow-xs">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0">
+              <CalendarCheck className="h-5 w-5 text-[#1080CA]" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold tabular-nums text-foreground">{agendaHoje.length}</p>
+              <p className="text-[11px] text-muted-foreground">Pacientes hoje</p>
+            </div>
+          </div>
+        </div>
+        <div className="rounded-2xl border border-border/60 bg-card p-4 shadow-xs">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-xl bg-success/10 flex items-center justify-center flex-shrink-0">
+              <BadgeCheck className="h-5 w-5 text-success" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold tabular-nums text-foreground">{pacienteProntuarios.filter(p => p.assinado).length || (selectedPacienteId ? 0 : '—')}</p>
+              <p className="text-[11px] text-muted-foreground">Assinados</p>
+            </div>
+          </div>
+        </div>
+        <div className="rounded-2xl border border-border/60 bg-card p-4 shadow-xs">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-xl bg-[#1080CA]/10 flex items-center justify-center flex-shrink-0">
+              <ClipboardList className="h-5 w-5 text-[#1080CA]" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold tabular-nums text-foreground">{selectedPacienteId ? pacienteProntuarios.length : '—'}</p>
+              <p className="text-[11px] text-muted-foreground">Evoluções</p>
+            </div>
+          </div>
+        </div>
+      </div>
 
       {/* Main layout: patient list + content */}
       <div className="grid gap-5 lg:grid-cols-12">
@@ -1758,7 +1770,7 @@ export default function Prontuarios() {
                   placeholder="Nome, CPF ou telefone"
                   value={searchTerm}
                   onChange={e => setSearchTerm(e.target.value)}
-                  className="pl-8 h-10 text-sm"
+                  className="h-10 rounded-full pl-8 text-sm focus-visible:ring-[#1080CA]"
                 />
               </div>
             </CardHeader>
@@ -1802,10 +1814,10 @@ export default function Prontuarios() {
                   </section>
                 )}
                 {medicoId && (
-                  <section aria-labelledby="open-medical-drafts" className="border-b border-[#DCE6F2] bg-[#F7F5FE] p-2.5">
+                  <section aria-labelledby="open-medical-drafts" className="border-b border-[#DCE6F2] bg-[#F3F8FC] p-2.5">
                     <div className="mb-2 flex items-center justify-between gap-2">
                       <h2 id="open-medical-drafts" className="text-xs font-bold text-[#111111]">Rascunhos em aberto</h2>
-                      <Badge variant="outline" className="h-5 border-[#D5CFF1] bg-white text-xs text-[#1080CA]">
+                      <Badge variant="outline" className="h-5 border-[#BFD8EE] bg-white text-xs text-[#1080CA]">
                         {rascunhosAbertos.length}
                       </Badge>
                     </div>
@@ -1824,7 +1836,7 @@ export default function Prontuarios() {
                               key={draft.id}
                               type="button"
                               variant="ghost"
-                              className="h-auto min-h-11 w-full justify-start whitespace-normal rounded-lg border border-[#DCE6F2] bg-white px-2.5 py-2 text-left hover:border-[#9CC7EC] hover:bg-[#F2F0FE]"
+                              className="h-auto min-h-11 w-full justify-start whitespace-normal rounded-lg border border-[#DCE6F2] bg-white px-2.5 py-2 text-left hover:border-[#9CC7EC] hover:bg-[#EEF4FA]"
                               onClick={() => {
                                 setRascunhoParaAbrir(draft);
                                 requestPatientContextChange(draft.paciente_id, 'picker');
@@ -1921,20 +1933,20 @@ export default function Prontuarios() {
               </CardContent>
             </Card>
           ) : (
-            <div className="grid min-w-0 gap-4 xl:grid-cols-12 xl:items-start">
-              <aside aria-label="Contexto clínico do paciente" className="min-w-0 space-y-3 xl:col-span-4 xl:sticky xl:top-4">
+            <div className="grid min-w-0 gap-4 2xl:grid-cols-12 2xl:items-start">{/* Item 11 (P2): 2xl breakpoint evita compressão da identificação em 1280px */}
+              <aside aria-label="Contexto clínico do paciente" className="min-w-0 space-y-3 2xl:col-span-4 2xl:sticky 2xl:top-4">
                 <FichaPaciente paciente={selectedPaciente} convenioNome={getConvenioNome(selectedPaciente.convenio_id)} />
                 <ClinicalSafetyPanel compact pacienteId={selectedPacienteId!} alergias={selectedPaciente.alergias} />
               </aside>
 
-              <section aria-label="Evoluções e ações do prontuário" className="min-w-0 space-y-4 xl:col-span-8">
+              <section aria-label="Evoluções e ações do prontuário" className="min-w-0 space-y-4 2xl:col-span-8">
               {/* Actions bar */}
               <div className="flex items-center gap-2">
-                <Button onClick={() => handleNovoProntuario()} size="sm" className="gap-1.5 rounded-xl" disabled={!!erroMedicos || !!erroProntuarios}>
+                <Button onClick={() => handleNovoProntuario()} size="sm" className="gap-1.5 rounded-full bg-gradient-primary text-white hover:brightness-110" disabled={!!erroMedicos || !!erroProntuarios}>
                   <Plus className="h-3.5 w-3.5" />Novo Atendimento
                 </Button>
                 <span className="text-xs text-muted-foreground flex-1">
-                  {pacienteProntuarios.length} evolução(ões) registrada(s)
+                  {pacienteProntuarios.length} evolução{pacienteProntuarios.length !== 1 ? 'ões' : ''} registrada{pacienteProntuarios.length !== 1 ? 's' : ''}
                 </span>
               </div>
 
@@ -1979,11 +1991,8 @@ export default function Prontuarios() {
                       ) : (
                         <div className="space-y-2">
                           {pacienteProntuarios.map((p, idx) => (
-                            <motion.div
+                            <div
                               key={p.id}
-                              initial={{ opacity: 0, y: 4 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              transition={{ delay: idx * 0.02 }}
                               role="button"
                               tabIndex={0}
                               className="group cursor-pointer rounded-xl border border-border/40 p-3.5 transition-colors hover:border-primary/30 hover:bg-primary/[0.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
@@ -2011,7 +2020,7 @@ export default function Prontuarios() {
                                 </div>
                                 <ChevronRight className="h-4 w-4 text-muted-foreground/50 group-hover:text-primary transition-colors flex-shrink-0 mt-1" />
                               </div>
-                            </motion.div>
+                            </div>
                           ))}
                         </div>
                       )}
@@ -2149,7 +2158,14 @@ export default function Prontuarios() {
         }}
       />}
       <Dialog open={isProntuarioOpen} onOpenChange={handleProntuarioOpenChange}>
-        <DialogContent className="max-w-6xl max-h-[95vh] overflow-hidden flex flex-col">
+        <DialogContent
+          className="max-w-6xl max-h-[95vh] overflow-hidden flex flex-col"
+          onEscapeKeyDown={(e) => {
+            // Item 05 (P1): Escape não descarta dados sem confirmação
+            if (salvandoProntuario) { e.preventDefault(); return; }
+            if (hasUnsavedChanges) { e.preventDefault(); setPerguntandoDescartar(true); }
+          }}
+        >
           <DialogHeader className="flex-shrink-0">
             <DialogTitle className="flex items-center justify-between flex-wrap gap-2">
               <span className="flex items-center gap-2 text-base">
@@ -2264,9 +2280,7 @@ export default function Prontuarios() {
 
           {/* Read-only banner */}
           {isReadOnly && (
-            <motion.div
-              initial={{ opacity: 0, y: -4 }}
-              animate={{ opacity: 1, y: 0 }}
+            <div
               className={`flex-shrink-0 flex items-center gap-2 px-3 py-2 rounded-xl border ${
                 isSigned ? 'bg-success/8 border-success/30' : 'bg-warning/8 border-warning/25'
               }`}
@@ -2282,7 +2296,7 @@ export default function Prontuarios() {
                   <PenLine className="h-3 w-3" />Solicitar Edição
                 </Button>
               )}
-            </motion.div>
+            </div>
           )}
 
           {erroPrescricoes && currentProntuario.id && (
@@ -2469,6 +2483,22 @@ export default function Prontuarios() {
                       <Pill className="h-3.5 w-3.5" />Receituário Digital
                     </span>
                     <div className="flex gap-1.5">
+                      {/* Item 07 (P2): gerar PDF da receita diretamente do prontuário */}
+                      {currentProntuario.id && (
+                        <Button variant="outline" size="sm" disabled={salvandoProntuario} onClick={async () => {
+                          if (!await auditarExportacaoPdf('PDF')) return;
+                          const md = medicos.find((m: any) => m.id === currentProntuario.medico_id);
+                          const pdf = await gerarProntuarioPDF(
+                            { nome: selectedPaciente?.nome || '', cpf: selectedPaciente?.cpf || undefined, dataNascimento: selectedPaciente?.data_nascimento || undefined, alergias: selectedPaciente?.alergias || [], convenio: getConvenioNome(selectedPaciente?.convenio_id), numeroCarteira: selectedPaciente?.numero_carteira || undefined },
+                            { nome: md?.nome || user?.nome || 'Médico', crm: md?.crm, especialidade: md?.especialidade },
+                            { id: currentProntuario.id, data: currentProntuario.data, queixaPrincipal: currentProntuario.queixa_principal, hipoteseDiagnostica: currentProntuario.hipotese_diagnostica, conduta: currentProntuario.conduta, sinaisVitais: sinaisVitais as unknown as Record<string, string> },
+                            prescricoes.filter(p => p.medicamento.trim())
+                          );
+                          downloadPDF(pdf, `receita-${selectedPaciente?.nome?.replace(/\s+/g, '-') || 'paciente'}`);
+                        }} className="text-xs h-6 gap-1">
+                          <Printer className="h-3 w-3" />Receita PDF
+                        </Button>
+                      )}
                       <Button variant="outline" size="sm" onClick={() => setShowProtocols(true)} className="text-xs h-6 gap-1"><CalendarCheck className="h-3 w-3" />Protocolos</Button>
                       <Button variant="outline" size="sm" onClick={handleAddPrescricao} className="text-xs h-6 gap-1"><Plus className="h-3 w-3" />Adicionar</Button>
                     </div>
@@ -2503,11 +2533,16 @@ export default function Prontuarios() {
                     Prescrição sai sem assinatura digital — imprima e assine, ou assine o PDF no gov.br
                   </p>
 
-                  {/* Drug Interaction Checker */}
+                  {/* Drug Interaction Checker — combina alergias do cadastro e da consulta (Item 02 / 16) */}
                   {prescricoes.filter(p => p.medicamento.trim()).length > 0 && (
                     <DrugInteractionChecker
                       medicamentos={prescricoes.filter(p => p.medicamento.trim()).map(p => p.medicamento.trim())}
-                      alergias={selectedPaciente?.alergias || []}
+                      alergias={[
+                        ...(selectedPaciente?.alergias || []),
+                        ...(currentProntuario.alergias_relatadas
+                          ? String(currentProntuario.alergias_relatadas).split(/[,;\n]/).map((s: string) => s.trim()).filter(Boolean)
+                          : []),
+                      ].filter((v, i, a) => a.indexOf(v) === i)}
                     />
                   )}
 
@@ -2584,12 +2619,9 @@ export default function Prontuarios() {
                     <p className="text-center text-muted-foreground py-10 text-xs">Nenhum registro anterior</p>
                   ) : (
                     <div className="space-y-2">
-                      {historicoEvolucoes.map((ev, idx) => (
-                        <motion.div
+                      {historicoEvolucoes.map((ev) => (
+                        <div
                           key={ev.id}
-                          initial={{ opacity: 0, x: -4 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          transition={{ delay: idx * 0.02 }}
                           className="border border-border/40 rounded-xl p-3 space-y-1.5 hover:bg-primary/[0.03] hover:border-primary/30 transition-colors cursor-pointer group"
                           role="button"
                           tabIndex={0}
@@ -2633,7 +2665,7 @@ export default function Prontuarios() {
                               {ev.sinais_vitais.temperatura && <Badge className="bg-warning/10 text-warning border-warning/20 text-xs px-1.5 py-0">T: {ev.sinais_vitais.temperatura}°C</Badge>}
                             </div>
                           )}
-                        </motion.div>
+                        </div>
                       ))}
                     </div>
                   )}

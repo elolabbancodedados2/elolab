@@ -29,6 +29,7 @@ END;
 $$;
 
 DROP TRIGGER IF EXISTS pacientes_limpar_confirmacao_contato ON public.pacientes;
+DROP TRIGGER IF EXISTS pacientes_limpar_confirmacao_contato ON public.pacientes;
 CREATE TRIGGER pacientes_limpar_confirmacao_contato
   BEFORE UPDATE OF telefone, email ON public.pacientes
   FOR EACH ROW EXECUTE FUNCTION public.limpar_confirmacao_contato_alterado();

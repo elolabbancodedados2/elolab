@@ -6,7 +6,7 @@ const path = 'supabase/migrations/20261014160000_historico_configuracoes_clinica
 describe('histórico de versões das configurações da clínica', () => {
   it('restringe snapshots às chaves administrativas versionadas e permite apenas leitura por admin da clínica', () => {
     const migration = readFileSync(path, 'utf8');
-    expect(migration).toMatch(/CREATE TABLE public\.configuracoes_clinica_versoes/i);
+    expect(migration).toMatch(/CREATE TABLE (?:IF NOT EXISTS )?public\.configuracoes_clinica_versoes/i);
     expect(migration).toMatch(/CHECK \(chave IN \('config_clinica', 'config_impressao', 'config_seguranca'\)\)/i);
     expect(migration).toMatch(/ALTER TABLE public\.configuracoes_clinica_versoes ENABLE ROW LEVEL SECURITY/i);
     expect(migration).toMatch(/FOR SELECT TO authenticated[\s\S]*get_my_clinica_id\(\)[\s\S]*is_admin\(auth\.uid\(\)\)/i);

@@ -12,10 +12,10 @@ describe('persistência segura das teleconsultas', () => {
 
   it('armazena hash, clínica e expiração; nega acesso direto do navegador às sessões e sinais', () => {
     const migration = readFileSync(path, 'utf8');
-    expect(migration).toMatch(/CREATE TABLE public\.teleconsulta_sessions/i);
+    expect(migration).toMatch(/CREATE TABLE (?:IF NOT EXISTS )?public\.teleconsulta_sessions/i);
     expect(migration).toMatch(/guest_token_hash text NOT NULL/i);
     expect(migration).toMatch(/expires_at timestamptz NOT NULL/i);
-    expect(migration).toMatch(/CREATE TABLE public\.teleconsulta_signals/i);
+    expect(migration).toMatch(/CREATE TABLE (?:IF NOT EXISTS )?public\.teleconsulta_signals/i);
     expect(migration).toMatch(/ALTER TABLE public\.teleconsulta_sessions ENABLE ROW LEVEL SECURITY/i);
     expect(migration).toMatch(/ALTER TABLE public\.teleconsulta_signals ENABLE ROW LEVEL SECURITY/i);
     expect(migration).toMatch(/REVOKE ALL ON TABLE public\.teleconsulta_sessions FROM PUBLIC, anon, authenticated/i);

@@ -3,7 +3,7 @@ BEGIN;
 ALTER TABLE public.pacientes
   ADD COLUMN IF NOT EXISTS ativo boolean NOT NULL DEFAULT true;
 
-CREATE TABLE public.paciente_status_eventos (
+CREATE TABLE IF NOT EXISTS public.paciente_status_eventos (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   paciente_id uuid NOT NULL REFERENCES public.pacientes(id) ON DELETE RESTRICT,
   clinica_id uuid NOT NULL REFERENCES public.clinicas(id) ON DELETE CASCADE,
@@ -16,12 +16,13 @@ CREATE TABLE public.paciente_status_eventos (
   ocorreu_em timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE INDEX paciente_status_eventos_paciente_data_idx
+CREATE INDEX IF NOT EXISTS paciente_status_eventos_paciente_data_idx
   ON public.paciente_status_eventos (clinica_id, paciente_id, ocorreu_em DESC);
 
 ALTER TABLE public.paciente_status_eventos ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.paciente_status_eventos FROM PUBLIC, anon, authenticated;
 GRANT SELECT ON public.paciente_status_eventos TO authenticated;
+DROP POLICY IF EXISTS paciente_status_eventos_select ON public.paciente_status_eventos;
 CREATE POLICY paciente_status_eventos_select ON public.paciente_status_eventos
   FOR SELECT TO authenticated
   USING (public.can_manage_data(auth.uid()) AND public.is_same_clinica(clinica_id));
@@ -45,6 +46,7 @@ END;
 $$;
 
 REVOKE ALL ON FUNCTION public.proteger_status_paciente() FROM PUBLIC, anon, authenticated;
+DROP TRIGGER IF EXISTS pacientes_proteger_status ON public.pacientes;
 CREATE TRIGGER pacientes_proteger_status
   BEFORE INSERT OR UPDATE OF ativo ON public.pacientes
   FOR EACH ROW EXECUTE FUNCTION public.proteger_status_paciente();
@@ -158,6 +160,7 @@ END;
 $$;
 
 REVOKE ALL ON FUNCTION public.impedir_agendamento_paciente_inativo() FROM PUBLIC, anon, authenticated;
+DROP TRIGGER IF EXISTS agendamentos_impedir_paciente_inativo ON public.agendamentos;
 CREATE TRIGGER agendamentos_impedir_paciente_inativo
   BEFORE INSERT OR UPDATE OF paciente_id, clinica_id, status, data, hora_inicio, hora_fim ON public.agendamentos
   FOR EACH ROW EXECUTE FUNCTION public.impedir_agendamento_paciente_inativo();
@@ -192,6 +195,7 @@ END;
 $$;
 
 REVOKE ALL ON FUNCTION public.impedir_fila_paciente_inativo() FROM PUBLIC, anon, authenticated;
+DROP TRIGGER IF EXISTS fila_atendimento_impedir_paciente_inativo ON public.fila_atendimento;
 CREATE TRIGGER fila_atendimento_impedir_paciente_inativo
   BEFORE INSERT OR UPDATE OF agendamento_id, clinica_id, status ON public.fila_atendimento
   FOR EACH ROW EXECUTE FUNCTION public.impedir_fila_paciente_inativo();
