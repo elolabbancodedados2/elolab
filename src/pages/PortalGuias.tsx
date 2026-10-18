@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { motion } from 'framer-motion';
 import { FileText, Loader2, CheckCircle2, AlertCircle, FlaskConical, Plus, X, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -104,7 +103,7 @@ export default function PortalGuias() {
   if (validating) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <Loader2 className="h-8 w-8 animate-spin text-[#1080CA]" />
       </div>
     );
   }
@@ -112,14 +111,14 @@ export default function PortalGuias() {
   if (!valid) {
     return (
       <div className="min-h-screen flex items-center justify-center p-6 bg-background">
-        <Card className="max-w-md w-full">
+        <Card className="max-w-md w-full rounded-2xl">
           <CardContent className="p-8 text-center space-y-3">
             {validationUnavailable ? (
               <>
                 <AlertCircle className="h-12 w-12 text-warning mx-auto" />
                 <h2 className="text-xl font-bold">Não foi possível validar o link</h2>
                 <p className="text-muted-foreground text-sm">Verifique sua conexão e tente novamente. Se o problema continuar, peça um novo link à clínica.</p>
-                <Button onClick={() => setValidationRetry(value => value + 1)} disabled={validating} className="mt-2">
+                <Button onClick={() => setValidationRetry(value => value + 1)} disabled={validating} className="mt-2 rounded-full bg-gradient-primary text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)] hover:brightness-110">
                   {validating && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                   Tentar novamente
                 </Button>
@@ -142,75 +141,75 @@ export default function PortalGuias() {
   if (success) {
     return (
       <div className="min-h-screen flex items-center justify-center p-6 bg-background">
-        <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}>
-          <Card className="max-w-md w-full">
+        <div className="animate-in fade-in zoom-in-95 duration-200">
+          <Card className="max-w-md w-full rounded-2xl">
             <CardContent className="p-8 text-center space-y-3">
-              <CheckCircle2 className="h-14 w-14 text-emerald-500 mx-auto" />
+              <CheckCircle2 className="h-14 w-14 text-success mx-auto" />
               <h2 className="text-2xl font-bold">Guia enviada!</h2>
               <p className="text-muted-foreground text-sm">
                 A clínica <strong>{clinicaNome}</strong> recebeu sua solicitação. Em breve entrarão em contato para agendar a coleta.
               </p>
-              <Button onClick={() => { setSuccess(false); setForm({ paciente_nome:'', paciente_cpf:'', paciente_nascimento:'', paciente_telefone:'', medico_externo_nome:'', medico_externo_crm:'', medico_externo_uf:'', medico_externo_especialidade:'', convenio_nome:'', numero_autorizacao:'', observacoes:'' }); setExames([{ nome: '' }]); }} className="mt-2">
+              <Button onClick={() => { setSuccess(false); setForm({ paciente_nome:'', paciente_cpf:'', paciente_nascimento:'', paciente_telefone:'', medico_externo_nome:'', medico_externo_crm:'', medico_externo_uf:'', medico_externo_especialidade:'', convenio_nome:'', numero_autorizacao:'', observacoes:'' }); setExames([{ nome: '' }]); }} className="mt-2 rounded-full bg-gradient-primary text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)] hover:brightness-110">
                 Enviar outra guia
               </Button>
             </CardContent>
           </Card>
-        </motion.div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-muted/30 py-6 px-4">
+    <div className="min-h-screen bg-[#F3F8FC] py-6 px-4">
       <div className="max-w-2xl mx-auto space-y-4">
-        <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="text-center">
-          <div className="inline-flex items-center justify-center h-14 w-14 rounded-full bg-primary/10 mb-3">
-            <FileText className="h-7 w-7 text-primary" />
+        <div className="text-center animate-in fade-in slide-in-from-top-2 duration-300">
+          <div className="inline-flex items-center justify-center h-14 w-14 rounded-full bg-gradient-primary shadow-md mb-3">
+            <FileText className="h-7 w-7 text-white" />
           </div>
           <h1 className="text-2xl font-bold">Envio de Guia para Coleta</h1>
           <p className="text-muted-foreground text-sm mt-1">{clinicaNome}</p>
-        </motion.div>
+        </div>
 
         <fieldset disabled={submitting} aria-busy={submitting} className="space-y-4 border-0 p-0 m-0 min-w-0">
-        <Card>
+        <Card className="rounded-2xl border-[#DCE6F2]">
           <CardHeader><CardTitle className="text-base">Dados do paciente</CardTitle></CardHeader>
           <CardContent className="space-y-3">
-            <div><Label>Nome completo *</Label><Input value={form.paciente_nome} onChange={(e) => setForm({ ...form, paciente_nome: e.target.value })} /></div>
+            <div><Label>Nome completo *</Label><Input className="rounded-xl focus-visible:ring-[#1080CA]" value={form.paciente_nome} onChange={(e) => setForm({ ...form, paciente_nome: e.target.value })} /></div>
             <div className="grid grid-cols-2 gap-3">
-              <div><Label>CPF</Label><Input inputMode="numeric" autoComplete="off" placeholder="000.000.000-00" value={form.paciente_cpf} onChange={(e) => setForm({ ...form, paciente_cpf: formatCPF(e.target.value) })} /></div>
-              <div><Label>Data nascimento</Label><Input type="date" value={form.paciente_nascimento} onChange={(e) => setForm({ ...form, paciente_nascimento: e.target.value })} /></div>
+              <div><Label>CPF</Label><Input className="rounded-xl focus-visible:ring-[#1080CA]" inputMode="numeric" autoComplete="off" placeholder="000.000.000-00" value={form.paciente_cpf} onChange={(e) => setForm({ ...form, paciente_cpf: formatCPF(e.target.value) })} /></div>
+              <div><Label>Data nascimento</Label><Input className="rounded-xl focus-visible:ring-[#1080CA]" type="date" value={form.paciente_nascimento} onChange={(e) => setForm({ ...form, paciente_nascimento: e.target.value })} /></div>
             </div>
-            <div><Label>Telefone (WhatsApp)</Label><Input value={form.paciente_telefone} onChange={(e) => setForm({ ...form, paciente_telefone: e.target.value })} /></div>
+            <div><Label>Telefone (WhatsApp)</Label><Input className="rounded-xl focus-visible:ring-[#1080CA]" value={form.paciente_telefone} onChange={(e) => setForm({ ...form, paciente_telefone: e.target.value })} /></div>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="rounded-2xl border-[#DCE6F2]">
           <CardHeader><CardTitle className="text-base">Médico solicitante</CardTitle></CardHeader>
           <CardContent className="space-y-3">
-            <div><Label>Nome</Label><Input value={form.medico_externo_nome} onChange={(e) => setForm({ ...form, medico_externo_nome: e.target.value })} /></div>
+            <div><Label>Nome</Label><Input className="rounded-xl focus-visible:ring-[#1080CA]" value={form.medico_externo_nome} onChange={(e) => setForm({ ...form, medico_externo_nome: e.target.value })} /></div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div className="col-span-2"><Label>CRM</Label><Input value={form.medico_externo_crm} onChange={(e) => setForm({ ...form, medico_externo_crm: e.target.value })} /></div>
-              <div><Label>UF</Label><Input maxLength={2} value={form.medico_externo_uf} onChange={(e) => setForm({ ...form, medico_externo_uf: e.target.value.toUpperCase() })} /></div>
+              <div className="col-span-2"><Label>CRM</Label><Input className="rounded-xl focus-visible:ring-[#1080CA]" value={form.medico_externo_crm} onChange={(e) => setForm({ ...form, medico_externo_crm: e.target.value })} /></div>
+              <div><Label>UF</Label><Input className="rounded-xl focus-visible:ring-[#1080CA]" maxLength={2} value={form.medico_externo_uf} onChange={(e) => setForm({ ...form, medico_externo_uf: e.target.value.toUpperCase() })} /></div>
             </div>
-            <div><Label>Especialidade</Label><Input value={form.medico_externo_especialidade} onChange={(e) => setForm({ ...form, medico_externo_especialidade: e.target.value })} /></div>
+            <div><Label>Especialidade</Label><Input className="rounded-xl focus-visible:ring-[#1080CA]" value={form.medico_externo_especialidade} onChange={(e) => setForm({ ...form, medico_externo_especialidade: e.target.value })} /></div>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="rounded-2xl border-[#DCE6F2]">
           <CardHeader><CardTitle className="text-base">Convênio</CardTitle></CardHeader>
           <CardContent className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
-              <div><Label>Convênio</Label><Input value={form.convenio_nome} onChange={(e) => setForm({ ...form, convenio_nome: e.target.value })} placeholder="Particular se não tiver" /></div>
-              <div><Label>Nº autorização</Label><Input value={form.numero_autorizacao} onChange={(e) => setForm({ ...form, numero_autorizacao: e.target.value })} /></div>
+              <div><Label>Convênio</Label><Input className="rounded-xl focus-visible:ring-[#1080CA]" value={form.convenio_nome} onChange={(e) => setForm({ ...form, convenio_nome: e.target.value })} placeholder="Particular se não tiver" /></div>
+              <div><Label>Nº autorização</Label><Input className="rounded-xl focus-visible:ring-[#1080CA]" value={form.numero_autorizacao} onChange={(e) => setForm({ ...form, numero_autorizacao: e.target.value })} /></div>
             </div>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="rounded-2xl border-[#DCE6F2]">
           <CardHeader>
             <div className="flex items-center justify-between">
-              <CardTitle className="text-base flex items-center gap-2"><FlaskConical className="h-4 w-4 text-primary" /> Exames solicitados *</CardTitle>
-              <Button size="sm" variant="outline" onClick={() => setExames((current) => [...current, { nome: '' }])} disabled={exames.length >= 50} className="gap-1.5">
+              <CardTitle className="text-base flex items-center gap-2"><FlaskConical className="h-4 w-4 text-[#1080CA]" /> Exames solicitados *</CardTitle>
+              <Button size="sm" variant="outline" onClick={() => setExames((current) => [...current, { nome: '' }])} disabled={exames.length >= 50} className="gap-1.5 rounded-full">
                 <Plus className="h-3.5 w-3.5" /> Adicionar
               </Button>
             </div>
@@ -219,12 +218,13 @@ export default function PortalGuias() {
             {exames.map((ex, i) => (
               <div key={i} className="flex gap-2">
                 <Input
+                  className="rounded-xl focus-visible:ring-[#1080CA]"
                   value={ex.nome}
                   onChange={(e) => setExames((current) => current.map((x, idx) => idx === i ? { nome: e.target.value } : x))}
                   placeholder={`Exame ${i + 1}`}
                 />
                 {exames.length > 1 && (
-                  <Button aria-label={`Remover exame ${i + 1}`} size="icon" variant="ghost" onClick={() => setExames((current) => current.filter((_, idx) => idx !== i))} className="h-10 w-10 shrink-0">
+                  <Button aria-label={`Remover exame ${i + 1}`} size="icon" variant="ghost" onClick={() => setExames((current) => current.filter((_, idx) => idx !== i))} className="h-10 w-10 shrink-0 rounded-full">
                     <X className="h-4 w-4" />
                   </Button>
                 )}
@@ -232,12 +232,12 @@ export default function PortalGuias() {
             ))}
             <div className="pt-2">
               <Label>Observações</Label>
-              <Textarea rows={3} value={form.observacoes} onChange={(e) => setForm({ ...form, observacoes: e.target.value })} />
+              <Textarea className="rounded-xl focus-visible:ring-[#1080CA]" rows={3} value={form.observacoes} onChange={(e) => setForm({ ...form, observacoes: e.target.value })} />
             </div>
           </CardContent>
         </Card>
 
-        <Button size="lg" className="w-full gap-2" onClick={enviar} disabled={submitting}>
+        <Button size="lg" className="w-full gap-2 rounded-full bg-gradient-primary text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)] hover:brightness-110" onClick={enviar} disabled={submitting}>
           {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
           Enviar guia
         </Button>
