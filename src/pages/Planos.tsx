@@ -27,6 +27,7 @@ function rotuloFrequencia(frequencia: string) {
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { toast } from 'sonner';
 import { descricaoComercialPlano } from '@/lib/planFeatures';
+import { cn } from '@/lib/utils';
 
 import { ptBR } from 'date-fns/locale';
 import { ErrorState } from '@/components/ErrorState';
@@ -41,17 +42,17 @@ const planConfig: Record<string, {
 }> = {
   'elolab-max': {
     icon: <Crown className="h-7 w-7" />,
-    gradient: 'from-info/5 via-transparent to-transparent',
-    iconBg: 'bg-primary/10 text-primary',
-    borderAccent: 'border-info/20 hover:border-info/50',
+    gradient: 'from-[#1080CA]/5 via-transparent to-transparent',
+    iconBg: 'bg-[#1080CA]/10 text-[#1080CA]',
+    borderAccent: 'border-[#DCE6F2] hover:border-[#9CC7EC]',
     btnClass: '',
   },
   'elolab-ultra': {
     icon: <Sparkles className="h-7 w-7" />,
-    gradient: 'from-success/5 via-transparent to-transparent',
-    iconBg: 'bg-success/10 text-success',
-    borderAccent: 'border-success/25 hover:border-success/55',
-    btnClass: 'bg-success text-success-foreground hover:bg-success/90 shadow-sm shadow-success/15 border-0',
+    gradient: 'from-[#1080CA]/10 via-transparent to-transparent',
+    iconBg: 'bg-[#111111] text-[#2ED5E7]',
+    borderAccent: 'border-[#BFD8EE] hover:border-[#1080CA]/60',
+    btnClass: 'bg-gradient-primary text-white hover:brightness-110 shadow-[0_4px_12px_rgba(16,128,202,0.35)] border-0 rounded-full',
   },
 };
 
@@ -139,8 +140,8 @@ export default function Planos() {
   if (isPlatformAdmin) {
     return (
       <div className="mx-auto max-w-2xl py-16">
-        <div className="rounded-2xl border bg-card p-8 text-center shadow-sm">
-          <Shield className="mx-auto mb-4 h-10 w-10 text-primary" />
+        <div className="rounded-2xl border border-border/60 bg-card p-8 text-center shadow-xs">
+          <Shield className="mx-auto mb-4 h-10 w-10 text-[#1080CA]" />
           <h1 className="text-2xl font-semibold">Acesso da plataforma</h1>
           <p className="mt-3 text-muted-foreground">
             Esta conta administra o EloLab e também pode acessar o app. Ela é isenta dos planos de cliente e não gera cobranças de assinatura.
@@ -163,13 +164,13 @@ export default function Planos() {
   }
 
   if (!planos?.length) {
-    return <div className="mx-auto max-w-xl rounded-xl border border-dashed p-8 text-center"><h2 className="font-semibold">Nenhum plano disponível no momento</h2><p className="mt-2 text-sm text-muted-foreground">Tente atualizar a lista em instantes.</p><Button className="mt-4" variant="outline" onClick={() => void refetchPlanos()}>Atualizar planos</Button></div>;
+    return <div className="mx-auto max-w-xl rounded-2xl border border-dashed border-border/60 p-8 text-center"><h2 className="font-semibold">Nenhum plano disponível no momento</h2><p className="mt-2 text-sm text-muted-foreground">Tente atualizar a lista em instantes.</p><Button className="mt-4 rounded-full" variant="outline" onClick={() => void refetchPlanos()}>Atualizar planos</Button></div>;
   }
 
   return (
     <div className="mx-auto max-w-5xl space-y-8 pb-12">
       {/* Header */}
-      <div className="space-y-5 border-b border-primary/10 pb-6 pt-2">
+      <div className="space-y-5 border-b border-border/60 pb-6 pt-2">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-foreground md:text-4xl">Planos e preços</h1>
           <p className="mt-2 max-w-2xl text-base text-muted-foreground">
@@ -177,7 +178,7 @@ export default function Planos() {
           </p>
         </div>
         {!hasActivePlan && elegibilidadeTesteConhecida && planos.some((plano) => Number(plano.trial_dias) > 0) && (
-          <div className="inline-flex items-center gap-2 rounded-xl border border-info/20 bg-info/5 px-4 py-2.5 text-sm font-medium text-info">
+          <div className="inline-flex items-center gap-2 rounded-full border border-[#BFD8EE] bg-[#F3F8FC] px-4 py-2.5 text-sm font-medium text-[#1080CA]">
             <Gift className="h-4 w-4" />
             {temTesteElegivel
               ? 'Há um teste grátis disponível para esta conta'
@@ -187,22 +188,22 @@ export default function Planos() {
       </div>
 
       {loadingBilling && (
-        <div role="status" className="flex items-center gap-2 rounded-xl border border-info/20 bg-info/5 px-4 py-3 text-sm text-info">
+        <div role="status" className="flex items-center gap-2 rounded-xl border border-[#BFD8EE] bg-[#F3F8FC] px-4 py-3 text-sm text-[#1080CA]">
           <Clock className="h-4 w-4" /> Confirmando a forma de cobrança da sua assinatura…
         </div>
       )}
       {erroAoConsultarCobranca && (
         <div role="alert" className="flex flex-col gap-3 rounded-xl border border-warning/30 bg-warning/10 p-4 text-sm sm:flex-row sm:items-center sm:justify-between">
           <span>Não foi possível confirmar a situação da cobrança. Atualize antes de gerenciar sua assinatura.</span>
-          <Button type="button" variant="outline" size="sm" onClick={() => void refetchBilling()} className="shrink-0">
+          <Button type="button" variant="outline" size="sm" onClick={() => void refetchBilling()} className="shrink-0 rounded-full">
             Atualizar cobrança
           </Button>
         </div>
       )}
       {pedidoAberto && (
-        <div role="status" className="flex flex-col gap-3 rounded-xl border border-info/20 bg-info/5 p-4 text-sm sm:flex-row sm:items-center sm:justify-between">
+        <div role="status" className="flex flex-col gap-3 rounded-xl border border-[#BFD8EE] bg-[#F3F8FC] p-4 text-sm sm:flex-row sm:items-center sm:justify-between">
           <span>Há um pagamento pendente para {planos?.find((plano) => plano.slug === pedidoAberto.plano_slug)?.nome ?? 'um plano'}. Conclua ou cancele esse pedido antes de escolher outro plano.</span>
-          <Button type="button" size="sm" className="shrink-0" onClick={() => irParaCheckout(pedidoAberto.plano_slug)}>
+          <Button type="button" size="sm" className="shrink-0 rounded-full bg-[#111111] text-white hover:bg-[#2b2b33]" onClick={() => irParaCheckout(pedidoAberto.plano_slug)}>
             Continuar pagamento
           </Button>
         </div>
@@ -210,10 +211,10 @@ export default function Planos() {
 
       {/* Trial Banner */}
       {isTrial && trialEnd && (
-        <div className="rounded-xl border border-primary/20 bg-gradient-to-r from-primary/5 to-transparent p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="rounded-2xl border border-[#1080CA]/30 shadow-[0_8px_24px_rgba(16,128,202,0.12)] p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-lg bg-primary/10">
-              <Clock className="h-5 w-5 text-primary" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-primary text-white">
+              <Clock className="h-5 w-5" />
             </div>
             <div>
               <p className="font-semibold text-foreground">Período de teste ativo</p>
@@ -226,7 +227,7 @@ export default function Planos() {
           </div>
           <Button
             onClick={() => navigate('/configuracoes?tab=plano')}
-            className="gap-2 shrink-0"
+            className="gap-2 shrink-0 rounded-full bg-[#111111] text-white hover:bg-[#2b2b33]"
           >
             Gerenciar teste
             <ArrowRight className="h-4 w-4" />
@@ -236,10 +237,10 @@ export default function Planos() {
 
       {/* Período pré-pago (Pix) */}
       {prePago && prePagoFim && (
-        <div className={`rounded-xl border p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 ${diasParaVencer !== null && diasParaVencer <= 7 ? 'border-warning/40 bg-warning/5' : 'border-primary/20 bg-gradient-to-r from-primary/5 to-transparent'}`}>
+        <div className={`rounded-2xl border p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 ${diasParaVencer !== null && diasParaVencer <= 7 ? 'border-warning/40 bg-warning/5' : 'border-[#1080CA]/30 shadow-[0_8px_24px_rgba(16,128,202,0.12)]'}`}>
           <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-lg bg-primary/10">
-              <Clock className="h-5 w-5 text-primary" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-primary text-white">
+              <Clock className="h-5 w-5" />
             </div>
             <div>
               <p className="font-semibold text-foreground">
@@ -253,8 +254,8 @@ export default function Planos() {
             </div>
           </div>
           <div className="flex gap-2 shrink-0">
-            <Button variant="outline" disabled={bloquearAcoesCobranca} onClick={() => irParaCheckout(prePago.plano_slug, '?metodo=pix')}>Pagar próximo período</Button>
-            <Button disabled={bloquearAcoesCobranca} onClick={() => irParaCheckout(prePago.plano_slug)} className="gap-2">Assinar no cartão <ArrowRight className="h-4 w-4" /></Button>
+            <Button variant="outline" className="rounded-full" disabled={bloquearAcoesCobranca} onClick={() => irParaCheckout(prePago.plano_slug, '?metodo=pix')}>Pagar próximo período</Button>
+            <Button disabled={bloquearAcoesCobranca} onClick={() => irParaCheckout(prePago.plano_slug)} className="gap-2 rounded-full bg-gradient-primary text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)] hover:brightness-110">Assinar no cartão <ArrowRight className="h-4 w-4" /></Button>
           </div>
         </div>
       )}
@@ -275,19 +276,20 @@ export default function Planos() {
           return (
             <div
               key={plano.id}
-              className={`
-                relative flex flex-col rounded-2xl border bg-card overflow-hidden transition-colors duration-200
-                ${config.borderAccent}
-                ${isHighlighted ? 'shadow-md ring-1 ring-success/10' : 'shadow-sm hover:shadow-md'}
-              `}
+              className={cn(
+                'relative flex flex-col overflow-hidden rounded-2xl border transition-colors duration-200',
+                isCurrentPlan
+                  ? 'border-transparent bg-[#111111] text-white shadow-lg'
+                  : cn('bg-card', config.borderAccent, isHighlighted ? 'shadow-md' : 'shadow-sm hover:shadow-md'),
+              )}
             >
               {/* Gradient overlay */}
-              <div className={`absolute inset-0 bg-gradient-to-b ${config.gradient} pointer-events-none`} />
+              {!isCurrentPlan && <div className={`absolute inset-0 bg-gradient-to-b ${config.gradient} pointer-events-none`} />}
 
               {/* Popular badge */}
               {isHighlighted && (
                 <div className="absolute top-0 right-0">
-                  <div className="bg-success text-success-foreground text-xs font-semibold px-4 py-1.5 rounded-bl-xl">
+                  <div className={cn('text-xs font-semibold px-4 py-1.5 rounded-bl-2xl', isCurrentPlan ? 'bg-white/15 text-white' : 'bg-[#111111] text-white')}>
                     Mais popular
                   </div>
                 </div>
@@ -295,37 +297,37 @@ export default function Planos() {
 
               {/* Header */}
               <div className="relative p-8 pb-4">
-                <div className={`inline-flex p-3 rounded-xl ${config.iconBg} mb-4`}>
+                <div className={cn('inline-flex p-3 rounded-xl mb-4', isCurrentPlan ? 'bg-white/10 text-[#2ED5E7]' : config.iconBg)}>
                   {config.icon}
                 </div>
-                <h2 className="text-2xl font-bold text-foreground">{plano.nome}</h2>
-                <p className="text-sm text-muted-foreground mt-1">{descricaoComercialPlano(plano.slug, plano.descricao)}</p>
+                <h2 className={cn('text-2xl font-bold', isCurrentPlan ? 'text-white' : 'text-foreground')}>{plano.nome}</h2>
+                <p className={cn('text-sm mt-1', isCurrentPlan ? 'text-white/70' : 'text-muted-foreground')}>{descricaoComercialPlano(plano.slug, plano.descricao)}</p>
               </div>
 
               {/* Price */}
               <div className="relative px-8 pb-6">
                 <div className="flex items-baseline gap-1">
-                  <span className="text-5xl font-extrabold tracking-tight text-foreground">
+                  <span className={cn('text-5xl font-extrabold tracking-tight', isCurrentPlan ? 'text-[#2ED5E7]' : 'text-foreground')}>
                     {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(plano.valor)}
                   </span>
-                  <span className="text-muted-foreground font-medium">
+                  <span className={cn('font-medium', isCurrentPlan ? 'text-white/70' : 'text-muted-foreground')}>
                     /{rotuloFrequencia(plano.frequencia)}
                   </span>
                 </div>
                 {!hasActivePlan && podeOferecerTrial && (
                   <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1.5">
-                    <Gift className="h-3.5 w-3.5 text-info" />
+                    <Gift className="h-3.5 w-3.5 text-[#1080CA]" />
                     {trialDias} dias grátis no cartão; depois, {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(plano.valor)} por {rotuloFrequencia(plano.frequencia)}
                   </p>
                 )}
               </div>
 
               {/* Divider */}
-              <div className="mx-8 border-t border-border/60" />
+              <div className={cn('mx-8 border-t', isCurrentPlan ? 'border-white/10' : 'border-border/60')} />
 
               {/* Features */}
               <div className="relative flex-1 p-8 pt-6">
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-4">
+                <p className={cn('text-xs font-semibold uppercase tracking-wider mb-4', isCurrentPlan ? 'text-white/60' : 'text-muted-foreground')}>
                   O que está incluído
                 </p>
                 <ul className="space-y-3">
@@ -333,13 +335,16 @@ export default function Planos() {
                     const isPremium = premiumFeatures.includes(feature);
                     return (
                       <li key={feature} className="flex items-start gap-3 text-sm">
-                        <div className={`mt-0.5 shrink-0 rounded-full p-0.5 ${isPremium ? 'bg-success/10 text-success' : 'bg-info/10 text-info'}`}>
+                        <div className={cn(
+                          'mt-0.5 shrink-0 rounded-full p-0.5',
+                          isCurrentPlan ? 'bg-white/15 text-[#2ED5E7]' : isPremium ? 'bg-success/10 text-success' : 'bg-[#1080CA]/10 text-[#1080CA]',
+                        )}>
                           <Check className="h-3.5 w-3.5" strokeWidth={3} />
                         </div>
-                        <span className="text-foreground/90">
+                        <span className={isCurrentPlan ? 'text-white/90' : 'text-foreground/90'}>
                           {featureLabels[feature] || feature}
                           {isPremium && (
-                            <Badge variant="outline" className="ml-2 text-[10px] px-1.5 py-0 border-success/25 text-success">
+                            <Badge variant="outline" className={cn('ml-2 rounded-full text-[10px] px-1.5 py-0', isCurrentPlan ? 'border-white/25 text-[#2ED5E7]' : 'border-success/25 text-success')}>
                               Exclusivo
                             </Badge>
                           )}
@@ -354,18 +359,18 @@ export default function Planos() {
               <div className="relative p-8 pt-2 flex flex-col gap-3">
                 {isCurrentPlan ? (
                   <>
-                    <Button className="w-full h-12 text-base" variant="outline" disabled>
+                    <Button className="w-full h-12 rounded-full text-base border-white/20 bg-white/5 text-white hover:bg-white/10" variant="outline" disabled>
                       <Shield className="h-4 w-4 mr-2" />
                       {isTrial ? 'Em Período de Teste' : 'Seu Plano Atual'}
                     </Button>
                     {prePago && (
-                      <p className="text-center text-xs text-muted-foreground">Sem renovação automática — nada a cancelar.</p>
+                      <p className="text-center text-xs text-white/60">Sem renovação automática — nada a cancelar.</p>
                     )}
                     {(isTrial || !prePago) && billing?.assinatura?.plano_slug === plano.slug && billing.assinatura.modalidade === 'recorrente' && !loadingBilling && !erroAoConsultarCobranca && (
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="w-full text-muted-foreground hover:text-destructive"
+                        className="w-full rounded-full text-white/70 hover:bg-white/10 hover:text-destructive"
                         onClick={() => setShowCancelDialog(true)}
                         disabled={cancelMutation.isPending}
                       >
@@ -379,7 +384,7 @@ export default function Planos() {
                     {!hasActivePlan && podeOferecerTrial && (
                       <Button
                         disabled={bloquearAcoesCobranca || pedidoDeOutroPlanoAberto}
-                        className={`w-full h-12 text-base font-semibold ${isHighlighted ? config.btnClass : ''}`}
+                        className={cn('w-full h-12 rounded-full text-base font-semibold', isHighlighted ? config.btnClass : 'border-border/60')}
                         variant={isHighlighted ? 'default' : 'outline'}
                         onClick={() => irParaCheckout(plano.slug, '?trial=1')}
                       >
@@ -389,8 +394,8 @@ export default function Planos() {
                     )}
                     <Button
                       disabled={bloquearAcoesCobranca || pedidoDeOutroPlanoAberto}
-                      className="w-full h-12 text-base"
-                      variant={hasActivePlan && isHighlighted ? 'default' : 'ghost'}
+                      className={cn('w-full h-12 rounded-full text-base', hasActivePlan && isHighlighted ? 'bg-gradient-primary text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)] hover:brightness-110' : hasActivePlan ? '' : 'bg-[#111111] text-white hover:bg-[#2b2b33]')}
+                      variant={hasActivePlan && isHighlighted ? 'default' : hasActivePlan ? 'ghost' : 'default'}
                       onClick={() => irParaCheckout(plano.slug)}
                     >
                       {hasActivePlan ? (isUpgrade ? 'Fazer upgrade' : 'Mudar para este plano') : 'Assinar agora'}
@@ -407,15 +412,15 @@ export default function Planos() {
       {/* Trust bar */}
       <div className="flex flex-wrap items-center justify-center gap-6 pt-4 text-sm text-muted-foreground">
         <a href="/politica-privacidade" className="flex items-center gap-2 underline underline-offset-4 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-          <Shield className="h-4 w-4 text-primary" />
+          <Shield className="h-4 w-4 text-[#1080CA]" />
           <span>Política de privacidade</span>
         </a>
         <div className="flex items-center gap-2">
-          <Clock className="h-4 w-4 text-primary" />
+          <Clock className="h-4 w-4 text-[#1080CA]" />
           <span>Cancelamento online pelo app</span>
         </div>
         <div className="flex items-center gap-2">
-          <CreditCard className="h-4 w-4 text-primary" />
+          <CreditCard className="h-4 w-4 text-[#1080CA]" />
           <span>Pagamento processado pelo Mercado Pago</span>
         </div>
       </div>
@@ -456,13 +461,13 @@ export default function Planos() {
           </div>
 
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={cancelMutation.isPending}>
+            <AlertDialogCancel className="rounded-full" disabled={cancelMutation.isPending}>
               Manter assinatura
             </AlertDialogCancel>
             <AlertDialogAction
               onClick={() => cancelMutation.mutate(cancelReason)}
               disabled={cancelMutation.isPending}
-              className="bg-destructive hover:bg-destructive/90"
+              className="rounded-full bg-destructive hover:bg-destructive/90"
             >
               {cancelMutation.isPending ? 'Cancelando...' : 'Confirmar cancelamento'}
             </AlertDialogAction>
