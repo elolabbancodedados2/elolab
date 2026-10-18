@@ -1,5 +1,6 @@
-import { Bot, Smartphone, MessageSquare } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useState } from 'react';
+import { Bot, Smartphone, MessageSquare, RefreshCw, Users, Clock } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   useWhatsAppAgents,
@@ -15,10 +16,13 @@ import { ConversationsTab } from '@/components/whatsapp/ConversationsTab';
 import { FeatureGate } from '@/components/FeatureGate';
 import { useUserPlan } from '@/hooks/useSubscriptionPlan';
 import { ErrorState } from '@/components/ErrorState';
+import { PageHeader } from '@/components/PageHeader';
 import { PageSkeleton } from '@/components/ui/loading-skeleton';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
+import { cn } from '@/lib/utils';
 
 export default function AgenteIA() {
+  const [activeTab, setActiveTab] = useState('sessions');
   const { profile } = useSupabaseAuth();
   const { hasFeature, isLoading: planLoading, isError: planError, error: planQueryError, refetch: refetchPlan } = useUserPlan();
   const acessoLiberado = !planLoading && hasFeature('agente_ia');
@@ -72,34 +76,95 @@ export default function AgenteIA() {
     return <ErrorState title="Não foi possível carregar o painel de WhatsApp" error={failedQuery.error} onRetry={() => { for (const query of queries) void query.refetch(); }} />;
   }
 
+  const sessoesConectadas = sessions.filter(s => s.status === 'connected').length;
+  const aguardandoHumano = conversations.filter(c => c.status === 'aguardando_humano').length;
+  const conversasAtivas = conversations.filter(c => c.status === 'ativo').length;
+  const agentesConfigurados = agents.length;
+
+  const indicadores = [
+    { key: 'conversations', label: 'Aguardando atendimento', value: aguardandoHumano, icon: Clock, escuro: true, color: '', bg: '' },
+    { key: 'sessions', label: 'Sessões conectadas', value: sessoesConectadas, icon: Smartphone, escuro: false, color: 'text-[#1080CA]', bg: 'bg-[#1080CA]/10' },
+    { key: 'conversations', label: 'Conversas ativas', value: conversasAtivas, icon: MessageSquare, escuro: false, color: 'text-success', bg: 'bg-success/10' },
+    { key: 'agents', label: 'Agentes configurados', value: agentesConfigurados, icon: Users, escuro: false, color: 'text-muted-foreground', bg: 'bg-muted' },
+  ];
+
   return (
     <FeatureGate feature="agente_ia" hasAccess={hasFeature('agente_ia')} requiredPlan="EloLab Ultra">
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 rounded-2xl border border-border bg-gradient-to-r from-background via-card to-accent p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
-        <div>
-          <h1 className="text-3xl font-bold flex items-center gap-2">
-            <span className="rounded-xl bg-primary/10 p-2.5 text-primary ring-1 ring-border"><Bot className="h-5 w-5" /></span>
-            Agente de IA - WhatsApp
-          </h1>
-          <p className="text-muted-foreground">
-            Configure e gerencie o atendimento automatizado via WhatsApp
-          </p>
+      <PageHeader
+        title="Agente de IA - WhatsApp"
+        description={`${sessoesConectadas} sessão(ões) conectada(s) · ${aguardandoHumano} conversa(s) aguardando atendimento humano`}
+        icon={<Bot />}
+        actions={(
+          <>
+            <Button
+              variant="outline"
+              size="icon"
+              className="shrink-0 rounded-full"
+              disabled={queries.some(query => query.isFetching)}
+              onClick={() => { for (const query of queries) void query.refetch(); }}
+              aria-label="Atualizar painel de WhatsApp"
+              title="Atualizar painel de WhatsApp"
+            >
+              <RefreshCw className="h-4 w-4" />
+            </Button>
+            <Button
+              className="rounded-full gap-2 bg-[#111111] text-white shadow-md hover:bg-[#2b2b33]"
+              onClick={() => setActiveTab('conversations')}
+            >
+              <MessageSquare className="h-4 w-4" /> Ver conversas
+            </Button>
+          </>
+        )}
+      />
+
+      {/* ─── Indicator strip ─── */}
+      <section aria-label="Indicadores do atendimento por WhatsApp">
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+          {indicadores.map((indicator, index) => {
+            const isActive = activeTab === indicator.key;
+            const Icon = indicator.icon;
+            return (
+              <button
+                key={`${indicator.key}-${index}`}
+                type="button"
+                aria-pressed={isActive}
+                onClick={() => setActiveTab(indicator.key)}
+                className={cn(
+                  'rounded-2xl border border-border/60 bg-card p-3 text-left shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA] focus-visible:ring-offset-2',
+                  indicator.escuro && 'border-transparent bg-[#111111] text-white',
+                  !indicator.escuro && isActive && 'ring-2 ring-[#1080CA]',
+                  indicator.escuro && isActive && 'ring-2 ring-[#2ED5E7]',
+                )}
+              >
+                <div className="flex items-center gap-3">
+                  <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', indicator.escuro ? 'bg-white/15' : indicator.bg)}>
+                    <Icon className={cn('h-5 w-5', indicator.escuro ? 'text-[#2ED5E7]' : indicator.color)} />
+                  </div>
+                  <div>
+                    <p className={cn('text-2xl font-bold tabular-nums', indicator.escuro ? 'text-[#2ED5E7]' : indicator.color)}>{indicator.value}</p>
+                    <p className={cn('text-[11px]', indicator.escuro ? 'text-white/70' : 'text-muted-foreground')}>{indicator.label}</p>
+                  </div>
+                </div>
+              </button>
+            );
+          })}
         </div>
-      </div>
+      </section>
 
       <StatsCards sessions={sessions} stats={stats} />
 
-      <Tabs defaultValue="sessions" className="space-y-4">
-        <TabsList className="h-auto w-full justify-start gap-1 overflow-x-auto rounded-xl border border-border bg-muted/60 p-1.5 text-muted-foreground">
-          <TabsTrigger value="sessions" className="flex items-center gap-2 rounded-lg">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+        <TabsList className="h-auto w-full flex-wrap justify-start gap-1 rounded-2xl border border-border bg-muted/60 p-1.5 text-muted-foreground">
+          <TabsTrigger value="sessions" className="min-h-11 gap-2 rounded-xl">
             <Smartphone className="h-4 w-4" />
             Sessões WhatsApp
           </TabsTrigger>
-          <TabsTrigger value="agents" className="flex items-center gap-2 rounded-lg">
+          <TabsTrigger value="agents" className="min-h-11 gap-2 rounded-xl">
             <Bot className="h-4 w-4" />
             Configurar Agentes
           </TabsTrigger>
-          <TabsTrigger value="conversations" className="flex items-center gap-2 rounded-lg">
+          <TabsTrigger value="conversations" className="min-h-11 gap-2 rounded-xl">
             <MessageSquare className="h-4 w-4" />
             Conversas
           </TabsTrigger>

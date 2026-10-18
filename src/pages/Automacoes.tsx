@@ -10,11 +10,15 @@ import {
   Play,
   DollarSign,
   Stethoscope,
+  ListChecks,
+  History,
+  Search,
   type LucideIcon,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
@@ -31,6 +35,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { ErrorState } from '@/components/ErrorState';
+import { PageHeader } from '@/components/PageHeader';
 import { cn } from '@/lib/utils';
 import { resumirErroFilaNotificacao } from '@/lib/notificationQueueErrorSummary';
 import { logAudit } from '@/lib/auditTrail';
@@ -204,6 +209,8 @@ export default function Automacoes() {
   const [automationChange, setAutomationChange] = useState<AutomationChangeRequest | null>(null);
   const [automationImpact, setAutomationImpact] = useState<{ pendingCount: number | null; loading: boolean; error: boolean }>({ pendingCount: null, loading: false, error: false });
   const [deliveryClaimsPage, setDeliveryClaimsPage] = useState(0);
+  const [filaStatusFilter, setFilaStatusFilter] = useState<string>('todos');
+  const [filaSearch, setFilaSearch] = useState('');
   const deliveryClaimsPageSize = 50;
   const runningLocks = useRef(new Set<string>());
   const togglingLocks = useRef(new Set<string>());
@@ -247,6 +254,23 @@ export default function Automacoes() {
   const allQueries = [logsQuery, settingsQuery, queueQuery, deliveryClaimsQuery, clientErrorsQuery];
   const isLoading = allQueries.some(query => query.isLoading);
   const failedQuery = allQueries.find(query => query.isError);
+
+  const getSettingByKeyForIndicator = (key: string) => settings.find(s => s.chave === key);
+  const automacoesAtivasCount = AUTOMATIONS.filter(automation => automation.available !== false).filter(automation => (
+    automation.configurable === false ? true : (getSettingByKeyForIndicator(automation.key)?.ativo ?? true)
+  )).length;
+  const filaPendenteCount = queue.filter(item => ['pendente', 'erro', 'incerto'].includes(item.status)).length;
+  const logsComErroCount = logs.filter(log => log.status === 'erro').length;
+  const errosAppCount = clientErrors.length;
+
+  const filaSearchTermo = filaSearch.trim().toLowerCase();
+  const filaFiltrada = queue.filter(item => {
+    if (filaStatusFilter !== 'todos' && item.status !== filaStatusFilter) return false;
+    if (filaSearchTermo && !(item.destinatario_nome || '').toLowerCase().includes(filaSearchTermo)) return false;
+    return true;
+  });
+  const filaTemFiltro = filaStatusFilter !== 'todos' || filaSearch.trim() !== '';
+  const limparFiltrosFila = () => { setFilaStatusFilter('todos'); setFilaSearch(''); };
 
   const updateQueueItem = async (id: string, action: 'retry' | 'cancel') => {
     if (queueLocks.current.has(id)) return;
@@ -462,23 +486,86 @@ export default function Automacoes() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col justify-between gap-4 rounded-2xl border border-border bg-gradient-to-r from-background via-card to-accent p-5 sm:flex-row sm:items-center sm:p-6">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground">Automações</h1>
-          <p className="text-muted-foreground">Gerencie as automações do sistema</p>
+      <PageHeader
+        title="Automações"
+        description={`${automacoesAtivasCount} automação(ões) ativa(s) · ${filaPendenteCount} mensagem(ns) na fila de envio`}
+        icon={<Bot />}
+        actions={(
+          <>
+            <Button
+              variant="outline"
+              size="icon"
+              className="shrink-0 rounded-full"
+              disabled={allQueries.some(query => query.isFetching)}
+              onClick={() => { for (const query of allQueries) void query.refetch(); }}
+              aria-label="Atualizar automações"
+              title="Atualizar automações"
+            >
+              <RefreshCw className="h-4 w-4" />
+            </Button>
+            <Button
+              className="rounded-full gap-2 bg-[#111111] text-white shadow-md hover:bg-[#2b2b33]"
+              onClick={() => changeTab('fila')}
+            >
+              <ListChecks className="h-4 w-4" /> Ver fila de envios
+            </Button>
+          </>
+        )}
+      />
+
+      {/* ─── Indicator strip ─── */}
+      <section aria-label="Indicadores de automações e mensagens">
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+          {[
+            { key: 'fila', label: 'Na fila de envio', value: filaPendenteCount, icon: ListChecks, escuro: true, color: '', bg: '' },
+            { key: 'automacoes', label: 'Automações ativas', value: automacoesAtivasCount, icon: Bot, escuro: false, color: 'text-[#1080CA]', bg: 'bg-[#1080CA]/10' },
+            { key: 'logs', label: 'Falhas nos logs', value: logsComErroCount, icon: AlertTriangle, escuro: false, color: 'text-warning', bg: 'bg-warning/10' },
+            { key: 'erros-app', label: 'Erros do navegador', value: errosAppCount, icon: XCircle, escuro: false, color: 'text-destructive', bg: 'bg-destructive/10' },
+          ].map((indicator) => {
+            const isActive = activeTab === indicator.key;
+            const Icon = indicator.icon;
+            return (
+              <button
+                key={indicator.key}
+                type="button"
+                aria-pressed={isActive}
+                onClick={() => changeTab(indicator.key)}
+                className={cn(
+                  'rounded-2xl border border-border/60 bg-card p-3 text-left shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA] focus-visible:ring-offset-2',
+                  indicator.escuro && 'border-transparent bg-[#111111] text-white',
+                  !indicator.escuro && isActive && 'ring-2 ring-[#1080CA]',
+                  indicator.escuro && isActive && 'ring-2 ring-[#2ED5E7]',
+                )}
+              >
+                <div className="flex items-center gap-3">
+                  <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', indicator.escuro ? 'bg-white/15' : indicator.bg)}>
+                    <Icon className={cn('h-5 w-5', indicator.escuro ? 'text-[#2ED5E7]' : indicator.color)} />
+                  </div>
+                  <div>
+                    <p className={cn('text-2xl font-bold tabular-nums', indicator.escuro ? 'text-[#2ED5E7]' : indicator.color)}>{indicator.value}</p>
+                    <p className={cn('text-[11px]', indicator.escuro ? 'text-white/70' : 'text-muted-foreground')}>{indicator.label}</p>
+                  </div>
+                </div>
+              </button>
+            );
+          })}
         </div>
-        <Button variant="outline" disabled={allQueries.some(query => query.isFetching)} onClick={() => { for (const query of allQueries) void query.refetch(); }}>
-          <RefreshCw className="h-4 w-4 mr-2" />
-          Atualizar
-        </Button>
-      </div>
+      </section>
 
       <Tabs value={activeTab} onValueChange={changeTab} className="space-y-6">
-        <TabsList className="h-auto w-full justify-start gap-1 overflow-x-auto rounded-xl border border-border bg-muted/60 p-1.5 text-muted-foreground">
-          <TabsTrigger value="automacoes">Automações</TabsTrigger>
-          <TabsTrigger value="logs">Logs de Execução</TabsTrigger>
-          <TabsTrigger value="fila">Fila de envios</TabsTrigger>
-          <TabsTrigger value="erros-app">Erros do app</TabsTrigger>
+        <TabsList className="h-auto w-full flex-wrap justify-start gap-1 rounded-2xl border border-border bg-muted/60 p-1.5 text-muted-foreground">
+          <TabsTrigger value="automacoes" className="min-h-11 gap-2 rounded-xl">
+            <Bot className="h-4 w-4" /> Automações
+          </TabsTrigger>
+          <TabsTrigger value="logs" className="min-h-11 gap-2 rounded-xl">
+            <History className="h-4 w-4" /> Logs de Execução
+          </TabsTrigger>
+          <TabsTrigger value="fila" className="min-h-11 gap-2 rounded-xl">
+            <ListChecks className="h-4 w-4" /> Fila de envios
+          </TabsTrigger>
+          <TabsTrigger value="erros-app" className="min-h-11 gap-2 rounded-xl">
+            <AlertTriangle className="h-4 w-4" /> Erros do app
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="automacoes">
@@ -501,12 +588,20 @@ export default function Automacoes() {
               const available = automation.available !== false;
               const Icon = automation.icon;
 
+              const statusBadge = !available
+                ? <Badge variant="muted" className="font-medium">Em desenvolvimento</Badge>
+                : automation.configurable === false
+                  ? <Badge variant="info" className="font-medium">Automática</Badge>
+                  : isActive
+                    ? <Badge variant="success" className="font-medium">Ativo</Badge>
+                    : <Badge variant="outline" className="font-medium text-muted-foreground">Inativo</Badge>;
+
               return (
-                <Card key={automation.key} className={!isActive ? 'opacity-60' : ''}>
+                <Card key={automation.key} className={cn('shadow-xs transition-all hover:shadow-md', !isActive && 'opacity-60')}>
                   <CardHeader className="pb-3">
                     <div className="flex items-start justify-between">
                       <div className="flex items-center gap-3">
-                        <div className={`p-2 rounded-lg bg-muted ${automation.color}`}>
+                        <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-muted', automation.color)}>
                           <Icon className="h-5 w-5" />
                         </div>
                         <div>
@@ -519,7 +614,7 @@ export default function Automacoes() {
                     </div>
                   </CardHeader>
                   <CardContent>
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2">
                         <Switch
                           checked={available && isActive}
@@ -531,14 +626,13 @@ export default function Automacoes() {
                           disabled={!available || automation.configurable === false || isToggling[automation.key]}
                           onCheckedChange={() => void requestAutomationChange(automation.key, isActive)}
                         />
-                        <span className="text-sm text-muted-foreground">
-                          {!available ? 'Em desenvolvimento' : automation.configurable === false ? 'Automática' : isActive ? 'Ativo' : 'Inativo'}
-                        </span>
+                        {statusBadge}
                       </div>
                       {automation.endpoint && (
                         <Button
                           variant="outline"
                           size="sm"
+                          className="rounded-full"
                           aria-label={`Executar ${automation.name}`}
                           disabled={!isActive || isRunning[automation.key]}
                           onClick={() => runAutomation(automation.key, automation.endpoint, (automation as any).automationKey)}
@@ -564,13 +658,13 @@ export default function Automacoes() {
         </TabsContent>
 
         <TabsContent value="logs">
-          <Card>
+          <Card className="shadow-xs">
             <CardHeader>
               <CardTitle>Histórico de Execuções</CardTitle>
               <CardDescription>Até 50 execuções recentes, com o detalhe de falhas quando disponível.</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="rounded-md border">
+              <div className="overflow-hidden overflow-x-auto rounded-xl border border-border/60">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -586,9 +680,13 @@ export default function Automacoes() {
                   <TableBody>
                     {logs.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                          <Bot className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                          <p>Nenhum log de execução encontrado</p>
+                        <TableCell colSpan={7} className="py-10 text-center">
+                          <div className="flex flex-col items-center gap-3">
+                            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+                              <History className="h-6 w-6" />
+                            </div>
+                            <p className="text-muted-foreground">Nenhum log de execução encontrado</p>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ) : (
@@ -628,18 +726,32 @@ export default function Automacoes() {
           </Card>
         </TabsContent>
         <TabsContent value="fila" className="space-y-4">
-          <p className="text-sm text-muted-foreground">Os cartões mostram o status das 100 mensagens mais recentes carregadas.</p>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
+          <p className="text-sm text-muted-foreground">Os cartões mostram o status das 100 mensagens mais recentes carregadas. Clique em um cartão para filtrar a lista.</p>
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
             {[
               ['Pendentes', 'pendente', Clock], ['Enviando', 'enviando', RefreshCw],
               ['Resultado incerto', 'incerto', AlertTriangle], ['Com erro', 'erro', AlertTriangle], ['Enviados', 'enviado', CheckCircle2],
               ['Cancelados', 'cancelado', XCircle],
-            ].map(([label, status, Icon]) => (
-              <Card key={String(status)}><CardContent className="flex items-center justify-between p-5">
-                <div><p className="text-sm text-muted-foreground">{String(label)}</p><p className="text-2xl font-bold">{queue.filter(item => item.status === status).length}</p></div>
-                <Icon className="h-5 w-5 text-muted-foreground" />
-              </CardContent></Card>
-            ))}
+            ].map(([label, status, Icon]) => {
+              const isActive = filaStatusFilter === status;
+              return (
+                <button
+                  key={String(status)}
+                  type="button"
+                  aria-pressed={isActive}
+                  onClick={() => setFilaStatusFilter(current => current === status ? 'todos' : String(status))}
+                  className={cn(
+                    'rounded-2xl border border-border/60 bg-card p-4 text-left shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA] focus-visible:ring-offset-2',
+                    isActive && 'ring-2 ring-[#1080CA]',
+                  )}
+                >
+                  <div className="flex items-center justify-between">
+                    <div><p className="text-sm text-muted-foreground">{String(label)}</p><p className="text-2xl font-bold tabular-nums">{queue.filter(item => item.status === status).length}</p></div>
+                    <Icon className="h-5 w-5 text-muted-foreground" />
+                  </div>
+                </button>
+              );
+            })}
           </div>
           {(claimsNeedingReview.length > 0 || deliveryClaimsPage > 0 || claimsHaveNextPage) && <Card className="border-amber-300 bg-amber-50/70">
             <CardHeader><CardTitle className="text-base">Reservas sem confirmação de envio</CardTitle><CardDescription>Confira os registros do provedor antes de repetir: o envio pode ter sido aceito antes de a função parar.</CardDescription></CardHeader>
@@ -655,11 +767,44 @@ export default function Automacoes() {
               </div>
             </CardContent>
           </Card>}
-          <Card>
-            <CardHeader><CardTitle>Últimos envios</CardTitle><CardDescription>Até 100 mensagens recentes, com tentativas e detalhes de falha.</CardDescription></CardHeader>
-            <CardContent><div className="overflow-x-auto rounded-md border"><Table>
+          <Card className="shadow-xs">
+            <CardHeader>
+              <CardTitle>Últimos envios</CardTitle>
+              <CardDescription>
+                {filaTemFiltro ? `${filaFiltrada.length} de ${queue.length} mensagens` : 'Até 100 mensagens recentes, com tentativas e detalhes de falha.'}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="relative flex-1 sm:max-w-xs">
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    aria-label="Buscar envios por destinatário"
+                    placeholder="Buscar por destinatário..."
+                    value={filaSearch}
+                    onChange={(event) => setFilaSearch(event.target.value)}
+                    className="h-10 rounded-full pl-9 focus-visible:ring-[#1080CA]"
+                  />
+                </div>
+                {filaTemFiltro && (
+                  <Button variant="ghost" size="sm" className="rounded-full text-muted-foreground" onClick={limparFiltrosFila}>
+                    Limpar filtros
+                  </Button>
+                )}
+              </div>
+              <div className="overflow-hidden overflow-x-auto rounded-xl border border-border/60"><Table>
               <TableHeader><TableRow><TableHead>Próxima tentativa / agendado</TableHead><TableHead>Canal</TableHead><TableHead>Destinatário</TableHead><TableHead>Status</TableHead><TableHead>Tentativas</TableHead><TableHead>Detalhe</TableHead><TableHead className="text-right">Ações</TableHead></TableRow></TableHeader>
-              <TableBody>{queue.length === 0 ? <TableRow><TableCell colSpan={7} className="py-8 text-center text-muted-foreground">Nenhum envio na fila</TableCell></TableRow> : queue.map(item => (
+              <TableBody>{filaFiltrada.length === 0 ? (
+                <TableRow><TableCell colSpan={7} className="py-10 text-center">
+                  <div className="flex flex-col items-center gap-3">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+                      <ListChecks className="h-6 w-6" />
+                    </div>
+                    <p className="text-muted-foreground">{filaTemFiltro ? 'Nenhum envio corresponde à busca ou ao filtro selecionado' : 'Nenhum envio na fila'}</p>
+                    {filaTemFiltro && <Button variant="link" onClick={limparFiltrosFila} className="h-auto">Limpar busca e filtro</Button>}
+                  </div>
+                </TableCell></TableRow>
+              ) : filaFiltrada.map(item => (
                 <TableRow key={item.id}>
                   <TableCell className="whitespace-nowrap text-sm">{formatarDataHora(item.agendado_para)}</TableCell>
                   <TableCell><Badge variant="outline">{item.tipo}</Badge></TableCell>
@@ -668,19 +813,29 @@ export default function Automacoes() {
                   <TableCell>{item.tentativas}/{item.max_tentativas}</TableCell>
                   <TableCell><p className="max-w-64 truncate text-xs text-muted-foreground" title={item.erro_mensagem ? resumirErroFilaNotificacao(item.erro_mensagem) : ''}>{item.erro_mensagem ? resumirErroFilaNotificacao(item.erro_mensagem) : '—'}</p></TableCell>
                   <TableCell><div className="flex justify-end gap-1">
-                    {(item.status === 'erro' || item.status === 'cancelado') && <Button size="sm" variant="outline" disabled={updatingQueue[item.id]} onClick={() => updateQueueItem(item.id, 'retry')}><RefreshCw className={cn('mr-1 h-3 w-3', updatingQueue[item.id] && 'animate-spin')} />Repetir</Button>}
-                    {(item.status === 'pendente' || item.status === 'erro') && <Button size="icon" variant="ghost" title="Cancelar" aria-label={`Cancelar envio para ${item.destinatario_nome || 'destinatário'}`} disabled={updatingQueue[item.id]} onClick={() => updateQueueItem(item.id, 'cancel')}><XCircle className="h-4 w-4" /></Button>}
+                    {(item.status === 'erro' || item.status === 'cancelado') && <Button size="sm" variant="outline" className="rounded-full" disabled={updatingQueue[item.id]} onClick={() => updateQueueItem(item.id, 'retry')}><RefreshCw className={cn('mr-1 h-3 w-3', updatingQueue[item.id] && 'animate-spin')} />Repetir</Button>}
+                    {(item.status === 'pendente' || item.status === 'erro') && <Button size="icon" variant="ghost" className="rounded-full" title="Cancelar" aria-label={`Cancelar envio para ${item.destinatario_nome || 'destinatário'}`} disabled={updatingQueue[item.id]} onClick={() => updateQueueItem(item.id, 'cancel')}><XCircle className="h-4 w-4" /></Button>}
                   </div></TableCell>
                 </TableRow>
               ))}</TableBody>
-            </Table></div></CardContent>
+            </Table></div>
+            </CardContent>
           </Card>
         </TabsContent>
         <TabsContent value="erros-app">
-          <Card><CardHeader><CardTitle>Erros reais do navegador</CardTitle><CardDescription>Falhas não tratadas registradas em produção, sem e-mails, documentos ou stack traces sensíveis.</CardDescription></CardHeader>
-            <CardContent><div className="overflow-x-auto rounded-md border"><Table>
+          <Card className="shadow-xs"><CardHeader><CardTitle>Erros reais do navegador</CardTitle><CardDescription>Falhas não tratadas registradas em produção, sem e-mails, documentos ou stack traces sensíveis.</CardDescription></CardHeader>
+            <CardContent><div className="overflow-hidden overflow-x-auto rounded-xl border border-border/60"><Table>
               <TableHeader><TableRow><TableHead>Data</TableHead><TableHead>Tipo</TableHead><TableHead>Rota</TableHead><TableHead>Mensagem</TableHead><TableHead>Versão</TableHead></TableRow></TableHeader>
-              <TableBody>{clientErrors.length === 0 ? <TableRow><TableCell colSpan={5} className="py-8 text-center text-muted-foreground">Nenhum erro capturado</TableCell></TableRow> : clientErrors.map(item => <TableRow key={item.id}>
+              <TableBody>{clientErrors.length === 0 ? (
+                <TableRow><TableCell colSpan={5} className="py-10 text-center">
+                  <div className="flex flex-col items-center gap-3">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+                      <AlertTriangle className="h-6 w-6" />
+                    </div>
+                    <p className="text-muted-foreground">Nenhum erro capturado</p>
+                  </div>
+                </TableCell></TableRow>
+              ) : clientErrors.map(item => <TableRow key={item.id}>
                 <TableCell className="whitespace-nowrap">{formatarDataHora(item.created_at)}</TableCell>
                 <TableCell><Badge variant="destructive">{item.tipo}</Badge></TableCell><TableCell>{item.rota || '—'}</TableCell>
                 <TableCell><p className="max-w-xl truncate" title={item.mensagem}>{item.mensagem}</p></TableCell><TableCell className="max-w-32 truncate text-xs">{item.release || '—'}</TableCell>
