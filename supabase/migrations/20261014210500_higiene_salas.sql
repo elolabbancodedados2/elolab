@@ -1,6 +1,6 @@
 BEGIN;
 
-CREATE TABLE public.room_hygiene_checklist_versions (
+CREATE TABLE IF NOT EXISTS public.room_hygiene_checklist_versions (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   clinic_id uuid NOT NULL REFERENCES public.clinicas(id) ON DELETE CASCADE,
   version integer NOT NULL CHECK (version > 0),
@@ -11,14 +11,14 @@ CREATE TABLE public.room_hygiene_checklist_versions (
   UNIQUE (clinic_id, version)
 );
 
-CREATE TABLE public.room_hygiene_active_checklists (
+CREATE TABLE IF NOT EXISTS public.room_hygiene_active_checklists (
   clinic_id uuid PRIMARY KEY REFERENCES public.clinicas(id) ON DELETE CASCADE,
   checklist_version_id uuid NOT NULL UNIQUE REFERENCES public.room_hygiene_checklist_versions(id),
   updated_by uuid NOT NULL REFERENCES auth.users(id),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE TABLE public.room_hygiene_executions (
+CREATE TABLE IF NOT EXISTS public.room_hygiene_executions (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   clinic_id uuid NOT NULL REFERENCES public.clinicas(id) ON DELETE CASCADE,
   room_id uuid NOT NULL REFERENCES public.salas(id) ON DELETE RESTRICT,
@@ -33,11 +33,11 @@ CREATE TABLE public.room_hygiene_executions (
          (submitted_at IS NOT NULL AND submitted_by IS NOT NULL AND jsonb_typeof(completed_items) = 'array'))
 );
 
-CREATE UNIQUE INDEX room_hygiene_one_open_execution_per_room
+CREATE UNIQUE INDEX IF NOT EXISTS room_hygiene_one_open_execution_per_room
   ON public.room_hygiene_executions (clinic_id, room_id) WHERE submitted_at IS NULL;
-CREATE INDEX room_hygiene_executions_by_clinic ON public.room_hygiene_executions (clinic_id, started_at DESC);
+CREATE INDEX IF NOT EXISTS room_hygiene_executions_by_clinic ON public.room_hygiene_executions (clinic_id, started_at DESC);
 
-CREATE TABLE public.room_hygiene_reviews (
+CREATE TABLE IF NOT EXISTS public.room_hygiene_reviews (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   clinic_id uuid NOT NULL REFERENCES public.clinicas(id) ON DELETE CASCADE,
   execution_id uuid NOT NULL REFERENCES public.room_hygiene_executions(id) ON DELETE RESTRICT,
@@ -47,7 +47,7 @@ CREATE TABLE public.room_hygiene_reviews (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE TABLE public.room_hygiene_audit (
+CREATE TABLE IF NOT EXISTS public.room_hygiene_audit (
   id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   clinic_id uuid NOT NULL REFERENCES public.clinicas(id) ON DELETE CASCADE,
   room_id uuid REFERENCES public.salas(id) ON DELETE SET NULL,
@@ -213,22 +213,31 @@ BEGIN
   RETURN NEW;
 END;
 $$;
+DROP TRIGGER IF EXISTS room_hygiene_require_approved_release ON public.salas;
 CREATE TRIGGER room_hygiene_require_approved_release BEFORE UPDATE OF status ON public.salas
   FOR EACH ROW EXECUTE FUNCTION public.protect_room_hygiene_room_release();
+DROP TRIGGER IF EXISTS room_hygiene_execution_immutable ON public.room_hygiene_executions;
 CREATE TRIGGER room_hygiene_execution_immutable BEFORE UPDATE ON public.room_hygiene_executions
   FOR EACH ROW EXECUTE FUNCTION public.protect_room_hygiene_immutability();
+DROP TRIGGER IF EXISTS room_hygiene_execution_no_delete ON public.room_hygiene_executions;
 CREATE TRIGGER room_hygiene_execution_no_delete BEFORE DELETE ON public.room_hygiene_executions
   FOR EACH ROW EXECUTE FUNCTION public.protect_room_hygiene_immutability();
+DROP TRIGGER IF EXISTS room_hygiene_checklist_no_update ON public.room_hygiene_checklist_versions;
 CREATE TRIGGER room_hygiene_checklist_no_update BEFORE UPDATE ON public.room_hygiene_checklist_versions
   FOR EACH ROW EXECUTE FUNCTION public.protect_room_hygiene_immutability();
+DROP TRIGGER IF EXISTS room_hygiene_checklist_no_delete ON public.room_hygiene_checklist_versions;
 CREATE TRIGGER room_hygiene_checklist_no_delete BEFORE DELETE ON public.room_hygiene_checklist_versions
   FOR EACH ROW EXECUTE FUNCTION public.protect_room_hygiene_immutability();
+DROP TRIGGER IF EXISTS room_hygiene_review_no_update ON public.room_hygiene_reviews;
 CREATE TRIGGER room_hygiene_review_no_update BEFORE UPDATE ON public.room_hygiene_reviews
   FOR EACH ROW EXECUTE FUNCTION public.protect_room_hygiene_immutability();
+DROP TRIGGER IF EXISTS room_hygiene_review_no_delete ON public.room_hygiene_reviews;
 CREATE TRIGGER room_hygiene_review_no_delete BEFORE DELETE ON public.room_hygiene_reviews
   FOR EACH ROW EXECUTE FUNCTION public.protect_room_hygiene_immutability();
+DROP TRIGGER IF EXISTS room_hygiene_audit_no_update ON public.room_hygiene_audit;
 CREATE TRIGGER room_hygiene_audit_no_update BEFORE UPDATE ON public.room_hygiene_audit
   FOR EACH ROW EXECUTE FUNCTION public.protect_room_hygiene_immutability();
+DROP TRIGGER IF EXISTS room_hygiene_audit_no_delete ON public.room_hygiene_audit;
 CREATE TRIGGER room_hygiene_audit_no_delete BEFORE DELETE ON public.room_hygiene_audit
   FOR EACH ROW EXECUTE FUNCTION public.protect_room_hygiene_immutability();
 

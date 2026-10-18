@@ -1,6 +1,6 @@
 BEGIN;
 
-CREATE TABLE public.documentos_portal_paciente (
+CREATE TABLE IF NOT EXISTS public.documentos_portal_paciente (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   anexo_id uuid NOT NULL UNIQUE REFERENCES public.anexos_prontuario(id) ON DELETE CASCADE,
   paciente_id uuid NOT NULL REFERENCES public.pacientes(id) ON DELETE CASCADE,
@@ -18,12 +18,13 @@ CREATE TABLE public.documentos_portal_paciente (
   )
 );
 
-CREATE INDEX documentos_portal_paciente_publicados_idx
+CREATE INDEX IF NOT EXISTS documentos_portal_paciente_publicados_idx
   ON public.documentos_portal_paciente (clinica_id, paciente_id, publicado, validade_ate);
 
 ALTER TABLE public.documentos_portal_paciente ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public.documentos_portal_paciente FROM PUBLIC, anon, authenticated;
 GRANT SELECT ON TABLE public.documentos_portal_paciente TO authenticated;
+DROP POLICY IF EXISTS documentos_portal_paciente_select ON public.documentos_portal_paciente;
 CREATE POLICY documentos_portal_paciente_select ON public.documentos_portal_paciente
   FOR SELECT TO authenticated
   USING (

@@ -1,6 +1,6 @@
 BEGIN;
 
-CREATE TABLE public.fila_atendimento_eventos (
+CREATE TABLE IF NOT EXISTS public.fila_atendimento_eventos (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   clinica_id uuid NOT NULL REFERENCES public.clinicas(id) ON DELETE CASCADE,
   fila_id uuid NOT NULL,
@@ -15,12 +15,13 @@ CREATE TABLE public.fila_atendimento_eventos (
   atendimento_reaberto boolean NOT NULL DEFAULT false
 );
 
-CREATE INDEX fila_atendimento_eventos_clinica_data_idx
+CREATE INDEX IF NOT EXISTS fila_atendimento_eventos_clinica_data_idx
   ON public.fila_atendimento_eventos (clinica_id, ocorreu_em DESC);
 
 ALTER TABLE public.fila_atendimento_eventos ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.fila_atendimento_eventos FROM PUBLIC, anon, authenticated;
 GRANT SELECT ON public.fila_atendimento_eventos TO authenticated;
+DROP POLICY IF EXISTS fila_atendimento_eventos_select ON public.fila_atendimento_eventos;
 CREATE POLICY fila_atendimento_eventos_select ON public.fila_atendimento_eventos
   FOR SELECT TO authenticated
   USING (public.can_manage_data(auth.uid()) AND public.is_same_clinica(clinica_id));
