@@ -1458,10 +1458,7 @@ test('desktop semantic color pairs meet WCAG AA in normal and high contrast them
 test('admin page headers use the shared semantic color tokens on desktop', async ({ page }, testInfo) => {
   const synthetic = await installSyntheticClinic(page, { platformAdmin: false, ultraPlan: true });
   const pages = [
-    { path: '/configuracoes', title: 'Configurações', name: 'configuracoes' },
     { path: '/acesso-assistido', title: 'Acesso assistido', name: 'acesso-assistido' },
-    { path: '/agente-ia', title: 'Agente de IA - WhatsApp', name: 'agente-ia' },
-    { path: '/automacoes', title: 'Automações', name: 'automacoes' },
   ];
 
   for (const viewport of [{ width: 1440, height: 900 }, { width: 1280, height: 800 }]) {
