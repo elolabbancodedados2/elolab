@@ -1,12 +1,12 @@
 import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { Link as RouterLink } from 'react-router-dom';
 import { PacienteCombobox } from '@/components/patients/PacienteCombobox';
 import { ActionableEmptyState } from '@/components/ActionableEmptyState';
+import { PageHeader } from '@/components/PageHeader';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -58,16 +58,6 @@ const kanbanColumns = [
 
 const categorias = ['Administrativo', 'Clínico', 'Financeiro', 'TI', 'Manutenção', 'RH', 'Outro'];
 
-const fadeUp = {
-  hidden: { opacity: 0, y: 12 },
-  visible: (i = 0) => ({
-    opacity: 1, y: 0,
-    transition: { delay: i * 0.04, duration: 0.35, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] },
-  }),
-};
-
-const stagger = { hidden: {}, visible: { transition: { staggerChildren: 0.05 } } };
-
 const tarefaAberta = (tarefa: any) => tarefa.status !== 'concluida' && tarefa.status !== 'cancelada';
 const tarefaVencida = (tarefa: any, hoje: string) =>
   Boolean(tarefa.data_vencimento && tarefa.data_vencimento < hoje && tarefaAberta(tarefa));
@@ -113,7 +103,7 @@ function KanbanCard({ tarefa, hoje, onUpdate, onDelete, onEdit, onAssumir, onDra
   const venceHoje = tarefaDeHoje(tarefa, hoje);
 
   return (
-    <motion.div layout initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}>
+    <div className="animate-in fade-in zoom-in-95 duration-200">
       <div
         draggable={draggable}
         onDragStart={draggable ? (e) => onDragStart(e, tarefa.id) : undefined}
@@ -203,7 +193,7 @@ function KanbanCard({ tarefa, hoje, onUpdate, onDelete, onEdit, onAssumir, onDra
           </div>
         </div>
       </div>
-    </motion.div>
+    </div>
   );
 }
 
@@ -216,7 +206,7 @@ function TarefaCard({ tarefa, hoje, onUpdate, onDelete, onEdit, onAssumir, canOp
   const StatusIcon = sc.icon;
 
   return (
-    <motion.div variants={fadeUp} layout>
+    <div className="animate-in fade-in slide-in-from-bottom-1 duration-300">
       <Card className={cn(
         'group rounded-2xl border-border/60 border-l-4 bg-card shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:border-[#1080CA]/40 hover:shadow-md',
         pc.stripe,
@@ -311,7 +301,7 @@ function TarefaCard({ tarefa, hoje, onUpdate, onDelete, onEdit, onAssumir, canOp
           </div>
         </CardContent>
       </Card>
-    </motion.div>
+    </div>
   );
 }
 
@@ -591,17 +581,12 @@ export default function Tarefas() {
   return (
     <div className="space-y-5 pb-8">
       {/* Header */}
-      <section className="relative isolate overflow-hidden rounded-[22px] border border-border/60 bg-card p-5 shadow-xs sm:p-7">
-        <div aria-hidden="true" className="pointer-events-none absolute -right-10 -top-20 h-56 w-56 rounded-full bg-gradient-primary opacity-[0.12] blur-2xl" />
-        <div className="relative flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
-          <div className="max-w-xl">
-            <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.16em] text-[#1080CA]">Rotina da clínica</p>
-            <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
-              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-primary text-white"><ListTodo className="h-5 w-5" /></span> Tarefas da equipe
-            </h1>
-            <p className="mt-1.5 text-sm text-muted-foreground">Organize prioridades, acompanhe prazos e distribua o trabalho.</p>
-          </div>
-          <div className="grid w-full grid-cols-1 items-center gap-2 sm:w-auto sm:grid-cols-[auto_auto]">
+      <PageHeader
+        title="Tarefas da equipe"
+        description="Organize prioridades, acompanhe prazos e distribua o trabalho."
+        icon={<ListTodo />}
+        actions={(
+          <>
             <div className="flex rounded-full border border-border/60 bg-muted/60 p-1">
               <Button
                 variant="ghost"
@@ -623,12 +608,12 @@ export default function Tarefas() {
             <Button onClick={() => { setEditing(null); setForm(formVazio); setShowNew(true); }} className="h-11 w-full gap-2 rounded-full bg-[#111111] px-5 text-white shadow-md hover:bg-[#2b2b33] sm:w-auto">
               <Plus className="h-4 w-4" /> Nova Tarefa
             </Button>
-          </div>
-        </div>
-      </section>
+          </>
+        )}
+      />
 
       {/* Stats */}
-      <motion.div role="group" aria-label="Filtrar tarefas por status" variants={stagger} initial="hidden" animate="visible" className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+      <div role="group" aria-label="Filtrar tarefas por status" className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
         {[
           { label: 'Total', value: stats.total, icon: ListTodo, iconBg: 'bg-[#1080CA]/10', iconColor: 'text-[#1080CA]', filter: 'all' },
           { label: 'Pendentes', value: stats.pendentes, icon: Circle, iconBg: 'bg-warning/10', iconColor: 'text-warning-foreground', filter: 'pendente' },
@@ -636,10 +621,10 @@ export default function Tarefas() {
           { label: 'Concluídas', value: stats.concluidas, icon: CheckCircle2, iconBg: 'bg-success/10', iconColor: 'text-success', filter: 'concluida' },
           { label: 'Vence hoje', value: stats.hoje, icon: CalendarDays, iconBg: 'bg-warning/10', iconColor: 'text-warning-foreground', filter: 'today' },
           { label: 'Vencidas', value: stats.vencidas, icon: AlertTriangle, iconBg: 'bg-destructive/10', iconColor: 'text-destructive', filter: 'overdue' },
-        ].map((s, i) => {
+        ].map((s) => {
           const ativo = filterStatus === s.filter;
           return (
-            <motion.div key={s.label} variants={fadeUp} custom={i}>
+            <div key={s.label} className="animate-in fade-in slide-in-from-bottom-1 duration-300">
               <button
                 type="button"
                 aria-pressed={ativo}
@@ -657,10 +642,10 @@ export default function Tarefas() {
                   <p className={cn('text-[11px] font-medium', ativo ? 'text-white/70' : 'text-muted-foreground')}>{s.label}</p>
                 </div>
               </button>
-            </motion.div>
+            </div>
           );
         })}
-      </motion.div>
+      </div>
 
       {enrichedTarefas.length >= LIMITE_BUSCA_EM_BLOCOS && (
         <div role="alert" className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm text-warning-foreground">
@@ -759,7 +744,7 @@ export default function Tarefas() {
           ))}
         </div>
       ) : filtered.length === 0 ? (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+        <div className="animate-in fade-in duration-300">
           <Card className="rounded-[22px]">
             <CardContent className="py-4">
               <ActionableEmptyState
@@ -776,7 +761,7 @@ export default function Tarefas() {
               />
             </CardContent>
           </Card>
-        </motion.div>
+        </div>
       ) : viewMode === 'kanban' ? (
         /* ─── Kanban View ─── */
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -799,18 +784,16 @@ export default function Tarefas() {
                   <Badge variant="outline" className="ml-auto h-6 border-border/60 bg-card text-[10px] text-foreground">{colTasks.length}</Badge>
                 </div>
                 <div className="space-y-2">
-                  <AnimatePresence mode="popLayout">
-                    {colTasks.map((t: any) => (
-                      <KanbanCard
-                        key={t.id}
-                        tarefa={t}
-                        {...acoes}
-                        onDragStart={handleDragStart}
-                        draggable
-                        isDragging={draggedTaskId === t.id}
-                      />
-                    ))}
-                  </AnimatePresence>
+                  {colTasks.map((t: any) => (
+                    <KanbanCard
+                      key={t.id}
+                      tarefa={t}
+                      {...acoes}
+                      onDragStart={handleDragStart}
+                      draggable
+                      isDragging={draggedTaskId === t.id}
+                    />
+                  ))}
                   {colTasks.length === 0 && (
                     <div className="flex flex-col items-center justify-center py-8 text-center opacity-40">
                       <ColIcon className="mb-2 h-8 w-8" />
@@ -824,13 +807,11 @@ export default function Tarefas() {
         </div>
       ) : (
         /* ─── List View ─── */
-        <motion.div variants={stagger} initial="hidden" animate="visible" className="space-y-2">
-          <AnimatePresence mode="popLayout">
-            {filtered.map((t: any) => (
-              <TarefaCard key={t.id} tarefa={t} {...acoes} />
-            ))}
-          </AnimatePresence>
-        </motion.div>
+        <div className="space-y-2">
+          {filtered.map((t: any) => (
+            <TarefaCard key={t.id} tarefa={t} {...acoes} />
+          ))}
+        </div>
       )}
 
       {/* Dialog Nova / Editar Tarefa */}

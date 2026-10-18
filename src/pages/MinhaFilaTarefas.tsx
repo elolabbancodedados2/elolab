@@ -8,6 +8,7 @@ import { supabase } from '@/integrations/supabase/client';
 import type { TablesUpdate } from '@/integrations/supabase/types';
 import { ActionableEmptyState } from '@/components/ActionableEmptyState';
 import { ErrorState } from '@/components/ErrorState';
+import { PageHeader } from '@/components/PageHeader';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -150,21 +151,16 @@ export default function MinhaFilaTarefas() {
 
   return (
     <div className="space-y-5 pb-8">
-      <section className="relative isolate overflow-hidden rounded-[22px] border border-border/60 bg-card p-5 shadow-xs sm:p-7">
-        <div aria-hidden="true" className="pointer-events-none absolute -right-10 -top-20 h-56 w-56 rounded-full bg-gradient-primary opacity-[0.12] blur-2xl" />
-        <div className="relative flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.16em] text-[#1080CA]">Sua rotina</p>
-            <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
-              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-primary text-white"><ListTodo aria-hidden="true" className="h-5 w-5" /></span> Minha fila de trabalho
-            </h1>
-            <p className="mt-1.5 text-sm text-muted-foreground">Tarefas atribuídas a você, organizadas por prazo.</p>
-          </div>
+      <PageHeader
+        title="Minha fila de trabalho"
+        description="Tarefas atribuídas a você, organizadas por prazo."
+        icon={<ListTodo />}
+        actions={(
           <Button asChild className="h-11 gap-2 rounded-full bg-[#111111] px-5 text-white shadow-md hover:bg-[#2b2b33]">
             <Link to="/tarefas">Abrir quadro da equipe <ArrowUpRight aria-hidden="true" className="h-4 w-4" /></Link>
           </Button>
-        </div>
-      </section>
+        )}
+      />
 
       {tarefasQuery.isError ? (
         <ErrorState title="Não foi possível carregar sua fila" error={tarefasQuery.error} onRetry={() => void tarefasQuery.refetch()} />
