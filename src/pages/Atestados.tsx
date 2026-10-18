@@ -34,6 +34,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Cid10Search } from '@/components/clinical';
 import { parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { ErrorState } from '@/components/ErrorState';
+import { UnsavedChangesDialog } from '@/components/ConfirmDialog';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { pacienteCorresponde } from '@/lib/buscaPaciente';
 import { PacienteCombobox } from '@/components/patients/PacienteCombobox';
@@ -142,6 +143,9 @@ export default function Atestados() {
   const [formData, setFormData] = useState<FormDataType>(() => novoFormulario(today));
   const [isSaving, setIsSaving] = useState(false);
   const saveLock = useRef(false);
+  const formBaselineRef = useRef<FormDataType>(formData);
+  const [confirmandoDescarte, setConfirmandoDescarte] = useState(false);
+  const hasUnsavedChanges = JSON.stringify(formData) !== JSON.stringify(formBaselineRef.current);
   const { profile } = useSupabaseAuth();
 
   const queryClient = useQueryClient();
@@ -244,7 +248,9 @@ export default function Atestados() {
     }
     setSelectedAtestado(null);
     setSelectedTemplateId(null);
-    setFormData({ ...novoFormulario(today), medico_id: medicoId || '' });
+    const baseline = { ...novoFormulario(today), medico_id: medicoId || '' };
+    formBaselineRef.current = baseline;
+    setFormData(baseline);
     setIsFormOpen(true);
   };
 
@@ -255,7 +261,9 @@ export default function Atestados() {
     }
     setSelectedAtestado(null);
     setSelectedTemplateId(null);
-    setFormData({ ...novoFormulario(today), tipo, medico_id: medicoId || '' });
+    const baseline = { ...novoFormulario(today), tipo, medico_id: medicoId || '' };
+    formBaselineRef.current = baseline;
+    setFormData(baseline);
     setIsFormOpen(true);
   };
 
@@ -783,8 +791,23 @@ export default function Atestados() {
       </Card>
 
       {/* ─── Form Dialog ─── */}
-      <Dialog open={isFormOpen} onOpenChange={(open) => { if (open || !isSaving) setIsFormOpen(open); }}>
-        <DialogContent className="max-w-2xl max-h-[95vh] overflow-hidden flex flex-col">
+      <Dialog
+        open={isFormOpen}
+        onOpenChange={(open) => {
+          if (open) { setIsFormOpen(true); return; }
+          if (isSaving) return;
+          if (hasUnsavedChanges) { setConfirmandoDescarte(true); return; }
+          setIsFormOpen(false);
+        }}
+      >
+        <DialogContent
+          className="max-w-2xl max-h-[95vh] overflow-hidden flex flex-col"
+          onEscapeKeyDown={(e) => {
+            // Item 05 (P1): Escape não descarta dados sem confirmação
+            if (isSaving) { e.preventDefault(); return; }
+            if (hasUnsavedChanges) { e.preventDefault(); setConfirmandoDescarte(true); }
+          }}
+        >
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <FileText className="h-5 w-5 text-primary" />
@@ -1031,6 +1054,15 @@ export default function Atestados() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <UnsavedChangesDialog
+        open={confirmandoDescarte}
+        onOpenChange={setConfirmandoDescarte}
+        onConfirm={() => {
+          setConfirmandoDescarte(false);
+          setIsFormOpen(false);
+        }}
+      />
 
       {/* ─── Template Picker ─── */}
       <Dialog open={isTemplateOpen} onOpenChange={setIsTemplateOpen}>
