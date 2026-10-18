@@ -245,7 +245,7 @@ export default function GuiasExternas() {
             </Button>
             <Button
               onClick={() => setShowForm(true)}
-              className="shrink-0 gap-2 rounded-full bg-[#111111] text-white shadow-md hover:bg-[#2b2b33]"
+              className="shrink-0 gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110"
             >
               <Plus className="h-4 w-4" /> Nova guia
             </Button>
@@ -263,7 +263,7 @@ export default function GuiasExternas() {
               label: 'Aguardando',
               caption: 'recebidas sem ação',
               value: counts.recebida,
-              color: 'text-[#2ED5E7]',
+              color: 'text-white',
               surface: 'bg-white/15',
               escuro: true,
             },
@@ -308,9 +308,9 @@ export default function GuiasExternas() {
                 onClick={() => toggleFiltro(s.key)}
                 className={cn(
                   'group rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
-                  s.escuro && 'border-transparent bg-[#111111] text-white',
+                  s.escuro && 'border-transparent bg-gradient-primary text-white',
                   ativo && !s.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
-                  ativo && s.escuro && 'ring-2 ring-[#2ED5E7]/60',
+                  ativo && s.escuro && 'ring-2 ring-[#1080CA]/60',
                 )}
               >
                 <div className="flex min-h-[96px] items-center gap-3 p-3">
@@ -370,7 +370,7 @@ export default function GuiasExternas() {
               })()}
               <Button
                 size="sm"
-                className="h-9 gap-1.5 rounded-full bg-[#111111] px-4 text-xs text-white hover:bg-[#2b2b33]"
+                className="h-9 gap-1.5 rounded-full bg-gradient-primary px-4 text-xs text-white hover:brightness-110"
                 onClick={() => setDetailId(guiaMaisUrgente.id)}
               >
                 <ArrowRight className="h-3.5 w-3.5" /> Atender guia
@@ -468,7 +468,7 @@ export default function GuiasExternas() {
               ) : (
                 <Button
                   size="sm"
-                  className="mt-4 rounded-full bg-[#111111] text-white hover:bg-[#2b2b33]"
+                  className="mt-4 rounded-full bg-gradient-primary text-white hover:brightness-110"
                   onClick={() => setShowForm(true)}
                 >
                   Nova guia

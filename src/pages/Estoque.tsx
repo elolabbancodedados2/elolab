@@ -518,7 +518,7 @@ export default function Estoque() {
 
   const indicadores: { key: typeof filterAlerta; icon: typeof Package; label: string; value: string; caption: string; color: string; surface: string; escuro: boolean }[] = [
     { key: 'todos', icon: Package, label: 'Total de itens', value: String(stats.total), caption: 'cadastrados no estoque', color: 'text-[#1080CA]', surface: 'bg-[#1080CA]/10', escuro: false },
-    { key: 'critico', icon: AlertTriangle, label: 'Estoque baixo', value: String(stats.critico), caption: 'no mínimo ou abaixo', color: 'text-[#2ED5E7]', surface: 'bg-white/15', escuro: true },
+    { key: 'critico', icon: AlertTriangle, label: 'Estoque baixo', value: String(stats.critico), caption: 'no mínimo ou abaixo', color: 'text-white', surface: 'bg-white/15', escuro: true },
     { key: 'validade', icon: Calendar, label: 'Vencendo', value: String(stats.vencendo), caption: 'até 60 dias', color: 'text-warning', surface: 'bg-warning/10', escuro: false },
     { key: 'ponto_pedido', icon: TrendingDown, label: 'Ponto de pedido', value: String(stats.pontoPedido), caption: 'hora de comprar', color: 'text-[#1080CA]', surface: 'bg-[#1080CA]/10', escuro: false },
   ];
@@ -543,7 +543,7 @@ export default function Estoque() {
           <Button variant="outline" size="icon" className="shrink-0 rounded-full" onClick={() => void estoqueQuery.refetch()} disabled={estoqueQuery.isFetching} aria-label="Atualizar estoque" title="Atualizar estoque">
             <RefreshCw className={cn('h-4 w-4', estoqueQuery.isFetching && 'animate-spin')} />
           </Button>
-          <Button onClick={handleNew} className="shrink-0 gap-2 rounded-full bg-[#111111] text-white shadow-md hover:bg-[#2b2b33]"><Plus className="h-4 w-4" />Novo item</Button>
+          <Button onClick={handleNew} className="shrink-0 gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110"><Plus className="h-4 w-4" />Novo item</Button>
         </>}
       />
 
@@ -567,7 +567,7 @@ export default function Estoque() {
             const ativo = filterAlerta === item.key;
             return <button key={item.key} type="button" aria-pressed={ativo} onClick={() => { setActiveTab('produtos'); setFilterAlerta(ativo ? 'todos' : item.key); }}
               className={cn('rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
-                item.escuro && 'border-transparent bg-[#111111] text-white', ativo && !item.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30', ativo && item.escuro && 'ring-2 ring-[#2ED5E7]/60')}>
+                item.escuro && 'border-transparent bg-gradient-primary text-white', ativo && !item.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30', ativo && item.escuro && 'ring-2 ring-[#1080CA]/60')}>
               <div className="flex min-h-[96px] items-center gap-3 p-3">
                 <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', item.surface)}><Icon aria-hidden="true" className={cn('h-5 w-5', item.color)} /></div>
                 <div className="min-w-0 flex-1">
@@ -616,7 +616,7 @@ export default function Estoque() {
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-              <Button className="h-10 gap-1.5 rounded-full bg-[#111111] text-white hover:bg-[#2b2b33]" onClick={() => handleMovimentacao(item, 'entrada')}>
+              <Button className="h-10 gap-1.5 rounded-full bg-gradient-primary text-white hover:brightness-110" onClick={() => handleMovimentacao(item, 'entrada')}>
                 <ArrowDown aria-hidden="true" className="h-4 w-4" /> Registrar entrada
               </Button>
               <Button variant="outline" className="h-10 gap-1.5 rounded-full" onClick={() => handleEdit(item)}>
@@ -1031,7 +1031,7 @@ export default function Estoque() {
           </div>
           <DialogFooter className="flex-shrink-0 pt-4 border-t">
             <Button variant="outline" className="rounded-full" onClick={() => setIsFormOpen(false)} disabled={isSaving}>Cancelar</Button>
-            <Button className="rounded-full bg-[#111111] text-white shadow-md hover:bg-[#2b2b33]" onClick={handleSave} disabled={isSaving}>
+            <Button className="rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110" onClick={handleSave} disabled={isSaving}>
               {isSaving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Salvando...</> : 'Salvar'}
             </Button>
           </DialogFooter>

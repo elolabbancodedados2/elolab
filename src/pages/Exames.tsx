@@ -55,7 +55,7 @@ const STATUS_COLORS: Record<StatusExame, string> = {
   solicitado: 'border-warning/40 bg-warning/10 text-warning-foreground',
   agendado: 'border-[#1080CA]/30 bg-[#1080CA]/10 text-[#1080CA]',
   realizado: 'border-info/30 bg-info/10 text-info',
-  laudo_disponivel: 'border-transparent bg-[#111111] text-white hover:bg-[#111111]',
+  laudo_disponivel: 'border-transparent bg-gradient-primary text-white hover:bg-gradient-primary',
   cancelado: 'border-border bg-muted text-muted-foreground',
 };
 
@@ -1156,7 +1156,7 @@ export default function Exames() {
             <Button variant="outline" size="icon" className="shrink-0 rounded-full" onClick={refreshExames} aria-label="Atualizar exames" title="Atualizar exames">
               <RefreshCw className={cn('h-4 w-4', examesQuery.isFetching && 'animate-spin')} />
             </Button>
-            <Button onClick={handleOpenNew} className="shrink-0 gap-2 rounded-full bg-[#111111] text-white shadow-md hover:bg-[#2b2b33]">
+            <Button onClick={handleOpenNew} className="shrink-0 gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110">
               <Plus className="h-4 w-4" />Nova Guia de Exames
             </Button>
           </>
@@ -1193,7 +1193,7 @@ export default function Exames() {
         </div>
         <div data-testid="exam-status-kpis" className="grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-5">
           {([
-            { key: 'aguardando' as IndicadorExame, icon: Hourglass, label: 'Aguardando resultado', caption: 'solicitados, agendados ou realizados', color: 'text-[#2ED5E7]', surface: 'bg-white/15', escuro: true },
+            { key: 'aguardando' as IndicadorExame, icon: Hourglass, label: 'Aguardando resultado', caption: 'solicitados, agendados ou realizados', color: 'text-white', surface: 'bg-white/15', escuro: true },
             { key: 'hoje' as IndicadorExame, icon: CalendarPlus, label: 'Solicitados hoje', caption: 'guias emitidas hoje', color: 'text-[#1080CA]', surface: 'bg-[#1080CA]/10', escuro: false },
             { key: 'agendado' as IndicadorExame, icon: CalendarCheck, label: 'Agendados / coleta', caption: 'aguardando realização', color: 'text-info', surface: 'bg-info/10', escuro: false },
             { key: 'laudo_disponivel' as IndicadorExame, icon: CheckCircle2, label: 'Resultados prontos', caption: 'laudo disponível', color: 'text-success', surface: 'bg-success/10', escuro: false },
@@ -1209,9 +1209,9 @@ export default function Exames() {
                 onClick={() => setIndicador(ativo ? 'todos' : s.key)}
                 className={cn(
                   'group rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
-                  s.escuro && 'border-transparent bg-[#111111] text-white',
+                  s.escuro && 'border-transparent bg-gradient-primary text-white',
                   ativo && !s.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
-                  ativo && s.escuro && 'ring-2 ring-[#2ED5E7]/60',
+                  ativo && s.escuro && 'ring-2 ring-[#1080CA]/60',
                 )}
               >
                 <div className="flex min-h-[96px] items-center gap-3 p-3">
@@ -1337,7 +1337,7 @@ export default function Exames() {
                             : 'Tente outro termo ou remova o filtro de status para rever as solicitações.'}
                         </p>
                         {examesNoEscopo.length === 0 ? (
-                          <Button className="mt-3 rounded-full bg-[#111111] text-white shadow-md hover:bg-[#2b2b33]" onClick={handleOpenNew}>
+                          <Button className="mt-3 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110" onClick={handleOpenNew}>
                             <Plus aria-hidden="true" className="mr-2 h-4 w-4" />Nova guia de exames
                           </Button>
                         ) : (
@@ -1432,7 +1432,7 @@ export default function Exames() {
                                 'h-9 gap-1 rounded-full text-xs',
                                 nextStatus === 'laudo_disponivel' && !precisaLancarResultado
                                   ? 'bg-gradient-primary text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)] hover:brightness-110'
-                                  : 'bg-[#111111] text-white hover:bg-[#2b2b33]',
+                                  : 'bg-gradient-primary text-white hover:brightness-110',
                               )}
                               disabled={exameEmAtualizacao !== null}
                               onClick={() => {
@@ -1448,7 +1448,7 @@ export default function Exames() {
                             </Button>
                           )}
                           {acaoSeguinte.destino === 'laboratorio' && (
-                            <Button asChild size="sm" className="h-9 gap-1 rounded-full bg-[#111111] text-xs text-white hover:bg-[#2b2b33]">
+                            <Button asChild size="sm" className="h-9 gap-1 rounded-full bg-gradient-primary text-xs text-white hover:brightness-110">
                               <Link to="/laboratorio"><FlaskConical aria-hidden="true" className="h-3.5 w-3.5" />Abrir Laboratório</Link>
                             </Button>
                           )}

@@ -959,7 +959,7 @@ export default function Prescricoes() {
             </Button>
             <Button
               onClick={handleOpen}
-              className="shrink-0 gap-2 rounded-full bg-[#111111] text-white shadow-md hover:bg-[#2b2b33] disabled:bg-none disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100 disabled:shadow-none"
+              className="shrink-0 gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110 disabled:bg-none disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100 disabled:shadow-none"
               disabled={
                 medicosDisponiveis.length === 0 || clinicConfigQuery.isLoading || clinicConfigQuery.isError
                 || !clinicConfig?.nome_fantasia?.trim()
@@ -1009,7 +1009,7 @@ export default function Prescricoes() {
       {/* Indicadores */}
       <section role="group" aria-label="Resumo das prescrições" className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-5">
         {([
-          { key: 'hoje', icon: CalendarCheck, label: 'Hoje', value: stats.hoje, caption: 'emitidas hoje', color: 'text-[#2ED5E7]', surface: 'bg-white/15', escuro: true },
+          { key: 'hoje', icon: CalendarCheck, label: 'Hoje', value: stats.hoje, caption: 'emitidas hoje', color: 'text-white', surface: 'bg-white/15', escuro: true },
           { key: 'pdf', icon: FileText, label: 'Com PDF', value: stats.pdf, caption: 'prontas para baixar', color: 'text-[#1080CA]', surface: 'bg-[#1080CA]/10', escuro: false },
           { key: 'sem_pdf', icon: CloudOff, label: 'Sem PDF', value: stats.semPdf, caption: 'gerar a partir do histórico', color: 'text-warning', surface: 'bg-warning/10', escuro: false },
           { key: 'memed', icon: ExternalLink, label: 'Memed', value: stats.memed, caption: 'PDF fora do EloLab', color: 'text-info', surface: 'bg-info/10', escuro: false },
@@ -1025,9 +1025,9 @@ export default function Prescricoes() {
               onClick={() => setFiltroOrigem(ativo && s.key !== 'todos' ? 'todos' : s.key)}
               className={cn(
                 'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
-                s.escuro && 'border-transparent bg-[#111111] text-white',
+                s.escuro && 'border-transparent bg-gradient-primary text-white',
                 ativo && !s.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
-                ativo && s.escuro && 'ring-2 ring-[#2ED5E7]/60',
+                ativo && s.escuro && 'ring-2 ring-[#1080CA]/60',
               )}
             >
               <div className="flex min-h-[96px] items-center gap-3 p-3">
@@ -1135,7 +1135,7 @@ export default function Prescricoes() {
                     ) : (
                       <Button
                         size="sm"
-                        className="mt-4 gap-2 rounded-full bg-[#111111] text-white hover:bg-[#2b2b33] disabled:bg-none disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100"
+                        className="mt-4 gap-2 rounded-full bg-gradient-primary text-white hover:brightness-110 disabled:bg-none disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100"
                         onClick={handleOpen}
                         disabled={medicosDisponiveis.length === 0 || clinicConfigQuery.isLoading || clinicConfigQuery.isError || !clinicConfig?.nome_fantasia?.trim()}
                       >
@@ -1196,7 +1196,7 @@ export default function Prescricoes() {
                           ) : (
                             <Button
                               type="button"
-                              className="h-9 gap-1.5 rounded-full bg-[#111111] text-xs text-white hover:bg-[#2b2b33]"
+                              className="h-9 gap-1.5 rounded-full bg-gradient-primary text-xs text-white hover:brightness-110"
                               aria-label={`Gerar PDF da receita de ${nomePaciente}`}
                               title="Montar o PDF com os medicamentos já gravados"
                               disabled={ocupado || clinicConfigQuery.isLoading || clinicConfigQuery.isError}

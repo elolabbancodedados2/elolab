@@ -139,7 +139,7 @@ export default function HigieneSalas() {
   if (query.error) return <ErrorState title="Não foi possível carregar a higienização" description="A operação foi pausada para evitar liberar uma sala com estado desatualizado." error={query.error} onRetry={() => void query.refetch()} />;
 
   const indicadores: Array<{ key: Etapa; icon: typeof SprayCan; label: string; caption: string; color: string; surface: string; escuro: boolean }> = [
-    { key: 'aguardando', icon: SprayCan, label: 'Aguardando limpeza', caption: 'marcadas como limpeza em Salas e leitos', color: 'text-[#2ED5E7]', surface: 'bg-white/15', escuro: true },
+    { key: 'aguardando', icon: SprayCan, label: 'Aguardando limpeza', caption: 'marcadas como limpeza em Salas e leitos', color: 'text-white', surface: 'bg-white/15', escuro: true },
     { key: 'executando', icon: Timer, label: 'Em execução', caption: 'checklist em andamento', color: 'text-[#1080CA]', surface: 'bg-[#1080CA]/10', escuro: false },
     { key: 'inspecao', icon: Clock3, label: 'Aguardando inspeção', caption: 'bloqueadas até revisão', color: 'text-warning', surface: 'bg-warning/10', escuro: false },
     { key: 'liberadas', icon: CheckCircle2, label: 'Liberadas hoje', caption: 'aprovadas na inspeção', color: 'text-success', surface: 'bg-success/10', escuro: false },
@@ -157,7 +157,7 @@ export default function HigieneSalas() {
         <Button variant="outline" size="icon" className="shrink-0 rounded-full" onClick={() => void refresh()} aria-label="Atualizar higienização" title="Atualizar higienização">
           <RefreshCw className={cn('h-4 w-4', query.isFetching && 'animate-spin')} />
         </Button>
-        {data.canConfigure && <Button className="shrink-0 gap-2 rounded-full bg-[#111111] text-white shadow-md hover:bg-[#2b2b33]" onClick={() => setConfigAberta((current) => !current)} aria-expanded={configAberta} aria-controls="hygiene-config">
+        {data.canConfigure && <Button className="shrink-0 gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110" onClick={() => setConfigAberta((current) => !current)} aria-expanded={configAberta} aria-controls="hygiene-config">
           <Plus className="h-4 w-4" /> {activeChecklist ? 'Nova versão do checklist' : 'Configurar checklist'}
         </Button>}
       </>}
@@ -175,9 +175,9 @@ export default function HigieneSalas() {
           return <button key={s.key} type="button" aria-pressed={ativo} onClick={() => setFiltro(ativo ? 'todos' : s.key)}
             className={cn(
               'group rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
-              s.escuro && 'border-transparent bg-[#111111] text-white',
+              s.escuro && 'border-transparent bg-gradient-primary text-white',
               ativo && !s.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
-              ativo && s.escuro && 'ring-2 ring-[#2ED5E7]/60',
+              ativo && s.escuro && 'ring-2 ring-[#1080CA]/60',
             )}>
             <div className="flex min-h-[96px] items-center gap-3 p-3">
               <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', s.surface)}><Icon aria-hidden="true" className={cn('h-5 w-5', s.color)} /></div>
@@ -207,7 +207,7 @@ export default function HigieneSalas() {
             <p className="mt-1 text-xs text-muted-foreground">Enviada {fmt(proximaInspecao.submitted_at!)} · {plural(pendingReview.length, 'sala aguarda', 'salas aguardam')} liberação</p>
           </div>
         </div>
-        <Button asChild className="h-10 gap-1.5 rounded-full bg-[#111111] text-white hover:bg-[#2b2b33]"><a href="#review-heading">Ir para inspeção</a></Button>
+        <Button asChild className="h-10 gap-1.5 rounded-full bg-gradient-primary text-white hover:brightness-110"><a href="#review-heading">Ir para inspeção</a></Button>
       </CardContent>
     </Card>}
 
@@ -254,7 +254,7 @@ export default function HigieneSalas() {
           <p className="font-medium text-foreground">{data.rooms.length === 0 ? 'Nenhuma sala cadastrada nesta unidade.' : 'Nenhuma sala corresponde aos filtros'}</p>
           <p className="mt-1 text-sm">{data.rooms.length === 0 ? 'Cadastre salas e leitos para iniciar o controle de higienização.' : 'Limpe a busca ou o indicador selecionado para ver todas as salas.'}</p>
           {data.rooms.length === 0
-            ? <Button asChild className="mt-4 rounded-full bg-[#111111] text-white hover:bg-[#2b2b33]" size="sm"><Link to="/gestao-fluxo">Ir para Salas e leitos</Link></Button>
+            ? <Button asChild className="mt-4 rounded-full bg-gradient-primary text-white hover:brightness-110" size="sm"><Link to="/gestao-fluxo">Ir para Salas e leitos</Link></Button>
             : <Button className="mt-4 rounded-full" size="sm" variant="outline" onClick={limparFiltros}>Limpar filtros</Button>}
         </CardContent>
       </Card> : <div className="grid gap-3 lg:grid-cols-2">{salasFiltradas.map((room) => {
@@ -286,7 +286,7 @@ export default function HigieneSalas() {
                 <div className={cn('h-full rounded-full transition-all', pct === 100 ? 'bg-gradient-primary' : 'bg-[#1080CA]')} style={{ width: `${pct}%` }} />
               </div>
             </div>}
-            {!open && <Button size="sm" className="h-9 rounded-full bg-[#111111] text-xs text-white hover:bg-[#2b2b33] disabled:opacity-50" disabled={!podeIniciar} onClick={() => mutation.mutate({ action: 'start', room_id: room.id })}><SprayCan className="mr-2 h-4 w-4" />Iniciar higienização</Button>}
+            {!open && <Button size="sm" className="h-9 rounded-full bg-gradient-primary text-xs text-white hover:brightness-110 disabled:opacity-50" disabled={!podeIniciar} onClick={() => mutation.mutate({ action: 'start', room_id: room.id })}><SprayCan className="mr-2 h-4 w-4" />Iniciar higienização</Button>}
             {!open && !activeChecklist && !pendingReviewRoomIds.has(room.id) && <p className="text-xs text-muted-foreground">Configure o checklist vigente para liberar o início.</p>}
             {pendingReviewRoomIds.has(room.id) && <p className="text-sm font-medium text-warning">Higienização enviada; sala bloqueada até revisão.</p>}
             {open && checklist && <div className="space-y-3 rounded-xl border border-[#DCE6F2] bg-[#F3F8FC] p-3">
@@ -314,7 +314,7 @@ export default function HigieneSalas() {
         return <Card key={execution.id} className="rounded-2xl border-border/60 shadow-xs">
           <CardContent className="space-y-3 p-4">
             <div className="flex items-start gap-3">
-              <span aria-hidden="true" className={cn('flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold tabular-nums', index === 0 ? 'bg-[#111111] text-white' : 'bg-muted text-foreground')}>{index + 1}</span>
+              <span aria-hidden="true" className={cn('flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold tabular-nums', index === 0 ? 'bg-gradient-primary text-white' : 'bg-muted text-foreground')}>{index + 1}</span>
               <div className="min-w-0">
                 <h3 className="font-semibold text-foreground">{room?.nome || 'Sala'} · revisão</h3>
                 <p className="text-xs text-muted-foreground">Enviado {fmt(execution.submitted_at!)} · checklist v{checklist?.version ?? '?'}</p>

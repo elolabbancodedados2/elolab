@@ -273,7 +273,7 @@ export default function AnalisePreditiva() {
       {/* Indicadores */}
       <section role="group" aria-label="Resumo do risco de faltas" className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-5">
         {([
-          { key: 'alto', icon: Siren, label: 'Alto risco', value: stats.altoRisco, caption: 'confirmar primeiro', color: 'text-[#2ED5E7]', surface: 'bg-white/15', escuro: true, filtro: 'alto' as const },
+          { key: 'alto', icon: Siren, label: 'Alto risco', value: stats.altoRisco, caption: 'confirmar primeiro', color: 'text-white', surface: 'bg-white/15', escuro: true, filtro: 'alto' as const },
           { key: 'medio', icon: AlertTriangle, label: 'Risco médio', value: stats.medioRisco, caption: 'vale um lembrete', color: 'text-warning', surface: 'bg-warning/10', escuro: false, filtro: 'medio' as const },
           { key: 'baixo', icon: CheckCircle2, label: 'Baixo risco', value: stats.baixoRisco, caption: 'tendem a comparecer', color: 'text-success', surface: 'bg-success/10', escuro: false, filtro: 'baixo' as const },
           { key: 'todos', icon: Users, label: 'Total', value: stats.total, caption: 'consultas com previsão', color: 'text-[#1080CA]', surface: 'bg-[#1080CA]/10', escuro: false, filtro: 'todos' as const },
@@ -297,7 +297,7 @@ export default function AnalisePreditiva() {
           );
           const classes = cn(
             'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200',
-            s.escuro && 'border-transparent bg-[#111111] text-white',
+            s.escuro && 'border-transparent bg-gradient-primary text-white',
           );
           if (s.filtro === null) {
             return <div key={s.key} className={classes}>{conteudo}</div>;
@@ -313,7 +313,7 @@ export default function AnalisePreditiva() {
                 classes,
                 'hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
                 ativo && !s.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
-                ativo && s.escuro && 'ring-2 ring-[#2ED5E7]/60',
+                ativo && s.escuro && 'ring-2 ring-[#1080CA]/60',
               )}
             >
               {conteudo}
@@ -363,7 +363,7 @@ export default function AnalisePreditiva() {
                   <span className="text-xs text-muted-foreground">{semContato ? 'Sem contato cadastrado' : 'Sem telefone válido'}</span>
                 )}
                 <Button
-                  className="h-10 gap-1.5 rounded-full bg-[#111111] text-white hover:bg-[#2b2b33]"
+                  className="h-10 gap-1.5 rounded-full bg-gradient-primary text-white hover:brightness-110"
                   onClick={() => void enviarLembrete(maiorRisco)}
                   disabled={enviandoLembreteId !== null || semContato}
                   title={semContato ? 'Cadastre telefone ou e-mail para enviar' : 'Enfileira um lembrete automático para o paciente.'}
@@ -467,7 +467,7 @@ export default function AnalisePreditiva() {
                         <TableCell>
                           <span className={cn(
                             'flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold tabular-nums',
-                            eMaiorRisco ? 'bg-[#111111] text-white' : 'bg-muted text-muted-foreground',
+                            eMaiorRisco ? 'bg-gradient-primary text-white' : 'bg-muted text-muted-foreground',
                           )}>
                             {index + 1}
                           </span>
@@ -521,7 +521,7 @@ export default function AnalisePreditiva() {
                               size="sm"
                               className={cn(
                                 'h-9 gap-1 rounded-full text-xs',
-                                semContato ? 'bg-muted text-muted-foreground' : 'bg-[#111111] text-white hover:bg-[#2b2b33]',
+                                semContato ? 'bg-muted text-muted-foreground' : 'bg-gradient-primary text-white hover:brightness-110',
                               )}
                               disabled={enviandoLembreteId !== null || semContato}
                               title={semContato ? 'Cadastre um telefone ou e-mail no perfil do paciente para enviar o lembrete.' : 'Enfileira um lembrete automático para o paciente.'}

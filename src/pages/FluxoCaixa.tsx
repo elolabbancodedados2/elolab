@@ -334,16 +334,16 @@ export default function FluxoCaixa() {
             key={s.label}
             className={cn(
               'rounded-2xl border p-4 shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md',
-              s.escuro ? 'border-transparent bg-[#111111] text-white' : 'border-border/60 bg-card',
+              s.escuro ? 'border-transparent bg-gradient-primary text-white' : 'border-border/60 bg-card',
             )}
           >
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className={cn('text-[11px] font-medium', s.escuro ? 'text-white/70' : 'text-muted-foreground')}>{s.label}</p>
                 {s.pct !== undefined ? (
-                  <p className={cn('text-2xl font-bold', s.escuro ? 'text-[#2ED5E7]' : s.color)}>{s.pct}</p>
+                  <p className={cn('text-2xl font-bold', s.escuro ? 'text-white' : s.color)}>{s.pct}</p>
                 ) : (
-                  <p className={cn('text-2xl font-bold tabular-nums', s.escuro ? 'text-[#2ED5E7]' : s.color)}>{formatCurrency(s.value)}</p>
+                  <p className={cn('text-2xl font-bold tabular-nums', s.escuro ? 'text-white' : s.color)}>{formatCurrency(s.value)}</p>
                 )}
                 {s.trendNovaBase ? (
                   <p className={cn('mt-1 text-xs', s.escuro ? 'text-white/60' : 'text-muted-foreground')}>Sem base no mês anterior</p>
@@ -356,7 +356,7 @@ export default function FluxoCaixa() {
                 {s.sub && <p className={cn('mt-1 text-xs', s.escuro ? 'text-white/60' : 'text-muted-foreground')}>{s.sub}</p>}
               </div>
               <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', s.escuro ? 'bg-white/15' : s.surface)}>
-                <s.icon className={cn('h-5 w-5', s.escuro ? 'text-[#2ED5E7]' : s.color)} />
+                <s.icon className={cn('h-5 w-5', s.escuro ? 'text-white' : s.color)} />
               </div>
             </div>
           </div>

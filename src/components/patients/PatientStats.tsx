@@ -11,7 +11,7 @@ interface PatientStatsProps {
 
 export const PatientStats = memo(function PatientStats({ total, comConvenio, menores, comAlergias }: PatientStatsProps) {
   const cards = [
-    { label: 'Total', value: total, icon: Users, escuro: true, iconClass: 'bg-white/15 text-[#2ED5E7]', valueClass: 'text-[#2ED5E7]' },
+    { label: 'Total', value: total, icon: Users, escuro: true, iconClass: 'bg-white/20 text-white', valueClass: 'text-white' },
     { label: 'Com convênio', value: comConvenio, icon: Building2, escuro: false, iconClass: 'bg-[#1080CA]/10 text-[#1080CA]', valueClass: 'text-foreground' },
     { label: 'Menores', value: menores, icon: Baby, escuro: false, iconClass: 'bg-warning/10 text-warning-foreground', valueClass: 'text-foreground' },
     { label: 'Com alergias', value: comAlergias, icon: Heart, escuro: false, iconClass: 'bg-destructive/10 text-destructive', valueClass: 'text-foreground' },
@@ -23,7 +23,7 @@ export const PatientStats = memo(function PatientStats({ total, comConvenio, men
           key={label}
           className={cn(
             'flex items-center gap-3 rounded-2xl border px-4 py-3.5 shadow-xs',
-            escuro ? 'border-transparent bg-[#111111] text-white' : 'border-border/60 bg-card',
+            escuro ? 'border-transparent bg-gradient-primary text-white' : 'border-border/60 bg-card',
           )}
         >
           <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', iconClass)}>

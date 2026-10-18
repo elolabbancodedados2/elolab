@@ -132,7 +132,7 @@ export default function PainelAdmin() {
               <Card
                 className={cn(
                   'h-full rounded-2xl border-border/60 shadow-xs transition-all group-hover:-translate-y-0.5 group-hover:shadow-md',
-                  dark && 'border-transparent bg-[#111111] text-white',
+                  dark && 'border-transparent bg-gradient-primary text-white',
                   alert && !dark && 'border-warning/40',
                 )}
               >
@@ -141,12 +141,12 @@ export default function PainelAdmin() {
                     <p className={cn('text-sm', dark ? 'text-white/70' : 'text-muted-foreground')}>{title}</p>
                     <p className={cn(
                       'mt-2 text-3xl font-bold tracking-tight tabular-nums',
-                      dark && 'text-[#2ED5E7]',
+                      dark && 'text-white',
                       alert && !dark && 'text-warning',
                     )}>{value}</p>
                     <p className={cn('mt-1 text-xs', dark ? 'text-white/60' : 'text-muted-foreground')}>{detail}</p>
                   </div>
-                  <span className={cn('rounded-xl p-2.5', dark ? 'bg-white/15 text-[#2ED5E7]' : 'bg-[#1080CA]/10 text-[#1080CA]')}>
+                  <span className={cn('rounded-xl p-2.5', dark ? 'bg-white/20 text-white' : 'bg-[#1080CA]/10 text-[#1080CA]')}>
                     <Icon className="h-5 w-5" />
                   </span>
                 </CardContent>

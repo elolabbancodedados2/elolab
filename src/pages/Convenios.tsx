@@ -709,7 +709,7 @@ function Convenios() {
               <RefreshCw className="h-4 w-4" />
             </Button>
             {podeGerenciarConvenios && (
-              <Button onClick={handleNew} className="shrink-0 gap-2 rounded-full bg-[#111111] text-white shadow-md hover:bg-[#2b2b33]">
+              <Button onClick={handleNew} className="shrink-0 gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110">
                 <Plus className="h-4 w-4" />
                 Novo Convênio
               </Button>
@@ -728,7 +728,7 @@ function Convenios() {
         </div>
         <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
           {([
-            { key: 'ativos' as FiltroConvenio, icon: CheckCircle2, label: 'Ativos', value: totalAtivos, caption: 'aceitos no atendimento', color: 'text-[#2ED5E7]', surface: 'bg-white/15', escuro: true },
+            { key: 'ativos' as FiltroConvenio, icon: CheckCircle2, label: 'Ativos', value: totalAtivos, caption: 'aceitos no atendimento', color: 'text-white', surface: 'bg-white/15', escuro: true },
             { key: 'inativos' as FiltroConvenio, icon: XCircle, label: 'Inativos', value: totalInativos, caption: 'histórico preservado', color: 'text-muted-foreground', surface: 'bg-muted', escuro: false },
             { key: 'com_tabela' as FiltroConvenio, icon: FlaskConical, label: 'Com tabela de exames', value: totalComTabela, caption: 'preços de exames definidos', color: 'text-[#1080CA]', surface: 'bg-[#1080CA]/10', escuro: false },
             { key: 'todos' as FiltroConvenio, icon: Layers, label: 'Todos', value: totalConvenios, caption: 'convênios cadastrados', color: 'text-foreground', surface: 'bg-[#EEF4FA]', escuro: false },
@@ -743,9 +743,9 @@ function Convenios() {
                 onClick={() => setFiltroStatus(ativo && s.key !== 'todos' ? 'todos' : s.key)}
                 className={cn(
                   'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
-                  s.escuro && 'border-transparent bg-[#111111] text-white',
+                  s.escuro && 'border-transparent bg-gradient-primary text-white',
                   ativo && !s.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
-                  ativo && s.escuro && 'ring-2 ring-[#2ED5E7]/60',
+                  ativo && s.escuro && 'ring-2 ring-[#1080CA]/60',
                 )}
               >
                 <div className="flex min-h-[96px] items-center gap-3 p-3">
@@ -842,7 +842,7 @@ function Convenios() {
                           Limpar filtros
                         </Button>
                       ) : podeGerenciarConvenios ? (
-                        <Button size="sm" className="mt-4 gap-1.5 rounded-full bg-[#111111] text-white hover:bg-[#2b2b33]" onClick={handleNew}>
+                        <Button size="sm" className="mt-4 gap-1.5 rounded-full bg-gradient-primary text-white hover:brightness-110" onClick={handleNew}>
                           <Plus aria-hidden="true" className="h-3.5 w-3.5" /> Cadastrar convênio
                         </Button>
                       ) : null}

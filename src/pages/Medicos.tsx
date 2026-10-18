@@ -736,7 +736,7 @@ export default function Medicos() {
     : `${medicos.length} médico(s) · ${totalAtivos} ativo(s) · ${especialidades.length} especialidade(s)`;
 
   const indicadores = [
-    { key: 'ativo' as const, label: 'Ativos', value: totalAtivos, icon: ShieldCheck, color: 'text-[#2ED5E7]', surface: 'bg-white/15', escuro: true, caption: 'disponíveis para atendimento' },
+    { key: 'ativo' as const, label: 'Ativos', value: totalAtivos, icon: ShieldCheck, color: 'text-white', surface: 'bg-white/15', escuro: true, caption: 'disponíveis para atendimento' },
     { key: 'inativo' as const, label: 'Inativos', value: totalInativos, icon: UserX, color: 'text-muted-foreground', surface: 'bg-muted', escuro: false, caption: 'fora de operação' },
     { key: 'especialidades' as const, label: 'Especialidades', value: especialidades.length, icon: Heart, color: 'text-[#1080CA]', surface: 'bg-[#1080CA]/10', escuro: false, caption: 'distintas na clínica' },
     { key: 'todos' as const, label: 'Total', value: medicos.length, icon: Users, color: 'text-[#1080CA]', surface: 'bg-[#1080CA]/10', escuro: false, caption: 'corpo clínico completo' },
@@ -754,7 +754,7 @@ export default function Medicos() {
               <Button variant="outline" size="icon" className="shrink-0 rounded-full" onClick={() => void medicosQuery.refetch()} aria-label="Atualizar médicos" title="Atualizar médicos">
                 <RefreshCw className="h-4 w-4" />
               </Button>
-              <Button onClick={() => handleOpenDialog()} className="shrink-0 gap-2 rounded-full bg-[#111111] text-white shadow-md hover:bg-[#2b2b33]">
+              <Button onClick={() => handleOpenDialog()} className="shrink-0 gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110">
                 <Plus className="h-4 w-4" /> Novo Médico
               </Button>
             </>
@@ -777,9 +777,9 @@ export default function Medicos() {
                   'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
                   ind.key !== 'especialidades' && 'hover:-translate-y-0.5 hover:shadow-md',
                   ind.key === 'especialidades' && 'cursor-default',
-                  ind.escuro && 'border-transparent bg-[#111111] text-white',
+                  ind.escuro && 'border-transparent bg-gradient-primary text-white',
                   ativo && !ind.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
-                  ativo && ind.escuro && 'ring-2 ring-[#2ED5E7]/60',
+                  ativo && ind.escuro && 'ring-2 ring-[#1080CA]/60',
                 )}
               >
                 <div className="flex items-start justify-between gap-2 p-4">
@@ -920,7 +920,7 @@ export default function Medicos() {
                   Limpar filtros
                 </Button>
               ) : (
-                <Button onClick={() => handleOpenDialog()} className="mt-4 gap-2 rounded-full bg-[#111111] text-white hover:bg-[#2b2b33]" size="sm">
+                <Button onClick={() => handleOpenDialog()} className="mt-4 gap-2 rounded-full bg-gradient-primary text-white hover:brightness-110" size="sm">
                   <Plus className="h-4 w-4" /> Cadastrar Médico
                 </Button>
               )}

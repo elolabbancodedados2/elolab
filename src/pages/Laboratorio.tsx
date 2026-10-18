@@ -602,7 +602,7 @@ export default function Laboratorio() {
             </Button>
             <Button
               onClick={() => { resetColetaForm(); setShowNewColeta(true); }}
-              className="rounded-full gap-2 bg-[#111111] text-white shadow-md hover:bg-[#2b2b33]"
+              className="rounded-full gap-2 bg-gradient-primary text-white shadow-md hover:brightness-110"
             >
               <Plus aria-hidden="true" className="h-4 w-4" /> Nova coleta
             </Button>
@@ -633,17 +633,17 @@ export default function Laboratorio() {
                 onClick={() => filtrarPipeline(s.filter)}
                 className={cn(
                   'rounded-2xl border border-border/60 bg-card p-3 shadow-xs text-left transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA] focus-visible:ring-offset-2',
-                  s.escuro && 'border-transparent bg-[#111111] text-white',
+                  s.escuro && 'border-transparent bg-gradient-primary text-white',
                   !s.escuro && isActive && 'ring-2 ring-[#1080CA]',
-                  s.escuro && isActive && 'ring-2 ring-[#2ED5E7]',
+                  s.escuro && isActive && 'ring-2 ring-[#1080CA]',
                 )}
               >
                 <div className="flex items-center gap-3">
                   <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', s.escuro ? 'bg-white/15' : s.bg)}>
-                    <s.icon className={cn('h-5 w-5', s.escuro ? 'text-[#2ED5E7]' : s.color)} />
+                    <s.icon className={cn('h-5 w-5', s.escuro ? 'text-white' : s.color)} />
                   </div>
                   <div>
-                    <p className={cn('text-2xl font-bold tabular-nums', s.escuro ? 'text-[#2ED5E7]' : s.color)}>{s.value}</p>
+                    <p className={cn('text-2xl font-bold tabular-nums', s.escuro ? 'text-white' : s.color)}>{s.value}</p>
                     <p className={cn('text-[11px]', s.escuro ? 'text-white/70' : 'text-muted-foreground')}>{s.label}</p>
                   </div>
                 </div>
@@ -919,7 +919,7 @@ export default function Laboratorio() {
                   </div>
                   <div className="flex flex-wrap gap-2 justify-center">
                     <Button
-                      className="rounded-full gap-2 bg-[#111111] text-white shadow-md hover:bg-[#2b2b33]"
+                      className="rounded-full gap-2 bg-gradient-primary text-white shadow-md hover:brightness-110"
                       onClick={coletasQuery.hasNextPage
                         ? () => void coletasQuery.fetchNextPage()
                         : dateFilter !== 'todos'
@@ -1105,7 +1105,7 @@ export default function Laboratorio() {
                 <p className="text-sm text-muted-foreground mt-1">Registre uma coleta para iniciar o acompanhamento das etapas laboratoriais.</p>
               </div>
               <Button
-                className="rounded-full gap-2 bg-[#111111] text-white shadow-md hover:bg-[#2b2b33]"
+                className="rounded-full gap-2 bg-gradient-primary text-white shadow-md hover:brightness-110"
                 onClick={() => { resetColetaForm(); setShowNewColeta(true); }}
               >
                 <Plus className="h-4 w-4" /> Registrar coleta

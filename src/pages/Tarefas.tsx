@@ -605,7 +605,7 @@ export default function Tarefas() {
                 <LayoutList className="h-3.5 w-3.5" /> Lista
               </Button>
             </div>
-            <Button onClick={() => { setEditing(null); setForm(formVazio); setShowNew(true); }} className="h-11 w-full gap-2 rounded-full bg-[#111111] px-5 text-white shadow-md hover:bg-[#2b2b33] sm:w-auto">
+            <Button onClick={() => { setEditing(null); setForm(formVazio); setShowNew(true); }} className="h-11 w-full gap-2 rounded-full bg-gradient-primary px-5 text-white shadow-md hover:brightness-110 sm:w-auto">
               <Plus className="h-4 w-4" /> Nova Tarefa
             </Button>
           </>
@@ -631,7 +631,7 @@ export default function Tarefas() {
                 onClick={() => setFilterStatus(s.filter)}
                 className={cn(
                   'flex min-h-[76px] w-full items-center gap-2 rounded-2xl border px-3 py-3 text-left transition-all hover:-translate-y-0.5 hover:shadow-md sm:gap-3 sm:px-4',
-                  ativo ? 'border-transparent bg-[#111111] text-white shadow-md' : 'border-border/60 bg-card shadow-xs hover:border-[#1080CA]/40',
+                  ativo ? 'border-transparent bg-gradient-primary text-white shadow-md' : 'border-border/60 bg-card shadow-xs hover:border-[#1080CA]/40',
                 )}
               >
                 <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', s.iconBg, s.iconColor, ativo && 'bg-white/15 text-white')}>
@@ -684,7 +684,7 @@ export default function Tarefas() {
             type="button"
             variant="outline"
             aria-pressed={onlyMine}
-            className={cn('h-11 gap-2 rounded-full', onlyMine && 'border-transparent bg-[#111111] text-white hover:bg-[#2b2b33] hover:text-white')}
+            className={cn('h-11 gap-2 rounded-full', onlyMine && 'border-transparent bg-gradient-primary text-white hover:brightness-110 hover:text-white')}
             onClick={() => setOnlyMine((current) => !current)}
           >
             <User2 className="h-4 w-4" /> Minhas tarefas
@@ -917,7 +917,7 @@ export default function Tarefas() {
                   : draft.savedAt ? `Rascunho salvo às ${draft.savedAt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}` : draft.dirty ? 'Salvando rascunho…' : 'Sem alterações'}
               </span>
               <Button variant="outline" type="button" className="rounded-full" onClick={fecharDialogo}>Cancelar</Button>
-              <Button type="submit" className="gap-2 rounded-full bg-[#111111] text-white hover:bg-[#2b2b33]" disabled={!form.titulo.trim() || createTarefa.isPending || updateTarefa.isPending}>
+              <Button type="submit" className="gap-2 rounded-full bg-gradient-primary text-white hover:brightness-110" disabled={!form.titulo.trim() || createTarefa.isPending || updateTarefa.isPending}>
                 {(createTarefa.isPending || updateTarefa.isPending) && <Loader2 className="h-4 w-4 animate-spin" />}
                 {editing ? 'Salvar alterações' : 'Criar Tarefa'}
               </Button>

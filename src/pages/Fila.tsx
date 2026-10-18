@@ -123,14 +123,14 @@ const FilaCard = forwardRef<HTMLDivElement, {
       <div aria-busy={isBusy} className={cn(
         'rounded-2xl border border-border/60 bg-card shadow-xs transition-all duration-200',
         status === 'em_atendimento' && 'border-[#1080CA]/40 shadow-[0_8px_24px_rgba(16,128,202,0.16)] ring-1 ring-[#1080CA]/25',
-        status === 'aguardando' && pos === 1 && 'border-[#111111]/30',
+        status === 'aguardando' && pos === 1 && 'border-[#1080CA]/30',
         status === 'finalizado' && 'opacity-60',
       )}>
         <div className="flex flex-wrap items-center gap-3 p-4 sm:flex-nowrap sm:gap-4">
           {/* Position badge */}
           <div className={cn(
             'h-12 w-12 rounded-xl flex items-center justify-center shrink-0 text-xl font-bold',
-            status === 'em_atendimento' ? 'bg-gradient-primary text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)]' : pos === 1 && status !== 'finalizado' ? 'bg-[#111111] text-white' : 'bg-muted text-muted-foreground',
+            status === 'em_atendimento' ? 'bg-gradient-primary text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)]' : pos === 1 && status !== 'finalizado' ? 'bg-gradient-primary text-white' : 'bg-muted text-muted-foreground',
           )}>
             {pos}
           </div>
@@ -199,7 +199,7 @@ const FilaCard = forwardRef<HTMLDivElement, {
                 <Button size="sm" variant="outline" className="h-11 gap-1.5 rounded-full px-3 text-xs sm:h-9" onClick={onChamar} disabled={actionsDisabled}>
                   <Bell className="h-3.5 w-3.5" /> Chamar
                 </Button>
-                <Button size="sm" className="h-11 gap-1.5 rounded-full bg-[#111111] px-3 text-xs text-white hover:bg-[#2b2b33] sm:h-9" onClick={onIniciar} disabled={actionsDisabled}>
+                <Button size="sm" className="h-11 gap-1.5 rounded-full bg-gradient-primary px-3 text-xs text-white hover:brightness-110 sm:h-9" onClick={onIniciar} disabled={actionsDisabled}>
                   <Play className="h-3.5 w-3.5" /> Iniciar
                 </Button>
               </>
@@ -209,7 +209,7 @@ const FilaCard = forwardRef<HTMLDivElement, {
                 <Button size="sm" variant="outline" className="h-11 gap-1.5 rounded-full px-3 text-xs sm:h-9" onClick={onChamar} disabled={actionsDisabled}>
                   <Bell className="h-3.5 w-3.5" /> Chamar novamente
                 </Button>
-                <Button size="sm" className="h-11 gap-1.5 rounded-full bg-[#111111] px-3 text-xs text-white hover:bg-[#2b2b33] sm:h-9" onClick={onIniciar} disabled={actionsDisabled}>
+                <Button size="sm" className="h-11 gap-1.5 rounded-full bg-gradient-primary px-3 text-xs text-white hover:brightness-110 sm:h-9" onClick={onIniciar} disabled={actionsDisabled}>
                   <Play className="h-3.5 w-3.5" /> Iniciar Atendimento
                 </Button>
               </>
@@ -949,7 +949,7 @@ export default function Fila() {
     },
     {
       id: 'atendimento', label: 'Em atendimento', value: emAtendimentoJornada.length,
-      icon: Play, color: 'text-[#2ED5E7]', surface: 'bg-white/15', escuro: true,
+      icon: Play, color: 'text-white', surface: 'bg-white/15', escuro: true,
       elapsed: maiorEspera(emAtendimentoJornada, item => item.updated_at || item.created_at),
       overdue: 0,
       caption: 'com profissional',
@@ -1059,7 +1059,7 @@ export default function Fila() {
             <Button variant="outline" size="icon" className="shrink-0 rounded-full" onClick={refresh} aria-label="Atualizar fila" title="Atualizar fila">
               <RefreshCw className="h-4 w-4" />
             </Button>
-            <Button className="shrink-0 gap-2 rounded-full bg-[#111111] text-white shadow-md hover:bg-[#2b2b33]" onClick={() => setIsAddOpen(true)} disabled={filaQuery.isError || agendamentosQuery.isError}>
+            <Button className="shrink-0 gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110" onClick={() => setIsAddOpen(true)} disabled={filaQuery.isError || agendamentosQuery.isError}>
               <UserPlus aria-hidden="true" className="h-4 w-4" /> Adicionar à fila
             </Button>
           </>
@@ -1099,7 +1099,7 @@ export default function Fila() {
           {etapasJornada.map((etapa) => {
             const Icon = etapa.icon;
             return (
-              <Card key={etapa.id} id={`fila-etapa-${etapa.id}`} className={cn('rounded-2xl border-border/60 shadow-xs', 'escuro' in etapa && etapa.escuro && 'border-transparent bg-[#111111] text-white')}>
+              <Card key={etapa.id} id={`fila-etapa-${etapa.id}`} className={cn('rounded-2xl border-border/60 shadow-xs', 'escuro' in etapa && etapa.escuro && 'border-transparent bg-gradient-primary text-white')}>
                 <CardContent className="flex min-h-[102px] items-center gap-3 p-3">
                   <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', etapa.surface)}>
                     <Icon aria-hidden="true" className={cn('h-5 w-5', etapa.color)} />

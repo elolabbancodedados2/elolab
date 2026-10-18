@@ -352,7 +352,7 @@ export default function TemplatesEmail() {
   }
 
   const indicadores: { key: StatusFilter; icon: typeof Mail; label: string; caption: string; count: number; color: string; surface: string; escuro?: boolean }[] = [
-    { key: 'todos', icon: Mail, label: 'Modelos', caption: 'cadastrados na clínica', count: stats.total, color: 'text-[#2ED5E7]', surface: 'bg-white/15', escuro: true },
+    { key: 'todos', icon: Mail, label: 'Modelos', caption: 'cadastrados na clínica', count: stats.total, color: 'text-white', surface: 'bg-white/15', escuro: true },
     { key: 'ativos', icon: CheckCircle2, label: 'Ativos', caption: 'enviando mensagens', count: stats.ativos, color: 'text-success', surface: 'bg-success/10' },
     { key: 'inativos', icon: CircleSlash, label: 'Inativos', caption: 'pausados', count: stats.inativos, color: 'text-[#1080CA]', surface: 'bg-[#1080CA]/10' },
     { key: 'pendencias', icon: AlertTriangle, label: 'Com pendência', caption: 'variáveis sem valor', count: stats.pendencias, color: 'text-warning', surface: 'bg-warning/10' },
@@ -372,7 +372,7 @@ export default function TemplatesEmail() {
               <RefreshCw className="h-4 w-4" />
             </Button>
             {podeGerenciar && (
-              <Button onClick={openNew} className="shrink-0 gap-2 rounded-full bg-[#111111] text-white shadow-md hover:bg-[#2b2b33]">
+              <Button onClick={openNew} className="shrink-0 gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110">
                 <Plus className="h-4 w-4" /> Novo Template
               </Button>
             )}
@@ -395,9 +395,9 @@ export default function TemplatesEmail() {
                 onClick={() => setStatusFilter(ativo && ind.key !== 'todos' ? 'todos' : ind.key)}
                 className={cn(
                   'group rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
-                  ind.escuro && 'border-transparent bg-[#111111] text-white',
+                  ind.escuro && 'border-transparent bg-gradient-primary text-white',
                   ativo && !ind.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
-                  ativo && ind.escuro && 'ring-2 ring-[#2ED5E7]/60',
+                  ativo && ind.escuro && 'ring-2 ring-[#1080CA]/60',
                 )}
               >
                 <div className="flex min-h-[88px] items-center gap-3 p-3">
@@ -461,7 +461,7 @@ export default function TemplatesEmail() {
             </span>
             <p className="font-medium text-foreground">Nenhum modelo de e-mail cadastrado</p>
             <p className="mt-1 text-sm">Crie um modelo para reutilizar mensagens da clínica.</p>
-            {podeGerenciar && <Button className="mt-4 rounded-full bg-[#111111] text-white hover:bg-[#2b2b33]" size="sm" onClick={openNew}>Novo Template</Button>}
+            {podeGerenciar && <Button className="mt-4 rounded-full bg-gradient-primary text-white hover:brightness-110" size="sm" onClick={openNew}>Novo Template</Button>}
           </CardContent>
         </Card>
       ) : filtered.length === 0 ? (
@@ -524,7 +524,7 @@ export default function TemplatesEmail() {
                       <Button size="sm" variant="outline" className="h-9 gap-1.5 rounded-full px-3 text-xs" aria-label={`Duplicar modelo ${template.nome}`} disabled={duplicateMutation.isPending} onClick={() => duplicateMutation.mutate(template)}>
                         <Copy className="h-3.5 w-3.5" /> Duplicar
                       </Button>
-                      <Button size="sm" className="h-9 gap-1.5 rounded-full bg-[#111111] px-3 text-xs text-white hover:bg-[#2b2b33]" aria-label={`Editar modelo ${template.nome}`} onClick={() => openEdit(template)}>
+                      <Button size="sm" className="h-9 gap-1.5 rounded-full bg-gradient-primary px-3 text-xs text-white hover:brightness-110" aria-label={`Editar modelo ${template.nome}`} onClick={() => openEdit(template)}>
                         <Edit2 className="h-3.5 w-3.5" /> Editar
                       </Button>
                       <Button size="icon" variant="outline" className="h-9 w-9 rounded-full" aria-label={`Histórico do modelo ${template.nome}`} title="Histórico" onClick={() => setHistoryTemplate({ id: template.id, name: template.nome })}>

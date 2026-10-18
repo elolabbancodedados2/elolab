@@ -107,12 +107,12 @@ export default function PortalPacientesClinica() {
                 <p className="truncate font-semibold text-foreground">{nomePaciente}</p>
                 <p className="mt-0.5 text-sm text-muted-foreground">{paciente.telefone || 'Sem telefone cadastrado'}</p>
               </div>
-              <Button type="button" onClick={() => void gerarLink()} disabled={gerando} className="shrink-0 gap-2 rounded-full bg-[#111111] text-white shadow-md hover:bg-[#2b2b33]">
+              <Button type="button" onClick={() => void gerarLink()} disabled={gerando} className="shrink-0 gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110">
                 <Link2 aria-hidden="true" className="h-4 w-4" />{gerando ? 'Gerando link…' : 'Gerar link de acesso'}
               </Button>
             </div>
           ) : (
-            <Button type="button" disabled className="gap-2 rounded-full bg-[#111111] text-white shadow-md hover:bg-[#2b2b33]">
+            <Button type="button" disabled className="gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110">
               <Link2 aria-hidden="true" className="h-4 w-4" />Gerar link de acesso
             </Button>
           )}
@@ -163,7 +163,7 @@ export default function PortalPacientesClinica() {
           {ETAPAS.map((etapa, index) => (
             <Card key={etapa.titulo} className="rounded-2xl border-border/60 shadow-xs">
               <CardContent className="flex items-start gap-3 p-4">
-                <span aria-hidden="true" className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#111111] text-xs font-bold text-white">{index + 1}</span>
+                <span aria-hidden="true" className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-primary text-xs font-bold text-white">{index + 1}</span>
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-foreground">{etapa.titulo}</p>
                   <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">{etapa.texto}</p>

@@ -294,7 +294,7 @@ export default function Encaminhamentos() {
       {/* Indicadores (filtram a lista por status) */}
       <section role="group" aria-label="Resumo dos encaminhamentos" className="grid grid-cols-2 gap-2 md:grid-cols-4">
         {([
-          { key: 'pendente', icon: Clock, label: 'Pendentes', value: stats.pendentes, caption: 'aguardando início', color: 'text-[#2ED5E7]', surface: 'bg-white/15', escuro: true },
+          { key: 'pendente', icon: Clock, label: 'Pendentes', value: stats.pendentes, caption: 'aguardando início', color: 'text-white', surface: 'bg-white/15', escuro: true },
           { key: 'em_andamento', icon: Stethoscope, label: 'Em andamento', value: stats.emAndamento, caption: 'em atendimento', color: 'text-info', surface: 'bg-info/10', escuro: false },
           { key: 'concluido', icon: CheckCircle2, label: 'Concluídos', value: stats.concluidos, caption: `${stats.comContraRef} com contra-ref.`, color: 'text-success', surface: 'bg-success/10', escuro: false },
           { key: 'todos', icon: ArrowRightLeft, label: 'Total', value: stats.total, caption: 'todos os status', color: 'text-foreground', surface: 'bg-muted', escuro: false },
@@ -309,9 +309,9 @@ export default function Encaminhamentos() {
               onClick={() => setStatusFilter(ativo && s.key !== 'todos' ? 'todos' : s.key)}
               className={cn(
                 'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
-                s.escuro && 'border-transparent bg-[#111111] text-white',
+                s.escuro && 'border-transparent bg-gradient-primary text-white',
                 ativo && !s.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
-                ativo && s.escuro && 'ring-2 ring-[#2ED5E7]/60',
+                ativo && s.escuro && 'ring-2 ring-[#1080CA]/60',
               )}
             >
               <div className="flex min-h-[96px] items-center gap-3 p-3">
@@ -583,7 +583,7 @@ export default function Encaminhamentos() {
                               <Eye className="h-4 w-4" />Ver
                             </Button>
                             {enc.status === 'pendente' && podeAtualizar && (
-                              <Button className="h-9 gap-1.5 rounded-full bg-[#111111] text-xs text-white hover:bg-[#2b2b33]" onClick={() => handleUpdateEncStatus(enc.id, 'em_andamento')} disabled={isUpdating} aria-label={`Iniciar encaminhamento de ${nomePaciente}`}>
+                              <Button className="h-9 gap-1.5 rounded-full bg-gradient-primary text-xs text-white hover:brightness-110" onClick={() => handleUpdateEncStatus(enc.id, 'em_andamento')} disabled={isUpdating} aria-label={`Iniciar encaminhamento de ${nomePaciente}`}>
                                 Iniciar
                               </Button>
                             )}

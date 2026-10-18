@@ -671,7 +671,7 @@ export default function Relatorios() {
               <FileSpreadsheet className="h-4 w-4" />
               Estoque
             </Button>
-            <Button onClick={handleExportExcel} disabled={isFetching || !!exportando || !podeExportarFontesCompletas(['lançamentos', 'pagamentos', 'histórico de pagamentos'], fontesNoLimite)} className="gap-2 rounded-full bg-[#111111] text-white shadow-md hover:bg-[#2b2b33]" aria-label="Exportar financeiro para Excel">
+            <Button onClick={handleExportExcel} disabled={isFetching || !!exportando || !podeExportarFontesCompletas(['lançamentos', 'pagamentos', 'histórico de pagamentos'], fontesNoLimite)} className="gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110" aria-label="Exportar financeiro para Excel">
               <FileSpreadsheet className="h-4 w-4" />
               Exportar Excel
             </Button>
@@ -756,14 +756,14 @@ export default function Relatorios() {
         </button>
 
         <button type="button" aria-pressed={activeTab === 'dre'} onClick={() => setActiveTab('dre')}
-          className="rounded-2xl border border-transparent bg-[#111111] p-4 text-left text-white shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md">
+          className="rounded-2xl border border-transparent bg-gradient-primary p-4 text-left text-white shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/15">
-              <DollarSign className="h-5 w-5 text-[#2ED5E7]" />
+              <DollarSign className="h-5 w-5 text-white" />
             </div>
             <div>
               <p className="text-[11px] text-white/70">Lucro</p>
-              <p className="text-2xl font-bold tabular-nums text-[#2ED5E7]">{formatCurrency(estatisticas.lucro)}</p>
+              <p className="text-2xl font-bold tabular-nums text-white">{formatCurrency(estatisticas.lucro)}</p>
             </div>
           </div>
         </button>

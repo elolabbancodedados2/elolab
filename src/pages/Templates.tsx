@@ -403,7 +403,7 @@ export default function Templates() {
             <Button variant="outline" size="icon" className="shrink-0 rounded-full" onClick={refresh} aria-label="Atualizar modelos" title="Atualizar modelos">
               <RefreshCw className="h-4 w-4" />
             </Button>
-            <Button onClick={openNewForActiveTab} className="shrink-0 gap-2 rounded-full bg-[#111111] text-white shadow-md hover:bg-[#2b2b33]">
+            <Button onClick={openNewForActiveTab} className="shrink-0 gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110">
               <Plus className="h-4 w-4" /> Novo modelo
             </Button>
           </>
@@ -424,17 +424,17 @@ export default function Templates() {
                 onClick={() => setClinicalTab(ind.key)}
                 className={cn(
                   'group rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
-                  ativo && 'border-transparent bg-[#111111] text-white',
+                  ativo && 'border-transparent bg-gradient-primary text-white',
                 )}
               >
                 <div className="flex min-h-[88px] items-center gap-3 p-3">
                   <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', ativo ? 'bg-white/15' : 'bg-[#1080CA]/10')}>
-                    <Icon aria-hidden="true" className={cn('h-5 w-5', ativo ? 'text-[#2ED5E7]' : 'text-[#1080CA]')} />
+                    <Icon aria-hidden="true" className={cn('h-5 w-5', ativo ? 'text-white' : 'text-[#1080CA]')} />
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-baseline justify-between gap-2">
                       <h3 className={cn('truncate text-xs font-semibold', ativo ? 'text-white/80' : 'text-foreground')}>{ind.label}</h3>
-                      <span className={cn('text-2xl font-bold tabular-nums', ativo ? 'text-[#2ED5E7]' : 'text-[#1080CA]')}>{ind.count}</span>
+                      <span className={cn('text-2xl font-bold tabular-nums', ativo ? 'text-white' : 'text-[#1080CA]')}>{ind.count}</span>
                     </div>
                     <p className={cn('truncate text-[11px]', ativo ? 'text-white/60' : 'text-muted-foreground')}>{ind.caption}</p>
                   </div>
@@ -491,7 +491,7 @@ export default function Templates() {
                 : (clinicalTab === 'prescriptions' ? 'Tente outro nome, tipo ou medicamento.' : 'Tente outro nome, tipo, CID ou conteúdo.')}
             </p>
             {activeTotal === 0 ? (
-              <Button className="mt-4 rounded-full bg-[#111111] text-white hover:bg-[#2b2b33]" size="sm" onClick={openNewForActiveTab}>Novo modelo</Button>
+              <Button className="mt-4 rounded-full bg-gradient-primary text-white hover:brightness-110" size="sm" onClick={openNewForActiveTab}>Novo modelo</Button>
             ) : (
               <Button className="mt-4 rounded-full" size="sm" variant="outline" onClick={limparFiltros}>Limpar filtros</Button>
             )}
@@ -549,7 +549,7 @@ export default function Templates() {
                               Duplicar
                             </Button>
                             {podeEditar && <>
-                              <Button aria-label={`Editar modelo ${template.nome}`} size="sm" className="h-9 gap-1.5 rounded-full bg-[#111111] px-3 text-xs text-white hover:bg-[#2b2b33]" onClick={() => { setPrescriptionForm(template); setMedicamentosTexto(medicamentosParaLinhas(template.medicamentos).join('\n')); setIsPrescriptionFormOpen(true); }}>
+                              <Button aria-label={`Editar modelo ${template.nome}`} size="sm" className="h-9 gap-1.5 rounded-full bg-gradient-primary px-3 text-xs text-white hover:brightness-110" onClick={() => { setPrescriptionForm(template); setMedicamentosTexto(medicamentosParaLinhas(template.medicamentos).join('\n')); setIsPrescriptionFormOpen(true); }}>
                                 <Edit className="h-3.5 w-3.5" /> Editar
                               </Button>
                               <Button aria-label={`Excluir modelo ${template.nome}`} size="icon" variant="ghost" className="ml-auto h-9 w-9 rounded-full text-destructive" title="Excluir" onClick={() => setDeleteDialog({ open: true, type: 'prescription', id: template.id })}>
@@ -598,7 +598,7 @@ export default function Templates() {
                               Duplicar
                             </Button>
                             {podeEditar && <>
-                              <Button aria-label={`Editar modelo ${template.nome}`} size="sm" className="h-9 gap-1.5 rounded-full bg-[#111111] px-3 text-xs text-white hover:bg-[#2b2b33]" onClick={() => { setCertificateForm(template); setIsCertificateFormOpen(true); }}>
+                              <Button aria-label={`Editar modelo ${template.nome}`} size="sm" className="h-9 gap-1.5 rounded-full bg-gradient-primary px-3 text-xs text-white hover:brightness-110" onClick={() => { setCertificateForm(template); setIsCertificateFormOpen(true); }}>
                                 <Edit className="h-3.5 w-3.5" /> Editar
                               </Button>
                               <Button aria-label={`Excluir modelo ${template.nome}`} size="icon" variant="ghost" className="ml-auto h-9 w-9 rounded-full text-destructive" title="Excluir" onClick={() => setDeleteDialog({ open: true, type: 'certificate', id: template.id })}>

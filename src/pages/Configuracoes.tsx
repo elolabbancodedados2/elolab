@@ -285,7 +285,7 @@ function SalasManager() {
             <CardTitle className="flex items-center gap-2"><span className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-white"><MapPin className="h-4 w-4" /></span>Salas e Consultórios</CardTitle>
             <CardDescription>Gerencie os espaços físicos da clínica</CardDescription>
           </div>
-          <Button size="sm" disabled={!profile?.clinica_id || isLoading || salasQuery.isError} onClick={() => { setEditId(null); setForm({ nome: '', tipo: 'consultorio', ativo: true, equipamentos: '' }); setShowForm(true); }} className="gap-1.5 rounded-full bg-[#111111] text-white hover:bg-[#2b2b33]">
+          <Button size="sm" disabled={!profile?.clinica_id || isLoading || salasQuery.isError} onClick={() => { setEditId(null); setForm({ nome: '', tipo: 'consultorio', ativo: true, equipamentos: '' }); setShowForm(true); }} className="gap-1.5 rounded-full bg-gradient-primary text-white hover:brightness-110">
             <Plus className="h-4 w-4" /> Nova Sala
           </Button>
         </div>
@@ -358,7 +358,7 @@ function SalasManager() {
           </div>
           <DialogFooter>
             <Button variant="outline" className="rounded-full" onClick={() => setShowForm(false)} disabled={saving}>Cancelar</Button>
-            <Button className="rounded-full bg-[#111111] text-white hover:bg-[#2b2b33]" onClick={handleSave} disabled={saving}>{saving && <Loader2 className="h-4 w-4 animate-spin mr-1" />}{editId ? 'Salvar' : 'Criar'}</Button>
+            <Button className="rounded-full bg-gradient-primary text-white hover:brightness-110" onClick={handleSave} disabled={saving}>{saving && <Loader2 className="h-4 w-4 animate-spin mr-1" />}{editId ? 'Salvar' : 'Criar'}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -670,7 +670,7 @@ export default function Configuracoes() {
           return;
         }
         void saveConfig(configKey, configValue, label);
-      }} disabled={saving[configKey]} aria-busy={saving[configKey]} className="gap-2 rounded-full bg-[#111111] text-white shadow-md hover:bg-[#2b2b33]">
+      }} disabled={saving[configKey]} aria-busy={saving[configKey]} className="gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110">
         {saving[configKey] ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
         {saving[configKey] ? 'Salvando…' : 'Salvar na nuvem'}
       </Button>
@@ -750,7 +750,7 @@ export default function Configuracoes() {
         <div className="-mx-4 overflow-x-auto overscroll-x-contain px-4 pb-2 sm:-mx-1 sm:px-1 lg:overflow-visible">
           <TabsList aria-label="Seções das configurações" className="flex h-auto w-max min-w-full flex-nowrap justify-start gap-1 rounded-2xl bg-muted/60 p-1.5 lg:w-full lg:flex-wrap">
             {tabItems.map(tab => (
-              <TabsTrigger key={tab.value} value={tab.value} title={tab.label} className="min-h-11 shrink-0 gap-2 rounded-xl px-3 text-xs data-[state=active]:bg-[#111111] data-[state=active]:text-white data-[state=active]:shadow-sm">
+              <TabsTrigger key={tab.value} value={tab.value} title={tab.label} className="min-h-11 shrink-0 gap-2 rounded-xl px-3 text-xs data-[state=active]:bg-gradient-primary data-[state=active]:text-white data-[state=active]:shadow-sm">
                 <tab.icon aria-hidden="true" className="h-4 w-4" />
                 <span>{tab.label}</span>
               </TabsTrigger>
@@ -842,7 +842,7 @@ export default function Configuracoes() {
         <TabsContent value="plano">
           <div className="space-y-6">
             {/* Plano Atual */}
-            <Card className={cn('rounded-2xl shadow-xs', hasActivePlan && !isPlanExempt ? 'border-transparent bg-[#111111] text-white' : 'border-border/60')}>
+            <Card className={cn('rounded-2xl shadow-xs', hasActivePlan && !isPlanExempt ? 'border-transparent bg-gradient-primary text-white' : 'border-border/60')}>
               <CardHeader>
                 <CardTitle className={cn('flex items-center gap-2', hasActivePlan && !isPlanExempt ? 'text-white' : '')}><span className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-white"><CreditCard className="h-4 w-4" /></span>Seu Plano Atual</CardTitle>
                 <CardDescription className={hasActivePlan && !isPlanExempt ? 'text-white/70' : ''}>Visualize e gerencie sua subscrição</CardDescription>
@@ -873,7 +873,7 @@ export default function Configuracoes() {
                     <div className="grid gap-4 md:grid-cols-2">
                       <div className="space-y-2">
                         <Label className="text-xs text-white/70">Plano Ativo</Label>
-                        <div className="text-2xl font-bold capitalize text-[#2ED5E7]">{planName || 'Carregando...'}</div>
+                        <div className="text-2xl font-bold capitalize text-white">{planName || 'Carregando...'}</div>
                         <p className="text-xs text-white/70">{isTrial ? 'Período de teste' : 'Plano profissional'}</p>
                       </div>
                       <div className="space-y-2">
@@ -1202,7 +1202,7 @@ export default function Configuracoes() {
                     Os controles antigos desta aba só eram armazenados e não alteravam o envio. Configure e acompanhe os lembretes e mensagens que estão realmente ativos no módulo Automações.
                   </p>
                 </div>
-                <Button asChild className="rounded-full bg-[#111111] text-white hover:bg-[#2b2b33]"><Link to="/automacoes">Abrir Automações</Link></Button>
+                <Button asChild className="rounded-full bg-gradient-primary text-white hover:brightness-110"><Link to="/automacoes">Abrir Automações</Link></Button>
               </CardContent>
             </Card>
           </div>
@@ -1374,7 +1374,7 @@ export default function Configuracoes() {
             <Button type="button" variant="outline" className="rounded-full" onClick={() => setHistoryOpen(false)}>Fechar</Button>
             <Button
               type="button"
-              className="rounded-full bg-[#111111] text-white hover:bg-[#2b2b33]"
+              className="rounded-full bg-gradient-primary text-white hover:brightness-110"
               onClick={() => void restoreConfigHistory()}
               disabled={historyLoading || historyRestoring || !historyKey || !selectedVersion || historyDiff.length === 0 || !configVersions[historyKey]}
             >

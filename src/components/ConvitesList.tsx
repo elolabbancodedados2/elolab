@@ -281,7 +281,7 @@ export function ConvitesList() {
   };
 
   const INDICADORES: Array<{ chave: InviteStatus | 'todos'; label: string; value: number; icon: typeof Mail; color: string; surface: string; escuro: boolean; caption: string }> = [
-    { chave: 'pendente', label: 'Pendentes', value: pendentes, icon: Clock, color: 'text-[#2ED5E7]', surface: 'bg-white/15', escuro: true, caption: 'aguardando aceite' },
+    { chave: 'pendente', label: 'Pendentes', value: pendentes, icon: Clock, color: 'text-white', surface: 'bg-white/15', escuro: true, caption: 'aguardando aceite' },
     { chave: 'aceito', label: 'Aceitos', value: aceitos, icon: CheckCircle2, color: 'text-success', surface: 'bg-success/10', escuro: false, caption: 'acesso liberado' },
     { chave: 'expirado', label: 'Expirados', value: expirados, icon: XCircle, color: 'text-destructive', surface: 'bg-destructive/10', escuro: false, caption: 'link vencido' },
     { chave: 'todos', label: 'Total', value: invites.length, icon: Mail, color: 'text-[#1080CA]', surface: 'bg-[#1080CA]/10', escuro: false, caption: 'todos os convites' },
@@ -303,7 +303,7 @@ export function ConvitesList() {
             </Button>
             <ConvidarFuncionarioDialog
               trigger={
-                <Button className="shrink-0 gap-2 rounded-full bg-[#111111] text-white shadow-md hover:bg-[#2b2b33]">
+                <Button className="shrink-0 gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110">
                   <Plus className="h-4 w-4" /> Novo convite
                 </Button>
               }
@@ -346,9 +346,9 @@ export function ConvitesList() {
               onClick={() => setFiltro(ind.chave === 'todos' ? 'todos' : (ativo ? 'todos' : ind.chave))}
               className={cn(
                 'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
-                ind.escuro && 'border-transparent bg-[#111111] text-white',
+                ind.escuro && 'border-transparent bg-gradient-primary text-white',
                 ativo && !ind.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
-                ativo && ind.escuro && 'ring-2 ring-[#2ED5E7]/60',
+                ativo && ind.escuro && 'ring-2 ring-[#1080CA]/60',
               )}
             >
               <div className="flex items-start justify-between gap-2 p-4">

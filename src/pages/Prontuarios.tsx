@@ -1651,7 +1651,7 @@ export default function Prontuarios() {
               <Button
                 onClick={() => handleNovoProntuario()}
                 disabled={!!erroMedicos || !!erroProntuarios}
-                className="rounded-full bg-[#111111] text-white shadow-md hover:bg-[#2b2b33] gap-2"
+                className="rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110 gap-2"
                 size="sm"
               >
                 <Plus className="h-4 w-4" />Novo Atendimento
@@ -1685,13 +1685,13 @@ export default function Prontuarios() {
 
       {/* Indicator strip */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <div className="rounded-2xl border-transparent bg-[#111111] p-4 shadow-xs">
+        <div className="rounded-2xl border-transparent bg-gradient-primary p-4 shadow-xs">
           <div className="flex items-center gap-3">
             <div className="h-10 w-10 rounded-xl bg-white/15 flex items-center justify-center flex-shrink-0">
-              <FileEdit className="h-5 w-5 text-[#2ED5E7]" />
+              <FileEdit className="h-5 w-5 text-white" />
             </div>
             <div>
-              <p className="text-2xl font-bold tabular-nums text-[#2ED5E7]">{rascunhosAbertos.length}</p>
+              <p className="text-2xl font-bold tabular-nums text-white">{rascunhosAbertos.length}</p>
               <p className="text-[11px] text-white/70">Rascunhos abertos</p>
             </div>
           </div>
@@ -1942,7 +1942,7 @@ export default function Prontuarios() {
               <section aria-label="Evoluções e ações do prontuário" className="min-w-0 space-y-4 2xl:col-span-8">
               {/* Actions bar */}
               <div className="flex items-center gap-2">
-                <Button onClick={() => handleNovoProntuario()} size="sm" className="gap-1.5 rounded-full bg-[#111111] text-white hover:bg-[#2b2b33]" disabled={!!erroMedicos || !!erroProntuarios}>
+                <Button onClick={() => handleNovoProntuario()} size="sm" className="gap-1.5 rounded-full bg-gradient-primary text-white hover:brightness-110" disabled={!!erroMedicos || !!erroProntuarios}>
                   <Plus className="h-3.5 w-3.5" />Novo Atendimento
                 </Button>
                 <span className="text-xs text-muted-foreground flex-1">

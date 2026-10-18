@@ -562,7 +562,7 @@ export default function Atestados() {
             </Button>
             <Button
               onClick={handleNew}
-              className="shrink-0 gap-2 rounded-full bg-[#111111] text-white shadow-md hover:bg-[#2b2b33] disabled:bg-none disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100 disabled:shadow-none"
+              className="shrink-0 gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110 disabled:bg-none disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100 disabled:shadow-none"
               disabled={!medicosDisponiveis.length}
             >
               <Plus className="h-4 w-4" />Novo Atestado
@@ -580,7 +580,7 @@ export default function Atestados() {
       {/* Indicadores por tipo (filtram a lista) */}
       <section role="group" aria-label="Resumo por tipo de documento" className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-5">
         {([
-          { key: 'hoje', icon: CalendarCheck, label: 'Hoje', value: stats.hoje, caption: 'emitidos hoje', color: 'text-[#2ED5E7]', surface: 'bg-white/15', escuro: true },
+          { key: 'hoje', icon: CalendarCheck, label: 'Hoje', value: stats.hoje, caption: 'emitidos hoje', color: 'text-white', surface: 'bg-white/15', escuro: true },
           ...TIPOS_ATESTADO.map(tipo => ({
             key: tipo.value,
             icon: tipo.icon,
@@ -606,9 +606,9 @@ export default function Atestados() {
               onClick={alternar}
               className={cn(
                 'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
-                s.escuro && 'border-transparent bg-[#111111] text-white',
+                s.escuro && 'border-transparent bg-gradient-primary text-white',
                 ativo && !s.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
-                ativo && s.escuro && 'ring-2 ring-[#2ED5E7]/60',
+                ativo && s.escuro && 'ring-2 ring-[#1080CA]/60',
               )}
             >
               <div className="flex min-h-[96px] items-center gap-3 p-3">
@@ -717,7 +717,7 @@ export default function Atestados() {
                       <p className="mt-1 text-sm">{atestados.length === 0 ? 'Emita o primeiro atestado para o paciente' : 'Ajuste a busca, o tipo ou o período.'}</p>
                       {atestados.length === 0 ? (
                         <Button
-                          className="mt-4 gap-2 rounded-full bg-[#111111] text-white hover:bg-[#2b2b33] disabled:bg-none disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100"
+                          className="mt-4 gap-2 rounded-full bg-gradient-primary text-white hover:brightness-110 disabled:bg-none disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100"
                           onClick={handleNew}
                           disabled={!medicosDisponiveis.length}
                         >
@@ -727,7 +727,7 @@ export default function Atestados() {
                         <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
                           <Button size="sm" variant="outline" className="rounded-full" onClick={limparFiltros}>Limpar filtros</Button>
                           {tipoFiltro !== 'todos' && medicosDisponiveis.length > 0 && (
-                            <Button size="sm" className="gap-2 rounded-full bg-[#111111] text-white hover:bg-[#2b2b33]" onClick={() => handleNewWithType(tipoFiltro)}>
+                            <Button size="sm" className="gap-2 rounded-full bg-gradient-primary text-white hover:brightness-110" onClick={() => handleNewWithType(tipoFiltro)}>
                               <Plus className="h-4 w-4" />Emitir {getTipoLabel(tipoFiltro)}
                             </Button>
                           )}
@@ -775,7 +775,7 @@ export default function Atestados() {
                             <Button variant="outline" className="h-9 gap-1.5 rounded-full text-xs" onClick={() => handleView(atestado)} aria-label="Ver atestado">
                               <Eye className="h-4 w-4" />Ver
                             </Button>
-                            <Button className="h-9 gap-1.5 rounded-full bg-[#111111] text-xs text-white hover:bg-[#2b2b33]" onClick={() => handlePrint(atestado)} aria-label="Imprimir atestado">
+                            <Button className="h-9 gap-1.5 rounded-full bg-gradient-primary text-xs text-white hover:brightness-110" onClick={() => handlePrint(atestado)} aria-label="Imprimir atestado">
                               <Printer className="h-4 w-4" />Imprimir
                             </Button>
                           </div>

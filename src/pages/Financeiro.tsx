@@ -333,7 +333,7 @@ export default function Financeiro() {
           },
           {
             label: 'Resultado Líquido', value: kpis.saldo, icon: DollarSign,
-            color: kpis.saldo >= 0 ? 'text-[#2ED5E7]' : 'text-red-300',
+            color: kpis.saldo >= 0 ? 'text-white' : 'text-red-300',
             bg: 'bg-white/10',
             border: 'border-transparent',
             escuro: true,
@@ -342,7 +342,7 @@ export default function Financeiro() {
           },
         ].map((s) => (
           <div key={s.label}>
-            <Card className={cn('h-full rounded-2xl border border-border/60 shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md', s.border, 'escuro' in s && s.escuro && 'bg-[#111111] text-white')}>
+            <Card className={cn('h-full rounded-2xl border border-border/60 shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md', s.border, 'escuro' in s && s.escuro && 'bg-gradient-primary text-white')}>
               <CardContent className="py-4 px-5">
                 <div className="flex items-start justify-between">
                   <div>

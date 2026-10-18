@@ -182,7 +182,7 @@ export default function CobrancaInadimplentes() {
     },
     {
       key: 'atraso30' as FiltroIndicador, label: 'Saldo em aberto', value: totalDevido, icon: DollarSign,
-      color: 'text-[#2ED5E7]', surface: 'bg-white/15', escuro: true,
+      color: 'text-white', surface: 'bg-white/15', escuro: true,
       caption: acimaDeTrinta > 0 ? `${acimaDeTrinta} com +30 dias de atraso` : 'nenhum acima de 30 dias', money: true,
     },
     {
@@ -209,7 +209,7 @@ export default function CobrancaInadimplentes() {
             <Button
               onClick={pedirEnvioTodos}
               disabled={sending || cobrancasQuery.isError || !comContato.length}
-              className="gap-2 rounded-full bg-[#111111] text-white shadow-md hover:bg-[#2b2b33] shrink-0"
+              className="gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110 shrink-0"
             >
               {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
               {sending ? `Processando ${sendProgress.batch}/${sendProgress.total}…` : 'Processar régua de cobrança'}
@@ -243,9 +243,9 @@ export default function CobrancaInadimplentes() {
               onClick={() => setFiltroIndicador(ativo && kpi.key !== 'todos' ? 'todos' : kpi.key)}
               className={cn(
                 'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
-                kpi.escuro && 'border-transparent bg-[#111111] text-white',
+                kpi.escuro && 'border-transparent bg-gradient-primary text-white',
                 ativo && !kpi.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
-                ativo && kpi.escuro && 'ring-2 ring-[#2ED5E7]/60',
+                ativo && kpi.escuro && 'ring-2 ring-[#1080CA]/60',
               )}
             >
               <div className="flex min-h-[96px] items-center gap-3 p-3">

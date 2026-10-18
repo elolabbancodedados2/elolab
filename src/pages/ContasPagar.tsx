@@ -371,7 +371,7 @@ export default function ContasPagar() {
           <Button variant="outline" size="sm" className="gap-1.5 rounded-full shrink-0" onClick={() => navigate('/recepcao?tab=caixa')}>
             <ArrowUpRight className="h-4 w-4" /> Caixa do Dia
           </Button>
-          <Button onClick={handleNew} className="gap-2 rounded-full bg-[#111111] text-white shadow-md hover:bg-[#2b2b33] shrink-0">
+          <Button onClick={handleNew} className="gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110 shrink-0">
             <Plus className="h-4 w-4" /> Nova Conta
           </Button>
           </>
@@ -389,7 +389,7 @@ export default function ContasPagar() {
         {[
           { key: 'todos', label: 'Total Geral', value: stats.total, icon: DollarSign, color: 'text-[#1080CA]', surface: 'bg-[#1080CA]/10', escuro: false, caption: `${contas.length} lançamento(s)` },
           { key: 'pendente', label: 'Pendente', value: stats.pendente, icon: Clock, color: 'text-warning', surface: 'bg-warning/10', escuro: false, caption: `${contas.filter(c => ['pendente', 'parcial'].includes(c.statusOriginal || '') && !c.vencida).length} conta(s)` },
-          { key: 'atrasado', label: 'Vencidas / Em atraso', value: stats.atrasado, icon: AlertCircle, color: 'text-[#2ED5E7]', surface: 'bg-white/15', escuro: true, caption: `${contas.filter(c => c.vencida).length} em atraso` },
+          { key: 'atrasado', label: 'Vencidas / Em atraso', value: stats.atrasado, icon: AlertCircle, color: 'text-white', surface: 'bg-white/15', escuro: true, caption: `${contas.filter(c => c.vencida).length} em atraso` },
           { key: 'pago', label: 'Pago', value: stats.pago, icon: Check, color: 'text-success', surface: 'bg-success/10', escuro: false, caption: `${contas.filter(c => ['pago'].includes(c.statusOriginal || '')).length} conta(s)` },
         ].map(kpi => {
           const Icon = kpi.icon;
@@ -402,9 +402,9 @@ export default function ContasPagar() {
               onClick={() => setFilterStatus(ativo && kpi.key !== 'todos' ? 'todos' : kpi.key)}
               className={cn(
                 'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
-                kpi.escuro && 'border-transparent bg-[#111111] text-white',
+                kpi.escuro && 'border-transparent bg-gradient-primary text-white',
                 ativo && !kpi.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
-                ativo && kpi.escuro && 'ring-2 ring-[#2ED5E7]/60',
+                ativo && kpi.escuro && 'ring-2 ring-[#1080CA]/60',
               )}
             >
               <div className="flex min-h-[96px] items-center gap-3 p-3">
@@ -460,7 +460,7 @@ export default function ContasPagar() {
                   <Button
                     size="sm"
                     onClick={() => handlePagamento(d.id)}
-                    className="h-9 gap-1 rounded-full bg-[#111111] text-xs text-white shadow-md hover:bg-[#2b2b33]"
+                    className="h-9 gap-1 rounded-full bg-gradient-primary text-xs text-white shadow-md hover:brightness-110"
                   >
                     <Check aria-hidden="true" className="h-3.5 w-3.5" /> {Number(d.valor_pago || 0) > 0 ? 'Pagar saldo' : 'Pagar'}
                   </Button>
@@ -550,7 +550,7 @@ export default function ContasPagar() {
                           {contas.length === 0 ? 'Cadastre uma despesa para acompanhar seus vencimentos.' : 'Limpe a busca e o status para ver outras contas.'}
                         </p>
                         {contas.length === 0 ? (
-                          <Button className="mt-3 gap-2 rounded-full bg-[#111111] text-white hover:bg-[#2b2b33]" size="sm" onClick={handleNew}>
+                          <Button className="mt-3 gap-2 rounded-full bg-gradient-primary text-white hover:brightness-110" size="sm" onClick={handleNew}>
                             <Plus className="h-4 w-4" /> Nova Conta
                           </Button>
                         ) : (
@@ -602,7 +602,7 @@ export default function ContasPagar() {
                       <TableCell className="text-right">
                         {['pendente', 'atrasado', 'parcial'].includes(conta.status) && (
                           <Button size="sm" onClick={() => handlePagamento(conta.id)}
-                            className="h-9 gap-1 rounded-full bg-[#111111] text-xs text-white shadow-md hover:bg-[#2b2b33]">
+                            className="h-9 gap-1 rounded-full bg-gradient-primary text-xs text-white shadow-md hover:brightness-110">
                             <Check className="h-3.5 w-3.5" /> {Number(conta.valor_pago || 0) > 0 ? 'Pagar saldo' : 'Pagar'}
                           </Button>
                         )}

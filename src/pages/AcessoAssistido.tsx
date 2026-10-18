@@ -261,7 +261,7 @@ export default function AcessoAssistido() {
               <p className="text-xs text-muted-foreground">Mínimo de 10 caracteres. Não inclua dados de pacientes.</p>
             </div>
             <Button
-              className="min-h-11 gap-2 rounded-full bg-[#111111] text-white hover:bg-[#2b2b33]"
+              className="min-h-11 gap-2 rounded-full bg-gradient-primary text-white hover:brightness-110"
               disabled={!clinicaId || reason.trim().length < 10 || reason.trim().length > 500 || requestAccess.isPending || clinics.isLoading}
               onClick={enviarPedido}
             >
@@ -313,7 +313,7 @@ export default function AcessoAssistido() {
                       <Button className="h-9 gap-2 rounded-full" variant="outline" onClick={() => setConfirmation({ request, action: 'denied' })} disabled={actionBusy}>
                         <X className="h-4 w-4" /> Negar
                       </Button>
-                      <Button className="h-9 gap-2 rounded-full bg-[#111111] text-white hover:bg-[#2b2b33]" onClick={() => setConfirmation({ request, action: 'approved' })} disabled={actionBusy}>
+                      <Button className="h-9 gap-2 rounded-full bg-gradient-primary text-white hover:brightness-110" onClick={() => setConfirmation({ request, action: 'approved' })} disabled={actionBusy}>
                         <Check className="h-4 w-4" /> Autorizar por 2h
                       </Button>
                     </>}

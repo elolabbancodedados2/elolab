@@ -343,7 +343,7 @@ export default function CentralSuporte() {
         actions={!isPlatformAdmin && (
           <Dialog open={novaAberta} onOpenChange={setNovaAberta}>
             <DialogTrigger asChild>
-              <Button disabled={!profile?.clinica_id} className="gap-2 rounded-full bg-[#111111] text-white shadow-md hover:bg-[#2b2b33]"><Plus aria-hidden="true" className="h-4 w-4" />Abrir chamado</Button>
+              <Button disabled={!profile?.clinica_id} className="gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110"><Plus aria-hidden="true" className="h-4 w-4" />Abrir chamado</Button>
             </DialogTrigger>
             <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto rounded-2xl">
               <DialogHeader>

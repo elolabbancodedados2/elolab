@@ -152,7 +152,7 @@ const KPI_TONES = {
   success: 'border-success/20 from-success/5 to-card',
   accent: 'border-border/60 from-accent to-card',
   warning: 'border-warning/20 from-warning/5 to-card',
-  dark: 'border-transparent bg-[#111111] from-[#111111] to-[#111111] text-white',
+  dark: 'border-transparent bg-gradient-primary text-white',
 } as const;
 
 const KPI_ICON_TONES = {
@@ -160,7 +160,7 @@ const KPI_ICON_TONES = {
   success: 'bg-success/10 text-success ring-success/20',
   accent: 'bg-accent text-accent-foreground ring-border',
   warning: 'bg-warning/10 text-warning-foreground ring-warning/20',
-  dark: 'bg-white/15 text-[#2ED5E7] ring-white/20',
+  dark: 'bg-white/20 text-white ring-white/20',
 } as const;
 
 function KPICard({ title, value, change, icon, description, definition, source, period, tone, onClick, pressed }: KPICardProps) {
@@ -190,7 +190,7 @@ function KPICard({ title, value, change, icon, description, definition, source, 
           <div className="flex items-center justify-between">
             <div>
               <p className={cn('text-sm', dark ? 'text-white/70' : 'text-muted-foreground')}>{title}</p>
-              <p className={cn('text-3xl font-bold mt-1 tabular-nums', dark && 'text-[#2ED5E7]')}>{value}</p>
+              <p className={cn('text-3xl font-bold mt-1 tabular-nums', dark && 'text-white')}>{value}</p>
               {change !== undefined && (
                 <div className={cn('flex items-center gap-1 text-sm mt-1', change === null ? (dark ? 'text-white/60' : 'text-muted-foreground') : change >= 0 ? 'text-success' : 'text-destructive')}>
                   {change === null ? 'Sem base anterior para comparar' : <>
@@ -621,7 +621,7 @@ export default function Analytics() {
 
             <Button
               variant={showComparison ? 'default' : 'outline'}
-              size="sm" className={cn('h-9 rounded-full text-xs gap-1', showComparison && 'bg-[#111111] text-white hover:bg-[#2b2b33]')}
+              size="sm" className={cn('h-9 rounded-full text-xs gap-1', showComparison && 'bg-gradient-primary text-white hover:brightness-110')}
               onClick={() => setShowComparison(!showComparison)}
             >
               <TrendingUp className="h-3.5 w-3.5" />
@@ -849,7 +849,7 @@ export default function Analytics() {
                       >
                         <div className={cn(
                           'h-10 w-10 rounded-full flex items-center justify-center text-sm font-bold shrink-0',
-                          i === 0 ? 'bg-[#111111] text-white' : 'bg-muted text-foreground',
+                          i === 0 ? 'bg-gradient-primary text-white' : 'bg-muted text-foreground',
                         )}>
                           {i + 1}º
                         </div>

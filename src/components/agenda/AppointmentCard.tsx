@@ -53,7 +53,7 @@ const STATUS_DOT: Record<string, string> = {
   agendado: 'bg-[#1080CA]',
   confirmado: 'bg-success',
   aguardando: 'bg-warning',
-  em_atendimento: 'bg-[#2ED5E7] animate-pulse',
+  em_atendimento: 'bg-[#1080CA] animate-pulse',
   finalizado: 'bg-muted-foreground/30',
   cancelado: 'bg-destructive/70',
   faltou: 'bg-warning/70',

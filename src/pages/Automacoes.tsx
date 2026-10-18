@@ -504,7 +504,7 @@ export default function Automacoes() {
               <RefreshCw className="h-4 w-4" />
             </Button>
             <Button
-              className="rounded-full gap-2 bg-[#111111] text-white shadow-md hover:bg-[#2b2b33]"
+              className="rounded-full gap-2 bg-gradient-primary text-white shadow-md hover:brightness-110"
               onClick={() => changeTab('fila')}
             >
               <ListChecks className="h-4 w-4" /> Ver fila de envios
@@ -532,17 +532,17 @@ export default function Automacoes() {
                 onClick={() => changeTab(indicator.key)}
                 className={cn(
                   'rounded-2xl border border-border/60 bg-card p-3 text-left shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA] focus-visible:ring-offset-2',
-                  indicator.escuro && 'border-transparent bg-[#111111] text-white',
+                  indicator.escuro && 'border-transparent bg-gradient-primary text-white',
                   !indicator.escuro && isActive && 'ring-2 ring-[#1080CA]',
-                  indicator.escuro && isActive && 'ring-2 ring-[#2ED5E7]',
+                  indicator.escuro && isActive && 'ring-2 ring-[#1080CA]',
                 )}
               >
                 <div className="flex items-center gap-3">
                   <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', indicator.escuro ? 'bg-white/15' : indicator.bg)}>
-                    <Icon className={cn('h-5 w-5', indicator.escuro ? 'text-[#2ED5E7]' : indicator.color)} />
+                    <Icon className={cn('h-5 w-5', indicator.escuro ? 'text-white' : indicator.color)} />
                   </div>
                   <div>
-                    <p className={cn('text-2xl font-bold tabular-nums', indicator.escuro ? 'text-[#2ED5E7]' : indicator.color)}>{indicator.value}</p>
+                    <p className={cn('text-2xl font-bold tabular-nums', indicator.escuro ? 'text-white' : indicator.color)}>{indicator.value}</p>
                     <p className={cn('text-[11px]', indicator.escuro ? 'text-white/70' : 'text-muted-foreground')}>{indicator.label}</p>
                   </div>
                 </div>

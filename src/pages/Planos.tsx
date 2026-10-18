@@ -50,7 +50,7 @@ const planConfig: Record<string, {
   'elolab-ultra': {
     icon: <Sparkles className="h-7 w-7" />,
     gradient: 'from-[#1080CA]/10 via-transparent to-transparent',
-    iconBg: 'bg-[#111111] text-[#2ED5E7]',
+    iconBg: 'bg-gradient-primary text-white',
     borderAccent: 'border-[#BFD8EE] hover:border-[#1080CA]/60',
     btnClass: 'bg-gradient-primary text-white hover:brightness-110 shadow-[0_4px_12px_rgba(16,128,202,0.35)] border-0 rounded-full',
   },
@@ -203,7 +203,7 @@ export default function Planos() {
       {pedidoAberto && (
         <div role="status" className="flex flex-col gap-3 rounded-xl border border-[#BFD8EE] bg-[#F3F8FC] p-4 text-sm sm:flex-row sm:items-center sm:justify-between">
           <span>Há um pagamento pendente para {planos?.find((plano) => plano.slug === pedidoAberto.plano_slug)?.nome ?? 'um plano'}. Conclua ou cancele esse pedido antes de escolher outro plano.</span>
-          <Button type="button" size="sm" className="shrink-0 rounded-full bg-[#111111] text-white hover:bg-[#2b2b33]" onClick={() => irParaCheckout(pedidoAberto.plano_slug)}>
+          <Button type="button" size="sm" className="shrink-0 rounded-full bg-gradient-primary text-white hover:brightness-110" onClick={() => irParaCheckout(pedidoAberto.plano_slug)}>
             Continuar pagamento
           </Button>
         </div>
@@ -227,7 +227,7 @@ export default function Planos() {
           </div>
           <Button
             onClick={() => navigate('/configuracoes?tab=plano')}
-            className="gap-2 shrink-0 rounded-full bg-[#111111] text-white hover:bg-[#2b2b33]"
+            className="gap-2 shrink-0 rounded-full bg-gradient-primary text-white hover:brightness-110"
           >
             Gerenciar teste
             <ArrowRight className="h-4 w-4" />
@@ -279,7 +279,7 @@ export default function Planos() {
               className={cn(
                 'relative flex flex-col overflow-hidden rounded-2xl border transition-colors duration-200',
                 isCurrentPlan
-                  ? 'border-transparent bg-[#111111] text-white shadow-lg'
+                  ? 'border-transparent bg-gradient-primary text-white shadow-lg'
                   : cn('bg-card', config.borderAccent, isHighlighted ? 'shadow-md' : 'shadow-sm hover:shadow-md'),
               )}
             >
@@ -289,7 +289,7 @@ export default function Planos() {
               {/* Popular badge */}
               {isHighlighted && (
                 <div className="absolute top-0 right-0">
-                  <div className={cn('text-xs font-semibold px-4 py-1.5 rounded-bl-2xl', isCurrentPlan ? 'bg-white/15 text-white' : 'bg-[#111111] text-white')}>
+                  <div className={cn('text-xs font-semibold px-4 py-1.5 rounded-bl-2xl', isCurrentPlan ? 'bg-white/15 text-white' : 'bg-gradient-primary text-white')}>
                     Mais popular
                   </div>
                 </div>
@@ -297,7 +297,7 @@ export default function Planos() {
 
               {/* Header */}
               <div className="relative p-8 pb-4">
-                <div className={cn('inline-flex p-3 rounded-xl mb-4', isCurrentPlan ? 'bg-white/10 text-[#2ED5E7]' : config.iconBg)}>
+                <div className={cn('inline-flex p-3 rounded-xl mb-4', isCurrentPlan ? 'bg-white/20 text-white' : config.iconBg)}>
                   {config.icon}
                 </div>
                 <h2 className={cn('text-2xl font-bold', isCurrentPlan ? 'text-white' : 'text-foreground')}>{plano.nome}</h2>
@@ -307,7 +307,7 @@ export default function Planos() {
               {/* Price */}
               <div className="relative px-8 pb-6">
                 <div className="flex items-baseline gap-1">
-                  <span className={cn('text-5xl font-extrabold tracking-tight', isCurrentPlan ? 'text-[#2ED5E7]' : 'text-foreground')}>
+                  <span className={cn('text-5xl font-extrabold tracking-tight', isCurrentPlan ? 'text-white' : 'text-foreground')}>
                     {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(plano.valor)}
                   </span>
                   <span className={cn('font-medium', isCurrentPlan ? 'text-white/70' : 'text-muted-foreground')}>
@@ -337,14 +337,14 @@ export default function Planos() {
                       <li key={feature} className="flex items-start gap-3 text-sm">
                         <div className={cn(
                           'mt-0.5 shrink-0 rounded-full p-0.5',
-                          isCurrentPlan ? 'bg-white/15 text-[#2ED5E7]' : isPremium ? 'bg-success/10 text-success' : 'bg-[#1080CA]/10 text-[#1080CA]',
+                          isCurrentPlan ? 'bg-white/20 text-white' : isPremium ? 'bg-success/10 text-success' : 'bg-[#1080CA]/10 text-[#1080CA]',
                         )}>
                           <Check className="h-3.5 w-3.5" strokeWidth={3} />
                         </div>
                         <span className={isCurrentPlan ? 'text-white/90' : 'text-foreground/90'}>
                           {featureLabels[feature] || feature}
                           {isPremium && (
-                            <Badge variant="outline" className={cn('ml-2 rounded-full text-[10px] px-1.5 py-0', isCurrentPlan ? 'border-white/25 text-[#2ED5E7]' : 'border-success/25 text-success')}>
+                            <Badge variant="outline" className={cn('ml-2 rounded-full text-[10px] px-1.5 py-0', isCurrentPlan ? 'border-white/25 text-white' : 'border-success/25 text-success')}>
                               Exclusivo
                             </Badge>
                           )}
@@ -394,7 +394,7 @@ export default function Planos() {
                     )}
                     <Button
                       disabled={bloquearAcoesCobranca || pedidoDeOutroPlanoAberto}
-                      className={cn('w-full h-12 rounded-full text-base', hasActivePlan && isHighlighted ? 'bg-gradient-primary text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)] hover:brightness-110' : hasActivePlan ? '' : 'bg-[#111111] text-white hover:bg-[#2b2b33]')}
+                      className={cn('w-full h-12 rounded-full text-base', hasActivePlan && isHighlighted ? 'bg-gradient-primary text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)] hover:brightness-110' : hasActivePlan ? '' : 'bg-gradient-primary text-white hover:brightness-110')}
                       variant={hasActivePlan && isHighlighted ? 'default' : hasActivePlan ? 'ghost' : 'default'}
                       onClick={() => irParaCheckout(plano.slug)}
                     >

@@ -918,7 +918,7 @@ export default function LaudosLab() {
             >
               <RefreshCw className="h-4 w-4" />
             </Button>
-            <Button asChild className="shrink-0 gap-2 rounded-full bg-[#111111] text-white shadow-md hover:bg-[#2b2b33]">
+            <Button asChild className="shrink-0 gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110">
               <Link to="/exames"><TestTube aria-hidden="true" className="h-4 w-4" /> Exames</Link>
             </Button>
           </>
@@ -937,7 +937,7 @@ export default function LaudosLab() {
               value: totalPendentes,
               icon: Clock,
               escuro: true,
-              color: 'text-[#2ED5E7]',
+              color: 'text-white',
               surface: 'bg-white/15',
               caption: 'aguardando laudo',
             },
@@ -992,9 +992,9 @@ export default function LaudosLab() {
                 onClick={() => setStatusFilter(ativo && s.key !== 'todos' ? 'todos' : s.key)}
                 className={cn(
                   'group rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
-                  s.escuro && 'border-transparent bg-[#111111] text-white',
+                  s.escuro && 'border-transparent bg-gradient-primary text-white',
                   ativo && !s.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
-                  ativo && s.escuro && 'ring-2 ring-[#2ED5E7]/60',
+                  ativo && s.escuro && 'ring-2 ring-[#1080CA]/60',
                 )}
               >
                 <div className="flex min-h-[96px] items-center gap-3 p-3">
@@ -1063,7 +1063,7 @@ export default function LaudosLab() {
               })()}
               <Button
                 size="sm"
-                className="h-9 gap-1.5 rounded-full bg-[#111111] text-white hover:bg-[#2b2b33]"
+                className="h-9 gap-1.5 rounded-full bg-gradient-primary text-white hover:brightness-110"
                 onClick={() => setViewingId(proximoALaudar.id)}
               >
                 <Eye className="h-3.5 w-3.5" /> Abrir Laudo
@@ -1151,7 +1151,7 @@ export default function LaudosLab() {
                 </Button>
               )}
               {coletas.length === 0 && !hasOlderLaudos && (
-                <Button asChild size="sm" className="mt-4 gap-2 rounded-full bg-[#111111] text-white hover:bg-[#2b2b33]">
+                <Button asChild size="sm" className="mt-4 gap-2 rounded-full bg-gradient-primary text-white hover:brightness-110">
                   <Link to="/laboratorio"><FlaskConical className="h-4 w-4" /> Ir para Laboratório</Link>
                 </Button>
               )}
@@ -1196,7 +1196,7 @@ export default function LaudosLab() {
                         <td className="px-4 py-2.5">
                           <span className={cn(
                             'inline-flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold',
-                            idx === 0 ? 'bg-[#111111] text-white' : 'bg-muted text-muted-foreground',
+                            idx === 0 ? 'bg-gradient-primary text-white' : 'bg-muted text-muted-foreground',
                           )}>
                             {idx + 1}
                           </span>

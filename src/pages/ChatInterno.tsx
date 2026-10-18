@@ -509,7 +509,7 @@ function ConversaView({
                             <span className="text-[10px]">{format(new Date(m.created_at), 'HH:mm')}</span>
                             {isOwn && (
                               m.lida_em
-                                ? <CheckCheck className="h-3 w-3 text-[#2ED5E7]" />
+                                ? <CheckCheck className="h-3 w-3 text-white" />
                                 : <Check className="h-3 w-3" />
                             )}
                           </div>
@@ -589,7 +589,7 @@ function ConversaView({
             size="icon"
             className={cn(
               'h-10 w-10 shrink-0 rounded-full transition-all',
-              texto.trim() ? 'bg-[#111111] text-white hover:bg-[#2b2b33]' : 'bg-muted text-muted-foreground',
+              texto.trim() ? 'bg-gradient-primary text-white hover:brightness-110' : 'bg-muted text-muted-foreground',
             )}
             aria-label={enviando ? 'Enviando mensagem' : 'Enviar mensagem'}
             onClick={handleEnviar}
@@ -676,10 +676,10 @@ export default function ChatInterno() {
   return (
     <div className="flex h-[calc(100vh-3.5rem)] min-h-0 flex-col overflow-hidden rounded-2xl border border-border/60 bg-card shadow-xs supports-[height:100dvh]:h-[calc(100dvh-3.5rem)]">
       {/* Header */}
-      <div className="bg-[#111111] px-5 py-4 sm:px-6">
+      <div className="bg-gradient-primary px-5 py-4 sm:px-6">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/15 text-[#2ED5E7]">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/20 text-white">
               <MessageSquare className="h-5 w-5" />
             </span>
             <div className="min-w-0">
@@ -691,7 +691,7 @@ export default function ChatInterno() {
           </div>
           <div className="flex items-center gap-2 shrink-0">
             {totalNaoLidas > 0 && (
-              <Badge className="rounded-full bg-[#2ED5E7] text-[#111111]">
+              <Badge className="rounded-full bg-[#1080CA] text-white">
                 {totalNaoLidas} não lidas
               </Badge>
             )}

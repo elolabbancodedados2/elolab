@@ -378,7 +378,7 @@ export default function Salas() {
             <Button variant="outline" size="icon" className="shrink-0 rounded-full" onClick={refresh} aria-label="Atualizar salas" title="Atualizar salas">
               <RefreshCw className="h-4 w-4" />
             </Button>
-            <Button onClick={() => handleOpen()} className="shrink-0 gap-2 rounded-full bg-[#111111] text-white shadow-md hover:bg-[#2b2b33]">
+            <Button onClick={() => handleOpen()} className="shrink-0 gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110">
               <Plus className="h-4 w-4" /> Nova Sala / Leito
             </Button>
           </>
@@ -395,7 +395,7 @@ export default function Salas() {
         </div>
         <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-5">
           {([
-            { key: 'ocupado' as EstadoSala, icon: Users, label: 'Em atendimento', caption: 'com paciente agora', color: 'text-[#2ED5E7]', surface: 'bg-white/15', escuro: true },
+            { key: 'ocupado' as EstadoSala, icon: Users, label: 'Em atendimento', caption: 'com paciente agora', color: 'text-white', surface: 'bg-white/15', escuro: true },
             { key: 'reservada' as EstadoSala, icon: Clock, label: 'Reservadas', caption: 'paciente chamado ou na fila', color: 'text-[#1080CA]', surface: 'bg-[#1080CA]/10', escuro: false },
             { key: 'disponivel' as EstadoSala, icon: CheckCircle2, label: 'Disponíveis', caption: 'prontas para uso', color: 'text-success', surface: 'bg-success/10', escuro: false },
             { key: 'limpeza' as EstadoSala, icon: Paintbrush, label: 'Limpeza', caption: 'aguardando higienização', color: 'text-info', surface: 'bg-info/10', escuro: false },
@@ -411,9 +411,9 @@ export default function Salas() {
                 onClick={() => setFilterEstado(ativo ? 'todos' : s.key)}
                 className={cn(
                   'group rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
-                  s.escuro && 'border-transparent bg-[#111111] text-white',
+                  s.escuro && 'border-transparent bg-gradient-primary text-white',
                   ativo && !s.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
-                  ativo && s.escuro && 'ring-2 ring-[#2ED5E7]/60',
+                  ativo && s.escuro && 'ring-2 ring-[#1080CA]/60',
                 )}
               >
                 <div className="flex min-h-[96px] items-center gap-3 p-3">
@@ -566,7 +566,7 @@ export default function Salas() {
                                 <Badge
                                   className={cn(
                                     'w-fit rounded-full border-transparent text-[9px]',
-                                    oc.status === 'em_atendimento' ? 'bg-gradient-primary text-white hover:bg-gradient-primary' : 'bg-[#111111] text-white hover:bg-[#111111]',
+                                    oc.status === 'em_atendimento' ? 'bg-gradient-primary text-white hover:bg-gradient-primary' : 'bg-gradient-primary text-white hover:bg-gradient-primary',
                                   )}
                                 >
                                   {oc.status === 'em_atendimento' ? 'Em atendimento' : oc.status === 'chamado' ? 'Paciente chamado' : 'Aguardando na fila'}
@@ -628,7 +628,7 @@ export default function Salas() {
 
                       <div className="flex items-center gap-1.5 pt-1">
                         {statusExibido === 'disponivel' && (
-                          <Button size="sm" className="h-9 rounded-full bg-[#111111] px-4 text-xs text-white hover:bg-[#2b2b33]"
+                          <Button size="sm" className="h-9 rounded-full bg-gradient-primary px-4 text-xs text-white hover:brightness-110"
                             onClick={() => handleChangeStatus(sala, 'ocupado')} disabled={updatingSalaId !== null}>
                             {updatingSalaId === sala.id ? 'Salvando...' : 'Ocupar'}
                           </Button>
@@ -682,7 +682,7 @@ export default function Salas() {
             <p className="font-medium text-foreground">{totalSalas === 0 ? 'Nenhuma sala cadastrada' : 'Nenhuma sala corresponde aos filtros'}</p>
             <p className="mt-1 text-sm">{totalSalas === 0 ? 'Cadastre uma sala ou leito para começar.' : 'Limpe a busca, o tipo ou a situação para ver todas as salas.'}</p>
             {totalSalas === 0 ? (
-              <Button className="mt-4 rounded-full bg-[#111111] text-white hover:bg-[#2b2b33]" size="sm" onClick={() => handleOpen()}>Nova Sala / Leito</Button>
+              <Button className="mt-4 rounded-full bg-gradient-primary text-white hover:brightness-110" size="sm" onClick={() => handleOpen()}>Nova Sala / Leito</Button>
             ) : (
               <Button className="mt-4 rounded-full" size="sm" variant="outline" onClick={limparFiltros}>
                 Limpar filtros

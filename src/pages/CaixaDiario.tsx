@@ -1205,14 +1205,14 @@ export default function CaixaDiario() {
             {!caixaHoje ? (
               <Button
                 onClick={() => setShowAbertura(true)}
-                className="shrink-0 gap-2 rounded-full bg-[#111111] text-white shadow-md hover:bg-[#2b2b33]"
+                className="shrink-0 gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110"
               >
                 <Unlock className="h-4 w-4" /> Abrir Caixa
               </Button>
             ) : isOpen ? (
               <Button
                 onClick={() => setShowLancamento(true)}
-                className="shrink-0 gap-2 rounded-full bg-[#111111] text-white shadow-md hover:bg-[#2b2b33]"
+                className="shrink-0 gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110"
               >
                 <ShoppingCart className="h-4 w-4" /> Nova Venda
               </Button>
@@ -1275,7 +1275,7 @@ export default function CaixaDiario() {
               </Button>
             ) : isOpen ? (
               <>
-                <Button onClick={() => setShowLancamento(true)} className="h-11 gap-2 rounded-full bg-[#111111] px-5 text-white shadow-md hover:bg-[#2b2b33]">
+                <Button onClick={() => setShowLancamento(true)} className="h-11 gap-2 rounded-full bg-gradient-primary px-5 text-white shadow-md hover:brightness-110">
                   <ShoppingCart className="h-4 w-4" /> Nova Venda
                 </Button>
                 <Button onClick={() => setShowDespesa(true)} variant="outline" className="h-11 gap-2 rounded-full border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive">
@@ -1340,7 +1340,7 @@ export default function CaixaDiario() {
                 caption: isOpen ? 'resultado financeiro' : diferencaFechamento === null ? 'caixa encerrado' : mesmoValor(diferencaFechamento, 0) ? 'bateu com o esperado' : `${diferencaFechamento > 0 ? 'sobra' : 'falta'} ${fmt(Math.abs(diferencaFechamento))}`,
                 value: totais.final,
                 icon: DollarSign,
-                color: 'text-[#2ED5E7]',
+                color: 'text-white',
                 surface: 'bg-white/15',
                 escuro: true,
               },
@@ -1364,9 +1364,9 @@ export default function CaixaDiario() {
                       }}
                       className={cn(
                         'group rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
-                        card.escuro && 'border-transparent bg-[#111111] text-white',
+                        card.escuro && 'border-transparent bg-gradient-primary text-white',
                         ativo && !card.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
-                        ativo && card.escuro && 'ring-2 ring-[#2ED5E7]/60',
+                        ativo && card.escuro && 'ring-2 ring-[#1080CA]/60',
                       )}
                     >
                       <div className="flex min-h-[96px] items-center gap-3 p-3">
@@ -1590,7 +1590,7 @@ export default function CaixaDiario() {
                 </span>
                 <h3 className="text-lg font-semibold text-foreground mb-1">Caixa não aberto hoje</h3>
                 <p className="text-sm text-muted-foreground mb-4">Abra o caixa para iniciar as movimentações do dia</p>
-                <Button onClick={() => setShowAbertura(true)} className="h-11 gap-2 rounded-full bg-[#111111] px-5 text-white shadow-md hover:bg-[#2b2b33]">
+                <Button onClick={() => setShowAbertura(true)} className="h-11 gap-2 rounded-full bg-gradient-primary px-5 text-white shadow-md hover:brightness-110">
                   <Unlock className="h-4 w-4" /> Abrir Caixa Agora
                 </Button>
               </CardContent>
@@ -1711,7 +1711,7 @@ export default function CaixaDiario() {
                       }}
                     >
                       <div className="flex items-center gap-3">
-                        <div className={cn('rounded-lg p-2', cx.aberto ? 'bg-gradient-primary text-white' : 'bg-[#111111] text-white')}>
+                        <div className={cn('rounded-lg p-2', cx.aberto ? 'bg-gradient-primary text-white' : 'bg-gradient-primary text-white')}>
                           {cx.aberto ? <Unlock className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
                         </div>
                         <div>
@@ -2210,9 +2210,9 @@ export default function CaixaDiario() {
               </div>
 
               {/* Total */}
-              <div className="mb-3 rounded-xl bg-[#111111] p-3 text-white">
+              <div className="mb-3 rounded-xl bg-gradient-primary p-3 text-white">
                 <p className="text-xs text-white/60">Total a cobrar</p>
-                <p className="text-2xl font-bold tabular-nums text-[#2ED5E7]">{fmt(carrinhoTotal)}</p>
+                <p className="text-2xl font-bold tabular-nums text-white">{fmt(carrinhoTotal)}</p>
               </div>
 
               <Button onClick={() => adicionarLancamentoMutation.mutate()}

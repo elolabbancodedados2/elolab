@@ -370,7 +370,7 @@ export default function VitaisGraficos() {
             </span>
             <p className="font-medium text-foreground">Nenhuma medição encontrada</p>
             <p className="mt-1 text-sm text-muted-foreground">Quando houver sinais vitais na triagem ou no prontuário, eles aparecerão aqui. Registre a próxima medição no prontuário do paciente.</p>
-            <Button asChild className="mt-4 gap-2 rounded-full bg-[#111111] text-white shadow-md hover:bg-[#2b2b33]">
+            <Button asChild className="mt-4 gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110">
               <Link to={linkProntuario}><FileText aria-hidden="true" className="h-4 w-4" /> Abrir prontuário</Link>
             </Button>
           </CardContent>
@@ -401,11 +401,11 @@ export default function VitaisGraficos() {
                 const escuro = i === indiceEscuro;
                 const ativo = item.key !== null && graficoFoco === item.key;
                 const corValor = item.alterado
-                  ? (escuro ? 'text-[#2ED5E7]' : 'text-destructive')
-                  : (escuro ? 'text-[#2ED5E7]' : 'text-foreground');
+                  ? (escuro ? 'text-white' : 'text-destructive')
+                  : (escuro ? 'text-white' : 'text-foreground');
                 const corIcone = item.alterado
-                  ? (escuro ? 'text-[#2ED5E7]' : 'text-destructive')
-                  : (escuro ? 'text-[#2ED5E7]' : 'text-[#1080CA]');
+                  ? (escuro ? 'text-white' : 'text-destructive')
+                  : (escuro ? 'text-white' : 'text-[#1080CA]');
                 const superficieIcone = escuro ? 'bg-white/15' : item.alterado ? 'bg-destructive/10' : 'bg-[#1080CA]/10';
                 return (
                   <button
@@ -418,10 +418,10 @@ export default function VitaisGraficos() {
                       'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
                       item.key !== null && 'hover:-translate-y-0.5 hover:shadow-md',
                       item.key === null && 'cursor-default',
-                      escuro && 'border-transparent bg-[#111111] text-white',
+                      escuro && 'border-transparent bg-gradient-primary text-white',
                       !escuro && item.alterado && 'border-destructive/30',
                       ativo && !escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
-                      ativo && escuro && 'ring-2 ring-[#2ED5E7]/60',
+                      ativo && escuro && 'ring-2 ring-[#1080CA]/60',
                     )}
                   >
                     <div className="flex min-h-[96px] flex-col justify-between gap-2 p-3">
@@ -432,7 +432,7 @@ export default function VitaisGraficos() {
                         {item.alterado && (
                           <Badge variant="outline" className={cn(
                             'rounded-full text-[10px]',
-                            escuro ? 'border-[#2ED5E7]/40 bg-white/10 text-[#2ED5E7]' : 'border-destructive/30 bg-destructive/10 text-destructive',
+                            escuro ? 'border-[#1080CA]/40 bg-white/20 text-white' : 'border-destructive/30 bg-destructive/10 text-destructive',
                           )}>
                             Alterado
                           </Badge>
@@ -711,7 +711,7 @@ export default function VitaisGraficos() {
                                 <TableCell>
                                   <span className={cn(
                                     'inline-flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold tabular-nums',
-                                    maisRecente ? 'bg-[#111111] text-white' : 'bg-muted text-muted-foreground',
+                                    maisRecente ? 'bg-gradient-primary text-white' : 'bg-muted text-muted-foreground',
                                   )}>
                                     {index + 1}
                                   </span>

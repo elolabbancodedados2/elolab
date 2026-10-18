@@ -548,7 +548,7 @@ export default function MapaColeta() {
         <td className="px-2 py-2">
           <span className={cn(
             'inline-flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold tabular-nums',
-            eProxima ? 'bg-[#111111] text-white' : 'bg-muted text-muted-foreground',
+            eProxima ? 'bg-gradient-primary text-white' : 'bg-muted text-muted-foreground',
           )}>
             {idx + 1}
           </span>
@@ -598,7 +598,7 @@ export default function MapaColeta() {
         <td className="px-3 py-2 text-right">
           <div className="flex items-center justify-end gap-1">
             {showActions && aguardaColeta(item) && (
-              <Button size="sm" className="h-9 gap-1 rounded-full bg-[#111111] px-4 text-xs text-white hover:bg-[#2b2b33]" disabled={processando || bulkProcessing} onClick={() => handleColetar(item.id)}>
+              <Button size="sm" className="h-9 gap-1 rounded-full bg-gradient-primary px-4 text-xs text-white hover:brightness-110" disabled={processando || bulkProcessing} onClick={() => handleColetar(item.id)}>
                 {processando ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />}
                 {processando ? 'Salvando…' : 'Coletar'}
               </Button>
@@ -669,7 +669,7 @@ export default function MapaColeta() {
                   <Printer aria-hidden="true" className="h-4 w-4" /> Etiquetas ({selected.size})
                 </Button>
                 {selectedColetaveis > 0 && (
-                  <Button className="shrink-0 gap-2 rounded-full bg-[#111111] text-white shadow-md hover:bg-[#2b2b33]" disabled={bulkProcessing} onClick={handleBulkColetar}>
+                  <Button className="shrink-0 gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110" disabled={bulkProcessing} onClick={handleBulkColetar}>
                     {bulkProcessing ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />} Coletar {selectedColetaveis}
                   </Button>
                 )}
@@ -722,7 +722,7 @@ export default function MapaColeta() {
         </div>
         <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
           {([
-            { key: 'pendente' as FiltroRapido, icon: Clock, label: 'Pendentes', caption: 'aguardando coleta', color: 'text-[#2ED5E7]', surface: 'bg-white/15', escuro: true },
+            { key: 'pendente' as FiltroRapido, icon: Clock, label: 'Pendentes', caption: 'aguardando coleta', color: 'text-white', surface: 'bg-white/15', escuro: true },
             { key: 'recoleta' as FiltroRapido, icon: RotateCcw, label: 'Recoleta', caption: 'nova amostra necessária', color: 'text-destructive', surface: 'bg-destructive/10', escuro: false },
             { key: 'coletados' as FiltroRapido, icon: CheckCircle2, label: 'Coletados', caption: 'aguardando ou em análise', color: 'text-success', surface: 'bg-success/10', escuro: false },
             { key: 'urgente' as FiltroRapido, icon: Zap, label: 'Urgentes', caption: 'pendentes com prioridade', color: 'text-[#1080CA]', surface: 'bg-[#1080CA]/10', escuro: false },
@@ -739,9 +739,9 @@ export default function MapaColeta() {
                 onClick={() => setFiltroRapido(ativo ? 'todos' : s.key)}
                 className={cn(
                   'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
-                  s.escuro && 'border-transparent bg-[#111111] text-white',
+                  s.escuro && 'border-transparent bg-gradient-primary text-white',
                   ativo && !s.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
-                  ativo && s.escuro && 'ring-2 ring-[#2ED5E7]/60',
+                  ativo && s.escuro && 'ring-2 ring-[#1080CA]/60',
                 )}
               >
                 <div className="flex min-h-[96px] items-center gap-3 p-3">
@@ -816,7 +816,7 @@ export default function MapaColeta() {
                   <Eye aria-hidden="true" className="h-4 w-4" /> Detalhes
                 </Button>
                 <Button
-                  className="h-10 gap-1.5 rounded-full bg-[#111111] text-white hover:bg-[#2b2b33]"
+                  className="h-10 gap-1.5 rounded-full bg-gradient-primary text-white hover:brightness-110"
                   disabled={processando || bulkProcessing}
                   onClick={() => handleColetar(proximaColeta.id)}
                 >
@@ -944,7 +944,7 @@ export default function MapaColeta() {
                     Limpar filtros
                   </Button>
                 ) : itens.length === 0 ? (
-                  <Button asChild size="sm" className="mt-4 rounded-full bg-[#111111] text-white hover:bg-[#2b2b33]">
+                  <Button asChild size="sm" className="mt-4 rounded-full bg-gradient-primary text-white hover:brightness-110">
                     <Link to="/laboratorio">Abrir painel do laboratório</Link>
                   </Button>
                 ) : null}
@@ -1040,7 +1040,7 @@ export default function MapaColeta() {
                   {['transporte', 'armazenamento'].includes(eventoTipo) && <div className="space-y-1"><Label htmlFor="lab-amostra-local">Local</Label><Input id="lab-amostra-local" value={eventoLocal} onChange={(event) => setEventoLocal(event.target.value)} maxLength={120} placeholder="Ex.: setor de bioquímica" /></div>}
                   {eventoTipo === 'observacao' && <div className="space-y-1 sm:col-span-2"><Label htmlFor="lab-amostra-motivo">Observação</Label><Input id="lab-amostra-motivo" value={eventoMotivo} onChange={(event) => setEventoMotivo(event.target.value)} maxLength={500} placeholder="Descreva a ocorrência" /></div>}
                 </div>
-                <div className="flex justify-end"><Button size="sm" onClick={() => void registrarEventoAmostra()} disabled={savingEvento} className="gap-2 rounded-full bg-[#111111] text-white hover:bg-[#2b2b33]">{savingEvento && <Loader2 className="h-4 w-4 animate-spin" />} Registrar evento</Button></div>
+                <div className="flex justify-end"><Button size="sm" onClick={() => void registrarEventoAmostra()} disabled={savingEvento} className="gap-2 rounded-full bg-gradient-primary text-white hover:brightness-110">{savingEvento && <Loader2 className="h-4 w-4 animate-spin" />} Registrar evento</Button></div>
               </section>
             </div>
           )}

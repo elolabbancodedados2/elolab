@@ -508,7 +508,7 @@ export default function RetornosControl() {
   // Classes completas: Tailwind compila classes estáticas — templates como
   // `text-${cor}` geravam classe inexistente e "Atrasados" nunca ficava colorido.
   const kpis = [
-    { key: 'atrasado', label: 'Atrasados', value: atrasados, icon: AlertTriangle, color: 'text-[#2ED5E7]', surface: 'bg-white/15', escuro: true, caption: acimaDeTrinta > 0 ? `${acimaDeTrinta} acima de 30 dias` : 'fora da data prevista' },
+    { key: 'atrasado', label: 'Atrasados', value: atrasados, icon: AlertTriangle, color: 'text-white', surface: 'bg-white/15', escuro: true, caption: acimaDeTrinta > 0 ? `${acimaDeTrinta} acima de 30 dias` : 'fora da data prevista' },
     { key: 'pendente', label: 'Pendentes', value: pendentes, icon: CalendarClock, color: 'text-warning', surface: 'bg-warning/10', escuro: false, caption: 'ainda sem horário marcado' },
     { key: 'proximos7', label: 'Próximos 7 dias', value: proximos7, icon: CalendarDays, color: 'text-[#1080CA]', surface: 'bg-[#1080CA]/10', escuro: false, caption: 'a partir de hoje' },
     { key: 'realizado', label: 'Realizados', value: realizados, icon: CheckCircle2, color: 'text-success', surface: 'bg-success/10', escuro: false, caption: `${taxaComparecimento}% de comparecimento` },
@@ -552,7 +552,7 @@ export default function RetornosControl() {
               <RefreshCw className="h-4 w-4" />
             </Button>
             <Button
-              className="shrink-0 gap-2 rounded-full bg-[#111111] text-white shadow-md hover:bg-[#2b2b33]"
+              className="shrink-0 gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110"
               onClick={() => navigate('/agenda')}
               title="Abre a agenda para conferir os horários dos retornos"
             >
@@ -601,9 +601,9 @@ export default function RetornosControl() {
               onClick={() => setFiltroStatus(ativo ? 'todos' : kpi.key)}
               className={cn(
                 'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
-                kpi.escuro && 'border-transparent bg-[#111111] text-white',
+                kpi.escuro && 'border-transparent bg-gradient-primary text-white',
                 ativo && !kpi.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
-                ativo && kpi.escuro && 'ring-2 ring-[#2ED5E7]/60',
+                ativo && kpi.escuro && 'ring-2 ring-[#1080CA]/60',
               )}
             >
               <div className="flex min-h-[96px] items-center gap-3 p-3">
@@ -666,7 +666,7 @@ export default function RetornosControl() {
                     {isAgendando ? <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" /> : <RefreshCw aria-hidden="true" className="h-4 w-4" />} Remarcar
                   </Button>
                 ) : (
-                  <Button className="h-10 gap-1.5 rounded-full bg-[#111111] text-white hover:bg-[#2b2b33]" onClick={() => handleAgendarRetorno(destaque)}>
+                  <Button className="h-10 gap-1.5 rounded-full bg-gradient-primary text-white hover:brightness-110" onClick={() => handleAgendarRetorno(destaque)}>
                     <CalendarPlus aria-hidden="true" className="h-4 w-4" /> Agendar retorno
                   </Button>
                 )}
@@ -844,7 +844,7 @@ export default function RetornosControl() {
                               </Button>
                             )}
                             {emAberto && !dataRetornoFutura && !horarioAindaNaoChegou && !agendamentoSemComparecimento && !atendimentoAindaAberto && (
-                              <Button size="sm" onClick={() => setRealizando(r)} className="h-9 gap-1 rounded-full bg-[#111111] text-xs text-white hover:bg-[#2b2b33]">
+                              <Button size="sm" onClick={() => setRealizando(r)} className="h-9 gap-1 rounded-full bg-gradient-primary text-xs text-white hover:brightness-110">
                                 <CheckCircle2 aria-hidden="true" className="h-3.5 w-3.5" /> Realizado
                               </Button>
                             )}

@@ -580,7 +580,7 @@ export default function Funcionarios() {
     : `${funcionarios.length} funcionário(s) · ${totalAtivos} ativo(s)${totalSemPermissao > 0 ? ` · ${totalSemPermissao} sem permissão` : ''}`;
 
   const indicadores = [
-    { key: 'sem_permissao' as const, label: 'Sem permissão', value: totalSemPermissao, icon: ShieldCheck, color: 'text-[#2ED5E7]', surface: 'bg-white/15', escuro: true, caption: 'ativos sem acesso definido' },
+    { key: 'sem_permissao' as const, label: 'Sem permissão', value: totalSemPermissao, icon: ShieldCheck, color: 'text-white', surface: 'bg-white/15', escuro: true, caption: 'ativos sem acesso definido' },
     { key: 'ativo' as const, label: 'Ativos', value: totalAtivos, icon: CheckCircle, color: 'text-success', surface: 'bg-success/10', escuro: false, caption: 'com acesso liberado' },
     { key: 'inativo' as const, label: 'Inativos', value: totalInativos, icon: UserX, color: 'text-muted-foreground', surface: 'bg-muted', escuro: false, caption: 'sem acesso ao sistema' },
     { key: 'todos' as const, label: 'Total', value: funcionarios.length, icon: Users, color: 'text-[#1080CA]', surface: 'bg-[#1080CA]/10', escuro: false, caption: 'toda a equipe' },
@@ -607,7 +607,7 @@ export default function Funcionarios() {
             <Button variant="outline" onClick={handleOpenCustomize} className="shrink-0 gap-2 rounded-full">
               <Settings2 className="h-4 w-4" />Personalizar perfis
             </Button>
-            <Button onClick={() => handleOpenDialog()} className="shrink-0 gap-2 rounded-full bg-[#111111] text-white shadow-md hover:bg-[#2b2b33]">
+            <Button onClick={() => handleOpenDialog()} className="shrink-0 gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110">
               <Plus className="h-4 w-4" />Novo Funcionário
             </Button>
           </>
@@ -626,9 +626,9 @@ export default function Funcionarios() {
               onClick={() => setFilterStatus(ind.key === 'todos' ? 'todos' : (ativo ? 'todos' : ind.key))}
               className={cn(
                 'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
-                ind.escuro && 'border-transparent bg-[#111111] text-white',
+                ind.escuro && 'border-transparent bg-gradient-primary text-white',
                 ativo && !ind.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
-                ativo && ind.escuro && 'ring-2 ring-[#2ED5E7]/60',
+                ativo && ind.escuro && 'ring-2 ring-[#1080CA]/60',
               )}
             >
               <div className="flex items-start justify-between gap-2 p-4">

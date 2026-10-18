@@ -739,7 +739,7 @@ export default function ContasReceber() {
             title="Exportar para Excel">
             <Download className="h-4 w-4" />
           </Button>
-          <Button onClick={handleNew} className="gap-2 rounded-full bg-[#111111] text-white shadow-md hover:bg-[#2b2b33] shrink-0">
+          <Button onClick={handleNew} className="gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110 shrink-0">
             <Plus className="h-4 w-4" /> Nova Receita
           </Button>
           </>
@@ -759,7 +759,7 @@ export default function ContasReceber() {
         {[
           { key: 'todos', label: 'Total Geral', value: stats.total, icon: DollarSign, color: 'text-[#1080CA]', surface: 'bg-[#1080CA]/10', escuro: false, caption: `${stats.countTotal} lançamento(s)` },
           { key: 'pendente', label: 'Em aberto', value: stats.pendente, icon: Clock, color: 'text-warning', surface: 'bg-warning/10', escuro: false, caption: `${stats.countPendente} conta(s)` },
-          { key: 'atrasado', label: 'Vencidas / Em atraso', value: stats.atrasado, icon: AlertCircle, color: 'text-[#2ED5E7]', surface: 'bg-white/15', escuro: true, caption: `${stats.countAtrasado} em atraso` },
+          { key: 'atrasado', label: 'Vencidas / Em atraso', value: stats.atrasado, icon: AlertCircle, color: 'text-white', surface: 'bg-white/15', escuro: true, caption: `${stats.countAtrasado} em atraso` },
           { key: 'pago', label: 'Recebido', value: stats.pago, icon: Check, color: 'text-success', surface: 'bg-success/10', escuro: false, caption: `${stats.countPago} conta(s)` },
         ].map(kpi => {
           const Icon = kpi.icon;
@@ -772,9 +772,9 @@ export default function ContasReceber() {
               onClick={() => setFilterStatus(ativo && kpi.key !== 'todos' ? 'todos' : kpi.key)}
               className={cn(
                 'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
-                kpi.escuro && 'border-transparent bg-[#111111] text-white',
+                kpi.escuro && 'border-transparent bg-gradient-primary text-white',
                 ativo && !kpi.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
-                ativo && kpi.escuro && 'ring-2 ring-[#2ED5E7]/60',
+                ativo && kpi.escuro && 'ring-2 ring-[#1080CA]/60',
               )}
             >
               <div className="flex min-h-[96px] items-center gap-3 p-3">
@@ -1020,7 +1020,7 @@ export default function ContasReceber() {
                 {contas.length === 0 ? 'Cadastre uma receita para acompanhar recebimentos.' : 'Ajuste a busca, o status ou o período.'}
               </p>
               {contas.length === 0 ? (
-                <Button size="sm" onClick={handleNew} className="mt-4 rounded-full bg-[#111111] text-white hover:bg-[#2b2b33]"><Plus className="mr-1 h-4 w-4" /> Cadastrar receita</Button>
+                <Button size="sm" onClick={handleNew} className="mt-4 rounded-full bg-gradient-primary text-white hover:brightness-110"><Plus className="mr-1 h-4 w-4" /> Cadastrar receita</Button>
               ) : (
                 <Button size="sm" variant="outline" onClick={() => {
                   setSearchTerm('');
