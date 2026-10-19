@@ -46,23 +46,18 @@ function prepareMobileTable(table: HTMLTableElement) {
 /** Adapts native HTML tables used by a few legacy screens to the mobile card layout. */
 function MobileTableAdapter() {
   React.useLayoutEffect(() => {
-    const prepareWithin = (root: ParentNode) => {
-      if (root instanceof HTMLTableElement) prepareMobileTable(root);
-      root.querySelectorAll?.("table").forEach((table) => prepareMobileTable(table));
-      if (root instanceof Element) {
-        const parentTable = root.closest("table");
-        if (parentTable) prepareMobileTable(parentTable);
-      }
-    };
-
-    prepareWithin(document.body);
+    document.querySelectorAll("table").forEach(prepareMobileTable);
     const observer = new MutationObserver((records) => {
       const changedTables = new Set<HTMLTableElement>();
       records.forEach(({ addedNodes, target }) => {
         const table = target instanceof Element ? target.closest("table") : null;
         if (table) changedTables.add(table);
         addedNodes.forEach((node) => {
-          if (node instanceof Element) prepareWithin(node);
+          if (!(node instanceof Element)) return;
+          if (node instanceof HTMLTableElement) changedTables.add(node);
+          node.querySelectorAll("table").forEach((addedTable) => changedTables.add(addedTable));
+          const parentTable = node.closest("table");
+          if (parentTable) changedTables.add(parentTable);
         });
       });
       changedTables.forEach(prepareMobileTable);
