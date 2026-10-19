@@ -342,7 +342,8 @@ export default function AgendamentoOnline() {
                 <ChevronRight className="h-4 w-4" />
               </Button>
             </div>
-            <div data-testid="online-booking-days" className="grid grid-cols-7 gap-1 sm:gap-2">
+            <div className="max-w-full overflow-x-auto overscroll-x-contain pb-1">
+            <div data-testid="online-booking-days" role="group" aria-label="Seleção de dias" className="grid min-w-[314px] grid-cols-7 gap-1 sm:gap-2">
               {dias.map((d) => {
                 const dt = parseISO(d);
                 const diaCurto = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'][dt.getDay()];
@@ -358,6 +359,7 @@ export default function AgendamentoOnline() {
                   </button>
                 );
               })}
+            </div>
             </div>
             {data && (carregandoSlots ? (
               <div role="status" aria-live="polite" className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Buscando horários...</div>

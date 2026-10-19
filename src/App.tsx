@@ -129,6 +129,7 @@ const Teleconsulta = lazy(() => import("@/pages/Teleconsulta"));
 const SegurancaAssistencial = lazy(() => import("@/pages/SegurancaAssistencial"));
 import { CookieConsent } from "@/components/CookieConsent";
 import { BrandLoadingScreen } from "@/components/BrandLoadingScreen";
+import { MobileTableAdapter } from "@/components/ui/table";
 
 const queryClient = new QueryClient({
   // Falha de carregamento nunca deve virar tela em branco silenciosa:
@@ -154,7 +155,7 @@ const queryClient = new QueryClient({
  */
 function AppInitializer({ children }: { children: React.ReactNode }) {
   useWhatsAppBookingNotifications();
-  return <>{children}</>;
+  return <><MobileTableAdapter />{children}</>;
 }
 
 function RedirecionarTriagem() {

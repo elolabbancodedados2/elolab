@@ -4,8 +4,8 @@
   "description": "Sistema completo de gestão para clínicas e consultórios médicos",
   "start_url": "/dashboard",
   "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#0c1f54",
+  "background_color": "#F8F9FA",
+  "theme_color": "#F8F9FA",
   "orientation": "any",
   "icons": [
     {

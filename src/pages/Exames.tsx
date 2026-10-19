@@ -1305,7 +1305,7 @@ export default function Exames() {
         <CardContent>
           <div className="overflow-hidden rounded-xl border border-border/60">
             <div role="region" aria-label="Tabela de solicitações de exames" tabIndex={0} className="overflow-x-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]">
-              <Table className="min-w-[680px] sm:min-w-0">
+              <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Paciente</TableHead>
@@ -1360,7 +1360,7 @@ export default function Exames() {
                     return (
                     <TableRow key={exame.id} className={cn(critico && 'bg-destructive/5')}>
                       <TableCell className="font-medium">
-                        <div className="flex items-center gap-2">
+                        <div className="flex min-w-0 flex-wrap items-center gap-2">
                           <span>{getPacienteNome(exame)}</span>
                           {critico && <Badge variant="outline" className="rounded-full border-destructive/40 bg-destructive/10 text-[10px] text-destructive">Crítico</Badge>}
                         </div>
@@ -1381,7 +1381,7 @@ export default function Exames() {
                       </TableCell>
                       <TableCell>
                         {/* Pipeline visual */}
-                        <div className="flex items-center gap-0.5">
+                        <div className="flex flex-wrap items-center gap-0.5">
                           {PIPELINE_STEPS.map((label, i) => (
                             <div key={i} className="flex items-center gap-0.5">
                               <div className={cn(

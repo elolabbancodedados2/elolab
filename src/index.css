@@ -617,6 +617,67 @@ html[data-text-size='large'] {
   @media (display-mode: standalone) {
     body { overscroll-behavior-y: contain; }
   }
+
+  @media (max-width: 639px) {
+    [data-mobile-dialog="true"] {
+      max-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 0.5rem) !important;
+    }
+
+    table.mobile-card-table {
+      display: block;
+      min-width: 0 !important;
+      border-collapse: separate;
+      border-spacing: 0;
+    }
+    table.mobile-card-table thead {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+    table.mobile-card-table tbody { display: grid; gap: 0.75rem; }
+    table.mobile-card-table tbody tr:not(:has([colspan])) {
+      display: grid;
+      gap: 0.2rem;
+      padding: 0.75rem;
+      border: 1px solid hsl(var(--border));
+      border-radius: 1rem;
+      background: hsl(var(--card));
+      box-shadow: var(--shadow-xs);
+    }
+    table.mobile-card-table tbody td:not(.hidden) {
+      display: flex;
+      min-width: 0;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0.25rem;
+      padding: 0.35rem 0.25rem;
+      border: 0;
+      text-align: left;
+    }
+    table.mobile-card-table tbody td:not(.hidden) ~ td:not(.hidden) {
+      border-top: 1px solid hsl(var(--border) / 0.7);
+      padding-top: 0.6rem;
+    }
+    table.mobile-card-table tbody td[data-mobile-label]::before {
+      content: attr(data-mobile-label);
+      display: block;
+      width: 100%;
+      color: hsl(var(--muted-foreground));
+      font-size: 0.65rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      line-height: 1rem;
+      text-transform: uppercase;
+    }
+    table.mobile-card-table tbody tr:has([colspan]) { display: block; }
+    table.mobile-card-table tbody tr:has([colspan]) td { display: block; }
+  }
 }
 
 @keyframes heroFloat {

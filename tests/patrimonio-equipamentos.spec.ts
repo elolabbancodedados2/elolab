@@ -62,20 +62,20 @@ test('cadastro patrimonial, ordem concluída, documento privado e bloqueio de sa
 
   await page.goto('/patrimonio-equipamentos');
   await expect(page.getByRole('heading', { name: 'Patrimônio e manutenção' })).toBeVisible();
-  await page.getByRole('button', { name: 'Novo equipamento' }).click();
+  await page.getByRole('button', { name: 'Novo equipamento' }).first().click();
   await page.getByLabel('Nome *').fill('Autoclave consultório');
   await page.getByLabel('Sala / localização').click();
   await page.getByRole('option', { name: 'Consultório QA' }).click();
-  await page.getByLabel('Patrimônio').fill('PAT-QA-001');
+  await page.getByLabel('Patrimônio', { exact: true }).fill('PAT-QA-001');
   await page.getByLabel('Calibração até').fill('2026-11-01');
   await page.getByLabel('Bloquear disponibilidade da sala se este equipamento ficar indisponível').check();
   await page.getByRole('button', { name: 'Cadastrar ativo' }).click();
-  await expect(page.getByText('Autoclave consultório', { exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Autoclave consultório', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Abrir ordem de serviço' }).click();
   await page.getByRole('combobox', { name: 'Equipamento da ordem' }).click();
   await page.getByRole('option', { name: 'Autoclave consultório · PAT-QA-001' }).click();
   await page.getByLabel('Título da ordem *').fill('Calibração anual');
-  await page.getByRole('button', { name: 'Abrir ordem' }).click();
+  await page.locator('#equipment-order-form').getByRole('button', { name: 'Abrir ordem', exact: true }).click();
   await page.getByRole('button', { name: 'Iniciar serviço' }).click();
   await page.getByLabel('Serviço executado em Calibração anual').fill('Calibração concluída pelo técnico credenciado.');
   await page.getByRole('button', { name: 'Concluir' }).click();
