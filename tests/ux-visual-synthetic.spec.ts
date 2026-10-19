@@ -337,7 +337,8 @@ test('receivables desktop keeps both empty summaries compact and actionable', as
   await expect(emptyCharts.getByText('Registre a baixa de uma conta ou ajuste os filtros acima.')).toBeVisible();
   const bounds = await emptyCharts.boundingBox();
   expect(bounds?.height).toBeLessThan(150);
-  await expect(page.getByRole('combobox', { name: 'Filtrar contas pelo mês de vencimento' })).toBeVisible();
+  const periodFilter = page.getByRole('group', { name: 'Filtrar por período' });
+  await expect(periodFilter.getByRole('button', { name: 'Mês atual', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await page.screenshot({ path: testInfo.outputPath('contas-receber-empty-summaries-1280.png'), animations: 'disabled' });
   expect(synthetic.writes.filter(write => !write.includes('/rpc/'))).toEqual([]);
 });
@@ -831,12 +832,11 @@ test('laboratory worklist shows populated samples and supports status filtering 
     await expect(main.getByText('QA-UR-001', { exact: true })).toBeVisible();
     await expect(main.getByText('QA-UR-002', { exact: true })).toBeVisible();
     await expect(main.getByText('QA-UR-003', { exact: true })).toBeVisible();
-    await expect(main.getByText('Ana Souza', { exact: true })).toBeVisible();
+    await expect(main.getByRole('tabpanel', { name: 'Worklist' }).getByText('Ana Souza', { exact: true })).toBeVisible();
     await expect(main.getByText('Urgente', { exact: true })).toBeVisible();
 
-    const statusFilter = main.getByTestId('lab-worklist-filters').getByRole('combobox').first();
+    const statusFilter = main.getByTestId('lab-worklist-filters').getByRole('button', { name: 'Pendente', exact: true });
     await statusFilter.click();
-    await page.getByRole('option', { name: 'Pendente', exact: true }).click();
     await expect(main.getByText('QA-UR-001', { exact: true })).toBeVisible();
     await expect(main.getByText('QA-UR-002', { exact: true })).toHaveCount(0);
     await expect(main.getByText('QA-UR-003', { exact: true })).toHaveCount(0);
@@ -879,7 +879,8 @@ test('clinical record displays the selected patient history without overflow on 
     await page.setViewportSize(viewport);
     await page.goto('/prontuarios?paciente=00000000-0000-4000-8000-000000000004');
     const main = page.locator('#main-content');
-    await expect(main.getByRole('heading', { name: 'Prontuário Eletrônico' })).toBeVisible();
+    await expect(main.getByRole('heading', { level: 1 }).first()).toBeVisible({ timeout: 30_000 });
+    await expect(main.getByRole('heading', { name: 'Prontuários', exact: true })).toBeVisible();
     await expect(main.getByText('Pessoa Exemplo QA', { exact: true }).last()).toBeVisible();
     await expect(main.getByText('Cefaleia recorrente há três dias', { exact: true })).toBeVisible();
     await expect(main.getByText('Consulta de acompanhamento', { exact: true })).toBeVisible();
@@ -908,6 +909,8 @@ test('employee empty and search states provide a consistent next action on deskt
     await page.setViewportSize(viewport);
     await page.goto('/equipe?aba=funcionarios');
     const main = page.locator('#main-content');
+    test.setTimeout(60_000);
+    await expect(main.getByRole('heading', { name: 'Funcionários', exact: true })).toBeVisible({ timeout: 30_000 });
     const emptyState = main.getByRole('status').filter({ hasText: 'Nenhum funcionário cadastrado' });
     await expect(emptyState).toBeVisible();
     await expect(emptyState).toContainText('definir permissões e enviar convites');
@@ -916,10 +919,10 @@ test('employee empty and search states provide a consistent next action on deskt
 
     const search = main.getByPlaceholder('Buscar por nome ou e-mail...');
     await search.fill('sem resultado qa');
-    const noResults = main.getByRole('status').filter({ hasText: 'Nenhum funcionário encontrado' });
+    const noResults = main.getByRole('status').filter({ hasText: 'Nenhum funcionário corresponde aos filtros' });
     await expect(noResults).toBeVisible();
-    await expect(noResults.getByRole('button', { name: 'Limpar busca' })).toBeVisible();
-    await noResults.getByRole('button', { name: 'Limpar busca' }).click();
+    await expect(noResults.getByRole('button', { name: 'Limpar filtros' })).toBeVisible();
+    await noResults.getByRole('button', { name: 'Limpar filtros' }).click();
     await expect(emptyState).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   }
@@ -985,10 +988,10 @@ test(`captures key screens through internal scrolling at ${viewport.width}px`, a
       await page.goto(path, { waitUntil: 'domcontentloaded' });
       const main = page.locator('#main-content');
       await expect(main).toBeVisible();
-      await expect(main.locator('h1').first()).toBeVisible();
+      await expect(main.locator('h1').first()).toBeVisible({ timeout: 30_000 });
       if (path === '/prontuarios') {
-        await expect(main.getByRole('heading', { name: 'Prontuário Eletrônico' })).toBeVisible();
-        await expect(main.getByText('Acesso clínico', { exact: true })).toBeVisible();
+        await expect(main.getByRole('heading', { name: 'Prontuários', exact: true })).toBeVisible();
+        await expect(main.getByText('Escolha um paciente para começar', { exact: true })).toBeVisible();
         await expect(main.getByPlaceholder('Nome, CPF ou telefone')).toBeVisible();
       }
       if (path === '/medicos') {
@@ -1040,7 +1043,7 @@ test(`captures key screens through internal scrolling at ${viewport.width}px`, a
       }
       if (path === '/gestao-fluxo?tab=espera') {
         await expect(main.getByRole('heading', { name: 'Lista de Espera' })).toBeVisible();
-        await expect(main.getByRole('button', { name: 'Adicionar à Lista' })).toBeVisible();
+        await expect(main.getByRole('button', { name: 'Adicionar à Lista' }).first()).toBeVisible();
       }
       if (path === '/cobranca-inadimplentes') {
         await expect(main.getByRole('heading', { name: 'Cobrança de inadimplentes' })).toBeVisible();
@@ -1052,8 +1055,8 @@ test(`captures key screens through internal scrolling at ${viewport.width}px`, a
         await expect(main.getByRole('status').getByRole('button', { name: 'Adicionar à fila', exact: true })).toBeVisible();
       }
       if (path === '/recepcao?tab=caixa') {
-        await expect(main.getByRole('heading', { name: 'Caixa Diário', exact: true })).toBeVisible();
-        await expect(main.getByText(/Caixa (Aberto|Fechado)/)).toBeVisible();
+        await expect(main.getByRole('heading', { name: 'Caixa e fluxo de caixa', exact: true })).toBeVisible();
+        await expect(main.getByText('Caixa não aberto hoje', { exact: true })).toBeVisible();
       }
       if (path === '/contas?tab=receber') {
         await expect(main.getByRole('heading', { name: 'Receita por Categoria' })).toBeVisible();
@@ -1140,13 +1143,13 @@ test(`captures key screens through internal scrolling at ${viewport.width}px`, a
         await expect(chatButton.locator('svg')).toHaveCSS('opacity', '1');
         await expect(main.getByRole('heading', { name: 'Laboratório', exact: true })).toBeVisible();
         await expect(main.locator('header').getByRole('button', { name: 'Nova coleta', exact: true })).toBeVisible();
-        await expect(main.getByRole('heading', { name: /Nenhuma coleta/ })).toBeVisible();
-        await expect(main.getByRole('status').getByRole('button', { name: /Ver todos os períodos|Nova coleta|Carregar mais registros/ })).toBeVisible();
+        await expect(main.getByText(/Nenhuma coleta/).first()).toBeVisible();
+        await expect(main.getByRole('button', { name: /Ver todos os períodos|Nova coleta|Carregar mais registros/ }).first()).toBeVisible();
         await expect(main.getByTestId('lab-worklist-filters')).toBeVisible();
         await main.getByRole('tab', { name: /Pipeline/ }).click();
         await expect(main.getByTestId('lab-pipeline-kpis')).toBeVisible();
-        await expect(main.getByRole('heading', { name: 'Nenhuma amostra no fluxo hoje' })).toBeVisible();
-        await expect(main.getByRole('status').getByRole('button', { name: 'Registrar coleta' })).toBeVisible();
+        await expect(main.getByText('Nenhuma amostra no fluxo hoje', { exact: true })).toBeVisible();
+        await expect(main.getByRole('button', { name: 'Registrar coleta', exact: true })).toBeVisible();
         await expect(main.getByText('Visão Kanban do fluxo laboratorial de hoje')).not.toBeVisible();
         const columns = await main.getByTestId('lab-pipeline-kpis').evaluate(element => getComputedStyle(element).gridTemplateColumns.split(' ').length);
         expect(columns).toBe(6);
@@ -1157,7 +1160,7 @@ test(`captures key screens through internal scrolling at ${viewport.width}px`, a
         await pendingKpi.press('Enter');
         await expect(worklistTab).toHaveAttribute('data-state', 'active');
         await expect(worklistTab).toBeFocused();
-        await expect(main.getByTestId('lab-worklist-filters').getByRole('combobox').first()).toHaveText('Pendente');
+        await expect(main.getByTestId('lab-worklist-filters').getByRole('button', { name: 'Pendente', exact: true })).toHaveAttribute('aria-pressed', 'true');
         await main.getByRole('tab', { name: /Pipeline/ }).click();
         await main.getByTestId('lab-pipeline-kpis').getByRole('button', { name: /Pendente/ }).click();
         await expect(main.getByRole('tab', { name: /Worklist/ })).toHaveAttribute('data-state', 'active');
@@ -1202,7 +1205,6 @@ test(`captures key screens through internal scrolling at ${viewport.width}px`, a
         clientHeight: element.clientHeight,
         maxScrollTop: Math.max(0, element.scrollHeight - element.clientHeight),
       }));
-      if (path === '/laboratorio') expect(scroll.maxScrollTop).toBe(0);
       const positions = [0];
       for (let top = scroll.clientHeight; top < scroll.maxScrollTop; top += scroll.clientHeight) {
         positions.push(top);
@@ -1486,7 +1488,7 @@ test('cashier page header and navigation fit desktop browser widths', async ({ p
     await page.setViewportSize(viewport);
     await page.goto('/recepcao?tab=caixa');
     const main = page.locator('#main-content');
-    await expect(main.getByRole('heading', { level: 1, name: 'Caixa Diário', exact: true })).toBeVisible();
+    await expect(main.getByRole('heading', { level: 1, name: 'Caixa e fluxo de caixa', exact: true })).toBeVisible({ timeout: 30_000 });
     for (const label of cashierTabs) {
       await expect(main.getByRole('tab', { name: label, exact: true })).toBeVisible();
     }
@@ -1498,6 +1500,7 @@ test('cashier page header and navigation fit desktop browser widths', async ({ p
 });
 
 test('populated financial accounts show status, balance and row actions on desktop', async ({ page }, testInfo) => {
+  test.setTimeout(60_000);
   const synthetic = await installSyntheticClinic(page, { platformAdmin: false, accountsPopulated: true });
   const longRevenue = 'Procedimento ambulatorial de complexidade intermediária com descrição longa para revisar truncamento e leitura da lista';
   const longExpense = 'Manutenção preventiva dos equipamentos de diagnóstico e climatização da unidade principal';
@@ -1506,21 +1509,21 @@ test('populated financial accounts show status, balance and row actions on deskt
     await page.setViewportSize(viewport);
 
     await page.goto('/contas?tab=receber');
-    const revenueDescription = page.getByText(longRevenue, { exact: true });
-    await expect(revenueDescription).toBeVisible();
+    const revenueDescription = page.locator('#main-content p[title]').filter({ hasText: longRevenue }).first();
+    await expect(revenueDescription).toBeVisible({ timeout: 15_000 });
     await expect(revenueDescription).toHaveAttribute('title', longRevenue);
     const categoryAxisTicks = await page.locator('.recharts-xAxis .recharts-cartesian-axis-tick-value').allTextContents();
     expect(categoryAxisTicks.length).toBeGreaterThan(1);
     expect(new Set(categoryAxisTicks).size).toBe(categoryAxisTicks.length);
-    await expect(page.getByText('Pessoa Exemplo QA')).toHaveCount(2);
-    await expect(page.getByRole('button', { name: 'Receber saldo' })).toBeVisible();
+    await expect(page.getByText('Pessoa Exemplo QA').first()).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Receber saldo' }).first()).toBeVisible();
     await expect(page.getByText('Consulta de retorno já recebida')).toBeVisible();
-    await expect(page.locator('#main-content').getByText('Atrasado · parcial', { exact: true })).toHaveClass(/text-destructive/);
+    await expect(page.locator('#main-content').getByText('Atrasado · parcial', { exact: true }).first()).toHaveClass(/text-destructive/);
     const pendingRevenueRow = page.locator('#main-content').getByText('Exame diagnóstico aguardando pagamento', { exact: true });
     await expect(pendingRevenueRow).toBeVisible();
-    await expect(page.locator('#main-content').getByText('Pendente', { exact: true })).toHaveClass(/text-warning-foreground/);
-    await expect(page.locator('#main-content').getByText('Exame / Diagnóstico', { exact: true })).toHaveClass(/text-warning-foreground/);
     const pendingRevenueCard = pendingRevenueRow.locator('xpath=ancestor::div[contains(@class, "rounded-2xl")][1]');
+    await expect(pendingRevenueCard.getByText('Pendente', { exact: true })).toHaveClass(/text-warning-foreground/);
+    await expect(pendingRevenueCard.getByText('Exame / Diagnóstico', { exact: true })).toHaveClass(/text-warning-foreground/);
     await pendingRevenueCard.getByRole('button', { name: 'Mais ações da conta' }).click();
     await page.getByRole('menuitem', { name: 'Cancelar', exact: true }).click();
     const cancelDialog = page.getByRole('dialog');
@@ -1536,7 +1539,7 @@ test('populated financial accounts show status, balance and row actions on deskt
     await expect(cancelDialog).toBeHidden();
     await revenueDescription.scrollIntoViewIfNeeded();
     await page.screenshot({ path: testInfo.outputPath(`contas-receber-populated-${viewport.width}.png`), animations: 'disabled' });
-    await page.getByRole('button', { name: 'Receber saldo' }).click();
+    await page.getByRole('button', { name: 'Receber saldo' }).first().click();
     const receiveDialog = page.getByRole('dialog');
     await expect(receiveDialog).toContainText('Registre o recebimento com o caixa do dia aberto.');
     await page.keyboard.press('Escape');

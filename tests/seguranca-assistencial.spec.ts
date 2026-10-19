@@ -62,7 +62,7 @@ test('fluxo de relato confidencial com revisão e ação corretiva oculta a iden
 
   await page.getByRole('button', { name: 'Revisar e acompanhar' }).click();
   await expect(page.getByRole('heading', { name: 'Revisar relato assistencial' })).toBeVisible();
-  await page.getByLabel('Status').click();
+  await page.getByLabel('Status da revisão').click();
   await page.getByRole('option', { name: 'Ação necessária' }).click();
   await page.getByLabel('Responsável').click();
   await page.getByRole('option', { name: 'QA Admin' }).click();
