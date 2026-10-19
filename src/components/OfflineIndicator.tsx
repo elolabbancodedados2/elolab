@@ -25,7 +25,7 @@ export function OfflineIndicator() {
 
   return (
     <div
-      className={`fixed bottom-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-4 py-2.5 rounded-full shadow-lg text-sm font-medium transition-all duration-300 ${
+      className={`fixed bottom-[calc(6rem+env(safe-area-inset-bottom))] left-1/2 z-50 flex -translate-x-1/2 items-center gap-2 rounded-full px-4 py-2.5 text-sm font-medium shadow-lg transition-all duration-300 lg:bottom-4 ${
         isOffline
           ? 'bg-destructive text-destructive-foreground'
           : 'bg-emerald-600 text-white'
