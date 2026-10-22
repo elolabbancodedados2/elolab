@@ -34,7 +34,7 @@ import { dateOnlyInTimeZone, inicioDoDiaEmFusoIso, parseDateOnly, todaySaoPauloD
 import { calculateAttendanceRate } from '@/lib/analyticsKpis';
 import { AccessibleChartTable } from '@/components/analytics/AccessibleChartTable';
 
-const COLORS = ['#1080CA', '#2ED5E7', '#111111', 'hsl(var(--warning))', 'hsl(var(--destructive))', 'hsl(var(--success))'];
+const COLORS = ['#1080CA', '#2ED5E7', '#0B4F7D', 'hsl(var(--warning))', 'hsl(var(--destructive))', 'hsl(var(--success))'];
 const GRID_COLOR = '#DCE6F2';
 const STATUS_FINALIZADO = new Set(['finalizado', 'atendimento_finalizado']);
 

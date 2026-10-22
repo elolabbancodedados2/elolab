@@ -39,7 +39,7 @@ const formatarDataClinica = (valor: string, incluirHora = false) =>
 
 // Paleta de dados do padrão azul/preto.
 const COR_SERIE_PRIMARIA = '#1080CA';
-const COR_SERIE_SECUNDARIA = '#111111';
+const COR_SERIE_SECUNDARIA = '#0B4F7D';
 const COR_GRADE = '#DCE6F2';
 const COR_EIXO = '#64748b';
 const ESTILO_TOOLTIP = {

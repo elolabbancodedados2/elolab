@@ -1,9 +1,9 @@
 import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { useState, useMemo } from 'react';
-import { motion } from 'framer-motion';
+import { Link } from 'react-router-dom';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { Ban, Edit, Shield, UserCheck, UserX, Loader2, Clock, Circle, Search } from 'lucide-react';
+import { Ban, Edit, Shield, UserCheck, UserX, Loader2, Clock, Circle, Search, Users, RefreshCw, LayoutDashboard, X, UserRoundX } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -23,6 +23,7 @@ import { Switch } from '@/components/ui/switch';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ErrorState } from '@/components/ErrorState';
+import { PageHeader } from '@/components/PageHeader';
 import {
   Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
 } from '@/components/ui/tooltip';
@@ -61,12 +62,31 @@ const ROLE_LABELS: Record<AppRole, string> = {
 };
 
 const ROLE_COLORS: Record<AppRole, string> = {
-  admin: 'bg-red-100 text-red-800',
-  medico: 'bg-blue-100 text-blue-800',
-  recepcao: 'bg-green-100 text-green-800',
-  enfermagem: 'bg-purple-100 text-purple-800',
-  financeiro: 'bg-yellow-100 text-yellow-800',
+  admin: 'border-destructive/30 bg-destructive/10 text-destructive',
+  medico: 'border-[#BFD8EE] bg-[#F3F8FC] text-[#1080CA]',
+  recepcao: 'border-success/30 bg-success/10 text-success',
+  enfermagem: 'border-info/30 bg-info/10 text-info',
+  financeiro: 'border-warning/30 bg-warning/10 text-warning',
 };
+
+type FiltroConta = 'todos' | 'online' | 'bloqueados' | 'admins' | 'nunca';
+const FILTRO_LABELS: Record<Exclude<FiltroConta, 'todos'>, string> = {
+  online: 'ativos recentemente',
+  bloqueados: 'com acesso bloqueado',
+  admins: 'administradores',
+  nunca: 'que nunca acessaram',
+};
+
+function getUltimoAcessoInfo(ultimo_acesso: string | null) {
+  if (!ultimo_acesso) return { text: 'Nunca acessou', isOnline: false };
+  const date = new Date(ultimo_acesso);
+  if (Number.isNaN(date.getTime())) return { text: 'Data indisponível', isOnline: false };
+  const diffMs = Date.now() - date.getTime();
+  const diffMin = diffMs / 60000;
+  const isOnline = diffMin >= 0 && diffMin < 15;
+  const text = isOnline ? 'Ativo recentemente' : formatDistanceToNow(date, { addSuffix: true, locale: ptBR });
+  return { text, isOnline, fullDate: format(date, "dd/MM/yyyy 'às' HH:mm", { locale: ptBR }) };
+}
 
 export default function Usuarios() {
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -75,6 +95,7 @@ export default function Usuarios() {
   const [formData, setFormData] = useState<Partial<Profile & { roles: AppRole[] }>>({});
   const [isSaving, setIsSaving] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [filtro, setFiltro] = useState<FiltroConta>('todos');
 
   const queryClient = useQueryClient();
   const { user: currentUser } = useSupabaseAuth();
@@ -106,28 +127,38 @@ export default function Usuarios() {
     });
   }, [profiles, userRoles]);
 
-  const getUltimoAcessoInfo = (ultimo_acesso: string | null) => {
-    if (!ultimo_acesso) return { text: 'Nunca acessou', isOnline: false };
-    const date = new Date(ultimo_acesso);
-    if (Number.isNaN(date.getTime())) return { text: 'Data indisponível', isOnline: false };
-    const diffMs = Date.now() - date.getTime();
-    const diffMin = diffMs / 60000;
-    const isOnline = diffMin >= 0 && diffMin < 15;
-    const text = isOnline ? 'Ativo recentemente' : formatDistanceToNow(date, { addSuffix: true, locale: ptBR });
-    return { text, isOnline, fullDate: format(date, "dd/MM/yyyy 'às' HH:mm", { locale: ptBR }) };
-  };
+
+  const bloqueadoIds = useMemo(() => new Set(situacoes.filter((status) => status.bloqueado).map((status) => status.user_id)), [situacoes]);
+  const contagens = useMemo(() => ({
+    todos: usuarios.length,
+    online: usuarios.filter((u) => getUltimoAcessoInfo(u.ultimo_acesso).isOnline).length,
+    bloqueados: usuarios.filter((u) => bloqueadoIds.has(u.id)).length,
+    admins: usuarios.filter((u) => u.roles.includes('admin')).length,
+    nunca: usuarios.filter((u) => !u.ultimo_acesso).length,
+  }), [usuarios, bloqueadoIds]);
 
   const visibleUsers = useMemo(() => {
     const term = searchTerm.trim().toLocaleLowerCase('pt-BR');
-    if (!term) return usuarios;
+    const porFiltro = usuarios.filter((user) => {
+      if (filtro === 'online') return getUltimoAcessoInfo(user.ultimo_acesso).isOnline;
+      if (filtro === 'bloqueados') return bloqueadoIds.has(user.id);
+      if (filtro === 'admins') return user.roles.includes('admin');
+      if (filtro === 'nunca') return !user.ultimo_acesso;
+      return true;
+    });
+    if (!term) return porFiltro;
     const phoneTerm = term.replace(/\D/g, '');
-    return usuarios.filter((user) =>
+    return porFiltro.filter((user) =>
       user.nome?.toLocaleLowerCase('pt-BR').includes(term) ||
       user.email?.toLocaleLowerCase('pt-BR').includes(term) ||
       (phoneTerm.length > 0 && (user.telefone?.replace(/\D/g, '').includes(phoneTerm) ?? false)) ||
       user.roles.some((role) => ROLE_LABELS[role].toLocaleLowerCase('pt-BR').includes(term))
     );
-  }, [usuarios, searchTerm]);
+  }, [usuarios, searchTerm, filtro, bloqueadoIds]);
+
+  const temFiltro = searchTerm.trim() !== '' || filtro !== 'todos';
+  const limparFiltros = () => { setSearchTerm(''); setFiltro('todos'); };
+  const refetchAll = () => { void refetchProfiles(); void refetchRoles(); void refetchSituacoes(); };
 
   const handleEdit = (user: PlatformUser) => {
     setSelectedUser(user);
@@ -225,38 +256,91 @@ export default function Usuarios() {
     );
   }
 
-  if (profilesError || rolesError || situacoesError) return <ErrorState error={profilesError || rolesError || situacoesError} onRetry={() => { void refetchProfiles(); void refetchRoles(); void refetchSituacoes(); }} />;
+  if (profilesError || rolesError || situacoesError) return <ErrorState error={profilesError || rolesError || situacoesError} onRetry={refetchAll} />;
 
   return (
     <TooltipProvider>
       <div className="space-y-6">
-        <div className="flex flex-col justify-between items-start gap-4 rounded-2xl border border-[#e6e2f7] bg-gradient-to-r from-[#f6f4ff] via-white to-[#f0edff] p-5 sm:flex-row sm:items-center sm:p-6">
-          <div>
-            <h1 className="text-3xl font-bold text-foreground">Usuários</h1>
-            <p className="text-muted-foreground">Gerencie os usuários do sistema</p>
-          </div>
-          <div className="flex items-center gap-3 text-sm text-muted-foreground">
-            <div className="flex items-center gap-1.5">
-              <Circle className="h-2.5 w-2.5 fill-success text-success" />
-              <span>{usuarios.filter(u => getUltimoAcessoInfo(u.ultimo_acesso).isOnline).length} ativos recentemente</span>
-            </div>
-            <span>•</span>
-            <span>{usuarios.length} total</span>
-          </div>
-        </div>
+        <PageHeader
+          title="Usuários"
+          description={`${contagens.todos} conta${contagens.todos === 1 ? '' : 's'} · ${contagens.online} ativa${contagens.online === 1 ? '' : 's'} recentemente · ${contagens.bloqueados} bloqueada${contagens.bloqueados === 1 ? '' : 's'}`}
+          icon={<Users />}
+          actions={
+            <>
+              <Button asChild variant="outline" className="shrink-0 gap-2 rounded-full">
+                <Link to="/painel-admin"><LayoutDashboard aria-hidden="true" className="h-4 w-4" /> Visão geral</Link>
+              </Button>
+              <Button variant="outline" size="icon" className="shrink-0 rounded-full" onClick={refetchAll} aria-label="Atualizar usuários" title="Atualizar usuários">
+                <RefreshCw className="h-4 w-4" />
+              </Button>
+            </>
+          }
+        />
 
-        <Card>
+        <section role="group" aria-label="Situação das contas" className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-5">
+          {([
+            { key: 'todos' as FiltroConta, icon: Users, label: 'Contas', caption: 'cadastradas na plataforma', color: 'text-white', surface: 'bg-white/20', destaque: true },
+            { key: 'online' as FiltroConta, icon: Circle, label: 'Ativas agora', caption: 'acesso nos últimos 15 min', color: 'text-success', surface: 'bg-success/10', destaque: false },
+            { key: 'bloqueados' as FiltroConta, icon: UserX, label: 'Bloqueadas', caption: 'login impedido', color: 'text-destructive', surface: 'bg-destructive/10', destaque: false },
+            { key: 'admins' as FiltroConta, icon: Shield, label: 'Administradores', caption: 'com função de admin', color: 'text-[#1080CA]', surface: 'bg-[#1080CA]/10', destaque: false },
+            { key: 'nunca' as FiltroConta, icon: UserRoundX, label: 'Nunca acessaram', caption: 'convite sem primeiro login', color: 'text-warning', surface: 'bg-warning/10', destaque: false },
+          ]).map((k) => {
+            const Icon = k.icon;
+            const ativo = filtro === k.key;
+            return (
+              <button
+                key={k.key}
+                type="button"
+                aria-pressed={ativo}
+                onClick={() => setFiltro(ativo ? 'todos' : k.key)}
+                className={cn(
+                  'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+                  k.destaque && 'border-transparent bg-gradient-primary text-white',
+                  ativo && !k.destaque && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
+                  ativo && k.destaque && 'ring-2 ring-[#1080CA]/60',
+                )}
+              >
+                <div className="flex min-h-[88px] items-center gap-3 p-3">
+                  <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', k.surface)}>
+                    <Icon aria-hidden="true" className={cn('h-5 w-5', k.color)} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <h2 className={cn('truncate text-xs font-semibold', k.destaque ? 'text-white/80' : 'text-foreground')}>{k.label}</h2>
+                      <span className={cn('text-2xl font-bold tabular-nums', k.color)}>{contagens[k.key]}</span>
+                    </div>
+                    <p className={cn('truncate text-[11px]', k.destaque ? 'text-white/70' : 'text-muted-foreground')}>{k.caption}</p>
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+        </section>
+
+        <Card className="rounded-2xl border-border/60 shadow-xs">
           <CardHeader>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <CardTitle>Lista de Usuários</CardTitle>
-              <div className="relative w-full sm:w-80">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input aria-label="Buscar usuários" value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Buscar nome, e-mail, telefone ou função" className="pl-9" />
+              <div>
+                <CardTitle className="text-base">Lista de Usuários</CardTitle>
+                <p className="mt-1 text-xs text-muted-foreground" aria-live="polite">
+                  {visibleUsers.length} de {usuarios.length}{filtro !== 'todos' ? ` · ${FILTRO_LABELS[filtro]}` : ''}
+                </p>
+              </div>
+              <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+                <div className="relative w-full sm:w-80">
+                  <Search aria-hidden="true" className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input aria-label="Buscar usuários" value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Buscar nome, e-mail, telefone ou função" className="h-10 rounded-full pl-9 focus-visible:ring-[#1080CA]" />
+                </div>
+                {temFiltro && (
+                  <Button variant="ghost" size="sm" className="h-10 gap-1.5 rounded-full text-muted-foreground" onClick={limparFiltros}>
+                    <X aria-hidden="true" className="h-3.5 w-3.5" /> Limpar filtros
+                  </Button>
+                )}
               </div>
             </div>
           </CardHeader>
           <CardContent>
-            <div className="rounded-md border">
+            <div className="overflow-x-auto rounded-xl border border-border/60">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -271,25 +355,38 @@ export default function Usuarios() {
                 <TableBody>
                   {visibleUsers.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
-                        {searchTerm ? 'Nenhum usuário corresponde à busca.' : 'Nenhum usuário encontrado'}
+                      <TableCell colSpan={6} className="py-10">
+                        <div className="flex flex-col items-center gap-3 text-center">
+                          <span aria-hidden="true" className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+                            <Users className="h-7 w-7" />
+                          </span>
+                          <p className="font-medium text-foreground">{temFiltro ? 'Nenhum usuário corresponde à busca.' : 'Nenhum usuário encontrado'}</p>
+                          <p className="max-w-sm text-sm text-muted-foreground">
+                            {temFiltro ? 'Ajuste a busca ou o indicador selecionado.' : 'As contas criadas pelas clínicas aparecerão aqui.'}
+                          </p>
+                          {temFiltro && (
+                            <Button variant="outline" className="gap-2 rounded-full" onClick={limparFiltros}>
+                              <X aria-hidden="true" className="h-4 w-4" /> Limpar filtros
+                            </Button>
+                          )}
+                        </div>
                       </TableCell>
                     </TableRow>
                   ) : (
                     visibleUsers.map((usuario) => {
                       const acesso = getUltimoAcessoInfo(usuario.ultimo_acesso);
                       return (
-                        <TableRow key={usuario.id} className={situacoes.find(status => status.user_id === usuario.id)?.bloqueado ? 'opacity-50' : ''}>
+                        <TableRow key={usuario.id} className={bloqueadoIds.has(usuario.id) ? 'opacity-50' : ''}>
                           <TableCell>
                             <div className="flex items-center gap-2">
                               <div className="relative">
                                 {usuario.roles.includes('admin') && (
-                                  <Shield className="h-4 w-4 text-red-500" />
+                                  <Shield aria-label="Administrador" className="h-4 w-4 text-destructive" />
                                 )}
                               </div>
                               <span className="font-medium">{usuario.nome}</span>
                               {usuario.id === currentUser?.id && (
-                                <Badge variant="outline" className="text-[10px] px-1.5 py-0">Você</Badge>
+                                <Badge variant="outline" className="rounded-full border-[#BFD8EE] px-1.5 py-0 text-[10px] text-[#1080CA]">Você</Badge>
                               )}
                             </div>
                           </TableCell>
@@ -298,7 +395,7 @@ export default function Usuarios() {
                             <div className="flex flex-wrap gap-1">
                               {usuario.roles.length > 0 ? (
                                 usuario.roles.map(role => (
-                                  <Badge key={role} className={cn(ROLE_COLORS[role])}>
+                                  <Badge key={role} variant="outline" className={cn('rounded-full', ROLE_COLORS[role])}>
                                     {ROLE_LABELS[role]}
                                   </Badge>
                                 ))
@@ -329,23 +426,24 @@ export default function Usuarios() {
                           <TableCell>
                             <div className="flex items-center gap-2">
                               <Switch
-                                checked={!(situacoes.find(status => status.user_id === usuario.id)?.bloqueado ?? false)}
+                                checked={!bloqueadoIds.has(usuario.id)}
+                                aria-label={`Acesso de ${usuario.nome}`}
                                 onCheckedChange={() => handleToggleAcesso(usuario)}
                                 disabled={usuario.id === currentUser?.id || isSaving}
                               />
-                              {situacoes.find(status => status.user_id === usuario.id)?.bloqueado ? (
+                              {bloqueadoIds.has(usuario.id) ? (
                                 <UserX className="h-4 w-4 text-muted-foreground" />
                               ) : (
-                                <UserCheck className="h-4 w-4 text-green-600" />
+                                <UserCheck className="h-4 w-4 text-success" />
                               )}
                             </div>
                           </TableCell>
                           <TableCell className="text-right">
                             <div className="flex justify-end gap-2">
-                              <Button aria-label={`Editar usuário ${usuario.nome}`} variant="ghost" size="icon" onClick={() => handleEdit(usuario)} disabled={usuario.id === currentUser?.id || isSaving}>
+                              <Button aria-label={`Editar usuário ${usuario.nome}`} variant="ghost" size="icon" className="rounded-full" onClick={() => handleEdit(usuario)} disabled={usuario.id === currentUser?.id || isSaving}>
                                 <Edit className="h-4 w-4" />
                               </Button>
-                              <Button aria-label={`Bloquear acesso de ${usuario.nome}`} variant="ghost" size="icon" onClick={() => handleDeleteClick(usuario)} disabled={usuario.id === currentUser?.id || isSaving || situacoes.find(status => status.user_id === usuario.id)?.bloqueado}>
+                              <Button aria-label={`Bloquear acesso de ${usuario.nome}`} variant="ghost" size="icon" className="rounded-full" onClick={() => handleDeleteClick(usuario)} disabled={usuario.id === currentUser?.id || isSaving || bloqueadoIds.has(usuario.id)}>
                                 <Ban className="h-4 w-4 text-destructive" />
                               </Button>
                             </div>
@@ -388,7 +486,7 @@ export default function Usuarios() {
                   {Object.entries(ROLE_LABELS).map(([key, label]) => {
                     const role = key as AppRole;
                     const checked = formData.roles?.includes(role) || false;
-                    return <label key={role} className="flex min-h-11 items-center gap-3 rounded-md border px-3">
+                    return <label key={role} className="flex min-h-11 items-center gap-3 rounded-xl border border-[#DCE6F2] px-3 hover:border-[#9CC7EC]">
                       <Checkbox checked={checked} onCheckedChange={(value) => setFormData((current) => ({
                         ...current,
                         roles: value === true
@@ -403,8 +501,8 @@ export default function Usuarios() {
               </fieldset>
             </fieldset>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setIsFormOpen(false)} disabled={isSaving}>Cancelar</Button>
-              <Button onClick={handleSave} disabled={isSaving || !formData.roles?.length || !formData.nome?.trim()}>
+              <Button variant="outline" className="rounded-full" onClick={() => setIsFormOpen(false)} disabled={isSaving}>Cancelar</Button>
+              <Button className="rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110" onClick={handleSave} disabled={isSaving || !formData.roles?.length || !formData.nome?.trim()}>
                 {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Salvar
               </Button>

@@ -1,12 +1,13 @@
 import { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { Link } from 'react-router-dom';
 import {
   BookOpen, LayoutDashboard, Users, Calendar, ClipboardList, FileText,
   DollarSign, Package, Settings, Stethoscope, Receipt, CreditCard, Wallet,
   BarChart3, Building2, UserCheck, FlaskConical, Heart, DoorOpen, Clock,
   FileCheck, HandCoins, ArrowRightLeft, Zap, Bot, Activity, ListTodo,
   TestTube, ChevronRight, Search, Shield, Smartphone, Database,
-  Bell, Globe, Printer, Download, Upload, Key, Monitor, MessageSquare
+  Bell, Globe, Printer, Download, Upload, Key, Monitor, MessageSquare,
+  ChevronLeft, Lightbulb, MessageSquarePlus, X
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -14,6 +15,8 @@ import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
+import { PageHeader } from '@/components/PageHeader';
+import { Button } from '@/components/ui/button';
 
 interface DocSection {
   id: string;
@@ -725,57 +728,84 @@ export default function Documentacao() {
   // vez de manter conteúdo que não corresponde aos resultados visíveis.
   const currentSection = filteredSections.find((section) => section.id === activeSection) || filteredSections[0];
 
+  const totalTopicos = docSections.reduce((total, section) => total + section.content.length, 0);
+  const posicaoAtual = currentSection ? filteredSections.findIndex((section) => section.id === currentSection.id) : -1;
+  const secaoAnterior = posicaoAtual > 0 ? filteredSections[posicaoAtual - 1] : undefined;
+  const proximaSecao = posicaoAtual >= 0 ? filteredSections[posicaoAtual + 1] : undefined;
+  const abrirSecao = (id: string) => {
+    setActiveSection(id);
+    window.scrollTo?.({ top: 0, behavior: 'smooth' });
+  };
+
   return (
     <div className="space-y-6 pb-8">
-      <div className="rounded-2xl border border-[#E6E2F7] bg-gradient-to-r from-[#F4F2FF] via-white to-[#f0edff] p-5 sm:p-6">
-        <h1 className="flex items-center gap-3 text-2xl font-bold tracking-tight text-[#111111] sm:text-3xl">
-          <BookOpen className="h-7 w-7 text-[#1080CA]" />
-          Documentação do Sistema
-        </h1>
-        <p className="mt-1 text-sm text-[#111111]/65">
-          Orientações dos principais módulos e fluxos do EloLab
-        </p>
-      </div>
+      <PageHeader
+        title="Documentação do Sistema"
+        description={normalizedSearch
+          ? `${filteredSections.length} de ${docSections.length} módulos correspondem à busca`
+          : `Orientações dos principais módulos e fluxos do EloLab · ${docSections.length} módulos · ${totalTopicos} tópicos`}
+        icon={<BookOpen />}
+        actions={
+          <Button asChild variant="outline" className="shrink-0 gap-2 rounded-full">
+            <Link to="/feedback"><MessageSquarePlus aria-hidden="true" className="h-4 w-4" /> Sugerir melhoria</Link>
+          </Button>
+        }
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         {/* Sidebar Navigation */}
         <div className="lg:col-span-1">
-          <Card className="sticky top-4">
-            <CardHeader className="pb-3">
+          <Card className="rounded-2xl border-border/60 shadow-xs lg:sticky lg:top-4">
+            <CardHeader className="space-y-2 pb-3">
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Search aria-hidden="true" className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
                   aria-label="Buscar em títulos, instruções e dicas da documentação"
                   placeholder="Buscar na documentação..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-9"
+                  className="h-10 rounded-full pl-9 pr-9 focus-visible:ring-[#1080CA]"
                 />
+                {searchTerm && (
+                  <button
+                    type="button"
+                    aria-label="Limpar busca"
+                    onClick={() => setSearchTerm('')}
+                    className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground hover:bg-[#F3F8FC] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
               </div>
+              <p className="px-1 text-[11px] text-muted-foreground" aria-live="polite">
+                {filteredSections.length} de {docSections.length} módulos
+              </p>
             </CardHeader>
             <CardContent className="p-0">
-              <ScrollArea className="h-[calc(100vh-16rem)]">
-                <nav className="flex flex-col gap-0.5 p-2">
+              <ScrollArea className="max-h-72 lg:max-h-none lg:h-[calc(100vh-18rem)]">
+                <nav aria-label="Módulos da documentação" className="flex flex-col gap-0.5 p-2">
                   {filteredSections.map((section) => {
                     const Icon = section.icon;
+                    const ativa = currentSection?.id === section.id;
                     return (
                       <button
                         key={section.id}
+                        type="button"
                         onClick={() => {
                           setActiveSection(section.id);
                         }}
-                        aria-current={currentSection?.id === section.id ? 'page' : undefined}
+                        aria-current={ativa ? 'page' : undefined}
                         className={cn(
-                          'flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium transition-all text-left w-full',
-                          activeSection === section.id
-                            ? 'bg-primary/10 text-primary'
-                            : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                          'flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+                          ativa
+                            ? 'bg-gradient-primary text-white shadow-sm'
+                            : 'text-muted-foreground hover:bg-[#F3F8FC] hover:text-foreground'
                         )}
                       >
-                        <Icon className={cn('h-4 w-4 shrink-0', section.color)} />
+                        <Icon aria-hidden="true" className={cn('h-4 w-4 shrink-0', ativa ? 'text-white' : section.color)} />
                         <span className="truncate">{section.title}</span>
                         {section.badge && (
-                          <Badge variant="secondary" className="ml-auto text-[10px] px-1.5 py-0">
+                          <Badge variant="outline" className={cn('ml-auto rounded-full px-1.5 py-0 text-[10px]', ativa ? 'border-white/40 text-white' : 'border-[#BFD8EE] text-[#1080CA]')}>
                             {section.badge}
                           </Badge>
                         )}
@@ -791,94 +821,117 @@ export default function Documentacao() {
 
         {/* Main Content */}
         <div className="lg:col-span-3">
-          <AnimatePresence mode="wait">
-            {currentSection && (
-              <motion.div
-                key={currentSection.id}
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -12 }}
-                transition={{ duration: 0.2 }}
-                className="space-y-6"
-              >
-                {/* Section Header */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-3 text-2xl">
-                      <currentSection.icon className={cn('h-7 w-7', currentSection.color)} />
-                      {currentSection.title}
-                      {currentSection.badge && (
-                        <Badge variant="outline">{currentSection.badge}</Badge>
-                      )}
+          {currentSection && (
+            <div key={currentSection.id} className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-200">
+              {/* Section Header */}
+              <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-[#DCE6F2] bg-[#F3F8FC] p-4 sm:p-5">
+                <span aria-hidden="true" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-primary text-white shadow-sm">
+                  <currentSection.icon className="h-5 w-5" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <h2 className="text-xl font-bold text-foreground">{currentSection.title}</h2>
+                  <p className="text-xs text-muted-foreground">
+                    {currentSection.content.length} tópico{currentSection.content.length === 1 ? '' : 's'}
+                  </p>
+                </div>
+                {currentSection.badge && (
+                  <Badge variant="outline" className="rounded-full border-[#BFD8EE] bg-white text-[#1080CA]">{currentSection.badge}</Badge>
+                )}
+              </div>
+
+              {/* Content Items */}
+              {currentSection.content.map((item, idx) => (
+                <Card key={idx} className="rounded-2xl border-border/60 shadow-xs">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <ChevronRight aria-hidden="true" className="h-4 w-4 text-[#1080CA]" />
+                      {item.title}
                     </CardTitle>
                   </CardHeader>
-                </Card>
+                  <CardContent className="space-y-4">
+                    <p className="text-muted-foreground leading-relaxed">
+                      {item.description}
+                    </p>
 
-                {/* Content Items */}
-                {currentSection.content.map((item, idx) => (
-                  <motion.div
-                    key={idx}
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: idx * 0.05 }}
-                  >
-                    <Card>
-                      <CardHeader className="pb-3">
-                        <CardTitle className="text-lg flex items-center gap-2">
-                          <ChevronRight className="h-4 w-4 text-primary" />
-                          {item.title}
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent className="space-y-4">
-                        <p className="text-muted-foreground leading-relaxed">
-                          {item.description}
+                    {item.steps && item.steps.length > 0 && (
+                      <div className="space-y-2">
+                        <Separator />
+                        <ol className="space-y-2 mt-3">
+                          {item.steps.map((step, sIdx) => (
+                            <li
+                              key={sIdx}
+                              className="flex items-start gap-3 text-sm"
+                            >
+                              <span className={cn(
+                                'mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold',
+                                sIdx === 0 ? 'bg-gradient-primary text-white' : 'bg-[#EEF4FA] text-[#1080CA]'
+                              )}>
+                                {sIdx + 1}
+                              </span>
+                              <span className="text-foreground">{step}</span>
+                            </li>
+                          ))}
+                        </ol>
+                      </div>
+                    )}
+
+                    {item.tips && item.tips.length > 0 && (
+                      <div className="mt-3 rounded-xl border border-[#DCE6F2] bg-[#F3F8FC] p-4">
+                        <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-[#1080CA]">
+                          <Lightbulb aria-hidden="true" className="h-3.5 w-3.5" /> Dicas
                         </p>
+                        <ul className="space-y-1.5">
+                          {item.tips.map((tip, tIdx) => (
+                            <li
+                              key={tIdx}
+                              className="text-sm text-muted-foreground flex items-start gap-2"
+                            >
+                              <span aria-hidden="true" className="text-[#1080CA] mt-1">•</span>
+                              {tip}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              ))}
 
-                        {item.steps && item.steps.length > 0 && (
-                          <div className="space-y-2">
-                            <Separator />
-                            <ul className="space-y-2 mt-3">
-                              {item.steps.map((step, sIdx) => (
-                                <li
-                                  key={sIdx}
-                                  className="flex items-start gap-3 text-sm"
-                                >
-                                  <span className="flex items-center justify-center h-5 w-5 rounded-full bg-primary/10 text-primary text-xs font-bold shrink-0 mt-0.5">
-                                    {sIdx + 1}
-                                  </span>
-                                  <span className="text-foreground">{step}</span>
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-
-                        {item.tips && item.tips.length > 0 && (
-                          <div className="bg-muted/50 rounded-lg p-4 border border-border/50 mt-3">
-                            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-                              💡 Dicas
-                            </p>
-                            <ul className="space-y-1.5">
-                              {item.tips.map((tip, tIdx) => (
-                                <li
-                                  key={tIdx}
-                                  className="text-sm text-muted-foreground flex items-start gap-2"
-                                >
-                                  <span className="text-primary mt-1">•</span>
-                                  {tip}
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-                      </CardContent>
-                    </Card>
-                  </motion.div>
-                ))}
-              </motion.div>
-            )}
-          </AnimatePresence>
-          {!currentSection && <Card><CardContent className="py-10 text-center text-sm text-muted-foreground">Nenhum conteúdo corresponde à busca. Tente outro termo.</CardContent></Card>}
+              {(secaoAnterior || proximaSecao) && (
+                <nav aria-label="Navegar entre módulos" className="flex flex-wrap items-center justify-between gap-2 pt-2">
+                  {secaoAnterior ? (
+                    <Button variant="outline" className="gap-2 rounded-full" onClick={() => abrirSecao(secaoAnterior.id)}>
+                      <ChevronLeft aria-hidden="true" className="h-4 w-4" /> {secaoAnterior.title}
+                    </Button>
+                  ) : <span />}
+                  {proximaSecao && (
+                    <Button className="gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110" onClick={() => abrirSecao(proximaSecao.id)}>
+                      {proximaSecao.title} <ChevronRight aria-hidden="true" className="h-4 w-4" />
+                    </Button>
+                  )}
+                </nav>
+              )}
+            </div>
+          )}
+          {!currentSection && (
+            <Card className="rounded-2xl border-border/60 shadow-xs">
+              <CardContent className="flex flex-col items-center gap-3 py-10 text-center">
+                <span aria-hidden="true" className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+                  <Search className="h-7 w-7" />
+                </span>
+                <p className="font-medium text-foreground">Nenhum conteúdo corresponde à busca. Tente outro termo.</p>
+                <p className="max-w-sm text-sm text-muted-foreground">Não encontrou o que precisava? Envie sua dúvida pelo feedback do produto.</p>
+                <div className="flex flex-wrap justify-center gap-2">
+                  <Button variant="outline" className="gap-2 rounded-full" onClick={() => setSearchTerm('')}>
+                    <X aria-hidden="true" className="h-4 w-4" /> Limpar busca
+                  </Button>
+                  <Button asChild className="gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110">
+                    <Link to="/feedback"><MessageSquarePlus aria-hidden="true" className="h-4 w-4" /> Enviar dúvida</Link>
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </div>
       </div>
     </div>

@@ -386,7 +386,7 @@ export default function AnalisePreditiva() {
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-xs tabular-nums text-muted-foreground">{predicoesFiltradas.length} de {predicoes.length}</span>
                 <Select value={filtroRisco} onValueChange={setFiltroRisco}>
-                  <SelectTrigger aria-label="Filtrar agendamentos por nível de risco de falta" className="h-10 w-full rounded-full border-[#DCE6F2] bg-white text-[#111111] sm:w-44">
+                  <SelectTrigger aria-label="Filtrar agendamentos por nível de risco de falta" className="h-10 w-full rounded-full border-[#DCE6F2] bg-white text-foreground sm:w-44">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -551,9 +551,9 @@ export default function AnalisePreditiva() {
             <span aria-hidden="true" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-gradient-primary text-white">
               <TrendingUp className="h-4 w-4" />
             </span>
-            <div className="text-sm text-[#111111]">
+            <div className="text-sm text-foreground">
               <p className="mb-1 font-semibold">Como funciona o índice?</p>
-              <ul className="space-y-1 text-xs text-[#111111]/75">
+              <ul className="space-y-1 text-xs text-foreground/75">
                 <li>Histórico real de faltas e cancelamentos do paciente</li>
                 <li>Confirmação pendente e antecedência do agendamento</li>
                 <li>Dia da semana e horário da consulta</li>

@@ -1816,7 +1816,7 @@ export default function Prontuarios() {
                 {medicoId && (
                   <section aria-labelledby="open-medical-drafts" className="border-b border-[#DCE6F2] bg-[#F3F8FC] p-2.5">
                     <div className="mb-2 flex items-center justify-between gap-2">
-                      <h2 id="open-medical-drafts" className="text-xs font-bold text-[#111111]">Rascunhos em aberto</h2>
+                      <h2 id="open-medical-drafts" className="text-xs font-bold text-foreground">Rascunhos em aberto</h2>
                       <Badge variant="outline" className="h-5 border-[#BFD8EE] bg-white text-xs text-[#1080CA]">
                         {rascunhosAbertos.length}
                       </Badge>
@@ -1844,7 +1844,7 @@ export default function Prontuarios() {
                             >
                               <span className="min-w-0 flex-1">
                                 <span className="flex items-center justify-between gap-2">
-                                  <span className="truncate text-xs font-semibold text-[#111111]">{paciente?.nome_social || paciente?.nome || 'Paciente'}</span>
+                                  <span className="truncate text-xs font-semibold text-foreground">{paciente?.nome_social || paciente?.nome || 'Paciente'}</span>
                                   <span className="shrink-0 text-xs text-[#1080CA]">Retomar</span>
                                 </span>
                                 <span className="mt-0.5 block truncate text-xs text-muted-foreground">

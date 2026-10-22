@@ -55,7 +55,7 @@ const CATEGORIAS_DESPESA: Record<string, string> = {
 
 const PIE_COLORS = [
   '#1080CA', '#2ED5E7', 'hsl(var(--success))', 'hsl(var(--warning))',
-  'hsl(var(--destructive))', '#111111', 'hsl(var(--muted-foreground))', '#6366f1',
+  'hsl(var(--destructive))', '#0B4F7D', 'hsl(var(--muted-foreground))', '#6366f1',
 ];
 
 const statusLiquidadoParcialOuTotal = (status: string | null) => status === 'pago' || status === 'parcial';
