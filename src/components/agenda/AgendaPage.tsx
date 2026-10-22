@@ -26,7 +26,7 @@ import { AgendaSkeleton } from '@/components/ui/loading-skeleton';
 import { ErrorState } from '@/components/ErrorState';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { pacienteCorresponde } from '@/lib/buscaPaciente';
-import { normalizeAgendaDate } from '@/lib/agendaDate';
+import { isValidAgendaDate, normalizeAgendaDate } from '@/lib/agendaDate';
 import { todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { podeRemarcarAgendamento } from '@/lib/appointmentStatus';
@@ -132,9 +132,15 @@ export function AgendaPage() {
   const esperaIdDaRota = searchParams.get('espera');
   const pacienteIdDaRota = searchParams.get('paciente');
   const reagendarIdDaRota = searchParams.get('reagendar');
+  // Links da central de notificações: ?data=AAAA-MM-DD&agendamento=<id>
+  const dataDaRota = searchParams.get('data');
+  const agendamentoIdDaRota = searchParams.get('agendamento');
   const reagendarAplicadoRef = useRef<string | null>(null);
   const { medicoId: myMedicoId, isMedicoOnly, isLoading: loadingCurrentMedico, error: currentMedicoError, refetch: refetchCurrentMedico } = useCurrentMedico();
-  const [date, setDate] = useState(() => normalizeAgendaDate(lerPreferenciaAgenda('agenda:date')));
+  const [date, setDate] = useState(() => normalizeAgendaDate(isValidAgendaDate(dataDaRota) ? dataDaRota : lerPreferenciaAgenda('agenda:date')));
+  useEffect(() => {
+    if (isValidAgendaDate(dataDaRota)) setDate(dataDaRota);
+  }, [dataDaRota]);
   const [view, setView] = useState<AgendaView>(() => {
     const preferencia = lerPreferenciaAgenda('agenda:view');
     return VIEWS_AGENDA.includes(preferencia as AgendaView) ? preferencia as AgendaView : 'daily';
@@ -306,6 +312,18 @@ export function AgendaPage() {
     params.delete('reagendar');
     setSearchParams(params, { replace: true });
   }, [reagendarIdDaRota, profile?.clinica_id, reagendamentoLoading, reagendamentoError, reagendamentoData, refetchReagendamento, searchParams, setSearchParams]);
+
+  // Abre a consulta indicada pela notificação quando ela aparece no período carregado.
+  useEffect(() => {
+    if (!agendamentoIdDaRota || isLoading || (isValidAgendaDate(dataDaRota) && date !== dataDaRota)) return;
+    const alvo = (allAppts as any[]).find((a) => a.id === agendamentoIdDaRota);
+    if (alvo) setDialogState({ open: true, initial: alvo });
+    else toast.info('A consulta da notificação não está mais nesta data.', { description: 'Ela pode ter sido remarcada ou cancelada.' });
+    const params = new URLSearchParams(searchParams);
+    params.delete('agendamento');
+    params.delete('data');
+    setSearchParams(params, { replace: true });
+  }, [agendamentoIdDaRota, dataDaRota, date, isLoading, allAppts, searchParams, setSearchParams]);
 
   // A lista de espera abre esta rota para criar a consulta. Valide o vínculo e
   // o estado no servidor antes de carregar o paciente no formulário.

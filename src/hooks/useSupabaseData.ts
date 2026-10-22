@@ -412,6 +412,7 @@ export function useMinhasTarefasPendentes(options?: { enabled?: boolean }) {
     queryKey: ['minhas-tarefas-pendentes', user?.id ?? null, profile?.id ?? null, profile?.clinica_id ?? null],
     enabled: (options?.enabled ?? true) && !!profile?.id && !!profile?.clinica_id,
     staleTime: 60_000,
+    refetchInterval: 60_000,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('tarefas')

@@ -373,6 +373,7 @@ export default function Tarefas() {
 
   const tarefasQuery = useQuery({
     queryKey: ['tarefas', profile?.clinica_id, profile?.id],
+    refetchInterval: 60_000,
     queryFn: async () => {
       const data = await withSafeRetry(() => buscarEmBlocos<any>(() => supabase
         .from('tarefas')

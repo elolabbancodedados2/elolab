@@ -67,6 +67,7 @@ export default function MinhaFilaTarefas() {
 
   const tarefasQuery = useQuery({
     queryKey: ['minha-fila-tarefas', clinicaId, userId],
+    refetchInterval: 60_000,
     queryFn: async () => {
       if (!clinicaId || !userId) return [];
       return withSafeRetry(() => buscarEmBlocos<PersonalTask>(() => supabase

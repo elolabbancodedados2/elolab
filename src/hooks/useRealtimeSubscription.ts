@@ -5,12 +5,14 @@ import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { canalUnico } from '@/lib/realtimeCanal';
 
 const CRITICAL_TABLES = [
-  { table: 'agendamentos', queryKey: 'agendamentos' },
-  { table: 'fila_atendimento', queryKey: 'fila_atendimento' },
-  { table: 'pacientes', queryKey: 'pacientes' },
-  { table: 'estoque', queryKey: 'estoque' },
-  { table: 'lancamentos', queryKey: 'lancamentos' },
-  { table: 'notification_queue', queryKey: 'notifications' },
+  { table: 'agendamentos', queryKeys: ['agendamentos'] },
+  { table: 'fila_atendimento', queryKeys: ['fila_atendimento'] },
+  { table: 'pacientes', queryKeys: ['pacientes'] },
+  { table: 'estoque', queryKeys: ['estoque'] },
+  { table: 'lancamentos', queryKeys: ['lancamentos'] },
+  { table: 'notification_queue', queryKeys: ['notifications'] },
+  // Tarefas alimentam três caches distintos: lista, fila pessoal e contador do dashboard.
+  { table: 'tarefas', queryKeys: ['tarefas', 'minha-fila-tarefas', 'minhas-tarefas-pendentes', 'central-notificacoes'] },
 ] as const;
 
 const INITIAL_POLL_INTERVAL = 30_000; // 30s
@@ -30,8 +32,8 @@ export function useRealtimeSubscription() {
   const isActiveRef = useRef(true);
 
   const invalidateAll = useCallback(() => {
-    CRITICAL_TABLES.forEach(({ queryKey }) => {
-      queryClient.invalidateQueries({ queryKey: [queryKey] });
+    CRITICAL_TABLES.forEach(({ queryKeys }) => {
+      queryKeys.forEach((queryKey) => queryClient.invalidateQueries({ queryKey: [queryKey] }));
     });
   }, [queryClient]);
 
@@ -45,12 +47,12 @@ export function useRealtimeSubscription() {
     // Primary: Realtime subscription
     let channel = supabase.channel(canalUnico('global-realtime'));
 
-    CRITICAL_TABLES.forEach(({ table, queryKey }) => {
+    CRITICAL_TABLES.forEach(({ table, queryKeys }) => {
       channel = channel.on(
         'postgres_changes',
         { event: '*', schema: 'public', table },
         () => {
-          queryClient.invalidateQueries({ queryKey: [queryKey] });
+          queryKeys.forEach((queryKey) => queryClient.invalidateQueries({ queryKey: [queryKey] }));
           lastRealtimeEventRef.current = Date.now();
           pollIntervalRef.current = INITIAL_POLL_INTERVAL; // reset backoff
         }

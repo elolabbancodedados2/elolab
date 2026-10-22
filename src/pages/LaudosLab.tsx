@@ -33,7 +33,7 @@ import { cursorAposAtualizacaoWorklist, type CursorLaudo } from '@/lib/laudoWork
 import { LaboratorioSubnav } from '@/components/laboratorio/LaboratorioSubnav';
 import { criticalAcknowledgementIsPending } from '@/lib/criticalResultAcknowledgement';
 import { linkWhatsApp } from '@/lib/whatsapp';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { PageHeader } from '@/components/PageHeader';
 
 /**
@@ -665,7 +665,16 @@ export default function LaudosLab() {
   const [loadError, setLoadError] = useState<unknown>(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('todos');
-  const [viewingId, setViewingId] = useState<string | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  // A central de notificações abre o laudo do resultado crítico por ?coleta=<id>.
+  const [viewingId, setViewingId] = useState<string | null>(() => searchParams.get('coleta'));
+  useEffect(() => {
+    if (!searchParams.has('coleta')) return;
+    setViewingId(searchParams.get('coleta'));
+    const params = new URLSearchParams(searchParams);
+    params.delete('coleta');
+    setSearchParams(params, { replace: true });
+  }, [searchParams, setSearchParams]);
   const [cursorLaudos, setCursorLaudos] = useState<CursorLaudo>(null);
   const [hasOlderLaudos, setHasOlderLaudos] = useState(false);
   const [loadingOlderLaudos, setLoadingOlderLaudos] = useState(false);
