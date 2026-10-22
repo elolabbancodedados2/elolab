@@ -13,7 +13,7 @@ import type jsPDF from 'jspdf';
 import { useQuery } from '@tanstack/react-query';
 import {
   Pill, Plus, Search, FileDown, ExternalLink, Clipboard, AlertTriangle, Loader2,
-  RefreshCw, X, MessageCircle, CalendarCheck, FileText, CloudOff, BookOpen, FileSignature,
+  RefreshCw, X, MessageCircle, CalendarCheck, FileText, CloudOff, BookOpen, FileSignature, Upload,
 } from 'lucide-react';
 import { linkWhatsApp } from '@/lib/whatsapp';
 import { Button } from '@/components/ui/button';
@@ -322,6 +322,59 @@ export default function Prescricoes() {
   const prescricoes = prescricoesQuery.data || [];
   const loadingPresc = prescricoesQuery.isLoading;
   const { refetch } = prescricoesQuery;
+
+  // Auditoria 15: cópia assinada externamente, guardada à parte da receita original.
+  const versoesAssinadasQuery = useQuery({
+    queryKey: ['prescricoes_versoes_assinadas', profile?.clinica_id],
+    enabled: !!profile?.clinica_id,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).from('prescricoes_versoes_assinadas')
+        .select('prescricao_id, arquivo_pdf, anexado_em');
+      // Sem a migration aplicada a tabela não existe; o histórico segue funcionando sem a versão assinada.
+      if (error) return [] as Array<{ prescricao_id: string; arquivo_pdf: string; anexado_em: string }>;
+      return (data ?? []) as Array<{ prescricao_id: string; arquivo_pdf: string; anexado_em: string }>;
+    },
+  });
+  const versaoAssinadaPorReceita = useMemo(
+    () => new Map((versoesAssinadasQuery.data ?? []).map(v => [v.prescricao_id, v])),
+    [versoesAssinadasQuery.data],
+  );
+  const assinadaInputRef = useRef<HTMLInputElement>(null);
+  const [anexandoAssinadaPara, setAnexandoAssinadaPara] = useState<Record<string, any> | null>(null);
+  const [enviandoAssinadaId, setEnviandoAssinadaId] = useState<string | null>(null);
+  const podeAnexarAssinada = (p: Record<string, any>) =>
+    !!p.arquivo_pdf && !versaoAssinadaPorReceita.has(p.id)
+    && (profile?.roles?.includes('admin') || (!!currentMedico?.id && currentMedico.id === p.medico_id));
+
+  const handleArquivoAssinado = async (file: File | undefined) => {
+    const receita = anexandoAssinadaPara;
+    setAnexandoAssinadaPara(null);
+    if (assinadaInputRef.current) assinadaInputRef.current.value = '';
+    if (!file || !receita) return;
+    if (file.type !== 'application/pdf' || file.size > 10 * 1024 * 1024) {
+      toast.error('Envie o PDF assinado (até 10 MB).');
+      return;
+    }
+    setEnviandoAssinadaId(receita.id);
+    const caminho = `prescricoes/${receita.paciente_id}/${crypto.randomUUID()}-assinada.pdf`;
+    try {
+      const { error: erroUpload } = await supabase.storage
+        .from('medical-attachments')
+        .upload(caminho, file, { contentType: 'application/pdf', upsert: false });
+      if (erroUpload) throw erroUpload;
+      const { error } = await (supabase as any).rpc('anexar_receita_assinada', { p_prescricao_id: receita.id, p_arquivo_pdf: caminho });
+      if (error) {
+        await supabase.storage.from('medical-attachments').remove([caminho]);
+        throw error;
+      }
+      await versoesAssinadasQuery.refetch();
+      toast.success('Versão assinada anexada à receita.', { description: 'O PDF original continua disponível no histórico.' });
+    } catch (error) {
+      toast.error('Não foi possível anexar a versão assinada.', { description: mensagemDeErro(error) });
+    } finally {
+      setEnviandoAssinadaId(null);
+    }
+  };
 
   const clinicConfigQuery = useQuery({
     queryKey: ['configuracoes_clinica', profile?.clinica_id],
@@ -732,13 +785,14 @@ export default function Prescricoes() {
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
-  const handleDownloadFromHistory = async (prescricao: Record<string, any>) => {
-    if (!prescricao.arquivo_pdf || downloadingPrescriptionId) return;
+  const handleDownloadFromHistory = async (prescricao: Record<string, any>, assinada = false) => {
+    const arquivo = assinada ? versaoAssinadaPorReceita.get(prescricao.id)?.arquivo_pdf : prescricao.arquivo_pdf;
+    if (!arquivo || downloadingPrescriptionId) return;
     setDownloadingPrescriptionId(prescricao.id);
     try {
       const { data, error } = await supabase.storage
         .from('medical-attachments')
-        .download(prescricao.arquivo_pdf);
+        .download(arquivo);
       if (error) throw error;
       if (!data) throw new Error('O arquivo não foi encontrado. Atualize a lista e tente novamente.');
       await registrarAcessoDocumentoClinico('prescricao', prescricao.id, 'exportacao');
@@ -747,7 +801,7 @@ export default function Prescricoes() {
       const nomePaciente = String(prescricao.pacientes?.nome_social || prescricao.pacientes?.nome || 'paciente')
         .normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9_-]+/g, '_').slice(0, 40);
       anchor.href = url;
-      anchor.download = `receita_${nomePaciente}_${prescricao.data_emissao || 'documento'}.pdf`;
+      anchor.download = `receita_${nomePaciente}_${prescricao.data_emissao || 'documento'}${assinada ? '_assinada' : ''}.pdf`;
       anchor.click();
       window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (error) {
@@ -1189,7 +1243,35 @@ export default function Prescricoes() {
                               {downloadingPrescriptionId === p.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
                               Baixar PDF
                             </Button>
-                          ) : receitaMemedExcluida(p) ? (
+                          ) : null}
+                          {p.arquivo_pdf && versaoAssinadaPorReceita.has(p.id) && (
+                            <Button
+                              type="button"
+                              className="h-9 gap-1.5 rounded-full bg-gradient-primary text-xs text-white hover:brightness-110"
+                              aria-label={`Baixar versão assinada da receita de ${nomePaciente}`}
+                              title="Baixar a cópia assinada anexada"
+                              disabled={ocupado}
+                              onClick={() => void handleDownloadFromHistory(p, true)}
+                            >
+                              <FileSignature className="h-4 w-4" />
+                              Assinada
+                            </Button>
+                          )}
+                          {podeAnexarAssinada(p) && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className="h-9 gap-1.5 rounded-full text-xs"
+                              aria-label={`Anexar versão assinada da receita de ${nomePaciente}`}
+                              title="Anexar o PDF assinado no gov.br"
+                              disabled={ocupado || enviandoAssinadaId !== null}
+                              onClick={() => { setAnexandoAssinadaPara(p); assinadaInputRef.current?.click(); }}
+                            >
+                              {enviandoAssinadaId === p.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                              Anexar assinada
+                            </Button>
+                          )}
+                          {p.arquivo_pdf ? null : receitaMemedExcluida(p) ? (
                             <span className="text-xs text-muted-foreground" aria-label={`Receita de ${nomePaciente} excluída na Memed`}>Excluída na Memed</span>
                           ) : receitaMemed(p) ? (
                             <span className="text-xs text-muted-foreground" aria-label={`Receita de ${nomePaciente} gerenciada pela Memed; PDF não armazenado no EloLab`}>PDF na Memed</span>
@@ -1214,6 +1296,15 @@ export default function Prescricoes() {
               </TableBody>
             </Table>
           </div>
+          <input
+            ref={assinadaInputRef}
+            type="file"
+            accept="application/pdf"
+            className="hidden"
+            aria-hidden="true"
+            tabIndex={-1}
+            onChange={(e) => void handleArquivoAssinado(e.target.files?.[0])}
+          />
         </CardContent>
       </Card>
 
@@ -1375,11 +1466,11 @@ export default function Prescricoes() {
               <Clipboard className="h-5 w-5 text-primary" />
               Receita Gerada!
             </DialogTitle>
-            <DialogDescription>O EloLab guarda o PDF emitido sem assinatura. Você pode assiná-lo externamente e manter a cópia assinada fora do sistema.</DialogDescription>
+            <DialogDescription>O EloLab guarda o PDF emitido sem assinatura. Depois de assiná-lo externamente, anexe a cópia assinada pelo histórico de receitas.</DialogDescription>
           </DialogHeader>
 
           <p className="text-muted-foreground text-sm">
-            O PDF gerado ainda não está assinado. Baixe o arquivo e, se necessário, assine pelo portal do ITI (Gov.br). A cópia assinada não é enviada nem armazenada pelo EloLab.
+            O PDF gerado ainda não está assinado. Baixe o arquivo e, se necessário, assine pelo portal do ITI (Gov.br). Depois, use "Anexar assinada" no histórico: o original e a versão assinada ficam guardados lado a lado.
           </p>
 
           <div className="flex flex-col gap-3 mt-4">

@@ -19,7 +19,7 @@ type MutationOptions = {
 };
 
 vi.mock('@tanstack/react-query', () => ({
-  useQuery: () => ({ data: mocks.invites, isLoading: false, isError: false }),
+  useQuery: ({ queryKey }: { queryKey: unknown[] }) => ({ data: queryKey[0] === 'convites-list' ? mocks.invites : undefined, isLoading: false, isError: false }),
   useQueryClient: () => ({ invalidateQueries: mocks.invalidateQueries }),
   useMutation: (options: MutationOptions) => ({
     isPending: false,
