@@ -454,7 +454,7 @@ export default function Auth() {
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-          className="relative z-10 mx-auto w-full max-w-[490px] rounded-[32px] border border-border/70 bg-card/80 px-6 py-7 shadow-[0_28px_90px_-38px_rgba(49,27,158,0.38)] backdrop-blur-2xl sm:px-10 sm:py-9"
+          className="relative z-10 mx-auto w-full max-w-[490px] rounded-[32px] border border-border/70 bg-card/80 px-6 py-7 shadow-[0_28px_90px_-38px_rgba(16,128,202,0.35)] backdrop-blur-2xl sm:px-10 sm:py-9"
         >
           <div className="mb-6 text-center">
             <p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
@@ -606,7 +606,7 @@ export default function Auth() {
                     />
                     <Button
                       type="submit"
-                      className="h-[52px] w-full rounded-[14px] bg-[image:var(--gradient-primary)] text-sm font-bold text-white shadow-glow transition hover:brightness-105 hover:shadow-[0_15px_28px_-12px_rgba(47,12,223,0.75)]"
+                      className="h-[52px] w-full rounded-[14px] bg-[image:var(--gradient-primary)] text-sm font-bold text-white shadow-glow transition hover:brightness-105 hover:shadow-[0_15px_28px_-12px_rgba(16,128,202,0.6)]"
                       disabled={isLoading}
                     >
                       {isLoading ? <><Loader2 aria-hidden="true" className="mr-2 h-4 w-4 animate-spin" />Acessando…</> : 'Acessar conta'}

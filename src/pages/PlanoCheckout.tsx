@@ -421,7 +421,7 @@ function FormularioPix({
           <Input id="b-uf" required maxLength={2} autoComplete="address-level1" value={p.state} onChange={(e) => setP((prev) => ({ ...prev, state: e.target.value.toUpperCase() }))} />
         </div>
       </>
-      <Button type="submit" size="lg" className="h-12 gap-2 sm:col-span-6" disabled={enviando}>
+      <Button type="submit" size="lg" className="h-12 gap-2 rounded-full bg-gradient-primary text-white shadow-glow hover:brightness-105 sm:col-span-6" disabled={enviando}>
         {enviando ? <Loader2 className="h-4 w-4 animate-spin" /> : <QrCode className="h-4 w-4" />}
         {enviando ? 'Gerando Pix…' : 'Gerar Pix'}
       </Button>
@@ -507,7 +507,7 @@ function PedidoEmAndamento({ pedidoId, onPago, onNovo }: { pedidoId: string; onP
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-2 rounded-lg bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-400" role="status" aria-live="polite">
+      <div className="flex items-center gap-2 rounded-xl border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-foreground" role="status" aria-live="polite">
         <Loader2 className="h-4 w-4 animate-spin" />
         {pedido.status === 'em_processamento' ? 'Pagamento em processamento…' : 'Aguardando pagamento — esta página atualiza sozinha.'}
       </div>
@@ -612,9 +612,10 @@ export default function PlanoCheckout() {
   }
   if (!plano) {
     return (
-      <div className="mx-auto max-w-xl rounded-xl border border-dashed p-8 text-center">
+      <div className="mx-auto max-w-xl rounded-2xl border border-dashed border-[#BFD8EE] bg-[#F3F8FC] p-8 text-center">
         <h1 className="font-semibold">Plano não encontrado</h1>
-        <Button asChild className="mt-4" variant="outline"><Link to="/planos">Ver planos</Link></Button>
+        <p className="mt-1 text-sm text-muted-foreground">O link pode estar desatualizado. Escolha um dos planos disponíveis.</p>
+        <Button asChild className="mt-4 rounded-full" variant="outline"><Link to="/planos">Ver planos</Link></Button>
       </div>
     );
   }
@@ -627,10 +628,10 @@ export default function PlanoCheckout() {
   if (pedidoAbertoDeOutroPlano) {
     const nomePlanoPendente = pedidoAbertoDeOutroPlano.plano_slug;
     return (
-      <div className="mx-auto max-w-xl rounded-xl border border-info/20 bg-info/5 p-8 text-center">
+      <div className="mx-auto max-w-xl rounded-2xl border border-info/20 bg-info/5 p-8 text-center">
         <h1 className="text-xl font-semibold">Existe um pagamento pendente</h1>
         <p className="mt-2 text-muted-foreground">Conclua ou cancele o pagamento de {nomePlanoPendente} antes de iniciar a contratação deste plano.</p>
-        <Button className="mt-5" onClick={() => navigate(`/planos/checkout/${encodeURIComponent(nomePlanoPendente)}`)}>Voltar ao pagamento pendente</Button>
+        <Button className="mt-5 rounded-full bg-gradient-primary text-white shadow-glow hover:brightness-105" onClick={() => navigate(`/planos/checkout/${encodeURIComponent(nomePlanoPendente)}`)}>Voltar ao pagamento pendente</Button>
       </div>
     );
   }
@@ -664,8 +665,8 @@ export default function PlanoCheckout() {
             : `Pagamento confirmado. O ${plano.nome} está liberado até ${sucesso.pedido.periodo_fim ? format(new Date(sucesso.pedido.periodo_fim), "dd 'de' MMMM 'de' yyyy", { locale: ptBR }) : 'o fim do período'}.`}
         </p>
         <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
-          <Button size="lg" onClick={() => navigate(sucesso.tipo === 'cartao' && sucesso.emAnalise ? '/planos' : '/boas-vindas')}>{sucesso.tipo === 'cartao' && sucesso.emAnalise ? 'Acompanhar assinatura' : 'Continuar configuração'}</Button>
-          <Button size="lg" variant="outline" onClick={() => navigate('/planos')}>Ver meu plano</Button>
+          <Button size="lg" className="rounded-full bg-gradient-primary text-white shadow-glow hover:brightness-105" onClick={() => navigate(sucesso.tipo === 'cartao' && sucesso.emAnalise ? '/planos' : '/boas-vindas')}>{sucesso.tipo === 'cartao' && sucesso.emAnalise ? 'Acompanhar assinatura' : 'Continuar configuração'}</Button>
+          <Button size="lg" variant="outline" className="rounded-full" onClick={() => navigate('/planos')}>Ver meu plano</Button>
         </div>
       </div>
     );
@@ -687,7 +688,7 @@ export default function PlanoCheckout() {
           <Link to="/planos"><ArrowLeft className="h-4 w-4" /> Voltar aos planos</Link>
         </Button>
         {status?.sandbox && (
-          <Badge variant="outline" className="border-amber-400/50 bg-amber-500/10 text-amber-700 dark:text-amber-400">
+          <Badge variant="outline" className="rounded-full border-warning/40 bg-warning/10 text-foreground">
             Ambiente de teste — nenhuma cobrança real
           </Badge>
         )}
@@ -746,11 +747,11 @@ export default function PlanoCheckout() {
             </p>
           )}
 
-          <div className="rounded-2xl border bg-card p-6 shadow-sm">
+          <div className="rounded-2xl border border-border/60 bg-card p-6 shadow-xs">
             {metodoCheckout === 'cartao' && (
               <div className="space-y-5">
                 {podeTrial && (
-                  <div className="flex items-center justify-between gap-4 rounded-lg border p-3">
+                  <div className="flex items-center justify-between gap-4 rounded-xl border border-border/60 p-3">
                     <div className="flex items-center gap-3">
                       <Gift className="h-5 w-5 text-warning" />
                       <div>
@@ -801,7 +802,7 @@ export default function PlanoCheckout() {
 
             {metodoCheckout === 'pix' && !pedidoId && (
               <div className="space-y-5">
-                <div className="flex items-start gap-3 rounded-lg border border-primary/20 bg-primary/5 p-3 text-left text-sm">
+                <div className="flex items-start gap-3 rounded-xl border border-primary/20 bg-primary/5 p-3 text-left text-sm">
                   <Clock className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
                   <p>
                     Pagamento único de {brl(plano.valor)} que libera o acesso por {periodoLabel(plano.periodo_meses)}
@@ -827,7 +828,7 @@ export default function PlanoCheckout() {
 
         {/* Resumo */}
         <aside aria-labelledby="titulo-resumo" className="lg:sticky lg:top-6">
-          <div className="overflow-hidden rounded-2xl border bg-card shadow-sm">
+          <div className="overflow-hidden rounded-2xl border border-border/60 bg-card shadow-xs">
             <div className="bg-gradient-to-br from-primary/10 via-primary/5 to-transparent p-6">
               <p className="text-xs font-semibold uppercase tracking-wider text-primary">Resumo</p>
               <h2 id="titulo-resumo" className="mt-1 text-2xl font-bold">{plano.nome}</h2>
