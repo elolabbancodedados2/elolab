@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
+import Logo from '@/components/landing-v2/Logo';
 import { AlertTriangle, CheckCircle2, FileCheck2, Loader2, ShieldX } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -53,11 +54,17 @@ export default function VerificarAssinatura() {
   }, [codigo, retry]);
 
   return (
-    <main className="min-h-screen bg-muted/30 px-4 py-12">
-      <Card className="mx-auto max-w-xl">
+    <main className="min-h-screen bg-gradient-to-b from-[#F3F8FC] to-white px-4 py-8 sm:py-12">
+      <div className="mx-auto mb-6 flex max-w-xl justify-center">
+        <Link to="/" aria-label="EloLab, página inicial" className="inline-flex min-h-10 items-center"><Logo /></Link>
+      </div>
+      <Card className="mx-auto max-w-xl rounded-2xl border-[#DCE6F2] shadow-[0_8px_24px_rgba(16,128,202,0.08)]">
         <CardHeader className="text-center">
-          <FileCheck2 className="mx-auto h-10 w-10 text-primary" />
+          <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+            <FileCheck2 className="h-7 w-7" aria-hidden="true" />
+          </span>
           <CardTitle>Verificação de assinatura</CardTitle>
+          <p className="text-sm text-muted-foreground">Confere se o documento emitido pela clínica não foi alterado depois de assinado.</p>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -69,7 +76,7 @@ export default function VerificarAssinatura() {
                 <p className="font-semibold">Não foi possível verificar agora</p>
                 <p className="mt-1 text-xs text-muted-foreground">O serviço está indisponível. Isso não confirma nem invalida a assinatura; tente novamente.</p>
               </div>
-              <Button variant="outline" onClick={() => setRetry((value) => value + 1)}>Tentar novamente</Button>
+              <Button variant="outline" className="h-10 rounded-full" onClick={() => setRetry((value) => value + 1)}>Tentar novamente</Button>
             </div>
           ) : invalidCode ? (
             <StatusInvalid title="Código inválido" text="O endereço está incompleto ou o código de verificação não tem o formato esperado." />
@@ -83,7 +90,7 @@ export default function VerificarAssinatura() {
                 <p className="mt-1 text-xs text-muted-foreground">O conteúdo atual corresponde ao hash registrado no momento da assinatura.</p>
               </div>
               <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-3 text-sm">
-                <dt className="text-muted-foreground">Documento</dt><dd><Badge variant="outline">Prontuário #{result.documentReference}</Badge></dd>
+                <dt className="text-muted-foreground">Documento</dt><dd><Badge variant="outline" className="rounded-full border-[#BFD8EE] text-[#1080CA]">Prontuário #{result.documentReference}</Badge></dd>
                 <dt className="text-muted-foreground">Assinante</dt><dd className="font-medium">{result.signerName}</dd>
                 <dt className="text-muted-foreground">CRM</dt><dd>{result.signerCRM}</dd>
                 <dt className="text-muted-foreground">Assinado em</dt><dd>{new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short', timeZone: 'America/Sao_Paulo' }).format(new Date(result.signedAt))}</dd>

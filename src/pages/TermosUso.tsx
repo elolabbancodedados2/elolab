@@ -2,28 +2,36 @@ import { Link } from 'react-router-dom';
 import { NavegacaoLegal } from '@/components/NavegacaoLegal';
 import { ArrowLeft, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import Logo from '@/components/landing-v2/Logo';
 
 export default function TermosUso() {
   return (
-    <div className="min-h-screen bg-background">
-      <div className="container mx-auto max-w-3xl px-4 py-8 sm:py-12">
-        <Button asChild variant="ghost" size="sm" className="mb-6">
-          <Link to="/">
-            <ArrowLeft className="h-4 w-4 mr-2" /> Voltar
+    <div className="min-h-screen bg-gradient-to-b from-[#F3F8FC] to-white">
+      <div className="container mx-auto max-w-3xl px-4 py-6 sm:py-10">
+        <div className="mb-6 flex items-center justify-between gap-3">
+          <Link to="/" aria-label="EloLab, página inicial" className="inline-flex min-h-10 items-center">
+            <Logo />
           </Link>
-        </Button>
+          <Button asChild variant="outline" size="sm" className="h-10 gap-2 rounded-full">
+            <Link to="/">
+              <ArrowLeft className="h-4 w-4" /> Voltar
+            </Link>
+          </Button>
+        </div>
 
-        <div className="flex items-center gap-3 mb-8">
-          <FileText className="h-8 w-8 text-primary" />
+        <div className="mb-6 flex items-center gap-3">
+          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+            <FileText className="h-6 w-6" aria-hidden="true" />
+          </span>
           <h1 className="text-2xl sm:text-3xl font-bold text-foreground">Termos de Uso</h1>
         </div>
 
-        <div className="prose prose-sm max-w-none space-y-6 text-muted-foreground">
+        <div className="prose prose-sm max-w-none space-y-6 rounded-2xl border border-[#DCE6F2] bg-card p-5 text-muted-foreground shadow-[0_8px_24px_rgba(16,128,202,0.06)] sm:p-8 prose-a:text-[#1080CA]">
           <p className="text-xs">Última atualização: 7 de outubro de 2026</p>
 
           <section>
             <h2 className="text-lg font-semibold text-foreground">1. Aceitação dos Termos</h2>
-            <p>Ao acessar e utilizar o sistema EloLab, você concorda com estes Termos de Uso, com a <Link to="/politica-privacidade" className="text-primary hover:underline">Política de Privacidade</Link> e com a <Link to="/politica-cookies" className="text-primary hover:underline">Política de Cookies</Link>. Se não concordar, descontinue o uso imediatamente.</p>
+            <p>Ao acessar e utilizar o sistema EloLab, você concorda com estes Termos de Uso, com a <Link to="/politica-privacidade" className="text-[#1080CA] hover:underline">Política de Privacidade</Link> e com a <Link to="/politica-cookies" className="text-[#1080CA] hover:underline">Política de Cookies</Link>. Se não concordar, descontinue o uso imediatamente.</p>
           </section>
 
           <section>

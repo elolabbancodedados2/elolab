@@ -25,6 +25,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Loader2, Mail, Lock, CheckCircle2, ArrowLeft, Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
+import Logo from '@/components/landing-v2/Logo';
 import { validatePassword, PASSWORD_MIN_LENGTH } from '@/lib/passwordPolicy';
 
 type Etapa = 'pedir' | 'definir' | 'enviado';
@@ -115,9 +116,15 @@ export default function RedefinirSenha() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-muted/20 p-4">
-      <Card className="w-full max-w-md">
+    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-b from-[#F3F8FC] to-white px-4 py-10">
+      <Link to="/" aria-label="EloLab, página inicial" className="mb-6 inline-flex min-h-10 items-center">
+        <Logo />
+      </Link>
+      <Card className="w-full max-w-md rounded-2xl border-[#DCE6F2] shadow-[0_8px_24px_rgba(16,128,202,0.08)]">
         <CardHeader>
+          <span className="mb-2 flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+            {etapa === 'enviado' ? <Mail className="h-6 w-6" aria-hidden="true" /> : <Lock className="h-6 w-6" aria-hidden="true" />}
+          </span>
           <CardTitle>
             {etapa === 'definir' ? 'Criar nova senha' : 'Redefinir senha'}
           </CardTitle>
@@ -131,14 +138,17 @@ export default function RedefinirSenha() {
         <CardContent className="space-y-4">
           {etapa === 'enviado' && (
             <>
-              <Alert className="border-primary/20 bg-primary/5">
-                <CheckCircle2 className="h-4 w-4 text-primary" />
+              <Alert className="rounded-xl border-[#BFD8EE] bg-[#F3F8FC]">
+                <CheckCircle2 className="h-4 w-4 text-[#1080CA]" />
                 <AlertDescription>
                   Se este e-mail estiver cadastrado, o link para redefinir sua senha chegará em até 5 minutos.
                   Confira a caixa de entrada e o spam.
                 </AlertDescription>
               </Alert>
-              <Button variant="outline" className="w-full" onClick={() => navigate('/auth')}>
+              <Button variant="ghost" className="h-10 w-full rounded-full text-[#1080CA]" onClick={() => setEtapa('pedir')}>
+                Não recebeu? Enviar de novo
+              </Button>
+              <Button variant="outline" className="h-11 w-full rounded-full" onClick={() => navigate('/auth')}>
                 <ArrowLeft className="mr-2 h-4 w-4" />
                 Voltar para o login
               </Button>
@@ -156,7 +166,7 @@ export default function RedefinirSenha() {
                     id="email"
                     type="email"
                     autoComplete="email"
-                    className="pl-10"
+                    className="h-11 rounded-xl pl-10"
                     placeholder="seu@email.com"
                     value={email}
                     onChange={(ev) => setEmail(ev.target.value)}
@@ -164,7 +174,7 @@ export default function RedefinirSenha() {
                   />
                 </div>
               </div>
-              <Button type="submit" className="w-full" disabled={enviando}>
+              <Button type="submit" className="h-11 w-full rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110" disabled={enviando}>
                 {enviando
                   ? <><Loader2 aria-hidden="true" className="mr-2 h-4 w-4 animate-spin" />Enviando…</>
                   : 'Enviar link'}
@@ -190,7 +200,7 @@ export default function RedefinirSenha() {
                     id="senha"
                     type={mostrarSenha ? 'text' : 'password'}
                     autoComplete="new-password"
-                    className="pl-10 pr-10"
+                    className="h-11 rounded-xl pl-10 pr-10"
                     placeholder="••••••••"
                     value={senha}
                     onChange={(ev) => setSenha(ev.target.value)}
@@ -222,7 +232,7 @@ export default function RedefinirSenha() {
                     id="confirmacao"
                     type={mostrarSenha ? 'text' : 'password'}
                     autoComplete="new-password"
-                    className="pl-10"
+                    className="h-11 rounded-xl pl-10"
                     placeholder="••••••••"
                     value={confirmacao}
                     onChange={(ev) => setConfirmacao(ev.target.value)}
@@ -231,7 +241,7 @@ export default function RedefinirSenha() {
                 </div>
               </div>
 
-              <Button type="submit" className="w-full" disabled={enviando}>
+              <Button type="submit" className="h-11 w-full rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110" disabled={enviando}>
                 {enviando
                   ? <><Loader2 aria-hidden="true" className="mr-2 h-4 w-4 animate-spin" />Salvando…</>
                   : 'Salvar nova senha'}
