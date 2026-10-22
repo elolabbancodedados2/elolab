@@ -1,18 +1,17 @@
 import { useState, useMemo } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { Link } from 'react-router-dom';
 import {
   Plus, Search, Edit, Trash2, DollarSign, Clock, Palette, AlertTriangle,
-  Loader2, Building2, Check, X, Stethoscope,
+  Loader2, Building2, Check, X, Stethoscope, CheckCircle2, PauseCircle, Layers,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from '@/components/ui/dialog';
@@ -32,13 +31,22 @@ import { normalizarTexto } from '@/lib/buscaPaciente';
 import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
 import { PageHeader } from '@/components/PageHeader';
 
+type FiltroStatus = 'todos' | 'ativos' | 'inativos' | 'sem_convenio';
+
+const INDICADORES: { key: FiltroStatus; label: string; legenda: string; icon: typeof Layers; cor: string }[] = [
+  { key: 'todos', label: 'Tipos', legenda: 'cadastrados', icon: Layers, cor: '' },
+  { key: 'ativos', label: 'Ativos', legenda: 'disponíveis para agendar', icon: CheckCircle2, cor: 'bg-success/10 text-success' },
+  { key: 'inativos', label: 'Inativos', legenda: 'fora da agenda', icon: PauseCircle, cor: 'bg-muted text-muted-foreground' },
+  { key: 'sem_convenio', label: 'Sem convênio', legenda: 'só valor particular', icon: Building2, cor: 'bg-warning/10 text-warning' },
+];
+
 const fmt = (v: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 const temNoMaximoDuasCasasDecimais = (valor: number) =>
   Math.abs(valor * 100 - Math.round(valor * 100)) < 1e-7;
 
 const CORES = [
-  '#6366f1', '#10b981', '#f59e0b', '#ef4444', '#320ee9',
+  '#1080CA', '#10b981', '#f59e0b', '#ef4444', '#320ee9',
   '#8b5cf6', '#ec4899', '#14b8a6', '#f97316', '#6a648b',
 ];
 
@@ -74,7 +82,7 @@ interface TipoForm {
 
 const initialForm: TipoForm = {
   nome: '', descricao: '', instrucoes_preparo: '', duracao_minutos: 30,
-  cor: '#6366f1', ativo: true, valor_particular: 0,
+  cor: '#1080CA', ativo: true, valor_particular: 0,
 };
 
 export default function TiposConsulta() {
@@ -87,7 +95,7 @@ export default function TiposConsulta() {
   const [form, setForm] = useState<TipoForm>(initialForm);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [activeTab, setActiveTab] = useState('tipos');
+  const [filtroStatus, setFiltroStatus] = useState<FiltroStatus>('todos');
 
   const { user, profile, isAdmin } = useSupabaseAuth();
   const queryClient = useQueryClient();
@@ -124,11 +132,26 @@ export default function TiposConsulta() {
   const dadosAtingiramLimite = tipos.length >= LIMITE_BUSCA_EM_BLOCOS
     || precos.length >= LIMITE_BUSCA_EM_BLOCOS;
 
+  const tiposComConvenio = useMemo(() => new Set(precos.map(p => p.tipo_consulta_id)), [precos]);
+  const contagens: Record<FiltroStatus, number> = {
+    todos: tipos.length,
+    ativos: tipos.filter(t => t.ativo).length,
+    inativos: tipos.filter(t => !t.ativo).length,
+    sem_convenio: tipos.filter(t => !tiposComConvenio.has(t.id)).length,
+  };
+
   const filtered = useMemo(() => {
-    if (!search.trim()) return tipos;
     const q = normalizarTexto(search.trim());
-    return tipos.filter(t => normalizarTexto(t.nome).includes(q));
-  }, [tipos, search]);
+    return tipos.filter(t => (
+      (!q || normalizarTexto(t.nome).includes(q))
+      && (filtroStatus === 'todos'
+        || (filtroStatus === 'ativos' && t.ativo)
+        || (filtroStatus === 'inativos' && !t.ativo)
+        || (filtroStatus === 'sem_convenio' && !tiposComConvenio.has(t.id)))
+    ));
+  }, [tipos, search, filtroStatus, tiposComConvenio]);
+  const temFiltro = !!search.trim() || filtroStatus !== 'todos';
+  const limparFiltros = () => { setSearch(''); setFiltroStatus('todos'); };
 
   const openCreate = () => {
     setEditTarget(null);
@@ -251,19 +274,59 @@ export default function TiposConsulta() {
     <div className="space-y-6 pb-8">
       <PageHeader
         title="Tipos & Preços de Consulta"
-        description="Cadastre tipos de consulta e defina preços por convênio"
+        description={tipos.length > 0
+          ? `${contagens.ativos} tipo(s) ativo(s) · ${contagens.inativos} inativo(s) · ${contagens.sem_convenio} sem preço de convênio`
+          : 'Cadastre tipos de consulta e defina preços por convênio'}
         icon={<Stethoscope />}
         actions={isAdmin() && (
-          <Button onClick={openCreate} className="gap-1.5">
+          <Button onClick={openCreate} className="gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110">
             <Plus className="h-4 w-4" /> Novo Tipo
           </Button>
         )}
       />
 
+      {tipos.length > 0 && (
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          {INDICADORES.map(({ key, label, legenda, icon: Icon, cor }) => {
+            const destaque = key === 'todos';
+            return (
+              <button
+                key={key}
+                type="button"
+                aria-pressed={filtroStatus === key}
+                onClick={() => setFiltroStatus(key)}
+                className={cn(
+                  'flex items-center gap-3 rounded-2xl border p-4 text-left shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+                  destaque ? 'border-transparent bg-gradient-primary text-white' : 'border-border/60 bg-card',
+                  filtroStatus === key && !destaque && 'border-[#1080CA] ring-1 ring-[#1080CA]',
+                  filtroStatus === key && destaque && 'ring-2 ring-[#1080CA]/40 ring-offset-2',
+                )}
+              >
+                <span className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', destaque ? 'bg-white/20 text-white' : cor)}>
+                  <Icon className="h-5 w-5" />
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-2xl font-bold tabular-nums">{contagens[key]}</span>
+                  <span className={cn('block text-[11px]', destaque ? 'text-white/80' : 'text-muted-foreground')}>{label} · {legenda}</span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {/* Search */}
-      <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input placeholder="Buscar tipo..." aria-label="Buscar tipo de consulta" value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative w-full sm:max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input placeholder="Buscar tipo..." aria-label="Buscar tipo de consulta" value={search} onChange={e => setSearch(e.target.value)} className="h-10 rounded-full pl-9 focus-visible:ring-[#1080CA]" />
+        </div>
+        {temFiltro && (
+          <Button variant="outline" size="sm" className="h-8 rounded-full" onClick={limparFiltros}>Limpar filtros</Button>
+        )}
+        {tipos.length > 0 && (
+          <span className="ml-auto text-xs tabular-nums text-muted-foreground">{filtered.length} de {tipos.length}</span>
+        )}
       </div>
 
       {dadosAtingiramLimite && (
@@ -284,30 +347,38 @@ export default function TiposConsulta() {
       ) : isLoading ? (
         <CardGridSkeleton count={6} />
       ) : tipos.length === 0 ? (
-        <Card className="border-dashed">
+        <Card className="rounded-2xl border-dashed border-border/60 shadow-xs">
           <CardContent className="flex flex-col items-center justify-center py-16 text-center">
-            <Stethoscope className="h-12 w-12 text-muted-foreground/30 mb-3" />
-            <p className="font-bold">Nenhum tipo de consulta cadastrado</p>
+            <span className="mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+              <Stethoscope className="h-7 w-7" />
+            </span>
+            <p className="font-bold text-foreground">Nenhum tipo de consulta cadastrado</p>
             <p className="text-sm text-muted-foreground mt-1">Clique em "Novo Tipo" para começar.</p>
+            {isAdmin() && (
+              <Button className="mt-4 gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110" onClick={openCreate}>
+                <Plus className="h-4 w-4" /> Novo Tipo
+              </Button>
+            )}
           </CardContent>
         </Card>
       ) : filtered.length === 0 ? (
-        <Card className="border-dashed">
+        <Card className="rounded-2xl border-dashed border-border/60 shadow-xs">
           <CardContent className="flex flex-col items-center justify-center py-12 text-center">
-            <Search className="mb-3 h-10 w-10 text-muted-foreground/40" />
-            <p className="font-bold">Nenhum tipo encontrado</p>
+            <span className="mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+              <Search className="h-7 w-7" />
+            </span>
+            <p className="font-bold text-foreground">Nenhum tipo encontrado</p>
             <p className="mt-1 text-sm text-muted-foreground">Tente outro termo ou limpe a busca.</p>
-            <Button className="mt-4" variant="outline" onClick={() => setSearch('')}>Limpar busca</Button>
+            <Button className="mt-4 rounded-full" variant="outline" onClick={limparFiltros}>Limpar busca</Button>
           </CardContent>
         </Card>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <AnimatePresence mode="popLayout">
-            {filtered.map((tipo, i) => {
+            {filtered.map((tipo) => {
               const precosConv = precos.filter(p => p.tipo_consulta_id === tipo.id);
               return (
-                <motion.div key={tipo.id} layout initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95 }} transition={{ delay: i * 0.03 }}>
-                  <Card className="group border-[#e6e2f7] bg-gradient-to-br from-white to-[#faf9fd] shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md">
+                <div key={tipo.id} className="animate-in fade-in slide-in-from-bottom-1 duration-300">
+                  <Card className="group rounded-2xl border-border/60 bg-card shadow-xs transition-all hover:-translate-y-0.5 hover:border-[#9CC7EC] hover:shadow-md">
                     <CardContent className="pt-5 pb-4 px-5">
                       <div className="flex items-start justify-between mb-3">
                         <div className="flex items-center gap-2.5">
@@ -319,7 +390,7 @@ export default function TiposConsulta() {
                             {tipo.descricao && <p className="text-xs text-muted-foreground truncate max-w-[180px]">{tipo.descricao}</p>}
                           </div>
                         </div>
-                        <Badge variant={tipo.ativo ? 'default' : 'secondary'} className="text-[10px]">
+                        <Badge variant="outline" className={cn('rounded-full text-[10px]', tipo.ativo ? 'border-success/30 bg-success/10 text-success' : 'border-border bg-muted text-muted-foreground')}>
                           {tipo.ativo ? 'Ativo' : 'Inativo'}
                         </Badge>
                       </div>
@@ -333,32 +404,29 @@ export default function TiposConsulta() {
                         </div>
                       </div>
 
-                      {precosConv.length > 0 && (
-                        <div className="text-[10px] text-muted-foreground mb-3">
-                          {precosConv.length} convênio(s) configurado(s)
-                        </div>
-                      )}
+                      <div className="text-[10px] text-muted-foreground mb-3">
+                        {precosConv.length > 0 ? `${precosConv.length} convênio(s) configurado(s)` : 'Sem preço por convênio'}
+                      </div>
 
                       <Separator className="mb-3" />
                       <div className="flex gap-1.5">
-                        <Button variant="ghost" size="sm" className="flex-1 text-xs gap-1" onClick={() => openPrecos(tipo)}>
+                        <Button variant="outline" size="sm" className="h-9 flex-1 gap-1 rounded-full text-xs" onClick={() => openPrecos(tipo)}>
                           <Building2 className="h-3 w-3" /> Preços
                         </Button>
                         {isAdmin() && <>
-                          <Button aria-label={`Editar ${tipo.nome}`} variant="ghost" size="sm" className="text-xs gap-1" onClick={() => openEdit(tipo)}>
+                          <Button aria-label={`Editar ${tipo.nome}`} variant="ghost" size="sm" className="h-9 w-9 rounded-full p-0" onClick={() => openEdit(tipo)}>
                             <Edit className="h-3 w-3" />
                           </Button>
-                          <Button aria-label={`Excluir ${tipo.nome}`} variant="ghost" size="sm" className="text-xs gap-1 text-destructive" onClick={() => setDeleteTarget(tipo)}>
+                          <Button aria-label={`Excluir ${tipo.nome}`} variant="ghost" size="sm" className="h-9 w-9 rounded-full p-0 text-destructive" onClick={() => setDeleteTarget(tipo)}>
                             <Trash2 className="h-3 w-3" />
                           </Button>
                         </>}
                       </div>
                     </CardContent>
                   </Card>
-                </motion.div>
+                </div>
               );
             })}
-          </AnimatePresence>
         </div>
       )}
 
@@ -411,8 +479,8 @@ export default function TiposConsulta() {
           </div>
           </fieldset>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setFormOpen(false)} disabled={saving}>Cancelar</Button>
-            <Button onClick={handleSave} disabled={saving}>
+            <Button variant="outline" className="rounded-full" onClick={() => setFormOpen(false)} disabled={saving}>Cancelar</Button>
+            <Button onClick={handleSave} disabled={saving} className="rounded-full bg-gradient-primary text-white hover:brightness-110">
               {saving && <Loader2 className="h-4 w-4 animate-spin mr-1" />}
               {editTarget ? 'Salvar' : 'Criar'}
             </Button>
@@ -425,7 +493,7 @@ export default function TiposConsulta() {
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Building2 className="h-5 w-5 text-primary" />
+              <Building2 className="h-5 w-5 text-[#1080CA]" />
               Preços — {precosTipo?.nome}
             </DialogTitle>
             <DialogDescription>
@@ -442,10 +510,10 @@ export default function TiposConsulta() {
             <div className="text-center py-8 text-muted-foreground">
               <Building2 className="h-10 w-10 mx-auto mb-2 opacity-30" />
               <p>Nenhum convênio cadastrado.</p>
-              <p className="text-xs">Cadastre convênios primeiro em Operacional → Convênios.</p>
+              <p className="text-xs">Cadastre convênios primeiro em <Link to="/convenios" className="font-medium text-[#1080CA] underline-offset-2 hover:underline">Operacional → Convênios</Link>.</p>
             </div>
           ) : (
-            <div className="rounded-md border max-h-[400px] overflow-y-auto">
+            <div className="max-h-[400px] overflow-auto rounded-xl border border-border/60">
               <Table>
                 <TableHeader>
                   <TableRow>

@@ -82,7 +82,7 @@ import { linkWhatsApp } from '@/lib/whatsapp';
 
 const statusColors: Record<string, string> = {
   pendente: 'border border-[#f1dfb8] bg-[#fff8e8] text-[#8a5b00]',
-  coletado: 'border border-[#d4ccfa] bg-[#f1eefe] text-[#2e179f]',
+  coletado: 'border border-[#BFD8EE] bg-[#EEF4FA] text-[#0B5E96]',
   em_analise: 'border border-[#c8eaf1] bg-[#edfbff] text-[#087e98]',
   validado: 'border border-[#ccebdd] bg-[#effaf4] text-[#16734d]',
   liberado: 'border border-[#ccebdd] bg-[#effaf4] text-[#16734d]',
@@ -1656,7 +1656,7 @@ export default function Laboratorio() {
                 </form>
               </CardContent>
             </Card> : (
-              <div role="status" className="rounded-xl border border-[#e3dffb] bg-[#f6f4ff] p-4 text-sm text-[#41318f]">
+              <div role="status" className="rounded-xl border border-[#BFD8EE] bg-[#F3F8FC] p-4 text-sm text-[#0B4F7D]">
                 A amostra não está mais aberta para lançamento. Isso preserva a conferência e a trilha de auditoria do resultado.
               </div>
             )}
