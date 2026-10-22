@@ -117,8 +117,8 @@
     --brand-hover: 204 85% 36%;
     --brand-glow: 186 79% 54%;
 
-    /* Primary — ação primária em preto, não na cor de marca */
-    --primary: 240 6% 10%;
+    /* Primary — ação primária no azul da marca (preto removido em 2026-10-18) */
+    --primary: 204 85% 43%;
     --primary-foreground: 0 0% 100%;
     --primary-glow: 204 85% 43%;
 
@@ -168,7 +168,7 @@
     /* Borders */
     --border: 210 15% 90%;
     --input: 210 15% 86%;
-    --ring: 240 6% 10%;
+    --ring: 204 85% 43%;
 
     --radius: 1rem;
 
@@ -186,7 +186,7 @@
     --gradient-hero: linear-gradient(140deg, #0a5d94 0%, #1080CA 100%);
     --gradient-highlight: linear-gradient(135deg, #CFF34D 0%, #9FE62B 100%);
     --gradient-card: linear-gradient(180deg, hsl(0 0% 100%) 0%, hsl(240 20% 99%) 100%);
-    --gradient-sidebar: linear-gradient(180deg, #F3F3F6 0%, #F3F3F6 55%, #8E82DD 100%);
+    --gradient-sidebar: linear-gradient(180deg, #F3F3F6 0%, #F3F3F6 55%, #BFD8EE 100%);
     --gradient-surface: linear-gradient(135deg, #f5f8fb 0%, #edf1f7 100%);
 
     /* Rail de navegação — branco gelo */
@@ -221,7 +221,7 @@ html[data-contrast='high'] {
   --muted-foreground: 252 30% 24%;
   --border: 250 25% 58%;
   --input: 250 25% 52%;
-  --ring: 248 80% 40%;
+  --ring: 204 85% 30%;
 }
 
 html[data-text-size='large'] {
