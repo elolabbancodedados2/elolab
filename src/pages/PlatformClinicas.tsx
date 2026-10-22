@@ -3,7 +3,9 @@ import { formatDateInTimeZone } from '@/lib/datePreference';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
-import { Navigate } from 'react-router-dom';
+import { Link, Navigate } from 'react-router-dom';
+import { PageHeader } from '@/components/PageHeader';
+import { cn } from '@/lib/utils';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -18,7 +20,7 @@ import {
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
-import { Building2, Search, Users, Stethoscope, CalendarRange, RefreshCw, Crown, LogIn, Mail, AlertCircle, ArrowLeft, ArrowRight } from 'lucide-react';
+import { Building2, Search, Users, Stethoscope, CalendarRange, RefreshCw, Crown, LogIn, Mail, AlertCircle, ArrowLeft, ArrowRight, CheckCircle2, Hourglass, Archive, CreditCard } from 'lucide-react';
 import { toast } from 'sonner';
 import { AcoesDaClinica } from '@/components/plataforma/AcoesDaClinica';
 import { LogDeAcessos } from '@/components/plataforma/LogDeAcessos';
@@ -59,6 +61,20 @@ const STATUS_LABELS: Record<string, string> = {
   ativa: 'Ativa', trial: 'Em teste', expirada: 'Expirada', cancelada: 'Cancelada', pendente: 'Pendente',
 };
 
+type FiltroStatus = 'todas' | 'ativas' | 'trial' | 'suspensas';
+
+function dentroDaValidade(clinica: ClinicaOverview, agora: number) {
+  const fim = clinica.data_fim || clinica.trial_fim;
+  return !fim || new Date(fim).getTime() >= agora;
+}
+
+function passaNoFiltro(c: ClinicaOverview, filtro: FiltroStatus, agora: number) {
+  if (filtro === 'ativas') return !c.arquivada && !c.suspensa && c.assinatura_status === 'ativa' && !c.em_trial && dentroDaValidade(c, agora);
+  if (filtro === 'trial') return !c.arquivada && !c.suspensa && (c.assinatura_status === 'trial' || !!c.em_trial) && dentroDaValidade(c, agora);
+  if (filtro === 'suspensas') return c.suspensa;
+  return true;
+}
+
 function dataFormatada(value: string | null) {
   if (!value) return '—';
   const parsed = new Date(value);
@@ -82,6 +98,7 @@ export default function PlatformClinicas() {
   const [alvo, setAlvo] = useState<{ id: string; nome: string } | null>(null);
   const [motivo, setMotivo] = useState('');
   const [mostrarArquivadas, setMostrarArquivadas] = useState(false);
+  const [filtroStatus, setFiltroStatus] = useState<FiltroStatus>('todas');
   const [paginaOrfaos, setPaginaOrfaos] = useState(0);
   const impersonationLock = useRef(false);
   const reconcileLock = useRef(false);
@@ -205,7 +222,8 @@ export default function PlatformClinicas() {
   const filtered = useMemo(() => {
     // Arquivada fica escondida por padrão: o objetivo de arquivar é justamente
     // tirar da frente. O contador ao lado do botão diz quantas estão guardadas.
-    const list = (data ?? []).filter(c => mostrarArquivadas || !c.arquivada);
+    const agora = Date.now();
+    const list = (data ?? []).filter(c => (mostrarArquivadas || !c.arquivada) && passaNoFiltro(c, filtroStatus, agora));
     if (!search.trim()) return list;
     const q = search.toLowerCase();
     return list.filter(c =>
@@ -214,23 +232,23 @@ export default function PlatformClinicas() {
       c.owner_nome?.toLowerCase().includes(q) ||
       c.plano_nome?.toLowerCase().includes(q)
     );
-  }, [data, search, mostrarArquivadas]);
+  }, [data, search, mostrarArquivadas, filtroStatus]);
 
   const totals = useMemo(() => {
     const list = data ?? [];
     const agora = Date.now();
-    const validade = (clinica: ClinicaOverview) => {
-      const fim = clinica.data_fim || clinica.trial_fim;
-      return !fim || new Date(fim).getTime() >= agora;
-    };
     return {
       clinicas: list.length,
       arquivadas: list.filter(c => c.arquivada).length,
-      ativas: list.filter(c => !c.arquivada && !c.suspensa && c.assinatura_status === 'ativa' && !c.em_trial && validade(c)).length,
-      trial: list.filter(c => !c.arquivada && !c.suspensa && (c.assinatura_status === 'trial' || c.em_trial) && validade(c)).length,
+      ativas: list.filter(c => passaNoFiltro(c, 'ativas', agora)).length,
+      trial: list.filter(c => passaNoFiltro(c, 'trial', agora)).length,
+      suspensas: list.filter(c => c.suspensa).length,
       pacientes: list.reduce((s, c) => s + Number(c.total_pacientes || 0), 0),
     };
   }, [data]);
+  const visiveis = (data ?? []).filter(c => mostrarArquivadas || !c.arquivada).length;
+  const temFiltro = filtroStatus !== 'todas' || search.trim() !== '';
+  const limparFiltros = () => { setFiltroStatus('todas'); setSearch(''); };
 
   if (authLoading) {
     return <div className="p-6"><Skeleton className="h-64" /></div>;
@@ -243,45 +261,45 @@ export default function PlatformClinicas() {
   if (error) return <ErrorState error={error} onRetry={() => refetch()} />;
 
   return (
-    <div className="space-y-6 p-6">
-      <div className="flex flex-col items-start justify-between gap-4 rounded-2xl border border-[#e6e2f7] bg-gradient-to-r from-[#f6f4ff] via-white to-[#f0edff] p-5 sm:flex-row sm:p-6">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
-            <Crown className="h-7 w-7 text-primary" /> Plataforma — Clínicas
-          </h1>
-          <p className="text-muted-foreground mt-1">
-            Visão global de todas as clínicas, assinaturas e uso. Restrito a administradores da plataforma.
-          </p>
-        </div>
-        <div className="flex gap-2">
+    <main className="mx-auto w-full max-w-7xl space-y-6 pb-10">
+      <PageHeader
+        title="Plataforma — Clínicas"
+        icon={<Crown />}
+        description={data
+          ? `${totals.clinicas} clínicas · ${totals.ativas} assinaturas ativas · ${totals.trial} em teste${totals.suspensas ? ` · ${totals.suspensas} com acesso suspenso` : ''}${totalOrfaos ? ` · ${totalOrfaos} pagamentos aguardando ativação` : ''}`
+          : 'Visão global de todas as clínicas, assinaturas e uso. Restrito a administradores da plataforma.'}
+        actions={<>
+          <Button asChild variant="outline" className="rounded-full gap-2">
+            <Link to="/admin/cobrancas"><CreditCard className="h-4 w-4" />Cobranças</Link>
+          </Button>
           {(data ?? []).some(c => c.arquivada) && (
-            <Button variant="outline" size="sm" onClick={() => setMostrarArquivadas(v => !v)}>
+            <Button variant="outline" className="rounded-full gap-2" onClick={() => setMostrarArquivadas(v => !v)} aria-pressed={mostrarArquivadas}>
+              <Archive className="h-4 w-4" />
               {mostrarArquivadas
                 ? 'Ocultar arquivadas'
                 : `Ver arquivadas (${(data ?? []).filter(c => c.arquivada).length})`}
             </Button>
           )}
-          <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching}>
-            <RefreshCw className={`h-4 w-4 mr-2 ${isFetching ? 'animate-spin' : ''}`} />
-            Atualizar
+          <Button variant="outline" size="icon" className="rounded-full" onClick={() => refetch()} disabled={isFetching} aria-label="Atualizar">
+            <RefreshCw className={cn('h-4 w-4', isFetching && 'animate-spin')} />
           </Button>
-        </div>
-      </div>
+        </>}
+      />
 
       {orfaosError ? (
-        <Card className="border-destructive/30"><CardContent className="flex flex-wrap items-center justify-between gap-3 py-4">
+        <Card className="rounded-2xl border-destructive/30 shadow-xs"><CardContent className="flex flex-wrap items-center justify-between gap-3 py-4">
           <p className="text-sm text-destructive" role="alert">Não foi possível consultar os pagamentos que aguardam ativação.</p>
-          <Button size="sm" variant="outline" onClick={() => void refetchOrfaos()}>Tentar novamente</Button>
+          <Button size="sm" variant="outline" className="rounded-full" onClick={() => void refetchOrfaos()}>Tentar novamente</Button>
         </CardContent></Card>
       ) : orfaos && orfaos.length > 0 && (
-        <Card className="border-warning/40">
+        <Card className="rounded-2xl border-warning/40 bg-warning/5 shadow-xs">
           <CardHeader className="pb-3">
-            <div className="flex items-center justify-between gap-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <CardTitle className="text-base flex items-center gap-2 text-warning">
                 <AlertCircle className="h-5 w-5" />
                 Pagamentos órfãos ({orfaos.length} nesta página · {totalOrfaos} no total)
               </CardTitle>
-              <Button size="sm" variant="outline" onClick={handleReconcile} disabled={reconciling}>
+              <Button size="sm" variant="outline" className="rounded-full" onClick={handleReconcile} disabled={reconciling}>
                 <RefreshCw className={`h-4 w-4 mr-2 ${reconciling ? 'animate-spin' : ''}`} />
                 Reconciliar agora
               </Button>
@@ -291,7 +309,7 @@ export default function PlatformClinicas() {
             </p>
           </CardHeader>
           <CardContent>
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto rounded-xl border border-border/60 bg-card">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -309,7 +327,7 @@ export default function PlatformClinicas() {
                         <div className="font-medium">{o.nome}</div>
                         <div className="text-xs text-muted-foreground">{o.email}</div>
                       </TableCell>
-                      <TableCell><Badge variant="outline">{o.plano_slug}</Badge></TableCell>
+                      <TableCell><Badge variant="outline" className="rounded-full">{o.plano_slug}</Badge></TableCell>
                       <TableCell className="text-xs text-muted-foreground">
                         {dataHoraFormatada(o.updated_at)}
                       </TableCell>
@@ -318,6 +336,7 @@ export default function PlatformClinicas() {
                         <Button
                           size="sm"
                           variant="outline"
+                          className="h-9 rounded-full text-xs"
                           disabled={resendingId !== null}
                           onClick={() => handleResend(o.id, o.email)}
                         >
@@ -332,11 +351,11 @@ export default function PlatformClinicas() {
             </div>
             {totalOrfaos > 50 && (
               <div className="mt-3 flex items-center justify-between gap-3 border-t pt-3">
-                <Button size="sm" variant="outline" onClick={() => setPaginaOrfaos((pagina) => Math.max(0, pagina - 1))} disabled={paginaOrfaos === 0}>
+                <Button size="sm" variant="outline" className="rounded-full" onClick={() => setPaginaOrfaos((pagina) => Math.max(0, pagina - 1))} disabled={paginaOrfaos === 0}>
                   <ArrowLeft className="mr-1.5 h-4 w-4" />Anterior
                 </Button>
                 <span className="text-xs text-muted-foreground">Página {paginaOrfaos + 1} de {paginasOrfaos}</span>
-                <Button size="sm" variant="outline" onClick={() => setPaginaOrfaos((pagina) => Math.min(paginasOrfaos - 1, pagina + 1))} disabled={paginaOrfaos + 1 >= paginasOrfaos}>
+                <Button size="sm" variant="outline" className="rounded-full" onClick={() => setPaginaOrfaos((pagina) => Math.min(paginasOrfaos - 1, pagina + 1))} disabled={paginaOrfaos + 1 >= paginasOrfaos}>
                   Próxima<ArrowRight className="ml-1.5 h-4 w-4" />
                 </Button>
               </div>
@@ -346,49 +365,103 @@ export default function PlatformClinicas() {
       )}
 
       {/* KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground flex items-center gap-2"><Building2 className="h-4 w-4" />Clínicas</CardTitle></CardHeader>
-          <CardContent><p className="text-3xl font-bold">{isLoading ? '…' : totals.clinicas}</p><p className="text-xs text-muted-foreground">{totals.arquivadas} arquivada(s)</p></CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Assinaturas Ativas</CardTitle></CardHeader>
-          <CardContent><p className="text-3xl font-bold text-success">{isLoading ? '…' : totals.ativas}</p><p className="text-xs text-muted-foreground">válidas, pagas e sem suspensão</p></CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Em Trial</CardTitle></CardHeader>
-          <CardContent><p className="text-3xl font-bold text-info">{isLoading ? '…' : totals.trial}</p><p className="text-xs text-muted-foreground">em período de teste válido</p></CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground flex items-center gap-2"><Users className="h-4 w-4" />Pacientes (total)</CardTitle></CardHeader>
-          <CardContent><p className="text-3xl font-bold">{isLoading ? '…' : totals.pacientes}</p><p className="text-xs text-muted-foreground">inclui clínicas arquivadas</p></CardContent>
-        </Card>
-      </div>
+      <section className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4" aria-label="Indicadores das clínicas">
+        {([
+          { key: 'todas', title: 'Clínicas', value: totals.clinicas, detail: `${totals.arquivadas} arquivada(s)`, icon: Building2, tone: 'bg-[#1080CA]/10 text-[#1080CA]', destaque: true },
+          { key: 'ativas', title: 'Assinaturas Ativas', value: totals.ativas, detail: 'válidas, pagas e sem suspensão', icon: CheckCircle2, tone: 'bg-success/10 text-success', destaque: false },
+          { key: 'trial', title: 'Em Trial', value: totals.trial, detail: 'em período de teste válido', icon: Hourglass, tone: 'bg-info/10 text-info', destaque: false },
+          { key: null, title: 'Pacientes (total)', value: totals.pacientes, detail: 'inclui clínicas arquivadas', icon: Users, tone: 'bg-[#1080CA]/10 text-[#1080CA]', destaque: false },
+        ] as const).map(({ key, title, value, detail, icon: Icon, tone, destaque }) => {
+          const ativo = key !== null && filtroStatus === key;
+          const conteudo = (
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className={cn('text-sm', destaque ? 'text-white/80' : 'text-muted-foreground')}>{title}</p>
+                <p className="mt-1 text-2xl font-bold tabular-nums">{isLoading ? '…' : value}</p>
+                <p className={cn('mt-0.5 text-[11px]', destaque ? 'text-white/70' : 'text-muted-foreground')}>{detail}</p>
+              </div>
+              <span className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', destaque ? 'bg-white/20 text-white' : tone)}>
+                <Icon className="h-5 w-5" />
+              </span>
+            </div>
+          );
+          const base = cn(
+            'rounded-2xl border p-4 text-left shadow-xs',
+            destaque ? 'border-transparent bg-gradient-primary text-white' : 'border-border/60 bg-card',
+          );
+          return key === null ? (
+            <div key={title} className={base}>{conteudo}</div>
+          ) : (
+            <button
+              key={title}
+              type="button"
+              aria-pressed={ativo}
+              onClick={() => setFiltroStatus(key === filtroStatus ? 'todas' : key)}
+              className={cn(base, 'transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA] focus-visible:ring-offset-2', ativo && !destaque && 'border-[#1080CA] ring-1 ring-[#1080CA]/40')}
+            >
+              {conteudo}
+            </button>
+          );
+        })}
+      </section>
 
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between gap-4">
+      <Card className="rounded-2xl border-border/60 shadow-xs">
+        <CardHeader className="space-y-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <CardTitle>Todas as Clínicas</CardTitle>
-            <div className="relative w-72 max-w-full">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <div className="relative w-full sm:w-72">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder="Buscar por clínica, dono ou plano..."
                 value={search}
                 onChange={e => setSearch(e.target.value)}
-                className="pl-9"
+                className="h-10 rounded-full pl-9 focus-visible:ring-[#1080CA]"
               />
             </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {([
+              ['todas', 'Todas'], ['ativas', 'Ativas'], ['trial', 'Em teste'], ['suspensas', `Acesso suspenso (${totals.suspensas})`],
+            ] as const).map(([valor, rotulo]) => (
+              <button
+                key={valor}
+                type="button"
+                aria-pressed={filtroStatus === valor}
+                onClick={() => setFiltroStatus(valor)}
+                className={cn(
+                  'h-8 rounded-full border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+                  filtroStatus === valor ? 'border-transparent bg-gradient-primary text-white shadow-sm' : 'border-[#DCE6F2] bg-card text-muted-foreground hover:border-[#9CC7EC] hover:text-foreground',
+                )}
+              >
+                {rotulo}
+              </button>
+            ))}
+            {temFiltro && (
+              <Button variant="outline" size="sm" className="h-8 rounded-full text-xs" onClick={limparFiltros}>Limpar filtros</Button>
+            )}
+            <span className="ml-auto text-xs text-muted-foreground tabular-nums">{filtered.length} de {visiveis}</span>
           </div>
         </CardHeader>
         <CardContent>
           {isLoading ? (
             <div className="space-y-2">
-              {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}
+              {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-12 w-full rounded-xl" />)}
             </div>
           ) : filtered.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-8">Nenhuma clínica encontrada.</p>
+            <div className="flex flex-col items-center gap-3 py-10 text-center">
+              <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md"><Building2 className="h-6 w-6" /></span>
+              <p className="font-medium text-foreground">Nenhuma clínica encontrada.</p>
+              <p className="max-w-sm text-sm text-muted-foreground">
+                {temFiltro ? 'Nenhuma clínica corresponde aos filtros atuais.' : 'Quando um cliente concluir o cadastro, a clínica aparece aqui. Acompanhe as novas contas no onboarding.'}
+              </p>
+              {temFiltro ? (
+                <Button variant="outline" className="rounded-full" onClick={limparFiltros}>Limpar filtros</Button>
+              ) : (
+                <Button asChild className="rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110"><Link to="/admin/onboarding">Ver onboarding</Link></Button>
+              )}
+            </div>
           ) : (
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto rounded-xl border border-border/60">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -412,11 +485,11 @@ export default function PlatformClinicas() {
                           {c.clinica_nome}
                         </span>
                         {c.arquivada && (
-                          <Badge variant="outline" className="ml-2 text-[10px]" title={c.arquivada_motivo ?? ''}>
+                          <Badge variant="outline" className="ml-2 rounded-full text-[10px]" title={c.arquivada_motivo ?? ''}>
                             Arquivada
                           </Badge>
                         )}
-                        {c.suspensa && <Badge variant="destructive" className="ml-2 text-[10px]">Acesso suspenso</Badge>}
+                        {c.suspensa && <Badge variant="destructive" className="ml-2 rounded-full text-[10px]">Acesso suspenso</Badge>}
                       </TableCell>
                       <TableCell className="text-sm">
                         <div>{c.owner_nome || <span className="text-muted-foreground">—</span>}</div>
@@ -424,12 +497,12 @@ export default function PlatformClinicas() {
                       </TableCell>
                       <TableCell>
                         {c.plano_nome ? (
-                          <Badge variant="outline">{c.plano_nome}</Badge>
+                          <Badge variant="outline" className="rounded-full">{c.plano_nome}</Badge>
                         ) : <span className="text-muted-foreground text-xs">sem plano</span>}
                       </TableCell>
                       <TableCell>
                         {c.assinatura_status ? (
-                          <Badge className={STATUS_COLORS[c.assinatura_status] || ''} variant="outline">
+                          <Badge className={cn('rounded-full', STATUS_COLORS[c.assinatura_status])} variant="outline">
                             {STATUS_LABELS[c.assinatura_status] || c.assinatura_status}
                           </Badge>
                         ) : <span className="text-muted-foreground text-xs">Sem assinatura</span>}
@@ -446,6 +519,7 @@ export default function PlatformClinicas() {
                         <Button
                           size="sm"
                           variant="outline"
+                          className="h-9 rounded-full text-xs"
                           disabled={impersonatingId === c.clinica_id}
                           onClick={() => { setAlvo({ id: c.clinica_id, nome: c.clinica_nome }); setMotivo(''); }}
                         >
@@ -492,13 +566,13 @@ export default function PlatformClinicas() {
             />
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setAlvo(null)} disabled={!!impersonatingId}>Cancelar</Button>
-            <Button onClick={handleImpersonate} disabled={!!impersonatingId}>
+            <Button variant="outline" className="rounded-full" onClick={() => setAlvo(null)} disabled={!!impersonatingId}>Cancelar</Button>
+            <Button onClick={handleImpersonate} disabled={!!impersonatingId} className="rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110">
               {impersonatingId ? 'Entrando...' : 'Entrar na clínica'}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </main>
   );
 }

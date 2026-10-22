@@ -1,8 +1,10 @@
 import { useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { FileBarChart, Loader2, Pause, Play, RefreshCw, Send } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { AlertTriangle, CalendarClock, FileBarChart, Loader2, Pause, Play, RefreshCw, Send } from 'lucide-react';
 import { toast } from 'sonner';
 
+import { PageHeader } from '@/components/PageHeader';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -13,6 +15,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Skeleton } from '@/components/ui/skeleton';
 import { supabase } from '@/integrations/supabase/client';
 import { mensagemDeErro } from '@/lib/erros';
+import { cn } from '@/lib/utils';
+
+type ScheduleFilter = 'todos' | 'ativos' | 'pausados' | 'falha';
 
 type Frequency = 'daily' | 'weekly' | 'monthly';
 type Schedule = {
@@ -50,6 +55,7 @@ export default function PlatformRelatoriosAgendados() {
   const [recipientsInput, setRecipientsInput] = useState('');
   const [frequency, setFrequency] = useState<Frequency>('weekly');
   const [scheduleToRun, setScheduleToRun] = useState<Schedule | null>(null);
+  const [filter, setFilter] = useState<ScheduleFilter>('todos');
   const parsed = useMemo(() => parseRecipients(recipientsInput), [recipientsInput]);
 
   const schedules = useQuery({
@@ -147,20 +153,65 @@ export default function PlatformRelatoriosAgendados() {
     (groups[run.schedule_id] ||= []).push(run);
     return groups;
   }, {}), [runs.data]);
+  const allSchedules = schedules.data ?? [];
+  const lastFailed = (schedule: Schedule) => runsBySchedule[schedule.id]?.[0]?.status === 'error';
+  const matches = (schedule: Schedule, value: ScheduleFilter) =>
+    value === 'todos' || (value === 'ativos' ? schedule.active : value === 'pausados' ? !schedule.active : lastFailed(schedule));
+  const visibleSchedules = allSchedules.filter((schedule) => matches(schedule, filter));
+  const kpis: Array<{ value: ScheduleFilter; label: string; detail: string; icon: typeof Play; color: string }> = [
+    { value: 'todos', label: 'Agendamentos', detail: 'cadastrados', icon: CalendarClock, color: '' },
+    { value: 'ativos', label: 'Ativos', detail: 'enviam automaticamente', icon: Play, color: 'bg-success/10 text-success' },
+    { value: 'pausados', label: 'Pausados', detail: 'sem envio automático', icon: Pause, color: 'bg-muted text-muted-foreground' },
+    { value: 'falha', label: 'Última execução falhou', detail: 'precisam de revisão', icon: AlertTriangle, color: 'bg-destructive/10 text-destructive' },
+  ];
+  const countOf = (value: ScheduleFilter) => allSchedules.filter((schedule) => matches(schedule, value)).length;
 
   return (
-    <div className="space-y-6 pb-8">
-      <header className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-[#E6E2F7] bg-gradient-to-r from-[#F4F2FF] via-white to-[#f0edff] p-5 sm:p-6">
-        <div>
-          <h1 className="flex items-center gap-2 text-2xl font-bold"><FileBarChart className="h-6 w-6 text-primary" /> Relatórios agendados</h1>
-          <p className="mt-1 text-sm text-muted-foreground">O resumo executivo inclui dados agregados da plataforma e não contém dados clínicos.</p>
-        </div>
-        <Button className="min-h-11 border-[#DCD7F0] bg-white text-[#111111] hover:bg-[#F9F8FF]" variant="outline" onClick={invalidateReports} disabled={schedules.isFetching || runs.isFetching}>
-          <RefreshCw className={`mr-2 h-4 w-4 ${schedules.isFetching || runs.isFetching ? 'animate-spin' : ''}`} /> Atualizar
-        </Button>
-      </header>
+    <main className="mx-auto w-full max-w-7xl space-y-6 pb-10">
+      <PageHeader
+        title="Relatórios agendados"
+        icon={<FileBarChart />}
+        description={allSchedules.length
+          ? `${allSchedules.length} agendamentos · ${countOf('ativos')} ativos · ${countOf('falha')} com falha na última execução. Dados agregados, sem dados clínicos.`
+          : 'O resumo executivo inclui dados agregados da plataforma e não contém dados clínicos.'}
+        actions={<>
+          <Button asChild variant="outline" className="gap-2 rounded-full">
+            <Link to="/admin/relatorio-executivo"><FileBarChart className="h-4 w-4" />Ver relatório</Link>
+          </Button>
+          <Button type="button" variant="outline" size="icon" className="rounded-full" onClick={invalidateReports} disabled={schedules.isFetching || runs.isFetching} aria-label="Atualizar dados">
+            <RefreshCw className={cn('h-4 w-4', (schedules.isFetching || runs.isFetching) && 'animate-spin')} />
+          </Button>
+        </>}
+      />
 
-      <Card>
+      {allSchedules.length > 0 && (
+        <section className="grid grid-cols-2 gap-3 md:grid-cols-4" aria-label="Indicadores de agendamentos">
+          {kpis.map(({ value, label, detail, icon: Icon, color }) => {
+            const highlight = value === 'todos';
+            return (
+              <button
+                key={value}
+                type="button"
+                aria-pressed={filter === value}
+                onClick={() => setFilter(value)}
+                className={cn(
+                  'rounded-2xl border border-border/60 bg-card p-4 text-left shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                  highlight && 'border-transparent bg-gradient-primary text-white',
+                  filter === value && !highlight && 'border-[#1080CA] ring-1 ring-[#1080CA]/30',
+                  filter === value && highlight && 'ring-2 ring-[#1080CA]/40 ring-offset-2',
+                )}
+              >
+                <span className={cn('flex h-10 w-10 items-center justify-center rounded-xl', highlight ? 'bg-white/20 text-white' : color)}><Icon className="h-5 w-5" /></span>
+                <p className="mt-3 text-2xl font-bold tabular-nums">{countOf(value)}</p>
+                <p className={cn('text-sm font-medium', highlight ? 'text-white' : 'text-foreground')}>{label}</p>
+                <p className={cn('text-[11px]', highlight ? 'text-white/70' : 'text-muted-foreground')}>{detail}</p>
+              </button>
+            );
+          })}
+        </section>
+      )}
+
+      <Card className="rounded-2xl border-border/60 shadow-xs">
         <CardHeader>
           <CardTitle>Novo agendamento</CardTitle>
           <CardDescription>Informe até 20 e-mails separados por vírgula. Todos precisam ser válidos. A frequência mensal mantém o dia do calendário em que o agendamento foi criado.</CardDescription>
@@ -187,7 +238,7 @@ export default function PlatformRelatoriosAgendados() {
               </SelectContent>
             </Select>
           </div>
-          <Button className="min-h-11" onClick={submitSchedule} disabled={!formValid || addSchedule.isPending}>
+          <Button className="min-h-11 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110" onClick={submitSchedule} disabled={!formValid || addSchedule.isPending}>
             {addSchedule.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
             Agendar
           </Button>
@@ -195,16 +246,24 @@ export default function PlatformRelatoriosAgendados() {
       </Card>
 
       <section aria-label="Agendamentos existentes" className="space-y-3">
+        {allSchedules.length > 0 && (
+          <div className="flex items-center justify-end gap-2">
+            {filter !== 'todos' && <Button type="button" variant="outline" size="sm" className="rounded-full" onClick={() => setFilter('todos')}>Limpar filtros</Button>}
+            <span className="text-xs text-muted-foreground" aria-live="polite">{visibleSchedules.length} de {allSchedules.length}</span>
+          </div>
+        )}
         {schedules.isLoading ? (
-          [1, 2].map((item) => <Skeleton key={item} className="h-52 w-full" />)
+          [1, 2].map((item) => <Skeleton key={item} className="h-52 w-full rounded-2xl" />)
         ) : schedules.isError ? (
-          <Card><CardContent className="py-6" role="alert">
+          <Card className="rounded-2xl border-destructive/30 shadow-xs"><CardContent className="py-6" role="alert">
             <p className="font-medium">Não foi possível carregar os agendamentos.</p>
             <p className="mt-1 text-sm text-muted-foreground">{mensagemDeErro(schedules.error)}</p>
-            <Button className="mt-3" variant="outline" onClick={() => void schedules.refetch()}>Tentar novamente</Button>
+            <Button className="mt-3 rounded-full" variant="outline" onClick={() => void schedules.refetch()}>Tentar novamente</Button>
           </CardContent></Card>
-        ) : schedules.data?.length ? (
-          schedules.data.map((schedule) => {
+        ) : allSchedules.length ? (
+          visibleSchedules.length === 0 ? (
+            <p className="rounded-2xl border border-dashed border-[#BFD8EE] p-6 text-center text-sm text-muted-foreground">Nenhum agendamento neste filtro.</p>
+          ) : visibleSchedules.map((schedule) => {
             const recentRuns = runsBySchedule[schedule.id]?.slice(0, 3) || [];
             const isRunning = runNow.isPending && runNow.variables === schedule.id;
             const isToggling = setScheduleActive.isPending && setScheduleActive.variables?.id === schedule.id;
@@ -216,31 +275,31 @@ export default function PlatformRelatoriosAgendados() {
                 ? 'Aguardando tentativa automática (verificação horária)'
                 : dateTime(schedule.next_run_at);
             return (
-              <Card key={schedule.id}>
+              <Card key={schedule.id} className={cn('rounded-2xl border-border/60 shadow-xs', lastFailed(schedule) && 'border-destructive/40')}>
                 <CardContent className="space-y-4 pt-5">
                   <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                     <div className="min-w-0 space-y-2">
                       <div className="flex flex-wrap items-center gap-2">
                         <h2 className="font-semibold">{schedule.name}</h2>
-                        <Badge variant={schedule.active ? 'default' : 'secondary'}>{schedule.active ? 'Ativo' : 'Pausado'}</Badge>
-                        <Badge variant="outline">{frequencyLabels[schedule.frequency] || schedule.frequency}</Badge>
+                        <Badge variant={schedule.active ? 'default' : 'secondary'} className={cn('rounded-full', schedule.active && 'border-transparent bg-gradient-primary text-white')}>{schedule.active ? 'Ativo' : 'Pausado'}</Badge>
+                        <Badge variant="outline" className="rounded-full border-[#BFD8EE] text-[#1080CA]">{frequencyLabels[schedule.frequency] || schedule.frequency}</Badge>
                       </div>
                       <p className="break-words text-sm text-muted-foreground">{schedule.recipients.join(', ')}</p>
                       <p className="text-xs text-muted-foreground">Próxima execução: {nextRunLabel} · Última tentativa: {dateTime(lastAttemptAt)}</p>
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      <Button className="min-h-11" variant="outline" onClick={() => toggleSchedule(schedule.id, !schedule.active)} disabled={isToggling || setScheduleActive.isPending}>
+                      <Button className="h-9 rounded-full text-xs" variant="outline" onClick={() => toggleSchedule(schedule.id, !schedule.active)} disabled={isToggling || setScheduleActive.isPending}>
                         {isToggling ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : schedule.active ? <Pause className="mr-2 h-4 w-4" /> : <Play className="mr-2 h-4 w-4" />}
                         {schedule.active ? 'Pausar' : 'Reativar'}
                       </Button>
-                      <Button className="min-h-11" onClick={() => setScheduleToRun(schedule)} disabled={!schedule.active || isRunning || runNow.isPending}>
+                      <Button className="h-9 rounded-full bg-[#1080CA] text-xs text-white hover:brightness-110" onClick={() => setScheduleToRun(schedule)} disabled={!schedule.active || isRunning || runNow.isPending}>
                         {isRunning ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4" />}
                         Executar agora
                       </Button>
                     </div>
                   </div>
 
-                  <div className="border-t pt-3">
+                  <div className="border-t border-border/60 pt-3">
                     <h3 className="mb-2 text-sm font-medium">Execuções recentes</h3>
                     {runs.isLoading ? (
                       <Skeleton className="h-12 w-full" />
@@ -249,9 +308,9 @@ export default function PlatformRelatoriosAgendados() {
                     ) : recentRuns.length ? (
                       <ul className="space-y-2">
                         {recentRuns.map((run) => (
-                          <li key={run.id} className="flex flex-col gap-2 rounded-lg bg-muted/40 p-3 sm:flex-row sm:items-center sm:justify-between">
+                          <li key={run.id} className="flex flex-col gap-2 rounded-xl bg-[#F3F8FC] p-3 sm:flex-row sm:items-center sm:justify-between">
                             <div className="flex flex-wrap items-center gap-2">
-                              <Badge variant={run.status === 'success' ? 'outline' : 'destructive'}>{run.status === 'success' ? 'Enviado' : 'Falhou'}</Badge>
+                              <Badge variant={run.status === 'success' ? 'outline' : 'destructive'} className={cn('rounded-full', run.status === 'success' && 'border-success/40 text-success')}>{run.status === 'success' ? 'Enviado' : 'Falhou'}</Badge>
                               <span className="text-xs text-muted-foreground">{dateTime(run.created_at)} · {run.recipients_count} destinatário(s)</span>
                             </div>
                             {run.error && <p className="break-words text-xs text-destructive">{run.error}</p>}
@@ -267,10 +326,11 @@ export default function PlatformRelatoriosAgendados() {
             );
           })
         ) : (
-          <Card><CardContent className="py-12 text-center">
-            <FileBarChart className="mx-auto h-8 w-8 text-muted-foreground" />
-            <p className="mt-2 font-medium">Nenhum relatório agendado</p>
+          <Card className="rounded-2xl border-border/60 shadow-xs"><CardContent className="flex flex-col items-center py-12 text-center">
+            <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md"><FileBarChart className="h-6 w-6" /></span>
+            <p className="mt-3 font-medium text-foreground">Nenhum relatório agendado</p>
             <p className="mt-1 text-sm text-muted-foreground">Crie um agendamento para enviar resumos executivos automaticamente.</p>
+            <Button type="button" variant="outline" className="mt-4 rounded-full" onClick={() => document.getElementById('report-recipients')?.focus()}>Informar destinatários</Button>
           </CardContent></Card>
         )}
       </section>
@@ -291,6 +351,7 @@ export default function PlatformRelatoriosAgendados() {
           <AlertDialogFooter>
             <AlertDialogCancel disabled={runNow.isPending}>Cancelar</AlertDialogCancel>
             <AlertDialogAction
+              className="bg-gradient-primary text-white hover:brightness-110"
               onClick={(event) => {
                 event.preventDefault();
                 if (!scheduleToRun || runNow.isPending) return;
@@ -304,6 +365,6 @@ export default function PlatformRelatoriosAgendados() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </main>
   );
 }

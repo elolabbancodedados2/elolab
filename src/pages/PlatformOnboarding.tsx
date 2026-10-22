@@ -1,7 +1,10 @@
 import { useRef, useState } from 'react';
 import { formatDateInTimeZone } from '@/lib/datePreference';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Building2, RefreshCw, Search } from 'lucide-react';
+import { AlertTriangle, Ban, Building2, CheckCircle2, RefreshCw, Search } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { PageHeader } from '@/components/PageHeader';
+import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -80,6 +83,7 @@ export default function PlatformOnboarding() {
   const [ownerId, setOwnerId] = useState('unassigned');
   const [search, setSearch] = useState('');
   const [stageFilter, setStageFilter] = useState('all');
+  const [onlyOverdue, setOnlyOverdue] = useState(false);
   const [saving, setSaving] = useState(false);
   const saveLock = useRef(false);
   const query = useQuery({
@@ -164,12 +168,18 @@ export default function PlatformOnboarding() {
     if (aDue === null && bDue !== null) return 1;
     return a.readiness - b.readiness || a.clinica_nome.localeCompare(b.clinica_nome, 'pt-BR');
   });
-  const overdueCount = clinics.filter(item => {
+  const isOverdue = (item: ClinicOnboarding) => {
     const due = dueTimestamp(item.due_at);
     return due !== null && due < Date.now() && item.stage !== 'completed';
-  }).length;
+  };
+  const overdueCount = clinics.filter(isOverdue).length;
+  const blockedCount =clinics.filter(item => item.stage === 'blocked').length;
+  const completedCount = clinics.filter(item => item.stage === 'completed').length;
+  const hasFilter = stageFilter !== 'all' || onlyOverdue || search.trim() !== '';
+  const clearFilters = () => { setStageFilter('all'); setOnlyOverdue(false); setSearch(''); };
   const visibleClinics = clinics.filter(item => {
     if (stageFilter !== 'all' && item.stage !== stageFilter) return false;
+    if (onlyOverdue && !isOverdue(item)) return false;
     const term = search.trim().toLocaleLowerCase('pt-BR');
     if (!term) return true;
     const owner = owners.data?.find(candidate => candidate.user_id === item.owner_id);
@@ -177,51 +187,99 @@ export default function PlatformOnboarding() {
   });
 
   return (
-    <div className="space-y-6">
-      <header className="flex flex-wrap items-start justify-between gap-3 rounded-2xl border border-[#e6e2f7] bg-gradient-to-r from-[#f6f4ff] via-white to-[#f0edff] p-5 sm:p-6">
-        <div>
-          <h1 className="flex items-center gap-2 text-2xl font-bold"><Building2 />Onboarding de clínicas</h1>
-          <p className="text-muted-foreground">Acompanhe prontidão, etapa, próxima ação e prazo de ativação por clínica.</p>
-          {!query.isLoading && !query.isError && <p className="mt-2 text-sm text-muted-foreground">{clinics.length} clínicas ativas · {overdueCount} acompanhamentos atrasados</p>}
-        </div>
-        <Button variant="outline" className="min-h-11" onClick={() => void query.refetch()} disabled={query.isFetching}>
-          <RefreshCw className={`mr-2 h-4 w-4 ${query.isFetching ? 'animate-spin' : ''}`} /> Atualizar
-        </Button>
-      </header>
+    <main className="mx-auto w-full max-w-7xl space-y-6 pb-10">
+      <PageHeader
+        title="Onboarding de clínicas"
+        icon={<Building2 />}
+        description={!query.isLoading && !query.isError
+          ? `${clinics.length} clínicas ativas · ${overdueCount} acompanhamentos atrasados${blockedCount ? ` · ${blockedCount} bloqueadas` : ''}`
+          : 'Acompanhe prontidão, etapa, próxima ação e prazo de ativação por clínica.'}
+        actions={<>
+          <Button asChild variant="outline" className="rounded-full gap-2">
+            <Link to="/admin/clinicas"><Building2 className="h-4 w-4" />Clínicas</Link>
+          </Button>
+          <Button variant="outline" size="icon" className="rounded-full" onClick={() => void query.refetch()} disabled={query.isFetching} aria-label="Atualizar">
+            <RefreshCw className={cn('h-4 w-4', query.isFetching && 'animate-spin')} />
+          </Button>
+        </>}
+      />
 
-      {query.isLoading && <div className="space-y-3" role="status" aria-label="Carregando clínicas">{[1, 2, 3].map(item => <Skeleton key={item} className="h-40 w-full" />)}</div>}
+      {query.isLoading && <div className="space-y-3" role="status" aria-label="Carregando clínicas">{[1, 2, 3].map(item => <Skeleton key={item} className="h-40 w-full rounded-2xl" />)}</div>}
       {query.isError && (
-        <Card className="border-destructive/30">
+        <Card className="rounded-2xl border-destructive/30 shadow-xs">
           <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
             <p className="text-sm text-destructive">Não foi possível carregar os onboardings.</p>
-            <Button variant="outline" onClick={() => void query.refetch()} disabled={query.isFetching}>
-              <RefreshCw className={`mr-2 h-4 w-4 ${query.isFetching ? 'animate-spin' : ''}`} />Tentar novamente
+            <Button variant="outline" className="rounded-full gap-2" onClick={() => void query.refetch()} disabled={query.isFetching}>
+              <RefreshCw className={cn('h-4 w-4', query.isFetching && 'animate-spin')} />Tentar novamente
             </Button>
           </CardContent>
         </Card>
       )}
 
       {!query.isLoading && !query.isError && query.data?.length === 0 && (
-        <Card><CardContent className="py-10 text-center text-sm text-muted-foreground">Nenhuma clínica para acompanhar.</CardContent></Card>
+        <Card className="rounded-2xl border-border/60 shadow-xs">
+          <CardContent className="flex flex-col items-center gap-3 py-10 text-center">
+            <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md"><Building2 className="h-6 w-6" /></span>
+            <p className="font-medium text-foreground">Nenhuma clínica para acompanhar.</p>
+            <p className="max-w-sm text-sm text-muted-foreground">Novas clínicas entram aqui assim que o cadastro é concluído.</p>
+            <Button asChild variant="outline" className="rounded-full"><Link to="/admin/clinicas">Ver clínicas</Link></Button>
+          </CardContent>
+        </Card>
       )}
 
-      {!query.isLoading && !query.isError && clinics.length > 0 && <div className="flex flex-wrap gap-3">
-        <div className="relative min-w-56 flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input value={search} onChange={event => setSearch(event.target.value)} placeholder="Buscar clínica, responsável ou próxima ação" className="pl-9" aria-label="Buscar onboarding" />
+      {!query.isLoading && !query.isError && clinics.length > 0 && <>
+        <section className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4" aria-label="Indicadores do onboarding">
+          {([
+            { key: 'all', title: 'Clínicas', value: clinics.length, detail: 'em acompanhamento', icon: Building2, tone: '', destaque: true, ativo: stageFilter === 'all' && !onlyOverdue, onClick: () => { setStageFilter('all'); setOnlyOverdue(false); } },
+            { key: 'overdue', title: 'Atrasados', value: overdueCount, detail: 'prazo de acompanhamento vencido', icon: AlertTriangle, tone: 'bg-destructive/10 text-destructive', destaque: false, ativo: onlyOverdue, onClick: () => setOnlyOverdue(v => !v) },
+            { key: 'blocked', title: 'Bloqueados', value: blockedCount, detail: 'aguardando destravar', icon: Ban, tone: 'bg-warning/10 text-warning', destaque: false, ativo: stageFilter === 'blocked', onClick: () => setStageFilter(f => f === 'blocked' ? 'all' : 'blocked') },
+            { key: 'completed', title: 'Concluídos', value: completedCount, detail: 'onboarding finalizado', icon: CheckCircle2, tone: 'bg-success/10 text-success', destaque: false, ativo: stageFilter === 'completed', onClick: () => setStageFilter(f => f === 'completed' ? 'all' : 'completed') },
+          ]).map(({ key, title, value, detail, icon: Icon, tone, destaque, ativo, onClick }) => (
+            <button
+              key={key}
+              type="button"
+              aria-pressed={ativo}
+              onClick={onClick}
+              className={cn(
+                'rounded-2xl border p-4 text-left shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA] focus-visible:ring-offset-2',
+                destaque ? 'border-transparent bg-gradient-primary text-white' : 'border-border/60 bg-card',
+                ativo && !destaque && 'border-[#1080CA] ring-1 ring-[#1080CA]/40',
+              )}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className={cn('text-sm', destaque ? 'text-white/80' : 'text-muted-foreground')}>{title}</p>
+                  <p className="mt-1 text-2xl font-bold tabular-nums">{value}</p>
+                  <p className={cn('mt-0.5 text-[11px]', destaque ? 'text-white/70' : 'text-muted-foreground')}>{detail}</p>
+                </div>
+                <span className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', destaque ? 'bg-white/20 text-white' : tone)}>
+                  <Icon className="h-5 w-5" />
+                </span>
+              </div>
+            </button>
+          ))}
+        </section>
+
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative w-full min-w-56 flex-1 sm:w-auto">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input value={search} onChange={event => setSearch(event.target.value)} placeholder="Buscar clínica, responsável ou próxima ação" className="h-10 rounded-full pl-9 focus-visible:ring-[#1080CA]" aria-label="Buscar onboarding" />
+          </div>
+          <Select value={stageFilter} onValueChange={setStageFilter}>
+            <SelectTrigger className="h-10 w-full rounded-full sm:w-48" aria-label="Filtrar etapa"><SelectValue /></SelectTrigger>
+            <SelectContent><SelectItem value="all">Todas as etapas</SelectItem>{stages.map(option => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent>
+          </Select>
+          {hasFilter && <Button variant="outline" className="h-10 rounded-full" onClick={clearFilters}>Limpar filtros</Button>}
+          <span className="ml-auto text-xs text-muted-foreground tabular-nums">{visibleClinics.length} de {clinics.length}</span>
         </div>
-        <Select value={stageFilter} onValueChange={setStageFilter}>
-          <SelectTrigger className="w-48" aria-label="Filtrar etapa"><SelectValue /></SelectTrigger>
-          <SelectContent><SelectItem value="all">Todas as etapas</SelectItem>{stages.map(option => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent>
-        </Select>
-      </div>}
+      </>}
 
       <div className="space-y-3">
         {visibleClinics.map(item => (
-          <Card key={item.clinica_id}>
+          <Card key={item.clinica_id} className={cn('rounded-2xl border-border/60 shadow-xs', isOverdue(item) && 'border-destructive/30')}>
             <CardHeader className="pb-3">
               <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
+                <div className="min-w-0">
                   <CardTitle className="text-base">{item.clinica_nome}</CardTitle>
                   <CardDescription className="mt-1">
                     Próxima ação: {item.next_action || 'Ainda não definida'}
@@ -231,10 +289,10 @@ export default function PlatformOnboarding() {
                   </CardDescription>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Badge variant={item.stage === 'blocked' ? 'destructive' : item.stage === 'completed' ? 'outline' : 'secondary'}>
+                  <Badge variant={item.stage === 'blocked' ? 'destructive' : item.stage === 'completed' ? 'outline' : 'secondary'} className={cn('rounded-full', item.stage === 'completed' && 'border-success/30 bg-success/10 text-success')}>
                     {stages.find(option => option.value === item.stage)?.label || item.stage}
                   </Badge>
-                  <Button size="sm" variant="outline" onClick={() => openEditor(item)}>Atualizar plano</Button>
+                  <Button size="sm" className="h-9 rounded-full bg-[#1080CA] text-xs text-white hover:bg-[#1080CA] hover:brightness-110" onClick={() => openEditor(item)}>Atualizar plano</Button>
                 </div>
               </div>
             </CardHeader>
@@ -251,13 +309,21 @@ export default function PlatformOnboarding() {
                   [`Equipe (${item.team_size})`, item.team_size > 1],
                   ['Primeiro uso', item.has_activity],
                 ] as Array<[string, boolean]>).map(([label, done]) => (
-                  <Badge key={label} variant={done ? 'outline' : 'secondary'}>{done ? '✓' : '○'} {label}</Badge>
+                  <Badge key={label} variant={done ? 'outline' : 'secondary'} className={cn('rounded-full', done && 'border-[#BFD8EE] text-[#1080CA]')}>{done ? '✓' : '○'} {label}</Badge>
                 ))}
               </div>
             </CardContent>
           </Card>
         ))}
-        {!query.isLoading && !query.isError && clinics.length > 0 && visibleClinics.length === 0 && <Card><CardContent className="py-8 text-center text-sm text-muted-foreground">Nenhum onboarding corresponde à busca e à etapa selecionadas.</CardContent></Card>}
+        {!query.isLoading && !query.isError && clinics.length > 0 && visibleClinics.length === 0 && (
+          <Card className="rounded-2xl border-border/60 shadow-xs">
+            <CardContent className="flex flex-col items-center gap-3 py-8 text-center">
+              <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md"><Search className="h-6 w-6" /></span>
+              <p className="text-sm text-foreground">Nenhum onboarding corresponde à busca e à etapa selecionadas.</p>
+              <Button variant="outline" className="rounded-full" onClick={clearFilters}>Limpar filtros</Button>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       <Dialog open={!!clinic} onOpenChange={open => { if (!open && !saving) setClinic(null); }}>
@@ -304,11 +370,11 @@ export default function PlatformOnboarding() {
             </div>}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setClinic(null)} disabled={saving}>Cancelar</Button>
-            <Button onClick={() => void save()} disabled={saving}>{saving ? 'Salvando…' : 'Salvar acompanhamento'}</Button>
+            <Button variant="outline" className="rounded-full" onClick={() => setClinic(null)} disabled={saving}>Cancelar</Button>
+            <Button className="rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110" onClick={() => void save()} disabled={saving}>{saving ? 'Salvando…' : 'Salvar acompanhamento'}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </main>
   );
 }
