@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Shield, Download, Search, FileJson, AlertTriangle } from 'lucide-react';
+import { Shield, Search, FileJson, AlertTriangle, Users, LifeBuoy } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useBuscaPacientes } from '@/hooks/useBuscaPacientes';
@@ -60,37 +60,44 @@ export default function LgpdPacientes() {
     <div className="space-y-6 p-2 sm:p-6">
       <PageHeader
         title="Direitos do Titular (LGPD)"
-        description="Consultar dados e orientar o atendimento a solicitações do titular (Lei 13.709/2018)"
+        description={searchTerm.trim() && !isLoading && !isDebouncing && !error
+          ? `${filtered.length} titular${filtered.length === 1 ? '' : 'es'} encontrado${filtered.length === 1 ? '' : 's'} · Lei 13.709/2018`
+          : 'Consultar dados e orientar o atendimento a solicitações do titular (Lei 13.709/2018)'}
         icon={<Shield />}
         actions={(
-          <Button asChild variant="outline">
-            <Link to="/suporte">Solicitar análise ao suporte</Link>
-          </Button>
+          <>
+            <Button asChild variant="outline" className="gap-2 rounded-full">
+              <Link to="/pacientes"><Users aria-hidden="true" className="h-4 w-4" /> Pacientes</Link>
+            </Button>
+            <Button asChild className="gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110">
+              <Link to="/suporte"><LifeBuoy aria-hidden="true" className="h-4 w-4" /> Solicitar análise ao suporte</Link>
+            </Button>
+          </>
         )}
       />
 
-      <Alert>
-        <AlertTriangle className="h-4 w-4" />
+      <Alert className="rounded-2xl border-[#BFD8EE] bg-[#F3F8FC]">
+        <AlertTriangle className="h-4 w-4 !text-[#1080CA]" />
         <AlertDescription>
           Cada exportação gera um registro de auditoria da clínica antes de preparar o arquivo JSON para download. O pedido continua pendente até a clínica conferir o escopo e confirmar a entrega ao titular. Anexos do prontuário de até 30 MB no total são incluídos no JSON em Base64; arquivos externos e outros documentos vinculados por módulos específicos ainda exigem conferência manual. Confira o escopo antes de responder ao titular. Armazene o arquivo em local seguro e compartilhe apenas com pessoas autorizadas.
           <span className="mt-2 block font-medium">A exclusão de dados não pode ser concluída por esta tela neste momento. Solicite análise ao suporte antes de confirmar o atendimento ao titular.</span>
         </AlertDescription>
       </Alert>
 
-      <Card aria-busy={isLoading || isDebouncing}>
+      <Card aria-busy={isLoading || isDebouncing} className="rounded-2xl border-border/60 shadow-xs">
         <CardHeader>
-          <CardTitle>Buscar Paciente</CardTitle>
+          <CardTitle className="text-base">Buscar Paciente</CardTitle>
           <CardDescription>Por nome, CPF ou email</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
               aria-label="Buscar paciente por nome, CPF ou e-mail"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               placeholder="Digite nome, CPF ou email..."
-              className="pl-10"
+              className="h-10 rounded-full pl-9 focus-visible:ring-[#1080CA]"
             />
           </div>
 
@@ -100,11 +107,14 @@ export default function LgpdPacientes() {
               <ErrorState compact error={error} onRetry={() => refetch()} />
             )}
             {!isLoading && !isDebouncing && !error && !searchTerm && pacientes.length === 0 && (
-              <div className="space-y-3 py-6 text-center">
-                <p className="text-sm text-muted-foreground">
+              <div className="flex flex-col items-center gap-3 py-8 text-center">
+                <span aria-hidden="true" className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+                  <Users className="h-6 w-6" />
+                </span>
+                <p className="max-w-sm text-sm text-muted-foreground">
                   Nenhum paciente cadastrado ainda. Cadastre uma ficha antes de atender uma solicitação do titular.
                 </p>
-                <Button asChild variant="outline" size="sm">
+                <Button asChild className="rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110">
                   <Link to="/pacientes">Ir para Pacientes</Link>
                 </Button>
               </div>
@@ -122,7 +132,7 @@ export default function LgpdPacientes() {
             {!isLoading && !isDebouncing && !error && filtered.map((p: PacienteLGPD) => (
               <div
                 key={p.id}
-                className="flex items-center justify-between gap-4 p-3 border rounded-lg hover:bg-muted/40 transition-colors"
+                className="flex flex-col gap-3 rounded-xl border border-border/60 p-3 transition-colors hover:border-[#9CC7EC] hover:bg-[#F3F8FC] sm:flex-row sm:items-center sm:justify-between"
               >
                 <div className="min-w-0 flex-1">
                   <p className="font-medium truncate">{p.nome}</p>
@@ -134,13 +144,14 @@ export default function LgpdPacientes() {
                   <LoadingButton
                     size="sm"
                     variant="outline"
+                    className="h-9 gap-1.5 rounded-full text-xs"
                     onClick={() => handleExport(p)}
                     disabled={isProcessing}
                     isLoading={acaoEmCurso === p.id}
                     loadingText="Exportando..."
                     title="Exportar dados (portabilidade)"
                   >
-                    <FileJson className="h-4 w-4 mr-1" />
+                    <FileJson aria-hidden="true" className="h-4 w-4" />
                     Exportar
                   </LoadingButton>
                 </div>

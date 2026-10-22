@@ -1,5 +1,5 @@
-import { Card, CardContent } from '@/components/ui/card';
-import { Smartphone, MessageSquare, Users, Activity } from 'lucide-react';
+import { Smartphone, MessageSquare, Users, Activity, CalendarPlus, CheckCircle2, UserX, AlertTriangle } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { WhatsAppStats, WhatsAppSession } from './types';
 
 interface StatsCardsProps {
@@ -9,77 +9,39 @@ interface StatsCardsProps {
 
 export function StatsCards({ sessions, stats }: StatsCardsProps) {
   const activeSessions = sessions.filter(s => s.status === 'connected').length;
+  const cards = [
+    { label: 'Sessões Ativas', value: activeSessions, icon: Smartphone, color: 'text-white', surface: 'bg-white/20', destaque: true },
+    { label: 'Mensagens Hoje', value: stats?.messages, icon: MessageSquare, color: 'text-[#1080CA]', surface: 'bg-[#1080CA]/10' },
+    { label: 'Conversas Hoje', value: stats?.conversations, icon: Users, color: 'text-info', surface: 'bg-info/10' },
+    { label: 'Ações do Agente Hoje', value: stats?.actions, icon: Activity, color: 'text-[#1080CA]', surface: 'bg-[#1080CA]/10' },
+    { label: 'Agendamentos pela IA hoje', value: stats?.ai_bookings, icon: CalendarPlus, color: 'text-success', surface: 'bg-success/10' },
+    { label: 'Confirmadas na agenda hoje', value: stats?.confirmed_today, icon: CheckCircle2, color: 'text-success', surface: 'bg-success/10' },
+    { label: 'Faltas na agenda hoje', value: stats?.no_shows_today, icon: UserX, color: 'text-warning', surface: 'bg-warning/10' },
+    { label: 'Falhas de envio hoje', value: stats?.delivery_failures, icon: AlertTriangle, color: 'text-destructive', surface: 'bg-destructive/10' },
+  ];
 
   return (
     <div className="space-y-3">
-    <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-      <Card className="border-[#dbd6f6] bg-gradient-to-br from-[#f5f3fe] to-white shadow-sm shadow-[#241D3F]/[0.03]">
-        <CardContent className="pt-6">
-          <div className="flex items-center gap-4">
-            <div className="rounded-xl bg-[#ece8ff] p-3 text-[#5240d6]">
-              <Smartphone className="h-5 w-5" />
+      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+        {cards.map(({ label, value, icon: Icon, color, surface, destaque }) => (
+          <div
+            key={label}
+            className={cn(
+              'flex min-h-[88px] items-center gap-3 rounded-2xl border border-border/60 bg-card p-3 shadow-xs',
+              destaque && 'border-transparent bg-gradient-primary text-white',
+            )}
+          >
+            <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', surface)}>
+              <Icon aria-hidden="true" className={cn('h-5 w-5', color)} />
             </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Sessões Ativas</p>
-              <p className="text-2xl font-bold">{activeSessions}</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-      <Card className="border-[#ddd7fb] bg-gradient-to-br from-[#f8f7ff] to-white shadow-sm shadow-[#241D3F]/[0.03]">
-        <CardContent className="pt-6">
-          <div className="flex items-center gap-4">
-            <div className="rounded-xl bg-[#eae7fb] p-3 text-[#3b289b]">
-              <MessageSquare className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Mensagens Hoje</p>
-              <p className="text-2xl font-bold">{stats?.messages || 0}</p>
+            <div className="min-w-0">
+              <p className={cn('text-[11px] leading-tight', destaque ? 'text-white/80' : 'text-muted-foreground')}>{label}</p>
+              <p className={cn('text-2xl font-bold tabular-nums', destaque ? 'text-white' : 'text-foreground')}>{value ?? 0}</p>
             </div>
           </div>
-        </CardContent>
-      </Card>
-      <Card className="border-[#d7efe9] bg-gradient-to-br from-[#f2fbf8] to-white shadow-sm shadow-[#241D3F]/[0.03]">
-        <CardContent className="pt-6">
-          <div className="flex items-center gap-4">
-            <div className="rounded-xl bg-[#e1f5ee] p-3 text-[#168064]">
-              <Users className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Conversas Hoje</p>
-              <p className="text-2xl font-bold">{stats?.conversations || 0}</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-      <Card className="border-[#e7ddf7] bg-gradient-to-br from-[#faf7ff] to-white shadow-sm shadow-[#241D3F]/[0.03]">
-        <CardContent className="pt-6">
-          <div className="flex items-center gap-4">
-            <div className="rounded-xl bg-[#efe7fb] p-3 text-[#7450a8]">
-              <Activity className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Ações do Agente Hoje</p>
-              <p className="text-2xl font-bold">{stats?.actions || 0}</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-      {([
-        ['Agendamentos pela IA hoje', stats?.ai_bookings],
-        ['Confirmadas na agenda hoje', stats?.confirmed_today],
-        ['Faltas na agenda hoje', stats?.no_shows_today],
-        ['Falhas de envio hoje', stats?.delivery_failures],
-      ] as const).map(([label, count]) => (
-        <Card key={label}>
-          <CardContent className="pt-6">
-            <p className="text-sm text-muted-foreground">{label}</p>
-            <p className="text-2xl font-bold">{count ?? 0}</p>
-          </CardContent>
-        </Card>
-      ))}
-    </div>
-    <p className="text-xs text-muted-foreground">Hoje em America/Sao_Paulo. Agendamentos pela IA: criados hoje com registro confirmado. Confirmações e faltas: status atual das consultas da clínica marcadas para hoje. Falhas: mensagens de saída e notificações WhatsApp com erro registradas hoje.</p>
+        ))}
+      </div>
+      <p className="text-xs text-muted-foreground">Hoje em America/Sao_Paulo. Agendamentos pela IA: criados hoje com registro confirmado. Confirmações e faltas: status atual das consultas da clínica marcadas para hoje. Falhas: mensagens de saída e notificações WhatsApp com erro registradas hoje.</p>
     </div>
   );
 }

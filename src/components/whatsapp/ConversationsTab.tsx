@@ -133,7 +133,7 @@ export function ConversationsTab({ conversations, hasMoreConversations, isLoadin
       case 'ativo': return <CheckCircle2 className="h-3 w-3 text-green-500" />;
       case 'aguardando_humano': return <Clock className="h-3 w-3 text-amber-500" />;
       case 'em_atendimento_humano': return <User className="h-3 w-3 text-blue-500" />;
-      case 'aguardando_avaliacao': return <Clock className="h-3 w-3 text-violet-500" />;
+      case 'aguardando_avaliacao': return <Clock className="h-3 w-3 text-info" />;
       case 'encerrado': return <AlertCircle className="h-3 w-3 text-muted-foreground" />;
       default: return null;
     }
@@ -148,7 +148,7 @@ export function ConversationsTab({ conversations, hasMoreConversations, isLoadin
       case 'em_atendimento_humano':
         return <Badge className="bg-blue-500/10 text-blue-700 border-blue-200 text-[10px]">Com atendente</Badge>;
       case 'aguardando_avaliacao':
-        return <Badge className="bg-violet-500/10 text-violet-700 border-violet-200 text-[10px]">Aguardando avaliação</Badge>;
+        return <Badge className="bg-info/10 text-info border-info/30 text-[10px]">Aguardando avaliação</Badge>;
       case 'encerrado':
         return <Badge variant="outline" className="text-[10px]">Encerrada</Badge>;
       default:
