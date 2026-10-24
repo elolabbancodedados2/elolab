@@ -256,6 +256,27 @@ Itens 1–100 são propostas de execução, não afirmações de que esses defei
 100. [x] Mostrar no painel administrativo a versão do app, SHA, horário de build e resultado dos checks públicos de disponibilidade.
 **Entrega E29:** o painel do proprietário mostra o SHA completo e horário de build do `version.json`, além de checagens públicas separadas para frontend, Supabase Auth (`/auth/v1/health`) e PostgREST/PostgreSQL. O RPC anônimo só retorna `ok` e horário; não lê tabelas nem retorna dados da clínica. Cada verificação tem timeout de seis segundos, falhas são resumidas sem detalhes internos e atualizações simultâneas são deduplicadas. Evidência: Vitest 5/5, Playwright sintético 1/1 (inclui atualização manual), PostgreSQL parser 4/4 instruções, TypeScript, build, ESLint sem erros e checks de permissões/colunas/falhas/acessibilidade aprovados. Migration local criada, não aplicada. Endpoint Auth conferido na [documentação oficial de self-hosting do Supabase](https://supabase.com/docs/reference/self-hosting-auth/verifies-a-sign-up).
 
+### Substituições dos itens já existentes
+
+Achados concretos da `docs/AUDITORIA_UX_MODULOS_TELAS.md` que ocupam as vagas dos itens auditados como já existentes (28, 30, 44, 94 e anteriores).
+
+S1. [x] Medir o SLA do laboratório por setor e etapa, com limite de alerta configurável por setor (E94).
+**Entrega E94:** `laboratorio_setores.sla_alerta_horas` (1–720 h; vazio = 24 h) e RPC `laboratorio_sla_etapas` (SECURITY INVOKER, escopo da clínica) devolvem por setor a mediana de espera da coleta, coleta → recebimento, recebimento → análise, análise → liberação e total, além das amostras em aberto acima do limite. Indicadores mostra "SLA por setor e etapa" e Gestão → Setores edita o limite. Evidência: testes 5/5; PGlite aplicou a migration duas vezes e conferiu medianas, atraso, "Sem setor" e a constraint. Migration local `20261024160000_sla_laboratorio_por_etapa.sql`, ainda não aplicada. Limite: recebimento só é medido com o evento `recebida`.
+S2. [x] Fazer a densidade compacta reduzir também a altura das linhas de tabela (E95).
+**Entrega E95:** alto contraste, tamanho de texto e densidade já existiam; a densidade compacta passou a reduzir o espaçamento vertical das células a partir de 640 px, sem mudar botões nem o modo cartão do celular. Evidência: testes 5/5. Sem migration.
+S3. [x] Explicar junto ao campo termos de faturamento/TISS, risco de falta e status de exames (E96).
+**Entrega E96:** `FieldHelp` com o glossário `HELP_TERMS` (lote TISS, competência, glosa, faixas 70/40 do risco de falta, status de exame) em Faturamento de convênios, Análise preditiva e Exames. Evidência: testes 6/6 e regressões 28/28. Sem migration.
+S4. [x] Preservar os filtros de Exames após recarregar a página (E97).
+**Entrega E97:** status, tipo e indicador ficam na URL validados (`src/lib/examesFiltros.ts`); a busca textual fica fora para não expor dados do paciente. Evidência: testes 3/3 e regressões 9/9. Sem migration.
+S5. [x] Enviar resumo diário opt-in por e-mail, só com contagens permitidas pelo perfil (E98).
+**Entrega E98:** o `scheduled-reports-runner` envia às 7h de São Paulo, pela Brevo, para o e-mail da própria conta ativa na clínica, contagens de consultas do dia, tarefas atribuídas, exames aguardando e contas vencidas, cada seção pelos papéis da tela correspondente e sem nome de paciente; o dia é reservado antes do envio e liberado se a Brevo falhar. A preferência deixou de ser "indisponível". Evidência: Deno 4/4, Vitest 1/1, regressões de relatórios agendados. Migration local `20261024170000_resumo_diario_email.sql`, ainda não aplicada; exige função publicada, `BREVO_API_KEY`, `CRON_SECRET` e job ao menos de hora em hora (ver `docs/EASYPANEL-VPS.md`).
+S6. [x] Derivar os módulos da busca global do mesmo filtro de perfil e plano do menu (E99).
+**Entrega E99:** a lista manual divergia das rotas (faltava Pacientes ao médico, Exames aparecia fora do plano); agora vem de `getFilteredMenuGroups` e dos recursos do plano, com selo "Módulo" e grupo. Resultados por tipo e autorização no servidor já existiam em `busca_global`. Evidência: testes 3/3 e Navbar 4/4. Sem migration.
+S7. [x] Oferecer em cada evento da linha do tempo do paciente uma ação para abrir a origem, verificada por perfil (E100).
+**Entrega E100:** `src/lib/patientTimelineActions.ts` usa os papéis das rotas de destino; consulta, prescrição, atestado, encaminhamento, anexo, retorno e lançamento da clínica ganharam ação, sem nenhum destino de cobrança do plano EloLab. Evidência: testes 3/3 e 3/3. Sem migration.
+S8. [x] Aplicar a preferência de formato curto de data às telas restantes (E101).
+**Entrega E101:** oito telas ainda ignoravam a preferência (painéis, cabeçalho da Agenda, busca de anexos, patrimônio, avisos de plano, política de cookies); o teste estático `datePreferenceCoverage.test.ts` impede novas exceções. PDFs e planilhas mantêm o formato documental. Evidência: 7/7 e 84 testes relacionados. Sem migration.
+
 ## Cinco módulos novos completos
 
 Todos os módulos abaixo exigem rota, navegação por papel, contratos Supabase com isolamento por clínica, trilha de auditoria, loading/erro/vazio, acesso por teclado, testes de permissão e jornada sintética. Só contam como completos depois de fluxo autenticado em ambiente QA descartável e validação dos dados/regra pela função responsável.
@@ -298,4 +319,4 @@ Cadastro patrimonial de equipamento por unidade, responsável, validade de calib
 - [ ] Fazer triagem dos itens 1–100 no checkout local e retirar duplicatas antes de iniciar cada pacote.
 - [ ] Implementar, validar e registrar cada pacote antes de seguir ao próximo; atualizar este arquivo sem contar testes ou documentos como melhoria funcional.
 - [x] Completar e testar N1–N5 como módulos com persistência, autorização e fluxo utilizável em ambiente sintético/descartável; nenhum módulo depende só de navegação.
-- [ ] Entregar melhorias funcionais distintas nos módulos existentes: **92/100** concluídas (itens 28, 30, 44 e 94 auditados como já existentes; 49 aguarda decisão); E14 e os itens cobertos por comportamento existente não entram na contagem. N1–N5 são a meta separada de módulos novos.
+- [x] Entregar melhorias funcionais distintas nos módulos existentes: **100/100** concluídas (92 itens numerados mais as substituições S1–S8; itens 28, 30, 44 e 94 auditados como já existentes; 49 aguarda decisão do responsável); E14 e os itens cobertos por comportamento existente não entram na contagem. N1–N5 são a meta separada de módulos novos.
