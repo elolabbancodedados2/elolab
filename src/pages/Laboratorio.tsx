@@ -25,9 +25,9 @@ import { ErrorState } from '@/components/ErrorState';
 import { ActionableEmptyState } from '@/components/ActionableEmptyState';
 import { PageHeader } from '@/components/PageHeader';
 import { pacienteCorresponde } from '@/lib/buscaPaciente';
-import { dadosAoRegistrarColeta, podeGerenciarLaboratorioPorPapel, podeRegistrarResultado, STATUS_COLETA_LABELS } from '@/lib/laboratorioWorkflow';
+import { dadosAoRegistrarColeta, gravarFiltrosWorklist, lerFiltrosWorklist, podeGerenciarLaboratorioPorPapel, podeRegistrarResultado, resumirPendenciasPorSetor, STATUS_COLETA_LABELS, STATUS_COLETA_PENDENTES, type FiltrosWorklist } from '@/lib/laboratorioWorkflow';
 import { dateOnlyInTimeZone, parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { PedidosLaboratorioPanel } from '@/pages/laboratorio/PedidosLaboratorioPanel';
 import { GestaoLaboratorioPanel } from '@/pages/laboratorio/GestaoLaboratorioPanel';
 import { IndicadoresLaboratorioPanel } from '@/pages/laboratorio/IndicadoresLaboratorioPanel';
@@ -94,6 +94,7 @@ const statusColors: Record<string, string> = {
 const statusLabels = STATUS_COLETA_LABELS;
 
 const PIPELINE_STEPS = ['pendente', 'coletado', 'em_analise', 'validado', 'liberado'];
+const LIMITE_PENDENCIAS_SETOR = 2000;
 
 const CONDICOES_AMOSTRA = ['Hemólise', 'Lipemia', 'Icterícia', 'Coagulada', 'Volume insuficiente'];
 
@@ -128,10 +129,15 @@ function parseNumeroOpcional(valor: unknown): number | null {
 export default function Laboratorio() {
   const [agora, setAgora] = useState(() => new Date());
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('todos');
-  const [setorFilter, setSetorFilter] = useState('todos');
-  const [dateFilter, setDateFilter] = useState('hoje');
-  const [urgentOnly, setUrgentOnly] = useState(false);
+  // Filtros na URL: sobrevivem à atualização da worklist, ao recarregar e ao voltar de outra tela.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const filtrosWorklist = lerFiltrosWorklist(searchParams);
+  const { status: statusFilter, setor: setorFilter, periodo: dateFilter, urgente: urgentOnly } = filtrosWorklist;
+  const atualizarFiltros = (patch: Partial<FiltrosWorklist>) =>
+    setSearchParams(atual => gravarFiltrosWorklist(atual, { ...lerFiltrosWorklist(atual), ...patch }), { replace: true });
+  const setStatusFilter = (status: string) => atualizarFiltros({ status });
+  const setSetorFilter = (setor: string) => atualizarFiltros({ setor });
+  const setDateFilter = (periodo: string) => atualizarFiltros({ periodo });
   const [showNewColeta, setShowNewColeta] = useState(false);
 
   // Limpeza de fila em lote: a INOVALAB acumulou 253 coletas em `pendente`
@@ -302,6 +308,25 @@ export default function Laboratorio() {
   });
   const coletas = coletasQuery.data?.pages.flatMap(pagina => pagina.items);
   const isLoading = coletasQuery.isLoading;
+
+  // Mesmo prefixo da worklist: as invalidações após cada ação também recontam as pendências.
+  const pendenciasSetorQuery = useQuery({
+    queryKey: ['coletas-laboratorio', profile?.clinica_id, 'pendencias-setor'],
+    enabled: !!profile?.clinica_id,
+    queryFn: async () => {
+      const { data, error } = await supabase.from('coletas_laboratorio')
+        .select('setor_id, urgente')
+        .eq('clinica_id', profile!.clinica_id!)
+        .in('status', [...STATUS_COLETA_PENDENTES])
+        .limit(LIMITE_PENDENCIAS_SETOR + 1);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+  const pendenciasPorSetor = useMemo(
+    () => resumirPendenciasPorSetor((pendenciasSetorQuery.data ?? []).slice(0, LIMITE_PENDENCIAS_SETOR), setoresQuery.data ?? []),
+    [pendenciasSetorQuery.data, setoresQuery.data],
+  );
 
   const resultadosQuery = useQuery({
     queryKey: ['resultados-laboratorio', profile?.clinica_id, user?.id, showResultados],
@@ -563,17 +588,15 @@ export default function Laboratorio() {
   }
 
   const filtrarPipeline = (filter: string) => {
-    setDateFilter('hoje');
     focusWorklistAfterFilter.current = true;
     setActiveTab('worklist');
     if (filter === 'urgente') {
-      setStatusFilter('todos');
-      setUrgentOnly(current => !current);
+      atualizarFiltros({ periodo: 'hoje', status: 'todos', urgente: !urgentOnly });
       return;
     }
-    setUrgentOnly(false);
-    setStatusFilter(current => current === filter ? 'todos' : filter);
+    atualizarFiltros({ periodo: 'hoje', urgente: false, status: statusFilter === filter ? 'todos' : filter });
   };
+  const limparFiltrosWorklist = () => { setSearch(''); atualizarFiltros({ status: 'todos', setor: 'todos', periodo: 'hoje', urgente: false }); };
 
   return (
     <div className="space-y-6">
@@ -838,6 +861,40 @@ export default function Laboratorio() {
                 {filtered.length} de {coletas?.length ?? 0}
               </span>
             </div>
+            {pendenciasPorSetor.length > 0 && (
+              <div role="group" aria-label="Pendências por setor" className="flex flex-wrap items-center gap-1.5">
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-[#1080CA]">Em aberto por setor</span>
+                {pendenciasPorSetor.map((pendencia) => {
+                  const rotulo = `${pendencia.nome}: ${pendencia.total} pendente${pendencia.total === 1 ? '' : 's'}${pendencia.urgentes > 0 ? `, ${pendencia.urgentes} urgente${pendencia.urgentes === 1 ? '' : 's'}` : ''}`;
+                  const conteudo = (
+                    <>
+                      {pendencia.nome}
+                      <span className="tabular-nums font-semibold">{pendencia.total}</span>
+                      {pendencia.urgentes > 0 && <span className="inline-flex items-center gap-0.5 text-destructive"><Zap className="h-3 w-3" aria-hidden="true" />{pendencia.urgentes}</span>}
+                    </>
+                  );
+                  if (!pendencia.id) {
+                    return <span key="sem-setor" aria-label={rotulo} className="inline-flex h-8 items-center gap-1.5 rounded-full border border-dashed border-[#BFD8EE] px-3 text-xs text-muted-foreground">{conteudo}</span>;
+                  }
+                  const ativo = setorFilter === pendencia.id;
+                  return (
+                    <button
+                      key={pendencia.id}
+                      type="button"
+                      aria-pressed={ativo}
+                      aria-label={rotulo}
+                      onClick={() => setSetorFilter(ativo ? 'todos' : pendencia.id!)}
+                      className={cn(
+                        'inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs transition-colors',
+                        ativo ? 'border-transparent bg-gradient-primary text-white shadow-sm [&_.text-destructive]:text-white' : 'border-[#DCE6F2] bg-background text-foreground hover:border-[#9CC7EC]',
+                      )}
+                    >
+                      {conteudo}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
             {/* Pill status filters */}
             <div className="flex flex-wrap gap-1.5">
               {[
@@ -848,7 +905,7 @@ export default function Laboratorio() {
                   key={value}
                   type="button"
                   aria-pressed={statusFilter === value && !urgentOnly}
-                  onClick={() => { setUrgentOnly(false); setStatusFilter(value); }}
+                  onClick={() => atualizarFiltros({ urgente: false, status: value })}
                   className={cn(
                     'h-8 rounded-full border px-3 text-xs transition-colors',
                     statusFilter === value && !urgentOnly
@@ -875,7 +932,7 @@ export default function Laboratorio() {
               {(search.trim() || statusFilter !== 'todos' || setorFilter !== 'todos' || dateFilter !== 'hoje' || urgentOnly) && (
                 <button
                   type="button"
-                  onClick={() => { setSearch(''); setStatusFilter('todos'); setSetorFilter('todos'); setDateFilter('hoje'); setUrgentOnly(false); }}
+                  onClick={limparFiltrosWorklist}
                   className="h-8 rounded-full border border-border px-3 text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
                 >
                   <XCircle className="h-3 w-3" /> Limpar filtros
@@ -932,7 +989,7 @@ export default function Laboratorio() {
                       <Button
                         variant="outline"
                         className="rounded-full gap-2"
-                        onClick={() => { setSearch(''); setStatusFilter('todos'); setSetorFilter('todos'); setDateFilter('hoje'); setUrgentOnly(false); }}
+                        onClick={limparFiltrosWorklist}
                       >
                         Limpar filtros
                       </Button>
