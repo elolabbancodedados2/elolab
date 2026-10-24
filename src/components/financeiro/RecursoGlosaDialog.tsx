@@ -117,8 +117,8 @@ export function RecursoGlosaDialog({ glosa, clinicaId, responsaveis, documentos,
         <p className="text-xs text-muted-foreground">O recurso só pode ser marcado como enviado com justificativa, prazo e responsável registrados.</p>
       </fieldset>
       <DialogFooter>
-        <Button variant="outline" onClick={onClose} disabled={salvando}>Cancelar</Button>
-        <Button onClick={() => void salvar()} disabled={salvando || justificativa.trim().length < 10 || !prazo || !responsavel}>{salvando ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}Salvar recurso</Button>
+        <Button variant="outline" className="rounded-full" onClick={onClose} disabled={salvando}>Cancelar</Button>
+        <Button className="rounded-full bg-gradient-primary text-white hover:brightness-110" onClick={() => void salvar()} disabled={salvando || justificativa.trim().length < 10 || !prazo || !responsavel}>{salvando ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}Salvar recurso</Button>
       </DialogFooter>
     </DialogContent>
   </Dialog>;
