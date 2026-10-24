@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it } from 'vitest';
 import { applyUIPreferences, resolveStartPage } from '@/lib/uiPreferences';
 
@@ -29,6 +30,14 @@ describe('personal UI accessibility preferences', () => {
   it('applies the selected short date format to shared date formatters', () => {
     applyUIPreferences({ date_format: 'YYYY-MM-DD' });
     expect(document.documentElement).toHaveAttribute('data-date-format', 'YYYY-MM-DD');
+  });
+
+  it('compact density also tightens table rows on wider screens without touching mobile cards', () => {
+    const css = readFileSync('src/index.css', 'utf8');
+    const bloco = css.match(/@media \(min-width: 640px\) \{\s*html\[data-density='compact'\] main :is\(td, th\) \{[^}]*\}/)?.[0];
+    expect(bloco).toMatch(/padding-top: 0\.375rem/);
+    expect(bloco).toMatch(/padding-bottom: 0\.375rem/);
+    expect(bloco).not.toMatch(/height|min-height/);
   });
 
   it('falls back to the dashboard when a saved start page is outside the role permissions', () => {

@@ -20,6 +20,7 @@ import { toast } from 'sonner';
 import { ErrorState } from '@/components/ErrorState';
 import { isValidDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { PageHeader } from '@/components/PageHeader';
+import { FieldHelp } from '@/components/ContextualHelp';
 import { Link } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { RelatorioFaturamentoCompetencia } from '@/components/financeiro/RelatorioFaturamentoCompetencia';
@@ -474,7 +475,7 @@ export default function FaturamentoConvenios() {
     <Tabs defaultValue="lotes"><TabsList className="h-auto flex-wrap rounded-full border border-[#DCE6F2] bg-[#EEF4FA] p-1 [&>button]:rounded-full"><TabsTrigger value="lotes">Lotes ({lotes.length})</TabsTrigger><TabsTrigger value="glosas">Glosas ({glosas.length})</TabsTrigger><TabsTrigger value="conciliacao">Conciliação</TabsTrigger><TabsTrigger value="relatorio">Por competência</TabsTrigger></TabsList>
       <TabsContent value="lotes">
         <Card className="rounded-2xl border-border/60 shadow-xs">
-          <CardHeader><CardTitle className="flex items-center gap-2 text-base font-semibold"><span className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-white"><FileStack className="h-4 w-4" /></span>Lotes registrados</CardTitle></CardHeader>
+          <CardHeader><CardTitle className="flex items-center gap-2 text-base font-semibold"><span className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-white"><FileStack className="h-4 w-4" /></span>Lotes registrados<FieldHelp term="lote_tiss" /></CardTitle></CardHeader>
           <CardContent className="space-y-3">
             <div className="flex flex-col gap-2 sm:flex-row">
               <div className="relative w-full sm:max-w-sm"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input aria-label="Buscar lote por número, convênio ou competência" placeholder="Buscar número, convênio ou competência..." value={buscaLote} onChange={event => setBuscaLote(event.target.value)} className="h-10 rounded-full pl-9 focus-visible:ring-[#1080CA]" /></div>
@@ -488,7 +489,7 @@ export default function FaturamentoConvenios() {
               <p className="ml-auto text-xs tabular-nums text-muted-foreground">Mostrando {lotesFiltrados.length} de {lotes.length} lotes.</p>
             </div>}
             {isLoading ? <p>Carregando…</p> : lotesFiltrados.length === 0 ? <div className="flex flex-col items-center gap-2 py-8 text-center"><span className="mb-1 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md"><FileStack className="h-7 w-7" /></span><p className="text-sm text-muted-foreground">{lotes.length === 0 ? 'Nenhum lote cadastrado. Crie um lote depois de fechar as guias da competência.' : 'Nenhum lote corresponde à busca e aos filtros.'}</p>{lotes.length > 0 && <Button size="sm" variant="outline" className="rounded-full" onClick={() => { setBuscaLote(''); setStatusLote('todos'); }}>Limpar filtros</Button>}</div> : <div className="overflow-hidden rounded-xl border border-border/60"><div className="overflow-x-auto"><Table>
-            <TableHeader><TableRow><TableHead>Lote</TableHead><TableHead>Convênio</TableHead><TableHead>Competência</TableHead><TableHead className="text-right">Apresentado / recebido</TableHead><TableHead>Status</TableHead><TableHead>Ações</TableHead></TableRow></TableHeader>
+            <TableHeader><TableRow><TableHead>Lote</TableHead><TableHead>Convênio</TableHead><TableHead><span className="inline-flex items-center gap-1">Competência<FieldHelp term="competencia" /></span></TableHead><TableHead className="text-right">Apresentado / recebido</TableHead><TableHead>Status</TableHead><TableHead>Ações</TableHead></TableRow></TableHeader>
             <TableBody>{lotesFiltrados.map((l: any) => <TableRow key={l.id}>
               <TableCell className="font-medium">{l.numero_lote}<p className="text-[10px] text-muted-foreground">TISS {l.versao_tiss} · {l.quantidade_guias} guias</p></TableCell>
               <TableCell>{l.convenios?.nome}</TableCell>
@@ -509,7 +510,7 @@ export default function FaturamentoConvenios() {
           </CardContent>
         </Card>
       </TabsContent>
-      <TabsContent value="glosas"><Card className="rounded-2xl border-border/60 shadow-xs"><CardHeader><CardTitle className="flex items-center gap-2 text-base font-semibold"><span className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-white"><AlertTriangle className="h-4 w-4" /></span>Tratamento de glosas</CardTitle></CardHeader><CardContent className="space-y-3">
+      <TabsContent value="glosas"><Card className="rounded-2xl border-border/60 shadow-xs"><CardHeader><CardTitle className="flex items-center gap-2 text-base font-semibold"><span className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-white"><AlertTriangle className="h-4 w-4" /></span>Tratamento de glosas<FieldHelp term="glosa" /></CardTitle></CardHeader><CardContent className="space-y-3">
         <div className="flex flex-col gap-2 sm:flex-row"><div className="relative w-full sm:max-w-sm"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input aria-label="Buscar glosa por código, guia, motivo, lote ou convênio" placeholder="Buscar código, guia, motivo, lote ou convênio..." value={buscaGlosa} onChange={event => setBuscaGlosa(event.target.value)} className="h-10 rounded-full pl-9 focus-visible:ring-[#1080CA]" /></div><Select value={statusGlosa} onValueChange={setStatusGlosa}><SelectTrigger aria-label="Filtrar glosas por status" className="h-10 rounded-full sm:w-52"><SelectValue placeholder="Todos os status" /></SelectTrigger><SelectContent><SelectItem value="todos">Todos os status</SelectItem><SelectItem value="pendente">Pendente</SelectItem><SelectItem value="recurso_preparacao">Preparando recurso</SelectItem><SelectItem value="recurso_enviado">Recurso enviado</SelectItem><SelectItem value="aceita">Aceita</SelectItem><SelectItem value="mantida">Mantida</SelectItem><SelectItem value="cancelada">Cancelada</SelectItem></SelectContent></Select></div>
         {glosas.length > 0 && <div className="flex flex-wrap items-center gap-2">
           {PILULAS_GLOSA.map(p => <button key={p.value} type="button" aria-pressed={statusGlosa === p.value} onClick={() => setStatusGlosa(p.value)} className={pilulaClasse(statusGlosa === p.value)}>{p.label} <span className="tabular-nums opacity-80">{contarGlosas(p.value)}</span></button>)}

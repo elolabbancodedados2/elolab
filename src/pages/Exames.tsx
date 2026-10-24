@@ -24,6 +24,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ErrorState } from '@/components/ErrorState';
 import { PageHeader } from '@/components/PageHeader';
+import { FieldHelp } from '@/components/ContextualHelp';
+import { gravarFiltrosExames, lerFiltrosExames, type FiltrosExames } from '@/lib/examesFiltros';
 import { Separator } from '@/components/ui/separator';
 import { LoadingButton } from '@/components/ui/loading-button';
 import { toast } from 'sonner';
@@ -350,9 +352,14 @@ export default function Exames() {
   const [searchParams, setSearchParams] = useSearchParams();
   const pacienteFiltroId = searchParams.get('paciente');
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string>('todos');
-  const [tipoFilter, setTipoFilter] = useState<string>('todos');
-  const [indicador, setIndicador] = useState<IndicadorExame>('todos');
+  const filtrosUrl = lerFiltrosExames(searchParams);
+  const statusFilter = filtrosUrl.status;
+  const tipoFilter = filtrosUrl.tipo;
+  const indicador = filtrosUrl.indicador as IndicadorExame;
+  const atualizarFiltros = (filtros: Partial<FiltrosExames>) => setSearchParams(gravarFiltrosExames(searchParams, filtros), { replace: true });
+  const setStatusFilter = (status: string) => atualizarFiltros({ status });
+  const setTipoFilter = (tipo: string) => atualizarFiltros({ tipo });
+  const setIndicador = (valor: IndicadorExame) => atualizarFiltros({ indicador: valor });
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isViewOpen, setIsViewOpen] = useState(false);
   const [isManageTypesOpen, setIsManageTypesOpen] = useState(false);
@@ -552,9 +559,7 @@ export default function Exames() {
   const temFiltroExames = searchTerm.trim() !== '' || statusFilter !== 'todos' || tipoFilter !== 'todos' || indicador !== 'todos';
   const limparFiltrosExames = () => {
     setSearchTerm('');
-    setStatusFilter('todos');
-    setTipoFilter('todos');
-    setIndicador('todos');
+    atualizarFiltros({ status: 'todos', tipo: 'todos', indicador: 'todos' });
   };
 
   const contagens = useMemo(() => ({
@@ -1270,6 +1275,7 @@ export default function Exames() {
             </Button>
           )}
         </div>
+        <div className="flex items-center gap-1">
         <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger className="h-10 w-full rounded-full sm:w-44" aria-label="Filtrar exames por status"><SelectValue placeholder="Filtrar" /></SelectTrigger>
           <SelectContent>
@@ -1277,6 +1283,8 @@ export default function Exames() {
             {Object.entries(STATUS_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
           </SelectContent>
         </Select>
+        <FieldHelp term="status_exame" />
+        </div>
         {tiposDisponiveis.length > 0 && (
           <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Filtrar exames por tipo">
             {(['todos', ...tiposDisponiveis]).map(tipo => {

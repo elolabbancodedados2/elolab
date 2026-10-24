@@ -5,7 +5,35 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
-import { getContextualHelp, getVisibleHelpLinks } from '@/lib/contextualHelp';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { getContextualHelp, getVisibleHelpLinks, HELP_TERMS, type HelpTermKey } from '@/lib/contextualHelp';
+
+/** Explicação curta de um termo, ao lado do rótulo ou título a que se refere. */
+export function FieldHelp({ term }: { term: HelpTermKey }) {
+  const entry: { title: string; summary: string; items?: string[] } = HELP_TERMS[term];
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          aria-label={`O que é ${entry.title}?`}
+          className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full align-middle text-muted-foreground transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <CircleHelp className="h-4 w-4" aria-hidden="true" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-72 text-sm font-normal normal-case tracking-normal">
+        <p className="font-semibold text-foreground">{entry.title}</p>
+        <p className="mt-1 leading-6 text-muted-foreground">{entry.summary}</p>
+        {entry.items && (
+          <ul className="mt-2 space-y-1 text-muted-foreground">
+            {entry.items.map(item => <li key={item}>{item}</li>)}
+          </ul>
+        )}
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 export function ContextualHelp() {
   const { pathname } = useLocation();

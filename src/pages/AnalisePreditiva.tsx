@@ -21,6 +21,7 @@ import { parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { toast } from 'sonner';
 import { ErrorState } from '@/components/ErrorState';
 import { ActionableEmptyState } from '@/components/ActionableEmptyState';
+import { FieldHelp } from '@/components/ContextualHelp';
 import { PageHeader } from '@/components/PageHeader';
 import { useNavigate } from 'react-router-dom';
 import { linkWhatsApp } from '@/lib/whatsapp';
@@ -382,7 +383,7 @@ export default function AnalisePreditiva() {
         <CardHeader className="pb-3">
           <div className="flex flex-col gap-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <CardTitle className="text-base">Agendamentos por risco</CardTitle>
+              <CardTitle className="flex items-center gap-1 text-base">Agendamentos por risco<FieldHelp term="risco_falta" /></CardTitle>
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-xs tabular-nums text-muted-foreground">{predicoesFiltradas.length} de {predicoes.length}</span>
                 <Select value={filtroRisco} onValueChange={setFiltroRisco}>

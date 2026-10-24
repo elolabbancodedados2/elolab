@@ -1682,14 +1682,14 @@ isOneToOne: false
                   ]
                 },"laboratorio_setores": {
                   Row: {
-                    "ativo": boolean,"clinica_id": string,"created_at": string,"descricao": string | null,"id": string,"nome": string,"updated_at": string
+                    "ativo": boolean,"clinica_id": string,"created_at": string,"descricao": string | null,"id": string,"nome": string,"sla_alerta_horas": number | null,"updated_at": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "ativo"?: boolean,"clinica_id": string,"created_at"?: string,"descricao"?: string | null,"id"?: string,"nome": string,"updated_at"?: string
+                    "ativo"?: boolean,"clinica_id": string,"created_at"?: string,"descricao"?: string | null,"id"?: string,"nome": string,"sla_alerta_horas"?: number | null,"updated_at"?: string
                   }
                   Update: {
-                    "ativo"?: boolean,"clinica_id"?: string,"created_at"?: string,"descricao"?: string | null,"id"?: string,"nome"?: string,"updated_at"?: string
+                    "ativo"?: boolean,"clinica_id"?: string,"created_at"?: string,"descricao"?: string | null,"id"?: string,"nome"?: string,"sla_alerta_horas"?: number | null,"updated_at"?: string
                   }
                   Relationships: [
                     {
@@ -4789,6 +4789,11 @@ isOneToOne: false
                            },
 "laboratorio_registrar_evento_amostra":
 { Args: { "p_coleta_id": string,"p_detalhes"?: Json,"p_local"?: string,"p_tipo": string }; Returns: string
+                           },
+"laboratorio_sla_etapas":
+{ Args: { "p_inicio": string }; Returns: {
+              "amostras": number,"coleta_recebimento_h": number | null,"em_atraso": number,"espera_coleta_h": number | null,"processamento_liberacao_h": number | null,"recebimento_processamento_h": number | null,"setor_id": string | null,"setor_nome": string,"sla_horas": number,"total_h": number | null
+            }[]
                            },
 "lancar_item_no_atendimento":
 { Args: { "p_agendamento_id": string,"p_categoria"?: string,"p_descricao": string,"p_prontuario_id"?: string,"p_quantidade"?: number,"p_valor_unitario": number }; Returns: Json
