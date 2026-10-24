@@ -3338,6 +3338,20 @@ isOneToOne: false
                   Relationships: [
                     
                   ]
+                },"repasse_regra_alteracoes": {
+                  Row: {
+                    "alterado_em": string,"alterado_por": string,"clinica_id": string,"id": string,"medico_id": string,"tipo_anterior": string,"tipo_novo": string,"valor_anterior": number,"valor_novo": number
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "alterado_em"?: string,"alterado_por": string,"clinica_id": string,"id"?: string,"medico_id": string,"tipo_anterior": string,"tipo_novo": string,"valor_anterior": number,"valor_novo": number
+                  }
+                  Update: {
+                    "alterado_em"?: string,"alterado_por"?: string,"clinica_id"?: string,"id"?: string,"medico_id"?: string,"tipo_anterior"?: string,"tipo_novo"?: string,"valor_anterior"?: number,"valor_novo"?: number
+                  }
+                  Relationships: [
+                    
+                  ]
                 },"repasses_medicos": {
                   Row: {
                     "aprovado_em": string | null,"clinica_id": string,"competencia": string,"created_at": string,"criado_por": string | null,"id": string,"lancamento_id": string,"lancamento_pagamento_id": string | null,"medico_id": string,"observacoes": string | null,"pago_em": string | null,"percentual": number,"status": string,"tipo_calculo": string,"updated_at": string,"valor_base": number,"valor_configurado": number | null,"valor_repasse": number
@@ -5030,8 +5044,12 @@ isOneToOne: false
 "registrar_documento_recurso_glosa":
 { Args: { "p_byte_size": number,"p_content_type": string,"p_file_name": string,"p_glosa_id": string,"p_storage_path": string }; Returns: Json
                            },
-"listar_responsaveis_financeiro":
-{ Args: Record<PropertyKey, never>; Returns: {
+"historico_regras_repasse":
+{ Args: { "p_limite"?: number }; Returns: {
+              "alterado_em": string,"alterado_por_nome": string | null,"id": string,"medico_id": string,"tipo_anterior": string,"tipo_novo": string,"valor_anterior": number,"valor_novo": number
+            }[]
+                           },
+"listar_responsaveis_financeiro":{ Args: Record<PropertyKey, never>; Returns: {
               "id": string,"nome": string | null
             }[]
                            },"pendencias_lote_tiss":
