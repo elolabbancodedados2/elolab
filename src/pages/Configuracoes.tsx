@@ -39,6 +39,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ErrorState } from '@/components/ErrorState';
+import { CancelamentoPlanoResumo } from '@/components/CancelamentoPlanoResumo';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useUserPlan, usePlanos } from '@/hooks/useSubscriptionPlan';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
@@ -1027,8 +1028,8 @@ export default function Configuracoes() {
               <DialogContent>
                 <DialogHeader>
                   <DialogTitle>{isTrial ? 'Cancelar teste grátis?' : 'Cancelar assinatura?'}</DialogTitle>
-                  <DialogDescription>
-                    O Mercado Pago cancelará a cobrança recorrente agora. Ao confirmar, o acesso ao plano será encerrado e nenhuma cobrança futura será feita.
+                  <DialogDescription asChild>
+                    <div><CancelamentoPlanoResumo isTrial={isTrial} trialEnd={trialEnd} /></div>
                   </DialogDescription>
                 </DialogHeader>
                 <DialogFooter>
