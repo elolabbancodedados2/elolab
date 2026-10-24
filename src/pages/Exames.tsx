@@ -43,7 +43,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { Database } from '@/integrations/supabase/types';
 import { autoCreateColeta, autoProgressExame, autoVincularResultadoProntuario } from '@/lib/workflowAutomation';
-import { podeExcluirExame, proximaAcaoExame } from '@/lib/examesWorkflow';
+import { podeExcluirExame, preparosAusentesNaGuia, proximaAcaoExame, textoPreparosParaGuia } from '@/lib/examesWorkflow';
 import { GerenciadorLaboratorios } from '@/components/GerenciadorLaboratorios';
 import { LancarResultado } from '@/components/exames/LancarResultado';
 import { parseDateOnly } from '@/lib/dateOnly';
@@ -412,6 +412,26 @@ export default function Exames() {
     enabled: !!profile?.clinica_id && isDialogOpen,
   });
   const laboratorios = laboratoriosQuery.data ?? [];
+
+  // Preparo configurado no catálogo do laboratório. Consulta auxiliar: se falhar, a guia segue sem o aviso.
+  const preparosCatalogoQuery = useQuery({
+    queryKey: ['tipo_exames_catalog_preparo', profile?.clinica_id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('tipo_exames_catalog')
+        .select('nome, preparo')
+        .eq('clinica_id', profile!.clinica_id!)
+        .not('preparo', 'is', null);
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: !!profile?.clinica_id && isDialogOpen,
+  });
+  const preparosAusentes = preparosAusentesNaGuia(
+    examesSelecionados,
+    preparosCatalogoQuery.data ?? [],
+    [formData.jejum && formData.jejum !== 'nao' ? `Jejum: ${formData.jejum}` : '', formData.observacoes].join('\n'),
+  );
 
   // Merge catalog with custom types
   const allExames = useMemo(() => {
@@ -1568,6 +1588,29 @@ export default function Exames() {
                 </Select>
               </div>
             </div>
+
+            {preparosAusentes.length > 0 && (
+              <div role="alert" className="space-y-2 rounded-lg border border-warning/30 bg-warning/5 p-4">
+                <p className="flex items-center gap-1 text-xs font-semibold text-warning-foreground">
+                  <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" />A guia não traz o preparo configurado para {preparosAusentes.length === 1 ? 'este exame' : 'estes exames'}
+                </p>
+                <ul className="list-disc space-y-0.5 pl-5 text-xs text-foreground">
+                  {preparosAusentes.map(item => <li key={item.exame}><span className="font-medium">{item.exame}:</span> {item.preparo}</li>)}
+                </ul>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-8 rounded-full text-xs"
+                  onClick={() => setFormData(atual => ({
+                    ...atual,
+                    observacoes: [atual.observacoes.trim(), textoPreparosParaGuia(preparosAusentes)].filter(Boolean).join('\n'),
+                  }))}
+                >
+                  Incluir preparo na guia
+                </Button>
+              </div>
+            )}
 
             {/* Urgency justification */}
             {(formData.urgencia === 'urgente' || formData.urgencia === 'emergencia') && (
