@@ -69,6 +69,7 @@ function scriptedSupabase(options: {
   const calls: Array<{ table: string; operation: string; filters: Record<string, unknown>; values?: unknown }> = [];
   return {
     calls,
+    rpc: async () => ({ data: null, error: null }),
     from(table: string) {
       let operation = 'select';
       const filters: Record<string, unknown> = {};
@@ -249,6 +250,68 @@ Deno.test('ambiguous gateway communication failure keeps the trial reservation',
   if (response.status !== 503) throw new Error(`Expected HTTP 503 for an ambiguous gateway failure, got ${response.status}.`);
   if (supabase.calls.some((call) => call.table === 'platform_plan_trial_claims' && call.operation === 'delete')) {
     throw new Error('An ambiguous gateway result must retain the reservation to prevent a duplicate trial.');
+  }
+});
+
+const buyer = { id: 'synthetic-user', email: 'qa@example.test', user_metadata: { checkout_flow: 'saas_subscription', checkout_plan_slug: 'elolab-max' } };
+const interruptedAttempt = {
+  id: 'interrupted-row',
+  mp_preapproval_id: null,
+  status: 'pendente',
+  detalhes: { checkout_reference: 'ref-interrupted', plano_slug: 'elolab-max', plano_id: 'plan', user_id: 'synthetic-user', erro_checkout: 'falha_comunicacao', trial_end: null },
+};
+
+Deno.test('interrupted card checkout resumes the subscription the gateway already created', async () => {
+  const supabase = scriptedSupabase({ pendingGateway: interruptedAttempt });
+  let created = false;
+  let searchedEmail = '';
+  const response = await createCardSubscription(
+    { plano_slug: 'elolab-max', card_token_id: 'synthetic-card-token-456' },
+    { supabase, user: buyer, mpToken: '', headers: {} },
+    async () => { created = true; return { id: 'second-subscription', status: 'authorized' }; },
+    async (email) => { searchedEmail = email; return [{ id: 'mp-existing', external_reference: 'ref-interrupted', status: 'authorized' }]; },
+  );
+  const body = await response.json() as Record<string, unknown>;
+  if (response.status !== 200 || body.status !== 'aprovado' || body.retomado !== true) {
+    throw new Error(`Expected the interrupted attempt to be resumed, got ${response.status} ${JSON.stringify(body)}.`);
+  }
+  if (created) throw new Error('Resuming must not create a second subscription in the gateway.');
+  if (searchedEmail !== 'qa@example.test') throw new Error('The gateway search must use the payer e-mail of the account.');
+  const adopt = supabase.calls.find((call) => call.table === 'assinaturas_mercadopago' && call.operation === 'update' && call.filters.id === 'interrupted-row');
+  if ((adopt?.values as Record<string, unknown> | undefined)?.mp_preapproval_id !== 'mp-existing') {
+    throw new Error('The local attempt must be linked to the subscription found by its idempotent reference.');
+  }
+});
+
+Deno.test('interrupted card checkout is not retried while the gateway cannot be consulted', async () => {
+  let created = false;
+  const response = await createCardSubscription(
+    { plano_slug: 'elolab-max', card_token_id: 'synthetic-card-token-456' },
+    { supabase: scriptedSupabase({ pendingGateway: interruptedAttempt }), user: buyer, mpToken: '', headers: {} },
+    async () => { created = true; return { id: 'second-subscription', status: 'authorized' }; },
+    async () => { throw new MercadoPagoApiError('synthetic timeout', null, null, true); },
+  );
+  if (response.status !== 503 || created) {
+    throw new Error(`Expected HTTP 503 without a new subscription, got ${response.status} created=${created}.`);
+  }
+});
+
+Deno.test('card checkout sends its checkout reference as idempotency key and external reference', async () => {
+  let payloadReference = '';
+  let idempotencyKey = '';
+  const supabase = scriptedSupabase({});
+  await createCardSubscription(
+    { plano_slug: 'elolab-max', card_token_id: 'synthetic-card-token-456' },
+    { supabase, user: buyer, mpToken: '', headers: {} },
+    async (payload, _deviceId, key) => {
+      payloadReference = String(payload.external_reference);
+      idempotencyKey = String(key);
+      return { id: 'new-subscription', status: 'pending' };
+    },
+    async () => [],
+  );
+  if (!payloadReference || payloadReference !== idempotencyKey) {
+    throw new Error('The preapproval POST must reuse the stored checkout reference as idempotency key.');
   }
 });
 
