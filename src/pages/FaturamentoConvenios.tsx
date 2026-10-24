@@ -22,6 +22,12 @@ import { isValidDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { PageHeader } from '@/components/PageHeader';
 import { Link } from 'react-router-dom';
 import { cn } from '@/lib/utils';
+import { RelatorioFaturamentoCompetencia } from '@/components/financeiro/RelatorioFaturamentoCompetencia';
+import { ConciliacaoConvenioPorLote } from '@/components/financeiro/ConciliacaoConvenioPorLote';
+import { GuiasLoteDialog } from '@/components/financeiro/GuiasLoteDialog';
+import { RecursoGlosaDialog, ResumoRecurso, type DocumentoRecurso } from '@/components/financeiro/RecursoGlosaDialog';
+import { bloqueiaEnvio, validarLoteTiss, type AutorizacaoValidacao, type GuiaLote } from '@/lib/tissLoteValidacao';
+import { buscarDadosBasicosPacientes } from '@/lib/patientBasicData';
 
 const brl = (value: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value || 0);
 const temNoMaximoDuasCasas = (value: number) => Number.isFinite(value)
@@ -56,6 +62,7 @@ const pilulaClasse = (ativo: boolean) => cn(
   ativo ? 'border-transparent bg-gradient-primary text-white shadow-sm' : 'border-[#DCE6F2] bg-card text-muted-foreground hover:border-[#9CC7EC] hover:text-foreground',
 );
 
+const escapeXml = (v: unknown) => String(v ?? '').replace(/[<>&'"]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', "'": '&apos;', '"': '&quot;' }[c]!));
 const novoLoteForm = () => ({ convenio_id: '', competencia: todaySaoPauloDateOnly().slice(0, 7) + '-01', numero_lote: '', quantidade_guias: 0, valor_apresentado: 0 });
 
 export default function FaturamentoConvenios() {
@@ -64,7 +71,6 @@ export default function FaturamentoConvenios() {
   const [lotOpen, setLotOpen] = useState(false);
   const [glosaOpen, setGlosaOpen] = useState(false);
   const [glosaParaRecurso, setGlosaParaRecurso] = useState<any | null>(null);
-  const [justificativaRecurso, setJustificativaRecurso] = useState('');
   const [glosaParaRetorno, setGlosaParaRetorno] = useState<any | null>(null);
   const [loteParaRetorno, setLoteParaRetorno] = useState<any | null>(null);
   const [decisaoOperadora, setDecisaoOperadora] = useState<'aceita' | 'mantida'>('aceita');
@@ -97,6 +103,7 @@ export default function FaturamentoConvenios() {
       .eq('clinica_id', profile?.clinica_id ?? '').order('competencia', { ascending: false }).order('id', { ascending: true }));
   }});
   const lotes = lotesQuery.data ?? [];
+  const lotesComNomeConvenio = useMemo(() => lotes.map((l: any) => ({ ...l, convenio_nome: l.convenios?.nome ?? 'Convênio sem nome' })), [lotes]);
   const lotesComDivergenciaFinanceira = lotes.filter((lote: any) =>
     Number(lote.valor_pago || 0) !== Number(lote.valor_conciliado_financeiro || 0),
   );
@@ -106,6 +113,45 @@ export default function FaturamentoConvenios() {
       .eq('clinica_id', profile?.clinica_id ?? '').order('created_at', { ascending: false }).order('id', { ascending: true }));
   }});
   const glosas = glosasQuery.data ?? [];
+  const guiasQuery = useQuery({ queryKey: ['lote-tiss-guias', profile?.clinica_id ?? null], enabled: !!profile?.clinica_id, queryFn: async () => {
+    return buscarEmBlocos<GuiaLote & { lote_id: string }>(() => supabase.from('lote_tiss_guias').select('*')
+      .eq('clinica_id', profile?.clinica_id ?? '').order('created_at', { ascending: true }).order('id', { ascending: true }));
+  }});
+  const autorizacoesQuery = useQuery({ queryKey: ['autorizacoes-faturamento', profile?.clinica_id ?? null], enabled: !!profile?.clinica_id, queryFn: async () => {
+    const autorizacoes = await buscarEmBlocos<AutorizacaoValidacao>(() => supabase.from('autorizacoes_convenio')
+      .select('id,status,convenio_id,paciente_id,tipo_servico,data_expiracao,numero_autorizacao')
+      .eq('clinica_id', profile?.clinica_id ?? '').order('data_solicitacao', { ascending: false }).order('id', { ascending: true }));
+    const pacientes = await buscarDadosBasicosPacientes([...new Set(autorizacoes.map(a => a.paciente_id))]);
+    return autorizacoes.map(a => ({ ...a, paciente_nome: pacientes.get(a.paciente_id)?.nome ?? null }));
+  }});
+  const responsaveisQuery = useQuery({ queryKey: ['responsaveis-financeiro', profile?.clinica_id ?? null], enabled: !!profile?.clinica_id, queryFn: async () => {
+    const { data, error } = await supabase.rpc('listar_responsaveis_financeiro');
+    if (error) throw error; return data ?? [];
+  }});
+  const documentosQuery = useQuery({ queryKey: ['glosa-recurso-documentos', profile?.clinica_id ?? null], enabled: !!profile?.clinica_id, queryFn: async () => {
+    return buscarEmBlocos<DocumentoRecurso>(() => supabase.from('glosa_recurso_documentos').select('id,glosa_id,storage_path,file_name,created_at')
+      .eq('clinica_id', profile?.clinica_id ?? '').order('created_at', { ascending: true }).order('id', { ascending: true }));
+  }});
+  const documentosPorGlosa = useMemo(() => {
+    const mapa = new Map<string, DocumentoRecurso[]>();
+    for (const d of documentosQuery.data ?? []) mapa.set(d.glosa_id, [...(mapa.get(d.glosa_id) ?? []), d]);
+    return mapa;
+  }, [documentosQuery.data]);
+  const guiasPorLote = useMemo(() => {
+    const mapa = new Map<string, GuiaLote[]>();
+    for (const guia of guiasQuery.data ?? []) mapa.set(guia.lote_id, [...(mapa.get(guia.lote_id) ?? []), guia]);
+    return mapa;
+  }, [guiasQuery.data]);
+  const pendenciasPorLote = useMemo(() => {
+    const hoje = todaySaoPauloDateOnly();
+    return new Map(lotes.map((lote: any) => [lote.id, validarLoteTiss({
+      lote, registroAns: lote.convenios?.registro_ans ?? null, guias: guiasPorLote.get(lote.id) ?? [],
+      autorizacoes: autorizacoesQuery.data ?? [], hoje,
+    })]));
+  }, [lotes, guiasPorLote, autorizacoesQuery.data]);
+  // Lote antigo, sem guias, segue o fluxo agregado: o banco também só bloqueia lotes com guias.
+  const envioBloqueado = (loteId: string) => (guiasPorLote.get(loteId)?.length ?? 0) > 0 && bloqueiaEnvio(pendenciasPorLote.get(loteId) ?? []);
+  const [loteGuias, setLoteGuias] = useState<any | null>(null);
   const loteGlosaSelecionado = lotes.find((lote: any) => lote.id === glosaForm.lote_id);
   const totalGlosadoNoLote = glosas
     .filter((glosa: any) => glosa.lote_id === glosaForm.lote_id && glosa.status !== 'cancelada')
@@ -115,7 +161,7 @@ export default function FaturamentoConvenios() {
     : null;
   const consultasAtingiramLimite = lotes.length >= LIMITE_BUSCA_EM_BLOCOS
     || glosas.length >= LIMITE_BUSCA_EM_BLOCOS;
-  const isLoading = conveniosQuery.isLoading || lotesQuery.isLoading || glosasQuery.isLoading;
+  const isLoading = conveniosQuery.isLoading || lotesQuery.isLoading || glosasQuery.isLoading || guiasQuery.isLoading || autorizacoesQuery.isLoading;
 
   const resumo = useMemo(() => ({
     apresentado: lotes.filter((l: any) => ['enviado', 'processando', 'pago_parcial', 'pago', 'rejeitado'].includes(l.status))
@@ -351,13 +397,6 @@ export default function FaturamentoConvenios() {
     return false;
   }
 
-  async function salvarJustificativaRecurso() {
-    if (!glosaParaRecurso) return;
-    const justificativa = justificativaRecurso.trim();
-    if (justificativa.length < 10) return toast.error('Descreva a justificativa do recurso (mínimo de 10 caracteres).');
-    const salvo = await updateGlosa(glosaParaRecurso.id, 'recurso_preparacao', { recurso_justificativa: justificativa });
-    if (salvo) { setGlosaParaRecurso(null); setJustificativaRecurso(''); }
-  }
 
   async function salvarRetornoOperadora() {
     if (!glosaParaRetorno) return;
@@ -374,8 +413,14 @@ export default function FaturamentoConvenios() {
   }
 
   function exportLot(lote: any) {
+    if (envioBloqueado(lote.id)) {
+      toast.error('Corrija as pendências do lote antes de exportar.', { description: 'Cada guia e campo a corrigir está listado na conferência de guias.' });
+      setLoteGuias(lote);
+      return;
+    }
+    const guiasXml = (guiasPorLote.get(lote.id) ?? []).map(g => `<guia><numero>${escapeXml(g.numero_guia)}</numero><carteira>${escapeXml(g.numero_carteira)}</carteira><dataAtendimento>${escapeXml(g.data_atendimento)}</dataAtendimento><procedimento>${escapeXml(g.codigo_procedimento)}</procedimento><quantidade>${g.quantidade}</quantidade><valor>${Number(g.valor_total).toFixed(2)}</valor></guia>`).join('');
     const escape = (v: unknown) => String(v ?? '').replace(/[<>&'\"]/g, c => ({ '<':'&lt;','>':'&gt;','&':'&amp;',"'":'&apos;','\"':'&quot;' }[c]!));
-    const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<!-- Resumo operacional EloLab; não é arquivo TISS de transmissão. -->\n<loteOperacional versaoTISS="${escape(lote.versao_tiss)}"><numero>${escape(lote.numero_lote)}</numero><competencia>${escape(lote.competencia)}</competencia><registroANS>${escape(lote.convenios?.registro_ans)}</registroANS><quantidadeGuias>${lote.quantidade_guias}</quantidadeGuias><valorApresentado>${Number(lote.valor_apresentado).toFixed(2)}</valorApresentado></loteOperacional>`;
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<!-- Resumo operacional EloLab; não é arquivo TISS de transmissão. -->\n<loteOperacional versaoTISS="${escape(lote.versao_tiss)}"><numero>${escape(lote.numero_lote)}</numero><competencia>${escape(lote.competencia)}</competencia><registroANS>${escape(lote.convenios?.registro_ans)}</registroANS><quantidadeGuias>${lote.quantidade_guias}</quantidadeGuias><valorApresentado>${Number(lote.valor_apresentado).toFixed(2)}</valorApresentado>${guiasXml ? `<guias>${guiasXml}</guias>` : ''}</loteOperacional>`;
     const url = URL.createObjectURL(new Blob([xml], { type: 'application/xml' })); const a = document.createElement('a'); a.href = url; a.download = `resumo-operacional-lote-${lote.numero_lote}.xml`; a.click(); window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
@@ -392,6 +437,8 @@ export default function FaturamentoConvenios() {
 
   if (conveniosQuery.isError) return <ErrorState title="Não foi possível carregar os convênios" error={conveniosQuery.error} onRetry={() => void conveniosQuery.refetch()} />;
   if (lotesQuery.isError) return <ErrorState title="Não foi possível carregar os lotes TISS" error={lotesQuery.error} onRetry={() => void lotesQuery.refetch()} />;
+  if (guiasQuery.isError) return <ErrorState title="Não foi possível carregar as guias dos lotes" error={guiasQuery.error} onRetry={() => void guiasQuery.refetch()} />;
+  if (autorizacoesQuery.isError) return <ErrorState title="Não foi possível carregar as autorizações de convênio" error={autorizacoesQuery.error} onRetry={() => void autorizacoesQuery.refetch()} />;
   if (glosasQuery.isError) return <ErrorState title="Não foi possível carregar as glosas" error={glosasQuery.error} onRetry={() => void glosasQuery.refetch()} />;
   if (isLoading) return <div className="rounded-2xl border border-border/60 bg-card p-6 text-sm text-muted-foreground shadow-xs">Carregando faturamento de convênios…</div>;
 
@@ -424,7 +471,7 @@ export default function FaturamentoConvenios() {
       const destaque = label === 'Apresentado';
       return <Card key={label} className={cn('h-full rounded-2xl shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md', destaque ? 'border-transparent bg-gradient-primary text-white' : 'border-border/60 bg-card')}><CardContent className="flex items-center gap-3 p-4"><span className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', destaque ? 'bg-white/20 text-white' : cor)}><Icon className="h-5 w-5" /></span><div className="min-w-0"><p className="truncate text-lg font-bold tabular-nums sm:text-2xl">{brl(value)}</p><p className={cn('text-[11px]', destaque ? 'text-white/80' : 'text-muted-foreground')}>{label} · {legenda}</p></div></CardContent></Card>;
     })}</div>
-    <Tabs defaultValue="lotes"><TabsList className="rounded-full border border-[#DCE6F2] bg-[#EEF4FA] p-1 [&>button]:rounded-full"><TabsTrigger value="lotes">Lotes ({lotes.length})</TabsTrigger><TabsTrigger value="glosas">Glosas ({glosas.length})</TabsTrigger></TabsList>
+    <Tabs defaultValue="lotes"><TabsList className="h-auto flex-wrap rounded-full border border-[#DCE6F2] bg-[#EEF4FA] p-1 [&>button]:rounded-full"><TabsTrigger value="lotes">Lotes ({lotes.length})</TabsTrigger><TabsTrigger value="glosas">Glosas ({glosas.length})</TabsTrigger><TabsTrigger value="conciliacao">Conciliação</TabsTrigger><TabsTrigger value="relatorio">Por competência</TabsTrigger></TabsList>
       <TabsContent value="lotes">
         <Card className="rounded-2xl border-border/60 shadow-xs">
           <CardHeader><CardTitle className="flex items-center gap-2 text-base font-semibold"><span className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-white"><FileStack className="h-4 w-4" /></span>Lotes registrados</CardTitle></CardHeader>
@@ -447,10 +494,14 @@ export default function FaturamentoConvenios() {
               <TableCell>{l.convenios?.nome}</TableCell>
               <TableCell>{format(new Date(`${l.competencia}T12:00:00`), 'MM/yyyy')}</TableCell>
               <TableCell className="text-right"><span>{brl(l.valor_apresentado)}</span><p className="text-xs text-muted-foreground">Recebido: {brl(l.valor_pago)}</p><p className="text-xs text-muted-foreground">No financeiro: {brl(l.valor_conciliado_financeiro || 0)}</p></TableCell>
-              <TableCell><Badge variant="outline" className={cn('whitespace-nowrap rounded-full', STATUS_LOTE_COR[l.status])}>{l.status.replaceAll('_', ' ')}</Badge></TableCell>
+              <TableCell><Badge variant="outline" className={cn('whitespace-nowrap rounded-full', STATUS_LOTE_COR[l.status])}>{l.status.replaceAll('_', ' ')}</Badge>{(() => {
+                const erros = (pendenciasPorLote.get(l.id) ?? []).filter(p => p.gravidade === 'erro').length;
+                return envioBloqueado(l.id) ? <p className="mt-1 text-xs font-medium text-destructive">{erros} pendência(s) a corrigir</p> : null;
+              })()}</TableCell>
               <TableCell><div className="flex flex-wrap gap-1">
+                <Button size="sm" variant="outline" className="h-9 rounded-full text-xs" onClick={() => setLoteGuias(l)} aria-label={`Conferir guias do lote ${l.numero_lote}`}>Guias ({guiasPorLote.get(l.id)?.length ?? 0})</Button>
                 <Button size="sm" variant="ghost" className="h-9 rounded-full text-xs" onClick={() => exportLot(l)} aria-label={`Baixar resumo XML do lote ${l.numero_lote}`} title="Baixar resumo operacional XML (não é arquivo TISS de transmissão)"><FileDown className="mr-1 h-4 w-4" />Baixar resumo XML</Button>
-                {l.status === 'rascunho' && <Button size="sm" className="h-9 rounded-full bg-[#1080CA] text-xs text-white hover:bg-[#1080CA] hover:brightness-110" disabled={loteEnviandoId !== null} onClick={() => setLoteParaConfirmarEnvio(l)}>{loteEnviandoId === l.id && <RefreshCw className="mr-1 h-3.5 w-3.5 animate-spin" />}Registrar envio</Button>}
+                {l.status === 'rascunho' && <Button size="sm" className="h-9 rounded-full bg-[#1080CA] text-xs text-white hover:bg-[#1080CA] hover:brightness-110" disabled={loteEnviandoId !== null || envioBloqueado(l.id)} title={envioBloqueado(l.id) ? 'Corrija as pendências das guias antes de registrar o envio' : undefined} onClick={() => setLoteParaConfirmarEnvio(l)}>{loteEnviandoId === l.id && <RefreshCw className="mr-1 h-3.5 w-3.5 animate-spin" />}Registrar envio</Button>}
                 {['enviado', 'processando', 'pago_parcial', 'pago'].includes(l.status) && <Button size="sm" variant="outline" className="h-9 rounded-full text-xs" onClick={() => abrirRetornoLote(l)}>{l.retorno_em ? 'Atualizar retorno' : 'Registrar retorno'}</Button>}
               </div></TableCell>
             </TableRow>)}</TableBody>
@@ -465,11 +516,25 @@ export default function FaturamentoConvenios() {
           {filtroGlosaAtivo && <Button size="sm" variant="outline" className="h-8 rounded-full" onClick={() => { setBuscaGlosa(''); setStatusGlosa('todos'); }}>Limpar filtros</Button>}
           <p className="ml-auto text-xs tabular-nums text-muted-foreground">Mostrando {glosasFiltradas.length} de {glosas.length} glosas.</p>
         </div>}
-        {glosasFiltradas.length > 0 ? <div className="overflow-hidden rounded-xl border border-border/60"><div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Código / motivo</TableHead><TableHead>Lote</TableHead><TableHead className="text-right">Glosado</TableHead><TableHead className="text-right">Recuperado</TableHead><TableHead>Status</TableHead><TableHead>Ação</TableHead></TableRow></TableHeader><TableBody>{glosasFiltradas.map((g: any) => <TableRow key={g.id}><TableCell><b>{g.codigo_glosa}</b>{g.guia_referencia && <p className="text-xs text-muted-foreground">Guia: {g.guia_referencia}</p>}<p className="max-w-sm text-xs text-muted-foreground">{g.motivo}</p>{g.recurso_justificativa && <p className="mt-1 max-w-sm text-xs text-muted-foreground">Recurso: {g.recurso_justificativa}</p>}</TableCell><TableCell>{g.lotes_tiss?.numero_lote}<p className="text-[10px]">{g.lotes_tiss?.convenios?.nome}</p></TableCell><TableCell className="text-right">{brl(g.valor_glosado)}</TableCell><TableCell className="text-right">{brl(g.valor_recuperado)}</TableCell><TableCell><Badge variant="outline" className={cn('whitespace-nowrap rounded-full', STATUS_GLOSA_COR[g.status])}>{g.status.replaceAll('_',' ')}</Badge></TableCell><TableCell className="space-x-1 space-y-1">{g.status === 'pendente' && <Button size="sm" variant="outline" className="h-9 rounded-full text-xs" disabled={glosaAtualizandoId !== null} onClick={() => { setGlosaParaRecurso(g); setJustificativaRecurso(g.recurso_justificativa || ''); }}>Preparar recurso</Button>}{g.status === 'recurso_preparacao' && <><Button size="sm" variant="outline" className="h-9 rounded-full text-xs" disabled={glosaAtualizandoId !== null} onClick={() => { setGlosaParaRecurso(g); setJustificativaRecurso(g.recurso_justificativa || ''); }}>Revisar justificativa</Button><Button size="sm" className="h-9 rounded-full bg-[#1080CA] text-xs text-white hover:bg-[#1080CA] hover:brightness-110" disabled={glosaAtualizandoId !== null || String(g.recurso_justificativa || '').trim().length < 10} onClick={() => void updateGlosa(g.id, 'recurso_enviado')}>Marcar enviado</Button></>}{g.status === 'recurso_enviado' && <Button size="sm" className="h-9 rounded-full bg-gradient-primary text-xs text-white hover:brightness-110" disabled={glosaAtualizandoId !== null} onClick={() => { setGlosaParaRetorno(g); setDecisaoOperadora('aceita'); setValorRecuperado(String(g.valor_glosado)); }}>Registrar retorno</Button>}</TableCell></TableRow>)}</TableBody></Table></div></div> : <div className="flex flex-col items-center gap-2 py-8 text-center"><span className="mb-1 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md"><ShieldCheck className="h-7 w-7" /></span><p className="text-sm text-muted-foreground">{glosas.length === 0 ? 'Nenhuma glosa registrada nesta clínica.' : 'Nenhuma glosa corresponde à busca e aos filtros.'}</p>{glosas.length > 0 && <Button size="sm" variant="outline" className="rounded-full" onClick={() => { setBuscaGlosa(''); setStatusGlosa('todos'); }}>Limpar filtros</Button>}</div>}
+        {glosasFiltradas.length > 0 ? <div className="overflow-hidden rounded-xl border border-border/60"><div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Código / motivo</TableHead><TableHead>Lote</TableHead><TableHead className="text-right">Glosado</TableHead><TableHead className="text-right">Recuperado</TableHead><TableHead>Status</TableHead><TableHead>Ação</TableHead></TableRow></TableHeader><TableBody>{glosasFiltradas.map((g: any) => <TableRow key={g.id}><TableCell><b>{g.codigo_glosa}</b>{g.guia_referencia && <p className="text-xs text-muted-foreground">Guia: {g.guia_referencia}</p>}<p className="max-w-sm text-xs text-muted-foreground">{g.motivo}</p>{g.recurso_justificativa && <p className="mt-1 max-w-sm text-xs text-muted-foreground">Recurso: {g.recurso_justificativa}</p>}<ResumoRecurso glosa={g} responsavel={responsaveisQuery.data?.find(r => r.id === g.recurso_responsavel_id)?.nome} documentos={documentosPorGlosa.get(g.id)?.length ?? 0} /></TableCell><TableCell>{g.lotes_tiss?.numero_lote}<p className="text-[10px]">{g.lotes_tiss?.convenios?.nome}</p></TableCell><TableCell className="text-right">{brl(g.valor_glosado)}</TableCell><TableCell className="text-right">{brl(g.valor_recuperado)}</TableCell><TableCell><Badge variant="outline" className={cn('whitespace-nowrap rounded-full', STATUS_GLOSA_COR[g.status])}>{g.status.replaceAll('_',' ')}</Badge></TableCell><TableCell className="space-x-1 space-y-1">{g.status === 'pendente' && <Button size="sm" variant="outline" className="h-9 rounded-full text-xs" disabled={glosaAtualizandoId !== null} onClick={() => setGlosaParaRecurso(g)}>Preparar recurso</Button>}{g.status === 'recurso_preparacao' && <><Button size="sm" variant="outline" className="h-9 rounded-full text-xs" disabled={glosaAtualizandoId !== null} onClick={() => setGlosaParaRecurso(g)}>Revisar recurso</Button><Button size="sm" className="h-9 rounded-full bg-[#1080CA] text-xs text-white hover:bg-[#1080CA] hover:brightness-110" disabled={glosaAtualizandoId !== null || String(g.recurso_justificativa || '').trim().length < 10 || !g.recurso_prazo || !g.recurso_responsavel_id} title={!g.recurso_prazo || !g.recurso_responsavel_id ? 'Defina prazo e responsável antes de enviar' : undefined} onClick={() => void updateGlosa(g.id, 'recurso_enviado')}>Marcar enviado</Button></>}{g.status === 'recurso_enviado' && <Button size="sm" className="h-9 rounded-full bg-gradient-primary text-xs text-white hover:brightness-110" disabled={glosaAtualizandoId !== null} onClick={() => { setGlosaParaRetorno(g); setDecisaoOperadora('aceita'); setValorRecuperado(String(g.valor_glosado)); }}>Registrar retorno</Button>}</TableCell></TableRow>)}</TableBody></Table></div></div> : <div className="flex flex-col items-center gap-2 py-8 text-center"><span className="mb-1 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md"><ShieldCheck className="h-7 w-7" /></span><p className="text-sm text-muted-foreground">{glosas.length === 0 ? 'Nenhuma glosa registrada nesta clínica.' : 'Nenhuma glosa corresponde à busca e aos filtros.'}</p>{glosas.length > 0 && <Button size="sm" variant="outline" className="rounded-full" onClick={() => { setBuscaGlosa(''); setStatusGlosa('todos'); }}>Limpar filtros</Button>}</div>}
       </CardContent></Card></TabsContent>
+      <TabsContent value="conciliacao">
+        {profile?.clinica_id && <ConciliacaoConvenioPorLote clinicaId={profile.clinica_id} lotes={lotesComNomeConvenio} />}
+      </TabsContent>
+      <TabsContent value="relatorio">
+        <RelatorioFaturamentoCompetencia convenios={convenios} glosas={glosas} lotes={lotesComNomeConvenio} />
+      </TabsContent>
     </Tabs>
     <div className="flex items-start gap-2 rounded-2xl border border-[#DCE6F2] bg-[#F3F8FC] p-3 text-xs text-muted-foreground"><ShieldCheck className="h-4 w-4 shrink-0 text-[#1080CA]" /><span>O XML é um resumo operacional e este sistema não o transmite à operadora. Valide o arquivo no padrão/XSD exigido e registre o envio somente depois de transmiti-lo pelo canal oficial. O retorno pode ser conciliado com o <Link to="/fluxo-caixa" className="font-medium text-[#1080CA] underline-offset-2 hover:underline">Fluxo de Caixa</Link> pelo formulário. Como o lote não identifica as cobranças individuais, confira lançamentos anteriores antes de confirmar para evitar duplicidade.</span></div>
 
+    <GuiasLoteDialog
+      lote={loteGuias}
+      guias={loteGuias ? guiasPorLote.get(loteGuias.id) ?? [] : []}
+      autorizacoes={(autorizacoesQuery.data ?? []).filter(a => !loteGuias || a.convenio_id === loteGuias.convenio_id || (guiasPorLote.get(loteGuias.id) ?? []).some(g => g.autorizacao_id === a.id))}
+      pendencias={loteGuias ? pendenciasPorLote.get(loteGuias.id) ?? [] : []}
+      onOpenChange={open => { if (!open) setLoteGuias(null); }}
+      onChanged={() => queryClient.invalidateQueries({ queryKey: ['lote-tiss-guias'] })}
+    />
     <AlertDialog open={!!loteParaConfirmarEnvio} onOpenChange={open => { if (!open && !loteEnviandoId) setLoteParaConfirmarEnvio(null); }}>
       <AlertDialogContent>
         <AlertDialogHeader>
@@ -554,7 +619,7 @@ export default function FaturamentoConvenios() {
         </DialogFooter>
       </DialogContent>
     </Dialog>
-    <Dialog open={!!glosaParaRecurso} onOpenChange={open => { if (!open && glosaAtualizandoId === null) { setGlosaParaRecurso(null); setJustificativaRecurso(''); } }}><DialogContent><DialogHeader><DialogTitle>{glosaParaRecurso?.status === 'recurso_preparacao' ? 'Revisar recurso' : 'Preparar recurso de glosa'}</DialogTitle></DialogHeader><p className="text-sm text-muted-foreground">Glosa {glosaParaRecurso?.codigo_glosa} · {brl(Number(glosaParaRecurso?.valor_glosado || 0))}</p><Field label="Justificativa do recurso"><Textarea rows={5} disabled={glosaAtualizandoId !== null} value={justificativaRecurso} onChange={e=>setJustificativaRecurso(e.target.value)} placeholder="Descreva por que a cobrança deve ser revista pela operadora…" /></Field><p className="text-xs text-muted-foreground">Registre a justificativa antes de marcar o recurso como enviado.</p><DialogFooter><Button variant="outline" onClick={()=>setGlosaParaRecurso(null)} disabled={glosaAtualizandoId !== null}>Cancelar</Button><Button onClick={salvarJustificativaRecurso} disabled={glosaAtualizandoId !== null || justificativaRecurso.trim().length < 10}>{glosaAtualizandoId === glosaParaRecurso?.id && <RefreshCw className="mr-2 h-4 w-4 animate-spin"/>}Salvar justificativa</Button></DialogFooter></DialogContent></Dialog>
+    {profile?.clinica_id && <RecursoGlosaDialog glosa={glosaParaRecurso} clinicaId={profile.clinica_id} responsaveis={responsaveisQuery.data ?? []} documentos={glosaParaRecurso ? documentosPorGlosa.get(glosaParaRecurso.id) ?? [] : []} salvarJustificativa={(id, justificativa) => updateGlosa(id, 'recurso_preparacao', { recurso_justificativa: justificativa })} onClose={() => setGlosaParaRecurso(null)} onChanged={() => Promise.all([queryClient.invalidateQueries({ queryKey: ['glosas-convenio'] }), queryClient.invalidateQueries({ queryKey: ['glosa-recurso-documentos'] })])} />}
     <Dialog open={!!glosaParaRetorno} onOpenChange={open => { if (!open && glosaAtualizandoId === null) setGlosaParaRetorno(null); }}><DialogContent><DialogHeader><DialogTitle>Registrar retorno da operadora</DialogTitle></DialogHeader><p className="text-sm text-muted-foreground">Glosa {glosaParaRetorno?.codigo_glosa} · valor original {brl(Number(glosaParaRetorno?.valor_glosado || 0))}</p><Field label="Decisão"><Select value={decisaoOperadora} disabled={glosaAtualizandoId !== null} onValueChange={value=>setDecisaoOperadora(value as 'aceita' | 'mantida')}><SelectTrigger aria-label="Decisão"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="aceita">Recurso aceito</SelectItem><SelectItem value="mantida">Glosa mantida</SelectItem></SelectContent></Select></Field>{decisaoOperadora === 'aceita' && <Field label="Valor recuperado"><Input type="number" min="0" max={glosaParaRetorno?.valor_glosado || 0} step="0.01" disabled={glosaAtualizandoId !== null} value={valorRecuperado} onChange={e=>setValorRecuperado(e.target.value)} /></Field>}<DialogFooter><Button variant="outline" onClick={()=>setGlosaParaRetorno(null)} disabled={glosaAtualizandoId !== null}>Cancelar</Button><Button onClick={salvarRetornoOperadora} disabled={glosaAtualizandoId !== null}>{glosaAtualizandoId === glosaParaRetorno?.id && <RefreshCw className="mr-2 h-4 w-4 animate-spin"/>}Registrar decisão</Button></DialogFooter></DialogContent></Dialog>
   </div>;
 }

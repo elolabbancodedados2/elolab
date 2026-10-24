@@ -17,7 +17,8 @@ import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { ErrorState } from '@/components/ErrorState';
 import { PageHeader } from '@/components/PageHeader';
 import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
-import { podeAprovarRepasse, podePagarRepasse, receitaOrigemQuitada } from '@/lib/repasseWorkflow';
+import { descreverRegraRepasse, podeAprovarRepasse, podePagarRepasse, receitaOrigemQuitada } from '@/lib/repasseWorkflow';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { cn } from '@/lib/utils';
 
 type FiltroStatusRepasse = 'todos' | 'pendente' | 'aprovado' | 'pago' | 'aberto';
@@ -28,10 +29,15 @@ interface Repasse { id: string; lancamento_id: string; valor_base: number; valor
 
 const moeda = (valor: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valor || 0);
 
-function ConfiguracaoMedico({ medico, onSaved }: { medico: MedicoRepasse; onSaved: () => void }) {
+interface AlteracaoRegra { alterado_por_nome: string | null; alterado_em: string }
+
+export function ConfiguracaoMedico({ medico, ultimaAlteracao, onSaved }: { medico: MedicoRepasse; ultimaAlteracao?: AlteracaoRegra | null; onSaved: () => void }) {
   const [tipo, setTipo] = useState<TipoRepasse>(medico.tipo_repasse || 'percentual');
   const [valor, setValor] = useState(String(tipo === 'fixo' ? medico.valor_repasse_fixo || 0 : medico.percentual_repasse || 0));
   const [saving, setSaving] = useState(false);
+  const [confirmando, setConfirmando] = useState(false);
+  const tipoAtual = medico.tipo_repasse || 'percentual';
+  const regraAtual = descreverRegraRepasse(tipoAtual, tipoAtual === 'fixo' ? medico.valor_repasse_fixo : medico.percentual_repasse);
   const alteradoLocalmenteRef = useRef(false);
 
   useEffect(() => {
@@ -48,7 +54,7 @@ function ConfiguracaoMedico({ medico, onSaved }: { medico: MedicoRepasse; onSave
   };
   const repasseZerado = valor.trim() !== '' && Number.isFinite(Number(valor)) && Number(valor) === 0;
 
-  const salvar = async () => {
+  const pedirConfirmacao = () => {
     const numero = Number(valor);
     if (!valor.trim() || !Number.isFinite(numero) || numero < 0 || (tipo === 'percentual' && numero > 100)) {
       toast.error(tipo === 'percentual' ? 'Informe um percentual entre 0 e 100.' : 'Informe um valor fixo válido.');
@@ -60,12 +66,18 @@ function ConfiguracaoMedico({ medico, onSaved }: { medico: MedicoRepasse; onSave
         : 'Informe o valor com no máximo duas casas decimais.');
       return;
     }
+    setConfirmando(true);
+  };
+
+  const salvar = async () => {
+    const numero = Number(valor);
     setSaving(true);
     try {
-      const { error } = await (supabase as any).rpc('configurar_repasse_medico', { p_medico_id: medico.id, p_tipo: tipo, p_valor: numero });
+      const { data, error } = await (supabase as any).rpc('configurar_repasse_medico', { p_medico_id: medico.id, p_tipo: tipo, p_valor: numero, p_confirmado: true });
       if (error) throw error;
       alteradoLocalmenteRef.current = false;
-      toast.success(`Regra de repasse de ${medico.nome || medico.crm} atualizada.`);
+      setConfirmando(false);
+      toast.success(data?.alterado === false ? 'A regra informada já estava em vigor.' : `Regra de repasse de ${medico.nome || medico.crm} atualizada.`);
       onSaved();
     } catch (error: any) {
       toast.error('Não foi possível salvar a regra de repasse.', { description: error?.message });
@@ -79,8 +91,20 @@ function ConfiguracaoMedico({ medico, onSaved }: { medico: MedicoRepasse; onSave
     <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
       <div className="space-y-1.5"><Label htmlFor={`tipo-${medico.id}`}>Tipo de repasse</Label><Select value={tipo} onValueChange={(value) => trocarTipo(value as TipoRepasse)} disabled={saving}><SelectTrigger id={`tipo-${medico.id}`} className="min-h-11 rounded-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="percentual">Percentual da receita</SelectItem><SelectItem value="fixo">Valor fixo por atendimento</SelectItem></SelectContent></Select></div>
       <div className="space-y-1.5"><Label htmlFor={`valor-${medico.id}`}>{tipo === 'fixo' ? 'Valor fixo (R$)' : 'Percentual (%)'}</Label><Input id={`valor-${medico.id}`} className="min-h-11 rounded-full" type="number" min="0" max={tipo === 'percentual' ? 100 : undefined} step="0.01" value={valor} onChange={(event) => { alteradoLocalmenteRef.current = true; setValor(event.target.value); }} disabled={saving} /></div>
-      <Button className="h-11 gap-2 rounded-full bg-gradient-primary text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)] hover:brightness-110" onClick={salvar} disabled={saving}>{saving ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Salvar</Button>
+      <Button className="h-11 gap-2 rounded-full bg-gradient-primary text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)] hover:brightness-110" onClick={pedirConfirmacao} disabled={saving}>{saving ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Salvar</Button>
     </div>
+    {ultimaAlteracao && <p className="text-xs text-muted-foreground">Última alteração por {ultimaAlteracao.alterado_por_nome || 'usuário removido'} em {new Date(ultimaAlteracao.alterado_em).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', dateStyle: 'short', timeStyle: 'short' })}.</p>}
+    <ConfirmDialog
+      open={confirmando}
+      onOpenChange={open => { if (!saving) setConfirmando(open); }}
+      title={`Alterar regra de repasse de ${medico.nome || medico.crm}?`}
+      description={`De ${regraAtual} para ${descreverRegraRepasse(tipo, Number(valor))}. A nova regra vale para as próximas conciliações; repasses já gerados não mudam. Seu usuário e a data ficarão registrados.`}
+      confirmLabel="Confirmar alteração"
+      variant="warning"
+      isLoading={saving}
+      closeOnConfirm={false}
+      onConfirm={() => void salvar()}
+    />
     <p className="text-xs text-muted-foreground">{repasseZerado
       ? 'Com o valor zero, recebimentos deste médico não geram repasse.'
       : tipo === 'fixo'
@@ -106,6 +130,15 @@ export default function RepassesMedicos() {
     if (error) throw error; return (data ?? []) as MedicoRepasse[];
   }});
   const medicos = medicosQuery.data ?? [];
+  const historicoRegrasQuery = useQuery({ queryKey: ['historico-regras-repasse', profile?.clinica_id ?? null], enabled: !!user && !!profile?.clinica_id, queryFn: async () => {
+    const { data, error } = await (supabase as any).rpc('historico_regras_repasse', { p_limite: 500 });
+    if (error) throw error; return (data ?? []) as Array<AlteracaoRegra & { medico_id: string }>;
+  }});
+  const ultimaAlteracaoPorMedico = useMemo(() => {
+    const mapa = new Map<string, AlteracaoRegra>();
+    for (const h of historicoRegrasQuery.data ?? []) if (!mapa.has(h.medico_id)) mapa.set(h.medico_id, h);
+    return mapa;
+  }, [historicoRegrasQuery.data]);
   const repassesQuery = useQuery({ queryKey: ['repasses-medicos', profile?.clinica_id ?? null, competencia], enabled: competenciaValida && !!user && !!profile?.clinica_id, queryFn: async () => {
     const inicio = `${competencia}-01`;
     const fim = toDateOnly(new Date(Number(competencia.slice(0, 4)), Number(competencia.slice(5, 7)), 1));
@@ -277,9 +310,9 @@ export default function RepassesMedicos() {
           </span>
           Regra por médico
         </CardTitle>
-        <CardDescription>Escolha uma regra e salve. Alterações valem para novas conciliações.</CardDescription>
+        <CardDescription>Escolha uma regra e salve. Cada alteração pede confirmação, registra quem alterou e quando, e vale para novas conciliações.</CardDescription>
       </CardHeader>
-      <CardContent className="grid gap-3 xl:grid-cols-2">{medicosQuery.isLoading ? <p className="text-sm text-muted-foreground">Carregando médicos…</p> : medicos.length === 0 ? <p className="text-sm text-muted-foreground">Nenhum médico ativo cadastrado para esta clínica.</p> : medicos.map(medico => <ConfiguracaoMedico key={medico.id} medico={medico} onSaved={() => void queryClient.invalidateQueries({ queryKey: ['medicos-repasse'] })} />)}</CardContent>
+      <CardContent className="grid gap-3 xl:grid-cols-2">{medicosQuery.isLoading ? <p className="text-sm text-muted-foreground">Carregando médicos…</p> : medicos.length === 0 ? <p className="text-sm text-muted-foreground">Nenhum médico ativo cadastrado para esta clínica.</p> : medicos.map(medico => <ConfiguracaoMedico key={medico.id} medico={medico} ultimaAlteracao={ultimaAlteracaoPorMedico.get(medico.id)} onSaved={() => { void queryClient.invalidateQueries({ queryKey: ['medicos-repasse'] }); void queryClient.invalidateQueries({ queryKey: ['historico-regras-repasse'] }); }} />)}</CardContent>
     </Card>
     <Card className="overflow-hidden rounded-2xl border-border/60 shadow-xs">
       <CardHeader>

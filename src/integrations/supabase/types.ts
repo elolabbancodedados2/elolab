@@ -1229,6 +1229,20 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"extrato_bancario_transacoes": {
+                  Row: {
+                    "clinica_id": string,"conta": string,"data": string,"descricao": string | null,"fitid": string,"id": string,"importado_em": string,"importado_por": string,"valor": number
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "clinica_id": string,"conta": string,"data": string,"descricao"?: string | null,"fitid": string,"id"?: string,"importado_em"?: string,"importado_por": string,"valor": number
+                  }
+                  Update: {
+                    "clinica_id"?: string,"conta"?: string,"data"?: string,"descricao"?: string | null,"fitid"?: string,"id"?: string,"importado_em"?: string,"importado_por"?: string,"valor"?: number
+                  }
+                  Relationships: [
+                    
+                  ]
                 },"feedbacks_nps": {
                   Row: {
                     "agendamento_id": string | null,"categoria": string | null,"clinica_id": string | null,"comentario": string | null,"created_at": string | null,"id": string,"medico_id": string | null,"nota": number,"paciente_id": string | null
@@ -1351,16 +1365,29 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
-                },"glosas_convenio": {
+                },"glosa_recurso_documentos": {
                   Row: {
-                    "chave_idempotencia": string | null,"clinica_id": string,"codigo_glosa": string,"created_at": string,"criado_por": string | null,"guia_referencia": string | null,"id": string,"lote_id": string,"motivo": string,"recurso_enviado_em": string | null,"recurso_justificativa": string | null,"resolvido_em": string | null,"status": string,"updated_at": string,"valor_glosado": number,"valor_recuperado": number
+                    "byte_size": number,"clinica_id": string,"content_type": string,"created_at": string,"enviado_por": string,"file_name": string,"glosa_id": string,"id": string,"storage_path": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "chave_idempotencia"?: string | null,"clinica_id": string,"codigo_glosa": string,"created_at"?: string,"criado_por"?: string | null,"guia_referencia"?: string | null,"id"?: string,"lote_id": string,"motivo": string,"recurso_enviado_em"?: string | null,"recurso_justificativa"?: string | null,"resolvido_em"?: string | null,"status"?: string,"updated_at"?: string,"valor_glosado": number,"valor_recuperado"?: number
+                    "byte_size": number,"clinica_id": string,"content_type": string,"created_at"?: string,"enviado_por": string,"file_name": string,"glosa_id": string,"id"?: string,"storage_path": string
                   }
                   Update: {
-                    "chave_idempotencia"?: string | null,"clinica_id"?: string,"codigo_glosa"?: string,"created_at"?: string,"criado_por"?: string | null,"guia_referencia"?: string | null,"id"?: string,"lote_id"?: string,"motivo"?: string,"recurso_enviado_em"?: string | null,"recurso_justificativa"?: string | null,"resolvido_em"?: string | null,"status"?: string,"updated_at"?: string,"valor_glosado"?: number,"valor_recuperado"?: number
+                    "byte_size"?: number,"clinica_id"?: string,"content_type"?: string,"created_at"?: string,"enviado_por"?: string,"file_name"?: string,"glosa_id"?: string,"id"?: string,"storage_path"?: string
+                  }
+                  Relationships: [
+                    
+                  ]
+                },"glosas_convenio": {                  Row: {
+                    "chave_idempotencia": string | null,"clinica_id": string,"codigo_glosa": string,"created_at": string,"criado_por": string | null,"guia_referencia": string | null,"id": string,"lote_id": string,"motivo": string,"recurso_enviado_em": string | null,"recurso_justificativa": string | null,"recurso_prazo": string | null,"recurso_responsavel_id": string | null,"resolvido_em": string | null,"status": string,"updated_at": string,"valor_glosado": number,"valor_recuperado": number
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "chave_idempotencia"?: string | null,"clinica_id": string,"codigo_glosa": string,"created_at"?: string,"criado_por"?: string | null,"guia_referencia"?: string | null,"id"?: string,"lote_id": string,"motivo": string,"recurso_enviado_em"?: string | null,"recurso_justificativa"?: string | null,"recurso_prazo"?: string | null,"recurso_responsavel_id"?: string | null,"resolvido_em"?: string | null,"status"?: string,"updated_at"?: string,"valor_glosado": number,"valor_recuperado"?: number
+                  }
+                  Update: {
+                    "chave_idempotencia"?: string | null,"clinica_id"?: string,"codigo_glosa"?: string,"created_at"?: string,"criado_por"?: string | null,"guia_referencia"?: string | null,"id"?: string,"lote_id"?: string,"motivo"?: string,"recurso_enviado_em"?: string | null,"recurso_justificativa"?: string | null,"recurso_prazo"?: string | null,"recurso_responsavel_id"?: string | null,"resolvido_em"?: string | null,"status"?: string,"updated_at"?: string,"valor_glosado"?: number,"valor_recuperado"?: number
                   }
                   Relationships: [
                     {
@@ -1878,6 +1905,20 @@ isOneToOne: false
       referencedRelation: "pacientes"
       referencedColumns: ["id"]
     }
+                  ]
+                },"lote_tiss_guias": {
+                  Row: {
+                    "autorizacao_id": string | null,"clinica_id": string,"codigo_procedimento": string,"created_at": string,"criado_por": string | null,"data_atendimento": string,"id": string,"lote_id": string,"numero_carteira": string | null,"numero_guia": string,"paciente_id": string | null,"quantidade": number,"tipo_servico": string,"valor_total": number
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "autorizacao_id"?: string | null,"clinica_id": string,"codigo_procedimento": string,"created_at"?: string,"criado_por"?: string | null,"data_atendimento": string,"id"?: string,"lote_id": string,"numero_carteira"?: string | null,"numero_guia": string,"paciente_id"?: string | null,"quantidade": number,"tipo_servico": string,"valor_total": number
+                  }
+                  Update: {
+                    "autorizacao_id"?: string | null,"clinica_id"?: string,"codigo_procedimento"?: string,"created_at"?: string,"criado_por"?: string | null,"data_atendimento"?: string,"id"?: string,"lote_id"?: string,"numero_carteira"?: string | null,"numero_guia"?: string,"paciente_id"?: string | null,"quantidade"?: number,"tipo_servico"?: string,"valor_total"?: number
+                  }
+                  Relationships: [
+
                   ]
                 },"lotes_tiss": {
                   Row: {
@@ -3307,6 +3348,20 @@ isOneToOne: false
                   }
                   Update: {
                     "ativo"?: boolean | null,"clinica_id"?: string,"config"?: NonNullable<Json>,"created_at"?: string,"dataset"?: string,"descricao"?: string | null,"destinatarios"?: (string)[] | null,"dia_mes"?: number | null,"dia_semana"?: number | null,"formato"?: string | null,"frequencia"?: string | null,"hora"?: string | null,"id"?: string,"nome"?: string,"proxima_execucao"?: string | null,"ultima_execucao"?: string | null,"updated_at"?: string,"user_id"?: string
+                  }
+                  Relationships: [
+                    
+                  ]
+                },"repasse_regra_alteracoes": {
+                  Row: {
+                    "alterado_em": string,"alterado_por": string,"clinica_id": string,"id": string,"medico_id": string,"tipo_anterior": string,"tipo_novo": string,"valor_anterior": number,"valor_novo": number
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "alterado_em"?: string,"alterado_por": string,"clinica_id": string,"id"?: string,"medico_id": string,"tipo_anterior": string,"tipo_novo": string,"valor_anterior": number,"valor_novo": number
+                  }
+                  Update: {
+                    "alterado_em"?: string,"alterado_por"?: string,"clinica_id"?: string,"id"?: string,"medico_id"?: string,"tipo_anterior"?: string,"tipo_novo"?: string,"valor_anterior"?: number,"valor_novo"?: number
                   }
                   Relationships: [
                     
@@ -5038,6 +5093,38 @@ isOneToOne: false
                            },
 "registrar_envio_lote_tiss":
 { Args: { "p_lote_id": string }; Returns: Json
+                           },
+"adicionar_guia_lote_tiss":
+{ Args: { "p_autorizacao_id": string | null,"p_codigo_procedimento": string,"p_data_atendimento": string,"p_lote_id": string,"p_numero_carteira": string | null,"p_numero_guia": string,"p_paciente_id": string | null,"p_quantidade": number,"p_tipo_servico": string,"p_valor_total": number }; Returns: Json
+                           },
+"remover_guia_lote_tiss":
+{ Args: { "p_guia_id": string }; Returns: Json
+                           },
+"definir_recurso_glosa":
+{ Args: { "p_glosa_id": string,"p_prazo": string,"p_responsavel_id": string }; Returns: Json
+                           },
+"registrar_documento_recurso_glosa":
+{ Args: { "p_byte_size": number,"p_content_type": string,"p_file_name": string,"p_glosa_id": string,"p_storage_path": string }; Returns: Json
+                           },
+"importar_extrato_bancario":
+{ Args: { "p_conta": string,"p_transacoes": Json }; Returns: Json
+                           },
+"historico_alteracoes_lancamento":{ Args: { "p_lancamento_id": string }; Returns: {
+              "alterado_em": string,"alterado_por_nome": string | null,"campo": string,"valor_anterior": string | null,"valor_novo": string | null
+            }[]
+                           },
+"historico_regras_repasse":
+{ Args: { "p_limite"?: number }; Returns: {
+              "alterado_em": string,"alterado_por_nome": string | null,"id": string,"medico_id": string,"tipo_anterior": string,"tipo_novo": string,"valor_anterior": number,"valor_novo": number
+            }[]
+                           },
+"listar_responsaveis_financeiro":{ Args: Record<PropertyKey, never>; Returns: {
+              "id": string,"nome": string | null
+            }[]
+                           },"pendencias_lote_tiss":
+{ Args: { "p_lote_id": string }; Returns: {
+              "campo": string,"gravidade": string,"guia_id": string | null,"mensagem": string,"numero_guia": string | null,"tipo": string
+            }[]
                            },
 "registrar_exportacao_lgpd_paciente":
 { Args: { "p_paciente_id": string }; Returns: number

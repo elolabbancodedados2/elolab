@@ -28,6 +28,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { PacienteCombobox } from '@/components/patients/PacienteCombobox';
+import { HistoricoLancamentoButton } from '@/components/financeiro/HistoricoLancamentoButton';
 import { Database } from '@/integrations/supabase/types';
 
 import {
@@ -1536,6 +1537,10 @@ export default function ContasReceber() {
                   </div>
                 )}
                 <Separator />
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs text-muted-foreground">Histórico de vencimento, valor e classificação</span>
+                  <HistoricoLancamentoButton lancamentoId={selectedConta.id} descricao={selectedConta.descricao} rotulos={Object.fromEntries(CATEGORIAS_RECEITA.map(c => [c.value, c.label]))} />
+                </div>
                 <p className="text-[10px] text-muted-foreground">
                   Criado em: {selectedConta.created_at ? format(new Date(selectedConta.created_at), "dd/MM/yyyy 'às' HH:mm") : '—'}
                 </p>

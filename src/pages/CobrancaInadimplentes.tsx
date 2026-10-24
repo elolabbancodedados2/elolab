@@ -5,8 +5,10 @@ import { useNavigate } from 'react-router-dom';
 import { useMemo, useState } from 'react';
 import {
   AlertTriangle, Send, Loader2, MessageCircle, RefreshCw, Mail, Search,
-  DollarSign, ArrowUpRight, X, Clock,
+  DollarSign, ArrowUpRight, X, Clock, Download,
 } from 'lucide-react';
+import { csvCobrancaManual, faixaAtraso, FAIXAS_ATRASO, resumoPorFaixa, type FaixaAtraso } from '@/lib/inadimplencia';
+import { downloadStringAsFile } from '@/lib/auditExport';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -43,6 +45,8 @@ export default function CobrancaInadimplentes() {
   const [confirmarEnvio, setConfirmarEnvio] = useState(false);
   const [sendProgress, setSendProgress] = useState({ batch: 0, total: 0 });
   const [filtroIndicador, setFiltroIndicador] = useState<FiltroIndicador>('todos');
+  const [filtroFaixa, setFiltroFaixa] = useState<FaixaAtraso | 'todas'>('todas');
+  const [confirmarExportacao, setConfirmarExportacao] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const { profile } = useSupabaseAuth();
   const clinicaId = profile?.clinica_id;
@@ -157,15 +161,34 @@ export default function CobrancaInadimplentes() {
   const filtrados = useMemo(() => dataComDias.filter((l: any) => {
     if (filtroIndicador === 'atraso30' && l.dias <= 30) return false;
     if (filtroIndicador === 'comContato' && !(l.pacientes?.telefone || l.pacientes?.email)) return false;
+    if (filtroFaixa !== 'todas' && faixaAtraso(l.dias) !== filtroFaixa) return false;
     if (searchTerm.trim()) {
       const nome = (l.pacientes?.nome || '').toLowerCase();
       if (!nome.includes(searchTerm.trim().toLowerCase())) return false;
     }
     return true;
-  }), [dataComDias, filtroIndicador, searchTerm]);
+  }), [dataComDias, filtroIndicador, filtroFaixa, searchTerm]);
 
-  const temFiltro = filtroIndicador !== 'todos' || Boolean(searchTerm.trim());
-  const limparFiltros = () => { setFiltroIndicador('todos'); setSearchTerm(''); };
+  const resumoFaixas = useMemo(() => resumoPorFaixa(dataComDias.map((l: any) => ({ dias: l.dias, saldo: saldo(l) }))), [dataComDias]);
+  const temFiltro = filtroIndicador !== 'todos' || filtroFaixa !== 'todas' || Boolean(searchTerm.trim());
+  const limparFiltros = () => { setFiltroIndicador('todos'); setFiltroFaixa('todas'); setSearchTerm(''); };
+
+  const exportarLista = () => {
+    downloadStringAsFile({
+      content: csvCobrancaManual(filtrados.map((l: any) => ({
+        paciente: l.pacientes?.nome ?? null,
+        telefone: l.pacientes?.telefone ?? null,
+        email: l.pacientes?.email ?? null,
+        descricao: l.descricao ?? null,
+        saldo: saldo(l),
+        vencimento: l.data_vencimento ?? null,
+        dias: l.dias,
+      }))),
+      filename: `cobranca-manual-${todaySaoPauloDateOnly()}.csv`,
+      mimeType: 'text/csv;charset=utf-8',
+    });
+    toast.success(`Lista exportada com ${filtrados.length} título(s).`);
+  };
 
   // Destaque: o paciente com mais dias de atraso; em caso de empate, o maior saldo.
   const destaque = useMemo(() => dataComDias.reduce((maisUrgente: any, atual: any) => {
@@ -332,7 +355,35 @@ export default function CobrancaInadimplentes() {
                     <X aria-hidden="true" className="h-3 w-3" /> Limpar filtros
                   </Button>
                 )}
+                <Button
+                  variant="outline"
+                  className="h-10 gap-1.5 rounded-full"
+                  disabled={filtrados.length === 0}
+                  onClick={() => setConfirmarExportacao(true)}
+                >
+                  <Download aria-hidden="true" className="h-4 w-4" /> Exportar lista
+                </Button>
               </div>
+            </div>
+            <div role="group" aria-label="Filtrar por faixa de atraso" className="flex flex-wrap gap-2">
+              {FAIXAS_ATRASO.map(faixa => {
+                const ativo = filtroFaixa === faixa.id;
+                const resumo = resumoFaixas[faixa.id];
+                return (
+                  <button
+                    key={faixa.id}
+                    type="button"
+                    aria-pressed={ativo}
+                    onClick={() => setFiltroFaixa(ativo ? 'todas' : faixa.id)}
+                    className={cn(
+                      'h-8 rounded-full border px-3 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+                      ativo ? 'border-transparent bg-gradient-primary text-white shadow-sm' : 'border-border/60 bg-card text-foreground hover:border-[#9CC7EC]',
+                    )}
+                  >
+                    {faixa.label} · {resumo.quantidade} · {resumo.total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                  </button>
+                );
+              })}
             </div>
           </div>
         </CardHeader>
@@ -391,6 +442,7 @@ export default function CobrancaInadimplentes() {
                             >
                               {dias} dias
                             </Badge>
+                            <p className="mt-1 text-[11px] text-muted-foreground">{FAIXAS_ATRASO.find(f => f.id === faixaAtraso(dias))?.label}</p>
                           </TableCell>
                           <TableCell>
                             <div className="space-y-1 text-xs">
@@ -429,6 +481,15 @@ export default function CobrancaInadimplentes() {
         confirmLabel="Processar"
         variant="warning"
         onConfirm={() => void enviarTodos()}
+      />
+      <ConfirmDialog
+        open={confirmarExportacao}
+        onOpenChange={setConfirmarExportacao}
+        title="Exportar lista para cobrança manual"
+        description={`A planilha terá nome, contato, saldo e atraso de ${filtrados.length} título(s), conforme os filtros atuais. Use-a somente para a cobrança manual autorizada pela clínica e não a compartilhe fora da equipe financeira. Nenhuma mensagem será enviada.`}
+        confirmLabel="Exportar"
+        variant="warning"
+        onConfirm={exportarLista}
       />
     </div>
   );

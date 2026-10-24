@@ -38,6 +38,9 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { valorRealizado } from '@/lib/lancamentos';
 import { grupoMovimentoCaixa, totaisMovimentoCaixa } from '@/lib/fluxoCaixa';
 import { ErrorState } from '@/components/ErrorState';
+import { ProjecaoFluxoCaixa } from '@/components/financeiro/ProjecaoFluxoCaixa';
+import { ImportarExtratoDialog } from '@/components/financeiro/ImportarExtratoDialog';
+import type { LancamentoProjecao } from '@/lib/projecaoFluxoCaixa';
 import { dateOnlyInTimeZone, inicioDoDiaEmFusoIso, parseDateOnly } from '@/lib/dateOnly';
 
 const statusRealizado = (status: string | null) => status === 'pago' || status === 'parcial';
@@ -111,6 +114,8 @@ export default function FluxoCaixa() {
     || pagamentos.length >= LIMITE_BUSCA_EM_BLOCOS;
 
   const mesAtual = currentDate.getMonth();
+  // Os pagamentos carregados cobrem o mês exibido; o realizado da projeção só é completo no mês corrente.
+  const visualizandoMesAtual = format(currentDate, 'yyyy-MM') === dateOnlyInTimeZone(new Date(), 'America/Sao_Paulo').slice(0, 7);
   const anoAtual = currentDate.getFullYear();
 
   const formatCurrency = (value: number) => {
@@ -290,6 +295,7 @@ export default function FluxoCaixa() {
             >
               <RefreshCw className="h-4 w-4" />
             </Button>
+            {profile?.clinica_id && <ImportarExtratoDialog clinicaId={profile.clinica_id} lancamentos={lancamentos} />}
             <div className="flex items-center gap-1 rounded-full border border-border/60 bg-card p-1 shadow-xs">
               <Button aria-label="Mês anterior" variant="ghost" size="icon" className="rounded-full text-[#1080CA] hover:bg-[#F3F8FC]" onClick={handlePrevMonth}>
                 <ChevronLeft className="h-4 w-4" />
@@ -472,6 +478,8 @@ export default function FluxoCaixa() {
           </CardContent>
         </Card>
       </div>
+
+      <ProjecaoFluxoCaixa lancamentos={lancamentos as LancamentoProjecao[]} realizados={visualizandoMesAtual ? eventosRealizados : []} realizadoIndisponivel={!visualizandoMesAtual} />
 
       {/* Por Categoria */}
       <Card className="rounded-2xl border-border/60 shadow-xs">
