@@ -1,6 +1,7 @@
 import { nomeMedico } from '@/lib/formatters';
 import { format, addDays, addWeeks, addMonths, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { formatWithDatePreference } from '@/lib/datePreference';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -126,7 +127,7 @@ export function AgendaHeader(p: Props) {
               <PopoverTrigger asChild>
                 <Button variant="ghost" size="sm" aria-label="Data da agenda" aria-haspopup="dialog" className="h-10 flex-1 justify-center gap-2 rounded-full px-3 text-xs font-semibold tabular-nums sm:h-9 sm:flex-none">
                   <CalendarDays className="h-4 w-4 text-[#1080CA]" />
-                  {format(d, 'dd/MM/yyyy')}
+                  {formatWithDatePreference(d, 'dd/MM/yyyy')}
                 </Button>
               </PopoverTrigger>
               <PopoverContent align="start" className="w-auto rounded-2xl p-0">

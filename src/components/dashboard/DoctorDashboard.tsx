@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import { format, parseISO, differenceInYears } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { formatWithDatePreference } from '@/lib/datePreference';
 import {
   Calendar, Users, FileText, Pill, Clock, Stethoscope, ClipboardList,
   ArrowRight, ArrowUpRight, Activity, Target,
@@ -510,7 +511,7 @@ export function DoctorDashboard({ userName }: DoctorDashboardProps) {
                       <li key={t.id} className="flex items-center gap-3 py-2">
                         <ListChecks className="h-4 w-4 shrink-0 text-primary" />
                         <span className="min-w-0 flex-1 truncate text-sm font-medium">{t.titulo}</span>
-                        {t.data_vencimento && <span className={cn('shrink-0 text-xs font-bold tabular-nums', t.data_vencimento < hoje ? 'text-destructive' : 'text-muted-foreground')}>{format(parseDateOnly(t.data_vencimento)!, 'dd/MM', { locale: ptBR })}</span>}
+                        {t.data_vencimento && <span className={cn('shrink-0 text-xs font-bold tabular-nums', t.data_vencimento < hoje ? 'text-destructive' : 'text-muted-foreground')}>{formatWithDatePreference(parseDateOnly(t.data_vencimento)!, 'dd/MM', { locale: ptBR })}</span>}
                       </li>
                     ))}</ul>
                   </CardContent>

@@ -1,3 +1,4 @@
+import { formatDate } from '@/lib/formatters';
 import { useQuery } from '@tanstack/react-query';
 import { Info } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
@@ -20,7 +21,7 @@ const ROTULOS: Record<string, [string, (v: number | null) => string]> = {
   max_funcionarios_total: ['Funcionários', String],
   max_storage_mb: ['Armazenamento (MB)', String],
 };
-const data = (v: string) => new Date(v).toLocaleDateString('pt-BR');
+const data = (v: string) => formatDate(new Date(v), 'short');
 
 /** Alterações recentes de preço/limite do plano vigente, com o efeito para esta conta. */
 export function AvisoAlteracaoPlano() {

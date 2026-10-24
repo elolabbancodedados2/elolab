@@ -1,3 +1,4 @@
+import { formatDate } from '@/lib/formatters';
 import { Link } from 'react-router-dom';
 import { NavegacaoLegal } from '@/components/NavegacaoLegal';
 import { ArrowLeft, Cookie } from 'lucide-react';
@@ -38,7 +39,7 @@ export default function PoliticaCookies() {
         </div>
 
         <div className="prose prose-sm max-w-none space-y-6 rounded-2xl border border-[#DCE6F2] bg-card p-5 text-muted-foreground shadow-[0_8px_24px_rgba(16,128,202,0.06)] sm:p-8 prose-a:text-[#1080CA]">
-          <p className="text-xs">Última atualização: {new Date().toLocaleDateString('pt-BR')}</p>
+          <p className="text-xs">Última atualização: {formatDate(new Date(), 'short')}</p>
 
           <section>
             <h2 className="text-lg font-semibold text-foreground">1. O que são Cookies?</h2>
