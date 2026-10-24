@@ -28,7 +28,7 @@ import { ErrorState } from '@/components/ErrorState';
 import { Skeleton } from '@/components/ui/skeleton';
 import { pacienteCorresponde } from '@/lib/buscaPaciente';
 import { formatDateTimeSaoPaulo } from '@/lib/dateOnly';
-import { deveNotificarRetificacao, perfilPodeRetificarResultado, podeRetificarResultado } from '@/lib/laudoWorkflow';
+import { deveNotificarRetificacao, formatarReferenciaLaudo, perfilPodeRetificarResultado, podeRetificarResultado, procedenciaResultadoLaudo } from '@/lib/laudoWorkflow';
 import { cursorAposAtualizacaoWorklist, type CursorLaudo } from '@/lib/laudoWorklist';
 import { LaboratorioSubnav } from '@/components/laboratorio/LaboratorioSubnav';
 import { criticalAcknowledgementIsPending } from '@/lib/criticalResultAcknowledgement';
@@ -119,9 +119,9 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
           convenios(nome),
           resultados_laboratorio(id, parametro, resultado, unidade, critico, numero_versao,
             valor_referencia_min, valor_referencia_max, valor_referencia_texto,
-            liberado, data_liberacao, validado_por, data_validacao, liberado_por, metodo,
+            liberado, data_liberacao, validado_por, data_validacao, liberado_por, metodo, equipamento,
             validadores:profiles!resultados_laboratorio_validado_por_fkey(nome),
-            liberadores:profiles!resultados_laboratorio_liberado_por_fkey(nome), exames(tipo_exame),
+            liberadores:profiles!resultados_laboratorio_liberado_por_fkey(nome), exames(tipo_exame, laboratorios(nome)),
             confirmacoes:resultado_critico_confirmacoes(id, numero_versao, conduta, confirmado_em,
               confirmador:profiles!resultado_critico_confirmacoes_confirmado_por_fkey(nome)))
         `)
@@ -390,6 +390,8 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
         valorReferenciaMax: r.valor_referencia_max,
         valorReferenciaTexto: r.valor_referencia_texto,
         metodo: r.metodo,
+        equipamento: r.equipamento,
+        laboratorio: r.exames?.laboratorios?.nome,
         material: (coleta as any).material || coleta.tipo_amostra,
         tipoExame: r.exames?.tipo_exame,
         liberado: r.liberado,
@@ -506,8 +508,9 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="font-semibold text-sm">{res.parametro ?? '—'}</p>
+                        <p className="text-[11px] text-muted-foreground">{res.exames?.tipo_exame ?? '—'}</p>
                         <p className="text-[11px] text-muted-foreground">
-                          {res.exames?.tipo_exame ?? '—'}{res.metodo ? ` · ${res.metodo}` : ''}
+                          {procedenciaResultadoLaudo({ metodo: res.metodo, equipamento: res.equipamento, laboratorio: res.exames?.laboratorios?.nome ?? 'própria clínica' })}
                         </p>
                       </div>
                       <div className="flex items-center gap-2">
@@ -528,15 +531,15 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
                     {res.resultado && (
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-sm">
                         <div>
-                          <p className="text-[11px] text-muted-foreground">Resultado</p>
+                          <p className="text-[11px] text-muted-foreground">Resultado observado</p>
                           <p className={cn('font-bold', isAltered ? 'text-destructive' : 'text-primary')}>
                             {res.resultado} {res.unidade ?? ''}
                           </p>
                         </div>
                         <div>
-                          <p className="text-[11px] text-muted-foreground">Referência</p>
+                          <p className="text-[11px] text-muted-foreground">Intervalo de referência</p>
                           <p className="font-medium">
-                            {res.valor_referencia_texto || `${res.valor_referencia_min ?? '—'} - ${res.valor_referencia_max ?? '—'}`}
+                            {formatarReferenciaLaudo({ valorReferenciaMin: res.valor_referencia_min, valorReferenciaMax: res.valor_referencia_max, valorReferenciaTexto: res.valor_referencia_texto, unidade: res.unidade })}
                           </p>
                         </div>
                         {res.data_liberacao && (
