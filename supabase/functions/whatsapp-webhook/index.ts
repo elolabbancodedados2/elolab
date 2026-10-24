@@ -3,6 +3,19 @@ import { corsPadrao } from '../_shared/cors.ts';
 import { findUniquePatientIdByPhone, isWhatsAppToolAllowed, normalizeBrazilianPhone, normalizeMedicalSpecialty, parseExplicitConfirmation } from '../_shared/whatsappAgentPolicy.ts';
 import { createNvidiaChatCompletion, DEFAULT_NVIDIA_CHAT_MODEL } from '../_shared/nvidia.ts';
 import { plainWhatsAppText } from '../_shared/whatsappText.ts';
+import { recursoDoPlanoLiberado } from '../_shared/planEntitlement.ts';
+
+/** Sem confirmação do plano, a IA fica calada e a mensagem segue para a equipe. */
+// deno-lint-ignore no-explicit-any
+async function agenteIaLiberado(supabase: any, clinicaId: string | null): Promise<boolean> {
+  if (!clinicaId) return false;
+  try {
+    return await recursoDoPlanoLiberado(supabase, clinicaId, 'agente_ia');
+  } catch (error) {
+    console.error('[whatsapp] plano da clínica não confirmado; agente de IA não responderá:', error instanceof Error ? error.message : error);
+    return false;
+  }
+}
 
 // Atribuído em cada request (reflete a origem permitida). Helpers
 // top-level (json/reply) capturam esta variável por closure.
@@ -268,7 +281,7 @@ Deno.serve(async (req) => {
           }
 
           // Processar com IA se tiver agente configurado
-          if (session.agent_id && session.whatsapp_agents?.ativo) {
+          if (session.agent_id && session.whatsapp_agents?.ativo && await agenteIaLiberado(supabase, session.clinica_id)) {
             const agent = session.whatsapp_agents
 
             // Depois do handoff, a IA permanece silenciosa até um atendente

@@ -1,5 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { corsPadrao } from '../_shared/cors.ts'
+import { recursoDoPlanoLiberado } from '../_shared/planEntitlement.ts'
 
 type KnowledgeRequest = {
   action?: 'list' | 'save' | 'delete'
@@ -41,6 +42,9 @@ Deno.serve(async (req) => {
     ])
     const clinicId = profile?.clinica_id
     if (!clinicId || !adminRole) return response({ error: 'Apenas administradores da clínica podem gerenciar o conhecimento do agente.' }, 403, headers)
+    if (!(await recursoDoPlanoLiberado(admin, clinicId, 'agente_ia'))) {
+      return response({ error: 'O Agente de IA não está incluído no plano ativo da clínica.' }, 403, headers)
+    }
 
     const body = await req.json() as KnowledgeRequest
     if (!body.agent_id || !/^[0-9a-f-]{36}$/i.test(body.agent_id)) {

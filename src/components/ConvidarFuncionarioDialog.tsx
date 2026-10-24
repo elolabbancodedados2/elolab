@@ -120,7 +120,7 @@ export function ConvidarFuncionarioDialog({ trigger }: ConvidarFuncionarioDialog
           <div className="rounded-md border bg-muted/40 p-3 text-sm">
             <div>Plano <strong>{limits.plano_nome ?? 'não definido'}</strong></div>
             <div className="text-muted-foreground">
-              {limits.current.funcionarios_total}/{limits.max_funcionarios_total} funcionários · {limits.current.medicos}/{limits.max_medicos} médicos
+              {limits.current.funcionarios_total}/{limits.max_funcionarios_total ?? '—'} funcionários · {limits.current.medicos}/{limits.max_medicos ?? '—'} médicos
             </div>
           </div>
         )}

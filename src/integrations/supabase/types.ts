@@ -4497,6 +4497,22 @@ isOneToOne: false
 "clinica_acesso_bloqueado":
 { Args: Record<PropertyKey, never>; Returns: boolean
                            },
+"clinica_recurso_plano_liberado":
+{ Args: { "p_clinica_id": string,"p_recurso": string }; Returns: boolean
+                           },
+"uso_plano_clinica":
+{ Args: Record<PropertyKey, never>; Returns: Json
+                           },
+"historico_cobranca_assinatura":
+{ Args: { "p_limit"?: number }; Returns: {
+              "atualizado_em": string | null,"criado_em": string | null,"detalhe": string | null,"id": string,"metodo": string | null,"origem": string,"referencia": string | null,"status": string,"valor": number | null
+            }[]
+                           },
+"platform_checkout_attempts":
+{ Args: { "p_limit"?: number }; Returns: {
+              "atualizado_em": string | null,"clinica_nome": string | null,"criado_em": string | null,"detalhe": string | null,"divergente": boolean,"dono_email": string | null,"id": string,"metodo": string | null,"origem": string,"referencia": string | null,"status": string,"valor": number | null
+            }[]
+                           },
 "concluir_cobranca_inadimplente":
 { Args: { "p_clinica_id": string,"p_dias_atraso": number,"p_lancamento_id": string }; Returns: undefined
                            },
