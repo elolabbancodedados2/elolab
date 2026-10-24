@@ -579,9 +579,9 @@ export function ChatPanel() {
             className={cn(
               'fixed z-50 bg-card border shadow-2xl flex flex-col overflow-hidden',
               // Mobile: full screen
-              'bottom-0 right-0 w-full h-[100dvh] rounded-none',
+              'inset-0 w-full h-[100dvh] rounded-none pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]',
               // Desktop: floating panel
-              'sm:bottom-[88px] sm:right-6 sm:w-96 sm:h-[520px] sm:rounded-2xl',
+              'sm:inset-auto sm:bottom-[88px] sm:right-6 sm:w-96 sm:h-[520px] sm:rounded-2xl sm:p-0',
             )}
           >
             {/* Header */}

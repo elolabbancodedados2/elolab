@@ -17,6 +17,7 @@ import { ImpersonationBanner } from '@/components/ImpersonationBanner';
 import { usePersonalPreferences } from '@/hooks/usePersonalPreferences';
 import { useOperationalEvents } from '@/hooks/useOperationalEvents';
 import { Version20Announcement } from '@/components/Version20Announcement';
+import { MobileTabBar } from './MobileTabBar';
 
 export function MainLayout() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -61,7 +62,7 @@ export function MainLayout() {
           role="main"
           tabIndex={-1}
         >
-          <div className="mx-auto w-full max-w-[1600px] px-3 pb-[calc(2rem+env(safe-area-inset-bottom))] pt-4 sm:px-5 md:px-6 md:pt-5 xl:px-8 xl:pt-6">
+          <div className="mx-auto w-full max-w-[1600px] px-3 pb-[calc(6rem+env(safe-area-inset-bottom))] pt-4 sm:px-5 md:px-6 md:pt-5 lg:pb-[calc(2rem+env(safe-area-inset-bottom))] xl:px-8 xl:pt-6">
             <Breadcrumbs />
             <div className="animate-fade-in">
               {/* Barreira POR TELA. Havia só um ErrorBoundary no topo do App,
@@ -80,6 +81,7 @@ export function MainLayout() {
             <RodapeLegal />
           </div>
         </main>
+        <MobileTabBar menuOpen={mobileMenuOpen} onOpenMenu={() => setMobileMenuOpen(true)} />
       </div>
 
       <ChatPanel />

@@ -1,7 +1,10 @@
 import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { useMemo, useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { History, Filter, RefreshCw, Download } from 'lucide-react';
+import { History, Filter, RefreshCw, Download, ShieldCheck } from 'lucide-react';
+import { toast } from 'sonner';
+import { mensagemDeErro } from '@/lib/erros';
+import { buscarAuditoriaAcessos, gerarCsvAcessos, LIMITE_LINHAS_AUDITORIA } from '@/lib/auditoriaAcessos';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -24,7 +27,7 @@ import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { exportAuditEntriesAsCsv, exportAuditEntriesAsJson } from '@/lib/auditExport';
+import { downloadStringAsFile, exportAuditEntriesAsCsv, exportAuditEntriesAsJson } from '@/lib/auditExport';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
@@ -66,7 +69,27 @@ export function AuditLog() {
   const [filterSearch, setFilterSearch] = useState<string>('');
   const [filterUser, setFilterUser] = useState<string>('');
   const [loading, setLoading] = useState(false);
+  const [exportingAccess, setExportingAccess] = useState(false);
+  const isAdmin = Boolean(profile?.roles?.includes('admin'));
   const requestId = useRef(0);
+
+  const exportarAcessos = async () => {
+    setExportingAccess(true);
+    try {
+      const { linhas, truncado } = await buscarAuditoriaAcessos(filterStartDate, filterEndDate);
+      downloadStringAsFile({
+        content: gerarCsvAcessos(linhas, filterStartDate, filterEndDate, truncado),
+        filename: `auditoria-acessos-${filterStartDate}-a-${filterEndDate}.csv`,
+        mimeType: 'text/csv;charset=utf-8',
+      });
+      if (truncado) toast.warning(`Limite de ${LIMITE_LINHAS_AUDITORIA} eventos atingido`, { description: 'Reduza o intervalo para exportar todos os acessos.' });
+      else toast.success(`${linhas.length} acesso(s) exportado(s).`);
+    } catch (error) {
+      toast.error('Não foi possível exportar os acessos', { description: mensagemDeErro(error) });
+    } finally {
+      setExportingAccess(false);
+    }
+  };
 
   const loadEntries = useCallback(async () => {
     const currentRequest = ++requestId.current;
@@ -115,7 +138,7 @@ export function AuditLog() {
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <CardTitle className="flex items-center gap-2">
               <History className="h-5 w-5" />
@@ -125,7 +148,7 @@ export function AuditLog() {
               {filteredEntries.length} registro(s) encontrado(s) — dados persistidos no servidor
             </CardDescription>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button variant="outline" size="sm" onClick={loadEntries} disabled={loading} aria-label="Atualizar histórico">
               <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
             </Button>
@@ -135,6 +158,12 @@ export function AuditLog() {
             <Button variant="outline" size="sm" onClick={() => exportAuditEntriesAsJson(filteredEntries, 'audit_log.json')}>
               <Download className="h-4 w-4 mr-1" /> JSON
             </Button>
+            {isAdmin && (
+              <Button variant="outline" size="sm" onClick={() => void exportarAcessos()} disabled={exportingAccess}
+                title="Exporta acessos de todos os usuários da clínica no intervalo De/Até (máx. 93 dias)">
+                <ShieldCheck className="h-4 w-4 mr-1" /> Acessos do período
+              </Button>
+            )}
           </div>
         </div>
       </CardHeader>

@@ -4352,6 +4352,11 @@ isOneToOne: false
 "aceitar_oferta_lista_espera":
 { Args: { "p_lista_espera_id": string,"p_paciente_id": string }; Returns: string
                            },
+"auditoria_acessos_intervalo":
+{ Args: { "p_fim": string,"p_inicio": string }; Returns: {
+              "acao": string,"evento_id": string,"ocorrido_em": string,"origem": string,"recurso": string,"registro_id": string | null,"usuario_id": string | null,"usuario_nome": string | null
+            }[]
+                           },
 "activate_public_registration":
 { Args: { "_codigo_convite": string,"_user_id": string }; Returns: Json
                            },

@@ -179,12 +179,12 @@ export function Navbar({ onMenuClick, mobileMenuOpen }: NavbarProps) {
   return (
     <>
     <KeyboardShortcutsDialog />
-    <header className="sticky top-0 z-30 flex min-h-[72px] items-center gap-1 bg-background/85 px-2 pt-[env(safe-area-inset-top)] backdrop-blur-xl sm:px-3 md:px-6 xl:px-8">
+    <header className="sticky top-0 z-30 flex min-h-[64px] items-center gap-1 bg-background/90 px-2 pt-[env(safe-area-inset-top)] backdrop-blur-2xl sm:min-h-[72px] sm:px-3 md:px-6 xl:px-8">
       {/* Left: Hamburger */}
       <Button
         variant="ghost"
         size="icon"
-        className="h-11 w-11 shrink-0 rounded-xl lg:hidden"
+        className="h-11 w-11 shrink-0 rounded-2xl bg-card/70 lg:hidden"
         aria-label={mobileMenuOpen ? 'Fechar menu de navegação' : 'Abrir menu de navegação'}
         aria-expanded={mobileMenuOpen}
         aria-controls="menu-principal-mobile"

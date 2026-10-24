@@ -423,7 +423,7 @@ export default function Auth() {
         <AnimatedGradient config={AUTH_BACKGROUND_CONFIG} style={{ zIndex: 0 }} />
       </div>
 
-      <header className="relative z-20 flex h-[82px] items-center justify-between px-5 sm:px-8 xl:px-14">
+      <header className="relative z-20 flex min-h-[82px] items-center justify-between px-5 pt-[env(safe-area-inset-top)] sm:px-8 xl:px-14">
         <Link to="/auth" aria-label="EloLab — início do acesso" className="inline-flex rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-4">
           <img src={logoHorizontal} alt="EloLab — tecnologia que cuida" className="w-[172px] object-contain sm:w-[205px]" />
         </Link>
@@ -885,7 +885,7 @@ export default function Auth() {
         </aside>
       </main>
 
-      <footer className="relative z-10 mx-auto flex w-full max-w-[1680px] flex-col items-center justify-between gap-4 px-5 pb-5 text-xs text-muted-foreground sm:flex-row sm:px-8 xl:px-14">
+      <footer className="relative z-10 mx-auto flex w-full max-w-[1680px] flex-col items-center justify-between gap-4 px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] text-xs text-muted-foreground sm:flex-row sm:px-8 xl:px-14">
         <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 sm:justify-start">
           <span className="inline-flex items-center gap-2"><Shield className="h-4 w-4" aria-hidden="true" />Acesso por perfil</span>
           <span className="inline-flex items-center gap-2"><CalendarDays className="h-4 w-4" aria-hidden="true" />Agenda integrada</span>

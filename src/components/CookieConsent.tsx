@@ -122,15 +122,15 @@ export function CookieConsent() {
 
           {/* Actions */}
           <div className="grid grid-cols-2 gap-2">
-            <Button onClick={handleAcceptAll} size="sm" className="min-h-11 flex-1">
+            <Button onClick={handleAcceptAll} size="sm" className="h-11 min-h-11 flex-1">
               Aceitar Todos
             </Button>
             {showDetails ? (
-              <Button onClick={handleSavePreferences} variant="secondary" size="sm" className="min-h-11 flex-1">
+              <Button onClick={handleSavePreferences} variant="secondary" size="sm" className="h-11 min-h-11 flex-1">
                 Salvar Preferências
               </Button>
             ) : (
-              <Button onClick={handleRejectOptional} variant="outline" size="sm" className="min-h-11 flex-1">
+              <Button onClick={handleRejectOptional} variant="outline" size="sm" className="h-11 min-h-11 flex-1">
                 Apenas Essenciais
               </Button>
             )}

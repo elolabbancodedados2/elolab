@@ -83,8 +83,8 @@ export function GlobalSearch() {
   const close = (value: boolean) => { setOpen(value); if (!value) { requestRef.current++; setQuery(''); setResults([]); setError(false); } };
 
   return <>
-    <button type="button" onClick={() => setOpen(true)} className="group flex min-h-10 items-center gap-2 rounded-xl border border-border/50 bg-accent/30 px-3 text-sm text-muted-foreground transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:w-56 lg:w-72" aria-label="Abrir busca global, atalho Control K">
-      <Search className="h-4 w-4 shrink-0" aria-hidden="true"/><span className="hidden flex-1 text-left sm:inline">Buscar no sistema...</span><kbd className="hidden rounded border px-1.5 font-mono text-[10px] sm:inline">Ctrl K</kbd>
+    <button type="button" onClick={() => setOpen(true)} className="group flex min-h-11 w-full items-center gap-2 rounded-2xl border border-border/60 bg-card/75 px-3 text-sm text-muted-foreground transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:w-56 lg:w-72" aria-label="Abrir busca global, atalho Control K">
+      <Search className="h-4 w-4 shrink-0" aria-hidden="true"/><span className="hidden flex-1 text-left text-xs min-[360px]:inline sm:hidden">Buscar</span><span className="hidden flex-1 text-left sm:inline">Buscar no sistema...</span><kbd className="hidden rounded border px-1.5 font-mono text-[10px] sm:inline">Ctrl K</kbd>
     </button>
     <CommandDialog open={open} onOpenChange={close}>
       <CommandInput placeholder="Nome, CPF, telefone, exame, tarefa..." value={query} onValueChange={setQuery}/>
