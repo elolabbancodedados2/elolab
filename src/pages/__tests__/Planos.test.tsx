@@ -18,6 +18,7 @@ vi.mock('@/hooks/useSubscriptionPlan', () => ({
 }));
 
 vi.mock('@/hooks/usePlanCheckout', () => ({ useBillingStatus: () => mocks.billing }));
+vi.mock('@/components/AvisoAlteracaoPlano', () => ({ AvisoAlteracaoPlano: () => null }));
 vi.mock('@/contexts/SupabaseAuthContext', () => ({
   useSupabaseAuth: () => ({ user: { id: 'user-1', ...mocks.user }, isPlatformAdmin: false }),
 }));

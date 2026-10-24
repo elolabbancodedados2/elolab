@@ -15,6 +15,7 @@ import { Check, Crown, Sparkles, Clock, Gift, ArrowRight, Shield, CreditCard, XC
 import { useUserPlan, usePlanos } from '@/hooks/useSubscriptionPlan';
 import { useBillingStatus } from '@/hooks/usePlanCheckout';
 import { CancelamentoPlanoResumo } from '@/components/CancelamentoPlanoResumo';
+import { AvisoAlteracaoPlano } from '@/components/AvisoAlteracaoPlano';
 
 function rotuloFrequencia(frequencia: string) {
   switch (frequencia) {
@@ -187,6 +188,8 @@ export default function Planos() {
           </div>
         )}
       </div>
+
+      {hasActivePlan && <AvisoAlteracaoPlano />}
 
       {loadingBilling && (
         <div role="status" className="flex items-center gap-2 rounded-xl border border-[#BFD8EE] bg-[#F3F8FC] px-4 py-3 text-sm text-[#1080CA]">

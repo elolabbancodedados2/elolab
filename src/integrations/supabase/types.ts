@@ -4508,6 +4508,11 @@ isOneToOne: false
               "atualizado_em": string | null,"criado_em": string | null,"detalhe": string | null,"id": string,"metodo": string | null,"origem": string,"referencia": string | null,"status": string,"valor": number | null
             }[]
                            },
+"avisos_alteracao_plano":
+{ Args: Record<PropertyKey, never>; Returns: {
+              "alterado_em": string,"campos": Json,"efeito_preco": string | null,"id": string,"plano_nome": string,"vigencia_preco": string | null
+            }[]
+                           },
 "platform_reconciliar_cobranca":
 { Args: { "p_id": string,"p_justificativa": string,"p_origem": string,"p_resolucao": string }; Returns: Json
                            },
