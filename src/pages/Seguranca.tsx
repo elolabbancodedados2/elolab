@@ -9,6 +9,7 @@ import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { MFASetupDialog } from '@/components/MFASetupDialog';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { ReauthDialog } from '@/components/ReauthDialog';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -60,19 +61,15 @@ export default function Seguranca() {
     if (user) void loadMfaStatus();
   }, [user, loadMfaStatus]);
 
+  // Chamado pelo ReauthDialog só depois do TOTP recente (sessão AAL2); erros voltam ao diálogo.
   const handleDisableMfa = async () => {
     if (!mfaStatus.factorId) return;
     setIsSaving(true);
     try {
       const { error } = await supabase.auth.mfa.unenroll({ factorId: mfaStatus.factorId });
       if (error) throw error;
-
       toast.success('Autenticação 2FA desativada');
-      setConfirmDisableOpen(false);
       await loadMfaStatus();
-    } catch (err: any) {
-      console.error(err);
-      toast.error(err?.message || 'Erro ao desativar 2FA');
     } finally {
       setIsSaving(false);
     }
@@ -209,16 +206,13 @@ export default function Seguranca() {
         onMFASetupComplete={loadMfaStatus}
       />
 
-      <ConfirmDialog
+      <ReauthDialog
         open={confirmDisableOpen}
-        onOpenChange={(open) => { if (!isSaving) setConfirmDisableOpen(open); }}
+        email={user.email ?? ''}
+        onOpenChange={setConfirmDisableOpen}
         title="Desativar autenticação 2FA?"
-        description="Sua conta ficará protegida somente pela senha. Você pode ativar o 2FA novamente a qualquer momento."
-        confirmLabel="Desativar 2FA"
-        variant="destructive"
-        onConfirm={() => void handleDisableMfa()}
-        isLoading={isSaving}
-        closeOnConfirm={false}
+        description="Sua conta ficará protegida somente pela senha. Para confirmar, digite o código atual do seu autenticador."
+        onConfirmed={handleDisableMfa}
       />
       <ConfirmDialog
         open={confirmSignOutOpen}

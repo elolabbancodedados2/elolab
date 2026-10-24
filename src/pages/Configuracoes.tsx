@@ -50,6 +50,8 @@ import { AgendamentoOnlineConfig } from '@/components/configuracoes/AgendamentoO
 import { AccountSessionsPanel } from '@/components/security/AccountSessionsPanel';
 import { CONFIG_SEGURANCA_ATUALIZADA_EVENT, chaveDaClinica, lerConfigsClinicaComVersoes } from '@/lib/configClinica';
 import { compararConfiguracoes, formatarValorConfiguracao } from '@/lib/configHistory';
+import { ReauthDialog } from '@/components/ReauthDialog';
+import { exigeReautenticacao } from '@/lib/reautenticacao';
 
 interface ConfiguracaoClinicaVersao {
   id: string;
@@ -438,6 +440,8 @@ export default function Configuracoes() {
   const [configSeguranca, setConfigSeguranca] = useState<ConfiguracaoSeguranca>(DEFAULT_SEGURANCA);
   const [configImpressao, setConfigImpressao] = useState<ConfiguracaoImpressao>(DEFAULT_IMPRESSAO);
   const [configVersions, setConfigVersions] = useState<Record<string, string | null>>({});
+  // Ação recusada pelo banco por reduzir segurança sem prova recente; refeita após reautenticar.
+  const [reauthAcao, setReauthAcao] = useState<(() => Promise<void>) | null>(null);
   const [historyKey, setHistoryKey] = useState<string | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyRows, setHistoryRows] = useState<ConfiguracaoClinicaVersao[]>([]);
@@ -589,7 +593,9 @@ export default function Configuracoes() {
         toast.success(`${label} salvas na nuvem!`);
       }
     } catch (error: any) {
-      if (generation === configLoadGeneration.current) {
+      if (exigeReautenticacao(error)) {
+        setReauthAcao(() => () => saveConfig(chave, valor, label));
+      } else if (generation === configLoadGeneration.current) {
         toast.error('Erro ao salvar: ' + (error.message || 'Tente novamente.'));
       }
     } finally {
@@ -639,6 +645,7 @@ export default function Configuracoes() {
       setHistoryOpen(false);
       toast.success('Versão restaurada e registrada no histórico.');
     } catch (error: unknown) {
+      if (exigeReautenticacao(error)) { setReauthAcao(() => restoreConfigHistory); return; }
       toast.error('Não foi possível restaurar esta versão', { description: error instanceof Error ? error.message : 'Recarregue e compare novamente.' });
     } finally {
       setHistoryRestoring(false);
@@ -1304,6 +1311,14 @@ export default function Configuracoes() {
           </div>
         </TabsContent>
       </Tabs>
+      <ReauthDialog
+        open={reauthAcao !== null}
+        email={user?.email ?? ''}
+        onOpenChange={(open) => { if (!open) setReauthAcao(null); }}
+        title="Confirme sua identidade"
+        description="Esta mudança reduz os controles de segurança da clínica (por exemplo, aumenta o tempo de sessão). Confirme sua identidade para continuar."
+        onConfirmed={async () => { await reauthAcao?.(); }}
+      />
       <Dialog open={historyOpen} onOpenChange={setHistoryOpen}>
         <DialogContent className="max-h-[85vh] max-w-4xl overflow-y-auto">
           <DialogHeader>
