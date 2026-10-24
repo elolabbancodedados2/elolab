@@ -5044,6 +5044,11 @@ isOneToOne: false
 "registrar_documento_recurso_glosa":
 { Args: { "p_byte_size": number,"p_content_type": string,"p_file_name": string,"p_glosa_id": string,"p_storage_path": string }; Returns: Json
                            },
+"historico_alteracoes_lancamento":
+{ Args: { "p_lancamento_id": string }; Returns: {
+              "alterado_em": string,"alterado_por_nome": string | null,"campo": string,"valor_anterior": string | null,"valor_novo": string | null
+            }[]
+                           },
 "historico_regras_repasse":
 { Args: { "p_limite"?: number }; Returns: {
               "alterado_em": string,"alterado_por_nome": string | null,"id": string,"medico_id": string,"tipo_anterior": string,"tipo_novo": string,"valor_anterior": number,"valor_novo": number

@@ -27,6 +27,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { Database } from '@/integrations/supabase/types';
 import { differenceInCalendarDays } from 'date-fns';
+import { HistoricoLancamentoButton } from '@/components/financeiro/HistoricoLancamentoButton';
 import { isValidDateOnly, parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { valorRealizado } from '@/lib/lancamentos';
 import { ErrorState } from '@/components/ErrorState';
@@ -599,7 +600,8 @@ export default function ContasPagar() {
                             : STATUS_LABELS[conta.status || 'pendente']}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-right">
+                      <TableCell className="space-x-1 whitespace-nowrap text-right">
+                        <HistoricoLancamentoButton lancamentoId={conta.id} descricao={conta.descricao} rotulos={CATEGORIAS_LABELS} />
                         {['pendente', 'atrasado', 'parcial'].includes(conta.status) && (
                           <Button size="sm" onClick={() => handlePagamento(conta.id)}
                             className="h-9 gap-1 rounded-full bg-gradient-primary text-xs text-white shadow-md hover:brightness-110">
