@@ -38,6 +38,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { valorRealizado } from '@/lib/lancamentos';
 import { grupoMovimentoCaixa, totaisMovimentoCaixa } from '@/lib/fluxoCaixa';
 import { ErrorState } from '@/components/ErrorState';
+import { ProjecaoFluxoCaixa } from '@/components/financeiro/ProjecaoFluxoCaixa';
+import type { LancamentoProjecao } from '@/lib/projecaoFluxoCaixa';
 import { dateOnlyInTimeZone, inicioDoDiaEmFusoIso, parseDateOnly } from '@/lib/dateOnly';
 
 const statusRealizado = (status: string | null) => status === 'pago' || status === 'parcial';
@@ -111,6 +113,8 @@ export default function FluxoCaixa() {
     || pagamentos.length >= LIMITE_BUSCA_EM_BLOCOS;
 
   const mesAtual = currentDate.getMonth();
+  // Os pagamentos carregados cobrem o mês exibido; o realizado da projeção só é completo no mês corrente.
+  const visualizandoMesAtual = format(currentDate, 'yyyy-MM') === dateOnlyInTimeZone(new Date(), 'America/Sao_Paulo').slice(0, 7);
   const anoAtual = currentDate.getFullYear();
 
   const formatCurrency = (value: number) => {
@@ -472,6 +476,8 @@ export default function FluxoCaixa() {
           </CardContent>
         </Card>
       </div>
+
+      <ProjecaoFluxoCaixa lancamentos={lancamentos as LancamentoProjecao[]} realizados={visualizandoMesAtual ? eventosRealizados : []} realizadoIndisponivel={!visualizandoMesAtual} />
 
       {/* Por Categoria */}
       <Card className="rounded-2xl border-border/60 shadow-xs">
