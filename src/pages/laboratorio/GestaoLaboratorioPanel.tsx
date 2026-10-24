@@ -14,8 +14,9 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { CatalogoPerfisPanel } from '@/pages/laboratorio/CatalogoPerfisPanel';
+import { SLA_LAB_PADRAO_HORAS, validarSlaHoras } from '@/lib/laboratorioSla';
 
-type Setor = { id: string; nome: string; ativo: boolean; descricao: string | null };
+type Setor = { id: string; nome: string; ativo: boolean; descricao: string | null; sla_alerta_horas: number | null };
 type Equipamento = { id: string; nome: string; fabricante: string | null; modelo: string | null; numero_serie: string | null; status: string; calibracao_vencimento: string | null; setor_id: string | null };
 type Lote = { id: string; nome: string; fabricante: string | null; lote: string; quantidade: number; unidade: string | null; validade: string | null; status: string };
 type Controle = { id: string; analito: string; nivel: string | null; resultado: number; unidade: string | null; aprovado: boolean; realizado_em: string; equipamento_id: string | null };
@@ -34,7 +35,7 @@ export function GestaoLaboratorioPanel() {
   const setoresQuery = useQuery({
     queryKey: ['lab-gestao-setores', profile?.clinica_id], enabled: !!profile?.clinica_id,
     queryFn: async () => {
-      const { data, error } = await db.from('laboratorio_setores').select('id, nome, descricao, ativo')
+      const { data, error } = await db.from('laboratorio_setores').select('id, nome, descricao, ativo, sla_alerta_horas')
         .eq('clinica_id', profile!.clinica_id).order('nome');
       if (error) throw error; return (data ?? []) as Setor[];
     },
@@ -99,6 +100,19 @@ export function GestaoLaboratorioPanel() {
     onSuccess: async () => { await invalidate(); toast.success('Estado do equipamento atualizado'); },
     onError: (error) => toast.error('Não foi possível alterar o equipamento', { description: error.message }),
   });
+  const salvarSla = useMutation({
+    mutationFn: async ({ id, valor }: { id: string; valor: string }) => {
+      if (!profile?.clinica_id) throw new Error('Clínica não identificada.');
+      const { data, error } = await db.from('laboratorio_setores').update({ sla_alerta_horas: validarSlaHoras(valor) })
+        .eq('id', id).eq('clinica_id', profile.clinica_id).select('id').maybeSingle();
+      if (error) throw error; if (!data) throw new Error('Setor não encontrado ou sem permissão para alterar.');
+    },
+    onSuccess: async () => {
+      await Promise.all([invalidate(), queryClient.invalidateQueries({ queryKey: ['lab-sla-etapas', profile?.clinica_id] })]);
+      toast.success('Limite de SLA do setor salvo');
+    },
+    onError: (error) => toast.error('Não foi possível salvar o limite', { description: error.message }),
+  });
   const setor = (id: string | null) => (setoresQuery.data ?? []).find((item) => item.id === id)?.nome ?? 'Sem setor';
   const equipamento = (id: string | null) => (equipamentosQuery.data ?? []).find((item) => item.id === id)?.nome ?? '—';
   const expirado = (date: string | null) => !!date && date < new Date().toISOString().slice(0, 10);
@@ -137,7 +151,7 @@ export function GestaoLaboratorioPanel() {
         </TabsContent>
 
         <TabsContent value="setores" className="space-y-4">
-          <Card className="max-w-2xl border-border/70"><CardHeader><CardTitle className="text-base">Setores analíticos</CardTitle><CardDescription>Use setores para organizar a bancada e vincular equipamentos e catálogo.</CardDescription></CardHeader><CardContent className="space-y-4"><form className="flex gap-2" onSubmit={(event) => { event.preventDefault(); if (!novoSetor.trim()) return; salvar.mutate({ tabela: 'laboratorio_setores', valores: { nome: novoSetor.trim() } }) }}><Input aria-label="Nome do novo setor" value={novoSetor} onChange={(event) => setNovoSetor(event.target.value)} placeholder="Ex.: Hematologia" maxLength={80} /><Button type="submit" disabled={salvar.isPending || !novoSetor.trim()} className="gap-2"><Plus className="h-4 w-4" />Adicionar</Button></form>{setoresQuery.isLoading ? <p role="status" className="p-5 text-center text-sm text-muted-foreground">Carregando setores…</p> : (setoresQuery.data ?? EMPTY).length === 0 ? <p className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">Nenhum setor configurado.</p> : <ul className="divide-y rounded-lg border">{setoresQuery.data?.map((item) => <li key={item.id} className="flex items-center justify-between gap-3 p-3"><div><p className="font-medium">{item.nome}</p>{item.descricao && <p className="text-xs text-muted-foreground">{item.descricao}</p>}</div><Badge variant={item.ativo ? 'secondary' : 'outline'}>{item.ativo ? 'Ativo' : 'Inativo'}</Badge></li>)}</ul>}</CardContent></Card>
+          <Card className="max-w-2xl border-border/70"><CardHeader><CardTitle className="text-base">Setores analíticos</CardTitle><CardDescription>Use setores para organizar a bancada e vincular equipamentos e catálogo. O alerta de SLA marca, em Indicadores, as amostras em aberto há mais horas que o limite (vazio = {SLA_LAB_PADRAO_HORAS} h).</CardDescription></CardHeader><CardContent className="space-y-4"><form className="flex gap-2" onSubmit={(event) => { event.preventDefault(); if (!novoSetor.trim()) return; salvar.mutate({ tabela: 'laboratorio_setores', valores: { nome: novoSetor.trim() } }) }}><Input aria-label="Nome do novo setor" value={novoSetor} onChange={(event) => setNovoSetor(event.target.value)} placeholder="Ex.: Hematologia" maxLength={80} /><Button type="submit" disabled={salvar.isPending || !novoSetor.trim()} className="gap-2"><Plus className="h-4 w-4" />Adicionar</Button></form>{setoresQuery.isLoading ? <p role="status" className="p-5 text-center text-sm text-muted-foreground">Carregando setores…</p> : (setoresQuery.data ?? EMPTY).length === 0 ? <p className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">Nenhum setor configurado.</p> : <ul className="divide-y rounded-lg border">{setoresQuery.data?.map((item) => <li key={`${item.id}-${item.sla_alerta_horas ?? ''}`} className="flex flex-wrap items-center justify-between gap-3 p-3"><div><p className="font-medium">{item.nome}</p>{item.descricao && <p className="text-xs text-muted-foreground">{item.descricao}</p>}</div><div className="flex flex-wrap items-center gap-2"><form className="flex items-center gap-2" onSubmit={(event) => { event.preventDefault(); salvarSla.mutate({ id: item.id, valor: String(new FormData(event.currentTarget).get('sla') ?? '') }); }}><Label htmlFor={`sla-${item.id}`} className="text-xs text-muted-foreground">Alerta de SLA (h)</Label><Input id={`sla-${item.id}`} name="sla" type="number" inputMode="numeric" min={1} max={720} step={1} defaultValue={item.sla_alerta_horas ?? ''} placeholder={String(SLA_LAB_PADRAO_HORAS)} className="h-9 w-20" /><Button type="submit" size="sm" variant="outline" disabled={salvarSla.isPending}>Salvar</Button></form><Badge variant={item.ativo ? 'secondary' : 'outline'}>{item.ativo ? 'Ativo' : 'Inativo'}</Badge></div></li>)}</ul>}</CardContent></Card>
         </TabsContent>
 
         <TabsContent value="catalogo" className="space-y-4"><CatalogoPerfisPanel /></TabsContent>
