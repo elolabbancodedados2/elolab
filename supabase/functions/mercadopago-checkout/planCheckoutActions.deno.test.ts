@@ -343,6 +343,10 @@ Deno.test('cancellation selects the active plan subscription instead of a newer 
   if (planValues?.status !== 'cancelada' || typeof planValues.data_cancelamento !== 'string') {
     throw new Error('Successful cancellation must immediately end plan access and record when cancellation occurred.');
   }
+  const audit = supabase.calls.find((call) => call.table === 'audit_log' && call.operation === 'insert');
+  if (!(audit?.values as Record<string, unknown> | undefined)?.changes) {
+    throw new Error('Cancellation audit must use the existing audit_log.changes column.');
+  }
 });
 
 Deno.test('cancellation fails if the exact local gateway subscription row was not updated', async () => {

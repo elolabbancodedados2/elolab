@@ -2045,14 +2045,14 @@ isOneToOne: false
                   ]
                 },"mercadopago_webhook_logs": {
                   Row: {
-                    "claim_token": string | null,"created_at": string | null,"data_id": string | null,"erro_mensagem": string | null,"event_id": string | null,"event_type": string,"id": string,"lease_until": string | null,"payload": NonNullable<Json>,"processado": boolean | null,"tentativas": number
+                    "claim_token": string | null,"created_at": string | null,"data_id": string | null,"erro_mensagem": string | null,"event_id": string | null,"event_type": string,"id": string,"lease_until": string | null,"payload": NonNullable<Json>,"processado": boolean | null,"repeticoes": number,"sinal_ordem": string | null,"tentativas": number,"ultima_repeticao_em": string | null
                   }
                   ComputedFields: never
                   Insert: {
                     "claim_token"?: string | null,"created_at"?: string | null,"data_id"?: string | null,"erro_mensagem"?: string | null,"event_id"?: string | null,"event_type": string,"id"?: string,"lease_until"?: string | null,"payload"?: NonNullable<Json>,"processado"?: boolean | null,"tentativas"?: number
                   }
                   Update: {
-                    "claim_token"?: string | null,"created_at"?: string | null,"data_id"?: string | null,"erro_mensagem"?: string | null,"event_id"?: string | null,"event_type"?: string,"id"?: string,"lease_until"?: string | null,"payload"?: NonNullable<Json>,"processado"?: boolean | null,"tentativas"?: number
+                    "claim_token"?: string | null,"created_at"?: string | null,"data_id"?: string | null,"erro_mensagem"?: string | null,"event_id"?: string | null,"event_type"?: string,"id"?: string,"lease_until"?: string | null,"payload"?: NonNullable<Json>,"processado"?: boolean | null,"repeticoes"?: number,"sinal_ordem"?: string | null,"tentativas"?: number,"ultima_repeticao_em"?: string | null
                   }
                   Relationships: [
                     
@@ -4506,6 +4506,14 @@ isOneToOne: false
 "historico_cobranca_assinatura":
 { Args: { "p_limit"?: number }; Returns: {
               "atualizado_em": string | null,"criado_em": string | null,"detalhe": string | null,"id": string,"metodo": string | null,"origem": string,"referencia": string | null,"status": string,"valor": number | null
+            }[]
+                           },
+"platform_reconciliar_cobranca":
+{ Args: { "p_id": string,"p_justificativa": string,"p_origem": string,"p_resolucao": string }; Returns: Json
+                           },
+"platform_reconciliacoes_cobranca":
+{ Args: { "p_limit"?: number }; Returns: {
+              "autor_email": string | null,"criado_em": string | null,"id": string,"justificativa": string | null,"origem": string | null,"record_id": string,"resolucao": string | null,"status_anterior": string | null,"status_novo": string | null
             }[]
                            },
 "platform_checkout_attempts":

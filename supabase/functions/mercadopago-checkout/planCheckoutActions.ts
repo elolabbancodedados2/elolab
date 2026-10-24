@@ -610,13 +610,15 @@ export async function cancelPlanSubscription(
   if (!updatedPlan) throw new Error('Mercado Pago cancelou a assinatura, mas o plano ativo correspondente não foi atualizado.');
 
   const motivo = typeof body.motivo === 'string' ? body.motivo.slice(0, 500) : null;
-  await supabase.from('audit_log').insert({
+  // audit_log guarda o detalhe em "changes"; a coluna "details" não existe e a gravação falhava em silêncio.
+  const { error: auditError } = await supabase.from('audit_log').insert({
     action: 'SUBSCRIPTION_CANCELLED',
     collection: 'assinaturas_mercadopago',
     record_id: assinatura.id,
     user_id: user.id,
-    details: { mp_preapproval_id: assinatura.mp_preapproval_id, cancelled_at: cancelledAt, motivo },
+    changes: { mp_preapproval_id: assinatura.mp_preapproval_id, cancelled_at: cancelledAt, motivo },
   });
+  if (auditError) console.error('Cancelamento concluído, mas a trilha de auditoria não foi gravada:', auditError.message);
   return reply({ success: true, cancelled_at: cancelledAt }, 200, headers);
 }
 
