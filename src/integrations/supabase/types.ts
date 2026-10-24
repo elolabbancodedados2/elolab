@@ -1771,14 +1771,14 @@ isOneToOne: false
                   ]
                 },"lgpd_access_request_log": {
                   Row: {
-                    "base_legal": string | null,"clinica_id": string | null,"created_at": string,"evidencia": string | null,"fulfillment_date": string | null,"id": string,"notes": string | null,"paciente_id": string,"prazo_em": string | null,"request_type": string,"requested_at": string,"responsavel_id": string | null,"status": string,"updated_at": string
+                    "base_legal": string | null,"clinica_id": string | null,"created_at": string,"escopo": (string)[] | null,"evidencia": string | null,"fulfillment_date": string | null,"id": string,"notes": string | null,"paciente_id": string,"prazo_em": string | null,"protocolo": string | null,"request_type": string,"requested_at": string,"responsavel_id": string | null,"status": string,"updated_at": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "base_legal"?: string | null,"clinica_id"?: string | null,"created_at"?: string,"evidencia"?: string | null,"fulfillment_date"?: string | null,"id"?: string,"notes"?: string | null,"paciente_id": string,"prazo_em"?: string | null,"request_type": string,"requested_at"?: string,"responsavel_id"?: string | null,"status"?: string,"updated_at"?: string
+                    "base_legal"?: string | null,"clinica_id"?: string | null,"created_at"?: string,"escopo"?: (string)[] | null,"evidencia"?: string | null,"fulfillment_date"?: string | null,"id"?: string,"notes"?: string | null,"paciente_id": string,"prazo_em"?: string | null,"protocolo"?: string | null,"request_type": string,"requested_at"?: string,"responsavel_id"?: string | null,"status"?: string,"updated_at"?: string
                   }
                   Update: {
-                    "base_legal"?: string | null,"clinica_id"?: string | null,"created_at"?: string,"evidencia"?: string | null,"fulfillment_date"?: string | null,"id"?: string,"notes"?: string | null,"paciente_id"?: string,"prazo_em"?: string | null,"request_type"?: string,"requested_at"?: string,"responsavel_id"?: string | null,"status"?: string,"updated_at"?: string
+                    "base_legal"?: string | null,"clinica_id"?: string | null,"created_at"?: string,"escopo"?: (string)[] | null,"evidencia"?: string | null,"fulfillment_date"?: string | null,"id"?: string,"notes"?: string | null,"paciente_id"?: string,"prazo_em"?: string | null,"protocolo"?: string | null,"request_type"?: string,"requested_at"?: string,"responsavel_id"?: string | null,"status"?: string,"updated_at"?: string
                   }
                   Relationships: [
                     {
@@ -4438,6 +4438,9 @@ isOneToOne: false
 { Args: { "p_data_nascimento": string,"p_excluir"?: string,"p_nome": string,"p_telefone": string }; Returns: {
               "data_nascimento": string,"id": string,"motivos": (string)[],"nome": string,"nome_social": string,"telefone_final": string
             }[]
+                           },
+"concluir_exportacao_lgpd_paciente":
+{ Args: { "p_evidencia": string,"p_id": string }; Returns: Json
                            },
 "descartar_duplicidade_pacientes":
 { Args: { "p_paciente_a": string,"p_paciente_b": string }; Returns: undefined

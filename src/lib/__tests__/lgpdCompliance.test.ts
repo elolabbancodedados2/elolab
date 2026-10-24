@@ -64,7 +64,7 @@ describe('exportPatientData', () => {
 
     expect(mocks.inserts).toContainEqual({
       table: 'lgpd_access_request_log',
-      values: { paciente_id: 'patient-1', request_type: 'export', status: 'pending' },
+      values: { paciente_id: 'patient-1', request_type: 'export', status: 'pending', escopo: ['cadastro', 'agenda', 'clinico', 'anexos', 'financeiro', 'comunicacao', 'auditoria'] },
     });
     expect(requestUpdate?.values).not.toHaveProperty('status', 'fulfilled');
     expect(requestUpdate?.values).not.toHaveProperty('fulfillment_date');
@@ -86,6 +86,17 @@ describe('exportPatientData', () => {
     });
     expect(exported.attachments[0]).not.toHaveProperty('url_arquivo');
     expect(mocks.rpc).toHaveBeenCalledWith('registrar_exportacao_lgpd_paciente', { p_paciente_id: 'patient-1' });
+  });
+
+  it('respeita o escopo escolhido e não baixa anexos fora dele', async () => {
+    mocks.download.mockClear();
+    const exported = await exportPatientData('patient-1', ['agenda']);
+
+    expect(mocks.download).not.toHaveBeenCalled();
+    expect(exported).toHaveProperty('agendamentos');
+    expect(exported).not.toHaveProperty('prontuarios');
+    expect(exported).not.toHaveProperty('attachments');
+    expect(exported.exportacao).toMatchObject({ escopo: ['cadastro', 'agenda'] });
   });
 
   it('interrompe a exportação se não puder baixar um anexo autorizado', async () => {

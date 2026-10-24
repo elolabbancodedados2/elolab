@@ -73,6 +73,40 @@ export interface PatientDataExport {
   fila_atendimento: Array<Record<string, unknown>>;
 }
 
+/** Categorias que o titular pode pedir; precisam coincidir com o CHECK da migration. */
+export const ESCOPOS_EXPORTACAO_LGPD = [
+  { id: 'cadastro', rotulo: 'Cadastro e consentimentos', chaves: ['paciente', 'consentimentos_lgpd', 'consent_log', 'lgpd_access_request_log', 'paciente_portal_tokens'] },
+  { id: 'agenda', rotulo: 'Agenda, fila e retornos', chaves: ['agendamentos', 'retornos', 'retornos_agendados', 'lista_espera', 'fila_atendimento', 'notificacoes_agendadas', 'tarefas', 'avaliacoes_atendimento', 'feedbacks_nps', 'predicoes_no_show'] },
+  { id: 'clinico', rotulo: 'Prontuário, documentos e exames', chaves: ['prontuarios', 'prontuario_adendos', 'prontuario_diagnosticos', 'prontuario_acessos', 'prontuario_assinaturas', 'prescricoes', 'memed_prescricoes', 'exames', 'triagens', 'atestados', 'encaminhamentos', 'paciente_comorbidades', 'vitais_historico', 'pedidos_laboratorio', 'coletas_laboratorio', 'resultados_laboratorio', 'guias_externas', 'movimentacoes_estoque', 'interoperability_exports'] },
+  { id: 'anexos', rotulo: 'Arquivos anexos do prontuário', chaves: ['attachments'] },
+  { id: 'financeiro', rotulo: 'Financeiro e convênio', chaves: ['lancamentos', 'lancamento_itens', 'pagamentos', 'pagamentos_mercadopago', 'assinaturas_mercadopago', 'notas_fiscais', 'autorizacoes_convenio'] },
+  { id: 'comunicacao', rotulo: 'Conversas de WhatsApp', chaves: ['whatsapp_conversations', 'whatsapp_messages', 'whatsapp_agent_actions'] },
+  { id: 'auditoria', rotulo: 'Trilha de auditoria', chaves: ['audit_log'] },
+] as const;
+
+export type EscopoExportacaoLgpd = typeof ESCOPOS_EXPORTACAO_LGPD[number]['id'];
+
+/** Mantém só categorias conhecidas, em ordem fixa; cadastro é sempre incluído. Sem escolha = tudo. */
+export function normalizarEscopoExportacao(escopo?: readonly string[]): EscopoExportacaoLgpd[] {
+  if (!escopo) return ESCOPOS_EXPORTACAO_LGPD.map(e => e.id);
+  return ESCOPOS_EXPORTACAO_LGPD.map(e => e.id).filter(id => id === 'cadastro' || escopo.includes(id));
+}
+
+export function filtrarEscopoExportacao<T extends Record<string, unknown>>(pacote: T, escopo?: readonly string[]): Partial<T> {
+  const permitidas = new Set<string>(ESCOPOS_EXPORTACAO_LGPD
+    .filter(e => normalizarEscopoExportacao(escopo).includes(e.id))
+    .flatMap(e => [...e.chaves]));
+  return Object.fromEntries(Object.entries(pacote).filter(([chave]) => permitidas.has(chave))) as Partial<T>;
+}
+
+export async function concluirExportacaoLgpd(pedidoId: string, evidencia: string): Promise<{ protocolo: string }> {
+  const { data, error } = await supabase.rpc('concluir_exportacao_lgpd_paciente', { p_id: pedidoId, p_evidencia: evidencia.trim() });
+  if (error) throw error;
+  const resultado = data as { protocolo?: string; status?: string } | null;
+  if (resultado?.status !== 'fulfilled' || !resultado.protocolo) throw new Error('O servidor não confirmou a conclusão do pedido.');
+  return { protocolo: resultado.protocolo };
+}
+
 const MAX_ATTACHMENT_EXPORT_BYTES = 30 * 1024 * 1024;
 
 function storagePathForPatientAttachment(stored: string): string {
@@ -99,7 +133,8 @@ function bytesToBase64(bytes: Uint8Array): string {
 /**
  * Exportar todos os dados de um paciente (direito à portabilidade)
  */
-export async function exportPatientData(pacienteId: string): Promise<PatientDataExport> {
+export async function exportPatientData(pacienteId: string, escopo?: readonly string[]): Promise<PatientDataExport> {
+  const escopoFinal = normalizarEscopoExportacao(escopo);
   try {
     const { data: paciente, error: pacienteError } = await supabase
       .from('pacientes')
@@ -110,8 +145,8 @@ export async function exportPatientData(pacienteId: string): Promise<PatientData
 
     const { data: pedidoExportacao, error: erroPedidoExportacao } = await db
       .from('lgpd_access_request_log')
-      .insert({ paciente_id: pacienteId, request_type: 'export', status: 'pending' })
-      .select('id,requested_at')
+      .insert({ paciente_id: pacienteId, request_type: 'export', status: 'pending', escopo: escopoFinal })
+      .select('id,requested_at,protocolo')
       .single();
     if (erroPedidoExportacao || !pedidoExportacao?.id) {
       throw new Error(
@@ -278,7 +313,8 @@ export async function exportPatientData(pacienteId: string): Promise<PatientData
     }
     const anexosComConteudo: Array<Record<string, unknown>> = [];
     let totalAttachmentBytes = 0;
-    for (const anexo of (anexos || []) as Array<Record<string, unknown>>) {
+    // Sem a categoria de anexos, nenhum arquivo é baixado do Storage.
+    for (const anexo of (escopoFinal.includes('anexos') ? anexos || [] : []) as Array<Record<string, unknown>>) {
       const storedPath = String(anexo.url_arquivo || '');
       if (!storedPath) throw new Error(`O anexo ${String(anexo.nome_arquivo || anexo.id)} não possui caminho de arquivo.`);
       const path = storagePathForPatientAttachment(storedPath);
@@ -403,7 +439,10 @@ export async function exportPatientData(pacienteId: string): Promise<PatientData
     if (existingRequestIndex >= 0) requestLog[existingRequestIndex] = pendingRequest;
     else requestLog.push(pendingRequest);
 
-    return data as PatientDataExport;
+    return {
+      ...filtrarEscopoExportacao(data, escopoFinal),
+      exportacao: { protocolo: pedidoExportacao.protocolo ?? null, escopo: escopoFinal, gerado_em: preparadoEm },
+    } as PatientDataExport;
   } catch (error) {
     console.error('Error exporting patient data:', error);
     throw error;
