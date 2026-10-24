@@ -40,11 +40,12 @@ import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ErrorState } from '@/components/ErrorState';
 import { CancelamentoPlanoResumo } from '@/components/CancelamentoPlanoResumo';
+import { UsoDoPlano } from '@/components/UsoDoPlano';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useUserPlan, usePlanos } from '@/hooks/useSubscriptionPlan';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
-import { abrirUrlSegura, checkoutUrlSeguro } from '@/lib/safeUrl';
+import { descreverEventoCobranca, type EventoCobrancaAssinatura } from '@/lib/subscriptionBillingHistory';
 import { clearClinicaInfoCache } from '@/lib/pdfGenerator';
 import { IntegracoesClinica } from '@/components/configuracoes/IntegracoesClinica';
 import { AgendamentoOnlineConfig } from '@/components/configuracoes/AgendamentoOnlineConfig';
@@ -125,14 +126,6 @@ const DEFAULT_SEGURANCA: ConfiguracaoSeguranca = {
 
 const DEFAULT_IMPRESSAO: ConfiguracaoImpressao = {
   rodapeReceita: '', mostrarLogo: true, mostrarCRM: true, mostrarCNES: false,
-};
-
-const FATURA_STATUS_LABEL: Record<string, string> = {
-  approved: 'Pago', aprovado: 'Pago',
-  pending: 'Pendente', pendente: 'Pendente',
-  rejected: 'Recusado', recusado: 'Recusado',
-  cancelled: 'Cancelado', cancelado: 'Cancelado', cancelada: 'Cancelado',
-  refunded: 'Estornado', estornado: 'Estornado',
 };
 
 /* ─── Setting Row ─── */
@@ -392,17 +385,13 @@ export default function Configuracoes() {
   const cancelPlanLock = useRef(false);
 
   const { data: faturas, isLoading: loadingFaturas, error: erroFaturas, refetch: recarregarFaturas } = useQuery({
-    queryKey: ['minhas_faturas_saas', profile?.clinica_id],
-    enabled: !!profile?.clinica_id && showFaturas,
-    queryFn: async () => {
-      const { data, error } = await (supabase as any)
-        .from('pagamentos_mercadopago')
-        .select('id, valor, valor_pago, status, tipo, descricao, data_criacao, data_aprovacao, checkout_url, metodo_pagamento')
-        .eq('clinica_id', profile!.clinica_id)
-        .order('data_criacao', { ascending: false })
-        .limit(50);
+    queryKey: ['historico_cobranca_assinatura', user?.id],
+    enabled: !!user?.id && showFaturas,
+    // Só a cobrança da assinatura EloLab; o financeiro de pacientes fica no módulo Financeiro.
+    queryFn: async (): Promise<EventoCobrancaAssinatura[]> => {
+      const { data, error } = await supabase.rpc('historico_cobranca_assinatura', { p_limit: 50 });
       if (error) throw error;
-      return data || [];
+      return (data || []) as EventoCobrancaAssinatura[];
     },
   });
 
@@ -969,6 +958,8 @@ export default function Configuracoes() {
               </CardContent>
             </Card>
 
+            {!isPlanExempt && profile?.clinica_id && <UsoDoPlano />}
+
             {/* Dialog: Faturas */}
             <Dialog open={showFaturas} onOpenChange={setShowFaturas}>
               <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
@@ -976,7 +967,7 @@ export default function Configuracoes() {
                   <DialogTitle className="flex items-center gap-2">
                     <Receipt className="h-5 w-5 text-[#1080CA]" /> Histórico de Faturas
                   </DialogTitle>
-                  <DialogDescription>Pagamentos da sua assinatura EloLab</DialogDescription>
+                  <DialogDescription>Tentativas e cobranças da assinatura EloLab, com o estado final de cada uma. Recebimentos de pacientes ficam no Financeiro.</DialogDescription>
                 </DialogHeader>
                 {loadingFaturas ? (
                   <div className="py-8 text-center"><Loader2 className="h-6 w-6 animate-spin mx-auto text-[#1080CA]" /></div>
@@ -989,32 +980,29 @@ export default function Configuracoes() {
                     <TableHeader>
                       <TableRow>
                         <TableHead>Data</TableHead>
-                        <TableHead>Descrição</TableHead>
+                        <TableHead>Tipo</TableHead>
                         <TableHead>Valor</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Ação</TableHead>
+                        <TableHead>Estado</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {faturas.map((f: any) => (
-                        <TableRow key={f.id}>
-                          <TableCell className="text-xs">{f.data_criacao ? formatDate(f.data_criacao, 'short') : '—'}</TableCell>
-                          <TableCell className="text-xs">{f.descricao || f.tipo || 'Assinatura'}</TableCell>
-                          <TableCell className="text-xs font-semibold">
-                            {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(f.valor_pago || f.valor || 0)}
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant={f.status === 'approved' || f.status === 'aprovado' ? 'default' : f.status === 'pending' || f.status === 'pendente' ? 'secondary' : 'outline'} className="rounded-full">
-                              {FATURA_STATUS_LABEL[String(f.status || '').toLowerCase()] || f.status || '—'}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            {f.checkout_url && (
-                              <Button size="sm" variant="ghost" className="rounded-full" onClick={() => abrirUrlSegura(f.checkout_url, checkoutUrlSeguro)}>Abrir</Button>
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      ))}
+                      {faturas.map((f) => {
+                        const evento = descreverEventoCobranca(f);
+                        return (
+                          <TableRow key={`${f.origem}-${f.id}`}>
+                            <TableCell className="text-xs">{f.criado_em ? formatDate(f.criado_em, 'short') : '—'}</TableCell>
+                            <TableCell className="text-xs">{evento.tipo}{evento.detalhe && <span className="block text-muted-foreground">{evento.detalhe}</span>}</TableCell>
+                            <TableCell className="text-xs font-semibold">
+                              {f.valor === null ? '—' : new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(f.valor))}
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant={evento.final ? 'outline' : 'secondary'} className="rounded-full">
+                                {evento.estado}{evento.final ? '' : ' · em andamento'}
+                              </Badge>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
                     </TableBody>
                   </Table>
                 )}
