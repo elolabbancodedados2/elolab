@@ -216,6 +216,14 @@ html[data-density='compact'] main .space-y-6 > :not([hidden]) ~ :not([hidden]) {
   margin-top: 1rem;
 }
 
+/* Linhas de tabela mais baixas; botões mantêm o próprio tamanho e o modo cartão do celular fica intacto. */
+@media (min-width: 640px) {
+  html[data-density='compact'] main :is(td, th) {
+    padding-top: 0.375rem;
+    padding-bottom: 0.375rem;
+  }
+}
+
 html[data-contrast='high'] {
   --foreground: 252 60% 8%;
   --muted-foreground: 252 30% 24%;
