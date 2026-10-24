@@ -22,6 +22,7 @@ import { isValidDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { PageHeader } from '@/components/PageHeader';
 import { Link } from 'react-router-dom';
 import { RelatorioFaturamentoCompetencia } from '@/components/financeiro/RelatorioFaturamentoCompetencia';
+import { ConciliacaoConvenioPorLote } from '@/components/financeiro/ConciliacaoConvenioPorLote';
 
 const brl = (value: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value || 0);
 const temNoMaximoDuasCasas = (value: number) => Number.isFinite(value)
@@ -67,6 +68,7 @@ export default function FaturamentoConvenios() {
       .eq('clinica_id', profile?.clinica_id ?? '').order('competencia', { ascending: false }).order('id', { ascending: true }));
   }});
   const lotes = lotesQuery.data ?? [];
+  const lotesComNomeConvenio = useMemo(() => lotes.map((l: any) => ({ ...l, convenio_nome: l.convenios?.nome ?? 'Convênio sem nome' })), [lotes]);
   const lotesComDivergenciaFinanceira = lotes.filter((lote: any) =>
     Number(lote.valor_pago || 0) !== Number(lote.valor_conciliado_financeiro || 0),
   );
@@ -377,7 +379,7 @@ export default function FaturamentoConvenios() {
       { label: 'Glosado', value: resumo.glosado, icon: AlertTriangle, color: 'text-destructive', bg: 'bg-destructive/10', border: 'border-destructive/20' },
       { label: 'Recuperado', value: resumo.recuperado, icon: RotateCcw, color: 'text-info', bg: 'bg-info/10', border: 'border-info/20' },
     ].map(({ label, value, icon: Icon, color, bg, border }) => <Card key={label} className={`h-full border bg-card shadow-sm transition-shadow hover:shadow-md ${border}`}><CardContent className="flex items-start justify-between gap-2 p-4"><div><p className="text-xs font-medium text-muted-foreground">{label}</p><p className={`mt-1 text-lg font-bold tabular-nums sm:text-xl ${color}`}>{brl(value)}</p></div><span className={`rounded-xl p-2.5 border border-border ${bg}`}><Icon className={`h-4 w-4 ${color}`} /></span></CardContent></Card>)}</div>
-    <Tabs defaultValue="lotes"><TabsList className="rounded-xl border border-border bg-muted p-1"><TabsTrigger value="lotes">Lotes ({lotes.length})</TabsTrigger><TabsTrigger value="glosas">Glosas ({glosas.length})</TabsTrigger><TabsTrigger value="relatorio">Por competência</TabsTrigger></TabsList>
+    <Tabs defaultValue="lotes"><TabsList className="rounded-xl border border-border bg-muted p-1"><TabsTrigger value="lotes">Lotes ({lotes.length})</TabsTrigger><TabsTrigger value="glosas">Glosas ({glosas.length})</TabsTrigger><TabsTrigger value="conciliacao">Conciliação</TabsTrigger><TabsTrigger value="relatorio">Por competência</TabsTrigger></TabsList>
       <TabsContent value="lotes">
         <Card>
           <CardHeader><CardTitle className="text-base"><FileStack className="mr-2 inline h-4 w-4" />Lotes registrados</CardTitle></CardHeader>
@@ -412,12 +414,11 @@ export default function FaturamentoConvenios() {
         {glosas.length > 0 && <p className="text-xs text-muted-foreground">Mostrando {glosasFiltradas.length} de {glosas.length} glosas.</p>}
         {glosasFiltradas.length > 0 ? <Table><TableHeader><TableRow><TableHead>Código / motivo</TableHead><TableHead>Lote</TableHead><TableHead className="text-right">Glosado</TableHead><TableHead className="text-right">Recuperado</TableHead><TableHead>Status</TableHead><TableHead>Ação</TableHead></TableRow></TableHeader><TableBody>{glosasFiltradas.map((g: any) => <TableRow key={g.id}><TableCell><b>{g.codigo_glosa}</b>{g.guia_referencia && <p className="text-xs text-muted-foreground">Guia: {g.guia_referencia}</p>}<p className="max-w-sm text-xs text-muted-foreground">{g.motivo}</p>{g.recurso_justificativa && <p className="mt-1 max-w-sm text-xs text-muted-foreground">Recurso: {g.recurso_justificativa}</p>}</TableCell><TableCell>{g.lotes_tiss?.numero_lote}<p className="text-[10px]">{g.lotes_tiss?.convenios?.nome}</p></TableCell><TableCell className="text-right">{brl(g.valor_glosado)}</TableCell><TableCell className="text-right">{brl(g.valor_recuperado)}</TableCell><TableCell><Badge variant="outline">{g.status.replaceAll('_',' ')}</Badge></TableCell><TableCell className="space-x-1">{g.status === 'pendente' && <Button size="sm" variant="outline" disabled={glosaAtualizandoId !== null} onClick={() => { setGlosaParaRecurso(g); setJustificativaRecurso(g.recurso_justificativa || ''); }}>Preparar recurso</Button>}{g.status === 'recurso_preparacao' && <><Button size="sm" variant="outline" disabled={glosaAtualizandoId !== null} onClick={() => { setGlosaParaRecurso(g); setJustificativaRecurso(g.recurso_justificativa || ''); }}>Revisar justificativa</Button><Button size="sm" disabled={glosaAtualizandoId !== null || String(g.recurso_justificativa || '').trim().length < 10} onClick={() => void updateGlosa(g.id, 'recurso_enviado')}>Marcar enviado</Button></>}{g.status === 'recurso_enviado' && <Button size="sm" disabled={glosaAtualizandoId !== null} onClick={() => { setGlosaParaRetorno(g); setDecisaoOperadora('aceita'); setValorRecuperado(String(g.valor_glosado)); }}>Registrar retorno</Button>}</TableCell></TableRow>)}</TableBody></Table> : <div className="flex flex-col items-center gap-2 py-8 text-center"><p className="text-sm text-muted-foreground">{glosas.length === 0 ? 'Nenhuma glosa registrada nesta clínica.' : 'Nenhuma glosa corresponde à busca e aos filtros.'}</p>{glosas.length > 0 && <Button size="sm" variant="outline" onClick={() => { setBuscaGlosa(''); setStatusGlosa('todos'); }}>Limpar filtros</Button>}</div>}
       </CardContent></Card></TabsContent>
+      <TabsContent value="conciliacao">
+        {profile?.clinica_id && <ConciliacaoConvenioPorLote clinicaId={profile.clinica_id} lotes={lotesComNomeConvenio} />}
+      </TabsContent>
       <TabsContent value="relatorio">
-        <RelatorioFaturamentoCompetencia
-          convenios={convenios}
-          glosas={glosas}
-          lotes={lotes.map((l: any) => ({ ...l, convenio_nome: l.convenios?.nome ?? 'Convênio sem nome' }))}
-        />
+        <RelatorioFaturamentoCompetencia convenios={convenios} glosas={glosas} lotes={lotesComNomeConvenio} />
       </TabsContent>
     </Tabs>
     <div className="flex items-start gap-2 rounded-lg border bg-muted/30 p-3 text-xs text-muted-foreground"><ShieldCheck className="h-4 w-4 shrink-0" /><span>O XML é um resumo operacional e este sistema não o transmite à operadora. Valide o arquivo no padrão/XSD exigido e registre o envio somente depois de transmiti-lo pelo canal oficial. O retorno pode ser conciliado com o Fluxo de Caixa pelo formulário. Como o lote não identifica as cobranças individuais, confira lançamentos anteriores antes de confirmar para evitar duplicidade.</span></div>
