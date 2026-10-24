@@ -110,3 +110,37 @@ export function getContextualHelp(pathname: string): ContextualHelpEntry {
 export function getVisibleHelpLinks(entry: ContextualHelpEntry, roles: AppRole[]) {
   return (entry.links ?? []).filter(link => !link.roles || link.roles.some(role => roles.includes(role)));
 }
+
+/** Glossário curto exibido junto ao campo por `FieldHelp`. */
+export const HELP_TERMS = {
+  lote_tiss: {
+    title: 'Lote TISS',
+    summary: 'Conjunto de guias do mesmo convênio e competência apresentado de uma vez à operadora. A versão TISS indica o padrão da ANS usado nas guias; confirme a versão exigida pela operadora antes de transmitir.',
+  },
+  competencia: {
+    title: 'Competência',
+    summary: 'Mês de referência dos atendimentos faturados no lote. Não é a data de envio nem a de pagamento.',
+  },
+  glosa: {
+    title: 'Glosa',
+    summary: 'Valor recusado ou reduzido pela operadora ao analisar a guia, identificado por um código de motivo. Pode ser aceita ou contestada por recurso no prazo do contrato; o que for recuperado volta a ser recebível.',
+  },
+  risco_falta: {
+    title: 'Risco de falta',
+    summary: 'Índice de 0 a 100 que estima a chance de o paciente não comparecer, com os motivos mostrados em cada linha. Serve para priorizar confirmações; não bloqueia a agenda.',
+    items: ['Alto: 70 ou mais.', 'Médio: 40 a 69.', 'Baixo: abaixo de 40.'],
+  },
+  status_exame: {
+    title: 'Status do exame',
+    summary: 'Etapa atual da solicitação. Avance o status somente depois de concluir a etapa.',
+    items: [
+      'Solicitado: pedido registrado, ainda sem data.',
+      'Agendado: data de realização marcada.',
+      'Realizado: exame feito, aguardando resultado.',
+      'Laudo disponível: resultado registrado e liberado para consulta; o sistema recusa esta etapa sem resultado.',
+      'Cancelado: o exame não será realizado.',
+    ],
+  },
+} satisfies Record<string, { title: string; summary: string; items?: string[] }>;
+
+export type HelpTermKey = keyof typeof HELP_TERMS;

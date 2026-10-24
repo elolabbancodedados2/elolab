@@ -24,6 +24,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ErrorState } from '@/components/ErrorState';
 import { PageHeader } from '@/components/PageHeader';
+import { FieldHelp } from '@/components/ContextualHelp';
 import { Separator } from '@/components/ui/separator';
 import { LoadingButton } from '@/components/ui/loading-button';
 import { toast } from 'sonner';
@@ -1270,6 +1271,7 @@ export default function Exames() {
             </Button>
           )}
         </div>
+        <div className="flex items-center gap-1">
         <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger className="h-10 w-full rounded-full sm:w-44" aria-label="Filtrar exames por status"><SelectValue placeholder="Filtrar" /></SelectTrigger>
           <SelectContent>
@@ -1277,6 +1279,8 @@ export default function Exames() {
             {Object.entries(STATUS_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
           </SelectContent>
         </Select>
+        <FieldHelp term="status_exame" />
+        </div>
         {tiposDisponiveis.length > 0 && (
           <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Filtrar exames por tipo">
             {(['todos', ...tiposDisponiveis]).map(tipo => {
