@@ -39,6 +39,7 @@ import { valorRealizado } from '@/lib/lancamentos';
 import { grupoMovimentoCaixa, totaisMovimentoCaixa } from '@/lib/fluxoCaixa';
 import { ErrorState } from '@/components/ErrorState';
 import { ProjecaoFluxoCaixa } from '@/components/financeiro/ProjecaoFluxoCaixa';
+import { ImportarExtratoDialog } from '@/components/financeiro/ImportarExtratoDialog';
 import type { LancamentoProjecao } from '@/lib/projecaoFluxoCaixa';
 import { dateOnlyInTimeZone, inicioDoDiaEmFusoIso, parseDateOnly } from '@/lib/dateOnly';
 
@@ -294,6 +295,7 @@ export default function FluxoCaixa() {
             >
               <RefreshCw className="h-4 w-4" />
             </Button>
+            {profile?.clinica_id && <ImportarExtratoDialog clinicaId={profile.clinica_id} lancamentos={lancamentos} />}
             <div className="flex items-center gap-1 rounded-full border border-border/60 bg-card p-1 shadow-xs">
               <Button aria-label="Mês anterior" variant="ghost" size="icon" className="rounded-full text-[#1080CA] hover:bg-[#F3F8FC]" onClick={handlePrevMonth}>
                 <ChevronLeft className="h-4 w-4" />

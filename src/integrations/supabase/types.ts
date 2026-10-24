@@ -1229,6 +1229,20 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"extrato_bancario_transacoes": {
+                  Row: {
+                    "clinica_id": string,"conta": string,"data": string,"descricao": string | null,"fitid": string,"id": string,"importado_em": string,"importado_por": string,"valor": number
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "clinica_id": string,"conta": string,"data": string,"descricao"?: string | null,"fitid": string,"id"?: string,"importado_em"?: string,"importado_por": string,"valor": number
+                  }
+                  Update: {
+                    "clinica_id"?: string,"conta"?: string,"data"?: string,"descricao"?: string | null,"fitid"?: string,"id"?: string,"importado_em"?: string,"importado_por"?: string,"valor"?: number
+                  }
+                  Relationships: [
+                    
+                  ]
                 },"feedbacks_nps": {
                   Row: {
                     "agendamento_id": string | null,"categoria": string | null,"clinica_id": string | null,"comentario": string | null,"created_at": string | null,"id": string,"medico_id": string | null,"nota": number,"paciente_id": string | null
@@ -5044,8 +5058,10 @@ isOneToOne: false
 "registrar_documento_recurso_glosa":
 { Args: { "p_byte_size": number,"p_content_type": string,"p_file_name": string,"p_glosa_id": string,"p_storage_path": string }; Returns: Json
                            },
-"historico_alteracoes_lancamento":
-{ Args: { "p_lancamento_id": string }; Returns: {
+"importar_extrato_bancario":
+{ Args: { "p_conta": string,"p_transacoes": Json }; Returns: Json
+                           },
+"historico_alteracoes_lancamento":{ Args: { "p_lancamento_id": string }; Returns: {
               "alterado_em": string,"alterado_por_nome": string | null,"campo": string,"valor_anterior": string | null,"valor_novo": string | null
             }[]
                            },
