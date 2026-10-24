@@ -14,6 +14,8 @@ import { Label } from '@/components/ui/label';
 import { Check, Crown, Sparkles, Clock, Gift, ArrowRight, Shield, CreditCard, XCircle } from 'lucide-react';
 import { useUserPlan, usePlanos } from '@/hooks/useSubscriptionPlan';
 import { useBillingStatus } from '@/hooks/usePlanCheckout';
+import { CancelamentoPlanoResumo } from '@/components/CancelamentoPlanoResumo';
+import { AvisoAlteracaoPlano } from '@/components/AvisoAlteracaoPlano';
 
 function rotuloFrequencia(frequencia: string) {
   switch (frequencia) {
@@ -186,6 +188,8 @@ export default function Planos() {
           </div>
         )}
       </div>
+
+      {hasActivePlan && <AvisoAlteracaoPlano />}
 
       {loadingBilling && (
         <div role="status" className="flex items-center gap-2 rounded-xl border border-[#BFD8EE] bg-[#F3F8FC] px-4 py-3 text-sm text-[#1080CA]">
@@ -434,14 +438,7 @@ export default function Planos() {
               {isTrial ? 'Cancelar teste grátis?' : 'Cancelar assinatura?'}
             </AlertDialogTitle>
             <AlertDialogDescription asChild>
-              <div className="space-y-2">
-                <p>
-                  O Mercado Pago cancelará a cobrança recorrente agora. Ao confirmar, o acesso ao plano será encerrado e nenhuma cobrança futura será feita.
-                </p>
-                <p>
-                  {isTrial ? 'Você poderá contratar um plano novamente em Planos.' : 'Para voltar a usar, basta assinar novamente nesta página.'}
-                </p>
-              </div>
+              <div><CancelamentoPlanoResumo isTrial={isTrial} trialEnd={trialEnd} /></div>
             </AlertDialogDescription>
           </AlertDialogHeader>
 

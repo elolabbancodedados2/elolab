@@ -2045,14 +2045,14 @@ isOneToOne: false
                   ]
                 },"mercadopago_webhook_logs": {
                   Row: {
-                    "claim_token": string | null,"created_at": string | null,"data_id": string | null,"erro_mensagem": string | null,"event_id": string | null,"event_type": string,"id": string,"lease_until": string | null,"payload": NonNullable<Json>,"processado": boolean | null,"tentativas": number
+                    "claim_token": string | null,"created_at": string | null,"data_id": string | null,"erro_mensagem": string | null,"event_id": string | null,"event_type": string,"id": string,"lease_until": string | null,"payload": NonNullable<Json>,"processado": boolean | null,"repeticoes": number,"sinal_ordem": string | null,"tentativas": number,"ultima_repeticao_em": string | null
                   }
                   ComputedFields: never
                   Insert: {
                     "claim_token"?: string | null,"created_at"?: string | null,"data_id"?: string | null,"erro_mensagem"?: string | null,"event_id"?: string | null,"event_type": string,"id"?: string,"lease_until"?: string | null,"payload"?: NonNullable<Json>,"processado"?: boolean | null,"tentativas"?: number
                   }
                   Update: {
-                    "claim_token"?: string | null,"created_at"?: string | null,"data_id"?: string | null,"erro_mensagem"?: string | null,"event_id"?: string | null,"event_type"?: string,"id"?: string,"lease_until"?: string | null,"payload"?: NonNullable<Json>,"processado"?: boolean | null,"tentativas"?: number
+                    "claim_token"?: string | null,"created_at"?: string | null,"data_id"?: string | null,"erro_mensagem"?: string | null,"event_id"?: string | null,"event_type"?: string,"id"?: string,"lease_until"?: string | null,"payload"?: NonNullable<Json>,"processado"?: boolean | null,"repeticoes"?: number,"sinal_ordem"?: string | null,"tentativas"?: number,"ultima_repeticao_em"?: string | null
                   }
                   Relationships: [
                     
@@ -4515,6 +4515,35 @@ isOneToOne: false
                            },
 "clinica_acesso_bloqueado":
 { Args: Record<PropertyKey, never>; Returns: boolean
+                           },
+"clinica_recurso_plano_liberado":
+{ Args: { "p_clinica_id": string,"p_recurso": string }; Returns: boolean
+                           },
+"uso_plano_clinica":
+{ Args: Record<PropertyKey, never>; Returns: Json
+                           },
+"historico_cobranca_assinatura":
+{ Args: { "p_limit"?: number }; Returns: {
+              "atualizado_em": string | null,"criado_em": string | null,"detalhe": string | null,"id": string,"metodo": string | null,"origem": string,"referencia": string | null,"status": string,"valor": number | null
+            }[]
+                           },
+"avisos_alteracao_plano":
+{ Args: Record<PropertyKey, never>; Returns: {
+              "alterado_em": string,"campos": Json,"efeito_preco": string | null,"id": string,"plano_nome": string,"vigencia_preco": string | null
+            }[]
+                           },
+"platform_reconciliar_cobranca":
+{ Args: { "p_id": string,"p_justificativa": string,"p_origem": string,"p_resolucao": string }; Returns: Json
+                           },
+"platform_reconciliacoes_cobranca":
+{ Args: { "p_limit"?: number }; Returns: {
+              "autor_email": string | null,"criado_em": string | null,"id": string,"justificativa": string | null,"origem": string | null,"record_id": string,"resolucao": string | null,"status_anterior": string | null,"status_novo": string | null
+            }[]
+                           },
+"platform_checkout_attempts":
+{ Args: { "p_limit"?: number }; Returns: {
+              "atualizado_em": string | null,"clinica_nome": string | null,"criado_em": string | null,"detalhe": string | null,"divergente": boolean,"dono_email": string | null,"id": string,"metodo": string | null,"origem": string,"referencia": string | null,"status": string,"valor": number | null
+            }[]
                            },
 "concluir_cobranca_inadimplente":
 { Args: { "p_clinica_id": string,"p_dias_atraso": number,"p_lancamento_id": string }; Returns: undefined

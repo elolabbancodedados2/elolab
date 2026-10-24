@@ -851,7 +851,11 @@ export default function PlanoCheckout() {
                 </div>
                 <div className="flex justify-between">
                   <dt className="text-muted-foreground">Cobrança</dt>
-                  <dd>{metodoCheckout === 'cartao' ? 'Automática' : `Única · ${plano.periodo_meses === 12 ? '12 meses' : `${plano.periodo_meses} ${plano.periodo_meses === 1 ? 'mês' : 'meses'}`}`}</dd>
+                  <dd>{metodoCheckout === 'cartao' ? 'Automática' : 'Única, sem renovação'}</dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-muted-foreground">Periodicidade</dt>
+                  <dd>{metodoCheckout === 'cartao' ? `A cada ${periodoLabel(plano.periodo_meses)}` : `Acesso por ${plano.periodo_meses === 1 ? '1 mês' : `${plano.periodo_meses} meses`}`}</dd>
                 </div>
                 {trialDias > 0 && (
                   <div className="flex justify-between text-success">
@@ -859,6 +863,13 @@ export default function PlanoCheckout() {
                     <dd>{trialDias} dias</dd>
                   </div>
                 )}
+                <div className="flex justify-between gap-3">
+                  <dt className="text-muted-foreground">Primeira cobrança</dt>
+                  <dd className="text-right">
+                    {brl(plano.valor)}{' '}
+                    {trialEndEstimate ? `em ${format(trialEndEstimate, 'dd/MM/yyyy')}` : primeiraCobrancaEm ? `em ${primeiraCobrancaEm}` : 'hoje'}
+                  </dd>
+                </div>
               </dl>
               <div className="flex items-baseline justify-between border-t pt-4">
                 <span className="font-medium">Total hoje</span>

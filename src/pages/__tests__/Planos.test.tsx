@@ -18,6 +18,7 @@ vi.mock('@/hooks/useSubscriptionPlan', () => ({
 }));
 
 vi.mock('@/hooks/usePlanCheckout', () => ({ useBillingStatus: () => mocks.billing }));
+vi.mock('@/components/AvisoAlteracaoPlano', () => ({ AvisoAlteracaoPlano: () => null }));
 vi.mock('@/contexts/SupabaseAuthContext', () => ({
   useSupabaseAuth: () => ({ user: { id: 'user-1', ...mocks.user }, isPlatformAdmin: false }),
 }));
@@ -176,6 +177,26 @@ describe('Plano e assinatura', () => {
     fireEvent.click(screen.getByRole('button', { name: /cancelar teste grátis/i }));
     expect(screen.getByRole('alertdialog')).toHaveTextContent(/cancelará a cobrança recorrente agora/i);
     expect(screen.getByRole('alertdialog')).toHaveTextContent(/acesso ao plano será encerrado/i);
+  });
+
+  it('mostra a data e o efeito do cancelamento antes da confirmação', () => {
+    const trialEnd = new Date(Date.now() + 2 * 86400000);
+    mocks.userPlan = {
+      ...mocks.userPlan,
+      planSlug: 'elolab-ultra', hasActivePlan: true, isTrial: true, trialEnd, trialDaysLeft: 2,
+    };
+    mocks.billing = {
+      data: { assinatura: { plano_slug: 'elolab-ultra', status: 'trial', modalidade: 'recorrente' } },
+      isLoading: false, isError: false, refetch: mocks.refetchBilling,
+    };
+
+    renderPlanos();
+    fireEvent.click(screen.getByRole('button', { name: /cancelar teste grátis/i }));
+    const dialog = screen.getByRole('alertdialog');
+
+    expect(dialog).toHaveTextContent(`Data do cancelamento: ${new Date().toLocaleDateString('pt-BR')}`);
+    expect(dialog).toHaveTextContent(`em vez de ${trialEnd.toLocaleDateString('pt-BR')}`);
+    expect(dialog).toHaveTextContent(/dados da clínica não são apagados/i);
   });
 
   it('usa informações de confiança verificáveis sem prometer criptografia ou suporte prioritário', () => {

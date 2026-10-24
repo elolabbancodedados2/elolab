@@ -22,7 +22,21 @@ export interface LocalPlanOrder {
 export type SyncPlanOrderResult =
   | { handled: false; reason: 'pedido_desconhecido' }
   | { handled: true; ignored: true; reason: string; status?: string }
-  | { handled: true; ignored: false; status: string; applied: boolean; detail: JsonObject };
+  | { handled: true; ignored: false; status: string; applied: boolean; detail: JsonObject; gatewayStatus?: string | null };
+
+/**
+ * Classifica a notificação de order depois de aplicar o estado lido no gateway:
+ * "fora_de_ordem" quando anunciava um status diferente do atual (o atual é o
+ * aplicado) e "repetido" quando não mudou um pedido já encerrado.
+ */
+export function webhookOrderSignal(payload: unknown, result: SyncPlanOrderResult): 'repetido' | 'fora_de_ordem' | null {
+  const data = (payload && typeof payload === 'object' ? payload : {}) as JsonObject;
+  const isOrder = data.type === 'order' || (typeof data.action === 'string' && data.action.startsWith('order.'));
+  if (!isOrder || !('applied' in result)) return null;
+  const announced = ((data.data || {}) as JsonObject).status;
+  if (typeof announced === 'string' && result.gatewayStatus && announced !== result.gatewayStatus) return 'fora_de_ordem';
+  return !result.applied && ['ja_pago', 'estado_final'].includes(String(result.detail.motivo)) ? 'repetido' : null;
+}
 
 /** Guarda só o que serve para auditoria; remove token de cartão e dados do pagador. */
 export function sanitizeOrderSnapshot(order: unknown): JsonObject {
@@ -92,7 +106,14 @@ export async function applyGatewayOrder(
     const { error: provisionError } = await supabase.rpc('provision_clinic_after_subscription', { p_user_id: local.user_id });
     if (provisionError) throw new Error(`Pagamento confirmado, mas a clínica não foi provisionada: ${provisionError.message}`);
   }
-  return { handled: true, ignored: false, status, applied: detail.aplicado === true, detail };
+  return {
+    handled: true,
+    ignored: false,
+    status,
+    applied: detail.aplicado === true,
+    detail,
+    gatewayStatus: typeof data.status === 'string' ? data.status : null,
+  };
 }
 
 /** Busca a order no Mercado Pago e aplica no pedido local correspondente. */

@@ -6,7 +6,7 @@ import { mercadoPagoPaymentResource, oauthRevocationSellerId, oauthRevocationTar
 import { isValidMercadoPagoSignature } from '../_shared/mercadoPagoSignature.ts';
 import { createMercadoPagoClient } from '../_shared/mercadoPagoClient.ts';
 import { isOrderNotification, webhookEventKey } from '../_shared/planCheckout.ts';
-import { syncPlanOrderFromGateway } from '../_shared/platformPlanOrders.ts';
+import { syncPlanOrderFromGateway, webhookOrderSignal } from '../_shared/platformPlanOrders.ts';
 import { syncPlatformPlan } from '../_shared/platformPlanSync.ts';
 import { syncMercadoPagoPointOrder } from '../_shared/mercadoPagoPointOrders.ts';
 
@@ -207,6 +207,7 @@ Deno.serve(async (req) => {
 
     // Pedidos Pix/boleto dos planos (API de Orders). Falhas lançam erro e
     // respondem 500 para o Mercado Pago reenviar a notificação.
+    let orderSignal: string | null = null;
     if (isOrderNotification(data)) {
       const orderId = data.data?.id?.toString();
       if (orderId) {
@@ -215,7 +216,8 @@ Deno.serve(async (req) => {
           createMercadoPagoClient({ accessToken: mpToken }),
           orderId,
         );
-        console.log("Pedido de plano sincronizado:", orderId, JSON.stringify(result));
+        orderSignal = webhookOrderSignal(data, result);
+        console.log("Pedido de plano sincronizado:", orderId, JSON.stringify(result), orderSignal ?? '');
       }
     }
 
@@ -312,7 +314,7 @@ Deno.serve(async (req) => {
     }
 
     // Mark webhook as processed
-    await markWebhookProcessed(supabase, logId, claimToken);
+    await markWebhookProcessed(supabase, logId, claimToken, orderSignal);
 
     return new Response(JSON.stringify({ received: true }), {
       status: 200,
@@ -328,12 +330,12 @@ Deno.serve(async (req) => {
   }
 });
 
-async function markWebhookProcessed(supabase: any, id: string | undefined, token: string | undefined) {
+async function markWebhookProcessed(supabase: any, id: string | undefined, token: string | undefined, orderSignal?: string | null) {
   if (!id) throw new Error('Webhook sem registro de auditoria');
   if (!token) throw new Error('Webhook sem token de aquisição');
   const { data, error } = await supabase
     .from('mercadopago_webhook_logs')
-    .update({ processado: true, erro_mensagem: null, claim_token: null, lease_until: null })
+    .update({ processado: true, erro_mensagem: null, claim_token: null, lease_until: null, ...(orderSignal ? { sinal_ordem: orderSignal } : {}) })
     .eq('id', id)
     .eq('claim_token', token)
     .select('id')
