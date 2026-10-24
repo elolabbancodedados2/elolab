@@ -12,7 +12,7 @@ import {
   ShieldCheck, BookOpen, FileCheck, Brain, Bone, Eye as EyeIcon,
   Thermometer, Scale, Ruler, Paperclip, Shield, Clipboard,
   Clock, TestTube, DollarSign, CalendarPlus, RefreshCw, Wallet,
-  FileSpreadsheet, MessageCircle,
+  FileSpreadsheet, MessageCircle, GitMerge,
 } from 'lucide-react';
 import { linkWhatsApp } from '@/lib/whatsapp';
 import { addDays, subYears } from 'date-fns';
@@ -42,6 +42,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useQueryClient } from '@tanstack/react-query';
 import { EtiquetaPaciente } from '@/components/EtiquetaPaciente';
 import { PatientStats, PatientListTable } from '@/components/patients';
+import { RevisaoDuplicidadesDialog } from '@/components/patients/RevisaoDuplicidadesDialog';
 import { PageHeader } from '@/components/PageHeader';
 import { PatientPhoto, PatientTimeline, VitalSignsChart, AllergyAlert, Cid10Search, ClinicalProtocols, AnexosProntuario, DigitalSignature } from '@/components/clinical';
 import { AutorizacaoConvenioModal } from '@/components/AutorizacaoConvenioModal';
@@ -188,6 +189,7 @@ export default function Pacientes() {
   const [selectedPacienteUpdatedAt, setSelectedPacienteUpdatedAt] = useState<string | null>(null);
   const [formData, setFormData] = useState<PacienteFormData>(initialFormData);
   const [isEtiquetaOpen, setIsEtiquetaOpen] = useState(false);
+  const [isDuplicidadesOpen, setIsDuplicidadesOpen] = useState(false);
   const [viewTab, setViewTab] = useState('dados');
 
   // Deep-link: /pacientes?paciente=<id>&tab=<financeiro|...>
@@ -1316,6 +1318,17 @@ export default function Pacientes() {
               Etiquetas da página
             </Button>
           </motion.div>
+          {isAdmin() && (
+            <Button
+              variant="outline"
+              size="lg"
+              onClick={() => setIsDuplicidadesOpen(true)}
+              className="h-11 w-full gap-2 rounded-full border-border/60 px-3 text-sm font-semibold shadow-xs hover:border-[#1080CA]/40 sm:w-auto sm:px-5"
+            >
+              <GitMerge className="h-4 w-4" />
+              Revisar duplicidades
+            </Button>
+          )}
           <motion.div whileHover={{ scale: 1.04, y: -2 }} whileTap={{ scale: 0.96 }} transition={{ type: "spring", stiffness: 400, damping: 17 }}>
             <Button
               size="lg"
@@ -2776,6 +2789,7 @@ export default function Pacientes() {
 
       {/* Etiquetas */}
       <EtiquetaPaciente pacientes={pacientesForEtiqueta} open={isEtiquetaOpen} onOpenChange={setIsEtiquetaOpen} />
+      {isAdmin() && <RevisaoDuplicidadesDialog open={isDuplicidadesOpen} onOpenChange={setIsDuplicidadesOpen} onMesclado={atualizarListasPacientes} />}
 
       <Dialog open={!!linkPortalGerado} onOpenChange={(open) => { if (!open) setLinkPortalGerado(null); }}>
         <DialogContent className="sm:max-w-lg">
