@@ -80,7 +80,7 @@ test('global search is accent-insensitive and limits destinations to the active 
   await page.getByRole('button', { name: /Abrir busca global/ }).click();
   const search = page.getByPlaceholder('Nome, CPF, telefone, exame, tarefa...');
   await search.fill('laboratorio');
-  const labDestination = page.getByRole('option', { name: 'Laborat\u00f3rio' });
+  const labDestination = page.getByRole('option', { name: /Painel do laborat\u00f3rio/ });
   await expect(labDestination).toBeVisible({ timeout: 4_000 });
   await expect(page.getByRole('option', { name: 'Configura\u00e7\u00f5es' })).toHaveCount(0);
   await labDestination.click();

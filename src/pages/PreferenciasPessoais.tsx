@@ -73,12 +73,11 @@ export default function PreferenciasPessoais() {
     applyUIPreferences(next);
   }
 
-  // email_daily_summary não tem efeito na tela (indisponível), por isso fica fora da contagem.
   const changedCount = (Object.keys(defaults) as (keyof Preferences)[])
-    .filter(key => key !== 'email_daily_summary' && preferences[key] !== defaults[key]).length;
+    .filter(key => preferences[key] !== defaults[key]).length;
 
   function restoreDefaults() {
-    const next = { ...defaults, email_daily_summary: preferences.email_daily_summary };
+    const next = defaults;
     setPreferences(next);
     applyUIPreferences(next);
   }
@@ -133,7 +132,7 @@ export default function PreferenciasPessoais() {
       <Card className="rounded-2xl border-border/60 shadow-xs"><CardHeader><CardTitle className="flex items-center gap-2 text-base"><span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-white"><CalendarDays className="h-4 w-4" /></span>Datas e avisos</CardTitle><CardDescription>Escolha como acompanhar sua rotina.</CardDescription></CardHeader><CardContent className="space-y-5">
         <div className="space-y-2"><Label htmlFor="date-format">Formato curto de data</Label><Select value={preferences.date_format} onValueChange={v => update('date_format', v as Preferences['date_format'])}><SelectTrigger id="date-format"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="DD/MM/YYYY">DD/MM/AAAA</SelectItem><SelectItem value="YYYY-MM-DD">AAAA-MM-DD</SelectItem></SelectContent></Select><p className="text-xs text-muted-foreground">Aplicado às datas numéricas e aos vencimentos. Datas por extenso seguem o formato local.</p></div>
         <div className="flex min-h-11 items-center justify-between gap-4"><div><Label htmlFor="browser-notifications">Avisos no navegador</Label><p className="text-xs text-muted-foreground">Exibe alertas enquanto a plataforma estiver aberta.</p></div><Switch id="browser-notifications" checked={preferences.browser_notifications} onCheckedChange={v => update('browser_notifications', v)} /></div>
-        <div className="rounded-xl border border-dashed border-[#BFD8EE] bg-[#F3F8FC] p-3 text-sm text-muted-foreground" role="status"><span className="font-medium text-foreground">Resumo diário por e-mail indisponível.</span> O EloLab ainda não envia esse resumo; esta opção não está ativa e nenhum e-mail será enviado.</div>
+        <div className="flex min-h-11 items-center justify-between gap-4"><div><Label htmlFor="email-daily-summary">Resumo diário por e-mail</Label><p className="text-xs text-muted-foreground">A partir das 7h, no e-mail da sua conta: somente contagens do que seu perfil pode ver (consultas, tarefas, exames, contas vencidas), sem nomes de pacientes. Depende do envio de e-mail da clínica estar ativo.</p></div><Switch id="email-daily-summary" checked={preferences.email_daily_summary} onCheckedChange={v => update('email_daily_summary', v)} /></div>
       </CardContent></Card>
     </div>
     <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">{changedCount > 0 && <Button type="button" variant="outline" className="min-h-11 w-full rounded-full gap-2 sm:w-auto" onClick={restoreDefaults}><RotateCcw className="h-4 w-4" />Restaurar padrão</Button>}<Button className="min-h-11 w-full rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110 sm:w-auto" onClick={() => void save()}>{saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}{saving ? 'Salvando…' : 'Salvar preferências'}</Button></div>

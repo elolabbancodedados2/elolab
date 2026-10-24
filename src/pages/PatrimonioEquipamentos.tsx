@@ -1,3 +1,4 @@
+import { formatDate } from '@/lib/formatters';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
@@ -54,7 +55,7 @@ const ORDER_BADGE: Record<Order['status'], string> = {
 };
 const PRIORIDADES: Record<string, string> = { low: 'Baixa', normal: 'Normal', high: 'Alta', urgent: 'Urgente' };
 const INDICADOR_LABEL: Record<Indicador, string> = { vencida: 'manutenção vencida', em30: 'vencimento em 30 dias', manutencao: 'em manutenção', operacional: 'operacionais' };
-const fmt = (date: string | null) => date ? new Date(`${date.slice(0, 10)}T12:00:00`).toLocaleDateString('pt-BR') : '—';
+const fmt = (date: string | null) => date ? formatDate(date.slice(0, 10), 'short') : '—';
 const diasEntre = (hoje: string, date: string) => Math.round((Date.parse(`${date.slice(0, 10)}T12:00:00Z`) - Date.parse(`${hoje}T12:00:00Z`)) / 86_400_000);
 const plural = (n: number, singular: string, pluralForm: string) => `${n} ${n === 1 ? singular : pluralForm}`;
 

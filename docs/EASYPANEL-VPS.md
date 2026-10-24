@@ -152,6 +152,12 @@ silenciosamente — mas também não protege nada até ser configurado.
   no DNS/Easypanel; o domínio raiz deve ser validado separadamente.
 - Razão social, CNPJ do fornecedor, encarregado de dados e condições de backup
   precisam estar corretos nos documentos e na proposta antes de vender o SaaS.
+- Resumo diário por e-mail (Minhas preferências): exige aplicar a migration
+  `20261024170000_resumo_diario_email.sql`, publicar `scheduled-reports-runner`,
+  ter `BREVO_API_KEY` e `CRON_SECRET` no serviço de Edge Functions e um job
+  pg_cron que chame a função com `x-cron-secret` ao menos de hora em hora
+  (o envio só ocorre a partir das 7h de São Paulo, uma vez por dia por usuário).
+  Sem esses itens nenhum resumo é enviado, mesmo com a opção ativada.
 
 ## Referências operacionais
 

@@ -3,6 +3,7 @@ import { cronOrUserOk, cronForbidden, clinicaDoChamador, cronSecretOk } from "..
 import { corsPadrao } from '../_shared/cors.ts';
 import { sendBrevoEmail } from '../_shared/brevoEmail.ts';
 import { dateRangeInTimeZoneIso } from '../_shared/reportDateRange.ts';
+import { buildDailySummaryEmail, dailySummaryDue, dailySummaryRecipient, dailySummarySections } from '../_shared/dailySummary.ts';
 
 // Atribuído em cada request (reflete a origem permitida). Helpers
 // top-level (json/reply) capturam esta variável por closure.
@@ -121,6 +122,63 @@ async function verificarCanalEmailAtivo(): Promise<boolean> {
   } finally {
     clearTimeout(timeout);
   }
+}
+
+async function enviarResumosDiarios(supabase: any, rolesDoUsuario: (userId: string) => Promise<Set<string>>) {
+  const { due, today } = dailySummaryDue();
+  if (!due) return { skipped: "before_hour" };
+  const { data: prefs, error } = await supabase.from("user_preferences")
+    .select("user_id,clinica_id,email_daily_summary,email_daily_summary_sent_on")
+    .eq("email_daily_summary", true)
+    .or(`email_daily_summary_sent_on.is.null,email_daily_summary_sent_on.lt.${today}`)
+    .limit(500);
+  if (error) throw error;
+  const appUrl = Deno.env.get("APP_URL") || "https://app.elolab.com.br";
+  let sent = 0, skipped = 0, failed = 0;
+  for (const pref of prefs ?? []) {
+    const { data: perfil } = await supabase.from("profiles").select("id,nome,email,ativo,clinica_id").eq("id", pref.user_id).maybeSingle();
+    const email = dailySummaryRecipient(pref, perfil);
+    const roles = email ? await rolesDoUsuario(pref.user_id) : new Set<string>();
+    if (!email || roles.size === 0) { skipped++; continue; }
+    // Reserva do dia antes do envio: dois disparos simultâneos não duplicam o e-mail.
+    let claim = supabase.from("user_preferences").update({ email_daily_summary_sent_on: today })
+      .eq("user_id", pref.user_id).eq("clinica_id", pref.clinica_id).eq("email_daily_summary", true);
+    claim = pref.email_daily_summary_sent_on ? claim.eq("email_daily_summary_sent_on", pref.email_daily_summary_sent_on) : claim.is("email_daily_summary_sent_on", null);
+    const { data: claimed } = await claim.select("user_id").maybeSingle();
+    if (!claimed) { skipped++; continue; }
+    try {
+      const s = dailySummarySections(roles);
+      let medicoIds: string[] | null = null;
+      if (s.proprioMedico) {
+        const { data: medicos } = await supabase.from("medicos").select("id").eq("user_id", pref.user_id).eq("clinica_id", pref.clinica_id);
+        medicoIds = (medicos ?? []).map((m: any) => String(m.id));
+      }
+      const contar = async (query: any) => {
+        const { count, error: countError } = await query;
+        if (countError) throw countError;
+        return count ?? 0;
+      };
+      const base = (table: string) => supabase.from(table).select("id", { count: "exact", head: true }).eq("clinica_id", pref.clinica_id);
+      const semMedico = medicoIds !== null && medicoIds.length === 0;
+      const counts = {
+        agenda: !s.agenda || semMedico ? null : await contar((medicoIds ? base("agendamentos").in("medico_id", medicoIds) : base("agendamentos")).eq("data", today).not("status", "in", "(cancelado,faltou)")),
+        exames: !s.exames || semMedico ? null : await contar((medicoIds ? base("exames").in("medico_solicitante_id", medicoIds) : base("exames")).in("status", ["solicitado", "agendado", "coletado", "em_analise"])),
+        contas: s.contas ? await contar(base("lancamentos").eq("tipo", "receita").in("status", ["pendente", "atrasado"]).lt("data_vencimento", today)) : null,
+        tarefas: await contar(base("tarefas").eq("responsavel_id", pref.user_id).not("status", "in", "(concluida,cancelada)")),
+      };
+      const { data: clinica } = await supabase.from("clinicas").select("nome").eq("id", pref.clinica_id).maybeSingle();
+      const conteudo = buildDailySummaryEmail({ nome: perfil?.nome ?? "", clinica: clinica?.nome ?? "sua clínica", data: today, appUrl, counts });
+      const response = await sendBrevoEmail({ senderName: "EloLab", to: email, subject: conteudo.subject, html: conteudo.html, text: conteudo.text, preheader: "Seu resumo diário no EloLab.", tags: ["resumo-diario"] });
+      if (!response.ok) throw new Error("brevo_refused");
+      sent++;
+    } catch {
+      failed++;
+      // Devolve a reserva para a próxima execução horária tentar de novo.
+      await supabase.from("user_preferences").update({ email_daily_summary_sent_on: pref.email_daily_summary_sent_on ?? null })
+        .eq("user_id", pref.user_id).eq("clinica_id", pref.clinica_id).eq("email_daily_summary_sent_on", today);
+    }
+  }
+  return { sent, skipped, failed };
 }
 
 Deno.serve(async (req) => {
@@ -381,7 +439,13 @@ Deno.serve(async (req) => {
       out.push({ id: r.id, rows: linhasRelatorio.length, sent_to: delivery === "sent" ? (r.destinatarios?.length || 0) : 0, delivery });
     }
 
-    return new Response(JSON.stringify({ processed: out.length, out }), {
+    // O mesmo disparo do agendador entrega o resumo diário opt-in; a marca
+    // `email_daily_summary_sent_on` garante um envio por dia mesmo com cron horário.
+    const resumoDiario = isCron && !forceId && emailConfigured
+      ? await enviarResumosDiarios(supabase, rolesDoUsuario)
+      : { skipped: emailConfigured ? "not_cron" : "email_not_configured" };
+
+    return new Response(JSON.stringify({ processed: out.length, out, daily_summary: resumoDiario }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {

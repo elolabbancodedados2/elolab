@@ -29,6 +29,7 @@ import dashboardBanner from '@/assets/dashboard-banner-elolab.png';
 import logoHorizontal from '@/assets/elolab-logo-identidade.png';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { formatWithDatePreference } from '@/lib/datePreference';
 import { cn } from '@/lib/utils';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -382,7 +383,7 @@ function OperationalDashboard({ roles, nome }: { roles: string[]; nome?: string 
               <li key={t.id} className="flex items-center gap-3 py-2">
                 <ListChecks className="h-4 w-4 shrink-0 text-primary" />
                 <span className="min-w-0 flex-1 truncate text-sm font-medium">{t.titulo}</span>
-                {t.data_vencimento && <span className={cn('shrink-0 text-xs font-bold tabular-nums', t.data_vencimento < hoje ? 'text-destructive' : 'text-muted-foreground')}>{format(parseDateOnly(t.data_vencimento)!, 'dd/MM', { locale: ptBR })}</span>}
+                {t.data_vencimento && <span className={cn('shrink-0 text-xs font-bold tabular-nums', t.data_vencimento < hoje ? 'text-destructive' : 'text-muted-foreground')}>{formatWithDatePreference(parseDateOnly(t.data_vencimento)!, 'dd/MM', { locale: ptBR })}</span>}
               </li>
             ))}</ul>
           </CardContent>
@@ -822,7 +823,7 @@ function AdminDashboard() {
   const tarefasResumo = minhasTarefas.map((t) => ({
     id: t.id,
     titulo: t.titulo,
-    vencimento: t.data_vencimento ? format(parseDateOnly(t.data_vencimento)!, 'dd/MM', { locale: ptBR }) : null,
+    vencimento: t.data_vencimento ? formatWithDatePreference(parseDateOnly(t.data_vencimento)!, 'dd/MM', { locale: ptBR }) : null,
     atrasada: !!t.data_vencimento && t.data_vencimento < hoje,
   }));
 

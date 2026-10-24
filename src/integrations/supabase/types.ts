@@ -4078,14 +4078,14 @@ isOneToOne: false
                   ]
                 },"user_preferences": {
                   Row: {
-                    "browser_notifications": boolean,"clinica_id": string,"date_format": string,"density": string,"email_daily_summary": boolean,"high_contrast": boolean,"start_page": string,"text_size": string,"updated_at": string,"user_id": string
+                    "browser_notifications": boolean,"clinica_id": string,"date_format": string,"density": string,"email_daily_summary": boolean,"email_daily_summary_sent_on": string | null,"high_contrast": boolean,"start_page": string,"text_size": string,"updated_at": string,"user_id": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "browser_notifications"?: boolean,"clinica_id": string,"date_format"?: string,"density"?: string,"email_daily_summary"?: boolean,"high_contrast"?: boolean,"start_page"?: string,"text_size"?: string,"updated_at"?: string,"user_id": string
+                    "browser_notifications"?: boolean,"clinica_id": string,"date_format"?: string,"density"?: string,"email_daily_summary"?: boolean,"email_daily_summary_sent_on"?: string | null,"high_contrast"?: boolean,"start_page"?: string,"text_size"?: string,"updated_at"?: string,"user_id": string
                   }
                   Update: {
-                    "browser_notifications"?: boolean,"clinica_id"?: string,"date_format"?: string,"density"?: string,"email_daily_summary"?: boolean,"high_contrast"?: boolean,"start_page"?: string,"text_size"?: string,"updated_at"?: string,"user_id"?: string
+                    "browser_notifications"?: boolean,"clinica_id"?: string,"date_format"?: string,"density"?: string,"email_daily_summary"?: boolean,"email_daily_summary_sent_on"?: string | null,"high_contrast"?: boolean,"start_page"?: string,"text_size"?: string,"updated_at"?: string,"user_id"?: string
                   }
                   Relationships: [
                     {
