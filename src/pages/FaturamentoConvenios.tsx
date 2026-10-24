@@ -23,11 +23,15 @@ import { PageHeader } from '@/components/PageHeader';
 import { Link } from 'react-router-dom';
 import { RelatorioFaturamentoCompetencia } from '@/components/financeiro/RelatorioFaturamentoCompetencia';
 import { ConciliacaoConvenioPorLote } from '@/components/financeiro/ConciliacaoConvenioPorLote';
+import { GuiasLoteDialog } from '@/components/financeiro/GuiasLoteDialog';
+import { bloqueiaEnvio, validarLoteTiss, type AutorizacaoValidacao, type GuiaLote } from '@/lib/tissLoteValidacao';
+import { buscarDadosBasicosPacientes } from '@/lib/patientBasicData';
 
 const brl = (value: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value || 0);
 const temNoMaximoDuasCasas = (value: number) => Number.isFinite(value)
   && Math.abs(value * 100 - Math.round(value * 100)) < 1e-7;
-const novoLoteForm = () => ({ convenio_id: '', competencia: todaySaoPauloDateOnly().slice(0, 7) + '-01', numero_lote: '', quantidade_guias: 0, valor_apresentado: 0 });
+const escapeXml = (v: unknown) => String(v ?? '').replace(/[<>&'"]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', "'": '&apos;', '"': '&quot;' }[c]!));
+const novoLoteForm =() => ({ convenio_id: '', competencia: todaySaoPauloDateOnly().slice(0, 7) + '-01', numero_lote: '', quantidade_guias: 0, valor_apresentado: 0 });
 
 export default function FaturamentoConvenios() {
   const { profile } = useSupabaseAuth();
@@ -78,6 +82,32 @@ export default function FaturamentoConvenios() {
       .eq('clinica_id', profile?.clinica_id ?? '').order('created_at', { ascending: false }).order('id', { ascending: true }));
   }});
   const glosas = glosasQuery.data ?? [];
+  const guiasQuery = useQuery({ queryKey: ['lote-tiss-guias', profile?.clinica_id ?? null], enabled: !!profile?.clinica_id, queryFn: async () => {
+    return buscarEmBlocos<GuiaLote & { lote_id: string }>(() => supabase.from('lote_tiss_guias').select('*')
+      .eq('clinica_id', profile?.clinica_id ?? '').order('created_at', { ascending: true }).order('id', { ascending: true }));
+  }});
+  const autorizacoesQuery = useQuery({ queryKey: ['autorizacoes-faturamento', profile?.clinica_id ?? null], enabled: !!profile?.clinica_id, queryFn: async () => {
+    const autorizacoes = await buscarEmBlocos<AutorizacaoValidacao>(() => supabase.from('autorizacoes_convenio')
+      .select('id,status,convenio_id,paciente_id,tipo_servico,data_expiracao,numero_autorizacao')
+      .eq('clinica_id', profile?.clinica_id ?? '').order('data_solicitacao', { ascending: false }).order('id', { ascending: true }));
+    const pacientes = await buscarDadosBasicosPacientes([...new Set(autorizacoes.map(a => a.paciente_id))]);
+    return autorizacoes.map(a => ({ ...a, paciente_nome: pacientes.get(a.paciente_id)?.nome ?? null }));
+  }});
+  const guiasPorLote = useMemo(() => {
+    const mapa = new Map<string, GuiaLote[]>();
+    for (const guia of guiasQuery.data ?? []) mapa.set(guia.lote_id, [...(mapa.get(guia.lote_id) ?? []), guia]);
+    return mapa;
+  }, [guiasQuery.data]);
+  const pendenciasPorLote = useMemo(() => {
+    const hoje = todaySaoPauloDateOnly();
+    return new Map(lotes.map((lote: any) => [lote.id, validarLoteTiss({
+      lote, registroAns: lote.convenios?.registro_ans ?? null, guias: guiasPorLote.get(lote.id) ?? [],
+      autorizacoes: autorizacoesQuery.data ?? [], hoje,
+    })]));
+  }, [lotes, guiasPorLote, autorizacoesQuery.data]);
+  // Lote antigo, sem guias, segue o fluxo agregado: o banco também só bloqueia lotes com guias.
+  const envioBloqueado = (loteId: string) => (guiasPorLote.get(loteId)?.length ?? 0) > 0 && bloqueiaEnvio(pendenciasPorLote.get(loteId) ?? []);
+  const [loteGuias, setLoteGuias] = useState<any | null>(null);
   const loteGlosaSelecionado = lotes.find((lote: any) => lote.id === glosaForm.lote_id);
   const totalGlosadoNoLote = glosas
     .filter((glosa: any) => glosa.lote_id === glosaForm.lote_id && glosa.status !== 'cancelada')
@@ -87,7 +117,7 @@ export default function FaturamentoConvenios() {
     : null;
   const consultasAtingiramLimite = lotes.length >= LIMITE_BUSCA_EM_BLOCOS
     || glosas.length >= LIMITE_BUSCA_EM_BLOCOS;
-  const isLoading = conveniosQuery.isLoading || lotesQuery.isLoading || glosasQuery.isLoading;
+  const isLoading = conveniosQuery.isLoading || lotesQuery.isLoading || glosasQuery.isLoading || guiasQuery.isLoading || autorizacoesQuery.isLoading;
 
   const resumo = useMemo(() => ({
     apresentado: lotes.filter((l: any) => ['enviado', 'processando', 'pago_parcial', 'pago', 'rejeitado'].includes(l.status))
@@ -337,8 +367,14 @@ export default function FaturamentoConvenios() {
   }
 
   function exportLot(lote: any) {
+    if (envioBloqueado(lote.id)) {
+      toast.error('Corrija as pendências do lote antes de exportar.', { description: 'Cada guia e campo a corrigir está listado na conferência de guias.' });
+      setLoteGuias(lote);
+      return;
+    }
+    const guiasXml = (guiasPorLote.get(lote.id) ?? []).map(g => `<guia><numero>${escapeXml(g.numero_guia)}</numero><carteira>${escapeXml(g.numero_carteira)}</carteira><dataAtendimento>${escapeXml(g.data_atendimento)}</dataAtendimento><procedimento>${escapeXml(g.codigo_procedimento)}</procedimento><quantidade>${g.quantidade}</quantidade><valor>${Number(g.valor_total).toFixed(2)}</valor></guia>`).join('');
     const escape = (v: unknown) => String(v ?? '').replace(/[<>&'\"]/g, c => ({ '<':'&lt;','>':'&gt;','&':'&amp;',"'":'&apos;','\"':'&quot;' }[c]!));
-    const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<!-- Resumo operacional EloLab; não é arquivo TISS de transmissão. -->\n<loteOperacional versaoTISS="${escape(lote.versao_tiss)}"><numero>${escape(lote.numero_lote)}</numero><competencia>${escape(lote.competencia)}</competencia><registroANS>${escape(lote.convenios?.registro_ans)}</registroANS><quantidadeGuias>${lote.quantidade_guias}</quantidadeGuias><valorApresentado>${Number(lote.valor_apresentado).toFixed(2)}</valorApresentado></loteOperacional>`;
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<!-- Resumo operacional EloLab; não é arquivo TISS de transmissão. -->\n<loteOperacional versaoTISS="${escape(lote.versao_tiss)}"><numero>${escape(lote.numero_lote)}</numero><competencia>${escape(lote.competencia)}</competencia><registroANS>${escape(lote.convenios?.registro_ans)}</registroANS><quantidadeGuias>${lote.quantidade_guias}</quantidadeGuias><valorApresentado>${Number(lote.valor_apresentado).toFixed(2)}</valorApresentado>${guiasXml ? `<guias>${guiasXml}</guias>` : ''}</loteOperacional>`;
     const url = URL.createObjectURL(new Blob([xml], { type: 'application/xml' })); const a = document.createElement('a'); a.href = url; a.download = `resumo-operacional-lote-${lote.numero_lote}.xml`; a.click(); window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
@@ -355,6 +391,8 @@ export default function FaturamentoConvenios() {
 
   if (conveniosQuery.isError) return <ErrorState title="Não foi possível carregar os convênios" error={conveniosQuery.error} onRetry={() => void conveniosQuery.refetch()} />;
   if (lotesQuery.isError) return <ErrorState title="Não foi possível carregar os lotes TISS" error={lotesQuery.error} onRetry={() => void lotesQuery.refetch()} />;
+  if (guiasQuery.isError) return <ErrorState title="Não foi possível carregar as guias dos lotes" error={guiasQuery.error} onRetry={() => void guiasQuery.refetch()} />;
+  if (autorizacoesQuery.isError) return <ErrorState title="Não foi possível carregar as autorizações de convênio" error={autorizacoesQuery.error} onRetry={() => void autorizacoesQuery.refetch()} />;
   if (glosasQuery.isError) return <ErrorState title="Não foi possível carregar as glosas" error={glosasQuery.error} onRetry={() => void glosasQuery.refetch()} />;
   if (isLoading) return <div className="rounded-lg border p-6 text-sm text-muted-foreground">Carregando faturamento de convênios…</div>;
 
@@ -398,10 +436,14 @@ export default function FaturamentoConvenios() {
               <TableCell>{l.convenios?.nome}</TableCell>
               <TableCell>{format(new Date(`${l.competencia}T12:00:00`), 'MM/yyyy')}</TableCell>
               <TableCell className="text-right"><span>{brl(l.valor_apresentado)}</span><p className="text-xs text-muted-foreground">Recebido: {brl(l.valor_pago)}</p><p className="text-xs text-muted-foreground">No financeiro: {brl(l.valor_conciliado_financeiro || 0)}</p></TableCell>
-              <TableCell><Badge variant="outline">{l.status.replaceAll('_', ' ')}</Badge></TableCell>
+              <TableCell><Badge variant="outline">{l.status.replaceAll('_', ' ')}</Badge>{(() => {
+                const erros = (pendenciasPorLote.get(l.id) ?? []).filter(p => p.gravidade === 'erro').length;
+                return envioBloqueado(l.id) ? <p className="mt-1 text-xs font-medium text-destructive">{erros} pendência(s) a corrigir</p> : null;
+              })()}</TableCell>
               <TableCell><div className="flex flex-wrap gap-1">
+                <Button size="sm" variant="outline" onClick={() => setLoteGuias(l)} aria-label={`Conferir guias do lote ${l.numero_lote}`}>Guias ({guiasPorLote.get(l.id)?.length ?? 0})</Button>
                 <Button size="sm" variant="ghost" onClick={() => exportLot(l)} aria-label={`Baixar resumo XML do lote ${l.numero_lote}`} title="Baixar resumo operacional XML (não é arquivo TISS de transmissão)"><FileDown className="mr-1 h-4 w-4" />Baixar resumo XML</Button>
-                {l.status === 'rascunho' && <Button size="sm" disabled={loteEnviandoId !== null} onClick={() => setLoteParaConfirmarEnvio(l)}>{loteEnviandoId === l.id && <RefreshCw className="mr-1 h-3.5 w-3.5 animate-spin" />}Registrar envio</Button>}
+                {l.status === 'rascunho' && <Button size="sm" disabled={loteEnviandoId !== null || envioBloqueado(l.id)} title={envioBloqueado(l.id) ? 'Corrija as pendências das guias antes de registrar o envio' : undefined} onClick={() => setLoteParaConfirmarEnvio(l)}>{loteEnviandoId === l.id && <RefreshCw className="mr-1 h-3.5 w-3.5 animate-spin" />}Registrar envio</Button>}
                 {['enviado', 'processando', 'pago_parcial', 'pago'].includes(l.status) && <Button size="sm" variant="outline" onClick={() => abrirRetornoLote(l)}>{l.retorno_em ? 'Atualizar retorno' : 'Registrar retorno'}</Button>}
               </div></TableCell>
             </TableRow>)}</TableBody>
@@ -423,6 +465,14 @@ export default function FaturamentoConvenios() {
     </Tabs>
     <div className="flex items-start gap-2 rounded-lg border bg-muted/30 p-3 text-xs text-muted-foreground"><ShieldCheck className="h-4 w-4 shrink-0" /><span>O XML é um resumo operacional e este sistema não o transmite à operadora. Valide o arquivo no padrão/XSD exigido e registre o envio somente depois de transmiti-lo pelo canal oficial. O retorno pode ser conciliado com o Fluxo de Caixa pelo formulário. Como o lote não identifica as cobranças individuais, confira lançamentos anteriores antes de confirmar para evitar duplicidade.</span></div>
 
+    <GuiasLoteDialog
+      lote={loteGuias}
+      guias={loteGuias ? guiasPorLote.get(loteGuias.id) ?? [] : []}
+      autorizacoes={(autorizacoesQuery.data ?? []).filter(a => !loteGuias || a.convenio_id === loteGuias.convenio_id || (guiasPorLote.get(loteGuias.id) ?? []).some(g => g.autorizacao_id === a.id))}
+      pendencias={loteGuias ? pendenciasPorLote.get(loteGuias.id) ?? [] : []}
+      onOpenChange={open => { if (!open) setLoteGuias(null); }}
+      onChanged={() => queryClient.invalidateQueries({ queryKey: ['lote-tiss-guias'] })}
+    />
     <AlertDialog open={!!loteParaConfirmarEnvio} onOpenChange={open => { if (!open && !loteEnviandoId) setLoteParaConfirmarEnvio(null); }}>
       <AlertDialogContent>
         <AlertDialogHeader>

@@ -1879,6 +1879,20 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"lote_tiss_guias": {
+                  Row: {
+                    "autorizacao_id": string | null,"clinica_id": string,"codigo_procedimento": string,"created_at": string,"criado_por": string | null,"data_atendimento": string,"id": string,"lote_id": string,"numero_carteira": string | null,"numero_guia": string,"paciente_id": string | null,"quantidade": number,"tipo_servico": string,"valor_total": number
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "autorizacao_id"?: string | null,"clinica_id": string,"codigo_procedimento": string,"created_at"?: string,"criado_por"?: string | null,"data_atendimento": string,"id"?: string,"lote_id": string,"numero_carteira"?: string | null,"numero_guia": string,"paciente_id"?: string | null,"quantidade": number,"tipo_servico": string,"valor_total": number
+                  }
+                  Update: {
+                    "autorizacao_id"?: string | null,"clinica_id"?: string,"codigo_procedimento"?: string,"created_at"?: string,"criado_por"?: string | null,"data_atendimento"?: string,"id"?: string,"lote_id"?: string,"numero_carteira"?: string | null,"numero_guia"?: string,"paciente_id"?: string | null,"quantidade"?: number,"tipo_servico"?: string,"valor_total"?: number
+                  }
+                  Relationships: [
+
+                  ]
                 },"lotes_tiss": {
                   Row: {
                     "clinica_id": string,"competencia": string,"convenio_id": string,"created_at": string,"criado_por": string | null,"enviado_em": string | null,"id": string,"numero_lote": string,"observacoes": string | null,"protocolo_operadora": string | null,"quantidade_guias": number,"retorno_em": string | null,"status": string,"updated_at": string,"valor_apresentado": number,"valor_conciliado_financeiro": number,"valor_pago": number,"versao_tiss": string
@@ -4990,6 +5004,17 @@ isOneToOne: false
                            },
 "registrar_envio_lote_tiss":
 { Args: { "p_lote_id": string }; Returns: Json
+                           },
+"adicionar_guia_lote_tiss":
+{ Args: { "p_autorizacao_id": string | null,"p_codigo_procedimento": string,"p_data_atendimento": string,"p_lote_id": string,"p_numero_carteira": string | null,"p_numero_guia": string,"p_paciente_id": string | null,"p_quantidade": number,"p_tipo_servico": string,"p_valor_total": number }; Returns: Json
+                           },
+"remover_guia_lote_tiss":
+{ Args: { "p_guia_id": string }; Returns: Json
+                           },
+"pendencias_lote_tiss":
+{ Args: { "p_lote_id": string }; Returns: {
+              "campo": string,"gravidade": string,"guia_id": string | null,"mensagem": string,"numero_guia": string | null,"tipo": string
+            }[]
                            },
 "registrar_exportacao_lgpd_paciente":
 { Args: { "p_paciente_id": string }; Returns: number
