@@ -39,6 +39,7 @@ const mocks = vi.hoisted(() => ({
   appointmentsQueryState: { isLoading: false, isError: false, error: null as Error | null },
   queryResults: {} as Record<string, { data?: unknown; isLoading?: boolean; isError?: boolean }>,
   updateResult: { data: [] as { id: string }[], error: null as null },
+  updateFilters: [] as unknown[][],
   toast: { error: vi.fn(), info: vi.fn(), success: vi.fn(), warning: vi.fn() },
   invalidateQueries: vi.fn(),
   from: vi.fn(),
@@ -132,6 +133,7 @@ describe('Fila de atendimento', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.updateFilters = [];
     mocks.role = 'enfermagem';
     mocks.filaQueryState = { isLoading: false, isError: false, error: null };
     mocks.appointmentsQueryState = { isLoading: false, isError: false, error: null };
@@ -158,7 +160,9 @@ describe('Fila de atendimento', () => {
     mocks.updateResult = { data: [], error: null };
     mocks.from.mockImplementation(() => {
       const updateQuery = {
-        eq: vi.fn(() => updateQuery),
+        eq: vi.fn((...args: unknown[]) => { mocks.updateFilters.push(args); return updateQuery; }),
+        in: vi.fn(() => updateQuery),
+        is: vi.fn(() => updateQuery),
         select: vi.fn(async () => mocks.updateResult),
       };
       return { update: vi.fn(() => updateQuery) };
@@ -206,6 +210,14 @@ describe('Fila de atendimento', () => {
     expect(screen.getByText('Não foi possível carregar a fila')).toBeInTheDocument();
   });
 
+  it('explica o bloqueio e o perfil que pode liberar mesmo para quem não libera', () => {
+    setup();
+
+    expect(screen.queryByRole('button', { name: /liberar/i })).not.toBeInTheDocument();
+    expect(screen.getByText('Bloqueado: Pagamento pendente.')).toBeInTheDocument();
+    expect(screen.getByText(/Liberação excepcional: médico ou administrador, com justificativa registrada\./)).toBeInTheDocument();
+  });
+
   it('não chama o paciente quando a atualização condicional encontra uma fila alterada', async () => {
     const espera = agendamento('today', 'Paciente de hoje', hoje, 'confirmado');
     mocks.fila = [item('today', espera)];
@@ -216,7 +228,9 @@ describe('Fila de atendimento', () => {
     setup();
 
     fireEvent.click(screen.getByRole('button', { name: /chamar/i }));
-    await waitFor(() => expect(mocks.toast.warning).toHaveBeenCalledWith('A fila mudou. Atualize a tela antes de chamar este paciente.'));
+    await waitFor(() => expect(mocks.toast.warning).toHaveBeenCalledWith('Outra pessoa já atualizou este paciente na fila.', expect.anything()));
     expect(mocks.toast.success).not.toHaveBeenCalled();
+    // A chamada exige a mesma versão da linha lida pela tela (compare-and-set).
+    expect(mocks.updateFilters).toContainEqual(['updated_at', mocks.fila[0].updated_at]);
   });
 });

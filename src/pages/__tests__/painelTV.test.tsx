@@ -57,6 +57,32 @@ describe('PainelTV', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
+  it('não repete chamadas já anunciadas depois de recarregar o painel', async () => {
+    const chamado = {
+      id: 'f1', agendamento_id: 'ag1', posicao: 1, status: 'chamado', sala_id: null,
+      horario_chegada: '2026-10-24T12:00:00Z', prioridade: 'normal', updated_at: '2026-10-24T12:30:00Z',
+    };
+    mocks.from.mockImplementation((table: string) => queryResult(table === 'fila_atendimento' ? [chamado] : []));
+    const speak = vi.fn();
+    vi.stubGlobal('speechSynthesis', { speak, getVoices: () => [] });
+    vi.stubGlobal('SpeechSynthesisUtterance', class { constructor(public text: string) {} });
+    localStorage.clear();
+    try {
+      const primeiro = render(<PainelTV />);
+      await waitFor(() => expect(speak).toHaveBeenCalled());
+      primeiro.unmount();
+
+      speak.mockClear();
+      render(<PainelTV />);
+      expect(await screen.findAllByText('Paciente')).not.toHaveLength(0);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(speak).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+      localStorage.clear();
+    }
+  });
+
   it('mostra fila vazia apenas depois de confirmar a consulta', async () => {
     render(<PainelTV />);
 

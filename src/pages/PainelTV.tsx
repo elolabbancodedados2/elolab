@@ -38,6 +38,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { canalUnico } from '@/lib/realtimeCanal';
+import { chaveChamada, lerChamadasAnunciadas, salvarChamadasAnunciadas } from '@/lib/painelChamadas';
 
 interface FilaItem {
   id: string;
@@ -155,7 +156,9 @@ export default function PainelTV() {
   const [somAtivo, setSomAtivo] = useState(true);
   
   // Track which calls we've already announced
+  // persisted per clinic so a reload of the TV does not re-announce old calls
   const announcedCallsRef = useRef<Set<string>>(new Set());
+  const announcedClinicaRef = useRef<string | null>(null);
   const enfileirarChamadaRef = useRef<((pacienteNome: string, salaNome: string) => Promise<void>) | null>(null);
   if (!enfileirarChamadaRef.current) enfileirarChamadaRef.current = criarFilaDeChamadas();
 
@@ -259,14 +262,20 @@ export default function PainelTV() {
 
   // Announce new calls via TTS
   useEffect(() => {
-    if (!somAtivo) return;
-    
+    const clinicaId = profile?.clinica_id;
+    // Sem a fila confirmada, a limpeza abaixo apagaria a memória da recarga.
+    if (!somAtivo || !clinicaId || !filaCarregadaUmaVez.current) return;
+    if (announcedClinicaRef.current !== clinicaId) {
+      announcedClinicaRef.current = clinicaId;
+      announcedCallsRef.current = lerChamadasAnunciadas(clinicaId);
+    }
+
     const chamados = fila.filter((f) => f.status === 'chamado');
-    
+
     for (const chamado of chamados) {
-      const chaveChamada = `${chamado.id}:${chamado.updated_at || chamado.horario_chegada}`;
-      if (!announcedCallsRef.current.has(chaveChamada)) {
-        announcedCallsRef.current.add(chaveChamada);
+      const chave = chaveChamada(chamado);
+      if (!announcedCallsRef.current.has(chave)) {
+        announcedCallsRef.current.add(chave);
         setChamadoAtual(chamado.id);
         
         // Nome reduzido igual ao telão: o som alcança a sala inteira.
@@ -278,11 +287,12 @@ export default function PainelTV() {
     }
     
     // Clean up old announced calls
-    const currentIds = new Set(chamados.map(f => `${f.id}:${f.updated_at || f.horario_chegada}`));
+    const currentIds = new Set(chamados.map(chaveChamada));
     announcedCallsRef.current.forEach(id => {
       if (!currentIds.has(id)) announcedCallsRef.current.delete(id);
     });
-  }, [fila, getPacienteNome, salas, somAtivo]);
+    salvarChamadasAnunciadas(clinicaId, announcedCallsRef.current);
+  }, [fila, getPacienteNome, salas, somAtivo, profile?.clinica_id]);
 
   const loadFila = async () => {
     const clinicaId = profile?.clinica_id;
