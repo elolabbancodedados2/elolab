@@ -4,6 +4,7 @@ import {
   paidAmountMatches,
   sanitizeOrderSnapshot,
   syncPlanOrderFromGateway,
+  webhookOrderSignal,
 } from '../../../supabase/functions/_shared/platformPlanOrders';
 import {
   orderAprovada,
@@ -82,6 +83,21 @@ describe('aplicação de pedidos Pix/boleto', () => {
     const atrasada = await applyGatewayOrder(supabase, state.pedido, orderPixAguardando);
     expect(state.pedido.status).toBe('cancelado');
     expect(atrasada).toMatchObject({ applied: false, detail: { motivo: 'estado_final' } });
+  });
+
+  it('sinaliza webhook repetido e fora de ordem sem mudar o estado final', async () => {
+    const { supabase, state } = fakeDatabase(pedido);
+    const pago = await applyGatewayOrder(supabase, state.pedido, orderAprovada);
+    const repetido = await applyGatewayOrder(supabase, state.pedido, orderAprovada);
+    const notificacao = (status: string) => ({ type: 'order', action: 'order.updated', data: { id: orderAprovada.id, status } });
+
+    expect(webhookOrderSignal(notificacao(String(orderAprovada.status)), pago)).toBeNull();
+    expect(webhookOrderSignal(notificacao(String(orderAprovada.status)), repetido)).toBe('repetido');
+    // Notificação de "aguardando" chegando depois do pagamento: o estado aplicado é o atual do gateway.
+    expect(webhookOrderSignal(notificacao('action_required'), repetido)).toBe('fora_de_ordem');
+    expect(state.pedido.status).toBe('pago');
+    expect(webhookOrderSignal({ type: 'payment', data: { id: '1' } }, pago)).toBeNull();
+    expect(webhookOrderSignal(notificacao('processed'), { handled: false, reason: 'pedido_desconhecido' })).toBeNull();
   });
 
   it('estorno após pagamento é aplicado', async () => {
