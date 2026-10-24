@@ -50,29 +50,39 @@ Itens 1–100 são propostas de execução, não afirmações de que esses defei
 
 ### Recepção, fila e lista de espera
 
-11. Oferecer check-in com validação de paciente, compromisso e unidade antes de criar um atendimento.
+11. [x] Oferecer check-in com validação de paciente, compromisso e unidade antes de criar um atendimento (E59).
+**Entrega E59:** o servidor já validava o check-in (`realizar_checkin` e o trigger `impedir_fila_paciente_inativo`); faltava conferir antes de tentar. O diálogo "Adicionar à fila" e a Recepção (inclusive o encaixe) mostram a conferência de paciente, compromisso e unidade com ícone e texto e bloqueiam a ação quando algo falha. Evidência: `checkinValidacao.test.ts` 4/4, TypeScript e ESLint. Sem migration.
 12. [x] Sinalizar possíveis cadastros duplicados no check-in e permitir revisão sem mesclar automaticamente prontuários (E38; busca feita antes da criação da ficha).
-13. Explicar por que um atendimento está bloqueado e qual perfil autorizado pode liberá-lo.
+13. [x] Explicar por que um atendimento está bloqueado e qual perfil autorizado pode liberá-lo (E60).
+**Entrega E60:** paciente bloqueado por pagamento ou triagem mostra a todos os perfis o motivo, quem resolve e quem pode liberar (médico ou administrador, com justificativa). Um trigger recusa liberação excepcional (`liberado_sem_pagamento`/`liberado_sem_triagem`) feita por outros perfis; chamadas de serviço sem `auth.uid()` seguem aceitas. Evidência: `filaBloqueio.test.ts` 5/5 e teste novo em `Fila.test.tsx`. Migration local `20261024100000_liberacao_excepcional_perfis.sql`, ainda não aplicada.
 14. [x] Ordenar a fila por prioridade configurada pela clínica e mostrar os fatores que determinaram a ordem (E40 explicita prioridade e desempate por posição original).
 15. [x] Atualizar a fila em tempo real com indicador de conexão e alternativa de atualização manual quando o canal cair (E36; polling existente segue ativo em contingência).
-16. Impedir duas chamadas simultâneas da mesma pessoa por recepcionistas concorrentes.
-17. Exibir tempo de espera e atrasos com texto e ícone, sem depender só da cor.
+16. [x] Impedir duas chamadas simultâneas da mesma pessoa por recepcionistas concorrentes (E61).
+**Entrega E61:** Fila, Recepção e "Chamar ao balcão" usam `chamarPacienteNaFila`, que só grava se `updated_at` ainda for o valor lido pela tela; a segunda recepção recebe aviso e a lista recarrega, sem anúncio duplicado. Evidência: `filaChamada.test.ts` 3/3 e asserção do filtro em `Fila.test.tsx`. Sem migration.
+17. [x] Exibir tempo de espera e atrasos com texto e ícone, sem depender só da cor (E62).
+**Entrega E62:** o tempo de espera em Fila e Recepção usa `EsperaIndicador`, com ícone, rótulo ("No prazo" até 14 min, "Espera longa" 15–29, "Atrasado" 30+) e `aria-label`; o selo de atraso da Recepção ganhou ícone. Evidência: `filaEspera.test.ts` 3/3 e `EsperaIndicador.test.tsx` 2/2. Sem migration.
 18. [x] Permitir registrar saída, desistência ou encaminhamento com motivo e trilha de auditoria (E37).
-19. Recuperar o estado da fila após recarregar a tela sem repetir chamadas ou atendimentos.
+19. [x] Recuperar o estado da fila após recarregar a tela sem repetir chamadas ou atendimentos (E63).
+**Entrega E63:** a Fila já se recompunha do servidor; o Painel TV reanunciava todos os pacientes em "chamado" ao recarregar. As chamadas anunciadas ficam em `localStorage` por clínica e a limpeza só ocorre depois de a fila carregar; sem armazenamento, volta ao comportamento anterior. Evidência: regressão em `painelTV.test.tsx` 3/3 e `painelChamadas.test.ts` 3/3. Sem migration.
 20. [x] Criar uma passagem de turno que resume pendências operacionais sem incluir conteúdo clínico desnecessário (E39).
 
 ### Pacientes e portal
 
-21. Detectar duplicidades prováveis por CPF, telefone e nome/data de nascimento com limiar configurável e revisão humana.
-22. Permitir revisar campo a campo antes de mesclar cadastros, preservando autoria, histórico e referências clínicas.
+21. [x] Detectar duplicidades prováveis por CPF, telefone e nome/data de nascimento com limiar configurável e revisão humana (E64).
+**Entrega E64:** admin e recepção revisam pares prováveis de cadastros ativos da mesma clínica, pontuados por CPF (100), nome + nascimento (70), telefone (40) e mesmo nome (20), com sensibilidade de 20 a 100 escolhida na tela. Descartar "São pessoas diferentes" fica registrado; nada é mesclado automaticamente. Evidência: testes 4/4 mais E38 2/2; PGlite validou limiar, isolamento entre clínicas e descarte idempotente. Migration local `20261024110000_duplicidades_e_mesclagem_pacientes.sql`, ainda não aplicada. Limite: o limiar não é salvo por clínica.
+22. [x] Permitir revisar campo a campo antes de mesclar cadastros, preservando autoria, histórico e referências clínicas (E65).
+**Entrega E65:** o admin escolhe a ficha que permanece e decide campo a campo. A RPC `mesclar_pacientes` trava as duas fichas, copia só campos cadastrais permitidos, transfere o CPF, move compromissos futuros e pedidos ativos da lista de espera, inativa a origem com `mesclado_em_paciente_id`, revoga o portal da origem e grava `pacientes_mesclagens` (fotos antes/depois) e `audit_log`. Documentos clínicos permanecem na ficha inativada, com autoria e assinatura intactas. Evidência: testes 4/4; PGlite cobriu permissão, clínica, campos proibidos e preservação de prontuários. Mesma migration do item 21.
 23. [x] Mostrar por canal a origem e a data da última confirmação e invalidar essa confirmação quando o valor mudar (E44).
 24. [x] Exibir o histórico real de consentimentos, atualizar a tela após mudanças e não marcar como pendente quando a leitura falha (E45; registros protegidos pelo escopo da clínica).
 25. [x] Permitir revogar links ativos do portal do paciente e bloquear novas consultas com credenciais invalidadas (E42; dados já carregados numa sessão não podem ser removidos remotamente).
 26. [x] Sinalizar na lista os canais de contato ausentes para correção pela equipe sem expor informação clínica (E43; nenhum aviso externo é enviado).
-27. Disponibilizar exportação estruturada por paciente com protocolo, escopo selecionado, auditoria e confirmação de conclusão.
-28. Validar CSV de importação por linha e oferecer prévia de duplicidades antes de gravar qualquer cadastro.
+27. [x] Disponibilizar exportação estruturada por paciente com protocolo, escopo selecionado, auditoria e confirmação de conclusão (E66).
+**Entrega E66:** cada exportação LGPD recebe protocolo imutável `LGPD-AAAAMMDD-XXXXXXXX` e guarda as categorias pedidas; o JSON leva só essas categorias (cadastro sempre) e não baixa anexos não pedidos. A tela lista "Exportações aguardando entrega" e a entrega é confirmada por RPC de admin com descrição de 20 a 1.000 caracteres e evento em `audit_log`. Evidência: testes 7/7; PGlite cobriu backfill, protocolo não forjável, papel e reconclusão. Migration local `20261024111000_exportacao_lgpd_protocolo_escopo.sql`, ainda não aplicada. Limite: dados clínicos ainda são lidos e auditados mesmo fora do escopo.
+28. [x] Validar CSV de importação por linha e oferecer prévia de duplicidades antes de gravar qualquer cadastro (auditado; já existente, sem contagem).
+**Auditoria:** `src/lib/importacao/linhas.ts` valida linha a linha e marca duplicadas por CPF ou nome + nascimento (no arquivo e na base); o passo 3 de `ImportadorDePlanilha.tsx` lista as duplicadas antes de gravar. Testes em `src/lib/importacao/__tests__/importacao.test.ts`.
 29. [x] Permitir inativar e reativar um cadastro sem apagar dados clínicos nem quebrar referências históricas (E46; motivo categorizado, trilha de eventos, bloqueio de agenda/fila e revogação do portal).
-30. Mostrar no portal documentos disponíveis, validade e origem, com links de curta duração para arquivos privados.
+30. [x] Mostrar no portal documentos disponíveis, validade e origem, com links de curta duração para arquivos privados (auditado; já existente, sem contagem).
+**Auditoria:** entregue em E47: `_shared/portalDocuments.ts` gera links assinados de 300 s e `PortalPaciente.tsx` mostra origem e validade na aba Documentos.
 
 **E47 entregue e validado localmente:** publicação/revogação auditada por RPC, catálogo separado do anexo clínico, portal com origem/validade e links privados de 300 segundos; tokens de pacientes inativos são recusados. Evidências: Vitest 293 arquivos/1.433 testes, Deno 10/10, PGlite migration/RLS/isolamento, TypeScript, build e checks de acessibilidade/permissões/colunas/falhas aprovados. Migration e função ainda locais, sem alteração remota. Plano: docs/superpowers/plans/2026-10-14-documentos-portal-paciente.md.
 
@@ -116,39 +126,66 @@ Itens 1–100 são propostas de execução, não afirmações de que esses defei
 41. [x] Etiquetar amostras com identificador legível e código de barras sem incluir dados pessoais na etiqueta (E55).
 42. [x] Registrar coleta, recebimento, transferência e rejeição da amostra com responsável e horário (auditoria: trilha por trigger/RPC já existia; E57 elimina evento duplicado na rejeição; sem contagem separada).
 43. [x] Exigir motivo estruturado ao rejeitar amostra e oferecer nova coleta vinculada ao pedido original (E57).
-44. Destacar resultados críticos até que um profissional autorizado confirme ciência e conduta.
-45. Preservar resultado anterior e trilha completa quando um exame for retificado.
-46. Separar intervalo de referência de resultado observado e mostrar método/laboratório usado no laudo.
-47. Impedir liberação de lote quando o controle de qualidade configurado estiver fora da faixa aprovada.
-48. Mostrar pendências por setor e prioridade com filtros que preservem a seleção ao atualizar a worklist.
+44. [x] Destacar resultados críticos até que um profissional autorizado confirme ciência e conduta (auditado; já existente, sem contagem).
+**Auditoria:** RPC `confirmar_ciencia_resultado_critico` (migration `20261014234500`) exige médico/admin e conduta de 10 a 2.000 caracteres; `LaudosLab.tsx` mantém o destaque e o selo "Ciência pendente" até a confirmação.
+45. [x] Preservar resultado anterior e trilha completa quando um exame for retificado (E67).
+**Entrega E67:** o servidor já versionava o resultado (`laboratorio_versionar_resultado`, `retificar_resultado_laboratorio`); o histórico em Laudos agora mostra, por versão, autor, data e cada campo alterado (resultado, referência, método, equipamento, crítico, liberação, conferência). Evidência: `laudoTrilhaVersoes.test.ts` 4/4. Sem migration.
+46. [x] Separar intervalo de referência de resultado observado e mostrar método/laboratório usado no laudo (E68).
+**Entrega E68:** tela e PDF separam "Resultado observado" de "Intervalo de referência" (limites únicos como "Até X"/"A partir de Y") e mostram método, equipamento e laboratório executor por parâmetro. Evidência: `laudoReferenciaProcedencia.test.ts` 5/5. Sem migration.
+47. [x] Impedir liberação de lote quando o controle de qualidade configurado estiver fora da faixa aprovada (E69).
+**Entrega E69:** trigger bloqueia a liberação de resultados (inclusive "Liberar todos", que é recusado inteiro) enquanto a corrida de controle de qualidade mais recente do setor/equipamento estiver fora da faixa; nova corrida aprovada desbloqueia. Evidência: testes 4/4; PGlite com 10 cenários. Migration local `20261024120000_liberacao_exige_controle_qualidade.sql`, ainda não aplicada. Limite: o bloqueio vale para o setor inteiro, porque analitos são texto livre.
+48. [x] Mostrar pendências por setor e prioridade com filtros que preservem a seleção ao atualizar a worklist (E70).
+**Entrega E70:** filtros de setor, status, período e urgência da worklist ficam na URL (a busca textual não, para não expor dados do paciente) e a faixa "Em aberto por setor" mostra pendentes e urgentes, clicável como filtro. Evidência: `laboratorioWorklistFiltros.test.ts` 5/5. Sem migration.
 49. Permitir reprocessar envio FHIR com retentativa idempotente e relatório por item, sem duplicar laudos.
-50. Avisar quando uma guia não contém preparo, jejum ou instrução necessária configurada para o exame.
+**Pendente (decisão do responsável):** o sistema só tem exportação FHIR para download (`fhir-export`); não existe envio a servidor externo, destino, credenciais ou fila. Reenvio idempotente depende de definir o servidor de destino e a autenticação.
+50. [x] Avisar quando uma guia não contém preparo, jejum ou instrução necessária configurada para o exame (E71).
+**Entrega E71:** a solicitação de exames compara o preparo de `tipo_exames_catalog` com jejum e observações da guia, avisa exame a exame e oferece "Incluir preparo na guia". Evidência: `examesPreparoGuia.test.ts` 4/4. Sem migration.
 
 ### Financeiro operacional e convênios
 
-51. Validar consistência de lote TISS antes de exportar e apontar cada guia e campo que precisa de correção.
-52. Registrar recurso de glosa com prazo, responsável, documentos anexos e status de envio.
-53. Conciliar recebimentos de convênio por lote e sinalizar valores sem correspondência sem criar lançamento automático.
-54. Projetar fluxo de caixa por cenário usando vencimento e recorrência, distinguindo previsto de realizado.
-55. Identificar títulos vencidos por faixa de atraso e permitir exportar a lista autorizada para cobrança manual.
-56. Exigir confirmação e registrar usuário/data antes de alterar regras de repasse médico.
-57. Impedir duplicar lançamento ao importar arquivo bancário repetido, com prévia de correspondências.
-58. Exibir trilha de alterações de vencimento, valor e conta contábil em contas a pagar/receber.
-59. Detectar divergência entre procedimento autorizado e faturado antes de fechar um lote de convênio.
-60. Adicionar relatório de faturamento por competência com filtros explícitos e totais reproduzíveis.
+51. [x] Validar consistência de lote TISS antes de exportar e apontar cada guia e campo que precisa de correção (E72).
+**Entrega E72:** lotes TISS ganham guias detalhadas, gravadas só por RPC em rascunho. Antes de exportar ou enviar, a validação aponta guia e campo (Registro ANS, versão, número, quantidade e soma, carteira, TUSS, data fora da competência); erro bloqueia na tela e no banco. Evidência: testes 11/11. Migration local `20261024130000_guias_e_validacao_lote_tiss.sql`, ainda não aplicada. Limite: não valida contra o XSD oficial.
+52. [x] Registrar recurso de glosa com prazo, responsável, documentos anexos e status de envio (E73).
+**Entrega E73:** recurso de glosa com prazo, responsável financeiro e anexos (PDF/JPEG/PNG até 10 MB, bucket privado `recursos-glosa`, links de 300 s); o banco só aceita "enviado" com justificativa, prazo e responsável. Evidência: testes 8/8. Migration local `20261024131000_recurso_glosa_prazo_responsavel_documentos.sql`, ainda não aplicada.
+53. [x] Conciliar recebimentos de convênio por lote e sinalizar valores sem correspondência sem criar lançamento automático (E74).
+**Entrega E74:** aba "Conciliação" compara o retorno de cada lote enviado com os lançamentos vinculados e lista recebimentos de convênio sem lote com sugestões de mesmo valor, somente leitura. Evidência: testes 3/3 em centavos. Sem migration.
+54. [x] Projetar fluxo de caixa por cenário usando vencimento e recorrência, distinguindo previsto de realizado (E75).
+**Entrega E75:** o Fluxo de Caixa projeta o mês atual e os dois seguintes em três cenários com regras explícitas, separando realizado de previsto (saldos em aberto e recorrências ainda não geradas). Evidência: testes 6/6. Sem migration e sem criar lançamentos.
+55. [x] Identificar títulos vencidos por faixa de atraso e permitir exportar a lista autorizada para cobrança manual (E76).
+**Entrega E76:** a cobrança de inadimplentes agrupa títulos em faixas de 1–30, 31–60, 61–90 e 90+ dias e exporta a lista filtrada em CSV após confirmação de uso autorizado, com proteção contra fórmulas e linha de total. Evidência: testes 5/5. Sem migration.
+56. [x] Exigir confirmação e registrar usuário/data antes de alterar regras de repasse médico (E77).
+**Entrega E77:** alterar regra de repasse exige confirmação com regra anterior e nova; o banco recusa sem `p_confirmado` e grava `repasse_regra_alteracoes` (usuário, data, antes/depois). Evidência: testes 6/6. Migration local `20261024132000_regra_repasse_confirmada_e_auditada.sql`, ainda não aplicada; publicar junto com a tela.
+57. [x] Impedir duplicar lançamento ao importar arquivo bancário repetido, com prévia de correspondências (E78).
+**Entrega E78:** importação de extrato OFX no Fluxo de Caixa com prévia por transação (nova, já importada, repetida no arquivo) e lançamentos parecidos; reimportar não duplica (chave única) e nada é lançado automaticamente. Evidência: testes 5/5. Migration local `20261024134000_importacao_extrato_bancario.sql`, ainda não aplicada.
+58. [x] Exibir trilha de alterações de vencimento, valor e conta contábil em contas a pagar/receber (E79).
+**Entrega E79:** contas a pagar e a receber mostram o histórico de vencimento, valor, categoria e centro de custo com usuário e data, lido do trigger de auditoria por RPC restrita ao financeiro da clínica. Evidência: testes 3/3 mais 18/18 dos módulos de contas. Migration local `20261024133000_trilha_alteracoes_lancamento.sql`, ainda não aplicada.
+59. [x] Detectar divergência entre procedimento autorizado e faturado antes de fechar um lote de convênio (E80).
+**Entrega E80:** antes do envio, cada guia com autorização é comparada (status, convênio, paciente, serviço, validade); divergência bloqueia na tela e no banco. Evidência: incluída nos testes do item 51. Mesma migration do item 51. Limite: compara tipo de serviço, não código TUSS.
+60. [x] Adicionar relatório de faturamento por competência com filtros explícitos e totais reproduzíveis (E81).
+**Entrega E81:** aba "Por competência" com filtros visíveis (período, convênio, situação do lote) e totais somados em centavos; o CSV traz filtros, linhas, total e lotes usados. Evidência: testes 5/5. Sem migration.
 
 ### Assinatura SaaS e checkout de planos
 
-61. Mostrar o resumo do plano, periodicidade, teste e primeira cobrança usando os valores efetivos do plano antes de abrir o gateway.
-62. Validar no servidor o estado da assinatura e a clínica antes de liberar recursos contratados.
-63. Exibir eventos de checkout por tentativa com estado final, sem armazenar número de cartão ou segredos do provedor.
-64. Permitir retomar checkout interrompido usando chave idempotente sem criar assinatura duplicada.
-65. Informar claramente o efeito e a data de cancelamento antes de confirmar a ação.
-66. Manter separado o histórico de cobrança da assinatura EloLab e o financeiro clínico de pacientes.
-67. Sinalizar webhook repetido ou fora de ordem e manter o estado final consistente.
-68. Oferecer reconciliação administrativa de cobrança divergente com justificativa e trilha de auditoria.
-69. Avisar a clínica sobre alteração de preço/limite antes da renovação afetada.
-70. Mostrar uso de recursos do plano e cota restante com atualização verificável do servidor.
+61. [x] Mostrar o resumo do plano, periodicidade, teste e primeira cobrança usando os valores efetivos do plano antes de abrir o gateway (E82).
+**Entrega E82:** o resumo do checkout mostra periodicidade e data da primeira cobrança (hoje, fim do teste ou fim do período pré-pago). Evidência: `PlanoCheckoutResumo.test.tsx` 2/2. Sem migration.
+62. [x] Validar no servidor o estado da assinatura e a clínica antes de liberar recursos contratados (E83).
+**Entrega E83:** `clinica_recurso_plano_liberado` confere no servidor clínica, dono, assinatura vigente, fatura vencida há 72 h e recurso do plano; o agente de IA do WhatsApp e sua base de conhecimento exigem `agente_ia`. Evidência: Deno 2/2; PGlite. Migration local `20261024140000_recursos_e_uso_do_plano.sql`, ainda não aplicada.
+63. [x] Exibir eventos de checkout por tentativa com estado final, sem armazenar número de cartão ou segredos do provedor (E84).
+**Entrega E84:** clínica (Configurações → Faturas) e plataforma (Cobranças → "Tentativas de checkout") veem cada tentativa e pedido Pix com estado final, sem dados de cartão, e-mail do pagador ou payload. Evidência: testes 3/3 e 2/2; PGlite. Migration local `20261024141000_historico_cobranca_assinatura.sql`, ainda não aplicada.
+64. [x] Permitir retomar checkout interrompido usando chave idempotente sem criar assinatura duplicada (E85).
+**Entrega E85:** cada tentativa no cartão envia `external_reference` e `X-Idempotency-Key`; antes de criar outra assinatura o servidor reaproveita a tentativa autorizada do mesmo plano, cancela as demais e responde 503 sem criar nada se o Mercado Pago não responder. Evidência: Deno 15/15. Sem migration. Pendente: validar a busca de preapproval no sandbox.
+65. [x] Informar claramente o efeito e a data de cancelamento antes de confirmar a ação (E86).
+**Entrega E86:** os diálogos de cancelamento mostram a data efetiva, o fim antecipado do teste e que os dados não são apagados. Evidência: `Planos.test.tsx` 12/12. Sem migration.
+66. [x] Manter separado o histórico de cobrança da assinatura EloLab e o financeiro clínico de pacientes (E87).
+**Entrega E87:** corrigido o "Histórico de Faturas" da assinatura, que lia `pagamentos_mercadopago` (cobranças de pacientes); agora lê só as tabelas da assinatura, sem alterar o financeiro de pacientes. Evidência: teste estático e PGlite. Mesma migration do item 63.
+67. [x] Sinalizar webhook repetido ou fora de ordem e manter o estado final consistente (E88).
+**Entrega E88:** o webhook conta repetições e marca notificações de pedido como "repetido" ou "fora de ordem"; o painel mostra os sinais e o estado final continua relido do Mercado Pago. Evidência: `platformPlanOrders.test.ts` 10/10; PGlite. Migration local `20261024142000_webhook_repetido_fora_de_ordem.sql`, ainda não aplicada.
+68. [x] Oferecer reconciliação administrativa de cobrança divergente com justificativa e trilha de auditoria (E89).
+**Entrega E89:** a plataforma reconcilia Pix com valor divergente ou encerra tentativa no cartão parada, com justificativa de 10 a 500 caracteres, `audit_log` e trilha no painel, sem chamar o gateway. Corrigido também o registro de cancelamento que gravava em coluna inexistente. Evidência: PGlite e `PlatformCobrancas.test.tsx`. Migration local `20261024143000_reconciliacao_cobranca_plataforma.sql`, ainda não aplicada.
+69. [x] Avisar a clínica sobre alteração de preço/limite antes da renovação afetada (E90).
+**Entrega E90:** alteração de preço ou limite registra aviso e envia e-mail aos assinantes ativos; `/planos` explica o efeito por modalidade (Pix no próximo período, cartão mantém o valor autorizado, limites a partir da data). Evidência: testes 2/2; PGlite. Migration local `20261024144000_aviso_alteracao_plano.sql`, ainda não aplicada. Limite: mudança de limite vale imediatamente.
+70. [x] Mostrar uso de recursos do plano e cota restante com atualização verificável do servidor (E91).
+**Entrega E91:** `uso_plano_clinica` devolve uso, limite e horário da contagem com a mesma regra do convite de equipe; Configurações → Plano mostra a cota restante e "Atualizar uso". Evidência: testes 3/3 e 1/1; PGlite. Mesma migration do item 62.
 
 ### Equipe, permissões e segurança
 
@@ -156,7 +193,8 @@ Itens 1–100 são propostas de execução, não afirmações de que esses defei
 **Entrega E3:** navbar identifica clínica e papel principal, com nome lido por clínica e cache segregado pela chave `clinica_id`; no mobile, o contexto também aparece ao abrir o menu da conta. Evidência: 3/3 testes de navbar, jornada Playwright sintética, TypeScript, checks de colunas/falhas/permissões/acessibilidade e build passaram.
 72. [x] Permitir suspender convite expirado e gerar novo link sem invalidar convites de outras pessoas.
 **Entrega E6:** o painel existente permite reenviar convite expirado criando um novo link; cancelar afeta somente o ID selecionado e a clínica ativa (expira registros legados ou remove os novos). Evidência: testes de componente 3/3 cobrem reenvio, expiração do legado e remoção do convite novo; TypeScript e check de permissões passaram; ESLint sem erros (avisos `any` preexistentes no painel de convites).
-73. Exigir reautenticação para trocar e-mail do administrador principal ou reduzir controles de segurança.
+73. [x] Exigir reautenticação para trocar e-mail do administrador principal ou reduzir controles de segurança (E92).
+**Entrega E92:** reduzir controles de segurança (aumentar sessão, desligar máscara de CPF, auditoria, consentimento, senha forte ou login duplo) exige prova recente de senha ou TOTP (5 min, `amr` do JWT, AAL2 quando há fator), garantida por trigger em `configuracoes_clinica`; a tela abre `ReauthDialog` e repete a ação, e desativar 2FA pede o código atual. Evidência: testes 8/8 e regressões 5/5. Migration local `20261024150000_reautenticacao_controles_seguranca.sql`, ainda não aplicada. Limite: o app não tem tela de troca de e-mail; o 2FA no servidor segue a regra AAL2 do Supabase Auth.
 74. [x] Fornecer prévia “o que este perfil consegue acessar” antes de salvar uma mudança de papel.
 **Entrega E4:** a mesma prévia é exibida no cadastro/edição de profissional e no convite; calcula a união de telas com o filtro real do menu, atualiza com os papéis selecionados e avisa que dados continuam protegidos pelas permissões da clínica/RLS. Evidência: Vitest de regra e componentes 7/7; suíte completa 240 arquivos/1.253 testes; Playwright sintético autenticado da equipe 1/1; TypeScript, build, checks de colunas/falhas/permissões/acessibilidade passaram; ESLint 0 erros (21 avisos existentes de `any` nas telas tocadas). Sem alteração de autorização ou schema.
 75. [x] Informar sessões ativas, dispositivo aproximado e última atividade ao titular da conta.
@@ -165,7 +203,8 @@ Itens 1–100 são propostas de execução, não afirmações de que esses defei
 **Entrega E7:** a RPC transacional de papéis agora encerra sessões Auth e refresh tokens quando o administrador inativa o funcionário; a reativação preserva os papéis configurados e exige novo login. A interface informa que um JWT já emitido pode seguir válido até expirar. Evidência: contratos de migration 4/4 (incluindo isolamento por clínica e acesso restrito da função auxiliar), typecheck, build, checks de colunas/falhas/permissões/acessibilidade passaram; ESLint sem erros (19 avisos `any` preexistentes). Migration local criada e ainda não aplicada.
 77. [x] Avisar sobre último administrador ativo e impedir a remoção acidental do acesso administrativo da clínica.
 **Entrega E8:** ao editar administrador vinculado ativo, a prévia avisa antes do salvamento quando a mudança remover o papel admin ou inativar a conta; orienta cadastrar outro administrador. A proteção autoritativa e transacional continua no banco. Evidência: regra + componente 7/7 testes, TypeScript, build e check de acessibilidade aprovados.
-78. Fazer auditoria de acessos por intervalo e exportar o resultado com limite de permissão.
+78. [x] Fazer auditoria de acessos por intervalo e exportar o resultado com limite de permissão (E93).
+**Entrega E93:** RPC `auditoria_acessos_intervalo`, só para admin da clínica, une `prontuario_acessos` e eventos `access` do `audit_log` (até 93 dias e 5.000 linhas, sem dado clínico) e audita a própria exportação; a aba Histórico ganhou "Acessos do período" em CSV com período no cabeçalho. Evidência: testes 13/13. Migration local `20261024151000_auditoria_acessos_intervalo.sql`, ainda não aplicada.
 79. [x] Detectar alterações de papel concorrentes e pedir recarga em vez de sobrescrever a versão mais recente.
 **Entrega E9:** versão monotônica `edit_version` com compare-and-set tanto na gravação dos dados quanto na RPC de papéis sob `FOR UPDATE`; em conflito, nenhuma ficha antiga sobrescreve a versão mais nova e a UI orienta recarregar/reabrir. RPC legada segue para compatibilidade. Evidência: suíte completa 247 arquivos/1.286 testes; E2E de equipe 4/4; TypeScript, build, checks de colunas/falhas/permissões/acessibilidade passaram; ESLint sem erros (19 avisos `any` legados em Funcionarios.tsx). Migration criada localmente e não aplicada.
 80. [x] Tornar a busca do menu lateral tolerante a acentos e nomes de grupos, orientar quando não houver resultado, permitir abrir categorias no modo recolhido (E56) e oferecer atalho de teclado para localizar destinos (E58).
@@ -201,7 +240,8 @@ Itens 1–100 são propostas de execução, não afirmações de que esses defei
 **Entrega E21:** os oito KPIs do painel exibem critério, fonte e janela de datas em horário de São Paulo. A auditoria encontrou a taxa de comparecimento divergente de Relatórios: Analytics contava consultas abertas e em andamento. Ambos agora usam finalizados ÷ (finalizados + faltas), excluindo consultas futuras, abertas e canceladas. A média diária foi renomeada para “agendamentos” porque inclui todos os status. Evidência: Vitest 2/2, Playwright sintético 1/1, TypeScript, build e checks de acessibilidade/permissões/colunas/falhas aprovados; sem migration. Plano: `docs/superpowers/plans/2026-10-14-definicoes-kpi-analytics.md`.
 93. [x] Permitir exportar gráficos como tabela acessível com período e filtros no cabeçalho.
 **Entrega E22:** os quatro gráficos (agendamentos por dia, status, fluxo de caixa e risco) e o ranking visual de produtividade agora oferecem tabela semântica recolhida por padrão e exportação CSV. O arquivo identifica datas em horário de São Paulo e filtros ativos antes dos dados; o comparativo anterior só é declarado no gráfico diário, que realmente contém a série comparativa. O CSV usa ponto e vírgula, BOM, escaping e proteção contra fórmulas. Evidência: Vitest 2/2, Playwright sintético 1/1 (inclui download), TypeScript, build e checks de acessibilidade/permissões/colunas/falhas aprovados; sem migration. Plano: `docs/superpowers/plans/2026-10-14-tabelas-acessiveis-graficos.md`.
-94. Programar relatório somente depois de confirmar fuso, destinatários autorizados e canal de entrega ativo.
+94. [x] Programar relatório somente depois de confirmar fuso, destinatários autorizados e canal de entrega ativo (auditado; já existente, sem contagem).
+**Auditoria:** entregue em E23: ação `preflight` do `scheduled-reports-runner` e confirmação de fuso/destinatários/canal em `RelatorioCustomizado.tsx`; `scheduledReportPreflight.test.ts` 3/3.
 **Entrega E23:** preflight autenticado confirma o canal Brevo por consulta GET somente leitura a `/v3/account` com limite de 6 s e fornece somente perfis ativos da clínica com papel autorizado na fonte. O formulário elimina e-mails livres, exige confirmação de `America/Sao_Paulo` e bloqueia agenda sem canal saudável, destinatário selecionado ou confirmação. O runner revalida clínica, status ativo e papel de cada endereço antes de entregar; endereços antigos/inválidos recebem `recipients_invalid` e não recebem CSV. Evidência: Vitest 6/6, Playwright sintético 3/3, TypeScript, build, `deno check`, ESLint (0 erros; 28 avisos `any` já existentes), checks de permissões/colunas/falhas/acessibilidade aprovados. Sem e-mail enviado, sem credencial lida/impressa, sem migration e sem acesso a dados reais. Plano: `docs/superpowers/plans/2026-10-14-relatorio-agendado-destinatarios.md`.
 95. [x] Indicar saúde e última sincronização de cada integração sem expor URL secreta ou credencial.
 **Entrega E24:** a tela de integrações da clínica exibe o estado conhecido, a hora da última sincronização/checagem em São Paulo e atualiza a cada minuto. A sincronização de ordens Point registra sucesso ou falha na conexão; falhas retornam mensagem genérica e não guardam texto externo. A lista omite dicas de credencial e não devolve erro bruto de integrações antigas. Evidência: Vitest 5/5, Playwright sintético 1/1 (URL, token e fragmento de segredo ausentes), TypeScript, build, `deno check`, ESLint (0 erros; 6 avisos `any` já existentes) e checks de permissões/colunas/falhas/acessibilidade aprovados. Sem migration e sem comunicação real ao provedor.
@@ -258,4 +298,4 @@ Cadastro patrimonial de equipamento por unidade, responsável, validade de calib
 - [ ] Fazer triagem dos itens 1–100 no checkout local e retirar duplicatas antes de iniciar cada pacote.
 - [ ] Implementar, validar e registrar cada pacote antes de seguir ao próximo; atualizar este arquivo sem contar testes ou documentos como melhoria funcional.
 - [x] Completar e testar N1–N5 como módulos com persistência, autorização e fluxo utilizável em ambiente sintético/descartável; nenhum módulo depende só de navegação.
-- [ ] Entregar melhorias funcionais distintas nos módulos existentes: **57/100** concluídas; E14 e os itens cobertos por comportamento existente não entram na contagem. N1–N5 são a meta separada de módulos novos.
+- [ ] Entregar melhorias funcionais distintas nos módulos existentes: **92/100** concluídas (itens 28, 30, 44 e 94 auditados como já existentes; 49 aguarda decisão); E14 e os itens cobertos por comportamento existente não entram na contagem. N1–N5 são a meta separada de módulos novos.
