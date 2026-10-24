@@ -28,7 +28,7 @@ import { ErrorState } from '@/components/ErrorState';
 import { Skeleton } from '@/components/ui/skeleton';
 import { pacienteCorresponde } from '@/lib/buscaPaciente';
 import { formatDateTimeSaoPaulo } from '@/lib/dateOnly';
-import { deveNotificarRetificacao, formatarReferenciaLaudo, perfilPodeRetificarResultado, podeRetificarResultado, procedenciaResultadoLaudo } from '@/lib/laudoWorkflow';
+import { deveNotificarRetificacao, formatarReferenciaLaudo, perfilPodeRetificarResultado, podeRetificarResultado, procedenciaResultadoLaudo, trilhaDeVersoes } from '@/lib/laudoWorkflow';
 import { cursorAposAtualizacaoWorklist, type CursorLaudo } from '@/lib/laudoWorklist';
 import { LaboratorioSubnav } from '@/components/laboratorio/LaboratorioSubnav';
 import { criticalAcknowledgementIsPending } from '@/lib/criticalResultAcknowledgement';
@@ -192,7 +192,7 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
     setHistoricoResultadoId(resultadoId); setCarregandoHistorico(true); setHistoricoResultado([]);
     try {
       const { data, error } = await (supabase as any).from('resultados_laboratorio_versoes')
-        .select('id, numero_versao, registro_anterior, motivo, alterado_por, alterado_em')
+        .select('id, numero_versao, registro_anterior, motivo, alterado_por, alterado_em, autor:profiles!resultados_laboratorio_versoes_alterado_por_fkey(nome)')
         .eq('clinica_id', profile.clinica_id).eq('resultado_id', resultadoId).order('numero_versao', { ascending: false });
       if (error) throw error;
       setHistoricoResultado(data ?? []);
@@ -599,7 +599,7 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
                       {podeRetificarResultado(coleta.status, res.liberado === true) && podeRetificarLiberado && <Button size="sm" variant="outline" className="h-7 gap-1 text-xs" onClick={() => abrirRetificacao(res)}><PencilLine className="h-3.5 w-3.5" />{res.liberado ? 'Retificar laudo' : 'Corrigir resultado'}</Button>}
                     </div>
                     {historicoResultadoId === res.id && <div className="space-y-2 rounded-md bg-muted/40 p-3 text-xs">
-                      {carregandoHistorico ? <p role="status">Carregando versões…</p> : historicoResultado.length === 0 ? <p>Nenhuma versão anterior registrada.</p> : historicoResultado.map((versao) => <div key={versao.id} className="border-b pb-2 last:border-0"><p className="font-medium">Versão {versao.numero_versao} · {formatDateTimeSaoPaulo(versao.alterado_em)}</p><p>Resultado anterior: {versao.registro_anterior?.resultado ?? '—'} {versao.registro_anterior?.unidade ?? ''}</p>{versao.motivo && <p>Motivo: {versao.motivo}</p>}</div>)}
+                      {carregandoHistorico ? <p role="status">Carregando versões…</p> : historicoResultado.length === 0 ? <p>Nenhuma versão anterior registrada.</p> : trilhaDeVersoes(historicoResultado, res).map((versao) => <div key={versao.id} className="border-b pb-2 last:border-0"><p className="font-medium">Versão {versao.numero_versao} → {versao.numero_versao + 1} · {formatDateTimeSaoPaulo(versao.alterado_em)} · {versao.autor?.nome || 'autor não identificado'}</p><p>Resultado anterior: {versao.registro_anterior?.resultado ?? '—'} {versao.registro_anterior?.unidade ?? ''}</p>{versao.alteracoes.length > 0 ? <ul className="list-disc pl-4">{versao.alteracoes.map((alteracao) => <li key={alteracao}>{alteracao}</li>)}</ul> : <p className="text-muted-foreground">Sem mudança nos campos do laudo.</p>}{versao.motivo && <p>Motivo: {versao.motivo}</p>}</div>)}
                     </div>}
                     {retificacao?.id === res.id && <div className="mt-2 space-y-3 rounded-md border border-amber-500/30 bg-amber-500/5 p-3">
                       <p className="text-sm font-semibold">Retificar {retificacao.parametro}</p>
