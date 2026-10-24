@@ -24,6 +24,7 @@ import { Link } from 'react-router-dom';
 import { RelatorioFaturamentoCompetencia } from '@/components/financeiro/RelatorioFaturamentoCompetencia';
 import { ConciliacaoConvenioPorLote } from '@/components/financeiro/ConciliacaoConvenioPorLote';
 import { GuiasLoteDialog } from '@/components/financeiro/GuiasLoteDialog';
+import { RecursoGlosaDialog, ResumoRecurso, type DocumentoRecurso } from '@/components/financeiro/RecursoGlosaDialog';
 import { bloqueiaEnvio, validarLoteTiss, type AutorizacaoValidacao, type GuiaLote } from '@/lib/tissLoteValidacao';
 import { buscarDadosBasicosPacientes } from '@/lib/patientBasicData';
 
@@ -39,7 +40,6 @@ export default function FaturamentoConvenios() {
   const [lotOpen, setLotOpen] = useState(false);
   const [glosaOpen, setGlosaOpen] = useState(false);
   const [glosaParaRecurso, setGlosaParaRecurso] = useState<any | null>(null);
-  const [justificativaRecurso, setJustificativaRecurso] = useState('');
   const [glosaParaRetorno, setGlosaParaRetorno] = useState<any | null>(null);
   const [loteParaRetorno, setLoteParaRetorno] = useState<any | null>(null);
   const [decisaoOperadora, setDecisaoOperadora] = useState<'aceita' | 'mantida'>('aceita');
@@ -93,6 +93,19 @@ export default function FaturamentoConvenios() {
     const pacientes = await buscarDadosBasicosPacientes([...new Set(autorizacoes.map(a => a.paciente_id))]);
     return autorizacoes.map(a => ({ ...a, paciente_nome: pacientes.get(a.paciente_id)?.nome ?? null }));
   }});
+  const responsaveisQuery = useQuery({ queryKey: ['responsaveis-financeiro', profile?.clinica_id ?? null], enabled: !!profile?.clinica_id, queryFn: async () => {
+    const { data, error } = await supabase.rpc('listar_responsaveis_financeiro');
+    if (error) throw error; return data ?? [];
+  }});
+  const documentosQuery = useQuery({ queryKey: ['glosa-recurso-documentos', profile?.clinica_id ?? null], enabled: !!profile?.clinica_id, queryFn: async () => {
+    return buscarEmBlocos<DocumentoRecurso>(() => supabase.from('glosa_recurso_documentos').select('id,glosa_id,storage_path,file_name,created_at')
+      .eq('clinica_id', profile?.clinica_id ?? '').order('created_at', { ascending: true }).order('id', { ascending: true }));
+  }});
+  const documentosPorGlosa = useMemo(() => {
+    const mapa = new Map<string, DocumentoRecurso[]>();
+    for (const d of documentosQuery.data ?? []) mapa.set(d.glosa_id, [...(mapa.get(d.glosa_id) ?? []), d]);
+    return mapa;
+  }, [documentosQuery.data]);
   const guiasPorLote = useMemo(() => {
     const mapa = new Map<string, GuiaLote[]>();
     for (const guia of guiasQuery.data ?? []) mapa.set(guia.lote_id, [...(mapa.get(guia.lote_id) ?? []), guia]);
@@ -344,13 +357,6 @@ export default function FaturamentoConvenios() {
     return false;
   }
 
-  async function salvarJustificativaRecurso() {
-    if (!glosaParaRecurso) return;
-    const justificativa = justificativaRecurso.trim();
-    if (justificativa.length < 10) return toast.error('Descreva a justificativa do recurso (mínimo de 10 caracteres).');
-    const salvo = await updateGlosa(glosaParaRecurso.id, 'recurso_preparacao', { recurso_justificativa: justificativa });
-    if (salvo) { setGlosaParaRecurso(null); setJustificativaRecurso(''); }
-  }
 
   async function salvarRetornoOperadora() {
     if (!glosaParaRetorno) return;
@@ -454,7 +460,7 @@ export default function FaturamentoConvenios() {
       <TabsContent value="glosas"><Card><CardHeader><CardTitle className="text-base">Tratamento de glosas</CardTitle></CardHeader><CardContent className="space-y-3 overflow-x-auto">
         <div className="flex flex-col gap-2 sm:flex-row"><Input aria-label="Buscar glosa por código, guia, motivo, lote ou convênio" placeholder="Buscar código, guia, motivo, lote ou convênio..." value={buscaGlosa} onChange={event => setBuscaGlosa(event.target.value)} className="sm:max-w-sm" /><Select value={statusGlosa} onValueChange={setStatusGlosa}><SelectTrigger aria-label="Filtrar glosas por status" className="sm:w-52"><SelectValue placeholder="Todos os status" /></SelectTrigger><SelectContent><SelectItem value="todos">Todos os status</SelectItem><SelectItem value="pendente">Pendente</SelectItem><SelectItem value="recurso_preparacao">Preparando recurso</SelectItem><SelectItem value="recurso_enviado">Recurso enviado</SelectItem><SelectItem value="aceita">Aceita</SelectItem><SelectItem value="mantida">Mantida</SelectItem><SelectItem value="cancelada">Cancelada</SelectItem></SelectContent></Select></div>
         {glosas.length > 0 && <p className="text-xs text-muted-foreground">Mostrando {glosasFiltradas.length} de {glosas.length} glosas.</p>}
-        {glosasFiltradas.length > 0 ? <Table><TableHeader><TableRow><TableHead>Código / motivo</TableHead><TableHead>Lote</TableHead><TableHead className="text-right">Glosado</TableHead><TableHead className="text-right">Recuperado</TableHead><TableHead>Status</TableHead><TableHead>Ação</TableHead></TableRow></TableHeader><TableBody>{glosasFiltradas.map((g: any) => <TableRow key={g.id}><TableCell><b>{g.codigo_glosa}</b>{g.guia_referencia && <p className="text-xs text-muted-foreground">Guia: {g.guia_referencia}</p>}<p className="max-w-sm text-xs text-muted-foreground">{g.motivo}</p>{g.recurso_justificativa && <p className="mt-1 max-w-sm text-xs text-muted-foreground">Recurso: {g.recurso_justificativa}</p>}</TableCell><TableCell>{g.lotes_tiss?.numero_lote}<p className="text-[10px]">{g.lotes_tiss?.convenios?.nome}</p></TableCell><TableCell className="text-right">{brl(g.valor_glosado)}</TableCell><TableCell className="text-right">{brl(g.valor_recuperado)}</TableCell><TableCell><Badge variant="outline">{g.status.replaceAll('_',' ')}</Badge></TableCell><TableCell className="space-x-1">{g.status === 'pendente' && <Button size="sm" variant="outline" disabled={glosaAtualizandoId !== null} onClick={() => { setGlosaParaRecurso(g); setJustificativaRecurso(g.recurso_justificativa || ''); }}>Preparar recurso</Button>}{g.status === 'recurso_preparacao' && <><Button size="sm" variant="outline" disabled={glosaAtualizandoId !== null} onClick={() => { setGlosaParaRecurso(g); setJustificativaRecurso(g.recurso_justificativa || ''); }}>Revisar justificativa</Button><Button size="sm" disabled={glosaAtualizandoId !== null || String(g.recurso_justificativa || '').trim().length < 10} onClick={() => void updateGlosa(g.id, 'recurso_enviado')}>Marcar enviado</Button></>}{g.status === 'recurso_enviado' && <Button size="sm" disabled={glosaAtualizandoId !== null} onClick={() => { setGlosaParaRetorno(g); setDecisaoOperadora('aceita'); setValorRecuperado(String(g.valor_glosado)); }}>Registrar retorno</Button>}</TableCell></TableRow>)}</TableBody></Table> : <div className="flex flex-col items-center gap-2 py-8 text-center"><p className="text-sm text-muted-foreground">{glosas.length === 0 ? 'Nenhuma glosa registrada nesta clínica.' : 'Nenhuma glosa corresponde à busca e aos filtros.'}</p>{glosas.length > 0 && <Button size="sm" variant="outline" onClick={() => { setBuscaGlosa(''); setStatusGlosa('todos'); }}>Limpar filtros</Button>}</div>}
+        {glosasFiltradas.length > 0 ? <Table><TableHeader><TableRow><TableHead>Código / motivo</TableHead><TableHead>Lote</TableHead><TableHead className="text-right">Glosado</TableHead><TableHead className="text-right">Recuperado</TableHead><TableHead>Status</TableHead><TableHead>Ação</TableHead></TableRow></TableHeader><TableBody>{glosasFiltradas.map((g: any) => <TableRow key={g.id}><TableCell><b>{g.codigo_glosa}</b>{g.guia_referencia && <p className="text-xs text-muted-foreground">Guia: {g.guia_referencia}</p>}<p className="max-w-sm text-xs text-muted-foreground">{g.motivo}</p>{g.recurso_justificativa && <p className="mt-1 max-w-sm text-xs text-muted-foreground">Recurso: {g.recurso_justificativa}</p>}<ResumoRecurso glosa={g} responsavel={responsaveisQuery.data?.find(r => r.id === g.recurso_responsavel_id)?.nome} documentos={documentosPorGlosa.get(g.id)?.length ?? 0} /></TableCell><TableCell>{g.lotes_tiss?.numero_lote}<p className="text-[10px]">{g.lotes_tiss?.convenios?.nome}</p></TableCell><TableCell className="text-right">{brl(g.valor_glosado)}</TableCell><TableCell className="text-right">{brl(g.valor_recuperado)}</TableCell><TableCell><Badge variant="outline">{g.status.replaceAll('_',' ')}</Badge></TableCell><TableCell className="space-x-1">{g.status === 'pendente' && <Button size="sm" variant="outline" disabled={glosaAtualizandoId !== null} onClick={() => setGlosaParaRecurso(g)}>Preparar recurso</Button>}{g.status === 'recurso_preparacao' && <><Button size="sm" variant="outline" disabled={glosaAtualizandoId !== null} onClick={() => setGlosaParaRecurso(g)}>Revisar recurso</Button><Button size="sm" disabled={glosaAtualizandoId !== null || String(g.recurso_justificativa || '').trim().length < 10 || !g.recurso_prazo || !g.recurso_responsavel_id} title={!g.recurso_prazo || !g.recurso_responsavel_id ? 'Defina prazo e responsável antes de enviar' : undefined} onClick={() => void updateGlosa(g.id, 'recurso_enviado')}>Marcar enviado</Button></>}{g.status === 'recurso_enviado' && <Button size="sm" disabled={glosaAtualizandoId !== null} onClick={() => { setGlosaParaRetorno(g); setDecisaoOperadora('aceita'); setValorRecuperado(String(g.valor_glosado)); }}>Registrar retorno</Button>}</TableCell></TableRow>)}</TableBody></Table> : <div className="flex flex-col items-center gap-2 py-8 text-center"><p className="text-sm text-muted-foreground">{glosas.length === 0 ? 'Nenhuma glosa registrada nesta clínica.' : 'Nenhuma glosa corresponde à busca e aos filtros.'}</p>{glosas.length > 0 && <Button size="sm" variant="outline" onClick={() => { setBuscaGlosa(''); setStatusGlosa('todos'); }}>Limpar filtros</Button>}</div>}
       </CardContent></Card></TabsContent>
       <TabsContent value="conciliacao">
         {profile?.clinica_id && <ConciliacaoConvenioPorLote clinicaId={profile.clinica_id} lotes={lotesComNomeConvenio} />}
@@ -557,7 +563,7 @@ export default function FaturamentoConvenios() {
         </DialogFooter>
       </DialogContent>
     </Dialog>
-    <Dialog open={!!glosaParaRecurso} onOpenChange={open => { if (!open && glosaAtualizandoId === null) { setGlosaParaRecurso(null); setJustificativaRecurso(''); } }}><DialogContent><DialogHeader><DialogTitle>{glosaParaRecurso?.status === 'recurso_preparacao' ? 'Revisar recurso' : 'Preparar recurso de glosa'}</DialogTitle></DialogHeader><p className="text-sm text-muted-foreground">Glosa {glosaParaRecurso?.codigo_glosa} · {brl(Number(glosaParaRecurso?.valor_glosado || 0))}</p><Field label="Justificativa do recurso"><Textarea rows={5} disabled={glosaAtualizandoId !== null} value={justificativaRecurso} onChange={e=>setJustificativaRecurso(e.target.value)} placeholder="Descreva por que a cobrança deve ser revista pela operadora…" /></Field><p className="text-xs text-muted-foreground">Registre a justificativa antes de marcar o recurso como enviado.</p><DialogFooter><Button variant="outline" onClick={()=>setGlosaParaRecurso(null)} disabled={glosaAtualizandoId !== null}>Cancelar</Button><Button onClick={salvarJustificativaRecurso} disabled={glosaAtualizandoId !== null || justificativaRecurso.trim().length < 10}>{glosaAtualizandoId === glosaParaRecurso?.id && <RefreshCw className="mr-2 h-4 w-4 animate-spin"/>}Salvar justificativa</Button></DialogFooter></DialogContent></Dialog>
+    {profile?.clinica_id && <RecursoGlosaDialog glosa={glosaParaRecurso} clinicaId={profile.clinica_id} responsaveis={responsaveisQuery.data ?? []} documentos={glosaParaRecurso ? documentosPorGlosa.get(glosaParaRecurso.id) ?? [] : []} salvarJustificativa={(id, justificativa) => updateGlosa(id, 'recurso_preparacao', { recurso_justificativa: justificativa })} onClose={() => setGlosaParaRecurso(null)} onChanged={() => Promise.all([queryClient.invalidateQueries({ queryKey: ['glosas-convenio'] }), queryClient.invalidateQueries({ queryKey: ['glosa-recurso-documentos'] })])} />}
     <Dialog open={!!glosaParaRetorno} onOpenChange={open => { if (!open && glosaAtualizandoId === null) setGlosaParaRetorno(null); }}><DialogContent><DialogHeader><DialogTitle>Registrar retorno da operadora</DialogTitle></DialogHeader><p className="text-sm text-muted-foreground">Glosa {glosaParaRetorno?.codigo_glosa} · valor original {brl(Number(glosaParaRetorno?.valor_glosado || 0))}</p><Field label="Decisão"><Select value={decisaoOperadora} disabled={glosaAtualizandoId !== null} onValueChange={value=>setDecisaoOperadora(value as 'aceita' | 'mantida')}><SelectTrigger aria-label="Decisão"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="aceita">Recurso aceito</SelectItem><SelectItem value="mantida">Glosa mantida</SelectItem></SelectContent></Select></Field>{decisaoOperadora === 'aceita' && <Field label="Valor recuperado"><Input type="number" min="0" max={glosaParaRetorno?.valor_glosado || 0} step="0.01" disabled={glosaAtualizandoId !== null} value={valorRecuperado} onChange={e=>setValorRecuperado(e.target.value)} /></Field>}<DialogFooter><Button variant="outline" onClick={()=>setGlosaParaRetorno(null)} disabled={glosaAtualizandoId !== null}>Cancelar</Button><Button onClick={salvarRetornoOperadora} disabled={glosaAtualizandoId !== null}>{glosaAtualizandoId === glosaParaRetorno?.id && <RefreshCw className="mr-2 h-4 w-4 animate-spin"/>}Registrar decisão</Button></DialogFooter></DialogContent></Dialog>
   </div>;
 }

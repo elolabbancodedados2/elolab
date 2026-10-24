@@ -1351,16 +1351,29 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
-                },"glosas_convenio": {
+                },"glosa_recurso_documentos": {
                   Row: {
-                    "chave_idempotencia": string | null,"clinica_id": string,"codigo_glosa": string,"created_at": string,"criado_por": string | null,"guia_referencia": string | null,"id": string,"lote_id": string,"motivo": string,"recurso_enviado_em": string | null,"recurso_justificativa": string | null,"resolvido_em": string | null,"status": string,"updated_at": string,"valor_glosado": number,"valor_recuperado": number
+                    "byte_size": number,"clinica_id": string,"content_type": string,"created_at": string,"enviado_por": string,"file_name": string,"glosa_id": string,"id": string,"storage_path": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "chave_idempotencia"?: string | null,"clinica_id": string,"codigo_glosa": string,"created_at"?: string,"criado_por"?: string | null,"guia_referencia"?: string | null,"id"?: string,"lote_id": string,"motivo": string,"recurso_enviado_em"?: string | null,"recurso_justificativa"?: string | null,"resolvido_em"?: string | null,"status"?: string,"updated_at"?: string,"valor_glosado": number,"valor_recuperado"?: number
+                    "byte_size": number,"clinica_id": string,"content_type": string,"created_at"?: string,"enviado_por": string,"file_name": string,"glosa_id": string,"id"?: string,"storage_path": string
                   }
                   Update: {
-                    "chave_idempotencia"?: string | null,"clinica_id"?: string,"codigo_glosa"?: string,"created_at"?: string,"criado_por"?: string | null,"guia_referencia"?: string | null,"id"?: string,"lote_id"?: string,"motivo"?: string,"recurso_enviado_em"?: string | null,"recurso_justificativa"?: string | null,"resolvido_em"?: string | null,"status"?: string,"updated_at"?: string,"valor_glosado"?: number,"valor_recuperado"?: number
+                    "byte_size"?: number,"clinica_id"?: string,"content_type"?: string,"created_at"?: string,"enviado_por"?: string,"file_name"?: string,"glosa_id"?: string,"id"?: string,"storage_path"?: string
+                  }
+                  Relationships: [
+                    
+                  ]
+                },"glosas_convenio": {                  Row: {
+                    "chave_idempotencia": string | null,"clinica_id": string,"codigo_glosa": string,"created_at": string,"criado_por": string | null,"guia_referencia": string | null,"id": string,"lote_id": string,"motivo": string,"recurso_enviado_em": string | null,"recurso_justificativa": string | null,"recurso_prazo": string | null,"recurso_responsavel_id": string | null,"resolvido_em": string | null,"status": string,"updated_at": string,"valor_glosado": number,"valor_recuperado": number
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "chave_idempotencia"?: string | null,"clinica_id": string,"codigo_glosa": string,"created_at"?: string,"criado_por"?: string | null,"guia_referencia"?: string | null,"id"?: string,"lote_id": string,"motivo": string,"recurso_enviado_em"?: string | null,"recurso_justificativa"?: string | null,"recurso_prazo"?: string | null,"recurso_responsavel_id"?: string | null,"resolvido_em"?: string | null,"status"?: string,"updated_at"?: string,"valor_glosado": number,"valor_recuperado"?: number
+                  }
+                  Update: {
+                    "chave_idempotencia"?: string | null,"clinica_id"?: string,"codigo_glosa"?: string,"created_at"?: string,"criado_por"?: string | null,"guia_referencia"?: string | null,"id"?: string,"lote_id"?: string,"motivo"?: string,"recurso_enviado_em"?: string | null,"recurso_justificativa"?: string | null,"recurso_prazo"?: string | null,"recurso_responsavel_id"?: string | null,"resolvido_em"?: string | null,"status"?: string,"updated_at"?: string,"valor_glosado"?: number,"valor_recuperado"?: number
                   }
                   Relationships: [
                     {
@@ -5011,7 +5024,17 @@ isOneToOne: false
 "remover_guia_lote_tiss":
 { Args: { "p_guia_id": string }; Returns: Json
                            },
-"pendencias_lote_tiss":
+"definir_recurso_glosa":
+{ Args: { "p_glosa_id": string,"p_prazo": string,"p_responsavel_id": string }; Returns: Json
+                           },
+"registrar_documento_recurso_glosa":
+{ Args: { "p_byte_size": number,"p_content_type": string,"p_file_name": string,"p_glosa_id": string,"p_storage_path": string }; Returns: Json
+                           },
+"listar_responsaveis_financeiro":
+{ Args: Record<PropertyKey, never>; Returns: {
+              "id": string,"nome": string | null
+            }[]
+                           },"pendencias_lote_tiss":
 { Args: { "p_lote_id": string }; Returns: {
               "campo": string,"gravidade": string,"guia_id": string | null,"mensagem": string,"numero_guia": string | null,"tipo": string
             }[]
