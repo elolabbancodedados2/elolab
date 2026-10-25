@@ -1,30 +1,35 @@
-# EloLab no Expo Go
+# EloLab Mobile
 
-Este app Expo abre a versão web atual do EloLab em uma WebView para conferir a interface em um celular. Ele não substitui a aplicação web.
+App nativo (Expo SDK 58, Expo Router, React Native) para a equipe das clínicas. Usa o mesmo projeto Supabase do EloLab web: mesmas tabelas, RPCs, RLS, papéis e planos. Não há WebView; fluxos que dependem de computador (impressão, upload de arquivos, checkout, exportações) abrem a rota correspondente do web no navegador, indicada na própria tela.
 
-## Abrir no celular
+## Configurar
 
-1. No terminal do projeto, inicie o Vite na rede local:
+Crie `expo-mobile/.env.local` com a URL e a chave **publishable** do projeto (nunca a `service_role`):
 
-   ```powershell
-   npm run dev -- --host 0.0.0.0
-   ```
+```env
+EXPO_PUBLIC_SUPABASE_URL=https://<projeto>.supabase.co
+EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=<chave publishable>
+```
 
-2. Descubra o IPv4 do computador com `ipconfig` e crie `expo-mobile/.env.local`:
+Sem essas variáveis o app abre a tela de login informando que não está conectado.
 
-   ```env
-   EXPO_PUBLIC_WEB_URL=http://192.168.1.10:5173
-   ```
+## Rodar
 
-   Troque o exemplo pelo IPv4 do computador. O celular e o computador precisam estar na mesma rede Wi-Fi.
+```powershell
+cd expo-mobile
+npm install
+npm start          # Expo Go ou emulador Android (tecla a)
+npx tsc --noEmit   # typecheck
+npx expo lint      # lint
+```
 
-3. Em outro terminal:
+## Estrutura
 
-   ```powershell
-   cd expo-mobile
-   npm start
-   ```
+- `src/app/(auth)` — login, cadastro, recuperação de senha e MFA.
+- `src/app/(tabs)` — Início, Agenda, Pacientes, Atendimento e Mais.
+- `src/app/modules/<chave>.tsx` — uma tela por item do menu web; `src/navigation/catalog.ts` espelha `src/config/sidebarMenu.ts` (rótulos, papéis, planos e rota web equivalente).
+- `src/components/ModuleScreen.tsx` — cabeçalho e guarda de papel/plano de cada módulo (também protege links diretos). A autorização real continua no backend.
+- `src/components/ui.tsx` — componentes nativos compartilhados; cores em `src/theme/tokens.ts` (azul da marca, igual ao web).
+- `src/lib/useLoad.ts` e `src/lib/format.ts` — carregamento com atualização ao focar e formatação pt-BR.
 
-4. Instale o Expo Go no celular e leia o QR code exibido no terminal.
-
-Se o celular não alcançar o endereço, confira se o firewall do computador permite conexões na porta `5173`.
+Não publique nas lojas nem gere builds EAS sem pedido explícito do responsável.
