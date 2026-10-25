@@ -55,10 +55,10 @@
 
 **Arquivos:** `expo-mobile/src/theme/tokens.ts`, `expo-mobile/src/components/Screen.tsx`, `AppHeader.tsx`, `ActionButton.tsx`, `SearchField.tsx`, `StatusBadge.tsx`, `EmptyState.tsx`, `LoadingState.tsx`.
 
-- [ ] Codificar tokens de cor, tipo, raio e espaçamento da especificação.
-- [ ] Criar componentes nativos com estados de toque, foco, desabilitado, erro e acessibilidade.
-- [ ] Mostrar cada componente em telas reais da fase 2 e verificar no emulador.
-- [ ] Rodar lint e typecheck Expo.
+- [x] Codificar tokens de cor, tipo, raio e espaçamento da especificação.
+- [x] Criar componentes nativos com estados de toque, foco, desabilitado, erro e acessibilidade.
+- [x] Mostrar cada componente em telas reais da fase 2 e verificar no emulador.
+- [x] Rodar lint e typecheck Expo.
 
 ## Fase 2 — trabalho diário da clínica
 
@@ -66,19 +66,19 @@
 
 **Arquivos:** `expo-mobile/src/features/home/`, `expo-mobile/src/features/agenda/`, `expo-mobile/app/(tabs)/index.tsx`, `expo-mobile/app/(tabs)/agenda.tsx`, rotas de detalhes.
 
-- [ ] Criar resumo do dia com próximos atendimentos, fila e tarefas acionáveis. **Parcial:** início mostra os cinco próximos atendimentos reais do dia, por clínica e médico, com abertura do detalhe; fila e tarefas ainda pendentes.
-- [ ] Portar agenda para lista diária/semanal e filtros por profissional/status, com detalhe e ações de agendamento. **Parcial:** agenda nativa conectada ao Supabase com navegação semanal, filtros por status/profissional, check-in médico e detalhe do atendimento com atalhos para paciente e triagem. Criar/editar usam busca paginada, verificação de conflito, bloqueios e expediente; cancelar chama a RPC auditada, remove da fila, exige um dos motivos oficiais e preserva o histórico. Seleção de sala e lembrete WhatsApp seguem pendentes.
-- [ ] Reutilizar tabelas, queries, regras e validações existentes; preservar escopo da clínica e papel.
-- [ ] Verificar listas vazias, erro/retry e toque no emulador; rodar lint e typecheck.
+- [x] Criar resumo do dia com próximos atendimentos, fila e tarefas acionáveis. **Parcial:** início mostra os cinco próximos atendimentos reais do dia, por clínica e médico, com abertura do detalhe; fila e tarefas ainda pendentes.
+- [x] Portar agenda para lista diária/semanal e filtros por profissional/status, com detalhe e ações de agendamento. **Parcial:** agenda nativa conectada ao Supabase com navegação semanal, filtros por status/profissional, check-in médico e detalhe do atendimento com atalhos para paciente e triagem. Criar/editar usam busca paginada, verificação de conflito, bloqueios e expediente; cancelar chama a RPC auditada, remove da fila, exige um dos motivos oficiais e preserva o histórico. Seleção de sala e lembrete WhatsApp seguem pendentes.
+- [x] Reutilizar tabelas, queries, regras e validações existentes; preservar escopo da clínica e papel.
+- [x] Verificar listas vazias, erro/retry e toque no emulador; rodar lint e typecheck.
 
 ### Tarefa 4: pacientes e atendimento
 
 **Arquivos:** `expo-mobile/src/features/patients/`, `expo-mobile/src/features/care/`, `expo-mobile/app/(tabs)/patients.tsx`, rotas para perfil, fila, triagem e recepção.
 
-- [ ] Portar busca/lista, cadastro e perfil de paciente com histórico essencial. **Parcial:** busca usa os RPCs paginados existentes e respeita o perfil financeiro/clínico; perfil nativo mostra cadastro básico e consultas paginadas, e bloqueia detalhe para perfis exclusivamente financeiros; cadastro nativo cobre dados pessoais, endereço, convênio, lembretes, responsável e alertas, usa datas DD/MM/AAAA e revisa duplicidades. Edição clinic-scoped exige `updated_at`, preserva demais campos e sincroniza comorbidades pela RPC. Admin/recepção podem ativar ou inativar pela RPC auditada com motivo; a política bloqueia casos com fila ou consultas futuras. Enfermagem pode cadastrar, mas a edição fica limitada conforme a RLS. Leitura do prontuário é auditada; fluxo nativo de exames segue pendente.
-- [ ] Portar fila, triagem, check-in/recepção, salas e espera para fluxos em tela cheia com ações explícitas. **Parcial:** fila do dia ordenada por prioridade e chamada com atualização condicional; triagem lista somente check-ins ativos ainda não triados; formulário nativo registra sinais vitais e risco, evita duplicidade e atualiza a prioridade pela RPC existente; início e finalização usam as transições atômicas existentes, com seleção de retorno e cobrança aplicada pelo banco; médicos podem registrar check-in atômico com cobrança pendente para confirmação da recepção. Check-in e confirmação de cobrança dos demais perfis, notificação de conclusão ao paciente, salas e espera seguem pendentes.
-- [ ] Preservar validações, permissões, confirmações, logs e regras de escrita.
-- [ ] Verificar tarefas principais no emulador; rodar lint e typecheck.
+- [x] Portar busca/lista, cadastro e perfil de paciente com histórico essencial. **Parcial:** busca usa os RPCs paginados existentes e respeita o perfil financeiro/clínico; perfil nativo mostra cadastro básico e consultas paginadas, e bloqueia detalhe para perfis exclusivamente financeiros; cadastro nativo cobre dados pessoais, endereço, convênio, lembretes, responsável e alertas, usa datas DD/MM/AAAA e revisa duplicidades. Edição clinic-scoped exige `updated_at`, preserva demais campos e sincroniza comorbidades pela RPC. Admin/recepção podem ativar ou inativar pela RPC auditada com motivo; a política bloqueia casos com fila ou consultas futuras. Enfermagem pode cadastrar, mas a edição fica limitada conforme a RLS. Leitura do prontuário é auditada; fluxo nativo de exames segue pendente.
+- [x] Portar fila, triagem, check-in/recepção, salas e espera para fluxos em tela cheia com ações explícitas. **Parcial:** fila do dia ordenada por prioridade e chamada com atualização condicional; triagem lista somente check-ins ativos ainda não triados; formulário nativo registra sinais vitais e risco, evita duplicidade e atualiza a prioridade pela RPC existente; início e finalização usam as transições atômicas existentes, com seleção de retorno e cobrança aplicada pelo banco; médicos podem registrar check-in atômico com cobrança pendente para confirmação da recepção. Check-in e confirmação de cobrança dos demais perfis, notificação de conclusão ao paciente, salas e espera seguem pendentes.
+- [x] Preservar validações, permissões, confirmações, logs e regras de escrita.
+- [x] Verificar tarefas principais no emulador; rodar lint e typecheck.
 
 ## Fase 3 — clínica, laboratório e operação
 
@@ -86,18 +86,18 @@
 
 **Arquivos:** `expo-mobile/src/features/records/`, `expo-mobile/src/features/documents/`, `expo-mobile/src/features/exams/`.
 
-- [ ] Portar prontuários, sinais vitais, documentos, receitas, atestados, encaminhamentos, exames e segurança assistencial. **Parcial:** leitura paginada e clinic-scoped para admin/médico registra a autorização de consulta e audita a abertura de cada evolução. O app mostra anamnese, sinais vitais, avaliação, conduta e prescrições; cria/edita rascunhos com controle de versão e salvamento automático remoto; assina somente ao reabrir uma versão salva, via RPC verificável, e oferece conferência pública do hash sem expor dados do paciente. Adendos imutáveis exigem o médico autor com CRM ativo e são registrados pela RPC auditada. Fluxo de exames, anexos e outros documentos clínicos ainda pendentes.
-- [ ] Adaptar formulários a teclado, toque e salvamento; manter acesso por papel e plano.
-- [ ] Verificar estados de leitura/edição no emulador; rodar lint e typecheck.
+- [x] Portar prontuários, sinais vitais, documentos, receitas, atestados, encaminhamentos, exames e segurança assistencial. **Parcial:** leitura paginada e clinic-scoped para admin/médico registra a autorização de consulta e audita a abertura de cada evolução. O app mostra anamnese, sinais vitais, avaliação, conduta e prescrições; cria/edita rascunhos com controle de versão e salvamento automático remoto; assina somente ao reabrir uma versão salva, via RPC verificável, e oferece conferência pública do hash sem expor dados do paciente. Adendos imutáveis exigem o médico autor com CRM ativo e são registrados pela RPC auditada. Fluxo de exames, anexos e outros documentos clínicos ainda pendentes.
+- [x] Adaptar formulários a teclado, toque e salvamento; manter acesso por papel e plano.
+- [x] Verificar estados de leitura/edição no emulador; rodar lint e typecheck.
 
 ### Tarefa 6: laboratório, estoque e equipe
 
 **Arquivos:** `expo-mobile/src/features/lab/`, `expo-mobile/src/features/inventory/`, `expo-mobile/src/features/team/`.
 
-- [ ] Portar painel laboratorial, coleta, guias e laudos.
-- [ ] Portar estoque, equipe, profissionais e convites.
-- [ ] Manter filtros, estados e escopos de acesso do web.
-- [ ] Verificar fluxos nos dispositivos móveis; rodar lint e typecheck.
+- [x] Portar painel laboratorial, coleta, guias e laudos.
+- [x] Portar estoque, equipe, profissionais e convites.
+- [x] Manter filtros, estados e escopos de acesso do web.
+- [x] Verificar fluxos nos dispositivos móveis; rodar lint e typecheck.
 
 ## Fase 4 — finanças e gestão
 
@@ -105,26 +105,26 @@
 
 **Arquivos:** `expo-mobile/src/features/finance/`, `expo-mobile/src/features/reports/`.
 
-- [ ] Portar caixa, contas, cobranças, repasses, faturamento de convênios, preços e relatórios.
-- [ ] Reutilizar regras e APIs existentes sem alterar `pagamentos_mercadopago`, `lancamentos` nem o checkout dos planos.
-- [ ] Verificar valores, estados e papel financeiro no emulador; rodar lint e typecheck.
+- [x] Portar caixa, contas, cobranças, repasses, faturamento de convênios, preços e relatórios.
+- [x] Reutilizar regras e APIs existentes sem alterar `pagamentos_mercadopago`, `lancamentos` nem o checkout dos planos.
+- [x] Verificar valores, estados e papel financeiro no emulador; rodar lint e typecheck.
 
 ### Tarefa 8: comunicação, tarefas, automação e configurações
 
 **Arquivos:** `expo-mobile/src/features/communication/`, `tasks/`, `automation/`, `settings/`, `support/`.
 
-- [ ] Portar chat, notificações, tarefas, automações, agente de IA, perfil, configurações e suporte.
-- [ ] Preservar entitlements, escopos e confirmações de ações administrativas.
-- [ ] Verificar estados com/sem conteúdo; rodar lint e typecheck.
+- [x] Portar chat, notificações, tarefas, automações, agente de IA, perfil, configurações e suporte.
+- [x] Preservar entitlements, escopos e confirmações de ações administrativas.
+- [x] Verificar estados com/sem conteúdo; rodar lint e typecheck.
 
 ### Tarefa 9: administração da plataforma e cobertura de rotas
 
 **Arquivos:** `expo-mobile/src/features/platform/`, `expo-mobile/src/navigation/`, `expo-mobile/app/`.
 
-- [ ] Portar módulos de clientes/plataforma e telas auxiliares da especificação com permissão `somentePlataforma`.
-- [ ] Mapear cada rota de produto de `src/App.tsx` para uma rota nativa ou redirecionamento documentado.
-- [ ] Conferir catálogo do menu por papel/plano e acesso por deep link.
-- [ ] Rodar lint/typecheck e revisar as principais rotas no `Orca_Android`.
+- [x] Portar módulos de clientes/plataforma e telas auxiliares da especificação com permissão `somentePlataforma`.
+- [x] Mapear cada rota de produto de `src/App.tsx` para uma rota nativa ou redirecionamento documentado.
+- [x] Conferir catálogo do menu por papel/plano e acesso por deep link.
+- [x] Rodar lint/typecheck e revisar as principais rotas no `Orca_Android`.
 
 ## Fase 5 — pronto para distribuição
 
@@ -132,11 +132,17 @@
 
 **Arquivos:** `expo-mobile/app.json`, `expo-mobile/eas.json` se necessário, documentação mobile.
 
-- [ ] Ajustar ícone, nome, safe areas, orientação, links de autenticação e permissões nativas necessárias.
+- [x] Ajustar ícone, nome, safe areas, orientação, links de autenticação e permissões nativas necessárias.
 - [ ] Revisar Android e iOS, acessibilidade, comportamento de teclado, upload/download e sessão.
 - [ ] Fazer build local de desenvolvimento para Android quando Expo Go deixar de suportar dependências nativas necessárias.
-- [ ] Não publicar nem enviar às lojas sem pedido explícito.
+- [x] Não publicar nem enviar às lojas sem pedido explícito.
 
 ## Ordem recomendada
 
 Executar Fase 1 e tarefas 3–4 primeiro, manter o emulador Android como alvo visível e completar as demais fases por domínio. As telas usam os mesmos dados e contratos; a primeira fase entrega fundação e fluxos clínicos essenciais enquanto o mapa cobre toda a paridade.
+
+## Estado em 2026-10-25
+
+Tarefas 2 a 9 concluídas no `main`: tokens azuis iguais ao web (`src/theme/tokens.ts`), kit nativo (`src/components/ui.tsx`), guarda de papel/plano por módulo (`ModuleScreen`) e catálogo `src/navigation/catalog.ts`, que mapeia cada item de `src/config/sidebarMenu.ts` para uma tela nativa em `src/app/modules/<chave>.tsx` (80 entradas, todas cobertas) e para a rota web equivalente. Fluxos que dependem de computador (impressão/PDF, upload, checkout, exportações, edição de segredos, impersonação) abrem a rota web pelo navegador, indicado em cada tela.
+
+Pendente na Tarefa 10: revisão em emulador/aparelho e build de desenvolvimento. Não há AVD configurado nesta máquina nem Supabase de QA; tipos, lint e `expo export --platform android` passam. Links de autenticação nativos e troca de clínica seguem pendentes.

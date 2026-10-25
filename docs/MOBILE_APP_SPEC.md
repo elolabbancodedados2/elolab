@@ -43,7 +43,7 @@ Os links e guardas existentes em `src/App.tsx` e `src/config/sidebarMenu.ts` sã
 
 ## Direção visual
 
-Referência principal: `DESIGN.md` do EloLab. Preservar o violeta como cor de ação/foco, azul-noite como estrutura, fundo frio, superfícies claras, estados semânticos e tipografia Manrope. Aplicar espaçamento e hierarquia para toque e leitura em uma coluna.
+Referência principal: `DESIGN.md` do EloLab. Seguir o padrão azul/branco atual do web (azul da marca #1080CA como cor de ação/foco, azul-noite como estrutura; violeta removido em 2026-10), fundo frio, superfícies claras, estados semânticos e tipografia Manrope. Aplicar espaçamento e hierarquia para toque e leitura em uma coluna.
 
 Decisões mobile: navegação inferior para destinos frequentes; menu “Mais” para catálogo completo por grupos; barra de título com ação contextual; listas com linhas de toque confortáveis; cartões apenas para resumo e dados relacionados; nenhuma tabela horizontal como padrão de consulta.
 
