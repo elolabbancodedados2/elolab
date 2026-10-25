@@ -4,6 +4,9 @@ import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useAuth } from '../../auth/useAuth';
 import { MobileScreen } from '../../components/MobileScreen';
+import { Stat } from '../../components/ui';
+import { useLoad } from '../../lib/useLoad';
+import { canOpen, findItem } from '../../navigation/catalog';
 import { supabase } from '../../lib/supabase';
 import { colors, radius } from '../../theme/tokens';
 
@@ -28,7 +31,20 @@ function timeLabel(value: string | null) {
 }
 
 export default function HomeScreen() {
-  const { session, profile } = useAuth();
+  const { session, profile, hasFeature } = useAuth();
+  const can = (key: string) => { const entry = findItem(key); return Boolean(entry && canOpen(profile, hasFeature, entry.item, entry.group)); };
+  const canQueue = can('fila');
+  const { data: pulse } = useLoad(async client => {
+    const clinicId = profile?.clinicaId;
+    const userId = session?.user.id;
+    if (!clinicId || !userId) return undefined;
+    const [queue, tasks, alerts] = await Promise.all([
+      canQueue ? client.from('fila_atendimento').select('id, agendamentos!inner(data)', { count: 'exact', head: true }).eq('clinica_id', clinicId).in('status', ['aguardando', 'chamado']).eq('agendamentos.data', todayAtClinic()) : Promise.resolve({ count: null }),
+      client.from('tarefas').select('id', { count: 'exact', head: true }).eq('clinica_id', clinicId).eq('responsavel_id', userId).in('status', ['pendente', 'em_andamento']),
+      client.rpc('central_notificacoes_usuario', { p_limit: 250 }),
+    ]);
+    return { queue: queue.count as number | null, tasks: tasks.count as number | null, unread: ((alerts.data ?? []) as { is_read: boolean }[]).filter(item => !item.is_read).length };
+  }, [profile?.clinicaId, session?.user.id, canQueue]);
   const [appointments, setAppointments] = useState<TodayAppointment[]>([]);
   const [loadingAgenda, setLoadingAgenda] = useState(true);
   const [agendaError, setAgendaError] = useState(false);
@@ -76,7 +92,7 @@ export default function HomeScreen() {
     <MobileScreen>
       <View style={styles.top}>
         <View><Text style={styles.greeting}>{greeting}</Text><Text style={styles.name}>{firstName}</Text></View>
-        <Pressable accessibilityLabel="Notificações" style={styles.bell}><Ionicons name="notifications-outline" size={21} color={colors.ink} /><View style={styles.dot} /></Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel={pulse?.unread ? `Notificações: ${pulse.unread} não lidas` : 'Notificações'} onPress={() => router.push('/modules/notificacoes')} style={styles.bell}><Ionicons name="notifications-outline" size={21} color={colors.ink} />{pulse?.unread ? <View style={styles.dot} /> : null}</Pressable>
       </View>
 
       <View style={styles.welcome}>
@@ -84,14 +100,21 @@ export default function HomeScreen() {
         <View style={styles.welcomeText}><Text style={styles.welcomeTitle}>Sua rotina, mais leve.</Text><Text style={styles.welcomeBody}>Acompanhe o dia da clínica em um só lugar.</Text></View>
       </View>
 
+      {profile?.clinicaId ? <View style={styles.pulse}>
+        {canQueue ? <Stat label="Na fila agora" value={pulse?.queue ?? '—'} tone="warning" onPress={() => router.push('/(tabs)/care')} /> : null}
+        <Stat label="Minhas tarefas abertas" value={pulse?.tasks ?? '—'} onPress={() => router.push('/modules/tarefas')} />
+      </View> : null}
+
       <Text style={styles.sectionTitle}>Acesso rápido</Text>
       <View style={styles.quickGrid}>
-        <QuickAction icon="calendar" label="Ver agenda" color={colors.primary} onPress={() => router.push('/(tabs)/agenda')} />
-        <QuickAction icon="person-add" label="Buscar paciente" color="#26836C" onPress={() => router.push('/(tabs)/patients')} />
-        <QuickAction icon="list" label="Fila de atendimento" color="#B57818" onPress={() => router.push('/(tabs)/care')} />
+        {profile?.isPlatformAdmin && !profile.clinicaId ? <><QuickAction icon="speedometer" label="Painel da plataforma" color={colors.primary} onPress={() => router.push('/modules/admin-visao')} /><QuickAction icon="business" label="Clínicas" color={colors.deep} onPress={() => router.push('/modules/admin-clinicas')} /><QuickAction icon="chatbubbles" label="Atendimento a clientes" color={colors.warning} onPress={() => router.push('/modules/admin-suporte')} /></> : null}
+        {can('agenda') ? <QuickAction icon="calendar" label="Ver agenda" color={colors.primary} onPress={() => router.push('/(tabs)/agenda')} /> : null}
+        {can('pacientes') ? <QuickAction icon="person-add" label="Buscar paciente" color={colors.info} onPress={() => router.push('/(tabs)/patients')} /> : null}
+        {canQueue ? <QuickAction icon="list" label="Fila de atendimento" color={colors.warning} onPress={() => router.push('/(tabs)/care')} /> : null}
         <QuickAction icon="apps" label="Todos os módulos" color={colors.deep} onPress={() => router.push('/(tabs)/more')} />
       </View>
 
+      {can('agenda') ? <>
       <View style={styles.sectionRow}><Text style={styles.sectionTitle}>Resumo de hoje</Text><Text style={styles.date}>Hoje</Text></View>
       <View style={styles.agendaCard}>
         {loadingAgenda ? <View style={styles.loading}><ActivityIndicator color={colors.primary} /><Text style={styles.emptyBody}>Carregando agenda…</Text></View> : agendaError ? <View style={styles.loading}><Text style={styles.emptyBody}>Não foi possível carregar os atendimentos de hoje.</Text><Pressable onPress={() => setRefreshKey(value => value + 1)} style={styles.textButton}><Text style={styles.textButtonLabel}>Tentar novamente</Text><Ionicons name="refresh-outline" size={16} color={colors.primary} /></Pressable></View> : appointments.length ? <>
@@ -106,6 +129,8 @@ export default function HomeScreen() {
           <Pressable onPress={() => router.push('/(tabs)/agenda')} style={styles.textButton}><Text style={styles.textButtonLabel}>Abrir agenda</Text><Ionicons name="arrow-forward" size={16} color={colors.primary} /></Pressable>
         </>}
       </View>
+
+      </> : null}
 
       <View style={styles.privacy}><Ionicons name="shield-checkmark-outline" size={16} color={colors.success} /><Text style={styles.privacyText}>Seus dados são protegidos pelas permissões da sua conta.</Text></View>
     </MobileScreen>
@@ -125,5 +150,6 @@ const styles = StyleSheet.create({
   sectionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 26, marginBottom: 12 }, sectionTitle: { color: colors.ink, fontSize: 16, fontWeight: '700', marginBottom: 12 }, date: { color: colors.primary, fontSize: 12, fontWeight: '700', marginBottom: 12 },
   quickGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 }, action: { width: '48%', flexGrow: 1, minHeight: 105, padding: 14, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, justifyContent: 'space-between' }, pressed: { opacity: 0.75, transform: [{ scale: 0.99 }] }, actionIcon: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center' }, actionLabel: { color: colors.ink, fontSize: 12, lineHeight: 16, fontWeight: '600' },
   agendaCard: { alignItems: 'stretch', backgroundColor: colors.surface, borderRadius: radius.md, paddingHorizontal: 16, paddingVertical: 10, borderColor: colors.border, borderWidth: 1 }, loading: { minHeight: 130, alignItems: 'center', justifyContent: 'center', gap: 8 }, emptyIcon: { width: 46, height: 46, borderRadius: 16, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center', marginBottom: 12, alignSelf: 'center', marginTop: 12 }, emptyTitle: { color: colors.ink, fontSize: 14, fontWeight: '700', textAlign: 'center' }, emptyBody: { color: colors.muted, fontSize: 12, lineHeight: 18, textAlign: 'center', marginTop: 6 }, appointment: { minHeight: 58, flexDirection: 'row', alignItems: 'center', gap: 10 }, appointmentBorder: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border }, appointmentTime: { width: 44, color: colors.primary, fontSize: 12, fontWeight: '800' }, appointmentCopy: { flex: 1 }, appointmentPatient: { color: colors.ink, fontSize: 12, fontWeight: '700' }, appointmentMeta: { color: colors.muted, fontSize: 10, marginTop: 3, textTransform: 'capitalize' }, textButton: { flexDirection: 'row', gap: 7, alignItems: 'center', alignSelf: 'center', marginTop: 12, marginBottom: 5 }, textButtonLabel: { color: colors.primary, fontSize: 12, fontWeight: '700' },
+  pulse: { flexDirection: 'row', gap: 10, marginBottom: 24 },
   privacy: { flexDirection: 'row', gap: 7, alignItems: 'center', marginTop: 18 }, privacyText: { flex: 1, color: colors.muted, fontSize: 10, lineHeight: 15 },
 });

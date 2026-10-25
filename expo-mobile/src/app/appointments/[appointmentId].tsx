@@ -1,11 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { AppRole } from '../../auth/AuthContext';
 import { useAuth } from '../../auth/useAuth';
 import { MobileScreen } from '../../components/MobileScreen';
 import { ScreenHeading } from '../../components/ScreenHeading';
+import { Button, Feedback } from '../../components/ui';
+import { friendlyError } from '../../lib/format';
 import { supabase } from '../../lib/supabase';
 import { colors, radius } from '../../theme/tokens';
 
@@ -21,7 +23,7 @@ type AppointmentDetails = {
   exige_triagem: boolean | null;
   updated_at: string | null;
   motivo_cancelamento: string | null;
-  pacientes: { nome: string | null; nome_social: string | null } | null;
+  pacientes: { nome: string | null; nome_social: string | null; telefone: string | null } | null;
   medicos: { nome: string | null } | null;
   salas: { nome: string | null } | null;
 };
@@ -60,6 +62,9 @@ export default function AppointmentDetailScreen() {
   const [cancelReason, setCancelReason] = useState('');
   const [canceling, setCanceling] = useState(false);
   const [cancelFeedback, setCancelFeedback] = useState('');
+  const [statusBusy, setStatusBusy] = useState(false);
+  const [statusFeedback, setStatusFeedback] = useState<{ message: string; error?: boolean } | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     if (profileLoading) return;
@@ -78,7 +83,7 @@ export default function AppointmentDetailScreen() {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const db = supabase as any;
       const { data, error: queryError } = await db.from('agendamentos')
-        .select('id, paciente_id, data, hora_inicio, hora_fim, status, tipo, observacoes, exige_triagem, updated_at, motivo_cancelamento, pacientes(nome, nome_social), medicos(nome), salas(nome)')
+        .select('id, paciente_id, data, hora_inicio, hora_fim, status, tipo, observacoes, exige_triagem, updated_at, motivo_cancelamento, pacientes(nome, nome_social, telefone), medicos(nome), salas(nome)')
         .eq('id', appointmentId)
         .eq('clinica_id', clinicId)
         .maybeSingle();
@@ -91,13 +96,68 @@ export default function AppointmentDetailScreen() {
       if (active) setLoading(false);
     });
     return () => { active = false; };
-  }, [allowed, appointmentId, clinicId, profileLoading, session]);
+  }, [allowed, appointmentId, clinicId, profileLoading, session, reloadKey]);
 
   const patientName = appointment?.pacientes?.nome_social || appointment?.pacientes?.nome || 'Paciente';
   const showTriage = Boolean(canTriage && appointment?.exige_triagem && triageStatuses.includes(appointment.status ?? ''));
   const canManageAppointment = Boolean(profile?.roles.some(role => ['admin', 'recepcao', 'enfermagem', 'medico'].includes(role)));
   const canEdit = Boolean(canManageAppointment && appointment && ['agendado', 'confirmado', 'aguardando'].includes(appointment.status ?? ''));
   const canCancel = Boolean(canManageAppointment && appointment && cancellableStatuses.includes(appointment.status ?? ''));
+
+  const status = appointment?.status ?? '';
+  const canFrontDesk = Boolean(profile?.roles.some(role => ['admin', 'recepcao'].includes(role)));
+  const whatsappUrl = (() => {
+    // Same link as src/lib/whatsapp.ts linkWhatsApp + the web confirmation text.
+    const digits = (appointment?.pacientes?.telefone ?? '').replace(/\D/g, '');
+    if (!appointment || digits.length < 10) return null;
+    const number = digits.startsWith('55') && digits.length >= 12 ? digits : `55${digits}`;
+    const text = `Olá, ${patientName.split(' ')[0]}! Podemos confirmar sua consulta em ${formatDate(appointment.data)} às ${formatTime(appointment.hora_inicio)}? Responda SIM para confirmar.`;
+    return `https://wa.me/${number}?text=${encodeURIComponent(text)}`;
+  })();
+
+  async function confirmAppointment() {
+    if (!supabase || !clinicId || !appointment || statusBusy) return;
+    setStatusBusy(true);
+    setStatusFeedback(null);
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let update = (supabase as any).from('agendamentos').update({ status: 'confirmado' }).eq('id', appointment.id).eq('clinica_id', clinicId);
+      update = appointment.updated_at ? update.eq('updated_at', appointment.updated_at) : update.is('updated_at', null);
+      const { data, error: updateError } = await update.select('id').maybeSingle();
+      if (updateError) throw updateError;
+      if (!data) throw new Error('A consulta mudou desde que foi aberta. Atualizei os dados; confira o status antes de tentar novamente.');
+      setStatusFeedback({ message: 'Presença confirmada.' });
+    } catch (reason) {
+      setStatusFeedback({ message: friendlyError(reason), error: true });
+    } finally {
+      setStatusBusy(false);
+      setReloadKey(value => value + 1);
+    }
+  }
+
+  function markNoShow() {
+    if (!supabase || !clinicId || !appointment) return;
+    Alert.alert('Registrar falta', `Registrar que ${patientName} não compareceu? O horário sai da fila e fica no histórico.`, [
+      { text: 'Voltar', style: 'cancel' },
+      { text: 'Registrar falta', style: 'destructive', onPress: () => void (async () => {
+        setStatusBusy(true);
+        setStatusFeedback(null);
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const { data, error: rpcError } = await (supabase as any).rpc('alterar_status_agendamento_com_fila', { p_agendamento_id: appointment.id, p_clinica_id: clinicId, p_status: 'faltou', p_updated_at: appointment.updated_at ?? null });
+          if (rpcError) throw rpcError;
+          const result = Array.isArray(data) ? data[0] : data;
+          if (!result?.atualizado) throw new Error('A consulta mudou ou foi finalizada desde que foi aberta. Confira o status antes de tentar novamente.');
+          setStatusFeedback({ message: 'Falta registrada.' });
+        } catch (reason) {
+          setStatusFeedback({ message: friendlyError(reason), error: true });
+        } finally {
+          setStatusBusy(false);
+          setReloadKey(value => value + 1);
+        }
+      })() },
+    ]);
+  }
 
   async function cancelAppointment() {
     if (!supabase || !clinicId || !appointment || !cancelReason || canceling) return;
@@ -153,6 +213,16 @@ export default function AppointmentDetailScreen() {
         {appointment.observacoes ? <View style={styles.notes}><Text style={styles.noteLabel}>Observações</Text><Text style={styles.noteText}>{appointment.observacoes}</Text></View> : null}
       </View>
       {appointment.motivo_cancelamento ? <View style={styles.card}><Text style={styles.sectionTitle}>Cancelamento</Text><InfoRow icon="close-circle-outline" label="Motivo" value={cancellationReasons.find(reason => reason.value === appointment.motivo_cancelamento)?.label || 'Outro'} /></View> : null}
+      {canManageAppointment && ['agendado', 'confirmado'].includes(status) ? <View style={styles.card}>
+        <Text style={styles.sectionTitle}>Ações do horário</Text>
+        {statusFeedback ? <Feedback message={statusFeedback.message} error={statusFeedback.error} /> : null}
+        <View style={styles.statusActions}>
+          {status === 'agendado' ? <Button label="Confirmar presença" icon="checkmark-done-outline" loading={statusBusy} onPress={() => void confirmAppointment()} /> : null}
+          {whatsappUrl ? <Button variant="secondary" label="Confirmar pelo WhatsApp" icon="logo-whatsapp" onPress={() => void Linking.openURL(whatsappUrl)} /> : null}
+          {canFrontDesk ? <Button variant="secondary" label="Check-in na recepção" icon="enter-outline" onPress={() => router.push('/modules/recepcao')} /> : null}
+          <Button variant="danger" label="Registrar falta" icon="person-remove-outline" disabled={statusBusy} onPress={markNoShow} />
+        </View>
+      </View> : null}
       {canEdit ? <Pressable accessibilityRole="button" onPress={() => router.push({ pathname: '/appointments/new', params: { appointmentId: appointment.id } })} style={styles.secondaryAction}><Ionicons name="create-outline" size={19} color={colors.primary} /><Text style={styles.secondaryActionText}>Editar atendimento</Text></Pressable> : null}
       {showTriage ? <Pressable accessibilityRole="button" onPress={() => router.push({ pathname: '/triage/[appointmentId]', params: { appointmentId: appointment.id } })} style={styles.primaryAction}><Ionicons name="pulse-outline" size={19} color="#fff" /><Text style={styles.primaryActionText}>Abrir triagem</Text></Pressable> : null}
       {canCancel ? <View style={styles.cancelCard}>
@@ -177,5 +247,6 @@ const styles = StyleSheet.create({
   card: { padding: 16, marginBottom: 12, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }, sectionTitle: { color: colors.ink, fontSize: 14, fontWeight: '800', marginBottom: 10 }, infoRow: { minHeight: 50, flexDirection: 'row', alignItems: 'center', gap: 11, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border }, infoCopy: { flex: 1 }, infoLabel: { color: colors.muted, fontSize: 10, marginBottom: 3 }, infoValue: { color: colors.ink, fontSize: 13, fontWeight: '600' },
   action: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 9 }, actionText: { flex: 1, color: colors.primary, fontSize: 12, fontWeight: '700' }, notes: { paddingTop: 13 }, noteLabel: { color: colors.muted, fontSize: 10, marginBottom: 5 }, noteText: { color: colors.ink, fontSize: 12, lineHeight: 18 },
   primaryAction: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9, marginTop: 2, marginBottom: 14, borderRadius: 14, backgroundColor: colors.primary }, primaryActionText: { color: '#fff', fontSize: 13, fontWeight: '700' }, secondaryAction: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9, marginBottom: 12, borderRadius: 14, borderWidth: 1, borderColor: colors.primary, backgroundColor: colors.surface }, secondaryActionText: { color: colors.primary, fontSize: 13, fontWeight: '700' },
+  statusActions: { gap: 8 },
   cancelCard: { padding: 16, marginTop: 2, marginBottom: 14, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }, cancelDescription: { color: colors.muted, fontSize: 11, lineHeight: 17, marginBottom: 10 }, reasonList: { gap: 6 }, reason: { minHeight: 40, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 10, borderRadius: 11, borderWidth: 1, borderColor: colors.border }, reasonSelected: { borderColor: colors.primary, backgroundColor: colors.primarySoft }, reasonText: { color: colors.ink, fontSize: 11 }, reasonTextSelected: { color: colors.primary, fontWeight: '700' }, dangerAction: { minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 13, borderRadius: 12, backgroundColor: colors.danger }, dangerText: { color: '#fff', fontSize: 12, fontWeight: '700' }, cancelFeedback: { color: colors.success, fontSize: 11, lineHeight: 17, marginTop: 10 }, cancelError: { color: colors.danger }, pressed: { opacity: 0.75 }, disabled: { opacity: 0.5 },
 });

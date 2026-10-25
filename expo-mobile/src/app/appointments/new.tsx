@@ -12,13 +12,14 @@ import { colors, radius } from '../../theme/tokens';
 type PatientOption = { id: string; nome: string; nome_social: string | null; telefone: string | null };
 type Professional = { id: string; nome: string; ativo: boolean | null };
 type AppointmentType = { nome: string; duracao_minutos: number | null; ativo?: boolean | null };
-type DayAppointment = { id: string; paciente_id: string; medico_id: string; hora_inicio: string | null; hora_fim: string | null; status: string | null };
+type DayAppointment = { id: string; paciente_id: string; medico_id: string; sala_id: string | null; hora_inicio: string | null; hora_fim: string | null; status: string | null };
 type Block = { dia_inteiro: boolean | null; hora_inicio: string | null; hora_fim: string | null; motivo: string | null; tipo: string | null };
 type Availability = { hora_inicio: string | null; hora_fim: string | null };
 type ExistingAppointment = { id: string; updated_at: string | null; status: string | null };
 type ExistingAppointmentRow = ExistingAppointment & {
   paciente_id: string;
   medico_id: string;
+  sala_id: string | null;
   data: string;
   hora_inicio: string | null;
   hora_fim: string | null;
@@ -83,6 +84,8 @@ export default function NewAppointmentScreen() {
   const [appointmentTypes, setAppointmentTypes] = useState<AppointmentType[]>([]);
   const [selectedType, setSelectedType] = useState('Consulta');
   const [notes, setNotes] = useState('');
+  const [rooms, setRooms] = useState<{ id: string; nome: string }[]>([]);
+  const [selectedRoomId, setSelectedRoomId] = useState('');
   const [loadingOptions, setLoadingOptions] = useState(true);
   const [formUnavailable, setFormUnavailable] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -121,7 +124,7 @@ export default function NewAppointmentScreen() {
       let existing: ExistingAppointmentRow | null = null;
       if (appointmentId) {
         const { data: appointmentData, error: appointmentError } = await db.from('agendamentos')
-          .select('id, paciente_id, medico_id, data, hora_inicio, hora_fim, tipo, observacoes, status, updated_at, pacientes(id, nome, nome_social, telefone)')
+          .select('id, paciente_id, medico_id, sala_id, data, hora_inicio, hora_fim, tipo, observacoes, status, updated_at, pacientes(id, nome, nome_social, telefone)')
           .eq('id', appointmentId)
           .eq('clinica_id', clinicId)
           .maybeSingle();
@@ -150,7 +153,8 @@ export default function NewAppointmentScreen() {
         .eq('clinica_id', clinicId)
         .order('nome', { ascending: true })
         .limit(50);
-      const [professionalsResult, typesResult] = await Promise.all([professionalsQuery, typesQuery]);
+      const roomsQuery = db.from('salas').select('id, nome').eq('clinica_id', clinicId).order('nome', { ascending: true });
+      const [professionalsResult, typesResult, roomsResult] = await Promise.all([professionalsQuery, typesQuery, roomsQuery]);
       if (professionalsResult.error) throw professionalsResult.error;
       if (typesResult.error) throw typesResult.error;
       const available = (professionalsResult.data ?? []) as Professional[];
@@ -163,6 +167,8 @@ export default function NewAppointmentScreen() {
         const availableTypes = ((typesResult.data ?? []) as AppointmentType[])
           .filter(item => item.ativo !== false || item.nome === existing?.tipo);
         setAppointmentTypes(availableTypes);
+        // Rooms are optional on the web form too; a failed lookup only hides the picker.
+        setRooms(roomsResult.error ? [] : (roomsResult.data ?? []));
         setSelectedType(existing?.tipo || (availableTypes.some(item => item.nome === 'Consulta') ? 'Consulta' : availableTypes[0]?.nome || 'Consulta'));
         if (existing) {
           setExistingAppointment({ id: existing.id, updated_at: existing.updated_at, status: existing.status });
@@ -171,6 +177,7 @@ export default function NewAppointmentScreen() {
           setStartTime(existing.hora_inicio?.slice(0, 5) || '09:00');
           setEndTime(existing.hora_fim?.slice(0, 5) || '');
           setNotes(existing.observacoes || '');
+          setSelectedRoomId(existing.sala_id || '');
         }
       }
     })().catch(reason => {
@@ -229,7 +236,7 @@ export default function NewAppointmentScreen() {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const db = supabase as any;
       const [{ data: dayRows, error: dayError }, { data: blocks, error: blocksError }] = await Promise.all([
-        db.from('agendamentos').select('id, paciente_id, medico_id, hora_inicio, hora_fim, status').eq('clinica_id', clinicId).eq('data', isoDate),
+        db.from('agendamentos').select('id, paciente_id, medico_id, sala_id, hora_inicio, hora_fim, status').eq('clinica_id', clinicId).eq('data', isoDate),
         db.from('bloqueios_agenda').select('id, data_inicio, data_fim, hora_inicio, hora_fim, dia_inteiro, motivo, tipo').eq('medico_id', selectedProfessionalId).lte('data_inicio', isoDate).gte('data_fim', isoDate),
       ]);
       if (dayError) throw new Error('Não foi possível conferir os horários da agenda. Tente de novo antes de salvar.');
@@ -247,6 +254,8 @@ export default function NewAppointmentScreen() {
       if (doctorConflict) throw new Error('Este profissional já tem atendimento neste horário. Escolha outro horário.');
       const patientConflict = items.find(item => item.paciente_id === selectedPatient.id && overlap(item));
       if (patientConflict) throw new Error('Este paciente já tem outro atendimento neste horário. Escolha outro horário.');
+      const roomConflict = selectedRoomId && items.find(item => item.sala_id === selectedRoomId && overlap(item));
+      if (roomConflict) throw new Error('Esta sala já está reservada neste horário. Escolha outra sala ou horário.');
 
       const block = ((blocks ?? []) as Block[]).find(item => {
         if (item.dia_inteiro) return true;
@@ -284,6 +293,7 @@ export default function NewAppointmentScreen() {
         hora_fim: `${String(Math.floor(requestedEnd / 60)).padStart(2, '0')}:${String(requestedEnd % 60).padStart(2, '0')}:00`,
         tipo: selectedType,
         observacoes: notes.trim() || null,
+        sala_id: selectedRoomId || null,
       };
       let saveQuery = existingAppointment
         ? db.from('agendamentos').update(payload).eq('id', existingAppointment.id).eq('clinica_id', clinicId)
@@ -324,7 +334,8 @@ export default function NewAppointmentScreen() {
       <FieldLabel label="Profissional" required />
       {professionals.map(item => <Choice key={item.id} label={item.nome} selected={selectedProfessionalId === item.id} onPress={() => setSelectedProfessionalId(item.id)} />)}
 
-      <FieldLabel label="Tipo de atendimento" required />
+      {rooms.length ? <><FieldLabel label="Sala" /><Choice label="Sem sala" selected={!selectedRoomId} onPress={() => setSelectedRoomId('')} />{rooms.map(item => <Choice key={item.id} label={item.nome} selected={selectedRoomId === item.id} onPress={() => setSelectedRoomId(item.id)} />)}</> : null}
+        <FieldLabel label="Tipo de atendimento" required />
       {appointmentTypes.length ? <View style={styles.choices}>{appointmentTypes.map(item => <Pressable key={item.nome} onPress={() => setSelectedType(item.nome)} style={[styles.typeChoice, selectedType === item.nome && styles.typeChoiceSelected]}><Text style={[styles.typeText, selectedType === item.nome && styles.typeTextSelected]}>{item.nome}</Text></Pressable>)}</View> : <Text style={styles.helper}>Nenhum tipo cadastrado. O atendimento será registrado como consulta.</Text>}
 
       <FieldLabel label="Data" required />
