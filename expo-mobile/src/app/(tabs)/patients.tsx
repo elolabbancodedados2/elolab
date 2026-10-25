@@ -68,7 +68,7 @@ export default function PatientsScreen() {
 
   return <MobileScreen>
     <View style={styles.headingRow}><View style={{ flex: 1 }}><ScreenHeading title="Pacientes" subtitle="Encontre cadastros e acompanhe históricos." /></View>{canCreate ? <Pressable accessibilityRole="button" accessibilityLabel="Cadastrar novo paciente" onPress={() => router.push('/patients/new')} style={styles.addButton}><Ionicons name="person-add-outline" size={17} color="#FFFFFF" /></Pressable> : null}</View>
-    <View style={styles.search}><Ionicons name="search-outline" size={19} color={colors.muted} /><TextInput accessibilityLabel="Buscar paciente" value={search} onChangeText={setSearch} placeholder="Digite ao menos 2 caracteres" placeholderTextColor="#9B98A8" style={styles.input} returnKeyType="search" autoCorrect={false} /></View>
+    <View style={styles.search}><Ionicons name="search-outline" size={19} color={colors.muted} /><TextInput accessibilityLabel="Buscar paciente" value={search} onChangeText={setSearch} placeholder="Digite ao menos 2 caracteres" placeholderTextColor={colors.placeholder} style={styles.input} returnKeyType="search" autoCorrect={false} /></View>
     <View style={styles.filterRow}><View style={styles.filter}><Ionicons name="filter-outline" size={15} color={colors.primary} /><Text style={styles.filterText}>Ativos</Text></View><Text style={styles.secure}>Acesso conforme seu perfil</Text></View>
 
     {profileLoading || loading ? <View style={styles.state}><ActivityIndicator color={colors.primary} /><Text style={styles.stateText}>Buscando com segurança…</Text></View> : null}

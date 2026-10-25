@@ -86,10 +86,10 @@ export default function HomeScreen() {
 
       <Text style={styles.sectionTitle}>Acesso rápido</Text>
       <View style={styles.quickGrid}>
-        <QuickAction icon="calendar" label="Ver agenda" color="#6558D3" onPress={() => router.push('/(tabs)/agenda')} />
+        <QuickAction icon="calendar" label="Ver agenda" color={colors.primary} onPress={() => router.push('/(tabs)/agenda')} />
         <QuickAction icon="person-add" label="Buscar paciente" color="#26836C" onPress={() => router.push('/(tabs)/patients')} />
         <QuickAction icon="list" label="Fila de atendimento" color="#B57818" onPress={() => router.push('/(tabs)/care')} />
-        <QuickAction icon="apps" label="Todos os módulos" color="#43598F" onPress={() => router.push('/(tabs)/more')} />
+        <QuickAction icon="apps" label="Todos os módulos" color={colors.deep} onPress={() => router.push('/(tabs)/more')} />
       </View>
 
       <View style={styles.sectionRow}><Text style={styles.sectionTitle}>Resumo de hoje</Text><Text style={styles.date}>Hoje</Text></View>
@@ -120,8 +120,8 @@ const styles = StyleSheet.create({
   top: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 23 },
   greeting: { color: colors.muted, fontSize: 13 }, name: { color: colors.ink, fontSize: 24, fontWeight: '800', textTransform: 'capitalize', marginTop: 2 },
   bell: { width: 44, height: 44, borderRadius: 15, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' }, dot: { position: 'absolute', right: 11, top: 10, width: 7, height: 7, borderRadius: 4, backgroundColor: colors.primary, borderWidth: 1, borderColor: colors.surface },
-  welcome: { flexDirection: 'row', alignItems: 'center', gap: 13, padding: 17, backgroundColor: '#26213F', borderRadius: radius.md, marginBottom: 26 },
-  welcomeIcon: { width: 38, height: 38, borderRadius: 13, backgroundColor: '#FFFFFF22', alignItems: 'center', justifyContent: 'center' }, welcomeText: { flex: 1 }, welcomeTitle: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' }, welcomeBody: { color: '#D6D2E7', fontSize: 11, marginTop: 4 },
+  welcome: { flexDirection: 'row', alignItems: 'center', gap: 13, padding: 17, backgroundColor: colors.deep, borderRadius: radius.md, marginBottom: 26 },
+  welcomeIcon: { width: 38, height: 38, borderRadius: 13, backgroundColor: '#FFFFFF22', alignItems: 'center', justifyContent: 'center' }, welcomeText: { flex: 1 }, welcomeTitle: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' }, welcomeBody: { color: '#CFE3F2', fontSize: 11, marginTop: 4 },
   sectionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 26, marginBottom: 12 }, sectionTitle: { color: colors.ink, fontSize: 16, fontWeight: '700', marginBottom: 12 }, date: { color: colors.primary, fontSize: 12, fontWeight: '700', marginBottom: 12 },
   quickGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 }, action: { width: '48%', flexGrow: 1, minHeight: 105, padding: 14, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, justifyContent: 'space-between' }, pressed: { opacity: 0.75, transform: [{ scale: 0.99 }] }, actionIcon: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center' }, actionLabel: { color: colors.ink, fontSize: 12, lineHeight: 16, fontWeight: '600' },
   agendaCard: { alignItems: 'stretch', backgroundColor: colors.surface, borderRadius: radius.md, paddingHorizontal: 16, paddingVertical: 10, borderColor: colors.border, borderWidth: 1 }, loading: { minHeight: 130, alignItems: 'center', justifyContent: 'center', gap: 8 }, emptyIcon: { width: 46, height: 46, borderRadius: 16, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center', marginBottom: 12, alignSelf: 'center', marginTop: 12 }, emptyTitle: { color: colors.ink, fontSize: 14, fontWeight: '700', textAlign: 'center' }, emptyBody: { color: colors.muted, fontSize: 12, lineHeight: 18, textAlign: 'center', marginTop: 6 }, appointment: { minHeight: 58, flexDirection: 'row', alignItems: 'center', gap: 10 }, appointmentBorder: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border }, appointmentTime: { width: 44, color: colors.primary, fontSize: 12, fontWeight: '800' }, appointmentCopy: { flex: 1 }, appointmentPatient: { color: colors.ink, fontSize: 12, fontWeight: '700' }, appointmentMeta: { color: colors.muted, fontSize: 10, marginTop: 3, textTransform: 'capitalize' }, textButton: { flexDirection: 'row', gap: 7, alignItems: 'center', alignSelf: 'center', marginTop: 12, marginBottom: 5 }, textButtonLabel: { color: colors.primary, fontSize: 12, fontWeight: '700' },

@@ -281,30 +281,30 @@ export default function LoginScreen() {
 
           {mode === 'signup' ? <>
             <Text style={styles.fieldLabel}>Nome completo</Text>
-            <View style={styles.inputWrap}><Ionicons name="person-outline" size={18} color="#858197" /><TextInput accessibilityLabel="Nome completo" autoCapitalize="words" autoComplete="name" onChangeText={setName} placeholder="Maria Souza" placeholderTextColor="#918EA0" returnKeyType="next" style={styles.input} value={name} /></View>
+            <View style={styles.inputWrap}><Ionicons name="person-outline" size={18} color="#7A7A86" /><TextInput accessibilityLabel="Nome completo" autoCapitalize="words" autoComplete="name" onChangeText={setName} placeholder="Maria Souza" placeholderTextColor="#9A9AA6" returnKeyType="next" style={styles.input} value={name} /></View>
             <Text style={styles.fieldLabel}>Telefone (opcional)</Text>
-            <View style={styles.inputWrap}><Ionicons name="call-outline" size={18} color="#858197" /><TextInput accessibilityLabel="Telefone (opcional)" autoComplete="tel" keyboardType="phone-pad" onChangeText={value => setPhone(maskPhone(value))} placeholder="(11) 99999-9999" placeholderTextColor="#918EA0" returnKeyType="next" style={styles.input} value={phone} /></View>
+            <View style={styles.inputWrap}><Ionicons name="call-outline" size={18} color="#7A7A86" /><TextInput accessibilityLabel="Telefone (opcional)" autoComplete="tel" keyboardType="phone-pad" onChangeText={value => setPhone(maskPhone(value))} placeholder="(11) 99999-9999" placeholderTextColor="#9A9AA6" returnKeyType="next" style={styles.input} value={phone} /></View>
             <Text style={styles.fieldLabel}>CPF ou CNPJ (opcional)</Text>
-            <View style={styles.inputWrap}><Ionicons name="document-text-outline" size={18} color="#858197" /><TextInput accessibilityLabel="CPF ou CNPJ (opcional)" keyboardType="number-pad" onChangeText={value => setCpfCnpj(maskCpfCnpj(value))} placeholder="CPF ou CNPJ (opcional)" placeholderTextColor="#918EA0" returnKeyType="next" style={styles.input} value={cpfCnpj} /></View>
-            {params.codigo ? <><Text style={styles.fieldLabel}>Código do convite</Text><View style={styles.inputWrap}><Ionicons name="gift-outline" size={18} color="#858197" /><TextInput accessibilityLabel="Código do convite" autoCapitalize="characters" onChangeText={value => setInviteCode(value.toUpperCase())} placeholder="Código recebido da clínica" placeholderTextColor="#918EA0" returnKeyType="next" style={styles.input} value={inviteCode} /></View></> : null}
+            <View style={styles.inputWrap}><Ionicons name="document-text-outline" size={18} color="#7A7A86" /><TextInput accessibilityLabel="CPF ou CNPJ (opcional)" keyboardType="number-pad" onChangeText={value => setCpfCnpj(maskCpfCnpj(value))} placeholder="CPF ou CNPJ (opcional)" placeholderTextColor="#9A9AA6" returnKeyType="next" style={styles.input} value={cpfCnpj} /></View>
+            {params.codigo ? <><Text style={styles.fieldLabel}>Código do convite</Text><View style={styles.inputWrap}><Ionicons name="gift-outline" size={18} color="#7A7A86" /><TextInput accessibilityLabel="Código do convite" autoCapitalize="characters" onChangeText={value => setInviteCode(value.toUpperCase())} placeholder="Código recebido da clínica" placeholderTextColor="#9A9AA6" returnKeyType="next" style={styles.input} value={inviteCode} /></View></> : null}
           </> : null}
 
           {mode !== 'mfa' ? <><Text style={styles.fieldLabel}>E-mail</Text><View style={styles.inputWrap}>
-            <Ionicons name="mail-outline" size={18} color="#858197" />
-            <TextInput accessibilityLabel="E-mail" autoCapitalize="none" autoComplete="email" keyboardType="email-address" onChangeText={(value) => { setEmail(value); setError(''); setNotice(''); }} placeholder="seu@email.com" placeholderTextColor="#918EA0" returnKeyType="next" style={styles.input} value={email} />
+            <Ionicons name="mail-outline" size={18} color="#7A7A86" />
+            <TextInput accessibilityLabel="E-mail" autoCapitalize="none" autoComplete="email" keyboardType="email-address" onChangeText={(value) => { setEmail(value); setError(''); setNotice(''); }} placeholder="seu@email.com" placeholderTextColor="#9A9AA6" returnKeyType="next" style={styles.input} value={email} />
           </View></> : null}
           {mode === 'login' || mode === 'signup' ? <><Text style={styles.fieldLabel}>Senha</Text><View style={styles.inputWrap}>
-            <Ionicons name="lock-closed-outline" size={18} color="#858197" />
-            <TextInput accessibilityLabel="Senha" autoCapitalize="none" autoComplete={mode === 'signup' ? 'new-password' : 'current-password'} onChangeText={(value) => { setPassword(value); setError(''); }} onSubmitEditing={mode === 'login' ? handleLogin : undefined} placeholder="••••••••" placeholderTextColor="#918EA0" returnKeyType={mode === 'signup' ? 'next' : 'go'} secureTextEntry={!showPassword} style={styles.input} value={password} />
-            <Pressable accessibilityRole="button" accessibilityLabel={showPassword ? 'Ocultar senha' : 'Mostrar senha'} hitSlop={10} onPress={() => setShowPassword(!showPassword)} style={styles.eyeButton}><Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={19} color="#77748A" /></Pressable>
+            <Ionicons name="lock-closed-outline" size={18} color="#7A7A86" />
+            <TextInput accessibilityLabel="Senha" autoCapitalize="none" autoComplete={mode === 'signup' ? 'new-password' : 'current-password'} onChangeText={(value) => { setPassword(value); setError(''); }} onSubmitEditing={mode === 'login' ? handleLogin : undefined} placeholder="••••••••" placeholderTextColor="#9A9AA6" returnKeyType={mode === 'signup' ? 'next' : 'go'} secureTextEntry={!showPassword} style={styles.input} value={password} />
+            <Pressable accessibilityRole="button" accessibilityLabel={showPassword ? 'Ocultar senha' : 'Mostrar senha'} hitSlop={10} onPress={() => setShowPassword(!showPassword)} style={styles.eyeButton}><Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={19} color="#60606C" /></Pressable>
           </View></> : null}
           {mode === 'signup' ? <>
             <Text style={styles.passwordHint}>Use 10 caracteres, com letra maiúscula, minúscula e número.</Text>
             <Text style={styles.fieldLabel}>Confirmar senha</Text>
-            <View style={styles.inputWrap}><Ionicons name="lock-closed-outline" size={18} color="#858197" /><TextInput accessibilityLabel="Confirmar senha" autoCapitalize="none" autoComplete="new-password" onChangeText={value => { setConfirmPassword(value); setError(''); }} onSubmitEditing={handleSignup} placeholder="Confirme sua senha" placeholderTextColor="#918EA0" returnKeyType="go" secureTextEntry={!showConfirmPassword} style={styles.input} value={confirmPassword} /><Pressable accessibilityRole="button" accessibilityLabel={showConfirmPassword ? 'Ocultar confirmação da senha' : 'Mostrar confirmação da senha'} hitSlop={10} onPress={() => setShowConfirmPassword(!showConfirmPassword)} style={styles.eyeButton}><Ionicons name={showConfirmPassword ? 'eye-off-outline' : 'eye-outline'} size={19} color="#77748A" /></Pressable></View>
+            <View style={styles.inputWrap}><Ionicons name="lock-closed-outline" size={18} color="#7A7A86" /><TextInput accessibilityLabel="Confirmar senha" autoCapitalize="none" autoComplete="new-password" onChangeText={value => { setConfirmPassword(value); setError(''); }} onSubmitEditing={handleSignup} placeholder="Confirme sua senha" placeholderTextColor="#9A9AA6" returnKeyType="go" secureTextEntry={!showConfirmPassword} style={styles.input} value={confirmPassword} /><Pressable accessibilityRole="button" accessibilityLabel={showConfirmPassword ? 'Ocultar confirmação da senha' : 'Mostrar confirmação da senha'} hitSlop={10} onPress={() => setShowConfirmPassword(!showConfirmPassword)} style={styles.eyeButton}><Ionicons name={showConfirmPassword ? 'eye-off-outline' : 'eye-outline'} size={19} color="#60606C" /></Pressable></View>
           </> : null}
 
-          {mode === 'mfa' ? <><Text style={styles.fieldLabel}>Código</Text><View style={styles.inputWrap}><Ionicons name="shield-checkmark-outline" size={18} color="#858197" /><TextInput accessibilityLabel="Código de verificação" autoComplete="one-time-code" keyboardType="number-pad" maxLength={6} onChangeText={value => { setMfaCode(value.replace(/\D/g, '')); setError(''); }} onSubmitEditing={verifyMfa} placeholder="000000" placeholderTextColor="#918EA0" returnKeyType="go" style={styles.input} value={mfaCode} /></View></> : null}
+          {mode === 'mfa' ? <><Text style={styles.fieldLabel}>Código</Text><View style={styles.inputWrap}><Ionicons name="shield-checkmark-outline" size={18} color="#7A7A86" /><TextInput accessibilityLabel="Código de verificação" autoComplete="one-time-code" keyboardType="number-pad" maxLength={6} onChangeText={value => { setMfaCode(value.replace(/\D/g, '')); setError(''); }} onSubmitEditing={verifyMfa} placeholder="000000" placeholderTextColor="#9A9AA6" returnKeyType="go" style={styles.input} value={mfaCode} /></View></> : null}
 
           {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
           {notice ? <Text accessibilityRole="status" style={styles.notice}>{notice}</Text> : null}
@@ -340,7 +340,7 @@ const styles = StyleSheet.create({
   title: { color: '#151923', textAlign: 'left', fontSize: 24, fontWeight: '700', letterSpacing: -0.4, marginBottom: 3 },
   tabs: { flexDirection: 'row', padding: 4, borderRadius: 14, backgroundColor: '#E6E9EE', marginBottom: 24 },
   tab: { flex: 1, minHeight: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  tabActive: { backgroundColor: '#FFFFFF', shadowColor: '#21134A', shadowOpacity: 0.08, shadowRadius: 5, shadowOffset: { width: 0, height: 2 }, elevation: 1 },
+  tabActive: { backgroundColor: '#FFFFFF', shadowColor: colors.deep, shadowOpacity: 0.08, shadowRadius: 5, shadowOffset: { width: 0, height: 2 }, elevation: 1 },
   tabText: { color: colors.muted, fontSize: 13, fontWeight: '600' },
   tabTextActive: { color: colors.primary },
   caption: { color: colors.muted, textAlign: 'left', fontSize: 13, lineHeight: 19, marginBottom: 15 },
@@ -359,7 +359,7 @@ const styles = StyleSheet.create({
   buttonText: { color: '#FFFFFF', fontWeight: '700', fontSize: 14 },
   textAction: { minHeight: 42, alignItems: 'center', justifyContent: 'center' },
   actionText: { color: colors.primary, fontSize: 13, fontWeight: '600' },
-  divider: { height: 1, backgroundColor: '#E9E8F0', marginTop: 4, marginBottom: 14 },
+  divider: { height: 1, backgroundColor: colors.border, marginTop: 4, marginBottom: 14 },
   footer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 },
   footerTitle: { color: colors.ink, fontSize: 12, fontWeight: '600' },
   footerCopy: { color: colors.muted, textAlign: 'center', fontSize: 11, marginTop: 5 },

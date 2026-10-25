@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import type { AppRole } from '../../auth/AuthContext';
 import { useAuth } from '../../auth/useAuth';
 import { MobileScreen } from '../../components/MobileScreen';
@@ -212,7 +212,7 @@ export default function TriageFormScreen() {
 
   const patientName = appointment?.pacientes?.nome_social || appointment?.pacientes?.nome || 'Paciente';
 
-  return <KeyboardAvoidingView style={styles.fill} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+  return <>
     <MobileScreen>
       <Pressable accessibilityRole="button" onPress={() => router.back()} style={styles.back}><Ionicons name="arrow-back" size={18} color={colors.primary} /><Text style={styles.backText}>Voltar ao atendimento</Text></Pressable>
       <ScreenHeading title="Triagem" subtitle="Registre sinais vitais e classifique o risco clínico." />
@@ -246,7 +246,7 @@ export default function TriageFormScreen() {
         {saved ? <Pressable accessibilityRole="button" onPress={() => router.back()} style={styles.secondaryButton}><Text style={styles.secondaryText}>Voltar para a fila</Text></Pressable> : <Pressable accessibilityRole="button" disabled={saving} onPress={() => void save()} style={({ pressed }) => [styles.saveButton, pressed && styles.pressed, saving && styles.disabled]}>{saving ? <ActivityIndicator color="#FFFFFF" /> : <><Ionicons name="checkmark-circle-outline" size={18} color="#FFFFFF" /><Text style={styles.saveText}>Registrar triagem</Text></>}</Pressable>}
       </> : null}
     </MobileScreen>
-  </KeyboardAvoidingView>;
+  </>;
 }
 
 function Field({ label, value, onChangeText, placeholder, unit, keyboardType = 'default', multiline = false, disabled = false }: { label: string; value: string; onChangeText: (value: string) => void; placeholder: string; unit?: string; keyboardType?: 'default' | 'number-pad' | 'decimal-pad' | 'numbers-and-punctuation'; multiline?: boolean; disabled?: boolean }) {
@@ -257,7 +257,7 @@ const styles = StyleSheet.create({
   fill: { flex: 1 }, back: { flexDirection: 'row', alignItems: 'center', gap: 7, minHeight: 42, alignSelf: 'flex-start', marginBottom: 6 }, backText: { color: colors.primary, fontSize: 13, fontWeight: '700' },
   state: { minHeight: 130, alignItems: 'center', justifyContent: 'center', gap: 10 }, stateText: { color: colors.muted, fontSize: 13 },
   patientCard: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, marginBottom: 16, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }, patientIcon: { width: 42, height: 42, alignItems: 'center', justifyContent: 'center', borderRadius: 14, backgroundColor: colors.primarySoft }, patientName: { color: colors.ink, fontWeight: '700', fontSize: 14 }, patientMeta: { color: colors.muted, fontSize: 11, marginTop: 4, textTransform: 'capitalize' },
-  section: { padding: 14, marginBottom: 13, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, backgroundColor: colors.surface }, sectionTitle: { color: colors.ink, fontSize: 13, fontWeight: '700', marginBottom: 12 }, grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 }, field: { width: '48%', flexGrow: 1, minWidth: '44%', marginBottom: 3 }, fullField: { width: '100%', minWidth: '100%', marginBottom: 9 }, label: { color: colors.muted, fontSize: 11, fontWeight: '600', marginBottom: 6 }, inputWrap: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 10, borderWidth: 1, borderColor: colors.border, borderRadius: 11, backgroundColor: '#FCFCFE' }, disabledInput: { backgroundColor: '#F1F1F4', opacity: 0.75 }, input: { flex: 1, minHeight: 42, color: colors.ink, fontSize: 13 }, unit: { color: colors.muted, fontSize: 10 }, multilineWrap: { minHeight: 82, alignItems: 'flex-start', paddingVertical: 8 }, multilineInput: { minHeight: 62 },
+  section: { padding: 14, marginBottom: 13, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, backgroundColor: colors.surface }, sectionTitle: { color: colors.ink, fontSize: 13, fontWeight: '700', marginBottom: 12 }, grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 }, field: { width: '48%', flexGrow: 1, minWidth: '44%', marginBottom: 3 }, fullField: { width: '100%', minWidth: '100%', marginBottom: 9 }, label: { color: colors.muted, fontSize: 11, fontWeight: '600', marginBottom: 6 }, inputWrap: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 10, borderWidth: 1, borderColor: colors.border, borderRadius: 11, backgroundColor: colors.surface }, disabledInput: { backgroundColor: colors.surfaceMuted, opacity: 0.75 }, input: { flex: 1, minHeight: 42, color: colors.ink, fontSize: 13 }, unit: { color: colors.muted, fontSize: 10 }, multilineWrap: { minHeight: 82, alignItems: 'flex-start', paddingVertical: 8 }, multilineInput: { minHeight: 62 },
   riskList: { gap: 8 }, risk: { minHeight: 56, flexDirection: 'row', alignItems: 'center', gap: 10, padding: 10, borderWidth: 1.5, borderRadius: 12 }, riskDot: { width: 11, height: 11, borderRadius: 6 }, riskLabel: { fontSize: 12, fontWeight: '700' }, riskWait: { color: colors.muted, fontSize: 10, marginTop: 2 },
   message: { padding: 12, marginBottom: 11, borderRadius: 11, backgroundColor: colors.successSoft }, messageError: { backgroundColor: '#FCEBED' }, messageWarning: { backgroundColor: colors.warningSoft }, messageText: { color: colors.ink, fontSize: 12, lineHeight: 18 },
   saveButton: { minHeight: 50, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 2, borderRadius: 13, backgroundColor: colors.primary }, saveText: { color: '#FFFFFF', fontSize: 13, fontWeight: '700' }, secondaryButton: { minHeight: 46, alignItems: 'center', justifyContent: 'center', marginTop: 2, borderRadius: 13, backgroundColor: colors.primarySoft }, secondaryText: { color: colors.primary, fontSize: 13, fontWeight: '700' }, pressed: { opacity: 0.82 }, disabled: { opacity: 0.55 },
