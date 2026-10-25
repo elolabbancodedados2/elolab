@@ -6,6 +6,7 @@ import type { AppRole } from '../../auth/AuthContext';
 import { useAuth } from '../../auth/useAuth';
 import { MobileScreen } from '../../components/MobileScreen';
 import { ScreenHeading } from '../../components/ScreenHeading';
+import { queueCompletionEmail } from '../../lib/notifyCompletion';
 import { supabase } from '../../lib/supabase';
 import { colors } from '../../theme/tokens';
 
@@ -20,6 +21,7 @@ type WorkItem = {
   status: string | null;
   prioridade: string | null;
   paciente: string;
+  pacienteId: string | null;
   medico: string;
   salaId: string | null;
 };
@@ -153,6 +155,7 @@ export default function CareScreen() {
             status: row.status,
             prioridade: row.prioridade,
             paciente: row.agendamentos?.pacientes?.nome_social || row.agendamentos?.pacientes?.nome || 'Paciente',
+      pacienteId: row.agendamentos?.paciente_id ?? null,
             medico: row.agendamentos?.medicos?.nome || 'Profissional não informado',
             salaId: row.agendamentos?.sala_id ?? row.sala_id,
           }))
@@ -240,6 +243,7 @@ export default function CareScreen() {
           status: row.status,
           prioridade: null,
           paciente: row.pacientes?.nome_social || row.pacientes?.nome || 'Paciente',
+      pacienteId: null,
           medico: row.medicos?.nome || 'Profissional não informado',
           salaId: null,
         })));
@@ -335,6 +339,7 @@ export default function CareScreen() {
       if (transitionError) throw transitionError;
       const result = Array.isArray(data) ? data[0] : null;
       if (!result) throw new Error('A finalização não retornou uma confirmação.');
+      if (!result.repetido) await queueCompletionEmail(db, { pacienteId: item.pacienteId, pacienteNome: item.paciente, clinicaId: clinicId });
       const suffix = result.repetido ? 'O atendimento já estava finalizado.'
         : result.status_agendamento === 'aguardando_pagamento_adicional' ? 'A fila foi concluída; há pagamento adicional pendente.'
           : result.cobranca_criada ? 'A cobrança foi registrada.' : 'A fila foi concluída.';

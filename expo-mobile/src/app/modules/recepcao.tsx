@@ -6,6 +6,7 @@ import { ModuleScreen, OpenOnWeb } from '../../components/ModuleScreen';
 import { Badge, Button, Card, Chips, Feedback, Field, ListRow, Section, Segmented, Stat, StateView, type Tone } from '../../components/ui';
 import { clinicDate, friendlyError, money, timeLabel } from '../../lib/format';
 import { db, must, useLoad } from '../../lib/useLoad';
+import { queueCompletionEmail } from '../../lib/notifyCompletion';
 import { colors } from '../../theme/tokens';
 
 type Patient = { id: string; nome: string | null; nome_social: string | null; telefone: string | null; convenio_id: string | null; ativo: boolean | null };
@@ -194,6 +195,7 @@ export default function ReceptionScreen() {
       if (!r) throw new Error('A finalização não retornou uma confirmação.');
       setFinishing(null);
       if (r.repetido) return 'Atendimento já estava finalizado. A fila foi sincronizada.';
+      await queueCompletionEmail(db, { pacienteId: e.ag.paciente_id, pacienteNome: e.ag.pacientes?.nome ?? 'Paciente', clinicaId: clinicId });
       const msg = r.status_agendamento === 'aguardando_pagamento_adicional' ? 'Atendimento finalizado! Agendamento aguardando pagamento adicional.' : 'Atendimento finalizado!';
       return days === null ? msg : `${msg} Retorno agendado para ${days} dias.`;
     }, 'Erro ao finalizar');
