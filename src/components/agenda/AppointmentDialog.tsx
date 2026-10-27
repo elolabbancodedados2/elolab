@@ -1,3 +1,4 @@
+import { friendlyErrorMessage } from '@/components/ErrorState';
 import { nomeMedico } from '@/lib/formatters';
 import { useEffect, useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
@@ -36,6 +37,14 @@ interface Props {
   onSaved?: () => void | Promise<void>;
 }
 
+// "Retorno", "Retorno — DEMONSTRAÇÃO": o agendamento guarda como retorno.
+const isTipoRetorno = (nome?: string | null) => /^retorno/i.test(String(nome ?? '').trim());
+
+/** Tipo da clínica escolhido tem prioridade; sem ele, cai no nome genérico. */
+const tipoDoCatalogo = (tipos: any[], form: any) => tipos.find((t: any) => form.tipo_consulta_id
+  ? t.id === form.tipo_consulta_id
+  : String(t.nome || '').toLocaleLowerCase('pt-BR') === String(form.tipo || '').toLocaleLowerCase('pt-BR'));
+
 export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos, salas, onSaved }: Props) {
   const queryClient = useQueryClient();
   const { profile } = useSupabaseAuth() as any;
@@ -50,6 +59,10 @@ export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos,
 
   useEffect(() => {
     if (open) {
+      // Nova consulta já sai com um tipo da clínica, que tem preço; o genérico não tem.
+      const tipoPadrao = !initial?.tipo && !initial?.tipo_consulta_id
+        ? (tipos as any[]).find((t) => t.ativo !== false && !isTipoRetorno(t.nome)) ?? null
+        : null;
       setForm({
         paciente_id: initial?.paciente_id || '',
         medico_id: initial?.medico_id || '',
@@ -57,6 +70,7 @@ export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos,
         hora_inicio: initial?.hora_inicio?.slice(0, 5) || '09:00',
         hora_fim: initial?.hora_fim?.slice(0, 5) || '',
         tipo: initial?.tipo || 'consulta',
+        tipo_consulta_id: initial?.tipo_consulta_id || tipoPadrao?.id || '',
         status: initial?.status || 'agendado',
         sala_id: initial?.sala_id || '',
         observacoes: initial?.observacoes || '',
@@ -94,7 +108,7 @@ export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos,
     : null;
   const terminoPrevisto = (() => {
     if (form.hora_fim || !/^\d{2}:\d{2}$/.test(form.hora_inicio || '')) return null;
-    const tipoEscolhido = (tipos as any[]).find((t: any) => String(t.nome || '').toLocaleLowerCase('pt-BR') === String(form.tipo || '').toLocaleLowerCase('pt-BR'));
+    const tipoEscolhido = tipoDoCatalogo(tipos as any[], form);
     const duracao = Number(tipoEscolhido?.duracao_minutos) > 0 ? Number(tipoEscolhido.duracao_minutos) : 30;
     const [h, m] = form.hora_inicio.split(':').map(Number);
     const fim = h * 60 + m + duracao;
@@ -153,7 +167,7 @@ export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos,
         const [h, m] = t.split(':').map(Number);
         return Number.isFinite(h) && Number.isFinite(m) ? h * 60 + m : null;
       };
-      const tipoEscolhido = (tipos as any[]).find((t: any) => String(t.nome || '').toLocaleLowerCase('pt-BR') === String(form.tipo || '').toLocaleLowerCase('pt-BR'));
+      const tipoEscolhido = tipoDoCatalogo(tipos as any[], form);
       const DURACAO_PADRAO = Number(tipoEscolhido?.duracao_minutos) > 0 ? Number(tipoEscolhido.duracao_minutos) : 30;
       const novoInicio = toMin(form.hora_inicio);
       const novoFimInformado = toMin(form.hora_fim);
@@ -189,7 +203,7 @@ export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos,
       // sobreposição, mas com uma mensagem que ninguém entende.
       if (erroDoDia) {
         toast.error('Não foi possível conferir os horários da agenda.', {
-          description: `${erroDoDia.message}. Tente de novo antes de salvar.`,
+          description: `${friendlyErrorMessage(erroDoDia, 'Não foi possível consultar a agenda do dia.')} Tente de novo antes de salvar.`,
         });
         setTab('consulta'); setSaving(false); return;
       }
@@ -279,7 +293,7 @@ export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos,
 
       if (erroBlocks) {
         toast.error('Não foi possível conferir os bloqueios da agenda.', {
-          description: `${erroBlocks.message}. Tente de novo — sem isso não dá para saber se o médico está de férias ou se é feriado.`,
+          description: `${friendlyErrorMessage(erroBlocks, 'Não foi possível consultar os bloqueios.')} Tente de novo — sem isso não dá para saber se o médico está de férias ou se é feriado.`,
         });
         setTab('consulta'); setSaving(false); return;
       }
@@ -307,7 +321,7 @@ export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos,
           .eq('medico_id', form.medico_id).eq('dia_semana', diaSemana).eq('ativo', true) as any);
         if (erroJornada) {
           toast.error('Não foi possível conferir o expediente do médico.', {
-            description: `${erroJornada.message}. Tente novamente antes de agendar.`,
+            description: `${friendlyErrorMessage(erroJornada, 'Não foi possível consultar o expediente.')} Tente novamente antes de agendar.`,
           });
           setTab('consulta'); setSaving(false); return;
         }
@@ -332,6 +346,7 @@ export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos,
           ? (form.hora_fim.length === 5 ? form.hora_fim + ':00' : form.hora_fim)
           : `${String(Math.floor(novoFim / 60)).padStart(2, '0')}:${String(novoFim % 60).padStart(2, '0')}:00`,
         tipo: form.tipo,
+        tipo_consulta_id: form.tipo_consulta_id || null,
         status: form.status,
         sala_id: form.sala_id || null,
         observacoes: form.observacoes || null,
@@ -380,7 +395,7 @@ export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos,
           }
         } catch (erroLembrete: any) {
           toast.warning('Consulta salva, mas a confirmação não entrou na fila.', {
-            description: `${erroLembrete?.message || 'Falha ao preparar a confirmação'}. Confira as automações de WhatsApp.`,
+            description: `${friendlyErrorMessage(erroLembrete, 'Falha ao preparar a confirmação.')} Confira as automações de WhatsApp.`,
             duration: 10000,
           });
         }
@@ -417,7 +432,7 @@ export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos,
         });
         queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
       } else {
-        toast.error(e.message || 'Erro ao salvar');
+        toast.error(friendlyErrorMessage(e, 'Não foi possível salvar a consulta. Tente novamente.'));
       }
     } finally { setSaving(false); }
   };
@@ -455,7 +470,7 @@ export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos,
         <DialogHeader>
           <DialogTitle>{editing ? 'Editar consulta' : 'Nova consulta'}</DialogTitle>
           <DialogDescription>
-            {form.data} · {form.hora_inicio || '—'}
+            {/^\d{4}-\d{2}-\d{2}$/.test(form.data) ? form.data.split('-').reverse().join('/') : form.data} às {form.hora_inicio || '—'}
           </DialogDescription>
           {editing && form.status === 'cancelado' && (
             <p className="text-sm text-muted-foreground">
@@ -543,15 +558,26 @@ export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos,
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               <div>
                 <Label htmlFor="appointment-type">Tipo</Label>
-                <Select value={form.tipo} onValueChange={(v) => setForm({ ...form, tipo: v })}>
+                <Select
+                  value={form.tipo_consulta_id ? `tc:${form.tipo_consulta_id}` : form.tipo}
+                  onValueChange={(v) => {
+                    if (v.startsWith('tc:')) {
+                      const escolhido = (tipos as any[]).find((t) => t.id === v.slice(3));
+                      // `tipo` fica genérico (o banco só aceita esses); o preço vem do tipo da clínica.
+                      setForm({ ...form, tipo: isTipoRetorno(escolhido?.nome) ? 'retorno' : 'consulta', tipo_consulta_id: v.slice(3) });
+                    } else {
+                      setForm({ ...form, tipo: v, tipo_consulta_id: '' });
+                    }
+                  }}
+                >
                   <SelectTrigger id="appointment-type"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="consulta">Consulta</SelectItem>
+                    {tipos.filter(t => t.ativo !== false || t.id === form.tipo_consulta_id).map(t => <SelectItem key={t.id} value={`tc:${t.id}`}>{t.nome}</SelectItem>)}
+                    <SelectItem value="consulta">Consulta (sem tipo da clínica)</SelectItem>
                     <SelectItem value="retorno">Retorno</SelectItem>
                     <SelectItem value="exame">Exame</SelectItem>
                     <SelectItem value="procedimento">Procedimento</SelectItem>
-                    <SelectItem value="telemedicina">Teleconsulta</SelectItem>
-                    {tipos.map(t => <SelectItem key={t.id} value={t.nome}>{t.nome}</SelectItem>)}
+                    {form.tipo === 'telemedicina' && <SelectItem value="telemedicina">Teleconsulta</SelectItem>}
                   </SelectContent>
                 </Select>
               </div>
@@ -631,7 +657,7 @@ export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos,
           </div>
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving || deleting}>Fechar</Button>
-            <Button onClick={() => handleSave()} disabled={saving || deleting || consultaSomenteLeitura}>
+            <Button onClick={() => handleSave()} disabled={saving || deleting || consultaSomenteLeitura || !form.paciente_id || !form.medico_id}>
               {saving && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
               {consultaSomenteLeitura ? 'Somente leitura' : editing ? 'Salvar' : 'Agendar'}
             </Button>
