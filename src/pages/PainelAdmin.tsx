@@ -1,3 +1,4 @@
+import { primeiroNome } from '@/lib/formatters';
 import { useQuery } from '@tanstack/react-query';
 import { Link, Navigate } from 'react-router-dom';
 import {
@@ -89,7 +90,7 @@ export default function PainelAdmin() {
       <PageHeader
         title="Visão geral"
         icon={<Shield />}
-        description={`${saudacao}${profile?.nome ? `, ${profile.nome.split(' ')[0]}` : ''} — ${descricao}`}
+        description={`${saudacao}${profile?.nome ? `, ${primeiroNome(profile.nome)}` : ''} — ${descricao}`}
         actions={
           <Button
             type="button"
@@ -131,7 +132,7 @@ export default function PainelAdmin() {
             <Link key={title} to={href} className="group rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
               <Card
                 className={cn(
-                  'h-full rounded-2xl border-border/60 shadow-xs transition-all group-hover:-translate-y-0.5 group-hover:shadow-md',
+                  'h-full rounded-2xl border-border/60 shadow-xs transition-all group-hover:shadow-md',
                   dark && 'border-transparent bg-gradient-primary text-white',
                   alert && !dark && 'border-warning/40',
                 )}

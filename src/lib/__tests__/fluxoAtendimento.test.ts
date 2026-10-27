@@ -507,9 +507,31 @@ describe('faturamento automático — uma cobrança por agendamento', () => {
       tipoConsulta: 'Consulta sem cadastro',
       data: '2026-08-12',
       clinicaId: 'cli-1',
-    })).rejects.toThrow('Não há preço cadastrado para a consulta');
+    })).rejects.toThrow('Não há preço cadastrado para o tipo');
 
     expect(mockAtual.chamadas.some(c => c.tabela === 'lancamentos' && c.op === 'insert')).toBe(false);
+  });
+
+  it('usa o preço do tipo da clínica escolhido no agendamento, não o nome genérico', async () => {
+    mockAtual = criarSupabaseMock({
+      'lancamentos.select': { data: [], error: null },
+      'agendamentos.select': { data: { tipo_consulta_id: 'tipo-pediatra' }, error: null },
+      'tipos_consulta.select': { data: { id: 'tipo-pediatra', nome: 'PEDIATRA', valor_particular: 150 }, error: null },
+    });
+
+    const { createAutoBilling } = await import('@/lib/autoBilling');
+    await createAutoBilling({
+      agendamentoId: 'ag-pediatra',
+      pacienteId: 'pac-1',
+      pacienteNome: 'Maria',
+      tipoConsulta: 'consulta',
+      data: '2026-10-27',
+      clinicaId: 'cli-1',
+    });
+
+    expect(mockAtual.filtros).toContainEqual({ tabela: 'tipos_consulta', coluna: 'id', valor: 'tipo-pediatra' });
+    const insercao = mockAtual.chamadas.find(c => c.tabela === 'rpc:criar_cobranca_checkin_atomica');
+    expect(insercao?.payload).toMatchObject({ p_valor: 150 });
   });
 });
 
@@ -672,7 +694,7 @@ describe('finalizacao - cobranca lancada durante a consulta', () => {
 
     const resultado = await finalizar();
     expect(resultado.success).toBe(false);
-    expect(resultado.message).toContain('timeout');
+    expect(resultado.message).toContain('demorou mais que o esperado');
   });
 });
 

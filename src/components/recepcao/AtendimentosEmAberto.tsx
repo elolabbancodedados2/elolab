@@ -19,6 +19,7 @@
  * O sistema não tem como saber o que houve. Então ele pergunta, com as duas
  * respostas possíveis à mão.
  */
+import { friendlyErrorMessage } from '@/components/ErrorState';
 import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { differenceInCalendarDays } from 'date-fns';
@@ -113,7 +114,7 @@ export function AtendimentosEmAberto() {
       toast.success(r.message || 'Atendimento finalizado', { description: r.actions.join(' • ') });
       atualizar();
     } catch (e: any) {
-      toast.error('Não foi possível finalizar', { description: e?.message });
+      toast.error('Não foi possível finalizar', { description: friendlyErrorMessage(e, 'Tente novamente em instantes.') });
     } finally {
       setOcupado(null);
       setAcaoOcupada(null);
@@ -132,7 +133,7 @@ export function AtendimentosEmAberto() {
       queryClient.invalidateQueries({ queryKey: ['fila_atendimento'] });
       queryClient.invalidateQueries({ queryKey: ['lancamentos_hoje'] });
     } catch (e: any) {
-      toast.error('Não foi possível atualizar', { description: e?.message });
+      toast.error('Não foi possível atualizar', { description: friendlyErrorMessage(e, 'Tente novamente em instantes.') });
     } finally {
       setOcupado(null);
       setAcaoOcupada(null);

@@ -25,7 +25,7 @@ import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ErrorState } from '@/components/ErrorState';
+import { ErrorState, friendlyErrorMessage } from '@/components/ErrorState';
 import { LoadingButton } from '@/components/ui/loading-button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -255,7 +255,7 @@ function MedicoProfilePanel({ medico, onClose, onEdit }: { medico: any; onClose:
   return (
     <Sheet open onOpenChange={() => onClose()}>
       <SheetContent className="w-full sm:max-w-lg p-0 flex flex-col">
-        <div className="bg-gradient-to-br from-primary/10 via-primary/5 to-transparent p-6 border-b">
+        <div className="bg-primary/5 p-6 border-b">
           <SheetHeader className="mb-4"><SheetTitle className="sr-only">Perfil do Médico</SheetTitle></SheetHeader>
           <div className="flex items-start gap-4">
             <Avatar className="h-20 w-20 ring-4 ring-background shadow-xl">
@@ -309,7 +309,7 @@ function MedicoProfilePanel({ medico, onClose, onEdit }: { medico: any; onClose:
                   try {
                     if (!navigator.clipboard?.writeText) throw new Error('Clipboard indisponível');
                     await navigator.clipboard.writeText(portalUrl);
-                    toast.success('Link de acesso copiado!', { description: portalUrl });
+                    toast.success('Link de acesso copiado', { description: portalUrl });
                   } catch {
                     toast.error('Não foi possível copiar o link automaticamente', {
                       description: `Copie o endereço do portal: ${portalUrl}`,
@@ -332,7 +332,7 @@ function MedicoProfilePanel({ medico, onClose, onEdit }: { medico: any; onClose:
                       `Olá ${nomeMedico(medico.nome || '')},\n\n` +
                       `Você possui acesso ao Portal do Médico na plataforma EloLab.\n\n` +
                       `Para acessar seu portal exclusivo, entre pelo link abaixo com suas credenciais:\n\n` +
-                      `🔗 ${portalUrl}\n\n` +
+                      `${portalUrl}\n\n` +
                       `Ao fazer login, você será direcionado automaticamente para seu dashboard pessoal, onde poderá:\n` +
                       `• Consultar sua agenda do dia\n` +
                       `• Acessar prontuários dos seus pacientes\n` +
@@ -383,7 +383,7 @@ function MedicoProfilePanel({ medico, onClose, onEdit }: { medico: any; onClose:
               {agendamentosQuery.isLoading && <p className="py-8 text-center text-sm text-muted-foreground">Carregando agendamentos…</p>}
               {agendamentosHoje.length > 0 && (
                 <div className="mb-3">
-                  <p className="text-xs font-semibold text-primary mb-2">📅 Hoje — {format(parseDateOnly(today)!, "dd 'de' MMMM", { locale: ptBR })}</p>
+                  <p className="text-xs font-semibold text-primary mb-2">Hoje — {format(parseDateOnly(today)!, "dd 'de' MMMM", { locale: ptBR })}</p>
                   {agendamentosHoje.map((ag: any) => (
                     <div key={ag.id}
                       className="flex items-center gap-3 p-2.5 rounded-lg border bg-card mb-1.5 hover:shadow-sm transition-shadow">
@@ -557,9 +557,9 @@ export default function Medicos() {
       if (uploadError) throw uploadError;
       // Guarda o caminho: o bucket é privado e o link assinado expira.
       setFormData(prev => ({ ...prev, [field]: path }));
-      toast.success('Arquivo enviado!');
+      toast.success('Arquivo enviado');
     } catch (err: any) {
-      toast.error(err.message || 'Erro no upload');
+      toast.error(friendlyErrorMessage(err, 'Não foi possível enviar o arquivo.'));
     } finally { setter(false); }
   };
 
@@ -633,11 +633,11 @@ export default function Medicos() {
           await queryClient.invalidateQueries({ queryKey: ['medicos'] });
           throw new Error('Este cadastro foi alterado por outra pessoa ou removido. Atualize a lista e confira os dados antes de salvar novamente.');
         }
-        toast.success('Médico atualizado com sucesso!');
+        toast.success('Médico atualizado com sucesso');
       } else {
         const { data: newMedico, error } = await supabase.from('medicos').insert(payload).select('id').single();
         if (error) throw error;
-        toast.success('Médico cadastrado com sucesso!');
+        toast.success('Médico cadastrado com sucesso');
         if (email && newMedico) {
           try {
             const { data: funcData, error: funcError } = await supabase.from('funcionarios')
@@ -645,7 +645,7 @@ export default function Medicos() {
               .select('id').single();
             if (funcError || !funcData) {
               toast.info('Médico cadastrado, mas o vínculo de acesso não foi criado. Revise a aba Funcionários antes de convidar.', {
-                description: funcError?.message,
+                description: friendlyErrorMessage(funcError, 'Tente criar o vínculo pela aba Funcionários.'),
               });
             } else {
               if (!formData.ativo) {
@@ -660,9 +660,9 @@ export default function Medicos() {
                   body: { email, nome, roles: ['medico'] },
                 });
                 if (inviteError) {
-                  toast.info('Médico cadastrado, mas o convite não pôde ser enviado. O vínculo está disponível na aba Funcionários.', { description: inviteError.message });
+                  toast.info('Médico cadastrado, mas o convite não pôde ser enviado. O vínculo está disponível na aba Funcionários.', { description: friendlyErrorMessage(inviteError, 'Tente reenviar o convite pela aba Funcionários.') });
                 } else if (inviteData?.success === false || inviteData?.error) {
-                  toast.info('Médico cadastrado, mas o convite não pôde ser enviado. O vínculo está disponível na aba Funcionários.', { description: inviteData?.error });
+                  toast.info('Médico cadastrado, mas o convite não pôde ser enviado. O vínculo está disponível na aba Funcionários.', { description: friendlyErrorMessage(inviteData?.error, 'Tente reenviar o convite pela aba Funcionários.') });
                 } else if (inviteData?.emailStatus === 'sent') {
                   toast.success(`Convite enviado por e-mail para ${email}.`);
                 } else {
@@ -674,7 +674,7 @@ export default function Medicos() {
             }
           } catch (inviteFlowError: any) {
             toast.info('Médico cadastrado, mas o acesso não foi preparado. Revise a aba Funcionários para concluir o convite.', {
-              description: inviteFlowError?.message,
+              description: friendlyErrorMessage(inviteFlowError, 'Tente concluir o convite pela aba Funcionários.'),
             });
           }
         }
@@ -687,7 +687,7 @@ export default function Medicos() {
       if (error?.code === '23505' && error?.constraint === 'medicos_registro_clinica_unico') {
         toast.error('Já existe um profissional com esse registro nesta clínica.');
       } else {
-        toast.error(error.message || 'Erro ao salvar médico');
+        toast.error(friendlyErrorMessage(error, 'Não foi possível salvar o médico.'));
       }
     } finally {
       saveLock.current = false;
@@ -707,7 +707,7 @@ export default function Medicos() {
       toast.success('Médico inativado. O histórico e os vínculos foram preservados.');
       queryClient.invalidateQueries({ queryKey: ['medicos'] });
     } catch (error: any) {
-      toast.error(error.message || 'Erro ao excluir médico');
+      toast.error(friendlyErrorMessage(error, 'Não foi possível excluir o médico.'));
     } finally { setIsDeleting(false); setIsDeleteOpen(false); }
   };
 
@@ -775,7 +775,7 @@ export default function Medicos() {
                 onClick={() => { if (ind.key === 'especialidades') return; setFilterStatus(ind.key === 'todos' ? 'todos' : (ativo ? 'todos' : ind.key)); }}
                 className={cn(
                   'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
-                  ind.key !== 'especialidades' && 'hover:-translate-y-0.5 hover:shadow-md',
+                  ind.key !== 'especialidades' && 'hover:shadow-md',
                   ind.key === 'especialidades' && 'cursor-default',
                   ind.escuro && 'border-transparent bg-gradient-primary text-white',
                   ativo && !ind.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
@@ -828,13 +828,13 @@ export default function Medicos() {
         {/* Doctor Cards Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {filteredMedicos.map((medico: any) => (
-            <Card key={medico.id} className={cn('group rounded-2xl border-border/60 shadow-xs transition-all duration-200 cursor-pointer hover:-translate-y-0.5 hover:shadow-md hover:border-[#1080CA]/40', !medico.ativo && 'bg-muted/40')}
+            <Card key={medico.id} className={cn('group rounded-2xl border-border/60 shadow-xs transition-all duration-200 cursor-pointer hover:shadow-md hover:border-[#1080CA]/40', !medico.ativo && 'bg-muted/40')}
               onClick={() => setViewingMedico(medico)}>
               <CardContent className="p-5">
                 <div className="flex items-start gap-4">
                   <Avatar className={`h-16 w-16 ring-2 ring-[#1080CA]/10 group-hover:ring-[#1080CA]/30 transition-all shadow-md ${!medico.ativo ? 'opacity-70' : ''}`}>
                     {medico.foto_url && <StorageAvatarImage bucket="patient-photos" path={medico.foto_url} alt={medico.nome} />}
-                    <AvatarFallback className="bg-gradient-to-br from-[#1080CA]/20 to-[#1080CA]/5 text-[#1080CA] font-bold text-lg">
+                    <AvatarFallback className="bg-brand/10 text-brand font-bold text-lg">
                       {iniciaisMedico(medico.nome, medico.crm)}
                     </AvatarFallback>
                   </Avatar>

@@ -4,6 +4,7 @@
   * Direitos: acesso, portabilidade, exclusão, correção
   */
 
+import { friendlyErrorMessage } from '@/components/ErrorState';
 import { supabase } from '@/integrations/supabase/client';
 import type { Json } from '@/integrations/supabase/types';
 import { buscarTodasAsPaginas } from '@/lib/prontuarioAuditExport';
@@ -115,7 +116,7 @@ export async function exportPatientData(pacienteId: string): Promise<PatientData
       .single();
     if (erroPedidoExportacao || !pedidoExportacao?.id) {
       throw new Error(
-        `Não foi possível registrar o pedido de exportação; o arquivo não foi gerado${erroPedidoExportacao?.message ? `: ${erroPedidoExportacao.message}` : '.'}`
+        `Não foi possível registrar o pedido de exportação; o arquivo não foi gerado${erroPedidoExportacao ? `: ${friendlyErrorMessage(erroPedidoExportacao, 'erro do servidor')}` : '.'}`
       );
     }
 
@@ -387,7 +388,7 @@ export async function exportPatientData(pacienteId: string): Promise<PatientData
       .maybeSingle();
     if (erroPreparacao || !pedidoPreparado) {
       throw new Error(
-        `Os dados foram reunidos, mas a auditoria não confirmou a preparação; o arquivo não foi gerado${erroPreparacao?.message ? `: ${erroPreparacao.message}` : '.'}`
+        `Os dados foram reunidos, mas a auditoria não confirmou a preparação; o arquivo não foi gerado${erroPreparacao ? `: ${friendlyErrorMessage(erroPreparacao, 'erro do servidor')}` : '.'}`
       );
     }
 

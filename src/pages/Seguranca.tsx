@@ -11,6 +11,7 @@ import { MFASetupDialog } from '@/components/MFASetupDialog';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { friendlyErrorMessage } from '@/components/ErrorState';
 
 interface MfaStatus {
   enabled: boolean;
@@ -72,7 +73,7 @@ export default function Seguranca() {
       await loadMfaStatus();
     } catch (err: any) {
       console.error(err);
-      toast.error(err?.message || 'Erro ao desativar 2FA');
+      toast.error(friendlyErrorMessage(err, 'Não foi possível desativar a verificação em duas etapas.'));
     } finally {
       setIsSaving(false);
     }
@@ -88,7 +89,7 @@ export default function Seguranca() {
       await signOut();
       toast.success('Todas as sessões encerradas');
     } catch (err: any) {
-      toast.error(err?.message || 'Erro ao encerrar sessões');
+      toast.error(friendlyErrorMessage(err, 'Não foi possível encerrar as sessões.'));
     } finally {
       setIsSigningOut(false);
     }

@@ -160,7 +160,7 @@ export default function PlatformComunicacao() {
 
   return (
     <div className="space-y-6 pb-8">
-      <header className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-[#E6E2F7] bg-gradient-to-r from-[#F4F2FF] via-white to-[#f0edff] p-5 sm:p-6">
+      <header className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-border bg-card p-5 sm:p-6">
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-bold"><Megaphone className="h-6 w-6 text-primary" /> Comunicação global</h1>
           <p className="mt-1 text-sm text-muted-foreground">Envie avisos para todas as clínicas, uma clínica específica ou clientes de um plano.</p>

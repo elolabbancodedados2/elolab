@@ -10,7 +10,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { ErrorState } from '@/components/ErrorState';
+import { ErrorState, friendlyErrorMessage } from '@/components/ErrorState';
 import { PageHeader } from '@/components/PageHeader';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -119,14 +119,14 @@ export default function HigieneSalas() {
     return result;
   };
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['room-hygiene', profile?.clinica_id] });
-  const mutation = useMutation({ mutationFn: invoke, onSuccess: () => void refresh(), onError: (error) => toast.error(error.message || 'Operação não concluída') });
+  const mutation = useMutation({ mutationFn: invoke, onSuccess: () => void refresh(), onError: (error) => toast.error(friendlyErrorMessage(error, 'Não foi possível concluir a operação.')) });
   const createChecklist = useMutation({
     mutationFn: () => {
       const items = itemText.split('\n').map((label, index) => ({ id: `item_${index + 1}`, label: label.trim(), required: true })).filter((item) => item.label);
       return invoke({ action: 'configure', title, items });
     },
     onSuccess: () => { toast.success('Nova versão do checklist ativada'); setConfigAberta(false); void refresh(); },
-    onError: (error) => toast.error(error.message || 'Não foi possível salvar o checklist'),
+    onError: (error) => toast.error(friendlyErrorMessage(error, 'Não foi possível salvar o checklist.')),
   });
 
   const proximaInspecao = data.canReview ? pendingReview[0] ?? null : null;
@@ -174,7 +174,7 @@ export default function HigieneSalas() {
           const ativo = filtro === s.key;
           return <button key={s.key} type="button" aria-pressed={ativo} onClick={() => setFiltro(ativo ? 'todos' : s.key)}
             className={cn(
-              'group rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+              'group rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
               s.escuro && 'border-transparent bg-gradient-primary text-white',
               ativo && !s.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
               ativo && s.escuro && 'ring-2 ring-[#1080CA]/60',

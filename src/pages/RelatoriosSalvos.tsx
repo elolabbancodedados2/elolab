@@ -10,7 +10,7 @@ import { toast } from 'sonner';
 import { mensagemDeErro } from '@/lib/erros';
 import { ListSkeleton } from '@/components/ui/loading-skeleton';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
-import { ErrorState } from '@/components/ErrorState';
+import { ErrorState, friendlyErrorMessage } from '@/components/ErrorState';
 import { ActionableEmptyState } from '@/components/ActionableEmptyState';
 import { PageHeader } from '@/components/PageHeader';
 import { DeleteConfirmDialog } from '@/components/ConfirmDialog';
@@ -71,7 +71,7 @@ export default function RelatoriosSalvos() {
         toast.success(`Relatório enviado para ${resultado.sent_to} destinatário(s).`);
       }
       await qc.invalidateQueries({ queryKey: ['relatorios-salvos'] });
-    } catch (e: any) { toast.error(e.message || 'Falha ao executar'); }
+    } catch (e: any) { toast.error(friendlyErrorMessage(e, 'Não foi possível executar o relatório.')); }
     finally { setBusyId(null); }
   };
 
@@ -137,7 +137,7 @@ export default function RelatoriosSalvos() {
                 </div>
               )}
               {items.map((it: any) => (
-                <div key={it.id} className="flex flex-col gap-3 rounded-2xl border border-border/60 bg-card p-4 shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md md:flex-row md:items-center">
+                <div key={it.id} className="flex flex-col gap-3 rounded-2xl border border-border/60 bg-card p-4 shadow-xs transition-all hover:shadow-md md:flex-row md:items-center">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <h3 className="font-semibold">{it.nome}</h3>

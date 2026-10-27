@@ -76,7 +76,7 @@ export function WeeklyView({ date, agendamentos, colorFor, medicoById = {}, onDa
                     <span className="tabular-nums">{dayAppts[0].hora_inicio.slice(0, 5)}</span>
                     <span>→</span>
                     <span className="tabular-nums">{dayAppts[dayAppts.length - 1].hora_inicio.slice(0, 5)}</span>
-                    {confirmedCount > 0 && <span className="ml-auto text-success">✓ {confirmedCount}</span>}
+                    {confirmedCount > 0 && <span className="ml-auto text-success">{confirmedCount} conf.</span>}
                   </div>
                 )}
               </button>

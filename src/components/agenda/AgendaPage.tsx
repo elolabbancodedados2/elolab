@@ -23,7 +23,7 @@ import { ColorSchemeDialog } from './ColorSchemeDialog';
 import { BloqueioAgenda } from './BloqueioAgenda';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { AgendaSkeleton } from '@/components/ui/loading-skeleton';
-import { ErrorState } from '@/components/ErrorState';
+import { ErrorState, friendlyErrorMessage } from '@/components/ErrorState';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { pacienteCorresponde } from '@/lib/buscaPaciente';
 import { normalizeAgendaDate } from '@/lib/agendaDate';
@@ -239,7 +239,7 @@ export function AgendaPage() {
     enabled: !!profile?.clinica_id && !!reagendarIdDaRota,
     queryFn: async () => {
       const { data, error } = await supabase.from('agendamentos')
-        .select('id, paciente_id, medico_id, sala_id, hora_inicio, hora_fim, tipo, observacoes')
+        .select('id, paciente_id, medico_id, sala_id, hora_inicio, hora_fim, tipo, tipo_consulta_id, observacoes')
         .eq('id', reagendarIdDaRota)
         .eq('clinica_id', profile!.clinica_id!)
         .maybeSingle();
@@ -327,7 +327,7 @@ export function AgendaPage() {
 
       if (error || !data || data.paciente_id !== pacienteIdDaRota || data.status !== 'confirmado') {
         toast.error('Não foi possível iniciar o agendamento', {
-          description: error?.message || 'Confirme se o paciente ainda está na lista de espera.',
+          description: friendlyErrorMessage(error, 'Confirme se o paciente ainda está na lista de espera.'),
         });
         return;
       }
@@ -604,7 +604,7 @@ export function AgendaPage() {
         .eq('ativo', true) as any);
       if (erroJornada) {
         toast.error('Não foi possível conferir o expediente do médico.', {
-          description: `${erroJornada.message}. Tente novamente antes de mover a consulta.`,
+          description: `${friendlyErrorMessage(erroJornada, 'Não foi possível consultar o expediente.')} Tente novamente antes de mover a consulta.`,
         });
         return;
       }
@@ -670,7 +670,7 @@ export function AgendaPage() {
           toast.error('Horário indisponível', { description: 'Outra consulta deste médico se sobrepõe a este período.' });
           void queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
         } else {
-          toast.error('Erro ao mover consulta', { description: error.message });
+          toast.error('Erro ao mover consulta', { description: friendlyErrorMessage(error, 'Tente novamente em instantes.') });
         }
       } else if (!data) {
         toast.error('A consulta não foi remarcada.', { description: 'Ela pode ter sido alterada ou removida por outro usuário. Atualize a agenda.' });
@@ -690,7 +690,7 @@ export function AgendaPage() {
         }
       }
     } catch (error) {
-      toast.error('Não foi possível remarcar a consulta.', { description: error instanceof Error ? error.message : 'Verifique sua conexão e tente novamente.' });
+      toast.error('Não foi possível remarcar a consulta.', { description: friendlyErrorMessage(error, 'Verifique sua conexão e tente novamente.') });
     }
   };
 
@@ -861,7 +861,7 @@ export function AgendaPage() {
               }
             } catch (error) {
               toast.error('Consulta salva, mas não foi possível atualizar a lista de espera.', {
-                description: error instanceof Error ? error.message : 'Tente atualizar a lista de espera.',
+                description: friendlyErrorMessage(error, 'Tente atualizar a lista de espera.'),
               });
             } finally {
               void queryClient.invalidateQueries({ queryKey: ['lista_espera'] });

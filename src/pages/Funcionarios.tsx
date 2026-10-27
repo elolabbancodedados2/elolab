@@ -22,7 +22,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { ConvidarFuncionarioDialog } from '@/components/ConvidarFuncionarioDialog';
 import { PageHeader } from '@/components/PageHeader';
 import { SectionFallback } from '@/components/ui/loading-skeleton';
-import { ErrorState } from '@/components/ErrorState';
+import { ErrorState, friendlyErrorMessage } from '@/components/ErrorState';
 import { normalizarTexto } from '@/lib/buscaPaciente';
 import { validateCPF } from '@/lib/formatters';
 import { ActionableEmptyState } from '@/components/ActionableEmptyState';
@@ -191,10 +191,10 @@ export default function Funcionarios() {
     onSuccess: (_result, customizations) => {
       setCustomRoles(customizations);
       queryClient.invalidateQueries({ queryKey: ['role-customization'] });
-      toast.success('Nomes e descrições dos perfis salvos!');
+      toast.success('Nomes e descrições dos perfis salvos');
       setIsCustomizeOpen(false);
     },
-    onError: (e: any) => toast.error('Erro ao salvar: ' + e.message),
+    onError: (e: any) => toast.error('Não foi possível salvar.', { description: friendlyErrorMessage(e, 'Tente novamente.') }),
   });
 
   const handleOpenCustomize = () => {
@@ -303,7 +303,7 @@ export default function Funcionarios() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['funcionarios-with-roles'] });
-      toast.success('Funcionário cadastrado com sucesso!');
+      toast.success('Funcionário cadastrado com sucesso');
       setIsDialogOpen(false);
     },
     onError: (error: any) => {
@@ -313,7 +313,7 @@ export default function Funcionarios() {
         toast.warning('Funcionário cadastrado, mas as permissões não foram sincronizadas.', {
           description: 'O registro está na lista. Abra a edição e salve novamente para concluir o vínculo e as permissões.',
         });
-      } else toast.error('Erro ao cadastrar: ' + error.message);
+      } else toast.error('Não foi possível cadastrar.', { description: friendlyErrorMessage(error, 'Tente novamente.') });
     },
   });
 
@@ -382,7 +382,7 @@ export default function Funcionarios() {
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['funcionarios-with-roles'] });
       if (variables.data.ativo) {
-        toast.success('Funcionário atualizado com sucesso!');
+        toast.success('Funcionário atualizado com sucesso');
       } else {
         toast.success('Funcionário inativado e sessões encerradas.', {
           description: 'Uma sessão já aberta pode continuar válida até o token atual expirar.',
@@ -393,7 +393,7 @@ export default function Funcionarios() {
     onError: (error: any) => {
       if (error?.name === 'EmployeeEditConflictError') {
         queryClient.invalidateQueries({ queryKey: ['funcionarios-with-roles'] });
-        toast.error('A ficha mudou desde que você abriu a edição.', { description: error.message });
+        toast.error('A ficha mudou desde que você abriu a edição.', { description: friendlyErrorMessage(error, 'Recarregue a ficha e tente novamente.') });
         setIsDialogOpen(false);
       } else if (error?.conflitoConcorrencia) {
         queryClient.invalidateQueries({ queryKey: ['funcionarios-with-roles'] });
@@ -406,7 +406,7 @@ export default function Funcionarios() {
         toast.warning('Dados atualizados, mas as permissões não foram sincronizadas.', {
           description: 'Revise o funcionário na lista e salve novamente para concluir o vínculo e as permissões.',
         });
-      } else toast.error('Erro ao atualizar: ' + error.message);
+      } else toast.error('Não foi possível atualizar.', { description: friendlyErrorMessage(error, 'Tente novamente.') });
     },
   });
 
@@ -420,10 +420,10 @@ export default function Funcionarios() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['funcionarios-with-roles'] });
-      toast.success('Funcionário excluído com sucesso!');
+      toast.success('Funcionário excluído com sucesso');
       setDeleteDialogOpen(false);
     },
-    onError: (error: any) => toast.error('Erro ao excluir: ' + error.message),
+    onError: (error: any) => toast.error('Não foi possível excluir.', { description: friendlyErrorMessage(error, 'Tente novamente.') }),
   });
 
   const inviteMutation = useMutation({
@@ -461,7 +461,7 @@ export default function Funcionarios() {
         });
       }
     },
-    onError: (error: any) => toast.error('Erro ao enviar convite: ' + error.message),
+    onError: (error: any) => toast.error('Não foi possível enviar o convite.', { description: friendlyErrorMessage(error, 'Tente novamente.') }),
   });
 
   const handleSendInvitation = (func: FuncionarioWithRoles) => {
@@ -625,7 +625,7 @@ export default function Funcionarios() {
               aria-pressed={ativo}
               onClick={() => setFilterStatus(ind.key === 'todos' ? 'todos' : (ativo ? 'todos' : ind.key))}
               className={cn(
-                'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+                'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
                 ind.escuro && 'border-transparent bg-gradient-primary text-white',
                 ativo && !ind.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
                 ativo && ind.escuro && 'ring-2 ring-[#1080CA]/60',
@@ -947,7 +947,7 @@ export default function Funcionarios() {
                   Selecione o que este funcionário pode acessar no sistema.
                   {!editingFunc?.user_id && editingFunc && (
                     <span className="block text-muted-foreground mt-1">
-                      💡 As permissões serão salvas e aplicadas automaticamente quando o funcionário criar a conta.
+                      As permissões serão salvas e aplicadas automaticamente quando o funcionário criar a conta.
                     </span>
                   )}
                 </p>

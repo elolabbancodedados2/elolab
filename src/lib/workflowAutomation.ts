@@ -1,3 +1,4 @@
+import { friendlyErrorMessage } from '@/components/ErrorState';
 import { nomeMedico } from '@/lib/formatters';
 import { formatCurrency } from '@/lib/formatters';
 /**
@@ -75,7 +76,7 @@ export async function autoCheckin(
     actions.push('Status do agendamento atualizado para aguardando');
     return { success: true, message: 'Check-in realizado', actions };
   } catch (e: any) {
-    return { success: false, message: e.message, actions };
+    return { success: false, message: friendlyErrorMessage(e, 'Não foi possível realizar o check-in.'), actions };
   }
 }
 
@@ -118,7 +119,7 @@ export async function autoIniciarAtendimento(
 
     return { success: true, message: 'Atendimento iniciado', actions };
   } catch (e: any) {
-    return { success: false, message: e.message, actions };
+    return { success: false, message: friendlyErrorMessage(e, 'Não foi possível iniciar o atendimento.'), actions };
   }
 }
 
@@ -209,7 +210,7 @@ export async function autoFinalizarAtendimento(params: {
 
     return { success: true, message: 'Atendimento finalizado com sucesso', actions };
   } catch (e: any) {
-    return { success: false, message: e.message, actions };
+    return { success: false, message: friendlyErrorMessage(e, 'Não foi possível finalizar o atendimento.'), actions };
   }
 }
 
@@ -310,12 +311,12 @@ export async function autoCreateColeta(params: {
     }
 
     if (params.urgente) {
-      actions.push('⚡ Marcada como URGENTE');
+      actions.push('Marcada como URGENTE');
     }
 
     return { success: true, message: 'Coleta criada automaticamente', actions };
   } catch (e: any) {
-    return { success: false, message: e.message, actions };
+    return { success: false, message: friendlyErrorMessage(e, 'Não foi possível criar a coleta.'), actions };
   }
 }
 
@@ -380,7 +381,7 @@ export async function autoDispensarMedicamentos(params: {
       // Alert if below minimum
       const newQty = stockItem.quantidade - qty;
       if (newQty <= (stockItem.quantidade_minima || 0)) {
-        alertas.push(`⚠️ ${stockItem.nome}: estoque crítico (${newQty} restantes)`);
+        alertas.push(`${stockItem.nome}: estoque crítico (${newQty} restantes)`);
       }
     }
 
@@ -390,7 +391,7 @@ export async function autoDispensarMedicamentos(params: {
 
     return { success: true, message, actions: [...actions, ...alertas] };
   } catch (e: any) {
-    return { success: false, message: e.message, actions };
+    return { success: false, message: friendlyErrorMessage(e, 'Não foi possível dispensar os medicamentos.'), actions };
   }
 }
 
@@ -431,7 +432,7 @@ export async function autoNotificarRetornos(): Promise<WorkflowResult> {
 
     return { success: true, message: `${actions.length} notificação(ões) de retorno enviada(s)`, actions };
   } catch (e: any) {
-    return { success: false, message: e.message, actions };
+    return { success: false, message: friendlyErrorMessage(e, 'Não foi possível notificar os retornos.'), actions };
   }
 }
 
@@ -518,7 +519,7 @@ export async function autoBillingExame(params: {
 
     return { success: true, message: 'Faturamento de exame concluído', actions };
   } catch (e: any) {
-    return { success: false, message: e.message, actions };
+    return { success: false, message: friendlyErrorMessage(e, 'Não foi possível gerar a cobrança do exame.'), actions };
   }
 }
 
@@ -561,7 +562,7 @@ export async function autoTriagemParaFila(params: {
       actions,
     };
   } catch (e: any) {
-    return { success: false, message: e.message, actions };
+    return { success: false, message: friendlyErrorMessage(e, 'Não foi possível enviar a triagem para a fila.'), actions };
   }
 }
 
@@ -610,7 +611,7 @@ export async function autoConfirmarPagamento(params: {
 
     return { success: true, message: 'Pagamento processado com sucesso', actions };
   } catch (e: any) {
-    return { success: false, message: e.message, actions };
+    return { success: false, message: friendlyErrorMessage(e, 'Não foi possível confirmar o pagamento.'), actions };
   }
 }
 
@@ -662,7 +663,7 @@ export async function autoConfirmarAgendamento(agendamentoId: string): Promise<W
           destinatario_telefone: pac.telefone,
           destinatario_nome: pac.nome,
           assunto: 'Confirmação de Consulta',
-          conteudo: `Olá ${pac.nome}! Sua consulta do dia ${format(new Date(ag.data + 'T12:00:00'), 'dd/MM/yyyy')} às ${ag.hora_inicio?.slice(0, 5)} com ${nomeMedico(med?.nome || '')} está confirmada. ✅`,
+          conteudo: `Olá, ${pac.nome}. Sua consulta do dia ${format(new Date(ag.data + 'T12:00:00'), 'dd/MM/yyyy')} às ${ag.hora_inicio?.slice(0, 5)} com ${nomeMedico(med?.nome || '')} está confirmada.`,
           status: 'pendente',
         }));
         actions.push('Notificação WhatsApp enfileirada');
@@ -671,7 +672,7 @@ export async function autoConfirmarAgendamento(agendamentoId: string): Promise<W
 
     return { success: true, message: 'Agendamento confirmado com notificação', actions };
   } catch (e: any) {
-    return { success: false, message: e.message, actions };
+    return { success: false, message: friendlyErrorMessage(e, 'Não foi possível confirmar o agendamento.'), actions };
   }
 }
 
@@ -733,7 +734,7 @@ export async function autoCancelarAgendamento(params: {
               .eq('id', ag.medico_id)
               .maybeSingle();
 
-            const msg = `Olá ${pacEspera.nome}! Uma vaga abriu na agenda de ${nomeMedico(med?.nome || '')} para o dia ${format(new Date(ag.data + 'T12:00:00'), 'dd/MM/yyyy')} às ${ag.hora_inicio?.slice(0, 5)}. Deseja agendar? Responda SIM para confirmar.`;
+            const msg = `Olá, ${pacEspera.nome}. Uma vaga abriu na agenda de ${nomeMedico(med?.nome || '')} para o dia ${format(new Date(ag.data + 'T12:00:00'), 'dd/MM/yyyy')} às ${ag.hora_inicio?.slice(0, 5)}. Deseja agendar? Responda SIM para confirmar.`;
 
             if (pacEspera.telefone) {
               await must(supabase.from('notification_queue').insert({
@@ -767,7 +768,7 @@ export async function autoCancelarAgendamento(params: {
 
     return { success: true, message: 'Agendamento cancelado e lista de espera notificada', actions };
   } catch (e: any) {
-    return { success: false, message: e.message, actions };
+    return { success: false, message: friendlyErrorMessage(e, 'Não foi possível cancelar o agendamento.'), actions };
   }
 }
 
@@ -875,10 +876,10 @@ export async function autoProgressExame(params: {
       return {
         success: true,
         message: 'Status do exame atualizado; uma etapa complementar falhou.',
-        actions: [...actions, `Atenção: ${e?.message || 'uma automação complementar falhou'}`],
+        actions: [...actions, `Atenção: ${friendlyErrorMessage(e, 'uma automação complementar falhou')}`],
       };
     }
-    return { success: false, message: e.message, actions };
+    return { success: false, message: friendlyErrorMessage(e, 'Não foi possível atualizar o exame.'), actions };
   }
 }
 
@@ -919,7 +920,7 @@ export async function autoVincularResultadoProntuario(params: {
 
     return { success: true, message: 'Resultado vinculado ao prontuário', actions };
   } catch (e: any) {
-    return { success: false, message: e.message, actions };
+    return { success: false, message: friendlyErrorMessage(e, 'Não foi possível vincular o resultado ao prontuário.'), actions };
   }
 }
 
@@ -957,7 +958,7 @@ export async function autoNotificarMedico(params: {
 
     return { success: true, message: 'Médico notificado', actions };
   } catch (e: any) {
-    return { success: false, message: e.message, actions };
+    return { success: false, message: friendlyErrorMessage(e, 'Não foi possível notificar o médico.'), actions };
   }
 }
 
@@ -1011,8 +1012,8 @@ export async function autoAgendarListaEspera(params: {
         destinatario_id: params.pacienteId,
         destinatario_email: pac.email,
         destinatario_nome: pac.nome,
-        assunto: 'Sua consulta foi agendada!',
-        conteudo: `Olá ${pac.nome}! Sua consulta com ${nomeMedico(med?.nome || '')} foi agendada para ${format(new Date(params.data + 'T12:00:00'), 'dd/MM/yyyy')} às ${params.horaInicio.slice(0, 5)}. Nos vemos lá! 🎉`,
+        assunto: 'Sua consulta foi agendada',
+        conteudo: `Olá, ${pac.nome}. Sua consulta com ${nomeMedico(med?.nome || '')} foi agendada para ${format(new Date(params.data + 'T12:00:00'), 'dd/MM/yyyy')} às ${params.horaInicio.slice(0, 5)}. Até breve.`,
         status: 'pendente',
       }));
       actions.push('Paciente notificado por e-mail');
@@ -1020,7 +1021,7 @@ export async function autoAgendarListaEspera(params: {
 
     return { success: true, message: 'Paciente agendado a partir da lista de espera', actions };
   } catch (e: any) {
-    return { success: false, message: e.message, actions };
+    return { success: false, message: friendlyErrorMessage(e, 'Não foi possível agendar a partir da lista de espera.'), actions };
   }
 }
 
@@ -1063,6 +1064,6 @@ export async function autoMarcarFaltasHoje(): Promise<WorkflowResult> {
 
     return { success: true, message: `${faltas.length} falta(s) registrada(s)`, actions };
   } catch (e: any) {
-    return { success: false, message: e.message, actions };
+    return { success: false, message: friendlyErrorMessage(e, 'Não foi possível marcar as faltas de hoje.'), actions };
   }
 }

@@ -362,7 +362,7 @@ export default function Laboratorio() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['coletas-laboratorio', profile?.clinica_id] });
       queryClient.invalidateQueries({ queryKey: ['exames-pendentes-lab', profile?.clinica_id] });
-      toast.success('Coleta registrada com sucesso!');
+      toast.success('Coleta registrada com sucesso');
       setShowNewColeta(false);
     },
     onError: (e) => toast.error('Erro ao registrar coleta', { description: mensagemDeErro(e) }),
@@ -443,7 +443,7 @@ export default function Laboratorio() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['resultados-laboratorio', profile?.clinica_id] });
       setNewResultForm({ parametro: '', resultado: '', unidade: '', valor_referencia_min: '', valor_referencia_max: '', valor_referencia_texto: '', metodo: '', critico: false });
-      toast.success('Resultado adicionado!');
+      toast.success('Resultado adicionado');
     },
     onError: (e) => toast.error('Erro ao adicionar resultado', { description: mensagemDeErro(e) }),
   });
@@ -632,7 +632,7 @@ export default function Laboratorio() {
                 aria-pressed={isActive}
                 onClick={() => filtrarPipeline(s.filter)}
                 className={cn(
-                  'rounded-2xl border border-border/60 bg-card p-3 shadow-xs text-left transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA] focus-visible:ring-offset-2',
+                  'rounded-2xl border border-border/60 bg-card p-3 shadow-xs text-left transition-all hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA] focus-visible:ring-offset-2',
                   s.escuro && 'border-transparent bg-gradient-primary text-white',
                   !s.escuro && isActive && 'ring-2 ring-[#1080CA]',
                   s.escuro && isActive && 'ring-2 ring-[#1080CA]',
@@ -1075,7 +1075,7 @@ export default function Laboratorio() {
                   <button
                     type="button"
                     className={cn(
-                      'w-full rounded-2xl border border-border/60 bg-card shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA] focus-visible:ring-offset-2',
+                      'w-full rounded-2xl border border-border/60 bg-card shadow-xs transition-all hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA] focus-visible:ring-offset-2',
                       (statusFilter === s.filter || (s.filter === 'urgente' && urgentOnly)) && 'ring-2 ring-[#1080CA]',
                     )}
                     aria-pressed={s.filter === 'urgente' ? urgentOnly : statusFilter === s.filter && dateFilter === 'hoje' && !urgentOnly}
@@ -1656,7 +1656,7 @@ export default function Laboratorio() {
                 </form>
               </CardContent>
             </Card> : (
-              <div role="status" className="rounded-xl border border-[#e3dffb] bg-[#f6f4ff] p-4 text-sm text-[#41318f]">
+              <div role="status" className="rounded-xl border border-info/30 bg-info/10 p-4 text-sm text-info">
                 A amostra não está mais aberta para lançamento. Isso preserva a conferência e a trilha de auditoria do resultado.
               </div>
             )}

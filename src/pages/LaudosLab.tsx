@@ -24,7 +24,7 @@ import { cn } from '@/lib/utils';
 import { gerarLaudoPDF, downloadLaudoPDF, LaudoData } from '@/lib/pdfGenerator';
 import { canalUnico } from '@/lib/realtimeCanal';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
-import { ErrorState } from '@/components/ErrorState';
+import { ErrorState, friendlyErrorMessage } from '@/components/ErrorState';
 import { Skeleton } from '@/components/ui/skeleton';
 import { pacienteCorresponde } from '@/lib/buscaPaciente';
 import { formatDateTimeSaoPaulo } from '@/lib/dateOnly';
@@ -244,7 +244,7 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
 
       const notificacao = await notificarResultadoLiberado(resultadoId);
       if (notificacao === 'enviada') {
-        toast.success('Resultado liberado e paciente notificado!');
+        toast.success('Resultado liberado e paciente notificado');
       } else if (notificacao === 'enfileirada') {
         toast.warning('Resultado liberado; notificação entrou na fila de reenvio.');
       } else {
@@ -254,7 +254,7 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
       onUpdate();
     } catch (err: any) {
       console.error('handleLiberarResultado error:', err);
-      toast.error('Erro ao liberar: ' + (err?.message || 'Erro desconhecido'));
+      toast.error(friendlyErrorMessage(err, 'Não foi possível liberar o laudo.'));
     } finally {
       setReleasingIds(current => { const next = new Set(current); next.delete(resultadoId); return next; });
     }
@@ -332,7 +332,7 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
       onUpdate();
     } catch (err: any) {
       console.error('handleLiberarTodos error:', err);
-      toast.error('Erro ao liberar em lote: ' + (err?.message || 'Erro desconhecido'));
+      toast.error(friendlyErrorMessage(err, 'Não foi possível liberar os laudos em lote.'));
     } finally {
       setIsReleasingAll(false);
     }
@@ -354,7 +354,7 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
         p_coleta_id: coletaId,
       });
       if (error) throw error;
-      toast.success('Coleta validada e conferência registrada!');
+      toast.success('Coleta validada e conferência registrada');
       await fetchData();
       onUpdate();
     } catch (e) {
@@ -407,7 +407,7 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
       if (!laudoData) return;
       await gerarLaudoPDF(laudoData);
     } catch (err: any) {
-      toast.error('Erro ao imprimir laudo: ' + (err?.message || 'Erro desconhecido'));
+      toast.error(friendlyErrorMessage(err, 'Não foi possível imprimir o laudo.'));
     }
   };
 
@@ -417,7 +417,7 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
       if (!laudoData) return;
       await downloadLaudoPDF(laudoData);
     } catch (err: any) {
-      toast.error('Erro ao baixar laudo: ' + (err?.message || 'Erro desconhecido'));
+      toast.error(friendlyErrorMessage(err, 'Não foi possível baixar o laudo.'));
     }
   };
 
@@ -991,7 +991,7 @@ export default function LaudosLab() {
                 aria-pressed={ativo}
                 onClick={() => setStatusFilter(ativo && s.key !== 'todos' ? 'todos' : s.key)}
                 className={cn(
-                  'group rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+                  'group rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
                   s.escuro && 'border-transparent bg-gradient-primary text-white',
                   ativo && !s.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
                   ativo && s.escuro && 'ring-2 ring-[#1080CA]/60',

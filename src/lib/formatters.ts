@@ -171,5 +171,7 @@ export function nomeMedico(nome: string | null | undefined): string {
 
 /** Primeiro nome sem o título ("Dra. Júlia Pediatra" → "Júlia"). */
 export function primeiroNome(nome: string | null | undefined): string {
-  return (nome ?? '').trim().replace(TITULO_MEDICO, '').split(/\s+/)[0] || '';
+  const primeiro = (nome ?? '').trim().replace(TITULO_MEDICO, '').split(/\s+/)[0] || '';
+  // Cadastro em minúsculas ("cristiane") não deve aparecer assim na saudação.
+  return primeiro.charAt(0).toLocaleUpperCase('pt-BR') + primeiro.slice(1);
 }

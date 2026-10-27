@@ -2,6 +2,7 @@ import { AlertTriangle, RefreshCw, WifiOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
+import { mensagemDeErro } from '@/lib/erros';
 
 interface ErrorStateProps {
   title?: string;
@@ -14,7 +15,16 @@ interface ErrorStateProps {
 }
 
 /** Traduz erros técnicos em mensagens que o usuário da clínica entende. */
-export function friendlyErrorMessage(error: unknown): string {
+export function friendlyErrorMessage(
+  error: unknown,
+  fallback = 'Não conseguimos carregar estas informações agora. Tente novamente em instantes.',
+): string {
+  const code = (error as { code?: unknown } | null | undefined)?.code;
+  if (typeof code === 'string' && /^(2\d{4}|2\d{3}[A-Z0-9]|42501|PGRST)/.test(code)) {
+    const traduzida = mensagemDeErro(error);
+    // mensagemDeErro devolve o texto cru quando não conhece o código.
+    return traduzida === (error as { message?: unknown }).message ? fallback : traduzida;
+  }
   const raw =
     typeof error === 'string'
       ? error
@@ -28,12 +38,21 @@ export function friendlyErrorMessage(error: unknown): string {
     return 'Sua sessão expirou. Entre novamente para continuar.';
   }
   if (msg.includes('permission') || msg.includes('row-level security') || msg.includes('403')) {
-    return 'Você não tem permissão para ver estas informações.';
+    return 'Você não tem permissão para isso. Fale com o administrador da clínica.';
   }
   if (msg.includes('timeout') || msg.includes('timed out')) {
-    return 'A consulta demorou mais que o esperado. Tente novamente.';
+    return 'A operação demorou mais que o esperado. Tente novamente.';
   }
-  return 'Não conseguimos carregar estas informações agora. Tente novamente em instantes.';
+  // shortcut: heuristic "short Portuguese sentence without technical markers" decides if a
+  // message was written by us on purpose; upgrade to a typed AppError class if it misfires.
+  if (
+    raw &&
+    raw.length <= 160 &&
+    !/error|exception|undefined|null|violates|relation|column|function|fetch|json|status code|pgrst|syntax|constraint|stack|\bat\s|[[\]{}<>]|::|_id\b|\b(the|is|not|invalid|failed|denied|credentials|cannot|unexpected|token)\b/i.test(raw)
+  ) {
+    return raw;
+  }
+  return fallback;
 }
 
 export function ErrorState({

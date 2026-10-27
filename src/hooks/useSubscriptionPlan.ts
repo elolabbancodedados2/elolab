@@ -1,3 +1,4 @@
+import { friendlyErrorMessage } from '@/components/ErrorState';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
@@ -122,7 +123,7 @@ export function useCreatePlatformSubscription() {
       redirecionarParaCheckout(data.checkout_url);
     },
     onError: (err: any) => {
-      toast.error(err.message || 'Erro ao abrir o checkout da assinatura');
+      toast.error(friendlyErrorMessage(err, 'Não foi possível abrir o checkout da assinatura.'));
     },
   });
 }

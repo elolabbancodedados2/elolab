@@ -12,7 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { Plus, Trash2, Edit2, Building2, Loader2 } from 'lucide-react';
 import { ListSkeleton } from '@/components/ui/loading-skeleton';
-import { ErrorState } from '@/components/ErrorState';
+import { ErrorState, friendlyErrorMessage } from '@/components/ErrorState';
 
 interface Laboratorio {
   id: string;
@@ -83,12 +83,12 @@ export function GerenciadorLaboratorios() {
       }
     },
     onSuccess: () => {
-      toast.success(editingId ? 'Laboratório atualizado!' : 'Laboratório adicionado!');
+      toast.success(editingId ? 'Laboratório atualizado' : 'Laboratório adicionado');
       queryClient.invalidateQueries({ queryKey: ['laboratorios'] });
       resetForm();
       setShowDialog(false);
     },
-    onError: (error: any) => toast.error(error.message),
+    onError: (error: any) => toast.error(friendlyErrorMessage(error, 'Não foi possível salvar o laboratório.')),
   });
 
   const deleteMutation = useMutation({
@@ -105,11 +105,11 @@ export function GerenciadorLaboratorios() {
       if (!data) throw new Error('O laboratório não foi encontrado na clínica atual. Atualize a lista.');
     },
     onSuccess: () => {
-      toast.success('Laboratório removido!');
+      toast.success('Laboratório removido');
       queryClient.invalidateQueries({ queryKey: ['laboratorios'] });
       setLaboratorioParaExcluir(null);
     },
-    onError: (error: any) => toast.error(error.message),
+    onError: (error: any) => toast.error(friendlyErrorMessage(error, 'Não foi possível salvar o laboratório.')),
   });
 
   const resetForm = () => {

@@ -67,7 +67,7 @@ export function useNotifications() {
         const notifiedKey = `notified_${ag.id}_15min`;
         
         if (!sessionStorage.getItem(notifiedKey)) {
-          sendNotification('Consulta em breve!', {
+          sendNotification('Consulta em breve', {
             body: `${ag.pacientes?.nome || 'Paciente'} às ${ag.hora_inicio}`,
             tag: ag.id,
           });

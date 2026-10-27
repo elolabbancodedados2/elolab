@@ -288,7 +288,7 @@ export default function Financeiro() {
         title="Painel Financeiro"
         description="Análise completa de receitas, despesas e resultados"
         icon={<DollarSign />}
-        className="rounded-[22px] border border-border/60 bg-card p-4 shadow-xs sm:p-5"
+        className="rounded-xl border border-border/60 bg-card p-4 shadow-xs sm:p-5"
         actions={(
           <div className="flex items-center gap-1 rounded-full border border-border/60 bg-card p-1 shadow-xs">
             <Button aria-label="Mês anterior" variant="ghost" size="icon" className="h-8 w-8 rounded-full text-[#1080CA] hover:bg-[#1080CA]/10" onClick={() => setCurrentDate(subMonths(currentDate, 1))}>
@@ -342,7 +342,7 @@ export default function Financeiro() {
           },
         ].map((s) => (
           <div key={s.label}>
-            <Card className={cn('h-full rounded-2xl border border-border/60 shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md', s.border, 'escuro' in s && s.escuro && 'bg-gradient-primary text-white')}>
+            <Card className={cn('h-full rounded-2xl border border-border/60 shadow-xs transition-all hover:shadow-md', s.border, 'escuro' in s && s.escuro && 'bg-gradient-primary text-white')}>
               <CardContent className="py-4 px-5">
                 <div className="flex items-start justify-between">
                   <div>
@@ -613,7 +613,7 @@ export default function Financeiro() {
             { label: 'Pagamentos', desc: 'Histórico de pagamentos e recibos', icon: FileText, href: '/pagamentos', color: 'text-muted-foreground', bg: 'bg-muted' },
           ].map((item) => (
             <Card key={item.href} role="link" tabIndex={0} aria-label={`Abrir ${item.label}`}
-              className="group cursor-pointer rounded-2xl border border-border/60 shadow-xs transition-all hover:-translate-y-1 hover:border-[#1080CA]/40 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]"
+              className="group cursor-pointer rounded-2xl border border-border/60 shadow-xs transition-all hover:border-[#1080CA]/40 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]"
               onClick={() => navigate(item.href)}
               onKeyDown={event => {
                 if (event.key === 'Enter' || event.key === ' ') {

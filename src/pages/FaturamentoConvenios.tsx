@@ -17,7 +17,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Textarea } from '@/components/ui/textarea';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from 'sonner';
-import { ErrorState } from '@/components/ErrorState';
+import { ErrorState, friendlyErrorMessage } from '@/components/ErrorState';
 import { isValidDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { PageHeader } from '@/components/PageHeader';
 import { Link } from 'react-router-dom';
@@ -137,7 +137,7 @@ export default function FaturamentoConvenios() {
       toast.error('Não foi possível criar o lote.', {
         description: error?.code === '23505'
           ? 'Este número de lote já está cadastrado para o convênio selecionado.'
-          : error?.message || 'Verifique os dados e tente novamente.',
+          : friendlyErrorMessage(error, 'Verifique os dados e tente novamente.'),
       });
     } finally { setSaving(false); }
   }
@@ -181,7 +181,7 @@ export default function FaturamentoConvenios() {
       if (data.repetido) toast.info('Esta glosa já havia sido registrada. Nenhuma duplicata foi criada.');
       else toast.success('Glosa registrada.');
     } catch (error: any) {
-      toast.error('Não foi possível registrar a glosa.', { description: error?.message });
+      toast.error('Não foi possível registrar a glosa.', { description: friendlyErrorMessage(error, 'Tente novamente.') });
     } finally { setSaving(false); }
   }
 
@@ -195,7 +195,7 @@ export default function FaturamentoConvenios() {
       if (!data?.success) throw new Error('O lote já foi alterado. Atualize a lista antes de registrar o envio.');
       await queryClient.invalidateQueries({ queryKey: ['lotes-tiss'] }); toast.success('Envio registrado.');
       return true;
-    } catch (error: any) { toast.error('Não foi possível atualizar o lote.', { description: error?.message }); return false; }
+    } catch (error: any) { toast.error('Não foi possível atualizar o lote.', { description: friendlyErrorMessage(error, 'Tente novamente.') }); return false; }
     finally { setLoteEnviandoId(null); }
   }
 
@@ -267,7 +267,7 @@ export default function FaturamentoConvenios() {
         toast.success('Retorno atualizado no lote. Nenhum lançamento financeiro foi criado.');
       }
     } catch (error: any) {
-      toast.error('Não foi possível registrar o retorno do lote.', { description: error?.message });
+      toast.error('Não foi possível registrar o retorno do lote.', { description: friendlyErrorMessage(error, 'Tente novamente.') });
     } finally {
       setSavingRetornoLote(false);
     }
@@ -303,7 +303,7 @@ export default function FaturamentoConvenios() {
       await queryClient.invalidateQueries({ queryKey: ['glosas-convenio'] });
       toast.success(({ recurso_preparacao: 'Preparação do recurso registrada.', recurso_enviado: 'Recurso marcado como enviado.', aceita: 'Glosa aceita; valor recuperado registrado.', mantida: 'Decisão da operadora registrada.' })[status]);
       return true;
-    } catch (error: any) { toast.error('Não foi possível atualizar a glosa.', { description: error?.message }); }
+    } catch (error: any) { toast.error('Não foi possível atualizar a glosa.', { description: friendlyErrorMessage(error, 'Tente novamente.') }); }
     finally {
       glosaAtualizacaoLock.current = false;
       setGlosaAtualizandoId(null);
@@ -397,7 +397,7 @@ export default function FaturamentoConvenios() {
               <TableCell className="text-right"><span>{brl(l.valor_apresentado)}</span><p className="text-xs text-muted-foreground">Recebido: {brl(l.valor_pago)}</p><p className="text-xs text-muted-foreground">No financeiro: {brl(l.valor_conciliado_financeiro || 0)}</p></TableCell>
               <TableCell><Badge variant="outline">{l.status.replaceAll('_', ' ')}</Badge></TableCell>
               <TableCell><div className="flex flex-wrap gap-1">
-                <Button size="sm" variant="ghost" onClick={() => exportLot(l)} aria-label={`Baixar resumo XML do lote ${l.numero_lote}`} title="Baixar resumo operacional XML (não é arquivo TISS de transmissão)"><FileDown className="mr-1 h-4 w-4" />Baixar resumo XML</Button>
+                <Button size="sm" variant="ghost" onClick={() => exportLot(l)} aria-label={`Baixar resumo XML do lote ${l.numero_lote}`} title="Baixar resumo do lote em XML para conferência"><FileDown className="mr-1 h-4 w-4" />Baixar resumo XML</Button>
                 {l.status === 'rascunho' && <Button size="sm" disabled={loteEnviandoId !== null} onClick={() => setLoteParaConfirmarEnvio(l)}>{loteEnviandoId === l.id && <RefreshCw className="mr-1 h-3.5 w-3.5 animate-spin" />}Registrar envio</Button>}
                 {['enviado', 'processando', 'pago_parcial', 'pago'].includes(l.status) && <Button size="sm" variant="outline" onClick={() => abrirRetornoLote(l)}>{l.retorno_em ? 'Atualizar retorno' : 'Registrar retorno'}</Button>}
               </div></TableCell>
@@ -412,14 +412,14 @@ export default function FaturamentoConvenios() {
         {glosasFiltradas.length > 0 ? <Table><TableHeader><TableRow><TableHead>Código / motivo</TableHead><TableHead>Lote</TableHead><TableHead className="text-right">Glosado</TableHead><TableHead className="text-right">Recuperado</TableHead><TableHead>Status</TableHead><TableHead>Ação</TableHead></TableRow></TableHeader><TableBody>{glosasFiltradas.map((g: any) => <TableRow key={g.id}><TableCell><b>{g.codigo_glosa}</b>{g.guia_referencia && <p className="text-xs text-muted-foreground">Guia: {g.guia_referencia}</p>}<p className="max-w-sm text-xs text-muted-foreground">{g.motivo}</p>{g.recurso_justificativa && <p className="mt-1 max-w-sm text-xs text-muted-foreground">Recurso: {g.recurso_justificativa}</p>}</TableCell><TableCell>{g.lotes_tiss?.numero_lote}<p className="text-[10px]">{g.lotes_tiss?.convenios?.nome}</p></TableCell><TableCell className="text-right">{brl(g.valor_glosado)}</TableCell><TableCell className="text-right">{brl(g.valor_recuperado)}</TableCell><TableCell><Badge variant="outline">{g.status.replaceAll('_',' ')}</Badge></TableCell><TableCell className="space-x-1">{g.status === 'pendente' && <Button size="sm" variant="outline" disabled={glosaAtualizandoId !== null} onClick={() => { setGlosaParaRecurso(g); setJustificativaRecurso(g.recurso_justificativa || ''); }}>Preparar recurso</Button>}{g.status === 'recurso_preparacao' && <><Button size="sm" variant="outline" disabled={glosaAtualizandoId !== null} onClick={() => { setGlosaParaRecurso(g); setJustificativaRecurso(g.recurso_justificativa || ''); }}>Revisar justificativa</Button><Button size="sm" disabled={glosaAtualizandoId !== null || String(g.recurso_justificativa || '').trim().length < 10} onClick={() => void updateGlosa(g.id, 'recurso_enviado')}>Marcar enviado</Button></>}{g.status === 'recurso_enviado' && <Button size="sm" disabled={glosaAtualizandoId !== null} onClick={() => { setGlosaParaRetorno(g); setDecisaoOperadora('aceita'); setValorRecuperado(String(g.valor_glosado)); }}>Registrar retorno</Button>}</TableCell></TableRow>)}</TableBody></Table> : <div className="flex flex-col items-center gap-2 py-8 text-center"><p className="text-sm text-muted-foreground">{glosas.length === 0 ? 'Nenhuma glosa registrada nesta clínica.' : 'Nenhuma glosa corresponde à busca e aos filtros.'}</p>{glosas.length > 0 && <Button size="sm" variant="outline" onClick={() => { setBuscaGlosa(''); setStatusGlosa('todos'); }}>Limpar filtros</Button>}</div>}
       </CardContent></Card></TabsContent>
     </Tabs>
-    <div className="flex items-start gap-2 rounded-lg border bg-muted/30 p-3 text-xs text-muted-foreground"><ShieldCheck className="h-4 w-4 shrink-0" /><span>O XML é um resumo operacional e este sistema não o transmite à operadora. Valide o arquivo no padrão/XSD exigido e registre o envio somente depois de transmiti-lo pelo canal oficial. O retorno pode ser conciliado com o Fluxo de Caixa pelo formulário. Como o lote não identifica as cobranças individuais, confira lançamentos anteriores antes de confirmar para evitar duplicidade.</span></div>
+    <div className="flex items-start gap-2 rounded-lg border bg-muted/30 p-3 text-xs text-muted-foreground"><ShieldCheck className="h-4 w-4 shrink-0" /><span>Fluxo do lote: baixe o resumo XML para conferência, transmita as guias TISS pelo portal da operadora e registre aqui o envio e, depois, o retorno. O retorno pode ser conciliado com o Fluxo de Caixa pelo formulário. Como o lote não identifica as cobranças individuais, confira lançamentos anteriores antes de confirmar para evitar duplicidade.</span></div>
 
     <AlertDialog open={!!loteParaConfirmarEnvio} onOpenChange={open => { if (!open && !loteEnviandoId) setLoteParaConfirmarEnvio(null); }}>
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>Confirmar envio do lote?</AlertDialogTitle>
           <AlertDialogDescription>
-            Lote {loteParaConfirmarEnvio?.numero_lote}. O EloLab não transmite este arquivo à operadora. Marque como enviado somente depois de transmitir o lote pelo canal oficial. O XML baixado aqui é um resumo operacional e não substitui a guia TISS.
+            Lote {loteParaConfirmarEnvio?.numero_lote}. Registre o envio somente depois de transmitir as guias TISS pelo portal da operadora.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

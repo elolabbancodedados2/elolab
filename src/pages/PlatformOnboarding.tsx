@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { formatDateInTimeZone } from '@/lib/datePreference';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Building2, RefreshCw, Search } from 'lucide-react';
+import { Building2, Check, Circle, RefreshCw, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -178,7 +178,7 @@ export default function PlatformOnboarding() {
 
   return (
     <div className="space-y-6">
-      <header className="flex flex-wrap items-start justify-between gap-3 rounded-2xl border border-[#e6e2f7] bg-gradient-to-r from-[#f6f4ff] via-white to-[#f0edff] p-5 sm:p-6">
+      <header className="flex flex-wrap items-start justify-between gap-3 rounded-2xl border border-border bg-card p-5 sm:p-6">
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-bold"><Building2 />Onboarding de clínicas</h1>
           <p className="text-muted-foreground">Acompanhe prontidão, etapa, próxima ação e prazo de ativação por clínica.</p>
@@ -251,7 +251,7 @@ export default function PlatformOnboarding() {
                   [`Equipe (${item.team_size})`, item.team_size > 1],
                   ['Primeiro uso', item.has_activity],
                 ] as Array<[string, boolean]>).map(([label, done]) => (
-                  <Badge key={label} variant={done ? 'outline' : 'secondary'}>{done ? '✓' : '○'} {label}</Badge>
+                  <Badge key={label} variant={done ? 'outline' : 'secondary'}>{done ? <Check className="mr-1 h-3 w-3" aria-hidden="true" /> : <Circle className="mr-1 h-3 w-3" aria-hidden="true" />}{label}</Badge>
                 ))}
               </div>
             </CardContent>

@@ -9,6 +9,7 @@
  * o servidor do Supabase, e o fator fica registrado no próprio JWT (AAL2).
  */
 
+import { friendlyErrorMessage } from '@/components/ErrorState';
 import { useState } from 'react';
 import { AlertCircle, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -80,7 +81,7 @@ export function MFASetupDialog({ open, onOpenChange, onMFASetupComplete }: MFASe
       setSecret(data.totp.secret);
       setStep('verify');
     } catch (err: any) {
-      toast.error(err?.message || 'Erro ao iniciar configuração do 2FA');
+      toast.error(friendlyErrorMessage(err, 'Não foi possível iniciar a configuração da verificação em duas etapas.'));
     } finally {
       setIsWorking(false);
     }
@@ -99,12 +100,12 @@ export function MFASetupDialog({ open, onOpenChange, onMFASetupComplete }: MFASe
       const { error } = await supabase.auth.mfa.challengeAndVerify({ factorId, code: token });
       if (error) throw error;
 
-      toast.success('Autenticação de dois fatores ativada!');
+      toast.success('Autenticação de dois fatores ativada');
       await onMFASetupComplete();
       reset();
       onOpenChange(false);
     } catch (err: any) {
-      toast.error(err?.message || 'Código inválido. Tente novamente.');
+      toast.error(friendlyErrorMessage(err, 'Código inválido. Tente novamente.'));
       setToken('');
     } finally {
       setIsWorking(false);

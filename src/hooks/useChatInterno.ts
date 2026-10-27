@@ -1,3 +1,4 @@
+import { friendlyErrorMessage } from '@/components/ErrorState';
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -223,7 +224,7 @@ export function useChatInterno() {
       .maybeSingle();
 
     if (existingError) {
-      toast.error('Não foi possível localizar a conversa.', { description: existingError.message });
+      toast.error('Não foi possível localizar a conversa.', { description: friendlyErrorMessage(existingError, 'Tente novamente em instantes.') });
       return null;
     }
 
@@ -281,7 +282,7 @@ export function useChatInterno() {
     }
 
     if (error || !newConv) {
-      toast.error('Não foi possível iniciar a conversa.', { description: error?.message });
+      toast.error('Não foi possível iniciar a conversa.', { description: friendlyErrorMessage(error, 'Tente novamente em instantes.') });
       return null;
     }
 
@@ -324,7 +325,7 @@ export function useChatInterno() {
       .maybeSingle();
 
     if (error || !msg) {
-      toast.error('Não foi possível enviar a mensagem.', { description: error?.message });
+      toast.error('Não foi possível enviar a mensagem.', { description: friendlyErrorMessage(error, 'Tente novamente em instantes.') });
       return false;
     }
 
@@ -345,7 +346,7 @@ export function useChatInterno() {
       .eq('clinica_id', profile.clinica_id)
       .eq('destinatario_id', user.id)
       .is('lida_em', null);
-    if (error) toast.error('Não foi possível marcar as mensagens como lidas.', { description: error.message });
+    if (error) toast.error('Não foi possível marcar as mensagens como lidas.', { description: friendlyErrorMessage(error, 'Tente novamente em instantes.') });
     else void fetchConversas();
   }, [user, profile?.clinica_id, fetchConversas]);
 
@@ -396,8 +397,8 @@ export function useChatInterno() {
                 ? newMsg.texto.substring(0, 60) + '...'
                 : newMsg.texto;
 
-              toast.info(`💬 ${nomeRemetente}`, {
-                description: newMsg.urgente ? `🔴 URGENTE: ${previewTexto}` : previewTexto,
+              toast.info(`${nomeRemetente}`, {
+                description: newMsg.urgente ? `URGENTE: ${previewTexto}` : previewTexto,
                 duration: newMsg.urgente ? 10000 : 5000,
               });
             }

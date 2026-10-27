@@ -161,7 +161,7 @@ export function Sidebar({ forceExpanded = false, onNavigate }: SidebarProps) {
   return (
     <aside
       className={cn(
-        'flex h-full min-h-0 flex-col overflow-hidden rounded-[28px] border border-white/80 bg-sidebar text-sidebar-accent-foreground shadow-sm transition-all duration-300 ease-out',
+        'flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-white/80 bg-sidebar text-sidebar-accent-foreground shadow-sm transition-all duration-300 ease-out',
         isCollapsed ? 'w-[72px]' : 'w-[286px]'
       )}
     >
@@ -173,7 +173,7 @@ export function Sidebar({ forceExpanded = false, onNavigate }: SidebarProps) {
         {!isCollapsed ? (
           <img src={logoHorizontal} alt="EloLab" className="h-auto w-[168px] object-contain" />
         ) : (
-          <div className="relative flex h-9 w-9 items-center justify-center rounded-xl overflow-hidden bg-gradient-to-br from-primary/15 to-primary/5 ring-1 ring-primary/15">
+          <div className="relative flex h-9 w-9 items-center justify-center rounded-xl overflow-hidden bg-primary/10 ring-1 ring-primary/15">
             <img src={logoMark} alt="EloLab" className="h-9 w-9 object-contain" />
           </div>
         )}
@@ -389,8 +389,6 @@ function SidebarMenuGroup({ group, collapsed, isOpen, onToggle, onExpand, curren
           >
             {collapsed ? (
               <motion.div
-                whileHover={{ scale: 1.12 }}
-                transition={{ type: 'spring', stiffness: 400, damping: 15 }}
                 className="h-9 w-9 rounded-full flex items-center justify-center bg-white/20 text-white transition-all"
               >
                 <GroupIcon className="h-4 w-4" />

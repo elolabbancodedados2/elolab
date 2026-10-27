@@ -36,7 +36,7 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { pacienteCorresponde } from '@/lib/buscaPaciente';
 import { canalUnico } from '@/lib/realtimeCanal';
-import { ErrorState } from '@/components/ErrorState';
+import { ErrorState, friendlyErrorMessage } from '@/components/ErrorState';
 import { PendentesTriagem } from '@/components/triagem/PendentesTriagem';
 import { dateOnlyInTimeZone, parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { useCurrentMedico } from '@/hooks/useCurrentMedico';
@@ -473,8 +473,8 @@ export default function TriagemPage() {
           acoesComplementares.push(...triagemResult.actions);
           filaAtualizada = true;
         } catch (error) {
-          const detalhe = error instanceof Error ? error.message : 'Erro desconhecido';
-          avisosComplementares.push(`A fila não foi atualizada (${detalhe}). Verifique a Fila de Atendimento.`);
+          console.error('Triagem: fila não atualizada', error);
+          avisosComplementares.push('A fila não foi atualizada. Verifique a Fila de Atendimento.');
         }
 
         // Auto-notify doctor for urgent cases. A falha no aviso não desfaz a
@@ -497,13 +497,12 @@ export default function TriagemPage() {
               }
             }
           } catch (error) {
-            const detalhe = error instanceof Error ? error.message : 'Erro desconhecido';
-            avisosComplementares.push(`Médico não notificado: ${detalhe}.`);
+            avisosComplementares.push(`Médico não notificado: ${friendlyErrorMessage(error, 'tente avisar por outro canal.')}`);
           }
         }
       }
 
-      toast.success('Triagem registrada!', {
+      toast.success('Triagem registrada', {
         description: [...acoesComplementares, ...avisosComplementares].join(' • ') || undefined,
         duration: avisosComplementares.length ? 10000 : 5000,
       });
@@ -521,7 +520,7 @@ export default function TriagemPage() {
           description: 'Atualize a lista e abra o registro existente para evitar uma ficha duplicada.',
         });
       } else {
-        toast.error('Erro: ' + e.message);
+        toast.error('Não foi possível registrar a triagem.', { description: friendlyErrorMessage(e, 'Tente novamente em instantes.') });
       }
     } finally {
       saveLock.current = false;

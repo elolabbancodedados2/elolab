@@ -1,3 +1,4 @@
+import { friendlyErrorMessage } from '@/components/ErrorState';
 import { supabase } from '@/integrations/supabase/client';
 import { createAutoBillingDetailed, type AutoBillingOutcome, type AutoBillingParams } from '@/lib/autoBilling';
 import { atomicCheckin, type OperationalTransitionResult } from '@/lib/operationalTransitions';
@@ -40,7 +41,7 @@ export async function checkinComCobranca(
     if (estadoError) throw estadoError;
     return { ...checkin, billingOutcome };
   } catch (billingError) {
-    const detalhe = billingError instanceof Error ? billingError.message : 'Erro desconhecido ao gerar a cobrança.';
+    const detalhe = friendlyErrorMessage(billingError, 'Falha ao gerar a cobrança.');
 
     // A resposta de uma gravação pode se perder depois do commit. Confirme o
     // estado persistido antes de remover o paciente da fila.
@@ -66,7 +67,7 @@ export async function checkinComCobranca(
         return {
           ...checkin,
           success: false,
-          message: `A cobrança existe, mas o estado do check-in ainda não foi confirmado. Atualize e tente retomar. ${confirmarError.message}`,
+          message: `A cobrança existe, mas o estado do check-in ainda não foi confirmado. Atualize e tente retomar. ${friendlyErrorMessage(confirmarError, '')}`.trim(),
         };
       }
       return {
@@ -82,7 +83,7 @@ export async function checkinComCobranca(
       return {
         ...checkin,
         success: false,
-        message: `A cobrança não foi confirmada: ${detalhe}. Atualize a fila e confira o financeiro antes de avançar.`,
+        message: `A cobrança não foi confirmada: ${detalhe.replace(/\.$/, '')}. Atualize a fila e confira o financeiro antes de avançar.`,
       };
     }
 
@@ -123,7 +124,7 @@ export async function checkinComCobranca(
     return {
       ...checkin,
       success: false,
-      message: `O check-in não foi confirmado porque a cobrança falhou: ${detalhe}.${mensagem}`,
+      message: `O check-in não foi confirmado porque a cobrança falhou: ${detalhe.replace(/\.$/, '')}.${mensagem}`,
       actions: rollback?.desfeito ? [] : checkin.actions,
     };
   }

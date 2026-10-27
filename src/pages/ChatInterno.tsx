@@ -253,7 +253,7 @@ function ChatSidebar({
                             'text-[11px] truncate',
                             c.nao_lidas > 0 ? 'text-foreground font-medium' : 'text-muted-foreground',
                           )}>
-                            {c.urgente_nao_lida && '🔴 '}{c.preview || 'Sem mensagens'}
+                            {c.urgente_nao_lida && <span className="mr-1 font-semibold text-destructive">Urgente ·</span>}{c.preview || 'Sem mensagens'}
                           </p>
                           {c.nao_lidas > 0 && (
                             <Badge className={cn(
@@ -753,7 +753,7 @@ export default function ChatInterno() {
             />
           ) : (
             <div className="flex-1 flex items-center justify-center">
-              <div className="max-w-sm rounded-3xl border border-border/60 bg-card p-8 text-center shadow-xs">
+              <div className="max-w-sm rounded-xl border border-border/60 bg-card p-8 text-center shadow-xs">
                 <div className="h-16 w-16 rounded-2xl bg-gradient-primary flex items-center justify-center mx-auto mb-4 text-white shadow-md">
                   <MessageSquare className="h-8 w-8" />
                 </div>

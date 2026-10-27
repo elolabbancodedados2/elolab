@@ -289,7 +289,7 @@ export function PainelDoDia({ atendimentos, clinicaId, hoje, carregandoAtendimen
               aria-pressed={clicavel ? Boolean(ativo) : undefined}
               className={cn(
                 'flex h-full min-h-[5.75rem] flex-col rounded-2xl border px-3 py-2.5 text-left shadow-xs transition-all xl:min-h-20 xl:py-2',
-                clicavel ? 'cursor-pointer hover:-translate-y-0.5 hover:shadow-md' : 'cursor-default',
+                clicavel ? 'cursor-pointer hover:shadow-md' : 'cursor-default',
                 ativo
                   ? 'border-transparent bg-gradient-primary text-white shadow-md'
                   : c.id === 'caixa'
@@ -309,7 +309,7 @@ export function PainelDoDia({ atendimentos, clinicaId, hoje, carregandoAtendimen
                   ? '—'
                   : c.id !== 'caixa' && carregandoAtendimentos ? '…' : c.valor}
               </p>
-              <p title={c.detalhe} className={cn('mt-auto pt-1 text-xs leading-snug xl:truncate', (ativo || c.id === 'caixa') ? 'text-white/60' : 'text-muted-foreground')}>
+              <p title={c.detalhe} className={cn('mt-auto pt-1 text-xs leading-snug line-clamp-2', (ativo || c.id === 'caixa') ? 'text-white/60' : 'text-muted-foreground')}>
                 {c.detalhe}
               </p>
             </button>

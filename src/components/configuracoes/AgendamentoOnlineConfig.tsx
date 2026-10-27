@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
-import { ErrorState } from '@/components/ErrorState';
+import { ErrorState, friendlyErrorMessage } from '@/components/ErrorState';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { useMedicos } from '@/hooks/useSupabaseData';
 import { lerConfigsClinicaComVersoes, salvarConfigClinica } from '@/lib/configClinica';
@@ -63,7 +63,7 @@ export function AgendamentoOnlineConfig() {
       queryClient.invalidateQueries({ queryKey: ['config-agendamento-online'] });
       toast.success(cfg.ativo ? 'Agendamento online ativado' : 'Configuração salva');
     } catch (e: any) {
-      toast.error('Não foi possível salvar', { description: e?.message });
+      toast.error('Não foi possível salvar', { description: friendlyErrorMessage(e, 'Tente novamente em instantes.') });
     } finally {
       setSalvando(false);
     }

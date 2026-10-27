@@ -188,7 +188,7 @@ export function VitalSignsChart({ pacienteId, className }: VitalSignsChartProps)
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <TrendingUp className="h-5 w-5 text-pink-500" />
+              <TrendingUp className="h-5 w-5 text-muted-foreground" />
               <div>
                 <p className="text-xs text-muted-foreground">FC</p>
                 <p className={cn("font-semibold", getStatusColor(lastTriagem.frequencia_cardiaca, 'fc'))}>
@@ -197,7 +197,7 @@ export function VitalSignsChart({ pacienteId, className }: VitalSignsChartProps)
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <Thermometer className="h-5 w-5 text-orange-500" />
+              <Thermometer className="h-5 w-5 text-muted-foreground" />
               <div>
                 <p className="text-xs text-muted-foreground">Temp</p>
                 <p className={cn("font-semibold", getStatusColor(lastTriagem.temperatura, 'temperatura'))}>

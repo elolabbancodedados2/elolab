@@ -23,7 +23,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { ErrorState } from '@/components/ErrorState';
+import { ErrorState, friendlyErrorMessage } from '@/components/ErrorState';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
@@ -162,14 +162,14 @@ export default function TemplatesEmail() {
       }
     },
     onSuccess: () => {
-      toast.success(editId ? 'Template atualizado!' : 'Template criado!');
+      toast.success(editId ? 'Template atualizado' : 'Template criado');
       queryClient.invalidateQueries({ queryKey: ['templates'] });
       setShowDialog(false);
       setActivationCandidate(null);
       setForm({ nome: '', categoria: '', assunto: '', conteudo: '', ativo: true });
       setEditId(null);
     },
-    onError: (error: any) => toast.error(error.message),
+    onError: (error: any) => toast.error(friendlyErrorMessage(error, 'Não foi possível salvar o modelo de e-mail.')),
   });
 
   const toggleMutation = useMutation({
@@ -186,11 +186,11 @@ export default function TemplatesEmail() {
       if (!data) throw new Error('Este modelo não pertence à clínica atual ou não está mais disponível.');
     },
     onSuccess: () => {
-      toast.success('Template atualizado!');
+      toast.success('Template atualizado');
       queryClient.invalidateQueries({ queryKey: ['templates'] });
       setActivationCandidate(null);
     },
-    onError: (error: any) => toast.error(error.message),
+    onError: (error: any) => toast.error(friendlyErrorMessage(error, 'Não foi possível salvar o modelo de e-mail.')),
   });
 
   const deleteMutation = useMutation({
@@ -207,11 +207,11 @@ export default function TemplatesEmail() {
       if (!data) throw new Error('Este modelo não pertence à clínica atual ou já foi removido.');
     },
     onSuccess: () => {
-      toast.success('Template deletado!');
+      toast.success('Template deletado');
       queryClient.invalidateQueries({ queryKey: ['templates'] });
       setDeleteId(null);
     },
-    onError: (error: any) => toast.error(error.message),
+    onError: (error: any) => toast.error(friendlyErrorMessage(error, 'Não foi possível salvar o modelo de e-mail.')),
   });
 
   const duplicateMutation = useMutation({
@@ -238,10 +238,10 @@ export default function TemplatesEmail() {
       if (error) throw error;
     },
     onSuccess: () => {
-      toast.success('Template duplicado!');
+      toast.success('Template duplicado');
       queryClient.invalidateQueries({ queryKey: ['templates'] });
     },
-    onError: (error: any) => toast.error(error.message),
+    onError: (error: any) => toast.error(friendlyErrorMessage(error, 'Não foi possível salvar o modelo de e-mail.')),
   });
 
   const openNew = () => {
@@ -394,7 +394,7 @@ export default function TemplatesEmail() {
                 aria-pressed={ativo}
                 onClick={() => setStatusFilter(ativo && ind.key !== 'todos' ? 'todos' : ind.key)}
                 className={cn(
-                  'group rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+                  'group rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
                   ind.escuro && 'border-transparent bg-gradient-primary text-white',
                   ativo && !ind.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
                   ativo && ind.escuro && 'ring-2 ring-[#1080CA]/60',
@@ -487,7 +487,7 @@ export default function TemplatesEmail() {
             </div>
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
               {grupo.items.map(({ template, preview }) => (
-                <Card key={template.id} className={cn('flex flex-col rounded-2xl border-border/60 shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md', !template.ativo && 'opacity-70')}>
+                <Card key={template.id} className={cn('flex flex-col rounded-2xl border-border/60 shadow-xs transition-all duration-200 hover:shadow-md', !template.ativo && 'opacity-70')}>
                   <CardHeader className="pb-3">
                     <div className="flex items-start justify-between gap-2">
                       <CardTitle className="min-w-0 truncate text-base">{template.nome}</CardTitle>

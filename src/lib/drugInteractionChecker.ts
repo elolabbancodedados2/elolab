@@ -189,7 +189,7 @@ export function interactionsToAlerts(interactions: DrugInteraction[]) {
   return interactions.map((inter, idx) => ({
     id: `interaction-${idx}`,
     severity: inter.severity === 'major' ? 'critical' : inter.severity === 'moderate' ? 'warning' : 'info',
-    title: `⚠️ INTERAÇÃO: ${inter.drug1} + ${inter.drug2}`,
+    title: `INTERAÇÃO: ${inter.drug1} + ${inter.drug2}`,
     message: inter.description,
     action: `Consultar ${inter.source === 'openfda' ? 'OpenFDA' : 'referência'} para detalhes completos`,
     canIgnore: inter.severity !== 'major',

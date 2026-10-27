@@ -143,7 +143,7 @@ export default function PlatformOperacoes() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-[#E6E2F7] bg-gradient-to-r from-[#F4F2FF] via-white to-[#f0edff] p-5 sm:p-6">
+      <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-border bg-card p-5 sm:p-6">
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-bold"><Settings2 />Controle Operacional</h1>
           <p className="text-muted-foreground">Controles globais da plataforma. Mudanças de impacto exigem confirmação e ficam registradas na auditoria.</p>

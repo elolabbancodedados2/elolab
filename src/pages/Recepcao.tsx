@@ -13,7 +13,7 @@ import { checkinComCobranca } from '@/lib/checkinWithBilling';
 import { atomicConcludeQueue, atomicMarkNoShow, atomicStartAppointment as autoIniciarAtendimento } from '@/lib/operationalTransitions';
 import { linkWhatsApp } from '@/lib/whatsapp';
 import { PainelDoDia } from '@/components/recepcao/PainelDoDia';
-import { ErrorState } from '@/components/ErrorState';
+import { ErrorState, friendlyErrorMessage } from '@/components/ErrorState';
 import { ActionableEmptyState } from '@/components/ActionableEmptyState';
 import { PageHeader } from '@/components/PageHeader';
 import { AtendimentosEmAberto } from '@/components/recepcao/AtendimentosEmAberto';
@@ -355,7 +355,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
       return false;
     }
     if (!resultado.data) {
-      toast.error('Caixa fechado!', {
+      toast.error('Caixa fechado', {
         description: 'Abra o Caixa Diário antes de realizar pagamentos.',
         action: {
           label: 'Abrir Caixa',
@@ -551,11 +551,11 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
              : 'A situação da cobrança foi conferida no financeiro.',
          });
        } else if (result.billingOutcome === 'free') {
-         toast.success('Check-in realizado!', {
+         toast.success('Check-in realizado', {
            description: 'Atendimento sem cobrança. Paciente pronto para ser chamado.',
          });
        } else {
-         toast.success('Check-in realizado!', {
+         toast.success('Check-in realizado', {
            description: result.billingOutcome === 'already_exists'
              ? 'Cobrança existente conferida no financeiro.'
              : 'Paciente encaminhado ao balcão para pagamento.',
@@ -588,11 +588,10 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
       }
 
       queryClient.invalidateQueries({ queryKey: ['fila_atendimento'] });
-      toast.success('Paciente chamado!');
+      toast.success('Paciente chamado');
     } catch (err: any) {
-      const msg = err?.message || 'Erro desconhecido';
       console.error('handleChamar error:', err);
-      toast.error('Erro ao chamar: ' + msg);
+      toast.error('Não foi possível chamar o paciente.', { description: friendlyErrorMessage(err, 'Tente novamente em instantes.') });
     } finally {
       setIsProcessing(false);
     }
@@ -606,10 +605,10 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
       if (!result.success) throw new Error(result.message);
       queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
       queryClient.invalidateQueries({ queryKey: ['fila_atendimento'] });
-      toast.success('Atendimento iniciado!', { description: result.actions.join(' • ') });
+      toast.success('Atendimento iniciado', { description: result.actions.join(' • ') });
     } catch (err: any) {
       console.error('handleIniciarAtendimento error:', err);
-      toast.error('Erro ao iniciar atendimento: ' + (err?.message || 'Erro desconhecido'));
+      toast.error('Não foi possível iniciar o atendimento.', { description: friendlyErrorMessage(err, 'Tente novamente em instantes.') });
     }
     setIsProcessing(false);
   }
@@ -642,12 +641,12 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
       queryClient.invalidateQueries({ queryKey: ['lancamentos_hoje'] });
       queryClient.invalidateQueries({ queryKey: ['caixa-diario'] });
 
-      toast.success('Atendimento finalizado!', {
+      toast.success('Atendimento finalizado', {
         description: result.actions.join(' • '),
       });
     } catch (err: any) {
       console.error('Erro ao finalizar:', err);
-      toast.error('Erro ao finalizar: ' + (err?.message || 'Erro desconhecido'));
+      toast.error('Não foi possível finalizar.', { description: friendlyErrorMessage(err, 'Tente novamente em instantes.') });
     }
     setIsProcessing(false);
   }
@@ -689,7 +688,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
          queryClient.invalidateQueries({ queryKey: ['lancamentos_hoje'] });
        } catch (error: any) {
          toast.error('Não foi possível abrir a cobrança do exame', {
-           description: error?.message || 'Cadastre o preço do exame e tente novamente.',
+           description: friendlyErrorMessage(error, 'Cadastre o preço do exame e tente novamente.'),
          });
          return;
        }
@@ -783,7 +782,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
           window.speechSynthesis.speak(utter);
         }
 
-        toast.success(`${pac?.nome} chamado ao balcão!`, {
+        toast.success(`${pac?.nome} chamado ao balcão`, {
           description: agId ? 'Chamado no painel da sala de espera' : 'Aviso sonoro reproduzido na recepção',
           action: {
             label: 'Receber agora',
@@ -933,7 +932,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
             falhaNoRecibo = 'O pagamento foi confirmado, mas não foi possível enviar o recibo por e-mail.';
             if (import.meta.env.DEV) console.warn('Comprovante não enviado:', receiptError.message);
           } else if (['failed', 'not_configured'].includes(recibo?.emailStatus)) {
-            falhaNoRecibo = recibo?.message || 'O pagamento foi confirmado, mas o recibo não foi enviado por e-mail.';
+            falhaNoRecibo = friendlyErrorMessage(recibo?.message, 'O pagamento foi confirmado, mas o recibo não foi enviado por e-mail.');
           }
         } catch (erroRecibo) {
           falhaNoRecibo = 'O pagamento foi confirmado, mas não foi possível confirmar o envio do recibo por e-mail.';
@@ -951,7 +950,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
       setShowPagamento(false);
       setSelectedLancamento(null);
       setSelectedPacienteBalcao(null);
-      if (!pagamentoRepetido) toast.success(`Pagamento de ${valorFinal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} confirmado!`);
+      if (!pagamentoRepetido) toast.success(`Pagamento de ${valorFinal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} confirmado`);
       if (falhaNoRecibo) {
         toast.warning('Pagamento confirmado; recibo não enviado', {
           description: falhaNoRecibo,
@@ -966,7 +965,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
         gerarComprovante(selectedLancamento, selectedPacienteBalcao, resumirPagamentos(pagamentos, rotulos), valorFinal, matchedItem?.med);
       }
     } catch (err: any) {
-      toast.error('Erro ao confirmar pagamento: ' + (err?.message || 'Erro desconhecido'));
+      toast.error('Não foi possível confirmar o pagamento.', { description: friendlyErrorMessage(err, 'Tente novamente em instantes.') });
     }
     setIsProcessing(false);
   }
@@ -990,12 +989,12 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
       await queryClient.invalidateQueries({ queryKey: ['lancamentos_hoje'] });
       queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
       queryClient.invalidateQueries({ queryKey: ['caixa-diario'] });
-      toast.success('Atendimento concluído com sucesso!');
+      toast.success('Atendimento concluído com sucesso');
       setConfirmDialogOpen(false);
       setPendingAction(null);
     } catch (err: any) {
       console.error('Erro ao concluir:', err);
-      toast.error('Erro ao concluir: ' + (err?.message || 'Erro desconhecido'));
+      toast.error('Não foi possível concluir.', { description: friendlyErrorMessage(err, 'Tente novamente em instantes.') });
     }
     setIsProcessing(false);
   }
@@ -1020,7 +1019,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
         navigate(`/triagem?${new URLSearchParams({ buscarPaciente: pacienteId }).toString()}`);
         return;
       }
-      toast.success('Paciente encaminhado para triagem!', {
+      toast.success('Paciente encaminhado para triagem', {
         description: 'A ficha será aberta com o paciente e o agendamento selecionados.',
       });
       navigate(`/triagem?${new URLSearchParams({ paciente: pacienteId, agendamento: agId }).toString()}`);

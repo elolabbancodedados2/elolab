@@ -1,3 +1,4 @@
+import { friendlyErrorMessage } from '@/components/ErrorState';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { addDays, format, parseISO } from 'date-fns';
@@ -108,7 +109,7 @@ export default function AgendamentoOnline() {
     } catch (error) {
       if (requestId !== holdRequestRef.current) return;
       void chamar({ action: 'release', clinica_id: clinicaId, hold_token: token }).catch(() => undefined);
-      setErro(error instanceof Error ? error.message : 'Não foi possível reservar este horário.');
+      setErro(friendlyErrorMessage(error, 'Não foi possível reservar este horário.'));
       setRecarregar((n) => n + 1);
     } finally {
       if (requestId === holdRequestRef.current) setReservandoHora(false);
@@ -139,7 +140,7 @@ export default function AgendamentoOnline() {
     setConcluido('');
     chamar<Info>({ action: 'info', clinica_id: clinicaId })
       .then((resultado) => { if (ativo) setInfo(resultado); })
-      .catch((e) => { if (ativo) setErroInfo(e.message); });
+      .catch((e) => { if (ativo) setErroInfo(friendlyErrorMessage(e, 'Não foi possível carregar as informações da clínica.')); });
     return () => { ativo = false; };
   }, [clinicaId, recarregarInfo]);
 
@@ -174,7 +175,7 @@ export default function AgendamentoOnline() {
     setCarregandoSlots(true); setSlots(null); setHora(''); setErroSlots('');
     chamar<{ slots: string[] }>({ action: 'slots', clinica_id: clinicaId, medico_id: medico.id, data })
       .then((r) => { if (ativo) setSlots(r.slots); })
-      .catch((e) => { if (ativo) setErroSlots(e.message); })
+      .catch((e) => { if (ativo) setErroSlots(friendlyErrorMessage(e, 'Não foi possível carregar os horários disponíveis.')); })
       .finally(() => { if (ativo) setCarregandoSlots(false); });
     return () => { ativo = false; };
   }, [medico, data, clinicaId, recarregar]);
@@ -214,7 +215,7 @@ export default function AgendamentoOnline() {
     } catch (err) {
       if (requestId !== bookingRequestRef.current) return;
       const erro = err instanceof Error ? err : new Error('Não foi possível concluir agora. Tente novamente.');
-      setErro(erro.message);
+      setErro(friendlyErrorMessage(erro, 'Não foi possível concluir agora. Tente novamente.'));
       if (erro instanceof ErroAgendamentoPublico && ['slot_unavailable', 'booking_unavailable', 'hold_expired'].includes(erro.code || '')) {
         holdRef.current = null;
         setHoldToken('');

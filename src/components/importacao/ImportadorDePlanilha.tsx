@@ -9,6 +9,7 @@
  * Migração é operação de uma vez só — desfazer depois é muito mais caro que
  * conferir antes.
  */
+import { friendlyErrorMessage } from '@/components/ErrorState';
 import { useState } from 'react';
 import {
   Upload, FileSpreadsheet, ArrowRight, ArrowLeft, CheckCircle2,
@@ -70,7 +71,7 @@ export function ImportadorDePlanilha() {
       setMapeamento(mapearAutomaticamente(p.cabecalhos, campos));
       setPasso(2);
     } catch (err: any) {
-      toast.error('Não consegui ler o arquivo', { description: err?.message });
+      toast.error('Não consegui ler o arquivo', { description: friendlyErrorMessage(err, 'Confira se o arquivo é uma planilha válida.') });
     } finally {
       setOcupado(false);
     }
@@ -106,7 +107,7 @@ export function ImportadorDePlanilha() {
       }
       setPasso(3);
     } catch (err: any) {
-      toast.error('Não consegui conferir com os pacientes atuais', { description: err?.message });
+      toast.error('Não consegui conferir com os pacientes atuais', { description: friendlyErrorMessage(err, 'Tente novamente em instantes.') });
     } finally {
       setOcupado(false);
     }
@@ -128,7 +129,7 @@ export function ImportadorDePlanilha() {
         toast.warning(`${r.inseridos} importado(s), ${r.falhas.length} recusado(s)`);
       }
     } catch (err: any) {
-      toast.error('A importação parou', { description: err?.message });
+      toast.error('A importação parou', { description: friendlyErrorMessage(err, 'Confira o que já foi importado e tente novamente.') });
     } finally {
       setOcupado(false);
       setProgresso(null);

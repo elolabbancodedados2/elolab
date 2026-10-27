@@ -3,7 +3,7 @@
  * Exibe alertas de segurança clínica de forma visual
  */
 
-import { AlertCircle, AlertTriangle, Info, X } from 'lucide-react';
+import { AlertCircle, AlertTriangle, Info, Lightbulb, X } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -103,8 +103,9 @@ export function ClinicalAlertsDisplay({
                 <AlertDescription className="mt-1 text-sm">
                   {alert.message}
                   {alert.action && (
-                    <div className="mt-2 font-semibold text-xs">
-                      💡 {alert.action}
+                    <div className="mt-2 flex items-center gap-1 font-semibold text-xs">
+                      <Lightbulb className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                      {alert.action}
                     </div>
                   )}
                 </AlertDescription>

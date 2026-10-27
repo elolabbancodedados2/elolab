@@ -118,7 +118,7 @@ async function buildPdf(data: ReceiptData): Promise<jsPDF> {
   }
   doc.text('Documento sem valor fiscal', w / 2, y, { align: 'center' });
   y += 3;
-  doc.text('Obrigado pela preferência!', w / 2, y, { align: 'center' });
+  doc.text('Obrigado pela preferência.', w / 2, y, { align: 'center' });
   doc.setTextColor(0);
 
   return doc;
@@ -146,21 +146,21 @@ export async function printReceiptPdf(data: ReceiptData) {
 /** Get WhatsApp-formatted text for receipt */
 export function getReceiptWhatsAppText(data: ReceiptData): string {
   return [
-    '📋 *CUPOM DE RECEBIMENTO*',
-    `📅 ${data.dataHora}`,
+    '*CUPOM DE RECEBIMENTO*',
+    `Data: ${data.dataHora}`,
     '',
-    `👤 Paciente: ${data.paciente}`,
-    data.cpf ? `🪪 CPF: ${data.cpf}` : '',
-    data.medico ? `🩺 Médico: ${data.medico}` : '',
-    data.especialidade ? `📋 Especialidade: ${data.especialidade}` : '',
-    `📝 ${data.descricao}`,
-    data.categoria ? `📂 ${data.categoria}` : '',
-    `💳 ${data.formaPagamento}`,
+    `Paciente: ${data.paciente}`,
+    data.cpf ? `CPF: ${data.cpf}` : '',
+    data.medico ? `Médico: ${data.medico}` : '',
+    data.especialidade ? `Especialidade: ${data.especialidade}` : '',
+    `Descrição: ${data.descricao}`,
+    data.categoria ? `Categoria: ${data.categoria}` : '',
+    `Forma de pagamento: ${data.formaPagamento}`,
     '',
-    `💰 Valor: ${formatCurrency(data.valorOriginal)}`,
-    data.desconto && data.desconto > 0 ? `🟢 Desconto: - ${formatCurrency(data.desconto)}` : '',
-    data.acrescimo && data.acrescimo > 0 ? `🔴 Acréscimo: + ${formatCurrency(data.acrescimo)}` : '',
-    `✅ *TOTAL PAGO: ${formatCurrency(data.valorFinal)}*`,
+    `Valor: ${formatCurrency(data.valorOriginal)}`,
+    data.desconto && data.desconto > 0 ? `Desconto: - ${formatCurrency(data.desconto)}` : '',
+    data.acrescimo && data.acrescimo > 0 ? `Acréscimo: + ${formatCurrency(data.acrescimo)}` : '',
+    `*TOTAL PAGO: ${formatCurrency(data.valorFinal)}*`,
     '',
     data.operador ? `Recebido por: ${data.operador}` : '',
     '_Documento sem valor fiscal_',

@@ -128,7 +128,7 @@ export const defaultAgentForm: NewAgentForm = {
   instrucoes_personalizadas: '',
   temperatura: 0.7,
   max_tokens: 2000,
-  mensagem_boas_vindas: 'Olá! Sou o assistente virtual da clínica. Como posso ajudá-lo?',
+  mensagem_boas_vindas: 'Olá. Sou o assistente virtual da clínica. Como posso ajudá-lo?',
   mensagem_encerramento: 'Obrigado pelo contato! Tenha um ótimo dia.',
   horario_atendimento_inicio: '08:00',
   horario_atendimento_fim: '18:00',

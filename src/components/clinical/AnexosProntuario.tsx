@@ -1,3 +1,4 @@
+import { friendlyErrorMessage } from '@/components/ErrorState';
 import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { useState, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -40,6 +41,7 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { DeleteConfirmDialog } from '@/components/ConfirmDialog';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
@@ -142,6 +144,7 @@ export function AnexosProntuario({
   const [portalOrigin, setPortalOrigin] = useState<'clinica' | 'externo'>('clinica');
   const [portalValidity, setPortalValidity] = useState('');
   const [savingPortalStatus, setSavingPortalStatus] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Anexo | null>(null);
   const { toast } = useToast();
   const attachmentIds = anexos.map((anexo) => anexo.id).sort().join(',');
 
@@ -212,7 +215,7 @@ export function AnexosProntuario({
       setPortalTarget(null);
       toast({ title: publicar ? 'Documento disponibilizado no portal' : 'Documento removido do portal' });
     } catch (error) {
-      toast({ title: 'Não foi possível atualizar o portal', description: error instanceof Error ? error.message : 'Tente novamente.', variant: 'destructive' });
+      toast({ title: 'Não foi possível atualizar o portal', description: friendlyErrorMessage(error, 'Tente novamente.'), variant: 'destructive' });
     } finally {
       setSavingPortalStatus(false);
     }
@@ -332,7 +335,6 @@ export function AnexosProntuario({
 
   const handleDelete = async (anexo: Anexo) => {
     if (readOnly) return;
-    if (!confirm('Deseja realmente excluir este anexo?')) return;
 
     setLoading(true);
     try {
@@ -381,7 +383,7 @@ export function AnexosProntuario({
     try {
       await registrarAcessoDocumentoClinico('anexo_prontuario', anexo.id, 'visualizacao');
     } catch (error) {
-      toast({ title: 'Não foi possível registrar o acesso', description: error instanceof Error ? error.message : 'Tente novamente.', variant: 'destructive' });
+      toast({ title: 'Não foi possível registrar o acesso', description: friendlyErrorMessage(error, 'Tente novamente.'), variant: 'destructive' });
       return;
     }
     setPreviewUrl(url);
@@ -413,7 +415,7 @@ export function AnexosProntuario({
       await registrarAcessoDocumentoClinico('anexo_prontuario', anexo.id, 'exportacao');
     } catch (error) {
       aba.close();
-      toast({ title: 'Não foi possível registrar o download', description: error instanceof Error ? error.message : 'Tente novamente.', variant: 'destructive' });
+      toast({ title: 'Não foi possível registrar o download', description: friendlyErrorMessage(error, 'Tente novamente.'), variant: 'destructive' });
       return;
     }
     aba.location.replace(url);
@@ -535,7 +537,7 @@ export function AnexosProntuario({
                       size="icon"
                       className="h-8 w-8 text-destructive"
                       aria-label={`Excluir anexo ${anexo.nome_arquivo}`}
-                      onClick={() => handleDelete(anexo)}
+                      onClick={() => setDeleteTarget(anexo)}
                       disabled={loading || readOnly}
                     >
                       <Trash2 className="h-4 w-4" />
@@ -695,6 +697,13 @@ export function AnexosProntuario({
           </div>
         </DialogContent>
       </Dialog>
+
+      <DeleteConfirmDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
+        itemName={deleteTarget?.nome_arquivo ?? ''}
+        onConfirm={() => { if (deleteTarget) void handleDelete(deleteTarget); }}
+      />
     </div>
   );
 }
